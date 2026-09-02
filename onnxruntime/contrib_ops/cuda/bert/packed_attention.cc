@@ -9,7 +9,6 @@
 #include "contrib_ops/cuda/bert/packed_attention_impl.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
-#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -18,6 +17,27 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+PackedAttentionShape MakePackedAttentionShape(const TensorShape& shape) noexcept {
+  PackedAttentionShape result;
+  const auto& dimensions = shape.GetDims();
+  result.rank = dimensions.size();
+  const size_t dimensions_to_copy =
+      dimensions.size() < result.dimensions.size() ? dimensions.size() : result.dimensions.size();
+  for (size_t i = 0; i < dimensions_to_copy; ++i) {
+    result.dimensions[i] = dimensions[i];
+  }
+
+  return result;
+}
+
+Status PackedAttentionWorkspaceStatusToStatus(PackedAttentionWorkspaceStatus status) {
+  if (status.IsOK()) {
+    return Status::OK();
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, status.message);
+}
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -90,7 +110,7 @@ PackedAttention<T>::PackedAttention(const OpKernelInfo& info)
     : TrtFusedAttention<T>(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  num_heads_ = static_cast<int32_t>(num_heads);
+  num_heads_ = num_heads;
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
@@ -106,124 +126,42 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
                                        const TensorShape& token_offset_shape,
                                        const TensorShape& cu_seq_len_shape,
                                        const Tensor* attention_bias,
-                                       PackedAttentionParameters& parameters) const {
-  // Abbreviation and Meanings:
-  //   T:    token_count
-  //   B:    batch_size
-  //   S:    sequence_length
-  //   N:    num_heads
-  //   H:    head size for Q and K, aka q_head_size or v_head_size or qk_head_size
-  //   H_v:  v_head_size
-  //   D_i:  input hidden size
-  //   D:    hidden size for Q and K (D = N * H), aka q_hidden_size or k_hidden_size or qk_hidden_size
-  //   D_v:  v_hidden_size = num_heads * v_head_size
-
-  // Input shapes:
-  //   input:                  : (T, D_i)
-  //   weights      (Q/K/V)    : (D_i, D + D + D_v)
-  //   bias         (Q/K/V)    : (D + D + D_v)
-  //   token_offset            : (B, S)
-  //   cu_seq_len_shape        : (B + 1)
-  //   attention_bias          : (B or 1, N or 1, S, S) or NULL
-  const auto& input_dims = input_shape.GetDims();
-  if (input_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'input' is expected to have 2 dimensions in packing mode, got ",
-                           input_dims.size());
+                                       PackedAttentionParameters& parameters,
+                                       PackedAttentionProblem& problem) const {
+  PackedAttentionInputShapes inputs;
+  inputs.input = MakePackedAttentionShape(input_shape);
+  inputs.weights = MakePackedAttentionShape(weights_shape);
+  inputs.bias = MakePackedAttentionShape(bias_shape);
+  inputs.token_offset = MakePackedAttentionShape(token_offset_shape);
+  inputs.cumulative_sequence_length = MakePackedAttentionShape(cu_seq_len_shape);
+  inputs.element_size = sizeof(T);
+  inputs.num_heads = GetNumHeads();
+  inputs.qkv_hidden_sizes_count = qkv_hidden_sizes_.size();
+  for (size_t i = 0; i < qkv_hidden_sizes_.size() && i < inputs.qkv_hidden_sizes.size(); ++i) {
+    inputs.qkv_hidden_sizes[i] = qkv_hidden_sizes_[i];
   }
-  int64_t token_count = input_dims[0];
-  int64_t input_hidden_size = input_dims[1];
-
-  const auto& token_offset_dims = token_offset_shape.GetDims();
-  if (token_offset_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'packing_token_offset' is expected to have 2 dimensions in packing mode, got ",
-                           token_offset_dims.size());
-  }
-
-  int64_t batch_size = token_offset_dims[0];
-  int64_t sequence_length = token_offset_dims[1];
-
-  const auto& bias_dims = bias_shape.GetDims();
-  if (bias_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
-                           bias_dims.size());
-  }
-
-  const auto& weights_dims = weights_shape.GetDims();
-  if (weights_dims.size() != 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ",
-                           weights_dims.size());
-  }
-  if (weights_dims[0] != input_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 1 dimension 0 should have same length as dimension 2 of input 0");
-  }
-
-  if (bias_dims[0] != weights_dims[1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
-  }
-
-  const auto& cu_seq_len_dims = cu_seq_len_shape.GetDims();
-  if (cu_seq_len_dims.size() != 1 || cu_seq_len_dims[0] != batch_size + 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'cumulative_sequence_length' should have 1 dimension with size equal to batch_size + 1");
-  }
-
-  const int num_heads = this->GetNumHeads();
-  int64_t q_hidden_size = bias_dims[0] / static_cast<int64_t>(3);
-  int64_t k_hidden_size = q_hidden_size;
-  int64_t v_hidden_size = k_hidden_size;
-  if (qkv_hidden_sizes_.size() != 0) {
-    if (qkv_hidden_sizes_.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "qkv_hidden_sizes attribute should have 3 elements");
-    }
-
-    for (size_t i = 0; i < qkv_hidden_sizes_.size(); i++) {
-      if (qkv_hidden_sizes_[i] % num_heads != 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "hidden_size should be divisible by num_heads:", qkv_hidden_sizes_[i]);
-      }
-    }
-
-    q_hidden_size = qkv_hidden_sizes_[0];
-    k_hidden_size = qkv_hidden_sizes_[1];
-    v_hidden_size = qkv_hidden_sizes_[2];
-  }
-
-  if (q_hidden_size != k_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "qkv_hidden_sizes first element should be same as the second");
-  }
-
-  if (bias_dims[0] != q_hidden_size + k_hidden_size + v_hidden_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'bias' dimension 0 should have same length as sum of Q/K/V hidden sizes:",
-                           " q_hidden_size=", q_hidden_size, " k_hidden_size=", k_hidden_size, " v_hidden_size=",
-                           v_hidden_size, "bias_dims[0]=", bias_dims[0]);
-  }
-
-  gsl::span<const int64_t> attention_bias_dims;
+  inputs.has_attention_bias = attention_bias != nullptr;
   if (attention_bias != nullptr) {
-    attention_bias_dims = attention_bias->Shape().GetDims();
-    ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckAttentionBias(
-        attention_bias_dims, batch_size, num_heads, sequence_length, sequence_length));
+    inputs.attention_bias = MakePackedAttentionShape(attention_bias->Shape());
   }
-  parameters.broadcast_attn_bias_dim_0 = attention_bias_dims.size() > 0 && attention_bias_dims[0] == 1;
-  parameters.broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
 
-  parameters.batch_size = static_cast<int>(batch_size);
-  parameters.sequence_length = static_cast<int>(sequence_length);
-  parameters.input_hidden_size = static_cast<int>(input_hidden_size);
-  parameters.hidden_size = static_cast<int>(q_hidden_size);
-  parameters.v_hidden_size = static_cast<int>(v_hidden_size);
-  parameters.head_size = static_cast<int>(q_hidden_size) / num_heads;
-  parameters.v_head_size = static_cast<int>(v_hidden_size) / num_heads;
-  parameters.num_heads = num_heads;
+  auto problem_result = BuildPackedAttentionProblem(inputs);
+  ORT_RETURN_IF_ERROR(PackedAttentionWorkspaceStatusToStatus(problem_result.status));
+  problem = problem_result.problem;
+
+  parameters.broadcast_attn_bias_dim_0 = problem.broadcast_attn_bias_dim_0;
+  parameters.broadcast_attn_bias_dim_1 = problem.broadcast_attn_bias_dim_1;
+
+  parameters.batch_size = problem.batch_size;
+  parameters.sequence_length = problem.sequence_length;
+  parameters.input_hidden_size = problem.input_hidden_size;
+  parameters.hidden_size = problem.hidden_size;
+  parameters.v_hidden_size = problem.v_hidden_size;
+  parameters.head_size = problem.qk_head_size;
+  parameters.v_head_size = problem.v_head_size;
+  parameters.num_heads = problem.num_heads;
   parameters.scale = this->GetScale();
-  parameters.token_count = static_cast<int32_t>(token_count);
+  parameters.token_count = problem.token_count;
 
   return Status::OK();
 }
@@ -238,6 +176,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* attention_bias = context->Input<Tensor>(5);
 
   PackedAttentionParameters parameters;
+  PackedAttentionProblem problem;
   parameters.use_tf32 = this->UseTF32();
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
@@ -245,10 +184,15 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                   token_offset->Shape(),
                                   cumulative_sequence_length->Shape(),
                                   attention_bias,
-                                  parameters));
+                                  parameters,
+                                  problem));
 
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
+
+  if (output->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   auto& device_prop = this->GetDeviceProp();
   MHARunner* fused_runner = this->GetFusedRunner(device_prop, attention_bias != nullptr, parameters);
@@ -281,11 +225,21 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
-  IAllocatorUniquePtr<T> gemm_buffer;
-  int m = parameters.token_count;
-  int n = parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size;
-  int k = parameters.input_hidden_size;
-  gemm_buffer = this->template GetScratchBuffer<T>(static_cast<size_t>(m) * n, this->GetComputeStream(context));
+  problem.backend = fused_runner != nullptr
+                        ? PackedAttentionBackend::Trt
+                        : (use_memory_efficient_attention
+                               ? PackedAttentionBackend::MemoryEfficient
+                               : PackedAttentionBackend::Unfused);
+  problem.trt_runner_available = fused_runner != nullptr;
+  auto workspace_result = GetPackedAttentionWorkspaceRecipe(problem);
+  ORT_RETURN_IF_ERROR(PackedAttentionWorkspaceStatusToStatus(workspace_result.status));
+  const PackedAttentionWorkspaceRecipe& workspace_recipe = workspace_result.recipe;
+
+  auto gemm_buffer = this->template GetScratchBuffer<void>(
+      workspace_recipe.projection_bytes, this->GetComputeStream(context));
+  const int m = workspace_recipe.projection_m;
+  const int n = workspace_recipe.projection_n;
+  const int k = workspace_recipe.projection_k;
 
   cublasHandle_t cublas = this->GetCublasHandle(context);
 
@@ -297,21 +251,9 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop, this->UseTF32()));
 
-  constexpr size_t element_size = sizeof(T);
-  constexpr bool no_qkv_workspace = false;  // need workspace to add bias
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
-                                                   parameters.batch_size,
-                                                   parameters.num_heads,
-                                                   parameters.head_size,
-                                                   parameters.v_head_size,
-                                                   parameters.sequence_length,
-                                                   fused_runner,
-                                                   false,
-                                                   use_memory_efficient_attention,
-                                                   no_qkv_workspace);
-  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, this->GetComputeStream(context));
+  auto work_space = this->template GetScratchBuffer<void>(
+      workspace_recipe.attention_workspace_bytes, this->GetComputeStream(context));
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
   PackedAttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
   data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
@@ -322,6 +264,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  data.workspace_recipe = workspace_recipe;
 
   return QkvToContext<CudaT>(device_prop, cublas, this->Stream(context), parameters, data);
 }

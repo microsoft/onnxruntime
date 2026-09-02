@@ -14,6 +14,7 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -554,6 +555,228 @@ TEST(MatMulNBits, BFloat16_Int8_Gemm_Cuda) {
   TestMatMul8BitsTyped<BFloat16, 32, 512, 512, 64>(abs_error, rel_error);
   TestMatMul8BitsTyped<BFloat16, 1, 256, 256, 128>(abs_error, rel_error);
   TestMatMul8BitsTyped<BFloat16, 32, 1024, 1024, 128>(abs_error, rel_error);
+}
+
+TEST(MatMulNBits, InvalidGIdx_OutOfRange_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  constexpr int64_t M = 2, N = 4, K = 64, block_size = 32;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  std::vector<float> a_data(M * K, 1.0f);
+  test.AddInput<float>("A", {M, K}, a_data, false);
+
+  std::vector<uint8_t> b_data(N * k_blocks * blob_size, 0);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, b_data, true);
+
+  std::vector<float> scales(N * k_blocks, 1.0f);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+
+  test.AddOptionalInputEdge<uint8_t>();
+
+  std::vector<int32_t> g_idx(K, 99999);
+  test.AddInput<int32_t>("g_idx", {K}, g_idx, true);
+
+  test.AddOptionalInputEdge<float>();
+
+  std::vector<float> y_data(M * N, 0.0f);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  test.ConfigEps(std::move(execution_providers));
+  test.Config(OpTester::ExpectResult::kExpectFailure, "group_index value");
+  test.RunWithConfig();
+}
+
+TEST(MatMulNBits, InvalidGIdx_Negative_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  constexpr int64_t M = 2, N = 4, K = 64, block_size = 32;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  std::vector<float> a_data(M * K, 1.0f);
+  test.AddInput<float>("A", {M, K}, a_data, false);
+
+  std::vector<uint8_t> b_data(N * k_blocks * blob_size, 0);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, b_data, true);
+
+  std::vector<float> scales(N * k_blocks, 1.0f);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+
+  test.AddOptionalInputEdge<uint8_t>();
+
+  std::vector<int32_t> g_idx(K, -1);
+  test.AddInput<int32_t>("g_idx", {K}, g_idx, true);
+
+  test.AddOptionalInputEdge<float>();
+
+  std::vector<float> y_data(M * N, 0.0f);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  test.ConfigEps(std::move(execution_providers));
+  test.Config(OpTester::ExpectResult::kExpectFailure, "group_index value");
+  test.RunWithConfig();
+}
+
+TEST(MatMulNBits, InvalidBlockSizeWithGIdxInitializer_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  constexpr int64_t M = 1, N = 1, K = 1;
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", int64_t{0});
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddInput<float>("A", {M, K}, {1.0f});
+  test.AddInput<uint8_t>("B", {N, 1, 1}, {0}, true);
+  test.AddInput<float>("scales", {N, 1}, {1.0f}, true);
+  test.AddOptionalInputEdge<uint8_t>();
+  test.AddInput<int32_t>("g_idx", {K}, {0}, true);
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {M, N}, {0.0f});
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  test.ConfigEps(std::move(execution_providers));
+  test.Config(OpTester::ExpectResult::kExpectFailure, "block_size must be greater than zero");
+  test.RunWithConfig();
+}
+
+TEST(MatMulNBits, ValidGIdxWithPrepackingDisabled_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  constexpr int64_t M = 2, N = 4, K = 64, block_size = 32;
+  constexpr int64_t k_blocks = K / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+  test.AddInput<float>("A", {M, K}, std::vector<float>(M * K, 1.0f));
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, std::vector<uint8_t>(N * k_blocks * blob_size, 128), true);
+  test.AddInput<float>("scales", {N, k_blocks}, std::vector<float>(N * k_blocks, 1.0f), true);
+  test.AddOptionalInputEdge<uint8_t>();
+
+  std::vector<int32_t> g_idx(K);
+  for (int64_t i = 0; i < K; ++i) {
+    g_idx[static_cast<size_t>(i)] = static_cast<int32_t>(i / block_size);
+  }
+  test.AddInput<int32_t>("g_idx", {K}, g_idx, true);
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(
+      session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "1"));
+  ASSERT_STATUS_OK(
+      session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+  test.ConfigEps(std::move(execution_providers));
+  test.RunWithConfig();
+}
+
+TEST(MatMulNBits, RuntimeGIdxIsSupportedOutsideCapture_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  constexpr int64_t M = 2, N = 4, K = 64, block_size = 32;
+  constexpr int64_t k_blocks = K / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddInput<float>("A", {M, K}, std::vector<float>(M * K, 1.0f));
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, std::vector<uint8_t>(N * k_blocks * blob_size, 128), true);
+  test.AddInput<float>("scales", {N, k_blocks}, std::vector<float>(N * k_blocks, 1.0f), true);
+  test.AddOptionalInputEdge<uint8_t>();
+  test.AddInput<int32_t>("g_idx", {K}, std::vector<int32_t>(K, 0), false);
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
+
+  auto& model = test.BuildModel();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(
+      session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  std::vector<float> a_data(M * K, 1.0f);
+  OrtValue a_value;
+  CreateMLValue<float>(cpu_allocator, AsSpan({M, K}), a_data, &a_value);
+
+  std::vector<int32_t> valid_g_idx(K, 0);
+  OrtValue valid_g_idx_value;
+  CreateMLValue<int32_t>(cpu_allocator, AsSpan({K}), valid_g_idx, &valid_g_idx_value);
+
+  NameMLValMap feeds{{"A", a_value}, {"g_idx", valid_g_idx_value}};
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, std::vector<std::string>{"Y"}, &fetches));
+
+  std::vector<int32_t> invalid_g_idx(K, static_cast<int32_t>(k_blocks));
+  OrtValue invalid_g_idx_value;
+  CreateMLValue<int32_t>(cpu_allocator, AsSpan({K}), invalid_g_idx, &invalid_g_idx_value);
+  feeds["g_idx"] = invalid_g_idx_value;
+  fetches.clear();
+
+  const Status status = session.Run(RunOptions{}, feeds, std::vector<std::string>{"Y"}, &fetches);
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("group_index value"));
 }
 
 // Chunked dequant+GEMM path tests for INT8.

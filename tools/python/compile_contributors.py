@@ -11,7 +11,7 @@ Description:
 
 Usage:
     python compile_contributors.py [--base <base_branch>] [--target <target_branch>] [--dir <output_dir>]
-                                   [--paths <path> [<path> ...]]
+                                   [--paths <path> [<path> ...]] [--paths-file <file>]
 
 Example:
     python compile_contributors.py --base origin/rel-1.23.2 --target origin/rel-1.24.1 --dir rel-1.24.1_report
@@ -20,6 +20,10 @@ Example:
     # Using git pathspec syntax, ":(top)" anchors each path at repository root.
     python compile_contributors.py --base origin/main~500 --target origin/main \
         --paths ":(top)path/to/component_a" ":(top)path/to/component_b"
+
+    # Or load pathspecs from a file (one pathspec per line; blank lines and # comments are ignored):
+    python compile_contributors.py --base origin/main~500 --target origin/main \
+        --paths-file plugin-ep-webgpu/paths.txt
 
 Outputs:
     - detail.csv: Detailed breakdown of PRs, authors, and commit links.
@@ -314,6 +318,18 @@ def get_prs_from_log(log_output, prs_base=None, log_file=None, scan_depth=100):
     return all_prs
 
 
+def read_pathspecs_file(pathspecs_file):
+    """Read git pathspecs from file, trimming whitespace and skipping blanks/comments."""
+    pathspecs = []
+    with open(pathspecs_file, encoding="utf-8") as f:
+        for line in f:
+            entry = line.strip()
+            if not entry or entry.startswith("#"):
+                continue
+            pathspecs.append(entry)
+    return pathspecs
+
+
 def main():
     parser = argparse.ArgumentParser(description="Compile contributor list from Git log comparison.")
     parser.add_argument("--base", default="origin/rel-1.23.2", help="Base branch/commit to compare from")
@@ -333,7 +349,30 @@ def main():
             "sub-PRs are still expanded regardless of paths."
         ),
     )
+    parser.add_argument(
+        "--paths-file",
+        default=None,
+        metavar="FILE",
+        help=(
+            "Optional file containing paths (git pathspec, one per line) to limit history to. "
+            "Blank lines and lines starting with '#' are ignored. "
+            "Can be combined with --paths."
+        ),
+    )
     args = parser.parse_args()
+
+    selected_paths = []
+    if args.paths:
+        selected_paths.extend(args.paths)
+    if args.paths_file:
+        try:
+            selected_paths.extend(read_pathspecs_file(args.paths_file))
+        except OSError as e:
+            parser.error(f"Could not read --paths-file '{args.paths_file}': {e}")
+
+    # Preserve order while removing duplicates.
+    if selected_paths:
+        selected_paths = list(dict.fromkeys(selected_paths))
 
     # Early validation
     if not check_preflight():
@@ -345,7 +384,7 @@ def main():
     scan_depth = args.scan_depth
     # Build a pathspec suffix (e.g. ["--", "onnxruntime/core/providers/webgpu", ...]) once,
     # so it can be appended to each `git log` invocation below.
-    paths_args = (["--", *args.paths]) if args.paths else []
+    paths_args = (["--", *selected_paths]) if selected_paths else []
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -353,8 +392,8 @@ def main():
     logs_path = os.path.join(output_dir, "logs.txt")
     with open(logs_path, "w", encoding="utf-8") as log_file:
         log_event(f"Starting comparison: {branch_base} -> {branch_target}", log_file)
-        if args.paths:
-            log_event(f"Limiting history to paths: {args.paths}", log_file)
+        if selected_paths:
+            log_event(f"Limiting history to paths: {selected_paths}", log_file)
 
         # 1. Fetch base branch PRs (scan depth controlled by scan_depth)
         log_event(f"Fetching base branch history for {branch_base} (last {scan_depth})...", log_file)

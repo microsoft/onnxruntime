@@ -20,56 +20,71 @@ namespace onnxruntime {
  * @return whether conversion happened
  */
 static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
-  auto& q_input_defs = q_node.MutableInputDefs();
-  auto& dq_input_defs = dq_node.MutableInputDefs();
+  const auto q_input_defs = q_node.InputDefs();
+  const auto dq_input_defs = dq_node.InputDefs();
 
-  constexpr size_t input_cnt_required = 3;
-  if (q_input_defs.size() != input_cnt_required ||
-      dq_input_defs.size() != input_cnt_required) {
+  constexpr size_t input_cnt_with_zero_point = 3;
+  constexpr size_t input_cnt_without_zero_point = 2;
+  if (q_input_defs.size() != input_cnt_with_zero_point ||
+      (dq_input_defs.size() != input_cnt_with_zero_point &&
+       dq_input_defs.size() != input_cnt_without_zero_point)) {
     return false;
   }
 
   constexpr size_t zp_idx = 2;
   const ONNX_NAMESPACE::TensorProto* q_zp_tensor_proto = nullptr;
   const ONNX_NAMESPACE::TensorProto* dq_zp_tensor_proto = nullptr;
-  if (!graph_utils::NodeArgIsConstant(graph, *q_input_defs[zp_idx]) ||
-      !graph_utils::NodeArgIsConstant(graph, *dq_input_defs[zp_idx]) ||
-      !graph.GetInitializedTensor(q_input_defs[zp_idx]->Name(), q_zp_tensor_proto) ||
-      !graph.GetInitializedTensor(dq_input_defs[zp_idx]->Name(), dq_zp_tensor_proto)) {
+  const NodeArg* q_zp_def = q_input_defs[zp_idx];
+  const NodeArg* dq_zp_def = dq_input_defs.size() > zp_idx ? dq_input_defs[zp_idx] : nullptr;
+  const bool dq_zp_exists = dq_zp_def != nullptr && dq_zp_def->Exists();
+  if (q_zp_def == nullptr || !q_zp_def->Exists() ||
+      !graph_utils::NodeArgIsConstant(graph, *q_zp_def) ||
+      !graph.GetInitializedTensor(q_zp_def->Name(), q_zp_tensor_proto) ||
+      (dq_zp_exists &&
+       (!graph_utils::NodeArgIsConstant(graph, *dq_zp_def) ||
+        !graph.GetInitializedTensor(dq_zp_def->Name(), dq_zp_tensor_proto)))) {
     return false;
   }
 
   // TODO(fuchen): need to augment this when we support per row quantization
   using ONNX_TENSOR_ELEM_TYPE = ONNX_NAMESPACE::TensorProto::DataType;
   Initializer q_zero_point(graph, *q_zp_tensor_proto, graph.ModelPath());
-  Initializer dq_zero_point(graph, *dq_zp_tensor_proto, graph.ModelPath());
   if (q_zero_point.size() != 1 ||
-      dq_zero_point.size() != 1 ||
-      q_zero_point.data_type() != ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8 ||
-      dq_zero_point.data_type() != ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8) {
+      q_zero_point.data_type() != ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8) {
     return false;
   }
 
-  uint8_t q_zp_value = *q_zero_point.data<int8_t>() + 128;
-  uint8_t dq_zp_value = *dq_zero_point.data<int8_t>() + 128;
+  const int8_t q_zp_s8 = *q_zero_point.data<int8_t>();
+  int8_t dq_zp_s8 = 0;
+  if (dq_zp_exists) {
+    Initializer dq_zero_point(graph, *dq_zp_tensor_proto, graph.ModelPath());
+    if (dq_zero_point.size() != 1 ||
+        dq_zero_point.data_type() != ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8) {
+      return false;
+    }
+    dq_zp_s8 = *dq_zero_point.data<int8_t>();
+  }
 
-  if (q_zp_value != dq_zp_value) {
+  if (q_zp_s8 != dq_zp_s8) {
     return false;  // zero points for Q and DQ are expected to be same
   }
+
+  const uint8_t zp_value_u8 = static_cast<uint8_t>(static_cast<int16_t>(q_zp_s8) + 128);
 
   ONNX_NAMESPACE::TensorProto zp_tensor_proto_u8;
   zp_tensor_proto_u8.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
   zp_tensor_proto_u8.set_name(graph.GenerateNodeArgName("qdq_s8_to_u8_zp_conversion"));
-  utils::SetRawDataInTensorProto(zp_tensor_proto_u8, &q_zp_value, sizeof(uint8_t));
+  utils::SetRawDataInTensorProto(zp_tensor_proto_u8, &zp_value_u8, sizeof(uint8_t));
   NodeArg* zp_u8_arg = &graph_utils::AddInitializerWithOrtValue(graph, zp_tensor_proto_u8);
 
   auto q_output_node_arg_name = graph.GenerateNodeArgName("qdq_s8_to_u8_quant");
   NodeArg* q_output_arg = &graph.GetOrCreateNodeArg(q_output_node_arg_name, nullptr);
 
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
   q_node.MutableOutputDefs()[0] = q_output_arg;
-  dq_input_defs[0] = q_output_arg;
-  q_input_defs[zp_idx] = zp_u8_arg;
-  dq_input_defs[zp_idx] = zp_u8_arg;
+  dq_node.MutableInputDefs()[0] = q_output_arg;
+  graph_utils::SetOptionalNodeInput(graph, q_node, zp_idx, *zp_u8_arg);
+  graph_utils::SetOptionalNodeInput(graph, dq_node, zp_idx, *zp_u8_arg);
   return true;
 }
 

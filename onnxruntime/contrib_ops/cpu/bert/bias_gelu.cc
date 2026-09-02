@@ -39,6 +39,12 @@ Status BiasGelu<T, use_approximation>::Compute(OpKernelContext* context) const {
   Tensor* output = context->Output(0, input->Shape());
   T* output_data = output->MutableData<T>();
 
+  // An empty input (and, correspondingly, an empty bias) is a legal degenerate case per the
+  // ONNX shape model; treat it as a no-op rather than let elem_count / bias_len divide by zero below.
+  if (elem_count == 0) {
+    return Status::OK();
+  }
+
   const Tensor* bias = context->Input<Tensor>(1);
   if (nullptr == bias) {
     // FastGelu allows optional bias. Here we split input data into chunks. Each chunk

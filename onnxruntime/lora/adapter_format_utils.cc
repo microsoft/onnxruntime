@@ -21,6 +21,34 @@ namespace onnxruntime {
 namespace adapters {
 namespace utils {
 
+namespace {
+
+constexpr bool IsSupportedLoraParameterType(TensorDataType data_type) {
+  switch (data_type) {
+    case TensorDataType::FLOAT:
+    case TensorDataType::UINT8:
+    case TensorDataType::INT8:
+    case TensorDataType::UINT16:
+    case TensorDataType::INT16:
+    case TensorDataType::INT32:
+    case TensorDataType::INT64:
+    case TensorDataType::FLOAT16:
+    case TensorDataType::DOUBLE:
+    case TensorDataType::UINT32:
+    case TensorDataType::UINT64:
+    case TensorDataType::BFLOAT16:
+    case TensorDataType::FLOAT8E4M3FN:
+    case TensorDataType::FLOAT8E4M3FNUZ:
+    case TensorDataType::FLOAT8E5M2:
+    case TensorDataType::FLOAT8E5M2FNUZ:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
 bool IsAdapterFormatModelBytes(const void* bytes, size_t num_bytes) {
   return num_bytes > 8 &&  // check buffer is large enough to contain identifier so we don't read random memory
          AdapterBufferHasIdentifier(bytes);
@@ -157,8 +185,12 @@ std::pair<std::string, OrtValue> CreateOrtValueOverLoraParameter(const Parameter
   LoadStringFromLoraFormat(name, param_name);
 
   const auto data_type = param.data_type();
-  ORT_ENFORCE(data_type != TensorDataType::UNDEFINED,
-              "Lora Param '", name, "': data_type is UNDEFINED");
+  // The raw-byte size calculation below is valid only for fixed-size, unpacked scalar types.
+  // An allowlist also rejects undeclared enum values because FlatBuffers verifies the field
+  // representation but not membership in TensorDataType.
+  ORT_ENFORCE(IsSupportedLoraParameterType(data_type),
+              "Lora Param '", name, "': data_type '", static_cast<int32_t>(data_type),
+              "' is not a supported LoRA parameter type");
 
   const auto* dims = param.dims();
   ORT_ENFORCE(dims != nullptr && dims->size() > 0,

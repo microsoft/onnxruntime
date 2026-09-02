@@ -172,6 +172,21 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   const auto& W_shape = (W != nullptr) ? W->Shape() : packed_W_.shape_;
   const auto& R_shape = (R != nullptr) ? R->Shape() : packed_R_.shape_;
 
+  // The WeightCheck macro below only validates the scale/zero-point shapes against hidden_size_, and
+  // only for per-channel (2D) quantization. It does not validate the W and R weight tensor shapes.
+  // Validate those here so a model whose hidden_size attribute is inconsistent with the weights is
+  // rejected cleanly rather than causing an out-of-bounds access in the compute below (ONNX shape
+  // inference does not verify this relationship). The quantized weight layout is transposed relative
+  // to the standard LSTM: W is [num_directions, input_size, 4*hidden_size] and
+  // R is [num_directions, hidden_size, 4*hidden_size], hence weights_transposed=true. The remaining
+  // inputs (B, sequence_lens, initial_h, initial_c, P) are validated by LSTMBase::ValidateInputs in
+  // ComputeImpl, so they are passed as nullptr here.
+  const Tensor& X = *context->Input<Tensor>(0);  // inputs. [seq_length, batch_size, input_size]
+  ORT_RETURN_IF_ERROR(rnn::detail::ValidateCommonRnnInputs(X, W_shape, R_shape, nullptr /*B*/, 4,
+                                                           nullptr /*sequence_lens*/, nullptr /*initial_h*/,
+                                                           num_directions_, hidden_size_,
+                                                           true /*weights_transposed*/));
+
   const Tensor* w_scale = context->Input<Tensor>(8);
   const Tensor* w_zp = context->Input<Tensor>(9);
   const Tensor* r_scale = context->Input<Tensor>(10);

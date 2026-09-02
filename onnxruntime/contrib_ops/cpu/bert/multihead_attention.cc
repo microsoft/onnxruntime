@@ -199,6 +199,9 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   if (std::is_same_v<T, float> &&
       !disable_flash_ &&
       !is_unidirectional_ &&
+      batch_size > 0 &&
+      q_sequence_length > 0 &&
+      total_sequence_length > 0 &&
       key_padding_mask == nullptr &&
       attn_bias == nullptr &&
       past_key == nullptr &&

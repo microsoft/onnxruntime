@@ -57,10 +57,11 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
   SS(ss, kStringInitialSizeCacheKey);
 
   // final key format:
-  // <KEY>=<PROGRAM_NAME>[<CUSTOM_CACHE_HINT>]:<WORKGROUP_SIZE>:<DISPATCH_FLAG>:<UNIFORMS>:<INPUTS_INFO>
+  // <KEY>=<PROGRAM_NAME>[<CUSTOM_CACHE_HINT>]:<WORKGROUP_SIZE>:<SUBGROUP_SIZE>:<DISPATCH_FLAG>:<UNIFORMS>:<INPUTS_INFO>
   //
   // <CUSTOM_CACHE_HINT> = <HINT_0>|<HINT_1>|...
-  // <WORKGROUP_SIZE>    = <X_IF_OVERRIDED>,<Y_IF_OVERRIDED>,<Z_IF_OVERRIDED>
+  // <WORKGROUP_SIZE>    = <X_IF_OVERRIDDEN>,<Y_IF_OVERRIDDEN>,<Z_IF_OVERRIDDEN>
+  // <SUBGROUP_SIZE>     = <SUBGROUP_SIZE_IF_OVERRIDDEN>
   // <DISPATCH_FLAG>     = <!IS_1D_DISPATCH>
   // <UNIFORMS>          = <UNIFORMS_INFO_0>|<UNIFORMS_INFO_1>|...
   // <UNIFORMS_INFO_i>   = <UNIFORM_LENGTH>
@@ -89,6 +90,11 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
     if (z > 0) {
       ss << z;
     }
+  }
+
+  // append the requested subgroup size (subgroup-size-control) if any
+  if (auto subgroup_size = program.SubgroupSize(); subgroup_size != 0) {
+    ss << ":" D("SubgroupSize=") << subgroup_size;
   }
 
   ss << ":" D("DispatchDim=") << (is_1d_dispatch ? "1" : "3");

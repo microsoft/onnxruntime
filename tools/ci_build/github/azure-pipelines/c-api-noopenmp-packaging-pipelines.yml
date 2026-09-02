@@ -93,11 +93,12 @@ variables:
     value: ''
   ${{ if eq(parameters.CudaVersion, '13.0') }}:
     value: $(Agent.TempDirectory)\9.14.0.64_cuda13
+# Windows x64 CUDA architectures. Keep in sync with plugin-cuda-pipeline.yml.
 - name: CudaArchs
   ${{ if eq(parameters.CudaVersion, '12.8') }}:
-    value: '75-real;86-real;89-real;90-virtual'
+    value: '61-real;75-real;86-real;89-real;120-real'
   ${{ if eq(parameters.CudaVersion, '13.0') }}:
-    value: '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
+    value: '75-real;80-real;86-real;89-real;120-real'
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
@@ -183,7 +184,7 @@ extends:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         ArtifactName: 'drop-onnxruntime-nodejs-win-x64'
         StageName: 'Windows_Nodejs_Packaging_x64'
-        BuildCommand: --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_webgpu --build_nodejs --cmake_generator "Visual Studio 17 2022" --enable_generic_interface
+        BuildCommand: --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_dml --use_webgpu --build_nodejs --cmake_generator "Visual Studio 17 2022" --enable_generic_interface
         BuildArch: 'x64'
         EnvSetupScript: 'setup_env.bat'
         sln_platform: 'x64'
@@ -195,7 +196,7 @@ extends:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         ArtifactName: 'drop-onnxruntime-nodejs-win-arm64'
         StageName: 'Windows_Nodejs_Packaging_arm64'
-        BuildCommand: --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_webgpu --build_nodejs --cmake_generator "Visual Studio 17 2022" --enable_generic_interface
+        BuildCommand: --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_dml --use_webgpu --build_nodejs --cmake_generator "Visual Studio 17 2022" --enable_generic_interface
         BuildArch: 'x64'
         EnvSetupScript: 'setup_env.bat'
         sln_platform: 'arm64'

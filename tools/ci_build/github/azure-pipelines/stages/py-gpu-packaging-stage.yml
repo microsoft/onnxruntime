@@ -54,9 +54,18 @@ parameters:
   - python_version: '3.14t'
     docker_python_exe_path: '/opt/python/cp314-cp314t/bin/python3.14'
 
-- name: cmake_cuda_archs
+- name: cmake_windows_x64_cuda_archs
   type: string
-  displayName: 'CMAKE_CUDA_ARCHITECTURES for Windows'
+  displayName: 'CMAKE_CUDA_ARCHITECTURES for Windows x64'
+
+- name: cmake_linux_x64_cuda_archs
+  type: string
+  displayName: 'CMAKE_CUDA_ARCHITECTURES for Linux x86_64'
+
+- name: cmake_linux_aarch64_cuda_archs
+  type: string
+  displayName: 'CMAKE_CUDA_ARCHITECTURES for Linux aarch64'
+  default: ''
 
 - name: docker_base_image
   type: string
@@ -81,7 +90,7 @@ stages:
             PYTHON_VERSION: ${{ python_version }}
             EP_NAME: gpu
             CudaVersion: ${{ parameters.cuda_version }}
-            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
+            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cudnn_home=$(Agent.TempDirectory)\${{ parameters.cudnn_folder }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_windows_x64_cuda_archs }}"
             use_tensorrt: True
 
     - ${{ if eq(parameters.cuda_version, '12.8') }}:
@@ -91,7 +100,7 @@ stages:
             PYTHON_VERSION: ${{ python_version }}
             EP_NAME: gpu
             CudaVersion: ${{ parameters.cuda_version }}
-            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_archs }}"
+            EP_BUILD_FLAGS: --enable_lto --use_cuda --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_windows_x64_cuda_archs }}"
             use_tensorrt: True
 
     # Linux: one parallel stage per Python version
@@ -104,6 +113,7 @@ stages:
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
+          cmake_cuda_archs: ${{ parameters.cmake_linux_x64_cuda_archs }}
           docker_base_image: ${{ parameters.docker_base_image }}
           python_version: ${{ config.python_version }}
           docker_python_exe_path: ${{ config.docker_python_exe_path }}
@@ -122,6 +132,7 @@ stages:
           extra_build_arg: ${{ parameters.build_py_parameters }}
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
+          cmake_cuda_archs: ${{ parameters.cmake_linux_aarch64_cuda_archs }}
           docker_base_image: ${{ parameters.docker_base_image_aarch64 }}
           python_version: ${{ config.python_version }}
           docker_python_exe_path: ${{ config.docker_python_exe_path }}

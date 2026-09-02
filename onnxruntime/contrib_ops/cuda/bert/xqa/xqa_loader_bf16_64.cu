@@ -28,7 +28,8 @@ template Status HEAD_DIM_NAMESPACE::LaunchXQAKernelImpl<__nv_bfloat16>(
     const bool is_bsnh,
     const int* past_seq_lens,
     const float* attention_sinks,
-    const float* kv_cache_scale,
+    const float* k_cache_scale,
+    const float* v_cache_scale,
     const XqaQuantType kv_quant_type,
     void* workspace,
     size_t workspace_size);

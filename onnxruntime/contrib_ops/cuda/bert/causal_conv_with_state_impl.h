@@ -20,15 +20,21 @@ Status LaunchCausalConvWithStateKernel(
     const T* input,       // [B, C, L]
     const T* weight,      // [C, 1, K]
     const T* bias,        // [C] or nullptr
-    const T* past_state,  // [B, C, K-1] or nullptr
+    const T* past_state,  // [W, B, C, K-1] or nullptr
     T* output,            // [B, C, L]
-    T* present_state,     // [B, C, K-1]
+    T* present_state,     // [W, B, C, K-1]
     int batch_size,
     int channels,
     int seq_len,
     int kernel_size,
     bool apply_silu,
-    int max_threads_per_block);
+    int max_threads_per_block,
+    // Axis-0 extent W of past_state / present_state (>= 1). The window axis leads the batch axis
+    // so that a slot is one contiguous [B, C, K-1] block. Right-aligned: token t writes slot
+    // t + W - seq_len and negative slots are skipped, so slot W-1 always holds the state after the
+    // last token and is the slot past_state is read from. Pass 1 for a plain single-state tensor
+    // with no window axis.
+    int state_window = 1);
 
 }  // namespace cuda
 }  // namespace contrib

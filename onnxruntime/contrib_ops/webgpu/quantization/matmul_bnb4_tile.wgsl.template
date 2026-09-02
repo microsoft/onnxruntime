@@ -1,0 +1,178 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param quant_type
+#param components
+#param tile
+#param rpt
+
+#use .getByOffset .setByOffset
+
+// FP4 (quant_type == 0) and NF4 (quant_type == 1) dequantization lookup tables.
+// These must match the host-side maps in
+// onnxruntime/contrib_ops/cpu/quantization/blockwise_quant_block_bnb4.h.
+#if quant_type == 0
+const QUANT_MAP = array<f32, 16>(0.0, 5.208333333e-03, 0.66666667, 1.0,
+                                 0.33333333, 0.5, 0.16666667, 0.25,
+                                 -0.0, -5.208333333e-03, -0.66666667, -1.0,
+                                 -0.33333333, -0.5, -0.16666667, -0.25);
+#else
+const QUANT_MAP = array<f32, 16>(-1.0, -0.6961928009986877, -0.5250730514526367, -0.39491748809814453,
+                                 -0.28444138169288635, -0.18477343022823334, -0.09105003625154495, 0.0,
+                                 0.07958029955625534, 0.16093020141124725, 0.24611230194568634, 0.33791524171829224,
+                                 0.44070982933044434, 0.5626170039176941, 0.7229568362236023, 1.0);
+#endif
+
+// Shared-tile storage type follows the input element type (f16/f32) to halve workgroup memory for
+// f16 inputs; the accumulator stays f32 for precision.
+#if components == 4
+// Vec4 GEMM tiling (taken when N % 4 == 0 && K % 4 == 0), modeled on the WebGPU matmul_packed
+// vec4 kernel. The workgroup is kGemmWorkgroup x kGemmWorkgroup (8x8); each invocation computes
+// RPT (4) rows x one vec4 (4 columns), so a workgroup produces a GTILE x GTILE (32x32) output
+// block. A is read vec4 along K; B is dequantized into a vec4 of 4 output columns; the output is
+// stored vec4. Subgroups are enabled automatically by ShaderHelper when the device supports them
+// (this kernel works with or without subgroup support).
+const RPT : u32 = rpt;    // kGemmRowsPerThread
+const GTILE : u32 = tile; // kGemmTile
+const K_VECS : u32 = GTILE / 4u;  // vec4 K-groups per tile
+
+// mm_Asub[row_in_tile][k_vec_group]: 32 rows x 8 vec4 (=32 K). mm_Bsub[k_in_tile][n_vec_group]:
+// 32 K x 8 vec4 (=32 columns); each mm_Bsub lane holds the 4 dequantized weights of 4 columns.
+var<workgroup> mm_Asub: array<array<vec4<input_a_element_t>, K_VECS>, GTILE>;
+var<workgroup> mm_Bsub: array<array<vec4<input_a_element_t>, K_VECS>, GTILE>;
+#else
+// Scalar fallback (N % 4 != 0 or K % 4 != 0): one output element per invocation, scalar K
+// reduction. Workgroup-shared tiles: a `tile x tile` block of A and the corresponding dequantized
+// `tile x tile` block of B. Each workgroup computes one `tile x tile` output block.
+const STILE : u32 = tile;  // kTileSize
+var<workgroup> tile_a: array<input_a_element_t, STILE * STILE>;
+var<workgroup> tile_b: array<input_a_element_t, STILE * STILE>;
+#endif
+
+$MAIN {
+#if components == 4
+  // output[row, col] = sum_k a[row, k] * dequant_b[col, k]. B's logical (transposed) shape is
+  // [N, K]; flat index f = col * K + k packs two 4-bit codes per byte (even f -> high nibble) with
+  // per-block scale absmax[f / block_size]. The four columns of an mm_Bsub lane are K-strided, so
+  // each is dequantized separately (via a u32/unpack4xU8 load) and assembled into the vec4.
+  let tile_row_base = workgroup_id.y * GTILE;   // first output row of the tile
+  let tile_ng_base = workgroup_id.x * K_VECS;   // first output N-vec4-group of the tile
+  let local_row = local_id.y;                   // 0..7
+  let local_col = local_id.x;                   // 0..7 (this thread's tile column-group / K-vec group)
+  let tile_row = local_row * RPT;               // this thread's first row within the tile
+  let global_row = tile_row_base + tile_row;
+  let global_ng = tile_ng_base + local_col;     // this thread's global N-vec4-group
+  var quant_map = QUANT_MAP;
+  // Accumulate in f32 (K can be long; f16 accumulation loses too much precision). One vec4 per row.
+  var acc: array<vec4<f32>, RPT>;
+  let num_k_tiles = (uniforms.K + GTILE - 1u) / GTILE;
+  for (var kt = 0u; kt < num_k_tiles; kt = kt + 1u) {
+    let k_base = kt * GTILE;
+    // Stage A: each invocation loads its `RPT` rows for one K-vec group (= local_col), vec4-wide.
+    for (var ir = 0u; ir < RPT; ir = ir + 1u) {
+      let a_row = global_row + ir;
+      let g_a_k = k_base + local_col * 4u;
+      var a_vec = vec4<input_a_element_t>(0);
+      // K % 4 == 0 and g_a_k % 4 == 0, so g_a_k < K implies the whole vec4 is in-bounds.
+      if (a_row < uniforms.M && g_a_k < uniforms.K) {
+        a_vec = input_a.getByOffset((a_row * uniforms.K + g_a_k) / 4u);
+      }
+      mm_Asub[tile_row + ir][local_col] = a_vec;
+    }
+    // Stage B: each invocation dequantizes 4 K-rows for its N-vec4-group (4 columns per lane).
+    let tile_row_b = local_row * 4u;
+    let col_base = global_ng * 4u;
+    for (var ir = 0u; ir < 4u; ir = ir + 1u) {
+      let g_b_k = k_base + tile_row_b + ir;
+      var b_vec = vec4<input_a_element_t>(0);
+      for (var j = 0u; j < 4u; j = j + 1u) {
+        let g_b_col = col_base + j;
+        if (g_b_col < uniforms.N && g_b_k < uniforms.K) {
+          let f = g_b_col * uniforms.K + g_b_k;
+          let scale = absmax.getByOffset(f / uniforms.block_size);
+          let base_byte = f / 2u;
+          let b_bytes = unpack4xU8(input_b.getByOffset(base_byte / 4u));
+          let cur_byte = b_bytes[base_byte % 4u];
+          let code = select(cur_byte & 0xfu, cur_byte >> 4u, (f & 1u) == 0u);
+          b_vec[j] = input_a_element_t(quant_map[code]) * scale;
+        }
+      }
+      mm_Bsub[tile_row_b + ir][local_col] = b_vec;
+    }
+    workgroupBarrier();
+    // Outer-product accumulate: for each K-vec group, broadcast A's 4 K-components across the 4
+    // staged B rows (each a vec4 over the thread's 4 output columns).
+    for (var kv = 0u; kv < K_VECS; kv = kv + 1u) {
+      let b0 = vec4<f32>(mm_Bsub[kv * 4u + 0u][local_col]);
+      let b1 = vec4<f32>(mm_Bsub[kv * 4u + 1u][local_col]);
+      let b2 = vec4<f32>(mm_Bsub[kv * 4u + 2u][local_col]);
+      let b3 = vec4<f32>(mm_Bsub[kv * 4u + 3u][local_col]);
+      for (var i = 0u; i < RPT; i = i + 1u) {
+        let a_cached = vec4<f32>(mm_Asub[tile_row + i][kv]);
+        acc[i] = b0 * a_cached.x + acc[i];
+        acc[i] = b1 * a_cached.y + acc[i];
+        acc[i] = b2 * a_cached.z + acc[i];
+        acc[i] = b3 * a_cached.w + acc[i];
+      }
+    }
+    workgroupBarrier();
+  }
+  // Store `RPT` vec4 output rows. N % 4 == 0, so col_base < N implies all 4 columns are valid.
+  for (var ir = 0u; ir < RPT; ir = ir + 1u) {
+    let o_row = global_row + ir;
+    if (o_row < uniforms.M && global_ng * 4u < uniforms.N) {
+      output.setByOffset(o_row * (uniforms.N / 4u) + global_ng, output_value_t(acc[ir]));
+    }
+  }
+#else
+  // output[row, col] = sum_k a[row, k] * dequant_b[col, k]. The quantized weight b has logical
+  // (transposed) shape [N, K]; flat index f = col * K + k packs two 4-bit codes per byte (even f
+  // -> high nibble) and the per-block scale is absmax[f / block_size]. Each global memory load of
+  // A is reused across the tile's `STILE` columns and each dequantized weight across its `STILE` rows.
+  let col = workgroup_id.x * STILE + local_id.x;
+  let row = workgroup_id.y * STILE + local_id.y;
+  var quant_map = QUANT_MAP;
+  // Accumulate in f32 regardless of the storage type: the K reduction can be long (K up to the
+  // thousands) and f16 accumulation would lose too much precision.
+  var acc = 0.0;
+  let num_k_tiles = (uniforms.K + STILE - 1u) / STILE;
+  for (var kt = 0u; kt < num_k_tiles; kt = kt + 1u) {
+    let k_base = kt * STILE;
+    // Cooperatively stage the A tile (one element per invocation).
+    let a_m = local_idx / STILE;
+    let a_k = local_idx % STILE;
+    let g_a_row = workgroup_id.y * STILE + a_m;
+    let g_a_k = k_base + a_k;
+    var a_val = input_a_element_t(0);
+    if (g_a_row < uniforms.M && g_a_k < uniforms.K) {
+      a_val = input_a.getByOffset(g_a_row * uniforms.K + g_a_k);
+    }
+    tile_a[a_m * STILE + a_k] = a_val;
+    // Cooperatively stage the dequantized B tile (one element per invocation).
+    let b_k = local_idx / STILE;
+    let b_n = local_idx % STILE;
+    let g_b_col = workgroup_id.x * STILE + b_n;
+    let g_b_k = k_base + b_k;
+    var b_val = input_a_element_t(0);
+    if (g_b_col < uniforms.N && g_b_k < uniforms.K) {
+      let f = g_b_col * uniforms.K + g_b_k;
+      let scale = absmax.getByOffset(f / uniforms.block_size);
+      let base_byte = f / 2u;
+      let b_bytes = unpack4xU8(input_b.getByOffset(base_byte / 4u));
+      let cur_byte = b_bytes[base_byte % 4u];
+      let code = select(cur_byte & 0xfu, cur_byte >> 4u, (f & 1u) == 0u);
+      b_val = input_a_element_t(quant_map[code]) * scale;
+    }
+    tile_b[b_k * STILE + b_n] = b_val;
+    workgroupBarrier();
+    // Accumulate this tile's contribution from shared memory (cast f16 storage up to f32).
+    for (var i = 0u; i < STILE; i = i + 1u) {
+      acc = fma(f32(tile_a[local_id.y * STILE + i]), f32(tile_b[i * STILE + local_id.x]), acc);
+    }
+    workgroupBarrier();
+  }
+  if (row < uniforms.M && col < uniforms.N) {
+    output.setByOffset(row * uniforms.N + col, output_value_t(acc));
+  }
+#endif
+} // MAIN

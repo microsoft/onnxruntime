@@ -183,6 +183,14 @@ class ModelCompilationOptions {
   Status SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);
 
   /// <summary>
+  /// Enable weightless mode for model compilation.
+  /// When enabled, the compiled EPContext model will not embed constant initializer data.
+  /// </summary>
+  /// <param name="use_weightless">True to enable weightless mode</param>
+  /// <returns>Status indicating potential error</returns>
+  Status SetWeightlessEnabled(bool use_weightless);
+
+  /// <summary>
   /// Checks if the compilation options described by this object are valid.
   /// </summary>
   /// <returns>An error status if the compilation options are invalid</returns>

@@ -7,6 +7,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <!--
+      Id of the EP package to test. The CUDA plugin EP ships one package per RID and per CUDA
+      major version; CI overrides this with -p:OrtCudaPackageId=<id>.
+    -->
+    <OrtCudaPackageId Condition="'$(OrtCudaPackageId)' == ''">Microsoft.ML.OnnxRuntime.EP.Cuda13.win-x64</OrtCudaPackageId>
+    <!--
       Version of the EP package to test. CI overrides this with the exact version produced by
       pack_nuget.py via -p:OrtCudaPackageVersion=<version> so the test consumes the freshly
       built package deterministically. The floating fallback is for local development against
@@ -25,7 +30,7 @@
     <!-- The plugin EP package does not declare a hard dependency on a core ORT package, so reference
          one explicitly here. -->
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="$(OrtCoreTestVersion)" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime.EP.Cuda" Version="$(OrtCudaPackageVersion)" />
+    <PackageReference Include="$(OrtCudaPackageId)" Version="$(OrtCudaPackageVersion)" />
   </ItemGroup>
 
   <ItemGroup>

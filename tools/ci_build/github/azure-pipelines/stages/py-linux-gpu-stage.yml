@@ -28,6 +28,11 @@ parameters:
    - 12.8
    - 13.0
 
+- name: cmake_cuda_archs
+  type: string
+  default: ''
+  displayName: 'CMAKE_CUDA_ARCHITECTURES. Empty means the build script default.'
+
 - name: python_version
   type: string
   displayName: 'Python version label (e.g. 3.12, 3.13t)'
@@ -57,7 +62,7 @@ stages:
   dependsOn: []
   jobs:
   - job: ${{ parameters.stage_name }}
-    timeoutInMinutes: 360
+    timeoutInMinutes: 480
     workspace:
       clean: all
     pool:
@@ -122,6 +127,7 @@ stages:
             -d "GPU"
             -c ${{ parameters.cmake_build_type }}
             -p "${{ parameters.docker_python_exe_path }}"
+            -a "${{ parameters.cmake_cuda_archs }}"
             $(extra_build_args)
         env:
           CUDA_VERSION: ${{ parameters.cuda_version }}

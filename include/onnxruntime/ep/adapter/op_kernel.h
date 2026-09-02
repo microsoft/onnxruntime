@@ -9,10 +9,15 @@
 
 #include <memory>
 #include <type_traits>
+#include <utility>
 #include <vector>
+#include <gsl/gsl>
+#include <gsl/span>
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
+#include "core/framework/workspace_requirement.h"
 
 #include "node.h"
 #include "op_kernel_info.h"
@@ -54,6 +59,17 @@ struct OpKernel {
                          /*out*/ bool& is_packed,
                          /*out*/ PrePackedWeights* /*prepacked_weights*/) {
     is_packed = false;
+    return Status::OK();
+  }
+
+  // Phase-A memory roadmap (issue microsoft/onnxruntime#29775). Mirrors the in-tree
+  // onnxruntime::OpKernel::DeclareWorkspaceRequirements default no-op so that kernels compiled into
+  // the plugin (BUILD_CUDA_EP_AS_PLUGIN) hierarchy still build. See
+  // core/framework/workspace_requirement.h.
+  [[nodiscard]] virtual Status DeclareWorkspaceRequirements(
+      gsl::span<const TensorShape> /*input_shapes*/,
+      /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
+    requirements.clear();
     return Status::OK();
   }
 
@@ -222,14 +238,15 @@ struct KernelImpl : OrtKernelImpl {
   static OrtStatus* ORT_API_CALL PrePackWeightImpl(_In_ OrtKernelImpl* this_ptr,
                                                    _In_ const OrtValue* weight,
                                                    int input_index,
-                                                   _In_ OrtAllocator* /* allocator */,
+                                                   _In_ OrtAllocator* allocator,
                                                    _In_opt_ OrtSharedPrePackedWeightCache* /* prepacked_weight_cache */,
                                                    _Out_ bool* is_packed) noexcept {
     Status status;
     ORT_TRY {
       auto* kernel_impl = static_cast<KernelImpl*>(this_ptr)->impl_.get();
       const auto tensor = CreateTensorFromApiValue(const_cast<OrtValue*>(weight));
-      status = kernel_impl->PrePack(tensor, input_index, AllocatorPtr{}, *is_packed, nullptr);
+      auto allocator_wrapper = std::make_shared<IAllocatorWrappingOrtAllocator>(allocator);
+      status = kernel_impl->PrePack(tensor, input_index, std::move(allocator_wrapper), *is_packed, nullptr);
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {

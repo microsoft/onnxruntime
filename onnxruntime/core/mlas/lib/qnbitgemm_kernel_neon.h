@@ -133,14 +133,6 @@ HQ8BitBlkDequantBForHgemm_CompFp16(
 
 // SQNBIT_CompInt8 declarations
 
-bool
-UsePacked_CompInt8(
-    size_t K,
-    size_t BlkLen,
-    bool HasZp,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
-);
-
 void
 QuantizeARow_CompInt8(
     size_t BlkLen,
@@ -216,57 +208,6 @@ SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd(
     const float* ABlockSum,
     const float* QuantBBlkSum
 );
-
-#ifdef USE_KLEIDIAI
-void
-QuantizeA_Packed_CompInt8(
-    size_t BlkLen,
-    const float* A,
-    size_t CountM,
-    size_t CountK,
-    std::byte* QuantA,
-    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
-);
-
-void
-SQ4BitGemmKernel_Packed_CompInt8(
-    size_t BlkLen,
-    const std::byte* QuantA,
-    const std::byte* PackedQuantBData,
-    float* C,
-    const size_t RangeStartM,
-    const size_t RangeCountM,
-    const size_t RangeStartN,
-    const size_t RangeCountN,
-    size_t CountK,
-    size_t ldc,
-    const float *Bias
-);
-
-void
-ComputeAFloatBlkSum(
-    const float* A,
-    size_t CountM,
-    size_t CountK,
-    size_t BlkLen,
-    size_t lda,
-    float* AFloatBlkSum
-);
-
-void
-ApplyBZpCorrection(
-    const float* ABlkSum,
-    const float* BCorr,
-    float* C,
-    size_t RangeCountM,
-    size_t RangeCountN,
-    size_t BlockCountK,
-    size_t ldc
-);
-#endif
-
-bool
-UseKleidiAI(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 //
 // General helpers.

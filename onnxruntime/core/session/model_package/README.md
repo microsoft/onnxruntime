@@ -45,8 +45,10 @@ optional, but in practice `model_file` is required to load a session.
 ```jsonc
 {
   "model_file":       "model.onnx",
-  "external_data":    "weights",
-  "session_options":  { "session.intra_op_thread_count": "4" },
+  "session_options":  {
+    "session.intra_op_thread_count": "4",
+    "session.model_external_initializers_file_folder_path": "weights"
+  },
   "provider_options": { "device_id": "0" }
 }
 ```
@@ -54,8 +56,7 @@ optional, but in practice `model_file` is required to load a session.
 | Field              | Type   | Required | Notes |
 | ------------------ | ------ | -------- | ----- |
 | `model_file`       | string | yes (for session) | Path to the model file inside the variant. Resolved via `ModelPackage_ResolveStringRef`, anchored at the variant directory. Accepts relative paths, absolute paths or `..` segments (installed layout only), and `sha256:<hex>[/sub/path]` for shared-asset content. |
-| `external_data`    | string | no       | Folder containing the model's external-initializers blobs. Wired into the session as ORT's external-initializers folder hint. Same resolution rules as `model_file`. |
-| `session_options`  | object | no       | Map of `string -> string`. Merged on top of a fresh `OrtSessionOptions` when the caller passes `session_options == NULL` to `CreateSession`. Ignored when the caller supplies their own `OrtSessionOptions`. |
+| `session_options`  | object | no       | Map of `string -> string`. Merged on top of a fresh `OrtSessionOptions` when the caller passes `session_options == NULL` to `CreateSession`. Values of path-valued keys (see `IsModelPackagePathSessionOption`, e.g. `session.model_external_initializers_file_folder_path`, `ep.context_file_path`) are resolved with the same rules as `model_file` at parse time. Those path-valued keys are also applied on the advanced path if the caller did not set them (see below). |
 | `provider_options` | object | no       | Map of `string -> string`. Merged into the variant's EP provider options on the default path. Ignored when the caller supplies their own `OrtSessionOptions`. |
 
 #### Inline vs external
@@ -130,16 +131,22 @@ provider list it should use. Two paths:
 
 - **`session_options != NULL` (advanced).** ORT uses the caller-supplied
   `OrtSessionOptions` as-is. The manifest's `session_options` and
-  `provider_options` are **not** merged. Use this when you need custom EP
-  setup that does not round-trip through string options (shared CUDA
+  `provider_options` are **not** merged, with one exception: path-valued
+  session options (see `IsModelPackagePathSessionOption`) are carried over
+  from the variant for keys the caller did not set, so a model that needs its
+  external-initializers folder still loads. Use this path when you need custom
+  EP setup that does not round-trip through string options (shared CUDA
   streams, shared QNN EP contexts, custom allocators, ...). The
   `OrtSessionOptions` passed earlier to
   `CreateModelPackageOptionsFromSessionOptions` only drives variant
   selection / EP discovery; it is never silently re-applied here.
 
-In both modes, `external_data` from `executor_info["ort"]` is wired in as
-ORT's external-initializers folder hint, so the model file can reference
-weights stored next to (or shared by) the package.
+A variant points ORT at external-initializer weights by setting
+`session.model_external_initializers_file_folder_path` in its
+`session_options` to a folder (relative, absolute, or `sha256:<hex>` shared
+asset). The value is resolved at parse time and overrides the model's own
+directory, so the model file can reference weights stored next to (or shared
+by) the package.
 
 ---
 

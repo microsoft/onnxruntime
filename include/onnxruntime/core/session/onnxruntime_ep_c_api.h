@@ -2077,6 +2077,32 @@ struct OrtEpApi {
   ORT_API2_STATUS(ProfilingEventsContainer_AddEvents, _In_ OrtProfilingEventsContainer* events_container,
                   _In_reads_(num_events) const OrtProfilingEvent* const* events,
                   _In_ size_t num_events);
+
+  /** \brief Get the weightless source model byte buffer from session options.
+   *
+   * Returns the buffer and size set by SessionOptionsSetWeightlessSourceModelBuffer, or NULL/0 if not set.
+   * The EP can use this during CreateEp or Compile to access the source model for weightless
+   * EPContext model sessions.
+   *
+   * \note If the source model is provided as a file path, the EP should read the
+   *       "ep.context_source_model_path" (kOrtSessionOptionEpContextSourceModelPath) session config entry
+   *       via GetSessionConfigEntry instead.
+   *
+   * \note Recommended EP precedence for locating the source model:
+   *       buffer (this API) > file path ("ep.context_source_model_path") > "onnx_model_filename" EPContext
+   *       node attribute.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \param[out] source_model_data Output parameter set to the source model buffer, or NULL if not set.
+   * \param[out] source_model_data_length Output parameter set to the buffer size, or 0 if not set.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
+                  _Outptr_result_maybenull_ const void** source_model_data,
+                  _Out_ size_t* source_model_data_length);
 };
 
 /**
@@ -2110,6 +2136,26 @@ typedef enum OrtGraphCaptureNodeAssignmentPolicy {
    *  no memory copy nodes exist. */
   OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES = 1,
 } OrtGraphCaptureNodeAssignmentPolicy;
+
+/**
+ * \brief Describes the scope of an EP's weightless mode support.
+ *
+ * Returned by OrtEp::GetWeightlessSupport() to indicate which types of initializers
+ * the EP can operate on without copying.
+ *
+ * \since Version 1.29.
+ */
+typedef enum OrtWeightlessSupport {
+  /** EP does not support weightless mode. */
+  OrtWeightlessSupport_NONE = 0,
+
+  /** EP supports weightless mode for external initializers only.
+   *  Internal initializers are still copied by the EP during compilation. */
+  OrtWeightlessSupport_EXTERNAL_ONLY = 1,
+
+  /** EP supports weightless mode for all initializers (internal and external). */
+  OrtWeightlessSupport_ALL = 2,
+} OrtWeightlessSupport;
 
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
@@ -2630,6 +2676,38 @@ struct OrtEp {
    * \since Version 1.27.
    */
   ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
+
+  /** \brief Query the execution provider's weightless mode support.
+   *
+   * When weightless mode is enabled (via the "ep.enable_weightless" session option), ORT calls this function
+   * to determine the scope of the EP's weightless support. The EP returns an OrtWeightlessSupport value
+   * indicating whether it supports weightless mode for all initializers, external initializers only, or not
+   * at all.
+   *
+   * The EP's response may depend on the underlying hardware or driver capabilities. For example, an EP may
+   * support weightless mode for all initializers on newer hardware but only for external initializers on
+   * older hardware that requires weight transformation.
+   *
+   * EPs that support weightless mode should set drop_constant_initializers to false in OrtNodeFusionOptions
+   * so that ORT provides the initializer data as inputs to the compiled/fused node. The EP can then access
+   * these initializers at Compute() time via KernelContext_GetInput().
+   *
+   * \note Extending the lifetime of initializer data obtained via ValueInfo_GetInitializerValue() during
+   *       Compile() so that the EP can cache and reuse data pointers directly (without going through
+   *       KernelContext) is planned but not yet implemented. Until then, KernelContext_GetInput() is the
+   *       only supported way to access initializer data at Compute() time.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] support Output parameter set to the EP's weightless support scope.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP does not
+   *       support weightless mode (equivalent to OrtWeightlessSupport_NONE).
+   *
+   * \since Version 1.29.
+   */
+  ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ OrtWeightlessSupport* support);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -3055,13 +3133,13 @@ struct OrtEpFactory {
    *
    * Required and optional keys:
    *   - "num_models"                 — number of models in this variant (>= 1) (required)
-   *   - "<i>.ep_compatibility_info"  — compatibility string for model i (required per model)
-   *   - "<i>.role"                   — role/purpose of model i (e.g., "prefill", "decode") (optional)
-   *   - "<i>.future_meaningful_info" — additional EP-meaningful metadata for model i (optional)
+   *   - "\<i\>.ep_compatibility_info"  — compatibility string for model i (required per model)
+   *   - "\<i\>.role"                   — role/purpose of model i (e.g., "prefill", "decode") (optional)
+   *   - "\<i\>.future_meaningful_info" — additional EP-meaningful metadata for model i (optional)
    *
-   * where <i> is a zero-based index (e.g., "0.ep_compatibility_info", "1.ep_compatibility_info").
+   * where \<i\> is a zero-based index (e.g., "0.ep_compatibility_info", "1.ep_compatibility_info").
    *
-   * The implementer should loop from 0 to num_models - 1 and validate each "<i>.ep_compatibility_info" entry.
+   * The implementer should loop from 0 to num_models - 1 and validate each "\<i\>.ep_compatibility_info" entry.
    * An advanced implementation may additionally consider "role" or other metadata when ranking candidates.
    *
    * **Why this function exists:**
@@ -3074,7 +3152,7 @@ struct OrtEpFactory {
    *
    * If all candidates are unsupported, this function succeeds and sets `selected_index` to SIZE_MAX.
    *
-   * \note The implementer should validate each "<i>.ep_compatibility_info" in the candidate (e.g., by calling
+   * \note The implementer should validate each "\<i\>.ep_compatibility_info" in the candidate (e.g., by calling
    * ValidateCompiledModelCompatibilityInfo for each one) before determining the best match.
    *
    * \param[in] this_ptr The OrtEpFactory instance.

@@ -42,9 +42,15 @@ namespace onnxruntime {
 namespace perftest {
 
 RunTiming OnnxRuntimeTestSession::Run() {
-  // Randomly pick one OrtValueArray from test_inputs_. (NOT ThreadSafe)
-  const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
-  const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
+  // Select input set: round-robin for multi-shape mode, random otherwise.
+  size_t id;
+  if (use_round_robin_ && test_inputs_.size() > 1) {
+    id = round_robin_counter_.fetch_add(1, std::memory_order_relaxed) % test_inputs_.size();
+  } else {
+    // Random selection (not thread-safe).
+    const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
+    id = static_cast<size_t>(dist_(rand_engine_, p));
+  }
 
   auto& input = test_inputs_.at(id);
   auto start = std::chrono::high_resolution_clock::now();
@@ -88,6 +94,7 @@ RunTiming OnnxRuntimeTestSession::Run() {
     timing.submit_timing = std::chrono::high_resolution_clock::now() - start;
     timing.total_timing = timing.submit_timing;
   }
+  timing.test_input_index = id;
   return timing;
 }
 
@@ -1083,54 +1090,139 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
 #undef CASE_FOR_TYPE
 }
 
+void OnnxRuntimeTestSession::CreateAndStoreGeneratedInput(size_t test_data_id, size_t input_idx,
+                                                          const std::vector<int64_t>& dims,
+                                                          ONNXTensorElementDataType element_type, int32_t seed) {
+  if (device_memory_name_ != CUDA) {
+    Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_, (const int64_t*)dims.data(),
+                                                       dims.size(), element_type);
+    InitializeTensorWithSeed(seed, input_tensor);
+    PreLoadTestData(test_data_id, input_idx, std::move(input_tensor));
+  }
+#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+  else {
+    Ort::AllocatorWithDefaultOptions default_allocator;
+    Ort::Value default_tensor = Ort::Value::CreateTensor(default_allocator, (const int64_t*)dims.data(),
+                                                         dims.size(), element_type);
+    InitializeTensorWithSeed(seed, default_tensor);
+
+    const void* default_ptr = default_tensor.GetTensorRawData();
+    size_t total_bytes = default_tensor.GetTensorSizeInBytes();
+
+    Ort::Value cuda_tensor = Ort::Value::CreateTensor(allocator_, dims.data(),
+                                                      dims.size(), element_type);
+    void* cuda_ptr = cuda_tensor.GetTensorMutableData<void>();
+
+    cudaError_t cuda_err = cudaMemcpy(cuda_ptr, default_ptr, total_bytes, cudaMemcpyHostToDevice);
+    if (cuda_err != cudaSuccess) {
+      ORT_THROW("Failed to copy tensor data from CPU to CUDA device. CUDA Error: ", cudaGetErrorString(cuda_err));
+    }
+    PreLoadTestData(test_data_id, input_idx, std::move(cuda_tensor));
+  }
+#endif
+}
+
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
-  Ort::AllocatorWithDefaultOptions default_allocator;
-  // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
-    if (type_info.GetONNXType() == ONNX_TYPE_TENSOR) {
-      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      std::vector<int64_t> input_node_dim = tensor_info.GetShape();
-
-      // free dimensions are treated as 1 if not overridden
-      auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
-      std::transform(input_node_dim.begin(), input_node_dim.end(), input_node_dim.begin(), transform_fcn);
-
-      if (device_memory_name_ != CUDA) {
-        Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_, (const int64_t*)input_node_dim.data(),
-                                                           input_node_dim.size(), tensor_info.GetElementType());
-        InitializeTensorWithSeed(seed, input_tensor);
-        PreLoadTestData(0, i, std::move(input_tensor));
-      }
-// Create tensor on CPU, initialize and copy to CUDA tensor
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
-      else {
-        Ort::Value default_tensor = Ort::Value::CreateTensor(default_allocator, (const int64_t*)input_node_dim.data(),
-                                                             input_node_dim.size(), tensor_info.GetElementType());
-        InitializeTensorWithSeed(seed, default_tensor);
-
-        // Get pointer to CPU tensor data
-        const void* default_ptr = default_tensor.GetTensorRawData();
-
-        size_t total_bytes = default_tensor.GetTensorSizeInBytes();
-
-        Ort::Value cuda_tensor = Ort::Value::CreateTensor(allocator_, input_node_dim.data(),
-                                                          input_node_dim.size(), tensor_info.GetElementType());
-
-        void* cuda_ptr = cuda_tensor.GetTensorMutableData<void>();
-
-        // Copy the initialized data from CPU to GPU
-        cudaError_t cuda_err = cudaMemcpy(cuda_ptr, default_ptr, total_bytes, cudaMemcpyHostToDevice);
-        if (cuda_err != cudaSuccess) {
-          ORT_THROW("Failed to copy tensor data from CPU to CUDA device. CUDA Error: ", cudaGetErrorString(cuda_err));
-        }
-        PreLoadTestData(0, i, std::move(cuda_tensor));
-      }
-#endif
+    if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
+      continue;
     }
+
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> input_node_dim = tensor_info.GetShape();
+
+    // free dimensions are treated as 1 if not overridden
+    auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
+    std::transform(input_node_dim.begin(), input_node_dim.end(), input_node_dim.begin(), transform_fcn);
+
+    CreateAndStoreGeneratedInput(0, i, input_node_dim, tensor_info.GetElementType(), seed);
   }
   return true;
 }
+
+bool OnnxRuntimeTestSession::PopulateGeneratedMultiShapeInputTestData(
+    int32_t seed,
+    const std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups) {
+  // Validate that all input names in data_shape_groups exist in the model
+  for (const auto& [name, groups] : data_shape_groups) {
+    bool found = false;
+    for (int i = 0; i < input_length_; i++) {
+      if (input_names_str_[i] == name) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      std::cerr << "Error: --data_shape specifies unknown input '" << name << "'." << std::endl;
+      return false;
+    }
+  }
+
+  const size_t num_groups = data_shape_groups.begin()->second.size();
+
+  for (size_t g = 0; g < num_groups; g++) {
+    for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
+      Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
+      if (type_info.GetONNXType() != ONNX_TYPE_TENSOR) {
+        continue;
+      }
+
+      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+      std::vector<int64_t> input_node_dim;
+
+      // Use user-specified shape if available, otherwise fall back to model metadata
+      auto it = data_shape_groups.find(input_names_str_[i]);
+      if (it != data_shape_groups.end()) {
+        input_node_dim = it->second[g];
+        const auto model_shape = tensor_info.GetShape();
+        if (!model_shape.empty() && input_node_dim.size() != model_shape.size()) {
+          std::cerr << "Error: --data_shape rank mismatch for input '" << input_names_str_[i]
+                    << "': expected " << model_shape.size() << " dims but got " << input_node_dim.size() << "." << std::endl;
+          return false;
+        }
+      } else {
+        input_node_dim = tensor_info.GetShape();
+        bool has_dynamic_dim = std::any_of(input_node_dim.begin(), input_node_dim.end(),
+                                           [](int64_t d) { return d == -1; });
+        auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
+        std::transform(input_node_dim.begin(), input_node_dim.end(), input_node_dim.begin(), transform_fcn);
+        if (g == 0 && has_dynamic_dim) {
+          std::cerr << "Warning: input '" << input_names_str_[i]
+                    << "' not specified in --data_shape; using inferred shape [";
+          for (size_t d = 0; d < input_node_dim.size(); d++) {
+            if (d > 0) std::cerr << ",";
+            std::cerr << input_node_dim[d];
+          }
+          std::cerr << "] (dynamic dims defaulted to 1)." << std::endl;
+        }
+      }
+
+      CreateAndStoreGeneratedInput(g, i, input_node_dim, tensor_info.GetElementType(), seed);
+    }
+  }
+  use_round_robin_ = true;
+  return true;
+}
+
+std::vector<int64_t> OnnxRuntimeTestSession::GetLoadedInputShape(size_t test_data_id, size_t input_id) const {
+  const auto& v = test_inputs_.at(test_data_id).at(input_id);
+  if (!v.IsTensor()) {
+    ORT_THROW("--data_shape only supports tensor inputs; input_id=", input_id, " in test_data_id=", test_data_id,
+              " is not a tensor.");
+  }
+  return v.GetTensorTypeAndShapeInfo().GetShape();
+}
+
+void OnnxRuntimeTestSession::SelectTestDataSets(const std::vector<size_t>& selected_ids) {
+  std::vector<std::vector<Ort::Value>> filtered;
+  filtered.reserve(selected_ids.size());
+  for (size_t id : selected_ids) {
+    filtered.push_back(std::move(test_inputs_.at(id)));
+  }
+  test_inputs_ = std::move(filtered);
+}
+
 OnnxRuntimeTestSession::~OnnxRuntimeTestSession() {
 #ifdef USE_CUDA
   if (device_memory_name_ == CUDA && stream_ != nullptr) {

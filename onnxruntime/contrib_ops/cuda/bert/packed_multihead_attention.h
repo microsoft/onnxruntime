@@ -24,12 +24,13 @@ class PackedMultiHeadAttention final : public TrtFusedAttention<T> {
                      const TensorShape& token_offset_shape,
                      const TensorShape& cu_seq_len_shape,
                      const Tensor* attention_bias,
-                     PackedAttentionParameters& parameters) const;
-  int GetNumHeads() const { return num_heads_; }
+                     PackedAttentionParameters& parameters,
+                     PackedMultiHeadAttentionProblem& problem) const;
+  int64_t GetNumHeads() const { return num_heads_; }
   float GetScale() const { return scale_; }
 
-  int num_heads_;  // number of attention heads
-  float scale_;    // the scale for softmax in memory efficient attention or unfused attention.
+  int64_t num_heads_;  // number of attention heads
+  float scale_;        // the scale for softmax in memory efficient attention or unfused attention.
 
   bool disable_memory_efficient_attention_;
   bool disable_flash_attention_;

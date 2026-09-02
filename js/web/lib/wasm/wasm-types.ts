@@ -294,25 +294,6 @@ export declare namespace WebNN {
     webnnCreateMLContext(optionsOrGpuDevice?: MLContextOptions | GPUDevice): Promise<MLContext>;
 
     /**
-     * [exported from pre-jsep.js] Register a WebNN Constant operand from external data.
-     * @param externalFilePath - specify the external file path.
-     * @param dataOffset - specify the external data offset.
-     * @param dataLength - specify the external data length.
-     * @param builder - specify the MLGraphBuilder used for constructing the Constant.
-     * @param desc - specify the MLOperandDescriptor of the Constant.
-     * @param shouldConvertInt64ToInt32 - specify whether to convert int64 to int32.
-     * @returns the WebNN Constant operand for the specified external data.
-     */
-    webnnRegisterMLConstant(
-      externalFilePath: string,
-      dataOffset: number,
-      dataLength: number,
-      builder: MLGraphBuilder,
-      desc: MLOperandDescriptor,
-      shouldConvertInt64ToInt32: boolean,
-    ): MLOperand;
-
-    /**
      * [exported from pre-jsep.js] Register a WebNN graph input.
      * @param inputName - specify the input name.
      */
@@ -468,9 +449,11 @@ export interface OrtWasmModule
    * Mount the external data file to an internal map, which will be used during session initialization.
    *
    * @param externalDataFilePath - specify the relative path of the external data file.
-   * @param externalDataFileData - specify the content data.
+   * @param externalDataFileData - specify the content data, either as the whole file content (Uint8Array) or as a
+   * reference to the file (Blob, including File). In JSPI builds a Blob is streamed on demand during session
+   * initialization; in other builds it is fully materialized into memory first.
    */
-  mountExternalData(externalDataFilePath: string, externalDataFileData: Uint8Array): void;
+  mountExternalData(externalDataFilePath: string, externalDataFileData: Uint8Array | Blob): void;
   /**
    * Unmount all external data files from the internal map.
    */

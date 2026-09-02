@@ -48,7 +48,7 @@ inline void checkCuda(cudaError_t err) {
 
 inline void checkCu(CUresult err) {
   if (err != CUDA_SUCCESS) {
-    char const* str = nullptr;
+    const char* str = nullptr;
     if (cuGetErrorName(err, &str) != CUDA_SUCCESS) {
       str = "A cuda driver API error happened, but we failed to query the error name\n";
     }
@@ -116,20 +116,20 @@ struct alignas(mha::max<uint32_t>(alignof(T), mha::min<uint32_t>(maxArrayAlign<T
   static constexpr uint32_t size = size_;
   Elem data[size];
 
-  HOST_DEVICE_FUNC inline void fill(T const& val) {
+  HOST_DEVICE_FUNC inline void fill(const T& val) {
     XQA_UNROLL
     for (uint32_t i = 0; i < size; i++) {
       data[i] = val;
     }
   }
 
-  static HOST_DEVICE_FUNC inline Vec<T, size> filled(T const& val) {
+  static HOST_DEVICE_FUNC inline Vec<T, size> filled(const T& val) {
     Vec<T, size> ret;
     ret.fill(val);
     return ret;
   }
 
-  HOST_DEVICE_FUNC inline Elem const& operator[](uint32_t i) const {
+  const HOST_DEVICE_FUNC inline Elem& operator[](uint32_t i) const {
     assert(i < size);
     return data[BoundedVal<size>{i}.get()];
   }
@@ -244,7 +244,7 @@ class Segmenter {
   template <typename T>
   HOST_DEVICE_FUNC OffsetInt newSeg(uint32_t count = 1, uint32_t alignment = alignof(T)) {
     mMaxAlignment = mha::max<uint32_t>(mMaxAlignment, alignment);
-    OffsetInt const offset = roundUp<OffsetInt>(mNextOffset, alignment);
+    const OffsetInt offset = roundUp<OffsetInt>(mNextOffset, alignment);
     mNextOffset = offset + sizeof(T) * count;
     return offset;
   }
@@ -276,7 +276,7 @@ class MemSegmenter {
   template <typename T>
   HOST_DEVICE_FUNC TinyPtr<AddConst<T, isConst>> newSeg(uint32_t count = 1, uint32_t alignment = sizeof(T)) {
     assert(reinterpret_cast<uintptr_t>(mBase) % alignof(T) == 0);
-    OffsetInt const offset = mSegmenter.template newSeg<T>(count, alignment);
+    const OffsetInt offset = mSegmenter.template newSeg<T>(count, alignment);
     return TinyPtr<AddConst<mha::byte, isConst>>{mBase, offset}.template cast<AddConst<T, isConst>>();
   }
 
@@ -302,7 +302,7 @@ struct DimsLE {
     return d[i];
   }
 
-  __device__ __host__ inline uint32_t const& operator[](uint32_t i) const {
+  const __device__ __host__ inline uint32_t& operator[](uint32_t i) const {
     return d[i];
   }
 

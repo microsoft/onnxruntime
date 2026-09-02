@@ -154,5 +154,26 @@ TEST(Gemm_Large, DISABLED_BiasBroadcast) {
   RunBothTypes({16, 1024}, 0, {1024, 192}, 0, {16, 192}, 1.5f, 1.3f);
 }
 
+// Intel subgroup-matrix (cooperative-matrix) path edge cases. K is a multiple of
+// 16 so the f16 kernel is engaged. transA loads A column-major with stride M (so
+// M must be even, else it falls back); transB loads B column-major with stride K
+// (always a multiple of 16, so safe). Even-but-not-tile-multiple M/N exercise the
+// column-major partial-tile stores; odd strides must fall back to the generic
+// path and still be correct.
+TEST(Gemm_Large, DISABLED_SubgroupMatrixEdges) {
+  // transA, even non-tile-multiple M: column-major A load + partial-M stores.
+  RunBothTypes({1024, 66}, 1, {1024, 192}, 0, {66, 192});
+  // transB, even non-tile-multiple N: column-major B load + partial-N stores.
+  RunBothTypes({48, 1024}, 0, {208, 1024}, 1, {208});
+  // transA + transB with partial M and N, plus alpha/beta scaling.
+  RunBothTypes({1024, 66}, 1, {208, 1024}, 1, {66, 208}, 1.5f, 1.3f);
+  // Odd M with transA: A load stride M is odd -> generic fallback (must be correct).
+  RunBothTypes({1024, 65}, 1, {1024, 192}, 0, {65, 192});
+  // Odd N without transB: B load stride N is odd -> generic fallback (must be correct).
+  RunBothTypes({64, 1024}, 0, {1024, 193}, 0, {193});
+  // Small K (still a multiple of 16) keeps split-K minimal over a large M x N grid.
+  RunBothTypes({256, 32}, 0, {32, 256}, 0, {256});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

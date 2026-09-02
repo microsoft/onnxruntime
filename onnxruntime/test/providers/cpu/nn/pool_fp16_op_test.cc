@@ -3,6 +3,9 @@
 
 #include "core/mlas/inc/mlas.h"
 
+// NOTE: MLAS_F16VEC_INTRINSICS_SUPPORTED is defined only on ARM64 (non-Apple), so on x86 this
+// whole file (and the fp16 PoolFp16 kernel it exercises) compiles out. These tests therefore run
+// only on the ARM64 / CoreML / XNNPACK / WebGPU CI legs, never on an x86 host build.
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK) || defined(USE_WEBGPU)
 
 #include "core/providers/cpu/nn/pool.h"
@@ -579,6 +582,131 @@ TEST(PoolFp16Test, AveragePool_10_ceil1_2d) {
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
 
   // TODO: Enable the case for WebGPU once ceil is supported.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// fp16 analog of the float AveragePool_18_ceil_count_include_pad_1d bug (PyTorch #183528).
+// k=7 s=3 pad=(3,3) ceil_mode=1 count_include_pad=1 over {1,2,9}: the trailing ceil window ends
+// past input+pad_tail, so the MLAS fp16 full-kernel divisor gave a too-small average. The new
+// ComputeAveragePoolFp16Reference clamps the window end and matches the float reference.
+// Expected: out0 = (1+2+9)/7 = 12/7, out1 = (1+2+9)/6 = 2.
+TEST(PoolFp16Test, AveragePool_Ceil_CountIncludePad_1d) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("AveragePool", 11);
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<MLFloat16> x_vals = {MLFloat16(1.f), MLFloat16(2.f), MLFloat16(9.f)};
+  std::vector<int64_t> x_dims = {1, 1, 3};
+  std::vector<int64_t> expected_dims = {1, 1, 2};
+  std::vector<MLFloat16> expected_vals = {MLFloat16(12.0f / 7.0f), MLFloat16(2.0f)};
+
+  test.AddInput<MLFloat16>("X", x_dims, x_vals);
+  test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// fp16 2D analog: PyTorch #183528 repro, x = arange(1,17).reshape(1,1,4,4), k=3 s=2 pad=1,
+// ceil_mode=1, count_include_pad=1. The trailing row/col ceil windows extend past input+pad_tail;
+// the reference divides by the clamped include-pad window, matching the float fix.
+TEST(PoolFp16Test, AveragePool_Ceil_CountIncludePad_2d) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("AveragePool", 11);
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<MLFloat16> x_vals;
+  for (int i = 1; i <= 16; ++i) {
+    x_vals.push_back(MLFloat16(static_cast<float>(i)));
+  }
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  std::vector<MLFloat16> expected_vals = {
+      MLFloat16(14.0f / 9.0f), MLFloat16(30.0f / 9.0f), MLFloat16(2.0f),
+      MLFloat16(38.0f / 6.0f), MLFloat16(11.0f), MLFloat16(6.0f),
+      MLFloat16(4.5f), MLFloat16(7.5f), MLFloat16(4.0f)};
+
+  test.AddInput<MLFloat16>("X", x_dims, x_vals);
+  test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// No-regression control: ceil_mode=1 but count_include_pad=0 keeps the standard MLAS path
+// (guard requires count_include_pad==1), so the divisor already counts only in-bounds cells.
+TEST(PoolFp16Test, AveragePool_Ceil_CountExcludePad_2d) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("AveragePool", 11);
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)0);
+
+  std::vector<MLFloat16> x_vals;
+  for (int i = 1; i <= 16; ++i) {
+    x_vals.push_back(MLFloat16(static_cast<float>(i)));
+  }
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  std::vector<MLFloat16> expected_vals = {
+      MLFloat16(3.5f), MLFloat16(5.0f), MLFloat16(6.0f),
+      MLFloat16(9.5f), MLFloat16(11.0f), MLFloat16(12.0f),
+      MLFloat16(13.5f), MLFloat16(15.0f), MLFloat16(16.0f)};
+
+  test.AddInput<MLFloat16>("X", x_dims, x_vals);
+  test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// No-regression control: count_include_pad=1 but ceil_mode=0 keeps the standard MLAS path
+// (guard requires ceil_mode==1), so floor-mode output stays correct.
+TEST(PoolFp16Test, AveragePool_Floor_CountIncludePad_2d) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
+  OpTester test("AveragePool", 11);
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)0);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<MLFloat16> x_vals;
+  for (int i = 1; i <= 16; ++i) {
+    x_vals.push_back(MLFloat16(static_cast<float>(i)));
+  }
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 2};
+  std::vector<MLFloat16> expected_vals = {
+      MLFloat16(14.0f / 9.0f), MLFloat16(30.0f / 9.0f),
+      MLFloat16(38.0f / 6.0f), MLFloat16(11.0f)};
+
+  test.AddInput<MLFloat16>("X", x_dims, x_vals);
+  test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
 }

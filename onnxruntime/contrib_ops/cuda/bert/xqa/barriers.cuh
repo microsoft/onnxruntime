@@ -398,8 +398,8 @@ class NamedBarrier {
   }
 
  private:
-  uint32_t const mName;
-  uint32_t const mArriveCount;
+  const uint32_t mName;
+  const uint32_t mArriveCount;
 };
 
 __device__ inline void namedBarSync(uint32_t idxBar, uint32_t arriveCount) {

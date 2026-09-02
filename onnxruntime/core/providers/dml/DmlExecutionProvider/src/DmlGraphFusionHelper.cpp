@@ -694,7 +694,7 @@ namespace DmlGraphFusionHelper
             initializeResourceRefs,
             nullptr);
 
-        // lamda captures for the kernel registration
+        // lambda captures for the kernel registration
         Windows::AI::MachineLearning::Adapter::EdgeShapes outputShapes;
         ORT_THROW_HR_IF(E_UNEXPECTED, !TryGetStaticOutputShapes(fusedNode, outputShapes));
         bool resuableCommandList = graphDesc.reuseCommandList;
@@ -756,7 +756,8 @@ namespace DmlGraphFusionHelper
             *indexedSubGraph,
             std::move(graphNodePropertyMap));
 
-        auto modelPath = graph.ModelPath();
+        // Owned copy: the closure registered below outlives this frame.
+        std::filesystem::path modelPath = graph.ModelPath();
 
         const gsl::span<const std::string> subGraphInputArgNames = indexedSubGraph->GetMetaDef()->inputs;
         const gsl::span<const std::string> subGraphOutputArgNames = indexedSubGraph->GetMetaDef()->outputs;
@@ -836,10 +837,10 @@ namespace DmlGraphFusionHelper
             kvp.second.first = &ownedInitializers.back();
         }
 
-        // lamda captures for the kernel registration
+        // lambda captures for the kernel registration
         auto fused_kernel_func = [
             indexedSubGraph,
-            &modelPath,
+            modelPath,
             nodesInfo = std::move(nodesInfo),
             intermediateNodeArgs = std::move(intermediateNodeArgs),
             subgraphInputs = std::move(subgraphInputs),

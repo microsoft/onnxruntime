@@ -1,0 +1,17 @@
+diff --git a/absl/container/internal/container_memory.h b/absl/container/internal/container_memory.h
+index 2c893482..f70d8ecf 100644
+--- a/absl/container/internal/container_memory.h
++++ b/absl/container/internal/container_memory.h
+@@ -495,9 +495,10 @@ struct HashElement {
+       // "absl::hash_internal::SupportsHashWithSeed" is directly included`.
+       // Maybe we should make "internal/hash.h" be a separate library.
+       return absl::hash_internal::HashWithSeed().hash(hash, key, seed);
++    } else {
++      // NOLINTNEXTLINE(clang-diagnostic-sign-conversion)
++      return hash(key) ^ seed;
+     }
+-    // NOLINTNEXTLINE(clang-diagnostic-sign-conversion)
+-    return hash(key) ^ seed;
+   }
+   const Hash& hash;
+   size_t seed;

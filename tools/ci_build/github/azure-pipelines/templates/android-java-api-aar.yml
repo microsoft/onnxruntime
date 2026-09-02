@@ -74,7 +74,7 @@ jobs:
     ${{ if contains(parameters.pool_name, 'mac')}}:
       os: macOS
 
-  templateContext:        
+  templateContext:
     outputs:
     - output: pipelineArtifact
       targetPath: $(Build.BinariesDirectory)/.artifacts
@@ -102,11 +102,6 @@ jobs:
   - template: set-version-number-variables-step.yml
 
   - template: use-android-ndk.yml
-
-  - ${{ if contains(parameters.packageName, 'qnn') }}:
-    - template: jobs/init_linux_qnn_sdk_x64.yml
-      parameters:
-        QnnSDKVersion: '${{parameters.QnnSDKVersion}}'
 
   - task: CmdLine@2
     displayName: Build Android AAR Packages
@@ -145,7 +140,6 @@ jobs:
           onnxruntimecpubuildcentos8x64_packaging \
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
-
   - template: jar-maven-signing-linux.yml
     parameters:
       JarFileDirectory: $(Build.BinariesDirectory)/.artifacts

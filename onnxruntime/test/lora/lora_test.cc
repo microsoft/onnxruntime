@@ -10,8 +10,15 @@
 #include "core/session/lora_adapters.h"
 #include "lora/adapter_format_version.h"
 #include "lora/adapter_format_utils.h"
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_CUDA) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && \
+    defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
+
+extern std::unique_ptr<Ort::Env> ort_env;
+#endif
 
 #include "gtest/gtest.h"
+#include <array>
 #include <cmath>
 
 #include "test/util/include/asserts.h"
@@ -253,6 +260,15 @@ const adapters::Parameter* BuildAdapterAndGetParam(flatbuffers::FlatBufferBuilde
   const auto* adapter = adapters::GetAdapter(fbb.GetBufferPointer());
   return adapter->parameters()->Get(0);
 }
+
+void ExpectUnsupportedLoraParameterType(const adapters::Parameter& param) {
+  try {
+    adapters::utils::CreateOrtValueOverLoraParameter(param);
+    FAIL() << "Expected unsupported LoRA parameter data_type to be rejected";
+  } catch (const OnnxRuntimeException& ex) {
+    EXPECT_NE(std::string(ex.what()).find("not a supported LoRA parameter type"), std::string::npos);
+  }
+}
 }  // namespace
 
 TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_RawDataSizeMismatch) {
@@ -413,10 +429,201 @@ TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_UndefinedDataType) {
   ASSERT_NE(param, nullptr);
   ASSERT_EQ(param->data_type(), adapters::TensorDataType::UNDEFINED);
 
-  ASSERT_THROW(adapters::utils::CreateOrtValueOverLoraParameter(*param), OnnxRuntimeException);
+  ExpectUnsupportedLoraParameterType(*param);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_StringDataType) {
+  flatbuffers::FlatBufferBuilder fbb;
+
+  // Provide raw_data sized to pass the old size check: shape [2] * sizeof(std::string).
+  // The guard must reject the type before reaching the size check.
+  std::vector<int64_t> dims = {2};
+  std::vector<uint8_t> raw_data(2 * sizeof(std::string), 0x41);
+
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "string_type_param", &dims, adapters::TensorDataType::STRING, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->data_type(), adapters::TensorDataType::STRING);
+
+  ExpectUnsupportedLoraParameterType(*param);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_UndeclaredDataType) {
+  flatbuffers::FlatBufferBuilder fbb;
+
+  std::vector<int64_t> dims = {2};
+  std::vector<uint8_t> raw_data(2, 0);
+  constexpr int32_t undeclared_data_type = 21;
+  const auto data_type = static_cast<adapters::TensorDataType>(undeclared_data_type);
+
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "undeclared_type_param", &dims, data_type, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(static_cast<int32_t>(param->data_type()), undeclared_data_type);
+
+  ExpectUnsupportedLoraParameterType(*param);
+}
+
+TEST(LoraAdapterTest, CreateOrtValueOverLoraParameter_BoolDataType) {
+  flatbuffers::FlatBufferBuilder fbb;
+
+  std::vector<int64_t> dims = {1};
+  std::vector<uint8_t> raw_data = {2};
+
+  auto param_offset = adapters::CreateParameterDirect(
+      fbb, "bool_type_param", &dims, adapters::TensorDataType::BOOL, &raw_data);
+
+  const auto* param = BuildAdapterAndGetParam(fbb, param_offset);
+  ASSERT_NE(param, nullptr);
+  ASSERT_EQ(param->data_type(), adapters::TensorDataType::BOOL);
+
+  ExpectUnsupportedLoraParameterType(*param);
 }
 
 #endif  // ORT_NO_EXCEPTIONS
+
+namespace {
+
+class NoDataTransferAllocator final : public IAllocator {
+ public:
+  NoDataTransferAllocator()
+      : IAllocator(OrtMemoryInfo("NoDataTransfer", OrtDeviceAllocator,
+                                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                                           OrtDevice::VendorIds::NONE, 0))) {}
+
+  void* Alloc(size_t) override {
+    ++allocation_count_;
+    return nullptr;
+  }
+
+  void Free(void*) override {}
+
+  size_t AllocationCount() const {
+    return allocation_count_;
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(NoDataTransferAllocator);
+  size_t allocation_count_{0};
+};
+
+void VerifyMappedParametersAreUsed(const lora::LoraAdapter& adapter) {
+  auto [begin, end] = adapter.GetParamIterators();
+  for (; begin != end; ++begin) {
+    const auto& param = begin->second;
+    EXPECT_EQ(&param.GetMapped(), &param.GetDeviceOrMapped());
+    EXPECT_EQ(param.GetDeviceOrMapped().Get<Tensor>().Location().device.Type(), OrtDevice::CPU);
+  }
+}
+
+}  // namespace
+
+TEST(LoraAdapterTest, UnavailableDataTransferKeepsMappedValues) {
+  auto allocator = std::make_shared<NoDataTransferAllocator>();
+  auto* allocator_ptr = allocator.get();
+  lora::LoraAdapter adapter(std::move(allocator));
+
+  adapter.Load(GenerateTestParameters<float>()());
+
+  EXPECT_EQ(allocator_ptr->AllocationCount(), 0U);
+  VerifyMappedParametersAreUsed(adapter);
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(LoraAdapterTest, CpuAllocatorIsRejected) {
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  auto cpu_allocator = cpu_ep->CreatePreferredAllocators()[0];
+  lora::LoraAdapter adapter(std::move(cpu_allocator));
+
+  EXPECT_THROW(adapter.Load(GenerateTestParameters<float>()()), OnnxRuntimeException);
+}
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(USE_CUDA) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && \
+    defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+TEST(LoraAdapterTest, CudaPluginAllocatorKeepsMappedValues) {
+  const auto ep_name = dynamic_plugin_ep_infra::GetEpName();
+  if (!ep_name.has_value() || *ep_name != dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName) {
+    GTEST_SKIP() << "CUDA plugin EP is not registered";
+  }
+
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  ASSERT_NE(cuda_ep, nullptr);
+  auto cuda_allocators = cuda_ep->CreatePreferredAllocators();
+  ASSERT_FALSE(cuda_allocators.empty());
+  ASSERT_EQ(cuda_allocators[0]->Info().device.Type(), OrtDevice::GPU);
+  ASSERT_EQ(cuda_allocators[0]->Info().device.Vendor(), OrtDevice::VendorIds::NVIDIA);
+
+  lora::LoraAdapter adapter(std::move(cuda_allocators[0]));
+  adapter.Load(GenerateTestParameters<float>()());
+
+  VerifyMappedParametersAreUsed(adapter);
+}
+
+TEST(LoraAdapterTest, CudaPluginRunCopiesMappedValues) {
+  const auto ep_name = dynamic_plugin_ep_infra::GetEpName();
+  if (!ep_name.has_value() || *ep_name != dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName) {
+    GTEST_SKIP() << "CUDA plugin EP is not registered";
+  }
+
+  Ort::ConstEpDevice cuda_device;
+  for (const auto& ep_device : ort_env->GetEpDevices()) {
+    if (std::string_view{ep_device.EpName()} == dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName) {
+      cuda_device = ep_device;
+      break;
+    }
+  }
+  ASSERT_NE(cuda_device, nullptr);
+
+  auto device_memory_info = cuda_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  ASSERT_NE(device_memory_info, nullptr);
+  auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+  ASSERT_NE(allocator, nullptr);
+
+  constexpr const ORTCHAR_T* adapter_path = ORT_TSTR("testdata/lora/two_params_lora_model.onnx_adapter");
+  auto adapter = Ort::LoraAdapter::CreateLoraAdapter(adapter_path, allocator);
+
+  Ort::SessionOptions session_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {cuda_device}, Ort::KeyValuePairs{});
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/lora/two_params_lora_model.onnx"), session_options);
+  auto input_devices = session.GetEpDeviceForInputs();
+  // LoRA parameters are overridable initializers, so only input_x is included in the session input devices.
+  ASSERT_EQ(input_devices.size(), 1U);
+  ASSERT_NE(input_devices[0], nullptr);
+  EXPECT_EQ(std::string_view{input_devices[0].EpName()},
+            dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName);
+
+  Ort::RunOptions run_options;
+  run_options.AddActiveLoraAdapter(adapter);
+
+  constexpr std::array<int64_t, 2> input_shape{4, 4};
+  std::array<float, 16> input{};
+  input.fill(1.0f);
+  auto input_value = Ort::Value::CreateTensor<float>(
+      Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU),
+      input.data(), input.size(), input_shape.data(), input_shape.size());
+
+  constexpr const char* input_names[]{"input_x"};
+  constexpr const char* output_names[]{"output"};
+  auto outputs = session.Run(run_options, input_names, &input_value, 1, output_names, 1);
+
+  constexpr std::array<float, 16> expected_output{
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f,
+      154.f, 176.f, 198.f, 220.f};
+  ASSERT_EQ(outputs.size(), 1U);
+  ASSERT_EQ(outputs[0].GetTensorTypeAndShapeInfo().GetElementCount(), expected_output.size());
+  const auto* output = outputs[0].GetTensorData<float>();
+  for (size_t i = 0; i < expected_output.size(); ++i) {
+    EXPECT_NEAR(output[i], expected_output[i], 0.06f);
+  }
+}
+#endif
 
 #ifdef USE_CUDA
 TEST(LoraAdapterTest, VerifyDeviceCopy) {
