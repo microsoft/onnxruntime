@@ -46,6 +46,8 @@ struct OrtInstanceData {
   // blocking there would stall the event loop for the length of another session's inference, so if
   // the lock is busy the object is queued and destroyed by whoever holds the lock next.
   static void ReleaseDeviceObject(std::shared_ptr<void> object);
+  // Destroy everything queued by ReleaseDeviceObject() if the lock happens to be free.
+  static void TryDrainDeviceReleases();
   // Destroy everything queued by ReleaseDeviceObject(). The caller must already hold DeviceMutex().
   static void DrainDeviceReleasesLocked();
 

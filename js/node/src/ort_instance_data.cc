@@ -49,9 +49,19 @@ std::vector<std::shared_ptr<void>>& PendingReleases() {
   static std::vector<std::shared_ptr<void>> pending;
   return pending;
 }
+
+// Set while this thread is running queued destructors with DeviceMutex() held. ReleaseDeviceObject()
+// consults it because try_lock on a mutex the calling thread already owns is undefined behaviour
+// rather than a failed acquisition, so a destructor that releases another device object must queue.
+thread_local bool draining_device_releases = false;
 }  // namespace
 
 void OrtInstanceData::DrainDeviceReleasesLocked() {
+  struct DrainingFlag {
+    DrainingFlag() { draining_device_releases = true; }
+    ~DrainingFlag() { draining_device_releases = false; }
+  } draining_flag;
+
   std::vector<std::shared_ptr<void>> pending;
   {
     std::lock_guard<std::mutex> lock(PendingReleaseMutex());
@@ -61,16 +71,28 @@ void OrtInstanceData::DrainDeviceReleasesLocked() {
   pending.clear();
 }
 
+void OrtInstanceData::TryDrainDeviceReleases() {
+  if (draining_device_releases) {
+    return;
+  }
+  std::unique_lock<std::mutex> device_lock(DeviceMutex(), std::try_to_lock);
+  if (device_lock.owns_lock()) {
+    DrainDeviceReleasesLocked();
+  }
+}
+
 void OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<void> object) {
   if (object == nullptr) {
     return;
   }
 
-  std::unique_lock<std::mutex> device_lock(DeviceMutex(), std::try_to_lock);
-  if (device_lock.owns_lock()) {
-    DrainDeviceReleasesLocked();
-    object.reset();
-    return;
+  if (!draining_device_releases) {
+    std::unique_lock<std::mutex> device_lock(DeviceMutex(), std::try_to_lock);
+    if (device_lock.owns_lock()) {
+      DrainDeviceReleasesLocked();
+      object.reset();
+      return;
+    }
   }
 
   {
@@ -81,10 +103,7 @@ void OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<void> object) {
   // The lock may have been dropped while we were queueing. Without this, an object queued during the
   // last device run of a session would sit there until the next one, which may never come, so the
   // memory it holds would survive release().
-  std::unique_lock<std::mutex> retry(DeviceMutex(), std::try_to_lock);
-  if (retry.owns_lock()) {
-    DrainDeviceReleasesLocked();
-  }
+  TryDrainDeviceReleases();
 }
 
 bool OrtInstanceData::ExternalArrayBuffersRefused(Napi::Env env) {

@@ -322,6 +322,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   // never runs its own destructor, so its members would otherwise be destroyed inline on the
   // Javascript thread, outside the device lock every other release path goes through.
   void ReleaseDeviceValuesOnFailure(const std::shared_ptr<Ort::Session>& owning_session) {
+    OrtInstanceData::ReleaseDeviceObject(std::make_shared<DeviceValues>(std::move(output_values_), owning_session));
     OrtInstanceData::ReleaseDeviceObject(std::make_shared<DeviceValues>(std::move(input_values_), owning_session));
     OrtInstanceData::ReleaseDeviceObject(std::make_shared<std::vector<OrtValueOwner>>(std::move(gpu_value_owners_)));
   }
@@ -380,6 +381,12 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       // A provider with global device state cannot have two runs in flight anywhere in the process,
       // and binding does device work before Run() that ORT's own guard does not cover either.
       // Sessions without such a provider never take the lock and stay fully concurrent.
+      // Destroyed after device_lock releases, so anything queued in the window between the final
+      // drain and the unlock gets another chance rather than waiting for the next device run.
+      struct PostUnlockDrain {
+        ~PostUnlockDrain() { OrtInstanceData::TryDrainDeviceReleases(); }
+      } post_unlock_drain;
+
       std::unique_lock<std::mutex> device_lock;
       if (session_->requires_device_serialization_) {
         device_lock = std::unique_lock<std::mutex>(OrtInstanceData::DeviceMutex());
