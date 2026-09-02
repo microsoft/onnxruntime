@@ -519,6 +519,7 @@ class SymbolicShapeInference:
                 "ReduceLogSumExp",
                 "ReduceMax",
                 "ReduceMin",
+                "ReduceProd",
                 "ReduceSumSquare",
             ]:
                 initializers = [

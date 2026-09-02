@@ -734,6 +734,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             "ReduceLogSumExp",
             "ReduceMax",
             "ReduceMin",
+            "ReduceProd",
             "ReduceSumSquare",
         ]:
             with self.subTest(op_type=op_type):
