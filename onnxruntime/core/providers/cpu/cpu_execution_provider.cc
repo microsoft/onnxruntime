@@ -3753,7 +3753,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
       // opset 27
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 27, Range)>,
 
-      // opset 28
+  // opset 28
 #if !defined(DISABLE_OPTIONAL_TYPE)
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 28, Optional)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 28,
