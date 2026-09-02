@@ -869,6 +869,53 @@ TEST(TopKOperator, Top3AllSame) {
 }
 
 template <typename T>
+static void RunStableHybridTopKCases(int opset_version,
+                                     const std::initializer_list<std::pair<int64_t, int64_t>>& cases) {
+  for (const auto& [dimension, k] : cases) {
+    std::vector<T> input_vals(dimension, T(1.0f));
+    std::vector<T> expected_vals(k, T(1.0f));
+    std::vector<int64_t> expected_indices(k);
+    std::iota(expected_indices.begin(), expected_indices.end(), 0);
+    SCOPED_TRACE("opset=" + std::to_string(opset_version) +
+                 ", dimension=" + std::to_string(dimension) + ", k=" + std::to_string(k));
+    RunTest(opset_version, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false);
+  }
+}
+
+TEST(TopKOperator, StableHybridLargeLastAxis) {
+  RunStableHybridTopKCases<float>(11, {{5000, 4},
+                                       {5000, 5},
+                                       {30000, 16},
+                                       {30000, 17},
+                                       {60000, 32},
+                                       {120000, 33},
+                                       {120000, 64},
+                                       {248320, 65},
+                                       {248320, 128},
+                                       {500000, 129},
+                                       {500000, 256},
+                                       {248320, 16}});
+}
+
+TEST(TopKOperator, StableHybridHalfLargeLastAxis) {
+  RunStableHybridTopKCases<MLFloat16>(11, {{248320, 16}, {248320, 65}, {500000, 256}});
+}
+
+TEST(TopKOperator, StableHybridBFloat16LargeLastAxis) {
+  RunStableHybridTopKCases<BFloat16>(24, {{248320, 16}, {248320, 65}, {500000, 256}});
+}
+
+TEST(TopKOperator, StableSmallKBFloat16Smallest) {
+  constexpr int64_t dimension = 5000;
+  constexpr int64_t k = 16;
+  std::vector<BFloat16> input_vals(dimension, BFloat16(1.0f));
+  std::vector<BFloat16> expected_vals(k, BFloat16(1.0f));
+  std::vector<int64_t> expected_indices(k);
+  std::iota(expected_indices.begin(), expected_indices.end(), 0);
+  RunTest(24, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false, -1, 0);
+}
+
+template <typename T>
 static void TestThreaded(int64_t k, int64_t n, int64_t batch_size) {
   std::vector<T> input_vals(n * batch_size, 0.0f);
   std::iota(input_vals.begin(), input_vals.end(), 0.0f);

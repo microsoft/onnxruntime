@@ -6,7 +6,11 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "device_atomic_functions.h"
+#ifdef ORT_TOPK_ENABLE_HYBRID
+#include "topk_hybrid.cuh"
+#endif
 #include <limits>
+#include <type_traits>
 // TODO:fix the warnings
 #ifdef _MSC_VER
 #pragma warning(disable : 4244)
@@ -407,6 +411,143 @@ __global__ void RadixTopK(const T* X, T* V, int64_t* I, const TArray<int64_t> el
   }
 }
 
+// -----------------------------------------------------------------------------
+// Streaming small-K top-K for a long contiguous last axis.
+//
+// RadixTopK gives one CUDA block to each row and makes ~7 passes over it, so an LLM-sized
+// selection (K = 16 over a 248320-wide vocabulary, 8 rows) runs 8 blocks on a 132-SM device and
+// measures 1.36 ms on H200. This path instead makes ONE pass with a grid-wide split.
+//
+// Each warp keeps a 32-entry sorted-descending list, one entry per lane, of 64-bit composite
+// keys `(order_key << 32) | ~index`. The composite makes the comparison total: equal values are
+// broken towards the lower index, which is the tie order RadixTopK's BIGGER/SMALLER produce. An
+// element can only matter if it beats the current K-th entry, so the warp tests that with a
+// single ballot and skips the bitonic merge entirely for all but the first few thousand
+// elements. Warps merge through shared memory, blocks through a small candidate buffer that a
+// second single-warp kernel reduces.
+//
+// HybridTopK is preferred when supported, but this path also covers its gaps: smallest-element
+// selection (largest == 0), dimensions beyond HybridTopK's 256-partition limit (> 851968), and
+// grids that HybridTopK rejects because its cooperative reduction cannot satisfy residency.
+//
+// Restricted to float/half/bfloat16 on the last axis with K <= 32; everything else falls back.
+constexpr int64_t kSmallKTopKMaxK = 32;
+constexpr int kSmallKTopKThreads = 256;
+constexpr int kSmallKTopKMaxBlocksPerRow = 64;
+
+template <typename T>
+struct SmallKTopKSupported : std::false_type {};
+template <>
+struct SmallKTopKSupported<float> : std::true_type {};
+template <>
+struct SmallKTopKSupported<__half> : std::true_type {};
+template <>
+struct SmallKTopKSupported<BFloat16> : std::true_type {};
+
+// Monotone float -> uint32 map: ordering the bit patterns as unsigned integers reproduces the
+// float ordering (negatives are inverted, positives get their sign bit set).
+__device__ __forceinline__ uint32_t SmallKOrderKey(float v) {
+  const uint32_t u = __float_as_uint(v);
+  return (u & 0x80000000u) ? ~u : (u | 0x80000000u);
+}
+
+__device__ __forceinline__ float SmallKToFloat(float v) { return v; }
+__device__ __forceinline__ float SmallKToFloat(__half v) { return __half2float(v); }
+__device__ __forceinline__ float SmallKToFloat(BFloat16 v) { return static_cast<float>(v); }
+
+template <typename T>
+__device__ __forceinline__ uint64_t SmallKComposite(T value, int64_t index, int64_t largest) {
+  const uint32_t key = SmallKOrderKey(SmallKToFloat(value));
+  const uint32_t ordered = (1 == largest) ? key : ~key;
+  return (static_cast<uint64_t>(ordered) << 32) | static_cast<uint32_t>(~static_cast<uint32_t>(index));
+}
+
+// Sorts one value per lane into descending order across the warp.
+__device__ __forceinline__ uint64_t SmallKWarpSortDesc(uint64_t v) {
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+#pragma unroll
+  for (int k = 2; k <= 32; k <<= 1) {
+#pragma unroll
+    for (int j = k >> 1; j > 0; j >>= 1) {
+      const uint64_t p = __shfl_xor_sync(0xffffffffu, v, j);
+      const bool desc_half = (lane & k) == 0;
+      const bool keep_larger = ((lane & j) == 0) == desc_half;
+      v = keep_larger ? (v > p ? v : p) : (v < p ? v : p);
+    }
+  }
+  return v;
+}
+
+// Keeps the 32 largest of two descending warp-sorted sequences (bitonic merge).
+__device__ __forceinline__ uint64_t SmallKWarpMergeDesc(uint64_t a, uint64_t b) {
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+  const uint64_t br = __shfl_xor_sync(0xffffffffu, b, 31);
+  uint64_t m = a > br ? a : br;
+#pragma unroll
+  for (int j = 16; j > 0; j >>= 1) {
+    const uint64_t p = __shfl_xor_sync(0xffffffffu, m, j);
+    m = ((lane & j) == 0) ? (m > p ? m : p) : (m < p ? m : p);
+  }
+  return m;
+}
+
+template <typename T>
+__global__ void SmallKTopKPartial(const T* __restrict__ X, uint64_t* __restrict__ candidates,
+                                  int64_t dimension, int64_t K, int64_t largest, int blocks_per_row) {
+  __shared__ uint64_t warp_best[kSmallKTopKThreads];
+
+  const int row = static_cast<int>(blockIdx.y);
+  const int lane = static_cast<int>(threadIdx.x) & 31;
+  const int warp = static_cast<int>(threadIdx.x) >> 5;
+  const int warps = kSmallKTopKThreads >> 5;
+  const T* row_x = X + static_cast<size_t>(row) * dimension;
+
+  const int64_t stride = static_cast<int64_t>(blocks_per_row) * kSmallKTopKThreads;
+  uint64_t best = 0;
+  uint64_t threshold = 0;
+  for (int64_t base = static_cast<int64_t>(blockIdx.x) * kSmallKTopKThreads + threadIdx.x;
+       base - lane < dimension; base += stride) {
+    const uint64_t v = base < dimension ? SmallKComposite<T>(row_x[base], base, largest) : 0;
+    if (__any_sync(0xffffffffu, v > threshold)) {
+      best = SmallKWarpMergeDesc(best, SmallKWarpSortDesc(v));
+      threshold = __shfl_sync(0xffffffffu, best, static_cast<int>(K) - 1);
+    }
+  }
+
+  warp_best[warp * 32 + lane] = best;
+  __syncthreads();
+  if (warp != 0) {
+    return;
+  }
+  uint64_t m = warp_best[lane];
+  for (int w = 1; w < warps; ++w) {
+    m = SmallKWarpMergeDesc(m, warp_best[w * 32 + lane]);
+  }
+  if (lane < K) {
+    candidates[(static_cast<size_t>(row) * blocks_per_row + blockIdx.x) * K + lane] = m;
+  }
+}
+
+template <typename T>
+__global__ void SmallKTopKFinal(const T* __restrict__ X, T* __restrict__ V, int64_t* __restrict__ I,
+                                const uint64_t* __restrict__ candidates, int64_t dimension, int64_t K,
+                                int total_candidates) {
+  const int row = static_cast<int>(blockIdx.x);
+  const int lane = static_cast<int>(threadIdx.x);
+  const uint64_t* row_cand = candidates + static_cast<size_t>(row) * total_candidates;
+
+  uint64_t m = 0;
+  for (int base = 0; base < total_candidates; base += 32) {
+    const uint64_t v = (base + lane) < total_candidates ? row_cand[base + lane] : 0;
+    m = SmallKWarpMergeDesc(m, SmallKWarpSortDesc(v));
+  }
+  if (lane < K) {
+    const int64_t index = static_cast<int64_t>(~static_cast<uint32_t>(m & 0xffffffffu));
+    V[static_cast<size_t>(row) * K + lane] = X[static_cast<size_t>(row) * dimension + index];
+    I[static_cast<size_t>(row) * K + lane] = index;
+  }
+}
+
 template <typename T>
 __global__ void FillInput(const T* input_x, T* output_v, int64_t* output_i, const TArray<int64_t> elem_nums, size_t size, int32_t axis, int64_t K, int64_t offset, int64_t dimension) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, dimension);
@@ -445,6 +586,36 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
   using CubT = typename CubSortType<CudaT>::type;
   const CudaT* input_x_ptr = reinterpret_cast<const CudaT*>(input_x);
   CudaT* output_v_ptr = reinterpret_cast<CudaT*>(output_v);
+
+#ifdef ORT_TOPK_ENABLE_HYBRID
+  if constexpr (std::is_same_v<CudaT, float> || std::is_same_v<CudaT, __half> ||
+                std::is_same_v<CudaT, BFloat16>) {
+    if (axis == static_cast<int32_t>(size) - 1 && largest == 1 && sorted == 1 &&
+        hybrid_topk::IsSupported(kernel, N, dimension, K)) {
+      return hybrid_topk::Run(kernel, stream, alloc_stream, input_x_ptr, output_v_ptr, output_i,
+                              static_cast<int>(N), static_cast<int>(dimension), static_cast<int>(K));
+    }
+  }
+#endif
+
+  if constexpr (SmallKTopKSupported<CudaT>::value) {
+    if (axis == static_cast<int32_t>(size) - 1 && K >= 1 && K <= kSmallKTopKMaxK &&
+        dimension > 4096 && dimension <= static_cast<int64_t>(std::numeric_limits<int32_t>::max())) {
+      constexpr int64_t kElementsPerBlock = 16384;
+      int blocks_per_row = static_cast<int>((dimension + kElementsPerBlock - 1) / kElementsPerBlock);
+      blocks_per_row = blocks_per_row < 1 ? 1 : blocks_per_row;
+      blocks_per_row = blocks_per_row > kSmallKTopKMaxBlocksPerRow ? kSmallKTopKMaxBlocksPerRow : blocks_per_row;
+      const int total_candidates = blocks_per_row * static_cast<int>(K);
+      auto candidates = kernel->GetScratchBuffer<uint64_t>(
+          static_cast<size_t>(N) * total_candidates, alloc_stream);
+      const dim3 partial_grid{static_cast<unsigned>(blocks_per_row), static_cast<unsigned>(N)};
+      SmallKTopKPartial<CudaT><<<partial_grid, kSmallKTopKThreads, 0, stream>>>(
+          input_x_ptr, candidates.get(), dimension, K, largest, blocks_per_row);
+      SmallKTopKFinal<CudaT><<<static_cast<unsigned>(N), 32, 0, stream>>>(
+          input_x_ptr, output_v_ptr, output_i, candidates.get(), dimension, K, total_candidates);
+      return CUDA_CALL(cudaGetLastError());
+    }
+  }
 
   auto aligned_K = ALIGN(K);
   auto aligned_dimension = ALIGN(dimension);
