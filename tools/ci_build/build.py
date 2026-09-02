@@ -267,7 +267,7 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
-    if args.use_telemetry and not is_windows() and not args.android and not args.build_wasm:
+    if args.use_telemetry and not args.use_windows_telemetry and not args.android and not args.build_wasm:
         vcpkg_install_options.append("--x-feature=telemetry")
     overlay_triplets_dir = None
 
@@ -393,8 +393,10 @@ def generate_build_tree(
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
 
-    # Telemetry uses ETW on Windows and 1DS on other supported native platforms.
+    # 1DS is the default telemetry backend on all supported native platforms. Microsoft-internal
+    # Windows forks can retain the TraceLogging backend explicitly.
     cmake_args.append("-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"))
+    cmake_args.append("-Donnxruntime_USE_WINDOWS_TELEMETRY=" + ("ON" if args.use_windows_telemetry else "OFF"))
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),

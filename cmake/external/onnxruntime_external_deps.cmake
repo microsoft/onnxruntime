@@ -8,8 +8,10 @@ include(external/helper_functions.cmake)
 file(STRINGS deps.txt ONNXRUNTIME_DEPS_LIST)
 foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
   # Lines start with "#" are comments, so skip them.
-  # cpp_client_telemetry is only needed for telemetry on non-Windows platforms, so skip if telemetry is not enabled or it's Windows platform.
-  if((NOT ONNXRUNTIME_DEP MATCHES "^#") AND ((NOT ONNXRUNTIME_DEP MATCHES "^cpp_client_telemetry") OR (onnxruntime_USE_TELEMETRY AND NOT WIN32)))
+  # cpp_client_telemetry is needed only when the 1DS backend is selected.
+  if((NOT ONNXRUNTIME_DEP MATCHES "^#") AND
+     ((NOT ONNXRUNTIME_DEP MATCHES "^cpp_client_telemetry") OR
+      (onnxruntime_USE_TELEMETRY AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY))))
     # The first column is name
     list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_NAME)
     # The second column is URL
@@ -980,8 +982,8 @@ if(onnxruntime_USE_SNPE)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
 endif()
 
-# 1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms
-if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+# 1DS SDK (cpp_client_telemetry) is the default cross-platform telemetry backend.
+if(onnxruntime_USE_TELEMETRY AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY))
   if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     message(FATAL_ERROR "onnxruntime_USE_TELEMETRY is not supported for WebAssembly/Emscripten builds: "
                         "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
@@ -996,43 +998,49 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     message(STATUS "Telemetry: using the vcpkg MSTelemetry::mat package")
     set(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE ON)
   else()
-    # Linux packages must not depend on a host libcurl. Build an internal HTTP(S)-only static curl
-    # before configuring 1DS so its CURL::libcurl reference resolves to the pinned target.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-      include(external/telemetry_linux_http.cmake)
-    endif()
-    set(_ort_requested_apple_architectures "${CMAKE_OSX_ARCHITECTURES}")
-
     # Android always uses this path, including vcpkg-based AAR builds. The vcpkg port selects
     # HttpClient_Curl on Android, while the platform identity and transport used by the AAR require
     # HttpClient_Android and its Java bridge.
-    # Use cpp_client_telemetry's canonical build options. The SDK keeps its
-    # build policy and dependency selection local to 1DS.
-    set(BUILD_HEADERS ON CACHE BOOL "Build 1DS SDK headers" FORCE)
-    set(BUILD_LIBRARY ON CACHE BOOL "Build 1DS SDK library" FORCE)
-    set(BUILD_TEST_TOOL OFF CACHE BOOL "Disable 1DS SDK test tool" FORCE)
-    set(BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
-    set(BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
-    set(BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
-    set(BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
-    set(BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
-    set(BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
-    set(BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
-    set(BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
+    set(MATSDK_BUILD_HEADERS ON CACHE BOOL "Build 1DS SDK headers" FORCE)
+    set(MATSDK_BUILD_LIBRARY ON CACHE BOOL "Build 1DS SDK library" FORCE)
+    set(MATSDK_BUILD_TEST_TOOL OFF CACHE BOOL "Disable 1DS SDK test tool" FORCE)
+    set(MATSDK_BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
+    set(MATSDK_BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
+    set(MATSDK_BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
+    set(MATSDK_BUILD_CDS OFF CACHE BOOL "Disable 1DS Common Diagnostic Stack module" FORCE)
+    set(MATSDK_BUILD_LIVEEVENTINSPECTOR OFF CACHE BOOL "Disable 1DS live event inspector module" FORCE)
+    set(MATSDK_BUILD_SIGNALS OFF CACHE BOOL "Disable 1DS signals module" FORCE)
+    set(MATSDK_BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
+    set(MATSDK_BUILD_AZMON OFF CACHE BOOL "Disable 1DS Azure Monitor module" FORCE)
+    set(MATSDK_BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
+    set(MATSDK_BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
+    set(MATSDK_BUILD_JNI_WRAPPER OFF CACHE BOOL "Disable 1DS JNI wrapper" FORCE)
+    set(MATSDK_BUILD_PACKAGE OFF CACHE BOOL "Disable 1DS package generation" FORCE)
     if(APPLE)
-      set(BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
+      set(MATSDK_BUILD_APPLE_HTTP ON CACHE BOOL "Build the 1DS Apple HTTP client" FORCE)
     endif()
-    # ORT supplies CURL::libcurl on Linux through its pinned static mbedTLS
-    # transport. On Apple/Android the SDK selects the native transport.
-    set(MATSDK_CURL_PROVIDER SYSTEM CACHE STRING "Use ORT's selected 1DS curl target" FORCE)
+    # Let 1DS own its pinned static curl/mbedTLS transport on Linux. Apple and Android use native clients.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      set(MATSDK_CURL_PROVIDER FETCH CACHE STRING "Use 1DS's pinned static curl transport" FORCE)
+    else()
+      set(MATSDK_CURL_PROVIDER SYSTEM CACHE STRING "Use the platform-native 1DS transport" FORCE)
+    endif()
     set(MATSDK_CURL_TLS_BACKEND MBEDTLS CACHE STRING "Use mbedTLS for 1DS curl" FORCE)
-    set(MATSDK_SQLITE_PROVIDER VENDORED CACHE STRING "Use bundled 1DS SQLite" FORCE)
-    set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Use bundled 1DS zlib" FORCE)
-    # The pinned stable SDK selects its vendored sqlite3/zlib through this legacy flag, which ORT's
-    # patch also honors. Without it the patched Apple fallback links the system sqlite3/z names, and
-    # iOS consumers fail to link because there is no SQLite3 framework in the iOS SDK.
-    set(MATSDK_BUNDLE_VENDORED_DEPS ON)
-    set(MATSDK_BUNDLE_VENDORED_DEPS ON CACHE BOOL "Build the 1DS SDK's vendored sqlite3 and zlib" FORCE)
+    # Apple platforms provide stable system SQLite. Other source builds use 1DS's
+    # feature-stripped SQLite.
+    if(APPLE)
+      set(MATSDK_SQLITE_PROVIDER SYSTEM CACHE STRING "Use the Apple system SQLite" FORCE)
+    else()
+      set(MATSDK_SQLITE_PROVIDER MINIMAL CACHE STRING "Use 1DS's feature-stripped SQLite" FORCE)
+    endif()
+    # A vcpkg build always has the telemetry feature's zlib package. Other source
+    # builds reuse an existing ZLIB::ZLIB target when present and remain
+    # self-contained when the enclosing build does not provide one.
+    if(onnxruntime_USE_VCPKG)
+      set(MATSDK_ZLIB_PROVIDER SYSTEM CACHE STRING "Reuse ONNX Runtime's vcpkg zlib" FORCE)
+    else()
+      set(MATSDK_ZLIB_PROVIDER AUTO CACHE STRING "Reuse an existing zlib or bundle one" FORCE)
+    endif()
     # BUILD_SHARED_LIBS is a global that ORT's own targets read after this block, and the SDK selects
     # mat's library type from it (lib/CMakeLists.txt). Save it, force static for the SDK, restore below.
     set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
@@ -1042,48 +1050,35 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # canonical Apple/system or fetched mbedTLS transport selection.
     set(MATSDK_ANDROID_HTTP_CLIENT JAVA CACHE STRING "Use the 1DS Java HTTP bridge on Android" FORCE)
 
-    # Android vcpkg builds intentionally use this fallback. Force the SDK's
-    # self-contained mode and restore the caller's cache entry after configuration.
-    get_property(_ort_matsdk_vcpkg_was_set CACHE MATSDK_USE_VCPKG_DEPS PROPERTY TYPE SET)
-    if(_ort_matsdk_vcpkg_was_set)
-      get_property(_ort_matsdk_vcpkg_type CACHE MATSDK_USE_VCPKG_DEPS PROPERTY TYPE)
-      get_property(_ort_matsdk_vcpkg_help CACHE MATSDK_USE_VCPKG_DEPS PROPERTY HELPSTRING)
-      get_property(_ort_matsdk_vcpkg_value CACHE MATSDK_USE_VCPKG_DEPS PROPERTY VALUE)
-    endif()
-    set(MATSDK_USE_VCPKG_DEPS OFF)
-    set(MATSDK_USE_VCPKG_DEPS OFF CACHE BOOL "Use self-contained 1DS dependencies" FORCE)
-    if(NOT Patch_FOUND)
-      message(FATAL_ERROR
-              "onnxruntime_USE_TELEMETRY with the FetchContent cpp_client_telemetry fallback requires the patch tool.")
-    endif()
-    set(ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND
-        ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 <
-        ${PROJECT_SOURCE_DIR}/patches/cpp_client_telemetry/cpp_client_telemetry.patch)
     onnxruntime_fetchcontent_declare(
       cpp_client_telemetry
       URL ${DEP_URL_cpp_client_telemetry}
       URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
-      PATCH_COMMAND ${ONNXRUNTIME_CPP_CLIENT_TELEMETRY_PATCH_COMMAND}
       EXCLUDE_FROM_ALL
     )
-    onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
-    unset(MATSDK_USE_VCPKG_DEPS)
-    if(_ort_matsdk_vcpkg_was_set)
-      if(_ort_matsdk_vcpkg_type STREQUAL "UNINITIALIZED")
-        set(_ort_matsdk_vcpkg_type BOOL)
-      endif()
-      set(MATSDK_USE_VCPKG_DEPS
-          "${_ort_matsdk_vcpkg_value}"
-          CACHE "${_ort_matsdk_vcpkg_type}"
-          "${_ort_matsdk_vcpkg_help}"
-          FORCE)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      block(SCOPE_FOR VARIABLES)
+        # curl otherwise auto-detects and embeds paths from the build host. ORT selects a readable
+        # CA bundle on the target at runtime, so mask auto-detection while 1DS configures curl.
+        set(CURL_CA_BUNDLE none)
+        set(CURL_CA_PATH none)
+        onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+
+        get_target_property(_ort_telemetry_curl_binary_dir libcurl_static BINARY_DIR)
+        set(_ort_telemetry_curl_config "${_ort_telemetry_curl_binary_dir}/curl_config.h")
+        file(READ "${_ort_telemetry_curl_config}" _ort_telemetry_curl_config_contents)
+        foreach(_ort_telemetry_ca_definition CURL_CA_BUNDLE CURL_CA_PATH)
+          string(REGEX REPLACE
+            "#define ${_ort_telemetry_ca_definition} \"[^\"]*\""
+            "/* #undef ${_ort_telemetry_ca_definition} */"
+            _ort_telemetry_curl_config_contents
+            "${_ort_telemetry_curl_config_contents}")
+        endforeach()
+        file(WRITE "${_ort_telemetry_curl_config}" "${_ort_telemetry_curl_config_contents}")
+      endblock()
     else()
-      unset(MATSDK_USE_VCPKG_DEPS CACHE)
+      onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
     endif()
-    unset(_ort_matsdk_vcpkg_was_set)
-    unset(_ort_matsdk_vcpkg_type)
-    unset(_ort_matsdk_vcpkg_help)
-    unset(_ort_matsdk_vcpkg_value)
 
     if(ANDROID)
       string(CONCAT _ort_android_telemetry_java_source_dir
@@ -1115,65 +1110,12 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
         COPYONLY)
     endif()
 
-    if(TARGET mat)
-      if(TARGET sqlite3_bundled)
-        # 1DS uses sqlite only for its narrow offline-event store. Keep the previous vcpkg
-        # size reductions and extension-loading hardening on the bundled replacement.
-        target_compile_definitions(sqlite3_bundled PRIVATE
-          SQLITE_OMIT_LOAD_EXTENSION
-          SQLITE_OMIT_DEPRECATED
-          SQLITE_OMIT_UTF16
-          SQLITE_OMIT_PROGRESS_CALLBACK
-          SQLITE_OMIT_SHARED_CACHE
-          SQLITE_OMIT_GET_TABLE
-          SQLITE_OMIT_COMPLETE
-          SQLITE_OMIT_TCL_VARIABLE
-          SQLITE_DQS=0
-          SQLITE_DEFAULT_MEMSTATUS=0
-          SQLITE_DEFAULT_FOREIGN_KEYS=0
-        )
-      endif()
-      foreach(_ort_apple_dep mat sqlite3_bundled zlib_bundled)
-        if(TARGET ${_ort_apple_dep})
-          if(APPLE AND _ort_requested_apple_architectures)
-            set_target_properties(${_ort_apple_dep} PROPERTIES
-              OSX_ARCHITECTURES "${_ort_requested_apple_architectures}"
-              XCODE_ATTRIBUTE_ARCHS "${_ort_requested_apple_architectures}")
-          endif()
-          get_target_property(_ort_apple_inc
-            ${_ort_apple_dep} INTERFACE_INCLUDE_DIRECTORIES)
-          if(_ort_apple_inc)
-            set_target_properties(${_ort_apple_dep} PROPERTIES
-              INTERFACE_INCLUDE_DIRECTORIES "$<BUILD_INTERFACE:${_ort_apple_inc}>")
-          endif()
-        endif()
-      endforeach()
+    if(TARGET mat AND NOT MSVC)
       # ORT enables -ffast-math globally, which conflicts with
       # std::numeric_limits<double>::infinity() in the 1DS SDK's bundled nlohmann/json.hpp.
-      # Also suppress warnings in the 1DS SDK code that ORT treats as errors.
       target_compile_options(mat PRIVATE
         -fno-finite-math-only
-        -Wno-unused-const-variable
-        $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
-        $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
       )
-      # Vendored 1DS dependencies emit unavoidable narrowing warnings under Apple's warning policy.
-      # Keep the warning enabled for ORT sources while suppressing it only for third-party targets.
-      if(APPLE)
-        foreach(_ort_mat_tgt mat sqlite3_bundled zlib_bundled)
-          if(TARGET ${_ort_mat_tgt})
-            target_compile_options(${_ort_mat_tgt} PRIVATE -Wno-shorten-64-to-32)
-          endif()
-        endforeach()
-        if(TARGET sqlite3_bundled)
-          target_compile_options(sqlite3_bundled PRIVATE -Wno-ambiguous-macro)
-        endif()
-      endif()
-      if(TARGET sqlite3_bundled
-         AND CMAKE_C_COMPILER_ID STREQUAL "GNU"
-         AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-        target_compile_options(sqlite3_bundled PRIVATE -Wno-error=stringop-overread)
-      endif()
     endif()
 
     set(BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS_SAVED}" CACHE BOOL "" FORCE)

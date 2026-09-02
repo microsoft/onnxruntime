@@ -1,6 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <iphlpapi.h>
+#include <psapi.h>
+#include <Windows.h>
+#endif
+
 #include "core/platform/posix/telemetry.h"
 #include "core/platform/posix/device_id.h"
 #include "core/platform/posix/telemetry_context.h"
@@ -15,15 +25,17 @@
 #include <TargetConditionals.h>
 #endif
 
+#ifndef _WIN32
+#include <unistd.h>
+#include <sys/resource.h>
+#endif
+
 // 1DS SDK
 #include <LogManagerProvider.hpp>
 #include <ILogConfiguration.hpp>
 #if defined(__ANDROID__)
 #include "http/HttpClient_Android.hpp"
 #endif
-
-#include <unistd.h>
-#include <sys/resource.h>
 
 #ifdef __APPLE__
 #include <sys/sysctl.h>
@@ -363,6 +375,11 @@ bool PrepareSampledEvent(EventBuilder& event, uint32_t session_id) {
 }
 
 int32_t GetProcessorCount() {
+#ifdef _WIN32
+  SYSTEM_INFO system_info{};
+  ::GetSystemInfo(&system_info);
+  return static_cast<int32_t>(system_info.dwNumberOfProcessors);
+#else
   auto n = sysconf(_SC_NPROCESSORS_ONLN);
   if (n <= 0) {
     return 0;
@@ -371,7 +388,34 @@ int32_t GetProcessorCount() {
     return std::numeric_limits<int32_t>::max();
   }
   return static_cast<int32_t>(n);
+#endif
 }
+
+#ifdef _WIN32
+std::string GetWindowsPlatformDeviceId() {
+  ULONG buffer_size = 0;
+  if (::GetAdaptersInfo(nullptr, &buffer_size) != ERROR_BUFFER_OVERFLOW || buffer_size == 0) {
+    return {};
+  }
+
+  std::vector<unsigned char> buffer(buffer_size);
+  auto* adapter_info = reinterpret_cast<IP_ADAPTER_INFO*>(buffer.data());
+  if (::GetAdaptersInfo(adapter_info, &buffer_size) != ERROR_SUCCESS ||
+      adapter_info->AdapterName[0] == '\0') {
+    return {};
+  }
+
+  std::string device_id(adapter_info->AdapterName);
+  std::transform(device_id.begin(), device_id.end(), device_id.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return device_id;
+}
+
+std::string GetHashedWindowsPlatformDeviceId() {
+  const std::string device_id = GetWindowsPlatformDeviceId();
+  return device_id.empty() ? std::string{} : "w:" + HashDeviceId(device_id);
+}
+#endif
 
 }  // namespace
 
@@ -480,7 +524,12 @@ void PosixTelemetry::Initialize() {
   {
     std::string cache_dir = DeviceId::EnsureStorageDirectory();
     if (!cache_dir.empty()) {
-      std::string cache_path = cache_dir + "/onnxruntime.db";
+      std::string cache_path = cache_dir;
+#ifdef _WIN32
+      cache_path += "\\onnxruntime.db";
+#else
+      cache_path += "/onnxruntime.db";
+#endif
       config[CFG_STR_CACHE_FILE_PATH] = cache_path;
     }
   }
@@ -584,7 +633,9 @@ void PosixTelemetry::Shutdown() {
 }
 
 std::string PosixTelemetry::GetPlatformInfo() const {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  return "Windows";
+#elif defined(__APPLE__)
 #if TARGET_OS_IOS
   return "iOS";
 #elif TARGET_OS_MAC
@@ -607,7 +658,9 @@ std::string PosixTelemetry::GetPlatformInfo() const {
 
 // Get detailed OS version string (e.g., "macOS 15.2", "Ubuntu 22.04 LTS")
 std::string PosixTelemetry::GetOsDescription() const {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  return "Windows";
+#elif defined(__APPLE__)
   char version[64] = {};
   size_t len = sizeof(version);
   if (sysctlbyname("kern.osproductversion", version, &len, nullptr, 0) == 0) {
@@ -663,7 +716,28 @@ std::string PosixTelemetry::GetOsDescription() const {
 
 // Get the CPU brand string (e.g. "Intel(R) Core(TM) i7-10700K"). Empty when unavailable.
 std::string PosixTelemetry::GetCpuModel() const {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  HKEY key{};
+  if (::RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+                      "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                      0, KEY_READ, &key) != ERROR_SUCCESS) {
+    return {};
+  }
+
+  char cpu_model[256]{};
+  DWORD value_type = REG_SZ;
+  DWORD size = sizeof(cpu_model);
+  const LSTATUS status = ::RegQueryValueExA(
+      key, "ProcessorNameString", nullptr, &value_type,
+      reinterpret_cast<LPBYTE>(cpu_model), &size);
+  ::RegCloseKey(key);
+  if (status != ERROR_SUCCESS || value_type != REG_SZ || size == 0) {
+    return {};
+  }
+  cpu_model[sizeof(cpu_model) - 1] = '\0';
+  return cpu_model;
+
+#elif defined(__APPLE__)
   // macOS/iOS expose the CPU brand string via sysctl.
   char buf[256] = {0};
   size_t size = sizeof(buf);
@@ -714,13 +788,13 @@ std::string PosixTelemetry::GetDeviceClass() const {
 
 // Get the CPU architecture the binary was compiled for
 std::string PosixTelemetry::GetArchitecture() {
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(_M_X64)
   return "x86_64";
-#elif defined(__i386__)
+#elif defined(__i386__) || defined(_M_IX86)
   return "x86";
-#elif defined(__aarch64__)
+#elif defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
   return "arm64";
-#elif defined(__arm__)
+#elif defined(__arm__) || defined(_M_ARM)
   return "arm";
 #elif defined(__riscv)
   return "riscv";
@@ -733,7 +807,14 @@ std::string PosixTelemetry::GetArchitecture() {
 
 // Get total physical memory in MB
 int64_t PosixTelemetry::GetTotalMemoryMB() {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  MEMORYSTATUSEX memory_status{};
+  memory_status.dwLength = sizeof(memory_status);
+  if (::GlobalMemoryStatusEx(&memory_status) != 0) {
+    return static_cast<int64_t>(memory_status.ullTotalPhys / (1024 * 1024));
+  }
+  return 0;
+#elif defined(__APPLE__)
   int64_t mem = 0;
   size_t len = sizeof(mem);
   if (sysctlbyname("hw.memsize", &mem, &len, nullptr, 0) == 0) {
@@ -812,6 +893,9 @@ void PosixTelemetry::LogProcessInfo() const {
                        .AddString("architecture", GetArchitecture())
                        .AddString("cpuModel", GetCpuModel())
                        .AddString("deviceClass", GetDeviceClass())
+#ifdef _WIN32
+                       .AddString("windowsPlatformDeviceId", GetHashedWindowsPlatformDeviceId())
+#endif
                        .AddInt32("processorCount", GetProcessorCount())
                        .AddInt64("totalMemoryMB", GetTotalMemoryMB());
 
@@ -1239,6 +1323,30 @@ void PosixTelemetry::LogSystemMetrics(uint32_t session_id) const {
       return;
     }
 
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS memory_counters{};
+    memory_counters.cb = sizeof(memory_counters);
+    FILETIME creation_time{}, exit_time{}, kernel_time{}, user_time{};
+    if (::GetProcessMemoryInfo(::GetCurrentProcess(), &memory_counters, sizeof(memory_counters)) != 0 &&
+        ::GetProcessTimes(::GetCurrentProcess(), &creation_time, &exit_time, &kernel_time, &user_time) != 0) {
+      const auto to_microseconds = [](const FILETIME& value) {
+        ULARGE_INTEGER ticks{};
+        ticks.LowPart = value.dwLowDateTime;
+        ticks.HighPart = value.dwHighDateTime;
+        return static_cast<int64_t>(ticks.QuadPart / 10);
+      };
+      const int64_t user_microseconds = to_microseconds(user_time);
+      const int64_t kernel_microseconds = to_microseconds(kernel_time);
+      auto event = builder.AddUInt32("sessionId", session_id)
+                       .AddInt64("maxRssKb", static_cast<int64_t>(memory_counters.PeakWorkingSetSize / 1024))
+                       .AddInt64("userCpuTimeSec", user_microseconds / 1000000)
+                       .AddInt64("userCpuTimeUsec", user_microseconds % 1000000)
+                       .AddInt64("systemCpuTimeSec", kernel_microseconds / 1000000)
+                       .AddInt64("systemCpuTimeUsec", kernel_microseconds % 1000000)
+                       .Build();
+      LogEventAsync(std::move(event));
+    }
+#else
     struct rusage usage;
     if (getrusage(RUSAGE_SELF, &usage) == 0) {
       // ru_maxrss is in KB on Linux, bytes on macOS
@@ -1262,6 +1370,7 @@ void PosixTelemetry::LogSystemMetrics(uint32_t session_id) const {
 
       LogEventAsync(std::move(event));
     }
+#endif
   });
 }
 

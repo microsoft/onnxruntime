@@ -19,6 +19,7 @@ enum class DeviceIdStatus {
 /**
  * Manages a persistent device identifier for telemetry purposes.
  * The device ID is stored in a platform-appropriate location:
+ * - Windows: HKCU\SOFTWARE\Microsoft\DeveloperTools\.onnxruntime, deviceid value
  * - macOS: ~/Library/Application Support/Microsoft/DeveloperTools/.onnxruntime/deviceid
  * - Linux: $XDG_CACHE_HOME (or ~/.cache) /Microsoft/DeveloperTools/.onnxruntime/deviceid
  *
@@ -38,7 +39,8 @@ class DeviceId {
   std::string GetStatusString();
 
   // Get the directory path for device ID / telemetry cache storage
-  // (macOS: ~/Library/Application Support/...; Linux: $XDG_CACHE_HOME or ~/.cache/...).
+  // (Windows: %LOCALAPPDATA%\...; macOS: ~/Library/Application Support/...;
+  // Linux: $XDG_CACHE_HOME or ~/.cache/...).
   static std::string GetStorageDirectory();
 
   // Same as GetStorageDirectory(), but also creates the directory tree (0700) if it does not exist.

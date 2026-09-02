@@ -964,7 +964,13 @@ std::string WindowsEnv::FormatLibraryFileName(const std::string& name, const std
 
 // \brief returns a provider that will handle telemetry on the current platform
 const Telemetry& WindowsEnv::GetTelemetryProvider() const {
+#ifdef USE_1DS_TELEMETRY
   return telemetry_provider_;
+#elif defined(USE_WINDOWS_TELEMETRY)
+  return windows_telemetry_provider_;
+#else
+  return telemetry_provider_;
+#endif
 }
 
 // \brief returns a value for the queried variable name (var_name)

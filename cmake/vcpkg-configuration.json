@@ -1,5 +1,5 @@
 {
-    "$comment": "Baseline pinned to versions compatible with cpp-client-telemetry 3.10.173.1. ORT's overlay port replaces the upstream curl/OpenSSL transport with static curl/mbedTLS for POSIX telemetry.",
+    "$comment": "The telemetry feature requires cpp-client-telemetry 3.10.240.1 or newer from the default registry.",
     "default-registry": {
         "kind": "git",
         "repository": "https://github.com/Microsoft/vcpkg",

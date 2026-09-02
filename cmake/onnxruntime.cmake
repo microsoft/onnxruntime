@@ -125,12 +125,13 @@ if(onnxruntime_BUILD_SHARED_LIB)
       if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
         set(APPLE_SYSTEM_FRAMEWORKS
           "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\", \\\"UIKit\\\"")
-        set(APPLE_SYSTEM_LIBRARIES "")
       else()
         set(APPLE_SYSTEM_FRAMEWORKS
           "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"IOKit\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\"")
-        set(APPLE_SYSTEM_LIBRARIES "")
       endif()
+      # 1DS intentionally uses Apple's system SQLite and zlib on every Apple platform. Static
+      # XCFramework consumers must link these because they cannot be embedded in the framework.
+      set(APPLE_SYSTEM_LIBRARIES "\\\"sqlite3\\\", \\\"z\\\"")
     endif()
 
     set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
