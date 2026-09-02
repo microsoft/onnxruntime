@@ -505,6 +505,7 @@ The **OpSet Version** column uses the following notation:
 |Sum|*in* data_0:**T**<br> *out* sum:**T**|13+|**T** = tensor(double), tensor(float)|
 |||[8, 12]|**T** = tensor(double), tensor(float)|
 |||[6, 7]|**T** = tensor(double), tensor(float)|
+|SwiGLU|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|28+|**T** = tensor(double), tensor(float)|
 |Tan|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
 |||[7, 21]|**T** = tensor(float)|
 |Tanh|*in* input:**T**<br> *out* output:**T**|13+|**T** = tensor(double), tensor(float)|
