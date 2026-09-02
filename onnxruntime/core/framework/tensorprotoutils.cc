@@ -1994,6 +1994,8 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag ||
                     external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
+  ORT_RETURN_IF(file_offset < 0, "External initializer: ", tensor_proto.name(),
+                " has a negative offset: ", file_offset);
 
   if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3 ||
       tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
