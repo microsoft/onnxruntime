@@ -639,6 +639,30 @@ struct TensorCaster<float, MLFloat16> {
   }
 };
 
+template <>
+struct TensorCaster<MLFloat16, Float6E2M3> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<MLFloat16>();
+    auto* out_data = out.MutableData<Float6E2M3>();
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      out_data[i] = Float6E2M3(static_cast<float>(in_data[i]));
+    }
+  }
+};
+
+template <>
+struct TensorCaster<MLFloat16, Float6E3M2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<MLFloat16>();
+    auto* out_data = out.MutableData<Float6E3M2>();
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      out_data[i] = Float6E3M2(static_cast<float>(in_data[i]));
+    }
+  }
+};
+
 // (U)Int4x2 -> string or numeric types
 template <typename SrcType, typename DstType>
 struct TensorCaster<SrcType, DstType,
