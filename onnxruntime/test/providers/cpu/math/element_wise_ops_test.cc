@@ -4708,6 +4708,16 @@ TEST(ModOpTest, Signed_integer_overflow_case) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(ModOpTest, Signed_integer_overflow_case_fmod) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddAttribute<int64_t>("fmod", 1);
+  test.AddInput<int32_t>("X", {2}, {std::numeric_limits<int32_t>::min(), 7});
+  test.AddInput<int32_t>("Y", {2}, {-1, -3});
+  test.AddOutput<int32_t>("Z", {2}, {0, 1});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
 TEST(ModOpTest, Int8_mixed_sign) {
   OpTester test("Mod", ModOp_ver);
   test.AddInput<int8_t>("X", {6}, {-4, 7, 5, 4, -7, 8});
