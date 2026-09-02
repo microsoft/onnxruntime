@@ -605,9 +605,8 @@ Napi::Value InferenceSessionWrap::EndProfiling(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
-  // Unlike dispose(), this cannot be deferred: it has to return the profile filename synchronously,
-  // and reading it while a run executes on the threadpool is not safe.
-  ORT_NAPI_THROW_ERROR_IF(this->active_runs_ != 0, env, "Cannot end profiling while inference is running.");
+  // Safe to call while runs are in flight: Profiler::EndProfiling() and the event recording done by
+  // a running inference both take the profiler's own mutex, so ending early simply stops collecting.
 
   Napi::EscapableHandleScope scope(env);
 

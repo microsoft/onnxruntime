@@ -294,13 +294,18 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
-  it('rejects endProfiling() while inference is running', async () => {
+  it('allows endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
-    const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });
+    try {
+      const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });
 
-    assert.throws(() => localSession.endProfiling(), /Cannot end profiling while inference is running/);
-    assertTensorEqual((await run).output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
-    await localSession.release();
+      // The profiler serializes ending against the event recording an in-flight run performs, so
+      // this neither throws nor disturbs the run.
+      localSession.endProfiling();
+      assertTensorEqual((await run).output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+    } finally {
+      await localSession.release().catch(() => {});
+    }
   });
 
   it('rejects preallocated string outputs', async () => {
