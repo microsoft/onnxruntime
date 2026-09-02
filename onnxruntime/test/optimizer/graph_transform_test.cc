@@ -6,6 +6,7 @@
 #endif
 
 #include <functional>
+#include <fstream>
 #include <random>
 #include <sstream>
 
@@ -4153,6 +4154,108 @@ ConvActivationBuilder SimpleActivation(const std::string& op_type,
   };
 }
 
+// Use fp16, group 1, NHWC, and a non-1x1 kernel to select Im2ColMatMulProgram.
+void RunWebGpuIm2ColActivationParity(const ConvActivationBuilder& add_activation,
+                                     const std::string& expected_activation,
+                                     int opset_version) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  const std::vector<int64_t> input_shape{1, 4, 14, 14};
+  const std::vector<int64_t> weight_shape{8, 4, 3, 3};
+
+  auto to_fp16 = [](const std::vector<float>& values) {
+    std::vector<MLFloat16> converted;
+    converted.reserve(values.size());
+    for (float v : values) {
+      converted.push_back(MLFloat16(v));
+    }
+    return converted;
+  };
+
+  // Use deterministic signed inputs for stable fp16 comparisons.
+  auto ramp = [](size_t count, float lo, float hi) {
+    std::vector<float> values(count);
+    for (size_t i = 0; i < count; ++i) {
+      values[i] = lo + (hi - lo) * (static_cast<float>(i % 32) / 31.0f);
+    }
+    return values;
+  };
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<MLFloat16>(input_shape, to_fp16(ramp(1 * 4 * 14 * 14, -3.0f, 3.0f)));
+    auto* weight = builder.MakeInitializer<MLFloat16>(weight_shape, to_fp16(ramp(8 * 4 * 3 * 3, -0.5f, 0.5f)));
+    auto* bias = builder.MakeInitializer<MLFloat16>({weight_shape[0]}, to_fp16(ramp(8, -0.5f, 0.5f)));
+    auto* conv_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Conv", {input, weight, bias}, {conv_out});
+    add_activation(builder, conv_out, output);
+  };
+
+  bool im2col_selected = false;
+  std::string observed_conv_programs;
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    bool fused = false;
+    std::ostringstream graph_description;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      graph_description << " " << node.Domain() << "." << node.OpType()
+                        << "[" << node.GetExecutionProviderType() << "]";
+      if (node.OpType() != "Conv") {
+        continue;
+      }
+      const auto* activation_attr = graph_utils::GetNodeAttribute(node, "activation");
+      if (activation_attr != nullptr && activation_attr->s() == expected_activation) {
+        fused = true;
+      }
+    }
+    ASSERT_TRUE(fused) << "Conv did not absorb " << expected_activation
+                       << ", so no fused kernel ran at all. Graph was:" << graph_description.str();
+
+    // Confirm profiling observed Im2ColMatMulProgram rather than the fallback Conv path.
+    const std::string profile_path = session.EndProfiling();
+    ASSERT_FALSE(profile_path.empty()) << "profiling produced no file, so program selection is unverifiable";
+    std::ifstream profile_stream(profile_path);
+    ASSERT_TRUE(profile_stream.good()) << "cannot read profile " << profile_path;
+    std::stringstream buffer;
+    buffer << profile_stream.rdbuf();
+    const std::string profile_contents = buffer.str();
+
+    im2col_selected = profile_contents.find("Im2ColMatMul") != std::string::npos;
+    for (size_t pos = profile_contents.find("&Conv&"); pos != std::string::npos;
+         pos = profile_contents.find("&Conv&", pos + 1)) {
+      const size_t end = profile_contents.find('"', pos);
+      if (end != std::string::npos) {
+        observed_conv_programs += " " + profile_contents.substr(pos + 6, end - pos - 6);
+      }
+    }
+    // GPU timestamp events carry a "cache_key" argument. A device without timestamp query support
+    // emits none at all, which is not the same as dispatching an unexpected program.
+    if (profile_contents.find("cache_key") == std::string::npos) {
+      GTEST_SKIP() << "device reported no GPU timestamps, so program selection is unobservable here";
+    }
+    ASSERT_FALSE(observed_conv_programs.empty())
+        << "GPU kernels were profiled but none was a Conv dispatch, so this test can no longer tell "
+           "whether the im2col program was selected";
+  };
+
+  RunWebGpuFusionTransformerTest(build_test_case, check_transformed_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset_version,
+                                 /*per_sample_tolerance=*/2e-2,
+                                 /*relative_per_sample_tolerance=*/2e-2,
+                                 /*transformer=*/nullptr, []() { return DefaultWebGpuExecutionProvider(); }, [](SessionOptions& session_options) {
+                                   session_options.enable_profiling = true;
+                                   session_options.profile_file_prefix = ORT_TSTR("webgpu_im2col_activation"); });
+
+  // Im2ColMatMulProgram is restricted to Intel Xe-2/Xe-3.
+  if (!im2col_selected) {
+    GTEST_SKIP() << "Im2ColMatMul did not run on this adapter, so the im2col activation epilogue was "
+                    "not exercised. Conv dispatched to:"
+                 << observed_conv_programs
+                 << ". Requires an Intel Xe-2/Xe-3 GPU per IsDeviceSupported().";
+  }
+}
+
 }  // namespace
 
 TEST_F(GraphTransformationTests, WebGpuConvReluFusionMatchesUnfusedResults) {
@@ -4248,6 +4351,38 @@ TEST_F(GraphTransformationTests, WebGpuConvLeakyReluParityAcrossAlphaValues) {
       "LeakyRelu", 17, input_shape, weight_shape);
 }
 
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvReluFusionMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(SimpleActivation("Relu"), "Relu", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvLeakyReluFusionMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(
+      SimpleActivation("LeakyRelu", kOnnxDomain, [](Node& node) { node.AddAttribute("alpha", 0.25f); }),
+      "LeakyRelu", 17);
+}
+
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvHardSigmoidFusionMatchesUnfusedResults) {
+  RunWebGpuIm2ColActivationParity(
+      SimpleActivation("HardSigmoid", kOnnxDomain,
+                       [](Node& node) {
+                         node.AddAttribute("alpha", 0.3f);
+                         node.AddAttribute("beta", 0.7f);
+                       }),
+      "HardSigmoid", 17);
+}
+
+// Clip is the only two-slot activation whose uniform slots mean {min, max} rather than
+// {alpha, beta}, so it is the one case where swapping or mis-indexing activation_param_0/1
+// would survive the HardSigmoid test above.
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvClipFusionMatchesUnfusedResults) {
+  auto add_clip = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    // min/max must match the fp16 tensor type this path requires.
+    auto* min_value = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(-0.25f));
+    auto* max_value = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(0.75f));
+    builder.AddNode("Clip", {conv_out, min_value, max_value}, {output});
+  };
+  RunWebGpuIm2ColActivationParity(add_clip, "Clip", 17);
+}
 #endif  // defined(USE_WEBGPU)
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
