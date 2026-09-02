@@ -2440,19 +2440,19 @@ void TestFloat6ToPackedIntegerTruncation() {
   const std::vector<F6> input{F6(positive_fractional_bits, F6::FromBits()),
                               F6(negative_fractional_bits, F6::FromBits())};  // +1.5, -1.5
 
-  const std::vector<Int4x2> int4_output{Int4x2(0xF1, Int4x2::FromBits())};
+  const std::vector<Int4x2> int4_output{Int4x2(std::byte{0xF1})};
   TestCastOp(gsl::make_span(input), gsl::make_span(int4_output), shape,
              OpTester::ExpectResult::kExpectSuccess, "", 28);
 
-  const std::vector<UInt4x2> uint4_output{UInt4x2(0xF1, UInt4x2::FromBits())};
+  const std::vector<UInt4x2> uint4_output{UInt4x2(std::byte{0xF1})};
   TestCastOp(gsl::make_span(input), gsl::make_span(uint4_output), shape,
              OpTester::ExpectResult::kExpectSuccess, "", 28);
 
-  const std::vector<Int2x4> int2_output{Int2x4(0x0D, Int2x4::FromBits())};
+  const std::vector<Int2x4> int2_output{Int2x4(std::byte{0x0D})};
   TestCastOp(gsl::make_span(input), gsl::make_span(int2_output), shape,
              OpTester::ExpectResult::kExpectSuccess, "", 28);
 
-  const std::vector<UInt2x4> uint2_output{UInt2x4(0x0D, UInt2x4::FromBits())};
+  const std::vector<UInt2x4> uint2_output{UInt2x4(std::byte{0x0D})};
   TestCastOp(gsl::make_span(input), gsl::make_span(uint2_output), shape,
              OpTester::ExpectResult::kExpectSuccess, "", 28);
 }
