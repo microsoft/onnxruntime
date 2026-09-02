@@ -1016,8 +1016,10 @@ class Cast final : public OpKernel {
                           to != ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ &&
                           to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 &&
                           to != ONNX_NAMESPACE::TensorProto::FLOAT8E5M2FNUZ &&
-                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E8M0)) {
-      ORT_THROW("Attribute saturate is only used for cast to float 8 types.");
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT8E8M0 &&
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT6E2M3 &&
+                          to != ONNX_NAMESPACE::TensorProto::FLOAT6E3M2)) {
+      ORT_THROW("Attribute saturate is only used for cast to low-precision floating-point types.");
     }
 #else
     if (saturate == 0) {
@@ -1172,6 +1174,10 @@ Status Cast::Compute(OpKernelContext* context) const {
     utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
     dispatcher.Invoke<SrcDispatcher>(to_, *context, shape, *X, *Y);
 #if !defined(DISABLE_FLOAT8_TYPES)
+  } else if (to_ == ONNX_NAMESPACE::TensorProto::FLOAT6E2M3 ||
+             to_ == ONNX_NAMESPACE::TensorProto::FLOAT6E3M2) {
+    utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
+    dispatcher.Invoke<SrcDispatcher>(to_, *context, shape, *X, *Y);
   } else if (to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FN ||
              to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E4M3FNUZ ||
              to_ == ONNX_NAMESPACE::TensorProto::FLOAT8E5M2 ||

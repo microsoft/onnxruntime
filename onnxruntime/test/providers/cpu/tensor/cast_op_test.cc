@@ -2417,6 +2417,14 @@ TEST(CastOpTest, Float6EncodingBoundaries) {
   EXPECT_EQ(Float6E2M3(-std::numeric_limits<float>::max()).ToBits(), 0x3F);
   EXPECT_EQ(Float6E3M2(std::numeric_limits<float>::max()).ToBits(), 0x1F);
   EXPECT_EQ(Float6E3M2(-std::numeric_limits<float>::max()).ToBits(), 0x3F);
+  EXPECT_EQ(Float6E2M3(std::numeric_limits<float>::quiet_NaN()).ToBits(), 0x20);
+  EXPECT_EQ(Float6E3M2(std::numeric_limits<float>::quiet_NaN()).ToBits(), 0x20);
+
+  // Round-to-nearest-even at adjacent normalized E2M3 and E3M2 values.
+  EXPECT_EQ(Float6E2M3(1.0625f).ToBits(), 0x08);
+  EXPECT_EQ(Float6E2M3(1.1875f).ToBits(), 0x0A);
+  EXPECT_EQ(Float6E3M2(1.125f).ToBits(), 0x0C);
+  EXPECT_EQ(Float6E3M2(1.375f).ToBits(), 0x0E);
 
   EXPECT_EQ(static_cast<float>(Float6E2M3(0x01, Float6E2M3::FromBits())), 0.125f);
   EXPECT_EQ(static_cast<float>(Float6E2M3(0x1F, Float6E2M3::FromBits())), 7.5f);
