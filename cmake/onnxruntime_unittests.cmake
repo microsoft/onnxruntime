@@ -1829,6 +1829,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       VERBATIM)
     add_custom_target(onnx_node_tests_materialized ALL
       DEPENDS ${_materialized_node_root}/.stamp)
+    # Keep the corpus available for targeted onnx_test_runner builds as well as
+    # normal ALL builds. The runner is the direct C++ consumer of this artifact.
+    add_dependencies(onnx_test_runner onnx_node_tests_materialized)
 
     if (NOT onnxruntime_REDUCED_OPS_BUILD)
       # First-class ctest over the materialized node corpus (the durable replacement for the
