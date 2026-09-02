@@ -44,14 +44,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    try:
-        body = args.body_file.read_text(encoding="utf-8")
-        collection_output = json.loads(args.collection_output.read_text(encoding="utf-8"))
-        if not isinstance(collection_output, dict):
-            raise ValueError("collection output must be a JSON object")
-        validate_pr_description(body, collection_output)
-    except (OSError, json.JSONDecodeError, ValueError) as error:
-        parser.error(str(error))
+    body = args.body_file.read_text(encoding="utf-8")
+    collection_output = json.loads(args.collection_output.read_text(encoding="utf-8"))
+    if not isinstance(collection_output, dict):
+        raise ValueError("collection output must be a JSON object")
+    validate_pr_description(body, collection_output)
 
 
 if __name__ == "__main__":
