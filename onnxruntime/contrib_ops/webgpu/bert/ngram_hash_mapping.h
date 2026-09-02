@@ -32,10 +32,13 @@ class NGramHashMappingProgram final : public Program<NGramHashMappingProgram> {
 // the n-gram windows across invocations.
 class NGramPresentIdsProgram final : public Program<NGramPresentIdsProgram> {
  public:
-  NGramPresentIdsProgram(bool has_input_ids, bool has_past_ids)
-      : Program{"NGramPresentIds"}, has_input_ids_(has_input_ids), has_past_ids_(has_past_ids) {}
+  NGramPresentIdsProgram(bool has_input_ids, bool has_past_ids, bool past_aliases_present)
+      : Program{"NGramPresentIds"},
+        has_input_ids_(has_input_ids),
+        has_past_ids_(has_past_ids),
+        past_aliases_present_(past_aliases_present) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"state_length", ProgramUniformVariableDataType::Uint32},
                                           {"pad_id", ProgramUniformVariableDataType::Int32});
@@ -45,6 +48,10 @@ class NGramPresentIdsProgram final : public Program<NGramPresentIdsProgram> {
   // present slot is history or pad_id, so the input_ids branch is omitted entirely.
   bool has_input_ids_;
   bool has_past_ids_;
+  // True when the caller threaded present_ids straight back into past_ids. WebGPU forbids binding
+  // one buffer as both read-only and read-write storage in a single compute pass, so the history is
+  // then read back through the present_ids (read_write) binding rather than a second binding.
+  bool past_aliases_present_;
 };
 
 class NGramHashMapping final : public WebGpuKernel {

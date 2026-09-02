@@ -80,9 +80,7 @@ jobs:
       targetPath: $(Build.BinariesDirectory)/.artifacts
       artifactName: ${{parameters.artifactName}}
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: jobs/checkout-and-git-redirect.yml
 
   - task: CmdLine@2
     displayName: Create artifacts directory

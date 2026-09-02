@@ -178,7 +178,7 @@ void ProcessChannelPrefill(
     float* out_row,      // output for this (b,c): [L] strided
     float* present_row,  // present_state for this (b,c): [pad] strided
     float* padded_row,   // scratch buffer: [pad + L]
-    float* out_buf,      // scratch buffer: [L]
+    float* out_buf,      // scratch buffer: [L], only used when act_stride != 1
     int64_t act_stride,
     int64_t state_stride,
     int64_t L,
@@ -197,6 +197,9 @@ void ProcessChannelPrefill(
 
   // Depthwise 1D convolution. Tap k of output position l reads padded_row[l + k*dilation]; at
   // k = K-1 that is padded_row[l + pad], i.e. the current input position.
+  // A contiguous output row is written in place; only a strided one needs the scratch round trip,
+  // so the channels-first layout keeps the exact write pattern it had before strides existed.
+  float* conv_dst = act_stride == 1 ? out_row : out_buf;
   for (int64_t l = 0; l < L; ++l) {
     float sum = bias_val;
     for (int64_t k = 0; k < K; ++k) {
@@ -205,9 +208,11 @@ void ProcessChannelPrefill(
     if (apply_silu) {
       sum = ApplySilu(sum);
     }
-    out_buf[l] = sum;
+    conv_dst[l] = sum;
   }
-  ScatterStrided(out_row, act_stride, out_buf, L);
+  if (act_stride != 1) {
+    ScatterStrided(out_row, act_stride, out_buf, L);
+  }
 
   // Save present_state: last pad elements of (past_state | input)
   ScatterStrided(present_row, state_stride, padded_row + padded_len - pad, pad);
@@ -351,9 +356,10 @@ Status CausalConvWithState<T>::Compute(OpKernelContext* context) const {
           static_cast<std::ptrdiff_t>(total_tasks),
           cost_per_task,
           [&](std::ptrdiff_t first, std::ptrdiff_t last) {
-            // Per-thread scratch buffers for the padded input window and the output row
+            // Per-thread scratch buffers for the padded input window and, only when the output row
+            // is strided, the contiguous convolution result that is then scattered into it.
             std::vector<float> padded_buf(static_cast<size_t>(pad + L));
-            std::vector<float> out_buf(static_cast<size_t>(L));
+            std::vector<float> out_buf(act_layout.pos_stride == 1 ? 0 : static_cast<size_t>(L));
 
             for (std::ptrdiff_t task = first; task < last; ++task) {
               int64_t b = task / channels;
