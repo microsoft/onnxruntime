@@ -157,15 +157,14 @@ requested code change.
 
 ### 5. Preserve provenance
 
-Include a concise, visible source line with the changed guidance unit, for example:
+Include a concise source line with every guidance unit added or materially revised by this workflow. Link the same
+source review comment in the PR table. For example:
 
 ```markdown
 Source: [PR #12345 review comment](https://github.com/microsoft/onnxruntime/pull/12345#discussion_r123456789)
 ```
 
 When several comments support one invariant, link each materially distinct source without repeating duplicate evidence.
-
-Also link the source review comment(s) from the candidate commit message and PR table.
 
 ### 6. Search for existing coverage
 
@@ -182,7 +181,8 @@ For Copilot comments, apply the step 3 filters first. Then classify each candida
 
 | Classification | Action |
 |---|---|
-| Mechanically enforceable | Record a follow-up test or tooling change; do not add redundant prose. |
+| Already mechanically enforced | Do not add redundant prose. Record the enforcement in the omitted-candidates section. |
+| Suitable for new mechanical enforcement | Record follow-up work. Add narrowly scoped interim guidance only when the failure can recur before enforcement lands and has material impact. |
 | Already covered and correctly scoped | Do not change guidance. Record it in the omitted-candidates section. |
 | Covered but repeatedly missed | Improve discoverability, scope, wording, examples, or mechanical enforcement. |
 | Localized invariant | Update the narrowest matching path-scoped instruction. |
@@ -234,8 +234,7 @@ For every included candidate:
 4. Validate paths, symbols, links, commands, and technical claims against the current default branch.
 5. Create one commit for that candidate.
 
-Each commit message must identify the generalized lesson and include the source PR and review-comment URL. Do not mix
-unrelated candidates in one commit.
+Each commit message must identify the generalized lesson. Do not mix unrelated candidates in one commit.
 
 If a candidate requires production code or broad test changes, do not hide that work inside a guidance collection PR.
 Record it under follow-up enforcement work instead.
@@ -278,9 +277,6 @@ Collection start source: <merged collection PR number, or `explicit --since`>
 ```
 ````
 
-The PR description and commits provide provenance. Avoid adding source-history narration to the guidance itself unless
-the source is necessary to understand the invariant.
-
 Write the complete PR description to a temporary file, validate it against the preserved collection output using
 `scripts/validate_pr_description.py`, and pass that same body file to `gh pr create`:
 
@@ -291,7 +287,7 @@ python .github/skills/collect-agent-guidance-from-reviews/scripts/validate_pr_de
 gh pr create --body-file <pr-description-path> ...
 ```
 
-Do not open or update the PR if validation fails.
+Do not open the PR or update the PR description if validation fails.
 
 ## Review Updates
 

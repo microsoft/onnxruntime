@@ -1,8 +1,7 @@
-import unittest
 from contextlib import redirect_stderr
 from datetime import datetime, timezone
 from io import StringIO
-from unittest import mock
+from unittest import TestCase, main, mock
 
 import list_merged_prs
 from collection_marker import MARKER_PATTERN, generate_marker
@@ -27,7 +26,7 @@ def pull_request(number: int, body: str, merged_at: datetime | None = None) -> d
     }
 
 
-class ListMergedPullRequestsTest(unittest.TestCase):
+class ListMergedPullRequestsTest(TestCase):
     @mock.patch.object(list_merged_prs, "run_gh")
     def test_resolve_repository_uses_script_directory(self, run_gh):
         run_gh.return_value = "microsoft/onnxruntime\n"
@@ -173,6 +172,27 @@ class ListMergedPullRequestsTest(unittest.TestCase):
             search.call_args.args[1],
         )
 
+    @mock.patch.object(list_merged_prs, "search_pull_requests")
+    def test_list_candidates_excludes_only_valid_collection_markers(self, search):
+        search.return_value = [
+            pull_request(1, generate_marker(timestamp(1), timestamp(2)), timestamp(2)),
+            pull_request(
+                2,
+                "Agent-Guidance-Collection: version=1; base=main; "
+                "harvested-since=oops; harvested-through=2026-08-02T00:00:00Z",
+                timestamp(2),
+            ),
+            pull_request(3, "Discusses Agent-Guidance-Collection without metadata.", timestamp(2)),
+        ]
+
+        candidates = list_merged_prs.list_candidates(
+            "microsoft/onnxruntime",
+            timestamp(1),
+            timestamp(3),
+        )
+
+        self.assertEqual([candidate["number"] for candidate in candidates], [2, 3])
+
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

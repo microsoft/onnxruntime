@@ -11,7 +11,6 @@ from typing import Any
 
 from collection_marker import (
     MARKER_PATTERN,
-    MARKER_PREFIX,
     format_utc_timestamp,
     generate_marker,
     parse_marker,
@@ -191,7 +190,11 @@ def list_candidates(repository: str, since: datetime, through: datetime) -> list
             continue
 
         body = pull_request.get("body") or ""
-        if MARKER_PREFIX in body:
+        try:
+            parse_marker(body)
+        except ValueError:
+            pass
+        else:
             continue
 
         candidates.append(
