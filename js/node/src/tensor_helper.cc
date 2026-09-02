@@ -524,6 +524,9 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
             },
             static_cast<OrtValue*>(value), &externalArrayBuffer);
         if (status == napi_ok) {
+          // Ownership of the OrtValue moves to the ArrayBuffer: the finalizer above releases it, so
+          // the buffer stays valid for as long as Javascript can reach it rather than dying with the
+          // vector this value was returned in.
           value.release();
           arrayBuffer = Napi::ArrayBuffer(env, externalArrayBuffer);
           usingExternalBuffer = true;

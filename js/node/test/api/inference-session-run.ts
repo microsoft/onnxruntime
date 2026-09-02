@@ -294,6 +294,36 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('keeps output data valid after the run and the session are gone', async () => {
+    // Outputs are handed to Javascript as external ArrayBuffers over ORT's own memory, so the
+    // OrtValue's ownership has to move to the ArrayBuffer rather than stay with the vector the run
+    // held it in. If it does not, the data dies with the worker and this reads freed memory.
+    const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    const first = await InferenceSession.create(modelPath);
+    const retained: Tensor[] = [];
+    try {
+      for (let i = 0; i < 8; i++) {
+        retained.push((await first.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) })).output);
+      }
+    } finally {
+      await first.release();
+    }
+
+    // Churn allocations through an unrelated session, then check the retained outputs again.
+    const second = await InferenceSession.create(modelPath);
+    try {
+      for (let i = 0; i < 50; i++) {
+        await second.run({ input: new Tensor('float32', [5, 4, 3, 2, 1], [1, 5]) });
+      }
+    } finally {
+      await second.release();
+    }
+
+    for (const output of retained) {
+      assertTensorEqual(output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+    }
+  });
+
   it('rejects endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     try {
