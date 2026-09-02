@@ -84,17 +84,20 @@ Status NGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     input_ids = &shader.AddInput("input_ids", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* past_ids = nullptr;
-  if (has_past_ids_) {
+  if (has_past_ids_ && !past_aliases_present_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
   }
   const auto& present_ids = shader.AddOutput("present_ids", ShaderUsage::UseUniform);
+  // When past_ids aliases present_ids the history lives in the output buffer itself, and reading it
+  // through the read_write binding is the only spec-legal way to reach it.
+  const ShaderVariableHelper* history = past_aliases_present_ ? &present_ids : past_ids;
 
   // past_ids and present_ids may be the same buffer, which is what threading present_ids straight
-  // back into past_ids produces. Slot `slot` writes index `slot` and reads index
-  // `slot + sequence_length`, so the read and write ranges overlap and must be separated. One
-  // workgroup owns one batch row and walks it in ascending workgroup-sized chunks: a barrier
-  // separates the chunk's reads from its writes, and a chunk only writes indices strictly below the
-  // read indices of every later chunk.
+  // back into past_ids produces; `history` above then points at the output binding. Slot `slot`
+  // writes index `slot` and reads index `slot + sequence_length`, so the read and write ranges
+  // overlap and must be separated. One workgroup owns one batch row and walks it in ascending
+  // workgroup-sized chunks: a barrier separates the chunk's reads from its writes, and a chunk only
+  // writes indices strictly below the read indices of every later chunk.
   shader.MainFunctionBody()
       << "  let b = workgroup_idx;\n"
       // NormalizeDispatchGroupSize reshapes an oversized 1-D dispatch to a 2-D grid that rounds up,
@@ -115,7 +118,7 @@ Status NGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_past_ids_) {
     shader.MainFunctionBody()
         << "      if (slot + uniforms.sequence_length < uniforms.state_length) {\n"
-        << "        token = " << past_ids->GetByOffset("b * uniforms.state_length + slot + uniforms.sequence_length")
+        << "        token = " << history->GetByOffset("b * uniforms.state_length + slot + uniforms.sequence_length")
         << ";\n"
         << "      }\n";
   }
@@ -194,12 +197,15 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
     // bound. When sequence_length == 0 every present slot comes from history (or pad_id), so the
     // input_ids branch of the shader is dead anyway.
     const bool has_input_ids = sequence_length > 0;
-    NGramPresentIdsProgram present_program{has_input_ids, has_past_ids};
-    present_program.CacheHint(has_input_ids, has_past_ids);
+    // WebGPU rejects a bind group that exposes one buffer as both read-only and read-write storage
+    // in the same compute pass, so an aliased past_ids must not be bound a second time.
+    const bool past_aliases_present = has_past_ids && past_ids->DataRaw() == present_ids->DataRaw();
+    NGramPresentIdsProgram present_program{has_input_ids, has_past_ids, past_aliases_present};
+    present_program.CacheHint(has_input_ids, has_past_ids, past_aliases_present);
     if (has_input_ids) {
       present_program.AddInput({input_ids, ProgramTensorMetadataDependency::None});
     }
-    if (has_past_ids) {
+    if (has_past_ids && !past_aliases_present) {
       present_program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
     }
     // One workgroup per batch row, so the shader can use a workgroup barrier to order its reads
