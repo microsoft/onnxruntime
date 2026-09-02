@@ -35,7 +35,8 @@ class NGramPresentIdsProgram final : public Program<NGramPresentIdsProgram> {
   NGramPresentIdsProgram(bool has_input_ids, bool has_past_ids)
       : Program{"NGramPresentIds"}, has_input_ids_(has_input_ids), has_past_ids_(has_past_ids) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"sequence_length", ProgramUniformVariableDataType::Uint32},
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"state_length", ProgramUniformVariableDataType::Uint32},
                                           {"pad_id", ProgramUniformVariableDataType::Int32});
 

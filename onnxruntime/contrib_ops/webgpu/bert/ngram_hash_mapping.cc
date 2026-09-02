@@ -20,6 +20,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
+        .MayInplace(3, 1)
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
     NGramHashMapping);
 
@@ -96,6 +97,9 @@ Status NGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // read indices of every later chunk.
   shader.MainFunctionBody()
       << "  let b = workgroup_idx;\n"
+      // NormalizeDispatchGroupSize reshapes an oversized 1-D dispatch to a 2-D grid that rounds up,
+      // so a large batch_size can produce workgroups past the last row.
+      << "  if (b >= uniforms.batch_size) { return; }\n"
       << "  let row_base = b * uniforms.state_length;\n"
       << "  for (var chunk = 0u; chunk < uniforms.state_length; chunk += workgroup_size_x) {\n"
       << "    let slot = chunk + local_idx;\n"
@@ -202,7 +206,8 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
     // against its writes.
     present_program.AddOutput({present_ids, ProgramTensorMetadataDependency::None})
         .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch_size))
-        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(sequence_length)},
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(batch_size)},
+                              {onnxruntime::narrow<uint32_t>(sequence_length)},
                               {onnxruntime::narrow<uint32_t>(state_length)},
                               {onnxruntime::narrow<int32_t>(pad_id_)}});
     ORT_RETURN_IF_ERROR(context.RunProgram(present_program));
