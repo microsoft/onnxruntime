@@ -4,7 +4,9 @@
 import unittest
 
 import numpy as np
+import onnx
 from helper import get_name
+from onnx import TensorProto, helper
 
 import onnxruntime as onnxrt
 
@@ -60,6 +62,58 @@ class CudaGraphHelper:
 
 
 class TestInferenceSessionWithCudaGraph(unittest.TestCase):
+    @staticmethod
+    def _create_einsum_model(equation, input_shapes, output_shape):
+        input_names = [f"X{i}" for i in range(len(input_shapes))]
+        node = helper.make_node("Einsum", input_names, ["Y"], equation=equation)
+        graph = helper.make_graph(
+            [node],
+            "einsum_cuda_graph",
+            [
+                helper.make_tensor_value_info(name, TensorProto.FLOAT, shape)
+                for name, shape in zip(input_names, input_shapes, strict=False)
+            ],
+            [helper.make_tensor_value_info("Y", TensorProto.FLOAT, output_shape)],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 12)])
+        model.ir_version = onnx.IR_VERSION
+        return model.SerializeToString(), input_names
+
+    def test_einsum_cuda_graph_capture_and_replay(self):
+        if "CUDAExecutionProvider" not in onnxrt.get_available_providers():
+            self.skipTest("CUDAExecutionProvider is not available")
+
+        cases = [
+            ("bij->bji", [[2, 3, 4]], [2, 4, 3]),
+            ("bii->b", [[2, 4, 4]], [2]),
+            ("bij,bj->bij", [[2, 3, 4], [2, 4]], [2, 3, 4]),
+            ("bij,bjk->bik", [[2, 3, 4], [2, 4, 5]], [2, 3, 5]),
+            ("bij,bjk,bkl->bil", [[2, 3, 4], [2, 4, 5], [2, 5, 6]], [2, 3, 6]),
+        ]
+
+        for equation, input_shapes, output_shape in cases:
+            with self.subTest(equation=equation):
+                model, input_names = self._create_einsum_model(equation, input_shapes, output_shape)
+                session = onnxrt.InferenceSession(
+                    model,
+                    providers=[("CUDAExecutionProvider", {"enable_cuda_graph": True})],
+                )
+                shapes = dict(zip(input_names, input_shapes, strict=False))
+                shapes["Y"] = output_shape
+                graph_helper = CudaGraphHelper(session, shapes)
+
+                for replay in range(4):
+                    inputs = {
+                        name: (np.arange(np.prod(shape), dtype=np.float32).reshape(shape) + replay + 1) / 17.0
+                        for name, shape in zip(input_names, input_shapes, strict=False)
+                    }
+                    graph_helper.update_inputs(inputs)
+                    graph_helper.io_binding.synchronize_inputs()
+                    session.run_with_iobinding(graph_helper.io_binding)
+                    graph_helper.io_binding.synchronize_outputs()
+                    expected = np.einsum(equation, *(inputs[name] for name in input_names))
+                    np.testing.assert_allclose(graph_helper.get_output("Y"), expected, rtol=1e-4, atol=1e-4)
+
     def test_ort_value_update_in_place(self):
         x0 = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         ortvalue_cpu = onnxrt.OrtValue.ortvalue_from_numpy(x0)

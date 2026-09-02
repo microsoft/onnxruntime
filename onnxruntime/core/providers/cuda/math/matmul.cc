@@ -296,6 +296,18 @@ template Status FuncMatMul<MLFloat16>(
     bool trans_batch_B,
     Tensor* Y);
 
+template Status FuncMatMul<double>(
+    const CudaKernel* cuda_kernel,
+    OpKernelContext* ctx,
+    const Tensor* A,
+    const Tensor* B,
+    float alpha,
+    bool trans_A,
+    bool trans_B,
+    bool trans_batch_A,
+    bool trans_batch_B,
+    Tensor* Y);
+
 template <typename T>
 Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
