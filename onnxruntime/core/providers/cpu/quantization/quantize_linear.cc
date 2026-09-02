@@ -924,7 +924,7 @@ void ParQuantizeLinear(const InputType* Input,
       if constexpr (std::is_same_v<OutputType, Float6E2M3> || std::is_same_v<OutputType, Float6E3M2>) {
         return OutputType(0.0f);
       } else {
-        return OutputType(static_cast<InputType>(0), true);
+        return OutputType(0.0f, true);
       }
     }();
     ParQuantizeLinearSat(Input, Output, N, Scale,

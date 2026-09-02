@@ -79,9 +79,11 @@ using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecu
 // Pre-opset-24 type lists exclude types introduced after opset 23.
 #if !defined(DISABLE_FLOAT8_TYPES)
 using EnabledSrcTypesPreOpset24 =
-    boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledSrcTypes, Float8E8M0>, Float6E2M3, Float6E3M2>;
+    boost::mp11::mp_remove<boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledSrcTypes, Float8E8M0>, Float6E2M3>,
+                           Float6E3M2>;
 using EnabledDstTypesPreOpset24 =
-    boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledDstTypes, Float8E8M0>, Float6E2M3, Float6E3M2>;
+    boost::mp11::mp_remove<boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledDstTypes, Float8E8M0>, Float6E2M3>,
+                           Float6E3M2>;
 #else
 using EnabledSrcTypesPreOpset24 =
     boost::mp11::mp_remove<boost::mp11::mp_remove<EnabledSrcTypes, Float6E2M3>, Float6E3M2>;
