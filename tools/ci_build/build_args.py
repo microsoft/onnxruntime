@@ -878,11 +878,17 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         help="Build ORT shared lib with compatible bridge for primary EPs (TRT, OV, QNN, VitisAI), excludes tests.",
     )
     # Telemetry arguments (cross-platform)
-    parser.add_argument(
+    telemetry_group = parser.add_mutually_exclusive_group()
+    telemetry_group.add_argument(
         "--no_telemetry",
         dest="use_telemetry",
         action="store_false",
         help="Disable telemetry. Telemetry is enabled by default for supported native builds.",
+    )
+    telemetry_group.add_argument(
+        "--use_windows_telemetry",
+        action="store_true",
+        help="Use the legacy Windows TraceLogging telemetry backend instead of 1DS.",
     )
 
 
@@ -1026,6 +1032,8 @@ def parse_arguments() -> argparse.Namespace:
 
     if not target_supports_telemetry(args):
         args.use_telemetry = False
+    if args.use_windows_telemetry and not is_windows():
+        parser.error("--use_windows_telemetry is only supported on Windows")
 
     # Handle WASM exception logic
     if args.enable_wasm_api_exception_catching:

@@ -10,6 +10,6 @@ if (-not [string]::IsNullOrEmpty( $Env:TELEMETRYGUID) -and $Env:TELEMETRYGUID.St
     Write-Host "##vso[task.setvariable variable=TelemetryOption]"
     Write-Host "Telemetry is enabled."
 } else {
-    Write-Host "##vso[task.setvariable variable=TelemetryOption]--no_telemetry"
-    Write-Host "Telemetry is disabled."
+    Write-Host "##vso[task.setvariable variable=TelemetryOption]"
+    Write-Host "1DS telemetry will use the default tenant token."
 }

@@ -49,6 +49,17 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
+    if(onnxruntime_USE_TELEMETRY AND NOT onnxruntime_USE_WINDOWS_TELEMETRY)
+        list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/windows/device_id.cc"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_context.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_no_throw.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry_sampling.h"
+        )
+    endif()
 
 else()
     list(APPEND onnxruntime_common_src_patterns
@@ -57,7 +68,7 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
     )
 
-    # Telemetry for non-Windows platforms (enabled by USE_TELEMETRY)
+    # 1DS telemetry sources for non-Windows platforms.
     if (onnxruntime_USE_TELEMETRY)
         list(APPEND onnxruntime_common_src_patterns
              "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
@@ -162,6 +173,9 @@ if(WIN32)
       list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:shell32.dll")
     endif()
   endif()
+  if(onnxruntime_USE_TELEMETRY AND NOT onnxruntime_USE_WINDOWS_TELEMETRY)
+    target_link_libraries(onnxruntime_common PRIVATE iphlpapi psapi)
+  endif()
 endif()
 
 if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
@@ -172,7 +186,8 @@ if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x
 endif()
 
 if (onnxruntime_USE_TELEMETRY)
-  if(WIN32)
+  if(WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY)
+    target_compile_definitions(onnxruntime_common PRIVATE USE_WINDOWS_TELEMETRY)
     set(ONNXRUNTIME_TELEMETRY_CONFIG_HEADER
         "${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
     if(EXISTS "${ONNXRUNTIME_TELEMETRY_CONFIG_HEADER}")
@@ -181,7 +196,7 @@ if (onnxruntime_USE_TELEMETRY)
         PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_TELEMETRY_CONFIG_HEADER}")
     endif()
   else()
-    target_compile_definitions(onnxruntime_common PRIVATE USE_POSIX_TELEMETRY)
+    target_compile_definitions(onnxruntime_common PRIVATE USE_1DS_TELEMETRY)
     # Optional tenant-token override written into a generated header in the build tree (kept off the
     # compiler command line, so the token never appears in compile_commands.json or build logs). It may be
     # supplied either as -DONNXRUNTIME_TELEMETRY_TENANT_TOKEN=... or via an
@@ -268,8 +283,8 @@ if(CPUINFO_SUPPORTED)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo)
 endif()
 
-# Link telemetry library (1DS SDK) for non-Windows platforms
-if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+# Link the default 1DS telemetry backend.
+if(onnxruntime_USE_TELEMETRY AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY))
   if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE AND TARGET MSTelemetry::mat)
     # The vcpkg package target propagates its include
     # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
@@ -295,43 +310,25 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
         "$<TARGET_FILE_NAME:p256m>")
       string(CONCAT _onnxruntime_telemetry_install_exclude_libs
         "LINKER:--exclude-libs="
-        "$<TARGET_FILE_NAME:onnxruntime::libcurl_static>:"
-        "$<TARGET_FILE_NAME:onnxruntime::mbedtls>:"
-        "$<TARGET_FILE_NAME:onnxruntime::mbedx509>:"
-        "$<TARGET_FILE_NAME:onnxruntime::mbedcrypto>:"
-        "$<TARGET_FILE_NAME:onnxruntime::everest>:"
-        "$<TARGET_FILE_NAME:onnxruntime::p256m>")
+        "$<TARGET_FILE_NAME:MSTelemetry::curl_archive>:"
+        "$<TARGET_FILE_NAME:MSTelemetry::mbedtls>:"
+        "$<TARGET_FILE_NAME:MSTelemetry::mbedx509>:"
+        "$<TARGET_FILE_NAME:MSTelemetry::mbedcrypto>:"
+        "$<TARGET_FILE_NAME:MSTelemetry::everest>:"
+        "$<TARGET_FILE_NAME:MSTelemetry::p256m>")
       target_link_options(onnxruntime_common INTERFACE
         "$<BUILD_INTERFACE:${_onnxruntime_telemetry_build_exclude_libs}>"
         "$<INSTALL_INTERFACE:${_onnxruntime_telemetry_install_exclude_libs}>")
     endif()
-    # mat propagates its public include dir as a normal (non-SYSTEM) include, so onnxruntime_common's
-    # -Wall -Wextra -Werror would apply to the SDK's headers (they trip -Werror=unused-parameter in
-    # NullObjects.hpp / LogManagerProvider.hpp). Re-add the SDK include dirs as SYSTEM to exempt them.
-    if(DEFINED cpp_client_telemetry_SOURCE_DIR)
-      target_include_directories(onnxruntime_common SYSTEM PRIVATE
-        ${cpp_client_telemetry_SOURCE_DIR}/lib/include/public
-        ${cpp_client_telemetry_SOURCE_DIR}/lib/include/mat
-        ${cpp_client_telemetry_SOURCE_DIR}/lib
-      )
-    endif()
     # Platform-specific system libraries required only for the Apple static-package path.
     if(APPLE AND NOT onnxruntime_BUILD_SHARED_LIB)
-      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        # mat already links the SDK's bundled sqlite3/zlib archives, so no system SQLite is needed here.
-        # A bare sqlite3 name would reach Xcode as -framework SQLite3, which the iOS SDK does not provide.
-        target_link_libraries(onnxruntime_common PRIVATE
-          "-framework CoreFoundation"
-          "-framework Security"
-        )
-      else()
-        target_link_libraries(onnxruntime_common PRIVATE
-          "-framework CoreFoundation"
-          "-framework Security"
-          z
-          sqlite3
-        )
-      endif()
+      # 1DS uses the Apple-provided libraries rather than embedding private SQLite/zlib copies.
+      target_link_libraries(onnxruntime_common PRIVATE
+        "-framework CoreFoundation"
+        "-framework Security"
+        sqlite3
+        z
+      )
     endif()
 
     if (NOT onnxruntime_BUILD_SHARED_LIB)
@@ -344,13 +341,7 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
               FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
       foreach(_mat_bundled_dep
           sqlite3_bundled
-          zlib_bundled
-          libcurl_static
-          mbedtls
-          mbedx509
-          mbedcrypto
-          everest
-          p256m)
+          zlib_bundled)
         if(TARGET ${_mat_bundled_dep})
           install(TARGETS ${_mat_bundled_dep} EXPORT ${PROJECT_NAME}Targets
                   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
