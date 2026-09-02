@@ -1,0 +1,38 @@
+name: Agent Skill Script Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/skills/**/scripts/**"
+      - ".github/workflows/agent-skill-script-tests.yml"
+  pull_request:
+    paths:
+      - ".github/skills/**/scripts/**"
+      - ".github/workflows/agent-skill-script-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test skill scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Setup Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+      - name: Run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Run per scripts directory so sibling imports work without making skill directories Python packages.
+          while IFS= read -r test_directory; do
+            echo "Running tests in ${test_directory}"
+            python -m unittest discover -s "${test_directory}" -p "test_*.py"
+          done < <(find .github/skills -path "*/scripts/test_*.py" -printf "%h\n" | sort -u)

@@ -93,9 +93,10 @@ Exclude:
 - automated dependency updates with no substantive human review feedback;
 - comments produced after the recorded `through` cutoff.
 
-The helper applies the merge-state, base-branch, interval, and guidance-marker exclusions. Treat its output as the
-authoritative initial set. Branch names and PR titles must not determine exclusion because maintainers can rename or edit
-them.
+The helper applies the merge-state, base-branch, and interval filters and excludes prior collection PRs by marker.
+Agent-guidance audit PRs remain in scope so reusable feedback on them can also be collected. Treat the helper's output
+as the authoritative initial set. Branch names and PR titles must not determine exclusion because maintainers can
+rename or edit them.
 
 ### 2. Identify feedback that was probably accepted
 

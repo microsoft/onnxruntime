@@ -85,6 +85,29 @@ class ListMergedPullRequestsTest(unittest.TestCase):
 
         self.assertEqual(cursor, (timestamp(4), 4))
         self.assertIn("PR #1: timestamp must use UTC", stderr.getvalue())
+        self.assertNotIn("PR #3", stderr.getvalue())
+
+    @mock.patch.object(list_merged_prs, "search_pull_requests")
+    def test_discover_since_warns_about_later_marker_when_requested(self, search):
+        search.return_value = [
+            pull_request(1, generate_marker(timestamp(1), timestamp(3))),
+            pull_request(2, generate_marker(timestamp(1), timestamp(9))),
+        ]
+
+        stderr = StringIO()
+        with redirect_stderr(stderr):
+            cursor = list_merged_prs.discover_since(
+                "microsoft/onnxruntime",
+                timestamp(8),
+                warn_about_later_markers=True,
+            )
+
+        self.assertEqual(cursor, (timestamp(3), 1))
+        self.assertIn(
+            "PR #2: harvested-through 2026-08-09T00:00:00Z is later than "
+            "the collection cutoff 2026-08-08T00:00:00Z",
+            stderr.getvalue(),
+        )
 
     @mock.patch.object(list_merged_prs, "search_pull_requests")
     def test_discover_since_rejects_pr_with_multiple_markers(self, search):

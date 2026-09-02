@@ -139,7 +139,7 @@ def warn_invalid_marker(pull_request: dict[str, Any], reason: str) -> None:
     )
 
 
-def discover_since(repository: str, through: datetime) -> tuple[datetime, int]:
+def discover_since(repository: str, through: datetime, warn_about_later_markers: bool = False) -> tuple[datetime, int]:
     """Finds the latest valid collection cutoff and the merged PR that recorded it."""
     marker_prs = search_pull_requests(
         repository,
@@ -149,6 +149,7 @@ def discover_since(repository: str, through: datetime) -> tuple[datetime, int]:
 
     for pull_request in marker_prs:
         matches = list(MARKER_PATTERN.finditer(pull_request.get("body") or ""))
+        # The GitHub text search also returns PRs that mention the marker name without containing marker metadata.
         if not matches:
             continue
 
@@ -158,6 +159,12 @@ def discover_since(repository: str, through: datetime) -> tuple[datetime, int]:
             warn_invalid_marker(pull_request, str(error))
             continue
         if harvested_through > through:
+            if warn_about_later_markers:
+                warn_invalid_marker(
+                    pull_request,
+                    f"harvested-through {format_utc_timestamp(harvested_through)} is later than "
+                    f"the collection cutoff {format_utc_timestamp(through)}",
+                )
             continue
 
         cursors.append((harvested_through, pull_request["number"]))
@@ -215,7 +222,11 @@ def main() -> None:
     if args.since:
         since = args.since
     else:
-        since, collection_start_source_pr = discover_since(repository, through)
+        since, collection_start_source_pr = discover_since(
+            repository,
+            through,
+            warn_about_later_markers=args.through is None,
+        )
     if since >= through:
         parser.error("--since must be earlier than --through")
 
