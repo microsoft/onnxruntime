@@ -98,7 +98,11 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   // Set when dispose() is called while runs are still in flight; EndRun() completes the teardown.
   bool teardown_pending_{false};
   size_t active_runs_{0};
-  std::unique_ptr<Ort::Session> session_;
+  // Shared rather than unique: a gpu-buffer Tensor handed to Javascript outlives the run, and the
+  // buffer behind it belongs to an allocator owned by this session's execution provider. Releasing
+  // such a value after the session is gone crashes, so each one holds a reference to the session
+  // and the last of them destroys it.
+  std::shared_ptr<Ort::Session> session_;
 
   // input/output metadata
   std::vector<std::string> inputNames_;

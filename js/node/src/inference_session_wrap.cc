@@ -88,7 +88,8 @@ InferenceSessionWrap::~InferenceSessionWrap() {
     for (auto& type_info : outputTypes_) {
       (void)type_info.release();
     }
-    (void)session_.release();
+    // Intentionally leak the session as well: a device-backed value may still reference it.
+    new std::shared_ptr<Ort::Session>(std::move(session_));
   }
 }
 
@@ -263,6 +264,16 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
           // carry the caller's memory and are bound directly, so ORT writes into it and no copy is
           // needed.
           output.copy_to_js = static_cast<OrtValue*>(output_value) == nullptr;
+
+          // A device output is only ever written by binding it. On the plain Run() path it would go
+          // to ORT as a preallocated fetch, which ORT is free to replace rather than fill -- the
+          // caller's buffer would then keep its previous contents and the promise would still
+          // resolve. There is no copy-back for device memory to fall back on, so refuse instead.
+          ORT_NAPI_THROW_ERROR_IF(!output.copy_to_js && session.preferredOutputLocations_.empty(), env_,
+                                  "Preallocated output '", name,
+                                  "' is on a device, which requires the session to be created with "
+                                  "'preferredOutputLocation'.");
+
           output_values_.push_back(std::move(output_value));
 
           output.js_value = Napi::Persistent(value);
@@ -406,7 +417,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       for (size_t i = 0; i < output_values_.size(); ++i) {
         const auto& output = outputs_[i];
         auto value = output.reuse ? output.js_value.Value()
-                                  : OrtValueToNapiValue(env_, std::move(output_values_[i]));
+                                  : OrtValueToNapiValue(env_, std::move(output_values_[i]), session_->session_);
         // Define the property rather than assigning it: assignment would run an inherited setter for
         // the output name (Object.prototype.<name>), which is user Javascript that could both
         // swallow the output and detach a preallocated buffer.
@@ -598,7 +609,7 @@ void InferenceSessionWrap::EndRun() {
 void InferenceSessionWrap::TeardownSession() {
   inputTypes_.clear();
   outputTypes_.clear();
-  session_.reset(nullptr);
+  session_.reset();
 }
 
 Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {

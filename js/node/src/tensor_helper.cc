@@ -397,7 +397,7 @@ void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::
   memcpy(data + typedArray.ByteOffset(), value.GetTensorRawData(), sourceByteLength);
 }
 
-Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
+Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value, std::shared_ptr<Ort::Session> session) {
   Napi::EscapableHandleScope scope(env);
 
   auto typeInfo = value.GetTypeInfo();
@@ -464,7 +464,9 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
                                                .Value()
                                                .Get("fromGpuBuffer")
                                                .As<Napi::Function>();
-      auto releaseOrtValue = [](OrtValue* value) {
+      // Capturing 'session' keeps the execution provider that owns this buffer alive for exactly as
+      // long as the value is: the capture outlives the release below and is dropped right after it.
+      auto releaseOrtValue = [session](OrtValue* value) {
         if (OrtSingletonData::GetOrtObjects()) {
           Ort::GetApi().ReleaseValue(value);
         }

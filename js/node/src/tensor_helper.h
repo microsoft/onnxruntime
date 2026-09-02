@@ -72,7 +72,11 @@ void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::
                                   const PreallocatedOutputInfo& expected);
 
 // convert an OrtValue object to a Javascript OnnxValue object
-Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value);
+//
+// 'session' is the session that produced the value. A device-backed output keeps a reference to it,
+// because its buffer belongs to an allocator owned by that session's execution provider and cannot
+// be released once the session is gone.
+Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value, std::shared_ptr<Ort::Session> session = nullptr);
 
 enum DataLocation {
   DATA_LOCATION_NONE = 0,

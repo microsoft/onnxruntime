@@ -495,6 +495,59 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('lets a GPU output outlive the session that produced it', async function () {
+    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
+      // eslint-disable-next-line no-invalid-this
+      this.skip();
+    }
+
+    // The buffer belongs to an allocator owned by the session's execution provider, so releasing it
+    // after the session is gone would call into a destroyed provider. The value holds the session
+    // alive instead, whether it is disposed late or left to be collected.
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'), {
+      executionProviders: ['webgpu'],
+      preferredOutputLocation: 'gpu-buffer',
+    });
+    const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+    const disposedLate = (await localSession.run({ input })).output;
+    // Deliberately never disposed: its finalizer has to be safe too.
+    void (await localSession.run({ input })).output;
+
+    await localSession.release();
+    assert.strictEqual(disposedLate.location, 'gpu-buffer');
+    disposedLate.dispose();
+    (global as unknown as { gc?: () => void }).gc?.();
+  });
+
+  it('rejects a device output on a session without preferredOutputLocation', async function () {
+    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
+      // eslint-disable-next-line no-invalid-this
+      this.skip();
+    }
+
+    const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    const deviceSession = await InferenceSession.create(modelPath, {
+      executionProviders: ['webgpu'],
+      preferredOutputLocation: 'gpu-buffer',
+    });
+    const plainSession = await InferenceSession.create(modelPath, { executionProviders: ['webgpu'] });
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const deviceTensor = (await deviceSession.run({ input })).output;
+
+      // Without IO binding this would reach ORT as a preallocated fetch it may replace instead of
+      // fill, leaving the caller's buffer stale and the promise resolved.
+      await assert.rejects(
+        plainSession.run({ input }, { output: deviceTensor }),
+        /requires the session to be created with 'preferredOutputLocation'/,
+      );
+      deviceTensor.dispose();
+    } finally {
+      await plainSession.release().catch(() => {});
+      await deviceSession.release().catch(() => {});
+    }
+  });
+
   it('keeps a GPU buffer alive when Tensor disposal bypasses instance methods', async function () {
     if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
       // eslint-disable-next-line no-invalid-this
