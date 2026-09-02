@@ -104,8 +104,7 @@ class ListMergedPullRequestsTest(unittest.TestCase):
 
         self.assertEqual(cursor, (timestamp(3), 1))
         self.assertIn(
-            "PR #2: harvested-through 2026-08-09T00:00:00Z is later than "
-            "the collection cutoff 2026-08-08T00:00:00Z",
+            "PR #2: harvested-through 2026-08-09T00:00:00Z is later than the collection cutoff 2026-08-08T00:00:00Z",
             stderr.getvalue(),
         )
 
