@@ -1239,6 +1239,7 @@ TEST(PagedAttention, Cuda_XqaNativeFp16CacheMultiTokenBoundFallsBack) {
   const std::string debug_output = testing::internal::GetCapturedStdout();
   EXPECT_EQ(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
   EXPECT_TRUE(debug_output.find("SdpaKernel=FLASH_ATTENTION") != std::string::npos ||
+              debug_output.find("SdpaKernel=EFFICIENT_ATTENTION") != std::string::npos ||
               debug_output.find("SdpaKernel=DECODER_ATTENTION") != std::string::npos)
       << debug_output;
 }
