@@ -261,6 +261,24 @@ void ExpectPmhaAggregateUsesMaximum(
   }
 }
 
+void ExpectAlignedRootLayout(const PackedAttentionWorkspaceAggregate& aggregate) {
+  ASSERT_TRUE(aggregate.status.IsOK()) << aggregate.status.message;
+  EXPECT_EQ(aggregate.attention_workspace_offset_bytes %
+                kPackedAttentionWorkspaceAlignment,
+            0U);
+  ASSERT_GE(aggregate.attention_workspace_offset_bytes,
+            aggregate.projection_bytes);
+  EXPECT_LT(aggregate.attention_workspace_offset_bytes -
+                aggregate.projection_bytes,
+            kPackedAttentionWorkspaceAlignment);
+  EXPECT_EQ(aggregate.total_workspace_bytes,
+            aggregate.attention_workspace_offset_bytes +
+                aggregate.attention_workspace_bytes);
+  EXPECT_GE(aggregate.total_workspace_bytes,
+            aggregate.projection_bytes +
+                aggregate.attention_workspace_bytes);
+}
+
 void ExpectEmptyAggregate(const PackedAttentionWorkspaceAggregate& aggregate) {
   ASSERT_TRUE(aggregate.status.IsOK()) << aggregate.status.message;
   EXPECT_EQ(aggregate.projection_bytes, 0U);
@@ -439,27 +457,21 @@ TEST(PackedAttentionWorkspaceEstimateTest, AggregateUsesMaxOfMutuallyExclusiveRo
   EXPECT_EQ(aggregate.attention_workspace_bytes,
             std::max(mea.recipe.attention_workspace_bytes,
                      unfused.recipe.attention_workspace_bytes));
-  size_t expected_attention_offset = 0;
-  ASSERT_TRUE(contrib::cuda::CheckedPackedAttentionAlign(
-                  aggregate.projection_bytes, kPackedAttentionWorkspaceAlignment,
-                  expected_attention_offset)
-                  .IsOK());
-  EXPECT_EQ(aggregate.attention_workspace_offset_bytes,
-            expected_attention_offset);
-  EXPECT_EQ(aggregate.attention_workspace_offset_bytes %
-                kPackedAttentionWorkspaceAlignment,
-            0U);
-  EXPECT_GT(aggregate.attention_workspace_offset_bytes,
-            aggregate.projection_bytes);
-  EXPECT_LT(aggregate.attention_workspace_offset_bytes -
-                aggregate.projection_bytes,
-            kPackedAttentionWorkspaceAlignment);
-  EXPECT_EQ(aggregate.total_workspace_bytes,
-            aggregate.attention_workspace_offset_bytes +
-                aggregate.attention_workspace_bytes);
+  ExpectAlignedRootLayout(aggregate);
   EXPECT_NE(aggregate.attention_workspace_bytes,
             mea.recipe.attention_workspace_bytes +
                 unfused.recipe.attention_workspace_bytes);
+}
+
+TEST(PackedAttentionWorkspaceEstimateTest, AlignedProjectionStartsAttentionWithoutPadding) {
+  const auto aggregate = GetPackedAttentionWorkspaceAggregate(
+      RoutePaProblem(), PackedAttentionBackendMask::Unfused);
+  ASSERT_TRUE(aggregate.status.IsOK()) << aggregate.status.message;
+  ASSERT_NE(aggregate.projection_bytes, 0U);
+  ASSERT_EQ(aggregate.projection_bytes % kPackedAttentionWorkspaceAlignment, 0U);
+  EXPECT_EQ(aggregate.attention_workspace_offset_bytes,
+            aggregate.projection_bytes);
+  ExpectAlignedRootLayout(aggregate);
 }
 
 TEST(PackedAttentionWorkspaceEstimateTest, Level2AdaptersDeclareOneAlignedRoot) {
@@ -477,17 +489,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, Level2AdaptersDeclareOneAlignedRoot) 
   EXPECT_EQ(requirements[0].size_bytes, estimate->total_workspace_bytes);
   EXPECT_EQ(requirements[0].alignment_bytes,
             kPackedAttentionWorkspaceAlignment);
-  EXPECT_EQ(estimate->attention_workspace_offset_bytes %
-                kPackedAttentionWorkspaceAlignment,
-            0U);
-  EXPECT_EQ(estimate->total_workspace_bytes,
-            estimate->attention_workspace_offset_bytes +
-                estimate->attention_workspace_bytes);
-  EXPECT_GT(estimate->attention_workspace_offset_bytes,
-            estimate->projection_bytes);
-  EXPECT_LT(estimate->attention_workspace_offset_bytes -
-                estimate->projection_bytes,
-            kPackedAttentionWorkspaceAlignment);
+  ExpectAlignedRootLayout(*estimate);
 
   auto graph_problem_inputs = PackedAttentionInputShapes{};
   graph_problem_inputs.input = Shape({6, 6});
@@ -518,6 +520,7 @@ TEST(PackedAttentionWorkspaceEstimateTest, Level2AdaptersDeclareOneAlignedRoot) 
   ASSERT_TRUE(pmha_estimate.has_value());
   EXPECT_EQ(pmha_estimate->projection_bytes, 0U);
   EXPECT_EQ(pmha_estimate->attention_workspace_offset_bytes, 0U);
+  ExpectAlignedRootLayout(*pmha_estimate);
   SetPackedAttentionWorkspaceRequirements(*pmha_estimate, requirements);
   ASSERT_EQ(requirements.size(), 1U);
   EXPECT_EQ(requirements[0].slot_id, 0);

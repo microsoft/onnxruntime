@@ -206,8 +206,8 @@ operator-owned root. PA places its simultaneously-live projection and Attention 
 has only the Attention region:
 
 ```text
-PA attention offset = align_up(projection bytes, 256)
-PA root bytes        = attention offset + max(feasible attention routes)
+PA attention offset   = align_up(projection bytes, 256)
+PA root bytes         = attention offset + max(feasible attention routes)
 PMHA attention offset = 0
 PMHA root bytes        = max(feasible attention routes)
 ```
@@ -218,5 +218,6 @@ framework's generic multi-slot capability.
 
 Runtime allocation topology is unchanged: PA continues to make separate dynamic projection and Attention
 `GetScratchBuffer()` allocations, and PMHA continues to dynamically allocate its Attention workspace. Future #32071
-integration must atomically opt in to planned-root retrieval and slice the root at the declared Attention offset;
-declaring the root does not itself change runtime allocation behavior.
+integration must atomically add the explicit `SupportsPreallocatedWorkspace()` planner opt-in, retrieve the planned
+root, and slice it at the declared Attention offset. A declaration alone is not planner opt-in and does not itself
+change runtime allocation behavior.
