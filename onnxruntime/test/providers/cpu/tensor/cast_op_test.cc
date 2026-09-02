@@ -2404,6 +2404,26 @@ TEST(CastOpTest, Float6E3M2) {
   CastOpTestFloat6<Float6E3M2>();
 }
 
+TEST(CastOpTest, Float6EncodingBoundaries) {
+  const float infinity = std::numeric_limits<float>::infinity();
+
+  EXPECT_EQ(Float6E2M3(-0.0f).ToBits(), 0x20);
+  EXPECT_EQ(Float6E3M2(-0.0f).ToBits(), 0x20);
+  EXPECT_EQ(Float6E2M3(infinity).ToBits(), 0x1F);
+  EXPECT_EQ(Float6E2M3(-infinity).ToBits(), 0x3F);
+  EXPECT_EQ(Float6E3M2(infinity).ToBits(), 0x1F);
+  EXPECT_EQ(Float6E3M2(-infinity).ToBits(), 0x3F);
+  EXPECT_EQ(Float6E2M3(std::numeric_limits<float>::max()).ToBits(), 0x1F);
+  EXPECT_EQ(Float6E2M3(-std::numeric_limits<float>::max()).ToBits(), 0x3F);
+  EXPECT_EQ(Float6E3M2(std::numeric_limits<float>::max()).ToBits(), 0x1F);
+  EXPECT_EQ(Float6E3M2(-std::numeric_limits<float>::max()).ToBits(), 0x3F);
+
+  EXPECT_EQ(static_cast<float>(Float6E2M3(0x01, Float6E2M3::FromBits())), 0.125f);
+  EXPECT_EQ(static_cast<float>(Float6E2M3(0x1F, Float6E2M3::FromBits())), 7.5f);
+  EXPECT_EQ(static_cast<float>(Float6E3M2(0x01, Float6E3M2::FromBits())), 0.0625f);
+  EXPECT_EQ(static_cast<float>(Float6E3M2(0x1F, Float6E3M2::FromBits())), 28.0f);
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename F8>
