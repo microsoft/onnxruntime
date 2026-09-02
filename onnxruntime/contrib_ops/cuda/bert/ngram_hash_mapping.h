@@ -6,25 +6,20 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
-#include <string>
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 template <typename T>
-class CausalConvWithState final : public onnxruntime::cuda::CudaKernel {
+class NGramHashMapping final : public onnxruntime::cuda::CudaKernel {
  public:
-  CausalConvWithState(const OpKernelInfo& info);
+  explicit NGramHashMapping(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  int ndim_;
-  int dilation_;
-  bool channels_last_;
-  std::string activation_;
-  // Leading (axis-0) extent of past_state / present_state; 0 means no window axis (single state).
-  int state_window_;
+  int64_t max_ngram_size_;
+  int64_t n_head_per_ngram_;
+  T pad_id_;
 };
 
 }  // namespace cuda
