@@ -655,7 +655,13 @@ TEST(EngramOpsTest, NGramHashMappingInPlaceCuda) {
 #ifdef USE_WEBGPU
 // int32 is the only type the WebGPU kernel registers.
 TEST(EngramOpsTest, NGramHashMappingInPlaceWebGpu) {
-  RunNGramHashMappingInPlaceTest<int32_t>(DefaultWebGpuExecutionProvider());
+  // A null provider is the CPU convention in RunNGramHashMappingInPlaceTest, so fail closed here
+  // instead of silently degrading into a CPU run that never exercises NGramPresentIdsProgram.
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  RunNGramHashMappingInPlaceTest<int32_t>(std::move(webgpu_ep));
 }
 #endif
 
