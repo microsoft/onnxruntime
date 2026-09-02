@@ -316,10 +316,10 @@ def generate_vcpkg_install_options(build_dir, args):
         )
 
         if terrapin_cmd_path is not None:
-            terrapin_command = f'"{terrapin_cmd_path}"' if is_windows() else shlex.quote(terrapin_cmd_path)
+            quoted_terrapin_cmd_path = f'"{terrapin_cmd_path}"' if is_windows() else shlex.quote(terrapin_cmd_path)
             vcpkg_install_options.append(
                 "--x-asset-sources=x-script,"
-                + terrapin_command
+                + quoted_terrapin_cmd_path
                 + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
             )
         else:
