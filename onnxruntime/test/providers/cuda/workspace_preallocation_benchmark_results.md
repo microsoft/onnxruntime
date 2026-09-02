@@ -427,3 +427,55 @@ On the T1000, Qwen reused approximately 244 KiB of activation storage, while
 Hy-MT2's smaller workspace did not produce a net reservation reduction. Both
 models substantially reduced allocator calls without moving the process-scoped
 WDDM peak, and latency was effectively unchanged.
+
+## CUDA MatMulNBits implementation count
+
+The CUDA `MatMulNBits::ComputeInternal()` dispatcher has five conceptual runtime
+implementation families:
+
+| Implementation | Per-run temporary buffers | Benefits from workspace preallocation |
+|---|---|---|
+| fpA-intB CUDA GEMV | None | No current benefit |
+| fpA-intB CUTLASS GEMM | CUTLASS runner workspace | **Yes** |
+| Fused small-M CUDA kernels | None allocated from the device allocator | No current benefit |
+| Full dequantize plus cuBLAS GEMM | Full dequantized weight matrix | Not currently; potential candidate |
+| Chunked dequantize plus cuBLAS GEMM | One dequantized weight chunk | Not currently; potential candidate |
+
+Therefore, one of the five runtime implementation families currently consumes
+planned workspace. Three families have per-run allocator-backed temporary
+storage and could benefit conceptually: fpA-intB CUTLASS GEMM, full dequantize
+plus cuBLAS GEMM, and chunked dequantize plus cuBLAS GEMM. Only the CUTLASS
+workspace is currently declared and acquired through the preallocation API.
+
+The fpA-intB path profiles tactics and selects between two execution families:
+
+- The CUDA GEMV tactic is intended for small `M`, including ordinary batch-1
+  decode. It consumes the persistent prepacked weights, scales, and optional
+  zero points directly and does not request a run-scoped workspace.
+- The CUTLASS GEMM tactic is normally selected for larger `M`, including the
+  prefill workloads measured above. Its runner reports a workspace size for the
+  selected dimensions and tactic. This is the workspace covered by the current
+  benchmark and preallocation implementation.
+
+CUTLASS has SM80-compatible and native SM90 kernel/configuration variants, but
+they are one conceptual implementation family for workspace planning. Both use
+the same runner workspace interface, although the required size depends on the
+effective architecture and selected tactic.
+
+The fused small-M family is reached when the fpA-intB path is unavailable. It
+contains several specialized kernels, including 4-bit router GEMV, 4-bit and
+8-bit single-row kernels, and batched/small-M variants. These use registers or
+CUDA shared memory rather than allocator-backed temporary buffers, so planned
+workspace would not remove a device allocation.
+
+If neither optimized family applies, CUDA dequantizes the quantized weight into
+a temporary floating-point buffer and invokes cuBLAS GEMM. The normal fallback
+materializes the full `[N, K_padded]` matrix. The chunked fallback reduces peak
+scratch by dequantizing and multiplying one range of `N` rows at a time. Both
+currently allocate their scratch dynamically with `GetScratchBuffer()` and do
+not declare workspace requirements.
+
+Initialization-time weight prepacking is separate from these runtime
+implementations. Its persistent packed weights and temporary conversion or
+profiling buffers are created during session initialization and are not
+run-scoped workspace covered by this benchmark.
