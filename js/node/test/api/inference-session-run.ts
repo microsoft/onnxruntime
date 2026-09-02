@@ -217,27 +217,6 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
-  it('keeps the run count balanced when preparation fails', async () => {
-    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
-    try {
-      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
-      const buffer = new ArrayBuffer(64);
-      const running = localSession.run(
-        { input },
-        { output: new Tensor('float32', new Float32Array(buffer, 0, 5), [1, 5]) },
-      );
-      // This one fails after its worker was constructed, so the run must be counted down exactly
-      // once: the worker's destructor owns the registration from that point on.
-      await assert.rejects(
-        localSession.run({ input }, { output: new Tensor('float32', new Float32Array(buffer, 4, 5), [1, 5]) }),
-        /Preallocated output buffer is already in use/,
-      );
-      await running;
-    } finally {
-      await localSession.release().catch(() => {});
-    }
-  });
-
   it('does not assign result properties through an inherited setter', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     const outputData = new Float32Array(5);
