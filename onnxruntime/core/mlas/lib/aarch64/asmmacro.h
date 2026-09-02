@@ -14,6 +14,8 @@ Abstract:
 
 --*/
 
+#include "kai_asm_macros.h"
+
 /*++
 
 Macro Description:
@@ -40,6 +42,7 @@ _\FunctionName\():
         .type   \FunctionName\(),%function
 \FunctionName\():
 #endif
+        KAI_ASM_BTI_C
 
         .endm
 

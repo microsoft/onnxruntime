@@ -10,9 +10,13 @@
 # license information.
 # -------------------------------------------------------------------------
 import math
+import os
 import platform
 import random
+import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy
 import torch
@@ -274,6 +278,8 @@ def create_paged_attention_graph(
     # qk_norm_epsilon is only needed when QK-Norm is exercised.
     if config.use_qk_norm:
         node_attrs["qk_norm_epsilon"] = config.qk_norm_epsilon
+    if not getattr(config, "is_causal", True):
+        node_attrs["is_causal"] = 0
 
     nodes = [
         helper.make_node(
@@ -837,6 +843,7 @@ def parity_check_paged_attention(
     atol=1e-3,
     sdpa_kernel=0,
     new_seqlens_override=None,
+    local_window_size_override=None,
 ):
     # Generate padded inputs
     q = torch.randn(
@@ -925,14 +932,23 @@ def parity_check_paged_attention(
         slot_mapping = derive_slot_mapping(config, past_seqlens, new_seqlens, cum_seqlens, block_table)
 
     # Set window size for local / causal
+    is_causal = getattr(config, "is_causal", True)
+    # A non-causal query block attends to everything on its right too, so the reference asks for a
+    # right window wide enough to never mask (construct_local_mask clamps it to seqlen_k).
+    right_window_size = 0 if is_causal else config.total_sequence_length
     window_size = (-1, -1)
     left_window_size = -1
     if config.local:
-        left_window_size = random.randint(1, config.total_sequence_length - 1)  # random.randint is inclusive
-        window_size = (left_window_size, 0)
+        left_window_size = (
+            local_window_size_override
+            if local_window_size_override is not None
+            else random.randint(1, config.total_sequence_length - 1)
+        )
+        assert 0 < left_window_size < config.total_sequence_length
+        window_size = (left_window_size, right_window_size)
     else:
         left_window_size = -1
-        window_size = (-1, 0)
+        window_size = (-1, right_window_size) if is_causal else (-1, -1)
 
     # Apply rotary embedding for reference implementation
     if config.rotary:
@@ -997,7 +1013,7 @@ def parity_check_paged_attention(
         key_padding_mask,
         0.0,
         None,
-        causal=True,
+        causal=is_causal,
         window_size=window_size,
         softcap=config.softcap,
         head_sink=head_sink,
@@ -1080,6 +1096,37 @@ def parity_check_paged_attention(
         numpy.testing.assert_allclose(out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
 
 
+def capture_native_stdout(run_func):
+    """Capture output written by the native runtime directly to file descriptor 1."""
+    sys.stdout.flush()
+    saved_fd = os.dup(1)
+    try:
+        with tempfile.TemporaryFile() as tmp:
+            os.dup2(tmp.fileno(), 1)
+            try:
+                run_func()
+            finally:
+                try:
+                    sys.stdout.flush()
+                finally:
+                    os.dup2(saved_fd, 1)
+            tmp.seek(0)
+            return tmp.read().decode(errors="replace")
+    finally:
+        os.close(saved_fd)
+
+
+def capture_native_stdout_and_result(run_func):
+    """Capture native stdout while preserving a callable's return value."""
+    result = []
+
+    def save_result():
+        result.append(run_func())
+
+    output = capture_native_stdout(save_result)
+    return output, result[0]
+
+
 def has_cuda_device():
     """Every test in this file allocates torch tensors on "cuda" and runs the CUDA EP.
 
@@ -1097,6 +1144,20 @@ def has_flash_attention():
         platform.system() == "Linux"
         or (platform.system() == "Windows" and version.parse(torch.version.cuda) >= version.parse("12.0"))
     )
+
+
+def has_xqa():
+    if not has_cuda_device():
+        return False
+    major, minor = torch.cuda.get_device_capability()
+    return major * 10 + minor >= 80
+
+
+def has_fp8_xqa():
+    if not has_cuda_device():
+        return False
+    major, minor = torch.cuda.get_device_capability()
+    return major * 10 + minor >= 89
 
 
 def has_memory_efficient_attention():
@@ -1425,6 +1486,47 @@ class TestPagedAttentionFeatures(unittest.TestCase):
         config = self._config(batch_size=300, sequence_length=4, total_sequence_length=64)
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
+    # ---- is_causal ---------------------------------------------------------------------
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_non_causal(self):
+        # A block drafter submits its whole query block at once and every row must see the rest of
+        # the block, so the mask is unbounded on the right.
+        parity_check_paged_attention(self._config(is_causal=False), rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_non_causal_local_window(self):
+        # local_window_size still bounds the mask on the left when the causal bound is removed.
+        config = self._config(is_causal=False, local=True)
+        parity_check_paged_attention(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.full((config.batch_size,), config.sequence_length, dtype=torch.int32),
+            local_window_size_override=4,
+        )
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_non_causal_with_rotary_and_packed(self):
+        config = self._config(is_causal=False, rotary=True, packed=True)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    @unittest.skipIf(
+        not has_memory_efficient_attention(),
+        reason="MemoryEfficientAttention (fp16) requires sm>=53",
+    )
+    def test_non_causal_rejected_without_flash_attention(self):
+        # The CUTLASS and paged-decode kernels hard-code a causal mask, so asking for is_causal=0
+        # on a backend that cannot express it has to fail loudly instead of returning a causal result.
+        with self.assertRaises(Exception) as ctx:
+            parity_check_paged_attention(
+                self._config(is_causal=False),
+                rtol=5e-3,
+                atol=5e-3,
+                sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
+            )
+        self.assertIn("is_causal=0 requires the FlashAttention backend", str(ctx.exception))
+
 
 # -----------------------------------------------------------------------------
 # WebGPU EP parity tests
@@ -1491,6 +1593,13 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
     @parameterized.expand(paged_attention_test_cases_webgpu())
     def test_paged_attention_webgpu(self, _, config):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+    def test_non_causal_rejected(self):
+        config = Config(1, 4, 32, 2, 1, 32, 16, False, False, False, False, 0.0, ep="WebGpuExecutionProvider")
+        config.is_causal = False
+        with self.assertRaises(Exception) as ctx:
+            parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+        self.assertIn("PagedAttention (WebGPU): is_causal=0 is not supported yet", str(ctx.exception))
 
 
 @unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
@@ -1993,14 +2102,14 @@ class TestPagedAttentionPagedDecode(unittest.TestCase):
         parity_check_paged_attention(config, rtol=5e-3, atol=2e-2)
 
 
-@unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
+@unittest.skipIf(not has_xqa(), reason="XQA requires an SM80 or newer GPU")
 class TestPagedAttentionXqaDecode(unittest.TestCase):
     """Coverage for the XQA decode backend.
 
     XQA is the tensor-core decode kernel (shared with GroupQueryAttention) reading the paged cache
     in place. It is auto-selected ahead of the portable decode kernel when the cache is quantized
     and the step fits its constraints: exactly one new token per sequence, head_size in {64, 128},
-    a query/KV group size in {4, 8, 16, 32}, no softcap, and block_size a multiple of 128 (a block
+    a query/KV group size in {4, 6, 8, 16, 32}, no softcap, and block_size a multiple of 128 (a block
     is presented to the kernel as several 128-token pages). Anything outside that falls back, which
     is what the ORT_ENABLE_XQA=0 comparison below pins down.
 
@@ -2009,8 +2118,6 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
 
     def setUp(self):
         torch.manual_seed(0)
-        if not has_fp8_kv_cache():
-            self.skipTest("quantized KV cache kernels are not built")
 
     def _config(self, **overrides):
         kwargs = {
@@ -2035,6 +2142,12 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         return config
 
     def _check_xqa(self, quant_type="PER_TENSOR", kv_cache_type="int8", rtol=5e-3, atol=5e-3, **overrides):
+        if kv_cache_type == "fp8":
+            if not has_fp8_kv_cache():
+                self.skipTest("FP8 KV cache kernels are not built")
+            if not has_fp8_xqa():
+                self.skipTest("FP8 XQA requires an SM89 or newer GPU")
+
         config = self._config(
             kv_cache_type=kv_cache_type,
             k_quant_type=quant_type,
@@ -2043,20 +2156,160 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         )
         parity_check_paged_attention(config, rtol=rtol, atol=atol)
 
+    def _capture_xqa_debug(self, config):
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+        ):
+            return capture_native_stdout(lambda: parity_check_paged_attention(config, rtol=5e-3, atol=5e-3))
+
     # ---- shapes -------------------------------------------------------------------------
 
     @parameterized.expand([("64", 64), ("128", 128)])
     def test_xqa_head_size(self, _, head_size):
         self._check_xqa(head_size=head_size)
 
-    @parameterized.expand([("grp4", 8, 2), ("grp8", 8, 1), ("grp16", 16, 1), ("grp32", 32, 1)])
+    @parameterized.expand([("grp4", 8, 2), ("grp6", 12, 2), ("grp8", 8, 1), ("grp16", 16, 1), ("grp32", 32, 1)])
     def test_xqa_head_grouping(self, _, num_heads, kv_num_heads):
         self._check_xqa(num_heads=num_heads, kv_num_heads=kv_num_heads)
 
+    @parameterized.expand([("head64_per_tensor", 64, "PER_TENSOR"), ("head128_per_channel", 128, "PER_CHANNEL")])
+    def test_xqa_group_size_six_dispatch(self, _, head_size, quant_type):
+        # Six query heads exercise XQA's padded query-row path. Parity checks the visible rows,
+        # while debug telemetry proves the result did not come from the fallback kernel.
+        baseline_config = self._config(
+            num_heads=32,
+            kv_num_heads=8,
+            head_size=head_size,
+            kv_cache_type="int8",
+            k_quant_type=quant_type,
+            v_quant_type=quant_type,
+        )
+        baseline_debug_output = self._capture_xqa_debug(baseline_config)
+        if "SdpaKernel=XQA" not in baseline_debug_output:
+            self.skipTest("Paged XQA is not runnable for this head size and quantization configuration")
+
+        config = self._config(
+            num_heads=48,
+            kv_num_heads=8,
+            head_size=head_size,
+            kv_cache_type="int8",
+            k_quant_type=quant_type,
+            v_quant_type=quant_type,
+        )
+        debug_output = self._capture_xqa_debug(config)
+        self.assertIn("Operator=PagedAttention", debug_output)
+        self.assertIn("SdpaKernel=XQA", debug_output)
+        self.assertIn("GqaGroupSize=6", debug_output)
+
     @parameterized.expand([("128", 128), ("256", 256), ("512", 512)])
     def test_xqa_block_size(self, _, block_size):
-        # Each block is remapped to block_size / 128 consecutive XQA pages.
+        # Larger blocks are remapped to consecutive 128-token XQA pages; 128-token tables pass through.
         self._check_xqa(paged_kv_block_size=block_size)
+
+    @parameterized.expand(
+        [
+            ("contiguous", [0, 1], -1),
+            ("fragmented", [2, 0], -1),
+            ("negative_one", [-1, 1], 128),
+        ]
+    )
+    def test_xqa_native_page_table_matches_expanded(self, _, expanded_block_ids, local_window_size):
+        """A 128-token native table must be exactly the page expansion of the 256-token table."""
+        # The -1 entries are outside the 128-token local window and therefore never dereferenced.
+        device = "cuda"
+        pages_per_expanded_block = 2
+        expanded_block_table = torch.tensor([expanded_block_ids], dtype=torch.int32, device=device)
+        page_offsets = torch.arange(pages_per_expanded_block, dtype=torch.int32, device=device)
+        native_page_table = torch.where(
+            expanded_block_table.unsqueeze(-1) < 0,
+            torch.full_like(expanded_block_table.unsqueeze(-1) + page_offsets, -1),
+            expanded_block_table.unsqueeze(-1) * pages_per_expanded_block + page_offsets,
+        ).reshape(1, -1)
+
+        expected_pages = []
+        for block_id in expanded_block_ids:
+            expected_pages.extend([-1, -1] if block_id < 0 else [block_id * 2, block_id * 2 + 1])
+        self.assertEqual(native_page_table.cpu().tolist(), [expected_pages])
+
+        physical_blocks = max(expanded_block_ids) + 1
+        expanded_key_cache = torch.randint(
+            -32,
+            33,
+            (physical_blocks, 256, 2, 64),
+            dtype=torch.int8,
+            device=device,
+        )
+        expanded_value_cache = torch.randint(
+            -32,
+            33,
+            (physical_blocks, 256, 2, 64),
+            dtype=torch.int8,
+            device=device,
+        )
+        native_key_cache = expanded_key_cache.reshape(physical_blocks * 2, 128, 2, 64).clone()
+        native_value_cache = expanded_value_cache.reshape(physical_blocks * 2, 128, 2, 64).clone()
+
+        query = torch.randn(1, 8 * 64, dtype=torch.float16, device=device)
+        key = torch.randn(1, 2 * 64, dtype=torch.float16, device=device)
+        value = torch.randn(1, 2 * 64, dtype=torch.float16, device=device)
+        cumulative_seqlens = torch.tensor([0, 1], dtype=torch.int32, device=device)
+        past_seqlens = torch.tensor([383], dtype=torch.int32, device=device)
+        k_scale = torch.tensor([1.0 / 32.0], dtype=torch.float32, device=device)
+        v_scale = torch.tensor([1.0 / 32.0], dtype=torch.float32, device=device)
+
+        def run(block_size, block_table, key_cache, value_cache):
+            config = self._config(
+                batch_size=1,
+                total_sequence_length=512,
+                paged_kv_block_size=block_size,
+                local=local_window_size > 0,
+                kv_cache_type="int8",
+                k_quant_type="PER_TENSOR",
+                v_quant_type="PER_TENSOR",
+                use_attention_metadata=True,
+            )
+            return paged_attention_func(
+                config,
+                query,
+                key,
+                value,
+                key_cache,
+                value_cache,
+                cumulative_seqlens,
+                past_seqlens,
+                block_table,
+                window_size=local_window_size,
+                k_scale=k_scale,
+                v_scale=v_scale,
+            )
+
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+        ):
+            native_debug, native_result = capture_native_stdout_and_result(
+                lambda: run(128, native_page_table, native_key_cache, native_value_cache)
+            )
+            expanded_debug, expanded_result = capture_native_stdout_and_result(
+                lambda: run(256, expanded_block_table, expanded_key_cache, expanded_value_cache)
+            )
+
+        for debug_output, expected_mode in (
+            (native_debug, "native"),
+            (expanded_debug, "expanded"),
+        ):
+            self.assertIn("Operator=PagedAttention", debug_output)
+            self.assertIn("SdpaKernel=XQA", debug_output)
+            self.assertIn(f"XqaPageTable={expected_mode}", debug_output)
+
+        native_output, native_key_cache_out, native_value_cache_out = native_result
+        expanded_output, expanded_key_cache_out, expanded_value_cache_out = expanded_result
+        torch.testing.assert_close(native_output, expanded_output, rtol=0, atol=0)
+        torch.testing.assert_close(native_key_cache_out.reshape(-1), expanded_key_cache_out.reshape(-1), rtol=0, atol=0)
+        torch.testing.assert_close(
+            native_value_cache_out.reshape(-1), expanded_value_cache_out.reshape(-1), rtol=0, atol=0
+        )
 
     def test_xqa_batch_one(self):
         self._check_xqa(batch_size=1)

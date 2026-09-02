@@ -33,9 +33,7 @@ stages:
       clean: all
     pool: onnxruntime-Ubuntu2204-AMD-CPU
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: jobs/checkout-and-git-redirect.yml
 
     - template: use-android-ndk.yml
     - template: get-docker-image-steps.yml

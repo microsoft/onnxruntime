@@ -140,8 +140,7 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateExpandVersionedKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateExpandVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
   std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, true);
   type_constraints.push_back(DataTypeImpl::GetTensorType<uint8_t>());
 
@@ -154,7 +153,7 @@ KernelCreateInfo CreateExpandVersionedKernelInfo(bool enable_int64) {
       KernelDefBuilder()
           .SetName("Expand")
           .SetDomain(kOnnxDomain)
-          .SinceVersion(StartVersion, EndVersion)
+          .SinceVersion(start_version, end_version)
           .Provider(kWebGpuExecutionProvider)
           .TypeConstraint("T", type_constraints)
           .InputMemoryType(OrtMemTypeCPU, 1)
@@ -162,8 +161,7 @@ KernelCreateInfo CreateExpandVersionedKernelInfo(bool enable_int64) {
       kernel_create_fn};
 }
 
-template <int SinceVersion>
-KernelCreateInfo CreateExpandKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateExpandKernelInfo(int since_version, bool enable_int64) {
   std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, true);
   type_constraints.push_back(DataTypeImpl::GetTensorType<uint8_t>());
 
@@ -176,17 +174,13 @@ KernelCreateInfo CreateExpandKernelInfo(bool enable_int64) {
       KernelDefBuilder()
           .SetName("Expand")
           .SetDomain(kOnnxDomain)
-          .SinceVersion(SinceVersion)
+          .SinceVersion(since_version)
           .Provider(kWebGpuExecutionProvider)
           .TypeConstraint("T", type_constraints)
           .InputMemoryType(OrtMemTypeCPU, 1)
           .Build(),
       kernel_create_fn};
 }
-
-// Explicit template instantiations
-template KernelCreateInfo CreateExpandVersionedKernelInfo<8, 12>(bool);
-template KernelCreateInfo CreateExpandKernelInfo<13>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

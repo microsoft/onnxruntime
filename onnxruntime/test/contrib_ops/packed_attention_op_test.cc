@@ -15,6 +15,80 @@ namespace onnxruntime {
 using contrib::AttentionMaskType;
 namespace test {
 
+namespace {
+
+class ScopedStdoutCapture {
+ public:
+  explicit ScopedStdoutCapture(bool enabled) : capturing_(enabled) {
+    if (capturing_) {
+      testing::internal::CaptureStdout();
+    }
+  }
+
+  ~ScopedStdoutCapture() {
+    if (capturing_) {
+      (void)testing::internal::GetCapturedStdout();
+    }
+  }
+
+  std::string Stop() {
+    capturing_ = false;
+    return testing::internal::GetCapturedStdout();
+  }
+
+ private:
+  bool capturing_;
+};
+
+template <typename Run>
+void RunAndVerifyAttentionRoute(const char* expected_route, Run&& run) {
+  ScopedStdoutCapture capture(true);
+  run();
+  const std::string debug_output = capture.Stop();
+  EXPECT_NE(debug_output.find(expected_route), std::string::npos) << debug_output;
+}
+
+bool IsTrtFusedAttentionRouteObservable(int head_size, int sequence_length) {
+#if USE_TRT_FUSED_ATTENTION
+  if (!HasCudaEnvironment(0)) {
+    return false;
+  }
+
+  // These tests use the non-flash branch of FusedMHARunnerFP16v2::IsSupported.
+  // Keep its SM allowlist, head-size rules, and sequence cap in sync with mha_runner.cu.
+  const int sm = GetCudaArchitecture() / 10;
+  const bool supported_sm = sm == 70 || sm == 75 || sm == 80 ||
+                            sm == 86 || sm == 89;
+  return supported_sm &&
+         (head_size == 32 || head_size == 64) &&
+         !(sm == 70 && head_size == 32) &&
+         sequence_length <= 384;
+#else
+  ORT_UNUSED_PARAMETER(head_size);
+  ORT_UNUSED_PARAMETER(sequence_length);
+  return false;
+#endif
+}
+
+bool IsMemoryEfficientAttentionRouteObservable(int head_size) {
+#if USE_MEMORY_EFFICIENT_ATTENTION
+  return HasCudaEnvironment(530) &&
+         head_size % 8 == 0 &&
+         head_size <= 1024;
+#else
+  ORT_UNUSED_PARAMETER(head_size);
+  return false;
+#endif
+}
+
+enum class PackedAttentionRoute {
+  Trt,
+  MemoryEfficient,
+  Unfused,
+};
+
+}  // namespace
+
 static void RunPackedAttentionTest(
     const std::vector<float>& input_data,                    // input:      [token_count, hidden_size]
     const std::vector<float>& weights_data,                  // weights:    [hidden_size, 3 * hidden_size]
@@ -94,6 +168,108 @@ static void RunPackedAttentionTest(
   }
 }
 
+static void RunPackedAttentionRouteTest(PackedAttentionRoute route) {
+  constexpr int kBatchSize = 2;
+  constexpr int kSequenceLength = 2;
+  constexpr int kTokenCount = 3;
+  constexpr int kHiddenSize = 32;
+  constexpr int kNumHeads = 1;
+  constexpr int kHeadSize = kHiddenSize / kNumHeads;
+  static_assert(kTokenCount < kBatchSize * kSequenceLength);
+
+  // Each token has input [1, x, 0, ...]. The block projection produces
+  // Q=x+0.25, K=1, and V=2x-0.75 in every head coordinate. Since K is
+  // constant within each sequence, attention is uniform: the one-token
+  // sequence returns 1.25 and the two-token sequence averages 3.25 and 7.25.
+  const std::vector<float> token_values{1.0f, 2.0f, 4.0f};
+  std::vector<float> input_data(kTokenCount * kHiddenSize, 0.0f);
+  std::vector<float> weight_data(kHiddenSize * 3 * kHiddenSize, 0.0f);
+  std::vector<float> bias_data(3 * kHiddenSize, 0.0f);
+  std::vector<float> output_data(kTokenCount * kHiddenSize);
+  const std::vector<float> expected_token_values{1.25f, 5.25f, 5.25f};
+
+  for (int token = 0; token < kTokenCount; ++token) {
+    input_data[token * kHiddenSize] = 1.0f;
+    input_data[token * kHiddenSize + 1] = token_values[token];
+    for (int hidden = 0; hidden < kHiddenSize; ++hidden) {
+      output_data[token * kHiddenSize + hidden] = expected_token_values[token];
+    }
+  }
+
+  constexpr int kProjectionSize = 3 * kHiddenSize;
+  for (int hidden = 0; hidden < kHiddenSize; ++hidden) {
+    weight_data[kProjectionSize + hidden] = 1.0f;
+    weight_data[kHiddenSize + hidden] = 0.5f;
+    weight_data[kProjectionSize + 2 * kHiddenSize + hidden] = 2.0f;
+    bias_data[hidden] = 0.25f;
+    bias_data[kHiddenSize + hidden] = 0.5f;
+    bias_data[2 * kHiddenSize + hidden] = -0.75f;
+  }
+
+  const std::vector<int32_t> token_offset{0, 2, 3, 1};
+  const std::vector<int32_t> cumulative_sequence_length{0, 1, 3};
+
+  if (route == PackedAttentionRoute::Trt) {
+    if (!IsTrtFusedAttentionRouteObservable(kHeadSize, kSequenceLength)) {
+      GTEST_SKIP() << "PackedAttention TRT route is unavailable in this build or CUDA environment.";
+    }
+
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+            {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+    RunAndVerifyAttentionRoute("SdpaKernel=TRT_FUSED_ATTENTION", [&]() {
+      RunPackedAttentionTest(
+          input_data, weight_data, bias_data, token_offset, cumulative_sequence_length,
+          output_data, kBatchSize, kSequenceLength, kHiddenSize, kNumHeads, kTokenCount,
+          true, true, {}, {});
+    });
+    return;
+  }
+
+  if (route == PackedAttentionRoute::MemoryEfficient) {
+    if (!IsMemoryEfficientAttentionRouteObservable(kHeadSize)) {
+      GTEST_SKIP() << "PackedAttention MEA route is unavailable in this build or CUDA environment.";
+    }
+
+    ScopedEnvironmentVariables scoped_env_vars{
+        EnvVarMap{
+            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+            {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+    RunAndVerifyAttentionRoute("SdpaKernel=EFFICIENT_ATTENTION", [&]() {
+      RunPackedAttentionTest(
+          input_data, weight_data, bias_data, token_offset, cumulative_sequence_length,
+          output_data, kBatchSize, kSequenceLength, kHiddenSize, kNumHeads, kTokenCount,
+          true, true, {}, {});
+    });
+    return;
+  }
+
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "PackedAttention MATH route requires a CUDA device.";
+  }
+
+  // PackedAttention does not honor the MEA-disable option. FP32 is deliberately
+  // MEA-ineligible here, so this invocation deterministically
+  // observes the unfused route without changing runtime behavior.
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+  RunAndVerifyAttentionRoute("SdpaKernel=MATH", [&]() {
+    RunPackedAttentionTest(
+        input_data, weight_data, bias_data, token_offset, cumulative_sequence_length,
+        output_data, kBatchSize, kSequenceLength, kHiddenSize, kNumHeads, kTokenCount,
+        false, true, {}, {});
+  });
+}
+
 static void RunPackedAttentionTest(
     const std::vector<float>& input_data,                    // input:      [token_count, hidden_size]
     const std::vector<float>& weights_data,                  // weights:    [hidden_size, 3 * hidden_size]
@@ -130,6 +306,43 @@ static void RunPackedAttentionTest(
   InvokePackedAttentionTest(true, false);
   InvokePackedAttentionTest(false, true);
   InvokePackedAttentionTest(false, false);
+}
+
+TEST(PackedAttentionTest, PackedRouteObservedTrtWithPadding) {
+  RunPackedAttentionRouteTest(PackedAttentionRoute::Trt);
+}
+
+TEST(PackedAttentionTest, PackedRouteObservedMemoryEfficientWithPadding) {
+  RunPackedAttentionRouteTest(PackedAttentionRoute::MemoryEfficient);
+}
+
+TEST(PackedAttentionTest, PackedRouteObservedUnfusedWithPadding) {
+  RunPackedAttentionRouteTest(PackedAttentionRoute::Unfused);
+}
+
+TEST(PackedAttentionTest, EmptyTokensAndSequence_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "PackedAttention empty-output test requires a CUDA device.";
+  }
+
+  constexpr int kBatchSize = 2;
+  constexpr int kHiddenSize = 32;
+  constexpr int kNumHeads = 2;
+
+  OpTester tester("PackedAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", kNumHeads);
+  tester.AddInput<float>("input", {0, kHiddenSize}, {});
+  tester.AddInput<float>("weight", {kHiddenSize, 3 * kHiddenSize},
+                         std::vector<float>(kHiddenSize * 3 * kHiddenSize, 1.0f));
+  tester.AddInput<float>("bias", {3 * kHiddenSize},
+                         std::vector<float>(3 * kHiddenSize, 0.5f));
+  tester.AddInput<int32_t>("token_offset", {kBatchSize, 0}, {});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {kBatchSize + 1}, {0, 0, 0});
+  tester.AddOutput<float>("output", {0, kHiddenSize}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(PackedAttentionTest, NoPack) {

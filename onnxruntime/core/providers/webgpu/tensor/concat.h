@@ -35,10 +35,8 @@ class Concat final : public WebGpuKernel, public ConcatBase {
 };
 
 // Create Concat kernel info with appropriate type constraints based on int64 support
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateConcatVersionedKernelInfo(bool enable_int64);
-template <int SinceVersion>
-KernelCreateInfo CreateConcatKernelInfo(bool enable_int64);
+KernelCreateInfo CreateConcatVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateConcatKernelInfo(int since_version, bool enable_int64);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -74,15 +74,13 @@ jobs:
     ${{ if contains(parameters.pool_name, 'mac')}}:
       os: macOS
 
-  templateContext:        
+  templateContext:
     outputs:
     - output: pipelineArtifact
       targetPath: $(Build.BinariesDirectory)/.artifacts
       artifactName: ${{parameters.artifactName}}
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: jobs/checkout-and-git-redirect.yml
 
   - task: CmdLine@2
     displayName: Create artifacts directory
@@ -102,11 +100,6 @@ jobs:
   - template: set-version-number-variables-step.yml
 
   - template: use-android-ndk.yml
-
-  - ${{ if contains(parameters.packageName, 'qnn') }}:
-    - template: jobs/init_linux_qnn_sdk_x64.yml
-      parameters:
-        QnnSDKVersion: '${{parameters.QnnSDKVersion}}'
 
   - task: CmdLine@2
     displayName: Build Android AAR Packages

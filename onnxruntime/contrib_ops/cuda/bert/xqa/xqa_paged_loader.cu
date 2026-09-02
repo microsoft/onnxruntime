@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 //
 // Head-size / dtype / cache-dtype dispatcher for the paged-KV XQA decode kernels. The kernels
-// themselves live in xqa_paged_<query>_<cache>_<head>.cu (each of which instantiates the four
+// themselves live in xqa_paged_<query>_<cache>_<head>.cu (each of which instantiates the five
 // supported query/KV group sizes through xqa_paged_loader_impl.cuh).
 
 #include "contrib_ops/cuda/bert/xqa/xqa_paged_loader.h"
@@ -62,6 +62,16 @@ XQA_PAGED_DECL(LaunchXQAPagedFp8KernelBF16);
 #endif
 }  // namespace H128
 
+namespace H256 {
+XQA_PAGED_DECL(LaunchXQAPagedFp16Kernel);
+XQA_PAGED_DECL(LaunchXQAPagedInt8Kernel);
+XQA_PAGED_DECL(LaunchXQAPagedInt8KernelBF16);
+#ifdef USE_FP8_KV_CACHE
+XQA_PAGED_DECL(LaunchXQAPagedFp8Kernel);
+XQA_PAGED_DECL(LaunchXQAPagedFp8KernelBF16);
+#endif
+}  // namespace H256
+
 Status LaunchXQAPagedKernel(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
@@ -89,13 +99,24 @@ Status LaunchXQAPagedKernel(
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA is only supported on Ampere (SM80) or newer GPUs.");
   }
 
-  if (kv_quant_type == XqaQuantType::kInt8) {
+  if (kv_quant_type == XqaQuantType::kNone) {
+    if (head_size == 256 && !is_bf16) {
+      return H256::LaunchXQAPagedFp16Kernel(XQA_PAGED_ARGS);
+    }
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL,
+        "Native-cache paged XQA only supports FP16 query/output with head_size 256. Input has ",
+        is_bf16 ? "BF16" : "FP16", " query/output and head_size ", head_size);
+  } else if (kv_quant_type == XqaQuantType::kInt8) {
     if (head_size == 64) {
       return is_bf16 ? H64::LaunchXQAPagedInt8KernelBF16(XQA_PAGED_ARGS)
                      : H64::LaunchXQAPagedInt8Kernel(XQA_PAGED_ARGS);
     } else if (head_size == 128) {
       return is_bf16 ? H128::LaunchXQAPagedInt8KernelBF16(XQA_PAGED_ARGS)
                      : H128::LaunchXQAPagedInt8Kernel(XQA_PAGED_ARGS);
+    } else if (head_size == 256) {
+      return is_bf16 ? H256::LaunchXQAPagedInt8KernelBF16(XQA_PAGED_ARGS)
+                     : H256::LaunchXQAPagedInt8Kernel(XQA_PAGED_ARGS);
     }
   } else if (kv_quant_type == XqaQuantType::kFp8) {
 #ifdef USE_FP8_KV_CACHE
@@ -105,18 +126,19 @@ Status LaunchXQAPagedKernel(
     } else if (head_size == 128) {
       return is_bf16 ? H128::LaunchXQAPagedFp8KernelBF16(XQA_PAGED_ARGS)
                      : H128::LaunchXQAPagedFp8Kernel(XQA_PAGED_ARGS);
+    } else if (head_size == 256) {
+      return is_bf16 ? H256::LaunchXQAPagedFp8KernelBF16(XQA_PAGED_ARGS)
+                     : H256::LaunchXQAPagedFp8Kernel(XQA_PAGED_ARGS);
     }
 #else
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Paged XQA was built without FP8 KV cache support.");
 #endif
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Paged XQA is only compiled for INT8/FP8 KV caches; the FP16/BF16 cache "
-                           "uses the FlashAttention paged path.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Paged XQA does not support the requested KV cache type.");
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Paged XQA only supports head_size 64 or 128. Input has ",
-                         head_size);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                         "Paged XQA only supports head_size 64, 128, or 256. Input has ", head_size);
 }
 
 size_t GetXQAPagedRequiredSharedMemoryBytes(
@@ -131,11 +153,17 @@ size_t GetXQAPagedRequiredSharedMemoryBytes(
   }
   // FP16 and BF16 kernels have identical shared-memory footprints (both 2-byte elements), so the
   // FP16 instantiation is queried for both.
-  if (kv_quant_type == XqaQuantType::kInt8) {
+  if (kv_quant_type == XqaQuantType::kNone) {
+    if (head_size == 256 && !is_bf16) {
+      return H256::LaunchXQAPagedFp16Kernel_SmemSize(num_heads, kv_num_heads);
+    }
+  } else if (kv_quant_type == XqaQuantType::kInt8) {
     if (head_size == 64) {
       return H64::LaunchXQAPagedInt8Kernel_SmemSize(num_heads, kv_num_heads);
     } else if (head_size == 128) {
       return H128::LaunchXQAPagedInt8Kernel_SmemSize(num_heads, kv_num_heads);
+    } else if (head_size == 256) {
+      return H256::LaunchXQAPagedInt8Kernel_SmemSize(num_heads, kv_num_heads);
     }
   } else if (kv_quant_type == XqaQuantType::kFp8) {
 #ifdef USE_FP8_KV_CACHE
@@ -143,6 +171,8 @@ size_t GetXQAPagedRequiredSharedMemoryBytes(
       return H64::LaunchXQAPagedFp8Kernel_SmemSize(num_heads, kv_num_heads);
     } else if (head_size == 128) {
       return H128::LaunchXQAPagedFp8Kernel_SmemSize(num_heads, kv_num_heads);
+    } else if (head_size == 256) {
+      return H256::LaunchXQAPagedFp8Kernel_SmemSize(num_heads, kv_num_heads);
     }
 #endif
   }

@@ -155,18 +155,32 @@ endfunction()
 # Usage:
 #   onnxruntime_extract_llm_sources(<cu_src_list_var>
 #       LLM_SOURCES <output_var>
-#       LLM_SM90_SOURCES <output_var>)
+#       LLM_SM90_SOURCES <output_var>
+#       LLM_FP4_SOURCES <output_var>)
 function(onnxruntime_extract_llm_sources CU_SRC_LIST)
-  cmake_parse_arguments(PARSE_ARGV 1 _LLM "" "LLM_SOURCES;LLM_SM90_SOURCES" "")
+  cmake_parse_arguments(PARSE_ARGV 1 _LLM "" "LLM_SOURCES;LLM_SM90_SOURCES;LLM_FP4_SOURCES" "")
 
   set(_list "${${CU_SRC_LIST}}")
   set(_llm_srcs)
   set(_llm_sm90_srcs)
+  set(_llm_fp4_srcs)
+  set(_llm_excluded_srcs)
   foreach(_src IN LISTS _list)
     if(_src MATCHES "/contrib_ops/cuda/llm/.*\\.cu$")
+      if(onnxruntime_USE_FPA_INTB_GEMM AND NOT onnxruntime_USE_FPA_INTB_GEMM_FULL AND
+         ((_src MATCHES "/fpA_intB_gemm/" AND
+          NOT _src MATCHES "/fpA_intB_gemm/fp16_int(4|8)_gemm_scaleonly\\.cu$") OR
+          (_src MATCHES "/fpA_intB_gemv/dispatcher_" AND
+          NOT _src MATCHES "/fpA_intB_gemv/dispatcher_fp16_int(4|8)\\.cu$")))
+        list(APPEND _llm_excluded_srcs "${_src}")
       # SM90-specific fpA_intB launchers (guarded by #ifndef EXCLUDE_SM_90)
-      if(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$")
+      elseif(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$")
         list(APPEND _llm_sm90_srcs "${_src}")
+      elseif(onnxruntime_USE_FP4_QMOE AND
+             _src MATCHES "/moe_gemm/(moe_gemm_kernels_(bf16|fp16|fp4)_fp4|moe_kernels)\\.cu$")
+        # These units instantiate the native NVFP4 runner and activation conversion.
+        # Keep them separate so MSVC does not compile every LLM source at sm_120a.
+        list(APPEND _llm_fp4_srcs "${_src}")
       else()
         list(APPEND _llm_srcs "${_src}")
       endif()
@@ -178,10 +192,19 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
   if(_llm_sm90_srcs)
     list(REMOVE_ITEM _list ${_llm_sm90_srcs})
   endif()
+  if(_llm_fp4_srcs)
+    list(REMOVE_ITEM _list ${_llm_fp4_srcs})
+  endif()
+  if(_llm_excluded_srcs)
+    list(REMOVE_ITEM _list ${_llm_excluded_srcs})
+  endif()
 
   set("${CU_SRC_LIST}" "${_list}" PARENT_SCOPE)
   set("${_LLM_LLM_SOURCES}" "${_llm_srcs}" PARENT_SCOPE)
   set("${_LLM_LLM_SM90_SOURCES}" "${_llm_sm90_srcs}" PARENT_SCOPE)
+  if(_LLM_LLM_FP4_SOURCES)
+    set("${_LLM_LLM_FP4_SOURCES}" "${_llm_fp4_srcs}" PARENT_SCOPE)
+  endif()
 endfunction()
 
 # Filter CMAKE_CUDA_ARCHITECTURES to only those >= a minimum SM version.
@@ -193,13 +216,16 @@ endfunction()
 #       MIN_SM <number>
 #       [EXCLUDE_SM120_REAL])
 function(onnxruntime_filter_cuda_archs OUTPUT_VAR)
-  cmake_parse_arguments(PARSE_ARGV 1 _FCA "EXCLUDE_SM120_REAL" "MIN_SM" "")
+  cmake_parse_arguments(PARSE_ARGV 1 _FCA "EXCLUDE_SM120_REAL;REPLACE_SM120_REAL_WITH_VIRTUAL" "MIN_SM" "")
 
   set(_filtered)
   foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
     string(REGEX MATCH "^([0-9]+)" _arch_num "${_arch}")
     if(_arch_num GREATER_EQUAL "${_FCA_MIN_SM}")
-      if(_FCA_EXCLUDE_SM120_REAL AND _arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
+      if(_FCA_REPLACE_SM120_REAL_WITH_VIRTUAL AND _arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
+        list(APPEND _filtered "${_arch_num}-virtual")
+        continue()
+      elseif(_FCA_EXCLUDE_SM120_REAL AND _arch_num GREATER_EQUAL 120 AND _arch MATCHES "-real$")
         continue()
       endif()
       list(APPEND _filtered "${_arch}")

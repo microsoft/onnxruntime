@@ -19,6 +19,7 @@ On Linux, a system Vulkan loader (`libvulkan.so.1`) must be installed and availa
 | Windows x64 |
 | Windows arm64 |
 | Linux x64 (manylinux) |
+| Linux aarch64 (manylinux) |
 | macOS arm64 |
 
 ## Installation
@@ -38,15 +39,15 @@ import onnxruntime_ep_webgpu as webgpu_ep
 # Register the plugin EP library with ONNX Runtime
 ort.register_execution_provider_library("webgpu", webgpu_ep.get_library_path())
 
-# Discover WebGPU devices
-all_devices = ort.get_ep_devices()
-webgpu_devices = [d for d in all_devices if d.ep_name == webgpu_ep.get_ep_name()]
-if not webgpu_devices:
-    raise RuntimeError("No WebGPU device found.")
+# Discover WebGPU EP devices
+# The WebGPU EP currently accepts one EP device and selects the physical GPU independently.
+webgpu_ep_device = next((d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()), None)
+if webgpu_ep_device is None:
+    raise RuntimeError("No WebGPU EP device found.")
 
 # Create a session using the WebGPU EP
 sess_options = ort.SessionOptions()
-sess_options.add_provider_for_devices(webgpu_devices, {})
+sess_options.add_provider_for_devices([webgpu_ep_device], {})
 session = ort.InferenceSession("model.onnx", sess_options=sess_options)
 
 # Run inference (replace shape/dtype/name to match your model)
@@ -56,7 +57,7 @@ output = session.run(None, {"input": input_data})
 
 ## Troubleshooting
 
-- **`No WebGPU device found`** — the plugin EP loaded but no compatible adapter was discovered. On Linux this
+- **`No WebGPU EP device found`** — the plugin EP loaded but no compatible adapter was discovered. On Linux this
   usually means the Vulkan loader (`libvulkan.so.1`) is not installed; install it via your distribution's package
   manager. On Windows it may indicate a missing or outdated GPU driver.
 - **`ORT runtime version "..." is below the minimum required version "@min_onnxruntime_version@"`** — the

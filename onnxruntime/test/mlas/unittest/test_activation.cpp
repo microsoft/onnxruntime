@@ -17,8 +17,8 @@ class MlasActivationTest : public MlasTestBase {
     };
 
     // N.B. The test data includes values at the edge of Tanh/Logistic boundaries.
-    //    Identity,     Relu,         LeakyRelu,    Tanh,         Logistic,     Clip,         HardSigmoid
-    static const AliasedValue TestData[20][7] = {
+    //    Identity,     Relu,         LeakyRelu,    Tanh,         Logistic,     Clip,         HardSigmoid,  HardSwish
+    static const AliasedValue TestData[20][8] = {
         {
             {0x00000001},
             {0x00000001},
@@ -27,6 +27,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f000000},
             {0x00000001},
             {0x3df5c28f},
+            {0x00000000},
         },  // positive denormal
         {
             {0x80000001},
@@ -36,8 +37,10 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f000000},
             {0x00000000},
             {0x3df5c28f},
+            {0x80000000},
         },  // negative denormal
         {
+            {0x7ff00002},
             {0x7ff00002},
             {0x7ff00002},
             {0x7ff00002},
@@ -54,6 +57,7 @@ class MlasActivationTest : public MlasTestBase {
             {0xfff00002},
             {0xfff00002},
             {0xfff00002},
+            {0xfff00002},
         },  // negative NaN
         {
             {0x00000000},
@@ -63,6 +67,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f000000},
             {0x00000000},
             {0x3df5c28f},
+            {0x00000000},
         },  // 0.0f
         {
             {0x80000000},
@@ -72,6 +77,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f000000},
             {0x80000000},
             {0x3df5c28f},
+            {0x80000000},
         },  // -0.0f
         {
             {0x3e800000},
@@ -81,6 +87,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f0feacc},
             {0x3e800000},
             {0x3e2e147b},
+            {0x3e0aaaab},
         },  // 0.25f
         {
             {0xbe800000},
@@ -90,6 +97,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3ee02a67},
             {0x00000000},
             {0x3d8f5c28},
+            {0xbdeaaaab},
         },  // -0.25f
         {
             {0x40800000},
@@ -99,6 +107,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f7b6541},
             {0x40800000},
             {0x3f6b851f},
+            {0x40800000},
         },  // 4.0f
         {
             {0xc0800000},
@@ -108,6 +117,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3c9357e0},
             {0x00000000},
             {0x00000000},
+            {0x80000000},
         },  // -4.0f
         {
             {0x41200000},
@@ -117,6 +127,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f7ffd06},
             {0x40c00000},
             {0x3f800000},
+            {0x41200000},
         },  // 10.0f
         {
             {0xc1200000},
@@ -126,6 +137,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x383e6000},
             {0x00000000},
             {0x00000000},
+            {0x80000000},
         },  // -10.0f
         {
             {0xc18866eb},
@@ -135,6 +147,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x33000000},
             {0x00000000},
             {0x00000000},
+            {0x80000000},
         },  // -17.0502529144f
         {
             {0xc18869bb},
@@ -144,6 +157,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x33c00000},
             {0x00000000},
             {0x00000000},
+            {0x80000000},
         },  // -17.0516262054f
         {
             {0xc18852a8},
@@ -153,6 +167,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x00000000},
             {0x00000000},
             {0x00000000},
+            {0x80000000},
         },  // -17.0403594971f
         {
             {0xc18844aa},
@@ -162,6 +177,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x00000000},
             {0x00000000},
             {0x00000000},
+            {0x80000000},
         },  // -17.0335273743f
         {
             {0x418866eb},
@@ -171,6 +187,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f800000},
             {0x40c00000},
             {0x3f800000},
+            {0x418866eb},
         },  // +17.0502529144f
         {
             {0x418869bb},
@@ -180,6 +197,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f7ffffe},
             {0x40c00000},
             {0x3f800000},
+            {0x418869bb},
         },  // +17.0516262054f
         {
             {0x418852a8},
@@ -189,6 +207,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f800000},
             {0x40c00000},
             {0x3f800000},
+            {0x418852a8},
         },  // +17.0403594971f
         {
             {0x418844aa},
@@ -198,6 +217,7 @@ class MlasActivationTest : public MlasTestBase {
             {0x3f800000},
             {0x40c00000},
             {0x3f800000},
+            {0x418844aa},
         },  // +17.0335273743f
     };
 

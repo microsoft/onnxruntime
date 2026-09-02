@@ -3,6 +3,8 @@
 
 #include "core/providers/webgpu/tensor/gather.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
+#include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime {
@@ -65,12 +67,12 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
       shader.MainFunctionBody() << "  }\n";
     }
+    shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "value");
   } else {
     shader.MainFunctionBody() << "  var idx : input_indices_value_t;\n"
                               << "  var output_indices : output_indices_indices_t;\n"
                               << "  var indices_indices : input_indices_indices_t;\n"
                               << "  var data_indices : data_indices_indices_t;\n"
-                              << "  var value : output_value_t;\n"
                               << "  var data_offset : u32;\n";
     shader.MainFunctionBody() << "  output_indices = " << output_indices.OffsetToIndices("global_idx") << ";\n";
 
@@ -93,11 +95,13 @@ Status GatherProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
     }
 
-    shader.MainFunctionBody() << "  data_offset = " << data_indices.IndicesToOffset("data_indices") << ";\n"
-                              << "  value = " << data.GetByOffset("data_offset") << ";\n";
+    shader.MainFunctionBody() << "  data_offset = " << data_indices.IndicesToOffset("data_indices") << ";\n";
+    // use_storage_type is only honored for Int64/Uint64 by GetByOffset/SetByOffset; for every
+    // other type it is ignored, so passing is_int64_ directly is equivalent to the plain
+    // value-type access when is_int64_ is false. For int64 it copies the raw vec2<u32> storage
+    // bits so the full 64-bit value is preserved instead of being truncated to i32.
+    shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", data.GetByOffset("data_offset", is_int64_), is_int64_);
   }
-
-  shader.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "value");
 
   return Status::OK();
 }
@@ -118,8 +122,9 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
     data_size = (data_size + 3) / 4;
   }
 
+  bool is_int64 = p.input_tensor->DataType() == DataTypeImpl::GetType<int64_t>();
   uint32_t axis = static_cast<uint32_t>(p.axis);
-  GatherProgram program{axis};
+  GatherProgram program{axis, is_int64};
   program
       .AddInputs({{p.input_tensor, ProgramTensorMetadataDependency::TypeAndRank, ProgramInput::Flatten, (pack_as_bytes ? 4 : 1)},
                   {p.indices_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
@@ -132,21 +137,58 @@ Status Gather::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-#define WEBGPU_GATHER_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS, TYPE)                                                                              \
-  ONNX_OPERATOR_KERNEL_EX(                                                                                                                      \
-      OP_TYPE, kOnnxDomain, VERSION, kWebGpuExecutionProvider,                                                                                  \
-      KernelDefBuilder().TypeConstraint("T", TYPE).TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()), \
-      KERNEL_CLASS);
+// Gather is a pure data-movement op: elements are copied, never interpreted in shader arithmetic,
+// so enabling int64 is safe. int64 (stored as vec2<u32>) is copied losslessly via the raw
+// storage-word path in GenerateShaderCode, preserving the full 64-bit value instead of the
+// truncating i32 value type used by arithmetic kernels. The base type set already includes bool and
+// uint8 (packed 4-per-u32), which int64 support leaves untouched.
+static std::vector<MLDataType> GetGatherTypeConstraints(bool enable_int64) {
+  std::vector<MLDataType> type_constraints = WebGpuSupportedNumberBoolAndUint8Types();
+  if (enable_int64) {
+    type_constraints.push_back(DataTypeImpl::GetTensorType<int64_t>());
+  }
+  return type_constraints;
+}
 
-#define WEBGPU_GATHER_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, TYPE)                                                   \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                                                            \
-      OP_TYPE, kOnnxDomain, VERSION_FROM, VERSION_TO, kWebGpuExecutionProvider,                                                                 \
-      KernelDefBuilder().TypeConstraint("T", TYPE).TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>()), \
-      KERNEL_CLASS);
+KernelCreateInfo CreateGatherVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
+  std::vector<MLDataType> type_constraints = GetGatherTypeConstraints(enable_int64);
 
-WEBGPU_GATHER_VERSIONED_KERNEL(Gather, 1, 10, Gather, WebGpuSupportedNumberBoolAndUint8Types())
-WEBGPU_GATHER_VERSIONED_KERNEL(Gather, 11, 12, Gather, WebGpuSupportedNumberBoolAndUint8Types())
-WEBGPU_GATHER_KERNEL(Gather, 13, Gather, WebGpuSupportedNumberBoolAndUint8Types())
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Gather>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Gather")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(start_version, end_version)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", std::move(type_constraints))
+          .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>())
+          .Build(),
+      kernel_create_fn};
+}
+
+KernelCreateInfo CreateGatherKernelInfo(int since_version, bool enable_int64) {
+  std::vector<MLDataType> type_constraints = GetGatherTypeConstraints(enable_int64);
+
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Gather>(info);
+    return Status::OK();
+  };
+
+  return {
+      KernelDefBuilder()
+          .SetName("Gather")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(since_version)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", std::move(type_constraints))
+          .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<TypeList<int32_t, int64_t>>())
+          .Build(),
+      kernel_create_fn};
+}
 
 }  // namespace webgpu
 }  // namespace onnxruntime

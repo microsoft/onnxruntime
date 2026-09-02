@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 #include "test/providers/provider_test_utils.h"
@@ -946,6 +948,23 @@ TEST(SplitOperatorTest, InvalidValueInSplitInput_NegativeEntry_NegativeAxis) {
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Invalid value in 'split' input. All values must be >= 0.",
+           {}, nullptr, &execution_providers);
+}
+
+TEST(SplitOperatorTest, InvalidValueInSplitInput_Overflow) {
+  OpTester test("Split", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("axis", 0);
+  test.AddInput<float>("input", {4, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddInput<int64_t>("split", {3}, {6, std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()},
+                         /*is_initializer=*/false);
+  test.AddOutput<float>("output0", {1, 2}, {0.f, 0.f});
+  test.AddOutput<float>("output1", {1, 2}, {0.f, 0.f});
+  test.AddOutput<float>("output2", {1, 2}, {0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "exceeds the remaining size of the selected axis",
            {}, nullptr, &execution_providers);
 }
 

@@ -82,15 +82,14 @@ Status ExpandBuffer(Stream* stream,
   const int64_t& batch_size = input_shape[0];
   int64_t sequence_length = 0;
 
-  int64_t dims[4] = {0};
-  input_shape.CopyDims(dims, input_shape.NumDimensions());
+  TensorShapeVector dims(input_shape.GetDims().begin(), input_shape.GetDims().end());
   dims[0] = batch_size * num_beams;
   bool is_kv_cache = input_shape.NumDimensions() == 4;
   if (max_sequence_length > 0 && is_kv_cache) {
     sequence_length = input_shape[2];
     dims[2] = max_sequence_length;
   }
-  TensorShape expanded_shape(&dims[0], input_shape.NumDimensions());
+  TensorShape expanded_shape(dims);
 
   MLDataType element_type = input.Get<Tensor>().DataType();
   ORT_ENFORCE(element_type == DataTypeImpl::GetType<T>());

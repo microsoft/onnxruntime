@@ -96,6 +96,7 @@ extends:
         pool: 'onnxruntime-Win-CPU-VS2022-Latest'
         variables:
           runCodesignValidationInjection: false
+          skipComponentGovernanceDetection: true
         timeoutInMinutes: 10
         steps:
     #    This pipeline is triggered by the Nuget - Packaging - CUDA13 pipeline.

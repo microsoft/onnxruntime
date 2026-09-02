@@ -63,8 +63,7 @@ REGISTER_REDUCE_KERNEL(ReduceMin, 20);
 // Factory functions allow conditional int64 support on the T type constraint.
 // NOTE: int64 reduction in the WebGPU shader uses i32 (low 32 bits only); values outside
 // the int32 range will produce incorrect results — same limitation as Range.
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateReduceSumVersionedKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateReduceSumVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<ReduceSum>(info);
@@ -73,15 +72,14 @@ KernelCreateInfo CreateReduceSumVersionedKernelInfo(bool enable_int64) {
   return {KernelDefBuilder()
               .SetName("ReduceSum")
               .SetDomain(kOnnxDomain)
-              .SinceVersion(StartVersion, EndVersion)
+              .SinceVersion(start_version, end_version)
               .Provider(kWebGpuExecutionProvider)
               .TypeConstraint("T", type_constraints)
               .Build(),
           kernel_create_fn};
 }
 
-template <int SinceVersion>
-KernelCreateInfo CreateReduceSumKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateReduceSumKernelInfo(int since_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<ReduceSum>(info);
@@ -90,17 +88,13 @@ KernelCreateInfo CreateReduceSumKernelInfo(bool enable_int64) {
   return {KernelDefBuilder()
               .SetName("ReduceSum")
               .SetDomain(kOnnxDomain)
-              .SinceVersion(SinceVersion)
+              .SinceVersion(since_version)
               .Provider(kWebGpuExecutionProvider)
               .TypeConstraint("T", type_constraints)
               .InputMemoryType(OrtMemTypeCPUInput, 1)
               .Build(),
           kernel_create_fn};
 }
-
-template KernelCreateInfo CreateReduceSumVersionedKernelInfo<1, 10>(bool);
-template KernelCreateInfo CreateReduceSumVersionedKernelInfo<11, 12>(bool);
-template KernelCreateInfo CreateReduceSumKernelInfo<13>(bool);
 
 REGISTER_REDUCE_VERSIONED_KERNEL(ReduceProd, 1, 10);
 REGISTER_REDUCE_VERSIONED_KERNEL(ReduceProd, 11, 12);

@@ -31,13 +31,30 @@ namespace onnxruntime {
 namespace scan {
 namespace detail {
 
+void ValidateNumScanInputs(int64_t num_scan_inputs, int64_t num_variadic_inputs, int64_t num_outputs) {
+  // The ONNX Scan spec requires one or more scan_input tensors, so 'num_scan_inputs' must be at
+  // least 1 (as well as no more than the number of variadic inputs), otherwise the derived loop
+  // state variable count below could go out of the valid range and later indexing built on top of
+  // it would operate on invalid indices.
+  ORT_ENFORCE(num_scan_inputs >= 1 && num_scan_inputs <= num_variadic_inputs,
+              "Invalid 'num_scan_inputs' of ", num_scan_inputs, ". Value must be between 1 and ",
+              num_variadic_inputs, " (the number of variadic inputs) inclusive.");
+
+  const int64_t num_loop_state_variables = num_variadic_inputs - num_scan_inputs;
+  ORT_ENFORCE(num_loop_state_variables <= num_outputs,
+              "Scan has ", num_outputs, " output(s), which is fewer than the ", num_loop_state_variables,
+              " loop state variable(s) implied by a 'num_scan_inputs' of ", num_scan_inputs, ".");
+}
+
 Info::Info(const Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in, bool is_v8)
     : subgraph(subgraph_in), num_scan_inputs(num_scan_inputs_in) {
   num_inputs = static_cast<int>(node.InputDefs().size());
   num_variadic_inputs = is_v8 ? num_inputs - 1 : num_inputs;  // allow for sequence_lens input in v8
-  num_loop_state_variables = num_variadic_inputs - num_scan_inputs;
-
   num_outputs = static_cast<int>(node.OutputDefs().size());
+
+  ValidateNumScanInputs(num_scan_inputs, num_variadic_inputs, num_outputs);
+
+  num_loop_state_variables = num_variadic_inputs - num_scan_inputs;
   num_scan_outputs = num_outputs - num_loop_state_variables;
 
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
