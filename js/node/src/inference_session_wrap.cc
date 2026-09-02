@@ -216,14 +216,16 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     bool copy_to_js{false};
     // Type and shape the caller's tensor declares, checked against what the model produced.
     PreallocatedOutputInfo declared;
-    // The caller's Tensor, the buffer written into, and the resource leased for that write, pinned
-    // for the lifetime of the run. Held as persistent references rather than slots in a Javascript
-    // array: array element assignment can be intercepted by an inherited setter (Array.prototype[0]),
-    // leaving the value unpinned and letting a matching getter return a different object on every
-    // read, so validation and the copy could see different buffers.
+    // The caller's Tensor, and the storage behind it: the typed array for a CPU output (which is
+    // also the copy destination) or the gpu-buffer External for a device one. The two never coexist,
+    // and the lease key is derived from the storage, so no third reference is needed.
+    //
+    // Held as persistent references rather than slots in a Javascript array: array element
+    // assignment can be intercepted by an inherited setter (Array.prototype[0]), leaving the value
+    // unpinned and letting a matching getter return a different object on every read, so validation
+    // and the copy could see different buffers.
     Napi::Reference<Napi::Value> js_value;
-    Napi::Reference<Napi::Value> js_data;
-    Napi::Reference<Napi::Value> lease_resource;
+    Napi::Reference<Napi::Value> js_storage;
     size_t lease_byte_offset{0};
     size_t lease_byte_length{0};
     // Device outputs lease the whole External; they have no addressable sub-range.
@@ -296,14 +298,11 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
           output.js_value = Napi::Persistent(value);
           if (!conversion.data.IsEmpty()) {
-            output.js_data = Napi::Persistent(conversion.data);
-          }
-          if (!conversion.dataArrayBuffer.IsEmpty()) {
-            output.lease_resource = Napi::Persistent(conversion.dataArrayBuffer);
+            output.js_storage = Napi::Persistent(conversion.data);
           } else if (!conversion.gpuBuffer.IsEmpty()) {
-            output.lease_resource = Napi::Persistent(conversion.gpuBuffer);
+            output.js_storage = Napi::Persistent(conversion.gpuBuffer);
           } else {
-            output.lease_resource = Napi::Persistent(value);
+            output.js_storage = Napi::Persistent(value);
           }
           output.declared = std::move(conversion.declared);
           output.lease_byte_offset = conversion.dataByteOffset;
@@ -353,9 +352,13 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   void AcquireOutputBufferLeases() {
     for (const auto& output : outputs_) {
       if (output.reuse) {
+        // A CPU output leases a range of the ArrayBuffer behind its typed array. Reading that goes
+        // through N-API's internal slots, so unlike a property read it cannot be intercepted.
+        auto storage = output.js_storage.Value();
+        auto resource = output.lease_whole_resource ? storage.As<Napi::Object>()
+                                                    : storage.As<Napi::TypedArray>().ArrayBuffer();
         output_buffer_leases_.push_back(OrtInstanceData::AcquireOutputBufferLease(
-            output.lease_resource.Value().As<Napi::Object>(), output.lease_byte_offset,
-            output.lease_byte_length, output.lease_whole_resource));
+            resource, output.lease_byte_offset, output.lease_byte_length, output.lease_whole_resource));
       }
     }
   }
@@ -466,7 +469,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       for (size_t i = 0; i < output_values_.size(); ++i) {
         const auto& output = outputs_[i];
         if (output.copy_to_js) {
-          ValidateOrtValueForNapiTypedArray(env_, output_values_[i], output.js_data.Value(), output.declared);
+          ValidateOrtValueForNapiTypedArray(env_, output_values_[i], output.js_storage.Value(), output.declared);
         } else if (output.reuse) {
           // A device output is handed straight back to the caller, so nothing would otherwise
           // notice that the model produced a different type or shape than the tensor declares.
@@ -479,7 +482,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
       for (size_t i = 0; i < output_values_.size(); ++i) {
         if (outputs_[i].copy_to_js) {
-          CopyOrtValueToNapiTypedArray(env_, output_values_[i], outputs_[i].js_data.Value(), outputs_[i].declared);
+          CopyOrtValueToNapiTypedArray(env_, output_values_[i], outputs_[i].js_storage.Value(), outputs_[i].declared);
         }
       }
       Complete();
