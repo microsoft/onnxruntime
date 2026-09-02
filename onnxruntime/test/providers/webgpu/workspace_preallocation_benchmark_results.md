@@ -4,7 +4,7 @@
 
 - Build: Release, Dawn Vulkan backend
 - GPU: NVIDIA GeForce RTX 5090 Laptop GPU
-- Models: Qwen 2.5 1.5B and 7B, 4-bit `MatMulNBits`
+- Models: Qwen 2.5 1.5B and 7B, plus a Qwen 3 8B applicability check
 - Workload: batch 1 cached prefill with 1,024 new tokens and a one-token KV cache
 - Warmup runs: 5
 - Memory-measurement runs: 3
@@ -16,7 +16,8 @@
 
 The WebGPU benchmark is
 `MatMulNBitsWorkspace.WebGpuQwen25WorkspacePreallocationBenchmark`. Set
-`ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL` to `qwen2.5-1.5b` or `qwen2.5-7b`,
+`ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL` to `qwen2.5-1.5b`, `qwen2.5-7b`, or
+`qwen3-8b`,
 `ORT_WEBGPU_WORKSPACE_BENCHMARK_MODEL_PATH` to the model and use
 `ORT_WEBGPU_WORKSPACE_BENCHMARK_PREALLOCATION=0` or `1` to select the
 configuration.
@@ -117,6 +118,48 @@ the hundreds-of-MiB difference is far larger than the controlled 37.00 MiB
 workspace buffer and varied substantially between runs. The exact allocator
 high-water mark is the reliable memory comparison; no feature-attributable WDDM
 delta is claimed.
+
+## Qwen 3 8B
+
+The cached `qwen3-8b-cuda-gpu-2` model cannot provide a meaningful comparison
+between the baseline and workspace-only configurations without changing its
+`MatMulNBits` dispatch attributes. Its 253 `MatMulNBits` nodes have the
+following distribution:
+
+| Nodes | Bits | Block size | Accuracy level |
+|---:|---:|---:|---:|
+| 135 | 4 | 128 | 0 |
+| 118 | 8 | 128 | 0 |
+
+Neither workspace-capable WebGPU implementation is selected:
+
+- Subgroup-matrix requires block size 32, but every node uses block size 128.
+- DP4A requires accuracy level 4, but every node uses accuracy level 0.
+
+The model therefore declares zero workspace nodes and slots. Enabling
+workspace preallocation would not change allocation behavior, memory use, or
+latency, so a balanced baseline/planned comparison was not run. The benchmark
+reports this configuration as skipped instead of presenting a no-op comparison.
+
+One unchanged-model baseline process completed successfully with five warmups,
+three memory runs, and 30 timed runs:
+
+| Metric | Baseline |
+|---|---:|
+| Planned workspace nodes | 0 |
+| Planned workspace slots | 0 |
+| Default device allocator calls, 3 runs | 900 |
+| Default device allocator calls per run | 300 |
+| Default device allocator peak bytes in use | 470,851,584 B (449.04 MiB) |
+| Initialization latency | 14,917.9 ms |
+| Average latency | 11,304.0 ms |
+| P50 latency | 10,003.5 ms |
+| P90 latency | 17,206.5 ms |
+| P99 latency | 19,380.2 ms |
+
+Changing the 4-bit nodes to accuracy level 4 would enable DP4A and make
+workspace planning measurable, but that would benchmark a derived dispatch
+configuration rather than the cached model as provided.
 
 ## Note
 
