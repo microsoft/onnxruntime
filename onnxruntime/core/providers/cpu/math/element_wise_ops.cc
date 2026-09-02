@@ -1370,9 +1370,9 @@ inline T SafeShiftLeft(T value, T shift) {
   const auto result = static_cast<UnsignedT>(value) << static_cast<UnsignedT>(shift);
   if constexpr (std::is_signed_v<T>) {
     return FromUnsignedBits<T>(result);
-  } else {
-    return result;
   }
+
+  return result;
 }
 
 template <typename T>
@@ -1390,9 +1390,9 @@ inline T SafeShiftRight(T value, T shift) {
       result |= std::numeric_limits<UnsignedT>::max() << (bit_width - shift_amount);
     }
     return FromUnsignedBits<T>(result);
-  } else {
-    return result;
   }
+
+  return result;
 }
 
 template <typename T>

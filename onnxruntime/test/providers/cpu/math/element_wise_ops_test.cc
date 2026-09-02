@@ -5000,6 +5000,15 @@ TEST(BitShiftOpTest, UnsignedTypesOpset28) {
   TestUnsignedBitShiftRegistration<uint64_t>(28);
 }
 
+TEST(BitShiftOpTest, RightShiftByBitWidth_Uint64Opset28) {
+  OpTester test("BitShift", 28);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {4}, {1000, 255, 1, 42});
+  test.AddInput<uint64_t>("Y", {4}, {64, 64, 64, 64});
+  test.AddOutput<uint64_t>("Z", {4}, {0, 0, 0, 0});
+  test.Run();
+}
+
 // Test that shift amounts >= bit width produce 0 (not undefined behavior).
 // DirectML EP has the same hardware-level shift masking behavior, so skip these tests for DML.
 TEST(BitShiftOpTest, RightShiftByBitWidth_Uint64) {
