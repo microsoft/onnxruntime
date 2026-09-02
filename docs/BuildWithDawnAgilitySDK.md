@@ -15,9 +15,9 @@ python tools\ci_build\build.py `
 ```
 
 This option is intended for local development and supports Windows desktop x86, x64, and ARM64 targets. Windows ARM32,
-ARM64EC, and WindowsStore/UWP targets are not supported. Python wheels, C#, NuGet, Java, and Node.js packages are also
-not supported because they do not deploy the required D3D12 runtime DLLs. Custom Dawn checkouts selected with
-`onnxruntime_CUSTOM_DAWN_SRC_PATH` are not supported.
+ARM64EC, and WindowsStore/UWP targets are not supported. WebGPU Plugin EP, Python wheels, C#, NuGet, Java, and Node.js
+packages are also not supported because they do not deploy the required D3D12 runtime DLLs. Custom Dawn checkouts
+selected with `onnxruntime_CUSTOM_DAWN_SRC_PATH` are not supported.
 
 The pinned SDK requires Windows 10 version 1909 or newer. For versions 1909, 2004, and 20H2, the minimum OS build
 revisions are:
