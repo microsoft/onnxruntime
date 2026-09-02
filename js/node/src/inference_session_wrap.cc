@@ -13,18 +13,6 @@
 #include <mutex>
 #include <string>
 
-namespace {
-// Guards the IO-binding path across every session in the process. Binding inputs and outputs does
-// device work before Run() is reached, which ORT's per-session run guard does not cover, and WebGPU
-// sessions sharing a device id share one global WebGpuContext and therefore one command encoder
-// (see WebGpuContextFactory in core/providers/webgpu/webgpu_context.cc). A per-session lock would
-// leave two sessions free to encode onto the same encoder.
-std::mutex& IoBindingMutex() {
-  static std::mutex mutex;
-  return mutex;
-}
-}  // namespace
-
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   // create ONNX runtime env
   Ort::InitApi();
@@ -335,8 +323,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         return;
       }
 
-      // See IoBindingMutex(): binding does device work that ORT's own run guard does not cover.
-      std::lock_guard<std::mutex> io_binding_lock(IoBindingMutex());
+      // See OrtInstanceData::DeviceMutex(): binding does device work that ORT's own run guard does
+      // not cover, and the provider context it touches is shared across sessions.
+      std::lock_guard<std::mutex> device_lock(OrtInstanceData::DeviceMutex());
 
       io_binding_ = std::make_unique<Ort::IoBinding>(*session_->session_);
       for (size_t i = 0; i < input_names_.size(); ++i) {
@@ -364,6 +353,13 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       if (output_values_.size() != outputs_.size()) {
         SetError("Output count mismatch.");
       }
+
+      // Release everything bound to the device while the lock is still held. Complete() would
+      // otherwise do it from the Javascript thread, concurrently with another session binding onto
+      // the same shared context.
+      io_binding_.reset();
+      input_values_.clear();
+      gpu_value_owners_.clear();
     } catch (const std::exception& e) {
       SetError(e.what());
     } catch (...) {

@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -482,6 +483,9 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
                     if (gpuBuffer.IsExternal()) {
                       auto* valueOwner = gpuBuffer.As<Napi::External<OrtValueOwner>>().Data();
                       if (valueOwner != nullptr) {
+                        // Returning a device buffer to the provider is device work, so it cannot run
+                        // while another session is binding onto the same shared context.
+                        std::lock_guard<std::mutex> device_lock(OrtInstanceData::DeviceMutex());
                         valueOwner->reset();
                       }
                     }
@@ -492,8 +496,11 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
                                   },
                                   "download"));
 
-      auto external = Napi::External<OrtValueOwner>::New(env, valueOwner.get(),
-                                                         [](Napi::Env, OrtValueOwner* value) { delete value; });
+      auto external = Napi::External<OrtValueOwner>::New(env, valueOwner.get(), [](Napi::Env, OrtValueOwner* value) {
+        // Collected rather than disposed: the same device work, on the same shared context.
+        std::lock_guard<std::mutex> device_lock(OrtInstanceData::DeviceMutex());
+        delete value;
+      });
       valueOwner.release();
       return scope.Escape(tensorFromGpuBuffer.Call({external, options}));
     } else {
@@ -520,7 +527,9 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
           value.release();
           arrayBuffer = Napi::ArrayBuffer(env, externalArrayBuffer);
           usingExternalBuffer = true;
-        } else {
+        } else if (status == napi_no_external_buffers_allowed) {
+          // Only this status means the runtime will never accept them. Caching any other failure
+          // would downgrade every later output to a copy over something transient.
           OrtInstanceData::MarkExternalArrayBuffersRefused(env);
         }
       }

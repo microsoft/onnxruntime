@@ -34,6 +34,11 @@ const Napi::FunctionReference& OrtInstanceData::TensorConstructor(Napi::Env env)
   return data->ortTensorConstructor;
 }
 
+std::mutex& OrtInstanceData::DeviceMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
 bool OrtInstanceData::ExternalArrayBuffersRefused(Napi::Env env) {
   auto data = env.GetInstanceData<OrtInstanceData>();
   return data != nullptr && data->externalArrayBuffersRefused;

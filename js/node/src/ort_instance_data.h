@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <napi.h>
 #include <vector>
 #include "onnxruntime_cxx_api.h"
@@ -34,6 +35,13 @@ struct OrtInstanceData {
     // sub-range; distinct from a zero-length region, which writes nothing and conflicts with nothing.
     bool wholeResource{false};
   };
+  // Serializes every operation that touches execution provider device state: binding inputs and
+  // outputs, running with an IoBinding, and releasing device-backed OrtValues. Providers that
+  // declare ConcurrentRunSupported() false are not safe for concurrent use, and ORT's own guard
+  // covers only graph execution; WebGPU sessions sharing a device id also share one WebGpuContext
+  // and command encoder, so the lock has to span sessions rather than sit on one of them.
+  static std::mutex& DeviceMutex();
+
   // Whether a previous attempt to hand Javascript an external ArrayBuffer was refused. Electron's
   // V8 Memory Cage and V8-sandbox builds reject them for the lifetime of the process, so the answer
   // is cached rather than re-probed for every model output.
