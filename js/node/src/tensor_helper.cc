@@ -483,9 +483,11 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
                     if (gpuBuffer.IsExternal()) {
                       auto* valueOwner = gpuBuffer.As<Napi::External<OrtValueOwner>>().Data();
                       if (valueOwner != nullptr) {
-                        // Returning a device buffer to the provider is device work, so it cannot run
-                        // while another session is binding onto the same shared context.
-                        std::lock_guard<std::mutex> device_lock(OrtInstanceData::DeviceMutex());
+                        // Returning a device buffer to the provider is device work, so it has to
+                        // happen under the device lock -- but never by blocking this thread, which
+                        // would stall the event loop for the length of an in-flight inference.
+                        OrtInstanceData::ReleaseDeviceObject(
+                            std::make_shared<OrtValueOwner>(std::move(*valueOwner)));
                         valueOwner->reset();
                       }
                     }
@@ -497,9 +499,8 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
                                   "download"));
 
       auto external = Napi::External<OrtValueOwner>::New(env, valueOwner.get(), [](Napi::Env, OrtValueOwner* value) {
-        // Collected rather than disposed: the same device work, on the same shared context.
-        std::lock_guard<std::mutex> device_lock(OrtInstanceData::DeviceMutex());
-        delete value;
+        // Collected rather than disposed: the same device work, and the same reason not to block.
+        OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<OrtValueOwner>(value));
       });
       valueOwner.release();
       return scope.Escape(tensorFromGpuBuffer.Call({external, options}));

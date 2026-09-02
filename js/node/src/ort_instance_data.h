@@ -42,6 +42,13 @@ struct OrtInstanceData {
   // and command encoder, so the lock has to span sessions rather than sit on one of them.
   static std::mutex& DeviceMutex();
 
+  // Destroy a device-backed object under DeviceMutex(). Safe to call from the Javascript thread:
+  // blocking there would stall the event loop for the length of another session's inference, so if
+  // the lock is busy the object is queued and destroyed by whoever holds the lock next.
+  static void ReleaseDeviceObject(std::shared_ptr<void> object);
+  // Destroy everything queued by ReleaseDeviceObject(). The caller must already hold DeviceMutex().
+  static void DrainDeviceReleasesLocked();
+
   // Whether a previous attempt to hand Javascript an external ArrayBuffer was refused. Electron's
   // V8 Memory Cage and V8-sandbox builds reject them for the lifetime of the process, so the answer
   // is cached rather than re-probed for every model output.

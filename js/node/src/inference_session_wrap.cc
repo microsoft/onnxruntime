@@ -13,6 +13,25 @@
 #include <mutex>
 #include <string>
 
+namespace {
+// Owns run values handed to OrtInstanceData::ReleaseDeviceObject(). If the environment cleanup hook
+// destroyed the ORT singleton before these are drained -- at process exit, say -- releasing them
+// would call into an unloaded library, so leak instead, as ~InferenceSessionWrap does.
+struct DeviceValues {
+  explicit DeviceValues(std::vector<Ort::Value>&& moved) : values(std::move(moved)) {}
+
+  std::vector<Ort::Value> values;
+
+  ~DeviceValues() {
+    if (!OrtSingletonData::GetOrtObjects()) {
+      for (auto& value : values) {
+        (void)value.release();
+      }
+    }
+  }
+};
+}  // namespace
+
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   // create ONNX runtime env
   Ort::InitApi();
@@ -326,6 +345,18 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       // See OrtInstanceData::DeviceMutex(): binding does device work that ORT's own run guard does
       // not cover, and the provider context it touches is shared across sessions.
       std::lock_guard<std::mutex> device_lock(OrtInstanceData::DeviceMutex());
+      OrtInstanceData::DrainDeviceReleasesLocked();
+
+      // Whatever happens below, drop everything bound to the device before leaving the lock. Doing
+      // it from Complete() instead would run on the Javascript thread while another session binds.
+      struct DeviceCleanup {
+        RunAsyncWorker* worker;
+        ~DeviceCleanup() {
+          worker->io_binding_.reset();
+          worker->input_values_.clear();
+          worker->gpu_value_owners_.clear();
+        }
+      } device_cleanup{this};
 
       io_binding_ = std::make_unique<Ort::IoBinding>(*session_->session_);
       for (size_t i = 0; i < input_names_.size(); ++i) {
@@ -353,13 +384,6 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       if (output_values_.size() != outputs_.size()) {
         SetError("Output count mismatch.");
       }
-
-      // Release everything bound to the device while the lock is still held. Complete() would
-      // otherwise do it from the Javascript thread, concurrently with another session binding onto
-      // the same shared context.
-      io_binding_.reset();
-      input_values_.clear();
-      gpu_value_owners_.clear();
     } catch (const std::exception& e) {
       SetError(e.what());
     } catch (...) {
@@ -447,13 +471,17 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
 
     ReleaseOutputBufferLeases();
 
-    // Release everything derived from the session before EndRun(), which may tear the session down:
-    // Ort::IoBinding holds a reference to it, and device OrtValues come from its allocators. Waiting
-    // for these members to be destroyed with the worker would release them against a dead session.
+    // Ort::IoBinding references the session, so it must go before EndRun() may tear the session
+    // down; Execute() has already dropped it under the device lock on every path that created one.
     io_binding_.reset();
-    output_values_.clear();
-    input_values_.clear();
-    gpu_value_owners_.clear();
+
+    // The remaining values may be device-backed, and releasing those is device work. Hand them over
+    // rather than destroying them here: this runs on the Javascript thread, where taking the device
+    // lock would stall the event loop for the length of another session's inference. Their buffers
+    // keep their allocators alive through a shared_ptr, so they do not depend on the session.
+    OrtInstanceData::ReleaseDeviceObject(std::make_shared<DeviceValues>(std::move(output_values_)));
+    OrtInstanceData::ReleaseDeviceObject(std::make_shared<DeviceValues>(std::move(input_values_)));
+    OrtInstanceData::ReleaseDeviceObject(std::make_shared<std::vector<OrtValueOwner>>(std::move(gpu_value_owners_)));
 
     session_->EndRun();
   }

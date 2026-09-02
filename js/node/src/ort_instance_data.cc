@@ -39,6 +39,44 @@ std::mutex& OrtInstanceData::DeviceMutex() {
   return mutex;
 }
 
+namespace {
+std::mutex& PendingReleaseMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::vector<std::shared_ptr<void>>& PendingReleases() {
+  static std::vector<std::shared_ptr<void>> pending;
+  return pending;
+}
+}  // namespace
+
+void OrtInstanceData::DrainDeviceReleasesLocked() {
+  std::vector<std::shared_ptr<void>> pending;
+  {
+    std::lock_guard<std::mutex> lock(PendingReleaseMutex());
+    pending.swap(PendingReleases());
+  }
+  // Destructors run here, with DeviceMutex() held by the caller.
+  pending.clear();
+}
+
+void OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<void> object) {
+  if (object == nullptr) {
+    return;
+  }
+
+  std::unique_lock<std::mutex> device_lock(DeviceMutex(), std::try_to_lock);
+  if (device_lock.owns_lock()) {
+    DrainDeviceReleasesLocked();
+    object.reset();
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(PendingReleaseMutex());
+  PendingReleases().push_back(std::move(object));
+}
+
 bool OrtInstanceData::ExternalArrayBuffersRefused(Napi::Env env) {
   auto data = env.GetInstanceData<OrtInstanceData>();
   return data != nullptr && data->externalArrayBuffersRefused;
