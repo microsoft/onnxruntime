@@ -2435,7 +2435,10 @@ TEST(CastOpTest, Float6EncodingBoundaries) {
 template <typename F6>
 void TestFloat6ToPackedIntegerTruncation() {
   const std::vector<int64_t> shape{2};
-  const std::vector<F6> input{F6(0x0C, F6::FromBits()), F6(0x2C, F6::FromBits())};  // +1.5, -1.5
+  const uint8_t positive_fractional_bits = std::is_same_v<F6, Float6E2M3> ? 0x0C : 0x0E;
+  const uint8_t negative_fractional_bits = std::is_same_v<F6, Float6E2M3> ? 0x2C : 0x2E;
+  const std::vector<F6> input{F6(positive_fractional_bits, F6::FromBits()),
+                              F6(negative_fractional_bits, F6::FromBits())};  // +1.5, -1.5
 
   const std::vector<Int4x2> int4_output{Int4x2(0xF1, Int4x2::FromBits())};
   TestCastOp(gsl::make_span(input), gsl::make_span(int4_output), shape,
