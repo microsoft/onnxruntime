@@ -389,6 +389,7 @@ Not the same function pointer (different signatures — one has a kernel instanc
 static std::optional<size_t> ComputeIllustrativeBshdAttentionWorkspace(
     int64_t batch, int64_t sequence, int64_t heads, int64_t head_size) {
   const int64_t dimensions[] = {batch, sequence, heads, head_size};
+  // A zero extent fixes this product at zero even if another extent is unknown.
   for (const int64_t dimension : dimensions) {
     if (dimension == 0) {
       return 0;
@@ -401,6 +402,7 @@ static std::optional<size_t> ComputeIllustrativeBshdAttentionWorkspace(
     }
   }
   try {
+    // size_t matches the allocator contract; SafeInt rejects values above the platform's SIZE_MAX.
     SafeInt<size_t> bytes{sizeof(float)};
     for (const int64_t dimension : dimensions) {
       bytes *= SafeInt<size_t>(dimension);
