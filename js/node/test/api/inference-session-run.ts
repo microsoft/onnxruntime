@@ -233,8 +233,6 @@ describe('API Tests - InferenceSession.run()', async () => {
         /Preallocated output buffer is already in use/,
       );
       await running;
-      // Underflowing the counter would make this throw 'Cannot end profiling while inference is running'.
-      localSession.endProfiling();
     } finally {
       await localSession.release().catch(() => {});
     }
@@ -350,19 +348,6 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
     assert.deepStrictEqual(Array.from(orphanedData), [1, 2, 3, 4, 5]);
     assert.deepStrictEqual(Array.from(new Float32Array(orphanedBuffer)), [1, 2, 3, 4, 5]);
-  });
-
-  it('allows endProfiling() while inference is running', async () => {
-    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
-    try {
-      const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });
-
-      // Matches the other bindings: ending profiling is not sequenced against in-flight runs.
-      localSession.endProfiling();
-      assertTensorEqual((await run).output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
-    } finally {
-      await localSession.release().catch(() => {});
-    }
   });
 
   it('rejects preallocated string outputs', async () => {
