@@ -338,6 +338,9 @@ class InferenceSessionWrap::RunAsyncWorker {
         return;
       }
 
+      // See io_binding_mutex_: binding does device work that ORT's own run guard does not cover.
+      std::lock_guard<std::mutex> io_binding_lock(session_->io_binding_mutex_);
+
       io_binding_ = std::make_unique<Ort::IoBinding>(*session_->session_);
       for (size_t i = 0; i < input_names_.size(); ++i) {
         io_binding_->BindInput(input_names_cstr[i], input_values_[i]);

@@ -401,6 +401,37 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('runs concurrent IO-binding inferences safely', async function () {
+    if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
+      // eslint-disable-next-line no-invalid-this
+      this.skip();
+    }
+
+    const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    // preferredOutputLocation selects the IO-binding path, where binding does device work outside
+    // the guard ORT applies to graph execution.
+    const localSession = await InferenceSession.create(modelPath, {
+      executionProviders: ['webgpu'],
+      preferredOutputLocation: 'gpu-buffer',
+    });
+    const readbackSession = await InferenceSession.create(modelPath, { executionProviders: ['webgpu'] });
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const expected = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      for (let round = 0; round < 5; round++) {
+        const results = await Promise.all(Array.from({ length: 4 }, async () => localSession.run({ input })));
+        for (const result of results) {
+          assert.strictEqual(result.output.location, 'gpu-buffer');
+          assertTensorEqual((await readbackSession.run({ input: result.output })).output, expected);
+          result.output.dispose();
+        }
+      }
+    } finally {
+      await readbackSession.release().catch(() => {});
+      await localSession.release().catch(() => {});
+    }
+  });
+
   it('keeps a GPU buffer alive when Tensor disposal bypasses instance methods', async function () {
     if (!listSupportedBackends().some((backend) => backend.name === 'webgpu')) {
       // eslint-disable-next-line no-invalid-this
