@@ -3777,7 +3777,8 @@ Status RegisterFp16GemmMatMulKernels(KernelRegistry& kernel_registry) {
     // selector config (nullptr => use_kleidiai=true). A session can still
     // disable KleidiAI via kOrtSessionOptionsMlasDisableKleidiAi, in which case
     // MatMul/Gemm may run their non-accelerated fp16 fallback for these kernels.
-    if (MlasHalfGemmAccelerationSupported(nullptr)) {
+    if (MlasHalfGemmAccelerationSupported(nullptr) ||
+        MlasHalfGemmDecodeSupported(CblasNoTrans, CblasNoTrans)) {
       for (auto& function_table_entry : function_table) {
         KernelCreateInfo info = function_table_entry();
         if (info.kernel_def != nullptr) {

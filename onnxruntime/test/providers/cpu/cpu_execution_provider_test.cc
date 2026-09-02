@@ -39,7 +39,8 @@ TEST(CPUExecutionProviderTest, Float16GemmAndMatMulRegistration) {
   EXPECT_TRUE(has_kernel("MatMul", 12, fp32_tensor_type));
 
   const auto* fp16_tensor_type = DataTypeImpl::GetTensorType<MLFloat16>();
-  const bool expected_kernel = MlasHalfGemmAccelerationSupported(nullptr);
+  const bool expected_kernel = MlasHalfGemmAccelerationSupported(nullptr) ||
+                               MlasHalfGemmDecodeSupported(CblasNoTrans, CblasNoTrans);
   EXPECT_EQ(has_kernel("Gemm", 8, fp16_tensor_type), expected_kernel);
   EXPECT_EQ(has_kernel("Gemm", 10, fp16_tensor_type), expected_kernel);
   EXPECT_EQ(has_kernel("Gemm", 12, fp16_tensor_type), expected_kernel);
