@@ -742,11 +742,6 @@ Napi::Value InferenceSessionWrap::EndProfiling(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
-  // Not deferrable and not safe to overlap with a run: Profiler::EndTimeAndRecordEvent() calls each
-  // execution provider profiler's Stop() outside Profiler::mutex_, while EndProfiling() calls the
-  // same object's EndProfiling() under it, and 'enabled_' is a plain bool. Racing them is undefined.
-  ORT_NAPI_THROW_ERROR_IF(this->active_runs_ != 0, env, "Cannot end profiling while inference is running.");
-
   Napi::EscapableHandleScope scope(env);
 
   Ort::AllocatorWithDefaultOptions allocator;

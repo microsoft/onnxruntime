@@ -352,14 +352,13 @@ describe('API Tests - InferenceSession.run()', async () => {
     assert.deepStrictEqual(Array.from(new Float32Array(orphanedBuffer)), [1, 2, 3, 4, 5]);
   });
 
-  it('rejects endProfiling() while inference is running', async () => {
+  it('allows endProfiling() while inference is running', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     try {
       const run = localSession.run({ input: new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]) });
 
-      // The profiler stops execution provider profilers outside its own mutex, so ending it while a
-      // run is recording events would be a data race.
-      assert.throws(() => localSession.endProfiling(), /Cannot end profiling while inference is running/);
+      // Matches the other bindings: ending profiling is not sequenced against in-flight runs.
+      localSession.endProfiling();
       assertTensorEqual((await run).output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
     } finally {
       await localSession.release().catch(() => {});
