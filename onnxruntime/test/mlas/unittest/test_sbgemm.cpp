@@ -15,9 +15,9 @@ Abstract:
 
 --*/
 
-#if defined(__aarch64__) && defined(__linux__)
-
 #include "test_sbgemm.h"
+
+#if defined(MLAS_SBGEMM_AVAILABLE)
 
 //
 // Short Execute() test helper to register each test separately by all parameters.
@@ -188,4 +188,4 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   }
   return SBGemmRegistLongExecute() > 0;
 });
-#endif  // defined(__aarch64__) && defined(__linux__)
+#endif  // MLAS_SBGEMM_AVAILABLE

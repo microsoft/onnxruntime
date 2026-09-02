@@ -738,7 +738,7 @@ Return Value:
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
         this->MlasConvSGemmRouteOverride = ArmKleidiAI::MlasConvSGemmRoute;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
         // Currently only an SME2 variant of SBGEMM exists
         if (ArmKleidiAI::UseSME2){
             this->MlasSBGemmBatchOverride = ArmKleidiAI::MlasSBGemmBatch;

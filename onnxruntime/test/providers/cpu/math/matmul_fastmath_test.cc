@@ -2,6 +2,7 @@
 // Copyright 2023 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // Licensed under the MIT License.
 
+#include "core/mlas/inc/mlas.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -17,7 +18,7 @@
 #include <limits>
 #include <numeric>
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 
 namespace onnxruntime {
 namespace test {
@@ -284,6 +285,36 @@ TEST(MathOpTest, MatMulFloatTypeInitializer_FastMath) {
   RunMatMulTest<float>(7, false, true, false);
 }
 
+TEST(MathOpTest, FusedMatMulNonUnitAlpha_FastMathEnabled) {
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t m = 32;
+  constexpr int64_t n = 32;
+  constexpr int64_t k = 64;
+  constexpr float alpha = 0.125f;
+
+  OpTester test("FusedMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {1, batch_size, m, k},
+                       std::vector<float>(batch_size * m * k, 1.0f));
+  test.AddInput<float>("B", {1, batch_size, k, n},
+                       std::vector<float>(batch_size * k * n, 1.0f));
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("transBatchA", static_cast<int64_t>(0));
+  test.AddAttribute("transBatchB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", alpha);
+  test.AddOutput<float>("Y", {1, batch_size, m, n},
+                        std::vector<float>(batch_size * m * n, alpha * k));
+
+  // SBGEMM does not implement general alpha scaling. Enabling fastmath must
+  // preserve non-unit alpha by selecting the accurate FP32 path.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+      kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Config(so).ConfigEps(std::move(execution_providers)).RunWithConfig();
+}
+
 TEST(MathOpTest, MatMulInt32Type_FastMath) {
   RunMatMulTest<int32_t>(9);
 }
@@ -401,4 +432,4 @@ TEST(MathOpTest, MatMulUint64Type_DisableFastMath) {
 
 }  // namespace test
 }  // namespace onnxruntime
-#endif  // defined(__aarch64__) && defined(__linux__)
+#endif  // MLAS_SBGEMM_AVAILABLE

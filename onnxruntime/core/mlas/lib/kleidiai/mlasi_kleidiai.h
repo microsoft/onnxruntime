@@ -254,7 +254,7 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 size_t
 MLASCALL
 MlasSBGemmPackBSize(
