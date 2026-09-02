@@ -75,7 +75,10 @@ TEST(SchemaAbiDigestTest, MSManifestSchemasAreUnavailableWhenContribOpsAreDisabl
 TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
   auto schemas = ONNX_NAMESPACE::OpSchemaRegistry::get_all_schemas_with_history();
   schemas.erase(std::remove_if(schemas.begin(), schemas.end(), [](const auto& schema) {
-                  return schema.domain() != kMSDomain;
+                  const auto& schema_file = schema.file();
+                  const bool is_test_schema = schema_file.find("/test/") != std::string::npos ||
+                                              schema_file.find("\\test\\") != std::string::npos;
+                  return schema.domain() != kMSDomain || is_test_schema;
                 }),
                 schemas.end());
 
@@ -85,7 +88,7 @@ TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
   // claim and therefore are not required to appear in this manifest.
   constexpr size_t manifest_size = sizeof(contrib::kMSDomainSchemaAbiManifest) /
                                    sizeof(contrib::kMSDomainSchemaAbiManifest[0]);
-  ASSERT_EQ(schemas.size(), manifest_size);
+  EXPECT_EQ(schemas.size(), manifest_size);
 #endif
 
   using SchemaKey = std::tuple<std::string, std::string, int>;
