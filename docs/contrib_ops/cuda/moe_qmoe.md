@@ -791,6 +791,7 @@ debug switches.
 | `ORT_FP4_GEMV_AUTOTUNE_LOG` | `0` | Set to `1` to log the chosen GEMV configs per shape. |
 | `ORT_FP4_GEMV_INTERLEAVED` | `0` | **Experimental, opt-in.** Routes the MXFP4 decode GEMV through the `ColumnMajorInterleaved` weight layout (`kInterleave=4`, `kStepK=32`) with dtype-conditional accumulation. fp16 gets faster decode; bf16 stays accuracy-safe. Default off keeps the shipping `ColumnMajor` path byte-for-byte unchanged. See [§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation). |
 | `ORT_FP4_GEMV_INTERLEAVED_HALFACC` | `0` | **Override.** When `ORT_FP4_GEMV_INTERLEAVED=1`, forces 16-bit accumulation for *both* fp16 and bf16, overriding the dtype-conditional policy; regresses bf16 accuracy, so it is off by default. |
+| `ORT_DISABLE_MOE_GEMV_FAST` | `0` | **Debug/benchmark opt-out.** Set to `1` to replace the packed BF16 MXFP4 interleaved decoder (`CtaN=2`) with the separately compiled per-element fallback (`CtaN=4`). This preserves the GEMV route and accumulation policy; use `ORT_ENABLE_FP4_GEMV=0` to disable FP4 GEMV entirely. Read once on first use, so A/B runs require separate processes. |
 | `ORT_FP4_SM80_GEMM` | `1` | Routes SM80–SM119 FP4 prefill through the fused-dequant grouped GEMM. Set to `0` to force dense fallback for debugging or comparison. Decode routes through the fused MXFP4 GEMV, reading the *same* pre-packed buffer as prefill. In this regime the raw e2m1 initializers are released after `PrePack`. See [§9.11](#911-single-copy-sm80-weights-prefill--decode-share-one-buffer). |
 | `ORT_ENABLE_FP4_CUTLASS_GEMM` | `0` | Opt-in native SM90 WFP4A16 CUTLASS GEMM (fast prefill). Requires FP16, SM90, and aligned shapes (`hidden`/`inter` divisible by 256). Must be combined with `ORT_ENABLE_FP4_CUTLASS_UNSAFE=1`. |
 | `ORT_ENABLE_FP4_CUTLASS_UNSAFE` | `0` | Confirms use of the experimental native SM90 path. Without it, a request to enable native GEMM logs a warning and falls back to dequant/GEMV. |
@@ -824,13 +825,16 @@ The interleaved weights are produced by the `gemv_interleaved` branch of
 raw e2m1 codes per-expert through the CUTLASS fpA_intB SM80 `W4_A16` preprocessor with
 `apply_bias_interleave=false` (the integer-only `+8`/pair-interleave step would corrupt the
 floating-point e2m1 codes; the layout-only steps apply unchanged). Block scales are unchanged
-(`kStepK=32` equals the MXFP4 block size). The shape gate requires `n % (CtaN*4)==0` and
-`k % 64==0`; `CtaN`/`Threads` are pinned (`4`/`128`) so the kernel always matches the prepacked
-weights.
+(`kStepK=32` equals the MXFP4 block size). The shape gate requires `n % 16==0` and `k % 64==0`.
+The 16-bit accumulation path uses `CtaN=4, Threads=128`. The BF16 FP32-accumulation path uses a
+packed E2M1 decoder, reuses one quantized-weight buffer per output column, and launches with
+`CtaN=2, Threads=128` to stay below its register cliff. Set `ORT_DISABLE_MOE_GEMV_FAST=1` to use
+the separately compiled per-element `CtaN=4` fallback without changing the GEMV route.
 
-The interleaved layout speeds up fp16 decode; bf16 gets no speedup (the fp32 register cost cancels
-it) but stays accurate. The path is opt-in so fp16 deployments can take the win without affecting
-bf16 or the shipping default.
+The interleaved layout speeds up fp16 decode. The packed specialization also makes the
+accuracy-safe BF16 path faster on the profiled H200 shapes; see the 2026-08-06 results in
+[qmoe_gemv_experiments.md](qmoe_gemv_experiments.md). The path remains opt-in unless the SM80
+single-copy weight regime selects it for decode.
 
 ### 9.11 Single-copy SM80 weights (prefill + decode share one buffer)
 
