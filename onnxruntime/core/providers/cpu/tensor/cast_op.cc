@@ -535,6 +535,24 @@ struct TensorCaster {
   }
 };
 
+// FP6 values are logical elements stored in byte-sized runtime storage. Route their
+// scalar conversions around Eigen, which cannot represent the custom FP6 formats.
+template <typename SrcType, typename DstType>
+struct TensorCaster<SrcType, DstType,
+                    std::enable_if_t<(IsOrtFloat6Type<SrcType>::value || IsOrtFloat6Type<DstType>::value) &&
+                                     !IsOrtInt4Type<SrcType>::value && !IsOrtInt4Type<DstType>::value &&
+                                     !IsOrtInt2Type<SrcType>::value && !IsOrtInt2Type<DstType>::value &&
+                                     !std::is_same_v<SrcType, std::string> && !std::is_same_v<DstType, std::string>>> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<SrcType>();
+    auto* out_data = out.MutableData<DstType>();
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      out_data[i] = DstType(static_cast<float>(in_data[i]));
+    }
+  }
+};
+
 // tensor X -> string, if X != (U)Int4x2 and X != (U)Int2x4
 template <typename SrcType>
 struct TensorCaster<SrcType, std::string,
