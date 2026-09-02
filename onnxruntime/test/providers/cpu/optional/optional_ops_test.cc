@@ -4,6 +4,8 @@
 #if !defined(DISABLE_OPTIONAL_TYPE)
 
 #include "gtest/gtest.h"
+
+#include "core/framework/float6.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -32,6 +34,60 @@ TEST(OptionalOpTest, OptionalSeqTensorCreateFromSeqTensor) {
 
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: unsupported ONNX type
 }
+
+TEST(OptionalOpTest, OptionalFloat6TensorSequenceCreateOpset28) {
+  OpTester test("Optional", 28);
+  SeqTensors<Float6E2M3> data;
+  data.AddTensor({2}, {Float6E2M3(1.0f), Float6E2M3(-2.0f)});
+  data.AddTensor({1}, {Float6E2M3(3.5f)});
+
+  test.AddSeqInput("S", data);
+  test.AddOptionalTypeSeqOutput<Float6E2M3>("Y", &data);
+  test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+    ASSERT_EQ(fetches.size(), 1u);
+    ASSERT_TRUE(fetches[0].IsTensorSequence());
+    const auto& output = fetches[0].Get<TensorSeq>();
+    ASSERT_EQ(output.Size(), 2u);
+    ASSERT_EQ(output.Get(0).Shape().Size(), 2);
+    EXPECT_EQ(output.Get(0).Data<Float6E2M3>()[0].ToBits(), Float6E2M3(1.0f).ToBits());
+    EXPECT_EQ(output.Get(0).Data<Float6E2M3>()[1].ToBits(), Float6E2M3(-2.0f).ToBits());
+    ASSERT_EQ(output.Get(1).Shape().Size(), 1);
+    EXPECT_EQ(output.Get(1).Data<Float6E2M3>()[0].ToBits(), Float6E2M3(3.5f).ToBits());
+  });
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(OptionalOpTest, OptionalFloat6TensorSequenceGetElementOpset28) {
+  OpTester test("OptionalGetElement", 28);
+  SeqTensors<Float6E3M2> data;
+  data.AddTensor({2}, {Float6E3M2(0.5f), Float6E3M2(-4.0f)});
+
+  test.AddOptionalTypeSeqInput<Float6E3M2>("A", &data);
+  test.AddSeqOutput("Y", data);
+  test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches, const std::string&) {
+    ASSERT_EQ(fetches.size(), 1u);
+    ASSERT_TRUE(fetches[0].IsTensorSequence());
+    const auto& output = fetches[0].Get<TensorSeq>();
+    ASSERT_EQ(output.Size(), 1u);
+    ASSERT_EQ(output.Get(0).Shape().Size(), 2);
+    EXPECT_EQ(output.Get(0).Data<Float6E3M2>()[0].ToBits(), Float6E3M2(0.5f).ToBits());
+    EXPECT_EQ(output.Get(0).Data<Float6E3M2>()[1].ToBits(), Float6E3M2(-4.0f).ToBits());
+  });
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(OptionalOpTest, OptionalFloat6HasElementOpset28) {
+  OpTester test("OptionalHasElement", 28);
+  const std::initializer_list<Float6E2M3> data = {Float6E2M3(1.0f)};
+
+  test.AddOptionalTypeTensorInput<Float6E2M3>("A", {1}, &data);
+  test.AddOutput<bool>("Y", {}, {true});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(OptionalOpTest, OptionalTensorCreateFromTypeProto) {
   OpTester test("Optional", 15);
 

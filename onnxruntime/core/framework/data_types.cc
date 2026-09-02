@@ -721,6 +721,10 @@ ORT_REGISTER_SEQ_TENSOR_TYPE(UInt4x2);
 ORT_REGISTER_SEQ_TENSOR_TYPE(Int2x4);
 ORT_REGISTER_SEQ_TENSOR_TYPE(UInt2x4);
 
+#if !defined(DISABLE_FLOAT4_TYPES)
+ORT_REGISTER_SEQ_TENSOR_TYPE(Float4E2M1x2);
+#endif
+
 #if !defined(DISABLE_ML_OPS)
 ORT_REGISTER_SEQ(VectorMapStringToFloat);
 ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
@@ -783,6 +787,11 @@ ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
 
 ORT_REGISTER_OPTIONAL_ORT_TYPE(Tensor)
 ORT_REGISTER_OPTIONAL_ORT_TYPE(TensorSeq)
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+ORT_REGISTER_OPTIONAL_TYPE(Tensor, Float4E2M1x2);
+ORT_REGISTER_OPTIONAL_TYPE(TensorSeq, Float4E2M1x2);
+#endif
 
 // Used for Tensor Proto registrations
 #define REGISTER_TENSOR_PROTO(TYPE, reg_fn)                  \
@@ -919,6 +928,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SEQ_TENSOR_PROTO(UInt4x2, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(Int2x4, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(UInt2x4, reg_fn);
+#if !defined(DISABLE_FLOAT4_TYPES)
+  REGISTER_SEQ_TENSOR_PROTO(Float4E2M1x2, reg_fn);
+#endif
 
 #if !defined(DISABLE_ML_OPS)
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
@@ -973,9 +985,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);     \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);    \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);     \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);  \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);  \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);   \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);   \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);       \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);      \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);       \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt2x4, reg_fn);
@@ -984,6 +996,10 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
 
   REGISTER_OPTIONAL_PROTO_ORT_TYPE(Tensor, reg_fn);
   REGISTER_OPTIONAL_PROTO_ORT_TYPE(TensorSeq, reg_fn);
+#if !defined(DISABLE_FLOAT4_TYPES)
+  REGISTER_OPTIONAL_PROTO(Tensor, Float4E2M1x2, reg_fn);
+  REGISTER_OPTIONAL_PROTO(TensorSeq, Float4E2M1x2, reg_fn);
+#endif
 #endif
 }
 }  // namespace data_types_internal
@@ -1110,7 +1126,6 @@ const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
       return DataTypeImpl::GetTensorType<MLFloat16>()->AsTensorType();
     case TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetTensorType<BFloat16>()->AsTensorType();
-
 #if !defined(DISABLE_FLOAT8_TYPES)
     case TensorProto_DataType_FLOAT8E4M3FN:
       return DataTypeImpl::GetTensorType<Float8E4M3FN>()->AsTensorType();
@@ -1175,7 +1190,6 @@ const SequenceTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int t
       return DataTypeImpl::GetSequenceTensorType<MLFloat16>()->AsSequenceTensorType();
     case TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetSequenceTensorType<BFloat16>()->AsSequenceTensorType();
-
 #if !defined(DISABLE_FLOAT8_TYPES)
 
     case TensorProto_DataType_FLOAT8E4M3FN:
@@ -1456,6 +1470,12 @@ const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypesIRv9() {
   return all_sequence_tensor_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypesIRv14() {
+  static std::vector<MLDataType> all_sequence_tensor_types =
+      GetSequenceTensorTypesFromTypeList<element_type_lists::AllIRv14>();
+  return all_sequence_tensor_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllNumericTensorTypes() {
   static std::vector<MLDataType> all_numeric_size_tensor_types =
       GetTensorTypesFromTypeList<element_type_lists::AllNumeric>();
@@ -1516,6 +1536,17 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9
   return all_tensor_and_sequence_types_with_float8;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesIRv14() {
+  static std::vector<MLDataType> all_tensor_and_sequence_types =
+      []() {
+        auto temp = AllTensorTypesIRv14();
+        const auto& seq = AllSequenceTensorTypesIRv14();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+  return all_tensor_and_sequence_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes() {
   return AllOptionalAndTensorAndSequenceTensorTypesIRv4();
 }
@@ -1548,6 +1579,20 @@ const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTens
   return all_optional_and_tensor_and_sequence_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIRv14() {
+  static std::vector<MLDataType> all_optional_and_tensor_and_sequence_types =
+      []() {
+        auto temp = AllOptionalTypesIRv14();
+        const auto tensor = AllTensorTypesIRv14();
+        temp.insert(temp.end(), tensor.begin(), tensor.end());
+        const auto& seq = AllSequenceTensorTypesIRv14();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_optional_and_tensor_and_sequence_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypes() {
   return AllOptionalTypesIRv4();
 }
@@ -1569,6 +1614,18 @@ const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypesIRv9() {
       []() {
         auto temp = GetOptionalTensorTypesFromTypeList<element_type_lists::AllIRv9>();
         const auto& seq = GetOptionalSequenceTensorTypesFromTypeList<element_type_lists::AllIRv9>();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_optional_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypesIRv14() {
+  static std::vector<MLDataType> all_optional_types =
+      []() {
+        auto temp = GetOptionalTensorTypesFromTypeList<element_type_lists::AllIRv14>();
+        const auto& seq = GetOptionalSequenceTensorTypesFromTypeList<element_type_lists::AllIRv14>();
         temp.insert(temp.end(), seq.begin(), seq.end());
         return temp;
       }();

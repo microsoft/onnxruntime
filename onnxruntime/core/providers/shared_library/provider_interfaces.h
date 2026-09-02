@@ -1434,6 +1434,13 @@ struct ProviderHost {
   virtual const Float6E3M2* Tensor__Data_Float6E3M2(const Tensor* p) = 0;
   virtual bool Tensor__IsDataType_Float6E2M3(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_Float6E3M2(const Tensor* p) noexcept = 0;
+
+  // IR14 type-list support - appended at end to preserve vtable ABI compatibility.
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv14() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv14() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv14() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalTypesIRv14() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv14() = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

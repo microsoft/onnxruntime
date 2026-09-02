@@ -223,6 +223,7 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllSequenceTensorTypesIRv4();
   static const std::vector<MLDataType>& AllSequenceTensorTypesIRv9();
+  static const std::vector<MLDataType>& AllSequenceTensorTypesIRv14();
 
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIRv4();
@@ -237,10 +238,12 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv4();
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv9();
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv14();
 
   static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv4();
   static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv9();
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv14();
 
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesIRv4();
@@ -249,6 +252,7 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllOptionalTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllOptionalTypesIRv4();
   static const std::vector<MLDataType>& AllOptionalTypesIRv9();
+  static const std::vector<MLDataType>& AllOptionalTypesIRv14();
 
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorAndOptionalTypesIRv4();

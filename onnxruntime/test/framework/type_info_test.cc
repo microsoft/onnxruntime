@@ -4,8 +4,10 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#include "model_builder_utils.h"
+#include <algorithm>
 
+#include "model_builder_utils.h"
+#include "core/framework/data_types.h"
 #include "core/framework/onnxruntime_optional_type_info.h"
 #include "core/framework/onnxruntime_map_type_info.h"
 #include "core/framework/onnxruntime_sequence_type_info.h"
@@ -111,6 +113,60 @@ TEST(TypeInfoTests, OptionalWithTensorProto) {
   ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, contained_type.tensor_type_info->GetElementType());
   ASSERT_TRUE(contained_type.tensor_type_info->HasShape());
   ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), contained_type.tensor_type_info->GetShape()->GetDims()));
+}
+
+template <typename T>
+void VerifyTensorSequenceAndOptionalTypes(ONNX_NAMESPACE::TensorProto_DataType proto_type,
+                                          ONNXTensorElementDataType c_api_type) {
+  ONNX_NAMESPACE::TypeProto tensor;
+  tensor.mutable_tensor_type()->set_elem_type(proto_type);
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(tensor), DataTypeImpl::GetTensorType<T>());
+
+  ONNX_NAMESPACE::TypeProto sequence;
+  sequence.mutable_sequence_type()->mutable_elem_type()->CopyFrom(tensor);
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(sequence), DataTypeImpl::GetSequenceTensorType<T>());
+
+  ONNX_NAMESPACE::TypeProto optional_tensor;
+  optional_tensor.mutable_optional_type()->mutable_elem_type()->CopyFrom(tensor);
+  const auto optional_tensor_type = DataTypeImpl::GetOptionalType<Tensor, T>();
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(optional_tensor), optional_tensor_type);
+
+  ONNX_NAMESPACE::TypeProto optional_sequence;
+  optional_sequence.mutable_optional_type()->mutable_elem_type()->CopyFrom(sequence);
+  const auto optional_sequence_type = DataTypeImpl::GetOptionalType<TensorSeq, T>();
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(optional_sequence), optional_sequence_type);
+
+  const auto optional_type_info = OrtTypeInfo::FromTypeProto(optional_sequence);
+  ASSERT_EQ(optional_type_info->type, ONNX_TYPE_OPTIONAL);
+  ASSERT_NE(optional_type_info->optional_type_info, nullptr);
+  const auto& contained_sequence = *optional_type_info->optional_type_info->contained_type_;
+  ASSERT_EQ(contained_sequence.type, ONNX_TYPE_SEQUENCE);
+  ASSERT_NE(contained_sequence.sequence_type_info, nullptr);
+  const auto& contained_tensor = *contained_sequence.sequence_type_info->sequence_key_type_;
+  ASSERT_EQ(contained_tensor.type, ONNX_TYPE_TENSOR);
+  ASSERT_NE(contained_tensor.tensor_type_info, nullptr);
+  EXPECT_EQ(contained_tensor.tensor_type_info->GetElementType(), c_api_type);
+}
+
+TEST(TypeInfoTests, IRv14TensorSequenceAndOptionalTypes) {
+#if !defined(DISABLE_FLOAT4_TYPES)
+  VerifyTensorSequenceAndOptionalTypes<Float4E2M1x2>(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1);
+#endif
+  VerifyTensorSequenceAndOptionalTypes<Float6E2M3>(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3);
+  VerifyTensorSequenceAndOptionalTypes<Float6E3M2>(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2);
+
+  const auto& irv14_types = DataTypeImpl::AllOptionalTypesIRv14();
+  EXPECT_NE(std::find(irv14_types.begin(), irv14_types.end(),
+                      DataTypeImpl::GetOptionalType<TensorSeq, Float6E3M2>()),
+            irv14_types.end());
+
+  const auto& irv9_types = DataTypeImpl::AllOptionalTypesIRv9();
+  EXPECT_EQ(std::find(irv9_types.begin(), irv9_types.end(),
+                      DataTypeImpl::GetOptionalType<TensorSeq, Float6E3M2>()),
+            irv9_types.end());
 }
 
 #if !defined(DISABLE_ML_OPS)
