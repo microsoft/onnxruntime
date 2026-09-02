@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+#include <algorithm>
 #include <complex>
 
 #include "model_builder_utils.h"
@@ -115,27 +116,62 @@ TEST(TypeInfoTests, OptionalWithTensorProto) {
   ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), contained_type.tensor_type_info->GetShape()->GetDims()));
 }
 
-TEST(TypeInfoTests, ComplexTensorSequenceAndOptionalTypes) {
-  ONNX_NAMESPACE::TypeProto complex64_tensor;
-  complex64_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64);
+template <typename T>
+void VerifyTensorSequenceAndOptionalTypes(ONNX_NAMESPACE::TensorProto_DataType proto_type,
+                                          ONNXTensorElementDataType c_api_type) {
+  ONNX_NAMESPACE::TypeProto tensor;
+  tensor.mutable_tensor_type()->set_elem_type(proto_type);
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(tensor), DataTypeImpl::GetTensorType<T>());
 
-  EXPECT_EQ(DataTypeImpl::TypeFromProto(complex64_tensor),
-            DataTypeImpl::GetTensorType<std::complex<float>>());
+  ONNX_NAMESPACE::TypeProto sequence;
+  sequence.mutable_sequence_type()->mutable_elem_type()->CopyFrom(tensor);
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(sequence), DataTypeImpl::GetSequenceTensorType<T>());
 
-  ONNX_NAMESPACE::TypeProto complex128_tensor;
-  complex128_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128);
+  ONNX_NAMESPACE::TypeProto optional_tensor;
+  optional_tensor.mutable_optional_type()->mutable_elem_type()->CopyFrom(tensor);
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(optional_tensor), DataTypeImpl::GetOptionalType<Tensor, T>());
 
-  ONNX_NAMESPACE::TypeProto complex128_sequence;
-  complex128_sequence.mutable_sequence_type()->mutable_elem_type()->CopyFrom(complex128_tensor);
+  ONNX_NAMESPACE::TypeProto optional_sequence;
+  optional_sequence.mutable_optional_type()->mutable_elem_type()->CopyFrom(sequence);
+  EXPECT_EQ(DataTypeImpl::TypeFromProto(optional_sequence), DataTypeImpl::GetOptionalType<TensorSeq, T>());
 
-  EXPECT_EQ(DataTypeImpl::TypeFromProto(complex128_sequence),
-            DataTypeImpl::GetSequenceTensorType<std::complex<double>>());
+  const auto optional_type_info = OrtTypeInfo::FromTypeProto(optional_sequence);
+  ASSERT_EQ(optional_type_info->type, ONNX_TYPE_OPTIONAL);
+  ASSERT_NE(optional_type_info->optional_type_info, nullptr);
+  const auto& contained_sequence = *optional_type_info->optional_type_info->contained_type_;
+  ASSERT_EQ(contained_sequence.type, ONNX_TYPE_SEQUENCE);
+  ASSERT_NE(contained_sequence.sequence_type_info, nullptr);
+  const auto& contained_tensor = *contained_sequence.sequence_type_info->sequence_key_type_;
+  ASSERT_EQ(contained_tensor.type, ONNX_TYPE_TENSOR);
+  ASSERT_NE(contained_tensor.tensor_type_info, nullptr);
+  EXPECT_EQ(contained_tensor.tensor_type_info->GetElementType(), c_api_type);
+}
 
-  ONNX_NAMESPACE::TypeProto optional_complex64_tensor;
-  optional_complex64_tensor.mutable_optional_type()->mutable_elem_type()->CopyFrom(complex64_tensor);
+TEST(TypeInfoTests, IRv14TensorSequenceAndOptionalTypes) {
+  VerifyTensorSequenceAndOptionalTypes<std::complex<float>>(
+      ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64, ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64);
+  VerifyTensorSequenceAndOptionalTypes<std::complex<double>>(
+      ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128, ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128);
+  VerifyTensorSequenceAndOptionalTypes<Float6E2M3>(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3);
+  VerifyTensorSequenceAndOptionalTypes<Float6E3M2>(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2);
 
-  EXPECT_EQ(DataTypeImpl::TypeFromProto(optional_complex64_tensor),
-            DataTypeImpl::GetOptionalType<Tensor, std::complex<float>>());
+  const auto& irv14_types = DataTypeImpl::AllOptionalTypesIRv14();
+  EXPECT_NE(std::find(irv14_types.begin(), irv14_types.end(),
+                      DataTypeImpl::GetOptionalType<Tensor, std::complex<float>>()),
+            irv14_types.end());
+  EXPECT_NE(std::find(irv14_types.begin(), irv14_types.end(),
+                      DataTypeImpl::GetOptionalType<TensorSeq, Float6E3M2>()),
+            irv14_types.end());
+
+  const auto& irv9_types = DataTypeImpl::AllOptionalTypesIRv9();
+  EXPECT_EQ(std::find(irv9_types.begin(), irv9_types.end(),
+                      DataTypeImpl::GetOptionalType<Tensor, std::complex<float>>()),
+            irv9_types.end());
+  EXPECT_EQ(std::find(irv9_types.begin(), irv9_types.end(),
+                      DataTypeImpl::GetOptionalType<TensorSeq, Float6E3M2>()),
+            irv9_types.end());
 }
 
 #if !defined(DISABLE_ML_OPS)

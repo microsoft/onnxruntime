@@ -789,16 +789,19 @@ class DataTypeImpl final {
   static const std::vector<MLDataType>& AllTensorTypesIRv9() { return g_host->DataTypeImpl__AllTensorTypesIRv9(); }
   static const std::vector<MLDataType>& AllTensorTypesIRv10() { return g_host->DataTypeImpl__AllTensorTypesIRv10(); }
   static const std::vector<MLDataType>& AllTensorTypesIRv11() { return g_host->DataTypeImpl__AllTensorTypesIRv11(); }
+  static const std::vector<MLDataType>& AllTensorTypesIRv14() { return g_host->DataTypeImpl__AllTensorTypesIRv14(); }
 
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
 
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv4() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypesIRv4(); }
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv9() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypesIRv9(); }
+  static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypesIRv14() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypesIRv14(); }
 
   static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv4() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv4(); }
   static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv9() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv9(); }
+  static const std::vector<MLDataType>& AllOptionalAndTensorAndSequenceTensorTypesIRv14() { return g_host->DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv14(); }
 
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypesIRv4() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypesIRv4(); }
@@ -807,10 +810,15 @@ class DataTypeImpl final {
   static const std::vector<MLDataType>& AllSequenceTensorTypes() { return g_host->DataTypeImpl__AllSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllSequenceTensorTypesIRv4() { return g_host->DataTypeImpl__AllSequenceTensorTypesIRv4(); }
   static const std::vector<MLDataType>& AllSequenceTensorTypesIRv9() { return g_host->DataTypeImpl__AllSequenceTensorTypesIRv9(); }
+  static const std::vector<MLDataType>& AllSequenceTensorTypesIRv14() { return g_host->DataTypeImpl__AllSequenceTensorTypesIRv14(); }
 
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypes(); }
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIRv4() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv4(); }
   static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypesIRv9() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypesIRv9(); }
+
+  static const std::vector<MLDataType>& AllOptionalTypesIRv14() {
+    return g_host->DataTypeImpl__AllOptionalTypesIRv14();
+  }
 
   const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
 
@@ -1548,6 +1556,14 @@ inline bool Tensor::IsDataType<float>() const { return g_host->Tensor__IsDataTyp
 template <>
 inline bool Tensor::IsDataType<double>() const { return g_host->Tensor__IsDataType_double(this); }
 template <>
+inline bool Tensor::IsDataType<std::complex<float>>() const {
+  return g_host->Tensor__IsDataType_complex_float(this);
+}
+template <>
+inline bool Tensor::IsDataType<std::complex<double>>() const {
+  return g_host->Tensor__IsDataType_complex_double(this);
+}
+template <>
 inline bool Tensor::IsDataType<MLFloat16>() const { return g_host->Tensor__IsDataType_MLFloat16(this); }
 template <>
 inline bool Tensor::IsDataType<BFloat16>() const { return g_host->Tensor__IsDataType_BFloat16(this); }
@@ -1604,6 +1620,14 @@ template <>
 inline float* Tensor::MutableData<float>() { return g_host->Tensor__MutableData_float(this); }
 template <>
 inline double* Tensor::MutableData<double>() { return g_host->Tensor__MutableData_double(this); }
+template <>
+inline std::complex<float>* Tensor::MutableData<std::complex<float>>() {
+  return g_host->Tensor__MutableData_complex_float(this);
+}
+template <>
+inline std::complex<double>* Tensor::MutableData<std::complex<double>>() {
+  return g_host->Tensor__MutableData_complex_double(this);
+}
 template <>
 inline BFloat16* Tensor::MutableData<BFloat16>() { return g_host->Tensor__MutableData_BFloat16(this); }
 template <>
@@ -1665,6 +1689,14 @@ template <>
 inline const float* Tensor::Data<float>() const { return g_host->Tensor__Data_float(this); }
 template <>
 inline const double* Tensor::Data<double>() const { return g_host->Tensor__Data_double(this); }
+template <>
+inline const std::complex<float>* Tensor::Data<std::complex<float>>() const {
+  return g_host->Tensor__Data_complex_float(this);
+}
+template <>
+inline const std::complex<double>* Tensor::Data<std::complex<double>>() const {
+  return g_host->Tensor__Data_complex_double(this);
+}
 template <>
 inline const BFloat16* Tensor::Data<BFloat16>() const { return g_host->Tensor__Data_BFloat16(this); }
 template <>

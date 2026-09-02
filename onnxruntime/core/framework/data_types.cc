@@ -941,55 +941,59 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 
-#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn)   \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);        \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);          \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);           \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);    \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);         \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);        \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);        \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);        \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);         \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);      \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);     \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);     \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FN, reg_fn);   \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FNUZ, reg_fn); \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2, reg_fn);     \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2FNUZ, reg_fn); \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E8M0, reg_fn);     \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);         \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);        \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);         \
+#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn)         \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);              \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);                \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);                 \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);          \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);               \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);              \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);             \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);              \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);              \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);               \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);             \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);             \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);            \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);             \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::complex<float>, reg_fn);  \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::complex<double>, reg_fn); \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);           \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);           \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FN, reg_fn);         \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FNUZ, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2, reg_fn);           \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2FNUZ, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E8M0, reg_fn);           \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);               \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);              \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);               \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt2x4, reg_fn);
 
 #else
 
-#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn) \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);      \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);        \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);         \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);  \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);      \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);     \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);      \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);      \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);     \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);     \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);    \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);     \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);  \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);  \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);      \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);      \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);       \
+#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn)         \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);              \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);                \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);                 \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);          \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);               \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);              \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);             \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);              \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);              \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);               \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);             \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);             \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);            \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);             \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::complex<float>, reg_fn);  \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::complex<double>, reg_fn); \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E2M3, reg_fn);           \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float6E3M2, reg_fn);           \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);               \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);              \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);               \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt2x4, reg_fn);
 
 #endif
@@ -1482,6 +1486,12 @@ const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypesIRv9() {
   return all_sequence_tensor_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllSequenceTensorTypesIRv14() {
+  static std::vector<MLDataType> all_sequence_tensor_types =
+      GetSequenceTensorTypesFromTypeList<element_type_lists::AllIRv14>();
+  return all_sequence_tensor_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllNumericTensorTypes() {
   static std::vector<MLDataType> all_numeric_size_tensor_types =
       GetTensorTypesFromTypeList<element_type_lists::AllNumeric>();
@@ -1542,6 +1552,17 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9
   return all_tensor_and_sequence_types_with_float8;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypesIRv14() {
+  static std::vector<MLDataType> all_tensor_and_sequence_types =
+      []() {
+        auto temp = AllTensorTypesIRv14();
+        const auto& seq = AllSequenceTensorTypesIRv14();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+  return all_tensor_and_sequence_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypes() {
   return AllOptionalAndTensorAndSequenceTensorTypesIRv4();
 }
@@ -1574,6 +1595,20 @@ const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTens
   return all_optional_and_tensor_and_sequence_types;
 }
 
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIRv14() {
+  static std::vector<MLDataType> all_optional_and_tensor_and_sequence_types =
+      []() {
+        auto temp = AllOptionalTypesIRv14();
+        const auto tensor = AllTensorTypesIRv14();
+        temp.insert(temp.end(), tensor.begin(), tensor.end());
+        const auto& seq = AllSequenceTensorTypesIRv14();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_optional_and_tensor_and_sequence_types;
+}
+
 const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypes() {
   return AllOptionalTypesIRv4();
 }
@@ -1595,6 +1630,18 @@ const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypesIRv9() {
       []() {
         auto temp = GetOptionalTensorTypesFromTypeList<element_type_lists::AllIRv9>();
         const auto& seq = GetOptionalSequenceTensorTypesFromTypeList<element_type_lists::AllIRv9>();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_optional_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypesIRv14() {
+  static std::vector<MLDataType> all_optional_types =
+      []() {
+        auto temp = GetOptionalTensorTypesFromTypeList<element_type_lists::AllIRv14>();
+        const auto& seq = GetOptionalSequenceTensorTypesFromTypeList<element_type_lists::AllIRv14>();
         temp.insert(temp.end(), seq.begin(), seq.end());
         return temp;
       }();

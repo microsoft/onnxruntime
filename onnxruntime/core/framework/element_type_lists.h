@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <complex>
 #include <cstdint>
 #include <string>
 
@@ -122,6 +123,8 @@ using AllIRv13 =
 using AllIRv14 =
     boost::mp11::mp_push_back<
         AllIRv13,
+        std::complex<float>,
+        std::complex<double>,
         Float6E2M3,
         Float6E3M2>;
 

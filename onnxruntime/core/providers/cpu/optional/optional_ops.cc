@@ -10,16 +10,17 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(Optional,
-                         15,
-                         KernelDefBuilder()
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
-                             .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
-                             // We may be able to re-use the input for the output as is unless the output
-                             // is a graph output. We provide this hint to the allocation planner
-                             // to make the re-use call.
-                             .Alias(0, 0),
-                         Optional);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(Optional,
+                                   15,
+                                   27,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
+                                       .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+                                       // We may be able to re-use the input for the output as is unless the output
+                                       // is a graph output. We provide this hint to the allocation planner
+                                       // to make the re-use call.
+                                       .Alias(0, 0),
+                                   Optional);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalHasElement,
                                    15,
@@ -41,21 +42,46 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalGetElement,
                                        .Alias(0, 0),
                                    OptionalGetElement);
 
-ONNX_CPU_OPERATOR_KERNEL(OptionalHasElement,
-                         18,
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalHasElement,
+                                   18,
+                                   27,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
+                                   OptionalHasElement);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalGetElement,
+                                   18,
+                                   27,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
+                                       // We may be able to re-use the input for the output as is unless the output
+                                       // is a graph output. We provide this hint to the allocation planner
+                                       // to make the re-use call.
+                                       .Alias(0, 0),
+                                   OptionalGetElement);
+
+ONNX_CPU_OPERATOR_KERNEL(Optional,
+                         28,
                          KernelDefBuilder()
-                             .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv14())
+                             .TypeConstraint("O", DataTypeImpl::AllOptionalTypesIRv14())
+                             .Alias(0, 0),
+                         Optional);
+
+ONNX_CPU_OPERATOR_KERNEL(OptionalHasElement,
+                         28,
+                         KernelDefBuilder()
+                             .TypeConstraint("O", DataTypeImpl::AllOptionalAndTensorAndSequenceTensorTypesIRv14())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
                          OptionalHasElement);
 
 ONNX_CPU_OPERATOR_KERNEL(OptionalGetElement,
-                         18,
+                         28,
                          KernelDefBuilder()
-                             .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
-                             // We may be able to re-use the input for the output as is unless the output
-                             // is a graph output. We provide this hint to the allocation planner
-                             // to make the re-use call.
+                             .TypeConstraint("O", DataTypeImpl::AllOptionalTypesIRv14())
+                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv14())
                              .Alias(0, 0),
                          OptionalGetElement);
 

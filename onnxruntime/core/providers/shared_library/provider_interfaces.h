@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <complex>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -1434,6 +1435,23 @@ struct ProviderHost {
   virtual const Float6E3M2* Tensor__Data_Float6E3M2(const Tensor* p) = 0;
   virtual bool Tensor__IsDataType_Float6E2M3(const Tensor* p) noexcept = 0;
   virtual bool Tensor__IsDataType_Float6E3M2(const Tensor* p) noexcept = 0;
+
+  // Complex and IR14 type-list support - appended at end to preserve vtable ABI compatibility.
+  virtual MLDataType DataTypeImpl__GetType_complex_float() = 0;
+  virtual MLDataType DataTypeImpl__GetType_complex_double() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_complex_float() = 0;
+  virtual MLDataType DataTypeImpl__GetTensorType_complex_double() = 0;
+  virtual std::complex<float>* Tensor__MutableData_complex_float(Tensor* p) = 0;
+  virtual std::complex<double>* Tensor__MutableData_complex_double(Tensor* p) = 0;
+  virtual const std::complex<float>* Tensor__Data_complex_float(const Tensor* p) = 0;
+  virtual const std::complex<double>* Tensor__Data_complex_double(const Tensor* p) = 0;
+  virtual bool Tensor__IsDataType_complex_float(const Tensor* p) noexcept = 0;
+  virtual bool Tensor__IsDataType_complex_double(const Tensor* p) noexcept = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypesIRv14() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypesIRv14() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypesIRv14() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalTypesIRv14() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllOptionalAndTensorAndSequenceTensorTypesIRv14() = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)
