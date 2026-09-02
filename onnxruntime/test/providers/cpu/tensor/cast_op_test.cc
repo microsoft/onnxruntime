@@ -2432,6 +2432,36 @@ TEST(CastOpTest, Float6EncodingBoundaries) {
   EXPECT_EQ(static_cast<float>(Float6E3M2(0x1F, Float6E3M2::FromBits())), 28.0f);
 }
 
+template <typename F6>
+void TestFloat6ToPackedIntegerTruncation() {
+  const std::vector<int64_t> shape{2};
+  const std::vector<F6> input{F6(0x0C, F6::FromBits()), F6(0x2C, F6::FromBits())};  // +1.5, -1.5
+
+  const std::vector<Int4x2> int4_output{Int4x2(0xF1, Int4x2::FromBits())};
+  TestCastOp(gsl::make_span(input), gsl::make_span(int4_output), shape,
+             OpTester::ExpectResult::kExpectSuccess, "", 28);
+
+  const std::vector<UInt4x2> uint4_output{UInt4x2(0xF1, UInt4x2::FromBits())};
+  TestCastOp(gsl::make_span(input), gsl::make_span(uint4_output), shape,
+             OpTester::ExpectResult::kExpectSuccess, "", 28);
+
+  const std::vector<Int2x4> int2_output{Int2x4(0x0D, Int2x4::FromBits())};
+  TestCastOp(gsl::make_span(input), gsl::make_span(int2_output), shape,
+             OpTester::ExpectResult::kExpectSuccess, "", 28);
+
+  const std::vector<UInt2x4> uint2_output{UInt2x4(0x0D, UInt2x4::FromBits())};
+  TestCastOp(gsl::make_span(input), gsl::make_span(uint2_output), shape,
+             OpTester::ExpectResult::kExpectSuccess, "", 28);
+}
+
+TEST(CastOpTest, Float6E2M3ToPackedIntegerTruncation) {
+  TestFloat6ToPackedIntegerTruncation<Float6E2M3>();
+}
+
+TEST(CastOpTest, Float6E3M2ToPackedIntegerTruncation) {
+  TestFloat6ToPackedIntegerTruncation<Float6E3M2>();
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename F8>
