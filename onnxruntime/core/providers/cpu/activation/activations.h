@@ -3,6 +3,10 @@
 
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+
+#include "core/common/float16.h"
 #include "core/common/common.h"
 #include "core/platform/threadpool.h"
 #include "core/framework/op_kernel.h"
@@ -27,6 +31,54 @@ struct Celu : public ElementWiseRangedTransform<T> {
     ConstEigenVectorArrayMap<T> xm(this->input + first, len);
     EigenVectorArrayMap<T> ym(output_ptr, len);
     ym = xm.cwiseMax(0.0f) + (((T)alpha * ((xm / (T)alpha).exp() - 1)).cwiseMin(0.0f));
+  }
+};
+
+template <>
+struct Celu<MLFloat16> : public ElementWiseRangedTransform<MLFloat16> {
+  float alpha;
+  Status Init(const onnxruntime::NodeAttributes& attributes) {
+    return GetFloatParam("alpha", attributes, alpha);
+  }
+  GSL_SUPPRESS(r.11)
+  ElementWiseRangedTransform<MLFloat16>* Copy() const final {
+    return new Celu<MLFloat16>(*this);
+  }
+
+  float Cost() const final {
+    return 1.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    const float typed_alpha = MLFloat16(alpha).ToFloat();
+    for (auto i = first; i < last; ++i) {
+      const float x = this->input[i].ToFloat();
+      this->output[i] = MLFloat16(std::max(0.0f, x) +
+                                  std::min(0.0f, typed_alpha * (std::exp(x / typed_alpha) - 1.0f)));
+    }
+  }
+};
+
+template <>
+struct Celu<BFloat16> : public ElementWiseRangedTransform<BFloat16> {
+  float alpha;
+  Status Init(const onnxruntime::NodeAttributes& attributes) {
+    return GetFloatParam("alpha", attributes, alpha);
+  }
+  GSL_SUPPRESS(r.11)
+  ElementWiseRangedTransform<BFloat16>* Copy() const final {
+    return new Celu<BFloat16>(*this);
+  }
+
+  float Cost() const final {
+    return 1.0f;
+  }
+  void operator()(std::ptrdiff_t first, std::ptrdiff_t last) const final {
+    const float typed_alpha = BFloat16(alpha).ToFloat();
+    for (auto i = first; i < last; ++i) {
+      const float x = this->input[i].ToFloat();
+      this->output[i] = BFloat16(std::max(0.0f, x) +
+                                 std::min(0.0f, typed_alpha * (std::exp(x / typed_alpha) - 1.0f)));
+    }
   }
 };
 

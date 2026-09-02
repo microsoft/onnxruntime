@@ -7,10 +7,20 @@
 namespace onnxruntime {
 namespace js {
 
+ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(
+    Einsum,
+    kOnnxDomain,
+    12, 27,
+    float,
+    kJsExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    Einsum);
+
 ONNX_OPERATOR_TYPED_KERNEL_EX(
     Einsum,
     kOnnxDomain,
-    12,
+    28,
     float,
     kJsExecutionProvider,
     KernelDefBuilder()

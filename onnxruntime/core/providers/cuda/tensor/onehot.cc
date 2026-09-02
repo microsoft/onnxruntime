@@ -12,11 +12,11 @@ namespace onnxruntime {
 namespace cuda {
 
 // T1: indices, T2: depth, T3: values
-#define REGISTER_TYPED_ONE_HOT_OP(in_type, out_type, depth_type)           \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                           \
+#define REGISTER_TYPED_ONE_HOT_OP_V11_27(in_type, out_type, depth_type)   \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                 \
       OneHot,                                                              \
       kOnnxDomain,                                                         \
-      11,                                                                  \
+      11, 27,                                                              \
       in_type##_##out_type##_##depth_type,                                 \
       kCudaExecutionProvider,                                              \
       (*KernelDefBuilder::Create())                                        \
@@ -27,11 +27,34 @@ namespace cuda {
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),  \
       OneHotOp<in_type, out_type, depth_type>);
 
-REGISTER_TYPED_ONE_HOT_OP(int64_t, int64_t, int64_t)
-REGISTER_TYPED_ONE_HOT_OP(int64_t, float, int64_t)
-REGISTER_TYPED_ONE_HOT_OP(int32_t, float, int32_t)
-REGISTER_TYPED_ONE_HOT_OP(int64_t, MLFloat16, int64_t)
-REGISTER_TYPED_ONE_HOT_OP(int32_t, MLFloat16, int32_t)
+#define REGISTER_TYPED_ONE_HOT_OP_V28(in_type, out_type, depth_type)       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                           \
+      OneHot,                                                              \
+      kOnnxDomain,                                                         \
+      28,                                                                  \
+      in_type##_##out_type##_##depth_type,                                 \
+      kCudaExecutionProvider,                                              \
+      (*KernelDefBuilder::Create())                                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 1) /* Keep depth in CPU */  \
+          .InputMemoryType(OrtMemTypeCPUInput, 2) /* Keep values in CPU */ \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())    \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<depth_type>()) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),  \
+      OneHotOp<in_type, out_type, depth_type>);
+
+REGISTER_TYPED_ONE_HOT_OP_V11_27(int64_t, int64_t, int64_t)
+REGISTER_TYPED_ONE_HOT_OP_V11_27(int64_t, float, int64_t)
+REGISTER_TYPED_ONE_HOT_OP_V11_27(int32_t, float, int32_t)
+REGISTER_TYPED_ONE_HOT_OP_V11_27(int64_t, MLFloat16, int64_t)
+REGISTER_TYPED_ONE_HOT_OP_V11_27(int32_t, MLFloat16, int32_t)
+
+REGISTER_TYPED_ONE_HOT_OP_V28(int64_t, int64_t, int64_t)
+REGISTER_TYPED_ONE_HOT_OP_V28(int64_t, float, int64_t)
+REGISTER_TYPED_ONE_HOT_OP_V28(int32_t, float, int32_t)
+REGISTER_TYPED_ONE_HOT_OP_V28(int64_t, MLFloat16, int64_t)
+REGISTER_TYPED_ONE_HOT_OP_V28(int32_t, MLFloat16, int32_t)
+REGISTER_TYPED_ONE_HOT_OP_V28(int64_t, BFloat16, int64_t)
+REGISTER_TYPED_ONE_HOT_OP_V28(int32_t, BFloat16, int32_t)
 
 template <typename in_type, typename out_type, typename depth_type>
 Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext* ctx) const {
