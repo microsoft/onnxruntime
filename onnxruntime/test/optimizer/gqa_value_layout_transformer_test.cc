@@ -79,6 +79,9 @@ struct BuildOptions {
   // Declare the past_value graph input with a rank-3 shape. GQA shape inference checks past_key's
   // rank but does not independently reject past_value's, so this reaches the transformer.
   bool past_value_rank3 = false;
+  // Bind one graph input to both past_key and past_value. Graph::GetConsumerNodes() de-duplicates by
+  // node index, so the boundary still looks singly consumed even though two inputs read it.
+  bool past_key_and_value_shared = false;
 
   bool TransposedPastValue() const { return partially_transformed || already_transformed; }
 
@@ -120,6 +123,10 @@ void BuildGqaModel(ModelTestBuilder& builder, const BuildOptions& opts) {
     if (opts.past_value_rank3) {
       past_value = builder.MakeInput<MLFloat16>(std::vector<int64_t>{kBatch, kMaxSeq, kHeadSize},
                                                 MLFloat16(0.0f), MLFloat16(0.0f));
+    }
+
+    if (opts.past_key_and_value_shared) {
+      past_value = past_key;
     }
 
     if (opts.past_value_behind_identity) {
@@ -839,6 +846,54 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsFourBitValueCache) {
       TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
                            TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
       "4-bit quantized Value cache");
+}
+
+// Graph::GetConsumerNodes() de-duplicates by node index, so a tensor bound to both past_key and
+// past_value still reports a single consumer. Converting it would rewire past_value alone and leave
+// past_key reading the now-BNHS tensor as BNSH, so the repeat use has to be detected separately.
+TEST_F(GqaValueLayoutTransformerTest, RejectsPastValueAlsoBoundToPastKey) {
+  BuildOptions opts;
+  opts.past_key_and_value_shared = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "requires past_value to be its only use");
+}
+
+// Reloading a model that already carries the conversion must still populate the boundary list, or
+// the post-partition diagnostic is silently disabled for exactly the case where the Transposes are
+// present and may still be executing.
+TEST_F(GqaValueLayoutTransformerTest, RecordsBoundariesForAnAlreadyTransformedModel) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutAlreadyTransformed", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  GqaValueLayoutBoundaries boundaries;
+  GqaValueLayoutTransformer transformer{&boundaries};
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, *logger_));
+
+  // Nothing to do, but the boundaries must still be reported so the diagnostic can run.
+  EXPECT_FALSE(modified);
+  EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
+  EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
+
+  // And the diagnostic must then flag them, because the Transposes are still in the graph.
+  const auto unfused = ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_);
+  EXPECT_EQ(unfused.size(), 2u);
 }
 
 // Only a rank-4 declared shape can be reinterpreted between BNSH and BNHS. GQA shape inference

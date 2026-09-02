@@ -260,8 +260,12 @@ input is baked into the model and can never be bound, so it is `kOutOfScope`.
 BNSH while the application believes it is BNHS, and would bind buffers in the wrong layout. Silently
 skipping would make the option self-inconsistent, so `ClassifyNode` returns an error for:
 
-- **A shared boundary.** A `past_value` graph input read by more than one node, or a `present_value`
-  graph output that is also consumed inside the graph. A boundary NodeArg is shared state: swapping
+- **A shared boundary.** A `past_value` graph input read by more than one node **or by more than one
+  input of the same node**, or a `present_value` graph output that is also consumed inside the graph.
+  `Graph::GetConsumerNodes()` de-duplicates by node index, so a tensor bound to both `past_key` and
+  `past_value` reports a single consumer; the repeat use has to be counted separately, or the
+  conversion would rewire `past_value` alone and leave `past_key` reading the now-BNHS tensor as
+  BNSH. A boundary NodeArg is shared state: swapping
   its declared shape is visible to every node that reads or writes it, but only the node being
   processed gets rewired through a Transpose. For a shared `past_value`, converting the first node
   flips the graph input to BNHS while the second still reads it as BNSH, and processing the second
@@ -354,8 +358,11 @@ boundary whose Transpose survived, naming the boundary tensor and the EP that le
 the difference between a diagnosable perf cliff and an invisible one.
 
 The check is anchored on the **boundaries**, not on the GQA nodes. `GqaValueLayoutTransformer` records
-the graph input and output names it converted into a `GqaValueLayoutBoundaries`, which the caller then
-passes here; the check asks whether the graph input's consumer, or the graph output's producer, is
+the graph input and output names into a `GqaValueLayoutBoundaries`, which the caller then passes here;
+recording happens in `ClassifyNode`, so it covers boundaries a *previous* run already converted as
+well as ones this run converts. Recording only the latter would leave the list empty for a model
+reloaded from `session.optimized_model_filepath`, silently disabling the diagnostic in precisely the
+case where the Transposes are present and may still be executing. the check asks whether the graph input's consumer, or the graph output's producer, is
 still a value-layout Transpose. Graph input and output names are stable across partitioning, which is
 what makes them a usable anchor.
 
@@ -443,9 +450,13 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - An overridable-initializer `past_value` is rejected (section 3.5).
 - Errors, per section 3.5: a `past_value` graph input shared by two GQA nodes; a `present_value` graph
   output also consumed inside the graph; a node with the layout applied to only one operand; a 4-bit
-  quantized Value cache; a `past_value` whose declared shape is not rank 4. The rank case needs
+  quantized Value cache; a `past_value` whose declared shape is not rank 4; a `past_value` also bound
+  to `past_key` on the same node. The rank case needs
   `strict_shape_type_inference = false` to build, because GQA shape inference validates `past_key`'s
   rank but not `past_value`'s — which is also why the transformer has to check it.
+- An already-converted model is left alone but still records its boundaries, so the 4.2 diagnostic
+  keeps working after a reload; the test asserts both the recording and that the diagnostic then
+  flags the surviving Transposes.
 - An already-converted model is left alone, and an already-converted **4-bit** model is
   still rejected. The second case is what pins down the check order in 3.5; verified to fail when
   `ValidateCacheFormat` runs after the layout-state switch.

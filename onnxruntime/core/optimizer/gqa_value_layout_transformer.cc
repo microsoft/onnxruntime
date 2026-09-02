@@ -107,8 +107,10 @@ bool IsOverridableInitializer(const Graph& graph, const NodeArg* arg) {
   return false;
 }
 
-Status ClassifyPastValue(const Graph& graph, const Node& node, OperandStatus& status) {
+Status ClassifyPastValue(const Graph& graph, const Node& node, OperandStatus& status,
+                         std::string& boundary_name) {
   status = OperandStatus::kAbsent;
+  boundary_name.clear();
   if (!HasInput(node, kPastValueInputIndex)) {
     return Status::OK();
   }
@@ -122,6 +124,7 @@ Status ClassifyPastValue(const Graph& graph, const Node& node, OperandStatus& st
   if (producer != nullptr && IsValueLayoutTranspose(*producer) &&
       IsApplicationInput(graph, producer->InputDefs()[0])) {
     status = OperandStatus::kConverted;
+    boundary_name = producer->InputDefs()[0]->Name();  // the graph input, not the GQA operand
     return Status::OK();
   }
 
@@ -138,10 +141,14 @@ Status ClassifyPastValue(const Graph& graph, const Node& node, OperandStatus& st
                 "input is supplied by the application, or transpose it to BNHS when producing the model.");
 
   status = IsApplicationInput(graph, arg) ? OperandStatus::kConvertible : OperandStatus::kOutOfScope;
+  if (status == OperandStatus::kConvertible) {
+    boundary_name = arg->Name();
+  }
   return Status::OK();
 }
 
-OperandStatus ClassifyPresentValue(const Graph& graph, const Node& node) {
+OperandStatus ClassifyPresentValue(const Graph& graph, const Node& node, std::string& boundary_name) {
+  boundary_name.clear();
   if (!HasOutput(node, kPresentValueOutputIndex)) {
     return OperandStatus::kAbsent;
   }
@@ -151,10 +158,33 @@ OperandStatus ClassifyPresentValue(const Graph& graph, const Node& node) {
   const auto consumers = graph.GetConsumerNodes(arg->Name());
   if (consumers.size() == 1 && consumers[0] != nullptr && IsValueLayoutTranspose(*consumers[0]) &&
       graph.IsOutput(consumers[0]->OutputDefs()[0])) {
+    boundary_name = consumers[0]->OutputDefs()[0]->Name();  // the graph output, not the GQA operand
     return OperandStatus::kConverted;
   }
 
-  return graph.IsOutput(arg) ? OperandStatus::kConvertible : OperandStatus::kOutOfScope;
+  if (graph.IsOutput(arg)) {
+    boundary_name = arg->Name();
+    return OperandStatus::kConvertible;
+  }
+  return OperandStatus::kOutOfScope;
+}
+
+// How many input slots of `node` reference `arg_name`. Graph::GetConsumerNodes() de-duplicates by
+// node index, so it reports a single consumer even when one node reads the same NodeArg at several
+// positions -- a model binding one tensor to both past_key and past_value, for instance.
+size_t CountInputUses(const Node& node, const std::string& arg_name) {
+  size_t uses = 0;
+  for (const auto* def : node.InputDefs()) {
+    if (def != nullptr && def->Exists() && def->Name() == arg_name) {
+      ++uses;
+    }
+  }
+  for (const auto* def : node.ImplicitInputDefs()) {
+    if (def != nullptr && def->Exists() && def->Name() == arg_name) {
+      ++uses;
+    }
+  }
+  return uses;
 }
 
 // Which operands of one node this transformer will convert.
@@ -232,7 +262,7 @@ Status ValidateCacheFormat(const Node& node) {
 // operands are judged separately, so a node with one bound and one internal cache still gets the
 // bound side converted.
 Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger& logger,
-                    NodeConversionPlan& plan) {
+                    NodeConversionPlan& plan, GqaValueLayoutBoundaries* converted_boundaries) {
   plan = NodeConversionPlan{};
 
   // Checked before the operand statuses, so that a model which already carries the Transposes is
@@ -242,8 +272,11 @@ Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger&
   ORT_RETURN_IF_ERROR(ValidateCacheFormat(node));
 
   OperandStatus past_value_status = OperandStatus::kAbsent;
-  ORT_RETURN_IF_ERROR(ClassifyPastValue(graph, node, past_value_status));
-  const OperandStatus present_value_status = ClassifyPresentValue(graph, node);
+  std::string past_value_boundary;
+  ORT_RETURN_IF_ERROR(ClassifyPastValue(graph, node, past_value_status, past_value_boundary));
+
+  std::string present_value_boundary;
+  const OperandStatus present_value_status = ClassifyPresentValue(graph, node, present_value_boundary);
 
   // One boundary converted while the other was equally convertible means the graph was edited by
   // hand or produced by a build that failed part way. The two boundaries no longer agree with each
@@ -274,6 +307,21 @@ Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger&
   plan.convert_past_value = past_value_status == OperandStatus::kConvertible;
   plan.convert_present_value = present_value_status == OperandStatus::kConvertible;
 
+  // Record every boundary that ends up BNHS, whether this run converts it or a previous one already
+  // did. The post-partition diagnostic works off this list, so omitting the already-converted ones
+  // would silently disable it for a model reloaded from session.optimized_model_filepath -- exactly
+  // the case where the Transposes are present and may still be running.
+  if (converted_boundaries != nullptr) {
+    if (!past_value_boundary.empty() &&
+        (past_value_status == OperandStatus::kConverted || plan.convert_past_value)) {
+      converted_boundaries->past_value_inputs.push_back(past_value_boundary);
+    }
+    if (!present_value_boundary.empty() &&
+        (present_value_status == OperandStatus::kConverted || plan.convert_present_value)) {
+      converted_boundaries->present_value_outputs.push_back(present_value_boundary);
+    }
+  }
+
   if (!plan.AnythingToDo()) {
     if (past_value_status == OperandStatus::kConverted || present_value_status == OperandStatus::kConverted) {
       LOGS(logger, INFO) << "GroupQueryAttention node '" << DescribeNode(node)
@@ -298,6 +346,19 @@ Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger&
                              kOrtSessionOptionsGqaValueLayout, "' option requires this node to be its only consumer. ",
                              "A Value cache shared between nodes cannot be converted to BNHS.");
     }
+
+    // Sole consumer is not sole use: this node may read the same tensor at more than one input, for
+    // example a model that binds one cache to both past_key and past_value. Converting would rewire
+    // only past_value and leave the other inputs reading the now-BNHS tensor as BNSH.
+    const size_t uses = CountInputUses(node, boundary_arg->Name());
+    if (uses != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "GroupQueryAttention node '", DescribeNode(node), "' reads the past_value graph input ('",
+                             boundary_arg->Name(), "') at ", uses, " of its inputs; the '",
+                             kOrtSessionOptionsGqaValueLayout, "' option requires past_value to be its only use. ",
+                             "Converting would rewire past_value alone and leave the other inputs reading BNHS data ",
+                             "as BNSH.");
+    }
     ORT_RETURN_IF_ERROR(ValidateSwappableShape(*boundary_arg));
   }
 
@@ -321,8 +382,7 @@ Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger&
 // Rewires one validated node according to its plan. Has no failure modes: ClassifyNode() has already
 // established every precondition, which is what lets the caller validate the whole graph before
 // mutating any of it.
-void TransformNode(Graph& graph, Node& node, const NodeConversionPlan& plan,
-                   GqaValueLayoutBoundaries* converted_boundaries) {
+void TransformNode(Graph& graph, Node& node, const NodeConversionPlan& plan) {
   if (plan.convert_past_value) {
     // The graph input keeps its name and identity but now declares BNHS. A new NodeArg carries the
     // BNSH result of the Transpose into the GQA node, inheriting the original (BNSH) type/shape.
@@ -338,10 +398,6 @@ void TransformNode(Graph& graph, Node& node, const NodeConversionPlan& plan,
 
     graph_utils::ReplaceNodeInput(node, static_cast<int>(kPastValueInputIndex), bnsh_arg);
     SwapLastTwoDims(*boundary_arg);
-
-    if (converted_boundaries != nullptr) {
-      converted_boundaries->past_value_inputs.push_back(boundary_arg->Name());
-    }
   }
 
   if (plan.convert_present_value) {
@@ -362,10 +418,6 @@ void TransformNode(Graph& graph, Node& node, const NodeConversionPlan& plan,
                             *boundary_arg);
 
     SwapLastTwoDims(*boundary_arg);
-
-    if (converted_boundaries != nullptr) {
-      converted_boundaries->present_value_outputs.push_back(boundary_arg->Name());
-    }
   }
 }
 
@@ -404,7 +456,7 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
     }
 
     NodeConversionPlan plan;
-    ORT_RETURN_IF_ERROR(ClassifyNode(graph, node, logger, plan));
+    ORT_RETURN_IF_ERROR(ClassifyNode(graph, node, logger, plan, converted_boundaries_));
     if (plan.AnythingToDo()) {
       nodes_to_transform.emplace_back(node_index, plan);
     }
@@ -417,7 +469,7 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
     ORT_RETURN_IF(node_ptr == nullptr, "GroupQueryAttention node ", node_index,
                   " disappeared between validation and transformation.");
 
-    TransformNode(graph, *node_ptr, plan, converted_boundaries_);
+    TransformNode(graph, *node_ptr, plan);
     modified = true;
 
     LOGS(logger, INFO) << "Applied the BNHS Value layout to GroupQueryAttention node '"
