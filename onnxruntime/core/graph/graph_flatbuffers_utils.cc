@@ -29,6 +29,31 @@ SaveDims(flatbuffers::FlatBufferBuilder& builder, const DimsFieldType& dims) {
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+static std::vector<uint8_t> PackFloat6Data(gsl::span<const uint8_t> unpacked_data) {
+  std::vector<uint8_t> packed_data(unpacked_data.size() - unpacked_data.size() / 4, 0);
+  for (size_t i = 0; i < unpacked_data.size(); ++i) {
+    const uint8_t value = unpacked_data[i] & 0x3F;
+    uint8_t* group = packed_data.data() + (i / 4) * 3;
+    switch (i % 4) {
+      case 0:
+        group[0] |= value;
+        break;
+      case 1:
+        group[0] |= value << 6;
+        group[1] |= value >> 2;
+        break;
+      case 2:
+        group[1] |= value << 4;
+        group[2] |= value >> 4;
+        break;
+      default:
+        group[2] |= value << 2;
+        break;
+    }
+  }
+  return packed_data;
+}
+
 Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                 const TensorProto& initializer,
                                 const std::filesystem::path& model_path,
@@ -66,6 +91,11 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
             element_size,
             gsl::make_span(reinterpret_cast<std::byte*>(unpacked_tensor.data()), unpacked_tensor.size()));
       }
+    }
+
+    if (src_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3 ||
+        src_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2) {
+      unpacked_tensor = PackFloat6Data(unpacked_tensor);
     }
 
     if (external_writer && unpacked_tensor.size() >= kMinimumSizeForExternalData) {
