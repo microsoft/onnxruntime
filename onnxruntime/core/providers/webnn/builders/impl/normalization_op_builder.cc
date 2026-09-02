@@ -64,7 +64,10 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   }
 
   NodeAttrHelper helper(node);
-  const auto epsilon = helper.Get("epsilon", 1e-05f);
+  // The com.microsoft Skip[Simplified]LayerNormalization schema defaults epsilon to 1e-12f
+  // (kDefaultSkipLayerNormEpsilon), whereas the other normalization ops default to 1e-5f.
+  const float default_epsilon = is_skip_norm ? 1e-12f : 1e-05f;
+  const auto epsilon = helper.Get("epsilon", default_epsilon);
   options.set("epsilon", epsilon);
 
   emscripten::val output = emscripten::val::undefined();
@@ -309,10 +312,13 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
     return false;
   }
 
-  if (op_type == "SimplifiedLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization") {
-    // SkipSimplifiedLayerNormalization and SimplifiedLayerNormalization are supported by decomposed WebNN ops.
+  if (op_type == "SkipLayerNormalization" ||
+      op_type == "SimplifiedLayerNormalization" ||
+      op_type == "SkipSimplifiedLayerNormalization") {
+    // These ops are supported by decomposed WebNN ops (see decomposed_op_map).
     // Check if the input data type is supported by each decomposed WebNN op.
-    // Decomposed ops include: "Add", "Div", "Mul", "Pow", "ReduceMean" and "Sqrt".
+    //   SkipLayerNormalization decomposes into: "Add", "LayerNormalization".
+    //   Simplified/SkipSimplifiedLayerNormalization: "Add", "Div", "Mul", "Pow", "ReduceMean", "Sqrt".
     for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
       const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
       const std::string_view webnn_input_name = GetWebNNOpFirstInputName(decomposed_op_type);
@@ -327,7 +333,12 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
       return false;
     }
     // It's complicated to check all the decomposed ops' input rank support.
-    // Ensure at least the first input rank is supported by the decomposed ops (pow and div accept the first input).
+    // Ensure at least the first input rank is supported by the ops that consume the (residual) input.
+    if (op_type == "SkipLayerNormalization") {
+      return IsRankSupportedByWebNNOp(wnn_limits, "add", "a", input_shape.size(), node.Name(), logger) &&
+             IsRankSupportedByWebNNOp(wnn_limits, "layerNormalization", "input", input_shape.size(),
+                                      node.Name(), logger);
+    }
     return IsRankSupportedByWebNNOp(wnn_limits, "pow", "a", input_shape.size(), node.Name(), logger) &&
            IsRankSupportedByWebNNOp(wnn_limits, "div", "a", input_shape.size(), node.Name(), logger);
   } else {
@@ -362,7 +373,9 @@ bool NormalizationOpBuilder::HasSupportedOutputsImpl(const Node& node,
     return false;
   }
 
-  if (op_type == "SimplifiedLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization") {
+  if (op_type == "SkipLayerNormalization" ||
+      op_type == "SimplifiedLayerNormalization" ||
+      op_type == "SkipSimplifiedLayerNormalization") {
     // Check if the output data type is supported by every decomposed WebNN op.
     for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
       const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
