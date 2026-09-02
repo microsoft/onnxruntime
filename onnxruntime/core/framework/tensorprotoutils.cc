@@ -1797,6 +1797,16 @@ Status GetExtDataFromTensorProto(const Env& env,
   // In-memory address markers are passed through; their validity is enforced upstream.
   ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
 
+  if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3 ||
+      tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
+    const TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
+    const DataTypeImpl* type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
+    Tensor tensor{type, tensor_shape, CPUAllocator::DefaultInstance()};
+    ORT_RETURN_IF_ERROR(TensorProtoToTensor(env, model_path, tensor_proto, tensor));
+    Tensor::InitOrtValue(std::move(tensor), ort_value);
+    return Status::OK();
+  }
+
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
     ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
