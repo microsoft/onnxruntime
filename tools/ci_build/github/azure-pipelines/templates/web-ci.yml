@@ -77,6 +77,10 @@ stages:
       clean: all
     steps:
     - template: jobs/checkout-and-git-redirect.yml
+    - template: jobs/setup-feeds-and-python-steps.yml
+      parameters:
+        architecture: x64
+
 
     - script: |
         git submodule sync -- cmake/external/onnx
