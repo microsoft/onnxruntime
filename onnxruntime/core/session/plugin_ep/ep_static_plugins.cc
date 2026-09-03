@@ -9,9 +9,9 @@
 // Entry points of the plugin execution providers that are statically linked into this build.
 //
 // A statically linked provider compiles its CreateEpFactories and ReleaseEpFactory entry points with a provider
-// specific prefix (see ORT_PLUGIN_EP_ENTRY_POINT_PREFIX in the provider's api.cc) so that several providers can be
-// linked into one binary without their entry points colliding. Declare them here rather than including a provider
-// header, so that ORT core does not take a compile time dependency on provider internals.
+// specific `WebGpu_` style prefix (see ORT_PLUGIN_EP_STATICALLY_LINKED in the provider's api.cc) so that several
+// providers can be linked into one binary without their entry points colliding. Declare them here rather than
+// including a provider header, so that ORT core does not take a compile time dependency on provider internals.
 #if defined(USE_WEBGPU) && defined(ORT_WEBGPU_STATIC_PLUGIN)
 extern "C" {
 OrtStatus* WebGpu_CreateEpFactories(const char* registration_name, const OrtApiBase* ort_api_base,

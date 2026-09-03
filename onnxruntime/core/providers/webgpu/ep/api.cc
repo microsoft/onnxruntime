@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// See the comment on ORT_PLUGIN_EP_STATICALLY_LINKED in include/onnxruntime/ep/api.h for why manual init of the C++
-// API is only used when this EP is built as its own shared library.
-#if !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
+// See the comment on ORT_SKIP_API_MANUAL_INIT in include/onnxruntime/ep/api.h for why manual init of the C++ API is
+// only used when this EP is built as its own shared library. Key this off the same macro so that every translation
+// unit in the binary agrees on ORT_API_MANUAL_INIT.
+#if !defined(ORT_SKIP_API_MANUAL_INIT)
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
@@ -21,21 +22,21 @@
 #include "core/session/onnxruntime_env_config_keys.h"
 
 // When this EP is statically linked into the host binary instead of being built as a separate plugin library, the
-// entry points below are given a prefix (e.g. `WebGpu_`) so that multiple statically linked plugin EPs can coexist
-// in one binary. The build defines ORT_PLUGIN_EP_ENTRY_POINT_PREFIX in that case. ORT core declares the prefixed
-// names in onnxruntime/core/session/plugin_ep/ep_static_plugins.cc.
+// entry points below are given a `WebGpu_` prefix so that multiple statically linked plugin EPs can coexist in one
+// binary. ORT core declares the prefixed names in onnxruntime/core/session/plugin_ep/ep_static_plugins.cc, which
+// spells them out literally, so the prefix is hardcoded on both sides rather than configured by the build.
 //
 // The shared library build must leave the entry points unprefixed, because they are resolved by exact name.
-#if defined(ORT_PLUGIN_EP_ENTRY_POINT_PREFIX)
+#if defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
 #define ORT_PLUGIN_EP_ENTRY_POINT_CONCAT_IMPL(prefix, name) prefix##name
 #define ORT_PLUGIN_EP_ENTRY_POINT_CONCAT(prefix, name) ORT_PLUGIN_EP_ENTRY_POINT_CONCAT_IMPL(prefix, name)
-#define ORT_PLUGIN_EP_ENTRY_POINT(name) ORT_PLUGIN_EP_ENTRY_POINT_CONCAT(ORT_PLUGIN_EP_ENTRY_POINT_PREFIX, name)
+#define ORT_PLUGIN_EP_ENTRY_POINT(name) ORT_PLUGIN_EP_ENTRY_POINT_CONCAT(WebGpu_, name)
 #else
 #define ORT_PLUGIN_EP_ENTRY_POINT(name) name
 #endif
 
 // To make symbols visible on macOS/iOS. Only needed when this EP is built as a separate shared library.
-#if defined(__APPLE__) && !defined(ORT_PLUGIN_EP_ENTRY_POINT_PREFIX)
+#if defined(__APPLE__) && !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
 #define EXPORT_SYMBOL __attribute__((visibility("default")))
 #else
 #define EXPORT_SYMBOL
@@ -48,7 +49,7 @@ void CleanupKernelRegistries();
 }  // namespace webgpu
 }  // namespace onnxruntime
 
-#if defined(ORT_PLUGIN_EP_OWNS_PROCESS_GLOBALS)
+#if !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
 namespace google {
 namespace protobuf {
 void ShutdownProtobufLibrary();
@@ -154,7 +155,7 @@ EXPORT_SYMBOL OrtStatus* ORT_PLUGIN_EP_ENTRY_POINT(ReleaseEpFactory)(OrtEpFactor
   // STEP.4 - Destroy the global default logger wrapper
   ::onnxruntime::ep::adapter::LoggingManager::DestroyDefaultLogger();
 
-#if defined(ORT_PLUGIN_EP_OWNS_PROCESS_GLOBALS)
+#if !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)
   // STEP.5 - Shutdown protobuf library.
   // Only do this when this EP owns the process-global state, i.e. when it is built as a separate library.
   // When statically linked into the host binary, protobuf is shared with the host, which owns its lifetime.

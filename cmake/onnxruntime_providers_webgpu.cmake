@@ -51,11 +51,11 @@
     # Prefix the plugin EP entry points so that multiple statically linked plugin EPs can coexist in one binary.
     # ORT core declares the prefixed names in onnxruntime/core/session/plugin_ep/ep_static_plugins.cc.
     #
-    # ORT_PLUGIN_EP_STATICALLY_LINKED tells the shared plugin EP headers that OrtGetApiBase() is available in-process,
+    # ORT_SKIP_API_MANUAL_INIT tells the shared plugin EP headers that OrtGetApiBase() is available in-process,
     # so the C++ API must not be built with ORT_API_MANUAL_INIT (the rest of the binary is not).
     target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
-                               ORT_PLUGIN_EP_ENTRY_POINT_PREFIX=WebGpu_
-                               ORT_PLUGIN_EP_STATICALLY_LINKED=1)
+                               ORT_PLUGIN_EP_STATICALLY_LINKED=1
+                               ORT_SKIP_API_MANUAL_INIT=1)
   else()
     #
     # Build WebGPU EP as a shared library
@@ -93,10 +93,6 @@
     add_definitions("-DONNX_ML=1")
     add_definitions("-DONNX_NAMESPACE=onnx")
     add_definitions("-DONNX_USE_LITE_PROTO=1")
-
-    # This EP is its own module, so it owns the lifetime of the process-global state it initializes
-    # (e.g. the protobuf library) and shuts it down when the factory is released.
-    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE ORT_PLUGIN_EP_OWNS_PROCESS_GLOBALS=1)
 
     # Set preprocessor definitions used in onnxruntime_providers_webgpu.rc
     if(WIN32)
