@@ -4,6 +4,9 @@ parameters:
   default: false
 
 steps:
+# Initialize git paths
+- checkout: none
+
 - pwsh: |
     git config --global --add url."https://PAT:${env:TOKEN}@aiinfra.visualstudio.com/Lotus-Dependencies/_git/".insteadOf "https://chromium.googlesource.com/chromium/src/third_party/"
     git config --global --add url."https://github.com/".insteadOf "https://chromium.googlesource.com/external/github.com/"
