@@ -1154,6 +1154,50 @@ TEST_F(GqaValueLayoutTransformerTest, NotAppliedForTheDefaultLayout) {
   ASSERT_STATUS_OK(ExpectNoTransposes(session.GetGraph()));
 }
 
+// BNSH is a claim about the boundary, not merely the absence of a request. A model saved from a BNHS
+// session still carries the Transposes and BNHS boundary shapes, so loading it as BNSH would have the
+// application bind BNSH buffers to a BNHS boundary.
+TEST_F(GqaValueLayoutTransformerTest, RejectsABnhsConvertedModelWhenBnshIsRequested) {
+  std::string model_bytes;
+  {
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 21;
+    domain_to_version[kMSDomain] = 1;
+
+    Model model("GqaValueLayoutConvertedModel", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+    Graph& graph = model.MainGraph();
+
+    BuildOptions opts;
+    opts.already_transformed = true;
+    ModelTestBuilder helper(graph);
+    BuildGqaModel(helper, opts);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+  }
+
+  // Explicit BNSH, and the default (no option at all) which means the same thing.
+  for (const char* layout : {kGqaValueLayoutBNSH, static_cast<const char*>(nullptr)}) {
+    SCOPED_TRACE(layout == nullptr ? "default layout" : "explicit BNSH");
+
+    SessionOptions session_options = MakeSessionOptions(layout);
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+
+    const Status status = session.Initialize();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already carries the BNHS"));
+  }
+
+  // The same model loads when the option agrees with it.
+  SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  ASSERT_STATUS_OK(ExpectBnhsBoundary(session.GetMutableGraph()));
+}
+
 TEST_F(GqaValueLayoutTransformerTest, RejectsAnInvalidLayoutValue) {
   std::string model_bytes;
   ASSERT_STATUS_OK(BuildSerializedGqaModel(*logger_, model_bytes));

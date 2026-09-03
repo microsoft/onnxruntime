@@ -1675,6 +1675,27 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   if (gqa_value_layout != kGqaValueLayoutBNSH) {
     GqaValueLayoutTransformer gqa_value_layout_transformer{&converted_gqa_value_boundaries};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(gqa_value_layout_transformer, *session_logger_, graph));
+  } else {
+    // BNSH is a claim about the boundary, not just the absence of a request, so it has to be enforced
+    // rather than merely not acted on. A model saved from a BNHS session (via
+    // session.optimized_model_filepath) still carries the Transposes and BNHS boundary shapes; loading
+    // it as BNSH -- explicitly or by default -- would have the application bind BNSH buffers to a BNHS
+    // boundary, which is a shape error at best and a silent misread when the dimensions are dynamic or
+    // happen to be square.
+    //
+    // Not applied on the ORT format path: there the option is forced to BNSH and a converted model is
+    // the documented way to use BNHS, so the same check would reject the supported workflow.
+    const GqaValueLayoutBoundaries existing = FindConvertedGqaValueLayoutBoundaries(graph);
+    if (!existing.Empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "This model already carries the BNHS GroupQueryAttention Value layout: ",
+          existing.past_value_inputs.size() + existing.present_value_outputs.size(),
+          " boundary tensor(s) are declared BNHS. It cannot be loaded with '", kOrtSessionOptionsGqaValueLayout,
+          "' set to '", kGqaValueLayoutBNSH, "' (the default), because the application would bind BNSH buffers to a "
+          "BNHS boundary. Set '", kOrtSessionOptionsGqaValueLayout, "' to '", kGqaValueLayoutBNHS,
+          "', or load a model whose Value cache boundary is BNSH."));
+    }
   }
 
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
