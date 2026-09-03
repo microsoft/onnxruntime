@@ -217,7 +217,7 @@ void LUTGEMM_COMPUTE(benchmark::State& state) {
   }
 }
 
-static void LutGemmPackArgs(benchmark::internal::Benchmark* b) {
+static void LutGemmPackArgs(benchmark::Benchmark* b) {
   b->ArgNames(lutgemm_bench_arg_names);
   b->ArgsProduct({
       {128},             // BlkLen
@@ -228,7 +228,7 @@ static void LutGemmPackArgs(benchmark::internal::Benchmark* b) {
   });
 }
 
-static void LutGemmComputeArgs(benchmark::internal::Benchmark* b) {
+static void LutGemmComputeArgs(benchmark::Benchmark* b) {
   b->ArgNames(lutgemm_compute_arg_names);
   b->ArgsProduct({
       {128},                            // BlkLen
@@ -252,7 +252,7 @@ static void LutGemmComputeArgs(benchmark::internal::Benchmark* b) {
 // compared apples-to-apples against the W4 CompInt8 and W2 kernels
 // (QNBITGEMM<float, 4>/QNBitGemmRealisticShapesArgs and
 // QNBITGEMM<float, 2>/QNBit2BitRealisticShapesArgs).
-static void LutGemmRealisticShapesArgs(benchmark::internal::Benchmark* b) {
+static void LutGemmRealisticShapesArgs(benchmark::Benchmark* b) {
   b->ArgNames(lutgemm_compute_arg_names);
   // Separate Args() entries so we only run the exact (M, K, N) tuples that
   // appear in the representative production model.

@@ -88,7 +88,7 @@ if (onnxruntime_BUILD_BENCHMARKS)
     URL ${DEP_URL_google_benchmark}
     URL_HASH SHA1=${DEP_SHA1_google_benchmark}
     EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS NAMES benchmark
+    FIND_PACKAGE_ARGS 1.9.5 NAMES benchmark
   )
   onnxruntime_fetchcontent_makeavailable(google_benchmark)
 endif()

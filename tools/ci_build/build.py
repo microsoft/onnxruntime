@@ -43,6 +43,7 @@ from util import (  # noqa: E402
     parse_qnn_version_from_sdk_yaml,
     run,
 )
+from vcpkg_tool_info import get_vcpkg_release_tag  # noqa: E402
 
 log = get_logger("build")
 
@@ -302,15 +303,23 @@ def generate_vcpkg_install_options(build_dir, args):
 
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
-        terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
-        if terrapin_cmd_path is None:
-            terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
-            if not os.path.exists(terrapin_cmd_path):
-                terrapin_cmd_path = None
+        terrapin_path_candidates = [
+            args.terrapin_retrieval_tool_path,
+            shutil.which("TerrapinRetrievalTool"),
+        ]
+        if is_windows():
+            terrapin_path_candidates.append("C:\\local\\Terrapin\\TerrapinRetrievalTool.exe")
+
+        terrapin_cmd_path = next(
+            (path for path in terrapin_path_candidates if path is not None and os.path.exists(path)),
+            None,
+        )
+
         if terrapin_cmd_path is not None:
+            quoted_terrapin_cmd_path = f'"{terrapin_cmd_path}"' if is_windows() else shlex.quote(terrapin_cmd_path)
             vcpkg_install_options.append(
                 "--x-asset-sources=x-script,"
-                + terrapin_cmd_path
+                + quoted_terrapin_cmd_path
                 + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
             )
         else:
@@ -581,7 +590,14 @@ def generate_build_tree(
             vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(
-                    ["git", "clone", "-b", "2025.08.27", "https://github.com/microsoft/vcpkg.git", "--recursive"],
+                    [
+                        "git",
+                        "clone",
+                        "-b",
+                        get_vcpkg_release_tag(),
+                        "https://github.com/microsoft/vcpkg.git",
+                        "--recursive",
+                    ],
                     cwd=build_dir,
                 )
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
