@@ -628,7 +628,34 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreQwenTilingBoundaries) {
   for (const Case& shape : cases) {
     SCOPED_TRACE("N = " + std::to_string(shape.n) + ", K = " + std::to_string(shape.k));
     const auto config = onnxruntime::contrib::cuda::PickFp4MmaConfig(
-        static_cast<int>(shape.n), static_cast<int>(shape.k), sm_count);
+        static_cast<int>(shape.n), static_cast<int>(shape.k), sm_count, 9);
+    EXPECT_EQ(config.k_split, shape.k_split);
+    EXPECT_EQ(config.col_tiles, shape.col_tiles);
+  }
+}
+
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreClientBlackwellTiling) {
+  struct Case {
+    int n;
+    int k;
+    int sm_count;
+    int compute_capability_major;
+    int k_split;
+    int col_tiles;
+  };
+  const Case cases[] = {
+      {17408, 5120, 48, 12, 16, 1},
+      {5120, 17408, 48, 12, 16, 1},
+      {17408, 1024, 48, 12, 2, 4},   // Short reductions retain the generic selector.
+      {248320, 5120, 48, 12, 2, 4},  // Wide output grids retain the generic selector.
+      {17408, 5120, 132, 12, 2, 1},  // Large SM12x devices retain the generic selector.
+      {17408, 5120, 48, 9, 2, 4},    // The override is limited to client Blackwell.
+  };
+
+  for (const Case& shape : cases) {
+    SCOPED_TRACE("N = " + std::to_string(shape.n) + ", K = " + std::to_string(shape.k));
+    const auto config = onnxruntime::contrib::cuda::PickFp4MmaConfig(
+        shape.n, shape.k, shape.sm_count, shape.compute_capability_major);
     EXPECT_EQ(config.k_split, shape.k_split);
     EXPECT_EQ(config.col_tiles, shape.col_tiles);
   }

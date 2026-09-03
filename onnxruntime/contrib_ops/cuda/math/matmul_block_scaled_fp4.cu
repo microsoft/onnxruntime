@@ -979,7 +979,7 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   // cap below is much lower without the mma.
   if (device_prop.major >= 8 && k % 128 == 0 && m <= kFp4MmaGemvTileM && Fp4GemvMmaEnabled()) {
     const Fp4MmaConfig cfg = ApplyFp4MmaConfigOverrides(
-        PickFp4MmaConfig(n, k, device_prop.multiProcessorCount), n, k);
+        PickFp4MmaConfig(n, k, device_prop.multiProcessorCount, device_prop.major), n, k);
     const int cols_per_block = 16 * cfg.col_tiles;
     const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);
     const dim3 mma_threads{32, static_cast<unsigned int>(cfg.k_split * cfg.col_tiles)};
