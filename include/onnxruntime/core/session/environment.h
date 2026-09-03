@@ -147,10 +147,6 @@ class Environment {
    * statically linked plugin EP uses the public ORT API, and any OrtEnv API it calls must be able to find the
    * instance. See docs/design/webgpu_ep_extraction/plugin_boundary_and_web_integration/
    * static_plugin_ep_registration_design.md.
-   *
-   * Note: this does not take mutex_. It is safe because the caller holds the OrtEnv creation mutex, so no other
-   * thread can obtain a reference to this Environment yet. Taking mutex_ here would deadlock if a plugin EP called
-   * an Environment API from its OrtEpFactory::GetSupportedDevices implementation.
    */
   Status CreateAndRegisterStaticPluginEps();
 

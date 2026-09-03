@@ -92,8 +92,10 @@ OrtEnvPtr OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionIn
     p_instance_ = new OrtEnv(std::move(env));
 
     // Take this caller's reference before running any execution provider code below, so that if a provider
-    // acquires and releases an OrtEnvPtr the instance isn't destroyed out from under us.
+    // acquires and releases an OrtEnvPtr the instance isn't destroyed out from under us. Holding it in an OrtEnvPtr
+    // also unpublishes and destroys the half-built instance if anything below fails or throws.
     ++ref_count_;
+    OrtEnvPtr instance{p_instance_, OrtEnv::Release};
 
 #if !defined(ORT_MINIMAL_BUILD)
     // Register statically linked plugin EPs *after* p_instance_ is published. They use the public ORT API, so any
@@ -103,14 +105,11 @@ OrtEnvPtr OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionIn
     status = p_instance_->GetEnvironment().CreateAndRegisterStaticPluginEps();
 
     if (!status.IsOK()) {
-      OrtEnv* failed_instance = std::exchange(p_instance_, nullptr);
-      ref_count_ = 0;
-      delete failed_instance;
       return OrtEnvPtr(nullptr, OrtEnv::Release);
     }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-    return OrtEnvPtr(p_instance_, OrtEnv::Release);
+    return instance;
   }
 
   ++ref_count_;
