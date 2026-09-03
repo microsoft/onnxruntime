@@ -190,8 +190,8 @@ void RunEngramGateNormedTest(float tolerance) {
   for (int64_t g = 0; g < hc_mult; ++g) {
     float sum_sq = 0.0f;
     for (int64_t c = 0; c < hidden_size; ++c) {
-      const float value = gated_value[static_cast<size_t>(g * hidden_size + c)];
-      sum_sq += value * value;
+      const float gated = gated_value[static_cast<size_t>(g * hidden_size + c)];
+      sum_sq += gated * gated;
     }
     const float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + kEpsilon);
     for (int64_t c = 0; c < hidden_size; ++c) {
