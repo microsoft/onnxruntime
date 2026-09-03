@@ -1354,11 +1354,6 @@ Status GetGqaValueLayout(const ConfigOptions& config_options, std::string& layou
 
   return Status::OK();
 }
-
-Status GetGqaValueLayout(const ConfigOptions& config_options, std::string& layout) {
-  bool explicitly_set = false;
-  return GetGqaValueLayout(config_options, layout, explicitly_set);
-}
 }  // namespace
 
 #if !defined(ORT_MINIMAL_BUILD)

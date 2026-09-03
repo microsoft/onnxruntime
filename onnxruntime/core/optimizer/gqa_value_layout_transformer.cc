@@ -10,6 +10,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/graph/graph_utils.h"
+#include "core/graph/schema_registry.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -218,7 +219,15 @@ Status ValidateTransposeSupportsType(const Graph& graph, const Node& node, const
   }
   const int onnx_opset = opset_entry->second;
 
-  const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("Transpose", onnx_opset, kOnnxDomain);
+  // The graph's own registry, not the global ONNX one: Graph::Resolve() looks the inserted node up
+  // through this, and it prefers a registered custom schema over the built-in one. Querying the
+  // global registry could disagree with what Resolve() will actually do -- rejecting a graph that
+  // would have resolved, or accepting one that then fails after the mutation, which is the very
+  // thing validating before transforming exists to prevent.
+  const IOnnxRuntimeOpSchemaCollectionPtr schema_registry = graph.GetSchemaRegistry();
+  const auto* schema = schema_registry == nullptr
+                           ? nullptr
+                           : schema_registry->GetSchema("Transpose", onnx_opset, kOnnxDomain);
   ORT_RETURN_IF(schema == nullptr || schema->inputs().empty(),
                 "No ONNX Transpose schema for opset ", onnx_opset, ", so the '",
                 kOrtSessionOptionsGqaValueLayout, "' option cannot convert GroupQueryAttention node '",
