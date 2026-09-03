@@ -643,10 +643,12 @@ Draft PR [#32395](https://github.com/microsoft/onnxruntime/pull/32395) collected
 comments. All eleven are addressed. Two turned out to rest on a premise the code does not support, and are
 recorded here because the resolution differs from the comment.
 
-**`OrtAppendExecutionProviderV2` should verify there is only one matching device.** It should not: a hard error
+**`OrtAppendExecutionProviderV2` should verify there is only one matching device.** It should not: erroring out
 on more than one match would be wrong. `Factory::GetSupportedDevicesImpl` loops over every GPU hardware device,
 and the virtual-device path adds its device *in addition to* any real ones, so several `OrtEpDevice`s
-legitimately share one EP name. The real defect was the silent, arbitrary first-match pick.
+legitimately share one EP name. The comment was right that a single device has to be chosen, but the choice
+belongs to the caller, not to the wasm wrapper — and the real defect was that the pick was silent and
+undocumented rather than that it happened at all.
 
 The fix is bigger than the comment asked for, because a companion comment objected that the wrapper's name
 claims a kinship with `SessionOptionsAppendExecutionProvider_V2` that its signature did not honour. Both are
@@ -658,8 +660,26 @@ underlying API:
 - Two new exports supply what JavaScript needs to build that array: `OrtGetEpDevices`, a thin wrapper over
   `GetEpDevices`, and `OrtEpDevice_EpName`, a 1:1 mirror of `EpDevice_EpName`.
 - `session-options.ts` gains `getEpDevicesByEpName()`, which walks the returned array once into a
-  `Map<epName, ptr[]>`. Selection policy — currently "every device whose EP name matches" — lives there, and
-  the not-found error can list the registered names because the map has them.
+  `Map<epName, ptr[]>`. Selection policy lives there, and the not-found error can list the registered names
+  because the map has them.
+
+The selection policy is to pass the **first** matching device. That is necessary because the WebGPU EP backs a
+session with a single Dawn device, so `Factory::CreateEpImpl` rejects any device count other than 1 — passing
+every match would break the moment a second device appeared. It is safe because the factory reads nothing from
+the device except whether it is virtual: which GPU gets used is decided by the adapter ORT Web hands to Dawn,
+not by the `OrtEpDevice`. Emscripten device discovery reports a single GPU entry derived from `navigator.gpu`
+(there is no per-GPU enumeration in a browser, and `requestAdapter` takes only `powerPreference` /
+`forceFallbackAdapter` hints), so in practice there is exactly one real candidate. A second entry appears only
+when virtual devices are enabled, and the factory registers those after the real ones, which `Environment`
+preserves. Even if that order changed, EP creation would fail with the explicit "selected on a virtual GPU
+device" error rather than silently running on the wrong device.
+
+Selecting an `OrtEpDevice` from JavaScript was considered and is not worth building. It would need a public
+enumeration API in `onnxruntime-common` plus a set of new wasm accessors for the device descriptor, and it
+would still not choose a GPU, because the browser does not expose one to choose. Applications that need to
+control the device already can: `env.webgpu.adapter` and the WebGPU EP's `device` option accept a
+caller-created `GPUAdapter`/`GPUDevice`, which is both the browser-sanctioned mechanism and more expressive
+than picking an `OrtEpDevice`.
 
 Filtering on the C++ side was considered and rejected. `GetEpDevices` returns an array *owned by the
 environment*; passing the pointer straight through keeps it borrowed. Any C++-side filter would have to

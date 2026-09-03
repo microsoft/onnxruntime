@@ -251,16 +251,26 @@ const setExecutionProviders = async (
         throw new Error(`no execution provider device is registered for: ${epName}. registered: ${registered}.`);
       }
 
-      const epDevicesOffset = getInstance()._malloc(epDevices.length * getInstance().PTR_SIZE);
+      // Select a single OrtEpDevice, even though more than one may match the EP name.
+      //
+      // Necessary: the WebGPU EP backs a session with one Dawn device, so its factory rejects any device
+      // count other than 1 (see Factory::CreateEpImpl in core/providers/webgpu/ep/factory.cc).
+      //
+      // Safe to take the first: the factory reads nothing from the device except whether it is virtual, and
+      // Emscripten device discovery reports a single GPU entry derived from navigator.gpu, so there is at
+      // most one real candidate. Which GPU is used is decided by the adapter ORT Web hands to Dawn, not by
+      // this device (see env.webgpu.adapter and the WebGPU EP `device` option). A second entry only appears
+      // when virtual devices are enabled, and the factory registers those after the real ones, so the first
+      // is still a real device. Should that order ever change, EP creation fails with an explicit
+      // "selected on a virtual GPU device" error rather than silently running on the wrong device.
+      const epDevicesOffset = getInstance()._malloc(getInstance().PTR_SIZE);
       allocs.push(epDevicesOffset);
-      for (let i = 0; i < epDevices.length; i++) {
-        getInstance().setValue(epDevicesOffset + i * getInstance().PTR_SIZE, epDevices[i], '*');
-      }
+      getInstance().setValue(epDevicesOffset, epDevices[0], '*');
 
       appendErrorCode = await getInstance()._OrtAppendExecutionProviderV2(
         sessionOptionsHandle,
         epDevicesOffset,
-        epDevices.length,
+        1,
         keysOffset,
         valuesOffset,
         epOptionsCount,
