@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/graph/model.h"
+#include "onnx/defs/schema.h"
 #include "core/optimizer/gqa_value_layout_transformer.h"
 #include "core/session/IOBinding.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -236,6 +237,35 @@ void BuildGqaModel(ModelTestBuilder& builder, const BuildOptions& opts) {
   if (identity_target != nullptr) {
     builder.AddNode("Identity", {present_value}, {identity_target});
   }
+}
+
+// A minimal GQA model with a bfloat16 KV cache, for exercising the opset-dependent type support of
+// the inserted Transpose. Kept separate from BuildGqaModel because only the cache dtype differs and
+// templating the whole builder would obscure every other test.
+void BuildBFloat16GqaModel(ModelTestBuilder& builder) {
+  const std::vector<int64_t> cache_shape{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
+
+  NodeArg* query = builder.MakeInput<BFloat16>(
+      std::vector<int64_t>{kBatch, kSeq, kQHidden}, BFloat16(0.0f), BFloat16(0.0f));
+  NodeArg* key = builder.MakeInput<BFloat16>(
+      std::vector<int64_t>{kBatch, kSeq, kKvHidden}, BFloat16(0.0f), BFloat16(0.0f));
+  NodeArg* value = builder.MakeInput<BFloat16>(
+      std::vector<int64_t>{kBatch, kSeq, kKvHidden}, BFloat16(0.0f), BFloat16(0.0f));
+  NodeArg* past_key = builder.MakeInput<BFloat16>(cache_shape, BFloat16(0.0f), BFloat16(0.0f));
+  NodeArg* past_value = builder.MakeInput<BFloat16>(cache_shape, BFloat16(0.0f), BFloat16(0.0f));
+  NodeArg* seqlens_k = builder.MakeInput<int32_t>(std::vector<int64_t>{kBatch}, std::vector<int32_t>{0});
+  NodeArg* total_seq_len = builder.MakeInput<int32_t>(std::vector<int64_t>{1}, std::vector<int32_t>{1});
+
+  NodeArg* gqa_out = builder.MakeOutput<BFloat16>(std::vector<int64_t>{kBatch, kSeq, kQHidden});
+  NodeArg* present_key = builder.MakeOutput<BFloat16>(cache_shape);
+  NodeArg* present_value = builder.MakeOutput<BFloat16>(cache_shape);
+
+  Node& gqa = builder.AddNode("GroupQueryAttention",
+                              {query, key, value, past_key, past_value, seqlens_k, total_seq_len},
+                              {gqa_out, present_key, present_value},
+                              kMSDomain);
+  gqa.AddAttribute("num_heads", static_cast<int64_t>(kNumHeads));
+  gqa.AddAttribute("kv_num_heads", static_cast<int64_t>(kKvNumHeads));
 }
 
 std::unique_ptr<GraphTransformer> MakeTransformer() {
@@ -1006,6 +1036,40 @@ TEST_F(GqaValueLayoutTransformerTest, FindsNoBoundariesInAnUnconvertedGraph) {
   ASSERT_STATUS_OK(graph.Resolve());
 
   EXPECT_TRUE(FindConvertedGqaValueLayoutBoundaries(graph).Empty());
+}
+
+// GQA is a com.microsoft op whose T_CACHE admits bfloat16 and float8e4m3fn regardless of the ONNX
+// opset, but the inserted Transpose is an ONNX op that resolves against the model's imported opset:
+// bfloat16 needs 13, float8e4m3fn needs 21. Without an up-front check the graph is mutated and then
+// fails Graph::Resolve() with an opaque type-constraint error.
+TEST_F(GqaValueLayoutTransformerTest, RejectsCacheTypeTheImportedTransposeSchemaCannotHandle) {
+  // Sanity-check the premise rather than assuming it: opset 12's Transpose must not accept bfloat16
+  // while opset 13's does. If ONNX ever backports it, this test should be retired, not "fixed".
+  const auto transpose_accepts_bfloat16 = [](int opset) {
+    const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("Transpose", opset, kOnnxDomain);
+    EXPECT_NE(schema, nullptr) << "no Transpose schema for opset " << opset;
+    const auto& constraints = schema->typeConstraintMap();
+    const auto it = constraints.find(schema->inputs()[0].GetTypeStr());
+    EXPECT_NE(it, constraints.end());
+    return it->second.first.count(ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("tensor(bfloat16)")) != 0;
+  };
+  ASSERT_FALSE(transpose_accepts_bfloat16(12));
+  ASSERT_TRUE(transpose_accepts_bfloat16(13));
+
+  auto build = [](ModelTestBuilder& builder) { BuildBFloat16GqaModel(builder); };
+
+  // Opset 12: rejected up front, naming the type and the opset.
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/12, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "does not accept");
+
+  // Opset 13: the same model converts normally, so the check is about the opset and not the type.
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/13, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/1,
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) { return ExpectTransposeCount(graph, 2); }));
 }
 
 // Only a rank-4 declared shape can be reinterpreted between BNSH and BNHS. GQA shape inference
