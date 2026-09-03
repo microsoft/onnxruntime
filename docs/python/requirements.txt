@@ -19,4 +19,3 @@ onnx >= 1.21.0
 sphinx_exec_code
 sphinx_tabs
 furo
-torch >= 2.6.0
