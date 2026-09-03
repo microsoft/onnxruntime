@@ -24,8 +24,6 @@ namespace onnxruntime {
 namespace webgpu {
 namespace wgsl_gen {
 
-#ifndef ORT_WGSL_TEMPLATE_DYNAMIC  // Use static generator
-
 #define WGSL_TEMPLATE_PARAMETER(name, value) \
   .param_##name = static_cast<int>(value)
 
@@ -75,36 +73,6 @@ onnxruntime::common::Status ApplyTemplate(ShaderHelper& shader_helper, TemplateP
 #define INCLUDED_BY_WGSL_GEN_HEADER
 #include "wgsl_template_gen/index.h"
 #undef INCLUDED_BY_WGSL_GEN_HEADER
-
-#else  // Use dynamic generator
-
-#define WGSL_TEMPLATE_PARAMETER(name, value) \
-  onnxruntime::webgpu::wgsl_gen::TemplateParam(#name, static_cast<int>(value))
-
-#define WGSL_TEMPLATE_VARIABLE(name, value) \
-  onnxruntime::webgpu::wgsl_gen::TemplateVariable(#name, &value)
-
-#define WGSL_TEMPLATE_APPLY(shader_helper, template_filepath, ...) \
-  onnxruntime::webgpu::wgsl_gen::ApplyTemplateDynamic(shader_helper, template_filepath, {__VA_ARGS__})
-
-struct TemplateArgument {
-  std::string name;
-  enum class Type {
-    Param,
-    Variable
-  } type;
-  union {
-    int param_value;             // Used if type == Param
-    const void* variable_value;  // Used if type == Variable
-  };
-};
-
-TemplateArgument TemplateParam(std::string_view name, int value);
-TemplateArgument TemplateVariable(std::string_view name, const void* value);
-
-onnxruntime::common::Status ApplyTemplateDynamic(ShaderHelper& shader_helper, std::string_view template_filepath, const std::initializer_list<TemplateArgument>& args);
-
-#endif
 
 }  // namespace wgsl_gen
 }  // namespace webgpu

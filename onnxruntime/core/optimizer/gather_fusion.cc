@@ -197,6 +197,11 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     if (condidate_consumers.size() < 2) continue;
     int64_t axis = 0;
     if (!GetAxis(graph, *condidate_consumers[0], rank, axis)) continue;
+    // The 'axis' attribute/input read above comes from the consumer node as declared in the model and is
+    // only range-checked against this node_arg's rank here, not by ONNX shape inference (which may have
+    // skipped its own axis check if it lacked one of the input shapes needed to run it). Reject anything
+    // outside the valid dimension range before indexing 'shape' with it.
+    if (axis < 0 || axis >= rank) continue;
     auto dim = shape->dim(static_cast<int>(axis));
     if (!utils::HasDimValue(dim)) continue;
     int64_t dim_size = dim.dim_value();
@@ -306,7 +311,7 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Range", {1, 11}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Range", {11, 27}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) || node.GetOutputEdgesCount() != 1) {
       continue;
     }

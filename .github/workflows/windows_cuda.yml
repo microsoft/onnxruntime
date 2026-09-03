@@ -24,19 +24,25 @@ jobs:
         "1ES.Pool=onnxruntime-github-vs2022-latest",
         "JobId=windows-cuda-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 210
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           submodules: 'none'
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.14'
           architecture: x64
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 
@@ -60,17 +66,17 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '20.x'
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: 'temurin'
           java-version: '17'
           architecture: x64
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/
@@ -86,14 +92,14 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
           dotnet-version: '8.x'
 
       - name: Use Nuget 6.x
-        uses: nuget/setup-nuget@v2
+        uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2
         with:
           nuget-version: '6.x'
 
@@ -136,7 +142,7 @@ jobs:
         shell: pwsh
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: build-artifacts
           path: ${{ runner.temp }}\build
@@ -148,7 +154,7 @@ jobs:
       DocUpdateNeeded: false
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
       AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
 
   test:
     name: Windows GPU CUDA CI Pipeline Test Job
@@ -160,27 +166,27 @@ jobs:
       "JobId=windows-cuda-test-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     ]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           submodules: 'none'
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: build-artifacts
           path: ${{ runner.temp }}\build
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.14'
           architecture: x64
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '20.x'
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -188,6 +194,11 @@ jobs:
 
       - name: Locate vcvarsall and Setup Env
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
+        with:
+          architecture: x64
+
+      - name: Install Visual Studio Spectre-mitigated libs
+        uses: ./.github/actions/install-vs-spectre-libs
         with:
           architecture: x64
 
@@ -260,4 +271,4 @@ jobs:
       DocUpdateNeeded: false
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
       AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e

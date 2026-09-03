@@ -1,0 +1,12 @@
+// Test file that tries to include non-existent files
+#include "this-file-does-not-exist.wgsl.template"
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    
+    // This function should exist if includes worked
+    // let processed = process_data(index);
+    
+    let result = f32(index) * 2.0;
+}

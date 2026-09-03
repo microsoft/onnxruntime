@@ -24,7 +24,7 @@ jobs:
       aar_path: ${{ runner.temp }}/.artifacts
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: false
 
@@ -40,7 +40,7 @@ jobs:
         with:
           ndk-version: 28.0.13004108
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
         with:
           vcpkg-version: '2025.08.27'
           vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
@@ -64,7 +64,7 @@ jobs:
           cp -r ${{ runner.temp }}/aar_out/Release/com ${{ runner.temp }}/artifacts
 
       - name: Upload Android AAR Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: onnxruntime-android-full-aar
           path: ${{ runner.temp }}/artifacts
@@ -83,31 +83,32 @@ jobs:
         run: echo "ANDROID_AVD_HOME=${{ runner.temp }}/android-avd" >> $GITHUB_ENV
 
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Use Python 3.12
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
           architecture: "x64"
 
       - name: Use Java 17 (Temurin)
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: 'temurin'
           java-version: '17'
           architecture: x64
 
       - name: Use Node.js 22.x
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22.x'
+          registry-url: 'https://packagefeedproxy.microsoft.io/npm/'
 
       - name: Install ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
       - name: Download Android AAR artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: onnxruntime-android-full-aar
           path: ${{ runner.temp }}/android-full-aar
@@ -170,7 +171,7 @@ jobs:
 
       - name: Upload Android Test Results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: android-test-results
           path: |
@@ -183,13 +184,13 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Use Xcode 15.3.0
         run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
 
       - name: Use Python 3.12
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
           architecture: "x64"
@@ -197,7 +198,7 @@ jobs:
       - name: Install Python requirements
         run: pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
         with:
           vcpkg-version: '2025.08.27'
           vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
@@ -214,7 +215,7 @@ jobs:
             --build-settings-file ${{ github.workspace }}/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings_arm64.json
 
       - name: Upload iOS Pod Artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
@@ -226,10 +227,10 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Download iOS pod artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
@@ -238,11 +239,12 @@ jobs:
         run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
 
       - name: Use Node.js 22.x
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22.x'
+          registry-url: 'https://packagefeedproxy.microsoft.io/npm/'
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
         with:
           vcpkg-version: '2025.08.27'
           vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
@@ -256,6 +258,7 @@ jobs:
           set -e -x
           npm install -g detox-cli
           brew tap wix/brew
+          brew trust wix/brew
           brew install applesimutils
           npm ci
         working-directory: ${{ github.workspace }}/js
@@ -274,19 +277,31 @@ jobs:
           ORT_C_LOCAL_POD_PATH=${{ runner.temp }}/ios_pod/onnxruntime-c pod install --verbose
         working-directory: ${{ github.workspace }}/js/react_native/e2e/ios
 
-      - name: Build and Run Detox iOS e2e Tests
+      - name: Build Detox iOS e2e Tests
+        run: detox build --configuration ios.sim.release
+        working-directory: ${{ github.workspace }}/js/react_native/e2e
+
+      - name: Reset iOS Simulators before Detox
         run: |
-          detox build --configuration ios.sim.release
+          set -e -x
+          xcrun simctl shutdown all || true
+          xcrun simctl erase all || true
+          killall Simulator || true
+          killall com.apple.CoreSimulator.CoreSimulatorService || true
+
+      - name: Run Detox iOS e2e Tests
+        run: |
           JEST_JUNIT_OUTPUT_FILE=${{ github.workspace }}/js/react_native/e2e/ios-test-results.xml \
             detox test --record-logs all \
                          --configuration ios.sim.release \
                          --loglevel verbose \
-                         --take-screenshots failing
+                         --take-screenshots failing \
+                         --cleanup
         working-directory: ${{ github.workspace }}/js/react_native/e2e
 
       - name: Upload iOS Test Results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: ios-test-results
           path: |

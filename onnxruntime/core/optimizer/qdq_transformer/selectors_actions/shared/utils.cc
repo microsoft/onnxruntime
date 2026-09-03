@@ -52,7 +52,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
           {"Expand", {}},
           {"Flatten", {}},
           {"Transpose", {}},
-          {"MaxPool", {12}},
+          {"MaxPool", {12, 22}},
           {"Resize", {}},
           {"Squeeze", {}},
           {"Unsqueeze", {}},

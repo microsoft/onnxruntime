@@ -618,6 +618,160 @@ TEST(CoreMLExecutionProviderTest, ExternalDataInitializer) {
   }
 #endif  // defined(__APPLE__)
 }
+
+// Verify that Gemm with external data weight/bias works with CoreML EP.
+// This exercises the GetTensorDataTransposed and bias unpacking paths in gemm_op_builder.cc
+// which previously failed with "model_path must not be empty" for external data tensors.
+TEST(CoreMLExecutionProviderTest, ExternalDataGemm) {
+  TemporaryDirectory tmp_dir(ORT_TSTR("coreml_external_data_gemm_test"));
+  const auto model_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("model.onnx");
+  const auto external_data_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("model.onnx_data");
+
+  // Gemm: Y = X * W + B, where X is {2,3}, W is {3,4}, B is {4}
+  // Weight W: 3*4 = 12 floats, Bias B: 4 floats -> 16 floats total in external data
+  const std::vector<float> weight_data = {0.1f, 0.2f, 0.3f, 0.4f,
+                                          0.5f, 0.6f, 0.7f, 0.8f,
+                                          0.9f, 1.0f, 1.1f, 1.2f};
+  const std::vector<float> bias_data = {0.01f, 0.02f, 0.03f, 0.04f};
+
+  // Write external data file: weight followed by bias
+  {
+    std::ofstream ofs(external_data_path, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open());
+    ofs.write(reinterpret_cast<const char*>(weight_data.data()),
+              weight_data.size() * sizeof(float));
+    ofs.write(reinterpret_cast<const char*>(bias_data.data()),
+              bias_data.size() * sizeof(float));
+    ofs.close();
+  }
+
+  const size_t weight_byte_size = weight_data.size() * sizeof(float);
+  const size_t bias_byte_size = bias_data.size() * sizeof(float);
+
+  // Build model with Gemm op
+  {
+    ONNX_NAMESPACE::ModelProto model_proto;
+    model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+    auto* opset = model_proto.add_opset_import();
+    opset->set_domain("");
+    opset->set_version(13);
+
+    auto* graph_proto = model_proto.mutable_graph();
+    graph_proto->set_name("test_external_data_gemm");
+
+    // Input X: {2,3} float tensor
+    auto* input = graph_proto->add_input();
+    input->set_name("X");
+    auto* input_type = input->mutable_type()->mutable_tensor_type();
+    input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* input_shape = input_type->mutable_shape();
+    input_shape->add_dim()->set_dim_value(2);
+    input_shape->add_dim()->set_dim_value(3);
+
+    // Output Y: {2,4} float tensor
+    auto* output = graph_proto->add_output();
+    output->set_name("Y");
+    auto* output_type = output->mutable_type()->mutable_tensor_type();
+    output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* output_shape = output_type->mutable_shape();
+    output_shape->add_dim()->set_dim_value(2);
+    output_shape->add_dim()->set_dim_value(4);
+
+    // Initializer W {3,4} with external data
+    auto* w_init = graph_proto->add_initializer();
+    w_init->set_name("W");
+    w_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    w_init->add_dims(3);
+    w_init->add_dims(4);
+    w_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+    {
+      auto* ext = w_init->add_external_data();
+      ext->set_key("location");
+      ext->set_value("model.onnx_data");
+      ext = w_init->add_external_data();
+      ext->set_key("offset");
+      ext->set_value("0");
+      ext = w_init->add_external_data();
+      ext->set_key("length");
+      ext->set_value(std::to_string(weight_byte_size));
+    }
+
+    // Initializer B {4} with external data (offset after W)
+    auto* b_init = graph_proto->add_initializer();
+    b_init->set_name("B");
+    b_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    b_init->add_dims(4);
+    b_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+    {
+      auto* ext = b_init->add_external_data();
+      ext->set_key("location");
+      ext->set_value("model.onnx_data");
+      ext = b_init->add_external_data();
+      ext->set_key("offset");
+      ext->set_value(std::to_string(weight_byte_size));
+      ext = b_init->add_external_data();
+      ext->set_key("length");
+      ext->set_value(std::to_string(bias_byte_size));
+    }
+
+    // Gemm node: Y = X * W + B (transB=0 by default, so W is {K,N} = {3,4})
+    auto* node = graph_proto->add_node();
+    node->set_op_type("Gemm");
+    node->add_input("X");
+    node->add_input("W");
+    node->add_input("B");
+    node->add_output("Y");
+
+    // Save model
+    std::ofstream ofs(model_path, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open());
+    ASSERT_TRUE(model_proto.SerializeToOstream(&ofs));
+    ofs.close();
+  }
+
+  // Input data: {2,3}
+  std::vector<int64_t> dims = {2, 3};
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunOptions run_options;
+  run_options.run_tag = "ExternalDataGemm";
+  std::vector<std::string> output_names = {"Y"};
+
+  SessionOptions so;
+  so.session_logid = "ExternalDataGemm";
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(MakeCoreMLExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(model_path.native()));
+  ASSERT_STATUS_OK(session.Initialize());
+
+#if defined(__APPLE__)
+  const auto& provider_types = session.GetRegisteredProviderTypes();
+  EXPECT_NE(std::find(provider_types.begin(), provider_types.end(), kCoreMLExecutionProvider), provider_types.end());
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
+
+  // Compute expected: Y = X * W + B
+  // Row 0: [1*0.1+2*0.5+3*0.9+0.01, 1*0.2+2*0.6+3*1.0+0.02, 1*0.3+2*0.7+3*1.1+0.03, 1*0.4+2*0.8+3*1.2+0.04]
+  //       = [3.81, 4.42, 5.03, 5.64]
+  // Row 1: [4*0.1+5*0.5+6*0.9+0.01, 4*0.2+5*0.6+6*1.0+0.02, 4*0.3+5*0.7+6*1.1+0.03, 4*0.4+5*0.8+6*1.2+0.04]
+  //       = [8.31, 9.82, 11.33, 12.84]
+  const std::vector<float> expected = {3.81f, 4.42f, 5.03f, 5.64f, 8.31f, 9.82f, 11.33f, 12.84f};
+
+  ASSERT_EQ(fetches.size(), 1u);
+  const auto& output_tensor = fetches[0].Get<Tensor>();
+  auto output_data = output_tensor.DataAsSpan<float>();
+  ASSERT_EQ(static_cast<size_t>(output_data.size()), expected.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_NEAR(output_data[i], expected[i], 1e-5f) << "Mismatch at index " << i;
+  }
+#endif  // defined(__APPLE__)
+}
 #endif  // !(ORT_MINIMAL_BUILD)
 
 // Verify that Pad(mode=reflect) is handled by the CoreML EP in ML Program mode

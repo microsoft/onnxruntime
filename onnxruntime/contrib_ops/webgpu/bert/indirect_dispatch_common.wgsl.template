@@ -1,0 +1,28 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Writes the flash attention dispatch dimensions into indirect_buffer (3 x u32).
+// Handles WebGPU's 65535 maxComputeWorkgroupsPerDimension limit by collapsing
+// to 2D (sqrt) or 3D (cbrt) when any dimension exceeds the limit.
+// Caller contract: indirect_buffer must be a storage output of at least 3 u32 elements.
+fn populate_indirect_dispatch_buffer(x: u32, y: u32, z: u32) {
+  let limit = 65535u;  // WebGPU spec maxComputeWorkgroupsPerDimension
+  if (x <= limit && y <= limit && z <= limit) {
+    indirect_buffer[0] = x;
+    indirect_buffer[1] = y;
+    indirect_buffer[2] = z;
+    return;
+  }
+  let size = f32(x) * f32(y) * f32(z);
+  let dispatch_avg_2d = u32(ceil(sqrt(size)));
+  if (dispatch_avg_2d <= limit) {
+    indirect_buffer[0] = dispatch_avg_2d;
+    indirect_buffer[1] = dispatch_avg_2d;
+    indirect_buffer[2] = 1u;
+    return;
+  }
+  let dispatch_avg_3d = u32(ceil(pow(size, 1.0 / 3.0)));
+  indirect_buffer[0] = dispatch_avg_3d;
+  indirect_buffer[1] = dispatch_avg_3d;
+  indirect_buffer[2] = dispatch_avg_3d;
+}

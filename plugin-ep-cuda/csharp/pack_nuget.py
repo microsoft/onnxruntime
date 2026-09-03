@@ -14,11 +14,15 @@ Examples
 Local: pack win-x64 only from a local build:
 
     python pack_nuget.py --version 0.1.0-dev \\
+    --package-id Microsoft.ML.OnnxRuntime.EP.Cuda13.win-x64 \
+    --required-platforms win_x64 \
         --binary-dir-win-x64 ../../build/cuda.plugin/Release/Release
 
-CI: pack all platforms from downloaded artifacts:
+CI: pack linux-arm64 from downloaded artifacts:
 
     python pack_nuget.py --version $(PluginPackageVersion) \\
+    --package-id Microsoft.ML.OnnxRuntime.EP.Cuda13.linux-arm64 \
+    --required-platforms linux_aarch64 \
         --artifacts-dir $(Build.BinariesDirectory)/artifacts \\
         --output-dir $(Build.ArtifactStagingDirectory)/nuget
 """
@@ -34,15 +38,20 @@ from pathlib import Path
 
 # Platform name -> (RID, list of native binary filenames expected in the source dir).
 PLATFORMS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "win_x64": ("win-x64", ("onnxruntime_providers_cuda_plugin.dll",)),
-    "linux_x64": ("linux-x64", ("libonnxruntime_providers_cuda_plugin.so",)),
-    "linux_aarch64": ("linux-arm64", ("libonnxruntime_providers_cuda_plugin.so",)),
+    "win_x64": ("win-x64", ("onnxruntime_providers_cuda.dll",)),
+    "win_arm64": ("win-arm64", ("onnxruntime_providers_cuda.dll",)),
+    "linux_x64": ("linux-x64", ("libonnxruntime_providers_cuda.so",)),
+    "linux_aarch64": ("linux-arm64", ("libonnxruntime_providers_cuda.so",)),
 }
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR / "Microsoft.ML.OnnxRuntime.EP.Cuda"
 CSPROJ = PROJECT_DIR / "Microsoft.ML.OnnxRuntime.EP.Cuda.csproj"
 MIN_ORT_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
+
+# Import the shared template helper from _packaging_utils.py in the parent directory.
+sys.path.insert(0, str(SCRIPT_DIR.parent))
+from _packaging_utils import gen_file_from_template  # noqa: E402 (path setup must precede import)
 
 
 class PackError(RuntimeError):
@@ -59,6 +68,13 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--version", required=True, help="Package version (e.g. 0.1.0-dev).")
+    p.add_argument(
+        "--package-id",
+        help=(
+            "NuGet package id. Overrides <PackageId> in the .csproj, which is used when omitted. "
+            "CI packs one package per RID (e.g. Microsoft.ML.OnnxRuntime.EP.Cuda13.win-x64)."
+        ),
+    )
     p.add_argument(
         "--output-dir",
         type=_absolute_path,
@@ -109,8 +125,9 @@ def parse_args() -> argparse.Namespace:
         "--required-platforms",
         default="",
         help=(
-            "Comma-separated list of platforms that MUST be staged successfully. "
-            "When omitted, the script just requires at least one platform to be staged."
+            "Comma-separated list of platforms to stage; all of them MUST be staged successfully "
+            "and no other platform is staged. When omitted, every platform with an available "
+            "binary directory is staged and at least one must succeed."
         ),
     )
 
@@ -169,7 +186,12 @@ def stage_binaries(
 ) -> None:
     staged: set[str] = set()
 
-    for name, (rid, files) in PLATFORMS.items():
+    # An explicit required list also acts as a filter: it is the exact set of platforms that
+    # goes into the package, so a per-OS package does not pick up the other OS's binaries.
+    names = required_platforms or list(PLATFORMS)
+
+    for name in names:
+        rid, files = PLATFORMS[name]
         binary_dir_override: Path | None = getattr(args, f"binary_dir_{name}")
         is_required = name in required_platforms
         source_dir = resolve_platform_source(name, binary_dir_override, args.artifacts_dir, is_required)
@@ -207,25 +229,25 @@ def stage_binaries(
 def dotnet_common_args(
     staged_csproj: Path,
     args: argparse.Namespace,
-    min_ort_version_file: Path,
 ) -> list[str]:
     common = [
         str(staged_csproj),
         "--configuration",
         args.configuration,
         f"-p:Version={args.version}",
-        f"-p:OnnxRuntimeMinVersionFile={min_ort_version_file}",
     ]
+    if args.package_id:
+        common.append(f"-p:PackageId={args.package_id}")
     if args.nuget_config:
         common.extend(["--configfile", str(args.nuget_config)])
         print(f"Using NuGet.config: {args.nuget_config}")
     return common
 
 
-def do_build(staged_csproj: Path, staging_dir: Path, args: argparse.Namespace, min_ort_version_file: Path) -> None:
+def do_build(staged_csproj: Path, staging_dir: Path, args: argparse.Namespace) -> None:
     print()
     print(f"Running dotnet build (Version={args.version}, Configuration={args.configuration})...")
-    cmd = ["dotnet", "build", *dotnet_common_args(staged_csproj, args, min_ort_version_file)]
+    cmd = ["dotnet", "build", *dotnet_common_args(staged_csproj, args)]
     print("+ " + " ".join(cmd))
     subprocess.run(cmd, check=True)
 
@@ -242,14 +264,13 @@ def do_pack(
     staged_csproj: Path,
     output_dir: Path,
     args: argparse.Namespace,
-    min_ort_version_file: Path,
 ) -> None:
     print()
     print(f"Running dotnet pack (Version={args.version}, Configuration={args.configuration})...")
     pack_args = [
         "dotnet",
         "pack",
-        *dotnet_common_args(staged_csproj, args, min_ort_version_file),
+        *dotnet_common_args(staged_csproj, args),
         "--output",
         str(output_dir),
     ]
@@ -268,6 +289,21 @@ def do_pack(
         print(f"Produced: {pkg.name} ({pkg.stat().st_size / (1024 * 1024):.2f} MB)")
 
 
+def render_readme(staging_dir: Path, min_ort_version: str) -> None:
+    """Substitute the minimum ORT version into the staged README in place."""
+    readme = staging_dir / "README.md"
+    if not readme.is_file():
+        raise PackError(f"staged README not found: {readme}")
+    try:
+        gen_file_from_template(
+            readme,
+            readme,
+            {"min_onnxruntime_version": min_ort_version},
+        )
+    except ValueError as e:
+        raise PackError(str(e)) from e
+
+
 def run_in_staging(args: argparse.Namespace, staging_dir: Path, min_ort_version_file: Path) -> None:
     staged_csproj = staging_dir / "Microsoft.ML.OnnxRuntime.EP.Cuda.csproj"
     output_dir: Path = args.output_dir
@@ -278,15 +314,24 @@ def run_in_staging(args: argparse.Namespace, staging_dir: Path, min_ort_version_
         if not staged_csproj.is_file():
             raise PackError(f"staged project not found at {staged_csproj}. Run with --build-only first.")
         print(f"Reusing existing staging directory: {staging_dir}")
+        if required_platforms:
+            # Re-stage from scratch so consecutive --pack-only runs against the same staging
+            # directory each produce a package containing only their own platforms.
+            shutil.rmtree(staging_dir / "runtimes", ignore_errors=True)
+            stage_binaries(staging_dir, args, required_platforms)
     else:
         stage_sources(staging_dir)
         stage_binaries(staging_dir, args, required_platforms)
+        min_ort_version = min_ort_version_file.read_text(encoding="utf-8").strip()
+        if not min_ort_version:
+            raise PackError(f"{min_ort_version_file} is empty")
+        render_readme(staging_dir, min_ort_version)
 
     if args.build_only:
-        do_build(staged_csproj, staging_dir, args, min_ort_version_file)
+        do_build(staged_csproj, staging_dir, args)
         return
 
-    do_pack(staged_csproj, output_dir, args, min_ort_version_file)
+    do_pack(staged_csproj, output_dir, args)
 
     print()
     print(f"Done. Output: {output_dir}")

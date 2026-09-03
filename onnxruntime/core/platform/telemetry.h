@@ -66,6 +66,7 @@ class Telemetry {
                                   const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
                                   const std::string& hardware_device_types,
                                   const std::string& hardware_vendor_ids,
+                                  const std::string& ep_versions,
                                   bool use_fp16, bool captureState) const;
 
   virtual void LogCompileModelStart(uint32_t session_id,
@@ -86,6 +87,10 @@ class Telemetry {
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                                const char* function, uint32_t line) const;
 
+  virtual void LogRuntimeInferenceError(uint32_t session_id, const common::Status& status,
+                                        const std::string& ep_versions,
+                                        const std::string& ep_device_types) const;
+
   virtual void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
                               const std::unordered_map<int64_t, long long>& duration_per_batch_size) const;
 
@@ -100,6 +105,7 @@ class Telemetry {
                                 uint32_t hardware_device_id,
                                 const std::string& hardware_vendor,
                                 const std::string& ep_vendor,
+                                const std::string& ep_version,
                                 int assigned_node_count,
                                 uint32_t total_runs_since_last,
                                 int64_t total_run_duration_since_last) const;

@@ -33,6 +33,7 @@ def create_quantized_gqa_graph(
     quant_type,
     bit_width,
     buffer_seq_len=None,
+    use_fp16=False,
 ):
     """Create an ONNX graph for GroupQueryAttention with quantized KV cache."""
     if buffer_seq_len is None:
@@ -42,6 +43,7 @@ def create_quantized_gqa_graph(
     kv_hidden_size = kv_num_heads * head_size
     packed_head_size = head_size // 2 if bit_width == 4 else head_size
     cache_ort_type = TensorProto.UINT8 if bit_width == 4 else TensorProto.INT8
+    data_ort_type = TensorProto.FLOAT16 if use_fp16 else TensorProto.FLOAT
 
     inputs = [
         "query",
@@ -76,9 +78,9 @@ def create_quantized_gqa_graph(
     )
 
     graph_input = [
-        helper.make_tensor_value_info("query", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
-        helper.make_tensor_value_info("key", TensorProto.FLOAT, [batch_size, seq_len, kv_hidden_size]),
-        helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, seq_len, kv_hidden_size]),
+        helper.make_tensor_value_info("query", data_ort_type, [batch_size, seq_len, hidden_size]),
+        helper.make_tensor_value_info("key", data_ort_type, [batch_size, seq_len, kv_hidden_size]),
+        helper.make_tensor_value_info("value", data_ort_type, [batch_size, seq_len, kv_hidden_size]),
         helper.make_tensor_value_info(
             "past_key", cache_ort_type, [batch_size, kv_num_heads, buffer_seq_len, packed_head_size]
         ),
@@ -92,12 +94,76 @@ def create_quantized_gqa_graph(
     ]
 
     graph_output = [
-        helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
+        helper.make_tensor_value_info("output", data_ort_type, [batch_size, seq_len, hidden_size]),
         helper.make_tensor_value_info(
             "present_key", cache_ort_type, [batch_size, kv_num_heads, buffer_seq_len, packed_head_size]
         ),
         helper.make_tensor_value_info(
             "present_value", cache_ort_type, [batch_size, kv_num_heads, buffer_seq_len, packed_head_size]
+        ),
+    ]
+
+    graph = helper.make_graph([node], "BenchGQA", graph_input, graph_output)
+    model = helper.make_model(graph)
+    return model.SerializeToString()
+
+
+def create_fp32_gqa_graph(
+    batch_size,
+    seq_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    buffer_seq_len=None,
+):
+    """Create an ONNX graph for GroupQueryAttention with a non-quantized FP32 KV cache."""
+    if buffer_seq_len is None:
+        buffer_seq_len = seq_len
+
+    hidden_size = num_heads * head_size
+    kv_hidden_size = kv_num_heads * head_size
+
+    inputs = [
+        "query",
+        "key",
+        "value",
+        "past_key",
+        "past_value",
+        "seqlens_k",
+        "total_sequence_length",
+    ]
+
+    node = helper.make_node(
+        op_type="GroupQueryAttention",
+        inputs=inputs,
+        outputs=["output", "present_key", "present_value"],
+        name="GroupQueryAttention_0",
+        num_heads=num_heads,
+        kv_num_heads=kv_num_heads,
+        domain="com.microsoft",
+    )
+
+    graph_input = [
+        helper.make_tensor_value_info("query", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
+        helper.make_tensor_value_info("key", TensorProto.FLOAT, [batch_size, seq_len, kv_hidden_size]),
+        helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, seq_len, kv_hidden_size]),
+        helper.make_tensor_value_info(
+            "past_key", TensorProto.FLOAT, [batch_size, kv_num_heads, buffer_seq_len, head_size]
+        ),
+        helper.make_tensor_value_info(
+            "past_value", TensorProto.FLOAT, [batch_size, kv_num_heads, buffer_seq_len, head_size]
+        ),
+        helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size]),
+        helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
+    ]
+
+    graph_output = [
+        helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
+        helper.make_tensor_value_info(
+            "present_key", TensorProto.FLOAT, [batch_size, kv_num_heads, buffer_seq_len, head_size]
+        ),
+        helper.make_tensor_value_info(
+            "present_value", TensorProto.FLOAT, [batch_size, kv_num_heads, buffer_seq_len, head_size]
         ),
     ]
 
@@ -117,6 +183,9 @@ def benchmark_gqa(
     past_seq_len=0,
     warmup=5,
     repeats=20,
+    non_quantized=False,
+    use_fp16=False,
+    intra_op_num_threads=8,
 ):
     """Benchmark a single GQA configuration. Returns elapsed time in ms."""
     hidden_size = num_heads * head_size
@@ -126,54 +195,78 @@ def benchmark_gqa(
     total_seqlen = past_seq_len + seq_len
     buffer_seq_len = total_seqlen
 
-    onnx_model_str = create_quantized_gqa_graph(
-        batch_size,
-        seq_len,
-        num_heads,
-        kv_num_heads,
-        head_size,
-        quant_type,
-        bit_width,
-        buffer_seq_len=buffer_seq_len,
-    )
-
     sess_options = SessionOptions()
-    sess_options.intra_op_num_threads = 8
-    sess = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
+    sess_options.intra_op_num_threads = intra_op_num_threads
 
-    # Generate inputs
     np.random.seed(42)
-    query = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, hidden_size)).astype(np.float32)
-    key = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(np.float32)
-    value = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(np.float32)
-
-    cache_dtype = np.uint8 if bit_width == 4 else np.int8
-    past_k = np.random.randint(
-        0, 255, (batch_size, kv_num_heads, buffer_seq_len, packed_head_size), dtype=np.uint8
-    ).view(cache_dtype)
-    past_v = np.random.randint(
-        0, 255, (batch_size, kv_num_heads, buffer_seq_len, packed_head_size), dtype=np.uint8
-    ).view(cache_dtype)
-
+    input_dtype = np.float16 if use_fp16 else np.float32
+    query = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, hidden_size)).astype(input_dtype)
+    key = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(input_dtype)
+    value = np.random.uniform(-0.5, 0.5, (batch_size, seq_len, kv_hidden_size)).astype(input_dtype)
     seqlens_k = np.array([total_seqlen - 1] * batch_size, dtype=np.int32)
     total_seq = np.array([total_seqlen], dtype=np.int32)
 
-    per_channel = quant_type == "PER_CHANNEL"
-    scale_size = kv_num_heads * head_size if per_channel else 1
-    k_scale = np.full(scale_size, 0.01, dtype=np.float32)
-    v_scale = np.full(scale_size, 0.01, dtype=np.float32)
+    if non_quantized:
+        onnx_model_str = create_fp32_gqa_graph(
+            batch_size,
+            seq_len,
+            num_heads,
+            kv_num_heads,
+            head_size,
+            buffer_seq_len=buffer_seq_len,
+        )
+        sess = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
 
-    feeds = {
-        "query": query,
-        "key": key,
-        "value": value,
-        "past_key": past_k,
-        "past_value": past_v,
-        "seqlens_k": seqlens_k,
-        "total_sequence_length": total_seq,
-        "k_scale": k_scale,
-        "v_scale": v_scale,
-    }
+        past_k = np.random.uniform(-0.5, 0.5, (batch_size, kv_num_heads, buffer_seq_len, head_size)).astype(np.float32)
+        past_v = np.random.uniform(-0.5, 0.5, (batch_size, kv_num_heads, buffer_seq_len, head_size)).astype(np.float32)
+
+        feeds = {
+            "query": query,
+            "key": key,
+            "value": value,
+            "past_key": past_k,
+            "past_value": past_v,
+            "seqlens_k": seqlens_k,
+            "total_sequence_length": total_seq,
+        }
+    else:
+        onnx_model_str = create_quantized_gqa_graph(
+            batch_size,
+            seq_len,
+            num_heads,
+            kv_num_heads,
+            head_size,
+            quant_type,
+            bit_width,
+            buffer_seq_len=buffer_seq_len,
+            use_fp16=use_fp16,
+        )
+        sess = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
+
+        cache_dtype = np.uint8 if bit_width == 4 else np.int8
+        past_k = np.random.randint(
+            0, 255, (batch_size, kv_num_heads, buffer_seq_len, packed_head_size), dtype=np.uint8
+        ).view(cache_dtype)
+        past_v = np.random.randint(
+            0, 255, (batch_size, kv_num_heads, buffer_seq_len, packed_head_size), dtype=np.uint8
+        ).view(cache_dtype)
+
+        per_channel = quant_type == "PER_CHANNEL"
+        scale_size = kv_num_heads * head_size if per_channel else 1
+        k_scale = np.full(scale_size, 0.01, dtype=np.float32)
+        v_scale = np.full(scale_size, 0.01, dtype=np.float32)
+
+        feeds = {
+            "query": query,
+            "key": key,
+            "value": value,
+            "past_key": past_k,
+            "past_value": past_v,
+            "seqlens_k": seqlens_k,
+            "total_sequence_length": total_seq,
+            "k_scale": k_scale,
+            "v_scale": v_scale,
+        }
 
     # Warmup
     for _ in range(warmup):
@@ -242,20 +335,21 @@ def run_benchmarks(args):
                 "past_seq_len": 2048,
             }
         )
-        # INT4 prefill
-        configs.append(
-            {
-                "label": "Prefill S=2048 INT4",
-                "batch_size": 1,
-                "seq_len": 2048,
-                "num_heads": 16,
-                "kv_num_heads": 8,
-                "head_size": 128,
-                "quant_type": "PER_TENSOR",
-                "bit_width": 4,
-                "past_seq_len": 0,
-            }
-        )
+        # INT4 prefill (quantized mode only)
+        if not args.fp32:
+            configs.append(
+                {
+                    "label": "Prefill S=2048 INT4",
+                    "batch_size": 1,
+                    "seq_len": 2048,
+                    "num_heads": 16,
+                    "kv_num_heads": 8,
+                    "head_size": 128,
+                    "quant_type": "PER_TENSOR",
+                    "bit_width": 4,
+                    "past_seq_len": 0,
+                }
+            )
 
     warmup = args.warmup
     repeats = args.repeats
@@ -263,24 +357,30 @@ def run_benchmarks(args):
     # Save and restore env var to avoid side effects on callers
     saved_env = os.environ.get("ORT_GQA_DISABLE_FLASH_ATTENTION")
 
+    kv_mode = "FP32 (non-quantized)" if args.fp32 else "INT8/INT4 quantized (FP32 and FP16 inputs)"
     print("\nBenchmark: CPU GroupQueryAttention — Flash vs Naive")
-    print(f"Threads: {8}, Warmup: {warmup}, Repeats: {repeats}")
-    print(f"{'Config':<25} {'Naive (ms)':>12} {'Flash (ms)':>12} {'Speedup':>10}")
+    print(f"KV cache: {kv_mode}, Threads: {args.intra_op_num_threads}, Warmup: {warmup}, Repeats: {repeats}")
+    print(f"{'Config':<31} {'Naive (ms)':>12} {'Flash (ms)':>12} {'Speedup':>10}")
     print("-" * 62)
 
     for cfg in configs:
         label = cfg.pop("label")
+        input_variants = [("FP32", False)] if args.fp32 else [("FP32", False), ("FP16", True)]
+        for input_label, use_fp16 in input_variants:
+            cfg["non_quantized"] = args.fp32
+            cfg["use_fp16"] = use_fp16
+            cfg["intra_op_num_threads"] = args.intra_op_num_threads
 
-        # Flash path (default)
-        os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
-        flash_ms = benchmark_gqa(**cfg, warmup=warmup, repeats=repeats)
+            # Flash path (default)
+            os.environ.pop("ORT_GQA_DISABLE_FLASH_ATTENTION", None)
+            flash_ms = benchmark_gqa(**cfg, warmup=warmup, repeats=repeats)
 
-        # Naive path (disabled flash)
-        os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = "1"
-        naive_ms = benchmark_gqa(**cfg, warmup=warmup, repeats=repeats)
+            # Naive path (disabled flash)
+            os.environ["ORT_GQA_DISABLE_FLASH_ATTENTION"] = "1"
+            naive_ms = benchmark_gqa(**cfg, warmup=warmup, repeats=repeats)
 
-        speedup = naive_ms / flash_ms if flash_ms > 0 else float("inf")
-        print(f"{label:<25} {naive_ms:>10.3f}ms {flash_ms:>10.3f}ms {speedup:>8.2f}x")
+            speedup = naive_ms / flash_ms if flash_ms > 0 else float("inf")
+            print(f"{label + ' ' + input_label:<31} {naive_ms:>10.3f}ms {flash_ms:>10.3f}ms {speedup:>8.2f}x")
 
     # Restore original env state
     if saved_env is not None:
@@ -296,5 +396,7 @@ if __name__ == "__main__":
     parser.add_argument("--repeats", type=int, default=20, help="Measurement iterations")
     parser.add_argument("--decode_only", action="store_true", help="Only run decode benchmarks")
     parser.add_argument("--prompt_only", action="store_true", help="Only run prompt benchmarks")
+    parser.add_argument("--fp32", action="store_true", help="Use non-quantized FP32 KV cache instead of quantized")
+    parser.add_argument("--intra_op_num_threads", type=int, default=8, help="Number of intra-op threads")
     args = parser.parse_args()
     run_benchmarks(args)

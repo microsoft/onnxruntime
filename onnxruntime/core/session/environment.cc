@@ -626,7 +626,12 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 }
 
 Status Environment::CreateAndRegisterInternalEps() {
-  auto internal_ep_libraries = EpLibraryInternal::CreateInternalEps();
+  // Capture allow_virtual_devices here (lock-free) and pass it to the internal EP factories at
+  // construction. The internal WebGPU EP factory needs it in GetSupportedDevices but cannot query the
+  // OrtEnv singleton there: internal EPs are registered while OrtEnv's creation mutex is already held on
+  // this thread, so the query would self-deadlock.
+  const bool allow_virtual_devices = num_allow_virtual_device_uses_ > 0;
+  auto internal_ep_libraries = EpLibraryInternal::CreateInternalEps(allow_virtual_devices);
   for (auto& ep_library : internal_ep_libraries) {
     // we do a std::move in the function call so need a valid pointer for the args after the move
     auto* internal_library_ptr = ep_library.get();
@@ -843,6 +848,12 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   // shared_ort_allocators_.
   if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
       it != shared_ort_allocators_.end()) {
+    if (!replace_existing) {
+      LOGS_DEFAULT(INFO) << "A shared allocator is already registered for " << memory_info
+                         << ". Skipping EP allocator creation.";
+      return Status::OK();
+    }
+
     shared_ort_allocators_.erase(it);
   }
 
@@ -851,6 +862,8 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   if (auto it = FindExistingAllocator(shared_allocators_, memory_info, /*match_name*/ false);
       it != shared_allocators_.end()) {
     if (!replace_existing) {
+      LOGS_DEFAULT(INFO) << "A shared allocator is already registered for " << memory_info
+                         << ". Skipping EP allocator creation.";
       return Status::OK();
     }
 
@@ -871,9 +884,10 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                            "EP library should be opaque to ORT");
   }
 
+  auto* ep_factory = ep_device.ep_factory;
   auto ort_allocator = OrtAllocatorUniquePtr(allocator,
-                                             [&ep_device](OrtAllocator* allocator) {
-                                               ep_device.ep_factory->ReleaseAllocator(ep_device.ep_factory, allocator);
+                                             [ep_factory](OrtAllocator* allocator) {
+                                               ep_factory->ReleaseAllocator(ep_factory, allocator);
                                              });
 
   shared_ort_allocators_.insert(allocator);

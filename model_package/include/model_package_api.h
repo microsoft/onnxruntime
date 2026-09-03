@@ -2,18 +2,15 @@
 // Licensed under the MIT License.
 
 /// \file model_package_api.h
-/// \brief Standalone C API for parsing and inspecting ONNX Runtime Model Packages.
+/// \brief Core types shared by the model_package public API surface.
 ///
-/// This library has no dependency on ONNX Runtime. It provides read-only access to
-/// model package structure: components, variants, EP compatibility declarations,
-/// model files, session/provider options, and consumer metadata.
+/// This header defines the export macro, the opaque `ModelPackageStatus` type,
+/// and the `ModelPackageErrorCode` enum used by every entry point in the
+/// library. The actual API entry points live in `model_package.h`.
 ///
-/// Error handling: Functions that can fail return `ModelPackageStatus*`.
-/// A nullptr return indicates success. On failure, use `ModelPackage_GetErrorMessage()`
-/// to retrieve the error string, and `ModelPackage_ReleaseStatus()` to free it.
-///
-/// Lifetime: All `const char*` pointers returned by this API are owned by the
-/// `ModelPackageContext` and remain valid until it is released.
+/// Error handling: functions that can fail return `ModelPackageStatus*`. A
+/// `nullptr` return indicates success. Use the `ModelPackageStatus_*` helpers
+/// in `model_package.h` to inspect and release statuses.
 
 #pragma once
 
@@ -45,110 +42,31 @@ extern "C" {
 #endif
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Opaque types
+// Opaque status type
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Opaque status type. nullptr indicates success.
 typedef struct ModelPackageStatus ModelPackageStatus;
 
-/// Opaque context holding a parsed model package.
-typedef struct ModelPackageContext ModelPackageContext;
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Status API
+// Error codes
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Release a status object. Safe to call with nullptr.
-MODEL_PACKAGE_API void ModelPackage_ReleaseStatus(ModelPackageStatus* status);
-
-/// Get the error message from a status object. Returns nullptr if status is nullptr.
-/// The returned string is owned by the status object.
-MODEL_PACKAGE_API const char* ModelPackage_GetErrorMessage(const ModelPackageStatus* status);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Context lifecycle
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Parse a model package from a directory path and create a context.
-///
-/// \param[in] package_root_path  Null-terminated UTF-8 path to the package root directory.
-/// \param[out] out_context       On success, receives the created context. Caller must release
-///                               via ModelPackage_ReleaseContext().
-/// \return nullptr on success, or a status object describing the error.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_CreateContext(
-    const char* package_root_path,
-    ModelPackageContext** out_context);
-
-/// Release a model package context and all associated resources.
-/// Safe to call with nullptr.
-MODEL_PACKAGE_API void ModelPackage_ReleaseContext(ModelPackageContext* context);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Package-level queries
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Get the schema version declared in manifest.json.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetSchemaVersion(
-    const ModelPackageContext* context,
-    int64_t* out_version);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Component queries
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Get the number of components in the package.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetComponentCount(
-    const ModelPackageContext* context,
-    size_t* out_count);
-
-/// Get the name of a component by index.
-///
-/// \param[in] context        The package context.
-/// \param[in] component_idx  Zero-based index (must be < component count).
-/// \param[out] out_name      Receives a pointer to the component name string.
-///                           Lifetime is tied to the context.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetComponentName(
-    const ModelPackageContext* context,
-    size_t component_idx,
-    const char** out_name);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Variant queries
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Get the number of variants for a component.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantCount(
-    const ModelPackageContext* context,
-    const char* component_name,
-    size_t* out_count);
-
-/// Get the name of a variant by index.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantName(
-    const ModelPackageContext* context,
-    const char* component_name,
-    size_t variant_idx,
-    const char** out_name);
-
-/// Get the folder path for a variant (resolved absolute path).
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantFolderPath(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    const char** out_path);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EP compatibility queries
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Get the EP name declared for a variant.
-///
-/// Each variant targets a single EP. When the variant does not declare an EP,
-/// the returned pointer is set to nullptr.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_GetVariantEpName(
-    const ModelPackageContext* context,
-    const char* component_name,
-    const char* variant_name,
-    const char** out_ep);
+/// Categorical error codes attached to every non-OK ModelPackageStatus.
+/// Stable additive enum: new codes will be appended at the end; existing
+/// values will not be renumbered.
+typedef enum ModelPackageErrorCode {
+  MODEL_PACKAGE_OK = 0,
+  MODEL_PACKAGE_ERR_IO = 1,                   ///< Filesystem read/write/sync failure.
+  MODEL_PACKAGE_ERR_SCHEMA = 2,               ///< JSON value has wrong shape or wrong type.
+  MODEL_PACKAGE_ERR_VERSION = 3,              ///< Unsupported schema_version.
+  MODEL_PACKAGE_ERR_PATH_CONFINEMENT = 4,     ///< Path resolution escaped the allowed base.
+  MODEL_PACKAGE_ERR_ASSET_MISSING = 5,        ///< Declared shared asset not resolvable.
+  MODEL_PACKAGE_ERR_ASSET_HASH_MISMATCH = 6,  ///< Existing asset directory failed rehash.
+  MODEL_PACKAGE_ERR_NOT_FOUND = 7,            ///< Named entity not present.
+  MODEL_PACKAGE_ERR_INVALID_ARG = 8,          ///< Null pointer or otherwise invalid argument.
+  MODEL_PACKAGE_ERR_STATE = 9                 ///< Operation not legal in current state.
+} ModelPackageErrorCode;
 
 #ifdef __cplusplus
 }  // extern "C"

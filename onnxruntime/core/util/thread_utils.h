@@ -8,7 +8,9 @@
 #include <string>
 
 struct OrtThreadPoolParams {
-  // 0: Use default setting. (All the physical cores or half of the logical cores)
+  // 0: Use default setting: the ORT_INTRA_OP_NUM_THREADS / ORT_INTER_OP_NUM_THREADS environment
+  //    variable for the corresponding pool type if set, otherwise all the physical cores or half
+  //    of the logical cores.
   // 1: Don't create thread pool
   // n: Create a thread pool with n threads.
   int thread_pool_size = 0;

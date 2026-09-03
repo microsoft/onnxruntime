@@ -1,0 +1,5 @@
+#define PI 3.14159
+#define MAX_SIZE 1024
+#define PI 3.141592653589793
+
+const area = PI * radius * radius;

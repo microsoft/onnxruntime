@@ -1,0 +1,3 @@
+# Generated golden snapshots are written with LF; keep them LF on checkout
+# so they match the tool's output and produce clean cross-platform diffs.
+* text eol=lf

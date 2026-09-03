@@ -1,0 +1,14 @@
+// Single line comment at the beginning
+@group(0) @binding(0) var<storage, read_write> output: array<f32>; // End of line comment
+
+/* Multi-line comment
+   spanning multiple lines
+   should be removed */
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    // Another single line comment
+    let index = global_id.x;
+    output[index] = f32(index) * 2.0 /* inline comment */ + 1.0;
+    /* Another 
+       multi-line comment */
+}

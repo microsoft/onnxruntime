@@ -12,9 +12,7 @@ stages:
     variables:
     - template: ../templates/common-variables.yml
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-feeds-and-python-steps.yml
 
@@ -101,8 +99,7 @@ stages:
     - name: CudaTestProject
       value: '$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\test\CudaEpNuGetTest\CudaEpNuGetTest.csproj'
     steps:
-    - checkout: self
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-feeds-and-python-steps.yml
 
@@ -157,21 +154,29 @@ stages:
         New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
 
         # Locate the .nupkg.
-        $nupkg = Get-ChildItem "$(Pipeline.Workspace)\build\$(CudaPluginNuGetArtifactName)\Microsoft.ML.OnnxRuntime.EP.Cuda.*.nupkg" |
+        $packageId = '$(CudaPluginNuGetPackageIdWinX64)'
+        $nupkg = Get-ChildItem "$(Pipeline.Workspace)\build\$(CudaPluginNuGetArtifactName)\$packageId.*.nupkg" |
                  Select-Object -First 1
         if (-not $nupkg) {
-          throw "No matching .nupkg found under $(Pipeline.Workspace)\build\$(CudaPluginNuGetArtifactName)"
+          throw "No $packageId .nupkg found under $(Pipeline.Workspace)\build\$(CudaPluginNuGetArtifactName)"
         }
         Copy-Item $nupkg.FullName $localFeedDir -Force
 
-        # Extract version from filename: Microsoft.ML.OnnxRuntime.EP.Cuda.<version>.nupkg
+        # Extract version from filename: <packageId>.<version>.nupkg
         # The version starts with a digit, which disambiguates from any future filename suffixes.
-        if ($nupkg.BaseName -notmatch '^Microsoft\.ML\.OnnxRuntime\.EP\.Cuda\.(\d.*)$') {
+        if ($nupkg.BaseName -notmatch ('^' + [regex]::Escape($packageId) + '\.(\d.*)$')) {
             throw "Could not extract version from .nupkg filename: $($nupkg.Name)"
         }
         $packageVersion = $Matches[1]
         Write-Host "Detected package version: $packageVersion"
         Write-Host "##vso[task.setvariable variable=OrtCudaPackageVersion]$packageVersion"
+
+        # The EP package no longer declares a hard dependency on a core ORT package, so the test
+        # project references one explicitly. Pin it to the minimum supported version.
+        $minOrtVersionFile = "$(Build.SourcesDirectory)\plugin-ep-cuda\MIN_ONNXRUNTIME_VERSION"
+        $minOrtVersion = (Get-Content $minOrtVersionFile -Raw).Trim()
+        Write-Host "Using minimum core ORT version: $minOrtVersion from $minOrtVersionFile"
+        Write-Host "##vso[task.setvariable variable=OrtCoreTestVersion]$minOrtVersion"
 
         # Write a project-level nuget.config that adds ONLY the local feed.
         # NuGet merges this with the repo-root NuGet.config.
@@ -193,7 +198,9 @@ stages:
         dotnet build `
           "$(CudaTestProject)" `
           --configuration Release `
-          -p:OrtCudaPackageVersion=$(OrtCudaPackageVersion)
+          -p:OrtCudaPackageId=$(CudaPluginNuGetPackageIdWinX64) `
+          -p:OrtCudaPackageVersion=$(OrtCudaPackageVersion) `
+          -p:OrtCoreTestVersion=$(OrtCoreTestVersion)
       displayName: 'Build test project'
 
     - pwsh: |

@@ -57,7 +57,7 @@ class FineGrainedScaleZeroIterator<Shape_, Element_, layout::RowMajor, 0, Alignm
 
   static int const kAccessesPerVector = 1;
 
-  /// Row index of scales corresponding to the groupsize of 64
+  /// K-tile row index in units of 64 elements.
   int row_groupsize64_;
   int group_size_;
 
@@ -135,7 +135,8 @@ class FineGrainedScaleZeroIterator<Shape_, Element_, layout::RowMajor, 0, Alignm
     row_groupsize64_ = threadblock_offset.row();
     group_size_ = group_size;
 
-    const LongIndex tb_row_byte_offset = threadblock_offset.row() / (group_size / 64) * params_.stride_ * sizeof_bits<Element>::value / 8;
+    const LongIndex tb_scale_row = threadblock_offset.row() * 64 / group_size;
+    const LongIndex tb_row_byte_offset = tb_scale_row * params_.stride_ * sizeof_bits<Element>::value / 8;
     const LongIndex tb_col_byte_offset = threadblock_offset.column() * sizeof_bits<Element>::value / 8;
     pointer_scale_ += (tb_row_byte_offset + tb_col_byte_offset);
 
@@ -159,7 +160,7 @@ class FineGrainedScaleZeroIterator<Shape_, Element_, layout::RowMajor, 0, Alignm
     // a given iteration. The same threads will be responsible for issues reads since the number of scales
     // read in a given iteration is a constant. Therefore, we should never have to update is_valid_
     // outside of the constructor.
-    int const global_row = threadblock_offset.row() + thread_row;
+    int const global_row = tb_scale_row + thread_row;
     int const global_col = threadblock_offset.column() + thread_col * kAlignment;
 
     bool const row_in_bounds = global_row < extent.row() && thread_row < Shape::kRow;

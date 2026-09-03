@@ -198,13 +198,22 @@ TEST_F(CudaMempoolArenaTest, AllocAndFree_OnDefaultStream) {
 
   // default (legacy) stream 0
   ASSERT_EQ(::cudaSuccess, ::cudaMemsetAsync(p, 0xCD, kBytes, /*stream=*/0));
+
+  onnxruntime::AllocatorStats stats_during{};
+  arena_->GetStats(&stats_during);
+  EXPECT_GE(stats_during.num_allocs, 1u);
+  EXPECT_GE(stats_during.bytes_in_use, static_cast<int64_t>(kBytes));
+  // Mempool has no internal padding, so requested == in_use.
+  EXPECT_EQ(stats_during.bytes_requested_in_use, stats_during.bytes_in_use);
+
   arena_->Free(p);
 
   ASSERT_EQ(::cudaSuccess, ::cudaDeviceSynchronize());
 
-  onnxruntime::AllocatorStats stats{};
-  arena_->GetStats(&stats);
-  EXPECT_GE(stats.num_allocs, 1u);
+  onnxruntime::AllocatorStats stats_after{};
+  arena_->GetStats(&stats_after);
+  EXPECT_EQ(stats_after.bytes_requested_in_use, 0);
+  EXPECT_EQ(stats_after.bytes_in_use, 0);
 }
 
 TEST_F(CudaMempoolArenaTest, AllocOnTwoStreams_OrderedFree) {

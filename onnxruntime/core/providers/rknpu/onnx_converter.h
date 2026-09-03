@@ -63,7 +63,7 @@ class OnnxConverter {
   // for GetSupportedNodes
   std::map<std::string, std::vector<uint32_t>> tensor_dims_;
 
-  std::vector<void*> free_list_;  // remember free
+  std::vector<std::unique_ptr<uint8_t[]>> free_list_;  // owns implicit-bias buffers
 
   std::pair<std::pair<int, ONNX_NAMESPACE::NodeProto>, FuseCode>
   FindActivation(const ONNX_NAMESPACE::ModelProto& model_proto,

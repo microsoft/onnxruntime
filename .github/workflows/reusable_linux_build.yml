@@ -53,6 +53,11 @@ on:
         required: false
         type: boolean
         default: true
+      run_go_tests:
+        description: 'Whether to run the Go binding race tests against the built shared library'
+        required: false
+        type: boolean
+        default: false
       upload_build_output:
         description: 'Whether to upload the build output directory as an artifact (used when tests are skipped)'
         required: false
@@ -73,6 +78,7 @@ jobs:
       - self-hosted
       - "1ES.Pool=${{ inputs.pool_name }}"
       - "JobId=${{ inputs.job_identifier }}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    timeout-minutes: 120
     permissions:
       contents: read
       packages: write
@@ -80,11 +86,11 @@ jobs:
       id-token: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set up Python ${{ inputs.python_version }}
         if: inputs.architecture != 'arm64'
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ inputs.python_version }}
 
@@ -101,14 +107,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
           path: ~/.cache/cache
 
       # same idea as ccache, but for vcpkg artifacts. ideally we'd use vcpkg's nuget remote cache facility instead.
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: '"vcpkg-cache" | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
           path: ~/.cache/vcpkg
@@ -150,6 +156,24 @@ jobs:
           extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
           python_path_prefix: ${{ inputs.python_path_prefix }}
 
+      - name: Set up Go
+        if: inputs.run_go_tests == true
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go/go.mod
+          cache: false
+
+      - name: Test Go bindings
+        if: inputs.run_go_tests == true
+        shell: bash
+        working-directory: go
+        env:
+          ORT_LIB_PATH: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}
+        run: |
+          set -euo pipefail
+          test -f "${ORT_LIB_PATH}/libonnxruntime.so"
+          go test -race -count=1 ./onnxruntime
+
       # ------------- Prepare Artifact Step -------------
       - name: Prepare Build Output for Upload
         if: inputs.upload_build_output == true
@@ -182,7 +206,7 @@ jobs:
       # ------------- Upload Build Output Step -------------
       - name: Upload Build Output Artifact
         if: inputs.upload_build_output == true
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: build-output-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}
@@ -191,7 +215,7 @@ jobs:
       # ------------- Upload Log on Build Failure Step -------------
       - name: Upload VCPKG Manifest Install Log on Update or Build Failure
         if: steps.update_step.outcome == 'failure' || steps.build_step.outcome == 'failure'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log

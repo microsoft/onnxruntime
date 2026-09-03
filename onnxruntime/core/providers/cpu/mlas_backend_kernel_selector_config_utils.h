@@ -11,12 +11,29 @@
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/common/parse_string.h"
 
 namespace onnxruntime {
 
 inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& config,
                                                             const ConfigOptions& config_options) {
   config.use_kleidiai = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasDisableKleidiAi, "0") != "1";
+
+  if (auto conv_igemm_max_work =
+          config_options.GetConfigEntry(kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork)) {
+    ORT_ENFORCE(TryParseStringWithClassicLocale<size_t>(*conv_igemm_max_work,
+                                                        config.kleidiai_conv_igemm_max_work),
+                "Invalid value for ", kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork,
+                ": ", *conv_igemm_max_work, ". Expected a non-negative integer.");
+  }
+
+  if (auto nchwc_pointwise_conv_max_input_channel_batch =
+          config_options.GetConfigEntry(kOrtSessionOptionsMlasNchwcPointwiseConvMaxInputChannelBatch)) {
+    ORT_ENFORCE(TryParseStringWithClassicLocale<size_t>(*nchwc_pointwise_conv_max_input_channel_batch,
+                                                        config.nchwc_pointwise_conv_max_input_channel_batch),
+                "Invalid value for ", kOrtSessionOptionsMlasNchwcPointwiseConvMaxInputChannelBatch,
+                ": ", *nchwc_pointwise_conv_max_input_channel_batch, ". Expected a non-negative integer.");
+  }
 }
 
 }  // namespace onnxruntime

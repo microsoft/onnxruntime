@@ -63,7 +63,7 @@ def load_plugin_ep_kernel_defs(plugin_eps):
 
     Args:
         plugin_eps: list of "name:path" strings, e.g.
-            ["CudaPluginExecutionProvider:/path/to/lib.so"]
+            ["CUDAExecutionProvider:/path/to/lib.so"]
 
     Returns:
         list of KernelDef objects from the plugin EPs.
@@ -222,7 +222,7 @@ if __name__ == "__main__":
         dest="plugin_eps",
         help="Register plugin EP libraries and include their kernels. "
         "Each entry is NAME:PATH, e.g. "
-        "'CudaPluginExecutionProvider:/path/to/libonnxruntime_providers_cuda_plugin.so'.",
+        "'CUDAExecutionProvider:/path/to/libonnxruntime_providers_cuda.so'.",
     )
     parser.add_argument(
         "--output_path",

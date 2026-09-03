@@ -242,7 +242,6 @@ struct CUDA_Provider : Provider {
     info.tunable_op.enable = params->tunable_op_enable;
     info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
     info.tunable_op.max_tuning_duration_ms = params->tunable_op_max_tuning_duration_ms;
-    info.enable_skip_layer_norm_strict_mode = params->enable_skip_layer_norm_strict_mode != 0;
     info.use_ep_level_unified_stream = params->use_ep_level_unified_stream != 0;
     info.use_tf32 = params->use_tf32 != 0;
     info.sdpa_kernel = params->sdpa_kernel;
@@ -276,7 +275,6 @@ struct CUDA_Provider : Provider {
     cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;
     cuda_options.enable_cuda_graph = internal_options.enable_cuda_graph;
     cuda_options.cudnn_conv1d_pad_to_nc1d = internal_options.cudnn_conv1d_pad_to_nc1d;
-    cuda_options.enable_skip_layer_norm_strict_mode = internal_options.enable_skip_layer_norm_strict_mode;
     cuda_options.prefer_nhwc = internal_options.prefer_nhwc;
     cuda_options.use_ep_level_unified_stream = internal_options.use_ep_level_unified_stream;
     cuda_options.use_tf32 = internal_options.use_tf32;

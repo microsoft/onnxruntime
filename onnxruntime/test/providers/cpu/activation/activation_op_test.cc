@@ -9,6 +9,7 @@
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -686,6 +687,65 @@ TEST_F(ActivationOpTest, PRelu_NegInf_ZeroSlope) {
   test.Run();
 }
 
+// PRelu is registered on WebGPU for opsets 7-8, 9-15 and 16 (a single kernel). The PRelu tests
+// above run at OpTester's default opset (7); these two cover the other registrations. float16 is
+// used because the CPU EP's PRelu is float-only, so these cannot silently fall back to it.
+TEST_F(ActivationOpTest, PRelu_Float16_Opset9_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("PRelu", 9);
+
+  std::vector<int64_t> x_dims{1, 2, 2, 4};
+  test.AddInput<MLFloat16>("X", x_dims,
+                           FloatsToMLFloat16s({1.0f, -2.0f, 3.0f, -4.0f,
+                                               -5.0f, 6.0f, -7.0f, 8.0f,
+                                               -1.0f, 2.0f, -3.0f, 4.0f,
+                                               5.0f, -6.0f, 7.0f, -8.0f}));
+  test.AddInput<MLFloat16>("slope", {2, 1, 1}, FloatsToMLFloat16s({0.5f, -0.25f}));
+  test.AddOutput<MLFloat16>("Y", x_dims,
+                            FloatsToMLFloat16s({1.0f, -1.0f, 3.0f, -2.0f,
+                                                -2.5f, 6.0f, -3.5f, 8.0f,
+                                                0.25f, 2.0f, 0.75f, 4.0f,
+                                                5.0f, 1.5f, 7.0f, 2.0f}));
+  test.SetOutputAbsErr("Y", 0.01f);
+  test.SetOutputRelErr("Y", 0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST_F(ActivationOpTest, PRelu_Float16_Opset16_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("PRelu", 16);
+
+  std::vector<int64_t> x_dims{1, 2, 2, 3};
+  test.AddInput<MLFloat16>("X", x_dims,
+                           FloatsToMLFloat16s({1.0f, -2.0f, 3.0f,
+                                               -4.0f, 5.0f, -6.0f,
+                                               -1.0f, 2.0f, -3.0f,
+                                               4.0f, -5.0f, 6.0f}));
+  test.AddInput<MLFloat16>("slope", {2, 1, 1}, FloatsToMLFloat16s({0.5f, 2.0f}));
+  test.AddOutput<MLFloat16>("Y", x_dims,
+                            FloatsToMLFloat16s({1.0f, -1.0f, 3.0f,
+                                                -2.0f, 5.0f, -3.0f,
+                                                -2.0f, 2.0f, -6.0f,
+                                                4.0f, -10.0f, 6.0f}));
+  test.SetOutputAbsErr("Y", 0.01f);
+  test.SetOutputRelErr("Y", 0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST_F(ActivationOpTest, Softplus) {
   TestActivationOp<float>("Softplus",
                           input_values,
@@ -696,6 +756,37 @@ TEST_F(ActivationOpTest, Softplus) {
                               return log1pf(expf(x));
                           });
 }
+
+TEST_F(ActivationOpTest, Softplus_Opset22) {
+  TestActivationOp<float>("Softplus", {{-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f}}, [](float x) {
+                            if (x > 0)
+                              return x + log1pf(expf(-x));
+                            else
+                              return log1pf(expf(x)); }, {}, {}, /*is_tensorrt_supported=*/true, /*opset_version=*/22);
+}
+
+#if defined(USE_CUDA)
+TEST_F(ActivationOpTest, Softplus_bfloat16_Opset22) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  OpTester test("Softplus", 22);
+  std::vector<float> X = {-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f};
+  std::vector<float> Y;
+  for (float x : X) {
+    Y.push_back(x > 0 ? x + log1pf(expf(-x)) : log1pf(expf(x)));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  test.AddInput<BFloat16>("X", dims, FloatsToBFloat16s(X));
+  test.AddOutput<BFloat16>("Y", dims, FloatsToBFloat16s(Y));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
 
 TEST_F(ActivationOpNoInfTest, Softsign) {
   if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
@@ -737,6 +828,41 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
       },
       {}, {}, false);  // Disable TensorRT because result mismatches
 }
+
+TEST_F(ActivationOpNoInfTest, Softsign_Opset22) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
+
+  TestActivationOp<float>(
+      "Softsign",
+      {{-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f}},
+      [](float x) { return x / (1 + std::abs(x)); },
+      {}, {}, /*is_tensorrt_supported=*/false, /*opset_version=*/22);
+}
+
+#if defined(USE_CUDA)
+TEST_F(ActivationOpNoInfTest, Softsign_bfloat16_Opset22) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  OpTester test("Softsign", 22);
+  std::vector<float> X = {-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f};
+  std::vector<float> Y;
+  for (float x : X) {
+    Y.push_back(x / (1 + std::abs(x)));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  test.AddInput<BFloat16>("X", dims, FloatsToBFloat16s(X));
+  test.AddOutput<BFloat16>("Y", dims, FloatsToBFloat16s(Y));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
 
 #if defined(ENABLE_TRAINING_OPS)
 TEST(ReluGradInferenceTest, Basic) {

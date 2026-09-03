@@ -1,0 +1,19 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// TurboQuant 4-bit dequantization helper shared by the attention (dequantize)
+// shaders. Kept separate from turbo_quant_common.wgsl.template because the
+// quantize-side shaders include that file but do not define the `q_value_t` /
+// `q_element_t` aliases or the `tq_lut` centroid table this helper requires.
+//
+// The includer must define the `q_value_t` / `q_element_t` aliases and a
+// `tq_lut` centroid lookup table (workgroup array preloaded from TQ_CENTROIDS).
+
+// Dequantize 4 consecutive nibbles from the low 16 bits of a packed u32 word.
+fn tq_unpack_nibbles(packed: u32) -> q_value_t {
+  return q_value_t(
+    q_element_t(tq_lut[(packed) & 0xFu]),
+    q_element_t(tq_lut[(packed >> 4u) & 0xFu]),
+    q_element_t(tq_lut[(packed >> 8u) & 0xFu]),
+    q_element_t(tq_lut[(packed >> 12u) & 0xFu]));
+}

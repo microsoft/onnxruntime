@@ -25,15 +25,14 @@
 # normalization on the selected experts. This provides proper weight distribution
 # while maintaining computational efficiency.
 # --------------------------------------------------------------------------
-import os
 import time
 import unittest
 from collections import OrderedDict
-from contextlib import contextmanager
 
 import numpy
 import torch
 import torch.nn.functional as F
+from env_var_helper import scoped_env_var
 from onnx import helper
 from parameterized import parameterized
 from torch import nn
@@ -1194,19 +1193,6 @@ def with_mlas_q4_mode(test_cases):
         else:
             expanded_cases.append((*case, None))
     return expanded_cases
-
-
-@contextmanager
-def scoped_env_var(name: str, value: str):
-    previous = os.environ.get(name)
-    os.environ[name] = value
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop(name, None)
-        else:
-            os.environ[name] = previous
 
 
 def run_parity_with_mlas_q4_mode(test_runner, enable_mlas_q4_gemm: bool | None):

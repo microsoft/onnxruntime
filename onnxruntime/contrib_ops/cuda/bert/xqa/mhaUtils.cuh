@@ -24,9 +24,9 @@
 template <typename Head, uint32_t tokensPerPage, uint32_t nbPages>
 struct IndexedHeadPtrImpl {
   static_assert(tokensPerPage != 0 && nbPages != 0);
-  uint32_t const* indices;  // values are in range [0, beamWidth)
+  const uint32_t* indices;  // values are in range [0, beamWidth)
   Head* pool;
-  Vec<KVCachePageIndex, nbPages> const* pageIndices;
+  const Vec<KVCachePageIndex, nbPages>* pageIndices;
   uint32_t nbKHeads;
   uint32_t offset;  // applied onto pool + pointers
 
@@ -37,14 +37,14 @@ struct IndexedHeadPtrImpl {
   __device__ inline Head* operator+(uint32_t i) const {
     assert(indices[i] < beamWidth);
     assert(nbPages == 1 || offset % tokensPerPage == 0);
-    auto const pageIdx = pageIndices[indices[i]][nbPages == 1 ? 0U : i / tokensPerPage];
+    const auto pageIdx = pageIndices[indices[i]][nbPages == 1 ? 0U : i / tokensPerPage];
     return pool + (tokensPerPage * nbKHeads * pageIdx + offset + i % tokensPerPage);
   }
 };
 
 template <typename Head>
 struct IndexedHeadPtrImpl<Head, 0, 0> {
-  uint32_t const* indices;  // values are in range [0, beamWidth)
+  const uint32_t* indices;  // values are in range [0, beamWidth)
   Head* pointer;
   uint32_t offset;
   uint32_t beamStride;
@@ -77,13 +77,13 @@ struct HeadPtr {
 
   __device__ inline Head* operator+(uint32_t i) const {
 #if PAGED_KV_CACHE_LAYOUT == 1 && USE_PAGED_KV_CACHE
-    auto const pageIdx = pageIndices[nbPages == 1 ? 0U : i / tokensPerPage];
+    const auto pageIdx = pageIndices[nbPages == 1 ? 0U : i / tokensPerPage];
     return (pageIdx & (1U << 31))
                ? nullptr
                : pool + (tokensPerPage * nbKHeads * pageIdx + offset + (i % tokensPerPage) * nbKHeads);
 #else
     assert(nbPages == 1 || offset % tokensPerPage == 0);
-    auto const pageIdx = pageIndices[nbPages == 1 ? 0U : i / tokensPerPage];
+    const auto pageIdx = pageIndices[nbPages == 1 ? 0U : i / tokensPerPage];
     return (pageIdx & (1U << 31)) ? nullptr
                                   : pool + (tokensPerPage * nbKHeads * pageIdx + offset + i % tokensPerPage);
 #endif
@@ -105,8 +105,8 @@ struct HeadPtr<Head, 0, 0> : TinyPtr<Head> {
 template <typename Head, uint32_t maxNbCopiedHeads, uint32_t nbPartsPerHead, bool swizzle, bool isFull,
           uint32_t dstNbHeads, typename SrcHeadPtr, typename LocalHeadIdxMap = uint32_t (*)(uint32_t)>
 __device__ inline void copyPartialHeadsAsync(
-    Warp const& warp, Array2D<LdGrain, dstNbHeads, exactDiv(exactDiv(sizeof(Head), nbPartsPerHead), grainBytes)>& dst,
-    uint32_t dstHeadOffset, SrcHeadPtr const& src, uint32_t idxPart, uint32_t nbAvailHeads = maxNbCopiedHeads,
+    const Warp& warp, Array2D<LdGrain, dstNbHeads, exactDiv(exactDiv(sizeof(Head), nbPartsPerHead), grainBytes)>& dst,
+    uint32_t dstHeadOffset, const SrcHeadPtr& src, uint32_t idxPart, uint32_t nbAvailHeads = maxNbCopiedHeads,
     LocalHeadIdxMap&& localHeadIdxMap = [](uint32_t x) { return x; }) {
   static_assert(maxNbCopiedHeads <= dstNbHeads);
   assert(idxPart < nbPartsPerHead);
@@ -124,23 +124,23 @@ __device__ inline void copyPartialHeadsAsync(
   static_assert(thrdsPerSeg > 0 && thrdsPerSeg <= warp_size);
   assertIsPowerOf2<thrdsPerSeg>();
   assert(__shfl_sync(0xFU << (laneId() / 4 * 4), src.offset, 0, 4) == src.offset);
-  auto const warpLane = laneId();
-  uint32_t const segIdx = warpLane / thrdsPerSeg;
-  uint32_t const segLane = warpLane % thrdsPerSeg;
+  const auto warpLane = laneId();
+  const uint32_t segIdx = warpLane / thrdsPerSeg;
+  const uint32_t segLane = warpLane % thrdsPerSeg;
   constexpr uint32_t partsPerWarpInst = exactDiv(grainBytes * warp_size, partBytes);
 #pragma unroll
   for (uint32_t i = 0; i < thrdLdBytes / grainBytes; i++) {
-    uint32_t const idxHeadLocal = partsPerWarpInst * i + segIdx;
+    const uint32_t idxHeadLocal = partsPerWarpInst * i + segIdx;
     assert(idxHeadLocal < maxNbCopiedHeads);
-    bool const isHeadInBound = isFull || (idxHeadLocal < nbAvailHeads);
+    const bool isHeadInBound = isFull || (idxHeadLocal < nbAvailHeads);
     constexpr uint32_t grainsPerPart = exactDiv(partBytes, grainBytes);
     using SrcHead = mha::decay_t<decltype(src[0])>;
     constexpr uint32_t nbValidGrains = exactDiv(sizeof(SrcHead), grainBytes);
-    uint32_t const idxGrainInsideHead = grainsPerPart * idxPart + segLane;
-    bool const isGrainInBound = (!isHeadPadded || idxGrainInsideHead < nbValidGrains);
-    SrcHead const* const pSrcHead = src + localHeadIdxMap(idxHeadLocal);
-    bool const isValidPage = (pSrcHead != nullptr);
-    LdGrain const* const pSrc = reinterpret_cast<LdGrain const*>(pSrcHead) + idxGrainInsideHead;
+    const uint32_t idxGrainInsideHead = grainsPerPart * idxPart + segLane;
+    const bool isGrainInBound = (!isHeadPadded || idxGrainInsideHead < nbValidGrains);
+    const SrcHead* const pSrcHead = src + localHeadIdxMap(idxHeadLocal);
+    const bool isValidPage = (pSrcHead != nullptr);
+    const LdGrain* const pSrc = reinterpret_cast<const LdGrain*>(pSrcHead) + idxGrainInsideHead;
     LdGrain* const pDst = &dst.template at<swizzle>(dstHeadOffset + idxHeadLocal, segLane);
     assert(!hasBankConflict(pDst));
     ldgsts::copyAsync<grainBytes>(pDst, pSrc, isValidPage && isHeadInBound && isGrainInBound ? grainBytes : 0u);
@@ -150,13 +150,13 @@ __device__ inline void copyPartialHeadsAsync(
 template <typename Head, uint32_t maxNbCopiedHeads, uint32_t nbWarps, bool swizzle, bool isFull, uint32_t dstNbHeads,
           typename SrcHeadPtr, typename LocalHeadIdxMap = uint32_t (*)(uint32_t)>
 __device__ inline void copyHeadsAsync(
-    uint32_t idxWarp, Array2D<LdGrain, dstNbHeads, exactDiv(sizeof(Head), grainBytes)>& dst, SrcHeadPtr const& src,
+    uint32_t idxWarp, Array2D<LdGrain, dstNbHeads, exactDiv(sizeof(Head), grainBytes)>& dst, const SrcHeadPtr& src,
     uint32_t nbAvailHeads = maxNbCopiedHeads, LocalHeadIdxMap&& localHeadIdxMap = [](uint32_t x) { return x; }) {
   assert(idxWarp < nbWarps);
-  Warp const& warp = this_warp();
+  const Warp& warp = this_warp();
   constexpr uint32_t maxNbHeadsPerWarp = exactDiv(maxNbCopiedHeads, nbWarps);
-  uint32_t const dstHeadOffset = maxNbHeadsPerWarp * idxWarp;
-  uint32_t const warpNbAvailHeads = (dstHeadOffset < nbAvailHeads ? nbAvailHeads - dstHeadOffset : 0);
+  const uint32_t dstHeadOffset = maxNbHeadsPerWarp * idxWarp;
+  const uint32_t warpNbAvailHeads = (dstHeadOffset < nbAvailHeads ? nbAvailHeads - dstHeadOffset : 0);
   constexpr uint32_t idxPart = 0;
   copyPartialHeadsAsync<Head, maxNbHeadsPerWarp, 1, swizzle, isFull, dstNbHeads>(warp, dst, dstHeadOffset, src,
                                                                                  idxPart, warpNbAvailHeads, [&](uint32_t x) { return localHeadIdxMap(dstHeadOffset + x); });
@@ -164,14 +164,14 @@ __device__ inline void copyHeadsAsync(
 
 template <bool isAsync, uint32_t maxTotalNbGrains, uint32_t nbWarps, bool isFull = true>
 __device__ inline void copyGrains(
-    uint32_t idxWarp, LdGrain* dst, LdGrain const* src, uint32_t totalNbGrains = maxTotalNbGrains) {
+    uint32_t idxWarp, LdGrain* dst, const LdGrain* src, uint32_t totalNbGrains = maxTotalNbGrains) {
   assert((isFull && totalNbGrains == maxTotalNbGrains) || (!isFull && totalNbGrains <= maxTotalNbGrains));
   constexpr uint32_t nbThrds = warp_size * nbWarps;
-  uint32_t const tid = warp_size * idxWarp + laneId();
+  const uint32_t tid = warp_size * idxWarp + laneId();
 // copy output to scratch
 #pragma unroll
   for (uint32_t i = 0; i < divUp(maxTotalNbGrains, nbThrds); i++) {
-    uint32_t const idx = nbThrds * i + tid;
+    const uint32_t idx = nbThrds * i + tid;
     if (!(isFull && maxTotalNbGrains % nbThrds == 0) && idx >= totalNbGrains) {
       break;
     }
@@ -195,21 +195,21 @@ __device__ inline void reorder16bQHeadsToMatch8bKCache(uint32_t idxWarp, Array2D
     return;
   }
   static_assert(cols % 2 == 0);
-  uint32_t const tid = warp_size * idxWarp + laneId();
+  const uint32_t tid = warp_size * idxWarp + laneId();
   constexpr uint32_t iterCols = exactDiv(warp_size * nbWorkingWarps, rows) * 2;
   static_assert(cols % iterCols == 0, "fix this by reducing nbWorkingWarps, or use divUp and add runtime check");
   constexpr uint32_t nbIters = exactDiv(cols, iterCols);
   static_assert(nbIters == exactDiv(nbWarpIters, nbWorkingWarps));
-  uint32_t const r = tid % rows;
-  uint32_t const cInit = tid / rows * 2;
+  const uint32_t r = tid % rows;
+  const uint32_t cInit = tid / rows * 2;
 #pragma unroll
   for (uint32_t n = 0; n < nbIters; n++) {
-    uint32_t const c = cInit + iterCols * n;
-    LdGrain const src[2] = {
+    const uint32_t c = cInit + iterCols * n;
+    const LdGrain src[2] = {
         qHeads.template at<swizzled>(r, c),
         qHeads.template at<swizzled>(r, c + 1),
     };
-    auto const& s = reinterpret_cast<Vec<uint32_t, LdGrain::size * 2> const&>(src);
+    const auto& s = reinterpret_cast<const Vec<uint32_t, LdGrain::size * 2>&>(src);
     if constexpr (isFwd) {
       qHeads.template at<swizzled>(r, c) = LdGrain{s[0], s[2], s[4], s[6]};
       qHeads.template at<swizzled>(r, c + 1) = LdGrain{s[1], s[3], s[5], s[7]};
@@ -231,22 +231,26 @@ struct KVCacheList<true> {
 #else
   GMemKVCacheHead* pool;
 #endif
-  KVCachePageIndex const* kvCachePageList;  // shape: KVCachePageIndex[batchSize][beamWidth][2][maxNbPagesPerSeq].
-  SeqLenDataType const* seqLenList;         // shape: [batchSize][beamWidth] (for compatibility)
+  const KVCachePageIndex* kvCachePageList;  // shape: KVCachePageIndex[batchSize][beamWidth][2][maxNbPagesPerSeq].
+  const SeqLenDataType* seqLenList;         // shape: [batchSize][beamWidth] (for compatibility)
   uint32_t maxNbPagesPerSeq;
+  // Added to the value read from seqLenList. ORT callers pass the *past* sequence length (the
+  // length before the token being decoded) plus extraSeqLen == 1, matching the contiguous
+  // KVCacheList<false> specialization below and keeping getCacheSeqLen() uniform over both.
+  uint32_t extraSeqLen;
 };
 
 template <>
 struct KVCacheList<false> {
   GMemKVCacheHead* kData;            // shape: KVCacheHead[batchSize][beamWidth][nbKHeads][capacity]
   GMemKVCacheHead* vData;            // shape: KVCacheHead[batchSize][beamWidth][nbKHeads][capacity]
-  SeqLenDataType const* seqLenList;  // shape: [batchSize][beamWidth] (for compatibility)
+  const SeqLenDataType* seqLenList;  // shape: [batchSize][beamWidth] (for compatibility)
   uint32_t capacity;
   bool isBSNH;
   uint32_t extraSeqLen;
 };
 
-__device__ inline uint32_t getSeqLen(uint32_t const* seqLenList, uint32_t idxReq, uint32_t extraSeqLen) {
+__device__ inline uint32_t getSeqLen(const uint32_t* seqLenList, uint32_t idxReq, uint32_t extraSeqLen) {
   uint64_t cachePolicy;
   asm("createpolicy.fractional.L2::evict_last.b64 %0;\n" : "=l"(cachePolicy));
   uint32_t len;
@@ -260,22 +264,22 @@ __device__ inline uint32_t getSeqLen(uint32_t const* seqLenList, uint32_t idxReq
 }
 
 template <bool isPaged>
-__device__ inline uint32_t getCacheSeqLen(KVCacheList<isPaged> const& cacheList, uint32_t idxReq) {
+__device__ inline uint32_t getCacheSeqLen(const KVCacheList<isPaged>& cacheList, uint32_t idxReq) {
   return getSeqLen(cacheList.seqLenList, idxReq, cacheList.extraSeqLen);
 }
 
-__device__ inline uint32_t getCtxCacheSeqLen(BeamSearchParams const& beamSearchParams, uint32_t idxReq) {
+__device__ inline uint32_t getCtxCacheSeqLen(const BeamSearchParams& beamSearchParams, uint32_t idxReq) {
   return getSeqLen(beamSearchParams.ctxLenList, idxReq, 0);
 }
 
 template <uint32_t nbLoadedPages>
-__device__ inline Vec<KVCachePageIndex, nbLoadedPages> getPage(KVCacheList<true> const& cacheList, bool isK,
+__device__ inline Vec<KVCachePageIndex, nbLoadedPages> getPage(const KVCacheList<true>& cacheList, bool isK,
                                                                uint32_t idxReq, uint32_t idxBeam, uint32_t idxPageBeg, uint32_t nbPages) {
-  auto const maxNbPagesPerSeq = cacheList.maxNbPagesPerSeq;
+  const auto maxNbPagesPerSeq = cacheList.maxNbPagesPerSeq;
   Vec<KVCachePageIndex, nbLoadedPages> ret;
 #pragma unroll
   for (uint32_t i = 0; i < nbLoadedPages; i++) {
-    uint32_t const idxPage = idxPageBeg + i;
+    const uint32_t idxPage = idxPageBeg + i;
 #if PAGED_KV_CACHE_LAYOUT == 1 && USE_PAGED_KV_CACHE
     ret[i] = (idxPage < nbPages ? cacheList.kvCachePageList[maxNbPagesPerSeq * idxReq + idxPage] : kBAD_PAGE_INDEX);
 #else
@@ -288,18 +292,18 @@ __device__ inline Vec<KVCachePageIndex, nbLoadedPages> getPage(KVCacheList<true>
 
 template <uint32_t nbWarps, uint32_t nbLoadedPages>
 __device__ inline void loadPagesForBeamSearchAsync(uint32_t idxWarp,
-                                                   Vec<Vec<KVCachePageIndex, nbLoadedPages>, beamWidth>& dst, KVCacheList<true> const& cacheList, bool isK,
+                                                   const Vec<Vec<KVCachePageIndex, nbLoadedPages>, beamWidth>& dst, KVCacheList<true>& cacheList, bool isK,
                                                    uint32_t idxReq, uint32_t idxPageBeg, uint32_t nbPages) {
   assert(idxWarp < nbWarps);
-  auto const maxNbPagesPerSeq = cacheList.maxNbPagesPerSeq;
+  const auto maxNbPagesPerSeq = cacheList.maxNbPagesPerSeq;
   static_assert(beamWidth < warp_size);
-  auto const tid = warp_size * idxWarp + laneId();
-  auto const idxBeam = tid / nbLoadedPages;
-  auto const idxLoadedPage = tid % nbLoadedPages;
+  const auto tid = warp_size * idxWarp + laneId();
+  const auto idxBeam = tid / nbLoadedPages;
+  const auto idxLoadedPage = tid % nbLoadedPages;
   static_assert(warp_size * nbWarps >= beamWidth * nbLoadedPages);
   if (idxBeam < beamWidth) {
     constexpr uint32_t nbBytes = sizeof(KVCachePageIndex);
-    uint32_t const idxPage = idxPageBeg + idxLoadedPage;
+    const uint32_t idxPage = idxPageBeg + idxLoadedPage;
     ldgsts::copyAsync<nbBytes>(&dst[idxBeam][idxLoadedPage],
                                &cacheList.kvCachePageList[beamWidth * 2 * maxNbPagesPerSeq * idxReq + 2 * maxNbPagesPerSeq * idxBeam + (isK ? 0U : maxNbPagesPerSeq) + idxPage],
                                idxPage < nbPages ? nbBytes : 0U);
@@ -308,25 +312,25 @@ __device__ inline void loadPagesForBeamSearchAsync(uint32_t idxWarp,
 
 template <uint32_t nbWarps, uint32_t length, bool isFullTile = false>
 __device__ inline void loadIndicesForBeamSearchAsync(uint32_t idxWarp, Vec<uint32_t, length>& dst,
-                                                     BeamSearchParams const& params, uint32_t idxReq, uint32_t idxBeam, uint32_t uniformSeqOffset, uint32_t seqLen) {
+                                                     const BeamSearchParams& params, uint32_t idxReq, uint32_t idxBeam, uint32_t uniformSeqOffset, uint32_t seqLen) {
   constexpr uint32_t nbThreads = warp_size * nbWarps;
   // constexpr uint32_t indicesPerInst = mha::min(exactDiv(grainBytes, sizeof(uint32_t)), divUp(length, nbThreads));
   // // @fixme: std::bit_ceil on length
   constexpr uint32_t indicesPerInst = 1U;  // to handle unaligned case.
   constexpr uint32_t bytesPerInst = sizeof(uint32_t) * indicesPerInst;
   assertIsPowerOf2<indicesPerInst>();
-  uint32_t const capacity = params.capacity;
-  uint32_t const srcOffset = (idxReq * beamWidth + idxBeam) * capacity + uniformSeqOffset;
-  uint32_t const tid = warp_size * idxWarp + laneId();
+  const uint32_t capacity = params.capacity;
+  const uint32_t srcOffset = (idxReq * beamWidth + idxBeam) * capacity + uniformSeqOffset;
+  const uint32_t tid = warp_size * idxWarp + laneId();
   constexpr uint32_t indicesPerIter = indicesPerInst * nbThreads;
 #pragma unroll
   for (uint32_t i = 0; i < length / indicesPerIter; i++) {
-    uint32_t const idx = indicesPerIter * i + indicesPerInst * tid;
+    const uint32_t idx = indicesPerIter * i + indicesPerInst * tid;
     ldgsts::copyAsync<bytesPerInst>(&dst[idx], &params.indices[srcOffset + idx],
                                     (isFullTile || uniformSeqOffset + idx < seqLen) ? bytesPerInst : 0);
   }
   if constexpr (length % indicesPerIter != 0) {
-    uint32_t const idx = indicesPerIter * (length / indicesPerIter) + indicesPerInst * tid;
+    const uint32_t idx = indicesPerIter * (length / indicesPerIter) + indicesPerInst * tid;
     if (idx < length) {
       ldgsts::copyAsync<bytesPerInst>(&dst[idx], &params.indices[srcOffset + idx],
                                       (isFullTile || uniformSeqOffset + idx < seqLen) ? bytesPerInst : 0);
@@ -427,7 +431,7 @@ __device__ inline ParityOrNone<real>& flip(ParityOrNone<real>& flip) {
 
 template <bool real = true>
 __device__ inline ParityOrNone<real> getAndFlip(ParityOrNone<real>& flag) {
-  ParityOrNone<real> const ret = flag;
+  const ParityOrNone<real> ret = flag;
   if constexpr (real) {
     flag = !flag;
   }

@@ -26,11 +26,15 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_env_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_error_code.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_experimental_c_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_experimental_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_env_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
   )
@@ -67,11 +71,18 @@ if(onnxruntime_BUILD_SHARED_LIB)
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
     list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
   endforeach()
+  if(ANDROID AND onnxruntime_USE_TELEMETRY)
+    set(ANDROID_TELEMETRY_SYMBOL_FILE
+        "${ONNXRUNTIME_ROOT}/core/platform/posix/android_telemetry_symbols.txt")
+    list(APPEND SYMBOL_FILES "${ANDROID_TELEMETRY_SYMBOL_FILE}")
+    set(ANDROID_TELEMETRY_SYMBOL_ARGS --extra_symbol_file "${ANDROID_TELEMETRY_SYMBOL_FILE}")
+  endif()
 
   add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
     COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
       --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
-      --config ${ONNXRUNTIME_PROVIDER_NAMES} --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
+      --config ${ONNXRUNTIME_PROVIDER_NAMES} ${ANDROID_TELEMETRY_SYMBOL_ARGS}
+      --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
       --output_source ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
     DEPENDS ${SYMBOL_FILES}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
@@ -110,6 +121,18 @@ if(onnxruntime_BUILD_SHARED_LIB)
       string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
     endif()
 
+    if(onnxruntime_USE_TELEMETRY)
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        set(APPLE_SYSTEM_FRAMEWORKS
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\", \\\"UIKit\\\"")
+        set(APPLE_SYSTEM_LIBRARIES "")
+      else()
+        set(APPLE_SYSTEM_FRAMEWORKS
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"IOKit\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\"")
+        set(APPLE_SYSTEM_LIBRARIES "")
+      endif()
+    endif()
+
     set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
     configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
     configure_file(
@@ -130,6 +153,11 @@ if(onnxruntime_BUILD_SHARED_LIB)
         target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
       endif()
     endif()
+  endif()
+
+  if(ANDROID AND onnxruntime_USE_TELEMETRY)
+    target_sources(onnxruntime PRIVATE
+      "${ONNXRUNTIME_ROOT}/core/platform/posix/android_telemetry_jni.cc")
   endif()
 
   add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -241,7 +269,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_INTERNAL_PROVIDER_LIBRARIES}
   ${onnxruntime_winml}
   onnxruntime_optimizer
-  onnxruntime_providers
+  ${onnxruntime_providers_target}
   onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph
@@ -281,11 +309,18 @@ else()
   )
 endif()
 
-if(WIN32)
+# Delay-load flags only apply to the actual onnxruntime.dll. In a static build the onnxruntime target is an
+# INTERFACE library, which rejects the PRIVATE keyword ("may only set INTERFACE properties on INTERFACE targets"),
+# and delay-loading is meaningless for a static lib anyway. Consumers that need delay-load in a static build (e.g.
+# the WebGPU plugin EP DLL) apply onnxruntime_DELAYLOAD_FLAGS to their own target.
+if(WIN32 AND onnxruntime_BUILD_SHARED_LIB)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+  if(onnxruntime_DELAYLOAD_FLAGS)
+    target_link_libraries(onnxruntime PRIVATE delayimp.lib)
+  endif()
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
-if(NOT WIN32) 
+if(NOT WIN32)
   set_target_properties(onnxruntime PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
     LINK_DEPENDS ${SYMBOL_FILE}
@@ -398,14 +433,18 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
         # vs. onnxruntime/providers/core/cpu/math/element_wise_ops.o)
         # In that case, using 'ar ARGS -x' to extract the .o files from .a lib would possibly cause duplicate naming files being overwritten
         # and lead to missing undefined symbol error in the generated binary.
-        # So we use the below python script as a sanity check to do a recursive find of all .o files in ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR}
+        # So we use the below python script as a sanity check to do a recursive find of all .o files in ${CUR_TARGET_OBJECT_DIR}
         # and verifies that matches the content of the .a, and then copy from the source dir.
         # TODO: The copying action here isn't really necessary. For future fix, consider using the script extracts from the ar with the rename to potentially
         # make both maccatalyst and other builds do the same thing.
-        set(CUR_TARGET_CMAKE_SOURCE_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_LIB}.dir)
+
+        # Use the target's own BINARY_DIR: targets added via add_subdirectory (e.g. model_package) put their
+        # objects under a nested CMakeFiles/<lib>.dir, not one directly under CMAKE_CURRENT_BINARY_DIR.
+        get_target_property(_LIB_BINARY_DIR ${_LIB} BINARY_DIR)
+        set(CUR_TARGET_OBJECT_DIR ${_LIB_BINARY_DIR}/CMakeFiles/${_LIB}.dir)
         add_custom_command(TARGET onnxruntime POST_BUILD
                           COMMAND /usr/bin/ar -t $<TARGET_FILE:${_LIB}> | grep "\.o$"  > ${_LIB}.object_file_list.txt
-                          COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/maccatalyst_prepare_objects_for_prelink.py ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR} ${CUR_STATIC_LIB_OBJ_DIR} ${CUR_STATIC_LIB_OBJ_DIR}/${_LIB}.object_file_list.txt
+                          COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/maccatalyst_prepare_objects_for_prelink.py ${CUR_TARGET_OBJECT_DIR} ${CUR_STATIC_LIB_OBJ_DIR} ${CUR_STATIC_LIB_OBJ_DIR}/${_LIB}.object_file_list.txt
                           WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
       else()
         add_custom_command(TARGET onnxruntime POST_BUILD

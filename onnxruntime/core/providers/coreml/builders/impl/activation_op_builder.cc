@@ -46,7 +46,8 @@ void HandlePReluWeight(ModelBuilder& model_builder, const Node& node, const logg
                        std::vector<T>& alpha_values) {
   // add slope initializer as alpha weight
   const auto& slope_tensor = *model_builder.GetConstantInitializer(node.InputDefs()[1]->Name());
-  Initializer unpacked_tensor(slope_tensor);
+  const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), slope_tensor,
+                                    model_builder.GetGraphViewer().ModelPath());
   const auto alpha_v = unpacked_tensor.DataAsSpan<T>();
 
   if (alpha_v.size() == 1) {
@@ -66,7 +67,7 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
   const auto& slope_tensor = *model_builder.GetInitializerTensors().at(node.InputDefs()[1]->Name());
   const auto slope_tensor_num_elements = narrow<size_t>(Product(slope_tensor.dims()));
   if (slope_tensor_num_elements != 1) {
-    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*prelu.mutable_alpha(), slope_tensor));
+    ORT_RETURN_IF_ERROR(CreateCoreMLWeight(*prelu.mutable_alpha(), slope_tensor, model_builder));
   } else {
     // TODO: CoreML crashes with single element slope, hence this special case. Remove when fixed.
     // https://github.com/apple/coremltools/issues/1488
@@ -81,7 +82,8 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
     // assume X has 3 or 4 dimensions, that was checked in IsPReluOpSupported()
     const auto num_channels = x_shape[x_shape.size() - 3];
 
-    Initializer unpacked_tensor(slope_tensor);
+    const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), slope_tensor,
+                                      model_builder.GetGraphViewer().ModelPath());
     float value = unpacked_tensor.DataAsSpan<float>()[0];
 
     auto& weight_values = *prelu.mutable_alpha()->mutable_floatvalue();

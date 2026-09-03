@@ -3,8 +3,10 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include <charconv>
 #include <iostream>
 #include <sstream>
+#include <system_error>
 
 #include "strings_helper.h"
 #include "core/common/common.h"
@@ -154,5 +156,168 @@ void ParseEpDeviceFilterKeyValuePairs(const std::string& input, std::vector<std:
     }
   }
 }
+
+bool ParseDataShapeGroups(const std::string& input,
+                          std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups) {
+  // Parse format: "input_name:[d0,d1,...][d0,d1,...] input_name2:[d0,d1][d0,d1]"
+  // Split on whitespace that is outside brackets to allow spaces inside shape specs.
+  std::vector<std::string> input_specs;
+  std::string current;
+  int bracket_depth = 0;
+  for (char c : input) {
+    if (c == '[') {
+      bracket_depth++;
+      current += c;
+    } else if (c == ']') {
+      bracket_depth--;
+      current += c;
+    } else if ((c == ' ' || c == '\t') && bracket_depth == 0) {
+      if (!current.empty()) {
+        input_specs.push_back(current);
+        current.clear();
+      }
+    } else {
+      current += c;
+    }
+  }
+  if (!current.empty()) {
+    input_specs.push_back(current);
+  }
+
+  if (bracket_depth != 0) {
+    std::cerr << "Error parsing --data_shape: mismatched brackets (unbalanced '[' and ']')." << std::endl;
+    return false;
+  }
+
+  for (const auto& input_spec : input_specs) {
+    // Split on first ':' to get input_name and shapes string
+    size_t colon_pos = input_spec.find(':');
+    if (colon_pos == std::string::npos || colon_pos == 0) {
+      std::cerr << "Error parsing --data_shape: expected 'name:[shape]...' format, got '" << input_spec << "'." << std::endl;
+      return false;
+    }
+
+    std::string input_name = input_spec.substr(0, colon_pos);
+    std::string shapes_str = input_spec.substr(colon_pos + 1);
+
+    if (shapes_str.empty()) {
+      std::cerr << "Error parsing --data_shape: no shape groups provided for input '" << input_name << "'." << std::endl;
+      return false;
+    }
+
+    std::vector<std::vector<int64_t>> shape_groups;
+
+    // Extract bracket-delimited shape groups: [d0,d1,...][d0,d1,...]
+    size_t pos = 0;
+    while (pos < shapes_str.size()) {
+      while (pos < shapes_str.size() && (shapes_str[pos] == ' ' || shapes_str[pos] == '\t')) {
+        ++pos;
+      }
+      if (pos >= shapes_str.size()) break;
+      if (shapes_str[pos] != '[') {
+        std::cerr << "Error parsing --data_shape: expected '[' at position " << pos
+                  << " in shapes for input '" << input_name << "'." << std::endl;
+        return false;
+      }
+
+      size_t close_bracket = shapes_str.find(']', pos);
+      if (close_bracket == std::string::npos) {
+        std::cerr << "Error parsing --data_shape: unmatched bracket for input '" << input_name << "'." << std::endl;
+        return false;
+      }
+
+      std::string dims_str = shapes_str.substr(pos + 1, close_bracket - pos - 1);
+      if (dims_str.empty()) {
+        std::cerr << "Error parsing --data_shape: empty shape group for input '" << input_name << "'." << std::endl;
+        return false;
+      }
+
+      // Parse comma-separated dimensions
+      std::vector<int64_t> dims;
+      std::stringstream dims_ss(dims_str);
+      std::string dim_token;
+      while (std::getline(dims_ss, dim_token, ',')) {
+        // Trim whitespace from dimension token
+        size_t start = dim_token.find_first_not_of(" \t");
+        size_t end = dim_token.find_last_not_of(" \t");
+        if (start == std::string::npos) {
+          std::cerr << "Error parsing --data_shape: empty dimension token for input '" << input_name << "'." << std::endl;
+          return false;
+        }
+        dim_token = dim_token.substr(start, end - start + 1);
+
+        int64_t dim_val = 0;
+        const char* begin = dim_token.data();
+        const char* end_ptr = begin + dim_token.size();
+        auto [ptr, ec] = std::from_chars(begin, end_ptr, dim_val);
+        if (ec != std::errc{} || ptr != end_ptr) {
+          std::cerr << "Error parsing --data_shape: invalid dimension value '"
+                    << dim_token << "' for input '" << input_name << "'." << std::endl;
+          return false;
+        }
+        if (dim_val <= 0) {
+          std::cerr << "Error parsing --data_shape: dimensions must be positive integers, got '"
+                    << dim_token << "' for input '" << input_name << "'." << std::endl;
+          return false;
+        }
+        dims.push_back(dim_val);
+      }
+
+      shape_groups.push_back(std::move(dims));
+      pos = close_bracket + 1;
+    }
+
+    if (shape_groups.empty()) {
+      std::cerr << "Error parsing --data_shape: no shape groups found for input '" << input_name << "'." << std::endl;
+      return false;
+    }
+
+    if (data_shape_groups.count(input_name) > 0) {
+      std::cerr << "Error parsing --data_shape: duplicate input name '" << input_name << "'." << std::endl;
+      return false;
+    }
+
+    data_shape_groups[input_name] = std::move(shape_groups);
+  }
+
+  if (data_shape_groups.empty()) {
+    std::cerr << "Error parsing --data_shape: no input specifications found." << std::endl;
+    return false;
+  }
+
+  // Validate all inputs have the same number of shape groups
+  if (data_shape_groups.size() > 1) {
+    size_t expected_count = data_shape_groups.begin()->second.size();
+    for (const auto& [name, groups] : data_shape_groups) {
+      if (groups.size() != expected_count) {
+        std::cerr << "Error parsing --data_shape: all inputs must have the same number of shape groups. "
+                  << "Input '" << data_shape_groups.begin()->first << "' has " << expected_count
+                  << " groups but input '" << name << "' has " << groups.size() << "." << std::endl;
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+std::string FormatShapeGroup(const std::map<std::string, std::vector<std::vector<int64_t>>>& groups, size_t g) {
+  if (groups.empty() || g >= groups.begin()->second.size()) {
+    return "";
+  }
+  std::string result;
+  for (const auto& [name, shapes] : groups) {
+    if (!result.empty()) result += ", ";
+    result += name + ":[";
+    const auto& dims = shapes[g];
+    for (size_t d = 0; d < dims.size(); d++) {
+      if (d > 0) result += ",";
+      result += std::to_string(dims[d]);
+    }
+    result += "]";
+  }
+  return result;
+}
+
 }  // namespace perftest
 }  // namespace onnxruntime

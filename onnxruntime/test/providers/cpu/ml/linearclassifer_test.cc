@@ -126,6 +126,8 @@ TEST(MLOpTest, LinearClassifierBinaryWithLabels) {
   test.Run();
 }
 
+#if !defined(ORT_NO_EXCEPTIONS)
+// coefficients size (3) is not a multiple of class_count (2) - caught at construction time.
 TEST(MLOpTest, LinearClassifierInvalidCoefficientsSize) {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
 
@@ -137,8 +139,10 @@ TEST(MLOpTest, LinearClassifierInvalidCoefficientsSize) {
   test.AddOutput<int64_t>("Y", {1}, {0});
   test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "coefficients size");
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "coefficients size (3) must be a multiple of the number of classes (2)");
 }
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
 template <typename T>
 void LinearClassifierMulticlass() {
@@ -222,7 +226,8 @@ TEST(MLOpTest, LinearClassifierExtraCoefficientsAreIgnored) {
   test.Run();
 }
 
-// Regression test: coefficients not divisible by class_count.
+#if !defined(ORT_NO_EXCEPTIONS)
+// Regression test: coefficients not divisible by class_count - caught at construction time.
 TEST(MLOpTest, LinearClassifierCoefficientsSizeNotDivisibleByClassCountFails) {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
 
@@ -240,8 +245,9 @@ TEST(MLOpTest, LinearClassifierCoefficientsSizeNotDivisibleByClassCountFails) {
   test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "coefficients size (5) is less than class_count (3) * num_features (2)");
+           "coefficients size (5) must be a multiple of the number of classes (3)");
 }
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
 TEST(MLOpTest, LinearClassifierInputFeatureCountMismatchFails) {
   OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
@@ -262,5 +268,168 @@ TEST(MLOpTest, LinearClassifierInputFeatureCountMismatchFails) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "coefficients size (6) is less than class_count (3) * num_features (3)");
 }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+// Regression test: classlabels_ints has fewer elements than classes defined by intercepts.
+TEST(MLOpTest, LinearClassifierClassLabelsIntsTooFewFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  // 2 intercepts => class_count = 2, but only 1 class label provided.
+  std::vector<float> coefficients = {1.f, 2.f, 3.f, 4.f};
+  std::vector<int64_t> classes = {42};
+  std::vector<float> intercepts = {0.f, 100.f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", classes);
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<int64_t>("Y", {1}, {0LL});
+  test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "classlabels_ints has 1 elements but intercepts defines 2 classes");
+}
+
+// Regression test: classlabels_strings has fewer elements than classes defined by intercepts.
+TEST(MLOpTest, LinearClassifierClassLabelsStringsTooFewFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  // 3 intercepts => class_count = 3, but only 2 class labels provided.
+  std::vector<float> coefficients = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  std::vector<std::string> labels = {"cat", "dog"};
+  std::vector<float> intercepts = {0.f, 0.f, 100.f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_strings", labels);
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<std::string>("Y", {1}, {std::string("cat")});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "classlabels_strings has 2 elements but intercepts defines 3 classes");
+}
+
+// Regression test: both classlabels_ints and classlabels_strings specified.
+TEST(MLOpTest, LinearClassifierBothClassLabelsFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> intercepts = {0.f, 0.f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", std::vector<int64_t>{0, 1});
+  test.AddAttribute("classlabels_strings", std::vector<std::string>{"a", "b"});
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<std::string>("Y", {1}, {std::string("a")});
+  test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "only one of classlabels_strings or classlabels_ints may be specified");
+}
+
+// Regression test: multi-class with no classlabels at all would index an empty vector.
+TEST(MLOpTest, LinearClassifierMulticlassNoClassLabelsFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  // 3 intercepts => class_count = 3, but no classlabels provided.
+  std::vector<float> coefficients = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f};
+  std::vector<float> intercepts = {0.f, 0.f, 0.f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<int64_t>("Y", {1}, {0LL});
+  test.AddOutput<float>("Z", {1, 3}, {0.f, 0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "classlabels_ints or classlabels_strings must be provided");
+}
+
+// Regression test: binary classification with 1 label (not 2) should be rejected.
+TEST(MLOpTest, LinearClassifierBinaryWrongLabelCountFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  // 1 intercept => binary, but only 1 label instead of required 2.
+  std::vector<float> coefficients = {1.f, 2.f};
+  std::vector<float> intercepts = {0.f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", std::vector<int64_t>{42});
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<int64_t>("Y", {1}, {0LL});
+  test.AddOutput<float>("Z", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "classlabels_ints must have exactly 2 elements for binary classification");
+}
+
+// Regression test: binary classification with 3 string labels should be rejected.
+TEST(MLOpTest, LinearClassifierBinaryTooManyStringLabelsFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f, 2.f};
+  std::vector<float> intercepts = {0.f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_strings", std::vector<std::string>{"a", "b", "c"});
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<std::string>("Y", {1}, {std::string("a")});
+  test.AddOutput<float>("Z", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "classlabels_strings must have exactly 2 elements for binary classification");
+}
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+
+// Input must be 1-D or 2-D. 3-D input should fail at runtime.
+TEST(MLOpTest, LinearClassifierInput3DFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f, 2.f};
+  std::vector<float> intercepts = {0.f};
+  std::vector<int64_t> classes = {0, 1};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", classes);
+
+  // Bypass ONNX shape inference so we exercise the kernel's own runtime rank validation.
+  test.AddShapeToTensorData(false);
+  test.AddInput<float>("X", {1, 1, 2}, {1.f, 2.f});
+  test.AddOutput<int64_t>("Y", {1}, {0LL});
+  test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input must be 1-D or 2-D");
+}
+
+// 1-D input should be treated as [1, C].
+TEST(MLOpTest, LinearClassifier1DInput) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  // 1 intercept => binary, 2 features
+  std::vector<float> coefficients = {1.f, -1.f};
+  std::vector<float> intercepts = {0.f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", std::vector<int64_t>{10, 20});
+
+  // Input [2] treated as [1,2]. score = 1*1 + (-1)*2 + 0 = -1 < 0 => class 0 (label 10)
+  test.AddInput<float>("X", {2}, {1.f, 2.f});
+  test.AddOutput<int64_t>("Y", {1}, {10LL});
+  test.AddOutput<float>("Z", {1, 2}, {2.f, -1.f});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

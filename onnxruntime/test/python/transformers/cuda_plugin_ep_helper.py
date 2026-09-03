@@ -11,7 +11,7 @@ import torch
 
 import onnxruntime as onnxrt
 
-CUDA_PLUGIN_EP_NAME = "CudaPluginExecutionProvider"
+CUDA_PLUGIN_EP_NAME = "CUDAExecutionProvider"
 enable_debug_print = False
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,9 @@ def _get_package_root(package_name: str, directory_name: str | None = None):
 
 
 def _is_cuda_plugin_ep_built() -> bool:
+    if _has_registered_cuda_plugin_devices():
+        return True
+
     build_info = onnxrt.get_build_info()
     if ", cuda-plugin-ep=" in build_info:
         return True
@@ -55,18 +58,17 @@ def _is_cuda_plugin_ep_built() -> bool:
     if ep_lib_path and os.path.exists(ep_lib_path):
         return True
 
-    detected_path = _get_default_cuda_plugin_ep_path()
-    return bool(detected_path and os.path.exists(detected_path))
+    return False
 
 
 def _get_cuda_plugin_library_name() -> str:
     if sys.platform == "win32":
-        return "onnxruntime_providers_cuda_plugin.dll"
+        return "onnxruntime_providers_cuda.dll"
 
     if sys.platform == "darwin":
-        return "libonnxruntime_providers_cuda_plugin.dylib"
+        return "libonnxruntime_providers_cuda.dylib"
 
-    return "libonnxruntime_providers_cuda_plugin.so"
+    return "libonnxruntime_providers_cuda.so"
 
 
 def _get_default_cuda_plugin_ep_path() -> str | None:
@@ -123,6 +125,11 @@ def ensure_cuda_plugin_ep_registered(default_test_with_cuda_plugin_ep: bool = Fa
     if not should_test_with_cuda_plugin_ep(default_test_with_cuda_plugin_ep):
         return False
 
+    if _has_registered_cuda_plugin_devices():
+        _CudaPluginRegistrationState.attempted = True
+        _CudaPluginRegistrationState.registered = True
+        return True
+
     if not _is_cuda_plugin_ep_built():
         return False
 
@@ -145,17 +152,20 @@ def ensure_cuda_plugin_ep_registered(default_test_with_cuda_plugin_ep: bool = Fa
         if "already registered" in str(e).lower():
             _CudaPluginRegistrationState.registered = True
         else:
-            try:
-                providers = {device.ep_name for device in onnxrt.get_ep_devices()}
-            except Exception:
-                providers = set()
-
-            _CudaPluginRegistrationState.registered = CUDA_PLUGIN_EP_NAME in providers
+            _CudaPluginRegistrationState.registered = False
 
             if enable_debug_print and not _CudaPluginRegistrationState.registered:
                 print(f"Failed to register CUDA Plugin EP from {ep_lib_path}: {e}")
 
     return _CudaPluginRegistrationState.registered
+
+
+def _has_registered_cuda_plugin_devices() -> bool:
+    try:
+        return any(device.ep_name == CUDA_PLUGIN_EP_NAME for device in onnxrt.get_ep_devices())
+    except Exception as e:
+        logger.warning("Failed to query EP devices while checking %s registration: %s", CUDA_PLUGIN_EP_NAME, e)
+        return False
 
 
 def resolve_cuda_plugin_ep(ep: str, default_test_with_cuda_plugin_ep: bool = False) -> str:

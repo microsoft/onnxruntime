@@ -439,12 +439,14 @@ namespace OperatorHelper
 
         if (!kernelShape.empty())
         {
+            ML_CHECK_VALID_ARGUMENT(kernelShape.size() >= spatialDimensionCount);
             std::copy(kernelShape.end() - spatialDimensionCount, kernelShape.end(), args.windowSize);
         }
         else if (!filterTensorShape.empty())
         {
             // If the kernel shape attribute is undefined, use the W weight tensor's shape.
             // For Conv and ConvTranspose, the ONNX spec specifies that kernel_shape should be inferred.
+            ML_CHECK_VALID_ARGUMENT(filterTensorShape.size() >= spatialDimensionCount);
             std::copy(filterTensorShape.end() - spatialDimensionCount, filterTensorShape.end(), args.windowSize);
         }
         else
@@ -486,7 +488,7 @@ namespace OperatorHelper
         if (kernelInfo.HasAttribute(AttrName::OutputPadding, MLOperatorAttributeType::IntArray))
         {
             std::vector<int> outputPadding = kernelInfo.GetOptionalAttributeVectorInt32(AttrName::OutputPadding);
-            ML_CHECK_VALID_ARGUMENT(outputPadding.size() >= 2);
+            ML_CHECK_VALID_ARGUMENT(outputPadding.size() >= spatialDimensionCount);
 
             std::copy(outputPadding.begin(), outputPadding.begin() + spatialDimensionCount, args.outputPadding);
         }
@@ -1967,26 +1969,51 @@ namespace OperatorHelper
         gsl::span<const DimensionType> inputDimensions
     )
     {
-        std::vector<int> border = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Border);
+        ML_CHECK_VALID_ARGUMENT(inputDimensions.size() == 4, "Wrong number of dimensions.");
+
+        std::vector<int64_t> border;
+        if (operatorAttributes.HasAttribute(AttrName::Border, MLOperatorAttributeType::IntArray))
+        {
+            border = operatorAttributes.GetAttributeVector<int64_t>(AttrName::Border);
+        }
         ML_CHECK_VALID_ARGUMENT(border.size() == 4u, "Border must be size 4.");
+        ML_CHECK_VALID_ARGUMENT(
+            std::all_of(border.begin(), border.end(), [](int64_t value) { return value >= 0; }),
+            "Border values must be non-negative.");
+
+        const int64_t inputHeight = inputDimensions[H];
+        const int64_t inputWidth = inputDimensions[W];
+        ML_CHECK_VALID_ARGUMENT(border[Top] <= inputHeight, "Top border exceeds the input height.");
+        ML_CHECK_VALID_ARGUMENT(border[Left] <= inputWidth, "Left border exceeds the input width.");
 
         m_offsets[N] = 0;
         m_offsets[C] = 0;
-        m_offsets[H] = border[Top];
-        m_offsets[W] = border[Left];
+        m_offsets[H] = gsl::narrow_cast<uint32_t>(border[Top]);
+        m_offsets[W] = gsl::narrow_cast<uint32_t>(border[Left]);
 
         if (operatorAttributes.HasAttribute(AttrName::Scale, MLOperatorAttributeType::IntArray))
         {
             // Scale overrides whatever is in the border right/bottom.
-            std::vector<int> scale = operatorAttributes.GetOptionalAttributeVectorInt32(AttrName::Scale);
-            m_sizes[Height] = scale[Height];
-            m_sizes[Width] = scale[Width];
+            std::vector<int64_t> scale = operatorAttributes.GetAttributeVector<int64_t>(AttrName::Scale);
+            ML_CHECK_VALID_ARGUMENT(scale.size() == 2u, "Scale must be size 2.");
+            ML_CHECK_VALID_ARGUMENT(
+                std::all_of(scale.begin(), scale.end(), [](int64_t value) { return value >= 0; }),
+                "Scale values must be non-negative.");
+            ML_CHECK_VALID_ARGUMENT(scale[Height] <= inputHeight - border[Top], "Scale exceeds the input height.");
+            ML_CHECK_VALID_ARGUMENT(scale[Width] <= inputWidth - border[Left], "Scale exceeds the input width.");
+
+            m_sizes[Height] = gsl::narrow_cast<uint32_t>(scale[Height]);
+            m_sizes[Width] = gsl::narrow_cast<uint32_t>(scale[Width]);
         }
         else
         {
-            ML_CHECK_VALID_ARGUMENT(inputDimensions.size() == 4, "Wrong number of dimensions.");
-            m_sizes[Height] = inputDimensions[H] - border[Bottom] - border[Top];
-            m_sizes[Width] = inputDimensions[W] -border[Right] - border[Left];
+            ML_CHECK_VALID_ARGUMENT(
+                border[Bottom] <= inputHeight - border[Top], "Borders exceed the input height.");
+            ML_CHECK_VALID_ARGUMENT(
+                border[Right] <= inputWidth - border[Left], "Borders exceed the input width.");
+
+            m_sizes[Height] = gsl::narrow_cast<uint32_t>(inputHeight - border[Top] - border[Bottom]);
+            m_sizes[Width] = gsl::narrow_cast<uint32_t>(inputWidth - border[Left] - border[Right]);
         }
     }
 

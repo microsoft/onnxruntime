@@ -711,6 +711,19 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
   return LoadModel(file_path, p_model, local_registries, logger, options);
 }
 
+GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
+GSL_SUPPRESS(r .35)
+Status Model::Load(const PathString& file_path, const PathString& graph_model_path,
+                   std::shared_ptr<Model>& p_model,
+                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                   const logging::Logger& logger, const ModelOptions& options) {
+  const auto loader = [&graph_model_path, &p_model, local_registries, &logger, &options](int fd) {
+    return Model::Load(fd, graph_model_path, p_model, local_registries, logger, options);
+  };
+
+  return LoadModelHelper(file_path, loader);
+}
+
 Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
                                            const std::filesystem::path& external_file_name,
                                            const ModelSavingOptions& save_options) {
@@ -864,12 +877,17 @@ common::Status Model::LoadFromModelEditorApiModel(const OrtModel& model_editor_a
   auto domain_map = allow_official_onnx_release_only_final ? schema_registry->GetLastReleasedOpsetVersions(false)
                                                            : schema_registry->GetLatestOpsetVersions(false);
 
+  // Merge in the other domains ORT may use internally, without overriding opsets the caller supplied
+  // explicitly (e.g. the ONNX domain). Only missing domains get the registry version from domain_map.
   for (const auto& [domain, version] : domain_map) {
     if (domain_to_version.find(domain) == domain_to_version.end()) {
       domain_to_version[domain] = version;
     }
+  }
 
-    // add to the model proto so that if we save the optimized model it has the required opset imports
+  // Populate the model proto's opset imports from the merged map (not domain_map) so they stay consistent
+  // with the graph's domain-to-version map and preserve the caller's explicit opsets.
+  for (const auto& [domain, version] : domain_to_version) {
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model->model_proto_.add_opset_import()};
     opset_id_proto->set_domain(domain);
     opset_id_proto->set_version(version);

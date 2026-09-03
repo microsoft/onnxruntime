@@ -10,6 +10,7 @@
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 
 #include "core/providers/webgpu/webgpu_provider_options.h"
@@ -95,6 +96,17 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
       webgpu_ep_config.multi_rotary_cache_concat_offset = offset_value;
     } else {
       ORT_THROW("Invalid multiRotaryCacheConcatOffset value: ", multi_rotary_cache_concat_offset_str, ". Must be a non-negative integer.");
+    }
+  }
+
+  std::string kv_cache_quantization_bits_str;
+  if (config_options.TryGetConfigEntry(kKvCacheQuantizationBits, kv_cache_quantization_bits_str)) {
+    if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_OFF) {
+      webgpu_ep_config.kv_cache_quantization_bits = 0;
+    } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_4Bit) {
+      webgpu_ep_config.kv_cache_quantization_bits = 4;
+    } else {
+      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str, ". Must be \"0\" or \"4\".");
     }
   }
 
@@ -191,6 +203,18 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
     }
   }
 
+  if (std::string enable_robustness_str;
+      config_options.TryGetConfigEntry(kEnableRobustness, enable_robustness_str)) {
+    config.enable_robustness_explicitly_set = true;
+    if (enable_robustness_str == kEnableRobustness_ON) {
+      config.enable_robustness = true;
+    } else if (enable_robustness_str == kEnableRobustness_OFF) {
+      config.enable_robustness = false;
+    } else {
+      ORT_THROW("Invalid enableRobustness value: ", enable_robustness_str, ". Must be \"0\" or \"1\".");
+    }
+  }
+
   if (std::string preserve_device_str;
       config_options.TryGetConfigEntry(kPreserveDevice, preserve_device_str)) {
     if (preserve_device_str == kPreserveDevice_ON) {
@@ -201,6 +225,11 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
       ORT_THROW("Invalid preserve device: ", preserve_device_str);
     }
   }
+
+  // Compile-only mode (skip Dawn adapter/device creation so graph transformation can run device-free)
+  // is derived from the session config kOrtSessionOptionCompileOnly, which the Compile API sets
+  // automatically -- same signal other EPs use (e.g. NV TensorRT RTX). Not a WebGPU-specific option.
+  config.compile_only = config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1";
 
   std::string max_storage_buffer_binding_size_str;
   if (config_options.TryGetConfigEntry(kMaxStorageBufferBindingSize, max_storage_buffer_binding_size_str)) {
@@ -213,13 +242,40 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
         "Invalid maxStorageBufferBindingSize value: ", max_storage_buffer_binding_size_str);
   }
 
+  std::string max_num_pending_dispatches_str;
+  if (config_options.TryGetConfigEntry(
+          kMaxNumPendingDispatches,
+          max_num_pending_dispatches_str)) {
+    ORT_ENFORCE(
+        std::errc{} ==
+            std::from_chars(
+                max_num_pending_dispatches_str.data(),
+                max_num_pending_dispatches_str.data() +
+                    max_num_pending_dispatches_str.size(),
+                config.max_num_pending_dispatches)
+                .ec,
+        "Invalid maxNumPendingDispatches value: ",
+        max_num_pending_dispatches_str);
+    ORT_ENFORCE(
+        config.max_num_pending_dispatches > 0,
+        "maxNumPendingDispatches must be greater than 0");
+    // Practical cap to avoid excessive query buffer sizing and
+    // unpredictable memory/performance behavior.
+    ORT_ENFORCE(
+        config.max_num_pending_dispatches <= 4096,
+        "maxNumPendingDispatches must be less than or equal to 4096");
+  }
+
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP Device ID: " << config.context_id;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUInstance: " << reinterpret_cast<size_t>(config.instance);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUDevice: " << reinterpret_cast<size_t>(config.device);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << reinterpret_cast<size_t>(config.dawn_proc_table);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << config.validation_mode;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable robustness: " << config.enable_robustness;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << config.preserve_device;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP CompileOnly: " << config.compile_only;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << config.max_storage_buffer_binding_size;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP max pending dispatches: " << config.max_num_pending_dispatches;
 
   // buffer cache modes
   auto parse_buffer_cache_mode = [&config_options](const std::string& config_entry_str,
@@ -311,9 +367,10 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     Release = ReleaseImpl;          // OrtDataTransferImpl::Release callback
   }
 
-  static bool CanCopyImpl(const OrtDataTransferImpl* this_ptr,
-                          const OrtMemoryDevice* src_memory_device,
-                          const OrtMemoryDevice* dst_memory_device) noexcept {
+  static bool ORT_API_CALL CanCopyImpl(
+      const OrtDataTransferImpl* this_ptr,
+      const OrtMemoryDevice* src_memory_device,
+      const OrtMemoryDevice* dst_memory_device) noexcept {
     const auto& impl = *static_cast<const WebGpuDataTransferImpl*>(this_ptr);
     OrtMemoryInfoDeviceType src_type = impl.ep_api.MemoryDevice_GetDeviceType(src_memory_device);
     OrtMemoryInfoDeviceType dst_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_memory_device);
@@ -355,11 +412,26 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
            (src_type == OrtMemoryInfoDeviceType_CPU && dst_type == OrtMemoryInfoDeviceType_GPU);
   }
 
-  static OrtStatus* CopyTensorsImpl(OrtDataTransferImpl* this_ptr,
-                                    const OrtValue** src_tensors,
-                                    OrtValue** dst_tensors,
-                                    OrtSyncStream** /*streams*/,
-                                    size_t num_tensors) noexcept {
+  // BufferManager::MemCpy reports misuse by throwing (ORT_ENFORCE), not by returning a Status.
+  // This callback crosses the C ABI and is noexcept, so an escaping exception would terminate the
+  // process. Convert throws to an OrtStatus.
+  static OrtStatus* ORT_API_CALL CopyTensorsImpl(
+      OrtDataTransferImpl* this_ptr,
+      const OrtValue** src_tensors,
+      OrtValue** dst_tensors,
+      OrtSyncStream** streams,
+      size_t num_tensors) noexcept {
+    API_IMPL_BEGIN
+    return CopyTensorsOrThrow(this_ptr, src_tensors, dst_tensors, streams, num_tensors);
+    API_IMPL_END
+  }
+
+  static OrtStatus* CopyTensorsOrThrow(
+      OrtDataTransferImpl* this_ptr,
+      const OrtValue** src_tensors,
+      OrtValue** dst_tensors,
+      OrtSyncStream** /*streams*/,
+      size_t num_tensors) {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
 
     if (num_tensors == 0) {
@@ -418,7 +490,8 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     return nullptr;
   }
 
-  static void ReleaseImpl(OrtDataTransferImpl* this_ptr) noexcept {
+  static void ORT_API_CALL ReleaseImpl(
+      OrtDataTransferImpl* this_ptr) noexcept {
     auto* p_impl = static_cast<WebGpuDataTransferImpl*>(this_ptr);
     int context_id = p_impl->context_id_;
     bool data_transfer_initialized = false;

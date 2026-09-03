@@ -41,6 +41,52 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
   ORT_ENFORCE(class_count_ > 0, "LinearClassifier: intercepts must not be empty.");
   ORT_ENFORCE(!coefficients_.empty(), "LinearClassifier: coefficients must not be empty.");
 
+  // The ONNX spec requires exactly one of classlabels_strings or classlabels_ints to be provided.
+  // However, existing models in the wild omit both and rely on default labels (0/1) for binary
+  // classification. Rejecting both-empty would break those models, so we only enforce that both
+  // are not simultaneously set. For multi-class (class_count > 1) the compute path has no default
+  // label fallback and would index into an empty vector, so class labels are required.
+  ORT_ENFORCE(classlabels_strings_.empty() || classlabels_ints_.empty(),
+              "LinearClassifier: only one of classlabels_strings or classlabels_ints may be specified.");
+
+  if (!using_strings_ && classlabels_ints_.empty() && class_count_ > 1) {
+    ORT_ENFORCE(false, "LinearClassifier: classlabels_ints or classlabels_strings must be provided ",
+                "when the number of classes (", class_count_, ") is greater than 1.");
+  }
+
+  // Validate that the class labels array is consistent with the number of classes.
+  // For binary classification (class_count == 1), the compute path uses labels only when
+  // the array has exactly 2 elements (negative/positive). Any other non-empty size would be
+  // silently ignored, so reject it to catch misconfigured models.
+  // For multi-class, classlabels must have at least class_count elements.
+  if (using_strings_) {
+    if (class_count_ == 1) {
+      ORT_ENFORCE(classlabels_strings_.size() == 2,
+                  "LinearClassifier: classlabels_strings must have exactly 2 elements for binary ",
+                  "classification, got ", classlabels_strings_.size(), ".");
+    } else {
+      ORT_ENFORCE(classlabels_strings_.size() >= static_cast<size_t>(class_count_),
+                  "LinearClassifier: classlabels_strings has ", classlabels_strings_.size(),
+                  " elements but intercepts defines ", class_count_, " classes.");
+    }
+  } else if (!classlabels_ints_.empty()) {
+    if (class_count_ == 1) {
+      ORT_ENFORCE(classlabels_ints_.size() == 2,
+                  "LinearClassifier: classlabels_ints must have exactly 2 elements for binary ",
+                  "classification, got ", classlabels_ints_.size(), ".");
+    } else {
+      ORT_ENFORCE(classlabels_ints_.size() >= static_cast<size_t>(class_count_),
+                  "LinearClassifier: classlabels_ints has ", classlabels_ints_.size(),
+                  " elements but intercepts defines ", class_count_, " classes.");
+    }
+  }
+
+  // Validate that coefficients size is consistent with the number of classes.
+  // coefficients must be divisible by class_count to form a valid [class_count, num_features] matrix.
+  ORT_ENFORCE(coefficients_.size() % static_cast<size_t>(class_count_) == 0,
+              "LinearClassifier: coefficients size (", coefficients_.size(),
+              ") must be a multiple of the number of classes (", class_count_, ").");
+
   SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 }
 
@@ -75,7 +121,8 @@ void LinearClassifier::ComputeImpl(const gsl::span<const float> input,
                                         threadpool, &mlas_backend_kernel_selector_config_);
 
   float* score = scores_output_data.data();
-  float* end_scores = score + (num_batches * num_targets);  // we haven't added extra targets yet so iterate the original scores
+  // Use SafeInt to guard against overflow in pointer arithmetic.
+  float* end_scores = score + static_cast<size_t>(SafeInt<size_t>(num_batches) * num_targets);
 
   if (num_targets == 1) {
     if (using_strings_) {
@@ -141,10 +188,8 @@ static void CastInputToFloat(const Tensor& in, gsl::span<float>& out) {
 Status LinearClassifier::Compute(OpKernelContext* ctx) const {
   const auto& X = *ctx->Input<Tensor>(0);
   const TensorShape& input_shape = X.Shape();
-  if (input_shape.NumDimensions() == 0) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Input shape needs to be at least a single dimension.");
-  }
+  ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 1 || input_shape.NumDimensions() == 2,
+                    "LinearClassifier: input must be 1-D or 2-D, got ", input_shape.NumDimensions(), "-D.");
 
   ptrdiff_t num_batches = input_shape.NumDimensions() == 1 ? 1 : narrow<ptrdiff_t>(input_shape[0]);
   ptrdiff_t num_features = input_shape.NumDimensions() == 1 ? narrow<ptrdiff_t>(

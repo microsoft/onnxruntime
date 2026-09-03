@@ -238,6 +238,13 @@ struct ConvTransposeAttributes : public ConvAttributes {
                              "pads size (", p_pads->size(), ") does not match expected size (2 * ", rank, ").");
     }
 
+    // The 'rank + 2' (full N,C,H,W) output_shape form is a legacy ORT leniency that predates the ONNX
+    // spec clarification (onnx/onnx#5400: output_shape is spatial-only). As of ONNX 1.22, ConvTranspose
+    // shape inference rejects a rank+2 output_shape at Graph::Resolve, so this branch is
+    // load-UNREACHABLE for statically-ranked graphs. It is still RUNTIME-reachable when the input rank
+    // is unknown at load (ONNX convTransposeShapeInference early-returns before the size check via
+    // hasNInputShapes), so it must be retained for back-compat. N and C are ignored here (batch comes
+    // from the input, channels from the weight); only spatial dims are read.
     // output_shape attribute, if specified, must have either 'rank' or 'rank + 2' elements
     if (output_shape_size != 0 && output_shape_size != rank && output_shape_size != rank + 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -298,14 +305,50 @@ struct ConvTransposeAttributes : public ConvAttributes {
       int64_t* out_size) const {
     // Output shape is explicitly provided - pad values will have to be computed
     if (*out_size != -1) {
-      if (*out_size < 0) {
+      if (*out_size <= 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Explicit output size is negative: ", *out_size);
+                               "Explicit output size must be positive. Got: ", *out_size);
+      }
+      if (in_size <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input spatial dimension must be positive. Got: ", in_size);
+      }
+      if (stride <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Stride must be positive. Got: ", stride);
+      }
+      if (kernel <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Kernel size must be positive. Got: ", kernel);
+      }
+      if (dilation <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Dilation must be positive. Got: ", dilation);
+      }
+      if (adj < 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Output padding must be non-negative. Got: ", adj);
       }
       // total pad
       auto total_pad = ComputeTotalPad(in_size, stride, adj,
                                        kernel, dilation, *out_size);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
+
+      // Verify that the forward-conv re-derivation of input size from the output size and pads
+      // is consistent with the actual input size. Col2im re-derives the input spatial extent as:
+      //   derived_in = (out_size + pad_head + pad_tail - dkernel) / stride + 1
+      // If this exceeds in_size, Col2im would read past the col_buffer allocation.
+      // Note: derived_in < in_size is algebraically unreachable when adj >= 0 and total_pad >= 0,
+      // so this check is effectively one-sided (catches derived_in > in_size from oversized out_size).
+      SafeInt<int64_t> dkernel = (SafeInt<int64_t>(kernel) - 1) * dilation + 1;
+      int64_t derived_in = (SafeInt<int64_t>(*out_size) + *pad_head + *pad_tail - dkernel) / stride + 1;
+      if (derived_in != in_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Explicit output_shape is inconsistent with input spatial dimensions"
+                               " and convolution parameters. "
+                               "Expected input size ",
+                               derived_in, " but got ", in_size,
+                               " (output_size=", *out_size, ", kernel=", kernel,
+                               ", stride=", stride, ", dilation=", dilation,
+                               ", output_padding=", adj, ").");
+      }
       return Status::OK();
     }
 
@@ -339,6 +382,20 @@ struct ConvTransposeAttributes : public ConvAttributes {
     *out_size = SafeInt<int64_t>(in_size - 1) * stride + adj +
                 SafeInt<int64_t>(kernel - 1) * dilation + 1 -
                 *pad_head - *pad_tail;
+
+    // Same consistency check as the explicit output_shape path: verify the forward-conv
+    // re-derivation of input size matches in_size. When output_padding (adj) >= stride
+    // (possible when dilation > stride passes the adj < max(stride, dilation) check),
+    // Col2im would compute a larger input extent and read past the col_buffer.
+    SafeInt<int64_t> dkernel2 = (SafeInt<int64_t>(kernel) - 1) * dilation + 1;
+    int64_t derived_in = (SafeInt<int64_t>(*out_size) + *pad_head + *pad_tail - dkernel2) / stride + 1;
+    if (derived_in != in_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Computed output shape is inconsistent with input spatial dimensions. "
+                             "output_padding (",
+                             adj, ") may be too large for stride (", stride,
+                             "). Expected input size ", derived_in, " but got ", in_size, ".");
+    }
     return Status::OK();
   }
 };

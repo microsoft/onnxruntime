@@ -112,6 +112,7 @@ mod download {
         // and iterate on resulting probabilities, creating an index to later access labels.
         let output = outputs[0].float_array().unwrap();
         let mut probabilities: Vec<(usize, f32)> = output
+            .view()
             .softmax(ndarray::Axis(1))
             .iter()
             .copied()
@@ -209,6 +210,7 @@ mod download {
 
         let output = outputs[0].float_array().unwrap();
         let mut probabilities: Vec<(usize, f32)> = output
+            .view()
             .softmax(ndarray::Axis(1))
             .iter()
             .copied()
@@ -301,6 +303,7 @@ mod download {
 
                     let output = &outputs[0].float_array().unwrap();
                     let mut probabilities: Vec<(usize, f32)> = output
+                        .view()
                         .softmax(ndarray::Axis(1))
                         .iter()
                         .copied()
@@ -398,6 +401,7 @@ mod download {
 
                     let output = &outputs[0].float_array().unwrap();
                     let mut probabilities: Vec<(usize, f32)> = output
+                        .view()
                         .softmax(ndarray::Axis(1))
                         .iter()
                         .copied()
@@ -515,7 +519,7 @@ mod download {
         let output = outputs[0].float_array().unwrap();
 
         // The image should have doubled in size
-        assert_eq!(output.shape(), [1, 448, 448, 3]);
+        assert_eq!(output.view().shape(), [1, 448, 448, 3]);
     }
 }
 

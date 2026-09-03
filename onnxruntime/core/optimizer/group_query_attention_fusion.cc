@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/group_query_attention_fusion.h"
 #include "core/graph/graph_utils.h"
@@ -145,8 +147,9 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
 
     TensorProto qkv_zp_initializer;
 
-    // We use 4 bit quantization, hence dividing by 2 since we need 1/2 of the bytes.
-    int64_t zp_elements_count = output_hidden_size * blocks / 2;
+    // We use 4 bit quantization, so each byte stores two block zero points per output row.
+    const int64_t zero_point_blocks = blocks / 2 + blocks % 2;
+    int64_t zp_elements_count = output_hidden_size * zero_point_blocks;
 
     qkv_zp_initializer.set_name(graph.GenerateNodeArgName("qkv_zp"));
     qkv_zp_initializer.add_dims(zp_elements_count);
@@ -156,7 +159,7 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
     merged_qkv_zp.reserve(gsl::narrow<size_t>(zp_elements_count));
 
     optimizer_utils::MergeMatMulWeightsByBlocks(q_zero_points_data, k_zero_points_data, v_zero_points_data,
-                                                merged_qkv_zp, q_hidden_size, kv_hidden_size, blocks / 2, 1);
+                                                merged_qkv_zp, q_hidden_size, kv_hidden_size, zero_point_blocks, 1);
 
     utils::SetRawDataInTensorProto(qkv_zp_initializer, merged_qkv_zp.data(), zp_elements_count * sizeof(uint8_t));
 
@@ -248,6 +251,126 @@ static bool CheckIfAnyOfRequiredGQANodesDoesNotExist(Node* rotary_node_1, Node* 
   return rotary_node_1 == nullptr || rotary_node_2 == nullptr || q_node == nullptr || k_node == nullptr || v_node == nullptr;
 }
 
+static bool NodeArgExists(const NodeArg* node_arg) {
+  return node_arg != nullptr && node_arg->Exists();
+}
+
+static bool ProjectionTensorShapesMatch(bool quantization_used,
+                                        int64_t q_hidden_size,
+                                        int64_t kv_hidden_size,
+                                        const TensorProto& q_tensor,
+                                        const TensorProto& k_tensor,
+                                        const TensorProto& v_tensor) {
+  const int expected_rank = quantization_used ? 3 : 2;
+  if (q_tensor.dims_size() != expected_rank || k_tensor.dims_size() != expected_rank ||
+      v_tensor.dims_size() != expected_rank) {
+    return false;
+  }
+
+  if (quantization_used) {
+    return q_tensor.dims(0) == q_hidden_size && k_tensor.dims(0) == kv_hidden_size &&
+           v_tensor.dims(0) == kv_hidden_size && q_tensor.dims(1) == k_tensor.dims(1) &&
+           q_tensor.dims(1) == v_tensor.dims(1) && q_tensor.dims(2) == k_tensor.dims(2) &&
+           q_tensor.dims(2) == v_tensor.dims(2) && q_tensor.dims(1) > 0 && q_tensor.dims(2) > 0;
+  }
+
+  return q_tensor.dims(1) == q_hidden_size && k_tensor.dims(1) == kv_hidden_size &&
+         v_tensor.dims(1) == kv_hidden_size && q_tensor.dims(0) == k_tensor.dims(0) &&
+         q_tensor.dims(0) == v_tensor.dims(0);
+}
+
+static bool TensorShapeMatchesRowsAndBlocks(const TensorProto& tensor, int64_t rows, int64_t blocks) {
+  if (tensor.dims_size() == 2) {
+    return tensor.dims(0) == rows && tensor.dims(1) == blocks;
+  }
+
+  if (tensor.dims_size() != 1 || blocks <= 0 || tensor.dims(0) < 0 || tensor.dims(0) % blocks != 0) {
+    return false;
+  }
+
+  return tensor.dims(0) / blocks == rows;
+}
+
+static bool QuantizedAuxiliaryTensorShapesMatch(int64_t q_hidden_size,
+                                                int64_t kv_hidden_size,
+                                                int64_t blocks,
+                                                const TensorProto& q_scale_tensor,
+                                                const TensorProto& k_scale_tensor,
+                                                const TensorProto& v_scale_tensor,
+                                                const TensorProto* q_zero_point_tensor,
+                                                const TensorProto* k_zero_point_tensor,
+                                                const TensorProto* v_zero_point_tensor) {
+  const int scale_rank = q_scale_tensor.dims_size();
+  if (k_scale_tensor.dims_size() != scale_rank || v_scale_tensor.dims_size() != scale_rank ||
+      !TensorShapeMatchesRowsAndBlocks(q_scale_tensor, q_hidden_size, blocks) ||
+      !TensorShapeMatchesRowsAndBlocks(k_scale_tensor, kv_hidden_size, blocks) ||
+      !TensorShapeMatchesRowsAndBlocks(v_scale_tensor, kv_hidden_size, blocks)) {
+    return false;
+  }
+
+  if (q_zero_point_tensor == nullptr || k_zero_point_tensor == nullptr || v_zero_point_tensor == nullptr) {
+    return q_zero_point_tensor == nullptr && k_zero_point_tensor == nullptr && v_zero_point_tensor == nullptr;
+  }
+
+  const int64_t zero_point_blocks = blocks / 2 + blocks % 2;
+  const int zero_point_rank = q_zero_point_tensor->dims_size();
+  return k_zero_point_tensor->dims_size() == zero_point_rank &&
+         v_zero_point_tensor->dims_size() == zero_point_rank &&
+         TensorShapeMatchesRowsAndBlocks(*q_zero_point_tensor, q_hidden_size, zero_point_blocks) &&
+         TensorShapeMatchesRowsAndBlocks(*k_zero_point_tensor, kv_hidden_size, zero_point_blocks) &&
+         TensorShapeMatchesRowsAndBlocks(*v_zero_point_tensor, kv_hidden_size, zero_point_blocks);
+}
+
+struct RotaryEmbeddingArgs {
+  NodeArg* cos_cache_arg = nullptr;
+  NodeArg* sin_cache_arg = nullptr;
+  NodeArg* position_ids_arg = nullptr;
+  int64_t interleaved = 0;
+  int64_t rotary_embedding_dim = 0;
+};
+
+static int64_t GetIntAttributeOrDefault(const Node& node, const std::string& attr_name, int64_t default_value) {
+  const auto* attr = graph_utils::GetNodeAttribute(node, attr_name);
+  return attr != nullptr ? attr->i() : default_value;
+}
+
+static bool TryGetRotaryEmbeddingArgs(Node& rotary_node, RotaryEmbeddingArgs& args) {
+  if (rotary_node.OpType() != "RotaryEmbedding") {
+    return false;
+  }
+
+  if (rotary_node.Domain() == kOnnxDomain) {
+    // Skip ONNX RotaryEmbedding for this fusion. With explicit position_ids it consumes the full
+    // [batch_size, sequence_length] tensor, while fused GQA currently uses prompt-time base-offset
+    // semantics. Without position_ids it uses 3D per-batch caches, which are also incompatible
+    // with GroupQueryAttention's 2D rotary cache inputs.
+    return false;
+  }
+
+  if (rotary_node.Domain() != kMSDomain) {
+    return false;
+  }
+
+  args.interleaved = GetIntAttributeOrDefault(rotary_node, "interleaved", 0);
+  args.rotary_embedding_dim = GetIntAttributeOrDefault(rotary_node, "rotary_embedding_dim", 0);
+  if ((args.interleaved != 0 && args.interleaved != 1) || args.rotary_embedding_dim < 0) {
+    return false;
+  }
+
+  auto& input_defs = rotary_node.MutableInputDefs();
+  // com.microsoft.RotaryEmbedding inputs:
+  //   input, position_ids, cos_cache, sin_cache
+  if (input_defs.size() < 4 || !NodeArgExists(input_defs[1]) || !NodeArgExists(input_defs[2]) ||
+      !NodeArgExists(input_defs[3])) {
+    return false;
+  }
+
+  args.position_ids_arg = input_defs[1];
+  args.cos_cache_arg = input_defs[2];
+  args.sin_cache_arg = input_defs[3];
+  return true;
+}
+
 static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node* v_node, Node* rotary_node_1, Node* rotary_node_2, Node* new_node, NodeArg& new_node_output_arg) {
   graph_utils::MoveAllNodeInputEdges(graph, *q_node, *new_node);
 
@@ -318,6 +441,11 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     NodeArg* cos_cache_arg = nullptr;
     NodeArg* sin_cache_arg = nullptr;
+    NodeArg* position_ids_arg = nullptr;
+    int64_t rotary_interleaved = 0;
+    int64_t rotary_embedding_dim = 0;
+    bool rotary_args_set = false;
+    bool rotary_args_mismatch = false;
     NodeArg* past_key_values_key_arg = node.MutableInputDefs()[3];
     NodeArg* past_key_values_value_arg = node.MutableInputDefs()[4];
     NodeArg* seqlens_k = node.MutableInputDefs()[5];
@@ -334,7 +462,8 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     for (auto pre_gqa_node = node.InputNodesBegin(); pre_gqa_node != node.InputNodesEnd(); ++pre_gqa_node) {
       Node& rotary_or_v_node = *graph.GetNode(pre_gqa_node->Index());
 
-      if (rotary_or_v_node.OpType() == "RotaryEmbedding") {
+      RotaryEmbeddingArgs rotary_args;
+      if (TryGetRotaryEmbeddingArgs(rotary_or_v_node, rotary_args)) {
         if (!rotary_node_1) {
           rotary_node_1 = &rotary_or_v_node;
         } else {
@@ -357,19 +486,28 @@ Status GroupQueryAttentionFusion::ApplyImpl(
           }
         }
 
-        if (cos_cache_arg == nullptr) {
-          cos_cache_arg = rotary_or_v_node.MutableInputDefs()[2];
-        }
-
-        if (sin_cache_arg == nullptr) {
-          sin_cache_arg = rotary_or_v_node.MutableInputDefs()[3];
+        if (!rotary_args_set) {
+          cos_cache_arg = rotary_args.cos_cache_arg;
+          sin_cache_arg = rotary_args.sin_cache_arg;
+          position_ids_arg = rotary_args.position_ids_arg;
+          rotary_interleaved = rotary_args.interleaved;
+          rotary_embedding_dim = rotary_args.rotary_embedding_dim;
+          rotary_args_set = true;
+        } else if (cos_cache_arg != rotary_args.cos_cache_arg ||
+                   sin_cache_arg != rotary_args.sin_cache_arg ||
+                   position_ids_arg != rotary_args.position_ids_arg ||
+                   rotary_interleaved != rotary_args.interleaved ||
+                   rotary_embedding_dim != rotary_args.rotary_embedding_dim) {
+          rotary_args_mismatch = true;
         }
       } else if (rotary_or_v_node.OpType() == "MatMulNBits" || rotary_or_v_node.OpType() == "MatMul") {
         v_node = &rotary_or_v_node;
       }
     }
 
-    if (CheckIfAnyOfRequiredGQANodesDoesNotExist(rotary_node_1, rotary_node_2, q_node, k_node, v_node)) {
+    if (rotary_args_mismatch ||
+        CheckIfAnyOfRequiredGQANodesDoesNotExist(rotary_node_1, rotary_node_2, q_node, k_node, v_node) ||
+        cos_cache_arg == nullptr || sin_cache_arg == nullptr) {
       // Some of the required pre-GQA nodes required for fusion were not retrieved,
       // this can be expected if the model has extra nodes in between MatMuls and rotary embeddings.
       continue;
@@ -412,9 +550,37 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     int64_t head_size = past_key_values_key_arg->Shape()->dim(3).dim_value();
     int64_t num_heads = node.GetAttributes().at("num_heads").i();
     int64_t kv_num_heads = node.GetAttributes().at("kv_num_heads").i();
-    int64_t q_hidden_size = num_heads * head_size;
-    int64_t kv_hidden_size = kv_num_heads * head_size;
-    int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
+    if (head_size <= 0 || num_heads <= 0 || kv_num_heads <= 0) {
+      DEBUG_LOG("GQA head attributes and cache head size must be positive");
+      continue;
+    }
+
+    constexpr int64_t max_int64 = std::numeric_limits<int64_t>::max();
+    if (num_heads > max_int64 / head_size || kv_num_heads > max_int64 / head_size) {
+      DEBUG_LOG("GQA hidden size calculation overflowed");
+      continue;
+    }
+    const int64_t q_hidden_size = num_heads * head_size;
+    const int64_t kv_hidden_size = kv_num_heads * head_size;
+    if (kv_hidden_size > (max_int64 - q_hidden_size) / 2) {
+      DEBUG_LOG("GQA output hidden size calculation overflowed");
+      continue;
+    }
+    const int64_t output_hidden_size = q_hidden_size + 2 * kv_hidden_size;
+
+    if (!ProjectionTensorShapesMatch(quantization_used, q_hidden_size, kv_hidden_size,
+                                     *q_proj_tensor, *k_proj_tensor, *v_proj_tensor)) {
+      DEBUG_LOG("GQA projection tensor shapes do not match the head attributes");
+      continue;
+    }
+
+    if (quantization_used &&
+        !QuantizedAuxiliaryTensorShapesMatch(q_hidden_size, kv_hidden_size, q_proj_tensor->dims(1),
+                                             *q_scale_tensor, *k_scale_tensor, *v_scale_tensor,
+                                             q_zero_points_tensor, k_zero_points_tensor, v_zero_points_tensor)) {
+      DEBUG_LOG("GQA quantized auxiliary tensor shapes do not match the projection tensors");
+      continue;
+    }
 
     // Ensure the output shape has 3 dimensions [batch_size, sequence_length, hidden_size]
     if (matmul_or_nbits_output_shape->dim_size() == 3) {
@@ -489,11 +655,13 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     FusePreGQANodes(graph, q_node, k_node, v_node, rotary_node_1, rotary_node_2, mat_mul_or_n_bits_new_node, matmul_or_nbits_output);
 
     node.GetMutableAttributes()["do_rotary"] = ONNX_NAMESPACE::MakeAttribute("do_rotary", static_cast<int64_t>(1));
+    node.GetMutableAttributes()["rotary_interleaved"] =
+        ONNX_NAMESPACE::MakeAttribute("rotary_interleaved", rotary_interleaved);
 
     std::string empty_name;
     auto& empty_node_arg = graph.GetOrCreateNodeArg(empty_name, nullptr);
 
-    const std::array gqa_input_defs{
+    std::vector<NodeArg*> gqa_input_defs{
         &matmul_or_nbits_output,
         &empty_node_arg,
         &empty_node_arg,
@@ -503,10 +671,19 @@ Status GroupQueryAttentionFusion::ApplyImpl(
         total_seq_len,
         cos_cache_arg,
         sin_cache_arg};
+    if (position_ids_arg != nullptr) {
+      // During prefill, GQA treats position_ids[0] as a shared base and derives each token's
+      // position as base + sequence index. This fusion therefore assumes the MS-domain
+      // RotaryEmbedding inputs use contiguous positions with the same base for every batch.
+      gqa_input_defs.push_back(position_ids_arg);
+    }
 
     auto& gqa_input_args = node.MutableInputArgsCount();
     gqa_input_args[7] = 1;
     gqa_input_args[8] = 1;
+    if (position_ids_arg != nullptr) {
+      gqa_input_args[9] = 1;
+    }
 
     // Switch GQA input defs from unfused into the fused form.
     auto& gqa_node_input_defs = node.MutableInputDefs();

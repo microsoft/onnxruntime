@@ -7,6 +7,9 @@
 #include <variant>
 #include "core/framework/allocator.h"
 #include "core/framework/config_options.h"
+// Needed for OrtWriteNamedBufferFunc (used by EpContextDataWriteFuncHolder below). This include can be removed
+// once the experimental EPContext data callback APIs are promoted to the stable C API.
+#include "core/session/onnxruntime_experimental_c_api.h"
 
 namespace onnxruntime {
 namespace epctx {
@@ -25,6 +28,14 @@ struct BufferHolder {
 struct BufferWriteFuncHolder {
   OrtWriteBufferFunc write_func = nullptr;
   void* stream_state = nullptr;  // Opaque pointer to user's stream state. Passed as first argument to write_func.
+};
+
+/// <summary>
+/// Holds the opaque state and write function that EPs use to write EPContext binary data.
+/// </summary>
+struct EpContextDataWriteFuncHolder {
+  OrtWriteNamedBufferFunc write_func = nullptr;
+  void* state = nullptr;
 };
 
 /// <summary>
@@ -84,10 +95,13 @@ struct ModelGenOptions {
                InitializerHandler>           // Custom function called for every initializer to determine location.
       initializers_location = std::monostate{};
 
+  EpContextDataWriteFuncHolder ep_context_data_write_func = {};
+
   bool HasOutputModelLocation() const;
   const std::filesystem::path* TryGetOutputModelPath() const;
   const BufferHolder* TryGetOutputModelBuffer() const;
   const BufferWriteFuncHolder* TryGetOutputModelWriteFunc() const;
+  const EpContextDataWriteFuncHolder* TryGetEpContextDataWriteFunc() const;
 
   bool AreInitializersEmbeddedInOutputModel() const;
   const ExternalInitializerFileInfo* TryGetExternalInitializerFileInfo() const;

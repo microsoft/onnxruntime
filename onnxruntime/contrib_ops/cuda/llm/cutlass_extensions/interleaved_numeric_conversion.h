@@ -394,6 +394,187 @@ struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, uint4b_t, N> {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
+// FP4 (e2m1) -> half/bf16 fast converters.
+//
+// These mirror the uint4b_t specializations above so the SM80 fused-dequant grouped GEMM
+// (DqMmaMultistage) can target FP4 weights, exactly as it does INT4 weights today. Two
+// differences from the integer path:
+//   1. No zero-point bias. INT4 packs with a +8 bias that the converter subtracts. e2m1 codes
+//      are raw 4-bit floats, so the matching weight pre-pack interleaves WITHOUT adding a bias.
+//   2. Conversion is a bit-field expand, not an integer-to-float magic-add. e2m1 = [s e1 e0 m0]
+//      with exponent bias 1; the 8 magnitudes are {0, .5, 1, 1.5, 2, 3, 4, 6}.
+//
+// The de-interleave order matches add_bias_and_interleave_int4s_inplace_kernel's permutation
+// [e0,e2,e4,e6,e1,e3,e5,e7] (sans bias), so the same weight-prepack interleave is reused.
+template <>
+struct FastInterleavedAndBiasedNumericArrayConverter<half_t, cutlass::float_e2m1_t, 8> {
+  using result_type = Array<half_t, 8>;
+  using source_type = Array<cutlass::float_e2m1_t, 8>;
+
+  // Convert a single 4-bit e2m1 code (0..15) to the raw 16-bit IEEE half bit pattern.
+  CUTLASS_HOST_DEVICE
+  static uint32_t e2m1_to_half_bits(uint32_t v) {
+    uint32_t sign = (v & 0x8u) << 12;  // e2m1 sign bit -> half bit 15
+    uint32_t e = (v >> 1) & 0x3u;      // 2-bit exponent (bias 1)
+    uint32_t m = v & 0x1u;             // 1-bit mantissa
+    // Normal (e != 0): half exponent = e - 1 + 15 = e + 14; mantissa bit -> half mantissa MSB.
+    // e == 0: subnormal 0.5 (m == 1) -> 0x3800, or zero (m == 0) -> 0x0000.
+    uint32_t mag = (e != 0u) ? (((14u + e) << 10) | (m ? 0x200u : 0u))
+                             : (m ? 0x3800u : 0u);
+    return sign | mag;
+  }
+
+  CUTLASS_DEVICE
+  static result_type convert(source_type const& source) {
+    result_type result;
+    uint16_t* r = reinterpret_cast<uint16_t*>(&result);
+    uint32_t const packed = reinterpret_cast<uint32_t const&>(source);
+
+    uint32_t d[8];
+    CUTLASS_PRAGMA_UNROLL
+    for (int k = 0; k < 8; ++k) {
+      d[k] = (packed >> (4 * k)) & 0xFu;
+    }
+
+    // Invert the [e0,e2,e4,e6,e1,e3,e5,e7] interleave so result holds logical order e0..e7.
+    r[0] = static_cast<uint16_t>(e2m1_to_half_bits(d[0]));
+    r[1] = static_cast<uint16_t>(e2m1_to_half_bits(d[4]));
+    r[2] = static_cast<uint16_t>(e2m1_to_half_bits(d[1]));
+    r[3] = static_cast<uint16_t>(e2m1_to_half_bits(d[5]));
+    r[4] = static_cast<uint16_t>(e2m1_to_half_bits(d[2]));
+    r[5] = static_cast<uint16_t>(e2m1_to_half_bits(d[6]));
+    r[6] = static_cast<uint16_t>(e2m1_to_half_bits(d[3]));
+    r[7] = static_cast<uint16_t>(e2m1_to_half_bits(d[7]));
+    return result;
+  }
+
+  CUTLASS_DEVICE
+  result_type operator()(source_type const& s) {
+    return convert(s);
+  }
+};
+
+template <int N>
+struct FastInterleavedAndBiasedNumericArrayConverter<half_t, cutlass::float_e2m1_t, N> {
+  static constexpr int VEC_WIDTH = 8;
+  static_assert(!(N % VEC_WIDTH), "N must be multiple of 8.");
+
+  using result_type = Array<half_t, N>;
+  using source_type = Array<cutlass::float_e2m1_t, N>;
+
+  CUTLASS_DEVICE
+  static result_type convert(source_type const& source) {
+    using scalar_result_type = typename result_type::Element;
+    using scalar_source_type = typename source_type::Element;
+    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH>
+        convert_vector_;
+
+    result_type result;
+    using vec_result = Array<scalar_result_type, VEC_WIDTH>;
+    using vec_source = Array<scalar_source_type, VEC_WIDTH>;
+
+    vec_result* result_ptr = reinterpret_cast<vec_result*>(&result);
+    vec_source const* source_ptr = reinterpret_cast<vec_source const*>(&source);
+
+    CUTLASS_PRAGMA_UNROLL
+    for (int i = 0; i < N / VEC_WIDTH; ++i) {
+      result_ptr[i] = convert_vector_(source_ptr[i]);
+    }
+
+    return result;
+  }
+
+  CUTLASS_DEVICE
+  result_type operator()(source_type const& s) {
+    return convert(s);
+  }
+};
+
+template <>
+struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, cutlass::float_e2m1_t, 8> {
+  using result_type = Array<bfloat16_t, 8>;
+  using source_type = Array<cutlass::float_e2m1_t, 8>;
+
+  // Convert a single 4-bit e2m1 code (0..15) to the raw 16-bit bfloat16 bit pattern.
+  CUTLASS_HOST_DEVICE
+  static uint32_t e2m1_to_bf16_bits(uint32_t v) {
+    uint32_t sign = (v & 0x8u) << 12;  // e2m1 sign bit -> bf16 bit 15
+    uint32_t e = (v >> 1) & 0x3u;      // 2-bit exponent (bias 1)
+    uint32_t m = v & 0x1u;             // 1-bit mantissa
+    // Normal (e != 0): bf16 exponent = e - 1 + 127 = e + 126; mantissa bit -> bf16 mantissa MSB.
+    // e == 0: subnormal 0.5 (m == 1) -> 0x3F00, or zero (m == 0) -> 0x0000.
+    uint32_t mag = (e != 0u) ? (((126u + e) << 7) | (m ? 0x40u : 0u))
+                             : (m ? 0x3F00u : 0u);
+    return sign | mag;
+  }
+
+  CUTLASS_DEVICE
+  static result_type convert(source_type const& source) {
+    result_type result;
+    uint16_t* r = reinterpret_cast<uint16_t*>(&result);
+    uint32_t const packed = reinterpret_cast<uint32_t const&>(source);
+
+    uint32_t d[8];
+    CUTLASS_PRAGMA_UNROLL
+    for (int k = 0; k < 8; ++k) {
+      d[k] = (packed >> (4 * k)) & 0xFu;
+    }
+
+    r[0] = static_cast<uint16_t>(e2m1_to_bf16_bits(d[0]));
+    r[1] = static_cast<uint16_t>(e2m1_to_bf16_bits(d[4]));
+    r[2] = static_cast<uint16_t>(e2m1_to_bf16_bits(d[1]));
+    r[3] = static_cast<uint16_t>(e2m1_to_bf16_bits(d[5]));
+    r[4] = static_cast<uint16_t>(e2m1_to_bf16_bits(d[2]));
+    r[5] = static_cast<uint16_t>(e2m1_to_bf16_bits(d[6]));
+    r[6] = static_cast<uint16_t>(e2m1_to_bf16_bits(d[3]));
+    r[7] = static_cast<uint16_t>(e2m1_to_bf16_bits(d[7]));
+    return result;
+  }
+
+  CUTLASS_DEVICE
+  result_type operator()(source_type const& s) {
+    return convert(s);
+  }
+};
+
+template <int N>
+struct FastInterleavedAndBiasedNumericArrayConverter<bfloat16_t, cutlass::float_e2m1_t, N> {
+  static constexpr int VEC_WIDTH = 8;
+  static_assert(!(N % VEC_WIDTH), "N must be multiple of 8.");
+
+  using result_type = Array<bfloat16_t, N>;
+  using source_type = Array<cutlass::float_e2m1_t, N>;
+
+  CUTLASS_DEVICE
+  static result_type convert(source_type const& source) {
+    using scalar_result_type = typename result_type::Element;
+    using scalar_source_type = typename source_type::Element;
+    FastInterleavedAndBiasedNumericArrayConverter<scalar_result_type, scalar_source_type, VEC_WIDTH>
+        convert_vector_;
+
+    result_type result;
+    using vec_result = Array<scalar_result_type, VEC_WIDTH>;
+    using vec_source = Array<scalar_source_type, VEC_WIDTH>;
+
+    vec_result* result_ptr = reinterpret_cast<vec_result*>(&result);
+    vec_source const* source_ptr = reinterpret_cast<vec_source const*>(&source);
+
+    CUTLASS_PRAGMA_UNROLL
+    for (int i = 0; i < N / VEC_WIDTH; ++i) {
+      result_ptr[i] = convert_vector_(source_ptr[i]);
+    }
+
+    return result;
+  }
+
+  CUTLASS_DEVICE
+  result_type operator()(source_type const& s) {
+    return convert(s);
+  }
+};
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
 }  // namespace cutlass
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

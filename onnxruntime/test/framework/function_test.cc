@@ -120,6 +120,16 @@ static Status LoadModel(const char* source) {
   return session_object.Load(sstr);
 }
 
+// A recursive/cyclic chain of model-local functions can be rejected by either layer:
+// ONNX 1.22+ detects the cycle in its own model checker ("Cycle detected in model-local
+// function references"), which runs before ORT's equivalent check ("must not be recursive").
+// Older ONNX versions don't catch it, so ORT's check fires instead. Accept either message so
+// the cycle-rejection tests pass regardless of which layer rejects the model.
+static testing::Matcher<const std::string&> HasCycleRejectionMessage() {
+  return testing::AnyOf(testing::HasSubstr("must not be recursive"),
+                        testing::HasSubstr("Cycle detected in model-local function references"));
+}
+
 namespace {
 const char* basic_code = R"(
         <
@@ -358,7 +368,7 @@ TEST(FunctionTest, RejectsSelfRecursiveLocalFunction) {
 
   const auto status = LoadModel(code);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
 }
 
 TEST(FunctionTest, RejectsMutuallyRecursiveLocalFunctions) {
@@ -391,7 +401,7 @@ TEST(FunctionTest, RejectsMutuallyRecursiveLocalFunctions) {
 
   const auto status = LoadModel(code);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
 }
 
 TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
@@ -572,7 +582,7 @@ TEST(FunctionTest, RejectsLongerCycle) {
 
   const auto status = LoadModel(code);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
 }
 
 TEST(FunctionTest, AcceptsAcyclicDiamond) {
@@ -697,7 +707,7 @@ TEST(FunctionTest, RejectsMultipleIndependentCycles) {
 
   const auto status = LoadModel(code);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
 }
 
 // Test use of attibute references, especially where source/target attribute

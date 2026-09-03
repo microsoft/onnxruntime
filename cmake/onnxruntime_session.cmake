@@ -13,10 +13,8 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
 
 # Standalone model package library (parsing/inspection with no ORT dependency).
 # Compiled as a static library and linked into onnxruntime_session.
-# NOTE: ORT intentionally uses the library's internal C++ types directly (model_package::ParsePackage,
-# model_package_internal.h) rather than going through its public C API (ModelPackage_*). This avoids
-# double-wrapping (ORT C API -> standalone C API -> C++ internals). The public C API exists for
-# external consumers (GenAI, FL) who link against the standalone library independently.
+# ORT uses the standalone library's public C API (model_package.h) and translates
+# the C handles into ORT-internal C++ types inside core/session/model_package/.
 set(MODEL_PACKAGE_LIB_DIR "${REPO_ROOT}/model_package")
 if(NOT onnxruntime_MINIMAL_BUILD)
   set(MODEL_PACKAGE_BUILD_SHARED OFF CACHE BOOL "" FORCE)
@@ -59,7 +57,7 @@ onnxruntime_add_include_to_target(onnxruntime_session onnxruntime_common onnxrun
 target_link_libraries(onnxruntime_session PRIVATE onnxruntime_lora)
 if(TARGET model_package)
   target_link_libraries(onnxruntime_session PRIVATE model_package)
-  target_include_directories(onnxruntime_session PRIVATE ${MODEL_PACKAGE_LIB_DIR}/include ${MODEL_PACKAGE_LIB_DIR}/src)
+  target_include_directories(onnxruntime_session PRIVATE ${MODEL_PACKAGE_LIB_DIR}/include)
 endif()
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_session PUBLIC ONNXRUNTIME_ENABLE_INSTRUMENT)

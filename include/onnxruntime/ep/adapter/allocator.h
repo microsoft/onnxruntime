@@ -8,8 +8,11 @@
 #endif
 
 #include <mutex>
+#include <string_view>
 #include <utility>
+#include <vector>
 
+#include "core/common/parse_string.h"
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
@@ -22,37 +25,68 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
  public:
   explicit IAllocatorWrappingOrtAllocator(Ort::Allocator ort_allocator)
       : IAllocator(*(EnsureOrtAllocatorHasValue(ort_allocator).GetInfo())),
-        ort_allocator_(std::move(ort_allocator)) {
+        owned_ort_allocator_(std::move(ort_allocator)),
+        ort_allocator_(owned_ort_allocator_) {
+  }
+
+  // Wraps an OrtAllocator without taking ownership. The caller must keep it alive for the
+  // lifetime of this IAllocator. This is used for allocators passed to PrePackWeight, which are
+  // provided and owned by the ORT framework/caller for the duration of the PrePack call (this
+  // wrapper must not release them).
+  explicit IAllocatorWrappingOrtAllocator(OrtAllocator* ort_allocator)
+      : IAllocator(*EnsureOrtAllocatorHasValue(ort_allocator)->Info(ort_allocator)),
+        owned_ort_allocator_(nullptr),
+        ort_allocator_(ort_allocator) {
   }
 
   void* Alloc(size_t size) override {
-    return ort_allocator_.Alloc(size);
+    return ort_allocator_->Alloc(ort_allocator_, size);
   }
 
   void Free(void* p) override {
-    ort_allocator_.Free(p);
+    ort_allocator_->Free(ort_allocator_, p);
   }
 
   void* Reserve(size_t size) override {
-    return ort_allocator_.Reserve(size);
+    if (ort_allocator_->version >= 18 && ort_allocator_->Reserve != nullptr) {
+      return ort_allocator_->Reserve(ort_allocator_, size);
+    }
+    return ort_allocator_->Alloc(ort_allocator_, size);
   }
 
   bool IsStreamAware() const override {
-    return false;
-
-    // TODO: Enable once AllocOnStream() is implemented.
-    // static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
-    // const OrtAllocator* raw = ort_allocator_;
-    // return raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr;
+    static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
+    return ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream != nullptr;
   }
 
-  void* AllocOnStream(size_t /*size*/, Stream* /*stream*/) override {
-    // TODO: Implement AllocOnStream().
-    // The internal `onnxruntime::IAllocator::AllocOnStream` signature takes an internal `onnxruntime::Stream*`
-    // argument, while the public `::OrtAllocator::AllocOnStream` signature takes an `::OrtSyncStream*` argument.
-    // We need to properly map from one to the other.
-    // `::OrtSyncStream*` should be treated as an opaque type from the plugin EP's perspective.
-    ORT_NOT_IMPLEMENTED("IAllocatorWrappingOrtAllocator::AllocOnStream is not implemented yet.");
+  void* AllocOnStream(size_t size, Stream* stream) override {
+    static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
+    if (ort_allocator_->version >= kOrtAllocatorAllocOnStreamMinVersion && ort_allocator_->AllocOnStream != nullptr) {
+      return ort_allocator_->AllocOnStream(ort_allocator_, size, reinterpret_cast<OrtSyncStream*>(stream));
+    }
+
+    return ort_allocator_->Alloc(ort_allocator_, size);
+  }
+
+  void GetStats(AllocatorStats* stats) override {
+    if (!stats) return;
+    *stats = {};
+
+    // GetStats was added in OrtAllocator version 23. For older allocators the function pointer
+    // may be uninitialized, so we must not call through it.
+    if (ort_allocator_->version < 23 || !ort_allocator_->GetStats) return;
+
+    OrtKeyValuePairs* stats_kvps = nullptr;
+    Ort::ThrowOnError(ort_allocator_->GetStats(ort_allocator_, &stats_kvps));
+    Ort::KeyValuePairs kvps{stats_kvps};
+    std::vector<const char*> keys, values;
+    kvps.GetKeyValuePairs(keys, values);
+    const size_t n = keys.size() < values.size() ? keys.size() : values.size();
+    for (size_t i = 0; i < n; ++i) {
+      int64_t val = 0;
+      if (!TryParseStringWithClassicLocale(std::string_view(values[i]), val)) continue;
+      stats->SetFromKeyValue(keys[i], val);
+    }
   }
 
  private:
@@ -61,10 +95,13 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
     return ort_allocator;
   }
 
-  // TODO: Consider adding GetStats() override. Requires parsing OrtKeyValuePairs from the C API
-  // into AllocatorStats; see GetStatsFromOrtAllocator() in allocator_adapters.cc for reference.
+  static OrtAllocator* EnsureOrtAllocatorHasValue(OrtAllocator* ort_allocator) {
+    ORT_ENFORCE(ort_allocator != nullptr, "OrtAllocator must be non-null.");
+    return ort_allocator;
+  }
 
-  Ort::Allocator ort_allocator_;
+  Ort::Allocator owned_ort_allocator_;
+  OrtAllocator* ort_allocator_{};
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IAllocatorWrappingOrtAllocator);
 };

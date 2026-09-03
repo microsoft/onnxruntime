@@ -16,8 +16,8 @@ _module_dir = pathlib.Path(__file__).parent
 def get_library_path() -> str:
     """Return the path to the CUDA plugin EP shared library."""
     candidate_paths = [
-        _module_dir / "onnxruntime_providers_cuda_plugin.dll",
-        _module_dir / "libonnxruntime_providers_cuda_plugin.so",
+        _module_dir / "onnxruntime_providers_cuda.dll",
+        _module_dir / "libonnxruntime_providers_cuda.so",
     ]
     paths = [p for p in candidate_paths if p.is_file()]
     if len(paths) != 1:
@@ -30,7 +30,7 @@ def get_library_path() -> str:
 
 def get_ep_name() -> str:
     """Return the CUDA plugin Execution Provider name."""
-    return "CudaPluginExecutionProvider"
+    return "CUDAExecutionProvider"
 
 
 def get_ep_names() -> list[str]:

@@ -69,6 +69,7 @@ Status GroupedConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
+  shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
                             << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "let batch: u32 = output_indices[0];\n"

@@ -1,12 +1,17 @@
 # NuGet packaging stage for CUDA plugin EP.
-# Downloads platform-specific build artifacts, packs them into a single multi-platform NuGet package,
-# signs it, and publishes the artifact.
+# Downloads platform-specific build artifacts, packs one NuGet package per RID,
+# signs them, and publishes the artifact.
 
 parameters:
 - name: package_version
   type: string
 
 - name: version_file
+  type: string
+
+# CUDA major version (e.g. '12' or '13'). Embedded in the package id so that the CUDA 12 and
+# CUDA 13 packages, which share the same VERSION_NUMBER, are distinct packages.
+- name: cuda_major
   type: string
 
 - name: DoEsrp
@@ -17,6 +22,7 @@ parameters:
   type: object
   default:
     win_x64: false
+    win_arm64: false
     linux_x64: false
     linux_aarch64: false
 
@@ -26,6 +32,8 @@ stages:
   dependsOn:
   - ${{ if eq(parameters.platforms.win_x64, true) }}:
     - Win_plugin_cuda_x64_Build
+  - ${{ if eq(parameters.platforms.win_arm64, true) }}:
+    - Win_plugin_cuda_arm64_Build
   - ${{ if eq(parameters.platforms.linux_x64, true) }}:
     - Linux_plugin_cuda_x64
   - ${{ if eq(parameters.platforms.linux_aarch64, true) }}:
@@ -58,9 +66,7 @@ stages:
         --configuration Release
         --nuget-config "$(Build.SourcesDirectory)\NuGet.config"
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-build-tools.yml
       parameters:
@@ -80,6 +86,13 @@ stages:
         inputs:
           artifactName: cuda_plugin_win_x64
           targetPath: '$(Build.BinariesDirectory)\artifacts\win_x64'
+
+    - ${{ if eq(parameters.platforms.win_arm64, true) }}:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download win-arm64 artifacts'
+        inputs:
+          artifactName: cuda_plugin_win_arm64
+          targetPath: '$(Build.BinariesDirectory)\artifacts\win_arm64'
 
     - ${{ if eq(parameters.platforms.linux_x64, true) }}:
       - task: DownloadPipelineArtifact@2
@@ -111,6 +124,7 @@ stages:
           # time and resolve to a boolean value 'True' or 'False'. Compare case-insensitively.
           platforms_enabled = {
               "win_x64":        "${{ parameters.platforms.win_x64 }}".lower() == "true",
+              "win_arm64":      "${{ parameters.platforms.win_arm64 }}".lower() == "true",
               "linux_x64":      "${{ parameters.platforms.linux_x64 }}".lower() == "true",
               "linux_aarch64":  "${{ parameters.platforms.linux_aarch64 }}".lower() == "true",
           }
@@ -157,15 +171,59 @@ stages:
         DisplayName: 'ESRP - Sign managed DLL'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    # Pack the (now-signed) managed DLL plus native binaries into the .nupkg.
-    - task: PythonScript@0
-      displayName: 'Pack NuGet package'
-      inputs:
-        scriptSource: filePath
-        scriptPath: '$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\pack_nuget.py'
-        arguments: >-
-          $(CudaPackNuGetCommonArgs)
-          --pack-only
+    # Pack the (now-signed) managed DLL plus one native RID into each .nupkg.
+    # Each invocation re-stages runtimes/ with only its own platform.
+    - ${{ if eq(parameters.platforms.win_x64, true) }}:
+      - task: PythonScript@0
+        displayName: 'Pack win-x64 NuGet package'
+        inputs:
+          scriptSource: filePath
+          scriptPath: '$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\pack_nuget.py'
+          arguments: >-
+            $(CudaPackNuGetCommonArgs)
+            --artifacts-dir "$(Build.BinariesDirectory)\artifacts"
+            --required-platforms win_x64
+            --package-id Microsoft.ML.OnnxRuntime.EP.Cuda${{ parameters.cuda_major }}.win-x64
+            --pack-only
+
+    - ${{ if eq(parameters.platforms.win_arm64, true) }}:
+      - task: PythonScript@0
+        displayName: 'Pack win-arm64 NuGet package'
+        inputs:
+          scriptSource: filePath
+          scriptPath: '$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\pack_nuget.py'
+          arguments: >-
+            $(CudaPackNuGetCommonArgs)
+            --artifacts-dir "$(Build.BinariesDirectory)\artifacts"
+            --required-platforms win_arm64
+            --package-id Microsoft.ML.OnnxRuntime.EP.Cuda${{ parameters.cuda_major }}.win-arm64
+            --pack-only
+
+    - ${{ if eq(parameters.platforms.linux_x64, true) }}:
+      - task: PythonScript@0
+        displayName: 'Pack linux-x64 NuGet package'
+        inputs:
+          scriptSource: filePath
+          scriptPath: '$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\pack_nuget.py'
+          arguments: >-
+            $(CudaPackNuGetCommonArgs)
+            --artifacts-dir "$(Build.BinariesDirectory)\artifacts"
+            --required-platforms linux_x64
+            --package-id Microsoft.ML.OnnxRuntime.EP.Cuda${{ parameters.cuda_major }}.linux-x64
+            --pack-only
+
+    - ${{ if eq(parameters.platforms.linux_aarch64, true) }}:
+      - task: PythonScript@0
+        displayName: 'Pack linux-arm64 NuGet package'
+        inputs:
+          scriptSource: filePath
+          scriptPath: '$(Build.SourcesDirectory)\plugin-ep-cuda\csharp\pack_nuget.py'
+          arguments: >-
+            $(CudaPackNuGetCommonArgs)
+            --artifacts-dir "$(Build.BinariesDirectory)\artifacts"
+            --required-platforms linux_aarch64
+            --package-id Microsoft.ML.OnnxRuntime.EP.Cuda${{ parameters.cuda_major }}.linux-arm64
+            --pack-only
 
     # ESRP sign
     - template: ../templates/esrp_nuget.yml

@@ -6,6 +6,7 @@
 #include "contrib_ops/cpu/sparse/sparse_attention_helper.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_v1_api.h"
 #include "contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_api.h"
+#include "core/common/safeint.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 
@@ -56,6 +57,8 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   disable_v1_kernel_ = ParseEnvironmentVariableWithDefault<bool>(sparse_attention::kDisableSparseAttentionV1, false);
+  disable_input_validation_ = ParseEnvironmentVariableWithDefault<bool>(
+      sparse_attention::kDisableInputValidation, false);
 }
 
 template <typename T>
@@ -105,6 +108,26 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                            block_col_indices,
                                                            seqlens_k_total,
                                                            total_seq_len));
+
+  // Validate CSR indices and key lengths on device to prevent out-of-bounds access.
+  // This must run before the shared-buffer check so OpTester-based tests can exercise it.
+  cudaStream_t cuda_stream = Stream(context);
+  if (!disable_input_validation_) {
+    auto csr_error_buffer = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(ValidateCSRIndicesOnDevice(
+        cuda_stream,
+        block_row_indices->Data<int32_t>(),
+        block_col_indices->Data<int32_t>(),
+        seqlens_k_total->Data<int32_t>(),
+        parameters.num_sparse_layout,
+        parameters.stride_row_indices - 1,  // max_blocks
+        parameters.stride_col_indices,      // col_count
+        parameters.batch_size,
+        parameters.sequence_length,
+        parameters.total_sequence_length,
+        csr_error_buffer.get()));
+  }
+
   // Some limitations of CUDA kernels
   // The v1 and v2 kernels have same coverage, so only check one of them to see whether it is supported.
   int sm = device_prop.major * 10 + device_prop.minor;
@@ -137,7 +160,6 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int32_t* total_k_seq_len_pinned = nullptr;
   AutoDestoryCudaEvent new_event;
   cudaEvent_t& isCopyDone = new_event.Get();
-  cudaStream_t cuda_stream = Stream(context);
   if (use_v2_kernel) {
     pinned_buffer = AllocateBufferOnCPUPinned<int32_t>(parameters.batch_size);
 
@@ -217,16 +239,16 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t rotary_buffer_bytes = 0;
   if (do_rotary_) {
-    rotary_buffer_bytes = 2 * sizeof(T) * parameters.batch_size * parameters.num_heads *
+    rotary_buffer_bytes = 2 * sizeof(T) * SafeInt<size_t>(parameters.batch_size) * parameters.num_heads *
                           parameters.sequence_length * parameters.head_size;
-    rotary_buffer_bytes += sizeof(int64_t) * parameters.batch_size * parameters.sequence_length;
+    rotary_buffer_bytes += sizeof(int64_t) * SafeInt<size_t>(parameters.batch_size) * parameters.sequence_length;
   }
   auto rotary_buffer = GetScratchBuffer<void>(rotary_buffer_bytes, GetComputeStream(context));
   data.rotary_buffer = reinterpret_cast<CudaT*>(rotary_buffer.get());
 
   size_t transposed_q_bytes = 0;
   if (!parameters.is_packed_qkv) {
-    transposed_q_bytes = parameters.batch_size * parameters.sequence_length *
+    transposed_q_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.sequence_length *
                          parameters.num_heads * parameters.head_size * sizeof(T);
   }
   auto transposed_q_buffer = GetScratchBuffer<void>(transposed_q_bytes, GetComputeStream(context));
@@ -236,8 +258,8 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   size_t unpacked_qkv_bytes = 0;
   if (parameters.is_packed_qkv) {
-    unpacked_qkv_bytes = (parameters.batch_size * parameters.sequence_length *
-                          (parameters.num_heads + 2 * parameters.kv_num_heads) *
+    unpacked_qkv_bytes = (SafeInt<size_t>(parameters.batch_size) * parameters.sequence_length *
+                          (SafeInt<size_t>(parameters.num_heads) + 2 * parameters.kv_num_heads) *
                           parameters.head_size * sizeof(T));
   }
   auto unpacked_qkv_buffer = GetScratchBuffer<void>(unpacked_qkv_bytes, GetComputeStream(context));

@@ -13,6 +13,7 @@
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_experimental_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
@@ -98,6 +99,13 @@ class ModelCompilationOptions {
                                                 void* state);
 
   /// <summary>
+  /// Sets a user-provided function to handle EPContext binary data writes.
+  /// </summary>
+  /// <param name="write_func">The user-provided OrtWriteNamedBufferFunc callback used to write EPContext data.</param>
+  /// <param name="state">The user's state.</param>
+  void SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state);
+
+  /// <summary>
   /// Sets information relate to EP context binary file.
   /// EP use this information to decide the location and context binary file name.
   /// Used while compiling model with input and output in memory buffer
@@ -173,6 +181,14 @@ class ModelCompilationOptions {
   /// <param name="graph_optimization_level">The optimization level</param>
   /// <returns></returns>
   Status SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);
+
+  /// <summary>
+  /// Enable weightless mode for model compilation.
+  /// When enabled, the compiled EPContext model will not embed constant initializer data.
+  /// </summary>
+  /// <param name="use_weightless">True to enable weightless mode</param>
+  /// <returns>Status indicating potential error</returns>
+  Status SetWeightlessEnabled(bool use_weightless);
 
   /// <summary>
   /// Checks if the compilation options described by this object are valid.

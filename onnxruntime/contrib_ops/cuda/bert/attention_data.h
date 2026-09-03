@@ -106,45 +106,6 @@ struct AttentionData {
   }
 };
 
-template <typename T>
-struct PackedAttentionData {
-  T* gemm_buffer;
-  const T* bias;
-  const T* attention_bias;
-  const int32_t* token_offset;
-  const int32_t* cumulative_sequence_length;
-
-  T* workspace;
-  T* output;
-
-  void* fused_runner;
-
-  bool use_memory_efficient_attention;
-};
-
-template <typename T>
-struct PackedMultiHeadAttentionData {
-  const T* query;
-  const T* key;
-  const T* value;
-  const T* bias;
-  const T* attention_bias;
-
-  const int32_t* token_offset;
-  const int32_t* cumulative_sequence_length;
-
-  AttentionQkvFormat source_qkv_format;
-
-  bool no_qkv_workspace;
-  T* workspace;
-  T* output;
-
-  void* fused_runner;
-
-  bool use_flash_attention;
-  bool use_memory_efficient_attention;
-};
-
 template <typename T, typename U>
 struct GroupQueryAttentionData {
   // Input Tensors
@@ -156,6 +117,17 @@ struct GroupQueryAttentionData {
   const T* cos_cache = nullptr;
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
+
+  // Optional additive attention bias, shape (batch_size or 1, num_heads or 1, sequence_length,
+  // total_sequence_length). Broadcast on dims 0/1 is carried by
+  // parameters.broadcast_attn_bias_dim_0/1. Only consumed by the unfused fallback path.
+  const T* attention_bias = nullptr;
+
+  // Optional per-head Q/K RMSNorm (QK-Norm) weights, shape (head_size,), shared across heads.
+  // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
+  const T* q_norm_weight = nullptr;
+  const T* k_norm_weight = nullptr;
+  float qk_norm_epsilon = 1e-6f;
 
   const float* k_scale = nullptr;
   const float* v_scale = nullptr;
@@ -171,6 +143,21 @@ struct GroupQueryAttentionData {
   // Padded sequence length for each batch. Shape [batch_size].
   // Only used for first prompt: padded_seq_lens[b] = sequence_length
   int* padded_seq_lens = nullptr;
+
+  // Cache-relative sequence lengths, used when parameters.is_windowed_kv_cache is set. Shape [batch_size].
+  // For a full-length (non-windowed) cache these simply alias past_seq_lens / total_seq_lens.
+  //   cache_past_seq_lens[b]  : append offset inside the capacity-C buffer, after eviction. May be
+  //                             negative on a first prompt longer than the capacity, in which case
+  //                             the leading (out-of-window) tokens are skipped by the append kernel.
+  //   cache_total_seq_lens[b] : number of valid cache entries after the append, i.e. min(T, C).
+  //   evict_counts[b]         : number of entries D dropped from the front of the cache this step.
+  int* cache_past_seq_lens = nullptr;
+  int* cache_total_seq_lens = nullptr;
+  int* evict_counts = nullptr;
+
+  // Scratch used by the windowed-cache compaction shift. Sized for one KV cache:
+  // batch_size * kv_num_heads * capacity * head_size elements of the storage type U.
+  void* compaction_scratch = nullptr;
 
   // Flash buffers
   T* softmax_lse = nullptr;
@@ -206,6 +193,12 @@ struct GroupQueryAttentionData {
   // XQA buffer
   void* xqa_buffer = nullptr;
   size_t xqa_buffer_bytes = 0;
+  // FP32 per-head attention sink consumed by the XQA kernel (nullptr when no head_sink input).
+  // Either points to a PrePack-cached buffer or to scratch that is filled at launch time.
+  float* xqa_head_sink = nullptr;
+  // When true, head_sink was not prepacked (e.g. dynamic/non-initializer input) and the FP16/BF16
+  // head_sink must be converted to xqa_head_sink (FP32 scratch) before launching XQA.
+  bool xqa_head_sink_needs_conversion = false;
 
   // Unfused fallback buffers (see LaunchUnfusedAttention in unfused_attention.h):
   //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)
@@ -222,35 +215,59 @@ struct GroupQueryAttentionData {
   void* cudnn_handle = nullptr;
 };
 
-template <typename T>
+// TCACHE is the element type of the paged key/value cache. It equals T for an unquantized cache and
+// is int8_t / Float8E4M3FN when the cache is quantized (see PagedAttentionParameters::k_quant_type).
+template <typename T, typename TCACHE = T>
 struct PagedAttentionData {
   // Input Tensors
   const T* query = nullptr;
   const T* key = nullptr;
   const T* value = nullptr;
-  T* key_cache = nullptr;
-  T* value_cache = nullptr;
+  TCACHE* key_cache = nullptr;
+  TCACHE* value_cache = nullptr;
+  // FP32 quantization scales for the paged cache: (1,) for PER_TENSOR and
+  // (kv_num_heads, 1, head_size) for PER_CHANNEL. nullptr when the cache is not quantized.
+  const float* k_scale = nullptr;
+  const float* v_scale = nullptr;
   const int* cumulative_seqlens_q = nullptr;
   const int* past_seqlens = nullptr;
   const int* block_table = nullptr;
-  const int* slot_mappings = nullptr;
+  // Optional explicit write slots, one per query token, into the cache viewed as
+  // [num_blocks * block_size, kv_num_heads, head_size]. A value of -1 suppresses the K/V store
+  // for that token (prefix cache hit / rejected speculative token). nullptr keeps the legacy
+  // derived mapping (past_seqlens + position within the sequence).
+  const int* slot_mapping = nullptr;
   const T* cos_cache = nullptr;
   const T* sin_cache = nullptr;
+  // Per-head attention sink (num_heads,). nullptr with use_smooth_softmax means a sink value of 0.
+  const T* head_sink = nullptr;
+  // QK-Norm weights (head_size,), shared across heads. Both are set or neither is.
+  const T* q_norm_weight = nullptr;
+  const T* k_norm_weight = nullptr;
 
-  // Flash buffers
-  T* softmax_lse = nullptr;
+  // Flash buffers. FlashAttention always emits FP32 log-sum-exp regardless of T.
+  float* softmax_lse = nullptr;
+  float* flash_softmax_lse_accum = nullptr;
+  float* flash_out_accum = nullptr;
+  int flash_num_splits = 0;
   int* cumulative_seqlens_kv = nullptr;  // Flash api takes cumulative sequence length for kv-cache
 
   // Fused op buffers
   T* workspace_buffer = nullptr;
 
-  // Memory-efficient attention (CUTLASS fMHA) buffers for the unfused fallback path
-  // taken when FlashAttention is unavailable (SM<80 or ORT_DISABLE_FLASH_ATTENTION).
-  T* gathered_key = nullptr;    // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
-  T* gathered_value = nullptr;  // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
-  T* fmha_buffer = nullptr;     // CUTLASS fMHA output-accumulator workspace
+  // Dense KV staging buffers. Always used by the memory-efficient (CUTLASS fMHA) fallback, which
+  // needs a packed-varlen [total_kv_tokens, num_heads, head_size] GQA-expanded view of the cache.
+  // The FlashAttention path also uses them when the cache is quantized: Flash cannot read a
+  // quantized page directly, so the cache is dequantized into [total_kv_tokens, kv_num_heads,
+  // head_size] (no GQA expansion) and fed to the non-paged varlen entry point.
+  T* gathered_key = nullptr;
+  T* gathered_value = nullptr;
+  T* fmha_buffer = nullptr;  // CUTLASS fMHA output-accumulator workspace
   // Populated by the caller after a D->H sync on cumulative_seqlens_kv[batch_size].
   int total_kv_tokens = 0;
+  // Max per-batch total KV length. Only needed when the gathered (non-paged) Flash path is used,
+  // where it becomes mha_varlen_fwd's max_seqlen_k.
+  int max_kv_len = 0;
 
   // Actual max of per-batch new-query lengths (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i]).
   // Populated by the caller via the same D->H sync so the MEA path's rotary grid and MEA's
@@ -259,12 +276,39 @@ struct PagedAttentionData {
   // producing silent per-token dropout in MEA and rotary.
   int max_query_len = 0;
 
+  // Paged decode (flash-decoding style) split-KV workspaces. Only allocated when the paged decode
+  // backend is selected. Layouts are [num_splits, token_count, num_heads, head_size] for the
+  // accumulator and [num_splits, token_count, num_heads] for the running max / denominator.
+  float* decode_partial_out = nullptr;
+  float* decode_partial_max = nullptr;
+  float* decode_partial_sum = nullptr;
+  int num_splits = 1;
+
+  // Paged XQA decode workspaces. Only allocated when the XQA decode backend is selected
+  // (quantized cache, one new token per sequence -- see use_xqa_decode).
+  //   xqa_workspace          : XQA semaphores + multi-block scratch (GetXQAScratchSize bytes).
+  //   xqa_page_table_scratch : mutable destination for expansion when block_size is greater than 128.
+  //   xqa_query              : scratch for Q pre-scaled by a PER_CHANNEL k_scale; unused otherwise.
+  //   xqa_head_sink          : head_sink converted to fp32, which is what XQA consumes.
+  void* xqa_workspace = nullptr;
+  size_t xqa_workspace_size = 0;
+  int* xqa_page_table_scratch = nullptr;
+  T* xqa_query = nullptr;
+  float* xqa_head_sink = nullptr;
+
   // Output Tensors
   T* output = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
+  // Paged decode kernel: reads the paged cache in place and dequantizes inside the kernel, so it
+  // needs neither the dense staging buffers nor FlashAttention's page-alignment constraint.
+  bool use_paged_decode = false;
+  // XQA paged decode kernel: same in-place paged read, but tensor-core based and an order of
+  // magnitude faster than the generic decode kernel on a quantized cache. Takes precedence over
+  // use_paged_decode when set.
+  bool use_xqa_decode = false;
 };
 
 }  // namespace cuda

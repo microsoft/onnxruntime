@@ -11,7 +11,7 @@
 namespace onnxruntime {
 
 // Prior to addition to SessionOptions the EP options do not have a prefix.
-// They are prefixed with 'ep.<ep_name>.' when added to SessionOptions.
+// They are prefixed with the provider-specific session option prefix when added to SessionOptions.
 //
 // Use this function to get the options without the prefix from SessionOptions.
 // Required by the option parsing for multiple existing EPs.

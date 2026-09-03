@@ -76,8 +76,9 @@ variables:
   value: $(Agent.TempDirectory)\v13.0
 - name: win_cudnn_home
   value: $(Agent.TempDirectory)\9.14.0.64_cuda13
+# Windows x64 CUDA architectures. Keep in sync with plugin-cuda-pipeline.yml.
 - name: CudaArchs
-  value: '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
+  value: '75-real;80-real;86-real;89-real;120-real'
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
@@ -86,7 +87,7 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     settings:
-      networkIsolationPolicy: Permissive
+      networkIsolationPolicy: CFSClean2,CFSClean3,DefaultDeny
     featureFlags:
       binskimScanAllExtensions: true
     sdl:
@@ -163,7 +164,6 @@ extends:
           --enable_wcos
           --skip_submodule_sync
           --use_dml
-          --use_telemetry
           --use_webgpu
         BuildArch: 'x64'
         sln_platform: 'x64'
@@ -185,7 +185,6 @@ extends:
           --enable_wcos
           --skip_submodule_sync
           --use_dml
-          --use_telemetry
           --use_webgpu
         BuildArch: 'x64'
         sln_platform: 'arm64'

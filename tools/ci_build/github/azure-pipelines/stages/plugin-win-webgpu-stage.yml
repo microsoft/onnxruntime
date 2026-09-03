@@ -35,11 +35,9 @@ stages:
         clean: all
       pool:
         ${{ if eq(parameters.arch, 'arm64') }}:
-          name: onnxruntime-qnn-windows-vs-2022-arm64
+          name: onnxruntime-medium-arm64-scus
           os: windows
           hostArchitecture: Arm64
-          demands:
-            - Agent.Version -equals 4.264.2
         ${{ else }}:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
@@ -64,9 +62,7 @@ stages:
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:
@@ -195,11 +191,9 @@ stages:
         clean: all
       pool:
         ${{ if eq(parameters.arch, 'arm64') }}:
-          name: onnxruntime-qnn-windows-vs-2022-arm64
+          name: onnxruntime-medium-arm64-scus
           os: windows
           hostArchitecture: Arm64
-          demands:
-            - Agent.Version -equals 4.264.2
         ${{ else }}:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
@@ -211,9 +205,7 @@ stages:
       variables:
       - template: ../templates/common-variables.yml
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:

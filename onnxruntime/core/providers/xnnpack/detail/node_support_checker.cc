@@ -39,6 +39,12 @@ using FuseCheckerFn = std::function<const NodeUnit*(
     const GraphViewer& graph,
     const std::unordered_map<const Node*, const NodeUnit*>& supported_node_unit_map)>;
 
+bool HasOnlyActivationConsumer(const Node& producer, const Node& activation, const GraphViewer& graph) {
+  return !graph.NodeProducesGraphOutput(producer) &&
+         producer.GetOutputEdgesCount() == 1 &&
+         producer.OutputEdgesBegin()->GetNode().Index() == activation.Index();
+}
+
 const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
                                 const GraphViewer& graph,
                                 const std::unordered_map<const Node*, const NodeUnit*>& supported_node_unit_map) {
@@ -58,6 +64,10 @@ const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
         input0.Domain() != kMSInternalNHWCDomain ||
         (node_to_be_fuse.count(input0.OpType()) == 0) ||
         supported_node_unit_map.at(&input0)->UnitType() == NodeUnit::Type::QDQGroup) {
+      break;
+    }
+
+    if (!HasOnlyActivationConsumer(input0, node, graph)) {
       break;
     }
 

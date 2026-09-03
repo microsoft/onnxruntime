@@ -5,6 +5,7 @@
 #include "core/common/span_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/propagate_cast_ops_metadata.h"
 #include "core/optimizer/utils.h"
 #include <deque>
 
@@ -71,58 +72,34 @@ using FP16AllowOps = PropagateCastOps::FP16AllowOps;
 
 /*
  *  Check if the input is relevant to consider for cast propagation for the given node.
- *  Return true if the opcode is not found in the opcode_to_input map.
+ *  Return true if the opcode is not found in the compile-time metadata table.
  */
 static bool IsRelevantInput(const Node* node, const NodeArg* input) {
   /*
-   *  The following map specifies the opcode to input mapping to list the inputs to consider while propagating
-   *  cast operations. All other inputs not listed in this table are not relevant for deciding whether an operation
-   *  performed in float or float16. If an opcode is not listed in these tables, the code will look at all the inputs to validate
-   *  transformation.
+   *  The compile-time metadata lists the inputs to consider while propagating cast operations. Inputs not listed
+   *  for that opcode are not relevant for deciding whether an operation is performed in float or float16.
+   *  If an opcode is not listed, the code looks at all inputs to validate the transformation.
    */
-  static const InlinedHashMap<std::string_view, std::array<int, 3>> opcode_to_input_map = {
-      {"Gather", {0}},
-      {"Reshape", {0}},
-      {"Dropout", {0}},
-      {"Expand", {0}},
-      {"LayerNormalization", {0, 1, 2}},
-      {"Squeeze", {0}},
-      {"Unsqueeze", {0}}};
-
-  auto it = opcode_to_input_map.find(node->OpType());
-  if (it != opcode_to_input_map.cend()) {
-    const auto& selected_inputs = it->second;
-    int input_index = optimizer_utils::IndexOfNodeInput(*node, *input);
-    return std::find(selected_inputs.begin(), selected_inputs.end(), input_index) != selected_inputs.end();
+  const auto* metadata = propagate_cast_ops_internal::FindRelevantOpArgs(node->OpType());
+  if (metadata != nullptr) {
+    return metadata->IsRelevantInput(optimizer_utils::IndexOfNodeInput(*node, *input));
   }
   return true;
 }
 
 /*
  *  Check if the output is relevant to consider for cast propagation for the given node.
- *  Return true if the opcode is not found in the opcode_to_output map.
+ *  Return true if the opcode is not found in the compile-time metadata table.
  */
 static bool IsRelevantOutput(const Node* node, const NodeArg* output) {
   /*
-   *  The following map specifies the opcode to output mapping to list the outputs to consider while propagating
-   *  cast operations. All other outputs not listed in this table are not relevant for deciding whether an operation
-   *  performed in float or float16. If an opcode is not listed in these tables, the code will look at all the outputs to validate
-   *  transformation.
+   *  The compile-time metadata lists the outputs to consider while propagating cast operations. Outputs not listed
+   *  for that opcode are not relevant for deciding whether an operation is performed in float or float16.
+   *  If an opcode is not listed, the code looks at all outputs to validate the transformation.
    */
-  static const InlinedHashMap<std::string_view, std::array<int, 1>> opcode_to_output_map = {
-      {"Gather", {0}},
-      {"Reshape", {0}},
-      {"Dropout", {0}},
-      {"Expand", {0}},
-      {"LayerNormalization", {0}},
-      {"Squeeze", {0}},
-      {"Unsqueeze", {0}}};
-
-  auto it = opcode_to_output_map.find(node->OpType());
-  if (it != opcode_to_output_map.cend()) {
-    const auto& selected_outputs = it->second;
-    int input_index = optimizer_utils::IndexOfNodeOutput(*node, *output);
-    return std::find(selected_outputs.begin(), selected_outputs.end(), input_index) != selected_outputs.end();
+  const auto* metadata = propagate_cast_ops_internal::FindRelevantOpArgs(node->OpType());
+  if (metadata != nullptr) {
+    return metadata->IsRelevantOutput(optimizer_utils::IndexOfNodeOutput(*node, *output));
   }
   return true;
 }
