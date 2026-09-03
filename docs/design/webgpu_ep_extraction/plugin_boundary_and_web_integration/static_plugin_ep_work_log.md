@@ -661,6 +661,23 @@ never counted.
 5. **Follow-up cleanup** listed at the end of the design doc, including removing the WebGPU special cases that
    only exist while it is still an "internal" EP.
 6. **Open the PR.**
+7. **Keep the higher-level plan docs in sync with `edgchen1/webgpu_ep_extraction_plan`.** That branch is the
+   authoritative source for the overall extraction docs — the overview and the four workstream documents. It
+   deliberately does *not* carry `static_plugin_ep_registration_design.md` or this work log: it added them in
+   `a75b4c1294` and removed them again in `fdf2f53e0a`, so implementation-level docs live on this branch and the
+   new design docs are added when this branch lands. Until then, any change made here to a *higher-level* doc
+   must also be upstreamed to that branch. Two practical consequences:
+   - Do not merge this branch *into* the plan branch — that would restore the two files and undo `fdf2f53e0a`.
+     Merge in the other direction only, then upstream individual higher-level edits by hand.
+   - An edit that only adds a cross-reference to a doc that exists solely on this branch is *not* upstreamable
+     as-is; it would be a broken link there. Upstream the substantive part without the link, or defer it.
+
+   Current delta against the plan branch, as of this entry: three hunks, all touching the static-plugin docs.
+   Two are pure cross-references and land with this branch. The third resolves a plan-level open question --
+   static factories are registered by ORT core during `OrtEnv` creation, not before it and not through
+   environment construction options. That resolution is upstreamable on its own once the trailing link is
+   dropped; **decision: deferred until this branch lands**, at which point the link becomes valid and the whole
+   set can go across together.
 
 ## Environment notes
 
