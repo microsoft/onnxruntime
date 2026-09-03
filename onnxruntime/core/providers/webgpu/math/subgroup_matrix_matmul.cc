@@ -88,9 +88,6 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
 
   Status Compute(ComputeContext& context,
                  const std::vector<const Tensor*>& inputs,
-                 const TensorShape& a_shape,
-                 const TensorShape& b_shape,
-                 const TensorShape& output_shape,
                  Tensor* output,
                  const Activation& activation,
                  bool is_channels_last,
@@ -101,6 +98,8 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
 
     const auto* a = inputs[0];
     const auto* b = inputs[1];
+    const auto& a_shape = a->Shape();
+    const auto& b_shape = b->Shape();
     const bool has_bias = inputs.size() > 2;
     const size_t a_rank = a_shape.NumDimensions();
     const size_t b_rank = b_shape.NumDimensions();
@@ -158,12 +157,10 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
 
     // The optimized path will run: now materialize the even-strided B for odd N.
     const Tensor* b_used = b;
-    TensorShape b_used_shape = b_shape;
     uint32_t N_b = N;
     if (needs_padded_b) {
       ORT_RETURN_IF_ERROR(EnsurePaddedB(context, *b, b_shape, N));
       b_used = padded_b_.get();
-      b_used_shape = b_used->Shape();
       N_b = padded_b_stride_;
     }
 
@@ -187,9 +184,9 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
     program.SetDispatchGroupSize(dispatch_x, dispatch_y, batch);
     program.CacheHint(activation.CacheKey(), has_bias, config_index_,
                       sg_mat_count_m, sg_mat_count_n, split_k)
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape, 1},
-                    {b_used, ProgramTensorMetadataDependency::TypeAndRank, b_used_shape, 1}})
-        .AddOutput({output, ProgramTensorMetadataDependency::Rank, output_shape, 1})
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                    {b_used, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+        .AddOutput({output, ProgramTensorMetadataDependency::Rank, 1})
         .AddUniformVariables({{M}, {N}, {K}, {dispatch_x}, {N_b}});
     // Activation uniforms must remain last because definitions and values are matched by index.
     AppendActivationUniformsData(activation, program);

@@ -9,7 +9,6 @@
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/cpu/math/matmul_helper.h"
-#include "core/providers/webgpu/math/matmul_naive.h"
 #include "core/providers/webgpu/math/matmul_utils.h"
 #include "core/providers/webgpu/math/matmul_packed.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -24,9 +23,6 @@ class MatMulOptImpl {
 
   virtual Status Compute(ComputeContext& context,
                          const std::vector<const Tensor*>& inputs,
-                         const TensorShape& a_shape,
-                         const TensorShape& b_shape,
-                         const TensorShape& output_shape,
                          Tensor* output,
                          const Activation& activation,
                          bool is_channels_last,

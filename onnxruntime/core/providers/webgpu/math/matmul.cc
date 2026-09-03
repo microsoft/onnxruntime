@@ -27,44 +27,6 @@ MatMulOptImpl* MatMulComputeCache::GetOrCreateSubgroupMatrixImpl(const ComputeCo
   return subgroup_impl_.get();
 }
 
-std::optional<MatMulNaiveProgramInfo> AnalyzeMatMulNaiveProgram(
-    const TensorShape& a_shape,
-    const TensorShape& b_shape,
-    bool is_channels_last) {
-  MatMulComputeHelper helper;
-  if (!helper.Compute(a_shape, b_shape).IsOK() || helper.N() >= 8 || helper.K() >= 8) {
-    return std::nullopt;
-  }
-
-  const uint32_t m = narrow<uint32_t>(helper.M());
-  const uint32_t n = narrow<uint32_t>(helper.N());
-  const uint32_t k = narrow<uint32_t>(helper.K());
-  const uint32_t components = narrow<uint32_t>(GetMaxComponents(n));
-  const uint32_t a_components = narrow<uint32_t>(GetMaxComponents(k));
-  const uint32_t output_number = narrow<uint32_t>(GetMaxComponents(m));
-  const TensorShape output_shape = helper.OutputShape();
-  const size_t output_rank = output_shape.NumDimensions();
-  const TensorShape outer_dims =
-      output_rank > 2 ? output_shape.Slice(0, output_rank - 2) : TensorShape({});
-  const int64_t output_rows =
-      a_shape.NumDimensions() > 1 ? a_shape[a_shape.NumDimensions() - 2] : 1;
-
-  return MatMulNaiveProgramInfo{
-      m,
-      n,
-      k,
-      components,
-      a_components,
-      output_number,
-      narrow<uint32_t>(output_shape.Size() / components / output_number),
-      is_channels_last ? components : 1u,
-      output_rank,
-      ReduceShapeByComponents(a_shape, a_components),
-      ReduceShapeByComponents(b_shape, components),
-      TensorShape({outer_dims.Size(), output_rows, n / components}),
-      outer_dims};
-}
-
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     MatMul,
     kOnnxDomain,
@@ -206,31 +168,9 @@ Status ComputeMatMul(ComputeContext* context,
   const TensorShape& logical_b_shape = b->Shape();
   ORT_RETURN_IF_NOT(logical_a_shape.NumDimensions() >= 2 && logical_b_shape.NumDimensions() >= 2,
                     "ComputeMatMul expects matrix or batched-matrix inputs.");
-  TensorShape a_shape = logical_a_shape;
-  TensorShape b_shape = logical_b_shape;
 
   MatMulComputeHelper helper;
-  ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
-  const int64_t batchA =
-      a_shape.NumDimensions() > 2 ? a_shape.SizeToDimension(a_shape.NumDimensions() - 2) : 1;
-  const int64_t batchB =
-      b_shape.NumDimensions() > 2 ? b_shape.SizeToDimension(b_shape.NumDimensions() - 2) : 1;
-
-  TensorShape output_shape = helper.OutputShape();
-
-  // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
-  // performance (e.g., [2,3,5] → [1,6,5]).
-  if (batchA != 1 && batchB == 1) {
-    // dimensions of A: [`batchA` * M, K]
-    int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
-    TensorShapeVector dims_a = {batchAndM, helper.K()};
-    // dimensions of B: [K, N]
-    TensorShapeVector dims_b = {helper.K(), helper.N()};
-
-    a_shape = TensorShape(dims_a);
-    b_shape = TensorShape(dims_b);
-    output_shape = {batchAndM, helper.N()};
-  }
+  ORT_THROW_IF_ERROR(helper.Compute(logical_a_shape, logical_b_shape));
 
   std::unique_ptr<MatMulOptImpl> invocation_impl;
   MatMulOptImpl* subgroup_impl = nullptr;
@@ -243,41 +183,70 @@ Status ComputeMatMul(ComputeContext* context,
   if (subgroup_impl != nullptr) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(subgroup_impl->Compute(
-        *context, inputs, a_shape, b_shape, output_shape, output_tensor,
+        *context, inputs, output_tensor,
         activation, is_channels_last, b_is_constant, cache != nullptr, handled));
     if (handled) {
       return Status::OK();
     }
   }
-  const auto naive_info = AnalyzeMatMulNaiveProgram(logical_a_shape, logical_b_shape, is_channels_last);
-  if (naive_info.has_value()) {
-    MatMulNaiveProgram program{activation, naive_info->output_rank,
-                               naive_info->output_number, has_bias, is_channels_last};
+  if (helper.N() < 8 && helper.K() < 8) {
+    const uint32_t m = narrow<uint32_t>(helper.M());
+    const uint32_t n = narrow<uint32_t>(helper.N());
+    const uint32_t k = narrow<uint32_t>(helper.K());
+    const int components = GetMaxComponents(n);
+    const int a_components = GetMaxComponents(k);
+    const int64_t output_number = GetMaxComponents(m);
+    const TensorShape& logical_output_shape = helper.OutputShape();
+    const size_t output_rank = logical_output_shape.NumDimensions();
+    const TensorShape outer_dims =
+        output_rank > 2 ? logical_output_shape.Slice(0, output_rank - 2) : TensorShape({});
+    const int64_t output_rows = logical_a_shape[logical_a_shape.NumDimensions() - 2];
+    const TensorShape output_program_shape{
+        outer_dims.Size(), output_rows, n / components};
+    const uint32_t output_size =
+        narrow<uint32_t>(logical_output_shape.Size() / components / output_number);
+
+    MatMulNaiveProgram program{activation, output_rank, output_number, has_bias, is_channels_last};
     program
-        .CacheHint(activation.CacheKey(), std::to_string(naive_info->components),
-                   std::to_string(naive_info->a_components),
-                   std::to_string(naive_info->output_number), std::to_string(is_channels_last))
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank,
-                     naive_info->a_program_shape, narrow<int>(naive_info->a_components)},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank,
-                     naive_info->b_program_shape, narrow<int>(naive_info->components)}});
+        .CacheHint(activation.CacheKey(), std::to_string(components),
+                   std::to_string(a_components), std::to_string(output_number),
+                   std::to_string(is_channels_last))
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_components},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, components}});
     if (has_bias) {
-      program.AddInput({inputs[2], ProgramTensorMetadataDependency::Rank,
-                        ReduceShapeByComponents(inputs[2]->Shape(), naive_info->bias_components),
-                        narrow<int>(naive_info->bias_components)});
+      const int bias_components = is_channels_last ? components : 1;
+      program.AddInput({inputs[2], ProgramTensorMetadataDependency::Rank, bias_components});
     }
     program
         .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::None,
-                      naive_info->output_program_shape, narrow<int>(naive_info->components)}})
-        .SetDispatchGroupSize(CeilDiv(naive_info->output_size, 64u))
-        .AddIndices(naive_info->outer_dims)
-        .AddUniformVariables({{naive_info->output_size}, {naive_info->M}, {naive_info->N}, {naive_info->K}});
+                      output_program_shape, components}})
+        .SetDispatchGroupSize(CeilDiv(output_size, 64u))
+        .AddIndices(outer_dims)
+        .AddUniformVariables({{output_size}, {m}, {n}, {k}});
     AppendActivationUniformsData(activation, program);
     return context->RunProgram(program);
   }
 
   if (intel::CanApplyMatMulIntel(*context, helper.M(), helper.N(), helper.K())) {
     return intel::ApplyMatMulIntel(*context, activation, inputs, output_tensor, is_channels_last);
+  }
+
+  TensorShape a_shape = logical_a_shape;
+  TensorShape b_shape = logical_b_shape;
+  TensorShape output_shape = helper.OutputShape();
+  const int64_t batchA =
+      a_shape.NumDimensions() > 2 ? a_shape.SizeToDimension(a_shape.NumDimensions() - 2) : 1;
+  const int64_t batchB =
+      b_shape.NumDimensions() > 2 ? b_shape.SizeToDimension(b_shape.NumDimensions() - 2) : 1;
+
+  // The generic path benefits from folding A's batch dimensions into M when B
+  // is shared. The subgroup and Intel paths derive their own dispatch shapes
+  // directly from the tensor views and have already declined above.
+  if (batchA != 1 && batchB == 1) {
+    const int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
+    a_shape = TensorShape({batchAndM, helper.K()});
+    b_shape = TensorShape({helper.K(), helper.N()});
+    output_shape = TensorShape({batchAndM, helper.N()});
   }
 
   // helpful dimension variables
