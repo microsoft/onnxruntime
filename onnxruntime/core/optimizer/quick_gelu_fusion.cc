@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
+
 #include "core/optimizer/quick_gelu_fusion.h"
 
 #include "core/graph/graph_utils.h"
@@ -11,6 +13,13 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+
+static constexpr std::array cpu_supported_data_types{"tensor(float)"};
+
+static bool IsSupportedDataType(const Node& node) {
+  return node.GetExecutionProviderType() != kCpuExecutionProvider ||
+         optimizer_utils::IsSupportedDataType(node, cpu_supported_data_types);
+}
 
 /**
 Rewrite x*sigmoid(alpha*x) or x*sigmoid(x) to QuickGelu.
@@ -24,6 +33,10 @@ Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     Node& node = *p_node;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+
+    if (!IsSupportedDataType(node)) {
+      continue;
+    }
 
     InlinedVector<std::reference_wrapper<Node>> nodes_to_fuse;
 
