@@ -81,6 +81,12 @@ inline int PaddedK(int k) {
   return 256;
 }
 
+// H200 sweeps show that Hybrid consistently wins from this dimension for single-row K >= 16
+// and multi-row K >= 64. SmallK or RadixTopK is faster outside those regions, especially for K = 1.
+inline bool IsPreferred(int64_t rows, int64_t dimension, int64_t k) {
+  return dimension >= 8192 && ((rows == 1 && k >= 16) || (rows > 1 && k >= 64));
+}
+
 template <int K>
 constexpr int ReductionBlockSize() {
   return K <= 16 ? 128 : 256;

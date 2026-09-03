@@ -591,6 +591,7 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
   if constexpr (std::is_same_v<CudaT, float> || std::is_same_v<CudaT, __half> ||
                 std::is_same_v<CudaT, BFloat16>) {
     if (axis == static_cast<int32_t>(size) - 1 && largest == 1 && sorted == 1 &&
+        hybrid_topk::IsPreferred(N, dimension, K) &&
         hybrid_topk::IsSupported(kernel, N, dimension, K)) {
       return hybrid_topk::Run(kernel, stream, alloc_stream, input_x_ptr, output_v_ptr, output_i,
                               static_cast<int>(N), static_cast<int>(dimension), static_cast<int>(K));
