@@ -431,9 +431,9 @@ the default:
   and that is a compatibility break on the default path rather than an opt-in behaviour change. The
   detection cannot tell such a model apart from one saved by a BNHS session, so it must not fail.
 
-Neither is applied on the ORT format path: there the option is forced to BNSH (5), and a model
-converted to BNHS offline is the documented way to use the layout at all, so the same check would
-reject the supported workflow.
+The same split applies on the ORT format path (5), for the same reason: an explicit BNSH request is
+rejected against a converted model, while an absent option is not, because loading a converted model
+with no option set is the documented way to use BNHS there.
 
 **Skipped when saving an ORT format model.** That path runs the partitioner in
 `GraphPartitioner::Mode::kAssignOnly`, which deliberately leaves the original nodes in place rather
@@ -494,11 +494,23 @@ limitation instead of naming the bad value and the accepted ones.
 Because such a model is loaded *without* the option, nothing records its boundaries, so the 4.2
 diagnostic would not run over it even though it still carries the Transposes.
 `FindConvertedGqaValueLayoutBoundaries(graph)` detects them from the graph instead — called before
-partitioning, while the GQA nodes are still present to anchor on — and the report runs after. Unlike
-the ORT-format *writing* path, `kOrtFormatLoad` does compile and fuse, so a surviving Transpose here
-really will execute. This part is `#if !defined(ORT_MINIMAL_BUILD)`: the translation unit is not in
-the minimal source lists, and it is a developer diagnostic rather than something correctness depends
-on.
+partitioning, while the GQA nodes are still present to anchor on. It serves two purposes here:
+
+- **Enforcing an explicit BNSH request**, exactly as on the ONNX path (4.1). Without it an
+  application that sets BNSH and trusts ORT to check would bind BNSH buffers against a BNHS boundary.
+- **Driving the unfused-Transpose report** after partitioning. Unlike the ORT-format *writing* path,
+  `kOrtFormatLoad` does compile and fuse, so a surviving Transpose here really will execute.
+
+The detection lives in its own translation unit, `gqa_value_layout_boundaries.cc`, which **is** in the
+minimal build source lists — the transformer itself is not. That matters because a minimal build
+serves ORT format models only, so this is the sole path on which the BNSH claim can be checked at all;
+guarding the check on build flavour would leave it silently unenforced exactly where a layout misread
+is hardest to diagnose. The report stays full-build only, being a developer diagnostic rather than
+something correctness depends on.
+
+Splitting the file also keeps one definition of "already converted": `ClassifyPastValue` and
+`ClassifyPresentValue` call the same `FindConverted*Boundary` primitives, so the transformer and the
+ORT format path cannot drift apart on what the converted shape looks like.
 
 That check is deliberately **not** guarded on the build flavour. A minimal build serves ORT format
 models only — `InferenceSession::Initialize` refuses anything else — so this is the only place the
@@ -554,6 +566,9 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - `FindConvertedGqaValueLayoutBoundaries` finds both boundaries of an already-converted graph and
   none in an unconverted one, which is what makes the ORT-format diagnostic (5) possible.
 - An invalid option value on an ORT format model reports the bad value, not the format restriction.
+- An ORT format model carrying BNHS boundaries is rejected when BNSH is explicitly requested and loads
+  when the option is unset. The fixture round-trips a converted model through ORT format serialization
+  rather than checking in a binary fixture, so it stays honest if the format changes.
 - A BNHS-converted model fails initialization when BNSH is requested explicitly, and loads cleanly
   when the option is set to BNHS.
 - The same model loads unchanged when no option is set, which is the compatibility case. That test

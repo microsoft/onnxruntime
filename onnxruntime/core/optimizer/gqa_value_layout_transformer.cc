@@ -49,26 +49,6 @@ std::string DescribeNode(const Node& node) {
   return node.Name().empty() ? ("GroupQueryAttention#" + std::to_string(node.Index())) : node.Name();
 }
 
-// Is this a Transpose node that swaps the last two dimensions of a rank-4 tensor?
-bool IsValueLayoutTranspose(const Node& node) {
-  if (node.OpType() != "Transpose" || node.Domain() != kOnnxDomain) {
-    return false;
-  }
-
-  const auto* perm = graph_utils::GetNodeAttribute(node, "perm");
-  if (perm == nullptr || static_cast<size_t>(perm->ints_size()) != kValueLayoutPerm.size()) {
-    return false;
-  }
-
-  for (size_t i = 0; i < kValueLayoutPerm.size(); ++i) {
-    if (perm->ints(static_cast<int>(i)) != kValueLayoutPerm[i]) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 // Whether one Value operand of a node is something this transformer can or should convert. The
 // two operands are classified independently: a model may legitimately expose only one of them to
 // the application, and converting just that one keeps the graph coherent because the GQA node
@@ -79,20 +59,6 @@ enum class OperandStatus {
   kConvertible,  // sits at an application boundary and is not converted yet
   kOutOfScope,   // present, but not a boundary the application binds; it stays BNSH
 };
-
-// Graph inputs excluding initializers: the tensors an application must supply. An initializer that
-// is not also a graph input is baked into the model and can never be bound, so it is out of scope.
-bool IsApplicationInput(const Graph& graph, const NodeArg* arg) {
-  if (arg == nullptr) {
-    return false;
-  }
-  for (const auto* graph_input : graph.GetInputs()) {
-    if (graph_input != nullptr && graph_input->Name() == arg->Name()) {
-      return true;
-    }
-  }
-  return false;
-}
 
 // An initializer that is also declared as a graph input, so a feed may override it at run time.
 bool IsOverridableInitializer(const Graph& graph, const NodeArg* arg) {
@@ -119,12 +85,10 @@ Status ClassifyPastValue(const Graph& graph, const Node& node, OperandStatus& st
 
   // Converting again would insert a second Transpose and swap the boundary shape back to BNSH while
   // the application still supplies BNHS, so recognizing the converted form is a correctness
-  // requirement rather than an optimization.
-  const Node* producer = graph.GetProducerNode(arg->Name());
-  if (producer != nullptr && IsValueLayoutTranspose(*producer) &&
-      IsApplicationInput(graph, producer->InputDefs()[0])) {
+  // requirement rather than an optimization. Shared with the ORT format path, which detects the same
+  // shape without running this transformer, so the two cannot drift apart.
+  if (FindConvertedPastValueBoundary(graph, node, boundary_name)) {
     status = OperandStatus::kConverted;
-    boundary_name = producer->InputDefs()[0]->Name();  // the graph input, not the GQA operand
     return Status::OK();
   }
 
@@ -140,7 +104,7 @@ Status ClassifyPastValue(const Graph& graph, const Node& node, OperandStatus& st
                 "' option cannot convert: the initializer data would stay BNSH. Remove the initializer so the "
                 "input is supplied by the application, or transpose it to BNHS when producing the model.");
 
-  status = IsApplicationInput(graph, arg) ? OperandStatus::kConvertible : OperandStatus::kOutOfScope;
+  status = IsGqaApplicationInput(graph, arg) ? OperandStatus::kConvertible : OperandStatus::kOutOfScope;
   if (status == OperandStatus::kConvertible) {
     boundary_name = arg->Name();
   }
@@ -153,28 +117,17 @@ OperandStatus ClassifyPresentValue(const Graph& graph, const Node& node, std::st
     return OperandStatus::kAbsent;
   }
 
-  const NodeArg* arg = node.OutputDefs()[kPresentValueOutputIndex];
+  // Shared with the ORT format path. Note this deliberately returns false for an operand that is
+  // itself a graph output, even when something downstream transposes it onward: that operand is an
+  // application-visible BNSH boundary in its own right and still needs converting.
+  if (FindConvertedPresentValueBoundary(graph, node, boundary_name)) {
+    return OperandStatus::kConverted;
+  }
 
-  // Checked before looking for a boundary Transpose. If the operand is itself a graph output then it
-  // is an application-visible BNSH boundary in its own right and needs converting -- it must not be
-  // mistaken for the internal intermediate of an already converted node just because something
-  // downstream happens to transpose it to a second graph output. Getting that backwards would leave
-  // an application-visible output in BNSH after the session accepted BNHS.
+  const NodeArg* arg = node.OutputDefs()[kPresentValueOutputIndex];
   if (graph.IsOutput(arg)) {
     boundary_name = arg->Name();
     return OperandStatus::kConvertible;
-  }
-
-  // The operand is internal, so a value-layout Transpose from it to a graph output means this node is
-  // already converted. Search the consumers instead of requiring a single one: the BNSH result may
-  // legitimately feed other internal BNSH readers as well, and those must not hide the conversion --
-  // doing so would drop the boundary from the post-partition diagnostic and log a misleading
-  // out-of-scope warning for an operand that is in fact converted.
-  for (const Node* consumer : graph.GetConsumerNodes(arg->Name())) {
-    if (consumer != nullptr && IsValueLayoutTranspose(*consumer) && graph.IsOutput(consumer->OutputDefs()[0])) {
-      boundary_name = consumer->OutputDefs()[0]->Name();  // the graph output, not the GQA operand
-      return OperandStatus::kConverted;
-    }
   }
 
   return OperandStatus::kOutOfScope;
@@ -546,33 +499,6 @@ Status GqaValueLayoutTransformer::ApplyImpl(Graph& graph,
   return Status::OK();
 }
 
-GqaValueLayoutBoundaries FindConvertedGqaValueLayoutBoundaries(const Graph& graph) {
-  GqaValueLayoutBoundaries boundaries;
-
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() != "GroupQueryAttention" || node.Domain() != kMSDomain) {
-      continue;
-    }
-
-    OperandStatus past_value_status = OperandStatus::kAbsent;
-    std::string past_value_boundary;
-    // ClassifyPastValue() can fail on an overridable-initializer past_value. That is not this
-    // function's concern -- it only reports what is already converted -- so the status is ignored and
-    // such a node simply contributes nothing.
-    if (ClassifyPastValue(graph, node, past_value_status, past_value_boundary).IsOK() &&
-        past_value_status == OperandStatus::kConverted) {
-      boundaries.past_value_inputs.push_back(past_value_boundary);
-    }
-
-    std::string present_value_boundary;
-    if (ClassifyPresentValue(graph, node, present_value_boundary) == OperandStatus::kConverted) {
-      boundaries.present_value_outputs.push_back(present_value_boundary);
-    }
-  }
-
-  return boundaries;
-}
-
 InlinedVector<std::string> ReportUnfusedGqaValueLayoutTransposes(const Graph& graph,
                                                                  const GqaValueLayoutBoundaries& boundaries,
                                                                  const logging::Logger& logger) {
@@ -583,7 +509,7 @@ InlinedVector<std::string> ReportUnfusedGqaValueLayoutTransposes(const Graph& gr
   // fused node and there is nothing to report), or claim only the GQA node and leave the Transposes
   // behind (in which case both full-cache copies still run and there is no GQA node to search from).
   const auto report = [&](const std::string& boundary_name, const Node* transpose, const char* operand) {
-    if (transpose == nullptr || !IsValueLayoutTranspose(*transpose)) {
+    if (transpose == nullptr || !IsGqaValueLayoutTranspose(*transpose)) {
       return;  // absorbed by the provider, or never a Transpose to begin with
     }
 
@@ -611,7 +537,7 @@ InlinedVector<std::string> ReportUnfusedGqaValueLayoutTransposes(const Graph& gr
     // demanding sole consumership here would suppress the warning while the Transpose still runs.
     const Node* transpose = nullptr;
     for (const Node* consumer : graph.GetConsumerNodes(boundary_name)) {
-      if (consumer != nullptr && IsValueLayoutTranspose(*consumer)) {
+      if (consumer != nullptr && IsGqaValueLayoutTranspose(*consumer)) {
         transpose = consumer;
         break;
       }

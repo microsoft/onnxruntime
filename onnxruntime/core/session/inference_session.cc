@@ -2418,7 +2418,9 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   // Validate the value before applying the format restriction, so that a typo is reported as a bad
   // option value naming the accepted ones, rather than as an ORT format limitation.
   std::string gqa_value_layout;
-  ORT_RETURN_IF_ERROR(GetGqaValueLayout(sess_options.config_options, gqa_value_layout));
+  bool gqa_value_layout_explicitly_set = false;
+  ORT_RETURN_IF_ERROR(GetGqaValueLayout(sess_options.config_options, gqa_value_layout,
+                                        gqa_value_layout_explicitly_set));
   if (gqa_value_layout != kGqaValueLayoutBNSH) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Session option '", kOrtSessionOptionsGqaValueLayout,
@@ -2427,17 +2429,29 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                            "ONNX model instead.");
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
-  // A model converted to ORT format after the transform was applied still carries the Transposes, and
-  // is loaded without the option (the check above requires that). Detect those boundaries anyway so
-  // the same unfused-Transpose diagnostic is available here; otherwise such a model silently pays the
-  // full-cache copies with nothing in the logs.
-  //
-  // Detected before partitioning, while the GQA nodes are still present to anchor on. Only in a full
-  // build: gqa_value_layout_transformer.cc is not in the minimal source lists, and this is a
-  // developer diagnostic rather than something correctness depends on.
+  // Detected before partitioning, while the GQA nodes are still there to anchor on. A model converted
+  // to ORT format after the transform was applied carries the Transposes and the BNHS boundary shapes.
   const GqaValueLayoutBoundaries converted_gqa_value_boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
-#endif
+
+  // An explicit BNSH request is a claim about the boundary and has to hold here too, or an
+  // application trusting the option would bind BNSH buffers against a BNHS boundary. An absent option
+  // makes no claim: loading a converted model without setting anything is the documented way to use
+  // BNHS with ORT format, so it stays allowed.
+  //
+  // Unguarded on build flavour deliberately. gqa_value_layout_boundaries.cc is in the minimal source
+  // lists precisely so this check exists there, which is where it matters most: a minimal build serves
+  // ORT format models only, so this is the sole path on which the claim can be checked at all.
+  if (gqa_value_layout_explicitly_set && !converted_gqa_value_boundaries.Empty()) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL,
+        "This ORT format model already carries the BNHS GroupQueryAttention Value layout: ",
+        converted_gqa_value_boundaries.past_value_inputs.size() +
+            converted_gqa_value_boundaries.present_value_outputs.size(),
+        " boundary tensor(s) are declared BNHS. It cannot be loaded with '", kOrtSessionOptionsGqaValueLayout,
+        "' set to '", kGqaValueLayoutBNSH,
+        "', because the application would bind BNSH buffers to a BNHS boundary. "
+        "Leave the option unset and bind BNHS buffers, or load a model whose Value cache boundary is BNSH.");
+  }
 
   layout_transformation::TransformLayoutFunction transform_layout_fn = nullptr;
 
