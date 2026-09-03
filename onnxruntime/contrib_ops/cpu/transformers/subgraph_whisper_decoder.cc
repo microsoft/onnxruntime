@@ -49,6 +49,7 @@ namespace transformers {
 
 Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                                         const std::vector<const NodeArg*>& subgraph_outputs) {
+  ORT_RETURN_IF(num_subgraph_inputs < 2, "decoder subgraph expects at least 2 inputs, got: ", num_subgraph_inputs);
   bool has_hidden_state = subgraph_inputs[1]->Name() == "encoder_hidden_states" ? true : false;
   SetPastInputIndex(has_hidden_state);
 
@@ -94,6 +95,7 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   const ONNX_NAMESPACE::TensorShapeProto* logits_shape = subgraph_outputs[0]->Shape();
   const ONNX_NAMESPACE::TensorShapeProto* past_shape = subgraph_outputs[first_present_output_index_]->Shape();
+  ORT_RETURN_IF(logits_shape == nullptr, "decoder subgraph logits output shape cannot be nullptr");
 
   // Save parameters related to the subgraph.
   ORT_RETURN_IF_ERROR(GetParameters(past_shape, logits_shape, false));
@@ -103,6 +105,8 @@ Status WhisperDecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
   // If input_ids's shape is ['batch_size', 1] then use next token as input_ids.
   // Otherwise in the case of shape ['batch_size', 'sequence'], use sequence as input_ids.
   const ONNX_NAMESPACE::TensorShapeProto* input_ids_shape = subgraph_inputs[0]->Shape();
+  ORT_RETURN_IF(input_ids_shape == nullptr || input_ids_shape->dim_size() != 2,
+                "decoder subgraph input_ids is expected to have 2 dimensions");
   if (input_ids_shape->dim(1).has_dim_value() && input_ids_shape->dim(1).dim_value() == 1) {
     use_sequence_as_input_ids_ = false;
   }

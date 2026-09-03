@@ -324,6 +324,10 @@ class ProgramBase {
   // set the size of a workgroup grid.
   ProgramBase& SetWorkgroupSize(uint32_t x, uint32_t y, uint32_t z);
 
+  // request a fixed subgroup size via the `subgroup-size-control` feature (0 = driver-chosen, the default).
+  // requires the device to support wgpu::FeatureName::SubgroupSizeControl; see ShaderHelper::GenerateSourceCode.
+  ProgramBase& SetSubgroupSize(uint32_t size);
+
   // add a uniform variable.
   //
   // the specified uniform variable should match the uniform definition in the class,
@@ -364,6 +368,7 @@ class ProgramBase {
   inline uint32_t WorkgroupSizeX() const { return workgroup_size_x_; }
   inline uint32_t WorkgroupSizeY() const { return workgroup_size_y_; }
   inline uint32_t WorkgroupSizeZ() const { return workgroup_size_z_; }
+  inline uint32_t SubgroupSize() const { return subgroup_size_; }
   inline const std::vector<ProgramUniformVariableValue>& UniformVariables() const { return variables_; }
   inline const std::vector<ProgramOverridableConstantValue>& OverridableConstants() const { return overridable_constants_; }
 
@@ -392,6 +397,7 @@ class ProgramBase {
   uint32_t workgroup_size_x_;
   uint32_t workgroup_size_y_;
   uint32_t workgroup_size_z_;
+  uint32_t subgroup_size_;
 
   std::vector<ProgramUniformVariableValue> variables_;
   std::vector<ProgramOverridableConstantValue> overridable_constants_;

@@ -5,6 +5,7 @@
 
 #include <limits>
 #include <mutex>
+#include <set>
 #include "core/platform/threadpool.h"
 #include "tree_ensemble_helper.h"
 #include "tree_ensemble_attribute.h"
@@ -112,7 +113,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   }
 
  private:
-  bool CheckIfSubtreesAreEqual(const size_t left_id, const size_t right_id, const int64_t tree_id, const InlinedVector<NODE_MODE_ONNX>& cmodes,
+  bool CheckIfSubtreesAreEqual(const size_t left_id, const size_t right_id, const InlinedVector<NODE_MODE_ONNX>& cmodes,
                                const InlinedVector<size_t>& truenode_ids, const InlinedVector<size_t>& falsenode_ids, gsl::span<const int64_t> nodes_featureids,
                                gsl::span<const ThresholdType> nodes_values_as_tensor, gsl::span<const float> node_values,
                                gsl::span<const float> target_class_weights, gsl::span<const ThresholdType> target_class_weights_as_tensor,
@@ -408,36 +409,57 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
 template <typename InputType, typename ThresholdType, typename OutputType>
 bool TreeEnsembleCommon<InputType, ThresholdType, OutputType>::CheckIfSubtreesAreEqual(
-    const size_t left_id, const size_t right_id, const int64_t tree_id, const InlinedVector<NODE_MODE_ONNX>& cmodes,
+    const size_t left_id, const size_t right_id, const InlinedVector<NODE_MODE_ONNX>& cmodes,
     const InlinedVector<size_t>& truenode_ids, const InlinedVector<size_t>& falsenode_ids, gsl::span<const int64_t> nodes_featureids,
     gsl::span<const ThresholdType> nodes_values_as_tensor, gsl::span<const float> node_values,
     gsl::span<const float> target_class_weights, gsl::span<const ThresholdType> target_class_weights_as_tensor,
     const InlinedVector<TreeNodeElementId>& node_tree_ids, const InlinedVector<std::pair<TreeNodeElementId, uint32_t>>& indices) {
-  if (left_id == right_id) {
-    return true;
-  }
-  // Leaves have values set at 0
-  if (cmodes[left_id] != cmodes[right_id] || nodes_featureids[left_id] != nodes_featureids[right_id] ||
-      (!nodes_values_as_tensor.empty() && nodes_values_as_tensor[left_id] != nodes_values_as_tensor[right_id]) ||
-      (nodes_values_as_tensor.empty() && node_values[left_id] != node_values[right_id])) {
-    return false;
-  }
+  std::vector<std::pair<size_t, size_t>> pending{{left_id, right_id}};
+  std::set<std::pair<size_t, size_t>> visited;
 
-  if (cmodes[left_id] == NODE_MODE_ONNX::LEAF) {
-    const auto left_target_node = std::lower_bound(indices.begin(), indices.end(), std::make_pair(node_tree_ids[left_id], uint32_t(0)))->second;
-    const auto right_target_node = std::lower_bound(indices.begin(), indices.end(), std::make_pair(node_tree_ids[right_id], uint32_t(0)))->second;
+  while (!pending.empty()) {
+    const auto [current_left_id, current_right_id] = pending.back();
+    pending.pop_back();
 
-    if (target_class_weights_as_tensor.empty()) {
-      return target_class_weights[left_target_node] == target_class_weights[right_target_node];
-    } else {
-      return target_class_weights_as_tensor[left_target_node] == target_class_weights_as_tensor[right_target_node];
+    if (current_left_id == current_right_id ||
+        !visited.emplace(current_left_id, current_right_id).second) {
+      continue;
     }
+
+    // Leaves have values set at 0
+    if (cmodes[current_left_id] != cmodes[current_right_id] ||
+        nodes_featureids[current_left_id] != nodes_featureids[current_right_id] ||
+        (!nodes_values_as_tensor.empty() &&
+         nodes_values_as_tensor[current_left_id] != nodes_values_as_tensor[current_right_id]) ||
+        (nodes_values_as_tensor.empty() && node_values[current_left_id] != node_values[current_right_id])) {
+      return false;
+    }
+
+    if (cmodes[current_left_id] == NODE_MODE_ONNX::LEAF) {
+      const auto left_target_node =
+          std::lower_bound(indices.begin(), indices.end(),
+                           std::make_pair(node_tree_ids[current_left_id], uint32_t(0)))
+              ->second;
+      const auto right_target_node =
+          std::lower_bound(indices.begin(), indices.end(),
+                           std::make_pair(node_tree_ids[current_right_id], uint32_t(0)))
+              ->second;
+
+      const bool weights_equal = target_class_weights_as_tensor.empty()
+                                     ? target_class_weights[left_target_node] == target_class_weights[right_target_node]
+                                     : target_class_weights_as_tensor[left_target_node] ==
+                                           target_class_weights_as_tensor[right_target_node];
+      if (!weights_equal) {
+        return false;
+      }
+      continue;
+    }
+
+    pending.emplace_back(falsenode_ids[current_left_id], falsenode_ids[current_right_id]);
+    pending.emplace_back(truenode_ids[current_left_id], truenode_ids[current_right_id]);
   }
 
-  return CheckIfSubtreesAreEqual(falsenode_ids[left_id], falsenode_ids[right_id], tree_id, cmodes, truenode_ids, falsenode_ids, nodes_featureids,
-                                 nodes_values_as_tensor, node_values, target_class_weights, target_class_weights_as_tensor, node_tree_ids, indices) &&
-         CheckIfSubtreesAreEqual(truenode_ids[left_id], truenode_ids[right_id], tree_id, cmodes, truenode_ids, falsenode_ids, nodes_featureids,
-                                 nodes_values_as_tensor, node_values, target_class_weights, target_class_weights_as_tensor, node_tree_ids, indices);
+  return true;
 }
 
 inline void UpdateThreshold(double val, double& mask) {
@@ -512,11 +534,14 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
     // Beware that if a category is bigger than the threshold type, the node stays as `EQ` and no combination is done
     if (nodes_[node_pos].flags == NODE_MODE_ORT::BRANCH_MEMBER) {
       ThresholdType falsenode_threshold = nodes_values_as_tensor.empty() ? static_cast<ThresholdType>(node_values[falsenode_id]) : nodes_values_as_tensor[falsenode_id];
+      std::unordered_set<size_t> categorical_nodes;
 
       while (cmodes[falsenode_id] == NODE_MODE_ONNX::BRANCH_EQ && nodes_[node_pos].feature_id == nodes_featureids[falsenode_id] &&
              CANMASK(falsenode_threshold, ThresholdType) &&
-             CheckIfSubtreesAreEqual(truenode_ids[i], truenode_ids[falsenode_id], tree_id, cmodes, truenode_ids, falsenode_ids,
+             CheckIfSubtreesAreEqual(truenode_ids[i], truenode_ids[falsenode_id], cmodes, truenode_ids, falsenode_ids,
                                      nodes_featureids, nodes_values_as_tensor, node_values, target_class_weights, target_class_weights_as_tensor, node_tree_ids, indices)) {
+        ORT_ENFORCE(categorical_nodes.insert(falsenode_id).second,
+                    "Cycle detected while folding categorical nodes in tree ", tree_id, ".");
         UpdateThreshold(falsenode_threshold, nodes_[node_pos].value_or_unique_weight);
         falsenode_id = falsenode_ids[falsenode_id];
         falsenode_threshold = nodes_values_as_tensor.empty() ? static_cast<ThresholdType>(node_values[falsenode_id]) : nodes_values_as_tensor[falsenode_id];

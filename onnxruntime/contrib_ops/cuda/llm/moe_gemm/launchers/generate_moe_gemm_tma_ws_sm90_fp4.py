@@ -67,11 +67,17 @@ def get_instantiations() -> list[Instantiation]:
     add_full_build_configs(instantiations, "fp16", "half")
     add_full_build_configs(instantiations, "bf16", "__nv_bfloat16")
 
-    # Quick-build: a subset of configs for faster compilation
-    for k in (128, 256):
-        for n in (16, 32, 64, 128):
-            instantiations.add(Instantiation("fp16", "half", 128, n, k, 1, 1, "pp", "none", quick_build=True))
-            instantiations.add(Instantiation("fp16", "half", 128, n, k, 1, 1, "pp", "finalize", quick_build=True))
+    # Quick-build: one cluster shape for every config retained by the dispatcher.
+    for type_name, cpp_type in (("fp16", "half"), ("bf16", "__nv_bfloat16")):
+        for k in (128, 256):
+            for n in (16, 32, 64, 128):
+                schedule = "pp" if n in (16, 128) or (type_name == "fp16" and n == 32) else "co"
+                instantiations.add(
+                    Instantiation(type_name, cpp_type, 128, n, k, 1, 1, schedule, "none", quick_build=True)
+                )
+                instantiations.add(
+                    Instantiation(type_name, cpp_type, 128, n, k, 1, 1, schedule, "finalize", quick_build=True)
+                )
 
     return sorted(instantiations)
 

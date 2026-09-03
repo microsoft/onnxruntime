@@ -5,6 +5,7 @@ on:
     branches: [main, 'rel-*']
     paths:
       - '.github/workflows/linux_cuda_no_cudnn.yml'
+      - 'cmake/onnxruntime_cuda_cccl.cmake'
       - 'cmake/onnxruntime_providers_cuda.cmake'
       - 'cmake/onnxruntime_python.cmake'
       - 'onnxruntime/__init__.py'
@@ -67,9 +68,9 @@ jobs:
       packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1
+      - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -81,7 +82,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Build Artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: build-output-x64-Release
           path: ${{ runner.temp }}/Release

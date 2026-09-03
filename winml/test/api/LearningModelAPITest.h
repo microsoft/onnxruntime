@@ -19,6 +19,7 @@ struct LearningModelApiTestsApi {
   VoidTest EnumerateOutputs;
   VoidTest CloseModelCheckMetadata;
   VoidTest CheckLearningModelPixelRange;
+  VoidTest RejectOversizedImageDimensions;
   VoidTest CloseModelCheckEval;
   VoidTest CloseModelNoNewSessions;
   VoidTest CheckMetadataCaseInsensitive;
@@ -44,6 +45,7 @@ WINML_TEST(LearningModelAPITests, EnumerateInputs)
 WINML_TEST(LearningModelAPITests, EnumerateOutputs)
 WINML_TEST(LearningModelAPITests, CloseModelCheckMetadata)
 WINML_TEST(LearningModelAPITests, CheckLearningModelPixelRange)
+WINML_TEST(LearningModelAPITests, RejectOversizedImageDimensions)
 WINML_TEST(LearningModelAPITests, CloseModelNoNewSessions)
 WINML_TEST(LearningModelAPITests, CloseModelCheckEval)
 WINML_TEST(LearningModelAPITests, CheckMetadataCaseInsensitive)

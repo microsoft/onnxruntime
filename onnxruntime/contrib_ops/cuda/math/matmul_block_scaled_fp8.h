@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime::contrib::cuda {
@@ -29,6 +31,7 @@ class MatMulBlockQuantizedFp8Weight final : public onnxruntime::cuda::CudaKernel
   Status ComputeImpl(OpKernelContext* context) const;
 
   int64_t block_size_;
+  size_t max_dequant_scratch_bytes_;
 };
 
 // Dequantizes FP8 (E4M3) weights with per-block FP32 scales into FP16/BF16. b_fp8 is [N, K]
@@ -85,5 +88,10 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                                       bool is_bf16,
                                       const cudaDeviceProp& device_prop,
                                       cudaStream_t stream);
+
+// Largest M selected for GEMV dispatch. The tensor-core default is conservative because the
+// crossover with dequantize + cuBLAS depends on the matrix shape; ORT_FP8_GEMV_MAX_M can raise the
+// limit through 64 for tuned workloads. The direct launcher accepts tensor-core cases through 64.
+int MatMulBlockScaledFp8GemvMaxM(int k, int block_size, const cudaDeviceProp& device_prop);
 
 }  // namespace onnxruntime::contrib::cuda

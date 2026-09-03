@@ -76,11 +76,9 @@ class ComputeContextBase {
   inline bool HasFeature(wgpu::FeatureName feature) const {
     return webgpu_context_.DeviceHasFeature(feature);
   }
-#if !defined(__wasm__)
   inline const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const {
     return webgpu_context_.SubgroupMatrixConfigs();
   }
-#endif
 
   //
   // Get Split-K configuration.

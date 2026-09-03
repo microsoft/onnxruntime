@@ -201,6 +201,12 @@
       list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:user32.dll")
     endif()
 
+    if (NOT onnxruntime_USE_EXTERNAL_DAWN)
+      # The WebGPU EP configures the bundled Dawn instance with a custom dawn::platform::Platform,
+      # so it must link dawn_platform to resolve the platform base-class typeinfo/vtable symbols.
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_platform)
+    endif()
+
     if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       target_link_libraries(onnxruntime_providers_webgpu PUBLIC dawn::webgpu_dawn)
 
@@ -344,15 +350,6 @@
 
     # Make sure generation happens before building the provider
     add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_wgsl_generation)
-
-    # Wire the Python wgsl_template test suite into ctest.
-    if (BUILD_TESTING)
-      add_test(
-        NAME wgsl_template_python_tests
-        COMMAND ${Python_EXECUTABLE} "${WGSL_GEN_PYTHON_DIR}/wgsl_template/test/run_tests.py"
-        WORKING_DIRECTORY ${WGSL_GEN_PYTHON_DIR}
-      )
-    endif()
   endif()
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)

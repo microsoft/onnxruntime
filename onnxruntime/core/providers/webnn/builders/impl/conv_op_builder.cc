@@ -335,8 +335,24 @@ bool ConvOpBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::
     return IsDataTypeSupportedByOp("Cast", output_type, wnn_limits, "output", "Output", logger);
   }
 
-  return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger) &&
-         IsOutputRankSupportedByOp(node, wnn_limits, logger);
+  if (!IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger)) {
+    return false;
+  }
+
+  // WebNN conv2d/convTranspose2d only accept 4D operands. A conv1d (3D input + 3D weight) is
+  // supported by reshaping the input to 4D and the output back to 3D (see AddToModelBuilderImpl),
+  // so the ONNX output rank no longer matches the WebNN operand rank; skip the rank check for it.
+  const auto& input_defs = node.InputDefs();
+  std::vector<int64_t> input_shape, weight_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger) || !GetShape(*input_defs[1], weight_shape, logger)) {
+    return false;
+  }
+  const bool is_conv1d = input_shape.size() == 3 && weight_shape.size() == 3;
+  if (is_conv1d) {
+    return true;
+  }
+
+  return IsOutputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

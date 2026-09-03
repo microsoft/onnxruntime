@@ -1,0 +1,42 @@
+name: WGSL Template Tests
+
+on:
+  push:
+    branches:
+    - main
+    - rel-*
+    - plugin-ep-webgpu/rel-*
+  pull_request:
+    branches:
+    - main
+    - rel-*
+    - plugin-ep-webgpu/rel-*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  wgsl-template-tests:
+    name: WGSL Template Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+    - name: Setup Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      with:
+        # Matches the WebGPU build lanes (windows_webgpu.yml, nightly_webgpu.yml), which run wgsl_gen.py.
+        python-version: "3.12"
+    # The suite only uses the standard library, so no dependency install is needed.
+    - name: Run wgsl_template tests
+      run: python wgsl_template/test/run_tests.py
+      working-directory: tools/python

@@ -343,8 +343,27 @@ bool GemmOpBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::
     return IsDataTypeSupportedByOp("Cast", output_type, wnn_limits, "output", "Output", logger);
   }
 
-  return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger) &&
-         IsOutputRankSupportedByOp(node, wnn_limits, logger);
+  if (!IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger)) {
+    return false;
+  }
+
+  // WebNN matmul only accepts >= 2D operands. MatMul with a 1-D input A or B is supported by
+  // promoting it to 2D and reshaping the output back (see AddToModelBuilderImpl), so the ONNX
+  // output rank no longer matches the WebNN operand rank; skip the rank check for that case.
+  // (This also covers MatMul([K], [K]) -> 0-D scalar output. Gemm is always 2D.)
+  if (op_type == "MatMul") {
+    const auto& input_defs = node.InputDefs();
+    std::vector<int64_t> a_shape, b_shape;
+    if (!GetShape(*input_defs[0], a_shape, logger) || !GetShape(*input_defs[1], b_shape, logger)) {
+      return false;
+    }
+    const bool is_input_1d = a_shape.size() == 1 || b_shape.size() == 1;
+    if (is_input_1d) {
+      return true;
+    }
+  }
+
+  return IsOutputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -6,6 +6,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "core/framework/allocator.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
 #include "core/mlas/inc/mlas.h"
 
@@ -18,6 +19,46 @@ class TensorOpTest : public ::testing::Test {
 
 using TensorOpTestTypes = ::testing::Types<float, MLFloat16, uint8_t, int8_t>;
 TYPED_TEST_SUITE(TensorOpTest, TensorOpTestTypes);
+
+TEST(TensorOpTest, RejectsNonPositiveBlocksizeBeforeShapeArithmetic) {
+  auto allocator = std::make_shared<CPUAllocator>();
+  Tensor input(DataTypeImpl::GetType<float>(), TensorShape({1, 1, 2, 2}), allocator);
+
+  for (const auto& [blocksize, is_space_to_depth] :
+       std::vector<std::pair<int64_t, bool>>{{0, true}, {-1, false}}) {
+    int64_t batch = 0;
+    int64_t input_depth = 0;
+    int64_t input_height = 0;
+    int64_t input_width = 0;
+    int64_t output_depth = 0;
+    int64_t output_height = 0;
+    int64_t output_width = 0;
+    const auto status = space_depth_internal::InputValidationsAndOutputDimsCalc(
+        blocksize, input, batch, input_depth, input_height, input_width,
+        output_depth, output_height, output_width, is_space_to_depth);
+    EXPECT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("blocksize to be greater than 0"));
+  }
+}
+
+TEST(TensorOpTest, RejectsBlocksizeWhoseSquareExceedsInt64) {
+  auto allocator = std::make_shared<CPUAllocator>();
+  Tensor input(DataTypeImpl::GetType<float>(), TensorShape({1, 1, 2, 2}), allocator);
+  int64_t batch = 0;
+  int64_t input_depth = 0;
+  int64_t input_height = 0;
+  int64_t input_width = 0;
+  int64_t output_depth = 0;
+  int64_t output_height = 0;
+  int64_t output_width = 0;
+
+  const auto status = space_depth_internal::InputValidationsAndOutputDimsCalc(
+      int64_t{1} << 32, input, batch, input_depth, input_height, input_width,
+      output_depth, output_height, output_width, false);
+
+  EXPECT_EQ(status.Code(), common::StatusCode::INVALID_ARGUMENT);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("multiple of (block_size * block_size)"));
+}
 
 TEST(TensorOpTest, SpaceToDepthTest_1) {
   OpTester test("SpaceToDepth");

@@ -90,6 +90,7 @@ struct TestOptions {
 
   bool has_zero_point{false};
   bool zp_is_4bit{true};
+  bool scales_are_initializers{true};
   bool zero_points_are_initializers{true};
   bool has_g_idx{false};
   bool has_bias{false};
@@ -114,6 +115,7 @@ struct TestOptions {
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
             << ", zp_is_4bit:" << opts.zp_is_4bit
+            << ", scales_are_initializers:" << opts.scales_are_initializers
             << ", zero_points_are_initializers:" << opts.zero_points_are_initializers
             << ", has_g_idx:" << opts.has_g_idx
             << ", has_bias:" << opts.has_bias;
@@ -208,11 +210,11 @@ void RunTest(const TestOptions& opts,
                                         : std::vector<int64_t>{N, k_blocks};
 
   if constexpr (std::is_same<T1, float>::value) {
-    test.AddInput<T1>("scales", scales_shape, scales, true);
+    test.AddInput<T1>("scales", scales_shape, scales, opts.scales_are_initializers);
   } else if constexpr (std::is_same<T1, MLFloat16>::value) {
-    test.AddInput<T1>("scales", scales_shape, FloatsToMLFloat16s(scales), true);
+    test.AddInput<T1>("scales", scales_shape, FloatsToMLFloat16s(scales), opts.scales_are_initializers);
   } else if constexpr (std::is_same<T1, BFloat16>::value) {
-    test.AddInput<T1>("scales", scales_shape, FloatsToBFloat16s(scales), true);
+    test.AddInput<T1>("scales", scales_shape, FloatsToBFloat16s(scales), opts.scales_are_initializers);
   }
 
   if (opts.has_zero_point) {
@@ -687,6 +689,49 @@ TEST(MatMulNBits, SharedPrepackedWeights_AsymmetricPackedScales) {
                                      /*has_zero_point*/ true, /*has_bias*/ false,
                                      PrepackSharingMode::kAddInitializer);
   opts.M = 1;
+  RunTest<float>(opts);
+}
+
+// Uses a KleidiAI-compatible symmetric Q4 CompInt8 shape. Runtime scales cannot be embedded during
+// PrePack(B), so the kernel must decline B packing and use the runtime scales through the unpacked path.
+TEST(MatMulNBits, DynamicScales_SymmetricCompInt8) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "This test targets the Arm64 KleidiAI path.";
+#else
+  if (!MlasQNBitGemmScalesPacked(1024, QBits, 128, SQNBIT_CompInt8, false, nullptr)) {
+    GTEST_SKIP() << "KleidiAI Q4 packed-scales path is not active.";
+  }
+#endif
+
+  TestOptions opts{};
+  opts.M = 1;
+  opts.N = 288;
+  opts.K = 1024;
+  opts.block_size = 128;
+  opts.accuracy_level = 4;
+  opts.scales_are_initializers = false;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  RunTest<float>(opts);
+  RunTest<MLFloat16>(opts);
+}
+
+// A runtime-scale node must not adopt a shared KleidiAI B buffer whose packed bytes contain scales
+// from another node or session.
+TEST(MatMulNBits, SharedPrepackedWeights_DynamicScales_SymmetricCompInt8) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "This test targets the Arm64 KleidiAI path.";
+#else
+  if (!MlasQNBitGemmScalesPacked(1024, QBits, 128, SQNBIT_CompInt8, false, nullptr)) {
+    GTEST_SKIP() << "KleidiAI Q4 packed-scales path is not active.";
+  }
+#endif
+
+  auto opts = MakeSharingTestOptions(288, 1024, /*block_size*/ 128, /*accuracy_level*/ 4,
+                                     /*has_zero_point*/ false, /*has_bias*/ false,
+                                     PrepackSharingMode::kAddInitializerExpectNoPrepack);
+  opts.M = 1;
+  opts.scales_are_initializers = false;
   RunTest<float>(opts);
 }
 
@@ -1194,9 +1239,8 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint_Bias_Prepacked) {
 
 // A prepacked weight (weight_prepacked!=0) forces the fpA_intB path on regardless of the enable
 // flag, and the constructor ORT_ENFORCEs that the path is actually supported for the node. Here the
-// block_size (256) is outside the fpA_intB-supported set {32, 64, 128}, so kernel construction is
-// rejected up front with "weight_prepacked requires the fpA_intB path, but it is unsupported ...",
-// even though ORT_FPA_INTB_GEMM is enabled.
+// block_size (256) is outside the fpA_intB-supported set, so kernel construction is rejected up front
+// with a build-specific diagnostic even though ORT_FPA_INTB_GEMM is enabled.
 TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
@@ -1210,7 +1254,11 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
   opts.block_size = 256;
   opts.disable_cpu_ep_fallback = true;
   opts.weight_prepacked = 1;
+#if USE_COMPACT_FPA_INTB_GEMM
+  opts.expected_failure = "This compact fpA_intB build supports";
+#else
   opts.expected_failure = "weight_prepacked requires";
+#endif
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.push_back(std::move(cuda_ep));
   RunTest<MLFloat16>(opts, std::move(eps));
@@ -1218,8 +1266,8 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRejectedWhenFpAIntBUnsupported) {
 
 // weight_prepacked=2 selects the native SM90 (Hopper) mixed-GEMM layout. It is rejected up front
 // unless the device is SM90 and block_size is 64 or 128 (the SM90 TMA kernel requires group_size to
-// be a multiple of the 64-element Hopper K tile, so block_size=32 is SM80-only). When the fpA_intB
-// path is compiled in, all rejection messages begin with "weight_prepacked=2 (SM90 layout)", so the
+// be a multiple of the 64-element Hopper K tile, so block_size=32 uses the non-Hopper kernel). When
+// the fpA_intB path is compiled in, all rejection messages begin with "weight_prepacked=2 (SM90 layout)", so the
 // assertion is stable across machine/build combinations: non-Hopper hits the compute-capability
 // guard, SM90 without native TMA support hits the build-support guard, and SM90 with native TMA
 // support hits the block_size guard. In a build without onnxruntime_USE_FPA_INTB_GEMM the kernel

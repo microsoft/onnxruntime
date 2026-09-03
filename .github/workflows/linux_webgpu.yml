@@ -2,9 +2,9 @@ name: Linux WebGPU CI
 
 on:
   push:
-    branches: [main, 'rel-*']
+    branches: [main, 'rel-*', 'plugin-ep-webgpu/rel-*']
   pull_request:
-    branches: [main, 'rel-*']
+    branches: [main, 'rel-*', 'plugin-ep-webgpu/rel-*']
   workflow_dispatch:
 
 concurrency:

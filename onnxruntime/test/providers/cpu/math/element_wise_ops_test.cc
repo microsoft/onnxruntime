@@ -1023,6 +1023,27 @@ TEST(MathOpTest, Abs) {
   test.Run();
 }
 
+#ifdef USE_CUDA
+TEST(MathOpTest, Abs_Cuda_CanonicalizesSignedZero) {
+  OpTester test("Abs");
+  test.AddInput<float>("X", {2}, {0.0f, -0.0f});
+  test.AddOutput<float>("Y", {2}, {0.0f, 0.0f});
+  test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
+                                  const std::string& /*provider_type*/) {
+    ASSERT_EQ(fetches.size(), 1u);
+    ASSERT_TRUE(fetches[0].IsTensor());
+
+    const auto* output = fetches[0].Get<Tensor>().Data<float>();
+    EXPECT_FALSE(std::signbit(output[0])) << "Abs(+0.0f) must be +0.0f";
+    EXPECT_FALSE(std::signbit(output[1])) << "Abs(-0.0f) must be +0.0f";
+  });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
+
 #if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(MathOpTest, Abs_bfloat16) {
 #ifdef USE_CUDA

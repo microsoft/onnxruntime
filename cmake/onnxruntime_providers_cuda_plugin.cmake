@@ -111,6 +111,7 @@ list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transforme
 
 # Apply shared CUDA .cu source filtering (flash attention quick build, MoE GEMM FP4/FP8).
 include(onnxruntime_cuda_source_filters.cmake)
+include(onnxruntime_cuda_cccl.cmake)
 onnxruntime_filter_cuda_cu_sources(CUDA_PLUGIN_EP_CU_SRCS)
 onnxruntime_extract_sm_specific_cuda_sources(CUDA_PLUGIN_EP_CU_SRCS
   SM90_SOURCES _cuda_plugin_sm90_tma_srcs
@@ -122,6 +123,7 @@ onnxruntime_extract_flash_attention_sources(CUDA_PLUGIN_EP_CU_SRCS
 onnxruntime_extract_llm_sources(CUDA_PLUGIN_EP_CU_SRCS
   LLM_SOURCES _cuda_plugin_llm_srcs
   LLM_SM90_SOURCES _cuda_plugin_llm_sm90_srcs
+  LLM_FP4_SOURCES _cuda_plugin_llm_fp4_srcs
 )
 
 # Create shared library target using the ORT helper function for plugins
@@ -234,6 +236,8 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     list(APPEND _cuda_plugin_shared_compile_options
             "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>"
+      # Protobuf uses offsetof on MessageLite, which is intentionally non-standard-layout.
+      "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=1427>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>"
     )
 
@@ -244,12 +248,21 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     endif()
 endif()
 
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0 AND MSVC)
+if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+  # CUDA 13 diagnoses qualified friend declarations in Abseil and Protobuf as 970-D,
+  # and Protobuf's always_inline template redeclaration as 2189-D.
+  list(APPEND _cuda_plugin_shared_compile_options
+      "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=970>"
+      "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2189>"
+  )
+
+  if (MSVC)
     # Suppress unrecognized __pragma warnings emitted from CUDA headers in device code.
     list(APPEND _cuda_plugin_shared_compile_options
         "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20199>"
     )
   endif()
+endif()
 
 if (MSVC)
     list(APPEND _cuda_plugin_shared_compile_options
@@ -286,7 +299,8 @@ if(ORT_HAS_SM90_OR_LATER)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
   endif()
 endif()
-if(("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG) AND NOT MSVC)
+if(("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG OR "121" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG) AND
+   (NOT MSVC OR onnxruntime_USE_FP4_QMOE))
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
 endif()
 
@@ -342,9 +356,10 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     endif()
   endif()
 
-  # CUDA 13 generates host stubs with 128-byte aligned by-value CUTLASS parameters for these
-  # native SM120 TMA kernels. MSVC rejects those stubs with C2719, so retain the portable path.
-  if(_cuda_plugin_sm120_tma_srcs AND (NOT MSVC OR CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0))
+  # CUDA 13 gives CUtensorMap 128-byte host alignment when MSVC reports an accurate
+  # __cplusplus value. The target-specific host flag below avoids C2719 for FP4 QMoE.
+  if(_cuda_plugin_sm120_tma_srcs AND
+     (NOT MSVC OR CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0 OR onnxruntime_USE_FP4_QMOE))
     onnxruntime_filter_cuda_archs(_plugin_sm120_cuda_architectures MIN_SM 120)
     if(_plugin_sm120_cuda_architectures)
       onnxruntime_add_cuda_plugin_object_library(
@@ -354,22 +369,25 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
         NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
         COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
         SOURCES ${_cuda_plugin_sm120_tma_srcs})
+      if(MSVC AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+        # CUDA 13's cuda.h gives CUtensorMap alignas(128) when MSVC reports the
+        # accurate C++ language level. MSVC cannot pass that type by value in
+        # NVCC-generated host stubs (C2719). Keep NVCC at C++20, but use the
+        # legacy host __cplusplus value so CUtensorMap retains its 128-byte size
+        # with ordinary host alignment.
+        target_compile_options(onnxruntime_providers_cuda_plugin_sm120_tma PRIVATE
+          "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus->")
+      endif()
       target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_ENABLE_BLOCKQUANT_SM120)
     endif()
   endif()
 
   # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
-  # FP4 QMoE requires native SM120-family SASS for activation quantization. Other MSVC builds
-  # exclude SM120+ real architectures because CCCL tcgen05 PTX headers fail with that host compiler.
+  # FP4 QMoE sources are compiled separately at native SM120 below. Keep the broad LLM target
+  # on virtual SM120 PTX under MSVC to avoid CCCL tcgen05 host-compile failures.
   if(_cuda_plugin_llm_srcs)
-    if(MSVC AND NOT onnxruntime_USE_FP4_QMOE)
-      onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
-      # A native-only Windows ARM64 build has no lower architecture left after the
-      # MSVC SM120 exclusion. Emit PTX privately for this object library so its host
-      # launchers and device kernels are still linked into the plugin.
-      if(NOT _plugin_llm_cuda_architectures AND ORT_HAS_SM120_OR_LATER)
-        set(_plugin_llm_cuda_architectures "120-virtual")
-      endif()
+    if(MSVC)
+      onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 REPLACE_SM120_REAL_WITH_VIRTUAL)
     else()
       onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75)
     endif()
@@ -381,6 +399,19 @@ if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
         NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
         COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
         SOURCES ${_cuda_plugin_llm_srcs})
+    endif()
+  endif()
+
+  if(_cuda_plugin_llm_fp4_srcs)
+    onnxruntime_filter_cuda_archs(_plugin_llm_fp4_cuda_architectures MIN_SM 75)
+    if(_plugin_llm_fp4_cuda_architectures)
+      onnxruntime_add_cuda_plugin_object_library(
+        NAME onnxruntime_providers_cuda_plugin_llm_fp4
+        PARENT onnxruntime_providers_cuda_plugin
+        CUDA_ARCHITECTURES "${_plugin_llm_fp4_cuda_architectures}"
+        NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        SOURCES ${_cuda_plugin_llm_fp4_srcs})
     endif()
   endif()
 endif()
@@ -416,6 +447,18 @@ target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE
     ${cutlass_SOURCE_DIR}/examples
     ${cutlass_SOURCE_DIR}/tools/util/include
 )
+
+# The host .cc files globbed into this target (contrib_ops/cuda/llm/*.cc and friends) include
+# CUTLASS headers, which reach <cuda/std/...>. In the non-plugin build the same files are part
+# of onnxruntime_providers_cuda, which gets this from config_cuda_provider_shared_module.
+#
+# The SM-specific OBJECT libraries created above are covered by this call even though they
+# already exist: onnxruntime_add_cuda_plugin_object_library gives them this target's includes
+# as $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>, which is
+# evaluated after configuration and so picks up whatever is added here - order included, so
+# the CUDA 13.3 patched-header directory keeps shadowing the toolkit CCCL headers for their
+# .cu sources. Keep that indirection in mind before making the inheritance eager.
+ort_configure_cuda_cccl(onnxruntime_providers_cuda_plugin)
 
 onnxruntime_add_include_to_target(
     onnxruntime_providers_cuda_plugin

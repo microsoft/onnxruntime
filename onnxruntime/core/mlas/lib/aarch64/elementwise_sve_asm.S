@@ -36,6 +36,7 @@ Abstract:
     KAI_ASM_GLOBAL(MlasSveErfKernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveErfKernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveErfKernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x910003eb)  // mov	x11, sp
     KAI_ASM_INST(0x0423e3ec)  // cntb	x12, all, mul #4
     KAI_ASM_INST(0x9101018c)  // add	x12, x12, #0x40
@@ -157,6 +158,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveErfKernelImpl)
     KAI_ASM_GLOBAL(MlasSveLogisticKernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveLogisticKernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveLogisticKernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
     KAI_ASM_INST(0x8540c064)  // ld1rw	{z4.s}, p0/z, [x3]
     KAI_ASM_INST(0x8541c065)  // ld1rw	{z5.s}, p0/z, [x3, #4]
@@ -210,6 +212,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveLogisticKernelImpl)
     KAI_ASM_GLOBAL(MlasSveTanhKernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveTanhKernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveTanhKernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
     KAI_ASM_INST(0x8540c064)  // ld1rw	{z4.s}, p0/z, [x3]
     KAI_ASM_INST(0x8541c065)  // ld1rw	{z5.s}, p0/z, [x3, #4]
@@ -258,6 +261,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveTanhKernelImpl)
     KAI_ASM_GLOBAL(MlasSveComputeExpF32KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveComputeExpF32KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveComputeExpF32KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
     KAI_ASM_INST(0x8540c066)  // ld1rw	{z6.s}, p0/z, [x3]
     KAI_ASM_INST(0x8541c067)  // ld1rw	{z7.s}, p0/z, [x3, #4]
@@ -309,6 +313,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeExpF32KernelImpl)
     KAI_ASM_GLOBAL(MlasSveComputeSumExpF32KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveComputeSumExpF32KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveComputeSumExpF32KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
     KAI_ASM_INST(0x854ec0b1)  // ld1rw	{z17.s}, p0/z, [x5, #56]
     KAI_ASM_INST(0x8546c0b2)  // ld1rw	{z18.s}, p0/z, [x5, #24]
@@ -377,6 +382,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeSumExpF32KernelImpl)
     KAI_ASM_GLOBAL(MlasSveReduceMaximumF32KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveReduceMaximumF32KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveReduceMaximumF32KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x0420e3e2)  // cntb	x2
     KAI_ASM_INST(0x05242000)  // mov	z0.s, s0
     KAI_ASM_INST(0xeb02003f)  // cmp	x1, x2
@@ -420,6 +426,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveReduceMaximumF32KernelImpl)
     KAI_ASM_GLOBAL(MlasSveReduceMinimumMaximumF32KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveReduceMinimumMaximumF32KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveReduceMinimumMaximumF32KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x0420e3e5)  // cntb	x5
     KAI_ASM_INST(0xeb05007f)  // cmp	x3, x5
     KAI_ASM_INST(0x54000663)  // b.cc	d4 <MlasSveReduceMinimumMaximumF32KernelImpl+0xd4>
@@ -483,6 +490,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveReduceMinimumMaximumF32KernelImpl)
     KAI_ASM_GLOBAL(MlasSveComputeSoftmaxOutputF32KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveComputeSoftmaxOutputF32KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveComputeSoftmaxOutputF32KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
     KAI_ASM_INST(0x8540c041)  // ld1rw	{z1.s}, p0/z, [x2]
     KAI_ASM_INST(0xb4000161)  // cbz	x1, 34 <MlasSveComputeSoftmaxOutputF32KernelImpl+0x34>
@@ -503,6 +511,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeSoftmaxOutputF32KernelImpl)
     KAI_ASM_GLOBAL(MlasSveComputeLogSoftmaxOutputF32KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveComputeLogSoftmaxOutputF32KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveComputeLogSoftmaxOutputF32KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
     KAI_ASM_INST(0x8540c061)  // ld1rw	{z1.s}, p0/z, [x3]
     KAI_ASM_INST(0x8541c062)  // ld1rw	{z2.s}, p0/z, [x3, #4]
@@ -524,6 +533,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveComputeLogSoftmaxOutputF32KernelImpl)
     KAI_ASM_GLOBAL(MlasSveTanhFP16KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveTanhFP16KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveTanhFP16KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0xb4000502)  // cbz	x2, a0 <MlasSveTanhFP16KernelImpl+0xa0>
     KAI_ASM_INST(0x4f078730)  // movi	v16.8h, #0xf9
     KAI_ASM_INST(0x12879ee4)  // mov	w4, #0xffffc308
@@ -571,6 +581,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveTanhFP16KernelImpl)
     KAI_ASM_GLOBAL(MlasSveErfFP16KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveErfFP16KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveErfFP16KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0xb4000b22)  // cbz	x2, 164 <MlasSveErfFP16KernelImpl+0x164>
     KAI_ASM_INST(0x5286a7e6)  // mov	w6, #0x353f
     KAI_ASM_INST(0x52868045)  // mov	w5, #0x3402
@@ -667,6 +678,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveErfFP16KernelImpl)
     KAI_ASM_GLOBAL(MlasSveGeluTanhArgFP16KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveGeluTanhArgFP16KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveGeluTanhArgFP16KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0xb40002c2)  // cbz	x2, 58 <MlasSveGeluTanhArgFP16KernelImpl+0x58>
     KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
     KAI_ASM_INST(0x0460e3e6)  // cnth	x6
@@ -696,6 +708,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveGeluTanhArgFP16KernelImpl)
     KAI_ASM_GLOBAL(MlasSveGeluScaleFP16KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveGeluScaleFP16KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveGeluScaleFP16KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0xb40001a2)  // cbz	x2, 34 <MlasSveGeluScaleFP16KernelImpl+0x34>
     KAI_ASM_INST(0xd2800003)  // mov	x3, #0x0
     KAI_ASM_INST(0x0460e3e5)  // cnth	x5
@@ -716,6 +729,7 @@ KAI_ASM_FUNCTION_LABEL(MlasSveGeluScaleFP16KernelImpl)
     KAI_ASM_GLOBAL(MlasSveGeluCombineFP16KernelImpl)
     KAI_ASM_FUNCTION_TYPE(MlasSveGeluCombineFP16KernelImpl)
 KAI_ASM_FUNCTION_LABEL(MlasSveGeluCombineFP16KernelImpl)
+    KAI_ASM_BTI_C
     KAI_ASM_INST(0xb4000203)  // cbz	x3, 40 <MlasSveGeluCombineFP16KernelImpl+0x40>
     KAI_ASM_INST(0xd2800004)  // mov	x4, #0x0
     KAI_ASM_INST(0x0460e3e5)  // cnth	x5

@@ -632,7 +632,8 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
       // default allocator
       CreateWebGpuAllocator(
           device_free,
-          [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false),
+          [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false,
+          [this]() { return !IsRunActive(); }),
   };
 }
 
@@ -854,10 +855,13 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     }
   }
 
+  run_active_.store(true);
   return Status::OK();
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  run_active_.store(false);
+
   // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
   // CaptureEnd() detaches their external storage.
   Status flush_status = context_.Flush(BufferManager());

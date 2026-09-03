@@ -1,13 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
+#include <algorithm>
 #include <cmath>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+// Dawn's DawnPlatform.h has unused parameters in its inline CachingInterface default methods,
+// which trips ORT's -Werror=unused-parameter under GCC.
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
 #if !defined(__wasm__)
@@ -15,6 +22,7 @@
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
+#include "dawn/platform/DawnPlatform.h"
 #include "dawn/native/DawnNative.h"
 #endif
 #endif
@@ -38,6 +46,33 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+namespace {
+
+// Scale the pipeline-compilation worker pool with the CPU, following ORT's convention of sizing
+// thread pools from the core count. Uses half the logical processors (approximating physical
+// cores) with a floor of 2, which also covers hardware_concurrency() reporting 0.
+uint32_t GetDawnWorkerThreadCount() {
+  return std::max(2u, std::thread::hardware_concurrency() / 2u);
+}
+
+class DawnPlatform final : public dawn::platform::Platform {
+ public:
+  std::unique_ptr<dawn::platform::WorkerTaskPool> CreateWorkerTaskPool() override {
+    return dawn::platform::WorkerTaskPool::CreateDawnDefault(GetDawnWorkerThreadCount());
+  }
+};
+
+DawnPlatform& GetDawnPlatform() {
+  // The Dawn instance retains this non-owning pointer. Keep it alive for the process lifetime to
+  // avoid static destruction order issues with Dawn's instance teardown.
+  static DawnPlatform* platform = new DawnPlatform();
+  return *platform;
+}
+
+}  // namespace
+#endif  // !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
@@ -180,7 +215,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     // cache device queue
     device_queue_ = device_.GetQueue();
     // cache device limits
-    ORT_ENFORCE(Device().GetLimits(&device_limits_));
+    ORT_ENFORCE(Device().GetLimits(&device_limits_) == wgpu::Status::Success);
     // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
     // buffer segment offsets are always properly aligned for WebGPU bind group creation.
     if (device_limits_.minStorageBufferOffsetAlignment > 0) {
@@ -194,12 +229,10 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_features_.insert(supported_features.features[i]);
     }
     // cache adapter info
-#if !defined(__wasm__)
     if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
       adapter_info_.nextInChain = &subgroup_matrix_configs_;
     }
-#endif
-    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
+    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
@@ -331,6 +364,12 @@ Status WebGpuContext::EncodeDeferredDispatches() {
   if (deferred_dispatches_.empty()) {
     return Status::OK();
   }
+
+  ORT_RETURN_IF_NOT(static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() <=
+                        max_num_pending_dispatches_,
+                    "WebGpuContext::EncodeDeferredDispatches: encoded dispatch count (",
+                    num_pending_dispatches_, ") plus deferred dispatch count (", deferred_dispatches_.size(),
+                    ") exceeds maxNumPendingDispatches (", max_num_pending_dispatches_, ").");
 
   auto reset_deferred_state = [this]() {
     deferred_dispatches_.clear();
@@ -468,9 +507,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
                 "Only one of SetIndirectDispatchTensor and SetDispatchGroupSize should be called for program", program.Name());
   }
 
-  bool is_1d_dispatch = (y == 1 && z == 1);
-
-  auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments, is_1d_dispatch);
+  auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments);
 
   LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
   // The program cache prevents duplicate builds across encoded windows.
@@ -685,7 +722,8 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   // Drain and submit a full window to bound both recorded and encoded dispatch state. Partial
   // windows are encoded and submitted by the caller at its execution boundary.
-  if (deferred_dispatches_.size() >= max_num_pending_dispatches_) {
+  if (static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() >=
+      max_num_pending_dispatches_) {
     ORT_RETURN_IF_ERROR(Flush(buffer_mgr));
   }
   return Status::OK();
@@ -739,12 +777,12 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   if (!enable_robustness_) {
     enabled_toggles.push_back("disable_robustness");
   }
+  enabled_toggles.push_back("lazy_clear_resource_on_first_use");
   return enabled_toggles;
 }
 
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
   constexpr const char* toggles[] = {
-      "lazy_clear_resource_on_first_use",
       "timestamp_quantization",
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
@@ -755,11 +793,12 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
   constexpr wgpu::FeatureName features[]{
 #if !defined(__wasm__)
       wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
-      wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
 #endif
+      wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
+      wgpu::FeatureName::SubgroupSizeControl,
 #if !defined(__wasm__)
       wgpu::FeatureName::BufferMapExtendedUsages,
 #endif
@@ -775,7 +814,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) const {
   wgpu::Limits required_limits{};
   wgpu::Limits adapter_limits;
-  ORT_ENFORCE(adapter.GetLimits(&adapter_limits));
+  ORT_ENFORCE(adapter.GetLimits(&adapter_limits) == wgpu::Status::Success);
 
   required_limits.maxBindGroups = adapter_limits.maxBindGroups;
   required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
@@ -1184,6 +1223,11 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     wgpu::InstanceDescriptor instance_desc{};
     instance_desc.requiredFeatures = required_instance_features;
     instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+    dawn::native::DawnInstanceDescriptor dawn_instance_desc{};
+    dawn_instance_desc.platform = &GetDawnPlatform();
+    instance_desc.nextInChain = &dawn_instance_desc;
+#endif
     default_instance_ = wgpu::CreateInstance(&instance_desc).MoveToCHandle();
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");

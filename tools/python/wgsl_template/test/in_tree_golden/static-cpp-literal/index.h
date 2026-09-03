@@ -5,12 +5,72 @@
 #endif
 
 //
+// Template: math/subgroup_matrix_gemm_8x16x16.wgsl.template
+//
+
+template <>
+struct TemplateParameter<"math/subgroup_matrix_gemm_8x16x16.wgsl.template"> {
+  using type = struct {
+    int param_has_c;
+    int param_sg_mat_count_m;
+    int param_sg_mat_count_n;
+    int param_sg_mat_k;
+    int param_sg_mat_m;
+    int param_sg_mat_n;
+    int param_split_k;
+    int param_trans_a;
+    int param_trans_b;
+    const ShaderVariableHelper* var_output;
+  };
+};
+
+template <>
+Status ApplyTemplate<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">::type params);
+
+//
+// Template: math/subgroup_matrix_matmul_8x16x16.wgsl.template
+//
+
+template <>
+struct TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template"> {
+  using type = struct {
+    int param_has_bias;
+    int param_sg_mat_count_m;
+    int param_sg_mat_count_n;
+    int param_sg_mat_k;
+    int param_sg_mat_m;
+    int param_sg_mat_n;
+    int param_split_k;
+    const ShaderVariableHelper* var_output;
+  };
+};
+
+template <>
+Status ApplyTemplate<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_8x16x16.wgsl.template">::type params);
+
+//
+// Template: math/subgroup_matrix_matmul_pad_b.wgsl.template
+//
+
+template <>
+struct TemplateParameter<"math/subgroup_matrix_matmul_pad_b.wgsl.template"> {
+  using type = struct {
+    const ShaderVariableHelper* var_input_b;
+    const ShaderVariableHelper* var_output;
+  };
+};
+
+template <>
+Status ApplyTemplate<"math/subgroup_matrix_matmul_pad_b.wgsl.template">(ShaderHelper& shader_helper, TemplateParameter<"math/subgroup_matrix_matmul_pad_b.wgsl.template">::type params);
+
+//
 // Template: nn/im2col_matmul.wgsl.template
 //
 
 template <>
 struct TemplateParameter<"nn/im2col_matmul.wgsl.template"> {
   using type = struct {
+    int param_activation_kind;
     int param_has_bias;
     int param_tile_m;
     int param_tile_n;

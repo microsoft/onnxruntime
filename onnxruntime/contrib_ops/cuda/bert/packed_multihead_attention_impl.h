@@ -7,7 +7,7 @@
 #include <cublas_v2.h>
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
-#include "contrib_ops/cuda/bert/attention_data.h"
+#include "contrib_ops/cuda/bert/packed_attention_data.h"
 
 namespace onnxruntime {
 namespace contrib {

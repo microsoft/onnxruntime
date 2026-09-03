@@ -81,25 +81,6 @@ stages:
       is1ES: ${{ parameters.is1ES }}
 
 
-
-- stage: Android_Java_API_AAR_Packaging_QNN
-  dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
-  variables:
-    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-  jobs:
-  - template: android-java-api-aar.yml
-    parameters:
-      buildConfig: 'Release'
-      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_qnn_aar_build_settings.json'
-      artifactName: 'onnxruntime-android-qnn-aar'
-      job_name_suffix: 'QNN'
-      publish_executables: '0'
-      enable_code_sign: true
-      packageName: 'onnxruntime-android-qnn'
-      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
-      QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
-      is1ES: ${{ parameters.is1ES }}
-
 - stage: iOS_Full_xcframework
   dependsOn: []
   variables:
@@ -184,7 +165,7 @@ stages:
         artifactName: 'onnxruntime-ios-full-xcframework-test'
         targetPath: '$(Build.BinariesDirectory)/artifacts/test'
     steps:
-    - checkout: self
+    - template: jobs/checkout-and-git-redirect.yml
 
     - template: use-xcode-version.yml
       parameters:
@@ -348,8 +329,11 @@ stages:
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
 
     steps:
-    - checkout: self
-      submodules: true
+    - template: jobs/checkout-and-git-redirect.yml
+      parameters:
+        submodules: true
+
+    - template: setup-feeds-and-python-steps.yml
 
     - script: |
         dir
@@ -385,8 +369,8 @@ stages:
     - task: MSBuild@1
       displayName: 'Restore NuGet Packages and create project.assets.json'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'Any CPU'
+        solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
+        platform: 'AnyCPU'
         configuration: RelWithDebInfo
         msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
@@ -394,8 +378,8 @@ stages:
     - task: MSBuild@1
       displayName: 'Build C# bindings'
       inputs:
-        solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
-        platform: 'Any CPU'
+        solution: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj'
+        platform: 'AnyCPU'
         configuration: RelWithDebInfo
         msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:PackageVersion=$(OnnxRuntimeVersion)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
@@ -405,8 +389,6 @@ stages:
         FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
         DisplayName: 'ESRP - Sign C# dlls'
         DoEsrp: true
-
-    - template: setup-feeds-and-python-steps.yml
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'
