@@ -58,7 +58,8 @@ input_data = np.zeros((1, 3, 224, 224), dtype=np.float32)
 output = session.run(None, {"input": input_data})
 ```
 
-`adapterIndex` is a zero-based index into the adapters matching the requested Dawn backend and power preference.
+`adapterIndex` is a zero-based index into Dawn's adapter enumeration for the requested backend, using the power
+preference as an ordering and selection hint.
 It selects a physical adapter; `deviceId` remains the ORT WebGPU context identifier and does not select a GPU.
 The default context owns one device per process, so use a separate process for each adapter, or supply a custom
 `webgpuInstance`/`webgpuDevice` pair for multiple devices in one process. Omit `adapterIndex` to retain Dawn's
