@@ -31,9 +31,15 @@ struct GqaValueLayoutBoundaries {
 // Is this a Transpose node that swaps the last two dimensions of a rank-4 tensor, i.e. BNSH <-> BNHS?
 bool IsGqaValueLayoutTranspose(const Node& node);
 
-// Is `arg` a graph input the application must supply? Excludes initializers, which are baked into the
-// model and can never be bound.
-bool IsGqaApplicationInput(const Graph& graph, const NodeArg* arg);
+// Is `arg` declared as a graph input, initializer-backed or not? An overridable initializer counts:
+// the application may bind over it, so it is a boundary it can observe. Use this to recognize a
+// boundary that already carries the conversion.
+bool IsGqaDeclaredGraphInput(const Graph& graph, const NodeArg* arg);
+
+// Is `arg` a graph input the application must supply? Excludes initializers, which carry baked-in
+// data. Use this to decide whether an unconverted boundary may be converted: the declared shape can
+// be swapped, but an initializer's data cannot, so an initializer-backed one is rejected instead.
+bool IsGqaNonInitializerGraphInput(const Graph& graph, const NodeArg* arg);
 
 // If this node's past_value already arrives through a value-layout Transpose from a graph input,
 // returns true and sets boundary_name to that graph input.

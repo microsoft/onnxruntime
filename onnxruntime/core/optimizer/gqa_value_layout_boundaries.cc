@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 #include "core/graph/constants.h"
 
@@ -51,18 +52,23 @@ bool IsGqaValueLayoutTranspose(const Node& node) {
   return true;
 }
 
-bool IsGqaApplicationInput(const Graph& graph, const NodeArg* arg) {
-  if (arg == nullptr) {
-    return false;
-  }
-
-  for (const auto* graph_input : graph.GetInputs()) {
-    if (graph_input != nullptr && graph_input->Name() == arg->Name()) {
+namespace {
+bool ContainsByName(const std::vector<const NodeArg*>& args, const NodeArg* arg) {
+  for (const auto* candidate : args) {
+    if (candidate != nullptr && candidate->Name() == arg->Name()) {
       return true;
     }
   }
-
   return false;
+}
+}  // namespace
+
+bool IsGqaDeclaredGraphInput(const Graph& graph, const NodeArg* arg) {
+  return arg != nullptr && ContainsByName(graph.GetInputsIncludingInitializers(), arg);
+}
+
+bool IsGqaNonInitializerGraphInput(const Graph& graph, const NodeArg* arg) {
+  return arg != nullptr && ContainsByName(graph.GetInputs(), arg);
 }
 
 bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name) {
@@ -71,9 +77,14 @@ bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::s
     return false;
   }
 
+  // Declared graph inputs, including overridable initializers. A boundary that was converted offline
+  // may well be initializer-backed, and its baked-in data is already BNHS, so the conversion is real
+  // and must be recognized. That is the mirror of ClassifyPastValue() refusing to convert an
+  // initializer-backed boundary itself: swapping a declared shape cannot transpose baked-in data, but
+  // data that arrived BNHS needs no transposing.
   const Node* producer = graph.GetProducerNode(node.InputDefs()[kPastValueInputIndex]->Name());
   if (producer == nullptr || !IsGqaValueLayoutTranspose(*producer) ||
-      !IsGqaApplicationInput(graph, producer->InputDefs()[0])) {
+      !IsGqaDeclaredGraphInput(graph, producer->InputDefs()[0])) {
     return false;
   }
 
