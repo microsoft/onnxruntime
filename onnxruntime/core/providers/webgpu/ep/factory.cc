@@ -248,16 +248,16 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                   "Unsupported memory info for shared allocator.");
   }
 
-  // Defer the zero-initialize submission while a run is in flight so that the clear batches with the run's own
-  // dispatches. This allocator is not bound to an EP instance, so it reads the run state from the context.
-  auto create_allocator = [](const OrtMemoryInfo&) -> AllocatorPtr {
-    return std::make_shared<webgpu::GpuBufferAllocator>(
-        []() -> const webgpu::BufferManager& { return WebGpuContextFactory::DefaultContext().BufferManager(); },
-        false,
-        []() { return !WebGpuContextFactory::DefaultContext().IsRunActive(); });
-  };
-
-  *allocator = new onnxruntime::ep::adapter::Allocator(memory_info, create_allocator);
+  *allocator = new onnxruntime::ep::adapter::Allocator(memory_info,
+                                                       [](const OrtMemoryInfo&) -> AllocatorPtr {
+                                                         return std::make_shared<webgpu::GpuBufferAllocator>(
+                                                             []() -> const webgpu::BufferManager& {
+                                                               return WebGpuContextFactory::DefaultContext()
+                                                                   .BufferManager();
+                                                             },
+                                                             false,
+                                                             []() { return true; });
+                                                       });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }

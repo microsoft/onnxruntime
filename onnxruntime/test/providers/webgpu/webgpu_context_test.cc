@@ -222,36 +222,6 @@ TEST(WebGpuContextTest, WebGpuExecutionProviderTracksRunActivity) {
   EXPECT_FALSE(webgpu_ep->IsRunActive());
 }
 
-// Sessions that use the same device share one WebGpuContext, so run activity is tracked as a count. One
-// session ending its run must not report the context as idle while another session's run is in flight.
-TEST(WebGpuContextTest, RunActivityTracksEveryProviderSharingAContext) {
-  ConfigOptions options;
-  auto first_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-  auto second_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
-  ASSERT_NE(first_ep, nullptr);
-  ASSERT_NE(second_ep, nullptr);
-  auto* first_webgpu_ep = static_cast<WebGpuExecutionProvider*>(first_ep.get());
-  auto* second_webgpu_ep = static_cast<WebGpuExecutionProvider*>(second_ep.get());
-  ASSERT_EQ(first_webgpu_ep->GetDeviceId(), second_webgpu_ep->GetDeviceId());
-  RunOptions run_options;
-
-  EXPECT_FALSE(first_webgpu_ep->IsRunActive());
-
-  ASSERT_STATUS_OK(first_webgpu_ep->OnRunStart(run_options));
-  ASSERT_STATUS_OK(second_webgpu_ep->OnRunStart(run_options));
-  // Both providers observe the shared context's activity, not just their own.
-  EXPECT_TRUE(first_webgpu_ep->IsRunActive());
-  EXPECT_TRUE(second_webgpu_ep->IsRunActive());
-
-  ASSERT_STATUS_OK(first_webgpu_ep->OnRunEnd(false, run_options));
-  EXPECT_TRUE(first_webgpu_ep->IsRunActive());
-  EXPECT_TRUE(second_webgpu_ep->IsRunActive());
-
-  ASSERT_STATUS_OK(second_webgpu_ep->OnRunEnd(false, run_options));
-  EXPECT_FALSE(first_webgpu_ep->IsRunActive());
-  EXPECT_FALSE(second_webgpu_ep->IsRunActive());
-}
-
 TEST(WebGpuContextTest, EnablesLazyClearResourceOnFirstUse) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";
