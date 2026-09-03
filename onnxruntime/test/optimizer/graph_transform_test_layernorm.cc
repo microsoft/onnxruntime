@@ -497,6 +497,80 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   }
 }
 
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRejectsIncompatibleScaleShape) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{1, 1}});
+    auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+    auto* scale = builder.MakeInitializer<float>({2}, {1.0f, 1.0f});
+
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+        .AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+    builder.AddNode("Div", {input, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, scale}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("SimplifiedLayerNormalization") == op_to_count.end());
+    const auto mul_it = op_to_count.find("Mul");
+    TEST_RETURN_IF_NOT(mul_it != op_to_count.end() && mul_it->second == 1);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRejectsUnprovenScaleBroadcast) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{{1, -1}});
+    auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+    auto* scale = builder.MakeInitializer<float>({2}, {1.0f, 1.0f});
+
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{{1, 2}});
+
+    builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+        .AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+    builder.AddNode("Div", {input, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, scale}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("SimplifiedLayerNormalization") == op_to_count.end());
+    const auto mul_it = op_to_count.find("Mul");
+    TEST_RETURN_IF_NOT(mul_it != op_to_count.end() && mul_it->second == 1);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent) {
   for (const bool has_leading_cast : {false, true}) {
     auto build_test_case = [has_leading_cast](ModelTestBuilder& builder) {
@@ -2591,12 +2665,15 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusion_ZeroElementEpsilon) {
   auto* graph_proto = model_proto.mutable_graph();
   graph_proto->set_name("SimplifiedLayerNormFusion_ZeroElem");
 
-  // Input with dynamic shape
+  // Input with a scale-compatible shape
   {
     auto* input = graph_proto->add_input();
     input->set_name("X");
     auto* type = input->mutable_type()->mutable_tensor_type();
     type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* shape = type->mutable_shape();
+    shape->add_dim()->set_dim_value(1);
+    shape->add_dim()->set_dim_value(0);
   }
 
   // Zero-element epsilon
@@ -2621,8 +2698,8 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusion_ZeroElementEpsilon) {
     auto* init = graph_proto->add_initializer();
     init->set_name("scale");
     init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-    init->add_dims(4);
-    for (int i = 0; i < 4; i++) init->add_float_data(1.0f);
+    init->add_dims(1);
+    init->add_float_data(1.0f);
   }
 
   // Output
