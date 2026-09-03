@@ -245,6 +245,49 @@ void SwapLastTwoDims(NodeArg& arg) {
   arg.SetShape(swapped);
 }
 
+// The inserted Transpose is an ONNX op, so it resolves against the model's imported ONNX opset. GQA
+// is a com.microsoft op whose T_CACHE admits types older Transpose schemas do not: bfloat16 needs
+// ONNX opset 13, float8e4m3fn needs 21. Without this check, selecting BNHS on a model that is
+// perfectly valid as it stands mutates the graph and then fails the post-transform Graph::Resolve()
+// with an opaque type-constraint error -- and after the mutation, which would break the "converted or
+// untouched" guarantee that validating before transforming exists to provide.
+Status ValidateTransposeSupportsType(const Graph& graph, const Node& node, const NodeArg& arg,
+                                     const char* operand) {
+  const auto* type_proto = arg.TypeAsProto();
+  if (type_proto == nullptr) {
+    return Status::OK();  // no declared type; Graph::Resolve() will infer and check it
+  }
+
+  const auto& domain_to_version = graph.DomainToVersionMap();
+  const auto opset_entry = domain_to_version.find(kOnnxDomain);
+  if (opset_entry == domain_to_version.end()) {
+    return Status::OK();  // no ONNX opset imported, so nothing to validate against
+  }
+  const int onnx_opset = opset_entry->second;
+
+  const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("Transpose", onnx_opset, kOnnxDomain);
+  ORT_RETURN_IF(schema == nullptr || schema->inputs().empty(),
+                "No ONNX Transpose schema for opset ", onnx_opset, ", so the '",
+                kOrtSessionOptionsGqaValueLayout, "' option cannot convert GroupQueryAttention node '",
+                DescribeNode(node), "'.");
+
+  const auto& type_constraints = schema->typeConstraintMap();
+  const auto constraint = type_constraints.find(schema->inputs()[0].GetTypeStr());
+  if (constraint == type_constraints.end()) {
+    return Status::OK();  // unconstrained parameter
+  }
+
+  const auto* data_type = ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto);
+  ORT_RETURN_IF(constraint->second.first.count(data_type) == 0,
+                "GroupQueryAttention node '", DescribeNode(node), "' has a ", operand, " cache of type ",
+                *data_type, ", which the ONNX Transpose schema for opset ", onnx_opset, " imported by this model ",
+                "does not accept, so the '", kOrtSessionOptionsGqaValueLayout,
+                "' option cannot insert the layout conversion. Import a newer ONNX opset (bfloat16 needs 13, ",
+                "float8e4m3fn needs 21) or use the '", kGqaValueLayoutBNSH, "' layout.");
+
+  return Status::OK();
+}
+
 // Rejects Value cache formats that a Transpose pair cannot express, independently of how much of
 // the layout the node already carries.
 Status ValidateCacheFormat(const Node& node) {
@@ -382,6 +425,7 @@ Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger&
                              "as BNSH.");
     }
     ORT_RETURN_IF_ERROR(ValidateSwappableShape(*boundary_arg));
+    ORT_RETURN_IF_ERROR(ValidateTransposeSupportsType(graph, node, *boundary_arg, "past_value"));
   }
 
   if (plan.convert_present_value) {
@@ -396,6 +440,7 @@ Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger&
                              "they expect BNSH.");
     }
     ORT_RETURN_IF_ERROR(ValidateSwappableShape(*boundary_arg));
+    ORT_RETURN_IF_ERROR(ValidateTransposeSupportsType(graph, node, *boundary_arg, "present_value"));
   }
 
   return Status::OK();

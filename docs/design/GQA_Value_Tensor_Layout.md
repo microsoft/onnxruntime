@@ -1,7 +1,7 @@
 # BNHS Value layout for GroupQueryAttention
 
 Status: partially implemented (see [Sequencing](#8-sequencing))
-Last updated: 2026-09-02
+Last updated: 2026-09-03
 
 ## Motivation
 
@@ -306,6 +306,14 @@ skipping would make the option self-inconsistent, so `ClassifyNode` returns an e
   packing semantics under BNHS are defined — see [Open items](#open-items).
 - **A Value cache tensor that is not rank 4** (a declared shape of any other rank; an undeclared shape
   imposes no constraint and is fine).
+- **A cache type the model's imported ONNX opset cannot transpose.** The inserted `Transpose` is an
+  ONNX op and resolves against the model's ONNX opset import, while GQA is a `com.microsoft` op whose
+  `T_CACHE` is independent of it: `bfloat16` needs ONNX opset 13, `float8e4m3fn` needs 21. A model
+  below those is perfectly valid until the conversion is attempted, so `ValidateTransposeSupportsType`
+  queries the `Transpose` schema for the imported opset and checks the cache type against its `T`
+  constraint. Without it the graph is mutated and then fails `Graph::Resolve()` with
+  `Type 'tensor(bfloat16)' ... is invalid` -- opaque, and after the mutation, which would break the
+  "converted or untouched" guarantee in 3.6.
 
 **Check order matters.** `ValidateCacheFormat` (the 4-bit check) runs *after* operand classification,
 and only for a node with at least one operand `kConverted` or `kConvertible`. Both halves of that are
@@ -496,7 +504,10 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
   quantized Value cache; a `past_value` whose declared shape is not rank 4; a `past_value` also bound
   to `past_key` on the same node.
 - A 4-bit Value cache is **accepted** as a no-op when both operands are internal, since the option
-  does not touch that node. The test fails against an unconditional format check. The rank case needs
+  does not touch that node. The test fails against an unconditional format check.
+- A `bfloat16` cache is rejected at ONNX opset 12 and converts normally at 13. The test asserts the
+  premise about the `Transpose` schema first, so it turns into a signal to retire rather than a
+  mystery if ONNX ever backports the type. The rank case needs
   `strict_shape_type_inference = false` to build, because GQA shape inference validates `past_key`'s
   rank but not `past_value`'s — which is also why the transformer has to check it.
 - An already-converted model is left alone but still records its boundaries, so the 4.2 diagnostic
