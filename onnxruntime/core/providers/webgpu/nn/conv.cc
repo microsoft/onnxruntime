@@ -226,10 +226,10 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       if (same_size) {
         const auto shared_dim = input_height * input_width * input_channels;
         matmul_a_shape = TensorShape({1, batch, shared_dim});
-        matmul_b_shape = TensorShape({1, shared_dim, output_channels});
+        matmul_b_shape = TensorShape({shared_dim, output_channels});
       } else {
         matmul_a_shape = TensorShape({batch, input_height * input_width, input_channels});
-        matmul_b_shape = TensorShape({1, input_channels, output_channels});
+        matmul_b_shape = TensorShape({input_channels, output_channels});
       }
       matmul_inputs.push_back(input);
       matmul_inputs.push_back(matmul_kernel);

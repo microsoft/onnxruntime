@@ -21,15 +21,15 @@ Status ApplyTemplate<"tensor/pad.wgsl.template">(ShaderHelper& shader_helper, Te
 //  2 | #define PAD_MODE_REFLECT 1
 //  3 | #define PAD_MODE_EDGE 2
 //  4 | #define PAD_MODE_WRAP 3
-//  5 |
+//  5 | 
 //  6 | #use guardAgainstOutOfBoundsWorkgroupSizes
 //  7 | #use getElementAt
 //  8 | #use .offsetToIndices .setByOffset .rank
-//  9 |
+//  9 | 
 // 10 | #param dim_value_zero
 // 11 | #param is_float16
 // 12 | #param pad_mode
-// 13 |
+// 13 | 
 // 14 | $MAIN {
 MainFunctionStart();
 ss << __str_12;
@@ -37,7 +37,7 @@ ss << __str_12;
 ss << __str_212;
 ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes(__str_208);
 ss << __str_189;
-// 16 |
+// 16 | 
 ss << __str_12;
 // 17 |   let constant_value =
 ss << __str_338;
@@ -51,7 +51,7 @@ ss << __str_339;
 ss << __str_340;
 // 22 | #endif
 }
-// 23 |
+// 23 | 
 // 24 | #if dim_value_zero
 if (__param_dim_value_zero) {
 // 25 |   output[global_idx] = constant_value;
@@ -68,7 +68,7 @@ ss << __str_343;
 ss << __str_344;
 // 30 |   var in_coord = i32(0);
 ss << __str_345;
-// 31 |
+// 31 | 
 ss << __str_12;
 // 32 |   for (var dim = 0; dim < output.rank && !use_pad_value; dim++) {
 ss << __str_346;
@@ -142,7 +142,7 @@ ss << __str_366;
 ss << __str_367;
 // 63 |     }
 ss << __str_135;
-// 64 |
+// 64 | 
 ss << __str_12;
 // 65 | #if pad_mode == PAD_MODE_WRAP
 if (__param_pad_mode == 3) {
@@ -150,7 +150,7 @@ if (__param_pad_mode == 3) {
 ss << __str_368;
 // 67 | #endif
 }
-// 68 |
+// 68 | 
 // 69 |     input_index += select(u32(in_coord)
 ss << __str_369;
 // 70 | #if output.rank > 1
@@ -167,7 +167,7 @@ ss << __var_output.Rank();
 ss << __str_372;
 // 74 |   }
 ss << __str_218;
-// 75 |
+// 75 | 
 ss << __str_12;
 // 76 |   output.setByOffset(global_idx, select(data[input_index], constant_value, use_pad_value));
 ss << __str_212;
@@ -178,7 +178,7 @@ ss << __str_189;
 // 78 | } // MAIN
 MainFunctionEnd();
 ss << __str_12;
-// 79 |
+// 79 | 
 
 
   return Status::OK();

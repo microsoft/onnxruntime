@@ -24,7 +24,7 @@ Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ShaderHelper& shader_help
 
 //   1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //   2 | // Licensed under the MIT License.
-//   3 |
+//   3 | 
 //   4 | #param has_bias
 //   5 | #param tile_m
 //   6 | #param tile_n
@@ -34,9 +34,9 @@ Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ShaderHelper& shader_help
 //  10 | // 0=None, 1=Relu, 2=Sigmoid, 3=Clip, 4=HardSigmoid, 5=LeakyRelu, 6=Tanh.
 //  11 | // Keep branches synchronized with IsActivationSupported().
 //  12 | #param activation_kind
-//  13 |
+//  13 | 
 //  14 | #use .getByOffset .setByOffset
-//  15 |
+//  15 | 
 //  16 | // im2col access for src: [N, H_i, W_i, C_i / vec_size]
 //  17 | // Conceptual Matrix Shape: N * (H_o * W_o) x (K_h * K_w * C_i / vec_size)
 //  18 | fn load_src(batch : u32, m : u32, k_packed_idx : u32) -> src_value_t {
@@ -49,20 +49,20 @@ ss << " >= uniforms.im2col_k) {\n";
 ss << "    return src_value_t();\n";
 //  21 |   }
 ss << "  }\n";
-//  22 |
+//  22 | 
 ss << "\n";
 //  23 |   let channel_i_vec = uniforms.channel_i / vec_size;
 ss << "  let channel_i_vec = uniforms.channel_i / ";
 ss << __param_vec_size;
 ss << ";\n";
-//  24 |
+//  24 | 
 ss << "\n";
 //  25 |   // 1. Decompose M index (H_o * W_o) into (h_idx, w_idx)
 //  26 |   let h_idx = m / uniforms.output_w;  // Output H index (H_o)
 ss << "  let h_idx = m / uniforms.output_w;\n";
 //  27 |   let w_idx = m % uniforms.output_w;  // Output W index (W_o)
 ss << "  let w_idx = m % uniforms.output_w;\n";
-//  28 |
+//  28 | 
 ss << "\n";
 //  29 |   // 2. Decompose K index into (k_h, k_w, c_i_vec_idx)
 //  30 |   let c_i_vec_idx = k_packed_idx % channel_i_vec;
@@ -73,21 +73,21 @@ ss << "  let k_h_w_idx = k_packed_idx / channel_i_vec;\n";
 ss << "  let k_h = k_h_w_idx / uniforms.kernel_w;\n";
 //  33 |   let k_w = k_h_w_idx % uniforms.kernel_w;  // Kernel Column
 ss << "  let k_w = k_h_w_idx % uniforms.kernel_w;\n";
-//  34 |
+//  34 | 
 ss << "\n";
 //  35 |   // 3. Calculate the coordinate in the padded input tensor
 //  36 |   let src_h_coord_padded = h_idx * uniforms.strides.x + k_h * uniforms.dilations.x;
 ss << "  let src_h_coord_padded = h_idx * uniforms.strides.x + k_h * uniforms.dilations.x;\n";
 //  37 |   let src_w_coord_padded = w_idx * uniforms.strides.y + k_w * uniforms.dilations.y;
 ss << "  let src_w_coord_padded = w_idx * uniforms.strides.y + k_w * uniforms.dilations.y;\n";
-//  38 |
+//  38 | 
 ss << "\n";
 //  39 |   // 4. Calculate the coordinate in the original input tensor
 //  40 |   let src_h_coord : i32 = i32(src_h_coord_padded) - i32(uniforms.pads.x);
 ss << "  let src_h_coord : i32 = i32(src_h_coord_padded) - i32(uniforms.pads.x);\n";
 //  41 |   let src_w_coord : i32 = i32(src_w_coord_padded) - i32(uniforms.pads.y);
 ss << "  let src_w_coord : i32 = i32(src_w_coord_padded) - i32(uniforms.pads.y);\n";
-//  42 |
+//  42 | 
 ss << "\n";
 //  43 |   // 5. Check for padding/out-of-bounds
 //  44 |   if (src_h_coord < 0 || src_h_coord >= i32(uniforms.src_h) ||
@@ -98,7 +98,7 @@ ss << "      src_w_coord < 0 || src_w_coord >= i32(uniforms.src_w)) {\n";
 ss << "    return src_value_t();\n";
 //  47 |   }
 ss << "  }\n";
-//  48 |
+//  48 | 
 ss << "\n";
 //  49 |   // 6. Calculate final NHWC index
 //  50 |   let src_idx = batch * uniforms.src_h * uniforms.src_w * channel_i_vec +
@@ -115,7 +115,7 @@ ss << __var_src.GetByOffset("src_idx");
 ss << ";\n";
 //  55 | }
 ss << "}\n";
-//  56 |
+//  56 | 
 ss << "\n";
 //  57 | // weight shape: [Co, K_h, K_w, C_i / vec_size] (CoHWCi)
 //  58 | fn load_weight(n : u32, k_packed_idx : u32) -> weight_value_t {
@@ -140,7 +140,7 @@ ss << "  }\n";
 ss << "  return weight_value_t();\n";
 //  65 | }
 ss << "}\n";
-//  66 |
+//  66 | 
 ss << "\n";
 //  67 | fn load_bias(n : u32) -> output_element_t {
 ss << "fn load_bias(n : u32) -> output_element_t {\n";
@@ -158,7 +158,7 @@ ss << "  }\n";
 ss << "  return output_element_t();\n";
 //  74 | }
 ss << "}\n";
-//  75 |
+//  75 | 
 ss << "\n";
 //  76 | // output shape: [N, H_o, W_o, C_o] (NHWC)
 //  77 | fn write_output(batch : u32, m : u32, n : u32, value : output_element_t) {
@@ -179,7 +179,7 @@ ss << ";\n";
 ss << "  }\n";
 //  84 | }
 ss << "}\n";
-//  85 |
+//  85 | 
 ss << "\n";
 //  86 | const TILE_M_SIZE : u32 = tile_m;
 ss << "const TILE_M_SIZE : u32 = ";
@@ -199,13 +199,13 @@ ss << ";\n";
 ss << "\n";
 //  91 | const ADVANCE_DIM = 64 / TILE_K_VEC_SIZE;
 ss << "const ADVANCE_DIM = 64 / TILE_K_VEC_SIZE;\n";
-//  92 |
+//  92 | 
 ss << "\n";
 //  93 | var<workgroup> src_tile : array<array<src_value_t, TILE_M_SIZE>, TILE_K_VEC_SIZE>;
 ss << "var<workgroup> src_tile : array<array<src_value_t, TILE_M_SIZE>, TILE_K_VEC_SIZE>;\n";
 //  94 | var<workgroup> weight_tile : array<array<weight_value_t, TILE_N_SIZE>, TILE_K_VEC_SIZE>;
 ss << "var<workgroup> weight_tile : array<array<weight_value_t, TILE_N_SIZE>, TILE_K_VEC_SIZE>;\n";
-//  95 |
+//  95 | 
 ss << "\n";
 //  96 | $MAIN {
 MainFunctionStart();
@@ -216,7 +216,7 @@ ss << "  let batch = workgroup_idx / (uniforms.M_tiles * uniforms.N_tiles);\n";
 ss << "  let m_global_base = ((workgroup_idx / uniforms.N_tiles) % uniforms.M_tiles) * TILE_M_SIZE;\n";
 //  99 |   let n_global_base = (workgroup_idx % uniforms.N_tiles) * TILE_N_SIZE;
 ss << "  let n_global_base = (workgroup_idx % uniforms.N_tiles) * TILE_N_SIZE;\n";
-// 100 |
+// 100 | 
 ss << "\n";
 // 101 |   var results : array<output_element_t, TILE_M_SIZE>;
 ss << "  var results : array<output_element_t, TILE_M_SIZE>;\n";
@@ -230,7 +230,7 @@ ss << "\n";
 ss << "      let load_src_m = src_m + local_idx / TILE_K_VEC_SIZE;\n";
 // 106 |       let load_src_k = local_idx % TILE_K_VEC_SIZE;
 ss << "      let load_src_k = local_idx % TILE_K_VEC_SIZE;\n";
-// 107 |
+// 107 | 
 ss << "\n";
 // 108 |       src_tile[load_src_k][load_src_m] = load_src(batch,
 ss << "      src_tile[load_src_k][load_src_m] = load_src(batch,\n";
@@ -240,7 +240,7 @@ ss << "                                                  m_global_base + load_sr
 ss << "                                                  k_idx * TILE_K_VEC_SIZE + load_src_k);\n";
 // 111 |     }
 ss << "    }\n";
-// 112 |
+// 112 | 
 ss << "\n";
 // 113 |     for (var weight_n = 0u; weight_n < TILE_N_SIZE; weight_n += ADVANCE_DIM) {
 ss << "    for (var weight_n = 0u; weight_n < TILE_N_SIZE; weight_n += ADVANCE_DIM) {\n";
@@ -250,7 +250,7 @@ ss << "\n";
 ss << "      let load_weight_n = weight_n + local_idx / TILE_K_VEC_SIZE;\n";
 // 116 |       let load_weight_k = local_idx % TILE_K_VEC_SIZE;
 ss << "      let load_weight_k = local_idx % TILE_K_VEC_SIZE;\n";
-// 117 |
+// 117 | 
 ss << "\n";
 // 118 |       weight_tile[load_weight_k][load_weight_n] = load_weight(n_global_base + load_weight_n,
 ss << "      weight_tile[load_weight_k][load_weight_n] = load_weight(n_global_base + load_weight_n,\n";
@@ -260,7 +260,7 @@ ss << "                                                              k_idx * TIL
 ss << "    }\n";
 // 121 |     workgroupBarrier();
 ss << "    workgroupBarrier();\n";
-// 122 |
+// 122 | 
 ss << "\n";
 // 123 |     for (var inner_k_idx = 0u; inner_k_idx < TILE_K_VEC_SIZE; inner_k_idx++) {
 ss << "    for (var inner_k_idx = 0u; inner_k_idx < TILE_K_VEC_SIZE; inner_k_idx++) {\n";
@@ -300,13 +300,13 @@ ss << "    }\n";
 ss << "    workgroupBarrier();\n";
 // 141 |   }
 ss << "  }\n";
-// 142 |
+// 142 | 
 ss << "\n";
 // 143 |   let m_base = m_global_base;
 ss << "  let m_base = m_global_base;\n";
 // 144 |   let n_base = n_global_base + local_idx;
 ss << "  let n_base = n_global_base + local_idx;\n";
-// 145 |
+// 145 | 
 ss << "\n";
 // 146 |   let bias = load_bias(n_base);
 ss << "  let bias = load_bias(n_base);\n";
@@ -347,7 +347,7 @@ ss << "  }\n";
 // 164 | }  // MAIN
 MainFunctionEnd();
 ss << "\n";
-// 165 |
+// 165 | 
 
 
   return Status::OK();

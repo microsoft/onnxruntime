@@ -21,15 +21,15 @@ Status ApplyTemplate<"tensor/pad.wgsl.template">(ShaderHelper& shader_helper, Te
 //  2 | #define PAD_MODE_REFLECT 1
 //  3 | #define PAD_MODE_EDGE 2
 //  4 | #define PAD_MODE_WRAP 3
-//  5 |
+//  5 | 
 //  6 | #use guardAgainstOutOfBoundsWorkgroupSizes
 //  7 | #use getElementAt
 //  8 | #use .offsetToIndices .setByOffset .rank
-//  9 |
+//  9 | 
 // 10 | #param dim_value_zero
 // 11 | #param is_float16
 // 12 | #param pad_mode
-// 13 |
+// 13 | 
 // 14 | $MAIN {
 MainFunctionStart();
 ss << "\n";
@@ -37,7 +37,7 @@ ss << "\n";
 ss << "  ";
 ss << shader_helper.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size");
 ss << ";\n";
-// 16 |
+// 16 | 
 ss << "\n";
 // 17 |   let constant_value =
 ss << "  let constant_value =\n";
@@ -51,7 +51,7 @@ ss << "      bitcast<vec2<f16>>(uniforms.constant_value)[0];\n";
 ss << "      bitcast<output_value_t>(uniforms.constant_value);\n";
 // 22 | #endif
 }
-// 23 |
+// 23 | 
 // 24 | #if dim_value_zero
 if (__param_dim_value_zero) {
 // 25 |   output[global_idx] = constant_value;
@@ -68,7 +68,7 @@ ss << "  var input_index = u32(0);\n";
 ss << "  var use_pad_value = false;\n";
 // 30 |   var in_coord = i32(0);
 ss << "  var in_coord = i32(0);\n";
-// 31 |
+// 31 | 
 ss << "\n";
 // 32 |   for (var dim = 0; dim < output.rank && !use_pad_value; dim++) {
 ss << "  for (var dim = 0; dim < ";
@@ -142,7 +142,7 @@ ss << "    } else {\n";
 ss << "        in_coord = output_index - lower_pads;\n";
 // 63 |     }
 ss << "    }\n";
-// 64 |
+// 64 | 
 ss << "\n";
 // 65 | #if pad_mode == PAD_MODE_WRAP
 if (__param_pad_mode == 3) {
@@ -150,7 +150,7 @@ if (__param_pad_mode == 3) {
 ss << "    in_coord = ((in_coord % data_shape) + data_shape) % data_shape;\n";
 // 67 | #endif
 }
-// 68 |
+// 68 | 
 // 69 |     input_index += select(u32(in_coord)
 ss << "    input_index += select(u32(in_coord)\n";
 // 70 | #if output.rank > 1
@@ -167,7 +167,7 @@ ss << __var_output.Rank();
 ss << " - 1);\n";
 // 74 |   }
 ss << "  }\n";
-// 75 |
+// 75 | 
 ss << "\n";
 // 76 |   output.setByOffset(global_idx, select(data[input_index], constant_value, use_pad_value));
 ss << "  ";
@@ -178,7 +178,7 @@ ss << ";\n";
 // 78 | } // MAIN
 MainFunctionEnd();
 ss << "\n";
-// 79 |
+// 79 | 
 
 
   return Status::OK();

@@ -25,7 +25,7 @@ Status ApplyTemplate<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">(ShaderHe
 
 //   1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //   2 | // Licensed under the MIT License.
-//   3 |
+//   3 | 
 //   4 | // Intel SubgroupMatrix Gemm kernel (8x16x16 config, F16).
 //   5 | //
 //   6 | // Computes Y[MxN] = alpha * op(A) @ op(B) + beta * C using
@@ -67,7 +67,7 @@ Status ApplyTemplate<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">(ShaderHe
 //  42 | // there they instead rely on backend-level bounds (e.g. D3D12 returns 0 for
 //  43 | // out-of-range buffer reads), which holds on the Intel backends this
 //  44 | // subgroup-matrix path is gated to. Gemm is strictly 2D (no batching).
-//  45 |
+//  45 | 
 //  46 | #param has_c
 //  47 | #param trans_a
 //  48 | #param trans_b
@@ -77,9 +77,9 @@ Status ApplyTemplate<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">(ShaderHe
 //  52 | #param sg_mat_count_m
 //  53 | #param sg_mat_count_n
 //  54 | #param split_k
-//  55 |
+//  55 | 
 //  56 | #use .setByOffset
-//  57 |
+//  57 | 
 //  58 | const kSgMatM: u32 = u32(sg_mat_m);              // Subgroup matrix M dimension (rows)
 ss << __str_2;
 ss << __param_sg_mat_m;
@@ -110,7 +110,7 @@ ss << __param_split_k;
 ss << __str_3;
 //  66 | const kSubgroupSize: u32 = 32;                   // Lanes per subgroup
 ss << __str_11;
-//  67 |
+//  67 | 
 ss << __str_12;
 //  68 | // Scratch space for kSplitK partial [kTileM, kTileN] tiles, row-major. Each
 //  69 | // split-K subgroup accumulates its slice of K into its own slot; the slots are
@@ -118,7 +118,7 @@ ss << __str_12;
 //  71 | // with M/N bounds checks for dimensions that are not multiples of the tile size.
 //  72 | var<workgroup> scratch: array<f16, kTileM * kTileN * kSplitK>;
 ss << __str_13;
-//  73 |
+//  73 | 
 ss << __str_12;
 //  74 | $MAIN {
 MainFunctionStart();
@@ -148,7 +148,7 @@ ss << __str_20;
 ss << __str_21;
 //  89 |     let sg_scratch_base = sg_index * kTileM * kTileN;  // this subgroup's scratch slot
 ss << __str_22;
-//  90 |
+//  90 | 
 ss << __str_12;
 //  91 |     // Accumulators: kSgMatCountM M blocks x kSgMatCountN N blocks (sg_mat_c<mi>_<ni>).
 //  92 |     var sg_mat_c0_0: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
@@ -467,7 +467,7 @@ ss << __str_25;
 }
 // 185 | #endif
 }
-// 186 |
+// 186 | 
 // 187 |     for (var kb: u32 = sg_index; kb < k_blocks; kb = kb + kSplitK) {
 ss << __str_57;
 // 188 |         let kb_k = kb * kSgMatK;
@@ -622,7 +622,7 @@ ss << __str_75;
 }
 // 233 | #endif
 }
-// 234 |
+// 234 | 
 // 235 |         // Load the A left tiles (one per M block).
 // 236 | #if trans_a
 if (__param_trans_a) {
@@ -918,7 +918,7 @@ ss << __str_102;
 }
 // 320 | #endif
 }
-// 321 |
+// 321 | 
 // 322 |         // Accumulate every (M block, N block) pair.
 // 323 |         sg_mat_c0_0 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b0, sg_mat_c0_0);
 ss << __str_103;
@@ -1110,7 +1110,7 @@ ss << __str_134;
 }
 // 417 |     }
 ss << __str_135;
-// 418 |
+// 418 | 
 ss << __str_12;
 // 419 |     // Store this subgroup's partial results into its split-K slot of scratch,
 // 420 |     // laid out as kSplitK x [kTileM, kTileN] row-major. Offset of block (mi, ni)
@@ -1303,13 +1303,13 @@ ss << __str_167;
 }
 // 515 | #endif
 }
-// 516 |
+// 516 | 
 // 517 | #if split_k >= 2
 if (__param_split_k >= 2) {
 // 518 |     // Make all subgroups' partial tiles visible before the reduction.
 // 519 |     workgroupBarrier();
 ss << __str_168;
-// 520 |
+// 520 | 
 ss << __str_12;
 // 521 |     // Sum pass: a single subgroup reduces the kSplitK partial [kTileM, kTileN]
 // 522 |     // tiles into slot 0 of scratch. Each lane owns a strided set of element
@@ -1340,7 +1340,7 @@ ss << __str_12;
 ss << __str_168;
 // 537 | #endif
 }
-// 538 |
+// 538 | 
 // 539 |     // Write-out pass: every subgroup writes out whole M-rows from the summed tile
 // 540 |     // in slot 0, striding by kSplitK subgroups (subgroup sg_index handles rows
 // 541 |     // sg_index, sg_index + kSplitK, ...). The subgroup's lanes cooperate on a
@@ -1386,7 +1386,7 @@ ss << __str_135;
 // 562 | }  // MAIN
 MainFunctionEnd();
 ss << __str_12;
-// 563 |
+// 563 | 
 
 
   return Status::OK();

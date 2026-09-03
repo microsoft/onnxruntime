@@ -1433,7 +1433,7 @@ enum class WebGpuPointwiseConvCase {
   FusedErf,
 };
 
-void RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase test_case) {
+void RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase test_case, int64_t batch = 1) {
   const bool is_fused = test_case != WebGpuPointwiseConvCase::NoBias &&
                         test_case != WebGpuPointwiseConvCase::Bias;
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
@@ -1503,9 +1503,9 @@ void RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase test_case) {
   }
 
   const vector<int64_t> x_shape = is_fused
-                                      ? vector<int64_t>{1, kHeight, kWidth, kInputChannels}
-                                      : vector<int64_t>{1, kInputChannels, kHeight, kWidth};
-  vector<MLFloat16> x(static_cast<size_t>(kInputChannels * kHeight * kWidth), MLFloat16(1.0f));
+                                      ? vector<int64_t>{batch, kHeight, kWidth, kInputChannels}
+                                      : vector<int64_t>{batch, kInputChannels, kHeight, kWidth};
+  vector<MLFloat16> x(static_cast<size_t>(batch * kInputChannels * kHeight * kWidth), MLFloat16(1.0f));
 
   const vector<int64_t> w_shape{kOutputChannels, kInputChannels, 1, 1};
   vector<MLFloat16> w;
@@ -1560,19 +1560,21 @@ void RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase test_case) {
   }
 
   const vector<int64_t> y_shape = is_fused
-                                      ? vector<int64_t>{1, kHeight, kWidth, kOutputChannels}
-                                      : vector<int64_t>{1, kOutputChannels, kHeight, kWidth};
+                                      ? vector<int64_t>{batch, kHeight, kWidth, kOutputChannels}
+                                      : vector<int64_t>{batch, kOutputChannels, kHeight, kWidth};
   vector<MLFloat16> expected;
-  expected.reserve(static_cast<size_t>(kOutputChannels * kHeight * kWidth));
+  expected.reserve(static_cast<size_t>(batch * kOutputChannels * kHeight * kWidth));
   if (is_fused) {
-    for (int64_t spatial = 0; spatial < kHeight * kWidth; ++spatial) {
+    for (int64_t spatial = 0; spatial < batch * kHeight * kWidth; ++spatial) {
       for (float value : channel_values) {
         expected.emplace_back(value);
       }
     }
   } else {
-    for (float value : channel_values) {
-      expected.insert(expected.end(), static_cast<size_t>(kHeight * kWidth), MLFloat16(value));
+    for (int64_t batch_index = 0; batch_index < batch; ++batch_index) {
+      for (float value : channel_values) {
+        expected.insert(expected.end(), static_cast<size_t>(kHeight * kWidth), MLFloat16(value));
+      }
     }
   }
 
@@ -1593,6 +1595,10 @@ TEST(ConvFp16Test, WebGpuSubgroupPointwiseNoBias) {
 
 TEST(ConvFp16Test, WebGpuSubgroupPointwiseBias) {
   RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase::Bias);
+}
+
+TEST(ConvFp16Test, WebGpuSubgroupPointwiseBatch) {
+  RunWebGpuSubgroupPointwiseConvTest(WebGpuPointwiseConvCase::NoBias, 2);
 }
 
 TEST(ConvFp16Test, WebGpuNaivePointwiseNhwcBias) {

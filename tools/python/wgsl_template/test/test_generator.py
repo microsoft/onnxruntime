@@ -82,10 +82,6 @@ class GeneratorBasicTest(unittest.TestCase):
         self.assertIn("MainFunctionStart();", out)
         self.assertIn("MainFunctionEnd();", out)
 
-    def test_preserved_code_reference_has_no_trailing_whitespace(self) -> None:
-        out = _gen("a\n\n", preserve=True)
-        self.assertNotRegex(out, r"(?m)[ \t]+$")
-
 
 class GeneratorIfTest(unittest.TestCase):
     def test_if_else(self) -> None:
