@@ -1,0 +1,17 @@
+-r requirements.txt
+
+coloredlogs==15.0.1
+flatbuffers==25.2.10
+humanfriendly==10.0
+mpmath==1.3.0
+onnxruntime
+packaging==24.2
+protobuf==5.29.6
+pyreadline3==3.5.4
+sympy==1.14.0
+typing-extensions==4.15.0
+wasdk-Microsoft.Windows.AI.MachineLearning==2.0.1
+wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap==2.0.1
+winrt-runtime==3.2.1
+winrt-Windows.Foundation==3.2.1
+winrt-Windows.Foundation.Collections==3.2.1
