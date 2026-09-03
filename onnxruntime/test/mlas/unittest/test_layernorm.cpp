@@ -20,10 +20,9 @@ Abstract:
       - Benchmark: in-process scalar-vs-kernel comparison (DISABLED by default)
 
     Tolerance: relative 0.5% (matching upstream CloseEnough) with 1e-4 absolute
-    floor. The AVX2 kernel uses FMA contractions producing different rounding
-    than the scalar fp64 reference. For small NormSize, the variance is near
-    zero and 1/sqrt(var+eps) amplifies FMA rounding differences. The worst
-    case observed is ~0.02% relative (NormSize=1, inv_stddev=316). Upstream
+    floor. On rows that meet the x86 dispatch thresholds (8 for LayerNorm, 16
+    for RMSNorm), FMA reduction order can differ from the scalar fp64 reference,
+    and inverse square root amplifies small variance differences. Upstream
     CloseEnough uses rel_tol=0.005; we match that convention exactly.
 
 --*/
@@ -436,7 +435,7 @@ class MlasLayerNormTest : public MlasTestBase {
       float* output,
       float* mean_out,
       float* inv_std_out,
-      size_t norm_size,
+      int64_t norm_size,
       float epsilon,
       bool simplified) {
     float mean = 0.0f;
@@ -445,38 +444,36 @@ class MlasLayerNormTest : public MlasTestBase {
     if (simplified) {
       // RMSNorm: sum of squares, single pass
       float sum_sq = 0.0f;
-      for (size_t h = 0; h < norm_size; h++) {
+      for (int64_t h = 0; h < norm_size; h++) {
         output[h] = input[h];
         sum_sq += input[h] * input[h];
       }
-      std_dev = sqrtf(sum_sq / static_cast<float>(norm_size) + epsilon);
+      std_dev = sqrt(sum_sq / norm_size + epsilon);
     } else {
-      // Welford's online algorithm in fp32 (historical baseline; the kernel
-      // now uses centered two-pass, but this is kept for accuracy comparison)
+      // Welford's online algorithm in fp32.
       float M2 = 0.0f;
-      for (size_t h = 0; h < norm_size; h++) {
+      for (int64_t h = 0; h < norm_size; h++) {
         output[h] = input[h];
         float delta = input[h] - mean;
         mean += delta / static_cast<float>(h + 1);
         float delta2 = input[h] - mean;
         M2 += delta * delta2;
       }
-      std_dev = sqrtf(M2 / static_cast<float>(norm_size) + epsilon);
+      std_dev = sqrt(M2 / norm_size + epsilon);
     }
 
-    float inv_denom = 1.0f / std_dev;
-    for (size_t h = 0; h < norm_size; h++) {
+    for (int64_t h = 0; h < norm_size; h++) {
       if (simplified) {
-        output[h] = output[h] * inv_denom * scale[h];
+        output[h] = output[h] / std_dev * scale[h];
       } else if (bias == nullptr) {
-        output[h] = (output[h] - mean) * inv_denom * scale[h];
+        output[h] = (output[h] - mean) / std_dev * scale[h];
       } else {
-        output[h] = (output[h] - mean) * inv_denom * scale[h] + bias[h];
+        output[h] = (output[h] - mean) / std_dev * scale[h] + bias[h];
       }
     }
 
     if (mean_out != nullptr) *mean_out = mean;
-    if (inv_std_out != nullptr) *inv_std_out = inv_denom;
+    if (inv_std_out != nullptr) *inv_std_out = 1 / std_dev;
   }
 
   // Benchmark: SIMD kernel vs true scalar fp32 baseline.
@@ -486,8 +483,8 @@ class MlasLayerNormTest : public MlasTestBase {
   // the AVX2 kernel accumulates a double-precision sum and divides once.
   // This per-element division inflates the scalar timing; the reported
   // speedup therefore includes both the SIMD benefit and this algorithmic
-  // difference.  The normalization pass (output = (x-mean)*inv_std*scale)
-  // uses multiply-by-reciprocal in both paths.
+  // difference. The scalar normalization pass also performs one division per
+  // output, matching the production fallback expression order.
   void Benchmark(size_t norm_size, size_t warmup, size_t iters, bool simplified) {
     std::vector<float> input(norm_size);
     std::vector<float> scale(norm_size);

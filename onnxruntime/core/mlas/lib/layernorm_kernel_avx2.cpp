@@ -19,21 +19,13 @@ Abstract:
 
     Full LayerNorm uses a centered two-pass algorithm:
       Pass 1 — compute the mean via a double-precision sum (4 doubles
-               per AVX2 iteration using vcvtps2pd + vaddpd). Double
-               accumulation is necessary because fp32 summation of N
-               large-magnitude values rounds the mean enough to corrupt
-               the subsequent variance; measured worst-case relative
-               error 100% at base=1e7/N=4096 with fp32 sum vs 6e-8 at
-               double.
+               per AVX2 iteration using vcvtps2pd + vaddpd). This keeps
+               rounding in the mean from corrupting the centered variance
+               for large-magnitude inputs.
       Pass 2 — accumulate sum((x - mean)^2) in fp32 (8 floats per
                iteration). Subtracting the (accurate) mean before
                squaring eliminates the catastrophic cancellation that
                plagues the uncentered E[x^2]-mean^2 formulation.
-
-    This replaces the earlier lane-parallel Welford approach, which
-    accumulated per-lane means in fp32 and lost up to 28% relative
-    accuracy on adversarial inputs (base=1e5, spread=1e-2), while
-    also being 1.8× slower due to the vdivps in the inner loop.
 
     A scalar tail handles lengths that are not a multiple of 8 (or 4
     for the double-precision mean pass).
@@ -147,10 +139,8 @@ MlasLayerNormKernelAvx2(
         // Full LayerNorm: centered two-pass algorithm.
         //
         // Pass 1 — Compute the mean using double-precision accumulation.
-        // fp32 summation of N values around a large base (e.g. 1e7) rounds
-        // the mean enough to make the subsequent variance useless; double
-        // accumulation eliminates this (measured worst-case: 1e-8 vs 100%
-        // relative error on the mean at base=1e7, N=4096).
+        // This prevents fp32 summation error for large-magnitude inputs
+        // from corrupting the centered variance in the second pass.
         //
 
         __m256d vsumd = _mm256_setzero_pd();
