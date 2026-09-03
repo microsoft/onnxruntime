@@ -111,3 +111,35 @@ describe('API Tests - simple API tests', () => {
     });
   });
 });
+
+describe('API Tests - float16 tensor input', () => {
+  const MODEL = path.join(TEST_DATA_ROOT, 'test_types_float16.onnx');
+  const INPUT_BITS = [0x3c00];
+  const Float16ArrayCtor = (globalThis as { Float16Array?: new (length: number) => object }).Float16Array;
+
+  function assertFloat16Output(output: Tensor): void {
+    assert.strictEqual(output.type, 'float16');
+    const view = output.data as unknown as Uint16Array;
+    assert.deepStrictEqual(Array.from(new Uint16Array(view.buffer, view.byteOffset, view.length)), INPUT_BITS);
+  }
+
+  it('test_types_float16.onnx accepts Uint16Array input data', async () => {
+    const data = Uint16Array.from([0x7fff, INPUT_BITS[0]]).subarray(1);
+    const output = await (
+      await InferenceSession.create(MODEL)
+    ).run({ input: new Tensor('float16', data, [1, 1, 1, 1]) });
+    assertFloat16Output(output.output);
+  });
+
+  it('test_types_float16.onnx accepts Float16Array input data', async function () {
+    if (!Float16ArrayCtor) {
+      this.skip();
+    }
+    const data = new Float16ArrayCtor(1) as unknown as Uint16Array;
+    new Uint16Array(data.buffer)[0] = INPUT_BITS[0];
+    const output = await (await InferenceSession.create(MODEL)).run({
+      input: new Tensor('float16', data, [1, 1, 1, 1]),
+    });
+    assertFloat16Output(output.output);
+  });
+});
