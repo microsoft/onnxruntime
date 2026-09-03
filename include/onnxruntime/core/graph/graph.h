@@ -849,6 +849,27 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /** Removes all initializer tensors from this Graph and releases the memory they were using. */
   void CleanAllInitializedTensors() noexcept;
 
+  /**
+  Releases the NodeProto instances this Graph retained from the model it was built from, and does the
+  same for every subgraph.
+
+  Graph construction copies each NodeProto's attributes into the owning Node (see Graph::AddNode), so
+  once a session is initialized the retained protos are pure duplicates of state the Node instances
+  already own. For most models that duplication is negligible, because the bulk of the model lives in
+  initializers rather than attributes. It is not negligible for ai.onnx.ml tree ensembles, where the
+  whole model is node attributes: the retained copy is a second copy of the entire model, held for the
+  lifetime of the session and never read again.
+
+  Serialization keeps working: this method flags this Graph and every subgraph as needing a proto
+  sync, so Graph::ToGraphProto rebuilds the node list from the Node instances instead of handing back
+  what was released. What a caller gives up is the ability to resolve the Graph again: Graph::Resolve
+  validates each node with Node::ToProto(), which does not update subgraphs, so a control flow node
+  would reach the ONNX checker with an empty body. Any pointer previously handed out by
+  Node::GetOriginalNodeProto is also invalidated (this method clears those, and Graph::Resolve has
+  already done so).
+  */
+  void ReleaseNodeProtos();
+
   /** Returns true if an initializer value can be overridden by a graph input with the same name. */
   bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
 

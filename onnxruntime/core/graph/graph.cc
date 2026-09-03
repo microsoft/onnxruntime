@@ -4542,6 +4542,29 @@ void Graph::CleanAllInitializedTensors() noexcept {
   ortvalue_initializers_.clear();
 }
 
+void Graph::ReleaseNodeProtos() {
+  for (auto& node : Nodes()) {
+#if !defined(ORT_MINIMAL_BUILD)
+    // Resolve() clears this after the first onnx::check_node, but do not rely on a particular Resolve
+    // having run: the pointers are about to dangle either way.
+    node.SetOriginalNodeProto(nullptr);
+#endif
+    for (const auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      entry.second->ReleaseNodeProtos();
+    }
+  }
+
+  // Clear() would only clear each NodeProto and keep it in the repeated field's cleared pool for
+  // reuse, holding on to every attribute buffer; on protobuf 5.26 and later there is no supported
+  // way to then release that pool. DeleteSubrange destroys the elements outright, which is what
+  // actually returns the memory, and it behaves the same on every protobuf version.
+  graph_proto_->mutable_node()->DeleteSubrange(0, graph_proto_->node_size());
+
+  // graph_proto_ no longer reflects this Graph, so ToGraphProto() must rebuild the node list from the
+  // Node instances rather than return what is now an empty one.
+  SetGraphProtoSyncNeeded();
+}
+
 const ONNX_NAMESPACE::TensorProto* Graph::GetConstantInitializer(const std::string& initializer_name,
                                                                  bool check_outer_scope) const {
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;

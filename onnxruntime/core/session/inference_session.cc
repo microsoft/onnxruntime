@@ -2878,6 +2878,17 @@ common::Status InferenceSession::Initialize() {
     // once the model is saved, we may remove unnecessary attributes for inference
     session_state_->PruneRemovableAttributes();
 
+    // The kernels own their data now, so the NodeProtos the Graph kept from the loaded model are
+    // duplicates that nothing reads again. Saving the model still works afterwards, since
+    // Graph::ToGraphProto rebuilds the node list from the Node instances, but a session asked for an
+    // optimized model has already written it above, so leave its graph exactly as that path left it.
+    if (session_options_.config_options.GetConfigOrDefault(
+            kOrtSessionOptionsConfigReleaseNodeProtosAfterInit, "0") == "1" &&
+        !saving_model) {
+      model_->MainGraph().ReleaseNodeProtos();
+      LOGS(*session_logger_, INFO) << "Released the retained NodeProtos of the main graph and its subgraphs.";
+    }
+
     // and log telemetry
     LogSessionCreationTelemetry(graph, model_weight_type, model_graph_hash, model_weight_hash);
 
