@@ -170,7 +170,7 @@ struct EpContextNodeComputeInfo : NodeComputeInfoBase {
 };
 
 ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger,
-                     Ort::Experimental::EpContextConfig ep_context_config)
+                     Ort::EpContextConfig ep_context_config)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
       ApiPtrs{static_cast<const ApiPtrs&>(factory)},
       factory_{factory},
@@ -191,6 +191,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   Sync = SyncImpl;                                                            // optional. can be nullptr
   GetDefaultMemoryDevice = GetDefaultMemoryDeviceImpl;                        // optional. can be nullptr
   GetWeightlessSupport = GetWeightlessSupportImpl;                            // weightless support
+  GetEpContextDataSupport = GetEpContextDataSupportImpl;                      // EPContext callback support
 
   IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -208,6 +209,16 @@ const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept
 OrtStatus* ORT_API_CALL ExampleEp::GetWeightlessSupportImpl(const OrtEp* /*this_ptr*/,
                                                             OrtWeightlessSupport* support) noexcept {
   *support = OrtWeightlessSupport_ALL;
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::GetEpContextDataSupportImpl(const OrtEp* this_ptr,
+                                                               uint32_t* supported_flags) noexcept {
+  const auto* ep = static_cast<const ExampleEp*>(this_ptr);
+  *supported_flags = ep->config_.advertise_ep_context_data_support
+                         ? OrtEpContextDataSupportFlags_READ | OrtEpContextDataSupportFlags_WRITE
+                         : OrtEpContextDataSupportFlags_NONE;
   return nullptr;
 }
 
@@ -437,7 +448,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
         // memory instead of copying it.
         ep_context_data_utils::EpContextData ep_context_data;
         RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextData(
-            ep->ort_api, ep->ep_context_config_.get(), ep_cache_context.c_str(), ort_graphs[0],
+            ep->ort_api, ep->ep_context_config_, ep_cache_context.c_str(), ort_graphs[0],
             ep_context_data));
       }
 
@@ -568,7 +579,7 @@ OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
           fallback_graph = nullptr;
         }
         RETURN_IF_ERROR(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-            ort_api, ep_context_config_.get(), ep_ctx.c_str(), fallback_ep_ctx.c_str(), fallback_graph,
+            ort_api, ep_context_config_, ep_ctx.c_str(), fallback_ep_ctx.c_str(), fallback_graph,
             ep_context_data.data(), ep_context_data.size()));
       }
       attributes[0] = Ort::OpAttr("ep_cache_context", ep_ctx.data(), static_cast<int>(ep_ctx.size()),

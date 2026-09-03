@@ -612,6 +612,14 @@ ORT_API_STATUS_IMPL(SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionO
                     _In_ EpSelectionDelegate delegate,
                     _In_opt_ void* state);
 
+ORT_API_STATUS_IMPL(SessionOptionsSetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
+                    _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state,
+                    _In_opt_ const OrtEpContextDataReadOptions* read_options);
+ORT_API_STATUS_IMPL(CreateEpContextDataReadOptions, _Outptr_ OrtEpContextDataReadOptions** read_options);
+ORT_API_STATUS_IMPL(EpContextDataReadOptionsSetMaxDataSize, _Inout_ OrtEpContextDataReadOptions* read_options,
+                    _In_ size_t max_data_size);
+ORT_API(void, ReleaseEpContextDataReadOptions, _Frees_ptr_opt_ OrtEpContextDataReadOptions* read_options);
+
 // OrtHardwareDevice accessors.
 ORT_API(OrtHardwareDeviceType, HardwareDevice_Type, _In_ const OrtHardwareDevice* device);
 ORT_API(uint32_t, HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device);

@@ -27,7 +27,7 @@
 #endif
 
 #include "plugin_ep_utils.h"
-#include "onnxruntime_experimental_cxx_api.h"
+#include "onnxruntime_cxx_api.h"
 
 /**
  * \file
@@ -361,7 +361,8 @@ inline OrtStatus* ReadEpContextDataFromFile(const OrtApi& api, const char* file_
 // an OrtStatus* rather than dereferencing null.
 inline OrtStatus* ReadEpContextDataFromFileWithAllocator(const OrtApi& api, const char* file_name,
                                                          const OrtGraph* graph, OrtAllocator* allocator,
-                                                         void** out_buffer, size_t* out_size) {
+                                                         void** out_buffer, size_t* out_size,
+                                                         size_t max_data_size = std::numeric_limits<size_t>::max()) {
   if (out_buffer == nullptr || out_size == nullptr) {
     return api.CreateStatus(ORT_INVALID_ARGUMENT,
                             "EPContext data file read requires non-null out_buffer and out_size pointers");
@@ -399,6 +400,9 @@ inline OrtStatus* ReadEpContextDataFromFileWithAllocator(const OrtApi& api, cons
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file is too large to read");
   }
   const size_t byte_count = static_cast<size_t>(byte_count_wide);
+  if (byte_count > max_data_size) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file exceeds the configured maximum size");
+  }
   if (byte_count == 0) {
     return nullptr;  // Empty file: leave *out_buffer null / *out_size 0 (no allocation needed).
   }
@@ -453,7 +457,8 @@ inline OrtStatus* WriteEpContextDataToFile(const OrtApi& api, const char* file_n
 class EpContextData;
 inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc read_func, void* read_state,
                                     const char* file_name, const OrtGraph* graph, EpContextData& out,
-                                    OrtAllocator* allocator = nullptr);
+                                    OrtAllocator* allocator = nullptr,
+                                    size_t max_data_size = std::numeric_limits<size_t>::max());
 
 // RAII owner for the bytes returned by an EPContext read, used to avoid copying potentially large data. Both the
 // app-supplied read-callback path and the file-fallback path place the bytes in a buffer obtained from an
@@ -491,7 +496,7 @@ class EpContextData {
  private:
   friend OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc read_func, void* read_state,
                                       const char* file_name, const OrtGraph* graph, EpContextData& out,
-                                      OrtAllocator* allocator);
+                                      OrtAllocator* allocator, size_t max_data_size);
 
   void FreeAllocatorBuffer() noexcept {
     if (buffer_ != nullptr && allocator_ != nullptr && api_ != nullptr) {
@@ -549,7 +554,7 @@ class EpContextData {
 // directly so tests can inject one; production EPs use the OrtEpContextConfig overload.
 inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc read_func, void* read_state,
                                     const char* file_name, const OrtGraph* graph, EpContextData& out,
-                                    OrtAllocator* allocator) {
+                                    OrtAllocator* allocator, size_t max_data_size) {
   out.Reset();
 
   if (file_name == nullptr || file_name[0] == '\0') {
@@ -575,7 +580,7 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
     void* file_buffer = nullptr;
     size_t file_buffer_size = 0;
     RETURN_IF_ERROR(ReadEpContextDataFromFileWithAllocator(api, file_name, graph, effective_allocator, &file_buffer,
-                                                           &file_buffer_size));
+                                                           &file_buffer_size, max_data_size));
     out.Adopt(api, effective_allocator, file_buffer, file_buffer_size);
     return nullptr;
   }
@@ -602,6 +607,9 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
 
   if (ep_context_data_size != 0 && ep_context_data == nullptr) {
     return api.CreateStatus(ORT_FAIL, "OrtReadNamedBufferFunc returned a null buffer for non-empty EPContext data");
+  }
+  if (ep_context_data_size > max_data_size) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext callback data exceeds the configured maximum size");
   }
 
   // Success: transfer ownership of the callback buffer to `out` (no copy); `out` frees it via the same allocator.
@@ -640,16 +648,16 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, const OrtEpContextConfig*
 
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
+  size_t max_data_size = std::numeric_limits<size_t>::max();
   if (ep_context_config != nullptr) {
-    auto get_read_func =
-        Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&api);
-    if (get_read_func == nullptr) {
-      return api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                              "OrtEpApi_EpContextConfig_GetEpContextDataReadFunc is not available");
+    const OrtEpApi* ep_api = api.GetEpApi();
+    if (ep_api == nullptr) {
+      return api.CreateStatus(ORT_NOT_IMPLEMENTED, "OrtEpApi is not available");
     }
-    RETURN_IF_ERROR(get_read_func(ep_context_config, &read_func, &read_state));
+    RETURN_IF_ERROR(ep_api->EpContextConfigGetEpContextDataReadFunc(ep_context_config, &read_func, &read_state,
+                                                                    &max_data_size));
   }
-  return ReadEpContextData(api, read_func, read_state, file_name, graph, out, allocator);
+  return ReadEpContextData(api, read_func, read_state, file_name, graph, out, allocator, max_data_size);
 }
 
 // Low-level overload that takes the write callback and its opaque state directly. Production EPs should use the
@@ -710,13 +718,11 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* write_state = nullptr;
   if (ep_context_config != nullptr) {
-    auto get_write_func =
-        Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn(&api);
-    if (get_write_func == nullptr) {
-      return api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                              "OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc is not available");
+    const OrtEpApi* ep_api = api.GetEpApi();
+    if (ep_api == nullptr) {
+      return api.CreateStatus(ORT_NOT_IMPLEMENTED, "OrtEpApi is not available");
     }
-    RETURN_IF_ERROR(get_write_func(ep_context_config, &write_func, &write_state));
+    RETURN_IF_ERROR(ep_api->EpContextConfigGetEpContextDataWriteFunc(ep_context_config, &write_func, &write_state));
   }
   return WriteEpContextDataWithFileFallback(api, write_func, write_state, file_name, fallback_file_name, graph, buffer,
                                             buffer_size);

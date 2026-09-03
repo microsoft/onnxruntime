@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <limits>
 #include <codecvt>
 #include <filesystem>
 #include <functional>
@@ -16,9 +17,6 @@
 #include "core/framework/ep_context_options.h"
 #include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_c_api.h"
-// Needed for OrtReadNamedBufferFunc, the type of the EPContext data read callback stored in this struct. This include
-// can be removed once the experimental EPContext data callback APIs are promoted to the stable C API.
-#include "core/session/onnxruntime_experimental_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
 
@@ -232,6 +230,7 @@ struct SessionOptions {
 
   OrtReadNamedBufferFunc ep_context_data_read_func = nullptr;
   void* ep_context_data_read_state = nullptr;
+  size_t ep_context_data_read_max_size = std::numeric_limits<size_t>::max();
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {

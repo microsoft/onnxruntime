@@ -658,6 +658,8 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
+ORT_DEFINE_RELEASE(EpContextDataReadOptions);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
@@ -786,6 +788,8 @@ struct AllocatedFree {
 
 struct AllocatorWithDefaultOptions;
 struct Env;
+struct EpContextConfig;
+struct EpContextDataReadOptions;
 struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
@@ -1664,6 +1668,11 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   SessionOptionsImpl& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddSessionConfigEntry
 
+  ///< Register or clear the callback that supplies external EPContext data during session initialization.
+  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state,
+                                               size_t max_data_size);
+  SessionOptionsImpl& ClearEpContextDataReadFunc();
+
   SessionOptionsImpl& AddInitializer(const char* name, const OrtValue* ort_val);                                             ///< Wraps OrtApi::AddInitializer
   SessionOptionsImpl& AddExternalInitializers(const std::vector<std::string>& names, const std::vector<Value>& ort_values);  ///< Wraps OrtApi::AddExternalInitializers
   SessionOptionsImpl& AddExternalInitializersFromFilesInMemory(const std::vector<std::basic_string<ORTCHAR_T>>& external_initializer_file_names,
@@ -1739,6 +1748,35 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
 };
 
+/** \brief Move-only owner for the EPContext callback configuration used by plugin EPs.
+ *
+ * Construct during OrtEpFactory::CreateEp from the provided session options, retain for the EP lifetime, and query
+ * the application callbacks from Compile. The wrapper owns the OrtEpContextConfig handle, not the application state.
+ */
+struct EpContextConfig : detail::Base<OrtEpContextConfig> {
+  using Base = detail::Base<OrtEpContextConfig>;
+  using Base::Base;
+
+  explicit EpContextConfig(std::nullptr_t) noexcept {}
+  explicit EpContextConfig(const SessionOptions& session_options);
+  explicit EpContextConfig(ConstSessionOptions session_options);
+
+  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state, size_t& max_data_size) const;
+  void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;
+};
+
+/** \brief Options controlling EPContext data reads.
+ *
+ * Wraps ::OrtEpContextDataReadOptions.
+ */
+struct EpContextDataReadOptions : detail::Base<OrtEpContextDataReadOptions> {
+  using Base = detail::Base<OrtEpContextDataReadOptions>;
+  using Base::Base;
+
+  EpContextDataReadOptions();
+  EpContextDataReadOptions& SetMaxDataSize(size_t max_data_size);
+};
+
 /** \brief Options object used when compiling a model.
  *
  * Wraps ::OrtModelCompilationOptions object and methods
@@ -1770,6 +1808,9 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelWriteFunc
   ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
+
+  ///< Register or clear the callback that receives external EPContext data during compilation.
+  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state = nullptr);
 
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation

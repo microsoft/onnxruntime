@@ -1714,7 +1714,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_, layering_index,
-                                                       mode, ep_context_gen_options, debug_graph_fn));
+                                                       mode, ep_context_gen_options,
+                                                       session_options_.ep_context_data_read_func != nullptr,
+                                                       debug_graph_fn));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   if (layering_index) {
@@ -2325,7 +2327,9 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             sess_options.config_options,
                                             logger,
                                             nullptr /*layering_index*/,
-                                            GraphPartitioner::Mode::kOrtFormatLoad));
+                                            GraphPartitioner::Mode::kOrtFormatLoad,
+                                            {},
+                                            sess_options.ep_context_data_read_func != nullptr));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // a compiling EP (e.g. CoreML) may copy initializers to its own memory. run the cleanup of unused initializers

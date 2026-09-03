@@ -343,6 +343,27 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetWeightlessEnabled,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWriteFunc,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_opt_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_API_RETURN_IF(ort_model_compile_options == nullptr, ORT_INVALID_ARGUMENT,
+                    "OrtModelCompilationOptions is NULL");
+
+  auto* model_compile_options =
+      reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+  model_compile_options->SetEpContextDataWriteFunc(write_func, state);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(write_func);
+  ORT_UNUSED_PARAMETER(state);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtCompileAPI::CompileModel, _In_ const OrtEnv* env,
                     _In_ const OrtModelCompilationOptions* ort_model_compile_options) {
   API_IMPL_BEGIN
@@ -385,6 +406,8 @@ static constexpr OrtCompileApi ort_compile_api = {
     // End of Version 24 - DO NOT MODIFY ABOVE
 
     &OrtCompileAPI::ModelCompilationOptions_SetWeightlessEnabled,
+
+    &OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWriteFunc,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

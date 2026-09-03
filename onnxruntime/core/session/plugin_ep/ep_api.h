@@ -17,6 +17,15 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
 
 ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device);
 
+ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptions* session_options,
+                    _Outptr_ OrtEpContextConfig** config);
+ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config);
+ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
+                    _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state,
+                    _Out_ size_t* max_data_size);
+ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
+                    _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
+
 ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* graph_support_info,
                     _In_reads_(num_nodes) const OrtNode* const* nodes, _In_ size_t num_nodes,
                     _In_opt_ const OrtNodeFusionOptions* node_fusion_options);

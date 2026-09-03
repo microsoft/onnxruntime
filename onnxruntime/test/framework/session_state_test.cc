@@ -517,6 +517,7 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
                             sess_options.config_options, default_logger, layering_index,
                             GraphPartitioner::Mode::kNormal,
                             epctx::ModelGenOptions{},
+                            false,
                             debug_graph_fn));
 
   verifier_fn(graph);

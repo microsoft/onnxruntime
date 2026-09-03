@@ -467,6 +467,22 @@ class IExecutionProvider {
     return nullptr;
   }
 
+  /** Returns support for application-managed external EPContext data. */
+  virtual Status GetEpContextDataSupport(uint32_t& supported_flags) const {
+    supported_flags = OrtEpContextDataSupportFlags_NONE;
+    return Status::OK();
+  }
+
+  /**
+   * Returns whether this EP may produce EPContext nodes without a Compile() call.
+   *
+   * This query must not have side effects. ORT uses it to validate callback support before calling
+   * GetEpContextNodes(), which may create external EPContext data for these providers.
+   */
+  virtual bool MayProduceEpContextNodesWithoutCompilation() const {
+    return false;
+  }
+
  private:
   const std::string type_;
 

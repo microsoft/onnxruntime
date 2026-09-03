@@ -1422,6 +1422,12 @@ struct ProviderHost {
   virtual const Float8E8M0* Tensor__Data_Float8E8M0(const Tensor* p) = 0;
   virtual bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept = 0;
 #endif
+
+  // Appended at end to preserve vtable ABI compatibility.
+  virtual void SessionOptions__GetEpContextDataCallbacks(const OrtSessionOptions* p,
+                                                         OrtReadNamedBufferFunc* read_func, void** read_state,
+                                                         size_t* read_max_data_size,
+                                                         OrtWriteNamedBufferFunc* write_func, void** write_state) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

@@ -872,6 +872,12 @@ struct ProviderHostImpl : ProviderHost {
   const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) override { return p->value.config_options.configurations; }
   const ConfigOptions& SessionOptions__GetConfigOptions(const OrtSessionOptions* p) override { return p->value.config_options; }
   bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) override { return p->value.enable_profiling; };
+  void SessionOptions__GetEpContextDataCallbacks(const OrtSessionOptions* p,
+                                                 OrtReadNamedBufferFunc* read_func, void** read_state,
+                                                 size_t* read_max_data_size,
+                                                 OrtWriteNamedBufferFunc* write_func, void** write_state) override {
+    p->GetEpContextDataCallbacks(read_func, read_state, read_max_data_size, write_func, write_state);
+  }
   // ComputeCapability (wrapped)
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }

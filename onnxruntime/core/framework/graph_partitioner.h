@@ -71,6 +71,7 @@ class GraphPartitioner {
                    LayeringIndex* layering_index,
                    Mode mode = Mode::kNormal,
                    const epctx::ModelGenOptions& ep_context_gen_options = {},
+                   bool ep_context_data_read_callback_registered = false,
                    const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
 
 #ifndef ORT_MINIMAL_BUILD

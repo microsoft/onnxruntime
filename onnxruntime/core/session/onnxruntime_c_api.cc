@@ -4940,6 +4940,11 @@ static constexpr OrtApi ort_api_1_to_29 = {
 
     &OrtApis::SessionOptionsSetWeightlessSourceModelBuffer,
     // End of Version 29 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::SessionOptionsSetEpContextDataReadFunc,
+    &OrtApis::CreateEpContextDataReadOptions,
+    &OrtApis::EpContextDataReadOptionsSetMaxDataSize,
+    &OrtApis::ReleaseEpContextDataReadOptions,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

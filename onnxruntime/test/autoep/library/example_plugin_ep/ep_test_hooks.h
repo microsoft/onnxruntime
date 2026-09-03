@@ -17,6 +17,9 @@
 #define EXPORT_SYMBOL
 #endif
 
+inline constexpr const char* kExampleEpTestEpContextDataSupport =
+    "ep.example_ep.test_ep_context_data_support";
+
 extern "C" {
 EXPORT_SYMBOL void ExampleEpTestHooks_ResetSyncCount();
 EXPORT_SYMBOL uint64_t ExampleEpTestHooks_GetSyncCount();

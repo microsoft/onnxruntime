@@ -43,6 +43,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
   // This timing is required to work with both compliation-based EPs and non-compilation-based EPs.
   const InlinedVector<const Node*> GetEpContextNodes() const override;
+  bool MayProduceEpContextNodesWithoutCompilation() const override;
   virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
                                              gsl::span<const char* const> /*values*/) override;
 
