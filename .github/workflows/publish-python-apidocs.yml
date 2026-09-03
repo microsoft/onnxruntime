@@ -46,7 +46,7 @@ jobs:
           python3 -m pip install --user --upgrade pip
           cd docs/python
           python3 -m pip install --user -r requirements.txt
-          python3 -m pip install --user --pre onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_cpu.html
+          python3 -m pip install --user --pre onnxruntime-training -f https://download.onnxruntime.ai/onnxruntime_nightly_cu118.html
           python3 -m pip list
       - name: Generate Python docs with Sphinx
         run: |
