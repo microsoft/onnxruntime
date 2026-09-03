@@ -155,6 +155,17 @@ Each current routing record contains `request_id`, `node_name`, `node_index`, `e
 end-of-run execution-provider synchronization, then serialized. Per-run record and routing-element limits bound pinned
 host memory; a `moe_routing_truncated` warning reports any dropped decisions explicitly.
 
+PR 2 adds a dedicated JSON Lines destination:
+
+```text
+session.moe_expert_statistics_file=<path>
+```
+
+When this entry is present together with `session.enable_moe_expert_statistics=1`, ORT writes only routing records to
+the specified file. It does not redirect `stdout` or `stderr`, include unrelated ORT messages, or enable profiling.
+The normal logger remains the backward-compatible destination when the file entry is absent. File-open and write
+failures are reported as run errors rather than silently disabling trace collection.
+
 A later output-prediction study extends these events with sampled MoE outputs. This extension remains behind `session.enable_moe_expert_statistics=1` and is disabled unless an explicit sampling configuration is provided. It records the source `(request_id, input_shapes, token_index, layer_id)`, output shape and type, and either the sampled output vector or a documented deterministic projection. It must not emit every full activation by default because that would make the JSON traces impractically large.
 
 Each routing record contains:
@@ -177,6 +188,60 @@ Each routing record contains:
 | `cpu_duration_ns`, `cuda_duration_ns` | MoE execution time split by device when the cache is implemented. |
 
 Run metadata records the model revision, ONNX Runtime and `onnxruntime-genai` versions, CUDA version, GPU and CPU models, visible CUDA device IDs and topology, capacity, policy parameters, random seed, warm-up length, and benchmark configuration. Prompts and generated text are not logged by default; stable request identifiers are sufficient for joins when explicitly required.
+
+## Evaluation scripts
+
+`tools/python/qmoe_prompt_runner.py` submits a JSON list of prompts directly through the `onnxruntime-genai`
+generation API. It does not import or invoke `locodellm`. Until the dedicated routing-file session option is
+implemented, it redirects the native ORT `stderr` file descriptor to the requested routing log and emits explicit
+`N/total` prompt boundaries. It writes generated text, token counts, durations, and throughput to a separate JSON file.
+
+```bash
+python tools/python/qmoe_prompt_runner.py /path/to/model --prompts-file prompts.json --provider cuda --max-new-tokens 256 --output qmoe-prompt-results.json --routing-log qmoe-routing.log
+```
+
+The prompt file is either a JSON array of strings or JSON Lines containing strings or objects with a `prompt` field.
+Use `--prompt` repeatedly instead of `--prompts-file` for small manual runs. The runner applies the model tokenizer's
+chat template by default; `--raw-prompts` disables that behavior.
+
+`tools/python/qmoe_expert_distribution.py` validates and streams the routing records, computes prompt, layer, and global
+expert distributions, ranks experts by frequency, maps every selected top-k expert to its zero-based frequency rank,
+generates threshold aggregates, derives expert bytes from the ONNX external initializers, and writes the result plots.
+
+```bash
+python tools/python/qmoe_expert_distribution.py qmoe-routing.log --benchmark-json qmoe-prompt-results.json --model /path/to/model/model.onnx --output-prefix qmoe-routing-analysis
+```
+
+Both scripts keep the raw routing trace separate from aggregate CSV and PNG artifacts. PR 2 adds synthetic fixtures and
+targeted tests for prompt boundaries, top-k extraction, rank ties, threshold totals, and ONNX expert-size calculation.
+
+## First results
+
+An exploratory trace was collected from Qwen3.5-35B-A3B INT4 on CUDA using 10 prompts. It contains 59,880 valid routing
+records from 40 QMoE layers, with 256 experts per layer and top-k 8. General profiling was disabled. The frequency ranks
+below are zero-based and learned from this complete 10-prompt trace; these preliminary results demonstrate the analysis
+pipeline but are not sufficient to select a cache policy.
+
+Five generated routing-analysis rows are shown below. The prefill record retains only the final token row so every event
+contains exactly eight selected experts and eight corresponding frequency ranks.
+
+| Prompt | Inference | QMoE | Selected expert IDs | Frequency ranks | Maximum rank |
+|---:|---:|---|---|---|---:|
+| 1 | 1 | `layers.0` | `[81,206,140,200,67,95,30,187]` | `[2,87,41,11,178,21,109,54]` | 178 |
+| 1 | 1 | `layers.1` | `[94,224,128,233,112,33,11,172]` | `[15,2,16,23,4,1,8,3]` | 23 |
+| 1 | 1 | `layers.2` | `[167,158,153,34,109,93,217,179]` | `[7,1,4,42,46,69,0,18]` | 69 |
+| 1 | 1 | `layers.3` | `[6,214,196,69,233,117,230,225]` | `[20,73,6,0,68,22,33,32]` | 73 |
+| 1 | 1 | `layers.4` | `[15,154,163,222,108,195,129,87]` | `[35,4,26,28,17,2,20,23]` | 35 |
+
+The first figure compares observed routing coverage with the normalized bytes excluded by a frequency-ranked shortlist.
+One expert occupies 1,775,616 bytes per QMoE layer, or 71,024,640 bytes across all 40 layers for one additional rank.
+
+![Normalized routing coverage and expert bytes](images/08-moe-cpu-offload/normalized-total-vs-expert-bytes.png)
+
+The second figure compares normalized rank-threshold curves for representative early, middle, and late QMoE layers.
+Layer-specific differences motivate retaining per-layer statistics in the simulator.
+
+![Selected QMoE layer expert-rank distributions](images/08-moe-cpu-offload/selected-layers-expert-ranks.png)
 
 ## Benchmarks and simulation
 
