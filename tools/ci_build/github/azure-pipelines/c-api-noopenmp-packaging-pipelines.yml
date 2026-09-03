@@ -120,6 +120,9 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
+    # Waiting on the Dawn changes to land
+    settings:
+      networkIsolationPolicy: CFSClean,CFSClean2,CFSClean3,DefaultDeny
     featureFlags:
       binskimScanAllExtensions: true
     sdl:
