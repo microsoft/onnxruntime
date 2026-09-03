@@ -30,7 +30,7 @@ jobs:
     name: Generate Python API docs
     runs-on: [
         "self-hosted",
-        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "1ES.Pool=onnxruntime-github-linux-a10",
         "JobId=apidocs-python-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120
