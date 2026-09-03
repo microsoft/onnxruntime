@@ -506,6 +506,19 @@ namespace Dml
 
             std::vector<GraphPartition*> inputNonFinalPartitions = GetNonFinalizedInputPartitions(node, nodeNameToPartitionMap);
 
+            // Cap partition node count to prevent massive monolithic fusion graphs (e.g. 24,000+ nodes)
+            // that cause DirectML descriptor thrashing and extreme VRAM pre-allocation.
+            constexpr size_t kMaxDmlGraphPartitionNodeCount = 1000;
+            if (!inputNonFinalPartitions.empty())
+            {
+                GraphPartition* rootPart = inputNonFinalPartitions[0]->GetRootMergedPartition();
+                if (rootPart->GetNodeIndices().size() >= kMaxDmlGraphPartitionNodeCount)
+                {
+                    rootPart->SetFinalized();
+                    inputNonFinalPartitions = GetNonFinalizedInputPartitions(node, nodeNameToPartitionMap);
+                }
+            }
+
             if (inputNonFinalPartitions.empty())
             {
                 partitions.push_back(CreateNewPartitionWithFinalizedInputPartitions(node, graphOutputs, nodeNameToPartitionMap));
