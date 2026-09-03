@@ -14,6 +14,7 @@
 #include <thread>
 #include <filesystem>
 #include <chrono>
+#include <numeric>
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -123,6 +124,33 @@ void CreateBaseModel(const PathString& model_name,
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
   status = onnxruntime::Model::Save(model, model_name);
+}
+
+void CreateReshapeModelWithShapeInput(const PathString& model_name) {
+  onnxruntime::Model model("shape_tensor_profile_test", false,
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto data_type;
+  data_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  data_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("data_size");
+
+  ONNX_NAMESPACE::TypeProto shape_type;
+  shape_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  shape_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+
+  ONNX_NAMESPACE::TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("rows");
+  output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("columns");
+
+  auto& data = graph.GetOrCreateNodeArg("Data", &data_type);
+  auto& shape = graph.GetOrCreateNodeArg("Shape", &shape_type);
+  auto& output = graph.GetOrCreateNodeArg("Output", &output_type);
+  graph.AddNode("reshape", "Reshape", "", {&data, &shape}, {&output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_STATUS_OK(onnxruntime::Model::Save(model, model_name));
 }
 
 std::vector<char> ReadFileFromDisk(const PathString& path) {
@@ -678,6 +706,61 @@ TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
   engine_files = GetCachesByType("./", ".engine");
   // The whole graph should be partitioned into 3 TRT subgraphs and 2 cpu nodes
   ASSERT_EQ(engine_files.size(), 3);
+}
+
+TEST(TensorrtExecutionProviderTest, ShapeTensorProfileRange) {
+  const PathString model_name = ORT_TSTR("trt_execution_provider_shape_tensor_profile_test.onnx");
+  std::filesystem::remove(model_name);
+  CreateReshapeModelWithShapeInput(model_name);
+
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderShapeTensorProfileTest";
+  InferenceSession session{so, GetEnvironment()};
+
+  OrtTensorRTProviderOptionsV2 params;
+  params.trt_profile_min_shapes = "Data:4,Shape:2x2";
+  params.trt_profile_opt_shapes = "Data:6,Shape:3x2";
+  params.trt_profile_max_shapes = "Data:8,Shape:4x2";
+
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
+  ASSERT_STATUS_OK(session.Load(model_name));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  bool has_trt_node = false;
+  for (const auto& node : session.GetSessionState().GetGraphViewer().Nodes()) {
+    has_trt_node |= node.GetExecutionProviderType() == kTensorrtExecutionProvider;
+  }
+  ASSERT_TRUE(has_trt_node);
+
+  auto cpu_allocator = CPUAllocator::DefaultInstance();
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  const std::vector<std::string> output_names{"Output"};
+
+  const auto run_and_verify = [&](const std::vector<int64_t>& shape_values) {
+    const size_t element_count = narrow<size_t>(shape_values[0] * shape_values[1]);
+    std::vector<float> data_values(element_count);
+    std::iota(data_values.begin(), data_values.end(), 1.0f);
+
+    OrtValue data;
+    OrtValue shape;
+    CreateMLValue<float>(cpu_allocator, {narrow<int64_t>(element_count)}, data_values, &data);
+    CreateMLValue<int64_t>(cpu_allocator, {narrow<int64_t>(shape_values.size())}, shape_values, &shape);
+
+    NameMLValMap feeds;
+    feeds.emplace("Data", data);
+    feeds.emplace("Shape", shape);
+
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
+    VerifyOutputs(fetches, shape_values, data_values);
+  };
+
+  run_and_verify({2, 2});
+  run_and_verify({3, 2});
+  run_and_verify({4, 2});
+
+  std::filesystem::remove(model_name);
 }
 
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
