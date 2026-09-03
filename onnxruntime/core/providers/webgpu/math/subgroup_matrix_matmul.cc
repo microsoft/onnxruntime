@@ -8,7 +8,6 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <string>
 #include <string_view>
 #include <utility>
 
@@ -58,14 +57,6 @@ namespace {
 // split_k subgroups, so its size is kSubgroupMatrixSubgroupSize * split_k.
 constexpr uint32_t kSubgroupMatrixSubgroupSize = 32;
 
-bool TryGetPositiveUint32(int64_t dim, uint32_t& value) {
-  if (dim <= 0 || dim > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
-    return false;
-  }
-  value = static_cast<uint32_t>(dim);
-  return true;
-}
-
 // Copies a row-major f16 weight B [K, N] into a column-padded [K, N_b] buffer
 // (N_b >= N), zero-filling columns [N, N_b). Gives B an even row stride so the
 // subgroup-matrix f16 load's 4-byte row-start alignment holds for odd N.
@@ -111,17 +102,45 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
     const auto* a = inputs[0];
     const auto* b = inputs[1];
     const bool has_bias = inputs.size() > 2;
-    const bool inputs_are_fp16 = a->IsDataType<MLFloat16>() && b->IsDataType<MLFloat16>();
-    const auto problem = AnalyzeSubgroupMatrixMatMulRoute(
-        a_shape, b_shape, inputs_are_fp16, is_channels_last, has_bias,
-        activation.activation_kind_ != ActivationKind::None);
-    if (!problem) {
+    const size_t a_rank = a_shape.NumDimensions();
+    const size_t b_rank = b_shape.NumDimensions();
+    if ((!is_channels_last && has_bias) || a_rank < 2 || b_rank < 2 ||
+        !a->IsDataType<MLFloat16>() || !b->IsDataType<MLFloat16>()) {
       return Status::OK();
     }
-    const uint32_t M = problem->M;
-    const uint32_t N = problem->N;
-    const uint32_t K = problem->K;
-    const uint32_t batch = problem->batch;
+
+    const uint32_t K = narrow<uint32_t>(a_shape[a_rank - 1]);
+    if (K == 0) {
+      return Status::OK();
+    }
+
+    uint32_t M = 0;
+    uint32_t N = 0;
+    uint32_t batch = 1;
+    if (b_rank == 2) {
+      ORT_ENFORCE(narrow<uint32_t>(b_shape[0]) == K,
+                  "MatMul contraction dim mismatch: A K=", K, " vs B rows=", b_shape[0]);
+      M = narrow<uint32_t>(a_shape.Size() / static_cast<int64_t>(K));
+      N = narrow<uint32_t>(b_shape[1]);
+    } else {
+      if (a_rank != b_rank) {
+        return Status::OK();
+      }
+      ORT_ENFORCE(narrow<uint32_t>(b_shape[b_rank - 2]) == K,
+                  "MatMul contraction dim mismatch: A K=", K,
+                  " vs B rows=", b_shape[b_rank - 2]);
+      M = narrow<uint32_t>(a_shape[a_rank - 2]);
+      N = narrow<uint32_t>(b_shape[b_rank - 1]);
+      for (size_t i = 0; i + 2 < a_rank; ++i) {
+        if (a_shape[i] != b_shape[i]) {
+          return Status::OK();
+        }
+      }
+      batch = narrow<uint32_t>(a_shape.SizeToDimension(a_rank - 2));
+    }
+    if (M == 0 || N == 0) {
+      return Status::OK();
+    }
 
     const std::optional<SubgroupMatrixTiling> tiling = tiling_selector_(context, M, N, K, batch);
     if (!tiling) {
@@ -129,11 +148,11 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
     }
 
     const auto& config = supported_subgroup_matrix_configs[config_index_];
-    // Require whole subgroup-matrix K blocks. Odd N additionally needs a padded
-    // constant B owned by a persistent per-kernel cache. Keep this after tiling
-    // selection so a declined problem never allocates or dispatches padding.
-    if (!CanDispatchSubgroupMatrixMatMul(
-            *problem, config.K, b_is_constant, has_persistent_cache)) {
+    const bool needs_padded_b = N % 2 != 0;
+    // Require whole subgroup-matrix K blocks. An odd-width B also needs a
+    // persistent cache where its padded constant copy can live.
+    if (config.K == 0 || K % config.K != 0 ||
+        (needs_padded_b && (!b_is_constant || !has_persistent_cache))) {
       return Status::OK();
     }
 
@@ -141,7 +160,7 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
     const Tensor* b_used = b;
     TensorShape b_used_shape = b_shape;
     uint32_t N_b = N;
-    if (N % 2 != 0) {
+    if (needs_padded_b) {
       ORT_RETURN_IF_ERROR(EnsurePaddedB(context, *b, b_shape, N));
       b_used = padded_b_.get();
       b_used_shape = b_used->Shape();
@@ -267,102 +286,6 @@ SubgroupMatrixTilingSelector MakeDefaultTilingSelector() {
 
 }  // namespace
 
-std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulProblem(
-    const TensorShape& a_shape, const TensorShape& b_shape,
-    bool is_channels_last, bool has_bias) {
-  if ((!is_channels_last && has_bias) ||
-      a_shape.NumDimensions() < 2 || b_shape.NumDimensions() < 2) {
-    return std::nullopt;
-  }
-
-  const size_t a_rank = a_shape.NumDimensions();
-  const size_t b_rank = b_shape.NumDimensions();
-  uint32_t K = 0;
-  uint32_t b_k = 0;
-  uint32_t N = 0;
-  if (!TryGetPositiveUint32(a_shape[a_rank - 1], K) ||
-      !TryGetPositiveUint32(b_shape[b_rank - 2], b_k) ||
-      !TryGetPositiveUint32(b_shape[b_rank - 1], N) || K != b_k) {
-    return std::nullopt;
-  }
-
-  uint32_t M = 1;
-  uint32_t batch = 1;
-  if (b_rank == 2) {
-    for (size_t i = 0; i + 1 < a_rank; ++i) {
-      uint32_t dim = 0;
-      if (!TryGetPositiveUint32(a_shape[i], dim) ||
-          dim > std::numeric_limits<uint32_t>::max() / M) {
-        return std::nullopt;
-      }
-      M *= dim;
-    }
-  } else {
-    if (a_rank != b_rank || !TryGetPositiveUint32(a_shape[a_rank - 2], M)) {
-      return std::nullopt;
-    }
-    for (size_t i = 0; i + 2 < a_rank; ++i) {
-      if (a_shape[i] != b_shape[i]) {
-        return std::nullopt;
-      }
-      uint32_t dim = 0;
-      if (!TryGetPositiveUint32(a_shape[i], dim) ||
-          dim > std::numeric_limits<uint32_t>::max() / batch) {
-        return std::nullopt;
-      }
-      batch *= dim;
-    }
-  }
-
-  return SubgroupMatrixMatMulProblem{M, N, K, batch};
-}
-
-std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulRoute(
-    const TensorShape& a_shape, const TensorShape& b_shape,
-    bool inputs_are_fp16, bool is_channels_last,
-    bool has_bias, bool /*has_activation*/) {
-  if (!inputs_are_fp16) {
-    return std::nullopt;
-  }
-
-  return AnalyzeSubgroupMatrixMatMulProblem(a_shape, b_shape, is_channels_last, has_bias);
-}
-
-bool CanUseSubgroupMatrixRightOperand(uint32_t N,
-                                      bool b_is_constant,
-                                      bool has_persistent_cache) {
-  return N % 2 == 0 || (b_is_constant && has_persistent_cache);
-}
-
-bool CanDispatchSubgroupMatrixMatMul(const SubgroupMatrixMatMulProblem& problem,
-                                     uint32_t config_k,
-                                     bool b_is_constant,
-                                     bool has_persistent_cache) {
-  return config_k != 0 && problem.K % config_k == 0 &&
-         CanUseSubgroupMatrixRightOperand(problem.N, b_is_constant, has_persistent_cache);
-}
-
-std::string BuildSubgroupMatrixMatMulOutputWriter(bool has_bias,
-                                                  std::string_view activation_snippet,
-                                                  std::string_view output_store_snippet) {
-  std::string writer =
-      "fn write_output(output_offset: u32, bias_offset: u32, value_in: output_value_t) {\n"
-      "  var value = value_in;\n";
-  if (has_bias) {
-    writer += "  value += output_value_t(bias[bias_offset]);\n";
-  }
-  writer += "  ";
-  writer += activation_snippet;
-  writer +=
-      "\n"
-      "  ";
-  writer += output_store_snippet;
-  writer +=
-      "\n"
-      "}\n";
-  return writer;
-}
-
 Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform);
   shader.AddInput("input_b", ShaderUsage::UseUniform);
@@ -371,11 +294,18 @@ Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) con
   }
   const auto& output = shader.AddOutput(
       "output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AdditionalImplementation()
+  auto& additional_implementation = shader.AdditionalImplementation();
+  additional_implementation
       << GetActivationDeclaration(activation_, "output_value_t", "output_element_t")
-      << BuildSubgroupMatrixMatMulOutputWriter(
-             has_bias_, GetActivationSnippet(activation_, "output_value_t", "output_element_t"),
-             output.SetByOffset("output_offset", "value"));
+      << "fn write_output(output_offset: u32, bias_offset: u32, value_in: output_value_t) {\n"
+         "  var value = value_in;\n";
+  if (has_bias_) {
+    additional_implementation << "  value += output_value_t(bias[bias_offset]);\n";
+  }
+  additional_implementation
+      << "  " << GetActivationSnippet(activation_, "output_value_t", "output_element_t") << "\n"
+      << "  " << output.SetByOffset("output_offset", "value") << "\n"
+      << "}\n";
 
   const auto& config = supported_subgroup_matrix_configs[config_index_];
   if (config.Is(8, 16, 16)) {

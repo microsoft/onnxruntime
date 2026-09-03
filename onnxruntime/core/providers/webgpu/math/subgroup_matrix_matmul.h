@@ -6,44 +6,11 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
-#include <string>
-#include <string_view>
-
-#include "core/framework/tensor_shape.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 class ComputeContext;
-
-struct SubgroupMatrixMatMulProblem {
-  uint32_t M;
-  uint32_t N;
-  uint32_t K;
-  uint32_t batch;
-};
-
-std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulProblem(
-    const TensorShape& a_shape, const TensorShape& b_shape,
-    bool is_channels_last, bool has_bias);
-
-std::optional<SubgroupMatrixMatMulProblem> AnalyzeSubgroupMatrixMatMulRoute(
-    const TensorShape& a_shape, const TensorShape& b_shape,
-    bool inputs_are_fp16, bool is_channels_last,
-    bool has_bias, bool has_activation);
-
-bool CanUseSubgroupMatrixRightOperand(uint32_t N,
-                                      bool b_is_constant,
-                                      bool has_persistent_cache);
-
-bool CanDispatchSubgroupMatrixMatMul(const SubgroupMatrixMatMulProblem& problem,
-                                     uint32_t config_k,
-                                     bool b_is_constant,
-                                     bool has_persistent_cache);
-
-std::string BuildSubgroupMatrixMatMulOutputWriter(bool has_bias,
-                                                  std::string_view activation_snippet,
-                                                  std::string_view output_store_snippet);
 
 // Per-workgroup output tiling for one MatMul problem: the tile shape and split-K
 // factor chosen by a vendor-specific policy. The subgroup-matrix shape itself is
