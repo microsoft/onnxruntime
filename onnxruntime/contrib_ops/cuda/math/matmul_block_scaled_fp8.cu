@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/math/matmul_block_scaled_fp8.h"
+#include "contrib_ops/cuda/math/matmul_block_scaled_fp8_tiling.h"
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
@@ -905,10 +906,8 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   if (device_prop.major >= 8 && m <= kFp8MmaGemvTileM && k % 64 == 0 && k >= 256 &&
       block_size % 64 == 0 && Fp8GemvMmaEnabled()) {
     const int windows = k / 64;
-    int k_split = (n >= 8192) ? 8 : 16;  // wide N already fills the grid, so fewer warps per block
-    if (windows < k_split) {
-      k_split = (windows >= 8) ? 8 : 4;
-    }
+    const int k_split = PickFp8MmaKSplit(
+        n, m, windows, device_prop.multiProcessorCount, device_prop.major);
     const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);
     const dim3 mma_blocks{static_cast<unsigned int>((n + 15) / 16)};
     const auto launch_mma = [&]<int KSplit, int MTiles>() {
@@ -934,7 +933,9 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
         launch_mma.template operator()<KSplit, 4>();
       }
     };
-    if (k_split == 16) {
+    if (k_split == 32) {
+      launch_for_ksplit.template operator()<32>();
+    } else if (k_split == 16) {
       launch_for_ksplit.template operator()<16>();
     } else if (k_split == 8) {
       launch_for_ksplit.template operator()<8>();
