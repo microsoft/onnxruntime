@@ -260,6 +260,9 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
     auto engine_cache_path = ctx_model_dir.append(cache_path);
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] GetEpContextFromGraph engine_cache_path: " + engine_cache_path.string();
 
+    // Sanitize the path before opening.
+    ORT_RETURN_IF_ERROR(utils::SanitizeFilePath(engine_cache_path, engine_cache_path));
+
     if (!std::filesystem::exists(engine_cache_path)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "Nv EP can't find engine cache: " + engine_cache_path.string() +

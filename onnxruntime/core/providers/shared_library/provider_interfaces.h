@@ -1422,6 +1422,8 @@ struct ProviderHost {
   virtual const Float8E8M0* Tensor__Data_Float8E8M0(const Tensor* p) = 0;
   virtual bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept = 0;
 #endif
+
+  virtual Status Utils__SanitizeFilePath(const std::filesystem::path& path, std::filesystem::path& sanitized_path) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)

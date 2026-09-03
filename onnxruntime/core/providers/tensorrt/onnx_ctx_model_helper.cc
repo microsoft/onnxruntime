@@ -248,6 +248,9 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
       }
     }
 
+    // Sanitize the path before opening.
+    ORT_RETURN_IF_ERROR(utils::SanitizeFilePath(engine_cache_path, engine_cache_path));
+
     if (!std::filesystem::exists(engine_cache_path)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "TensorRT EP can't find engine cache: " + engine_cache_path.string() +

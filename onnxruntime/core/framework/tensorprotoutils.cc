@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <filesystem>
 #if defined(__wasm__)
 #include <emscripten.h>
@@ -566,6 +567,67 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                          "External data path escapes model directory. ",
                          "External data path: ", external_data_path, " resolved path: ",
                          external_data_canonical, " ", "allowed directory: ", real_model_dir);
+}
+
+Status SanitizeFilePath(const std::filesystem::path& path, std::filesystem::path& sanitized_path) {
+#ifdef _WIN32
+  if (path.empty()) {
+    sanitized_path = path;
+    return Status::OK();
+  }
+
+  // On Windows, opening a path whose final component is a reserved DOS device name (e.g. CON, PRN, AUX, NUL, COM1-9,
+  // LPT1-9) resolves to the device itself rather than a file on disk, because the path goes through normal Win32 path
+  // parsing.
+  //
+  // Prefixing a fully-qualified path with "\\?\" selects the extended-length path syntax, which disables Win32 path
+  // parsing, so reserved device names can no longer be opened as devices.
+  constexpr std::wstring_view kExtendedPrefix = L"\\\\?\\";          // the \\?\ prefix
+  constexpr std::wstring_view kUncPrefix = L"\\\\";                  // the \\ UNC prefix
+  constexpr std::wstring_view kExtendedUncPrefix = L"\\\\?\\UNC\\";  // the \\?\UNC\ prefix
+
+  // Already an extended-length path.
+  if (path.native().rfind(kExtendedPrefix, 0) == 0) {
+    sanitized_path = path;
+    return Status::OK();
+  }
+
+  // "\\?\" requires an absolute path with backslash separators and no relative components. Build the absolute path
+  // lexically rather than with std::filesystem::absolute(), which on Windows calls GetFullPathNameW and would itself
+  // resolve a reserved device name to its "\\.\<device>" form before we could neutralize it.
+  std::error_code ec;
+  std::filesystem::path absolute_path;
+  if (path.is_absolute()) {
+    absolute_path = path;
+  } else {
+    const std::filesystem::path cwd = std::filesystem::current_path(ec);
+    ORT_RETURN_IF(ec, "Failed to resolve the current working directory to sanitize path: ",
+                  path, ", error: ", ec.message());
+    absolute_path = cwd / path;
+    // A drive-relative path (e.g. "C:blob.bin") stays relative when its drive differs from the current directory's
+    // drive, and cannot be resolved without invoking the Win32 path parsing.
+    ORT_RETURN_IF(!absolute_path.is_absolute(),
+                  "The path is not fully qualified (e.g. a drive-relative path): ", path);
+  }
+  absolute_path = absolute_path.lexically_normal();
+  absolute_path.make_preferred();
+
+  const std::wstring native = absolute_path.native();
+
+  // UNC path ("\\server\share\..."): the extended-length form replaces the leading "\\" with "\\?\UNC\", e.g.
+  // \\server\share -> \\?\UNC\server\share. Prepending a bare "\\?\" here would produce a malformed path and break
+  // legitimate network shares, so handle it explicitly.
+  if (native.rfind(kUncPrefix, 0) == 0) {
+    sanitized_path = std::filesystem::path(std::wstring(kExtendedUncPrefix) + native.substr(kUncPrefix.size()));
+    return Status::OK();
+  }
+
+  sanitized_path = std::filesystem::path(std::wstring(kExtendedPrefix) + native);
+  return Status::OK();
+#else
+  sanitized_path = path;
+  return Status::OK();
+#endif
 }
 
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,

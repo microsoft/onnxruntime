@@ -472,6 +472,10 @@ inline Status ValidateExternalDataPathFromDir(const std::filesystem::path& model
   return g_host->Utils__ValidateExternalDataPathFromDir(model_dir, external_data_path);
 }
 
+inline Status SanitizeFilePath(const std::filesystem::path& path, std::filesystem::path& sanitized_path) {
+  return g_host->Utils__SanitizeFilePath(path, sanitized_path);
+}
+
 }  // namespace utils
 
 namespace graph_utils {

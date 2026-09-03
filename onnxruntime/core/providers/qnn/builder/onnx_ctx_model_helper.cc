@@ -118,6 +118,8 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
   }
 
+  // Sanitize the path before opening.
+  ORT_RETURN_IF_ERROR(::onnxruntime::utils::SanitizeFilePath(context_binary_path, context_binary_path));
   std::string context_binary_path_str = context_binary_path.string();
 #ifdef QNN_FILE_MAPPED_WEIGHTS_AVAILABLE
   if (qnn_backend_manager->FileMappingIsEnabled()) {

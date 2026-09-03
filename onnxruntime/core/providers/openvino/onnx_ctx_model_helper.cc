@@ -117,6 +117,8 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
     }
     ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(blob_filepath, std::filesystem::path(ep_cache_context)));
     blob_filepath = blob_filepath.parent_path() / ep_cache_context;
+    // Sanitize the path before opening.
+    ORT_THROW_IF_ERROR(utils::SanitizeFilePath(blob_filepath, blob_filepath));
     ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
   }
@@ -256,7 +258,10 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
       ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(validation_base_path, cache_context_path));
       const std::filesystem::path ep_context_path = validation_base_path.parent_path() / cache_context_path;
       if (!is_xml) {
-        shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
+        // Sanitize the path before opening.
+        std::filesystem::path sanitized_ep_context_path;
+        ORT_THROW_IF_ERROR(utils::SanitizeFilePath(ep_context_path, sanitized_ep_context_path));
+        shared_context = shared_context_manager_->GetOrCreateSharedContext(sanitized_ep_context_path);
         shared_context->Deserialize();
       }
     }

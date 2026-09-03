@@ -726,6 +726,94 @@ TEST(TensorProtoUtilsTest, ConstantTensorProtoWithExternalData) {
   TestConstantNodeConversionWithExternalData<double>(TensorProto_DataType_DOUBLE);
 }
 
+#ifdef _WIN32
+TEST(TensorProtoUtilsTest, SanitizeFilePathAddsExtendedPrefix) {
+  // Empty path passes through unchanged.
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath({}, out));
+    EXPECT_TRUE(out.empty());
+  }
+
+  // A drive-absolute path gets the "\\?\" prefix and is otherwise left intact. A reserved device
+  // name in the final component (NUL) is thereby treated as a literal file, not the device.
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{L"C:\\dir\\NUL"}, out));
+    EXPECT_EQ(out.native(), std::wstring(L"\\\\?\\C:\\dir\\NUL"));
+  }
+
+  // Forward slashes are normalized to backslashes.
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{L"C:/dir/blob.bin"}, out));
+    EXPECT_EQ(out.native(), std::wstring(L"\\\\?\\C:\\dir\\blob.bin"));
+  }
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{L"C:\\dir/sub\\blob.bin"}, out));
+    EXPECT_EQ(out.native(), std::wstring(L"\\\\?\\C:\\dir\\sub\\blob.bin"));
+  }
+
+  // A bare relative device name is made absolute against the current directory and prefixed,
+  // so it can no longer resolve to the device.
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{L"NUL"}, out));
+    EXPECT_EQ(out.native().rfind(L"\\\\?\\", 0), 0u);
+    EXPECT_EQ(out.filename().native(), std::wstring(L"NUL"));
+  }
+
+  // A UNC path uses the "\\?\UNC\" form rather than a malformed "\\?\\\server\share".
+  {
+    std::filesystem::path out;
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{L"\\\\server\\share\\blob.bin"}, out));
+    EXPECT_EQ(out.native(), std::wstring(L"\\\\?\\UNC\\server\\share\\blob.bin"));
+  }
+
+  // Already-extended paths are returned unchanged, for both drive and UNC forms.
+  {
+    std::filesystem::path out;
+    const std::wstring already = L"\\\\?\\C:\\dir\\blob.bin";
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{already}, out));
+    EXPECT_EQ(out.native(), already);
+  }
+  {
+    std::filesystem::path out;
+    const std::wstring already = L"\\\\?\\UNC\\server\\share\\blob.bin";
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{already}, out));
+    EXPECT_EQ(out.native(), already);
+  }
+
+  // The output may alias the input.
+  {
+    std::filesystem::path p{L"C:\\dir\\blob.bin"};
+    ASSERT_STATUS_OK(utils::SanitizeFilePath(p, p));
+    EXPECT_EQ(p.native(), std::wstring(L"\\\\?\\C:\\dir\\blob.bin"));
+  }
+
+  // A drive-relative path (drive letter with no root directory) cannot be fully qualified without
+  // Win32 path parsing, so it is rejected rather than turned into a malformed "\\?\<drive>:cache.bin".
+  {
+    // Use a drive letter different from the current directory's drive, otherwise cwd/path would
+    // resolve it to an absolute path (a same-drive "C:foo" becomes "<cwd>\foo"). A cross-drive
+    // drive-relative path stays relative, which is the case we want to exercise.
+    const std::wstring cwd_root = std::filesystem::current_path().root_name().native();
+    const wchar_t cur_drive = cwd_root.empty() ? L'C' : cwd_root[0];
+    const wchar_t other_drive = (cur_drive == L'Z' || cur_drive == L'z') ? L'Y' : L'Z';
+    const std::filesystem::path drive_relative = std::wstring(1, other_drive) + L":cache.bin";
+    std::filesystem::path out;
+    EXPECT_FALSE(utils::SanitizeFilePath(drive_relative, out).IsOK());
+  }
+}
+#else
+TEST(TensorProtoUtilsTest, SanitizeFilePathIsPassthroughOnNonWindows) {
+  std::filesystem::path out;
+  ASSERT_STATUS_OK(utils::SanitizeFilePath(std::filesystem::path{"some/relative/NUL"}, out));
+  EXPECT_EQ(out, std::filesystem::path{"some/relative/NUL"});
+}
+#endif
+
 // Test fixture for creating temporary directories and files for path validation tests.
 class PathValidationTest : public ::testing::Test {
  protected:
