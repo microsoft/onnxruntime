@@ -1029,6 +1029,31 @@ TEST_F(QnnHTPBackendTests, HTPArchValues) {
   }
 }
 
+static void ORT_API_CALL AppendToString(void* param, OrtLoggingLevel, const char*, const char*, const char*,
+                                        const char* message) noexcept {
+  *reinterpret_cast<std::string*>(param) += message;
+}
+
+// Test that "79" is accepted as an HTP architecture (v79, e.g. Snapdragon 8 Elite / SM8750).
+TEST_F(QnnHTPBackendTests, HTPArchV79) {
+  onnxruntime::ProviderOptions options;
+  options["backend_type"] = "htp";
+  options["htp_arch"] = "79";
+
+  std::string logs;
+  ortenv_teardown();  // Destroy Env so we can create one that captures log messages.
+  {
+    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "HTPArchV79", AppendToString, &logs);
+    Ort::SessionOptions so;
+    so.AppendExecutionProvider("QNN", options);
+
+    EXPECT_NO_THROW(Ort::Session session(env, ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx", so));
+  }
+  ortenv_setup();
+
+  EXPECT_EQ(logs.find("Invalid HTP architecture"), std::string::npos) << logs;
+}
+
 // Test that models run with high QNN context priority.
 TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",

@@ -614,7 +614,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
           }
         } else if (key == "htp_arch") {
-          std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75", "81"};
+          std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75", "79", "81"};
           if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
             std::ostringstream str_stream;
             std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
