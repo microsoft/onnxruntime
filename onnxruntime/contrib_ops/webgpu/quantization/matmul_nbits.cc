@@ -91,8 +91,8 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec;
 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                              WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                              WGSL_TEMPLATE_PARAMETER(broadcast_a_row, broadcast_a_row_),
                              WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                              WGSL_TEMPLATE_PARAMETER(component_b, components_b),

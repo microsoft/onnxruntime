@@ -112,8 +112,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
     // has_skip_output) combinations; only the AddInput/AddOutput wiring upstream changes.
     // The template's own #if directives select the appropriate code paths.
     return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_mlp.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                                WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                               WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                                WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_kind_)),
                                WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                                WGSL_TEMPLATE_PARAMETER(component_b, components_b),

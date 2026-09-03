@@ -975,8 +975,8 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
   test.AddInput<MLFloat16>("A", {1, M, K}, FloatsToMLFloat16s(input0_vals), false);
   test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, input1_vals, true);
   test.AddInput<MLFloat16>("scales", {N, k_blocks}, FloatsToMLFloat16s(scales), true);
-  test.AddOptionalInputEdge<uint8_t>();  // zero_points: unset, so the default 8 applies
-  test.AddOptionalInputEdge<int32_t>();  // g_idx
+  test.AddOptionalInputEdge<uint8_t>();    // zero_points: unset, so the default 8 applies
+  test.AddOptionalInputEdge<int32_t>();    // g_idx
   test.AddOptionalInputEdge<MLFloat16>();  // bias
   test.AddOutput<MLFloat16>("Y", {1, M, N}, FloatsToMLFloat16s(expected_vals));
 
@@ -1022,12 +1022,12 @@ TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
     bool has_bias;
   };
   constexpr Case cases[] = {
-      {1, 128, 1024, 32, 0, false},   // generic, decode shape
-      {1, 128, 1024, 32, 0, true},    // generic, with bias
-      {8, 128, 1024, 32, 0, false},   // wide tile, prefill shape
-      {8, 128, 1024, 32, 0, true},    // wide tile, with bias
-      {8, 128, 4096, 32, 4, false},   // dp4a where available, otherwise wide tile
-      {2, 128, 4096, 32, 4, false},   // dp4a small-M where available
+      {1, 128, 1024, 32, 0, false},  // generic, decode shape
+      {1, 128, 1024, 32, 0, true},   // generic, with bias
+      {8, 128, 1024, 32, 0, false},  // wide tile, prefill shape
+      {8, 128, 1024, 32, 0, true},   // wide tile, with bias
+      {8, 128, 4096, 32, 4, false},  // dp4a where available, otherwise wide tile
+      {2, 128, 4096, 32, 4, false},  // dp4a small-M where available
   };
 
   for (const auto& c : cases) {
