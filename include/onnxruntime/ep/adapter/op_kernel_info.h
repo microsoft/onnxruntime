@@ -158,8 +158,6 @@ struct OpKernelInfo {
 
   template <typename T>
   [[nodiscard]] T GetAttrOrDefault(const std::string& name, const T& default_value) const {
-    // Value-initialize. These accessors are fully inline here, so the compiler can see the failure
-    // paths of GetAttr() and warns about a possibly uninitialized read without it.
     T tmp{};
     return GetAttr<T>(name, &tmp).IsOK() ? tmp : default_value;
   }
@@ -275,17 +273,25 @@ struct OpKernelInfo {
     ORT_RETURN_IF_ERROR(
         ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_string(info, name, allocator, &raw_values, &size)));
 
+    // The allocator owns both the array and every string in it, so release them on all exit paths: constructing the
+    // std::string copies below can throw. Free through the OrtAllocator function pointer rather than
+    // Ort::AllocatorWithDefaultOptions::Free(), which throws on failure and so must not run in this deleter.
+    OrtAllocator* raw_allocator = allocator;
+    auto free_raw_values = [raw_allocator, size](char** values_to_free) {
+      for (size_t i = 0; i < size; ++i) {
+        if (values_to_free[i] != nullptr) {
+          raw_allocator->Free(raw_allocator, values_to_free[i]);
+        }
+      }
+      raw_allocator->Free(raw_allocator, values_to_free);
+    };
+    std::unique_ptr<char*, decltype(free_raw_values)> raw_values_guard{raw_values, std::move(free_raw_values)};
+
     std::vector<std::string> values;
     values.reserve(size);
     for (size_t i = 0; i < size; ++i) {
-      if (raw_values[i] != nullptr) {
-        values.emplace_back(raw_values[i]);
-        allocator.Free(raw_values[i]);
-      } else {
-        values.emplace_back();
-      }
+      values.emplace_back(raw_values[i] != nullptr ? raw_values[i] : "");
     }
-    allocator.Free(raw_values);
     out.swap(values);
     return Status::OK();
   }
