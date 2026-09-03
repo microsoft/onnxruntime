@@ -31,6 +31,9 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/graph/model_helpers.h"
+#endif
 #include "core/graph/graph_utils.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/graph/model_load_utils.h"
@@ -3803,6 +3806,10 @@ Status Graph::Resolve(const ResolveOptions& options) {
   if (!GraphResolveNeeded() && !subgraphs_need_resolve) {
     return Status::OK();
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  ORT_RETURN_IF_ERROR(owning_model_.ValidateLocalFunctionCallDepth(ToGraphProto()));
+#endif
 
   // init all graph/subgraphs. non-recursive so call via ForThisAndAllSubgraphs.
   auto init_func = [](Graph& graph) { return graph.InitInputsInitializersOutputs(); };
