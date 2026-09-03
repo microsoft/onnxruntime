@@ -388,7 +388,12 @@ counterpart is needed.
 
 **4.2 Fusion diagnostic.** After `partitioner.Partition`,
 `ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, logger)` logs a WARNING for each converted
-boundary whose Transpose survived, naming the boundary tensor and the EP that left it behind. This is
+boundary whose Transpose survived, naming the boundary tensor and the EP the **Transpose** is assigned
+to. That is deliberately phrased as where the node ended up rather than who declined to fuse it: a
+compiling EP can claim the GQA node while the Transpose falls back to CPU, so naming that EP as the
+one that refused would blame a provider that never had the opportunity. The remedy text likewise
+avoids pointing at the session option, because on the ORT format path the boundary layout is a
+property of the model and no option setting will change it. This is
 the difference between a diagnosable perf cliff and an invisible one.
 
 The check is anchored on the **boundaries**, not on the GQA nodes. `GqaValueLayoutTransformer` records
@@ -409,6 +414,18 @@ only the GQA node, so `GraphPartitioner` replaces it with a fused node while lea
 in place — both full-cache copies still execute, but there is no GQA node left to search from and the
 old implementation reported nothing. Conversely, when the EP fuses the whole sequence, the boundary
 connects straight to the fused node and nothing is reported, which is correct.
+
+**BNSH is enforced, not merely inert.** When the requested layout is BNSH -- explicitly or by default
+-- `TransformGraph` calls `FindConvertedGqaValueLayoutBoundaries()` and **fails** if the model already
+carries the conversion. A model saved from a BNHS session via `session.optimized_model_filepath` still
+has the Transposes and BNHS boundary shapes, so loading it as BNSH would have the application bind
+BNSH buffers to a BNHS boundary: a shape error at best, and a silent misread when the dimensions are
+dynamic or happen to be square. The remedy is to set the option to BNHS, which the idempotency in 3.4
+makes a clean no-op.
+
+This is deliberately **not** applied on the ORT format path. There the option is forced to BNSH (5),
+and a model converted to BNHS offline is the documented way to use the layout at all, so the same
+check would reject the supported workflow.
 
 **Skipped when saving an ORT format model.** That path runs the partitioner in
 `GraphPartitioner::Mode::kAssignOnly`, which deliberately leaves the original nodes in place rather
@@ -529,6 +546,8 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - `FindConvertedGqaValueLayoutBoundaries` finds both boundaries of an already-converted graph and
   none in an unconverted one, which is what makes the ORT-format diagnostic (5) possible.
 - An invalid option value on an ORT format model reports the bad value, not the format restriction.
+- A BNHS-converted model loaded with BNSH, and with no option at all, fails initialization; the same
+  model loads cleanly when the option is set to BNHS. The test fails without the enforcement branch.
 - The graph is left untouched when validation fails (section 3.6). Two independent GQA nodes, one
   convertible and one not, asserted for both build orders — `GetNodesInTopologicalOrder()` does not
   follow insertion order for independent nodes, and only the order that presents the convertible node

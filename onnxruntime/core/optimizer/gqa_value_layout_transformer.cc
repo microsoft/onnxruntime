@@ -587,15 +587,21 @@ InlinedVector<std::string> ReportUnfusedGqaValueLayoutTransposes(const Graph& gr
       return;  // absorbed by the provider, or never a Transpose to begin with
     }
 
+    // Report where the Transpose ended up, not who declined to fuse it: a compiling EP can claim the
+    // GQA node while the Transpose falls back to CPU, so naming this EP as the one that refused would
+    // blame a provider that never had the opportunity.
     const std::string& ep = transpose->GetExecutionProviderType();
     LOGS(logger, WARNING) << "The Value-layout Transpose for the " << operand << " boundary '" << boundary_name
-                          << "' was not fused by EP '" << (ep.empty() ? "<unassigned>" : ep) << "'. The BNHS Value "
-                          << "cache will be transposed at runtime: expect a full copy of the cache per step, and no "
-                          << "in-place update of the bound buffer because the operator now reads and writes BNSH "
-                          << "intermediates. Either select the '" << kGqaValueLayoutBNSH
-                          << "' layout for '" << kOrtSessionOptionsGqaValueLayout << "', or use an EP that reports '"
-                          << kGqaValueLayoutBNHS << "' for '" << kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout
-                          << "'.";
+                          << "' survived partitioning and is assigned to EP '" << (ep.empty() ? "<unassigned>" : ep)
+                          << "', so it will execute: expect a full copy of the BNHS Value cache per step, and no "
+                          << "in-place update of the bound buffer because the operator reads and writes BNSH "
+                          << "intermediates. Use an EP that fuses Transpose -> GroupQueryAttention -> Transpose (one "
+                          << "reporting '" << kGqaValueLayoutBNHS << "' for '"
+                          << kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout
+                          << "'), or a model whose Value cache boundary is BNSH. Note the boundary layout is a "
+                          << "property of the model here, so it is not necessarily something '"
+                          << kOrtSessionOptionsGqaValueLayout << "' can change: an ORT format model converted to BNHS "
+                          << "carries it regardless of that option.";
     unfused.push_back(boundary_name);
   };
 
