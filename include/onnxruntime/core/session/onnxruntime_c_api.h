@@ -7535,7 +7535,7 @@ struct OrtApi {
   ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
                   _Outptr_result_maybenull_ OrtSyncStream** out);
 
-  /** \brief Set the source ONNX model as a byte buffer for weightless EPContext sessions.
+  /** rief Set the source ONNX model as a byte buffer for weightless EPContext sessions.
    *
    * When creating a session from a weightless EPContext model, the EP may need access to the source model's
    * initializer data. This function provides the source model as an in-memory byte buffer, for scenarios
@@ -7560,6 +7560,19 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
                   _In_ const void* source_model_data, _In_ size_t source_model_data_length);
+
+  /** rief Set the global random seed used by ONNX Runtime random operators.
+   *
+   * The seed is applied to ONNX Runtime's process-wide random generators. Operators with an explicit
+   * seed attribute continue to use that attribute value.
+   *
+   * \param[in] seed The random seed value to use.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(SetSeed, _In_ int64_t seed);
 };
 
 /*
