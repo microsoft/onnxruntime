@@ -49,9 +49,9 @@ void RunInputTransposeTest(const std::vector<int64_t>& perm,
   ASSERT_STATUS_OK(graph.Resolve());
 
   EXPECT_EQ(modified, expect_fusion);
-  const auto op_counts = CountOpsInGraph(graph);
-  EXPECT_EQ(GetOpCount(op_counts, "Transpose"), expect_fusion ? 0 : 1);
-  EXPECT_EQ(GetOpCount(op_counts, "Gemm"), 1);
+  auto op_counts = CountOpsInGraph(graph);
+  EXPECT_EQ(op_counts["Transpose"], expect_fusion ? 0 : 1);
+  EXPECT_EQ(op_counts["Gemm"], 1);
 
   const Node* resulting_gemm = nullptr;
   for (const auto& graph_node : graph.Nodes()) {
