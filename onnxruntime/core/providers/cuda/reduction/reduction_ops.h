@@ -14,12 +14,16 @@ namespace ReductionOps {
 
 // Implementation that holds the core logic of reduction op processing
 // `input_shape_override` is the input shape for compute purposes (if provided)
-
+// `stream` is the stream the reduction is queued on. `alloc_stream` is the stream the output and
+// the scratch buffers are tagged with, which has to be a framework stream a stream aware arena can
+// query sync ids on; pass null to allocate untagged. The two differ in the plugin build, where
+// `stream` may be a shim that only carries the native CUDA handle.
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
 std::unique_ptr<Tensor> ReduceCompute(const AllocatorPtr& gpu_allocator, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
                                       const Tensor& input, gsl::span<const int64_t> axes,
                                       bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                                      bool fast_reduction, Stream* stream, cudnnHandle_t cudnn_handle,
+                                      bool fast_reduction, Stream* stream, Stream* alloc_stream,
+                                      cudnnHandle_t cudnn_handle,
                                       const TensorShape* input_shape_override = nullptr);
 
 }  // namespace ReductionOps
