@@ -111,6 +111,7 @@ list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transforme
 
 # Apply shared CUDA .cu source filtering (flash attention quick build, MoE GEMM FP4/FP8).
 include(onnxruntime_cuda_source_filters.cmake)
+include(onnxruntime_cuda_cccl.cmake)
 onnxruntime_filter_cuda_cu_sources(CUDA_PLUGIN_EP_CU_SRCS)
 onnxruntime_extract_sm_specific_cuda_sources(CUDA_PLUGIN_EP_CU_SRCS
   SM90_SOURCES _cuda_plugin_sm90_tma_srcs
@@ -446,6 +447,18 @@ target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE
     ${cutlass_SOURCE_DIR}/examples
     ${cutlass_SOURCE_DIR}/tools/util/include
 )
+
+# The host .cc files globbed into this target (contrib_ops/cuda/llm/*.cc and friends) include
+# CUTLASS headers, which reach <cuda/std/...>. In the non-plugin build the same files are part
+# of onnxruntime_providers_cuda, which gets this from config_cuda_provider_shared_module.
+#
+# The SM-specific OBJECT libraries created above are covered by this call even though they
+# already exist: onnxruntime_add_cuda_plugin_object_library gives them this target's includes
+# as $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>, which is
+# evaluated after configuration and so picks up whatever is added here - order included, so
+# the CUDA 13.3 patched-header directory keeps shadowing the toolkit CCCL headers for their
+# .cu sources. Keep that indirection in mind before making the inheritance eager.
+ort_configure_cuda_cccl(onnxruntime_providers_cuda_plugin)
 
 onnxruntime_add_include_to_target(
     onnxruntime_providers_cuda_plugin

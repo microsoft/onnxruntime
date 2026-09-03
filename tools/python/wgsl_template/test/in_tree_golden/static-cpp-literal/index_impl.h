@@ -37,7 +37,7 @@ std::string pass_as_string(T&& v) {
 #include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // e1535ab9ccc6ae04332f74750c95a3da18a201a613cfc1d0bad181cdbc5f61b1
 #include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // aef1664100aaef4b09d1560591227e417f79cd736c66b069e9a50c5f86ace5ab
 #include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // b9a3a7dbcba39061c126aee8394d97bf899076160ce8959c5d5311c2f378eae2
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // b6f72bcb401fd19b732749c157b1866606914b77aed11056ca5b6e8d0cdb4caf
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // b2f0073da45ef203ddfaf0ec3fcd775dce9026b25c5a51ad7e29a54ffbb28d77
 #include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // c95fe8f922b7cea00a35cbb9249e421103004c7e60b6b8b5467bb49d39e5c6aa
 #include "wgsl_template_gen/generated/tensor/pad.h"  // ed7a19ab79632d68665b6d3be0895c2a081030ce2765aec0ea29d463256ba7f0
 
