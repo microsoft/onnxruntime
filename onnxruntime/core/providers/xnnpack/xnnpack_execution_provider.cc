@@ -13,6 +13,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/providers/kernel_registration_validation.h"
 #include "core/providers/xnnpack/xnnpack_execution_provider.h"
 #include "core/providers/xnnpack/detail/utils.h"
 #include "core/providers/xnnpack/detail/node_support_checker.h"
@@ -89,7 +90,7 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kXnnpackExecutionProvider, kDynamicDomainB
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
 
-  static const BuildKernelCreateInfoFn function_table[] = {
+  static constexpr BuildKernelCreateInfoFn function_table[] = {
       BuildKernelCreateInfo<void>,  // default entry to avoid the list becoming empty after ops-reducing
 
       // layout sensitive. nodes will be moved to kMSInternalNHWCDomain by layout transformation
@@ -139,6 +140,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 
       KERNEL_CREATE_INFO(1, QLinearSoftmax, kDynamicDomainByCreate),
   };
+
+  static_assert(registration_internal::IsKernelRegistrationTableValid(function_table, BuildKernelCreateInfo<void>));
 
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
