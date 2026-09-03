@@ -480,11 +480,131 @@ $NM <build>/Release/libonnxruntime_providers_webgpu.a | grep WebGpu_   # expect:
 Observed exactly that: `U` in core, `T` in the provider, and the link resolved them. That closes the loop —
 the `#if` was live, the entry point prefixing worked, and `EpLibraryStaticPlugin` is in the binary.
 
-### Still open
+### Running it in a browser
 
-The binary has not been **run**. `--skip_tests` was used, and exercising it needs a browser with WebGPU, which
-the container does not have. So this validates build, link and registration wiring on Emscripten, not runtime
-behaviour.
+The wasm binary has now been **run**, on a real GPU, in Edge. A dedicated harness lives in `build/bench_web/`
+(untracked scratch, not part of the repo):
+
+- `make_side.ps1 -Side <name>` builds one **self-consistent "side"**: it copies that side's
+  `ort-wasm-simd-threaded.asyncify.{wasm,mjs}` into `js/web/dist`, checks out the matching
+  `js/web/lib/wasm/session-options.ts`, runs `npm run build -- --bundle-mode=perf --webgpu-ep`, and snapshots the
+  result with a `MANIFEST.txt` recording git SHA, source provenance and SHA-256 of every artifact.
+- `serve.js` serves the snapshots on port 8099; `bench.js` is the page.
+- `run_bench.ps1 -Sides @(...)` drives an interleaved (ABBA / cyclic-rotation) run across N sides.
+
+Two properties of the harness matter more than the timings:
+
+- **`--webgpu-ep` is mandatory and fails silently if omitted.** Without it `js/web/script/build.ts` sets
+  `DISABLE_WEBGPU=true` and the session quietly runs on **JSEP** instead, producing a plausible-looking but
+  completely irrelevant number.
+- **A bundle and a wasm are a matched pair.** `build.ts` has an esbuild `onLoad` hook that *inlines the `.mjs`
+  loader into the bundle*, so a bundle from one build silently carries another build's loader. Sides must never
+  be mixed by hand.
+
+### Verifying the plugin path is actually taken at runtime
+
+Linking is not execution, and the failure mode here is silent, so the runtime path was pinned down with
+controls rather than by reading code:
+
+| control | bundle | wasm | result |
+| --- | --- | --- | --- |
+| `plugin` | plugin | `static_plugin` | runs, correct output |
+| `mismatch` | plugin | `static_lib` | **runs, correct output** — the silent trap |
+| `mismatch2` | lib | `static_plugin` | fails: "WebGPU execution provider is not supported in this build" |
+| bogus EP name | patched | `static_plugin` | fails: "No execution provider device is registered for `…BOGUS`" |
+
+The bogus-name failure goes on to list the registered devices — `CPUExecutionProvider` and
+`WebGpuExecutionProvider`. That control is the load-bearing one: it proves the V2 name lookup is real and
+enforced, so a *successful* `plugin` run necessarily resolved a genuinely registered plugin EP device.
+
+The page also patches `GPUQueue.prototype.submit` to count GPU submissions. That counter has been **perfectly
+deterministic** across every run, which makes it a far better endpoint than any timing statistic.
+
+### Measured cost of the plugin path on the web build
+
+Comparing `static_lib` against `static_plugin` wasm built from the *same* commit — the two `build.py` argument
+dumps are identical except `use_webgpu='static_lib'` vs `'static_plugin'` — over 6-8 interleaved rounds per
+model, taking the median of each round's minimum:
+
+| model | nodes | `static_lib` | `static_plugin` | delta | predicted @ 4.76 us/node | residual |
+| --- | --- | --- | --- | --- | --- | --- |
+| `bench_compute` | 16 | 5.00 ms | 5.00 ms | 0.00 ms | 0.08 ms | -0.08 ms |
+| `bench_dispatch_150` | 150 | 4.30 ms | 5.10 ms | +0.80 ms | 0.71 ms | +0.09 ms |
+| `bench_dispatch` | 300 | 7.90 ms | 9.40 ms | +1.50 ms | 1.43 ms | +0.07 ms |
+| `bench_dispatch_600` | 600 | 13.80 ms | 16.60 ms | +2.80 ms | 2.86 ms | -0.06 ms |
+
+The plugin side was slower in **26 of 26** paired rounds. A single through-origin constant of **~4.8 us of CPU
+per kernel node** fits all four points to within one 0.1 ms timer tick, and **GPU submit counts were
+byte-identical on every side, model and round** (3 per run for compute; 11/20/39 for 150/300/600). So this is
+pure per-kernel CPU dispatch overhead, not extra queue work. The 16-node null is not evidence of no cost — the
+predicted 0.08 ms simply sits below the timer floor.
+
+A three-way run isolated where the cost is **not**: the `mismatch` side (plugin bundle, `static_lib` wasm) came
+out level with `lib` (median delta -0.20 ms, a 3/6 sign split), while `plugin` was +1.60 ms in 6/6 rounds.
+The JS-side `_OrtAppendExecutionProviderV2` call and EP-name lookup are therefore free; the cost is inside the
+`static_plugin` wasm's per-kernel C++ path. Where exactly is still unknown — 4.8 us is roughly 10k cycles,
+far too much for an indirect call, so it points at real per-kernel work. An `--enable_wasm_profiling` build
+would give named frames.
+
+Timer resolution is 0.1 ms: Edge coarsens `performance.now()` without cross-origin isolation. Enabling
+COOP/COEP would give ~5 us resolution and was deliberately *not* turned on mid-experiment, to keep all numbers
+comparable.
+
+### Correction: what the shared-allocator commit does and does not explain
+
+An earlier reading of these results as "refuting" the design doc's +36% figure was **wrong**, and the mistake is
+worth recording. Commit `b876d290cd` ("Defer zero-initialize submission in the WebGPU plugin EP shared
+allocator") is an **ancestor** of the benchmarked branch head, so every `plugin` number above is already
+*plugin-with-the-fix*. Parity on the compute-bound model with identical submit counts is therefore
+**consistent with that fix working**, not evidence against the original measurement.
+
+A second retraction: the claim that the earlier *native* A/B was "null by construction" because
+`cmake/onnxruntime_providers_webgpu.cmake` excludes the `ep/` folder from non-plugin builds was also wrong. The
+build logs show both native sides were `use_webgpu='shared_lib'`, which **does** compile `ep/factory.cc`. That
+null was genuine.
+
+What remains genuinely untested is whether the deferral matters on **web/wasm** at all. That was settled by
+a four-side experiment — `main_lib` (merge-base `2fee06a0c1`), `lib`, `plugin_nofix` (branch head with
+`b876d290cd` reverted, commit `a6be215b31`) and `plugin` — each built from its **own worktree and its own build
+directory**, with no reuse and no `--skip_submodule_sync`. The **primary endpoint is the deterministic submit
+count, not timing**: the commit's own mechanism claim is "a queue submit for every intermediate buffer allocated
+mid-run", so `plugin_nofix` must show more submits per run than `plugin` if it does anything at all.
+`bench_dispatch` has 299 intermediates against `bench_compute`'s 15, making it ~20x the detector.
+
+### Result: `b876d290cd` has no measurable effect on the web build
+
+The submit counter is perfectly deterministic — the same value in all 8 rounds of every side, both models:
+
+| model | dispatches/run | submits/run: `main_lib` | `lib` | `plugin_nofix` | `plugin` |
+| --- | --- | --- | --- | --- | --- |
+| `bench_compute` | 16 | 3 | 3 | 3 | 3 |
+| `bench_dispatch` | 300 | 20 | 20 | 20 | 20 |
+
+**Reverting the commit changes nothing.** On `bench_dispatch`, 300 dispatches with 299 intermediates still batch
+into exactly 20 submits whether the deferral is present or not. The mechanism the commit describes — one submit
+per intermediate buffer — simply **does not occur on the wasm build**, so there is nothing there for it to defer.
+
+Timing agrees, and is noise: `plugin - plugin_nofix` med `dmin` is **+1.70 ms (6/8 rounds *slower*)** on
+`bench_dispatch` but **-0.30 ms (3/8)** on `bench_compute`. The sign flips between models, which is the
+signature of build-to-build variation (code layout / icache) rather than a real effect. Note the direction: the
+side *with* the fix is if anything marginally slower on the dispatch-heavy model.
+
+Combined with the earlier genuine native A/B null, `b876d290cd` has **no demonstrated benefit on any platform
+tested**, and no correctness change was identified. It should not be landed on its own merits.
+
+Two other contrasts fall out of the same run, on the `medmin` delta:
+
+| pair | `bench_compute` | `bench_dispatch` | reading |
+| --- | --- | --- | --- |
+| `lib - main_lib` | 0.00 ms (0.0%) | -0.10 ms (-0.8%) | the branch does **not** regress the static_lib path |
+| `plugin - lib` | +0.30 ms (+5.8%) | +3.00 ms (+25.2%) | cost of the plugin path itself |
+| `plugin - main_lib` | +0.30 ms (+5.8%) | +2.90 ms (+24.2%) | **total ship delta vs. `main`** |
+
+The `lib` vs `main_lib` null is the important control: it isolates the plugin-path cost from "anything else the
+branch changed". The isolation is unusually clean here because the two sides' `ort.all.min.js` came out
+**byte-identical** (SHA-256 `79391F71...`), the merge-base and `main` blobs of `session-options.ts` being the
+same — so the *only* difference between those two sides is the `.wasm`. The same holds for
+`plugin_nofix` vs `plugin` (bundle `AB2F004F...`). All four `.wasm` hashes were confirmed distinct.
 
 ## Open items
 
@@ -502,8 +622,11 @@ behaviour.
    plus `static_plugin` linking the EP in without registering it — is now a configure-time `FATAL_ERROR` in
    `cmake/CMakeLists.txt`, verified to fire on that combination and not on a non-minimal `static_plugin`
    configure. Lifting the restriction properly is follow-up work, recorded in D4 of the design doc.
-4. ~~**Emscripten / ORT Web.**~~ **Builds and links**, with the registration verified in the binary — see
-   [Emscripten and ORT Web](#emscripten-and-ort-web). Not yet run in a browser.
+4. ~~**Emscripten / ORT Web.**~~ **Builds, links, and now runs in a browser** on a real GPU — see
+   [Running it in a browser](#running-it-in-a-browser). Registration is verified in the binary *and* at runtime.
+   Open sub-item: the plugin path costs **~4.8 us of CPU per kernel node** on the web build
+   ([measurement](#measured-cost-of-the-plugin-path-on-the-web-build)); the source of that cost is not yet
+   identified and needs an `--enable_wasm_profiling` build to attribute.
 5. **Follow-up cleanup** listed at the end of the design doc, including removing the WebGPU special cases that
    only exist while it is still an "internal" EP.
 6. **Open the PR.**
