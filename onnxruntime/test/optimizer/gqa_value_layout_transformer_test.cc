@@ -288,19 +288,6 @@ const Node* FindGqa(const Graph& graph) {
   return nullptr;
 }
 
-bool IsValueLayoutTranspose(const Node& node) {
-  if (node.OpType() != "Transpose" || node.Domain() != kOnnxDomain) {
-    return false;
-  }
-  const auto& attrs = node.GetAttributes();
-  auto perm = attrs.find("perm");
-  if (perm == attrs.end() || perm->second.ints_size() != 4) {
-    return false;
-  }
-  return perm->second.ints(0) == 0 && perm->second.ints(1) == 1 &&
-         perm->second.ints(2) == 3 && perm->second.ints(3) == 2;
-}
-
 Status ExpectShape(const NodeArg* arg, const std::vector<int64_t>& expected, const std::string& what) {
   ORT_RETURN_IF(arg == nullptr, what, " not found.");
 
@@ -342,7 +329,7 @@ Status ExpectBnhsPastValue(const Graph& graph, const Node& gqa) {
   ORT_RETURN_IF_ERROR(ExpectShape(operand, kBnsh, "GQA past_value operand"));
 
   const Node* transpose = graph.GetProducerNode(operand->Name());
-  ORT_RETURN_IF(transpose == nullptr || !IsValueLayoutTranspose(*transpose),
+  ORT_RETURN_IF(transpose == nullptr || !IsGqaValueLayoutTranspose(*transpose),
                 "GQA past_value is not produced by a Transpose(perm=[0,1,3,2]).");
 
   const NodeArg* boundary = transpose->InputDefs()[0];
@@ -361,7 +348,7 @@ Status ExpectBnhsPresentValue(const Graph& graph, const Node& gqa, int64_t cache
   ORT_RETURN_IF_ERROR(ExpectShape(operand, bnsh, "GQA present_value operand"));
 
   const auto consumers = graph.GetConsumerNodes(operand->Name());
-  ORT_RETURN_IF(consumers.size() != 1 || consumers[0] == nullptr || !IsValueLayoutTranspose(*consumers[0]),
+  ORT_RETURN_IF(consumers.size() != 1 || consumers[0] == nullptr || !IsGqaValueLayoutTranspose(*consumers[0]),
                 "GQA present_value is not consumed by exactly one Transpose(perm=[0,1,3,2]).");
 
   const NodeArg* boundary = consumers[0]->OutputDefs()[0];
@@ -541,23 +528,6 @@ Status ExpectCacheRegionEqual(const OrtValue& expected, const OrtValue& actual, 
                           ") differs (expected ", e_data[i].ToFloat(), ", got ", a_data[i].ToFloat(), ").");
       }
     }
-  }
-  return Status::OK();
-}
-
-Status ExpectTensorsClose(const OrtValue& expected, const OrtValue& actual, float tolerance,
-                          const std::string& what) {
-  const Tensor& e = expected.Get<Tensor>();
-  const Tensor& a = actual.Get<Tensor>();
-  ORT_RETURN_IF_NOT(e.Shape() == a.Shape(), what, ": shape mismatch, expected ", e.Shape().ToString(),
-                    " got ", a.Shape().ToString(), ".");
-
-  const MLFloat16* e_data = e.Data<MLFloat16>();
-  const MLFloat16* a_data = a.Data<MLFloat16>();
-  for (int64_t i = 0; i < e.Shape().Size(); ++i) {
-    const float diff = std::abs(e_data[i].ToFloat() - a_data[i].ToFloat());
-    ORT_RETURN_IF_NOT(diff <= tolerance, what, ": element ", i, " differs by ", diff, " (expected ",
-                      e_data[i].ToFloat(), ", got ", a_data[i].ToFloat(), ", tolerance ", tolerance, ").");
   }
   return Status::OK();
 }

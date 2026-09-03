@@ -323,7 +323,11 @@ skipping would make the option self-inconsistent, so `ClassifyNode` returns an e
   `T_CACHE` is independent of it: `bfloat16` needs ONNX opset 13, `float8e4m3fn` needs 21. A model
   below those is perfectly valid until the conversion is attempted, so `ValidateTransposeSupportsType`
   queries the `Transpose` schema for the imported opset and checks the cache type against its `T`
-  constraint. Without it the graph is mutated and then fails `Graph::Resolve()` with
+  constraint. The lookup goes through `graph.GetSchemaRegistry()`, not the global
+  `ONNX_NAMESPACE::OpSchemaRegistry`: `Graph::Resolve()` resolves the inserted node through the
+  graph's registry, which prefers a registered custom schema, so querying the global one could
+  disagree with what `Resolve()` will actually do — and disagreeing in the permissive direction means
+  mutating the graph and then failing, which is what validate-before-transform exists to prevent. Without it the graph is mutated and then fails `Graph::Resolve()` with
   `Type 'tensor(bfloat16)' ... is invalid` -- opaque, and after the mutation, which would break the
   "converted or untouched" guarantee in 3.6.
 
@@ -464,11 +468,15 @@ the whole function -- including both GQA blocks -- is excluded. The declaration 
 `inference_session.h` is inside the same guard, which it has to be for the two to agree at all.
 A minimal build reaches the ORT format path instead, which is handled in section 5.
 
-The value constants `kGqaValueLayoutBNSH` / `kGqaValueLayoutBNHS` live in the transformer header and
-are header-only `constexpr`, so `PartitionOrtFormatModel` can use them in a minimal build without
-pulling in the translation unit. The header is therefore included unconditionally: guarding the
-include on the build flavour would leave those constants undefined in a pure minimal build, where
-`PartitionOrtFormatModel` is compiled and needs them.
+What a minimal build *does* get is `gqa_value_layout_boundaries.{h,cc}`, which is in both minimal
+source lists. It owns the value constants `kGqaValueLayoutBNSH` / `kGqaValueLayoutBNHS`, the
+`GqaValueLayoutBoundaries` struct, and the detection primitives — everything `PartitionOrtFormatModel`
+needs, and nothing else. `gqa_value_layout_transformer.h` includes it rather than declaring any of
+that itself, so the transformer header stays the full-build-only half and there is one home for each
+declaration.
+
+Keep that split in mind when maintaining the minimal build: adding a dependency on the transformer
+header from code that compiles in a minimal build will not link, whereas the boundaries header will.
 
 ### Fallback cost
 
