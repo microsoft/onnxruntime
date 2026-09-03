@@ -10780,31 +10780,71 @@ TEST_F(GraphTransformationTests, FilterEnabledOptimizers) {
   ASSERT_TRUE(op_to_count["Add"] == 1);
 }
 
+namespace {
+
+void TestDisableTwoOptimizersViaSessionOptions(const char* disable_list, const char* logid_suffix) {
+  {
+    SessionOptions so;
+    so.session_logid =
+        std::string("GraphTransformationTests.FilterEnabledOptimizersViaSessionOptions.") + logid_suffix +
+        ".ConstantFolding";
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers, disable_list));
+
+    InferenceSessionWrapper session_object{so, GetEnvironment()};
+    constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_with_scalar_shape_to_initializer.onnx";
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
+
+    const auto& graph = session_object.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Shape"], 1);
+    ASSERT_EQ(op_to_count["ConstantOfShape"], 1);
+    ASSERT_EQ(op_to_count["Add"], 1);
+
+    ASSERT_STATUS_OK(session_object.Initialize());  // Initialize runs the transformers
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["Shape"], 1);
+    ASSERT_EQ(op_to_count["ConstantOfShape"], 1);
+    ASSERT_EQ(op_to_count["Add"], 1);
+  }
+
+  {
+    SessionOptions so;
+    so.session_logid =
+        std::string("GraphTransformationTests.FilterEnabledOptimizersViaSessionOptions.") + logid_suffix +
+        ".MatMulAddFusion";
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers, disable_list));
+
+    InferenceSessionWrapper session_object{so, GetEnvironment()};
+    constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "matmul_add_fusion/2Input/model.onnx";
+    ASSERT_STATUS_OK(session_object.Load(model_uri));
+
+    const auto& graph = session_object.GetGraph();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["MatMul"], 1);
+    ASSERT_EQ(op_to_count["Add"], 1);
+
+    ASSERT_STATUS_OK(session_object.Initialize());  // Initialize runs the transformers
+
+    op_to_count = CountOpsInGraph(graph);
+    ASSERT_EQ(op_to_count["MatMul"], 1);
+    ASSERT_EQ(op_to_count["Add"], 1);
+    ASSERT_EQ(op_to_count["Gemm"], 0);
+  }
+}
+
+}  // namespace
+
 TEST_F(GraphTransformationTests, FilterEnabledOptimizersViaSessionOptions) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/constant_folding_with_scalar_shape_to_initializer.onnx";
+  // Comma-delimited list of two known optimizers. Reverting the session parser
+  // to semicolon-only would treat this as a single unknown name and fail.
+  ASSERT_NO_FATAL_FAILURE(
+      TestDisableTwoOptimizersViaSessionOptions("MatMulAddFusion,ConstantFolding", "Comma"));
+}
 
-  SessionOptions so;
-  so.session_logid = "GraphTransformationTests.FilterEnabledOptimizersViaSessionOptions";
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableSpecifiedOptimizers, "ConstantFolding"));
-
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-
-  ASSERT_STATUS_OK(session_object.Load(model_uri));
-
-  const auto& graph = session_object.GetGraph();
-
-  // check the ops that should go away if the constant folding transformer runs
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Shape"] == 1);
-  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
-
-  ASSERT_STATUS_OK(session_object.Initialize());  // Initialize runs the transformers
-
-  op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Shape"] == 1);
-  ASSERT_TRUE(op_to_count["ConstantOfShape"] == 1);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
+TEST_F(GraphTransformationTests, FilterEnabledOptimizersViaSessionOptionsLegacySemicolon) {
+  ASSERT_NO_FATAL_FAILURE(
+      TestDisableTwoOptimizersViaSessionOptions("MatMulAddFusion;ConstantFolding", "Semicolon"));
 }
 
 TEST_F(GraphTransformationTests, PropagateCastOpsTests) {
