@@ -57,7 +57,9 @@ void ComputeJob(
     float epsilon,
     bool simplified,
     T* output_data,
-    T* skip_input_bias_add_output_data) {
+    T* skip_input_bias_add_output_data,
+    float* mean_data,
+    float* inv_std_var_data) {
   auto offset = task_idx * hidden_size;
   const T* p_input = input_data + offset;
   const T* p_skip = skip_data + (offset % skip_size);
@@ -88,6 +90,13 @@ void ComputeJob(
     mean_square = sqrt(mean_square / hidden_size + epsilon);
   } else {
     mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
+  }
+
+  if (mean_data != nullptr) {
+    mean_data[task_idx] = static_cast<float>(mean);
+  }
+  if (inv_std_var_data != nullptr) {
+    inv_std_var_data[task_idx] = static_cast<float>(1 / mean_square);
   }
 
   for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
@@ -192,7 +201,13 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
                                                                                       has_prepacked_gamma_));
 
   Tensor* output = p_ctx->Output(0, input->Shape());
-  // For inferencing, we support one more optional output which is the sum of the input and skip tensors
+  const TensorShape stat_shape([&input_dims]() {
+    TensorShapeVector dims(input_dims.begin(), input_dims.end());
+    dims.back() = 1;
+    return dims;
+  }());
+  Tensor* mean = p_ctx->Output(1, stat_shape);
+  Tensor* inv_std_var = p_ctx->Output(2, stat_shape);
   Tensor* skip_input_bias_add_output = p_ctx->Output(3, input->Shape());
 
   int64_t task_count = input->Shape().SizeToDimension(input_dims_size - 1);
@@ -204,9 +219,9 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   const T* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   T* output_data = output->MutableData<T>();
-
-  // For inferencing, we support one more optional output which is the sum of the input and skip tensors
   T* skip_input_bias_add_output_data = skip_input_bias_add_output == nullptr ? nullptr : skip_input_bias_add_output->MutableData<T>();
+  float* mean_data = mean == nullptr ? nullptr : mean->MutableData<float>();
+  float* inv_std_var_data = inv_std_var == nullptr ? nullptr : inv_std_var->MutableData<float>();
   const int64_t skip_size = skip ? skip->Shape().Size() : prepacked_skip_shape_.Size();
 
   if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
@@ -240,8 +255,10 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
     output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, total_data_size);
     output_data_f = output_fp32.get();
 
-    skip_input_bias_add_output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, total_data_size);
-    skip_input_bias_add_output_data_f = skip_input_bias_add_output_fp32.get();
+    if (skip_input_bias_add_output_data != nullptr) {
+      skip_input_bias_add_output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, total_data_size);
+      skip_input_bias_add_output_data_f = skip_input_bias_add_output_fp32.get();
+    }
 
     if (skip_data) {
       skip_fp32 = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(skip_size));
@@ -279,7 +296,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
         [&](ptrdiff_t task_idx) {
           ComputeJob(input_data_f, skip_data_f, gamma_data_f, beta_data_f, bias_data_f, task_idx, hidden_size, skip_size,
-                     epsilon_, simplified, output_data_f, skip_input_bias_add_output_data_f);
+                     epsilon_, simplified, output_data_f, skip_input_bias_add_output_data_f, mean_data, inv_std_var_data);
         },
         0);
     FloatToNarrow<T>(output_data_f, output_data, total_data_size);
@@ -290,7 +307,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
         p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
         [&](ptrdiff_t task_idx) {
           ComputeJob(input_data, skip_data, gamma_data, beta_data, bias_data, task_idx, hidden_size, skip_size,
-                     epsilon_, simplified, output_data, skip_input_bias_add_output_data);
+                     epsilon_, simplified, output_data, skip_input_bias_add_output_data, mean_data, inv_std_var_data);
         },
         0);
   }

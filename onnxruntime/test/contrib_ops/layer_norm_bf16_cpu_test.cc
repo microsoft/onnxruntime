@@ -501,6 +501,57 @@ TEST(LayerNormBFloat16CpuTest, ContribLayerNorm_Opset1_LargerNormSize) {
                                    {"InvStdDev", kF32StatTolerance}});
 }
 
+TEST(LayerNormBFloat16CpuTest, ContribLayerNorm_DoubleInputFloatStatistics) {
+  constexpr float epsilon = 1e-12f;
+  std::vector<int64_t> x_dims{2, 4};
+  std::vector<int64_t> stat_dims{2, 1};
+  std::vector<double> x = {1.0, 2.0, 3.0, 4.0,
+                           4.0, 2.0, 0.0, -2.0};
+  std::vector<double> scale(4, 1.0);
+  std::vector<double> bias(4, 0.0);
+  std::vector<double> y = {-1.3416407864993376, -0.4472135954997792, 0.4472135954997792, 1.3416407864993376,
+                           1.3416407864997397, 0.4472135954999132, -0.4472135954999132, -1.3416407864997397};
+  std::vector<float> mean = {2.5f, 1.0f};
+  std::vector<float> inv_std_var = {0.8944271910f, 0.4472135955f};
+
+  OpTester test("LayerNormalization", 1, onnxruntime::kOnnxDomain);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddAttribute<int64_t>("axis", -1);
+  test.AddInput<double>("X", x_dims, x);
+  test.AddInput<double>("Scale", {4}, scale);
+  test.AddInput<double>("B", {4}, bias);
+  test.AddOutput<double>("Y", x_dims, y);
+  test.AddOutput<float>("Mean", stat_dims, mean);
+  test.AddOutput<float>("InvStdDev", stat_dims, inv_std_var);
+
+  RunBF16CpuOnlyMultiOutput(test, {{"Y", 1e-12f},
+                                   {"Mean", kF32StatTolerance},
+                                   {"InvStdDev", kF32StatTolerance}});
+}
+
+TEST(LayerNormBFloat16CpuTest, SimplifiedLayerNorm_DoubleInputFloatStatistics) {
+  constexpr float epsilon = 1e-12f;
+  std::vector<int64_t> x_dims{2, 4};
+  std::vector<int64_t> stat_dims{2, 1};
+  std::vector<double> x = {1.0, 2.0, 3.0, 4.0,
+                           4.0, 2.0, 0.0, -2.0};
+  std::vector<double> scale(4, 1.0);
+  std::vector<double> y = {0.3651483716700863, 0.7302967433401726, 1.0954451150102589, 1.4605934866803452,
+                           1.6329931618553160, 0.8164965809276580, 0.0, -0.8164965809276580};
+  std::vector<float> inv_std_var = {0.3651483717f, 0.4082482905f};
+
+  OpTester test("SimplifiedLayerNormalization", 1, onnxruntime::kOnnxDomain);
+  test.AddAttribute<float>("epsilon", epsilon);
+  test.AddAttribute<int64_t>("axis", -1);
+  test.AddInput<double>("X", x_dims, x);
+  test.AddInput<double>("Scale", {4}, scale);
+  test.AddOutput<double>("Y", x_dims, y);
+  test.AddOutput<float>("inv_std_var", stat_dims, inv_std_var);
+
+  RunBF16CpuOnlyMultiOutput(test, {{"Y", 1e-12f},
+                                   {"inv_std_var", kF32StatTolerance}});
+}
+
 // =============================================================================
 // SimplifiedLayerNormalization (contrib, kOnnxDomain opset 1) — BFloat16 on CPU
 // RMSNorm: no mean subtraction, no bias.
@@ -588,6 +639,7 @@ TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_Basic) {
   constexpr int64_t hidden_size = 4;
   std::vector<int64_t> input_dims{1, 2, hidden_size};
   std::vector<int64_t> gamma_dims{hidden_size};
+  std::vector<int64_t> stat_dims{1, 2, 1};
 
   std::vector<float> input_f32 = {1.0f, 2.0f, 3.0f, 4.0f,
                                   5.0f, 6.0f, 7.0f, 8.0f};
@@ -613,11 +665,14 @@ TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_Basic) {
   test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32));
   test.AddInput<BFloat16>("beta", gamma_dims, ToBFloat16(beta_f32));
   test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
-  test.AddOptionalOutputEdge<BFloat16>();
-  test.AddOptionalOutputEdge<BFloat16>();
+  test.AddOutput<float>("mean", stat_dims, ref.mean);
+  test.AddOutput<float>("inv_std_var", stat_dims, ref.inv_std_dev);
   test.AddOutput<BFloat16>("skip_input_bias_add_output", input_dims, ToBFloat16(added));
 
-  RunBF16CpuOnly(test, kBF16AbsTolerance);
+  RunBF16CpuOnlyMultiOutput(test, {{"output", kBF16AbsTolerance},
+                                   {"mean", kF32StatTolerance},
+                                   {"inv_std_var", kF32StatTolerance},
+                                   {"skip_input_bias_add_output", kBF16AbsTolerance}});
 }
 
 TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_NoBeta) {
@@ -684,6 +739,41 @@ TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_LargerHiddenSize) {
   test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
 
   RunBF16CpuOnly(test, kBF16AbsTolerance);
+}
+
+TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_MeanInvStdVar) {
+  constexpr float epsilon = 1e-12f;
+  constexpr int64_t hidden_size = 4;
+  std::vector<int64_t> input_dims{2, hidden_size};
+  std::vector<int64_t> stat_dims{2, 1};
+  std::vector<float> input_f32 = {1.0f, 2.0f, 3.0f, 4.0f,
+                                  4.0f, 2.0f, 0.0f, -2.0f};
+  std::vector<float> skip_f32 = {0.5f, -0.5f, 0.5f, -0.5f,
+                                 0.5f, -0.5f, 0.5f, -0.5f};
+  std::vector<float> gamma_f32(hidden_size, 1.0f);
+  std::vector<float> beta_f32(hidden_size, 0.0f);
+
+  auto input_rt = RoundTripBF16(input_f32);
+  auto skip_rt = RoundTripBF16(skip_f32);
+  std::vector<float> added(input_rt.size());
+  for (size_t i = 0; i < added.size(); ++i) {
+    added[i] = input_rt[i] + skip_rt[i];
+  }
+  auto ref = LayerNormRef(added, gamma_f32, beta_f32, hidden_size, epsilon);
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("epsilon", epsilon);
+  test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
+  test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
+  test.AddInput<BFloat16>("gamma", {hidden_size}, ToBFloat16(gamma_f32));
+  test.AddInput<BFloat16>("beta", {hidden_size}, ToBFloat16(beta_f32));
+  test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
+  test.AddOutput<float>("mean", stat_dims, ref.mean);
+  test.AddOutput<float>("inv_std_var", stat_dims, ref.inv_std_dev);
+
+  RunBF16CpuOnlyMultiOutput(test, {{"output", kBF16AbsTolerance},
+                                   {"mean", kF32StatTolerance},
+                                   {"inv_std_var", kF32StatTolerance}});
 }
 
 // =============================================================================
@@ -782,6 +872,38 @@ TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_LargerHiddenSize) {
   test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
 
   RunBF16CpuOnly(test, kBF16AbsTolerance);
+}
+
+TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_InvStdVar) {
+  constexpr float epsilon = 1e-12f;
+  constexpr int64_t hidden_size = 4;
+  std::vector<int64_t> input_dims{2, hidden_size};
+  std::vector<int64_t> stat_dims{2, 1};
+  std::vector<float> input_f32 = {1.0f, 2.0f, 3.0f, 4.0f,
+                                  4.0f, 2.0f, 0.0f, -2.0f};
+  std::vector<float> skip_f32 = {0.5f, -0.5f, 0.5f, -0.5f,
+                                 0.5f, -0.5f, 0.5f, -0.5f};
+  std::vector<float> gamma_f32(hidden_size, 1.0f);
+
+  auto input_rt = RoundTripBF16(input_f32);
+  auto skip_rt = RoundTripBF16(skip_f32);
+  std::vector<float> added(input_rt.size());
+  for (size_t i = 0; i < added.size(); ++i) {
+    added[i] = input_rt[i] + skip_rt[i];
+  }
+  auto ref = RMSNormRef(added, gamma_f32, hidden_size, epsilon);
+
+  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("epsilon", epsilon);
+  test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
+  test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
+  test.AddInput<BFloat16>("gamma", {hidden_size}, ToBFloat16(gamma_f32));
+  test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
+  test.AddOptionalOutputEdge<float>();
+  test.AddOutput<float>("inv_std_var", stat_dims, ref.inv_rms);
+
+  RunBF16CpuOnlyMultiOutput(test, {{"output", kBF16AbsTolerance},
+                                   {"inv_std_var", kF32StatTolerance}});
 }
 
 // =============================================================================

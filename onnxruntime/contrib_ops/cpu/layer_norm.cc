@@ -9,8 +9,7 @@
 namespace onnxruntime {
 namespace contrib {
 // original LayerNormalization contrib op (incorrectly using onnx domain though).
-// The narrow-float registrations use U=float. The double registration retains U=double;
-// both choices are schema-valid.
+// The schema requires float statistics (U) for all supported input types.
 #define REGISTER_CONTRIB_KERNELS(T, U)                                                                      \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(LayerNormalization, kOnnxDomain, 1, 16, T, kCpuExecutionProvider, \
                                           KernelDefBuilder()                                                \
@@ -26,7 +25,7 @@ namespace contrib {
                                 LayerNorm<true>);
 
 REGISTER_CONTRIB_KERNELS(float, float)
-REGISTER_CONTRIB_KERNELS(double, double)
+REGISTER_CONTRIB_KERNELS(double, float)
 REGISTER_CONTRIB_KERNELS(MLFloat16, float)
 REGISTER_CONTRIB_KERNELS(BFloat16, float)
 

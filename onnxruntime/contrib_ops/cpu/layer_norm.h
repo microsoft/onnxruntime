@@ -12,7 +12,7 @@ template <bool simplified>
 class LayerNorm final : public LayerNormImpl {
  public:
   LayerNorm(const OpKernelInfo& op_kernel_info)
-      : LayerNormImpl(op_kernel_info, simplified) {}
+      : LayerNormImpl(op_kernel_info, simplified, true) {}
 };
 
 }  // namespace contrib

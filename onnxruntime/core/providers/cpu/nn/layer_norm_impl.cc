@@ -96,12 +96,11 @@ void ComputeJob(
   }
 
   if (mean_data != nullptr) {
-    // ONNX spec doesn't support 'double' for 'U' so when 'T' == double, 'U' == float and we need to narrow
-    mean_data[task_idx] = gsl::narrow_cast<float>(mean);
+    mean_data[task_idx] = static_cast<U>(mean);
   }
 
   if (inv_std_dev_data != nullptr) {
-    inv_std_dev_data[task_idx] = gsl::narrow_cast<float>(1 / std_dev);
+    inv_std_dev_data[task_idx] = static_cast<U>(1 / std_dev);
   }
 }
 

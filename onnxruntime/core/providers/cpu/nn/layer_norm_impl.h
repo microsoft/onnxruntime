@@ -47,12 +47,10 @@ class LayerNormImpl : public OpKernel {
   struct SrcDispatcher {
     Status operator()(const LayerNormImpl* p_instance, OpKernelContext* p_ctx, int64_t orig_axis,
                       float epsilon, bool simplified, bool contrib_op) const {
-      // The contrib op historically registered all type constraints identically (U=T).
-      // Narrow-float contrib registrations now declare U=float (matching the schema),
-      // so the `if constexpr` below ensures ComputeImpl<NarrowType, NarrowType> is never
-      // instantiated — those types always take the U=float path at the bottom.
+      // The contrib op's float registration has U=T. All other registrations use
+      // float statistics, matching their schemas.
 #if !defined(DISABLE_CONTRIB_OPS)
-      if constexpr (!std::is_same_v<T, MLFloat16> && !std::is_same_v<T, BFloat16>) {
+      if constexpr (std::is_same_v<T, float>) {
         if (contrib_op) {
           return p_instance->ComputeImpl<T, T>(p_ctx, orig_axis, epsilon, simplified);
         }
