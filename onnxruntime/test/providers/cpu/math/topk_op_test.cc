@@ -915,6 +915,26 @@ TEST(TopKOperator, StableSmallKBFloat16Smallest) {
   RunTest(24, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false, -1, 0);
 }
 
+static void RunStableSignedZeroTopKCase(int64_t dimension, int64_t k, int64_t largest) {
+  std::vector<float> input_vals(dimension, largest == 1 ? -1.0f : 1.0f);
+  for (int64_t i = 0; i < 2 * k; ++i) {
+    input_vals[i] = i % 2 == 0 ? -0.0f : 0.0f;
+  }
+  std::vector<float> expected_vals(k, 0.0f);
+  std::vector<int64_t> expected_indices(k);
+  std::iota(expected_indices.begin(), expected_indices.end(), 0);
+  RunTest(11, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false, -1, largest);
+}
+
+TEST(TopKOperator, StableHybridSignedZero) {
+  RunStableSignedZeroTopKCase(8192, 8, 1);
+}
+
+TEST(TopKOperator, StableSmallKSignedZero) {
+  RunStableSignedZeroTopKCase(5000, 16, 1);
+  RunStableSignedZeroTopKCase(5000, 16, 0);
+}
+
 template <typename T>
 static void TestThreaded(int64_t k, int64_t n, int64_t batch_size) {
   std::vector<T> input_vals(n * batch_size, 0.0f);

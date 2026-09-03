@@ -25,7 +25,7 @@ constexpr int kStage1Threads = 256;
 constexpr std::array<int, 4> kPartitionSizes = {1792, 2304, 2816, 3328};
 
 constexpr int DivUp(int value, int divisor) {
-  return (value + divisor - 1) / divisor;
+  return value / divisor + (value % divisor != 0);
 }
 
 constexpr int Max(int a, int b, int c) {
@@ -81,10 +81,11 @@ inline int PaddedK(int k) {
   return 256;
 }
 
-// H200 sweeps show that Hybrid consistently wins from this dimension for single-row K >= 16
-// and multi-row K >= 64. SmallK or RadixTopK is faster outside those regions, especially for K = 1.
+// H200 sweeps show that the K crossover rises with the row count. SmallK or RadixTopK is faster
+// outside these regions, especially for K = 1.
 inline bool IsPreferred(int64_t rows, int64_t dimension, int64_t k) {
-  return dimension >= 8192 && ((rows == 1 && k >= 16) || (rows > 1 && k >= 64));
+  return dimension >= 8192 &&
+         ((rows <= 2 && k >= 8) || (rows <= 4 && k >= 32) || (rows > 4 && k >= 64));
 }
 
 template <int K>

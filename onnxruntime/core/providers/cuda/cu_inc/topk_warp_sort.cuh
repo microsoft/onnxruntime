@@ -137,7 +137,7 @@ __device__ inline void WarpBitonicSortDescending(float& score, int& index) {
 // preferring the smaller original index. This matches the stable Top-K packing
 // used by onnxruntime-genai while avoiding a compound comparator in CUB.
 __device__ __forceinline__ uint64_t PackStableSortKey(float score, int index) {
-  const uint32_t score_bits = __float_as_uint(score);
+  const uint32_t score_bits = score == 0.0f ? 0u : __float_as_uint(score);
   const uint32_t sortable_score =
       (score_bits & 0x80000000u) ? (~score_bits) : (score_bits | 0x80000000u);
   const uint32_t inverted_index = UINT_MAX - static_cast<uint32_t>(index);

@@ -443,17 +443,20 @@ template <>
 struct SmallKTopKSupported<__half> : std::true_type {};
 template <>
 struct SmallKTopKSupported<BFloat16> : std::true_type {};
+template <>
+struct SmallKTopKSupported<__nv_bfloat16> : std::true_type {};
 
 // Monotone float -> uint32 map: ordering the bit patterns as unsigned integers reproduces the
 // float ordering (negatives are inverted, positives get their sign bit set).
 __device__ __forceinline__ uint32_t SmallKOrderKey(float v) {
-  const uint32_t u = __float_as_uint(v);
+  const uint32_t u = v == 0.0f ? 0u : __float_as_uint(v);
   return (u & 0x80000000u) ? ~u : (u | 0x80000000u);
 }
 
 __device__ __forceinline__ float SmallKToFloat(float v) { return v; }
 __device__ __forceinline__ float SmallKToFloat(__half v) { return __half2float(v); }
 __device__ __forceinline__ float SmallKToFloat(BFloat16 v) { return static_cast<float>(v); }
+__device__ __forceinline__ float SmallKToFloat(__nv_bfloat16 v) { return __bfloat162float(v); }
 
 template <typename T>
 __device__ __forceinline__ uint64_t SmallKComposite(T value, int64_t index, int64_t largest) {
@@ -589,7 +592,7 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
 
 #ifdef ORT_TOPK_ENABLE_HYBRID
   if constexpr (std::is_same_v<CudaT, float> || std::is_same_v<CudaT, __half> ||
-                std::is_same_v<CudaT, BFloat16>) {
+                std::is_same_v<CudaT, BFloat16> || std::is_same_v<CudaT, __nv_bfloat16>) {
     if (axis == static_cast<int32_t>(size) - 1 && largest == 1 && sorted == 1 &&
         hybrid_topk::IsPreferred(N, dimension, K) &&
         hybrid_topk::IsSupported(kernel, N, dimension, K)) {
