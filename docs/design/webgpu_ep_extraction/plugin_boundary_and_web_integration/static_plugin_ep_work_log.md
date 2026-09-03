@@ -720,6 +720,13 @@ successful run would otherwise exercise silently. Confirming that the two new ex
 asyncify-wrapped: `_OrtAppendExecutionProviderV2` appears twice in the generated `.mjs` (export plus JSPI
 wrapper) while `_OrtGetEpDevices` and `_OrtEpDevice_EpName` appear once each.
 
+Narrowing the selection to a single device was re-verified the same way, against the same endpoint: the output
+sample stayed bit-identical and `submitsPerRun` stayed a constant 20, with `300 + 61 x 20 = 1520` total submits
+over the 10 warmup, 1 first and 50 steady runs. This machine registers one WebGPU device, so the change is
+behaviour-preserving here by construction; what the run establishes is that the rewritten append block still
+selects the WebGPU EP and produces identical results, not that the multi-device case is exercised. That case
+needs virtual devices enabled, which ORT Web has no way to turn on today.
+
 **The Emscripten device discovery should detect a GPU in Node.js some other way.** There is no better way, and
 the existing check is not as blind as the comment assumed. Node has never natively exposed `navigator.gpu`; the
 request was closed as not planned ([nodejs/node#42896](https://github.com/nodejs/node/issues/42896)) and there
