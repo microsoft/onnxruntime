@@ -642,11 +642,14 @@ ONNX_OPERATOR_KERNEL_EX(
 Attention::Attention(const OpKernelInfo& info)
     : WebGpuKernel(info),
       onnxruntime::contrib::AttentionBase(info, false) {
+  const Tensor* weights = nullptr;
+  weights_are_constant_ = info.TryGetConstantInput(1, &weights);
 }
 
 Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                   const Tensor* input, const Tensor* weights, const Tensor* bias,
-                  Tensor* q, Tensor* k, Tensor* v) {
+                  Tensor* q, Tensor* k, Tensor* v,
+                  MatMulOptImplCache& matmul_compute_cache, bool weights_are_constant) {
   // Use MatMul to compute packed QKV output: input * weights + bias
   // Then use SplitPackedQKV to split into Q, K, V in BSD format
   // Returns Q, K, V in BSD format
@@ -660,7 +663,9 @@ Status PrepareQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtte
   std::vector<const Tensor*> matmul_inputs = {input, weights, bias};
 
   // Call MatMul: packed_qkv = input * weights + bias
-  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::ComputeMatMul(&context, Activation(), matmul_inputs, &packed_qkv));
+  ORT_RETURN_IF_ERROR(onnxruntime::webgpu::ComputeMatMul(
+      &context, Activation(), matmul_inputs, &packed_qkv, /*is_channels_last=*/true,
+      matmul_compute_cache, weights_are_constant));
 
   // Output Q, K, V in BSD format
   return SplitPackedQKV(context, parameters, &packed_qkv, q, k, v, parameters.hidden_size_);
@@ -726,7 +731,9 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
   Tensor V_bsd = context.CreateGPUTensor(input->DataType(), TensorShape(v_bsd_shape));
 
   // Compute Q, K, V from input, weights, and bias (returns BSD format)
-  ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias, &Q_bsd, &K_bsd, &V_bsd));
+  ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias,
+                                &Q_bsd, &K_bsd, &V_bsd,
+                                matmul_compute_cache_, weights_are_constant_));
   parameters.qkv_format_ = Q_K_V_BSNH;
 
   // Check if we can use flash attention

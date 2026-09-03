@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
+#include "core/providers/webgpu/math/subgroup_matrix_tiling.h"
 
 #include <cstdint>
 #include <limits>
@@ -92,7 +92,6 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
                  const Activation& activation,
                  bool is_channels_last,
                  bool b_is_constant,
-                 bool has_persistent_cache,
                  /*out*/ bool& handled) override {
     handled = false;
 
@@ -148,10 +147,10 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
 
     const auto& config = supported_subgroup_matrix_configs[config_index_];
     const bool needs_padded_b = N % 2 != 0;
-    // Require whole subgroup-matrix K blocks. An odd-width B also needs a
-    // persistent cache where its padded constant copy can live.
+    // Require whole subgroup-matrix K blocks. An odd-width B must be constant
+    // because its padded copy is cached by this implementation.
     if (config.K == 0 || K % config.K != 0 ||
-        (needs_padded_b && (!b_is_constant || !has_persistent_cache))) {
+        (needs_padded_b && !b_is_constant)) {
       return Status::OK();
     }
 

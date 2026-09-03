@@ -249,7 +249,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       matmul_inputs.push_back(bias);
     }
     return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last,
-                         &matmul_compute_cache_, matmul_b_is_constant);
+                         matmul_compute_cache_, matmul_b_is_constant);
   }
   // Transpose weights when necessary
   Tensor transposed_kernel;

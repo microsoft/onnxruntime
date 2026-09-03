@@ -13,14 +13,13 @@
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/vendor/intel/math/matmul.h"
 #include "core/providers/webgpu/webgpu_utils.h"
-#include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 std::unique_ptr<MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(const ComputeContextBase& context);
 
-MatMulOptImpl* MatMulComputeCache::GetOrCreateSubgroupMatrixImpl(const ComputeContextBase& context) {
+MatMulOptImpl* MatMulOptImplCache::GetOrCreate(const ComputeContextBase& context) {
   std::call_once(subgroup_impl_init_flag_, [&]() {
     subgroup_impl_ = CreateSubgroupMatrixMatMulImpl(context);
   });
@@ -154,12 +153,12 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   }
 
   return ComputeMatMul(&context, Activation(), inputs, output_tensor,
-                       /*is_channels_last=*/true, &compute_cache_, b_is_constant_);
+                       /*is_channels_last=*/true, compute_cache_, b_is_constant_);
 }
 
 Status ComputeMatMul(ComputeContext* context,
                      const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output_tensor, bool is_channels_last,
-                     MatMulComputeCache* cache,
+                     MatMulOptImplCache& cache,
                      bool b_is_constant) {
   const auto* a = inputs[0];
   const auto* b = inputs[1];
@@ -172,19 +171,12 @@ Status ComputeMatMul(ComputeContext* context,
   MatMulComputeHelper helper;
   ORT_THROW_IF_ERROR(helper.Compute(logical_a_shape, logical_b_shape));
 
-  std::unique_ptr<MatMulOptImpl> invocation_impl;
-  MatMulOptImpl* subgroup_impl = nullptr;
-  if (cache != nullptr) {
-    subgroup_impl = cache->GetOrCreateSubgroupMatrixImpl(*context);
-  } else {
-    invocation_impl = CreateSubgroupMatrixMatMulImpl(*context);
-    subgroup_impl = invocation_impl.get();
-  }
+  MatMulOptImpl* subgroup_impl = cache.GetOrCreate(*context);
   if (subgroup_impl != nullptr) {
     bool handled = false;
     ORT_RETURN_IF_ERROR(subgroup_impl->Compute(
         *context, inputs, output_tensor,
-        activation, is_channels_last, b_is_constant, cache != nullptr, handled));
+        activation, is_channels_last, b_is_constant, handled));
     if (handled) {
       return Status::OK();
     }

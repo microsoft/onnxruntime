@@ -27,24 +27,23 @@ class MatMulOptImpl {
                          const Activation& activation,
                          bool is_channels_last,
                          bool b_is_constant,
-                         bool has_persistent_cache,
                          /*out*/ bool& handled) = 0;
 };
 
-class MatMulComputeCache {
+class MatMulOptImplCache {
  public:
-  MatMulComputeCache() = default;
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulComputeCache);
+  MatMulOptImplCache() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulOptImplCache);
 
-  MatMulOptImpl* GetOrCreateSubgroupMatrixImpl(const ComputeContextBase& context);
+  MatMulOptImpl* GetOrCreate(const ComputeContextBase& context);
 
  private:
   std::once_flag subgroup_impl_init_flag_;
   std::unique_ptr<MatMulOptImpl> subgroup_impl_;
 };
 
-Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last = true,
-                     MatMulComputeCache* cache = nullptr,
+Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output,
+                     bool is_channels_last, MatMulOptImplCache& cache,
                      bool b_is_constant = false);
 
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
@@ -73,7 +72,7 @@ class MatMul final : public WebGpuKernel {
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 
  private:
-  mutable MatMulComputeCache compute_cache_;
+  mutable MatMulOptImplCache compute_cache_;
   bool b_is_constant_ = false;
 };
 

@@ -33,7 +33,7 @@ class Conv : public WebGpuKernel {
  protected:
   ConvAttributes conv_attrs_;
   Activation activation_;
-  mutable MatMulComputeCache matmul_compute_cache_;
+  mutable MatMulOptImplCache matmul_compute_cache_;
   std::unique_ptr<Tensor> transposed_kernel_;  // should only have value when `is_initializer` AND `is_4D` AND `is_NHWC`
 };
 
