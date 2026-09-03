@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -1019,6 +1020,70 @@ TEST_F(GqaValueLayoutTransformerTest, FindsBoundariesOfAnAlreadyConvertedGraph) 
   EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
   EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
   EXPECT_EQ(ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_).size(), 2u);
+}
+
+// A boundary that was converted offline may be initializer-backed, and its baked-in data is already
+// BNHS, so the conversion is real. Detection must therefore consider all declared graph inputs, not
+// just the non-initializer ones: missing it would let an explicit BNSH request through and feed BNSH
+// data into a Transpose expecting BNHS. This is the mirror of refusing to convert an
+// initializer-backed boundary in the first place, which stays rejected.
+TEST_F(GqaValueLayoutTransformerTest, DetectsConversionWhenTheBnhsBoundaryIsAnOverridableInitializer) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutInitializerBoundary", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // The BNHS boundary is the Transpose's own input, not the GQA operand.
+  const Node* gqa = FindGqa(graph);
+  ASSERT_NE(gqa, nullptr);
+  const Node* transpose = graph.GetProducerNode(gqa->InputDefs()[4]->Name());
+  ASSERT_NE(transpose, nullptr);
+  const std::string boundary = transpose->InputDefs()[0]->Name();
+
+  // Back that boundary with a BNHS initializer while keeping it a declared input, which is what makes
+  // it overridable.
+  const std::vector<const NodeArg*> declared_inputs = graph.GetInputsIncludingInitializers();
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  initializer.set_name(boundary);
+  initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  for (const int64_t dim : {kBatch, kKvNumHeads, kHeadSize, kMaxSeq}) {
+    initializer.add_dims(dim);
+  }
+  initializer.mutable_int32_data()->Resize(static_cast<int>(kBatch * kKvNumHeads * kHeadSize * kMaxSeq), 0);
+  graph.AddInitializedTensor(initializer);
+
+  graph.SetInputs(declared_inputs);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // The fixture must actually exercise the distinction between the two input sets.
+  const auto contains = [&boundary](const std::vector<const NodeArg*>& args) {
+    return std::any_of(args.begin(), args.end(),
+                       [&boundary](const NodeArg* arg) { return arg != nullptr && arg->Name() == boundary; });
+  };
+  ASSERT_FALSE(contains(graph.GetInputs())) << "boundary should have become initializer-backed";
+  ASSERT_TRUE(contains(graph.GetInputsIncludingInitializers()));
+
+  // Detected despite being initializer-backed, so an explicit BNSH request would be caught.
+  const GqaValueLayoutBoundaries boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+  EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
+  EXPECT_EQ(boundaries.past_value_inputs.empty() ? std::string{} : boundaries.past_value_inputs[0], boundary);
+
+  // And the transformer leaves the already-converted node alone rather than converting it twice.
+  GqaValueLayoutTransformer transformer;
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, *logger_));
+  EXPECT_FALSE(modified);
 }
 
 // An unconverted graph has no boundaries to find.

@@ -270,9 +270,21 @@ observable to the application changes, so this is a documented scope limit rathe
 is recorded in the `kOrtSessionOptionsGqaValueLayout` comment. The skip is **per operand**: the other
 operand of the same node is still converted if it is application visible.
 
-Note the visibility test is `Graph::GetInputs()`, which excludes initializers, not
-`GetInputsIncludingInitializers()`. A `past_value` backed by an initializer that is *not* a graph
-input is baked into the model and can never be bound, so it is `kOutOfScope`.
+**Two input predicates, deliberately.** They answer different questions and using either for both
+is a bug:
+
+- `IsGqaNonInitializerGraphInput` (`Graph::GetInputs()`, excluding initializers) decides whether an
+  **unconverted** boundary may be converted. A `past_value` backed by an initializer that is not a
+  graph input is baked into the model and can never be bound, so it is `kOutOfScope`; an *overridable*
+  initializer is bindable but its data cannot be transposed by a shape swap, so it is rejected.
+- `IsGqaDeclaredGraphInput` (`GetInputsIncludingInitializers()`) decides whether a boundary that is
+  **already converted** should be recognized as such. Here an overridable initializer must count: a
+  boundary converted offline may well be initializer-backed, and its baked-in data is already BNHS, so
+  the conversion is real and needs no transposing. Using the narrow predicate here would miss it, let
+  an explicit BNSH request through, and feed BNSH data into a Transpose expecting BNHS.
+
+The asymmetry is the point: converting an initializer-backed boundary is impossible, while recognizing
+one that arrived converted is both possible and necessary.
 
 **Error at session initialization.** Anything else means an application-visible boundary would stay
 BNSH while the application believes it is BNHS, and would bind buffers in the wrong layout. Silently
@@ -565,6 +577,9 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
   previous ordering.
 - `FindConvertedGqaValueLayoutBoundaries` finds both boundaries of an already-converted graph and
   none in an unconverted one, which is what makes the ORT-format diagnostic (5) possible.
+- A converted boundary that is an overridable initializer is still detected. The fixture asserts the
+  boundary is absent from `GetInputs()` but present in `GetInputsIncludingInitializers()`, so it
+  provably exercises the distinction, and the test fails against the narrow predicate.
 - An invalid option value on an ORT format model reports the bad value, not the format restriction.
 - An ORT format model carrying BNHS boundaries is rejected when BNSH is explicitly requested and loads
   when the option is unset. The fixture round-trips a converted model through ORT format serialization

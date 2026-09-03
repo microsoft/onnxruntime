@@ -104,7 +104,7 @@ Status ClassifyPastValue(const Graph& graph, const Node& node, OperandStatus& st
                 "' option cannot convert: the initializer data would stay BNSH. Remove the initializer so the "
                 "input is supplied by the application, or transpose it to BNHS when producing the model.");
 
-  status = IsGqaApplicationInput(graph, arg) ? OperandStatus::kConvertible : OperandStatus::kOutOfScope;
+  status = IsGqaNonInitializerGraphInput(graph, arg) ? OperandStatus::kConvertible : OperandStatus::kOutOfScope;
   if (status == OperandStatus::kConvertible) {
     boundary_name = arg->Name();
   }
