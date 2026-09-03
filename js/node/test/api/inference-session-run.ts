@@ -65,6 +65,25 @@ describe('API Tests - InferenceSession.run()', async () => {
     await localSession.release();
   });
 
+  it('copies CPU input data with the arena disabled', async () => {
+    // Input copies come from the session's CPU allocator. With enableCpuMemArena off that is the
+    // plain allocator rather than the arena, a path the default options never exercise.
+    const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'), {
+      enableCpuMemArena: false,
+    });
+    try {
+      const input = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const inputData = input.data;
+      const run = localSession.run({ input });
+
+      inputData.fill(0);
+      const result = await run;
+      assertTensorEqual(result.output, new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]));
+    } finally {
+      await localSession.release().catch(() => {});
+    }
+  });
+
   it('keeps resources alive across overlapping runs after Tensor disposal', async () => {
     const localSession = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_float.onnx'));
     for (let i = 0; i < 10; ++i) {

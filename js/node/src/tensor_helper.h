@@ -49,9 +49,10 @@ struct NapiTensorConversion {
 // to ORT, so ORT must allocate the output and the result copied back with
 // CopyOrtValueToNapiTypedArray(). 'conversion' receives the JS values that were read, and must be
 // supplied whenever 'usage' is kPreallocatedOutput so that the declared type and shape survive.
+// CPU inputs are copied into memory from 'cpu_allocator', the session's own CPU allocator.
 Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
-                               OrtMemoryInfo* webgpu_memory_info, NapiValueUsage usage,
-                               std::vector<OrtValueOwner>* value_owners = nullptr,
+                               OrtAllocator* cpu_allocator, OrtMemoryInfo* webgpu_memory_info,
+                               NapiValueUsage usage, std::vector<OrtValueOwner>* value_owners = nullptr,
                                NapiTensorConversion* conversion = nullptr);
 
 // check that an OrtValue tensor matches the type and shape the caller declared for a preallocated

@@ -31,6 +31,15 @@ struct DeviceValues {
   }
 };
 
+// What session_ really owns. The allocator wrapper only references the session's CPU allocator,
+// and every OrtValue allocated from it holds the wrapper by raw pointer, so the two live and die
+// together: session_ aliases the session inside, and each holder of it keeps the allocator alive
+// for the values it is about to release.
+struct SessionResources {
+  Ort::Session session{nullptr};
+  Ort::Allocator cpu_allocator{nullptr};
+};
+
 // A session reference handed to OrtInstanceData::ReleaseDeviceObject(): destroying a session tears
 // its execution provider down, which is device work.
 struct SessionRelease {
@@ -120,13 +129,13 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
 
       ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions, &requires_device_serialization_);
       auto device_lock = LockDeviceIfRequired();
-      this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
+      AdoptSession(Ort::Session(OrtSingletonData::GetOrtObjects()->env,
 #ifdef _WIN32
-                                            reinterpret_cast<const wchar_t*>(value.Utf16Value().c_str()),
+                                reinterpret_cast<const wchar_t*>(value.Utf16Value().c_str()),
 #else
-                                            value.Utf8Value().c_str(),
+                                value.Utf8Value().c_str(),
 #endif
-                                            sessionOptions));
+                                sessionOptions));
 
     } else if (argsLength == 4 && info[0].IsArrayBuffer() && info[1].IsNumber() && info[2].IsNumber() &&
                info[3].IsObject()) {
@@ -136,9 +145,9 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
 
       ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions, &requires_device_serialization_);
       auto device_lock = LockDeviceIfRequired();
-      this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
-                                            reinterpret_cast<char*>(buffer) + bytesOffset, bytesLength,
-                                            sessionOptions));
+      AdoptSession(Ort::Session(OrtSingletonData::GetOrtObjects()->env,
+                                reinterpret_cast<char*>(buffer) + bytesOffset, bytesLength,
+                                sessionOptions));
     } else {
       ORT_NAPI_THROW_TYPEERROR(
           env,
@@ -263,8 +272,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
         input_names_.push_back(name);
         // No conversion detail is needed for inputs: cpu data is copied into ORT-owned storage and
         // gpu-buffer storage is held for the run by gpu_value_owners_, so there is nothing to pin.
-        input_values_.push_back(NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_,
-                                                    NapiValueUsage::kInput, &gpu_value_owners_));
+        input_values_.push_back(NapiValueToOrtValue(env_, value, cpu_memory_info_, session.cpu_allocator_,
+                                                    gpu_buffer_memory_info_, NapiValueUsage::kInput,
+                                                    &gpu_value_owners_));
       }
     }
 
@@ -279,9 +289,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
           output_values_.emplace_back(nullptr);
         } else {
           NapiTensorConversion conversion;
-          auto output_value = NapiValueToOrtValue(env_, value, cpu_memory_info_, gpu_buffer_memory_info_,
-                                                  NapiValueUsage::kPreallocatedOutput, &gpu_value_owners_,
-                                                  &conversion);
+          auto output_value = NapiValueToOrtValue(env_, value, cpu_memory_info_, session.cpu_allocator_,
+                                                  gpu_buffer_memory_info_, NapiValueUsage::kPreallocatedOutput,
+                                                  &gpu_value_owners_, &conversion);
           // CPU outputs come back empty: ORT allocates them and OnOK() validates the result against
           // the declared type and shape before copying it into the caller's buffer. Device outputs
           // carry the caller's memory and are bound directly, so ORT writes into it and no copy is
@@ -690,10 +700,21 @@ void InferenceSessionWrap::TeardownSession() {
   ReleaseSession();
 }
 
+void InferenceSessionWrap::AdoptSession(Ort::Session&& session) {
+  auto resources = std::make_shared<SessionResources>();
+  resources->session = std::move(session);
+  Ort::MemoryInfo cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  resources->cpu_allocator = Ort::Allocator(resources->session, cpu_memory_info);
+  cpu_allocator_ = resources->cpu_allocator;
+  session_ = std::shared_ptr<Ort::Session>(resources, &resources->session);
+}
+
 void InferenceSessionWrap::ReleaseSession() {
   if (session_ == nullptr) {
     return;
   }
+  // The holder behind session_ keeps the allocator alive for whoever still pins the session.
+  cpu_allocator_ = nullptr;
   if (requires_device_serialization_) {
     // Destroying the session tears down its execution provider, which returns pooled buffers through
     // a manager bound to the shared device context. Queue it so that happens under the device lock

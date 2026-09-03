@@ -125,8 +125,8 @@ const std::unordered_map<std::string, ONNXTensorElementDataType> DATA_TYPE_NAME_
 
 // currently only support tensor
 Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
-                               OrtMemoryInfo* webgpu_memory_info, NapiValueUsage usage,
-                               std::vector<OrtValueOwner>* value_owners,
+                               OrtAllocator* cpu_allocator, OrtMemoryInfo* webgpu_memory_info,
+                               NapiValueUsage usage, std::vector<OrtValueOwner>* value_owners,
                                NapiTensorConversion* conversion) {
   ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), env, "Tensor must be an object.");
 
@@ -266,8 +266,11 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
         return Ort::Value{nullptr};
       }
 
-      Ort::AllocatorWithDefaultOptions allocator;
-      auto copiedValue = Ort::Value::CreateTensor(allocator, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
+      // The copy comes from the session's own CPU allocator rather than the process-wide default
+      // one, so it follows the session's enableCpuMemArena setting. With the arena on, repeated
+      // runs of the same shapes reuse memory that is already mapped, which for large inputs makes
+      // this copy several times cheaper than faulting in fresh pages every run.
+      auto copiedValue = Ort::Value::CreateTensor(cpu_allocator, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
       const size_t tensorByteLength = sourceValue.GetTensorSizeInBytes();
       if (tensorByteLength > 0) {
         memcpy(copiedValue.GetTensorMutableRawData(), sourceValue.GetTensorRawData(), tensorByteLength);

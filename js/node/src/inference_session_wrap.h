@@ -91,6 +91,8 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   void FailRun(RunAsyncWorker* worker, Napi::Promise::Deferred& deferred, Napi::Value error);
   // Release the ORT objects. Deferred until the last in-flight run finishes if one is outstanding.
   void TeardownSession();
+  // Take ownership of a freshly created session and set up cpu_allocator_ for it.
+  void AdoptSession(Ort::Session&& session);
   // Drop our reference to the ORT session, through the device lock if its provider needs that.
   void ReleaseSession();
   // Hold the device lock for the duration of the returned guard, if this session's provider needs it.
@@ -109,8 +111,13 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   // Shared rather than unique: a gpu-buffer Tensor handed to Javascript outlives the run, and the
   // buffer behind it belongs to an allocator owned by this session's execution provider. Releasing
   // such a value after the session is gone crashes, so each one holds a reference to the session
-  // and the last of them destroys it.
+  // and the last of them destroys it. Aliases a holder that also owns cpu_allocator_ (see
+  // AdoptSession), so anything pinning the session pins the allocator its input copies came from.
   std::shared_ptr<Ort::Session> session_;
+  // The session's own CPU allocator, used for input copies so they follow enableCpuMemArena and, with
+  // the arena on, reuse already-mapped memory. Owned by the holder behind session_: valid exactly
+  // while session_ is set, and every value created from it is released before that holder is.
+  OrtAllocator* cpu_allocator_{nullptr};
 
   // input/output metadata
   std::vector<std::string> inputNames_;
