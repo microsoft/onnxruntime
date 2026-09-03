@@ -303,7 +303,7 @@ MlasQ4Int8GemmKernelBlkLen64Avx2(
             QuantAScale,
             QuantBData + multipleCols * StrideQuantBData,
             QuantBScale + multipleCols * StrideQuantBScale,
-            QuantBZeroPoint + multipleCols * StrideQuantBZeroPoint,
+            QuantBZeroPoint ? QuantBZeroPoint + multipleCols * StrideQuantBZeroPoint : nullptr,
             C + multipleCols,
             remainingCols,
             BlockCountK,
