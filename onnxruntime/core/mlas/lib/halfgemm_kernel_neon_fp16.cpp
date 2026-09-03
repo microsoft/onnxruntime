@@ -509,12 +509,17 @@ void HPackB_B_Kernel(
         MlasStoreFloat16x4(PackedB_data, v0);
         MlasStoreFloat16x4(PackedB_data + 4, v1);
     } else if (CountN > 0) {
+        // Each packed row is 8 wide; only CountN (<= 4) lanes carry data, so the
+        // upper half must be zero-filled rather than left uninitialized.
+        const float16x4_t zero_v4 = MlasZeroFloat16x4();
         float16x4_t v0 = MlasLoadPartialFloat16x4(B_data, CountN);
         for (; CountK >= 2; B_data += ldb, PackedB_data += 8, --CountK) {
             MlasStoreFloat16x4(PackedB_data, v0);
+            MlasStoreFloat16x4(PackedB_data + 4, zero_v4);
             v0 = MlasLoadPartialFloat16x4(B_data + ldb, CountN);
         }
         MlasStoreFloat16x4(PackedB_data, v0);
+        MlasStoreFloat16x4(PackedB_data + 4, zero_v4);
     }
 }
 
