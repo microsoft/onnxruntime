@@ -628,6 +628,10 @@ verified rather than assumed:
 The EP-level `WebGpuExecutionProvider::IsRunActive()` predates this commit and is unaffected; only the
 context-level copy of the state was removed.
 
+The design doc's write-up of this detour — the `+36%` figure and the section proposing the deferred-submission
+fix — has been removed from `static_plugin_ep_registration_design.md`, since that document describes the design
+as it stands rather than the path taken to it. This work log keeps the record.
+
 Caveat on scope: this is "no measurable benefit in the scenarios we could construct", not proof of a universal
 no-op. The evidence is strong for the web build, where the patched `GPUQueue.submit` counter is a *complete*
 instrument for the claimed harm. It is weaker for native, where only timing was compared and submits were

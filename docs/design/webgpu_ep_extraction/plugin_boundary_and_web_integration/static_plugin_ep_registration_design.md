@@ -638,8 +638,7 @@ Three runs per model per build. **The two builds must be sampled interleaved** �
 `plugin/dispatch, plugin/compute, lib/dispatch, lib/compute`, repeated — rather than all samples of one build
 followed by all samples of the other. This machine drifts: a build that has just finished, a warm browser, or a
 warm GPU shifts timings by more than the effect being measured, and sequential sampling aliases that drift onto
-the build under test. The sequential methodology used for the first pass understated a real regression by nearly
-an order of magnitude (see below). The table reports the median of the three per-run P50 values.
+the build under test. The table reports the median of the three per-run P50 values.
 
 | Metric | `static_lib` | `static_plugin` | Delta |
 | --- | ---: | ---: | ---: |
@@ -670,46 +669,6 @@ Two cautions on methodology:
   regression that does not exist.
 - Timings taken with `--webgpu.profiling.mode=default` are inflated by the timestamp queries and must never be
   compared against timings taken without it.
-
-#### The shared allocator must defer zero-initialize submission during a run
-
-Interleaved sampling exposed a genuine, code-level regression in the plugin path that sequential sampling had
-hidden: the compute-bound model ran at 9.90 ms against the control's 7.30 ms, **+36%**, with no overlap between
-the two sample sets. That the dispatch-bound model — 300 nodes against the compute model's 16 — did *not* show a
-proportional cost ruled out a fixed per-node or per-run overhead and pointed at something scaling with bytes
-allocated rather than with node count.
-
-The cause was buffer zero-initialization. `BufferManager::Create` clears a buffer recycled from the cache, and
-`GpuBufferAllocator` takes a `should_submit_zero_initialize` predicate deciding whether that clear is submitted
-before `Create` returns. During `Session::Run` it must **not** be: the clear is encoded into the run's own command
-encoder and rides along with the run's submission, preserving dispatch batching. Outside a run there is no
-upcoming submission to piggyback on, so the clear must be submitted immediately. `WebGpuExecutionProvider` and the
-plugin factory's per-EP allocator both passed `!IsRunActive()`, but the factory's **shared** allocator — the one
-backing intermediate tensors — hardcoded `true`, forcing a queue submit for every intermediate buffer mid-run.
-The compute model allocates sixteen 1 MB intermediates, so it paid sixteen forced submits per inference.
-
-The shared allocator is created by `CreateAllocatorImpl` before any EP instance exists, so it had no EP to ask —
-which is why the predicate was stubbed out rather than wired up. The fix moves the run-active flag onto
-`WebGpuContext`, which is both reachable from the allocator and the more correct owner: it holds
-`current_command_encoder_` / `current_compute_pass_encoder_`, the very state that batching depends on.
-`WebGpuExecutionProvider` sets it in `OnRunStart` / `OnRunEnd` and its `IsRunActive()` now delegates to the
-context, so all three allocator sites read one source of truth. With the fix the compute-bound gap disappears into
-noise, as the table above shows.
-
-This bug predates the ORT Web migration and affects any consumer of the WebGPU plugin EP, not just the web build;
-it is a candidate to land separately from the static-plugin work.
-
-It was present in the pre-merge measurements too, which reported only +4% for this model. The reason is that the
-cost is state-dependent rather than constant: `BufferManager::Create` only clears — and therefore only flushes —
-a buffer it recycles from its cache, so the penalty depends on cache occupancy and appears as a wide, roughly
-bimodal distribution rather than a fixed offset. Sequential sampling of the *same* defective binary produced
-per-run P50s spanning 7.70 ms to 10.20 ms, a range that brackets the pre-merge figure. The merge itself did not
-introduce or amplify the defect: of the three merged commits touching this path, #32272 only adds an early return
-when an allocator is already registered (not reached with a single device), and #32269's subgroup-matrix MatMul is
-gated on the F16 8x16x16 config, so the f32 compute-bound model never takes it. The lesson is about sample count
-and interleaving on a high-variance metric, not about the merge.
-
-
 
 > Should static factories be registered before environment creation or through environment construction options?
 
