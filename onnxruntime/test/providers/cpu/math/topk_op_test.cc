@@ -3,6 +3,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 
@@ -22,7 +23,8 @@ static void RunTest(int op_set,
                     int64_t largest = 1,
                     int64_t sorted = 1,
                     OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                    const std::string& expected_err_str = "") {
+                    const std::string& expected_err_str = "",
+                    bool cuda_only = false) {
   OpTester test("TopK", op_set);
 
   // Attributes
@@ -53,6 +55,12 @@ static void RunTest(int op_set,
   std::unordered_set<std::string> excluded_providers;
   if (!is_tensorrt_supported) {
     excluded_providers.insert(kTensorrtExecutionProvider);  // Disable TensorRT because of unsupported data types
+  }
+  if (cuda_only) {
+    SessionOptions session_options;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options).ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+    return;
   }
   test.Run(expect_result, expected_err_str, excluded_providers);
 }
@@ -868,6 +876,7 @@ TEST(TopKOperator, Top3AllSame) {
   top_3_explicit_axis<double>(11, 0);
 }
 
+#ifdef USE_CUDA
 template <typename T>
 static void RunStableHybridTopKCases(int opset_version,
                                      const std::initializer_list<std::pair<int64_t, int64_t>>& cases) {
@@ -878,7 +887,8 @@ static void RunStableHybridTopKCases(int opset_version,
     std::iota(expected_indices.begin(), expected_indices.end(), 0);
     SCOPED_TRACE("opset=" + std::to_string(opset_version) +
                  ", dimension=" + std::to_string(dimension) + ", k=" + std::to_string(k));
-    RunTest(opset_version, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false);
+    RunTest(opset_version, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false,
+            -1, 1, 1, OpTester::ExpectResult::kExpectSuccess, "", true);
   }
 }
 
@@ -912,7 +922,8 @@ TEST(TopKOperator, StableSmallKBFloat16Smallest) {
   std::vector<BFloat16> expected_vals(k, BFloat16(1.0f));
   std::vector<int64_t> expected_indices(k);
   std::iota(expected_indices.begin(), expected_indices.end(), 0);
-  RunTest(24, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false, -1, 0);
+  RunTest(24, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false,
+          -1, 0, 1, OpTester::ExpectResult::kExpectSuccess, "", true);
 }
 
 static void RunStableSignedZeroTopKCase(int64_t dimension, int64_t k, int64_t largest) {
@@ -923,7 +934,8 @@ static void RunStableSignedZeroTopKCase(int64_t dimension, int64_t k, int64_t la
   std::vector<float> expected_vals(k, 0.0f);
   std::vector<int64_t> expected_indices(k);
   std::iota(expected_indices.begin(), expected_indices.end(), 0);
-  RunTest(11, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false, -1, largest);
+  RunTest(11, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false,
+          -1, largest, 1, OpTester::ExpectResult::kExpectSuccess, "", true);
 }
 
 TEST(TopKOperator, StableHybridSignedZero) {
@@ -934,6 +946,7 @@ TEST(TopKOperator, StableSmallKSignedZero) {
   RunStableSignedZeroTopKCase(5000, 16, 1);
   RunStableSignedZeroTopKCase(5000, 16, 0);
 }
+#endif
 
 template <typename T>
 static void TestThreaded(int64_t k, int64_t n, int64_t batch_size) {
