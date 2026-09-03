@@ -145,27 +145,15 @@ session.enable_moe_expert_statistics=1
 
 The default value is `0`. When it is `0`, the routing path must not allocate statistics buffers, collect expert identifiers, or add measurable synchronization overhead. The evaluation script exposes the same setting as `--enable-moe-expert-statistics`.
 
-The implementation reuses ONNX Runtime's built-in `profiling::Profiler` and its Chrome trace JSON output instead of introducing another logging subsystem. ORT profiling already:
+The implementation writes only MoE routing decisions through the normal ONNX Runtime logger at INFO severity. It does
+not enable `profiling::Profiler`, retain a Chrome trace in memory, or record unrelated node and kernel events. Consumers
+can redirect the logger output to a file and select lines beginning with `moe_routing `; the remainder of each such line
+is a standalone JSON object.
 
-- writes a JSON timeline when `SessionOptions.enable_profiling` is enabled;
-- records a `model_run` session event covering the complete `InferenceSession::Run`;
-- records per-node durations and `input_type_shape`/`output_type_shape` arguments;
-- bounds the in-memory event collection and reports an explicit error when the event limit is reached.
-
-`session.enable_moe_expert_statistics=1` requires ORT profiling to be enabled. Session initialization must reject the configuration if the statistics flag is on but no profile output is configured; it must not silently discard the requested data. The evaluation script enables both settings and selects the JSON output prefix.
-
-The existing `model_run` event is extended with:
-
-- `input_shapes`, containing the concrete dimensions of every model input for that iteration;
-- `input_token_hash`, a stable hash used to align identical CPU and CUDA iterations without storing tokens;
-- `request_id`, a stable identifier that does not expose prompt text.
-
-Its existing `dur` value is the wall-clock duration of the complete iteration, not only the MoE nodes. CPU and CUDA measurements use the normal synchronized `Run` behavior so this duration includes completion of the selected execution provider's work.
-
-Input dimensions are required even when `request_id` is present. During autoregressive generation the sequence-length dimension normally increases; a decrease relative to the previous iteration marks the transition to the next sequence. The analysis script validates this boundary against `request_id` and reports inconsistent traces.
-
-MoE routing decisions are added as profiler events correlated with the enclosing `model_run`, its input shapes, and
-`request_id`. No separate JSONL or Parquet writer is added.
+Each current routing record contains `request_id`, `node_name`, `node_index`, `expert_ids`, `router_weights`, `num_rows`,
+`top_k`, and `execution_device_id`. CUDA routing buffers are copied asynchronously and retained until the normal
+end-of-run execution-provider synchronization, then serialized. Per-run record and routing-element limits bound pinned
+host memory; a `moe_routing_truncated` warning reports any dropped decisions explicitly.
 
 A later output-prediction study extends these events with sampled MoE outputs. This extension remains behind `session.enable_moe_expert_statistics=1` and is disabled unless an explicit sampling configuration is provided. It records the source `(request_id, input_shapes, token_index, layer_id)`, output shape and type, and either the sampled output vector or a documented deterministic projection. It must not emit every full activation by default because that would make the JSON traces impractically large.
 
@@ -313,13 +301,10 @@ Every persistent change is delivered through one of the following pull requests.
 ### PR 1: expert-routing instrumentation
 
 - Add the `session.enable_moe_expert_statistics` session configuration entry, disabled by default.
-- Reuse `profiling::Profiler` and its JSON serializer; do not add an independent logging path.
-- Extend `model_run` events with iteration indices, request identifiers, and concrete model-input dimensions.
-- Add correlated MoE profiler events containing the selected experts, router weights, and MoE completion timestamp needed to determine the earliest legal copy time.
+- Emit compact JSON routing records through the normal ORT logger without enabling general profiling.
+- Record the request identifier, MoE node, selected experts, router weights, row count, top-k, and execution device.
 - Record execution, cache-slot, and transfer endpoint device IDs so the trace format remains usable for the multi-GPU study.
-- Record complete iteration time for CPU and CUDA, including non-MoE work.
-- Reject the statistics flag when profiling output is not enabled.
-- Test the disabled path, JSON schema, sequence reset detection inputs, event correlation, and explicit overflow behavior.
+- Test the disabled path, JSON schema, CUDA and CPU routing, and explicit overflow behavior.
 
 ### PR 2: reproducible evaluation and statistical-analysis scripts
 

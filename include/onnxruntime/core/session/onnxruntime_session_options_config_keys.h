@@ -20,8 +20,8 @@
 // If the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled (default value)
 static const char* const kOrtSessionOptionsConfigDisablePrepacking = "session.disable_prepacking";
 
-// Enable profiler events containing MoE expert-routing statistics.
-// "0": disable (default); "1": enable. Session profiling must also be enabled.
+// Log MoE expert-routing decisions at INFO severity.
+// "0": disable (default); "1": enable.
 static const char* const kOrtSessionOptionsConfigEnableMoeExpertStatistics =
     "session.enable_moe_expert_statistics";
 

@@ -2563,16 +2563,23 @@ static void RunMoECpuTest(const std::vector<float>& input, const std::vector<flo
 }
 
 #if !defined(__wasm__) && !defined(_WIN32)
-static void RunMoECpuProfilingTest(bool enable_moe_statistics,
-                                   const char* profile_prefix,
-                                   nlohmann::json& profile_json) {
-  for (const auto& entry : std::filesystem::directory_iterator(".")) {
-    const std::string filename = entry.path().filename().string();
-    if (filename.find(profile_prefix) == 0 && entry.path().extension() == ".json") {
-      std::filesystem::remove(entry.path());
+static std::vector<nlohmann::json> ParseMoeRoutingLogs(const std::string& logs) {
+  constexpr std::string_view marker = "moe_routing ";
+  std::vector<nlohmann::json> events;
+  size_t position = 0;
+  while ((position = logs.find(marker, position)) != std::string::npos) {
+    position += marker.size();
+    const size_t end = logs.find('\n', position);
+    events.push_back(nlohmann::json::parse(logs.substr(position, end - position)));
+    if (end == std::string::npos) {
+      break;
     }
+    position = end + 1;
   }
+  return events;
+}
 
+static std::vector<nlohmann::json> RunMoECpuLoggingTest(bool enable_moe_statistics) {
   constexpr int num_rows = 2;
   constexpr int num_experts = 2;
   constexpr int hidden_size = 4;
@@ -2607,10 +2614,9 @@ static void RunMoECpuProfilingTest(bool enable_moe_statistics,
   tester.SetOutputTolerance(0.05f);
 
   SessionOptions session_options;
-  session_options.enable_profiling = true;
-  session_options.profile_file_prefix = ToPathString(profile_prefix);
+  session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
   if (enable_moe_statistics) {
-    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+    EXPECT_STATUS_OK(session_options.config_options.AddConfigEntry(
         kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
   }
 
@@ -2618,58 +2624,29 @@ static void RunMoECpuProfilingTest(bool enable_moe_statistics,
   run_options.run_tag = "{routing \"request\"}";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
+  testing::internal::CaptureStderr();
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
-
-  std::string profile_file;
-  for (const auto& entry : std::filesystem::directory_iterator(".")) {
-    const std::string filename = entry.path().filename().string();
-    if (filename.find(profile_prefix) == 0 && entry.path().extension() == ".json") {
-      profile_file = entry.path().string();
-      break;
-    }
-  }
-  ASSERT_FALSE(profile_file.empty());
-  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
-  std::ifstream profile_stream(profile_file);
-  ASSERT_TRUE(profile_stream.good());
-  profile_json = nlohmann::json::parse(profile_stream);
+  return ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
 }
 
-TEST(MoETest, MoECpuRoutingProfileHasCorrelatedSchema) {
-  nlohmann::json profile_json;
-  RunMoECpuProfilingTest(true, "moe_cpu_routing_profile_test", profile_json);
-
-  std::vector<nlohmann::json> routing_events;
-  for (const auto& event : profile_json) {
-    if (event.value("name", "") == "moe_routing") {
-      routing_events.push_back(event);
-    }
-  }
-
+TEST(MoETest, MoECpuRoutingLogHasDecisionSchema) {
+  const auto routing_events = RunMoECpuLoggingTest(true);
   ASSERT_EQ(routing_events.size(), 1U);
-  const auto& args = routing_events[0]["args"];
-  EXPECT_FALSE(args.contains("iteration_index"));
-  EXPECT_EQ(args["request_id"], "{routing \"request\"}");
-  EXPECT_EQ(args["expert_ids"], nlohmann::json({0, 1}));
-  ASSERT_EQ(args["router_weights"].size(), 2U);
-  EXPECT_FLOAT_EQ(args["router_weights"][0].get<float>(), 1.0f);
-  EXPECT_FLOAT_EQ(args["router_weights"][1].get<float>(), 1.0f);
-  EXPECT_EQ(args["num_rows"], "2");
-  EXPECT_EQ(args["top_k"], "1");
-  EXPECT_EQ(args["execution_device_id"], "-1");
-  EXPECT_EQ(args["node_index"], args["layer_id"]);
-  EXPECT_TRUE(args.contains("node_name"));
-  EXPECT_TRUE(args.contains("moe_completed_ns"));
+  const auto& event = routing_events[0];
+  EXPECT_EQ(event["request_id"], "{routing \"request\"}");
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1}));
+  ASSERT_EQ(event["router_weights"].size(), 2U);
+  EXPECT_FLOAT_EQ(event["router_weights"][0].get<float>(), 1.0f);
+  EXPECT_FLOAT_EQ(event["router_weights"][1].get<float>(), 1.0f);
+  EXPECT_EQ(event["num_rows"], 2);
+  EXPECT_EQ(event["top_k"], 1);
+  EXPECT_EQ(event["execution_device_id"], -1);
+  EXPECT_TRUE(event.contains("node_index"));
+  EXPECT_TRUE(event.contains("node_name"));
 }
 
-TEST(MoETest, MoECpuRoutingProfileDisabledHasNoRoutingEvent) {
-  nlohmann::json profile_json;
-  RunMoECpuProfilingTest(false, "moe_cpu_routing_disabled_test", profile_json);
-
-  EXPECT_EQ(std::count_if(profile_json.begin(), profile_json.end(), [](const auto& event) {
-              return event.value("name", "") == "moe_routing";
-            }),
-            0);
+TEST(MoETest, MoECpuRoutingLogDisabledHasNoDecision) {
+  EXPECT_TRUE(RunMoECpuLoggingTest(false).empty());
 }
 
 #ifdef USE_CUDA
@@ -2698,78 +2675,37 @@ static void ConfigureCudaMoeRoutingTester(OpTester& tester) {
                           std::vector<float>(num_rows * hidden_size, 0.0f));
 }
 
-TEST(MoETest, MoECudaRoutingProfileHasCorrelatedSchema) {
+TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
-  }
-
-  constexpr const char* profile_prefix = "moe_cuda_routing_profile_test";
-  for (const auto& entry : std::filesystem::directory_iterator(".")) {
-    const std::string filename = entry.path().filename().string();
-    if (filename.find(profile_prefix) == 0 && entry.path().extension() == ".json") {
-      std::filesystem::remove(entry.path());
-    }
   }
 
   OpTester tester("MoE", 1, onnxruntime::kMSDomain);
   ConfigureCudaMoeRoutingTester(tester);
 
   SessionOptions session_options;
-  session_options.enable_profiling = true;
-  session_options.profile_file_prefix = ToPathString(profile_prefix);
+  session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
   RunOptions run_options;
   run_options.run_tag = "cuda request";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
+  testing::internal::CaptureStderr();
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
+  const auto routing_events = ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
 
-  std::string profile_file;
-  for (const auto& entry : std::filesystem::directory_iterator(".")) {
-    const std::string filename = entry.path().filename().string();
-    if (filename.find(profile_prefix) == 0 && entry.path().extension() == ".json") {
-      profile_file = entry.path().string();
-      break;
-    }
-  }
-  ASSERT_FALSE(profile_file.empty());
-  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
-  std::ifstream profile_stream(profile_file);
-  ASSERT_TRUE(profile_stream.good());
-  const auto profile_json = nlohmann::json::parse(profile_stream);
-
-  const auto routing_event = std::find_if(profile_json.begin(), profile_json.end(), [](const auto& event) {
-    return event.value("name", "") == "moe_routing";
-  });
-  ASSERT_NE(routing_event, profile_json.end());
-  const auto model_run_event = std::find_if(profile_json.begin(), profile_json.end(), [](const auto& event) {
-    return event.value("name", "") == "model_run";
-  });
-  ASSERT_NE(model_run_event, profile_json.end());
-  EXPECT_LT(std::distance(profile_json.begin(), routing_event),
-            std::distance(profile_json.begin(), model_run_event));
-  const auto& args = (*routing_event)["args"];
-  EXPECT_FALSE(args.contains("iteration_index"));
-  EXPECT_EQ(args["request_id"], "cuda request");
-  EXPECT_EQ(args["expert_ids"], nlohmann::json({0, 1}));
-  EXPECT_EQ(args["router_weights"], nlohmann::json({1.0f, 1.0f}));
-  EXPECT_GE(std::stoi(args["execution_device_id"].get<std::string>()), 0);
-  EXPECT_EQ(args["moe_completion_timestamp_source"], "cuda_event_elapsed_from_host_enqueue");
-  EXPECT_GT(std::stoll(args["moe_completed_ns"].get<std::string>()), 0);
+  ASSERT_EQ(routing_events.size(), 1U);
+  const auto& event = routing_events[0];
+  EXPECT_EQ(event["request_id"], "cuda request");
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1}));
+  EXPECT_EQ(event["router_weights"], nlohmann::json({1.0f, 1.0f}));
+  EXPECT_GE(event["execution_device_id"].get<int>(), 0);
 }
 
-TEST(MoETest, QMoECudaTiledRoutingProfileCapturesEveryTile) {
+TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
-  }
-
-  constexpr const char* profile_prefix = "qmoe_cuda_tiled_routing_profile_test";
-  for (const auto& entry : std::filesystem::directory_iterator(".")) {
-    const std::string filename = entry.path().filename().string();
-    if (filename.find(profile_prefix) == 0 && entry.path().extension() == ".json") {
-      std::filesystem::remove(entry.path());
-    }
   }
 
   constexpr int num_rows = 3;
@@ -2804,8 +2740,7 @@ TEST(MoETest, QMoECudaTiledRoutingProfileCapturesEveryTile) {
                               ToFloat16(std::vector<float>(num_rows * hidden_size, 0.0f)));
 
   SessionOptions session_options;
-  session_options.enable_profiling = true;
-  session_options.profile_file_prefix = ToPathString(profile_prefix);
+  session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
@@ -2814,39 +2749,17 @@ TEST(MoETest, QMoECudaTiledRoutingProfileCapturesEveryTile) {
   run_options.run_tag = "qmoe tiled request";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());
+  testing::internal::CaptureStderr();
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
+  const auto routing_events = ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
 
-  std::string profile_file;
-  for (const auto& entry : std::filesystem::directory_iterator(".")) {
-    const std::string filename = entry.path().filename().string();
-    if (filename.find(profile_prefix) == 0 && entry.path().extension() == ".json") {
-      profile_file = entry.path().string();
-      break;
-    }
-  }
-  ASSERT_FALSE(profile_file.empty());
-  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
-  std::ifstream profile_stream(profile_file);
-  ASSERT_TRUE(profile_stream.good());
-  const auto profile_json = nlohmann::json::parse(profile_stream);
-
-  const auto routing_event = std::find_if(profile_json.begin(), profile_json.end(), [](const auto& event) {
-    return event.value("name", "") == "moe_routing";
-  });
-  ASSERT_NE(routing_event, profile_json.end());
-  const auto model_run_event = std::find_if(profile_json.begin(), profile_json.end(), [](const auto& event) {
-    return event.value("name", "") == "model_run";
-  });
-  ASSERT_NE(model_run_event, profile_json.end());
-  EXPECT_LT(std::distance(profile_json.begin(), routing_event),
-            std::distance(profile_json.begin(), model_run_event));
-  const auto& args = (*routing_event)["args"];
-  EXPECT_FALSE(args.contains("iteration_index"));
-  EXPECT_EQ(args["request_id"], "qmoe tiled request");
-  EXPECT_EQ(args["expert_ids"], nlohmann::json({0, 1, 0}));
-  EXPECT_EQ(args["router_weights"], nlohmann::json({1.0f, 1.0f, 1.0f}));
-  EXPECT_EQ(args["num_rows"], "3");
-  EXPECT_EQ(args["top_k"], "1");
+  ASSERT_EQ(routing_events.size(), 1U);
+  const auto& event = routing_events[0];
+  EXPECT_EQ(event["request_id"], "qmoe tiled request");
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 0}));
+  EXPECT_EQ(event["router_weights"], nlohmann::json({1.0f, 1.0f, 1.0f}));
+  EXPECT_EQ(event["num_rows"], 3);
+  EXPECT_EQ(event["top_k"], 1);
 }
 
 TEST(MoETest, MoeStatisticsRejectsCudaGraphCapture) {
@@ -2854,22 +2767,10 @@ TEST(MoETest, MoeStatisticsRejectsCudaGraphCapture) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
 
-  constexpr const char* profile_prefix = "moe_cuda_graph_rejection_test";
-  auto cleanup = gsl::finally([profile_prefix]() {
-    for (const auto& entry : std::filesystem::directory_iterator(".")) {
-      const std::string filename = entry.path().filename().string();
-      if (filename.find(profile_prefix) == 0 && entry.path().extension() == ".json") {
-        std::filesystem::remove(entry.path());
-      }
-    }
-  });
-
   OpTester tester("MoE", 1, onnxruntime::kMSDomain);
   ConfigureCudaMoeRoutingTester(tester);
 
   SessionOptions session_options;
-  session_options.enable_profiling = true;
-  session_options.profile_file_prefix = ToPathString(profile_prefix);
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
   OrtCUDAProviderOptionsV2 provider_options{};

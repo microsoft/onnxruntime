@@ -7,8 +7,10 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 
+#include "core/common/json_utils.h"
 #include "core/framework/run_instrumentation.h"
 #endif
 #include "core/framework/op_kernel.h"
@@ -33,7 +35,7 @@ class ExecutionFrame;
 //
 // InferenceSession flushes the records after execution-provider OnRunEnd() performs the normal
 // end-of-run synchronization. Each record also checks its completion event and synchronizes that
-// event as a safety fallback before reading the host buffers and emitting the profiler event.
+// event as a safety fallback before reading the host buffers and logging the routing decision.
 //
 // CUDA pinned allocations are arena-backed, but they cannot be returned to the arena while their
 // copies are in flight. The routing record and element limits therefore bound the live pinned
@@ -43,17 +45,22 @@ class RunInstrumentationContext {
   static constexpr size_t kMaxMoeRoutingRecordsPerRun = 1024;
   static constexpr size_t kMaxMoeRoutingElementsPerRun = 2'000'000;
 
-  RunInstrumentationContext(std::string request_id, profiling::Profiler& profiler)
-      : request_id_(std::move(request_id)), profiler_(profiler) {}
+  RunInstrumentationContext(std::string request_id, const logging::Logger& logger)
+      : request_id_(std::move(request_id)),
+        logger_(logger),
+        start_time_ns_(static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::high_resolution_clock::now().time_since_epoch())
+                .count())) {}
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RunInstrumentationContext);
 
   const std::string& RequestId() const noexcept { return request_id_; }
   TimePoint StartProfiling() const { return std::chrono::high_resolution_clock::now(); }
-  uint64_t ProfilerStartTimeNs() const noexcept { return profiler_.GetStartTimeNs(); }
+  uint64_t ProfilerStartTimeNs() const noexcept { return start_time_ns_; }
 
-  void RecordMoeRoutingEvent(const TimePoint& start_time,
-                             const TimePoint& end_time,
+  void RecordMoeRoutingEvent(const TimePoint&,
+                             const TimePoint&,
                              std::string_view node_name,
                              NodeIndex node_index,
                              std::string expert_ids_json,
@@ -61,22 +68,21 @@ class RunInstrumentationContext {
                              int64_t num_rows,
                              int64_t top_k,
                              int execution_device_id,
-                             int64_t completion_ns,
-                             std::string_view completion_timestamp_source) const {
-    InlinedHashMap<std::string, std::string> args;
-    args["request_id"] = profiling::MakeStringEventArg(request_id_);
-    args["node_name"] = profiling::MakeStringEventArg(node_name);
-    args["node_index"] = std::to_string(node_index);
-    args["layer_id"] = std::to_string(node_index);
-    args["expert_ids"] = std::move(expert_ids_json);
-    args["router_weights"] = std::move(router_weights_json);
-    args["num_rows"] = std::to_string(num_rows);
-    args["top_k"] = std::to_string(top_k);
-    args["execution_device_id"] = std::to_string(execution_device_id);
-    args["moe_completed_ns"] = std::to_string(completion_ns);
-    args["moe_completion_timestamp_source"] = std::string(completion_timestamp_source);
-    profiler_.RecordEvent(
-        profiling::NODE_EVENT, "moe_routing", start_time, end_time, std::move(args));
+                             int64_t,
+                             std::string_view) const {
+    std::ostringstream event;
+    event << "{\"request_id\":";
+    common::WriteJsonString(event, request_id_);
+    event << ",\"node_name\":";
+    common::WriteJsonString(event, node_name);
+    event << ",\"node_index\":" << node_index
+          << ",\"expert_ids\":" << expert_ids_json
+          << ",\"router_weights\":" << router_weights_json
+          << ",\"num_rows\":" << num_rows
+          << ",\"top_k\":" << top_k
+          << ",\"execution_device_id\":" << execution_device_id
+          << "}";
+    LOGS(logger_, INFO) << "moe_routing " << event.str();
   }
 
   void AddDeferredRecord(std::unique_ptr<DeferredRunInstrumentationRecord> record) const {
@@ -98,20 +104,19 @@ class RunInstrumentationContext {
     return true;
   }
 
-  void AddMoeStatisticsTruncationArgs(InlinedHashMap<std::string, std::string>& args) const {
+  void LogMoeStatisticsTruncation() const {
     std::lock_guard<std::mutex> lock(deferred_records_mutex_);
     if (dropped_moe_routing_record_count_ == 0) {
       return;
     }
 
-    args["moe_statistics_truncated"] = "1";
-    args["moe_statistics_dropped_records"] = std::to_string(dropped_moe_routing_record_count_);
-    args["moe_statistics_dropped_routing_elements"] =
-        std::to_string(dropped_moe_routing_element_count_);
-    args["moe_statistics_max_records_per_run"] =
-        std::to_string(kMaxMoeRoutingRecordsPerRun);
-    args["moe_statistics_max_routing_elements_per_run"] =
-        std::to_string(kMaxMoeRoutingElementsPerRun);
+    LOGS(logger_, WARNING)
+        << "moe_routing_truncated {\"dropped_records\":"
+        << dropped_moe_routing_record_count_
+        << ",\"dropped_routing_elements\":" << dropped_moe_routing_element_count_
+        << ",\"max_records_per_run\":" << kMaxMoeRoutingRecordsPerRun
+        << ",\"max_routing_elements_per_run\":" << kMaxMoeRoutingElementsPerRun
+        << "}";
   }
 
   Status FlushDeferredRecords() {
@@ -133,7 +138,8 @@ class RunInstrumentationContext {
 
  private:
   std::string request_id_;
-  profiling::Profiler& profiler_;
+  const logging::Logger& logger_;
+  uint64_t start_time_ns_;
   mutable std::mutex deferred_records_mutex_;
   mutable InlinedVector<std::unique_ptr<DeferredRunInstrumentationRecord>> deferred_records_;
   mutable size_t moe_routing_record_count_{0};

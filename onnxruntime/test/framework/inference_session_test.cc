@@ -984,31 +984,33 @@ TEST(InferenceSessionTests, ProfilerOverflowIsMachineReadable) {
 }
 
 TEST(InferenceSessionTests, MoeInstrumentationLimitsRoutingVolume) {
-  profiling::Profiler profiler;
-  profiler.Initialize(&logging::LoggingManager::DefaultLogger());
-  RunInstrumentationContext instrumentation{"request", profiler};
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_instrumentation_limit");
+  RunInstrumentationContext instrumentation{"request", *logger};
 
   EXPECT_TRUE(instrumentation.TryReserveMoeRoutingRecord(
       RunInstrumentationContext::kMaxMoeRoutingElementsPerRun));
   EXPECT_FALSE(instrumentation.TryReserveMoeRoutingRecord(1));
 
-  InlinedHashMap<std::string, std::string> args;
-  instrumentation.AddMoeStatisticsTruncationArgs(args);
-  EXPECT_EQ(args["moe_statistics_truncated"], "1");
-  EXPECT_EQ(args["moe_statistics_dropped_records"], "1");
-  EXPECT_EQ(args["moe_statistics_dropped_routing_elements"], "1");
+  instrumentation.LogMoeStatisticsTruncation();
+  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
+  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("moe_routing_truncated"));
+  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_records\":1"));
+  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_routing_elements\":1"));
 }
 
-TEST(InferenceSessionTests, MoeExpertStatisticsRequiresSessionProfiling) {
+TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
 
   InferenceSession session{session_options, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(MODEL_URI));
-  const Status status = session.Initialize();
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("requires session profiling"));
+  ASSERT_STATUS_OK(session.Initialize());
 }
 
 TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
@@ -1023,90 +1025,32 @@ TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must be set to either \"0\" or \"1\""));
 }
 
-TEST(InferenceSessionTests, MoeExpertStatisticsDisabledPreservesModelRunArgs) {
-  const std::array<std::optional<std::string>, 2> config_values{std::nullopt, std::string{"0"}};
-  for (const auto& config_value : config_values) {
-    SessionOptions session_options;
-    session_options.enable_profiling = true;
-    session_options.profile_file_prefix = ORT_TSTR("moe_statistics_disabled_test");
-    if (config_value.has_value()) {
-      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-          kOrtSessionOptionsConfigEnableMoeExpertStatistics, config_value->c_str()));
-    }
+TEST(InferenceSessionTests, MoeRoutingLogIsStructuredJson) {
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_routing_json");
+  RunInstrumentationContext instrumentation{"request \"one\"", *logger};
+  const TimePoint now = std::chrono::high_resolution_clock::now();
 
-    InferenceSession session{session_options, GetEnvironment()};
-    ASSERT_STATUS_OK(session.Load(MODEL_URI));
-    ASSERT_STATUS_OK(session.Initialize());
-    RunOptions run_options;
-    run_options.run_tag = "disabled";
-    ASSERT_STATUS_OK(RunModelWithValues(session, run_options, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}));
+  instrumentation.RecordMoeRoutingEvent(
+      now, now, "layer/0/QMoE", 42, "[3,7]", "[0.75,0.25]", 1, 2, 0, 0, "");
 
-    const std::string profile_file = session.EndProfiling();
-    auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
-    std::ifstream profile_stream(profile_file);
-    ASSERT_TRUE(profile_stream.good());
-    const auto profile_json = nlohmann::json::parse(profile_stream);
-
-    const auto model_run = std::find_if(profile_json.begin(), profile_json.end(), [](const auto& event) {
-      return event.value("name", "") == "model_run";
-    });
-    ASSERT_NE(model_run, profile_json.end());
-    EXPECT_FALSE((*model_run)["args"].contains("iteration_index"));
-    EXPECT_FALSE((*model_run)["args"].contains("request_id"));
-    EXPECT_FALSE((*model_run)["args"].contains("input_shapes"));
-    EXPECT_FALSE((*model_run)["args"].contains("input_token_hash"));
-  }
-}
-
-TEST(InferenceSessionTests, MoeExpertStatisticsAddsCorrelatedModelRunArgs) {
-  SessionOptions session_options;
-  session_options.enable_profiling = true;
-  session_options.profile_file_prefix = ORT_TSTR("moe_statistics_model_run_test");
-  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
-
-  InferenceSession session{session_options, GetEnvironment()};
-  ASSERT_STATUS_OK(session.Load(MODEL_URI));
-  ASSERT_STATUS_OK(session.Initialize());
-
-  RunOptions run_options;
-  run_options.run_tag = "invalid";
-  EXPECT_FALSE(RunModelWithValues(session, run_options, {1.f, 2.f, 3.f, 4.f}, {2, 2}).IsOK());
-
-  run_options.run_tag = "[request \"one\"]";
-  ASSERT_STATUS_OK(RunModelWithValues(session, run_options, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}));
-  run_options.run_tag = "request two";
-  ASSERT_STATUS_OK(RunModelWithValues(session, run_options, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}));
-  run_options.run_tag = "request three";
-  ASSERT_STATUS_OK(RunModelWithValues(session, run_options, {6.f, 5.f, 4.f, 3.f, 2.f, 1.f}));
-
-  const std::string profile_file = session.EndProfiling();
-  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
-  std::ifstream profile_stream(profile_file);
-  ASSERT_TRUE(profile_stream.good());
-  const auto profile_json = nlohmann::json::parse(profile_stream);
-
-  std::vector<nlohmann::json> model_run_args;
-  for (const auto& event : profile_json) {
-    if (event.value("name", "") == "model_run") {
-      model_run_args.push_back(event["args"]);
-    }
-  }
-
-  ASSERT_EQ(model_run_args.size(), 3U);
-  EXPECT_FALSE(model_run_args[0].contains("iteration_index"));
-  EXPECT_FALSE(model_run_args[1].contains("iteration_index"));
-  EXPECT_FALSE(model_run_args[2].contains("iteration_index"));
-  EXPECT_EQ(model_run_args[0]["request_id"], "[request \"one\"]");
-  EXPECT_EQ(model_run_args[1]["request_id"], "request two");
-  EXPECT_EQ(model_run_args[2]["request_id"], "request three");
-  EXPECT_EQ(model_run_args[0]["input_shapes"], nlohmann::json({{"X", {3, 2}}}));
-  EXPECT_EQ(model_run_args[0]["input_token_hash_status"], "fallback_tensor");
-  EXPECT_EQ(model_run_args[0]["input_token_hash"], model_run_args[1]["input_token_hash"]);
-  EXPECT_NE(model_run_args[1]["input_token_hash"], model_run_args[2]["input_token_hash"]);
-
-  run_options.run_tag = "after profiling";
-  ASSERT_STATUS_OK(RunModelWithValues(session, run_options, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f}));
+  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
+  const std::string& message = capturing_sink_ptr->Messages()[0];
+  const size_t marker = message.find("moe_routing ");
+  ASSERT_NE(marker, std::string::npos);
+  const auto event = nlohmann::json::parse(message.substr(marker + std::string_view{"moe_routing "}.size()));
+  EXPECT_EQ(event["request_id"], "request \"one\"");
+  EXPECT_EQ(event["node_name"], "layer/0/QMoE");
+  EXPECT_EQ(event["node_index"], 42);
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({3, 7}));
+  EXPECT_EQ(event["router_weights"], nlohmann::json({0.75, 0.25}));
+  EXPECT_EQ(event["num_rows"], 1);
+  EXPECT_EQ(event["top_k"], 2);
+  EXPECT_EQ(event["execution_device_id"], 0);
 }
 
 // See issue #27732 for details on why this is disabled.
