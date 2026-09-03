@@ -13,6 +13,7 @@
 // evaluates to false and every test in this file is compiled out.
 #include <cuda.h>
 
+#include "contrib_ops/cuda/math/matmul_block_scaled_fp8_tiling.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
 
@@ -41,6 +42,33 @@ std::vector<Float8E4M3FN> MakeConstRowWeight(const std::vector<float>& row_value
   return b;
 }
 }  // namespace
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreKSplitSelection) {
+  struct Case {
+    int n;
+    int m;
+    int windows;
+    int sm_count;
+    int compute_capability_major;
+    int expected;
+  };
+  const Case cases[] = {
+      {10240, 1, 80, 48, 12, 32},
+      {6144, 8, 80, 48, 12, 32},
+      {1024, 4, 80, 48, 12, 16},
+      {10240, 16, 80, 48, 12, 16},
+      {10240, 1, 8, 48, 12, 8},
+      {10240, 1, 80, 132, 12, 8},
+      {10240, 1, 80, 48, 9, 8},
+  };
+
+  for (const Case& c : cases) {
+    SCOPED_TRACE("N = " + std::to_string(c.n) + ", M = " + std::to_string(c.m));
+    EXPECT_EQ(onnxruntime::contrib::cuda::PickFp8MmaKSplit(
+                  c.n, c.m, c.windows, c.sm_count, c.compute_capability_major),
+              c.expected);
+  }
+}
 
 // GEMM path (K not a multiple of 16 forces the cuBLAS dequant path), FP16 activations.
 // Weights are constant per row, so Y[m, n] = W_val[n] * sum_k A[m, k].
