@@ -369,6 +369,231 @@ TEST(GroupQueryAttentionTest, QuantizedWindowedCacheRaggedBiasOffsetsDecode_CPU)
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// ---------------------------------------------------------------------------------------------
+// sliding_window_cache layout contract (docs/contrib_ops/cpu/gqa.md).
+//
+// The tests below drive a windowed cache across steps and lock the three properties external KV
+// manipulation depends on: the resident range is the published function of the absolute total
+// length, a multi-token (speculative) step leaves the same layout as the equivalent single-token
+// steps, and rejecting draft tokens needs no edit of the buffer.
+// ---------------------------------------------------------------------------------------------
+namespace {
+
+constexpr int kWindowedHeadSize = 8;
+
+// Number of KV positions resident after a step, as published in the operator spec. The kernel is
+// deliberately not consulted here: this is the reference the tests hold it to.
+int WindowedResidentCount(int total_sequence_length, int capacity, int local_window_size) {
+  if (total_sequence_length <= capacity) {
+    return total_sequence_length;
+  }
+  const int gap = capacity - local_window_size + 1;
+  const int overflow = total_sequence_length - capacity;
+  return total_sequence_length - gap * ((overflow + gap - 1) / gap);
+}
+
+// Values encode their absolute position (position p holds p + 1 in every element) so the resident
+// range can be read straight out of present_value.
+std::vector<float> WindowedValueRows(int first_position, int count) {
+  std::vector<float> rows(static_cast<size_t>(count) * kWindowedHeadSize);
+  for (int i = 0; i < count; ++i) {
+    std::fill_n(rows.begin() + static_cast<size_t>(i) * kWindowedHeadSize, kWindowedHeadSize,
+                static_cast<float>(first_position + i + 1));
+  }
+  return rows;
+}
+
+struct WindowedCacheState {
+  std::vector<float> key;
+  std::vector<float> value;
+  std::vector<float> output;  // output of the most recent step
+};
+
+// Runs one GroupQueryAttention step against a windowed cache of `capacity` positions and returns
+// the present buffers. Queries and keys are zero, so attention is uniform over the unmasked
+// positions and the output of a query is the mean of the values it can see.
+WindowedCacheState RunWindowedCacheStep(int capacity,
+                                        int window,
+                                        int past_length,
+                                        const std::vector<float>& step_values,
+                                        const WindowedCacheState& past) {
+  constexpr int batch_size = 1;
+  constexpr int num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  const int step_length = static_cast<int>(step_values.size()) / kWindowedHeadSize;
+  const int total_length = past_length + step_length;
+  const size_t cache_elements = static_cast<size_t>(capacity) * kWindowedHeadSize;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddAttribute<int64_t>("local_window_size", window);
+  tester.AddAttribute<int64_t>("sliding_window_cache", 1);
+
+  const std::vector<float> zeros(static_cast<size_t>(step_length) * kWindowedHeadSize, 0.0f);
+  tester.AddInput<float>("query", {batch_size, step_length, kWindowedHeadSize}, zeros);
+  tester.AddInput<float>("key", {batch_size, step_length, kWindowedHeadSize}, zeros);
+  tester.AddInput<float>("value", {batch_size, step_length, kWindowedHeadSize}, step_values);
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, capacity, kWindowedHeadSize}, past.key);
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, capacity, kWindowedHeadSize}, past.value);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {total_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_length}, /*is_initializer=*/true);
+  tester.AddOptionalInputEdge<float>();    // cos_cache
+  tester.AddOptionalInputEdge<float>();    // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // head_sink
+
+  // Declared expected values are placeholders; the custom verifier below captures the fetches.
+  tester.AddOutput<float>("output", {batch_size, step_length, kWindowedHeadSize}, zeros);
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, capacity, kWindowedHeadSize},
+                          std::vector<float>(cache_elements, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, capacity, kWindowedHeadSize},
+                          std::vector<float>(cache_elements, 0.0f));
+
+  WindowedCacheState result;
+  tester.SetCustomOutputVerifier([&result](const std::vector<OrtValue>& fetches,
+                                           const std::string& /*provider*/) {
+    ASSERT_EQ(fetches.size(), static_cast<size_t>(3));
+    auto capture = [](const OrtValue& fetch, std::vector<float>& dst) {
+      const Tensor& tensor = fetch.Get<Tensor>();
+      const float* data = tensor.Data<float>();
+      dst.assign(data, data + tensor.Shape().Size());
+    };
+    capture(fetches[0], result.output);
+    capture(fetches[1], result.key);
+    capture(fetches[2], result.value);
+  });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  return result;
+}
+
+WindowedCacheState EmptyWindowedCache(int capacity) {
+  const size_t cache_elements = static_cast<size_t>(capacity) * kWindowedHeadSize;
+  return WindowedCacheState{std::vector<float>(cache_elements, 0.0f),
+                            std::vector<float>(cache_elements, 0.0f),
+                            {}};
+}
+
+// Checks that present_value rows [0, L) hold the L most recent positions in order, with L taken
+// from the published formula.
+void ExpectResidentRange(const WindowedCacheState& state, int total_length, int capacity, int window) {
+  const int resident = WindowedResidentCount(total_length, capacity, window);
+  ASSERT_GE(resident, std::min(total_length, window)) << "window must stay resident at T=" << total_length;
+  ASSERT_LE(resident, std::min(total_length, capacity));
+
+  const std::vector<float> expected = WindowedValueRows(total_length - resident, resident);
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(state.value[i], expected[i])
+        << "T=" << total_length << " resident=" << resident << " element " << i;
+  }
+}
+
+}  // namespace
+
+TEST(GroupQueryAttentionTest, WindowedCacheResidentRangeMatchesSpec_CPU) {
+  constexpr int capacity = 6;
+  constexpr int window = 4;  // gap = capacity - window + 1 = 3
+
+  // Prefill 5 tokens, then decode one token at a time across two eviction boundaries.
+  WindowedCacheState state = RunWindowedCacheStep(capacity, window, 0, WindowedValueRows(0, 5),
+                                                  EmptyWindowedCache(capacity));
+  ExpectResidentRange(state, 5, capacity, window);
+
+  for (int total_length = 6; total_length <= 12; ++total_length) {
+    const int position = total_length - 1;
+    state = RunWindowedCacheStep(capacity, window, position, WindowedValueRows(position, 1), state);
+    ExpectResidentRange(state, total_length, capacity, window);
+
+    // Uniform attention over the window: the mean of values (position - 3 + 1) .. (position + 1).
+    const float expected_output = static_cast<float>(position) - 0.5f;
+    for (int i = 0; i < kWindowedHeadSize; ++i) {
+      EXPECT_NEAR(state.output[i], expected_output, 1e-4f) << "position " << position;
+    }
+  }
+}
+
+TEST(GroupQueryAttentionTest, WindowedCacheMultiTokenStepMatchesSingleTokenSteps_CPU) {
+  constexpr int capacity = 6;
+  constexpr int window = 4;
+  constexpr int draft_tokens = 4;
+
+  // Prefill is longer than the capacity, so this first step runs through the staging path.
+  const WindowedCacheState prefill = RunWindowedCacheStep(capacity, window, 0, WindowedValueRows(0, 8),
+                                                          EmptyWindowedCache(capacity));
+
+  // One multi-token step, as a speculative verification pass would issue it.
+  const WindowedCacheState verified =
+      RunWindowedCacheStep(capacity, window, 8, WindowedValueRows(8, draft_tokens), prefill);
+
+  // The same tokens appended one at a time.
+  WindowedCacheState sequential = prefill;
+  std::vector<float> sequential_outputs;
+  for (int i = 0; i < draft_tokens; ++i) {
+    sequential = RunWindowedCacheStep(capacity, window, 8 + i, WindowedValueRows(8 + i, 1), sequential);
+    sequential_outputs.insert(sequential_outputs.end(), sequential.output.begin(), sequential.output.end());
+  }
+
+  const int resident = WindowedResidentCount(8 + draft_tokens, capacity, window);
+  const size_t resident_elements = static_cast<size_t>(resident) * kWindowedHeadSize;
+  ASSERT_GE(verified.value.size(), resident_elements);
+  for (size_t i = 0; i < resident_elements; ++i) {
+    EXPECT_EQ(verified.value[i], sequential.value[i]) << "present_value element " << i;
+    EXPECT_EQ(verified.key[i], sequential.key[i]) << "present_key element " << i;
+  }
+
+  ASSERT_EQ(verified.output.size(), sequential_outputs.size());
+  for (size_t i = 0; i < sequential_outputs.size(); ++i) {
+    EXPECT_NEAR(verified.output[i], sequential_outputs[i], 1e-4f) << "output element " << i;
+  }
+}
+
+TEST(GroupQueryAttentionTest, WindowedCacheRejectedDraftTokensNeedNoCacheEdit_CPU) {
+  constexpr int capacity = 6;
+  constexpr int window = 4;
+  constexpr int draft_tokens = 4;
+  constexpr int accepted_tokens = 2;
+
+  const WindowedCacheState prefill = RunWindowedCacheStep(capacity, window, 0, WindowedValueRows(0, 8),
+                                                          EmptyWindowedCache(capacity));
+
+  // Rolling back `draft_tokens - accepted_tokens` is exact only when the resident count shrinks by
+  // exactly that many positions; the tests below rely on that precondition holding here.
+  constexpr int verified_length = 8 + draft_tokens;
+  constexpr int accepted_length = 8 + accepted_tokens;
+  ASSERT_EQ(WindowedResidentCount(accepted_length, capacity, window),
+            WindowedResidentCount(verified_length, capacity, window) - (draft_tokens - accepted_tokens));
+
+  // Speculative path: verify 4 drafts, accept 2, then continue from the untouched buffer. The
+  // rejected rows are still physically present and must be ignored.
+  const WindowedCacheState speculative =
+      RunWindowedCacheStep(capacity, window, 8, WindowedValueRows(8, draft_tokens), prefill);
+  const std::vector<float> next_token(kWindowedHeadSize, 100.0f);
+  const WindowedCacheState resumed =
+      RunWindowedCacheStep(capacity, window, accepted_length, next_token, speculative);
+
+  // Reference path: only the accepted tokens were ever appended.
+  const WindowedCacheState accepted =
+      RunWindowedCacheStep(capacity, window, 8, WindowedValueRows(8, accepted_tokens), prefill);
+  const WindowedCacheState reference =
+      RunWindowedCacheStep(capacity, window, accepted_length, next_token, accepted);
+
+  const int resident = WindowedResidentCount(accepted_length + 1, capacity, window);
+  const size_t resident_elements = static_cast<size_t>(resident) * kWindowedHeadSize;
+  ASSERT_GE(resumed.value.size(), resident_elements);
+  for (size_t i = 0; i < resident_elements; ++i) {
+    EXPECT_EQ(resumed.value[i], reference.value[i]) << "present_value element " << i;
+  }
+
+  ASSERT_EQ(resumed.output.size(), reference.output.size());
+  for (size_t i = 0; i < reference.output.size(); ++i) {
+    EXPECT_NEAR(resumed.output[i], reference.output[i], 1e-4f) << "output element " << i;
+  }
+}
+
 TEST(GroupQueryAttentionTest, BidirectionalMask_CPU) {
   RunGQACausalMaskTest<float>(GqaTargetEp::kCpu, 0, std::vector<float>(16, 2.5f));
 }

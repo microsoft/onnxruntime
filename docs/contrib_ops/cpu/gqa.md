@@ -100,6 +100,137 @@ For INT4, two signed 4-bit values are stored in each byte. The packed head dimen
 
 During quantized execution, new key/value vectors are quantized on write into the present cache. Existing past-cache data and newly written present-cache data are then consumed by MLAS quantized GEMM helpers.
 
+## Windowed (Sliding-Window) KV Cache
+
+`sliding_window_cache=1` makes the past/present buffers window-sized instead of full-length, and
+makes the operator responsible for eviction. This section is the normative description of the
+layout the operator produces; the CUDA kernel implements the same contract, and both are covered by
+the same formulas below. `onnxruntime/contrib_ops/cpu/bert/group_query_attention.cc` is the CPU
+implementation.
+
+### Notation
+
+| Symbol | Meaning |
+|---|---|
+| `C` | Cache capacity: dimension 2 of `past_key` / `past_value`, and of `present_key` / `present_value`. |
+| `W` | `local_window_size`. Must be `> 0`, and `C >= W`. |
+| `T` | `total_sequence_length`, i.e. the absolute number of tokens processed so far including this step. |
+| `S` | `sequence_length` of this step (1 for decode, more for prefill or speculative verification). |
+| `L` | Number of KV positions resident in the cache after the step. |
+| `G` | Eviction block size, `C - W + 1`. |
+
+`C` is chosen by the caller and is not derived from the model's maximum sequence length. Sharing the
+past and present buffer does not change its meaning: `present_key` keeps the sequence dimension of
+`past_key` rather than growing with `T`, so the same definition applies whether or not the two
+tensors alias.
+
+### Resident range
+
+After a step, rows `[0, L)` of `present_key` and `present_value` hold the `L` most recent positions
+in increasing position order, so row `i` holds absolute position `T - L + i`. Rows `[L, C)` are
+unspecified and may hold stale data.
+
+Retained positions are always physically contiguous starting at row 0. An implementation may use a
+ring internally, but it must materialize this layout before returning, because there is no output
+that reports a ring offset or head pointer.
+
+`L` is a function of `T` alone:
+
+```text
+G = C - W + 1
+L(T) = T                            if T <= C
+L(T) = T - G * ceil((T - C) / G)    otherwise
+```
+
+so `min(T, W) <= L(T) <= min(T, C)`.
+
+Two consequences matter for callers:
+
+- The whole attention window is always resident, which is what makes cache-relative indexing exact:
+  causal and local masks depend only on query/key distance, so translating coordinates leaves them
+  unchanged. RoPE is applied from absolute positions before the translation.
+- The cache is **not** kept full at `min(T, C)`. Eviction reclaims `G` positions at once instead of
+  one position per step, so `L` sawtooths between `W` and `C` once the buffer has filled. Consumers
+  that assume `L == min(T, C)` will misread the buffer whenever `C > W`.
+
+With `C = 6` and `W = 4` (so `G = 3`):
+
+| `T` | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
+|---|---|---|---|---|---|---|---|---|
+| `L(T)` | 5 | 6 | 4 | 5 | 6 | 4 | 5 | 6 |
+| oldest resident position | 0 | 0 | 3 | 3 | 3 | 6 | 6 | 6 |
+
+### Multi-token steps and speculative decoding
+
+`L` depends only on `T`, never on how the tokens were split into steps. Processing tokens as one
+step of `S` tokens therefore leaves exactly the layout that the same tokens would produce one at a
+time. That chunk invariance is what lets a speculative-decoding verification step of `S` draft
+tokens share a cache with ordinary single-token decoding.
+
+Any `S >= 1` is accepted, including `S > C`. When a step would evict positions that its own earliest
+query still has to read, the CPU kernel runs the step against a staging cache of `L(T - S) + S`
+entries and writes back only the surviving tail, so correctness never depends on the step fitting
+inside `C`.
+
+This inherits the operator-wide restriction that `batch_size` must be 1 when `S > 1` and past
+context is present, so multi-token verification steps run one sequence at a time.
+
+Sizing `C >= W + S - 1` keeps a whole `S`-token step inside the slack above the window. This is the
+same rule the ONNX Runtime GenAI model builder applies when it sizes a windowed ring from the
+prefill chunk size, and it is worth applying to the maximum verification length in a speculative
+loop: it removes the staging copy in the common case and widens the range of rollbacks that are
+exact (below).
+
+### Rejecting speculative tokens
+
+To drop the last `k` tokens after rejecting draft tokens, re-run with the smaller
+`total_sequence_length` and `seqlens_k` and leave the buffer untouched. No cache surgery is
+required, because the surviving rows are a prefix of what is already there.
+
+This is exact when
+
+```text
+L(T - k) == L(T) - k
+```
+
+which callers can evaluate directly from `T`, `C` and `W`. When it holds, rows `[0, L(T) - k)`
+already hold precisely the positions the shorter layout expects, at the row indices it expects.
+
+When it does not hold, the rollback crossed an eviction boundary: the shorter layout needs positions
+that have already been discarded, and the window has to be re-materialized (there is no way to
+recover evicted keys). Continuing to run in that state silently reads misaligned keys, so callers
+must check rather than assume. Using the table above with `T = 12` and `L = 6`, rejecting `k = 2`
+gives `L(10) = 4 == 6 - 2` and is exact, while rejecting `k = 3` gives `L(9) = 6 != 6 - 3` and is
+not: positions 3 to 5 are gone.
+
+### CPU implementation notes
+
+Resident entries live at `[0, end)` and new entries are appended at `end`, where `end` is `L`
+evaluated at the pre-step length. A step therefore only moves memory when the append would run past
+`C`; at that point the surviving entries are compacted to the front in one `memmove` per
+`(batch, kv_head)` slice, reclaiming `G` rows at once. Compaction runs once every `G` decode steps
+instead of on every step, which is what the slack above the window buys. At `C == W`, `G == 1` and
+every step compacts.
+
+`end` is a pure function of the absolute past length, so the kernel carries no state across `Run()`
+calls; the cache buffer remains the only state between steps.
+
+`attention_bias` is unaffected by the windowed cache. Its last dimension stays
+`total_sequence_length` and is indexed by absolute key position: it is not reduced to `C` and not to
+`W`. The kernel converts the per-batch absolute origin of the resident range into a column offset
+into the bias (`seqlens_k[b] - cache_seqlens_k[b]`) and reads only the resident columns. Batch
+entries at different absolute lengths therefore get different bias offsets.
+
+Constraints specific to `sliding_window_cache=1` on CPU:
+
+- `local_window_size > 0` and `C >= W`.
+- `past_key` and `past_value` must be present, and the `present_key` / `present_value` outputs are
+  required.
+- A shared KV layout (`key` / `value` folded into `query`) is rejected.
+- `qk_output` is not implemented.
+- For quantized caches, `head_size` must be a multiple of 16 for 8-bit and of 32 for 4-bit, because
+  the compaction and staging copies move whole rows with vectorized loads.
+
 ## Naive Path: QK GEMM + Softmax + SV GEMM
 
 The naive (full materialization) path executes attention as three separate stages:
