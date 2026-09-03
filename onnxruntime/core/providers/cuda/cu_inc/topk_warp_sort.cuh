@@ -273,6 +273,8 @@ struct WarpMergeSorter {
 
   // num_valid_items elements are read from shared memory; the remainder are
   // padded with (kNegativeInfinity, INT_MAX) so valid -inf scores sort ahead of padding.
+  // `temp_storage` may alias `smem_scores`/`smem_indices` (callers often union them to save
+  // shared memory), so the loads and the write-back are fenced against the sort's own traffic.
   __device__ static void Sort(float* smem_scores, int* smem_indices,
                               TempStorage& temp_storage, int num_valid_items) {
     const int thread_id = LinearThreadIdInBlock();
@@ -292,8 +294,10 @@ struct WarpMergeSorter {
         items[i] = PackStableSortKey(kNegativeInfinity, INT_MAX);
       }
     }
+    __syncwarp();
 
     SortT(temp_storage).Sort(items, Greater<uint64_t>());
+    __syncwarp();
 
     // Blocked write-back: rank r lives at smem[r].
 #pragma unroll
