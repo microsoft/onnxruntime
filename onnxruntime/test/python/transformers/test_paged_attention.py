@@ -1653,6 +1653,32 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
         config.attention_metadata_override = numpy.array([1, 64, 1], dtype=numpy.int32)
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
+        ragged_config = Config(
+            batch_size=2,
+            sequence_length=2,
+            total_sequence_length=64,
+            num_heads=8,
+            kv_num_heads=4,
+            head_size=128,
+            paged_kv_block_size=256,
+            local=False,
+            rotary=False,
+            rotary_interleaved=False,
+            packed=False,
+            softcap=0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        ragged_config.use_attention_metadata = True
+        ragged_config.attention_metadata_shape = [3]
+        ragged_config.attention_metadata_override = numpy.array([2, 2, 0], dtype=numpy.int32)
+        parity_check_paged_attention(
+            ragged_config,
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([2, 0], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([0, 0], dtype=torch.int32),
+        )
+
     def _gptoss_config(self, sequence_length, *, local=True, use_head_sink=True):
         config = Config(
             batch_size=2,
