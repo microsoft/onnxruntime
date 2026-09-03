@@ -399,6 +399,8 @@ class WebGpuContext final {
   bool validation_mode_explicitly_set_;
   bool enable_robustness_ = false;
   std::optional<uint32_t> adapter_index_;
+  int adapter_power_preference_ = static_cast<int>(WGPUPowerPreference_HighPerformance);
+  int adapter_backend_type_ = 0;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;

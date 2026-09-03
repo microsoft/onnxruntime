@@ -79,6 +79,16 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
     enable_robustness_ = config.enable_robustness;
     adapter_index_ = config.adapter_index;
+    adapter_power_preference_ = config.power_preference;
+    adapter_backend_type_ = config.backend_type;
+
+    ORT_ENFORCE(!config.adapter_index || config.device == nullptr,
+                "adapterIndex cannot be used with an externally supplied WebGPU device.");
+
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+    ORT_ENFORCE(!config.adapter_index,
+                "adapterIndex requires a native Dawn build with adapter enumeration support.");
+#endif
 
     // Three easily-conflated concepts, at three layers (a pipeline, not the same flag):
     //   * allow_virtual_devices (env)     -- selectability: surface a virtual GPU OrtEpDevice so WebGPU is
@@ -93,9 +103,6 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       LOGS_DEFAULT(INFO) << "WebGPU EP context created device-free (compile-only session, no Dawn device).";
       return;
     }
-
-    ORT_ENFORCE(!config.adapter_index || config.device == nullptr,
-                "adapterIndex cannot be used with an externally supplied WebGPU device.");
 
     if (device_ == nullptr) {
       // Create wgpu::Adapter
@@ -121,12 +128,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
         const auto adapters = native_instance.EnumerateAdapters(&req_adapter_options);
         ORT_ENFORCE(*config.adapter_index < adapters.size(),
                     "WebGPU adapterIndex ", *config.adapter_index,
-                    " is out of range; Dawn enumerated ", adapters.size(), " matching adapter(s).");
+                    " is out of range; Dawn enumerated ", adapters.size(),
+                    " adapter(s) for the requested backend and power-preference hint.");
         adapter = wgpu::Adapter(adapters[*config.adapter_index].Get());
         LOGS_DEFAULT(INFO) << "WebGPU EP selected physical adapter index " << *config.adapter_index
-                           << " of " << adapters.size() << " matching adapter(s).";
-#else
-        ORT_THROW("adapterIndex requires a native Dawn build with adapter enumeration support.");
+                           << " of " << adapters.size()
+                           << " adapter(s) for the requested backend and power-preference hint.";
 #endif
       } else {
         // Capture adapter request result without throwing inside the Dawn callback.
@@ -298,11 +305,18 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
         << " will be ignored.";
   }
 
-  if (config.adapter_index && config.adapter_index != adapter_index_) {
+  if (config.adapter_index &&
+      (config.adapter_index != adapter_index_ ||
+       config.power_preference != adapter_power_preference_ ||
+       config.backend_type != adapter_backend_type_)) {
     ORT_THROW("WebGPU context is already initialized with adapterIndex=",
               adapter_index_ ? std::to_string(*adapter_index_) : "automatic",
-              ". Requested adapterIndex=", *config.adapter_index,
-              " cannot be applied to the existing device. Use a separate process or an externally supplied custom context/device.");
+              ", powerPreference=", adapter_power_preference_,
+              ", dawnBackendType=", adapter_backend_type_,
+              ". Requested selector has adapterIndex=", *config.adapter_index,
+              ", powerPreference=", config.power_preference,
+              ", dawnBackendType=", config.backend_type,
+              " and cannot be applied to the existing device. Use a separate process or an externally supplied custom context/device.");
   }
 
   if (config.enable_robustness_explicitly_set) {

@@ -173,6 +173,11 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
     config.adapter_index = adapter_index;
   }
 
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  ORT_ENFORCE(!config.adapter_index,
+              "adapterIndex requires a native Dawn build with adapter enumeration support.");
+#endif
+
   if (std::string webgpu_instance_str;
       config_options.TryGetConfigEntry(kWebGpuInstance, webgpu_instance_str)) {
     static_assert(sizeof(WGPUInstance) == sizeof(size_t), "WGPUInstance size mismatch");

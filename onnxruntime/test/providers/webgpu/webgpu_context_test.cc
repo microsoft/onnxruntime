@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -278,15 +279,82 @@ TEST(WebGpuContextTest, AdapterIndexRejectsInvalidValue) {
 }
 
 TEST(WebGpuContextTest, AdapterIndexAcceptsNonNegativeInteger) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Physical adapter enumeration requires a native Dawn build.";
+#else
   ConfigOptions options;
-  ORT_THROW_IF_ERROR(options.AddConfigEntry(kDeviceId, "31337"));
   ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, "0"));
   ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
 
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
 
   ASSERT_NE(ep, nullptr);
-  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(31337).Device().Get(), nullptr);
+  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+#endif
+}
+
+TEST(WebGpuContextTest, AdapterIndexSelectsPhysicalAdapter) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Physical adapter enumeration requires a native Dawn build.";
+#else
+  ConfigOptions options;
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, "0"));
+
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+
+  ASSERT_NE(ep, nullptr);
+  EXPECT_NE(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+#endif
+}
+
+TEST(WebGpuContextTest, AdapterIndexRejectsOutOfRangeValue) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Physical adapter enumeration requires a native Dawn build.";
+#else
+  ConfigOptions options;
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex,
+                                            std::to_string(std::numeric_limits<uint32_t>::max())));
+
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(options), OnnxRuntimeException);
+#endif
+}
+
+TEST(WebGpuContextTest, AdapterIndexRejectsUnsupportedBuild) {
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "This build supports physical adapter enumeration.";
+#else
+  ConfigOptions options;
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, "0"));
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+
+  try {
+    WebGpuProviderFactoryCreator::Create(options);
+    FAIL() << "Expected adapterIndex to be rejected by this build.";
+  } catch (const OnnxRuntimeException& ex) {
+    EXPECT_NE(std::string_view{ex.what()}.find("requires a native Dawn build"), std::string_view::npos);
+  }
+#endif
+}
+
+TEST(WebGpuContextTest, AdapterIndexRejectsConflictingSelectorOnReusedContext) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Physical adapter enumeration requires a native Dawn build.";
+#else
+  ConfigOptions first_options;
+  ORT_THROW_IF_ERROR(first_options.AddConfigEntry(kAdapterIndex, "0"));
+  auto first_ep = WebGpuProviderFactoryCreator::Create(first_options)->CreateProvider();
+  ASSERT_NE(first_ep, nullptr);
+
+  ConfigOptions power_options;
+  ORT_THROW_IF_ERROR(power_options.AddConfigEntry(kAdapterIndex, "0"));
+  ORT_THROW_IF_ERROR(power_options.AddConfigEntry(kPowerPreference, kPowerPreference_LowPower));
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(power_options), OnnxRuntimeException);
+
+  webgpu::WebGpuContextConfig backend_config;
+  backend_config.adapter_index = 0;
+  backend_config.backend_type = std::numeric_limits<int>::max();
+  EXPECT_THROW(webgpu::WebGpuContextFactory::CreateContext(backend_config), OnnxRuntimeException);
+#endif
 }
 
 TEST(WebGpuContextTest, CompileOnlyContextDoesNotCreateDevice) {
