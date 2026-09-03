@@ -151,9 +151,7 @@ void Telemetry::LogEpDeviceUsage(uint32_t session_id,
                                  const std::string& hardware_vendor,
                                  const std::string& ep_vendor,
                                  const std::string& ep_version,
-                                 int assigned_node_count,
-                                 uint32_t total_runs_since_last,
-                                 int64_t total_run_duration_since_last) const {
+                                 int assigned_node_count) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(ep_type);
   ORT_UNUSED_PARAMETER(hardware_device_type);
@@ -163,8 +161,6 @@ void Telemetry::LogEpDeviceUsage(uint32_t session_id,
   ORT_UNUSED_PARAMETER(ep_vendor);
   ORT_UNUSED_PARAMETER(ep_version);
   ORT_UNUSED_PARAMETER(assigned_node_count);
-  ORT_UNUSED_PARAMETER(total_runs_since_last);
-  ORT_UNUSED_PARAMETER(total_run_duration_since_last);
 }
 
 void Telemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
@@ -200,15 +196,19 @@ void Telemetry::LogModelLoadStart(uint32_t session_id) const {
   ORT_UNUSED_PARAMETER(session_id);
 }
 
-void Telemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
+void Telemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status,
+                                int64_t duration_us) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(status);
+  ORT_UNUSED_PARAMETER(duration_us);
 }
 
 void Telemetry::LogSessionCreationEnd(uint32_t session_id,
-                                      const common::Status& status) const {
+                                      const common::Status& status,
+                                      int64_t duration_us) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(status);
+  ORT_UNUSED_PARAMETER(duration_us);
 }
 
 void Telemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
@@ -222,9 +222,11 @@ void Telemetry::LogRegisterEpLibraryStart(const std::string& registration_name) 
 }
 
 void Telemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
-                                        const common::Status& status) const {
+                                        const common::Status& status,
+                                        int64_t duration_us) const {
   ORT_UNUSED_PARAMETER(registration_name);
   ORT_UNUSED_PARAMETER(status);
+  ORT_UNUSED_PARAMETER(duration_us);
 }
 
 }  // namespace onnxruntime

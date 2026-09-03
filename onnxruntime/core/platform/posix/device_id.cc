@@ -4,6 +4,7 @@
 #include "core/platform/posix/device_id.h"
 
 #include "core/common/common.h"
+#include "core/platform/device_census.h"
 #include "core/platform/telemetry_guid.h"
 
 #include <algorithm>
@@ -34,9 +35,9 @@ namespace onnxruntime {
 
 namespace {
 
-// ORT and OGA share this file and use the same flock-first protocol so corruption repair is
-// serialized even when both libraries are loaded in one process.
 constexpr char kDeviceIdLockFileName[] = "deviceid.lock";
+constexpr char kDeviceCensusLockFileName[] = "devicecensus.lock";
+constexpr char kDeviceCensusStateFileName[] = "devicecensus.state";
 
 enum class DeviceIdReadResult {
   Missing,
@@ -132,7 +133,8 @@ bool AcquireExclusiveFileLock(int fd) {
 
 class ScopedDeviceIdFileLock {
  public:
-  explicit ScopedDeviceIdFileLock(int directory_fd) {
+  explicit ScopedDeviceIdFileLock(int directory_fd,
+                                  const char* lock_file_name = kDeviceIdLockFileName) {
     int flags = O_RDWR | O_CREAT;
 #ifdef O_NOFOLLOW
     flags |= O_NOFOLLOW;
@@ -141,7 +143,7 @@ class ScopedDeviceIdFileLock {
     flags |= O_CLOEXEC;
 #endif
 
-    fd_ = ::openat(directory_fd, kDeviceIdLockFileName, flags, S_IRUSR | S_IWUSR);
+    fd_ = ::openat(directory_fd, lock_file_name, flags, S_IRUSR | S_IWUSR);
     if (fd_ < 0) {
       return;
     }
@@ -179,6 +181,51 @@ void TrimAsciiWhitespace(std::string& value) {
               value.end());
   value.erase(value.begin(), std::find_if_not(value.begin(), value.end(),
                                               [](unsigned char c) { return std::isspace(c); }));
+}
+
+bool WriteCensusStateAtomically(int directory_fd,
+                                std::string_view state) {
+  const std::string temp_name =
+      std::string(kDeviceCensusStateFileName) + ".tmp." + GenerateGuidV4();
+  int flags = O_WRONLY | O_CREAT | O_EXCL;
+#ifdef O_NOFOLLOW
+  flags |= O_NOFOLLOW;
+#endif
+#ifdef O_CLOEXEC
+  flags |= O_CLOEXEC;
+#endif
+
+  const int fd = ::openat(directory_fd, temp_name.c_str(), flags, S_IRUSR | S_IWUSR);
+  if (fd < 0) {
+    return false;
+  }
+
+  bool wrote = ::fchmod(fd, S_IRUSR | S_IWUSR) == 0;
+  const char* data = state.data();
+  size_t remaining = state.size();
+  while (wrote && remaining > 0) {
+    const ssize_t count = ::write(fd, data, remaining);
+    if (count < 0 && errno == EINTR) {
+      continue;
+    }
+    if (count <= 0) {
+      wrote = false;
+      break;
+    }
+    data += count;
+    remaining -= static_cast<size_t>(count);
+  }
+
+  const int close_result = ::close(fd);
+  wrote = wrote && remaining == 0 && close_result == 0;
+  if (!wrote ||
+      ::renameat(directory_fd, temp_name.c_str(), directory_fd,
+                 kDeviceCensusStateFileName) != 0) {
+    ::unlinkat(directory_fd, temp_name.c_str(), 0);
+    return false;
+  }
+
+  return true;
 }
 
 DeviceIdFileRead ReadDeviceIdFileNoFollow(int directory_fd, const char* file_name, size_t max_size) {
@@ -259,6 +306,90 @@ std::string DeviceId::GetStatusString() {
     default:
       return "Unknown";
   }
+}
+
+bool DeviceId::RecordCensusActivity(
+    int64_t utc_day,
+    std::string_view library_version,
+    const std::function<void(
+        int64_t, const std::vector<std::string>&)>& emit_completed_day) {
+  if (utc_day < 0 ||
+      !telemetry_internal::IsValidDeviceCensusVersion(library_version) ||
+      !emit_completed_day) {
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    InitializeInternal();
+    if (status_ == DeviceIdStatus::Failed) {
+      return false;
+    }
+  }
+
+  const std::string storage_directory = EnsureStorageDirectory();
+  ScopedFileDescriptor directory = OpenStorageDirectoryNoFollow(storage_directory);
+  if (!directory) {
+    return false;
+  }
+
+  ScopedDeviceIdFileLock census_lock(directory.Get(),
+                                     kDeviceCensusLockFileName);
+  if (!census_lock) {
+    return false;
+  }
+
+  const DeviceIdFileRead existing =
+      ReadDeviceIdFileNoFollow(
+          directory.Get(), kDeviceCensusStateFileName,
+          telemetry_internal::kMaxDeviceCensusStateSize);
+  if (existing.result == DeviceIdReadResult::Failed) {
+    return false;
+  }
+
+  std::optional<telemetry_internal::DeviceCensusState> state;
+  if (existing.result == DeviceIdReadResult::Read) {
+    state = telemetry_internal::ParseDeviceCensusState(existing.content);
+  }
+
+  if (!state) {
+    telemetry_internal::DeviceCensusState new_state{
+        telemetry_internal::kDeviceCensusSchemaVersion, utc_day, {}};
+    telemetry_internal::AddDeviceCensusVersion(
+        new_state, std::string(library_version));
+    return WriteCensusStateAtomically(
+        directory.Get(),
+        telemetry_internal::SerializeDeviceCensusState(new_state));
+  }
+
+  if (state->schema_version !=
+      telemetry_internal::kDeviceCensusSchemaVersion) {
+    return false;
+  }
+
+  if (state->utc_day > utc_day) {
+    return false;
+  }
+
+  if (state->utc_day == utc_day) {
+    if (!telemetry_internal::AddDeviceCensusVersion(
+            *state, std::string(library_version))) {
+      return false;
+    }
+    return WriteCensusStateAtomically(
+        directory.Get(),
+        telemetry_internal::SerializeDeviceCensusState(*state));
+  }
+
+  emit_completed_day(state->utc_day, state->versions);
+
+  telemetry_internal::DeviceCensusState new_state{
+      telemetry_internal::kDeviceCensusSchemaVersion, utc_day, {}};
+  telemetry_internal::AddDeviceCensusVersion(
+      new_state, std::string(library_version));
+  return WriteCensusStateAtomically(
+      directory.Get(),
+      telemetry_internal::SerializeDeviceCensusState(new_state));
 }
 
 bool DeviceId::IsValidGUID(const std::string& str) {
@@ -414,7 +545,7 @@ void DeviceId::InitializeInternal() {
         return;
       }
 
-      // Another ORT or OGA process may have repaired the shared file while this process waited.
+      // Another process may have repaired the shared file while this process waited.
       const DeviceIdFileRead repaired = ReadDeviceIdFileNoFollow(directory.Get(), kFileName, kMaxFileSize);
       if (repaired.result == DeviceIdReadResult::Read && IsValidGUID(repaired.content)) {
         device_id_ = repaired.content;

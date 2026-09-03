@@ -94,10 +94,7 @@ class Telemetry {
   virtual void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
                               const std::unordered_map<int64_t, long long>& duration_per_batch_size) const;
 
-  // Emits one event per (Execution Provider, hardware device) pairing in use by a session.
-  // Designed for downstream `GROUP BY executionProviderType, hardwareDeviceType` analytics
-  // and is fully self-contained (no joins to SessionCreation required) so it works for
-  // long-lived sessions that span beyond the telemetry pipeline's join window.
+  // Emits one inventory event per (Execution Provider, hardware device) pairing in use by a session.
   virtual void LogEpDeviceUsage(uint32_t session_id,
                                 const std::string& ep_type,
                                 const std::string& hardware_device_type,
@@ -106,9 +103,7 @@ class Telemetry {
                                 const std::string& hardware_vendor,
                                 const std::string& ep_vendor,
                                 const std::string& ep_version,
-                                int assigned_node_count,
-                                uint32_t total_runs_since_last,
-                                int64_t total_run_duration_since_last) const;
+                                int assigned_node_count) const;
 
   virtual void LogExecutionProviderEvent(LUID* adapterLuid) const;
 
@@ -126,10 +121,12 @@ class Telemetry {
 
   virtual void LogModelLoadStart(uint32_t session_id) const;
 
-  virtual void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const;
+  virtual void LogModelLoadEnd(uint32_t session_id, const common::Status& status,
+                               int64_t duration_us) const;
 
   virtual void LogSessionCreationEnd(uint32_t session_id,
-                                     const common::Status& status) const;
+                                     const common::Status& status,
+                                     int64_t duration_us) const;
 
   virtual void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
                                                const std::string& lib_path) const;
@@ -137,7 +134,8 @@ class Telemetry {
   virtual void LogRegisterEpLibraryStart(const std::string& registration_name) const;
 
   virtual void LogRegisterEpLibraryEnd(const std::string& registration_name,
-                                       const common::Status& status) const;
+                                       const common::Status& status,
+                                       int64_t duration_us) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);

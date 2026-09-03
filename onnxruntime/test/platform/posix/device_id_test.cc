@@ -118,5 +118,39 @@ TEST(DeviceIdDeathTest, RepairsCorruptedFile) {
   EXPECT_NE(persisted, "corrupted");
 }
 
+TEST(DeviceIdDeathTest, AccumulatesAndEmitsCompletedCensusDay) {
+  ScopedTestDirectory test_dir{"device_census"};
+  const fs::path home = test_dir.Path() / "home";
+  ScopedEnvironmentVariables environment{
+      EnvVarMap{{"HOME", home.string()}, {"XDG_CACHE_HOME", nullopt}}};
+
+  EXPECT_EXIT(
+      {
+        int emission_count = 0;
+        bool emitted_expected_day = false;
+        bool emitted_expected_entries = false;
+        auto emit = [&](int64_t census_day,
+                        const std::vector<std::string>& versions) {
+          ++emission_count;
+          emitted_expected_day = census_day == 20700;
+          emitted_expected_entries =
+              versions == std::vector<std::string>{"1.24.0", "1.25.0"};
+        };
+        auto& device_id = DeviceId::Instance();
+
+        const bool first = device_id.RecordCensusActivity(20700, "1.24.0", emit);
+        const bool duplicate = device_id.RecordCensusActivity(20700, "1.24.0", emit);
+        const bool new_version = device_id.RecordCensusActivity(20700, "1.25.0", emit);
+        const bool next_active_day = device_id.RecordCensusActivity(20707, "1.24.0", emit);
+
+        std::_Exit(first && !duplicate && new_version && next_active_day &&
+                           emission_count == 1 &&
+                           emitted_expected_day && emitted_expected_entries
+                       ? EXIT_SUCCESS
+                       : EXIT_FAILURE);
+      },
+      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+}
+
 }  // namespace
 }  // namespace onnxruntime::test

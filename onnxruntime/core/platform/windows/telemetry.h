@@ -95,9 +95,7 @@ class WindowsTelemetry : public Telemetry {
                         const std::string& hardware_vendor,
                         const std::string& ep_vendor,
                         const std::string& ep_version,
-                        int assigned_node_count,
-                        uint32_t total_runs_since_last,
-                        int64_t total_run_duration_since_last) const override;
+                        int assigned_node_count) const override;
 
   void LogExecutionProviderEvent(LUID* adapterLuid) const override;
 
@@ -115,10 +113,12 @@ class WindowsTelemetry : public Telemetry {
 
   void LogModelLoadStart(uint32_t session_id) const override;
 
-  void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const override;
+  void LogModelLoadEnd(uint32_t session_id, const common::Status& status,
+                       int64_t duration_us) const override;
 
   void LogSessionCreationEnd(uint32_t session_id,
-                             const common::Status& status) const override;
+                             const common::Status& status,
+                             int64_t duration_us) const override;
 
   void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
                                        const std::string& lib_path) const override;
@@ -126,7 +126,8 @@ class WindowsTelemetry : public Telemetry {
   void LogRegisterEpLibraryStart(const std::string& registration_name) const override;
 
   void LogRegisterEpLibraryEnd(const std::string& registration_name,
-                               const common::Status& status) const override;
+                               const common::Status& status,
+                               int64_t duration_us) const override;
 
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
