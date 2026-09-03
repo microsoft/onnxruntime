@@ -4,8 +4,9 @@ parameters:
   default: false
 
 steps:
-# Initialize git paths
-- checkout: none
+
+- checkout: self
+  clean: true
 
 - pwsh: |
     git config --global --add url."https://PAT:${env:TOKEN}@aiinfra.visualstudio.com/Lotus-Dependencies/_git/".insteadOf "https://chromium.googlesource.com/chromium/src/third_party/"
@@ -14,6 +15,7 @@ steps:
   env:
     TOKEN: $(System.AccessToken)
 
-- checkout: self
-  clean: true
-  submodules: ${{ parameters.submodules }}
+- ${{ if ne(parameters.submodules, 'false') }}:
+  - checkout: self
+    clean: true
+    submodules: ${{ parameters.submodules }}
