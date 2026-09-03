@@ -8,6 +8,7 @@
 #include "core/providers/webgpu/nn/im2col_matmul.h"
 #include "core/providers/webgpu/nn/conv.h"
 #include "core/providers/webgpu/nn/activation_util.h"
+#include "core/providers/webgpu/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -70,7 +71,25 @@ bool IsActivationSupported(const Activation& activation) {
   }
 }
 
+// The weight layout consumed by Im2ColMatMulProgram: OIHW -> OHWI.
+const InlinedVector<size_t>& OihwToOhwiPerm() {
+  static const InlinedVector<size_t> perm = {0, 2, 3, 1};
+  return perm;
+}
+
 }  // namespace
+
+Status PrePackIm2ColMatMulWeight(ComputeContextBase& context,
+                                 const Tensor& weight,
+                                 AllocatorPtr alloc,
+                                 std::unique_ptr<Tensor>& packed_weight) {
+  const TensorShape& weight_shape = weight.Shape();
+  ORT_RETURN_IF_NOT(weight_shape.NumDimensions() == 4, "Im2ColMatMul weight must be 4D (OIHW).");
+
+  TensorShape ohwi_shape({weight_shape[0], weight_shape[2], weight_shape[3], weight_shape[1]});
+  packed_weight = std::make_unique<Tensor>(weight.DataType(), ohwi_shape, alloc);
+  return Transpose::DoTranspose(context, OihwToOhwiPerm(), weight, *packed_weight);
+}
 
 // The template dispatches on the numeric enum values.
 static_assert(static_cast<int>(ActivationKind::None) == 0, "im2col_matmul.wgsl.template mirrors ActivationKind");
@@ -111,22 +130,27 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
                                 const std::vector<uint32_t>& dilations,
                                 const std::vector<uint32_t>& pads,
                                 const std::vector<uint32_t>& strides,
+                                const Tensor* packed_weight,
                                 Tensor* output) {
   const auto* src = context.Input<Tensor>(0);
-  const auto* weight = context.Input<Tensor>(1);
   const bool has_bias = context.InputCount() > 2;
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
 
-  TensorShape weight_shape = weight->Shape();
-  const uint32_t channel_output = onnxruntime::narrow<uint32_t>(weight_shape[0]);
-  const uint32_t channel_input = onnxruntime::narrow<uint32_t>(weight_shape[1]);
-  const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(weight_shape[2]);
-  const uint32_t kernel_width = onnxruntime::narrow<uint32_t>(weight_shape[3]);
+  // The weight is expected in OHWI layout. Prefer the prepacked one; otherwise
+  // transpose OIHW -> OHWI on the fly (e.g. when the weight is not an initializer).
+  Tensor transposed_weight;
+  const Tensor* ohwi_weight = packed_weight;
+  if (ohwi_weight == nullptr) {
+    const auto* weight = context.Input<Tensor>(1);
+    ORT_RETURN_IF_ERROR(TransposeKernel(context, weight, weight->Shape(), &transposed_weight, OihwToOhwiPerm()));
+    ohwi_weight = &transposed_weight;
+  }
 
-  // Transpose OIHW Weight to OHWI
-  // TODO: Use prepack
-  Tensor ohwi_weight;
-  ORT_RETURN_IF_ERROR(TransposeKernel(context, weight, weight->Shape(), &ohwi_weight, {0, 2, 3, 1}));
+  const TensorShape& ohwi_shape = ohwi_weight->Shape();
+  const uint32_t channel_output = onnxruntime::narrow<uint32_t>(ohwi_shape[0]);
+  const uint32_t kernel_height = onnxruntime::narrow<uint32_t>(ohwi_shape[1]);
+  const uint32_t kernel_width = onnxruntime::narrow<uint32_t>(ohwi_shape[2]);
+  const uint32_t channel_input = onnxruntime::narrow<uint32_t>(ohwi_shape[3]);
 
   // im2col-matmul
   const TensorShape src_shape = src->Shape();
@@ -163,7 +187,7 @@ Status ApplyIm2ColMatMulProgram(ComputeContext& context,
   im2col_mm_program.AddInput({src,
                               ProgramTensorMetadataDependency::TypeAndRank,
                               static_cast<int>(vec_size)});
-  im2col_mm_program.AddInput({&ohwi_weight,
+  im2col_mm_program.AddInput({ohwi_weight,
                               ProgramTensorMetadataDependency::TypeAndRank,
                               static_cast<int>(vec_size)});
   if (has_bias) {

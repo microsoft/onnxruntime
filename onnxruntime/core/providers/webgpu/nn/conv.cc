@@ -33,7 +33,9 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   const auto* input = context.Input<Tensor>(0);
   const Tensor* kernel = nullptr;
   bool kernel_is_prepacked = false;
-  if (transposed_kernel_) {
+  if (ohwi_kernel_) {
+    kernel = ohwi_kernel_.get();
+  } else if (transposed_kernel_) {
     kernel = transposed_kernel_.get();
     kernel_is_prepacked = true;
   } else {
@@ -42,9 +44,13 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
   TensorShape input_shape = input->Shape();
   ORT_ENFORCE(kernel != nullptr, "Conv kernel tensor is required.");
-  TensorShape kernel_shape = kernel_is_prepacked
-                                 ? TensorShape(TensorShapeVector{kernel->Shape()[3], kernel->Shape()[2], kernel->Shape()[0], kernel->Shape()[1]})
-                                 : kernel->Shape();
+  // Prepacked kernels are stored permuted; recover the logical OIHW shape.
+  TensorShape kernel_shape = kernel->Shape();
+  if (kernel_is_prepacked) {  // HWIO -> OIHW
+    kernel_shape = TensorShape(TensorShapeVector{kernel_shape[3], kernel_shape[2], kernel_shape[0], kernel_shape[1]});
+  } else if (ohwi_kernel_) {  // OHWI -> OIHW
+    kernel_shape = TensorShape(TensorShapeVector{kernel_shape[0], kernel_shape[3], kernel_shape[1], kernel_shape[2]});
+  }
   ConvAttributes::ConvPadVector local_pads(conv_attrs_.pads.begin(), conv_attrs_.pads.end());
   TensorShapeVector local_dilations(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end());
   TensorShapeVector local_strides(conv_attrs_.strides.begin(), conv_attrs_.strides.end());
@@ -174,8 +180,15 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
                                     dilations,
                                     pads,
                                     strides,
+                                    ohwi_kernel_.get(),
                                     output);
   }
+
+  // The OHWI prepacked layout is only understood by the im2col path above. Reaching here
+  // with `ohwi_kernel_` set would mean PrePackInternal and ComputeInternal disagree on
+  // whether the im2col path applies, and the branches below -- which treat a kernel that
+  // is not `kernel_is_prepacked` as OIHW -- would silently misread the layout.
+  ORT_ENFORCE(!ohwi_kernel_, "Kernel was prepacked as OHWI but the Im2ColMatMul path was not taken.");
 
   if (conv_attrs_.group > 1) {
     Tensor transposed_kernel;
@@ -319,6 +332,29 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
     return Status::OK();
   }
 
+  // Im2ColMatMul path: transpose OIHW -> OHWI once here instead of on every inference.
+  //
+  // Placed before the auto_pad check below on purpose:
+  //   - Safe: CanApplyIm2ColMatMulProgram() only looks at the adapter, dtype, layout,
+  //     fusion, group and kernel H/W -- never at pads -- and ComputeInternal tests it
+  //     before every pads-dependent branch. So a true here means the im2col path is
+  //     taken at runtime no matter what the padding turns out to be.
+  //   - Necessary: otherwise every auto_pad != NOTSET model would bail out below and
+  //     keep paying for the transpose on every inference.
+  //
+  // This call and the one in ComputeInternal must stay in agreement: only the im2col
+  // path can read the OHWI layout, so a decision made here that ComputeInternal later
+  // reverses would corrupt the weights. If CanApplyIm2ColMatMulProgram() ever gains a
+  // condition that is not known at prepack time (pads, strides, input shape), this
+  // shortcut must go away. ComputeInternal ORT_ENFORCEs the invariant.
+  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_,
+                                  kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group),
+                                  tensor.DataType())) {
+    ORT_RETURN_IF_ERROR(PrePackIm2ColMatMulWeight(context, tensor, alloc, ohwi_kernel_));
+    is_packed = true;  // set this flag to true so that ORT will release the initializer tensor
+    return Status::OK();
+  }
+
   // Grouped convolution (group > 1):
   //   - Only transposes when is_channels_last
   //   - channels_first: no transpose
@@ -338,18 +374,9 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
     return Status::OK();
   }
 
-  // Im2ColMatMul path uses a different transpose (OIHW -> OHWI) and reads
-  // kernel directly from context.Input(1), ignoring prepacked weights.
-  // Skip prepacking when this path will be used at runtime.
-  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_,
-                                  kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group),
-                                  tensor.DataType())) {
-    return Status::OK();
-  }
-
   // Analyze execution paths in ComputeInternal to determine if kernel transpose is needed:
   //
-  // 1. Im2ColMatMul path: handled above (skip prepacking)
+  // 1. Im2ColMatMul path: handled above (prepacked as OHWI)
   // 2. Grouped conv (group > 1): handled above (skip if !is_channels_last)
   // 3. MatMul optimization (same_size || is_1x1_conv):
   //    - is_channels_last: transposes
