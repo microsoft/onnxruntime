@@ -644,6 +644,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
 
   // TODO(fajin): test beta
   void ExecuteShort(void) override {
+    // TransA=NoTrans, TransB=Trans
     TestHGemm<2, 1, 1, false, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<1, 128, 512, false, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
     TestHGemm<2, 128, 513, false, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
@@ -654,6 +655,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
     TestHGemm<2, 511, 1025, false, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
     TestHGemm<127, 513, 1023, false, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<129, 511, 1025, false, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    // TransA=NoTrans, TransB=NoTrans
     TestHGemm<2, 1, 1, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<1, 128, 512, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
     TestHGemm<2, 128, 513, false, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
@@ -665,6 +667,24 @@ class MlasNeonHGemmTest : public MlasTestBase {
     TestHGemm<127, 513, 1023, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<129, 511, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
     TestHGemm<129, 513, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(0.5f));
+    // TransA=Trans, TransB=Trans
+    TestHGemm<2, 1, 1, true, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<1, 128, 512, true, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 128, 513, true, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 128, 511, true, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<2, 129, 512, true, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<1, 127, 512, true, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<127, 513, 1023, true, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<129, 511, 1025, true, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    // TransA=Trans, TransB=NoTrans
+    TestHGemm<2, 1, 1, true, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<1, 128, 512, true, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 128, 513, true, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 128, 511, true, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<2, 129, 512, true, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<1, 127, 512, true, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<127, 513, 1023, true, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<129, 511, 1025, true, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
   }
 };
 

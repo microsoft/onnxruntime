@@ -664,7 +664,11 @@ Return Value:
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
     this->RopeDispatch = &MlasRopeDispatchNeon;
-    this->HGemmDispatch = &MlasHGemmDispatchNeon;
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+        this->HGemmDispatch = &MlasHGemmDispatchNeon;
+    }
+#endif
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
     this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchNeon;
@@ -767,6 +771,9 @@ Return Value:
         this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
+        // FP16 GEMM on SVE is provided by the sgemm-parallel driver
+        // (hgemm.cpp + sve/halfgemm_kernel_sve.cpp), reached directly via
+        // MlasGemmBatch / MlasHGemmSupported, not through HGemmDispatch.
     }
     else{
         this->ErfKernelRoutine = MlasErfKernel;

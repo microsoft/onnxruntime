@@ -24,6 +24,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/sgemm.cpp
   ${MLAS_SRC_DIR}/halfgemm.cpp
   ${MLAS_SRC_DIR}/halfconv.cpp
+  ${MLAS_SRC_DIR}/hgemm.cpp
   ${MLAS_SRC_DIR}/qgemm.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
@@ -615,6 +616,9 @@ else()
             list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp)
             set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+i8mm -fno-stack-protector ${ORT_SVE_ABI_FLAGS} ")
           endif()
+          # SVE FP16 GEMM (HGEMM) compute kernels, driven by hgemm.cpp.
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/halfgemm_kernel_sve.cpp)
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/halfgemm_kernel_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ${ORT_SVE_ABI_FLAGS} ")
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
