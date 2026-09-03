@@ -117,6 +117,23 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         device_memory_name_.empty()) {
       device_memory_name_ = CUDA;
     }
+
+    if (device_memory_name_.empty()) {
+#ifdef _MSC_VER
+      const std::string qnn_opt_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+      const std::string qnn_opt_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+      std::unordered_map<std::string, std::string> qnn_plugin_options;
+      ParseSessionConfigs(qnn_opt_string, qnn_plugin_options);
+      const auto htp_option = qnn_plugin_options.find("enable_htp_shared_memory_allocator");
+      const auto dx12_option = qnn_plugin_options.find("enable_dx12_shared_memory_allocator");
+      // The QNN HTP and DX12 shared allocators currently use the same memory info name.
+      if ((htp_option != qnn_plugin_options.end() && htp_option->second == "1") ||
+          (dx12_option != qnn_plugin_options.end() && dx12_option->second == "1")) {
+        device_memory_name_ = "QnnHtpShared";
+      }
+    }
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
@@ -996,6 +1013,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     Ort::MemoryInfo memory_info(nullptr);  // Default initialize, will be overwritten
     if (device_memory_name_ == CUDA) {
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
+    } else if (device_memory_name_ == "QnnHtpShared") {
+      memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtDeviceAllocator, 0, OrtMemTypeCPUOutput);
     } else {
       memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
     }
