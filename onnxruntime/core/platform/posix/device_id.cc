@@ -311,6 +311,7 @@ std::string DeviceId::GetStatusString() {
 bool DeviceId::RecordCensusActivity(
     int64_t utc_day,
     std::string_view library_version,
+    bool emit_current_day,
     const std::function<void(
         int64_t, const std::vector<std::string>&)>& emit_completed_day) {
   if (utc_day < 0 ||
@@ -352,11 +353,15 @@ bool DeviceId::RecordCensusActivity(
     state = telemetry_internal::ParseDeviceCensusState(existing.content);
   }
 
-  if (!state) {
+  if (emit_current_day || !state) {
     telemetry_internal::DeviceCensusState new_state{
-        telemetry_internal::kDeviceCensusSchemaVersion, utc_day, {}};
+        telemetry_internal::kDeviceCensusSchemaVersion, utc_day, false, {}};
     telemetry_internal::AddDeviceCensusVersion(
         new_state, std::string(library_version));
+    if (emit_current_day) {
+      emit_completed_day(new_state.utc_day, new_state.versions);
+      new_state.emitted = true;
+    }
     return WriteCensusStateAtomically(
         directory.Get(),
         telemetry_internal::SerializeDeviceCensusState(new_state));
@@ -376,15 +381,20 @@ bool DeviceId::RecordCensusActivity(
             *state, std::string(library_version))) {
       return false;
     }
+    if (state->emitted) {
+      emit_completed_day(state->utc_day, state->versions);
+    }
     return WriteCensusStateAtomically(
         directory.Get(),
         telemetry_internal::SerializeDeviceCensusState(*state));
   }
 
-  emit_completed_day(state->utc_day, state->versions);
+  if (!state->emitted) {
+    emit_completed_day(state->utc_day, state->versions);
+  }
 
   telemetry_internal::DeviceCensusState new_state{
-      telemetry_internal::kDeviceCensusSchemaVersion, utc_day, {}};
+      telemetry_internal::kDeviceCensusSchemaVersion, utc_day, false, {}};
   telemetry_internal::AddDeviceCensusVersion(
       new_state, std::string(library_version));
   return WriteCensusStateAtomically(

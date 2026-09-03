@@ -840,8 +840,11 @@ void PosixTelemetry::LogProcessInfo() const {
 
     if (device_id_status != DeviceIdStatus::Failed) {
       const std::string device_id_status_string = device_id.GetStatusString();
+      const bool emit_current_day =
+          device_id_status == DeviceIdStatus::New ||
+          device_id_status == DeviceIdStatus::Corrupted;
       device_id.RecordCensusActivity(
-          GetUtcDay(), ORT_VERSION,
+          GetUtcDay(), ORT_VERSION, emit_current_day,
           [&](int64_t census_day,
               const std::vector<std::string>& versions) {
             auto event = EventBuilder("DeviceCensus", EventPriority::CRITICAL)

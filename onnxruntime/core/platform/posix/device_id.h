@@ -41,11 +41,12 @@ class DeviceId {
   // Get human-readable status string
   std::string GetStatusString();
 
-  // Records activity for the current UTC day. On the first activity from any later UTC day,
-  // emits the last active day's completed census once per persisted DeviceId.
+  // Records activity for the current UTC day. A new or repaired DeviceId emits immediately;
+  // otherwise the last active day's completed census is emitted on the first later active day.
   bool RecordCensusActivity(
       int64_t utc_day,
       std::string_view library_version,
+      bool emit_current_day,
       const std::function<void(
           int64_t, const std::vector<std::string>&)>& emit_completed_day);
 

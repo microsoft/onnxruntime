@@ -23,6 +23,7 @@ inline constexpr int64_t kDeviceCensusSchemaVersion = 1;
 struct DeviceCensusState {
   int64_t schema_version;
   int64_t utc_day;
+  bool emitted;
   std::vector<std::string> versions;
 };
 
@@ -90,8 +91,19 @@ inline std::optional<DeviceCensusState> ParseDeviceCensusState(
     return std::nullopt;
   }
 
-  DeviceCensusState state{schema_version, utc_day, {}};
-  size_t offset = second_newline + 1;
+  const size_t third_newline = serialized.find('\n', second_newline + 1);
+  if (third_newline == std::string_view::npos) {
+    return std::nullopt;
+  }
+
+  const std::string_view emitted = serialized.substr(
+      second_newline + 1, third_newline - second_newline - 1);
+  if (emitted != "0" && emitted != "1") {
+    return std::nullopt;
+  }
+
+  DeviceCensusState state{schema_version, utc_day, emitted == "1", {}};
+  size_t offset = third_newline + 1;
   while (offset < serialized.size()) {
     size_t newline = serialized.find('\n', offset);
     if (newline == std::string_view::npos) {
@@ -114,7 +126,8 @@ inline std::optional<DeviceCensusState> ParseDeviceCensusState(
 
 inline std::string SerializeDeviceCensusState(const DeviceCensusState& state) {
   std::string serialized = std::to_string(state.schema_version) + "\n" +
-                           std::to_string(state.utc_day) + "\n";
+                           std::to_string(state.utc_day) + "\n" +
+                           (state.emitted ? "1\n" : "0\n");
   for (const std::string& entry : state.versions) {
     serialized += entry;
     serialized += '\n';

@@ -51,7 +51,7 @@ TEST(TelemetrySamplingTest, HighVolumeRateSamplesExpectedFraction) {
 
 TEST(DeviceCensusTest, SerializesSortedVersions) {
   telemetry_internal::DeviceCensusState state{
-      telemetry_internal::kDeviceCensusSchemaVersion, 20700, {}};
+      telemetry_internal::kDeviceCensusSchemaVersion, 20700, false, {}};
   ASSERT_TRUE(telemetry_internal::AddDeviceCensusVersion(state, "1.25.0"));
   ASSERT_TRUE(telemetry_internal::AddDeviceCensusVersion(state, "1.24.0"));
   EXPECT_FALSE(telemetry_internal::AddDeviceCensusVersion(state, "1.24.0"));
@@ -63,13 +63,14 @@ TEST(DeviceCensusTest, SerializesSortedVersions) {
   EXPECT_EQ(parsed->schema_version,
             telemetry_internal::kDeviceCensusSchemaVersion);
   EXPECT_EQ(parsed->utc_day, 20700);
+  EXPECT_FALSE(parsed->emitted);
   EXPECT_EQ(parsed->versions,
             (std::vector<std::string>{"1.24.0", "1.25.0"}));
 }
 
 TEST(DeviceCensusTest, PreservesUnknownSchemaVersion) {
   const auto parsed =
-      telemetry_internal::ParseDeviceCensusState("2\n20700\n1.24.0\n");
+      telemetry_internal::ParseDeviceCensusState("2\n20700\n0\n1.24.0\n");
   ASSERT_TRUE(parsed);
   EXPECT_EQ(parsed->schema_version, 2);
 }
