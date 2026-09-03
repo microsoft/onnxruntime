@@ -298,6 +298,10 @@ bool CUDAExecutionProvider::PerThreadContext::IsGraphCaptured(CudaGraphAnnotatio
   return cuda_graph_.IsGraphCaptured(graph_annotation_id);
 }
 
+bool CUDAExecutionProvider::PerThreadContext::IsExternalDeviceGraphCaptureActive() const {
+  return cuda_graph_.IsExternalCaptureActive();
+}
+
 Status CUDAExecutionProvider::PerThreadContext::ReplayGraph(CudaGraphAnnotation_t graph_annotation_id, bool sync) {
   return cuda_graph_.Replay(graph_annotation_id, sync);
 }
@@ -500,6 +504,13 @@ Status CUDAExecutionProvider::Sync() const {
 }
 
 Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  // When the caller is capturing its own device graph on our compute stream, the run must be
+  // recorded into that graph: starting an ORT capture here would nest captures (illegal) and
+  // would also hide the work from the caller's graph.
+  if (IsExternalDeviceGraphCaptureActive()) {
+    return Status::OK();
+  }
+
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id) &&
       GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
@@ -510,6 +521,13 @@ Status CUDAExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_opti
 }
 
 Status CUDAExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
+  // Mirror OnRunStart: inside a caller-initiated capture there is nothing to end or replay, and
+  // no host synchronization is permitted on a capturing stream. The run's work has been recorded
+  // into the caller's graph and completes when the caller replays it.
+  if (IsExternalDeviceGraphCaptureActive()) {
+    return Status::OK();
+  }
+
   CudaGraphAnnotation_t cuda_graph_annotation_id = GetPerThreadContext().GetCudaGraphAnnotationId(run_options);
   if (IsGraphCaptureEnabled() && !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
     if (GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id)) {
@@ -548,7 +566,26 @@ bool CUDAExecutionProvider::IsGraphCaptureEnabled() const {
 }
 
 bool CUDAExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
+  // While the caller is capturing, no ORT-managed graph may be replayed: the session must run
+  // for real so the caller's graph records the work. Reporting "not captured" keeps the session
+  // on the normal execution path for the duration of the caller's capture.
+  if (IsExternalDeviceGraphCaptureActive()) {
+    return false;
+  }
   return GetPerThreadContext().IsGraphCaptured(graph_annotation_id);
+}
+
+bool CUDAExecutionProvider::IsExternalDeviceGraphCaptureActive() const {
+#if defined(ORT_MINIMAL_BUILD)
+  return false;
+#else
+  // Only the EP-level unified stream can be the one the caller captures on; when the EP hands out
+  // per-run streams there is no single stream for a caller to own.
+  if (!use_ep_level_unified_stream_ || stream_ == nullptr) {
+    return false;
+  }
+  return GetPerThreadContext().IsExternalDeviceGraphCaptureActive();
+#endif
 }
 
 Status CUDAExecutionProvider::ReplayGraph(int graph_annotation_id, bool sync) {

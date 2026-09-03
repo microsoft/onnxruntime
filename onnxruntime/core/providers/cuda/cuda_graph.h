@@ -45,7 +45,18 @@ struct CUDAGraphManager {
   bool IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
   bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
 
+  // True when `stream` is currently capturing a device graph. A null stream (the legacy
+  // default stream) can never be capturing.
+  static bool IsStreamCapturing(cudaStream_t stream);
+
+  // True when a device graph capture is in progress on this manager's stream and it was started by
+  // the caller rather than by any ONNX Runtime manager on that stream.
+  bool IsExternalCaptureActive() const;
+
  private:
+  // Drops this manager's claim on the stream's ORT-initiated capture, if it holds one.
+  void ReleaseOrtCaptureOwnership();
+
   CudaGraphSet cuda_graph_set_;
   CudaGraphAnnotation_t cuda_graph_annotation_id_ = kCudaGraphAnnotationDefault;
 

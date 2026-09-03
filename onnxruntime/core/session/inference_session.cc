@@ -292,6 +292,43 @@ static bool HasShapeSubgraphNodes(const Graph& graph) {
   return has_shape_nodes && has_cpu_ep_nodes;
 }
 
+// Same capturability rules the ORT-managed graph capture path enforces at session initialization,
+// factored out so a caller-initiated ("external") capture can be held to them as well. Returns an
+// error describing the first violation; warnings are only emitted for the provider that will
+// actually own an ORT-managed capture, to avoid duplicate messages for every registered provider.
+static common::Status ValidateGraphCaptureCompatibility(const Graph& graph,
+                                                        const IExecutionProvider& ep,
+                                                        const logging::Logger& logger,
+                                                        bool emit_warnings) {
+  if (HasControlflowNodes(graph)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "This session cannot use the graph capture feature as requested by the user "
+                           "as the model has control flow nodes which can't be supported by " +
+                               ep.Type());
+  }
+
+  const auto policy = ep.GetGraphCaptureNodeAssignmentPolicy();
+  if (policy == OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES) {
+    if (!AreAllComputeNodesAssignedToEpOrCpu(graph, ep.Type())) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "This session cannot use the graph capture feature as requested by the user "
+                             " as all compute graph nodes have not been partitioned to the " +
+                                 ep.Type());
+    }
+    if (emit_warnings && HasShapeSubgraphNodes(graph)) {
+      LOGS(logger, WARNING) << "This model has shape massaging nodes that will execute on CPU. "
+                            << "Use the graph capture feature with caution.";
+    }
+  } else if (!AreAllNodesInMainGraphAssignedToOneEp(graph, ep.Type())) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "This session cannot use the graph capture feature as requested by the user "
+                           "as all the graph nodes have not been assigned to " +
+                               ep.Type());
+  }
+
+  return Status::OK();
+}
+
 Status GetMinimalBuildOptimizationHandling(
     std::string_view config_value, bool saving_ort_format,
     InferenceSession::MinimalBuildOptimizationHandling& minimal_build_optimization_handling) {
@@ -2679,7 +2716,20 @@ common::Status InferenceSession::Initialize() {
       // Check if any EP is configured for graph capture (e.g., CUDA Graph, DML Graph).
       // If so, validate the graph and cache the EP for triggering ReplayGraph() in Run().
       for (const auto& ep : execution_providers_) {
-        if (!ep->IsGraphCaptureEnabled()) {
+        const bool ort_managed_capture = ep->IsGraphCaptureEnabled();
+
+#if !defined(ORT_MINIMAL_BUILD)
+        // Record capturability for every provider, not just the ones with ORT-managed capture
+        // enabled. A caller can start its own device graph capture on a provider's compute stream
+        // with enable_cuda_graph=0, and Run() must be able to reject that loudly instead of
+        // recording a graph that silently omits work executed outside the provider.
+        if (!ort_managed_capture) {
+          graph_capture_validation_[ep.get()] =
+              ValidateGraphCaptureCompatibility(graph, *ep, *session_logger_, /*emit_warnings=*/false);
+        }
+#endif
+
+        if (!ort_managed_capture) {
           continue;
         }
 
@@ -2737,6 +2787,10 @@ common::Status InferenceSession::Initialize() {
 
         LOGS(*session_logger_, INFO) << "This session will use the graph capture feature as requested by the user "
                                      << "with " << ep->Type() << ".";
+#if !defined(ORT_MINIMAL_BUILD)
+        // Reaching here means every check above passed for this provider.
+        graph_capture_validation_[ep.get()] = Status::OK();
+#endif
         cached_execution_provider_for_graph_replay_.SetExecutionProvider(ep.get());
         break;  // Only one EP can use graph capture.
       }
@@ -2795,6 +2849,19 @@ common::Status InferenceSession::Initialize() {
                                                   cpu_ep, GetIntraOpThreadPoolToUse()));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
+
+#if !defined(ORT_MINIMAL_BUILD)
+    // Capture compatibility must be available regardless of how the model was partitioned. In
+    // particular, ORT-format models bypass the non-ORT partitioning path above, but a caller can
+    // still capture a CUDA session with enable_cuda_graph=0. Fill entries not already recorded by
+    // the ORT-managed capture validation, including providers after the first managed-capture EP.
+    for (const auto& ep : execution_providers_) {
+      if (graph_capture_validation_.find(ep.get()) == graph_capture_validation_.end()) {
+        graph_capture_validation_[ep.get()] =
+            ValidateGraphCaptureCompatibility(graph, *ep, *session_logger_, /*emit_warnings=*/false);
+      }
+    }
+#endif
 
     // Compile-only: a compile-only session never runs inference, so skip session-state finalization (kernel creation,
     // PrePack, initializer upload, memory planning) and early return here.
@@ -3323,6 +3390,88 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     }
   }
 
+  // When the caller has started a device graph capture on the EP's compute stream, this run is
+  // recorded into the caller's graph instead of being executed or replayed: no ORT-managed
+  // capture, no ORT-managed replay, and no host synchronization anywhere in the run. Several
+  // sessions sharing one caller-owned stream can therefore be recorded back to back into a
+  // single graph.
+  //
+  // Every provider is asked, not just the one cached for graph replay: that cache is only
+  // populated when the session enabled ORT-managed graph capture, while recording into a caller's
+  // graph only needs the provider to run on the caller's stream.
+#if !defined(ORT_MINIMAL_BUILD)
+  const IExecutionProvider* recording_provider = nullptr;
+  for (const auto& provider : execution_providers_) {
+    if (provider != nullptr && provider->IsExternalDeviceGraphCaptureActive()) {
+      recording_provider = provider.get();
+      break;
+    }
+  }
+  const bool recording_into_external_device_graph = recording_provider != nullptr;
+
+  const std::string& external_capture_str =
+      run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigExternalDeviceGraphCapture, "0");
+  if (external_capture_str == "1" && !recording_into_external_device_graph) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Run option '", kOrtRunOptionsConfigExternalDeviceGraphCapture,
+                           "' is set, but no caller-initiated device graph capture is active on the "
+                           "compute stream of this session's execution provider. Start the capture on "
+                           "the stream that was passed to the provider as its user compute stream "
+                           "before calling Run(), or clear the run option.");
+  } else if (external_capture_str != "0" && external_capture_str != "1") {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid value for run option '", kOrtRunOptionsConfigExternalDeviceGraphCapture,
+                           "': expected \"0\" or \"1\" but got \"", external_capture_str, "\".");
+  }
+
+  if (recording_into_external_device_graph) {
+    // Record-only mode replaces execution with recording, so the same rules ORT-managed capture is
+    // held to at session initialization must hold here. Without this, a compute node that fell back
+    // to the CPU EP (or any other provider) would execute once while recording and then be absent
+    // from every replay, silently producing stale results. This is reachable with
+    // enable_cuda_graph=0, where the initialization-time check never ran for this provider.
+    auto validation = graph_capture_validation_.find(recording_provider);
+    if (validation == graph_capture_validation_.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "A caller-initiated device graph capture is active on the ",
+                             recording_provider->Type(),
+                             " compute stream, but this session's graph capture compatibility "
+                             "could not be verified. End the capture and recreate the session.");
+    }
+
+    if (!validation->second.IsOK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "A caller-initiated device graph capture is active on the ",
+                             recording_provider->Type(),
+                             " compute stream, but this session's graph cannot be captured: ",
+                             validation->second.ErrorMessage(),
+                             " Replaying such a graph would omit the work that does not run on that "
+                             "provider. End the capture, or run this session on a stream that is not "
+                             "being captured.");
+    }
+
+    LOGS(*session_logger_, INFO) << "Recording this run into a caller-initiated device graph capture "
+                                    "on the "
+                                 << recording_provider->Type() << " compute stream.";
+  }
+#else
+  const std::string& external_capture_str =
+      run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigExternalDeviceGraphCapture, "0");
+  if (external_capture_str != "0" && external_capture_str != "1") {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid value for run option '", kOrtRunOptionsConfigExternalDeviceGraphCapture,
+                           "': expected \"0\" or \"1\" but got \"", external_capture_str, "\".");
+  }
+  if (external_capture_str == "1") {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Caller-initiated device graph capture is not supported in minimal builds.");
+  }
+
+  // Device graph capture is a full-build feature. CUDA EP does not enter record-only mode in
+  // minimal builds, so an incompatible graph cannot be captured without compatibility validation.
+  constexpr bool recording_into_external_device_graph = false;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   // Increment/decrement concurrent_num_runs_ and control
   // session threads spinning as configured. Do nothing for graph replay except the counter.
   const bool control_spinning = use_per_session_threads_ &&
@@ -3452,7 +3601,8 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
       // info all execution providers InferenceSession:Run ended
       for (auto* xp : exec_providers_to_stop) {
-        bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+        bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0" &&
+                                               !recording_into_external_device_graph;
         auto status = xp->OnRunEnd(synchronize_execution_providers, run_options);
         ORT_CHECK_AND_SET_RETVAL(status);
       }
@@ -3469,8 +3619,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 #ifdef ORT_ENABLE_STREAM
       DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
       if (device_stream_collection) {
-        bool sync_execution_provider = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
-        ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(sync_execution_provider));
+        bool sync_execution_provider = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0" &&
+                                       !recording_into_external_device_graph;
+        ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(
+            sync_execution_provider, recording_into_external_device_graph));
       }
 #endif
     }
@@ -3573,7 +3725,11 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   // runs for allocations/setup followed by one run that captures the graph.
   // Retry within the same user-visible Session::Run() call until the EP reports
   // that capture has completed, subject to kMaxGraphCaptureRunAttempts.
-  if (retval.IsOK() && cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
+  // Skipped while recording into a caller-initiated capture: the run is recorded exactly once
+  // into the caller's graph and no ORT-managed capture is pending, so retrying would duplicate
+  // the recorded work.
+  if (retval.IsOK() && !recording_into_external_device_graph &&
+      cached_execution_provider_for_graph_replay_.IsGraphCaptureEnabled() &&
       cached_execution_provider_for_graph_replay_.AllowGraphCaptureOnRun(graph_annotation_id) &&
       !cached_execution_provider_for_graph_replay_.IsGraphCaptured(graph_annotation_id)) {
     if (graph_capture_depth + 1 >= kMaxGraphCaptureRunAttempts) {

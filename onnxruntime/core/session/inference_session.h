@@ -1151,6 +1151,14 @@ class InferenceSession {
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
 
 #if !defined(ORT_MINIMAL_BUILD)
+  // Whether this session's graph satisfies the device graph capture rules for each registered
+  // provider, computed once during Initialize(). Consulted when a caller starts its own capture on
+  // a provider's compute stream, which can happen with ORT-managed capture disabled and therefore
+  // without the initialization-time check having rejected the session.
+  InlinedHashMap<const IExecutionProvider*, common::Status> graph_capture_validation_;
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
   // Enable nodestats collection
   std::optional<NodeStatsRecorder> node_stats_recorder_;
 #endif
