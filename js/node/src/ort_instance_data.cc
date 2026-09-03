@@ -62,22 +62,42 @@ void OrtInstanceData::DrainDeviceReleasesLocked() {
     ~DrainingFlag() { draining_device_releases = false; }
   } draining_flag;
 
-  std::vector<std::shared_ptr<void>> pending;
-  {
-    std::lock_guard<std::mutex> lock(PendingReleaseMutex());
-    pending.swap(PendingReleases());
+  // A destructor running here can queue more (a session release drops the device values it pinned),
+  // and with the flag set it cannot drain them itself, so keep going until nothing is left.
+  for (;;) {
+    std::vector<std::shared_ptr<void>> pending;
+    {
+      std::lock_guard<std::mutex> lock(PendingReleaseMutex());
+      pending.swap(PendingReleases());
+    }
+    if (pending.empty()) {
+      return;
+    }
+    // Destructors run here, with DeviceMutex() held by the caller.
+    pending.clear();
   }
-  // Destructors run here, with DeviceMutex() held by the caller.
-  pending.clear();
 }
 
 void OrtInstanceData::TryDrainDeviceReleases() {
+  // The drain running further up this thread's stack picks up anything queued meanwhile.
   if (draining_device_releases) {
     return;
   }
-  std::unique_lock<std::mutex> device_lock(DeviceMutex(), std::try_to_lock);
-  if (device_lock.owns_lock()) {
-    DrainDeviceReleasesLocked();
+  for (;;) {
+    {
+      std::unique_lock<std::mutex> device_lock(DeviceMutex(), std::try_to_lock);
+      // Whoever holds the lock drains on the way out (see DeviceLock), so nothing is stranded.
+      if (!device_lock.owns_lock()) {
+        return;
+      }
+      DrainDeviceReleasesLocked();
+    }
+    // Anything queued while this thread held the lock saw its own try_lock fail against it, so it
+    // is this thread's to destroy: go round again rather than leave it for a run that may never come.
+    std::lock_guard<std::mutex> lock(PendingReleaseMutex());
+    if (PendingReleases().empty()) {
+      return;
+    }
   }
 }
 
@@ -86,25 +106,12 @@ void OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<void> object) {
     return;
   }
 
+  // Everything is destroyed from the queue, never inline: a destructor that releases another device
+  // object would otherwise re-enter and try_lock a mutex this thread already owns.
   {
     std::lock_guard<std::mutex> lock(PendingReleaseMutex());
     PendingReleases().push_back(std::move(object));
   }
-
-  // Everything is destroyed from the queue, so the draining flag covers this object too; releasing
-  // it inline after the drain would let a destructor that releases another device object re-enter
-  // and try_lock a mutex this thread already owns.
-  if (!draining_device_releases) {
-    std::unique_lock<std::mutex> device_lock(DeviceMutex(), std::try_to_lock);
-    if (device_lock.owns_lock()) {
-      DrainDeviceReleasesLocked();
-      return;
-    }
-  }
-
-  // The lock may have been dropped while we were queueing. Without this, an object queued during the
-  // last device run of a session would sit there until the next one, which may never come, so the
-  // memory it holds would survive release().
   TryDrainDeviceReleases();
 }
 
@@ -134,8 +141,8 @@ bool RegionsOverlap(const OrtInstanceData::OutputBufferRegion& a, const OrtInsta
 }  // namespace
 
 OrtInstanceData::OutputBufferLease OrtInstanceData::AcquireOutputBufferLease(Napi::Object resource,
-                                                                            size_t byteOffset, size_t byteLength,
-                                                                            bool wholeResource) {
+                                                                             size_t byteOffset, size_t byteLength,
+                                                                             bool wholeResource) {
   auto data = resource.Env().GetInstanceData<OrtInstanceData>();
   ORT_NAPI_THROW_ERROR_IF(data == nullptr, resource.Env(), "OrtInstanceData not created.");
 

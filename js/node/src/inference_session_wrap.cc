@@ -10,7 +10,6 @@
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
-#include <mutex>
 #include <string>
 
 namespace {
@@ -362,7 +361,6 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
     Finish([&] { deferred_.Reject(error); });
   }
 
-
   void AcquireOutputBufferLeases() {
     for (const auto& output : outputs_) {
       if (output.reuse) {
@@ -394,15 +392,9 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       // A provider with global device state cannot have two runs in flight anywhere in the process,
       // and binding does device work before Run() that ORT's own guard does not cover either.
       // Sessions without such a provider never take the lock and stay fully concurrent.
-      // Destroyed after device_lock releases, so anything queued in the window between the final
-      // drain and the unlock gets another chance rather than waiting for the next device run.
-      struct PostUnlockDrain {
-        ~PostUnlockDrain() { OrtInstanceData::TryDrainDeviceReleases(); }
-      } post_unlock_drain;
-
-      std::unique_lock<std::mutex> device_lock;
+      OrtInstanceData::DeviceLock device_lock;
       if (session_->requires_device_serialization_) {
-        device_lock = std::unique_lock<std::mutex>(OrtInstanceData::DeviceMutex());
+        device_lock = OrtInstanceData::DeviceLock(OrtInstanceData::DeviceMutex());
         OrtInstanceData::DrainDeviceReleasesLocked();
       }
 
@@ -410,7 +402,7 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
       // it from Complete() instead would run on the Javascript thread while another session binds.
       struct DeviceCleanup {
         RunAsyncWorker* worker;
-        std::unique_lock<std::mutex>* lock;
+        OrtInstanceData::DeviceLock* lock;
         ~DeviceCleanup() {
           worker->io_binding_.reset();
           if (lock->owns_lock()) {
@@ -543,7 +535,6 @@ class InferenceSessionWrap::RunAsyncWorker : public Napi::AsyncWorker {
   }
 
  private:
-
   // Settling can itself fail while the environment is being torn down: node-addon-api turns an
   // exception escaping OnOK()/OnError() into a Javascript one, and that conversion throws in turn,
   // reaching std::terminate through libuv's C frames. Nobody is left to observe the promise at that
@@ -713,11 +704,11 @@ void InferenceSessionWrap::ReleaseSession() {
   OrtSingletonData::DropSession(std::move(session_));
 }
 
-std::unique_lock<std::mutex> InferenceSessionWrap::LockDeviceIfRequired() {
+OrtInstanceData::DeviceLock InferenceSessionWrap::LockDeviceIfRequired() {
   if (!requires_device_serialization_) {
     return {};
   }
-  return std::unique_lock<std::mutex>(OrtInstanceData::DeviceMutex());
+  return OrtInstanceData::DeviceLock(OrtInstanceData::DeviceMutex());
 }
 
 Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {

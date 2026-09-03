@@ -51,6 +51,38 @@ struct OrtInstanceData {
   // Destroy everything queued by ReleaseDeviceObject(). The caller must already hold DeviceMutex().
   static void DrainDeviceReleasesLocked();
 
+  // Every blocking acquisition of DeviceMutex() goes through this. An object queued while the lock is
+  // busy relies on the holder to destroy it, and one queued in the window between the holder's last
+  // drain and its unlock found the lock busy too, so releasing the lock is followed by one more drain
+  // of whatever arrived. (TryDrainDeviceReleases() takes the lock non-blocking and loops instead.)
+  class DeviceLock {
+   public:
+    DeviceLock() = default;
+    explicit DeviceLock(std::mutex& mutex) : lock_(mutex) {}
+    DeviceLock(DeviceLock&& other) noexcept = default;
+    DeviceLock& operator=(DeviceLock&& other) noexcept {
+      if (this != &other) {
+        Release();
+        lock_ = std::move(other.lock_);
+      }
+      return *this;
+    }
+    DeviceLock(const DeviceLock&) = delete;
+    DeviceLock& operator=(const DeviceLock&) = delete;
+    ~DeviceLock() { Release(); }
+
+    bool owns_lock() const { return lock_.owns_lock(); }
+
+   private:
+    void Release() {
+      if (lock_.owns_lock()) {
+        lock_.unlock();
+        TryDrainDeviceReleases();
+      }
+    }
+    std::unique_lock<std::mutex> lock_;
+  };
+
   // Whether a previous attempt to hand Javascript an external ArrayBuffer was refused. Electron's
   // V8 Memory Cage and V8-sandbox builds reject them for the lifetime of the process, so the answer
   // is cached rather than re-probed for every model output.

@@ -473,37 +473,50 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value, std::shared_p
       // the control block throws, ownership stays with the unique_ptr instead of the deleter running
       // once for the failed shared_ptr and again while unwinding.
       auto underlyingOrtValue = std::unique_ptr<OrtValue, decltype(releaseOrtValue)>(value.release(), releaseOrtValue);
-      auto valueOwner = std::make_unique<OrtValueOwner>(std::move(underlyingOrtValue));
+      // Until the External below takes it over, anything here that throws -- a setter planted on
+      // Object.prototype, a failed allocation -- would run the deleter on this thread while another
+      // session may hold the device. Unwinding therefore hands the owner to the release queue instead.
+      struct PendingOwner {
+        std::unique_ptr<OrtValueOwner> owner;
+        ~PendingOwner() {
+          if (owner != nullptr) {
+            OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<OrtValueOwner>(owner.release()));
+          }
+        }
+      } valueOwner{std::make_unique<OrtValueOwner>(std::move(underlyingOrtValue))};
 
+      auto dispose = Napi::Function::New(env, [](const Napi::CallbackInfo& info) {
+        auto tensor = info.This().As<Napi::Object>();
+        auto gpuBuffer = tensor.Get("gpuBuffer");
+        if (gpuBuffer.IsExternal()) {
+          auto* valueOwner = gpuBuffer.As<Napi::External<OrtValueOwner>>().Data();
+          if (valueOwner != nullptr) {
+            // Returning a device buffer to the provider is device work, so it has to happen under
+            // the device lock -- but never by blocking this thread, which would stall the event
+            // loop for the length of an in-flight inference.
+            OrtInstanceData::ReleaseDeviceObject(std::make_shared<OrtValueOwner>(std::move(*valueOwner)));
+            valueOwner->reset();
+          }
+        }
+      });
+      auto download = Napi::Function::New(
+          env, [](const Napi::CallbackInfo& info) { NAPI_THROW("not implemented"); }, "download");
+
+      // Defined rather than assigned, so a setter installed on Object.prototype cannot intercept them.
+      const auto attributes = static_cast<napi_property_attributes>(napi_writable | napi_enumerable | napi_configurable);
       auto options = Napi::Object::New(env);
-      options.Set("dataType", type);
-      options.Set("dims", dims);
-      options.Set("dispose", Napi::Function::New(env, [](const Napi::CallbackInfo& info) {
-                    auto tensor = info.This().As<Napi::Object>();
-                    auto gpuBuffer = tensor.Get("gpuBuffer");
-                    if (gpuBuffer.IsExternal()) {
-                      auto* valueOwner = gpuBuffer.As<Napi::External<OrtValueOwner>>().Data();
-                      if (valueOwner != nullptr) {
-                        // Returning a device buffer to the provider is device work, so it has to
-                        // happen under the device lock -- but never by blocking this thread, which
-                        // would stall the event loop for the length of an in-flight inference.
-                        OrtInstanceData::ReleaseDeviceObject(
-                            std::make_shared<OrtValueOwner>(std::move(*valueOwner)));
-                        valueOwner->reset();
-                      }
-                    }
-                  }));
-      options.Set("download", Napi::Function::New(
-                                  env, [](const Napi::CallbackInfo& info) {
-                                    NAPI_THROW("not implemented");
-                                  },
-                                  "download"));
+      options.DefineProperties({
+          Napi::PropertyDescriptor::Value("dataType", type, attributes),
+          Napi::PropertyDescriptor::Value("dims", dims, attributes),
+          Napi::PropertyDescriptor::Value("dispose", dispose, attributes),
+          Napi::PropertyDescriptor::Value("download", download, attributes),
+      });
 
-      auto external = Napi::External<OrtValueOwner>::New(env, valueOwner.get(), [](Napi::Env, OrtValueOwner* value) {
+      auto external = Napi::External<OrtValueOwner>::New(env, valueOwner.owner.get(), [](Napi::Env, OrtValueOwner* value) {
         // Collected rather than disposed: the same device work, and the same reason not to block.
         OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<OrtValueOwner>(value));
       });
-      valueOwner.release();
+      valueOwner.owner.release();
       return scope.Escape(tensorFromGpuBuffer.Call({external, options}));
     } else {
       const size_t byteLength = value.GetTensorSizeInBytes();

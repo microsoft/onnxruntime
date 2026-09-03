@@ -6,8 +6,9 @@
 #include "onnxruntime_cxx_api.h"
 
 #include <memory>
-#include <mutex>
 #include <napi.h>
+
+#include "ort_instance_data.h"
 
 // class InferenceSessionWrap is a N-API object wrapper for native InferenceSession.
 class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
@@ -93,7 +94,7 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   // Drop our reference to the ORT session, through the device lock if its provider needs that.
   void ReleaseSession();
   // Hold the device lock for the duration of the returned guard, if this session's provider needs it.
-  std::unique_lock<std::mutex> LockDeviceIfRequired();
+  OrtInstanceData::DeviceLock LockDeviceIfRequired();
 
   // private members
 

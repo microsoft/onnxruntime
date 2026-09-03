@@ -425,6 +425,43 @@ describe('API Tests - InferenceSession.run()', async () => {
     }
   });
 
+  it('publishes a GPU output without assigning through an inherited setter', async function () {
+    // eslint-disable-next-line no-invalid-this
+    skipWithoutWebGpu(this);
+
+    const modelPath = path.join(TEST_DATA_ROOT, 'test_types_float.onnx');
+    const localSession = await InferenceSession.create(modelPath, {
+      executionProviders: ['webgpu'],
+      preferredOutputLocation: 'gpu-buffer',
+    });
+    const readbackSession = await InferenceSession.create(modelPath, { executionProviders: ['webgpu'] });
+
+    // A gpu-buffer output reaches Tensor.fromGpuBuffer() through an options object built natively.
+    // Assigning its properties would run this setter, and unwinding from it would release the
+    // device value on this thread rather than through the device lock.
+    Object.defineProperty(Object.prototype, 'download', {
+      configurable: true,
+      set: () => {
+        throw new Error('inherited setter reached');
+      },
+    });
+    try {
+      assert.throws(() => {
+        (({}) as { download?: unknown }).download = 1;
+      }, /inherited setter reached/);
+
+      const expectedOutput = new Tensor('float32', [1, 2, 3, 4, 5], [1, 5]);
+      const result = await localSession.run({ input: expectedOutput });
+      assert.strictEqual(result.output.location, 'gpu-buffer');
+      assertTensorEqual((await readbackSession.run({ input: result.output })).output, expectedOutput);
+      result.output.dispose();
+    } finally {
+      delete (Object.prototype as { download?: unknown }).download;
+      await localSession.release().catch(() => {});
+      await readbackSession.release().catch(() => {});
+    }
+  });
+
   it('runs concurrent inferences across device sessions safely', async function () {
     // eslint-disable-next-line no-invalid-this
     skipWithoutWebGpu(this);
