@@ -18,7 +18,7 @@ The WebGPU repository owns:
 
 - `OrtEpFactory` and `OrtEp` provider implementation.
 - WebGPU kernels, contrib kernels, runtime, and device infrastructure.
-- WebGPU-owned support code copied or replaced from ORT.
+- WebGPU-owned support code copied from ORT.
 - Dawn selection, patches, and build configuration.
 - WGSL templates, generators, and generated-source policy.
 - WebGPU-specific unit, integration, package, and regression tests, and browser tests of provider behavior.
@@ -38,7 +38,7 @@ rather than moved. The WebNN code in that directory is unaffected by this work.
 
 Expand the existing `plugin-ep-webgpu/` directory into the in-tree staging root. It already owns Python and NuGet
 plugin packaging, version metadata, and release documentation. Add provider source, build, dependency, and test
-ownership until the directory mirrors the intended external repository:
+ownership until the directory mirrors the intended external repository. An example directory structure:
 
 ```text
 plugin-ep-webgpu/
@@ -163,7 +163,9 @@ validates its pinned WebGPU revision as part of ORT Web release gating.
 Python and NuGet plugin packaging sources already live under `plugin-ep-webgpu/`. The plugin build, test, and
 packaging pipeline definitions are still outside the staging root, split between
 `tools/ci_build/github/azure-pipelines/` and `.github/workflows/`. This workstream relocates those and rewires them
-to invoke the standalone build, but does not redesign the packaging scripts themselves.
+to invoke the standalone build, but does not redesign the packaging scripts themselves. Workflow files under
+`.github/workflows/` are an exception: GitHub discovers them only at the repository root, so they stay there and only
+the scripts, actions, and templates they call move.
 
 The pipelines invoke `tools/ci_build/build.py --use_webgpu shared_lib` and consume artifacts from ORT's build output
 locations, so they break the moment the standalone build replaces the in-tree one. The rewiring therefore lands with
@@ -262,7 +264,7 @@ Package signing, provenance, and release controls should meet the same requireme
 ORT should consume WebGPU source using the standard mechanism used for comparable third-party source dependencies.
 The dependency inventory should compare existing ORT mechanisms before selecting the exact implementation.
 
-### Cross-repository version policy
+## Cross-repository version policy
 
 Each repository pins the other, so the pins must be arranged so that the dependency does not become circular. Only
 one lane floats, and it never blocks a merge:
@@ -381,3 +383,6 @@ The provider lives in its own repository:
 - Which copied ORT helpers need independent namespaces or API cleanup before transfer?
 - How should reduced-operator configuration be represented as an external provider input?
 - Which platforms and architectures are required for the first independent release?
+- Which ORT-standard dependency mechanism should consume the external WebGPU source for WebAssembly builds?
+- What compatibility window should the WebGPU EP promise across ORT releases?
+- May the WebGPU build-against ORT version reference a pre-release, to shorten the wait for a newly added EP API?

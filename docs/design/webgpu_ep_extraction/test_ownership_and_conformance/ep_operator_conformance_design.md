@@ -38,7 +38,7 @@ consume it as a stable release interface.
 - Support dynamically loaded and statically linked plugin EPs with the same cases and result rules.
 - Support native and browser/Wasm runners without changing case meaning.
 - Publish a versioned conformance kit associated with an ORT release.
-- Make unsupported cases, exclusions, and tolerance overrides explicit and reportable.
+- Make skipped cases and tolerance overrides explicit and reportable.
 - Allow existing `OpTester` and `ModelTester` cases to migrate incrementally.
 
 ## Non-goals
@@ -57,7 +57,7 @@ The design separates case authorship, case distribution, and execution:
 2. **Case generator** validates definitions and emits portable serialized models and datasets.
 3. **Conformance kit** packages generated cases, schemas, documentation, and a native runner for an ORT release.
 4. **Runner** registers an EP, executes selected cases, enforces fallback rules, and writes a structured report.
-5. **Provider profile** declares the EP's expected support surface, options, exclusions, and narrow comparison
+5. **Provider profile** declares the EP's expected support surface, options, skips, and narrow comparison
    overrides.
 
 The portable contract is the case format and execution/result semantics. A particular runner implementation is not
@@ -104,12 +104,11 @@ Generated `.onnx` models and large tensor datasets do not normally need to be ch
 generate them into a conformance-kit archive. A model should be checked in only when its exact serialized form is
 part of the test or generation is not reasonably deterministic.
 
-Provider repositories own their profiles, exclusions, and implementation-specific tests. For example:
+Provider repositories own their profiles and implementation-specific tests. For example:
 
 ```text
 webgpu-ep/tests/conformance/
   provider-profile.json
-  exclusions.json
 ```
 
 ## Case representation
@@ -166,7 +165,8 @@ For an ordinary operator conformance case, the runner should:
 
 1. Load or register the requested plugin EP and select a device.
 2. Apply the requested EP options.
-3. Create a session with CPU fallback disabled, unless the CPU EP is itself the target.
+3. Create a session with CPU fallback disabled through `session.disable_cpu_ep_fallback`, unless the CPU EP is
+   itself the target.
 4. Load the generated or packaged model.
 5. Require the target EP to accept the nodes specified by the case.
 6. Run every input dataset.
@@ -185,16 +185,16 @@ should be classified separately from single-operator correctness cases.
 Each selected case should produce exactly one result:
 
 - `PASS`: The target EP executed the required graph and all outputs matched.
-- `UNSUPPORTED`: The EP did not claim a case outside its declared support profile.
-- `FAIL`: Output mismatch, crash, timeout, unexpected rejection, or unexpected fallback.
-- `EXCLUDED`: A provider exclusion matched the case and supplied a documented reason.
-- `NOT_RUN`: The environment could not execute the case, such as when no compatible device was available.
+- `FAIL`: Output mismatch, or the target EP did not execute the required graph.
+- `SKIP`: The provider profile says the case is not expected to run, with a documented reason.
 
-`UNSUPPORTED` is not automatically a passing result. If the provider profile says the case is supported, rejection
-is a failure. `NOT_RUN` should make a required CI lane incomplete rather than successful.
+A skip is legitimate only when the provider profile says so. If the profile does not skip a case and the target EP
+will not run it, that is a failure.
 
-An exclusion should identify a stable case ID, a reason, and preferably a tracking issue. Broad wildcard skip lists
+A skip should identify a stable case ID, a reason, and preferably a tracking issue. Broad wildcard skip lists
 should be discouraged because they obscure coverage loss.
+
+If no compatible device is available, the run fails rather than reporting every case as skipped.
 
 ## Comparison semantics
 
@@ -218,7 +218,7 @@ may contain:
 - Device selection and EP options.
 - Supported domains, opsets, data types, and optional features.
 - Case tags to include or exclude from a particular environment.
-- Documented exclusions.
+- Documented skips, each with a reason.
 - Narrow comparison overrides.
 
 The runner uses the profile to distinguish an expected lack of support from a regression in the provider's declared
@@ -287,6 +287,11 @@ target_link_libraries(
 This executable should consume the same case archive and produce the same report as the dynamic runner. Static and
 dynamic linkage must not create separate conformance definitions.
 
+The shared runner core must therefore stay on the public API boundary. The prebuilt dynamic executable could
+technically link ORT-private test libraries, since ORT builds and distributes it as a self-contained binary, but the
+same core has to be consumable by an EP repository building the static form. Requiring private ORT headers or
+libraries there would couple that repository to ORT's source layout and private C++ ABI.
+
 ## WebAssembly and browser usage
 
 `onnxruntime-web` cannot use the native dynamic-plugin executable. A JavaScript or browser runner should load the same
@@ -294,7 +299,7 @@ portable cases, invoke the statically registered WebGPU plugin through ORT Web, 
 schema and outcome rules.
 
 Browser-specific scheduling, test sharding, and artifact loading are host concerns. They must not change the meaning
-of `PASS`, `FAIL`, `UNSUPPORTED`, `EXCLUDED`, or `NOT_RUN`.
+of `PASS`, `FAIL`, or `SKIP`.
 
 ## Report format
 
@@ -306,10 +311,10 @@ Reports should be machine-readable and include enough provenance to reproduce a 
 - Dynamic or static registration mode.
 - Device and relevant environment information.
 - Provider profile hash.
-- Per-case result, duration, and diagnostics.
+- Per-case result, skip reason, duration, and diagnostics.
 - Summary counts by result, domain, operator, opset, and data type.
 
-The report should make newly unsupported or newly excluded cases easy to detect in CI.
+The report should make newly skipped cases easy to detect in CI.
 
 ## Migration approach
 
@@ -319,7 +324,7 @@ The report should make newly unsupported or newly excluded cases easy to detect 
 - Implement a public-API-only native runner for dynamic plugin EPs.
 - Enforce CPU-fallback prevention.
 - Convert a small representative set of ONNX and contrib operators.
-- Run those cases against CPU and at least one plugin EP.
+- Run those cases against CPU to validate the cases themselves, and against at least one plugin EP.
 
 ### Phase 2: Connect existing test infrastructure
 
@@ -348,7 +353,7 @@ The report should make newly unsupported or newly excluded cases easy to detect 
 - The same case detects and fails unexpected CPU fallback.
 - Dynamic and static forms of one plugin produce equivalent results.
 - An external EP repository can run a conformance kit without an ORT source checkout.
-- Results distinguish failures, unsupported cases, exclusions, and infrastructure failures.
+- Results distinguish failures from skips and record why each case was skipped.
 - Existing provider coverage can be mapped to stable conformance case IDs without an all-at-once migration.
 
 ## Open questions
@@ -367,7 +372,9 @@ The report should make newly unsupported or newly excluded cases easy to detect 
   `GetCapability()`?
 - Should contrib-op cases ship in the default kit or a separate ORT-extension bundle?
 - Which runner artifacts should be included in each ORT package and release channel?
-- How should large datasets be deduplicated and downloaded?
+- How should tensor data shared across cases be deduplicated?
+- How should large datasets be versioned and distributed?
 - What compatibility promise applies to case, provider-profile, and report schema versions?
 - How should randomized or generated inputs remain deterministic and reproducible?
-- What is the minimum representative operator set needed before using the suite as an extraction prerequisite?
+- What is the minimum representative set of operators and data types needed before using the suite as an extraction
+  prerequisite?

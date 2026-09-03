@@ -15,6 +15,15 @@ existing coverage is accounted for and continues to run against the isolated or 
 The detailed general-purpose conformance design is in
 [Execution Provider Operator Conformance Suite](ep_operator_conformance_design.md).
 
+## Terminology
+
+| Term | Meaning |
+| --- | --- |
+| Conformance suite | The portable operator cases together with their execution and result semantics |
+| Conformance kit | The versioned artifact published with an ORT release, containing cases, schemas, and a runner |
+| Case archive | The platform-neutral conformance cases and schemas within a conformance kit |
+| Provider profile | An EP's declared support surface, options, skips, and comparison overrides, supplied when running the conformance suite |
+
 ## Desired end state
 
 - Every current WebGPU-related test has a stable owner and destination.
@@ -101,49 +110,22 @@ classification and verifies that replacement coverage is equivalent.
 The initial conformance milestone should be deliberately bounded. It needs to prove the contract required for safe
 extraction, not complete migration of ORT's operator test suite.
 
-The MVP should provide:
+[Execution Provider Operator Conformance Suite](ep_operator_conformance_design.md) owns the runner, schemas, and
+result semantics. This extraction requires that suite to deliver:
 
-- A shared conformance-runner core for case loading, execution, comparison, and reporting.
-- A prebuilt native executable that uses the core and loads dynamic plugin EP libraries.
-- A small SDK or CMake target that uses the same core and lets an external EP link its static factory registration,
-  if a native static-linkage runner is adopted.
-- CPU fallback prevention or reliable assignment verification.
-- Case, provider-profile, and report schemas.
-- Structured `PASS`, `UNSUPPORTED`, `FAIL`, `EXCLUDED`, and `NOT_RUN` results, with semantics defined in
-  [Execution Provider Operator Conformance Suite](ep_operator_conformance_design.md).
-- A representative set of ONNX and contrib cases spanning important data types, shapes, options, and failure modes.
-- Execution against CPU as a reference and WebGPU in shared and static forms.
-- A versioned artifact usable without an ORT source checkout.
-
-The representative set should be chosen from the current WebGPU support surface and include enough diversity to
-exercise capability discovery, model loading, execution, output comparison, unsupported behavior, and fallback
-detection.
-
-The dynamic and static runners should be thin registration frontends over the same runner core so that linkage mode
-does not change case interpretation or result semantics.
-
-The shared runner core must interact with ORT through released public APIs. The dynamic executable could technically
-link ORT-private test libraries because ORT builds and distributes it as a self-contained binary. The same core,
-however, must also be consumable by an external EP repository to build a statically linked runner. Requiring private
-ORT headers or libraries there would couple the external repository to ORT's source layout and private C++ ABI.
-Keeping the shared core on the public API boundary allows ORT to distribute one implementation for both frontends and
-lets an external EP build the static form against a released ORT package without an ORT source checkout.
+- A representative set of cases chosen from the current WebGPU support surface, with enough diversity to exercise
+  capability discovery, model loading, execution, output comparison, profile-declared skips, and fallback detection.
+- Execution of that set against WebGPU in both shared and static forms, checked against the expected outputs the
+  cases carry.
+- A versioned artifact the external provider repository can run without an ORT source checkout.
 
 ## Coverage continuity rules
 
 - A test may be deleted only after its replacement is blocking in the required CI lanes.
 - A moved test must protect the same behavior and platforms unless a reduction is explicitly approved.
-- An unsupported result is a failure when the provider profile declares support.
-- `NOT_RUN` does not satisfy a required lane.
-- Exclusions require stable case IDs, reasons, and preferably tracking issues.
-- Provider-wide tolerance inflation is not an acceptable migration shortcut.
 - Forking a shared ORT helper transfers the behavior it implements to the provider. Where that behavior was covered
   only incidentally by tests of another consumer, the inventory entry must record whether existing coverage follows
   the fork or new provider-side coverage is required.
-- Static and dynamic forms should share case definitions and outcome semantics.
-- For cases requiring full target-EP assignment, use the existing `session.disable_cpu_ep_fallback` session option.
-  Cases intentionally allowing partial assignment need explicit assignment requirements and may require additional
-  reporting.
 - Keep the inventory current while extraction is in progress. New WebGPU tests must be classified when added, and CI
   should detect test files or registrations missing from the inventory where practical.
 
@@ -155,7 +137,7 @@ lets an external EP build the static form against a released ORT package without
 4. **Conformance schemas and runner:** implement the public execution and reporting contract.
 5. **Representative case conversion:** convert a bounded extraction-gate set.
 6. **External CI integration:** run existing and conformance coverage against clean provider artifacts.
-7. **Coverage reporting:** detect newly unsupported, excluded, or unexecuted cases.
+7. **Coverage reporting:** detect newly skipped cases.
 
 Inventory, runner design, and provider-specific relocation can proceed concurrently. Static runner validation depends
 on the `plugin-boundary` workstream's static registration facility.
@@ -172,7 +154,7 @@ on the `plugin-boundary` workstream's static registration facility.
 
 - Supplies the test ownership map and required destinations.
 - Requires standalone provider artifacts and CI environments.
-- Moves provider profiles, exclusions, and implementation tests with the provider.
+- Moves provider profiles and implementation tests with the provider.
 
 ### Node plugin migration
 
@@ -207,8 +189,6 @@ tested behavior is an extraction blocker.
 ## Open questions
 
 - What exact current test set defines the extraction regression baseline?
-- Which operators and data types form the minimum representative conformance set?
 - What additional reporting is needed for cases that intentionally permit partial graph assignment?
 - Which browser tests can consume the same portable cases without changing semantics?
-- How should large test datasets be versioned and distributed?
 - Which test generators should remain in ORT, move, or be copied?
