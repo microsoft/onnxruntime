@@ -2255,6 +2255,12 @@ static Status CopySparseData(const std::string& name,
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> indices_data;
   const bool needs_unpack = utils::HasRawData(indices) || utils::HasExternalData(indices);
+  const auto append_indices = [&indices_values, indices_elements](auto first, auto last) {
+    indices_values.reserve(narrow<size_t>(indices_elements));
+    for (; first != last; ++first) {
+      indices_values.push_back(*first);
+    }
+  };
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (needs_unpack) {
@@ -2290,14 +2296,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int32_t));
         auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int32_span.begin(), int32_span.end());
+        append_indices(int32_span.begin(), int32_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int32 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;
@@ -2314,14 +2320,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int16_t));
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int16_span.begin(), int16_span.end());
+        append_indices(int16_span.begin(), int16_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int16 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;
@@ -2338,14 +2344,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int8_t));
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int8_span.begin(), int8_span.end());
+        append_indices(int8_span.begin(), int8_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int8 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;

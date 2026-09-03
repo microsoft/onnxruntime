@@ -747,6 +747,13 @@ Return Value:
         }
 #endif
     }
+
+    // QNBitGemm performs its own runtime feature selection.
+    this->MlasQNBitGemmIsSupportedOverride = ArmKleidiAI::MlasQNBitGemmIsSupported;
+    this->MlasQNBitGemmPackQuantBDataSizeOverride = ArmKleidiAI::MlasQNBitGemmPackQuantBDataSize;
+    this->MlasQNBitGemmPackQuantBDataOverride = ArmKleidiAI::MlasQNBitGemmPackQuantBData;
+    this->MlasQNBitGemmBatchWorkspaceSizeOverride = ArmKleidiAI::MlasQNBitGemmBatchWorkspaceSize;
+    this->MlasQNBitGemmBatchOverride = ArmKleidiAI::MlasQNBitGemmBatch;
 #endif
 
 #if defined(MLAS_USE_SVE)

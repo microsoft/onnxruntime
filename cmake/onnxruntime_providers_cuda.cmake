@@ -66,6 +66,7 @@
   )
 
   include(onnxruntime_cuda_source_filters.cmake)
+  include(onnxruntime_cuda_cccl.cmake)
   onnxruntime_filter_cuda_cu_sources(onnxruntime_cuda_contrib_ops_cu_srcs)
 
   if (NOT onnxruntime_USE_TRT_FUSED_ATTENTION)
@@ -216,44 +217,6 @@
     # FILE_NAME preprocessor definition is used in onnxruntime_providers_cuda.rc
     target_compile_definitions(onnxruntime_providers_cuda PRIVATE FILE_NAME=\"onnxruntime_providers_cuda.dll\")
   endif()
-
-  # Work around a CUDA 13.3 cudafe++ (EDG front-end) regression that mis-parses CCCL's
-  # global-qualified partial specializations, e.g. in <cub/device/device_transform.cuh>:
-  #   template <typename T>
-  #   struct ::cuda::proclaims_copyable_arguments<...> : ::cuda::std::true_type {};
-  # nvcc fails with "global qualification of class name is invalid before ':' token".
-  # The fix is to write the specialization with the namespace reopened instead of using a
-  # global-qualified name. We cannot edit the (often read-only) toolkit headers, so generate
-  # corrected copies of the affected headers into the build tree and place that directory
-  # ahead of the toolkit cccl include path. This is a no-op on toolkits whose headers do not
-  # contain the offending pattern (e.g. once NVIDIA fixes it), so it is safe to keep enabled.
-  function(ort_cuda133_patch_cccl_header src dst)
-    if (NOT EXISTS "${src}")
-      return()
-    endif()
-    file(READ "${src}" _content)
-    set(_orig "${_content}")
-    # <cub/device/device_transform.cuh>
-    string(REPLACE
-      "template <typename T>\nstruct ::cuda::proclaims_copyable_arguments<CUB_NS_QUALIFIER::detail::__return_constant<T>> : ::cuda::std::true_type\n{};"
-      "_CCCL_BEGIN_NAMESPACE_CUDA\ntemplate <typename T>\nstruct proclaims_copyable_arguments<CUB_NS_QUALIFIER::detail::__return_constant<T>> : ::cuda::std::true_type\n{};\n_CCCL_END_NAMESPACE_CUDA"
-      _content "${_content}")
-    # <cub/device/dispatch/tuning/tuning_transform.cuh>
-    string(REPLACE
-      "template <>\nstruct ::cuda::proclaims_copyable_arguments<CUB_NS_QUALIFIER::detail::transform::always_true_predicate>\n    : ::cuda::std::true_type\n{};"
-      "_CCCL_BEGIN_NAMESPACE_CUDA\ntemplate <>\nstruct proclaims_copyable_arguments<CUB_NS_QUALIFIER::detail::transform::always_true_predicate>\n    : ::cuda::std::true_type\n{};\n_CCCL_END_NAMESPACE_CUDA"
-      _content "${_content}")
-    if (NOT _content STREQUAL _orig)
-      get_filename_component(_dst_dir "${dst}" DIRECTORY)
-      file(MAKE_DIRECTORY "${_dst_dir}")
-      file(WRITE "${dst}" "${_content}")
-    elseif (EXISTS "${dst}")
-      # The toolkit header no longer matches the offending pattern (e.g. after a CUDA
-      # upgrade in an existing build tree). Remove any previously generated copy so a
-      # stale patched header does not keep shadowing the toolkit header.
-      file(REMOVE "${dst}")
-    endif()
-  endfunction()
 
   # config_cuda_provider_shared_module can be used to config onnxruntime_providers_cuda_obj, onnxruntime_providers_cuda & onnxruntime_providers_cuda_ut.
   # This function guarantees that all 3 targets have the same configurations.
@@ -422,32 +385,7 @@
     target_link_libraries(${target} PRIVATE Eigen3::Eigen)
     target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
 
-    # Handle CUDA 13.0 CCCL header directory move
-    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
-      foreach(inc_dir ${CUDAToolkit_INCLUDE_DIRS})
-        if (EXISTS "${inc_dir}/cccl")
-          if (UNIX AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.3 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.4)
-            # Generate cudafe++-parseable copies of the CCCL headers that contain global-qualified
-            # partial specializations (see ort_cuda133_patch_cccl_header above) and put the fixed
-            # directory ahead of the toolkit cccl include so the corrected headers win.
-            set(_ort_cccl_fix_dir "${CMAKE_CURRENT_BINARY_DIR}/cccl_cuda13_fix")
-            ort_cuda133_patch_cccl_header(
-              "${inc_dir}/cccl/cub/device/device_transform.cuh"
-              "${_ort_cccl_fix_dir}/cub/device/device_transform.cuh")
-            ort_cuda133_patch_cccl_header(
-              "${inc_dir}/cccl/cub/device/dispatch/tuning/tuning_transform.cuh"
-              "${_ort_cccl_fix_dir}/cub/device/dispatch/tuning/tuning_transform.cuh")
-            if (EXISTS "${_ort_cccl_fix_dir}/cub/device/device_transform.cuh" OR
-                EXISTS "${_ort_cccl_fix_dir}/cub/device/dispatch/tuning/tuning_transform.cuh")
-              target_include_directories(${target} BEFORE PRIVATE "${_ort_cccl_fix_dir}")
-            endif()
-          endif()
-
-          # Add the cccl subdirectory to the include path so <cuda/std/utility> can be found
-          target_include_directories(${target} PRIVATE "${inc_dir}/cccl")
-        endif()
-      endforeach()
-    endif()
+    ort_configure_cuda_cccl(${target})
 
     # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
     set_target_properties(${target} PROPERTIES LINKER_LANGUAGE CUDA)

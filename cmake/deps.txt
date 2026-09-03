@@ -40,17 +40,17 @@ mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.22.0.zip;2b2cd58ac7a26df5371266149e0c76776330cdf1
 # Use the latest commit of 10.9-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/d5dce67db7c2e64b07e055571f5ec06f7f254de2.zip;01114d3b67650857281fa50faa2e412130a63b69
-protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa
-protoc_win64;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-win64.zip;b4521f7ada5b260380f94c4bd7f1b7684c76969a
-protoc_win32;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-win32.zip;3688010318192c46ce73213cdfb6b3e5656da874
-protoc_linux_x64;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip;338462004aa5be9fba45b35b5b4be43f69b47a90
-protoc_linux_x86;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_32.zip;61fdbe7d6360e065ec6fea23bca2cca673115fb8
-protoc_linux_aarch64;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-aarch_64.zip;df9d45470b0b8cf939dd2f0ec6b88e9cafc4d617
-protoc_mac_universal;https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-osx-universal_binary.zip;23710c3d1c2036d8d65a6a22234372fa2d7af9ef
+protobuf;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protobuf-33.6.tar.gz;051fee744fcca04dab37eb009d49aa3e9546acda
+protoc_win64;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protoc-33.6-win64.zip;9f43a76f18e37325079f772bd47673f9d2f06385
+protoc_win32;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protoc-33.6-win32.zip;127b589423e076fe5f9724e61b2aa9e91eab3936
+protoc_linux_x64;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protoc-33.6-linux-x86_64.zip;44c6aeb3f494e4f8e46d283b05e087c47cf6369d
+protoc_linux_x86;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protoc-33.6-linux-x86_32.zip;6a4b46fa6b090ff8e64f03bdd4a865ea504fa261
+protoc_linux_aarch64;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protoc-33.6-linux-aarch_64.zip;b7ec3edf45c31fed5318f65693ce5f14c850a72f
+protoc_mac_universal;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protoc-33.6-osx-universal_binary.zip;3c2f883c5f828ae184550763ab8ae9dc642d5d97
 psimd;https://github.com/Maratyszcza/psimd/archive/072586a71b55b7f8c584153d223e95687148a900.zip;1f5454b01f06f9656b77e4a5e2e31d7422487013
 pthreadpool;https://github.com/google/pthreadpool/archive/dcc9f28589066af0dbd4555579281230abbf74dd.zip;533a77943203ef15ca608bcd9dbe2c94da7451d2
 pybind11;https://github.com/pybind/pybind11/archive/refs/tags/v3.0.2.zip;a064e663b4d7a337ac291d1bef7337ef4e60a1ae
-pytorch_cpuinfo;https://github.com/pytorch/cpuinfo/archive/4628dc060ce4e82345dc166bbac875609db4ff69.zip;e58d4b47c16a982111c897e669ae4f1821a393d7
+pytorch_cpuinfo;https://github.com/pytorch/cpuinfo/archive/66ee79c038d70dad9f08705b2c9b3e58f6d8f512.zip;6e2be17c110e4f4184b059303c722b3c5bd080a6
 re2;https://github.com/google/re2/archive/refs/tags/2024-07-02.zip;646e1728269cde7fcef990bf4a8e87b047882e88
 safeint;https://github.com/dcleblanc/SafeInt/archive/refs/tags/3.0.28.zip;23f252040ff6cb9f1fd18575b32fa8fb5928daac
 tensorboard;https://github.com/tensorflow/tensorboard/archive/373eb09e4c5d2b3cc2493f0949dc4be6b6a45e81.zip;67b833913605a4f3f499894ab11528a702c2b381
@@ -58,7 +58,8 @@ cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v4.7.0.zip;51d4f1ba4
 extensions;https://github.com/microsoft/onnxruntime-extensions/archive/c24b7bab0c12f53da76d0c31b03b9f0f8ec8f3b4.zip;239063aee4946a9af147b473a4c3da78ba7413b4
 directx_headers;https://github.com/microsoft/DirectX-Headers/archive/refs/tags/v1.613.1.zip;47653509a3371eabb156360f42faf582f314bf2e
 cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.27.0.zip;1e4c9a464d3437e388ab0163f3be068dba783c08
-dawn;https://github.com/google/dawn/archive/refs/tags/v20260817.213942.zip;a89b0c394bd078f559e2737b80a1fe49fde4ccc1
+dawn;https://github.com/google/dawn/archive/refs/tags/v20260818.211311.zip;10e42c94f70fc222ecbafebbd1cfbb5482593d59
+dawn_agility_sdk;https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.721.0-preview;fbeb58268d47626027ab670928817cbb955755db
 kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.20.0.tar.gz;6895e72b3d5cf1173358164cb3d64c9d7d33cc84
 # kleidiai-qmx is pinned to a specific commit as there are no tagged releases. When an appropriate tagged release becomes available,
 # this entry will be updated to use refs/tags/<version> instead of the raw commit hash.

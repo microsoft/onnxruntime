@@ -129,7 +129,10 @@ cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory 
 cmake_dependent_option(onnxruntime_USE_TRT_FUSED_ATTENTION "Build TensorRT fused multi-head attention cubin kernels" ON "onnxruntime_USE_CUDA" OFF)
 cmake_dependent_option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
-cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
+cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB GEMM CUDA kernels" ON "onnxruntime_USE_CUDA" OFF)
+cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM_FULL
+  "Build all FpA IntB GEMM CUDA kernel variants instead of the compact FP16 INT4/INT8 set" OFF
+  "onnxruntime_USE_CUDA;onnxruntime_USE_FPA_INTB_GEMM" OFF)
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
 option(onnxruntime_QUICK_BUILD "Speed up build by skipping some kernels for faster development" OFF)
@@ -805,6 +808,7 @@ if (onnxruntime_USE_CUDA)
     set(onnxruntime_USE_LEAN_ATTENTION OFF)
     set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
     set(onnxruntime_USE_FPA_INTB_GEMM OFF)
+    set(onnxruntime_USE_FPA_INTB_GEMM_FULL OFF)
   endif()
 
   if (WIN32)
@@ -843,8 +847,13 @@ if (onnxruntime_USE_CUDA)
     endif()
 
     if (onnxruntime_USE_FPA_INTB_GEMM)
-      message( STATUS "Enable FpA IntB Gemm for CUDA EP")
-      list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
+      if (onnxruntime_USE_FPA_INTB_GEMM_FULL)
+        message( STATUS "Enable full FpA IntB GEMM kernel set for CUDA EP")
+        list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
+      else()
+        message( STATUS "Enable compact non-Hopper FP16 INT4/INT8 FpA IntB GEMM kernel set for CUDA EP")
+        list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1 -DUSE_COMPACT_FPA_INTB_GEMM=1)
+      endif()
     endif()
 
     if (onnxruntime_QUICK_BUILD)
@@ -1531,6 +1540,26 @@ if (onnxruntime_USE_CUDA)
     file(TO_CMAKE_PATH ${onnxruntime_CUDA_HOME} CUDAToolkit_ROOT)
   endif()
   find_package(CUDAToolkit REQUIRED)
+
+  if(MSVC AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.9
+          AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.0)
+    foreach(_cuda_include_dir IN LISTS CUDAToolkit_INCLUDE_DIRS)
+      set(_clusterlaunchcontrol_header
+          "${_cuda_include_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+      if(EXISTS "${_clusterlaunchcontrol_header}")
+        # CUDA 12.9 uses Windows's 32-bit long for PTX 64-bit operands. Shadow the toolkit
+        # header with the longlong2 correction shipped by newer CCCL releases.
+        set(_cuda_12_9_fix_dir "${CMAKE_CURRENT_BINARY_DIR}/cuda_12_9_fix")
+        ort_patch_cuda_12_9_clusterlaunchcontrol_header(
+          "${_clusterlaunchcontrol_header}"
+          "${_cuda_12_9_fix_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+        if(EXISTS "${_cuda_12_9_fix_dir}/cuda/__ptx/instructions/generated/clusterlaunchcontrol.h")
+          include_directories(BEFORE "${_cuda_12_9_fix_dir}")
+        endif()
+        break()
+      endif()
+    endforeach()
+  endif()
 
   # Note: The minimum required CUDA version is greater than 11.8.
   add_definitions("-DENABLE_BF16")

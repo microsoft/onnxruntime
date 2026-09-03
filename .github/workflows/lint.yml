@@ -52,8 +52,11 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          # Use the version configured in target-version of [tool.black] section in pyproject.toml.
-          python-version: "3.10"
+          # Use a version pre-installed in the runner pool's read-only tool cache; requesting an
+          # uncached version makes setup-python fail trying to write to /opt/hostedtoolcache.
+          # This is only the interpreter lintrunner runs on. The Python syntax the linters target
+          # is set by target-version under [tool.ruff] in pyproject.toml, independently of this.
+          python-version: "3.12"
       - name: Setup Rust
         uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
         with:
@@ -110,7 +113,7 @@ jobs:
             --cmake_extra_defines CMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Generate ONNX protobuf files
         run: cmake --build build/Debug --config Debug --target onnx_proto
-      - uses: reviewdog/action-cpplint@master
+      - uses: reviewdog/action-cpplint@9552c62f4bd516c1e3a6f84eae56bd864cc304c6 # v1.11.0
         continue-on-error: true
         with:
           github_token: ${{ secrets.github_token }}

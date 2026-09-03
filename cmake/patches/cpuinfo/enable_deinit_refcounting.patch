@@ -1,0 +1,650 @@
+diff --git a/src/arm/linux/init.c b/src/arm/linux/init.c
+index 48c9f4a050412220b5c817814b643fc4850c7626..cb3170f279474ee344dd61480eab2831f2d027b9 100644
+--- a/src/arm/linux/init.c
++++ b/src/arm/linux/init.c
+@@ -1001,3 +1001,43 @@ cleanup:
+ 	free(linux_cpu_to_core_map);
+ 	free(linux_cpu_to_uarch_index_map);
+ }
++
++void cpuinfo_arm_linux_deinit(void) {
++	free(cpuinfo_processors);
++	cpuinfo_processors = NULL;
++	cpuinfo_processors_count = 0;
++
++	free(cpuinfo_cores);
++	cpuinfo_cores = NULL;
++	cpuinfo_cores_count = 0;
++
++	free(cpuinfo_clusters);
++	cpuinfo_clusters = NULL;
++	cpuinfo_clusters_count = 0;
++
++	/* cpuinfo_packages points to static storage (&package) — do not free */
++	cpuinfo_packages = NULL;
++	cpuinfo_packages_count = 0;
++
++	free(cpuinfo_uarchs);
++	cpuinfo_uarchs = NULL;
++	cpuinfo_uarchs_count = 0;
++
++	for (int lvl = 0; lvl < cpuinfo_cache_level_max; ++lvl) {
++		free(cpuinfo_cache[lvl]);
++		cpuinfo_cache[lvl] = NULL;
++		cpuinfo_cache_count[lvl] = 0;
++	}
++	cpuinfo_max_cache_size = 0;
++
++	free(cpuinfo_linux_cpu_to_processor_map);
++	cpuinfo_linux_cpu_to_processor_map = NULL;
++
++	free(cpuinfo_linux_cpu_to_core_map);
++	cpuinfo_linux_cpu_to_core_map = NULL;
++
++	free((void*)cpuinfo_linux_cpu_to_uarch_index_map);
++	cpuinfo_linux_cpu_to_uarch_index_map = NULL;
++
++	cpuinfo_linux_cpu_max = 0;
++}
+diff --git a/src/arm/mach/init.c b/src/arm/mach/init.c
+index 76224b9d40eb5cd047f1353e81b5999196d3b881..9a9fb4276c531687bf7984e2bd41152ed91e94a6 100644
+--- a/src/arm/mach/init.c
++++ b/src/arm/mach/init.c
+@@ -873,3 +873,32 @@ cleanup:
+ 	free(l2);
+ 	free(l3);
+ }
++
++void cpuinfo_arm_mach_deinit(void) {
++	free(cpuinfo_processors);
++	cpuinfo_processors = NULL;
++	cpuinfo_processors_count = 0;
++
++	free(cpuinfo_cores);
++	cpuinfo_cores = NULL;
++	cpuinfo_cores_count = 0;
++
++	free(cpuinfo_clusters);
++	cpuinfo_clusters = NULL;
++	cpuinfo_clusters_count = 0;
++
++	free(cpuinfo_packages);
++	cpuinfo_packages = NULL;
++	cpuinfo_packages_count = 0;
++
++	free(cpuinfo_uarchs);
++	cpuinfo_uarchs = NULL;
++	cpuinfo_uarchs_count = 0;
++
++	for (int lvl = 0; lvl < cpuinfo_cache_level_max; ++lvl) {
++		free(cpuinfo_cache[lvl]);
++		cpuinfo_cache[lvl] = NULL;
++		cpuinfo_cache_count[lvl] = 0;
++	}
++	cpuinfo_max_cache_size = 0;
++}
+diff --git a/src/arm/windows/init-by-logical-sys-info.c b/src/arm/windows/init-by-logical-sys-info.c
+index 815ecb770a5bc5c48c7dff049f50b111b427954a..f0d66223f0d189776659248f525200ebdcda0116 100644
+--- a/src/arm/windows/init-by-logical-sys-info.c
++++ b/src/arm/windows/init-by-logical-sys-info.c
+@@ -14,6 +14,8 @@
+ 
+ #define MAX_NR_OF_CACHES (cpuinfo_cache_level_max - 1)
+ 
++static uint32_t cache_counters[MAX_NR_OF_CACHES];
++
+ /* Call chain:
+  * cpu_info_init_by_logical_sys_info
+  * 		read_packages_for_processors
+@@ -126,6 +128,8 @@ bool cpu_info_init_by_logical_sys_info(const struct woa_chip_info* chip_info, co
+ 	uint32_t nr_of_uarchs = 0;
+ 	bool result = false;
+ 
++	memset(cache_counters, 0, sizeof(cache_counters));
++
+ 	HANDLE heap = GetProcessHeap();
+ 
+ 	/* 1. Count available logical processor groups and processors */
+@@ -372,6 +376,40 @@ clean_up:
+ 	return result;
+ }
+ 
++BOOL CALLBACK cpuinfo_arm_windows_deinit(PINIT_ONCE init_once, PVOID parameter, PVOID* context) {
++	HANDLE heap = GetProcessHeap();
++
++	HeapFree(heap, 0, cpuinfo_processors);
++	cpuinfo_processors = NULL;
++	cpuinfo_processors_count = 0;
++
++	HeapFree(heap, 0, cpuinfo_packages);
++	cpuinfo_packages = NULL;
++	cpuinfo_packages_count = 0;
++
++	HeapFree(heap, 0, cpuinfo_clusters);
++	cpuinfo_clusters = NULL;
++	cpuinfo_clusters_count = 0;
++
++	HeapFree(heap, 0, cpuinfo_cores);
++	cpuinfo_cores = NULL;
++	cpuinfo_cores_count = 0;
++
++	HeapFree(heap, 0, cpuinfo_uarchs);
++	cpuinfo_uarchs = NULL;
++	cpuinfo_uarchs_count = 0;
++
++	/* Caches are allocated as a single contiguous block starting at l1i */
++	HeapFree(heap, 0, cpuinfo_cache[cpuinfo_cache_level_1i]);
++	for (int lvl = 0; lvl < cpuinfo_cache_level_max; ++lvl) {
++		cpuinfo_cache[lvl] = NULL;
++		cpuinfo_cache_count[lvl] = 0;
++	}
++	cpuinfo_max_cache_size = 0;
++
++	return TRUE;
++}
++
+ static uint32_t count_logical_processors(const uint32_t max_group_count, uint32_t* global_proc_index_per_group) {
+ 	uint32_t nr_of_processors = 0;
+ 
+@@ -606,11 +644,6 @@ static bool parse_relation_cache_info(
+ 	uint32_t* numbers_of_caches,
+ 	const uint32_t* global_proc_index_per_group,
+ 	PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX info) {
+-	static uint32_t l1i_counter = 0;
+-	static uint32_t l1d_counter = 0;
+-	static uint32_t l2_counter = 0;
+-	static uint32_t l3_counter = 0;
+-
+ 	/* Count cache types for allocation at first. */
+ 	if (caches == NULL) {
+ 		switch (info->Cache.Level) {
+@@ -665,12 +698,12 @@ static bool parse_relation_cache_info(
+ 		case 1:
+ 			switch (info->Cache.Type) {
+ 				case CacheInstruction:
+-					current_cache = l1i_base + l1i_counter;
+-					l1i_counter++;
++					current_cache = l1i_base + cache_counters[cpuinfo_cache_level_1i];
++					cache_counters[cpuinfo_cache_level_1i]++;
+ 					break;
+ 				case CacheData:
+-					current_cache = l1d_base + l1d_counter;
+-					l1d_counter++;
++					current_cache = l1d_base + cache_counters[cpuinfo_cache_level_1d];
++					cache_counters[cpuinfo_cache_level_1d]++;
+ 					break;
+ 				case CacheUnified:
+ 					break;
+@@ -681,12 +714,12 @@ static bool parse_relation_cache_info(
+ 			}
+ 			break;
+ 		case 2:
+-			current_cache = l2_base + l2_counter;
+-			l2_counter++;
++			current_cache = l2_base + cache_counters[cpuinfo_cache_level_2];
++			cache_counters[cpuinfo_cache_level_2]++;
+ 			break;
+ 		case 3:
+-			current_cache = l3_base + l3_counter;
+-			l3_counter++;
++			current_cache = l3_base + cache_counters[cpuinfo_cache_level_3];
++			cache_counters[cpuinfo_cache_level_3]++;
+ 			break;
+ 	}
+ 	current_cache->size = info->Cache.CacheSize;
+diff --git a/src/arm/windows/init.c b/src/arm/windows/init.c
+index 528ae3279f5e979409ac07de6cee833691e034cd..fcf219df153419249211be4fdf014f50fc5198da 100644
+--- a/src/arm/windows/init.c
++++ b/src/arm/windows/init.c
+@@ -25,12 +25,18 @@ BOOL CALLBACK cpuinfo_arm_windows_init(PINIT_ONCE init_once, PVOID parameter, PV
+ 	set_cpuinfo_isa_fields();
+ 
+ 	chip_info = get_system_info_from_registry();
++	const bool chip_info_from_registry = chip_info != NULL;
+ 	if (chip_info == NULL) {
+ 		chip_info = &woa_chip_unknown;
+ 	}
+ 
+ 	cpuinfo_is_initialized = cpu_info_init_by_logical_sys_info(chip_info, chip_info->uarchs[0].vendor);
+ 
++	if (chip_info_from_registry) {
++		HeapFree(GetProcessHeap(), 0, chip_info->chip_name_string);
++		HeapFree(GetProcessHeap(), 0, chip_info);
++	}
++
+ 	return true;
+ }
+ 
+@@ -177,6 +183,7 @@ static struct woa_chip_info* get_system_info_from_registry(void) {
+ 	uint64_t midr_qword = (uint32_t)read_registry_qword(cpu0_subkey, chip_midr_value);
+ 	if (midr_qword == 0) {
+ 		cpuinfo_log_error("Registry read error for MIDR value");
++		HeapFree(GetProcessHeap(), 0, text_buffer);
+ 		return NULL;
+ 	}
+ 	// MIDR is only 32 bits, so we need to cast it to uint32_t
+@@ -187,6 +194,7 @@ static struct woa_chip_info* get_system_info_from_registry(void) {
+ 	uint64_t frequency_mhz = read_registry_dword(cpu0_subkey, chip_mhz_value);
+ 	if (frequency_mhz == 0) {
+ 		cpuinfo_log_error("Registry read error for frequency value");
++		HeapFree(GetProcessHeap(), 0, text_buffer);
+ 		return NULL;
+ 	}
+ 	// Convert MHz to Hz
+@@ -196,11 +204,13 @@ static struct woa_chip_info* get_system_info_from_registry(void) {
+ 	chip_info = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(struct woa_chip_info));
+ 	if (chip_info == NULL) {
+ 		cpuinfo_log_error("Heap allocation error for chip_info");
++		HeapFree(GetProcessHeap(), 0, text_buffer);
+ 		return NULL;
+ 	}
+ 
+ 	// set chip_info fields
+ 	chip_info->chip_name_string = wcsndup(text_buffer, CPUINFO_PACKAGE_NAME_MAX - 1);
++	HeapFree(GetProcessHeap(), 0, text_buffer);
+ 	chip_info->uarchs[0] = get_core_info_from_midr(midr_value, frequency_hz);
+ 
+ 	cpuinfo_log_debug("detected chip model name: %ls", chip_info->chip_name_string);
+diff --git a/src/cpuinfo/internal-api.h b/src/cpuinfo/internal-api.h
+index d84b26a89cfc38e726216688e490f50799f31455..9c1588872da413535f2fb68fb96d6106b420ac49 100644
+--- a/src/cpuinfo/internal-api.h
++++ b/src/cpuinfo/internal-api.h
+@@ -45,6 +45,9 @@ extern CPUINFO_INTERNAL struct cpuinfo_uarch_info cpuinfo_global_uarch;
+ extern CPUINFO_INTERNAL uint32_t cpuinfo_linux_cpu_max;
+ extern CPUINFO_INTERNAL const struct cpuinfo_processor** cpuinfo_linux_cpu_to_processor_map;
+ extern CPUINFO_INTERNAL const struct cpuinfo_core** cpuinfo_linux_cpu_to_core_map;
++#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64 || CPUINFO_ARCH_RISCV32 || CPUINFO_ARCH_RISCV64
++extern CPUINFO_INTERNAL const uint32_t* cpuinfo_linux_cpu_to_uarch_index_map;
++#endif
+ #endif
+ 
+ CPUINFO_PRIVATE void cpuinfo_x86_mach_init(void);
+@@ -62,6 +65,23 @@ CPUINFO_PRIVATE void cpuinfo_arm_linux_init(void);
+ CPUINFO_PRIVATE void cpuinfo_riscv_linux_init(void);
+ CPUINFO_PRIVATE void cpuinfo_emscripten_init(void);
+ 
++/* Platform-specific deinitialization functions.
++ * Each frees the globals allocated by its corresponding init function. */
++CPUINFO_PRIVATE void cpuinfo_x86_mach_deinit(void);
++CPUINFO_PRIVATE void cpuinfo_x86_linux_deinit(void);
++CPUINFO_PRIVATE void cpuinfo_x86_freebsd_deinit(void);
++#if defined(_WIN32) || defined(__CYGWIN__)
++#if CPUINFO_ARCH_ARM64
++CPUINFO_PRIVATE BOOL CALLBACK cpuinfo_arm_windows_deinit(PINIT_ONCE init_once, PVOID parameter, PVOID* context);
++#else
++CPUINFO_PRIVATE BOOL CALLBACK cpuinfo_x86_windows_deinit(PINIT_ONCE init_once, PVOID parameter, PVOID* context);
++#endif
++#endif
++CPUINFO_PRIVATE void cpuinfo_arm_mach_deinit(void);
++CPUINFO_PRIVATE void cpuinfo_arm_linux_deinit(void);
++CPUINFO_PRIVATE void cpuinfo_riscv_linux_deinit(void);
++CPUINFO_PRIVATE void cpuinfo_emscripten_deinit(void);
++
+ CPUINFO_PRIVATE uint32_t cpuinfo_compute_max_cache_size(const struct cpuinfo_processor* processor);
+ 
+ typedef void (*cpuinfo_processor_callback)(uint32_t);
+diff --git a/src/emscripten/init.c b/src/emscripten/init.c
+index c2393243755816fb341f892b7b092a58891603c4..6c8210f2c23ddc0f0efde954d80fcf974aba74fb 100644
+--- a/src/emscripten/init.c
++++ b/src/emscripten/init.c
+@@ -286,3 +286,35 @@ cleanup:
+ 	free(l1d);
+ 	free(l2);
+ }
++
++void cpuinfo_emscripten_deinit(void) {
++	free(cpuinfo_processors);
++	cpuinfo_processors = NULL;
++	cpuinfo_processors_count = 0;
++
++	free(cpuinfo_cores);
++	cpuinfo_cores = NULL;
++	cpuinfo_cores_count = 0;
++
++	free(cpuinfo_clusters);
++	cpuinfo_clusters = NULL;
++	cpuinfo_clusters_count = 0;
++
++	/* cpuinfo_packages points to static storage (&static_package) — do not free */
++	cpuinfo_packages = NULL;
++	cpuinfo_packages_count = 0;
++
++	/* L1i, L1d, L2 are dynamically allocated; L3 may point to static
++	 * storage (&static_x86_l3) so only free levels that were calloc'd */
++	free(cpuinfo_cache[cpuinfo_cache_level_1i]);
++	free(cpuinfo_cache[cpuinfo_cache_level_1d]);
++	free(cpuinfo_cache[cpuinfo_cache_level_2]);
++	/* cpuinfo_cache[cpuinfo_cache_level_3] may be &static_x86_l3 — do not free */
++	for (int lvl = 0; lvl < cpuinfo_cache_level_max; ++lvl) {
++		cpuinfo_cache[lvl] = NULL;
++		cpuinfo_cache_count[lvl] = 0;
++	}
++	cpuinfo_max_cache_size = 0;
++
++	cpuinfo_global_uarch = (struct cpuinfo_uarch_info){0};
++}
+diff --git a/src/init.c b/src/init.c
+index 81d5721c446f363cefcbb39d52507a2c07298c35..e3cd9217a9acfc9615f97a1aa6bb66d96f373910 100644
+--- a/src/init.c
++++ b/src/init.c
+@@ -13,55 +13,98 @@
+ #endif
+ 
+ #if defined(_WIN32) || defined(__CYGWIN__)
+-static INIT_ONCE init_guard = INIT_ONCE_STATIC_INIT;
++static SRWLOCK cpuinfo_lifecycle_lock = SRWLOCK_INIT;
++#define CPUINFO_LIFECYCLE_LOCK() AcquireSRWLockExclusive(&cpuinfo_lifecycle_lock)
++#define CPUINFO_LIFECYCLE_UNLOCK() ReleaseSRWLockExclusive(&cpuinfo_lifecycle_lock)
+ #elif !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
+-static pthread_once_t init_guard = PTHREAD_ONCE_INIT;
++static pthread_mutex_t cpuinfo_lifecycle_lock = PTHREAD_MUTEX_INITIALIZER;
++#define CPUINFO_LIFECYCLE_LOCK() pthread_mutex_lock(&cpuinfo_lifecycle_lock)
++#define CPUINFO_LIFECYCLE_UNLOCK() pthread_mutex_unlock(&cpuinfo_lifecycle_lock)
+ #else
+-static bool init_guard = false;
++/* Single-threaded build (e.g. Emscripten without pthreads): no lock needed. */
++#define CPUINFO_LIFECYCLE_LOCK() \
++	do {                     \
++	} while (0)
++#define CPUINFO_LIFECYCLE_UNLOCK() \
++	do {                       \
++	} while (0)
+ #endif
++static unsigned int cpuinfo_init_refcount = 0;
+ 
+ bool CPUINFO_ABI cpuinfo_initialize(void) {
++	CPUINFO_LIFECYCLE_LOCK();
++	if (cpuinfo_init_refcount == 0) {
+ #if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
+ #if defined(__MACH__) && defined(__APPLE__)
+-	pthread_once(&init_guard, &cpuinfo_x86_mach_init);
++		cpuinfo_x86_mach_init();
+ #elif defined(__FreeBSD__)
+-	pthread_once(&init_guard, &cpuinfo_x86_freebsd_init);
++		cpuinfo_x86_freebsd_init();
+ #elif defined(__linux__)
+-	pthread_once(&init_guard, &cpuinfo_x86_linux_init);
++		cpuinfo_x86_linux_init();
+ #elif defined(_WIN32) || defined(__CYGWIN__)
+-	InitOnceExecuteOnce(&init_guard, &cpuinfo_x86_windows_init, NULL, NULL);
++		cpuinfo_x86_windows_init(NULL, NULL, NULL);
+ #else
+-	cpuinfo_log_error("operating system is not supported in cpuinfo");
++		cpuinfo_log_error("operating system is not supported in cpuinfo");
+ #endif
+ #elif CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
+ #if defined(__linux__)
+-	pthread_once(&init_guard, &cpuinfo_arm_linux_init);
++		cpuinfo_arm_linux_init();
+ #elif defined(__MACH__) && defined(__APPLE__)
+-	pthread_once(&init_guard, &cpuinfo_arm_mach_init);
++		cpuinfo_arm_mach_init();
+ #elif defined(_WIN32)
+-	InitOnceExecuteOnce(&init_guard, &cpuinfo_arm_windows_init, NULL, NULL);
++		cpuinfo_arm_windows_init(NULL, NULL, NULL);
+ #else
+-	cpuinfo_log_error("operating system is not supported in cpuinfo");
++		cpuinfo_log_error("operating system is not supported in cpuinfo");
+ #endif
+ #elif CPUINFO_ARCH_RISCV32 || CPUINFO_ARCH_RISCV64
+ #if defined(__linux__)
+-	pthread_once(&init_guard, &cpuinfo_riscv_linux_init);
++		cpuinfo_riscv_linux_init();
+ #else
+-	cpuinfo_log_error("operating system is not supported in cpuinfo");
++		cpuinfo_log_error("operating system is not supported in cpuinfo");
+ #endif
+ #elif CPUINFO_ARCH_ASMJS || CPUINFO_ARCH_WASM || CPUINFO_ARCH_WASMSIMD
+-#if defined(__EMSCRIPTEN_PTHREADS__)
+-	pthread_once(&init_guard, &cpuinfo_emscripten_init);
+-#else
+-	if (!init_guard) {
+ 		cpuinfo_emscripten_init();
+-	}
+-	init_guard = true;
+-#endif
+ #else
+-	cpuinfo_log_error("processor architecture is not supported in cpuinfo");
++		cpuinfo_log_error("processor architecture is not supported in cpuinfo");
+ #endif
+-	return cpuinfo_is_initialized;
++	}
++	if (cpuinfo_is_initialized) {
++		cpuinfo_init_refcount++;
++	}
++	const bool initialized = cpuinfo_is_initialized;
++	CPUINFO_LIFECYCLE_UNLOCK();
++	return initialized;
+ }
+ 
+-void CPUINFO_ABI cpuinfo_deinitialize(void) {}
++void CPUINFO_ABI cpuinfo_deinitialize(void) {
++	CPUINFO_LIFECYCLE_LOCK();
++	if (cpuinfo_init_refcount != 0 && --cpuinfo_init_refcount == 0) {
++		cpuinfo_is_initialized = false;
++#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
++#if defined(__MACH__) && defined(__APPLE__)
++		cpuinfo_x86_mach_deinit();
++#elif defined(__FreeBSD__)
++		cpuinfo_x86_freebsd_deinit();
++#elif defined(__linux__)
++		cpuinfo_x86_linux_deinit();
++#elif defined(_WIN32) || defined(__CYGWIN__)
++		cpuinfo_x86_windows_deinit(NULL, NULL, NULL);
++#endif
++#elif CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
++#if defined(__linux__)
++		cpuinfo_arm_linux_deinit();
++#elif defined(__MACH__) && defined(__APPLE__)
++		cpuinfo_arm_mach_deinit();
++#elif defined(_WIN32)
++		cpuinfo_arm_windows_deinit(NULL, NULL, NULL);
++#endif
++#elif CPUINFO_ARCH_RISCV32 || CPUINFO_ARCH_RISCV64
++#if defined(__linux__)
++		cpuinfo_riscv_linux_deinit();
++#endif
++#elif CPUINFO_ARCH_ASMJS || CPUINFO_ARCH_WASM || CPUINFO_ARCH_WASMSIMD
++		cpuinfo_emscripten_deinit();
++#endif
++	}
++	CPUINFO_LIFECYCLE_UNLOCK();
++}
+diff --git a/src/riscv/linux/init.c b/src/riscv/linux/init.c
+index 45168c7e66b80e7f8a712a6afe7bab379a07b95b..3da8c3ffd59f02bebb0193b832d67ddf0841cab3 100644
+--- a/src/riscv/linux/init.c
++++ b/src/riscv/linux/init.c
+@@ -618,3 +618,36 @@ cleanup:
+ 	free(linux_cpu_to_core_map);
+ 	free(linux_cpu_to_uarch_index_map);
+ }
++
++void cpuinfo_riscv_linux_deinit(void) {
++	free(cpuinfo_processors);
++	cpuinfo_processors = NULL;
++	cpuinfo_processors_count = 0;
++
++	free(cpuinfo_cores);
++	cpuinfo_cores = NULL;
++	cpuinfo_cores_count = 0;
++
++	free(cpuinfo_clusters);
++	cpuinfo_clusters = NULL;
++	cpuinfo_clusters_count = 0;
++
++	free(cpuinfo_packages);
++	cpuinfo_packages = NULL;
++	cpuinfo_packages_count = 0;
++
++	free(cpuinfo_uarchs);
++	cpuinfo_uarchs = NULL;
++	cpuinfo_uarchs_count = 0;
++
++	free(cpuinfo_linux_cpu_to_processor_map);
++	cpuinfo_linux_cpu_to_processor_map = NULL;
++
++	free(cpuinfo_linux_cpu_to_core_map);
++	cpuinfo_linux_cpu_to_core_map = NULL;
++
++	free((void*)cpuinfo_linux_cpu_to_uarch_index_map);
++	cpuinfo_linux_cpu_to_uarch_index_map = NULL;
++
++	cpuinfo_linux_cpu_max = 0;
++}
+diff --git a/src/x86/freebsd/init.c b/src/x86/freebsd/init.c
+index 797fa24b95a55e0503459dd2fdaf8476f060a631..ba30a5d9c89c209115f6797d9b52263c7271e17f 100644
+--- a/src/x86/freebsd/init.c
++++ b/src/x86/freebsd/init.c
+@@ -396,3 +396,30 @@ cleanup:
+ 	free(l3);
+ 	free(l4);
+ }
++
++void cpuinfo_x86_freebsd_deinit(void) {
++	free(cpuinfo_processors);
++	cpuinfo_processors = NULL;
++	cpuinfo_processors_count = 0;
++
++	free(cpuinfo_cores);
++	cpuinfo_cores = NULL;
++	cpuinfo_cores_count = 0;
++
++	free(cpuinfo_clusters);
++	cpuinfo_clusters = NULL;
++	cpuinfo_clusters_count = 0;
++
++	free(cpuinfo_packages);
++	cpuinfo_packages = NULL;
++	cpuinfo_packages_count = 0;
++
++	for (int lvl = 0; lvl < cpuinfo_cache_level_max; ++lvl) {
++		free(cpuinfo_cache[lvl]);
++		cpuinfo_cache[lvl] = NULL;
++		cpuinfo_cache_count[lvl] = 0;
++	}
++	cpuinfo_max_cache_size = 0;
++
++	cpuinfo_global_uarch = (struct cpuinfo_uarch_info){0};
++}
+diff --git a/src/x86/linux/init.c b/src/x86/linux/init.c
+index d2b2d47514c8cc75b502c78b1d1176ae49fe3304..62e1187e0631b791c378d23963d63e10095a12be 100644
+--- a/src/x86/linux/init.c
++++ b/src/x86/linux/init.c
+@@ -676,3 +676,38 @@ cleanup:
+ 	free(linux_cpu_to_processor_map);
+ 	free(linux_cpu_to_core_map);
+ }
++
++void cpuinfo_x86_linux_deinit(void) {
++	free(cpuinfo_processors);
++	cpuinfo_processors = NULL;
++	cpuinfo_processors_count = 0;
++
++	free(cpuinfo_cores);
++	cpuinfo_cores = NULL;
++	cpuinfo_cores_count = 0;
++
++	free(cpuinfo_clusters);
++	cpuinfo_clusters = NULL;
++	cpuinfo_clusters_count = 0;
++
++	free(cpuinfo_packages);
++	cpuinfo_packages = NULL;
++	cpuinfo_packages_count = 0;
++
++	for (int lvl = 0; lvl < cpuinfo_cache_level_max; ++lvl) {
++		free(cpuinfo_cache[lvl]);
++		cpuinfo_cache[lvl] = NULL;
++		cpuinfo_cache_count[lvl] = 0;
++	}
++	cpuinfo_max_cache_size = 0;
++
++	free(cpuinfo_linux_cpu_to_processor_map);
++	cpuinfo_linux_cpu_to_processor_map = NULL;
++
++	free(cpuinfo_linux_cpu_to_core_map);
++	cpuinfo_linux_cpu_to_core_map = NULL;
++
++	cpuinfo_linux_cpu_max = 0;
++
++	cpuinfo_global_uarch = (struct cpuinfo_uarch_info){0};
++}
+diff --git a/src/x86/mach/init.c b/src/x86/mach/init.c
+index b8ea6047ac043fc067190013e719188b50aca3f5..9009e830ab4ac15610af72e700266b800d88e0fc 100644
+--- a/src/x86/mach/init.c
++++ b/src/x86/mach/init.c
+@@ -378,3 +378,30 @@ cleanup:
+ 	free(l3);
+ 	free(l4);
+ }
++
++void cpuinfo_x86_mach_deinit(void) {
++	free(cpuinfo_processors);
++	cpuinfo_processors = NULL;
++	cpuinfo_processors_count = 0;
++
++	free(cpuinfo_cores);
++	cpuinfo_cores = NULL;
++	cpuinfo_cores_count = 0;
++
++	free(cpuinfo_clusters);
++	cpuinfo_clusters = NULL;
++	cpuinfo_clusters_count = 0;
++
++	free(cpuinfo_packages);
++	cpuinfo_packages = NULL;
++	cpuinfo_packages_count = 0;
++
++	for (int lvl = 0; lvl < cpuinfo_cache_level_max; ++lvl) {
++		free(cpuinfo_cache[lvl]);
++		cpuinfo_cache[lvl] = NULL;
++		cpuinfo_cache_count[lvl] = 0;
++	}
++	cpuinfo_max_cache_size = 0;
++
++	cpuinfo_global_uarch = (struct cpuinfo_uarch_info){0};
++}
+diff --git a/src/x86/windows/init.c b/src/x86/windows/init.c
+index 7380bb46d5f2ee96e98b77fd378be9d70de813ee..f1401beb60de989503402be98fdbac4c20909c1b 100644
+--- a/src/x86/windows/init.c
++++ b/src/x86/windows/init.c
+@@ -665,5 +665,39 @@ cleanup:
+ 	if (l4 != NULL) {
+ 		HeapFree(heap, 0, l4);
+ 	}
++	if (processor_infos != NULL) {
++		HeapFree(heap, 0, processor_infos);
++	}
++	return TRUE;
++}
++
++BOOL CALLBACK cpuinfo_x86_windows_deinit(PINIT_ONCE init_once, PVOID parameter, PVOID* context) {
++	HANDLE heap = GetProcessHeap();
++
++	HeapFree(heap, 0, cpuinfo_processors);
++	cpuinfo_processors = NULL;
++	cpuinfo_processors_count = 0;
++
++	HeapFree(heap, 0, cpuinfo_cores);
++	cpuinfo_cores = NULL;
++	cpuinfo_cores_count = 0;
++
++	HeapFree(heap, 0, cpuinfo_clusters);
++	cpuinfo_clusters = NULL;
++	cpuinfo_clusters_count = 0;
++
++	HeapFree(heap, 0, cpuinfo_packages);
++	cpuinfo_packages = NULL;
++	cpuinfo_packages_count = 0;
++
++	for (int lvl = 0; lvl < cpuinfo_cache_level_max; ++lvl) {
++		HeapFree(heap, 0, cpuinfo_cache[lvl]);
++		cpuinfo_cache[lvl] = NULL;
++		cpuinfo_cache_count[lvl] = 0;
++	}
++	cpuinfo_max_cache_size = 0;
++
++	cpuinfo_global_uarch = (struct cpuinfo_uarch_info){0};
++
+ 	return TRUE;
+ }

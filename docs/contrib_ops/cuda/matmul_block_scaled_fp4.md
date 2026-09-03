@@ -182,9 +182,19 @@ product needs at most 6, inside FP16's 11 and BF16's 8; the range is safe too
 `KSplit` warps per block take a strided share of the K windows and reduce through
 shared memory. Without it, 16 columns per warp yields 16x fewer warps than the
 scalar path and the small MLP shapes lose more to idle SMs than they gain. The
-launcher picks `ColTiles = 4, KSplit = 2` when the column grid alone still covers
-a wave of SMs, and otherwise `ColTiles = 1` with as many `KSplit` warps as there
-are K windows.
+launcher targets four waves of SMs before using one-column blocks, and uses eight
+waves for four-column blocks when the reduction is long (`K / 128 >= 64`):
+
+| Grid condition | Reduction | Configuration |
+|---|---|---|
+| four-column grid covers four waves | ordinary or wide enough long reduction | `ColTiles = 4, KSplit = min(2, K / 128)` |
+| four-column grid does not cover four waves, but one-column grid does | `K / 128 < 64` | `ColTiles = 1, KSplit = min(2, K / 128)` |
+| four-column grid does not cover eight waves, but one-column grid covers four waves | `K / 128 >= 64` | `ColTiles = 1, KSplit = 8` |
+| one-column grid does not cover four waves | any | `ColTiles = 1`, up to 16 K-split warps |
+
+The extra grid-wave requirement avoids collapsing a medium-wide GEMV into too
+few blocks. On H200, this keeps the Qwen3.8 MTP `N=17408,K=5120` shape at
+`KSplit=2,ColTiles=1`, while the long `K=8192` sibling uses `KSplit=8`.
 
 Measured on H200 (132 SMs, `M = 4`, FP16), scalar -> tensor core:
 
@@ -306,6 +316,9 @@ GEMM and the original scale tensor for the other paths.
 | `ORT_MATMUL_BLOCK_SCALED_FP4_NATIVE_SM120` | `0` | Enables the opt-in native SM120 NVFP4 x NVFP4 GEMM path when the shape and device guards pass. |
 | `ORT_FP4_GEMV_MMA` | `1` | Set to `0` to disable the decode GEMV tensor-core sub-path (`mma.m16n8k16`, SM80+, `K % 128 == 0`) and use the scalar warp-reduction path. |
 | `ORT_FP4_GEMV_ROW_TILING` | `1` | Set to `0` to force `RowsPerBlock == 1` in the scalar decode GEMV. |
+| `ORT_FP4_GEMV_KSPLIT` | `0` | Benchmark override for the tensor-core GEMV K-split value (`1, 2, 4, 8, or 16`). |
+| `ORT_FP4_GEMV_COL_TILES` | `0` | Benchmark override for tensor-core GEMV column tiles (`1` or `4`). |
+| `ORT_FP4_GEMV_MATCH_N` / `ORT_FP4_GEMV_MATCH_K` | `0` | Restrict the two benchmark overrides to one `N`/`K` shape; zero means any shape. |
 
 The default remains the existing weight-only semantics: decode GEMV for small
 `M`, otherwise dequantize `B` and call cuBLAS.

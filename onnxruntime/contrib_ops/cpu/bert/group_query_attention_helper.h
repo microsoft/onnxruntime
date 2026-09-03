@@ -452,7 +452,8 @@ template <typename T = Tensor>
 Status CheckCustomAttentionInputs(const T* position_ids,
                                   const T* attention_bias,
                                   const T* head_sink,
-                                  const GroupQueryAttentionParameters& parameters) {
+                                  const GroupQueryAttentionParameters& parameters,
+                                  bool support_windowed_attention_bias = false) {
   if (position_ids != nullptr) {
     const auto& pos_ids_shape = position_ids->Shape();
     if (pos_ids_shape[0] != parameters.batch_size) {
@@ -467,7 +468,7 @@ Status CheckCustomAttentionInputs(const T* position_ids,
   }
 
   if (attention_bias != nullptr) {
-    if (parameters.is_windowed_kv_cache) {
+    if (parameters.is_windowed_kv_cache && !support_windowed_attention_bias) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "attention_bias with sliding_window_cache is not implemented in GroupQueryAttention.");
     }

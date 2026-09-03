@@ -416,6 +416,8 @@ PagedAttention::PagedAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("is_causal", 1) == 1,
+              "PagedAttention (WebGPU): is_causal=0 is not supported yet.");
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   has_explicit_scale_ = info.GetAttr<float>("scale", &scale_).IsOK();
