@@ -145,6 +145,25 @@ class OpenVINOEpPluginFactory : public OrtEpFactory, public ApiPtrs {
     return ApiEntry([&]() { return factory->GetSupportedDevices(devices, num_devices, ep_devices, max_ep_devices, p_num_ep_devices); });
   }
 
+  // The provider bridge creates the EP through Provider::CreateIExecutionProvider. On the plugin path, ORT calls
+  // CreateEp without a null check, so this factory provides a callback that returns an error.
+  // ReleaseEp is unused because CreateEp never creates an OrtEp.
+  static OrtStatus* ORT_API_CALL CreateEpImpl(OrtEpFactory* this_ptr,
+                                              const OrtHardwareDevice* const* /*devices*/,
+                                              const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                              size_t /*num_devices*/,
+                                              const OrtSessionOptions* /*session_options*/,
+                                              const OrtLogger* /*logger*/,
+                                              OrtEp** /*ep*/) noexcept {
+    auto* factory = static_cast<OpenVINOEpPluginFactory*>(this_ptr);
+    return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                         "OpenVINO EP factory does not support this method.");
+  }
+
+  static void ORT_API_CALL ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) noexcept {
+    // no-op as we never create an OrtEp here.
+  }
+
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
                                                      const OrtMemoryInfo* /*memory_info*/,
                                                      const OrtKeyValuePairs* /*allocator_options*/,
