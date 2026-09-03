@@ -732,8 +732,8 @@ Status Attention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) 
 
   // Compute Q, K, V from input, weights, and bias (returns BSD format)
   ORT_RETURN_IF_ERROR(PrepareQKV(context, parameters, input, weights, bias,
-                                &Q_bsd, &K_bsd, &V_bsd,
-                                matmul_compute_cache_, weights_are_constant_));
+                                 &Q_bsd, &K_bsd, &V_bsd,
+                                 matmul_compute_cache_, weights_are_constant_));
   parameters.qkv_format_ = Q_K_V_BSNH;
 
   // Check if we can use flash attention
