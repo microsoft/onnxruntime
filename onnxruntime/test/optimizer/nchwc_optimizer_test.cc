@@ -374,6 +374,8 @@ TEST(NchwcOptimizerTests, ConvNchwcHardSigmoidNotHardSwish) {
       EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
       EXPECT_EQ(op_to_count["HardSigmoid"], 0);  // fused as HardSigmoid activation
     };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
   }
 
   // Keep the ragged filter sets test as well.
@@ -403,15 +405,18 @@ TEST(NchwcOptimizerTests, ConvNchwcHardSigmoidNotHardSwish) {
         EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
       };
 
-      // Run a few channel sizes that produce ragged sets for typical block sizes.
       NchwcOptimizerTester(build_test_case, check_nchwc_graph);
     };
 
+    // Ragged (non-multiple) channel counts.
     test_case(103, 3);
     test_case(173, 3);
-  }
 
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+    // Both the general and the pointwise algorithms share this filter set logic.
+    for (int64_t output_channels : {48, 80, 96, 112}) {
+      test_case(output_channels, 3);
+      test_case(output_channels, 1);
+    }
   }
 
   // Sub-case 2: Mul(x, HardSigmoid(x)) diamond but with mismatched alpha (0.2,
@@ -444,17 +449,6 @@ TEST(NchwcOptimizerTests, ConvNchwcHardSigmoidNotHardSwish) {
     };
 
     NchwcOptimizerTester(build_test_case, check_nchwc_graph);
-=======
-    };
-
-    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
-  };
-
-  // Both the general and the pointwise algorithms share this filter set logic.
-  for (int64_t output_channels : {48, 80, 96, 112}) {
-    test_case(output_channels, 3);
-    test_case(output_channels, 1);
->>>>>>> 6b1b9f3699 (Add unit tests for the chained-Slice fusion and ragged filter sets)
   }
 }
 

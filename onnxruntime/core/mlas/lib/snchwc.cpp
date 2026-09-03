@@ -860,6 +860,12 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
     void PrepareWorkWeighted(ptrdiff_t Index)
     {
+        // Balanced sets are all equal size, so the uniform partitioner is exact.
+        if (BalancedFilterSets) {
+            PrepareWork(Index);
+            return;
+        }
+
         const size_t TotalBlockedFilters = OutputChannels / BlockSize;
         const size_t LastSetFilterCount =
             TotalBlockedFilters - (FilterSetCount - 1) * FilterSetSize;
