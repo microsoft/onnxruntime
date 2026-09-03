@@ -403,6 +403,16 @@ std::vector<float> WindowedValueRows(int first_position, int count) {
   return rows;
 }
 
+// Keys encode their absolute position too, negated so that a key/value mix-up is visible. Queries
+// are zero, so the key contents do not affect the attention scores and the outputs stay uniform.
+std::vector<float> WindowedKeyRows(int first_position, int count) {
+  std::vector<float> rows = WindowedValueRows(first_position, count);
+  for (float& element : rows) {
+    element = -element;
+  }
+  return rows;
+}
+
 struct WindowedCacheState {
   std::vector<float> key;
   std::vector<float> value;
@@ -410,8 +420,9 @@ struct WindowedCacheState {
 };
 
 // Runs one GroupQueryAttention step against a windowed cache of `capacity` positions and returns
-// the present buffers. Queries and keys are zero, so attention is uniform over the unmasked
-// positions and the output of a query is the mean of the values it can see.
+// the present buffers. Queries are zero, so attention is uniform over the unmasked positions and
+// the output of a query is the mean of the values it can see. The step's keys encode the absolute
+// positions `[past_length, past_length + S)`.
 WindowedCacheState RunWindowedCacheStep(int capacity,
                                         int window,
                                         int past_length,
@@ -432,7 +443,8 @@ WindowedCacheState RunWindowedCacheStep(int capacity,
 
   const std::vector<float> zeros(static_cast<size_t>(step_length) * kWindowedHeadSize, 0.0f);
   tester.AddInput<float>("query", {batch_size, step_length, kWindowedHeadSize}, zeros);
-  tester.AddInput<float>("key", {batch_size, step_length, kWindowedHeadSize}, zeros);
+  tester.AddInput<float>("key", {batch_size, step_length, kWindowedHeadSize},
+                         WindowedKeyRows(past_length, step_length));
   tester.AddInput<float>("value", {batch_size, step_length, kWindowedHeadSize}, step_values);
   tester.AddInput<float>("past_key", {batch_size, kv_num_heads, capacity, kWindowedHeadSize}, past.key);
   tester.AddInput<float>("past_value", {batch_size, kv_num_heads, capacity, kWindowedHeadSize}, past.value);
@@ -478,17 +490,20 @@ WindowedCacheState EmptyWindowedCache(int capacity) {
                             {}};
 }
 
-// Checks that present_value rows [0, L) hold the L most recent positions in order, with L taken
-// from the published formula.
+// Checks that rows [0, L) of present_key and present_value hold the L most recent positions in
+// order, with L taken from the published formula.
 void ExpectResidentRange(const WindowedCacheState& state, int total_length, int capacity, int window) {
   const int resident = WindowedResidentCount(total_length, capacity, window);
   ASSERT_GE(resident, std::min(total_length, window)) << "window must stay resident at T=" << total_length;
   ASSERT_LE(resident, std::min(total_length, capacity));
 
-  const std::vector<float> expected = WindowedValueRows(total_length - resident, resident);
-  for (size_t i = 0; i < expected.size(); ++i) {
-    EXPECT_EQ(state.value[i], expected[i])
-        << "T=" << total_length << " resident=" << resident << " element " << i;
+  const std::vector<float> expected_values = WindowedValueRows(total_length - resident, resident);
+  const std::vector<float> expected_keys = WindowedKeyRows(total_length - resident, resident);
+  for (size_t i = 0; i < expected_values.size(); ++i) {
+    EXPECT_EQ(state.value[i], expected_values[i])
+        << "present_value: T=" << total_length << " resident=" << resident << " element " << i;
+    EXPECT_EQ(state.key[i], expected_keys[i])
+        << "present_key: T=" << total_length << " resident=" << resident << " element " << i;
   }
 }
 
@@ -586,6 +601,7 @@ TEST(GroupQueryAttentionTest, WindowedCacheRejectedDraftTokensNeedNoCacheEdit_CP
   ASSERT_GE(resumed.value.size(), resident_elements);
   for (size_t i = 0; i < resident_elements; ++i) {
     EXPECT_EQ(resumed.value[i], reference.value[i]) << "present_value element " << i;
+    EXPECT_EQ(resumed.key[i], reference.key[i]) << "present_key element " << i;
   }
 
   ASSERT_EQ(resumed.output.size(), reference.output.size());

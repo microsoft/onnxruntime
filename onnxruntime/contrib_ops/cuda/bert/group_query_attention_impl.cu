@@ -615,27 +615,6 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Offset one past the last resident row of a windowed KV cache, i.e. where the next entry is
-// appended. Whole `gap`-sized blocks are reclaimed at once, which keeps the result in
-// [capacity - gap + 1, capacity] once the cache has filled:
-//   end(P) = P while P <= capacity, else P - gap * ceil((P - capacity) / gap)
-//
-// This mirrors WindowedCacheEnd() in the CPU kernel (contrib_ops/cpu/bert/group_query_attention.cc);
-// the two layouts must agree or CPU/CUDA parity breaks, so keep them in sync.
-//
-// The intermediate math runs in int64_t because `past_sequence_length` derives from the
-// caller-supplied seqlens_k input: `overflow + gap - 1` and `gap * blocks` could otherwise overflow
-// for values near INT32_MAX, and signed overflow is UB. The result is bounded by `capacity`, so
-// narrowing back to int is safe.
-__device__ __forceinline__ int WindowedCacheEnd(int64_t past_sequence_length, int64_t capacity, int64_t gap) {
-  if (past_sequence_length <= capacity) {
-    return static_cast<int>(past_sequence_length);  // still filling: nothing has been reclaimed yet
-  }
-  const int64_t overflow = past_sequence_length - capacity;
-  const int64_t reclaimed = gap * ((overflow + gap - 1) / gap);
-  return static_cast<int>(past_sequence_length - reclaimed);
-}
-
 // ============================================================================
 // GetSequenceLengths Kernel
 // ============================================================================
@@ -699,47 +678,24 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
       return;
     }
 
-    // Cache-relative coordinates for a windowed KV cache. The cache holds the L = min(T, C) most
-    // recent tokens contiguously at indices [0, L), where C is the real capacity.
+    // Cache-relative coordinates for a windowed KV cache. The CUDA kernel requires the capacity to
+    // equal local_window_size, so the eviction block size G = C - W + 1 is 1 and the specified
+    // resident count L(T) collapses to min(T, C): the cache is simply kept full.
     //   Lp = min(P, C)                  tokens currently resident
     //   E  = max(0, Lp + S - C)         tokens this append pushes out of the real cache
     //   D  = max(0, Lp + S - C_used)    tokens that have to be shifted out of the buffer in use
     // A multi-token step writes into a staging buffer long enough to hold Lp + S entries, so there
     // D is 0 and E is only the offset of the window inside the staging buffer. For a single-token
     // step the staging buffer is the cache itself (C_used == C) and D == E.
-    //
-    // For single-token decode steps the drifting-layout optimisation applies: entries live at
-    // [0, end) and are appended at `end`; compaction reclaims a whole block of `gap = C - W + 1`
-    // rows at once, so the kernel is load-bearing on only one step in `gap` and on the remaining
-    // steps the d <= 0 early-exit fires. Note that `end` is still a pure function of the absolute
-    // past length P, so the op stays stateless across Run() calls.
-    // For multi-token steps the staging buffer size must be predictable from Lp = min(P, C), and
-    // the write-back offset is the number of evicted rows under the old formula, so we keep the
-    // original Lp-based computation for that case.
     const int C = kv_cache_real_capacity;
     const int C_used = kv_cache_capacity;
-    const int W = C < C_used ? C : C_used;  // == local_window_size when C == C_used
-    const int gap = C - W + 1;              // >= 1; at C == W (no slack) this is 1 and every step compacts
 
-    int E, D;
-    int Lp;
-    if (sequence_length == 1) {
-      // Drifting-layout end pointer for single-token steps; see WindowedCacheEnd above.
-      // This keeps W <= end <= C once the cache has filled.
-      const int end_before = WindowedCacheEnd(past_len, C, gap);
-      const int end_after = WindowedCacheEnd(static_cast<int64_t>(past_len) + 1, C, gap);
-      const int kept = end_after - 1;
-      E = end_before - kept > 0 ? end_before - kept : 0;
-      D = (C_used < C) ? 0 : E;
-      Lp = end_before;
-    } else {
-      // Original formula for multi-token (staging) steps: Lp = min(P, C), E = evicted rows.
-      Lp = past_len < C ? past_len : C;
-      const int evicted = Lp + sequence_length - C;
-      const int shifted = Lp + sequence_length - C_used;
-      E = evicted > 0 ? evicted : 0;
-      D = shifted > 0 ? shifted : 0;
-    }
+    const int Lp = past_len < C ? past_len : C;
+    const int evicted = Lp + sequence_length - C;
+    const int shifted = Lp + sequence_length - C_used;
+    const int E = evicted > 0 ? evicted : 0;
+    const int D = shifted > 0 ? shifted : 0;
+
     cache_past_seq_lens[i] = Lp - D;
     cache_total_seq_lens[i] = (Lp + sequence_length) < C_used ? (Lp + sequence_length) : C_used;
     evict_counts[i] = E;

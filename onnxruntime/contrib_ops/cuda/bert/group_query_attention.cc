@@ -325,6 +325,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 /*kv_cache_extra_bits=*/0,
                                                                 sliding_window_cache_,
                                                                 local_window_size_));
+
+  // The CUDA kernel evicts the minimum number of positions on every step, so the cache it produces
+  // is always full at min(T, C). That equals the resident range the operator specifies only when
+  // the capacity has no slack above the window (C == W, i.e. G == 1). Reject a larger capacity
+  // instead of silently returning a layout that neither matches the spec nor the CPU kernel.
+  if (parameters.is_windowed_kv_cache && parameters.kv_cache_real_capacity != local_window_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention (CUDA): sliding_window_cache=1 requires the KV cache capacity (",
+                           parameters.kv_cache_real_capacity, ") to equal local_window_size (", local_window_size_,
+                           ").");
+  }
+
 #ifndef USE_INT4_KV_CACHE
   if (kv_cache_bit_width_ == 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_cache_bit_width==4 is not enabled in this build.");
