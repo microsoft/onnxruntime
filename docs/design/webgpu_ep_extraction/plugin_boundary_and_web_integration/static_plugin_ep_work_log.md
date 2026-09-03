@@ -677,6 +677,29 @@ Two traps in the JavaScript half, neither of which the type checker catches:
   `npm run lint` fails. The earlier commit that introduced `_OrtAppendExecutionProviderV2` missed this and left
   the branch red; that is fixed here too.
 
+The device-array path was then run, not just compiled. `build\web_plugin` was relinked and a fresh `plugin` side
+built, and two facts were checked against the pre-rework `plugin` results:
+
+| endpoint | before | after |
+| --- | --- | --- |
+| `bench_dispatch` output sample | `-0.547067046165466, 0.458441495895386, 0.369816303253174, 0.281192660331726` | identical |
+| GPU submits per run | 20 | 20 |
+
+Submit counts are deterministic, so an identical count plus bit-identical outputs is a much stronger check than
+any timing. The negative control is the load-bearing one: patching the bundle's EP name to
+`BogusExecutionProviderX` now fails in JavaScript with
+
+```
+no execution provider device is registered for: BogusExecutionProviderX.
+registered: CPUExecutionProvider, WebGpuExecutionProvider.
+```
+
+That message can only be produced by walking a real device array, so it proves `OrtGetEpDevices`,
+the `Number(getValue(...))` pointer arithmetic, `OrtEpDevice_EpName` and the grouping all work — the parts a
+successful run would otherwise exercise silently. Confirming that the two new exports are also *not*
+asyncify-wrapped: `_OrtAppendExecutionProviderV2` appears twice in the generated `.mjs` (export plus JSPI
+wrapper) while `_OrtGetEpDevices` and `_OrtEpDevice_EpName` appear once each.
+
 **The Emscripten device discovery should detect a GPU in Node.js some other way.** There is no better way, and
 the existing check is not as blind as the comment assumed. Node has never natively exposed `navigator.gpu`; the
 request was closed as not planned ([nodejs/node#42896](https://github.com/nodejs/node/issues/42896)) and there
