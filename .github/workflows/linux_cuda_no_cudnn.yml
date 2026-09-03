@@ -5,6 +5,7 @@ on:
     branches: [main, 'rel-*']
     paths:
       - '.github/workflows/linux_cuda_no_cudnn.yml'
+      - 'cmake/onnxruntime_cuda_cccl.cmake'
       - 'cmake/onnxruntime_providers_cuda.cmake'
       - 'cmake/onnxruntime_python.cmake'
       - 'onnxruntime/__init__.py'

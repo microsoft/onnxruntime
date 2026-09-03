@@ -91,8 +91,7 @@ stages:
         value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
       timeoutInMinutes: 60
       steps:
-      - checkout: self
-        submodules: false
+      - template: jobs/checkout-and-git-redirect.yml
 
       - template: set-version-number-variables-step.yml
 

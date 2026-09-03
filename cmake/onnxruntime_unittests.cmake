@@ -1987,6 +1987,43 @@ endif()
     set_target_properties(ep_weight_sharing_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
+  if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(onnxruntime_cpuinfo_test_library cpuinfo)
+    get_target_property(onnxruntime_cpuinfo_aliased_target cpuinfo ALIASED_TARGET)
+    if(onnxruntime_cpuinfo_aliased_target)
+      set(onnxruntime_cpuinfo_test_library ${onnxruntime_cpuinfo_aliased_target})
+    endif()
+    get_target_property(onnxruntime_cpuinfo_library_type ${onnxruntime_cpuinfo_test_library} TYPE)
+    if(onnxruntime_cpuinfo_library_type STREQUAL "STATIC_LIBRARY")
+      onnxruntime_add_executable(
+        onnxruntime_cpuinfo_refcount_test
+        ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_refcount_test.cc)
+      target_compile_definitions(
+        onnxruntime_cpuinfo_refcount_test
+        PRIVATE ORT_CPUINFO_TEST_HAS_INTERNAL_STATE)
+      if(onnxruntime_USE_XNNPACK)
+        target_compile_definitions(
+          onnxruntime_cpuinfo_refcount_test
+          PRIVATE ORT_CPUINFO_TEST_USE_XNNPACK)
+        if(onnxruntime_USE_VCPKG)
+          target_include_directories(onnxruntime_cpuinfo_refcount_test PRIVATE ${XNNPACK_HDR})
+        else()
+          target_include_directories(onnxruntime_cpuinfo_refcount_test PRIVATE ${XNNPACK_INCLUDE_DIR})
+        endif()
+        target_link_libraries(
+          onnxruntime_cpuinfo_refcount_test
+          PRIVATE ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK})
+      endif()
+      target_link_libraries(onnxruntime_cpuinfo_refcount_test PRIVATE cpuinfo Threads::Threads)
+      add_test(
+        NAME onnxruntime_cpuinfo_refcount_test
+        COMMAND onnxruntime_cpuinfo_refcount_test)
+      set_target_properties(
+        onnxruntime_cpuinfo_refcount_test
+        PROPERTIES FOLDER "ONNXRuntimeTest")
+    endif()
+  endif()
+
   # shared lib
   if (onnxruntime_BUILD_SHARED_LIB)
     if(WIN32)
@@ -1994,6 +2031,38 @@ endif()
       add_dependencies(onnxruntime_shared_lib_dlopen_test ${all_dependencies} onnxruntime)
       add_test(NAME onnxruntime_shared_lib_dlopen_test COMMAND onnxruntime_shared_lib_dlopen_test WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_shared_lib_dlopen_test>)
       set_target_properties(onnxruntime_shared_lib_dlopen_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+      if(onnxruntime_cpuinfo_library_type STREQUAL "STATIC_LIBRARY")
+        onnxruntime_add_shared_library(
+          onnxruntime_cpuinfo_dlopen_test_library
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test_library.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test_library.def)
+        target_include_directories(
+          onnxruntime_cpuinfo_dlopen_test_library
+          PRIVATE ${ONNXRUNTIME_ROOT})
+        target_link_libraries(
+          onnxruntime_cpuinfo_dlopen_test_library
+          PRIVATE onnxruntime_common cpuinfo)
+
+        onnxruntime_add_executable(
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cpuinfo_dlopen_test.cc)
+        add_dependencies(
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          onnxruntime_cpuinfo_dlopen_test_library)
+        target_compile_definitions(
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          PRIVATE
+          ORT_CPUINFO_DLOPEN_TEST_LIBRARY=L"$<TARGET_FILE_NAME:onnxruntime_cpuinfo_dlopen_test_library>")
+        add_test(
+          NAME onnxruntime_shared_lib_cpuinfo_dlopen_test
+          COMMAND onnxruntime_shared_lib_cpuinfo_dlopen_test
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_cpuinfo_dlopen_test_library>)
+        set_target_properties(
+          onnxruntime_cpuinfo_dlopen_test_library
+          onnxruntime_shared_lib_cpuinfo_dlopen_test
+          PROPERTIES FOLDER "ONNXRuntimeTest")
+      endif()
 
       if (MSVC)
         # set VS debugger working directory to the test program's directory

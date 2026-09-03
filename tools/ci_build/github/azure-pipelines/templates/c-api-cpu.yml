@@ -165,7 +165,7 @@ stages:
         artifactName: 'onnxruntime-ios-full-xcframework-test'
         targetPath: '$(Build.BinariesDirectory)/artifacts/test'
     steps:
-    - checkout: self
+    - template: jobs/checkout-and-git-redirect.yml
 
     - template: use-xcode-version.yml
       parameters:
@@ -329,8 +329,9 @@ stages:
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
 
     steps:
-    - checkout: self
-      submodules: true
+    - template: jobs/checkout-and-git-redirect.yml
+      parameters:
+        submodules: true
 
     - template: setup-feeds-and-python-steps.yml
 
