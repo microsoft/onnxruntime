@@ -12994,5 +12994,45 @@ TEST_F(GraphTransformationTests, STFTDecomposition_NoWindowInput) {
   ASSERT_EQ(op_to_count["STFT"], 0);
 }
 
+// WHAT TO PASTE AT THE VERY BOTTOM OF graph_transform_test.cc:
+
+TEST_F(GraphTransformationTests, DivAndScaleSameRank1D_RegressionTest) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 12;
+
+  Model model("DivScaleSameRankTest", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              LoggingManager::DefaultLogger());
+
+  auto& graph = model.MainGraph();
+
+  // Create 1D float tensor shape
+  ONNX_NAMESPACE::TypeProto float_tensor_1d;
+  float_tensor_1d.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+  float_tensor_1d.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(4);
+
+  // Set up node arguments
+  auto* input_arg = &graph.GetOrCreateNodeArg("X", &float_tensor_1d);
+  auto* scale_arg = &graph.GetOrCreateNodeArg("Scale", &float_tensor_1d);
+  auto* output_arg = &graph.GetOrCreateNodeArg("Y", &float_tensor_1d);
+
+  // Add Div node
+  auto& div_node = graph.AddNode("div_node", "Div", "Div node with 1D scale",
+                                 {input_arg, scale_arg}, {output_arg});
+  div_node.SetExecutionProviderType(kCpuExecutionProvider);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Run graph transformer
+  GraphTransformerManager transformer_mgr(1);
+  transformer_mgr.Register(std::make_unique<LayerNormalizationFusion>(), TransformerLevel::Level1);
+
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1,
+                                                      modified, LoggingManager::DefaultLogger()));
+
+  ASSERT_STATUS_OK(graph.Resolve());
+}
+
 }  // namespace test
 }  // namespace onnxruntime
