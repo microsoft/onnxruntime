@@ -134,7 +134,7 @@ TEST(DeviceIdDeathTest, AccumulatesAndEmitsCompletedCensusDay) {
           ++emission_count;
           emitted_expected_day = census_day == 20700;
           emitted_expected_entries =
-              versions == std::vector<std::string>{"1.24.0", "1.25.0"};
+              (versions == std::vector<std::string>{"1.24.0", "1.25.0"});
         };
         auto& device_id = DeviceId::Instance();
 
