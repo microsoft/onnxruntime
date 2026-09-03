@@ -606,6 +606,33 @@ branch changed". The isolation is unusually clean here because the two sides' `o
 same — so the *only* difference between those two sides is the `.wasm`. The same holds for
 `plugin_nofix` vs `plugin` (bundle `AB2F004F...`). All four `.wasm` hashes were confirmed distinct.
 
+### Disposition: `b876d290cd` reverted
+
+Given no measurable benefit on either the web or the native build, and no correctness issue that it fixes, the
+commit was reverted rather than shipped. The revert restores the unconditional submit — the conservative
+behaviour — so what is lost is a speculative optimization, not a guarantee.
+
+The revert was applied as a cherry-pick (a draft PR is already open, so history was not rewritten) and then
+verified rather than assumed:
+
+- `git diff b876d290cd^ HEAD` over the five affected files is **empty**, and `git diff b876d290cd HEAD` is
+  **non-empty** — the tree is byte-identical to the pre-fix state.
+- No dangling references to the removed `WebGpuContext` members remain (`IncrementActiveRunCount`,
+  `DecrementActiveRunCount`, `active_run_count_` — zero hits tree-wide). This matters because a clean
+  cherry-pick only proves the patch *applied*, not that later commits had not started using the deleted API.
+- All three reverted `.cc` files recompile: `ep/factory.cc` and `webgpu_execution_provider.cc` in a
+  `static_plugin` build, and `webgpu_context_test.cc` in an integrated build. Note that no single config
+  compiles all three — `ep/factory.cc` is absent from the integrated build and the test is absent from the
+  plugin build — so both configs are needed for full coverage.
+
+The EP-level `WebGpuExecutionProvider::IsRunActive()` predates this commit and is unaffected; only the
+context-level copy of the state was removed.
+
+Caveat on scope: this is "no measurable benefit in the scenarios we could construct", not proof of a universal
+no-op. The evidence is strong for the web build, where the patched `GPUQueue.submit` counter is a *complete*
+instrument for the claimed harm. It is weaker for native, where only timing was compared and submits were
+never counted.
+
 ## Open items
 
 1. ~~**Fix the Linux leg.**~~ **Done.** The batch-3 `array-bounds` break is fixed at the source, and a local
