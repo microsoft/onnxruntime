@@ -33,7 +33,7 @@ The implementation is complete and committed. CI coverage was added for the new 
 | Linux/GCC build (`--use_webgpu static_plugin`) | **Green in CI** (run `33030694040`) after the `array-bounds` fix — see [GCC](#gcc-and-warnings-as-errors) |
 | Minimal build | Not yet exercised — see [Open items](#open-items) |
 | Emscripten / ORT Web | **Builds and links**, plugin registration verified in the binary — see [ORT Web](#emscripten-and-ort-web). Not yet run in a browser |
-| PR | Not opened yet |
+| PR | Draft [#32395](https://github.com/microsoft/onnxruntime/pull/32395); self-review feedback addressed — see [PR review feedback](#pr-review-feedback) |
 
 ## Branch
 
@@ -636,6 +636,64 @@ Caveat on scope: this is "no measurable benefit in the scenarios we could constr
 no-op. The evidence is strong for the web build, where the patched `GPUQueue.submit` counter is a *complete*
 instrument for the claimed harm. It is weaker for native, where only timing was compared and submits were
 never counted.
+
+## PR review feedback
+
+Draft PR [#32395](https://github.com/microsoft/onnxruntime/pull/32395) collected eleven inline self-review
+comments. All eleven are addressed. Two turned out to rest on a premise the code does not support, and are
+recorded here because the resolution differs from the comment.
+
+**`OrtAppendExecutionProviderV2` should verify there is only one matching device.** It should not: a hard error
+on more than one match would be wrong. `Factory::GetSupportedDevicesImpl` loops over every GPU hardware device,
+and the virtual-device path adds its device *in addition to* any real ones, so several `OrtEpDevice`s
+legitimately share one EP name. The real defect was the silent, arbitrary first-match pick. The fix collects
+every matching device and passes the whole set, which is what `SessionOptionsAppendExecutionProvider_V2`
+expects. That also settles the companion comment asking for a rename to reflect a signature mismatch — under
+the new behaviour the wasm wrapper matches the underlying API, and `OrtAppendExecutionProvider` ↔
+`SessionOptionsAppendExecutionProvider` is the established naming convention in this layer, so the name stays.
+
+**The Emscripten device discovery should detect a GPU in Node.js some other way.** There is no better way, and
+the existing check is not as blind as the comment assumed. Node has never natively exposed `navigator.gpu`; the
+request was closed as not planned ([nodejs/node#42896](https://github.com/nodejs/node/issues/42896)) and there
+is no `--experimental-webgpu` flag in core. WebGPU in Node comes from userland Dawn bindings, which assign onto
+`globalThis`, so the existing `EM_ASM` check already picks them up. A real enumeration would need the
+asynchronous `requestAdapter()`, which cannot be called from discovery. Only the comment was wrong — it claimed
+Node always reports no GPU — so this is a comment-only change. The file is under `core/platform/emscripten/`
+and so never affects native `onnxruntime-node`, which has its own discovery.
+
+Two of the remaining nine were real defects rather than cleanups:
+
+- `OpKernelInfo::GetAttrsImpl` for `std::vector<std::string>` leaked the allocator's array, and every string
+  still in it, if `reserve()` or a `std::string` copy threw. It now holds the array in a `unique_ptr` whose
+  deleter frees each element. The deleter calls `OrtAllocator::Free` through the function pointer rather than
+  `Ort::AllocatorWithDefaultOptions::Free()`, which throws on failure and so must not run in a destructor. This
+  only matters for native plugin EPs; on web, `-sDISABLE_EXCEPTION_CATCHING` turns `bad_alloc` into an abort.
+- `OrtEnv::GetOrCreateInstance` unpublished and deleted the instance by hand when static plugin EP registration
+  failed, but a *throw* from that registration skipped the cleanup and left a published, half-built
+  `p_instance_` for the next caller to pick up. The instance is now held in an `OrtEnvPtr` taken immediately
+  after `++ref_count_`, which removes the manual `delete` and `ref_count_ = 0` as well. This is safe because
+  `OrtEnv::Release` re-enters `m_`, which is a `std::recursive_mutex` already held by this thread.
+
+The rest were naming and comment cleanups. The most substantive: the build defined three macros that were
+perfectly correlated — `ORT_PLUGIN_EP_ENTRY_POINT_PREFIX` and `ORT_PLUGIN_EP_STATICALLY_LINKED` on the static
+branch, `ORT_PLUGIN_EP_OWNS_PROCESS_GLOBALS` on the shared one. The first and third are gone; everything keys
+off `ORT_PLUGIN_EP_STATICALLY_LINKED`, and the `WebGpu_` prefix is hardcoded. Parameterising only the provider
+side was fictional flexibility anyway, since ORT core already spells `WebGpu_CreateEpFactories` out literally
+in `ep_static_plugins.cc`.
+
+Separately, the manual-init switch in the public header `include/onnxruntime/ep/api.h` was renamed from
+`ORT_PLUGIN_EP_STATICALLY_LINKED` to `ORT_SKIP_API_MANUAL_INIT`, since it says nothing about linkage — it says
+whether `OrtGetApiBase()` is reachable in-process. The negative polarity is deliberate and was kept: undefined
+must continue to mean manual init *on*, which is the safe default for a separately built plugin. A positive
+spelling would silently flip that for any out-of-tree plugin that relies on the header. `webgpu/ep/api.cc` has
+its own copy of the `ORT_API_MANUAL_INIT` dance and is keyed off the same macro, because MSVC's
+`detect_mismatch` pragma requires every translation unit in a binary to agree.
+
+Verification: compiled in all three affected configurations — `build\int` for the core session objects, `build\sp`
+for the whole `onnxruntime_providers_webgpu` target (which force-includes the EP adapter headers, so it is what
+covers `op_kernel_info.h`), and `build\wasm_sp` for `wasm/api.cc` and the Emscripten `device_discovery.cc`. On the
+RTX 5060 Ti machine, `onnxruntime_test_all --gtest_filter=InferenceSessionTests.WebGpu*` passes all three, and
+`onnxruntime_provider_test` passes with no failures.
 
 ## Open items
 
