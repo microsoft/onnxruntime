@@ -6,27 +6,10 @@
 #include <string>
 
 #include "core/common/inlined_containers.h"
+#include "core/optimizer/gqa_value_layout_boundaries.h"
 #include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
-
-// Accepted values of the kOrtSessionOptionsGqaValueLayout session option.
-constexpr const char* kGqaValueLayoutBNSH = "BNSH";
-constexpr const char* kGqaValueLayoutBNHS = "BNHS";
-
-/**
-The application-visible boundaries whose Value cache GqaValueLayoutTransformer converted to BNHS.
-
-Recorded during the transform so that, after graph partitioning, the caller can tell which of the
-inserted Transpose nodes an execution provider left behind. Graph input and output names are stable
-across partitioning, which is what makes them usable as the anchor.
-*/
-struct GqaValueLayoutBoundaries {
-  InlinedVector<std::string> past_value_inputs;      // graph inputs now declaring BNHS
-  InlinedVector<std::string> present_value_outputs;  // graph outputs now declaring BNHS
-
-  bool Empty() const { return past_value_inputs.empty() && present_value_outputs.empty(); }
-};
 
 /**
 @class GqaValueLayoutTransformer
@@ -70,15 +53,6 @@ class GqaValueLayoutTransformer : public GraphTransformer {
 
   GqaValueLayoutBoundaries* const converted_boundaries_;
 };
-
-/**
-Finds the application boundaries of a graph that already carry the BNHS conversion.
-
-For a graph this transformer did not process in this session -- an ORT format model converted offline,
-for instance -- so that the same post-partition diagnostic can run over it. Call before partitioning,
-while the GroupQueryAttention nodes are still there to anchor on.
-*/
-GqaValueLayoutBoundaries FindConvertedGqaValueLayoutBoundaries(const Graph& graph);
 
 /**
 Reports the converted boundaries whose Value-layout Transpose survived graph partitioning, i.e. that

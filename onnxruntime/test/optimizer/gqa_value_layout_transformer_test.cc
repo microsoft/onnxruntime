@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cmath>
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -1544,6 +1545,52 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsAnInvalidLayoutValueOnAnOrtFormatMo
   EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT) << status.ErrorMessage();
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Invalid value for session option"));
   EXPECT_THAT(status.ErrorMessage(), ::testing::Not(::testing::HasSubstr("ORT format models")));
+}
+
+// An explicit BNSH request is a claim about the boundary on the ORT format path too. Leaving the
+// option unset is the documented way to load a BNHS-converted ORT model, so only the explicit request
+// conflicts. The detection this relies on lives in gqa_value_layout_boundaries.cc, which is in the
+// minimal build source lists so the check exists there as well -- a minimal build serves ORT format
+// models only, so it is the sole path on which the claim can be checked at all.
+TEST_F(GqaValueLayoutTransformerTest, RejectsAnOrtFormatModelWithBnhsBoundariesWhenBnshIsRequested) {
+  const auto ort_model = ORT_TSTR("gqa_value_layout_bnhs.test_output.ort");
+
+  // Convert a BNHS model to ORT format, which preserves the Transposes and BNHS boundary shapes.
+  {
+    std::string model_bytes;
+    ASSERT_STATUS_OK(BuildSerializedGqaModel(*logger_, model_bytes));
+
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT"));
+    session_options.optimized_model_filepath = ort_model;
+
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(ExpectBnhsBoundary(session.GetMutableGraph()));
+  }
+
+  // Explicit BNSH contradicts what the model carries.
+  {
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNSH);
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ort_model));
+
+    const Status status = session.Initialize();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already carries the BNHS"));
+  }
+
+  // No option: the documented way to use BNHS with an ORT format model, so it still loads.
+  {
+    SessionOptions session_options;
+    session_options.session_logid = "GqaValueLayoutTransformerTest";
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ort_model));
+    ASSERT_STATUS_OK(session.Initialize());
+  }
+
+  std::remove(ToUTF8String(ort_model).c_str());
 }
 
 TEST_F(GqaValueLayoutTransformerTest, AllowsOrtFormatModelWithTheDefaultLayout) {
