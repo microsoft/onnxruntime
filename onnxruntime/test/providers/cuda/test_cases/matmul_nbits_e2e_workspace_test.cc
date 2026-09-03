@@ -279,7 +279,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetExcludesSequentialProfileScratch) 
   // profile_m=1 limits the initial profile sweep, but static M=256 can later trigger lazy
   // profiling of the rounded M=256 bucket. That scratch allocation is sequential and is reported
   // as an initialization peak rather than summed into the additive hard budget. The remaining
-  // initializer, output, runtime-workspace, and persistent-prepack total is between 530 and 560 KiB.
+  // initializer, output, runtime-workspace, and persistent-prepack total is between 410 and 430 KiB.
   {
     SessionOptions so;
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
@@ -287,7 +287,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetExcludesSequentialProfileScratch) 
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsResourceCudaPartitioningSettings, "560,"));
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "430,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
@@ -306,7 +306,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetExcludesSequentialProfileScratch) 
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsResourceCudaPartitioningSettings, "530,"));
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "410,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
