@@ -7,8 +7,8 @@ steps:
 
 - pwsh: |
     $git = Get-Command git -CommandType Application -ErrorAction Stop
-    & git.Source config --global --add url."https://PAT:${env:TOKEN}@aiinfra.visualstudio.com/Lotus-Dependencies/_git/".insteadOf "https://chromium.googlesource.com/chromium/src/third_party/"
-    & git.Source config --global --add url."https://github.com/".insteadOf "https://chromium.googlesource.com/external/github.com/"
+    & $($git.Source) config --global --add url."https://PAT:${env:TOKEN}@aiinfra.visualstudio.com/Lotus-Dependencies/_git/".insteadOf "https://chromium.googlesource.com/chromium/src/third_party/"
+    & $($git.Source) config --global --add url."https://github.com/".insteadOf "https://chromium.googlesource.com/external/github.com/"
   displayName: Redirect chromium hosted dependencies to GitHub and Lotus-Dependencies
   env:
     TOKEN: $(System.AccessToken)
