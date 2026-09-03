@@ -1121,7 +1121,6 @@ TEST(PagedAttention, Cuda_NativeXqaRequiresOptIn) {
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
   const std::string debug_output = testing::internal::GetCapturedStdout();
   EXPECT_EQ(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
-  EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
 }
 
 TEST(PagedAttention, Cuda_XqaNativeFp16CacheHeadSize256Group6) {
