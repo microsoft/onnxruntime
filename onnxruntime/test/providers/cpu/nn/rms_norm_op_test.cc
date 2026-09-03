@@ -326,31 +326,55 @@ TEST(RMSNormalizationOpTest, RMSNorm_Scale_RankReduced_Sx3_Axis2) {
   test.AddInput<float>("scale",
                        {4, 3},
                        {
-                           1.1f, 1.1f, 1.1f,
-                           1.2f, 1.2f, 1.2f,
-                           1.3f, 1.3f, 1.3f,
-                           1.4f, 1.4f, 1.4f,
+                           1.1f,
+                           1.1f,
+                           1.1f,
+                           1.2f,
+                           1.2f,
+                           1.2f,
+                           1.3f,
+                           1.3f,
+                           1.3f,
+                           1.4f,
+                           1.4f,
+                           1.4f,
                        },
                        true);
 
   test.AddOutput<float>(
       "Y", {2, 4, 3},
       {
-          0.0000f, 0.8521f, 1.7041f,
-          0.8818f, 1.1758f, 1.4697f,
-          1.1068f, 1.2912f, 1.4757f,
-          1.2558f, 1.3954f, 1.5349f,
+          0.0000f,
+          0.8521f,
+          1.7041f,
+          0.8818f,
+          1.1758f,
+          1.4697f,
+          1.1068f,
+          1.2912f,
+          1.4757f,
+          1.2558f,
+          1.3954f,
+          1.5349f,
 
-          1.0134f, 1.0978f, 1.1823f,
-          1.1235f, 1.1984f, 1.2733f,
-          1.2304f, 1.2988f, 1.3672f,
-          1.3354f, 1.3990f, 1.4626f,
+          1.0134f,
+          1.0978f,
+          1.1823f,
+          1.1235f,
+          1.1984f,
+          1.2733f,
+          1.2304f,
+          1.2988f,
+          1.3672f,
+          1.3354f,
+          1.3990f,
+          1.4626f,
       });
 
-  // TRT, DNNL, OpenVINO, NNAPI, CoreML and QNN don't support this combination.
+  // TRT, DNNL, OpenVINO, NNAPI, QNN, and WebGPU don't support this combination.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-            kNnapiExecutionProvider, kQnnExecutionProvider});
+            kNnapiExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(RMSNormalizationOpTest, RMSNorm_Scale_NoBroadcast_BxSx3_Axis2) {
