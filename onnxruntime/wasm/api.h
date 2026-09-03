@@ -31,6 +31,9 @@ using ort_run_options_handle_t = OrtRunOptions*;
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
 
+struct OrtEpDevice;
+using ort_ep_device_handle_t = const OrtEpDevice*;
+
 #ifdef ENABLE_TRAINING_APIS
 struct OrtTrainingSession;
 using ort_training_session_handle_t = OrtTrainingSession*;
@@ -95,18 +98,39 @@ int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t
                                                     size_t num_keys);
 
 /**
- * append an execution provider for a session, selecting it as a plugin EP by name.
+ * get the execution provider devices registered with the environment.
  *
- * Unlike OrtAppendExecutionProvider, which resolves the name against ORT's built-in EP table, this looks the
- * name up among the OrtEpDevice instances registered with the environment and appends every device reported
- * under that name through SessionOptionsAppendExecutionProvider_V2. It is how a statically linked plugin EP is
- * selected.
+ * The array is owned by the environment and remains valid for its lifetime. The caller must not free it.
  *
- * @param name the EP name as reported by the EP factory, e.g. "WebGpuExecutionProvider"
+ * @param ep_devices receives a pointer to the array of ort_ep_device_handle_t
+ * @param num_ep_devices receives the number of entries in the array
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtGetEpDevices(const ort_ep_device_handle_t** ep_devices, size_t* num_ep_devices);
+
+/**
+ * get the execution provider name that an execution provider device is registered under.
+ *
+ * More than one device may share an EP name, e.g. when an EP reports one device per GPU.
+ *
+ * @returns the name, owned by the environment. It remains valid for the lifetime of the environment.
+ */
+const char* EMSCRIPTEN_KEEPALIVE OrtEpDevice_EpName(ort_ep_device_handle_t ep_device);
+
+/**
+ * append an execution provider for a session, selecting it by execution provider device.
+ *
+ * Unlike OrtAppendExecutionProvider, which resolves an EP name against ORT's built-in EP table, this selects
+ * from the devices registered with the environment, which is how a plugin EP is selected. Use OrtGetEpDevices
+ * and OrtEpDevice_EpName to choose the devices to pass in.
+ *
+ * @param ep_devices the devices to select, all of which must belong to the same execution provider
+ * @param num_ep_devices the number of entries in ep_devices
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
 int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProviderV2(ort_session_options_handle_t session_options,
-                                                      const char* name,
+                                                      ort_ep_device_handle_t* ep_devices,
+                                                      size_t num_ep_devices,
                                                       const char* const* provider_options_keys,
                                                       const char* const* provider_options_values,
                                                       size_t num_keys);

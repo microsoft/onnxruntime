@@ -646,11 +646,36 @@ recorded here because the resolution differs from the comment.
 **`OrtAppendExecutionProviderV2` should verify there is only one matching device.** It should not: a hard error
 on more than one match would be wrong. `Factory::GetSupportedDevicesImpl` loops over every GPU hardware device,
 and the virtual-device path adds its device *in addition to* any real ones, so several `OrtEpDevice`s
-legitimately share one EP name. The real defect was the silent, arbitrary first-match pick. The fix collects
-every matching device and passes the whole set, which is what `SessionOptionsAppendExecutionProvider_V2`
-expects. That also settles the companion comment asking for a rename to reflect a signature mismatch — under
-the new behaviour the wasm wrapper matches the underlying API, and `OrtAppendExecutionProvider` ↔
-`SessionOptionsAppendExecutionProvider` is the established naming convention in this layer, so the name stays.
+legitimately share one EP name. The real defect was the silent, arbitrary first-match pick.
+
+The fix is bigger than the comment asked for, because a companion comment objected that the wrapper's name
+claims a kinship with `SessionOptionsAppendExecutionProvider_V2` that its signature did not honour. Both are
+settled by moving EP-device selection out of C++ and into JavaScript, so that the wasm export really is the
+underlying API:
+
+- `OrtAppendExecutionProviderV2` now takes an `OrtEpDevice*` array and a count, exactly like the C API, and is
+  a straight pass-through. The name is kept, because now the signature does match.
+- Two new exports supply what JavaScript needs to build that array: `OrtGetEpDevices`, a thin wrapper over
+  `GetEpDevices`, and `OrtEpDevice_EpName`, a 1:1 mirror of `EpDevice_EpName`.
+- `session-options.ts` gains `getEpDevicesByEpName()`, which walks the returned array once into a
+  `Map<epName, ptr[]>`. Selection policy — currently "every device whose EP name matches" — lives there, and
+  the not-found error can list the registered names because the map has them.
+
+Filtering on the C++ side was considered and rejected. `GetEpDevices` returns an array *owned by the
+environment*; passing the pointer straight through keeps it borrowed. Any C++-side filter would have to
+materialise a new array and invent an ownership contract that this layer does not otherwise have. The selected
+subset has to be marshalled into wasm memory by the caller either way, and `setExecutionProviders` already has
+an `allocs` list that does exactly this for the EP option keys and values.
+
+Two traps in the JavaScript half, neither of which the type checker catches:
+
+- Pointers read out of wasm memory with `getValue(ptr, '*')` must be wrapped in `Number(...)`. Under `ORT_WASM64`
+  that call reads `HEAP64` and yields a **BigInt**, and `BigInt + Number` pointer arithmetic throws a
+  `TypeError`. Values *returned from* an exported function need no wrapping — Emscripten converts those at the
+  call boundary. `jsep/init.ts` and `wasm-core-impl.ts` follow the same split.
+- Every new `_Ort*` export must be added to the `no-underscore-dangle` allow-list in `js/eslint.config.mjs`, or
+  `npm run lint` fails. The earlier commit that introduced `_OrtAppendExecutionProviderV2` missed this and left
+  the branch red; that is fixed here too.
 
 **The Emscripten device discovery should detect a GPU in Node.js some other way.** There is no better way, and
 the existing check is not as blind as the comment assumed. Node has never natively exposed `navigator.gpu`; the

@@ -70,6 +70,44 @@ const appendEpOption = (epOptions: Array<[number, number]>, key: string, value: 
   epOptions.push([keyDataOffset, valueDataOffset]);
 };
 
+/**
+ * Get the OrtEpDevice instances registered with the environment, grouped by execution provider name.
+ *
+ * An execution provider may register more than one device, e.g. one per GPU, and all of them share its name.
+ *
+ * @returns a map of execution provider name to the OrtEpDevice pointers registered under it.
+ */
+const getEpDevicesByEpName = (): Map<string, number[]> => {
+  const wasm = getInstance();
+  const stack = wasm.stackSave();
+  try {
+    const epDevicesPtr = wasm.stackAlloc(wasm.PTR_SIZE);
+    const numEpDevicesPtr = wasm.stackAlloc(wasm.PTR_SIZE);
+    if (wasm._OrtGetEpDevices(epDevicesPtr, numEpDevicesPtr) !== 0) {
+      checkLastError("Can't get execution provider devices.");
+    }
+    // The array is owned by the environment, so only the pointers are read out here.
+    // getValue() with '*' returns a BigInt in a wasm64 build, so convert before doing pointer arithmetic.
+    const epDevices = Number(wasm.getValue(epDevicesPtr, '*'));
+    const numEpDevices = Number(wasm.getValue(numEpDevicesPtr, '*'));
+
+    const epDevicesByEpName = new Map<string, number[]>();
+    for (let i = 0; i < numEpDevices; i++) {
+      const epDevice = Number(wasm.getValue(epDevices + i * wasm.PTR_SIZE, '*'));
+      const epName = wasm.UTF8ToString(wasm._OrtEpDevice_EpName(epDevice));
+      const devices = epDevicesByEpName.get(epName);
+      if (devices) {
+        devices.push(epDevice);
+      } else {
+        epDevicesByEpName.set(epName, [epDevice]);
+      }
+    }
+    return epDevicesByEpName;
+  } finally {
+    wasm.stackRestore(stack);
+  }
+};
+
 const setExecutionProviders = async (
   sessionOptionsHandle: number,
   sessionOptions: InferenceSession.SessionOptions,
@@ -190,7 +228,6 @@ const setExecutionProviders = async (
         throw new Error(`not supported execution provider: ${epName}`);
     }
 
-    const epNameDataOffset = allocWasmString(epName, allocs);
     const epOptionsCount = epOptions.length;
     let keysOffset = 0;
     let valuesOffset = 0;
@@ -204,19 +241,42 @@ const setExecutionProviders = async (
         getInstance().setValue(valuesOffset + i * getInstance().PTR_SIZE, epOptions[i][1], '*');
       }
     }
-    const appendFn = selectAsPluginEp
-      ? getInstance()._OrtAppendExecutionProviderV2
-      : getInstance()._OrtAppendExecutionProvider;
-    if (
-      (await appendFn.call(
-        getInstance(),
+
+    let appendErrorCode: number;
+    if (selectAsPluginEp) {
+      const epDevicesByEpName = getEpDevicesByEpName();
+      const epDevices = epDevicesByEpName.get(epName);
+      if (!epDevices) {
+        const registered = [...epDevicesByEpName.keys()].join(', ') || '(none)';
+        throw new Error(`no execution provider device is registered for: ${epName}. registered: ${registered}.`);
+      }
+
+      const epDevicesOffset = getInstance()._malloc(epDevices.length * getInstance().PTR_SIZE);
+      allocs.push(epDevicesOffset);
+      for (let i = 0; i < epDevices.length; i++) {
+        getInstance().setValue(epDevicesOffset + i * getInstance().PTR_SIZE, epDevices[i], '*');
+      }
+
+      appendErrorCode = await getInstance()._OrtAppendExecutionProviderV2(
+        sessionOptionsHandle,
+        epDevicesOffset,
+        epDevices.length,
+        keysOffset,
+        valuesOffset,
+        epOptionsCount,
+      );
+    } else {
+      const epNameDataOffset = allocWasmString(epName, allocs);
+      appendErrorCode = await getInstance()._OrtAppendExecutionProvider(
         sessionOptionsHandle,
         epNameDataOffset,
         keysOffset,
         valuesOffset,
         epOptionsCount,
-      )) !== 0
-    ) {
+      );
+    }
+
+    if (appendErrorCode !== 0) {
       checkLastError(`Can't append execution provider: ${epName}.`);
     }
   }

@@ -181,40 +181,22 @@ int OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
   return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, provider_options_keys, provider_options_values, num_keys);
 }
 
+int OrtGetEpDevices(const ort_ep_device_handle_t** ep_devices, size_t* num_ep_devices) {
+  return CHECK_STATUS(GetEpDevices, g_env, ep_devices, num_ep_devices);
+}
+
+const char* OrtEpDevice_EpName(ort_ep_device_handle_t ep_device) {
+  return Ort::GetApi().EpDevice_EpName(ep_device);
+}
+
 int OrtAppendExecutionProviderV2(ort_session_options_handle_t session_options,
-                                 const char* name,
+                                 ort_ep_device_handle_t* ep_devices,
+                                 size_t num_ep_devices,
                                  const char* const* provider_options_keys,
                                  const char* const* provider_options_values,
                                  size_t num_keys) {
-  const OrtEpDevice* const* ep_devices = nullptr;
-  size_t num_ep_devices = 0;
-  RETURN_ERROR_CODE_IF_ERROR(GetEpDevices, g_env, &ep_devices, &num_ep_devices);
-
-  // An EP may report more than one device (e.g. one per GPU), and all of its devices share its name. Select all of
-  // them, matching the semantics of SessionOptionsAppendExecutionProvider_V2, rather than picking an arbitrary one.
-  std::vector<const OrtEpDevice*> selected_ep_devices;
-  for (size_t i = 0; i < num_ep_devices; ++i) {
-    const char* ep_name = Ort::GetApi().EpDevice_EpName(ep_devices[i]);
-    if (ep_name != nullptr && std::strcmp(ep_name, name) == 0) {
-      selected_ep_devices.push_back(ep_devices[i]);
-    }
-  }
-
-  if (!selected_ep_devices.empty()) {
-    return CHECK_STATUS(SessionOptionsAppendExecutionProvider_V2, session_options, g_env,
-                        selected_ep_devices.data(), selected_ep_devices.size(),
-                        provider_options_keys, provider_options_values, num_keys);
-  }
-
-  std::ostringstream message;
-  message << "No execution provider device is registered for '" << name << "'. Registered devices:";
-  if (num_ep_devices == 0) {
-    message << " (none)";
-  }
-  for (size_t i = 0; i < num_ep_devices; ++i) {
-    message << " '" << Ort::GetApi().EpDevice_EpName(ep_devices[i]) << "'";
-  }
-  return CheckStatus(Ort::GetApi().CreateStatus(ORT_NOT_FOUND, message.str().c_str()));
+  return CHECK_STATUS(SessionOptionsAppendExecutionProvider_V2, session_options, g_env,
+                      ep_devices, num_ep_devices, provider_options_keys, provider_options_values, num_keys);
 }
 
 int OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,
