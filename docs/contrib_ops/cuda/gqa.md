@@ -60,7 +60,7 @@ Selected attributes:
 | `causal` | Apply the causal mask. Must be `0` or `1` and defaults to `1`; `0` enables bidirectional attention. |
 | `softcap` | Optional logit soft-capping value. `0` disables it. |
 | `local_window_size` | Left window size for causal local attention. `-1` means global attention and is required when `causal=0`. |
-| `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps the most recent positions contiguously at cache rows `[0, L)` and evicts internally. Requires `local_window_size > 0` and a capacity of at least `local_window_size`. Defaults to `0` (full-length cache). See [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache) for the normative layout, eviction and rollback contract. |
+| `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps the most recent positions contiguously at cache rows `[0, L)` and evicts internally. Requires `local_window_size > 0`; the CUDA kernel additionally requires the cache capacity to equal `local_window_size`. Defaults to `0` (full-length cache). See [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache) for the normative layout, eviction and rollback contract. |
 | `do_rotary` / `rotary_interleaved` | Enable RoPE and select interleaved vs. half-rotary layout. |
 | `smooth_softmax` | Add a smooth factor to the softmax denominator. |
 | `qk_norm_epsilon` | Epsilon for the fused per-head Q/K RMSNorm (QK-Norm) prologue. Defaults to `1e-6`. |
@@ -169,34 +169,38 @@ employ local attention (e.g., GPT-OSS with layer-wise sliding windows).
 
 **Key behaviors:**
 
-- **Cache capacity:** The cache buffer size is fixed to `kv_cache_capacity` (the initial allocation
-  size), which must be at least `local_window_size`. Allocating a little more than the window is
-  worthwhile on CPU: the surplus is what lets the append point drift, so the cache is compacted once
-  every `kv_cache_capacity - local_window_size + 1` steps instead of on every step. A modest surplus
-  (order tens of entries) is the sweet spot; a much larger buffer starts costing more in attention
-  over out-of-window entries than it saves in compaction.
+- **Cache capacity:** The CUDA kernel requires the cache buffer's sequence dimension to be exactly
+  `local_window_size`. It evicts the minimum number of rows on every step, which reproduces the
+  documented layout only when there is no slack above the window, so a larger capacity is rejected
+  with `INVALID_ARGUMENT` rather than silently producing a different resident range. Slack is
+  useful on CPU, where attention scans every resident entry and a drifting append point amortizes
+  compaction; on CUDA attention costs the same regardless of the capacity, so the extra rows buy
+  nothing.
 - **Cache-relative indexing:** New keys/values are appended at cache-relative positions, not global
-  positions. After a step, rows `[0, L)` hold the `L` most recent positions in order, where
-  `min(T, W) <= L <= min(T, C)` for capacity `C`, window `W` and total length `T`. Eviction reclaims
-  `C - W + 1` positions at a time rather than one per step, so `L` is not `min(T, C)` in general; the
-  exact formula, the chunk-invariance property that multi-token (speculative) steps rely on, and the
+  positions. Because the capacity equals the window, rows `[0, L)` hold the `L = min(T, C)` most
+  recent positions in order, where `T` is `seqlens_k[b] + 1` for that batch entry; row `i` holds
+  absolute position `T - L + i`. This is the `G == 1` case of the general contract — the exact
+  formula, the chunk-invariance property that multi-token (speculative) steps rely on, and the
   rollback rule are specified in [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache).
 - **RoPE position bounds:** The `rotary_max_position` parameter controls the upper bound (exclusive)
   for RoPE position indices, decoupling absolute sequence positions from cache buffer indices.
-- **Multi-token staging:** For multi-token (prompt) steps that exceed window size, a temporary
-  staging buffer is used internally to handle compaction and eviction.
+- **Multi-token staging:** Because the capacity equals the window, a step of `S > 1` tokens can need
+  more entries than the cache holds (its earliest queries still read keys its last ones evict). Such
+  a step runs against an internal staging buffer of `min(T - S, C) + S` entries and only the
+  surviving tail is written back, so any `S >= 1` is accepted.
 - **Present shape:** When using windowed cache with `past_present_share_buffer`, the `present_key`
   and `present_value` shapes remain bounded by `kv_cache_capacity` in the sequence dimension,
   rather than growing with `total_sequence_length`.
-- **Constraints:** `sliding_window_cache=1` requires `local_window_size > 0`. Windowed caches are
-  incompatible with the Flash-Attention fast-decode path and instead use the XQA or standard
-  attention backends.
-- **CPU support:** The CPU kernel implements the same contract. Entries live at `[0, end)` and are
-  appended at `end`, so a step only moves memory when the append would run past the capacity; at
-  that point the surviving entries are compacted to the front in one go. Multi-token steps that
-  would drop entries the step itself still reads are staged instead, so results match a full-length
-  cache exactly. On CPU the `qk_output` attribute and a shared KV layout (`key`/`value` folded into
-  `query`) are not supported together with `sliding_window_cache=1`.
+- **Constraints:** `sliding_window_cache=1` requires `local_window_size > 0` and a capacity equal to
+  it. Windowed caches are incompatible with the Flash-Attention fast-decode path and instead use the
+  XQA or standard attention backends.
+- **CPU support:** The CPU kernel implements the same contract and additionally accepts a capacity
+  larger than the window. Entries live at `[0, end)` and are appended at `end`, so a step only moves
+  memory when the append would run past the capacity; at that point the surviving entries are
+  compacted to the front in one go. Multi-token steps that would drop entries the step itself still
+  reads are staged instead, so results match a full-length cache exactly. On CPU the `qk_output`
+  attribute and a shared KV layout (`key`/`value` folded into `query`) are not supported together
+  with `sliding_window_cache=1`.
 
 ### Quantized KV cache
 

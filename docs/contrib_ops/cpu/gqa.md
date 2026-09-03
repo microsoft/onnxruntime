@@ -104,9 +104,9 @@ During quantized execution, new key/value vectors are quantized on write into th
 
 `sliding_window_cache=1` makes the past/present buffers window-sized instead of full-length, and
 makes the operator responsible for eviction. This section is the normative description of the
-layout the operator produces; the CUDA kernel implements the same contract, and both are covered by
-the same formulas below. `onnxruntime/contrib_ops/cpu/bert/group_query_attention.cc` is the CPU
-implementation.
+layout the operator produces; the CUDA kernel implements the same contract, restricted to `C == W`
+(see [Capacity constraints per execution provider](#capacity-constraints-per-execution-provider)).
+`onnxruntime/contrib_ops/cpu/bert/group_query_attention.cc` is the CPU implementation.
 
 ### Notation
 
@@ -114,15 +114,34 @@ implementation.
 |---|---|
 | `C` | Cache capacity: dimension 2 of `past_key` / `past_value`, and of `present_key` / `present_value`. |
 | `W` | `local_window_size`. Must be `> 0`, and `C >= W`. |
-| `T` | `total_sequence_length`, i.e. the absolute number of tokens processed so far including this step. |
+| `T` | Absolute number of tokens processed so far by *this batch entry*, including this step: `seqlens_k[b] + 1`. |
 | `S` | `sequence_length` of this step (1 for decode, more for prefill or speculative verification). |
 | `L` | Number of KV positions resident in the cache after the step. |
 | `G` | Eviction block size, `C - W + 1`. |
+
+The layout is per batch entry. `T` is taken from `seqlens_k[b]`, not from the scalar
+`total_sequence_length` input, which is only the batch maximum: for a ragged batch each entry gets
+its own `L` and its own absolute row mapping.
 
 `C` is chosen by the caller and is not derived from the model's maximum sequence length. Sharing the
 past and present buffer does not change its meaning: `present_key` keeps the sequence dimension of
 `past_key` rather than growing with `T`, so the same definition applies whether or not the two
 tensors alias.
+
+### Capacity constraints per execution provider
+
+The formulas below are written for the general case `C >= W`, but an execution provider may accept
+only part of that range:
+
+| EP | Accepted capacity | `G` | Resulting `L(T)` |
+|---|---|---|---|
+| CPU | `C >= W` | `C - W + 1` | sawtooths between `W` and `C` |
+| CUDA | `C == W` only | `1` | `min(T, C)` |
+
+The CUDA kernel evicts the minimum number of rows on every step, which reproduces the contract
+exactly when `G == 1` and only then, so it rejects `C > W` with an `INVALID_ARGUMENT` error rather
+than returning a layout that disagrees with this document. This matches how the ONNX Runtime GenAI
+model builder sizes windowed caches: no slack for CUDA, a small slack (16 entries) for CPU.
 
 ### Resident range
 
@@ -195,11 +214,10 @@ inside `C`.
 This inherits the operator-wide restriction that `batch_size` must be 1 when `S > 1` and past
 context is present, so multi-token verification steps run one sequence at a time.
 
-Sizing `C >= W + S - 1` keeps a whole `S`-token step inside the slack above the window. This is the
-same rule the ONNX Runtime GenAI model builder applies when it sizes a windowed ring from the
-prefill chunk size, and it is worth applying to the maximum verification length in a speculative
-loop: it removes the staging copy in the common case and widens the range of rollbacks that are
-exact (below).
+On CPU, sizing `C >= W + S - 1` keeps a whole `S`-token step inside the slack above the window: it
+removes the staging copy in the common case and widens the range of rollbacks that are exact
+(below). This is a CPU-only tuning knob — CUDA requires `C == W`, so every multi-token step there is
+staged.
 
 ### Rejecting speculative tokens
 
