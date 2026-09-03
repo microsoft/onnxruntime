@@ -57,6 +57,26 @@ jobs:
         ]
       python_version: "3.14"
 
+  apple_accelerate:
+    uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
+    with:
+      use_apple_accelerate: true
+      # macOS arm64 only (Apple Silicon host required). Debug catches
+      # assertion-rich failures (the targeted LayerNormAppleAccelerate.*
+      # gtest suite runs on every native-arm64 entry in this matrix
+      # regardless of build_config). Release is required in addition to
+      # Debug because the benchmark build/run steps in
+      # macos-ci-build-and-test-workflow.yml are gated to
+      # build_config == 'Release' only -- a Debug/-O0 binary is not real
+      # performance evidence for the Apple Accelerate vDSP LayerNorm/RMSNorm
+      # path, so Debug-only numbers are never an acceptable substitute.
+      matrix_include: >-
+        [
+          {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+        ]
+      python_version: "3.14"
+
   webgpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:

@@ -689,6 +689,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Enable riscv64 MLAS kernels that use the RISC-V Vector extension.",
     )
+    cpu_group.add_argument(
+        "--use_apple_accelerate",
+        action="store_true",
+        help="Enable Apple Accelerate framework in MLAS (macOS arm64 only).",
+    )
 
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
     dnnl_group = parser.add_argument_group("DNNL Execution Provider")
@@ -1101,4 +1106,28 @@ def parse_arguments() -> argparse.Namespace:
 
         if getattr(args, "macos", None) and not getattr(args, "build_apple_framework", False):
             parser.error("--macos target requires --build_apple_framework.")
+
+    # Apple Accelerate is scoped to macOS arm64 only.
+    if args.use_apple_accelerate:
+        if not is_macOS():
+            parser.error("--use_apple_accelerate is only supported on macOS.")
+        # Platform check passed — safe to read Apple-only attributes.
+        if getattr(args, "ios", False):
+            parser.error("--use_apple_accelerate is not supported for iOS builds.")
+        if getattr(args, "tvos", False):
+            parser.error("--use_apple_accelerate is not supported for tvOS builds.")
+        if getattr(args, "visionos", False):
+            parser.error("--use_apple_accelerate is not supported for visionOS builds.")
+        if getattr(args, "macos", None) == "Catalyst":
+            parser.error("--use_apple_accelerate is not supported for Mac Catalyst builds.")
+        if getattr(args, "android", False):
+            parser.error("--use_apple_accelerate is not supported for Android builds.")
+        if getattr(args, "build_wasm", False):
+            parser.error("--use_apple_accelerate is not supported for WebAssembly builds.")
+        if getattr(args, "rv64", False):
+            parser.error("--use_apple_accelerate is not supported for RISC-V (rv64) builds.")
+        osx_arch = getattr(args, "osx_arch", None)
+        if osx_arch not in ("arm64", "arm64e"):
+            parser.error(f"--use_apple_accelerate requires an arm64 target architecture (got --osx_arch={osx_arch!r}).")
+
     return args

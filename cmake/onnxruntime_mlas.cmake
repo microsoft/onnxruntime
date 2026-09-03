@@ -1169,6 +1169,21 @@ else()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()
 
+# Apple Accelerate framework linkage for the gated macOS arm64 MLAS kernels.
+# Express the compile definition through mlas_private_compile_definitions so
+# onnxruntime_mlas_test and onnxruntime_mlas_benchmark compile the matching
+# gated tests and benchmarks as well.
+if(onnxruntime_USE_APPLE_ACCELERATE)
+  # Accelerate provides the vDSP routines used by the LayerNorm/RMSNorm kernel.
+  find_library(APPLE_ACCELERATE_LIB Accelerate)
+  if(NOT APPLE_ACCELERATE_LIB)
+    message(FATAL_ERROR "Apple Accelerate framework not found. Ensure you are building on macOS arm64 with an Apple SDK.")
+  endif()
+  target_link_libraries(onnxruntime_mlas PRIVATE ${APPLE_ACCELERATE_LIB})
+  list(APPEND mlas_private_compile_definitions MLAS_USE_APPLE_ACCELERATE=1)
+  message(STATUS "MLAS: Apple Accelerate framework linked; MLAS_USE_APPLE_ACCELERATE=1 defined")
+endif()
+
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
     target_include_directories(${mlas_target} PRIVATE ${MLAS_INC_DIR} ${MLAS_SRC_DIR})
     onnxruntime_add_include_to_target(${mlas_target} ${GSL_TARGET} safeint_interface)

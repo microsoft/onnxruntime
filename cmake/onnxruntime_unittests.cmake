@@ -1583,6 +1583,14 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
     target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE ${mlas_private_compile_definitions})
+    # Regression canary: MLAS_USE_APPLE_ACCELERATE must reach this benchmark target via the
+    # shared mlas_private_compile_definitions list, not only onnxruntime_mlas, or Apple-gated
+    # benchmarks silently compile out here. See cmake/onnxruntime_mlas.cmake.
+    if(onnxruntime_USE_APPLE_ACCELERATE AND NOT "MLAS_USE_APPLE_ACCELERATE=1" IN_LIST mlas_private_compile_definitions)
+      message(FATAL_ERROR "onnxruntime_USE_APPLE_ACCELERATE is ON but MLAS_USE_APPLE_ACCELERATE=1 is missing "
+                           "from mlas_private_compile_definitions: onnxruntime_mlas_benchmark would silently "
+                           "compile out Apple Accelerate-gated benchmarks. Fix in cmake/onnxruntime_mlas.cmake.")
+    endif()
     if(WIN32)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)
       # Avoid using new and delete. But this is a benchmark program, it's ok if it has a chance to leak.
@@ -2261,6 +2269,14 @@ endif()
       )
     endif()
     target_compile_definitions(onnxruntime_mlas_test PRIVATE ${mlas_private_compile_definitions})
+    # Regression canary: MLAS_USE_APPLE_ACCELERATE must reach this test target via the shared
+    # mlas_private_compile_definitions list, not only onnxruntime_mlas, or Apple-gated tests
+    # silently compile out here. See cmake/onnxruntime_mlas.cmake.
+    if(onnxruntime_USE_APPLE_ACCELERATE AND NOT "MLAS_USE_APPLE_ACCELERATE=1" IN_LIST mlas_private_compile_definitions)
+      message(FATAL_ERROR "onnxruntime_USE_APPLE_ACCELERATE is ON but MLAS_USE_APPLE_ACCELERATE=1 is missing "
+                           "from mlas_private_compile_definitions: onnxruntime_mlas_test would silently "
+                           "compile out Apple Accelerate-gated tests. Fix in cmake/onnxruntime_mlas.cmake.")
+    endif()
     target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
             ${CMAKE_CURRENT_BINARY_DIR})
     target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
