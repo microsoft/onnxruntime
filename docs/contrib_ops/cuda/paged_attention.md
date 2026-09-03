@@ -789,8 +789,9 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > Qwen3.8 full-attention geometry, when `attention_metadata` proves one-token-per-sequence decode
 > without a host readback. The CUDA image selected at runtime must contain compatible XQA device code
 > generated for SM80 or newer; INT8 and native FP16/BF16 XQA require an SM80-or-newer GPU and FP8 XQA
-> requires SM89 or SM90+. Setting
-> `ORT_ENABLE_XQA=0` disables XQA. When Flash is eligible, the operator restores paged Flash
+> requires SM89 or SM90+. Quantized-cache XQA is enabled by default. Native FP16/BF16-cache XQA is
+> disabled by default because it has not shown a consistent advantage over FlashAttention; set
+> `ORT_ENABLE_XQA_NATIVE_KV=1` to opt in. Setting `ORT_ENABLE_XQA=0` disables all XQA. When Flash is eligible, the operator restores paged Flash
 > Attention for native FP16 cache when a ragged step is not one-token-per-sequence, the selected
 > image has no compatible XQA kernel, or its dynamic shared-memory requirement exceeds the device
 > limit. Other quantized configurations use `PagedDecodeSplitKV` and `PagedDecodeReduce` from
@@ -814,7 +815,7 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   `t ∈ [kv_len - local_window_size, kv_len)`, matching Flash's `window_size_left = local_window_size - 1`.
 > - **Backend gating.** The kernel is selected by the static shape test of §4.7
 >   (`token_count <= batch_size`) when the cache is quantized, FlashAttention is unavailable, or
->   the metadata-proven native FP16 H256/group-6 XQA specialization is eligible. Other unquantized
+>   the opted-in, metadata-proven native FP16 H256/group-6 XQA specialization is eligible. Other unquantized
 >   FlashAttention-eligible shapes keep using FlashAttention. `sdpa_kernel = 512`
 >   (`AttentionBackend::DECODER_ATTENTION`) forces the portable paged-decode path, which is how that
 >   unquantized fallback is tested.

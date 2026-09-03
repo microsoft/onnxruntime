@@ -2438,6 +2438,7 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
 
     @parameterized.expand([("int8", "int8"), ("native_fp16", "float16")])
     def test_spec_dec_dispatches_to_xqa(self, _, kv_cache_type):
+        is_native_cache = kv_cache_type == "float16"
         quant = "NONE" if kv_cache_type == "float16" else "PER_TENSOR"
         config = Config(4, 8, 1024, 6, 1, 256, 256, False, False, False, False, 0.0)
         for key, value in {
@@ -2447,13 +2448,40 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
             "use_attention_metadata": True,
         }.items():
             setattr(config, key, value)
-        with patch.dict(os.environ, {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"}):
+        with patch.dict(
+            os.environ,
+            {
+                "ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1",
+                "ORT_ENABLE_XQA": "1",
+                "ORT_ENABLE_XQA_NATIVE_KV": "1" if is_native_cache else "0",
+            },
+        ):
             debug_output = capture_native_stdout(
                 lambda: parity_check_paged_attention(
                     config, rtol=5e-3, atol=5e-3, new_seqlens_override=torch.tensor([8, 8, 8, 8], dtype=torch.int32)
                 )
             )
         self.assertIn("SdpaKernel=XQA", debug_output)
+
+        if is_native_cache:
+            with patch.dict(
+                os.environ,
+                {
+                    "ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1",
+                    "ORT_ENABLE_XQA": "1",
+                    "ORT_ENABLE_XQA_NATIVE_KV": "0",
+                },
+            ):
+                debug_output = capture_native_stdout(
+                    lambda: parity_check_paged_attention(
+                        config,
+                        rtol=5e-3,
+                        atol=5e-3,
+                        new_seqlens_override=torch.tensor([8, 8, 8, 8], dtype=torch.int32),
+                    )
+                )
+            self.assertNotIn("SdpaKernel=XQA", debug_output)
+            self.assertIn("SdpaKernel=FLASH_ATTENTION", debug_output)
 
     @parameterized.expand(
         [
@@ -2487,7 +2515,8 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
         self._check(batch_size=1, new_seqlens=[8])
 
     def test_spec_dec_native_fp16_cache(self):
-        self._check(kv_cache_type="float16", k_quant_type="NONE", v_quant_type="NONE")
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA_NATIVE_KV": "1"}):
+            self._check(kv_cache_type="float16", k_quant_type="NONE", v_quant_type="NONE")
 
     def test_bound_above_specialization_falls_back(self):
         # A query bound of 9 is outside the 2..8 window, so this must land on the ragged backend

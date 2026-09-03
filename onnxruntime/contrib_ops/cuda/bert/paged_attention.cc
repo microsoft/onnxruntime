@@ -142,9 +142,11 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
   disable_memory_efficient_attention_ = sizeof(T) != 2 || !kernel_options_->UseEfficientAttention();
   disable_paged_decode_ = sizeof(T) != 2 || !kernel_options_->UseDecoderAttention();
-  // XQA defaults on for fp16/bf16 activations, matching GroupQueryAttention; ORT_ENABLE_XQA=0
-  // disables it explicitly.
+  // Quantized-cache XQA defaults on, matching GroupQueryAttention. Native-cache XQA is opt-in
+  // because it has not shown a consistent advantage over FlashAttention.
   enable_xqa_ = sizeof(T) == 2 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
+  enable_native_xqa_ =
+      enable_xqa_ && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_NATIVE_KV", 0) != 0);
 }
 
 template <typename T, typename TCACHE>
@@ -444,11 +446,11 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       (std::is_same<T, MLFloat16>::value && std::is_same<TCACHE, MLFloat16>::value) ||
       (std::is_same<T, BFloat16>::value && std::is_same<TCACHE, BFloat16>::value);
   const bool fp16_xqa_eligible =
-      enable_xqa_ && has_metadata_bounds && kIsFp16Cache && device_prop.major >= 8 &&
+      enable_native_xqa_ && has_metadata_bounds && kIsFp16Cache && device_prop.major >= 8 &&
       parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0;
   const bool native_spec_xqa_eligible =
-      enable_xqa_ && has_metadata_bounds && kIsNativeSpecXqaCache && device_prop.major >= 8 &&
+      enable_native_xqa_ && has_metadata_bounds && kIsNativeSpecXqaCache && device_prop.major >= 8 &&
       parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0;
   const bool is_fp8_cache = IsFp8CacheType<TCACHE>();
