@@ -28,10 +28,7 @@ Step 1: Train a model using your favorite framework
 
 We'll use the famous iris datasets.
 
-.. runpython::
-    :showcode:
-    :store:
-    :warningout: ImportWarning FutureWarning
+.. exec_code::
 
     from sklearn.datasets import load_iris
     from sklearn.model_selection import train_test_split
@@ -54,11 +51,19 @@ There are `tools <https://github.com/onnx/tutorials>`_
 to convert other model formats into ONNX. Here we will use
 `ONNXMLTools <https://github.com/onnx/onnxmltools>`_.
 
-.. runpython::
-    :showcode:
-    :restore:
-    :store:
-    :warningout: ImportWarning FutureWarning
+.. exec_code::
+
+    # hide: start
+    from sklearn.datasets import load_iris
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import train_test_split
+
+    iris = load_iris()
+    X, y = iris.data, iris.target
+    X_train, X_test, y_train, y_test = train_test_split(X, y)
+    clr = LogisticRegression()
+    clr.fit(X_train, y_train)
+    # hide: stop
 
     from skl2onnx import convert_sklearn
     from skl2onnx.common.data_types import FloatTensorType
@@ -74,10 +79,25 @@ Step 3: Load and run the model using ONNX Runtime
 We will use *ONNX Runtime* to compute the predictions 
 for this machine learning model.
 
-.. runpython::
-    :showcode:
-    :restore:
-    :store:
+.. exec_code::
+
+    # hide: start
+    from sklearn.datasets import load_iris
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import train_test_split
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import FloatTensorType
+
+    iris = load_iris()
+    X, y = iris.data, iris.target
+    X_train, X_test, y_train, y_test = train_test_split(X, y)
+    clr = LogisticRegression()
+    clr.fit(X_train, y_train)
+    initial_type = [('float_input', FloatTensorType([None, 4]))]
+    onx = convert_sklearn(clr, initial_types=initial_type)
+    with open("logreg_iris.onnx", "wb") as f:
+        f.write(onx.SerializeToString())
+    # hide: stop
 
     import numpy
     import onnxruntime as rt
@@ -90,9 +110,25 @@ for this machine learning model.
 The code can be changed to get one specific output
 by specifying its name into a list.
 
-.. runpython::
-    :showcode:
-    :restore:
+.. exec_code::
+
+    # hide: start
+    from sklearn.datasets import load_iris
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import train_test_split
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import FloatTensorType
+
+    iris = load_iris()
+    X, y = iris.data, iris.target
+    X_train, X_test, y_train, y_test = train_test_split(X, y)
+    clr = LogisticRegression()
+    clr.fit(X_train, y_train)
+    initial_type = [('float_input', FloatTensorType([None, 4]))]
+    onx = convert_sklearn(clr, initial_types=initial_type)
+    with open("logreg_iris.onnx", "wb") as f:
+        f.write(onx.SerializeToString())
+    # hide: stop
 
     import numpy
     import onnxruntime as rt
@@ -102,5 +138,4 @@ by specifying its name into a list.
     label_name = sess.get_outputs()[0].name
     pred_onx = sess.run([label_name], {input_name: X_test.astype(numpy.float32)})[0]
     print(pred_onx)
-
 

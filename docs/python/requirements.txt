@@ -2,13 +2,12 @@ autopep8
 matplotlib
 scikit-learn
 skl2onnx
-sphinx>=6.0.0
+sphinx==6.2.1
 sphinx-gallery
 sphinxcontrib.imagesvg
 sphinxcontrib.googleanalytics
 sphinx_rtd_theme
 furo
-pyquickhelper
 pandas
 pydot
 flatbuffers
