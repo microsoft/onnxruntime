@@ -105,6 +105,12 @@ endif()
 include(node_helper.cmake)
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
+    # Attached to the provider as include-only deps, so the LINK_LIBRARIES walk below misses them.
+    set(BUNDLED_XNNPACK_LIBS "")
+    if (onnxruntime_USE_XNNPACK)
+      set(BUNDLED_XNNPACK_LIBS XNNPACK pthreadpool)
+    endif()
+
     bundle_static_library(onnxruntime_webassembly
       ${PROTOBUF_LIB}
       onnx
@@ -119,6 +125,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_providers
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
+      ${BUNDLED_XNNPACK_LIBS}
       ${PROVIDERS_WEBNN}
       ${PROVIDERS_WEBGPU}
       onnxruntime_session
