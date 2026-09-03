@@ -225,7 +225,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${onnxruntime_libs}
     ${onnxruntime_pybind11_state_static_providers}
     onnxruntime_optimizer
-    onnxruntime_providers
+    ${onnxruntime_providers_target}
     onnxruntime_util
     onnxruntime_lora
     onnxruntime_framework
