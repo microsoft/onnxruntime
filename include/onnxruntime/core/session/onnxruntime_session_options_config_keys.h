@@ -643,6 +643,11 @@ static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep
 // Query an EP's preference via the "gqa_preferred_value_layout" OrtEpDevice metadata key
 // (kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout in onnxruntime_ep_device_ep_metadata_keys.h).
 //
+// Setting "BNSH" explicitly is a claim that the model's Value cache boundary is BNSH, and session
+// initialization fails if the model already carries the BNHS conversion (as one saved from a BNHS
+// session via "session.optimized_model_filepath" does). Leaving the option unset makes no claim: such
+// a model loads unchanged, with a warning, exactly as it did before this option existed.
+//
 // Scope: this option only describes Value caches that the application itself binds, that is, a
 // past_value that is a graph input and a present_value that is a graph output. A Value cache that
 // stays inside the graph keeps the BNSH layout, because the application never sees it; ORT logs a

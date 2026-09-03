@@ -415,17 +415,25 @@ in place — both full-cache copies still execute, but there is no GQA node left
 old implementation reported nothing. Conversely, when the EP fuses the whole sequence, the boundary
 connects straight to the fused node and nothing is reported, which is correct.
 
-**BNSH is enforced, not merely inert.** When the requested layout is BNSH -- explicitly or by default
--- `TransformGraph` calls `FindConvertedGqaValueLayoutBoundaries()` and **fails** if the model already
-carries the conversion. A model saved from a BNHS session via `session.optimized_model_filepath` still
-has the Transposes and BNHS boundary shapes, so loading it as BNSH would have the application bind
-BNSH buffers to a BNHS boundary: a shape error at best, and a silent misread when the dimensions are
-dynamic or happen to be square. The remedy is to set the option to BNHS, which the idempotency in 3.4
-makes a clean no-op.
+**An explicit BNSH request is enforced; an absent option is not.** The distinction is between a claim
+and the absence of one, and `GetGqaValueLayout()` reports which it was rather than collapsing both to
+the default:
 
-This is deliberately **not** applied on the ORT format path. There the option is forced to BNSH (5),
-and a model converted to BNHS offline is the documented way to use the layout at all, so the same
-check would reject the supported workflow.
+- **`"BNSH"` set explicitly.** `TransformGraph` calls `FindConvertedGqaValueLayoutBoundaries()` and
+  **fails** if the model already carries the conversion. A model saved from a BNHS session via
+  `session.optimized_model_filepath` still has the Transposes and BNHS boundary shapes, so honouring a
+  BNSH request over it would have the application bind BNSH buffers to a BNHS boundary: a shape error
+  at best, and a silent misread when the dimensions are dynamic or happen to be square. The remedy is
+  to set the option to BNHS, which the idempotency in 3.4 makes a clean no-op.
+- **Option absent.** ORT has no claim to enforce, so the model loads exactly as it did before this
+  option existed, with a WARNING naming the boundaries. Enforcing the default here would reject models
+  whose Value cache already surfaces through boundary Transposes — which load and run correctly today —
+  and that is a compatibility break on the default path rather than an opt-in behaviour change. The
+  detection cannot tell such a model apart from one saved by a BNHS session, so it must not fail.
+
+Neither is applied on the ORT format path: there the option is forced to BNSH (5), and a model
+converted to BNHS offline is the documented way to use the layout at all, so the same check would
+reject the supported workflow.
 
 **Skipped when saving an ORT format model.** That path runs the partitioner in
 `GraphPartitioner::Mode::kAssignOnly`, which deliberately leaves the original nodes in place rather
@@ -546,8 +554,10 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - `FindConvertedGqaValueLayoutBoundaries` finds both boundaries of an already-converted graph and
   none in an unconverted one, which is what makes the ORT-format diagnostic (5) possible.
 - An invalid option value on an ORT format model reports the bad value, not the format restriction.
-- A BNHS-converted model loaded with BNSH, and with no option at all, fails initialization; the same
-  model loads cleanly when the option is set to BNHS. The test fails without the enforcement branch.
+- A BNHS-converted model fails initialization when BNSH is requested explicitly, and loads cleanly
+  when the option is set to BNHS.
+- The same model loads unchanged when no option is set, which is the compatibility case. That test
+  fails if the enforcement is applied to the default path.
 - The graph is left untouched when validation fails (section 3.6). Two independent GQA nodes, one
   convertible and one not, asserted for both build orders — `GetNodesInTopologicalOrder()` does not
   follow insertion order for independent nodes, and only the order that presents the convertible node
