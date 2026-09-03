@@ -466,6 +466,93 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_9) {
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
+// ReduceMean with keepdims=0 drops the reduced dim, so the sub-graph does not compute a layer norm.
+TEST_F(GraphTransformationTests, LayerNormFusion_ReduceMeanNoKeepDims_NoFusion) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{4, 4}});
+    auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+    auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    auto* bias = builder.MakeInitializer<float>({4}, {0.0f, 0.0f, 0.0f, 0.0f});
+
+    auto* mean_out = builder.MakeIntermediate();
+    auto* sub_out = builder.MakeIntermediate();
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* mul_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    Node& mean_node = builder.AddNode("ReduceMean", {input}, {mean_out});
+    mean_node.AddAttribute("axes", std::vector<int64_t>{-1});
+    mean_node.AddAttribute("keepdims", static_cast<int64_t>(0));
+    builder.AddNode("Sub", {input, mean_out}, {sub_out});
+    builder.AddNode("Pow", {sub_out, pow_exponent}, {pow_out});
+    Node& reduce_mean_node = builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out});
+    reduce_mean_node.AddAttribute("axes", std::vector<int64_t>{-1});
+    reduce_mean_node.AddAttribute("keepdims", static_cast<int64_t>(0));
+    builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+    builder.AddNode("Div", {sub_out, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, scale}, {mul_out});
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("LayerNormalization") == op_to_count.end());
+    const auto reduce_mean_it = op_to_count.find("ReduceMean");
+    TEST_RETURN_IF_NOT(reduce_mean_it != op_to_count.end() && reduce_mean_it->second == 2);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 13, *logger_,
+      std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level2),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+// Same as above for the simplified pattern, which is the one hit by the model in issue #30513.
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusion_ReduceMeanNoKeepDims_NoFusion) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{4, 4}});
+    auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+    auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+    Node& reduce_mean_node = builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out});
+    reduce_mean_node.AddAttribute("axes", std::vector<int64_t>{-1});
+    reduce_mean_node.AddAttribute("keepdims", static_cast<int64_t>(0));
+    builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+    builder.AddNode("Div", {input, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, scale}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("SimplifiedLayerNormalization") == op_to_count.end());
+    const auto reduce_mean_it = op_to_count.find("ReduceMean");
+    TEST_RETURN_IF_NOT(reduce_mean_it != op_to_count.end() && reduce_mean_it->second == 1);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_,
+                                        std::make_unique<SimplifiedLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_t5.onnx";
   std::shared_ptr<Model> p_model;
