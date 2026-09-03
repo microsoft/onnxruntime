@@ -190,13 +190,20 @@ int OrtAppendExecutionProviderV2(ort_session_options_handle_t session_options,
   size_t num_ep_devices = 0;
   RETURN_ERROR_CODE_IF_ERROR(GetEpDevices, g_env, &ep_devices, &num_ep_devices);
 
+  // An EP may report more than one device (e.g. one per GPU), and all of its devices share its name. Select all of
+  // them, matching the semantics of SessionOptionsAppendExecutionProvider_V2, rather than picking an arbitrary one.
+  std::vector<const OrtEpDevice*> selected_ep_devices;
   for (size_t i = 0; i < num_ep_devices; ++i) {
     const char* ep_name = Ort::GetApi().EpDevice_EpName(ep_devices[i]);
     if (ep_name != nullptr && std::strcmp(ep_name, name) == 0) {
-      return CHECK_STATUS(SessionOptionsAppendExecutionProvider_V2, session_options, g_env,
-                          &ep_devices[i], static_cast<size_t>(1),
-                          provider_options_keys, provider_options_values, num_keys);
+      selected_ep_devices.push_back(ep_devices[i]);
     }
+  }
+
+  if (!selected_ep_devices.empty()) {
+    return CHECK_STATUS(SessionOptionsAppendExecutionProvider_V2, session_options, g_env,
+                        selected_ep_devices.data(), selected_ep_devices.size(),
+                        provider_options_keys, provider_options_values, num_keys);
   }
 
   std::ostringstream message;

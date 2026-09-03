@@ -98,8 +98,9 @@ int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t
  * append an execution provider for a session, selecting it as a plugin EP by name.
  *
  * Unlike OrtAppendExecutionProvider, which resolves the name against ORT's built-in EP table, this looks the
- * name up among the OrtEpDevice instances registered with the environment and appends the matching one through
- * SessionOptionsAppendExecutionProvider_V2. It is how a statically linked plugin EP is selected.
+ * name up among the OrtEpDevice instances registered with the environment and appends every device reported
+ * under that name through SessionOptionsAppendExecutionProvider_V2. It is how a statically linked plugin EP is
+ * selected.
  *
  * @param name the EP name as reported by the EP factory, e.g. "WebGpuExecutionProvider"
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
