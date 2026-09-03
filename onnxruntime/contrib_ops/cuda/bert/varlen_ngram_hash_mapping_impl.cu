@@ -57,7 +57,7 @@ __global__ void VarlenNGramHashMappingKernel(
   const int32_t last = cu_seqlens[batch_size];
   const int32_t start = cu_seqlens[b];
   const int32_t end = cu_seqlens[b + 1];
-  if (first != 0 || last != total_tokens || start < 0 || start > end || end > total_tokens) {
+  if (first != 0 || last != total_tokens || start < 0 || start >= end || end > total_tokens) {
     return;
   }
   const int64_t local_length = end - start;

@@ -582,7 +582,7 @@ void RunNGramHashMappingInPlaceTest(std::unique_ptr<IExecutionProvider> ep) {
   EXPECT_EQ(std::vector<T>(present_span.begin(), present_span.end()), expected_final_present);
 }
 
-
+template <typename T>
 std::vector<int32_t> CuSeqLensFrom(const std::vector<std::vector<T>>& sequences) {
   std::vector<int32_t> cu_seqlens{0};
   int32_t total = 0;
@@ -874,6 +874,34 @@ void RunVarlenNGramHashMappingChunkedTest() {
             present_after_decode3);
 }
 
+// cumulative_sequence_length is validated on the host for every EP (it never lives purely on
+// device the way vocab_sizes can for GPU EPs), so this is exercised on the default CPU provider
+// only, mirroring VarlenCausalConvWithState's MalformedOffsetsAreContained coverage.
+template <typename T>
+void RunVarlenNGramHashMappingMalformedCuSeqlensTest(const std::vector<int32_t>& cu_seqlens,
+                                                     int64_t total_tokens,
+                                                     const std::string& expected_error) {
+  const int64_t batch_size = static_cast<int64_t>(cu_seqlens.size()) - 1;
+  const std::vector<T> ids(static_cast<size_t>(total_tokens), T{1});
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {total_tokens}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {total_tokens, 4}, std::vector<T>(static_cast<size_t>(total_tokens * 4)));
+  test.AddOutput<T>("present_ids", {batch_size, 2}, std::vector<T>(static_cast<size_t>(batch_size * 2)));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
+}
+
 }  // namespace
 
 TEST(EngramOpsTest, NGramHashMappingEmptySequenceInt64) {
@@ -1008,7 +1036,6 @@ TEST(EngramOpsTest, EngramGateZeroDotProduct) {
   test.Run();
 }
 
-
 TEST(EngramOpsTest, VarlenNGramHashMappingMatchesPerSequenceInt64) {
   RunVarlenNGramHashMappingTest<int64_t>();
 }
@@ -1050,6 +1077,25 @@ TEST(EngramOpsTest, VarlenNGramHashMappingRejectsNonPositiveVocabSizeInt64) {
 
 TEST(EngramOpsTest, VarlenNGramHashMappingRejectsNonPositiveVocabSizeInt32) {
   RunVarlenNGramHashMappingNonPositiveVocabTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsNonzeroFirstOffset) {
+  RunVarlenNGramHashMappingMalformedCuSeqlensTest<int64_t>({1, 3}, 3, "cumulative_sequence_length[0] must be 0");
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsWrongFinalOffset) {
+  RunVarlenNGramHashMappingMalformedCuSeqlensTest<int64_t>(
+      {0, 2}, 3, "cumulative_sequence_length[batch_size] must equal total_tokens");
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsDescendingOffsets) {
+  RunVarlenNGramHashMappingMalformedCuSeqlensTest<int64_t>(
+      {0, 3, 2, 4}, 4, "cumulative_sequence_length must be strictly increasing");
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingRejectsRepeatedOffsets) {
+  RunVarlenNGramHashMappingMalformedCuSeqlensTest<int64_t>(
+      {0, 2, 2, 4}, 4, "cumulative_sequence_length must be strictly increasing");
 }
 
 }  // namespace test

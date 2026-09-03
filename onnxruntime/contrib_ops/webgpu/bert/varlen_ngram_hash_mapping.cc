@@ -45,7 +45,7 @@ Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "  let last = " << cu_seqlens.GetByOffset("uniforms.batch_size") << ";\n"
       << "  let start = " << cu_seqlens.GetByOffset("b") << ";\n"
       << "  let end = " << cu_seqlens.GetByOffset("b + 1u") << ";\n"
-      << "  if (first != 0 || u32(last) != uniforms.total_tokens || start < 0 || start > end ||\n"
+      << "  if (first != 0 || u32(last) != uniforms.total_tokens || start < 0 || start >= end ||\n"
       << "      u32(end) > uniforms.total_tokens) {\n"
       << "    return;\n"
       << "  }\n"
@@ -95,29 +95,38 @@ Status VarlenNGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) co
   }
   const auto& present_ids = shader.AddOutput("present_ids", ShaderUsage::UseUniform);
 
+  // Malformed offsets make this thread's request fall back to an all-pad_id present_ids row
+  // instead of indexing into input_ids/past_ids with an out-of-range start/end, mirroring the
+  // containment applied by VarlenNGramHashMappingProgram.
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
       << "  let slot = global_idx % uniforms.state_length;\n"
       << "  let b = global_idx / uniforms.state_length;\n"
+      << "  let first = " << cu_seqlens.GetByOffset("0u") << ";\n"
+      << "  let last = " << cu_seqlens.GetByOffset("uniforms.batch_size") << ";\n"
       << "  let start = " << cu_seqlens.GetByOffset("b") << ";\n"
       << "  let end = " << cu_seqlens.GetByOffset("b + 1u") << ";\n"
-      << "  let local_length = u32(max(end - start, 0));\n"
-      << "  var token = uniforms.pad_id;\n";
+      << "  var token = uniforms.pad_id;\n"
+      << "  if (first == 0 && u32(last) == uniforms.total_tokens && start >= 0 && start < end &&\n"
+      << "      u32(end) <= uniforms.total_tokens) {\n"
+      << "    let local_length = u32(end - start);\n";
   if (has_input_ids_) {
     shader.MainFunctionBody()
-        << "  if (slot + local_length >= uniforms.state_length) {\n"
-        << "    let source_t = slot + local_length - uniforms.state_length;\n"
-        << "    token = " << input_ids->GetByOffset("u32(start) + source_t") << ";\n"
-        << "  }\n";
+        << "    if (slot + local_length >= uniforms.state_length) {\n"
+        << "      let source_t = slot + local_length - uniforms.state_length;\n"
+        << "      token = " << input_ids->GetByOffset("u32(start) + source_t") << ";\n"
+        << "    }\n";
   }
   if (has_past_ids_) {
     shader.MainFunctionBody()
-        << "  if (slot + local_length < uniforms.state_length) {\n"
-        << "    token = "
+        << "    if (slot + local_length < uniforms.state_length) {\n"
+        << "      token = "
         << past_ids->GetByOffset("b * uniforms.state_length + slot + local_length") << ";\n"
-        << "  }\n";
+        << "    }\n";
   }
-  shader.MainFunctionBody() << "  " << present_ids.SetByOffset("global_idx", "token") << "\n";
+  shader.MainFunctionBody()
+      << "  }\n"
+      << "  " << present_ids.SetByOffset("global_idx", "token") << "\n";
   return Status::OK();
 }
 
@@ -184,6 +193,8 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
         .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(present_total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({{onnxruntime::narrow<uint32_t>(present_total)},
                               {onnxruntime::narrow<uint32_t>(state_length)},
+                              {onnxruntime::narrow<uint32_t>(batch_size)},
+                              {onnxruntime::narrow<uint32_t>(total_tokens)},
                               {onnxruntime::narrow<int32_t>(pad_id_)}});
     ORT_RETURN_IF_ERROR(context.RunProgram(present_program));
   }

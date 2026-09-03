@@ -92,8 +92,9 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(static_cast<int64_t>(cu_data[batch_size]) == total_tokens,
                     "cumulative_sequence_length[batch_size] must equal total_tokens");
   for (int64_t b = 0; b < batch_size; ++b) {
-    ORT_RETURN_IF_NOT(cu_data[b] >= 0 && cu_data[b] <= cu_data[b + 1],
-                      "cumulative_sequence_length must be non-decreasing and non-negative");
+    ORT_RETURN_IF_NOT(cu_data[b] >= 0 && cu_data[b] < cu_data[b + 1],
+                      "cumulative_sequence_length must be strictly increasing and non-negative "
+                      "because every request must contain at least one token");
   }
 
   Tensor* output = context->Output(0, TensorShape({total_tokens, num_heads}));

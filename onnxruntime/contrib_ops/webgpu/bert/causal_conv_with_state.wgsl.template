@@ -56,21 +56,6 @@ $MAIN {
   let state_pos_stride = 1u;
 #endif
 
-  // Both layouts are dense, so a strided (batch, position, channel) view covers them: the base is
-  // the (batch, channel) origin and successive positions are pos_stride elements apart.
-#if channels_last
-  // (batch_size, sequence_length, d_1, ..., d_n), channels = d_1 * ... * d_n
-  let input_base = batch_idx * channels * input_length + channel_idx;
-  let input_pos_stride = channels;
-  let state_base = batch_idx * channels * state_length + channel_idx;
-  let state_pos_stride = channels;
-#else
-  // (batch_size, channels, sequence_length)
-  let input_base = (batch_idx * channels + channel_idx) * input_length;
-  let input_pos_stride = 1u;
-  let state_base = (batch_idx * channels + channel_idx) * state_length;
-  let state_pos_stride = 1u;
-#endif
 
   // Perform depthwise causal convolution for this (batch, channel, pos).
   // The convolution window looks back state_length positions.
