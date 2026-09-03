@@ -60,7 +60,7 @@ Selected attributes:
 | `causal` | Apply the causal mask. Must be `0` or `1` and defaults to `1`; `0` enables bidirectional attention. |
 | `softcap` | Optional logit soft-capping value. `0` disables it. |
 | `local_window_size` | Left window size for causal local attention. `-1` means global attention and is required when `causal=0`. |
-| `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps only the most recent tokens, using cache-relative indexing and evicting from the front as needed. Requires `local_window_size > 0`. Defaults to `0` (full-length cache). |
+| `sliding_window_cache` | Set to `1` when using a windowed (sliding-window) KV cache instead of full-length. When enabled, the operator keeps the most recent positions contiguously at cache rows `[0, L)` and evicts internally. Requires `local_window_size > 0` and a capacity of at least `local_window_size`. Defaults to `0` (full-length cache). See [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache) for the normative layout, eviction and rollback contract. |
 | `do_rotary` / `rotary_interleaved` | Enable RoPE and select interleaved vs. half-rotary layout. |
 | `smooth_softmax` | Add a smooth factor to the softmax denominator. |
 | `qk_norm_epsilon` | Epsilon for the fused per-head Q/K RMSNorm (QK-Norm) prologue. Defaults to `1e-6`. |
@@ -176,7 +176,11 @@ employ local attention (e.g., GPT-OSS with layer-wise sliding windows).
   (order tens of entries) is the sweet spot; a much larger buffer starts costing more in attention
   over out-of-window entries than it saves in compaction.
 - **Cache-relative indexing:** New keys/values are appended at cache-relative positions, not global
-  positions. Once the window is full, old tokens are evicted from the front.
+  positions. After a step, rows `[0, L)` hold the `L` most recent positions in order, where
+  `min(T, W) <= L <= min(T, C)` for capacity `C`, window `W` and total length `T`. Eviction reclaims
+  `C - W + 1` positions at a time rather than one per step, so `L` is not `min(T, C)` in general; the
+  exact formula, the chunk-invariance property that multi-token (speculative) steps rely on, and the
+  rollback rule are specified in [the CPU notes](../cpu/gqa.md#windowed-sliding-window-kv-cache).
 - **RoPE position bounds:** The `rotary_max_position` parameter controls the upper bound (exclusive)
   for RoPE position indices, decoupling absolute sequence positions from cache buffer indices.
 - **Multi-token staging:** For multi-token (prompt) steps that exceed window size, a temporary
@@ -191,8 +195,8 @@ employ local attention (e.g., GPT-OSS with layer-wise sliding windows).
   appended at `end`, so a step only moves memory when the append would run past the capacity; at
   that point the surviving entries are compacted to the front in one go. Multi-token steps that
   would drop entries the step itself still reads are staged instead, so results match a full-length
-  cache exactly. On CPU the `attention_bias` input, the `qk_output` attribute and a shared KV layout
-  (`key`/`value` folded into `query`) are not supported together with `sliding_window_cache=1`.
+  cache exactly. On CPU the `qk_output` attribute and a shared KV layout (`key`/`value` folded into
+  `query`) are not supported together with `sliding_window_cache=1`.
 
 ### Quantized KV cache
 
