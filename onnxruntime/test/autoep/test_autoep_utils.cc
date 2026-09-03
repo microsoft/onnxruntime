@@ -85,6 +85,13 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
       GetProcAddress(lib, "ExampleEpTestHooks_ResetSyncCount"));
   hooks.get_sync_count = reinterpret_cast<ExampleEpHooks::GetSyncCountFn>(
       GetProcAddress(lib, "ExampleEpTestHooks_GetSyncCount"));
+  hooks.reset_preallocated_output_query = reinterpret_cast<ExampleEpHooks::ResetPreallocatedOutputQueryFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_ResetPreallocatedOutputQuery"));
+  hooks.get_preallocated_output_query_result = reinterpret_cast<ExampleEpHooks::GetPreallocatedOutputQueryResultFn>(
+      GetProcAddress(lib, "ExampleEpTestHooks_GetPreallocatedOutputQueryResult"));
+  hooks.get_preallocated_output_bad_index_rejected =
+      reinterpret_cast<ExampleEpHooks::GetPreallocatedOutputBadIndexRejectedFn>(
+          GetProcAddress(lib, "ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected"));
 #else
   void* lib = dlopen(ep_info.library_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
   ASSERT_NE(lib, nullptr);
@@ -93,6 +100,14 @@ void Utils::LoadExampleEpHooks(const ExamplePluginInfo& ep_info,
       dlsym(lib, "ExampleEpTestHooks_ResetSyncCount"));
   hooks.get_sync_count = reinterpret_cast<Utils::ExampleEpHooks::GetSyncCountFn>(
       dlsym(lib, "ExampleEpTestHooks_GetSyncCount"));
+  hooks.reset_preallocated_output_query = reinterpret_cast<Utils::ExampleEpHooks::ResetPreallocatedOutputQueryFn>(
+      dlsym(lib, "ExampleEpTestHooks_ResetPreallocatedOutputQuery"));
+  hooks.get_preallocated_output_query_result =
+      reinterpret_cast<Utils::ExampleEpHooks::GetPreallocatedOutputQueryResultFn>(
+          dlsym(lib, "ExampleEpTestHooks_GetPreallocatedOutputQueryResult"));
+  hooks.get_preallocated_output_bad_index_rejected =
+      reinterpret_cast<Utils::ExampleEpHooks::GetPreallocatedOutputBadIndexRejectedFn>(
+          dlsym(lib, "ExampleEpTestHooks_GetPreallocatedOutputBadIndexRejected"));
 #endif
 
   example_ep_hooks = LoadExampleEpHooksPtr(

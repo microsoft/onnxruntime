@@ -7560,6 +7560,38 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
                   _In_ const void* source_model_data, _In_ size_t source_model_data_length);
+
+  /** \brief Get a preallocated output tensor without allocating an output.
+   *
+   * Returns a borrowed OrtValue that is already allocated for this output. The
+   * value may have been supplied by the caller of Run or IoBinding, or
+   * preallocated by ORT for an internal execution such as a control-flow
+   * subgraph. The returned value is valid only while the current kernel Compute
+   * call is executing and must not be released. If the output is unallocated or
+   * optional, `*output` is set to nullptr. This function never allocates,
+   * resizes, or replaces an output value.
+   *
+   * The caller must validate the returned tensor's shape and element type before
+   * writing to it, and must not write to an incompatible tensor. ORT generally
+   * rejects element type, rank, and static-dimension mismatches for top-level
+   * outputs during pre-run validation. For dynamic output dimensions, however,
+   * the shape check that KernelContext_GetOutput performs is skipped on this
+   * path, so a model with dynamic output shapes can yield a buffer smaller than
+   * the computed output. Calling KernelContext_GetOutput with the computed shape
+   * does not resize or replace an incompatible preallocated tensor; because the
+   * output slot is already allocated, ORT returns an error for the mismatch.
+   *
+   * \param[in] context OrtKernelContext instance.
+   * \param[in] output_index Output index in the current kernel.
+   * \param[out] output Borrowed preallocated output, or nullptr when the
+   *              current output is unallocated or optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context, _In_ size_t output_index,
+                  _Outptr_result_maybenull_ OrtValue** output);
 };
 
 /*

@@ -187,6 +187,19 @@ OrtValue* OpKernelContext::GetOutputMLValue(int index) {
   return execution_frame_->GetMutableNodeInputOrOutputMLValue(output_arg_index);
 }
 
+OrtValue* OpKernelContext::GetPreallocatedOutputMLValue(int index) const {
+  if (index < 0 || index >= OutputCount()) {
+    return nullptr;
+  }
+
+  OrtValue* output = execution_frame_->GetMutableNodeInputOrOutputMLValue(GetOutputArgIndex(index));
+  if (output == nullptr || !output->IsAllocated()) {
+    return nullptr;
+  }
+
+  return output;
+}
+
 AllocatorPtr OpKernelContext::GetAllocator(const OrtDevice& device) const {
   return execution_frame_->GetAllocator(device);
 }

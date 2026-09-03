@@ -3031,6 +3031,7 @@ struct KernelContext {
   // which can be compared to nullptr.
   UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
+  UnownedValue GetPreallocatedOutput(size_t index) const;
   void* GetGPUComputeStream() const;
   OrtSyncStream* GetSyncStream() const;
   Logger GetLogger() const;

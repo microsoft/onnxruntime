@@ -65,6 +65,10 @@ class OpKernelContextInternal : public OpKernelContext {
     return OpKernelContext::GetOutputMLValue(index);
   }
 
+  OrtValue* GetPreallocatedOutputMLValue(int index) const {
+    return OpKernelContext::GetPreallocatedOutputMLValue(index);
+  }
+
 #ifdef ENABLE_ATEN
   Status SetOutputMLValue(int index, const OrtValue& ort_value) {
     return OpKernelContext::SetOutputMLValue(index, ort_value);
