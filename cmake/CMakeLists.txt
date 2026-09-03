@@ -96,6 +96,7 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
+option(onnxruntime_USE_APPLE_ACCELERATE "Build with Apple Accelerate/BNNS/vDSP support in MLAS (macOS arm64 only)" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 # Materialize the ONNX node-test corpus from ONNX's Python generators into the build tree at
 # configure/build time, instead of depending on the on-disk corpus shipped in the ONNX source
@@ -629,6 +630,42 @@ if(onnxruntime_USE_KLEIDIAI)
     message(WARNING "onnxruntime_USE_KLEIDIAI was set but it is not supported. It will be disabled.")
     set(onnxruntime_USE_KLEIDIAI OFF)
   endif()
+endif()
+
+if(onnxruntime_USE_APPLE_ACCELERATE)
+  # N1: Gate on macOS (Darwin) specifically, not APPLE (which includes iOS/tvOS/visionOS).
+  # NOTE: Mac Catalyst (macabi) also reports CMAKE_SYSTEM_NAME=Darwin and arch=arm64.
+  # The Python build script (build_args.py) rejects --macos Catalyst explicitly, but a direct
+  # CMake configure targeting Catalyst (e.g. via -target arm64-apple-ios-macabi or a toolchain
+  # setting PLATFORM_NAME=macabi) is NOT detected here. PLATFORM_NAME is set by external
+  # toolchain files and is unavailable in plain cmake invocations, so a reliable CMake-level
+  # Catalyst gate is not feasible without introducing fragile flag-parsing heuristics.
+  # This is a known, documented limitation.
+  # B1: Detect arm64 robustly — CMAKE_OSX_ARCHITECTURES can be defined-but-empty on a
+  #     plain `cmake` configure, which leaves onnxruntime_target_platform unset.
+  #     Check CMAKE_OSX_ARCHITECTURES first; fall back to CMAKE_SYSTEM_PROCESSOR.
+  set(_ort_apple_accel_arch "")
+  if(DEFINED CMAKE_OSX_ARCHITECTURES AND NOT CMAKE_OSX_ARCHITECTURES STREQUAL "")
+    list(LENGTH CMAKE_OSX_ARCHITECTURES _osx_arch_len)
+    if(_osx_arch_len EQUAL 1)
+      set(_ort_apple_accel_arch "${CMAKE_OSX_ARCHITECTURES}")
+    endif()
+  elseif(CMAKE_SYSTEM_PROCESSOR)
+    set(_ort_apple_accel_arch "${CMAKE_SYSTEM_PROCESSOR}")
+  endif()
+
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE requires macOS (Darwin). It will be disabled on ${CMAKE_SYSTEM_NAME}.")
+    set(onnxruntime_USE_APPLE_ACCELERATE OFF)
+  elseif(NOT (_ort_apple_accel_arch STREQUAL "arm64" OR _ort_apple_accel_arch STREQUAL "arm64e"))
+    message(WARNING "onnxruntime_USE_APPLE_ACCELERATE requires arm64 (Apple Silicon). Detected arch: '${_ort_apple_accel_arch}'. It will be disabled.")
+    set(onnxruntime_USE_APPLE_ACCELERATE OFF)
+  else()
+    message(STATUS "onnxruntime_USE_APPLE_ACCELERATE enabled for macOS ${_ort_apple_accel_arch}")
+  endif()
+
+  unset(_ort_apple_accel_arch)
+  unset(_osx_arch_len)
 endif()
 
 #Dependencies begin
