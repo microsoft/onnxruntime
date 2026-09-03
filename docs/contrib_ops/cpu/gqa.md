@@ -153,12 +153,32 @@ Two consequences matter for callers:
   one position per step, so `L` sawtooths between `W` and `C` once the buffer has filled. Consumers
   that assume `L == min(T, C)` will misread the buffer whenever `C > W`.
 
-With `C = 6` and `W = 4` (so `G = 3`):
+Decoding one token at a time with `C = 6` and `W = 4` (so `G = 3`) walks the buffer like this. Each
+character is one cache row, holding the absolute (0-based) position stored there; `A` is position
+10, `B` is position 11, and `-` is a row that is unspecified at this point:
 
-| `T` | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
-|---|---|---|---|---|---|---|---|---|
-| `L(T)` | 5 | 6 | 4 | 5 | 6 | 4 | 5 | 6 |
-| oldest resident position | 0 | 0 | 3 | 3 | 3 | 6 | 6 | 6 |
+```text
+ T   buffer   L(T)
+ 1   0-----    1
+ 2   01----    2
+ 3   012---    3
+ 4   0123--    4
+ 5   01234-    5
+ 6   012345    6    full
+ 7   3456--    4    evicts positions 0-2 as one block
+ 8   34567-    5
+ 9   345678    6    full
+10   6789--    4    evicts positions 3-5 as one block
+11   6789A-    5
+12   6789AB    6    full
+```
+
+Reading the invariants off the picture: `L` never drops below `W = 4`, so the four positions a query
+may attend to are always present; the rows written are always `[0, L)` with no wraparound; and row
+`i` holds absolute position `T - L + i`, which at `T = 10` puts position `10 - 4 + 0 = 6` in row 0.
+Compaction runs on 2 of these 12 steps rather than on every step, which is the `G`-step amortization
+the slack above the window buys. Note also that a consumer assuming `L == min(T, C)` would expect
+`123456` at `T = 7` and read every row at the wrong offset.
 
 ### Multi-token steps and speculative decoding
 
@@ -199,7 +219,7 @@ already hold precisely the positions the shorter layout expects, at the row indi
 When it does not hold, the rollback crossed an eviction boundary: the shorter layout needs positions
 that have already been discarded, and the window has to be re-materialized (there is no way to
 recover evicted keys). Continuing to run in that state silently reads misaligned keys, so callers
-must check rather than assume. Using the table above with `T = 12` and `L = 6`, rejecting `k = 2`
+must check rather than assume. Using the trace above with `T = 12` and `L = 6`, rejecting `k = 2`
 gives `L(10) = 4 == 6 - 2` and is exact, while rejecting `k = 3` gives `L(9) = 6 != 6 - 3` and is
 not: positions 3 to 5 are gone.
 
