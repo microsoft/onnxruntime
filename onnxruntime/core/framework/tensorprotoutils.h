@@ -325,11 +325,11 @@ common::Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::fil
                                                   Tensor& tensor);
 
 common::Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
-                                                     const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                     const IExternalDataLoader& ext_data_loader,
-                                                     bool preload = false,
-                                                     std::unordered_set<std::filesystem::path>*
-                                                         validated_external_files = nullptr);
+                                                      const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                      const IExternalDataLoader& ext_data_loader,
+                                                      bool preload = false,
+                                                      std::unordered_set<std::filesystem::path>*
+                                                          validated_external_files = nullptr);
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the

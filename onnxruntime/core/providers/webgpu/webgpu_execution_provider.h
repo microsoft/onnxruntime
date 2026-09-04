@@ -47,8 +47,8 @@ std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, boo
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
-  DataLayout data_layout{DataLayout::NHWC};      // preferred layout is NHWC by default
-  bool enable_graph_capture{false};              // graph capture feature is disabled by default
+  DataLayout data_layout{DataLayout::NHWC};  // preferred layout is NHWC by default
+  bool enable_graph_capture{false};          // graph capture feature is disabled by default
   webgpu::WeightLoadAccelerationMode weight_load_acceleration_mode{
       webgpu::WeightLoadAccelerationMode::Off};
   bool enable_pix_capture{false};                // PIX capture is disabled by default
