@@ -104,10 +104,9 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
   }
 
   // URL element to tensor API
-  const inputTensorURL = await ort.Tensor.fromImage(
-    `http://localhost:${__ort_arg_port}/test-data/tensor-image.jpg`,
-    { norm: { bias: [2, 3, 9, 0], mean: [5, 6, 17, 0] } },
-  );
+  const inputTensorURL = await ort.Tensor.fromImage(`http://localhost:${__ort_arg_port}/test-data/tensor-image.jpg`, {
+    norm: { bias: [2, 3, 9, 0], mean: [5, 6, 17, 0] },
+  });
   // Tensor to ImageDAta API
   newImage = inputTensorURL.toImageData({
     format: 'RGB',
