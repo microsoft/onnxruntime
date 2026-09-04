@@ -18,14 +18,26 @@ namespace onnxruntime::telemetry_internal {
 
 inline constexpr size_t kMaxDeviceCensusEntries = 24;
 inline constexpr size_t kMaxDeviceCensusStateSize = 4096;
-inline constexpr int64_t kDeviceCensusSchemaVersion = 1;
+inline constexpr int64_t kDeviceCensusSchemaVersion = 2;
 
 struct DeviceCensusState {
   int64_t schema_version;
+  std::string identity;
   int64_t utc_day;
   bool emitted;
   std::vector<std::string> versions;
 };
+
+inline bool IsValidDeviceCensusIdentity(std::string_view identity) {
+  if (identity.empty() || identity.size() > 256) {
+    return false;
+  }
+
+  return std::all_of(
+      identity.begin(), identity.end(), [](unsigned char c) {
+        return c >= 0x21 && c <= 0x7e;
+      });
+}
 
 inline bool IsValidDeviceCensusVersion(std::string_view library_version) {
   if (library_version.empty() || library_version.size() > 128) {
@@ -81,13 +93,9 @@ inline std::optional<DeviceCensusState> ParseDeviceCensusState(
     return std::nullopt;
   }
 
-  int64_t utc_day = 0;
-  const std::string_view day =
+  const std::string_view identity =
       serialized.substr(first_newline + 1, second_newline - first_newline - 1);
-  const auto [day_end, error] =
-      std::from_chars(day.data(), day.data() + day.size(), utc_day);
-  if (error != std::errc{} || day_end != day.data() + day.size() ||
-      utc_day < 0) {
+  if (!IsValidDeviceCensusIdentity(identity)) {
     return std::nullopt;
   }
 
@@ -96,14 +104,30 @@ inline std::optional<DeviceCensusState> ParseDeviceCensusState(
     return std::nullopt;
   }
 
+  int64_t utc_day = 0;
+  const std::string_view day =
+      serialized.substr(second_newline + 1, third_newline - second_newline - 1);
+  const auto [day_end, error] =
+      std::from_chars(day.data(), day.data() + day.size(), utc_day);
+  if (error != std::errc{} || day_end != day.data() + day.size() ||
+      utc_day < 0) {
+    return std::nullopt;
+  }
+
+  const size_t fourth_newline = serialized.find('\n', third_newline + 1);
+  if (fourth_newline == std::string_view::npos) {
+    return std::nullopt;
+  }
+
   const std::string_view emitted = serialized.substr(
-      second_newline + 1, third_newline - second_newline - 1);
+      third_newline + 1, fourth_newline - third_newline - 1);
   if (emitted != "0" && emitted != "1") {
     return std::nullopt;
   }
 
-  DeviceCensusState state{schema_version, utc_day, emitted == "1", {}};
-  size_t offset = third_newline + 1;
+  DeviceCensusState state{
+      schema_version, std::string(identity), utc_day, emitted == "1", {}};
+  size_t offset = fourth_newline + 1;
   while (offset < serialized.size()) {
     size_t newline = serialized.find('\n', offset);
     if (newline == std::string_view::npos) {
@@ -126,6 +150,7 @@ inline std::optional<DeviceCensusState> ParseDeviceCensusState(
 
 inline std::string SerializeDeviceCensusState(const DeviceCensusState& state) {
   std::string serialized = std::to_string(state.schema_version) + "\n" +
+                           state.identity + "\n" +
                            std::to_string(state.utc_day) + "\n" +
                            (state.emitted ? "1\n" : "0\n");
   for (const std::string& entry : state.versions) {

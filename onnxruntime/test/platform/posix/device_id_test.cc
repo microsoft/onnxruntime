@@ -6,11 +6,13 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
 
 #include "gtest/gtest.h"
 
+#include "core/platform/device_census.h"
 #include "core/platform/telemetry_guid.h"
 #include "test/util/include/scoped_env_vars.h"
 
@@ -121,6 +123,8 @@ TEST(DeviceIdDeathTest, RepairsCorruptedFile) {
 TEST(DeviceIdDeathTest, AccumulatesAndEmitsCompletedCensusDay) {
   ScopedTestDirectory test_dir{"device_census"};
   const fs::path home = test_dir.Path() / "home";
+  const fs::path census_state =
+      home / ".cache/Microsoft/DeveloperTools/.onnxruntime/devicecensus.state";
   ScopedEnvironmentVariables environment{
       EnvVarMap{{"HOME", home.string()}, {"XDG_CACHE_HOME", nullopt}}};
 
@@ -131,6 +135,14 @@ TEST(DeviceIdDeathTest, AccumulatesAndEmitsCompletedCensusDay) {
         bool emitted_expected_entries = false;
         auto emit = [&](int64_t census_day,
                         const std::vector<std::string>& versions) {
+          std::ifstream state_file(census_state);
+          std::string persisted((std::istreambuf_iterator<char>(state_file)),
+                                std::istreambuf_iterator<char>());
+          const auto persisted_state =
+              telemetry_internal::ParseDeviceCensusState(persisted);
+          if (!persisted_state || persisted_state->utc_day != 20707) {
+            std::_Exit(EXIT_FAILURE);
+          }
           ++emission_count;
           emitted_expected_day = census_day == 20700;
           emitted_expected_entries =
@@ -143,7 +155,7 @@ TEST(DeviceIdDeathTest, AccumulatesAndEmitsCompletedCensusDay) {
         const bool new_version = device_id.RecordCensusActivity(20700, "1.25.0", false, emit);
         const bool next_active_day = device_id.RecordCensusActivity(20707, "1.24.0", false, emit);
 
-        std::_Exit(first && !duplicate && new_version && next_active_day &&
+        std::_Exit(first && duplicate && new_version && next_active_day &&
                            emission_count == 1 &&
                            emitted_expected_day && emitted_expected_entries
                        ? EXIT_SUCCESS
@@ -155,6 +167,8 @@ TEST(DeviceIdDeathTest, AccumulatesAndEmitsCompletedCensusDay) {
 TEST(DeviceIdDeathTest, EmitsImmediatelyForNewDeviceIdWithoutRolloverDuplicate) {
   ScopedTestDirectory test_dir{"device_census_first_use"};
   const fs::path home = test_dir.Path() / "home";
+  const fs::path census_state =
+      home / ".cache/Microsoft/DeveloperTools/.onnxruntime/devicecensus.state";
   ScopedEnvironmentVariables environment{
       EnvVarMap{{"HOME", home.string()}, {"XDG_CACHE_HOME", nullopt}}};
 
@@ -164,6 +178,14 @@ TEST(DeviceIdDeathTest, EmitsImmediatelyForNewDeviceIdWithoutRolloverDuplicate) 
         int64_t emitted_day = -1;
         auto emit = [&](int64_t census_day,
                         const std::vector<std::string>& versions) {
+          std::ifstream state_file(census_state);
+          std::string persisted((std::istreambuf_iterator<char>(state_file)),
+                                std::istreambuf_iterator<char>());
+          const auto persisted_state =
+              telemetry_internal::ParseDeviceCensusState(persisted);
+          if (!persisted_state || !persisted_state->emitted) {
+            std::_Exit(EXIT_FAILURE);
+          }
           ++emission_count;
           emitted_day = census_day;
           if (versions != std::vector<std::string>{"1.24.0"}) {
@@ -181,6 +203,69 @@ TEST(DeviceIdDeathTest, EmitsImmediatelyForNewDeviceIdWithoutRolloverDuplicate) 
                        : EXIT_FAILURE);
       },
       ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+}
+
+TEST(DeviceIdDeathTest, ResetsCensusForDifferentDeviceId) {
+  ScopedTestDirectory test_dir{"device_census_identity"};
+  const fs::path home = test_dir.Path() / "home";
+  const fs::path census_state =
+      home / ".cache/Microsoft/DeveloperTools/.onnxruntime/devicecensus.state";
+  ScopedEnvironmentVariables environment{
+      EnvVarMap{{"HOME", home.string()}, {"XDG_CACHE_HOME", nullopt}}};
+
+  EXPECT_EXIT(
+      {
+        auto& device_id = DeviceId::Instance();
+        const std::string current_id = device_id.GetValue();
+        fs::create_directories(census_state.parent_path());
+        std::ofstream state_file(census_state);
+        state_file << "2\n00000000-0000-0000-0000-000000000001\n20700\n0\n1.23.0\n";
+        state_file.close();
+
+        int emission_count = 0;
+        const bool recorded = device_id.RecordCensusActivity(
+            20700, "1.24.0", false,
+            [&](int64_t, const std::vector<std::string>&) {
+              ++emission_count;
+            });
+
+        std::ifstream persisted_file(census_state);
+        std::string persisted((std::istreambuf_iterator<char>(persisted_file)),
+                              std::istreambuf_iterator<char>());
+        const auto persisted_state =
+            telemetry_internal::ParseDeviceCensusState(persisted);
+        std::_Exit(recorded && persisted_state &&
+                           persisted_state->identity == current_id &&
+                           persisted_state->versions ==
+                               std::vector<std::string>{"1.24.0"} &&
+                           emission_count == 0
+                       ? EXIT_SUCCESS
+                       : EXIT_FAILURE);
+      },
+      ::testing::ExitedWithCode(EXIT_SUCCESS), "");
+}
+
+TEST(DeviceIdTest, RecordsExternalCensusIdentity) {
+  ScopedTestDirectory test_dir{"external_census_identity"};
+  constexpr std::string_view identity =
+      "6a09e667bb67ae853c6ef372a54ff53a";
+  bool observed_persisted_state = false;
+
+  ASSERT_TRUE(DeviceId::RecordCensusActivity(
+      identity, test_dir.Path().string(), 20700, "1.24.0", true,
+      [&](int64_t census_day, const std::vector<std::string>& versions) {
+        std::ifstream state_file(test_dir.Path() / "devicecensus.state");
+        std::string persisted((std::istreambuf_iterator<char>(state_file)),
+                              std::istreambuf_iterator<char>());
+        const auto persisted_state =
+            telemetry_internal::ParseDeviceCensusState(persisted);
+        observed_persisted_state =
+            persisted_state && persisted_state->identity == identity &&
+            persisted_state->utc_day == census_day &&
+            persisted_state->emitted &&
+            versions == std::vector<std::string>{"1.24.0"};
+      }));
+  EXPECT_TRUE(observed_persisted_state);
 }
 
 }  // namespace

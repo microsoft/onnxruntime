@@ -21,6 +21,9 @@
 // 1DS SDK
 #include <LogManagerProvider.hpp>
 #include <ILogConfiguration.hpp>
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+#include "pal/PAL.hpp"
+#endif
 #if defined(__ANDROID__)
 #include "http/HttpClient_Android.hpp"
 #endif
@@ -90,6 +93,7 @@ std::atomic<bool> PosixTelemetry::telemetry_disabled_{false};
 std::atomic<bool> PosixTelemetry::network_context_suppressed_{false};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
+std::atomic<int64_t> PosixTelemetry::census_utc_day_{-1};
 
 #if !defined(ORT_TELEMETRY_TENANT_TOKEN)
 namespace {
@@ -830,34 +834,20 @@ void PosixTelemetry::LogProcessInfo() const {
       return;
     }
 
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+    RecordCensusActivity(true);
+#else
     auto& device_id = DeviceId::Instance();
     const DeviceIdStatus device_id_status = device_id.GetStatus();
-#if !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS)
     if (device_id_status == DeviceIdStatus::Failed) {
       ORT_TELEMETRY_WARN("Failed to persist telemetry device ID; using an in-memory identifier");
     }
-#endif
-
     if (device_id_status != DeviceIdStatus::Failed) {
-      const std::string device_id_status_string = device_id.GetStatusString();
-      const bool emit_current_day =
+      RecordCensusActivity(
           device_id_status == DeviceIdStatus::New ||
-          device_id_status == DeviceIdStatus::Corrupted;
-      device_id.RecordCensusActivity(
-          GetUtcDay(), ORT_VERSION, emit_current_day,
-          [&](int64_t census_day,
-              const std::vector<std::string>& versions) {
-            auto event = EventBuilder("DeviceCensus", EventPriority::CRITICAL)
-                             .AddInt64("censusSchemaVersion",
-                                       telemetry_internal::kDeviceCensusSchemaVersion)
-                             .AddInt64("censusDay", census_day)
-                             .AddString("libraryName", kDeviceCensusLibraryName)
-                             .AddStringList("libraryVersions", versions)
-                             .AddString("deviceIdStatus", device_id_status_string)
-                             .Build();
-            LogEventAsync(std::move(event));
-          });
+          device_id_status == DeviceIdStatus::Corrupted);
     }
+#endif
 
     auto builder = EventBuilder("ProcessInfo", EventPriority::CRITICAL);
     if (!PrepareProcessEvent(builder)) {
@@ -894,6 +884,76 @@ void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
 
 void PosixTelemetry::LogEvaluationStart(uint32_t session_id) const {
   (void)session_id;
+  RunTelemetryOperation("RecordCensusActivity", [&]() {
+    RecordCensusActivity(false);
+  });
+}
+
+void PosixTelemetry::RecordCensusActivity(bool emit_current_day) const {
+  const int64_t utc_day = GetUtcDay();
+  int64_t previous_day = census_utc_day_.load(std::memory_order_acquire);
+  if (previous_day == utc_day ||
+      !census_utc_day_.compare_exchange_strong(
+          previous_day, utc_day, std::memory_order_acq_rel)) {
+    return;
+  }
+
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+  const std::string device_id_status = "Mobile";
+#else
+  const std::string device_id_status =
+      DeviceId::Instance().GetStatusString();
+#endif
+  const auto emit = [&](int64_t census_day,
+                        const std::vector<std::string>& versions) {
+    auto event = EventBuilder("DeviceCensus", EventPriority::CRITICAL)
+                     .AddInt64("censusSchemaVersion",
+                               telemetry_internal::kDeviceCensusSchemaVersion)
+                     .AddInt64("censusDay", census_day)
+                     .AddString("libraryName", kDeviceCensusLibraryName)
+                     .AddStringList("libraryVersions", versions)
+                     .AddString("deviceIdStatus", device_id_status)
+                     .Build();
+    LogEventAsync(std::move(event));
+  };
+
+  bool recorded = false;
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+  const auto device_information = PAL::GetDeviceInformation();
+  if (device_information) {
+    const std::string& platform_device_id =
+        device_information->GetDeviceId();
+#if defined(__ANDROID__)
+    const bool has_platform_device_id =
+        platform_device_id.size() > 2 &&
+        platform_device_id.compare(0, 2, "a:") == 0;
+#else
+    const bool has_platform_device_id =
+        platform_device_id.size() > 2 &&
+        platform_device_id.compare(0, 2, "i:") == 0;
+#endif
+    if (has_platform_device_id) {
+#if defined(__ANDROID__)
+      const std::string& storage_directory =
+          HttpClient_Android::GetCacheFilePath();
+#else
+      const std::string storage_directory =
+          DeviceId::EnsureStorageDirectory();
+#endif
+      recorded = DeviceId::RecordCensusActivity(
+          HashDeviceId(platform_device_id), storage_directory,
+          utc_day, ORT_VERSION, emit_current_day, emit);
+    }
+  }
+#else
+  recorded = DeviceId::Instance().RecordCensusActivity(
+      utc_day, ORT_VERSION, emit_current_day, emit);
+#endif
+  if (!recorded) {
+    int64_t expected_day = utc_day;
+    census_utc_day_.compare_exchange_strong(
+        expected_day, previous_day, std::memory_order_acq_rel);
+  }
 }
 
 void PosixTelemetry::LogSessionCreation(

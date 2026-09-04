@@ -4,6 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
+#include <charconv>
 #include <memory>
 #include <sstream>
 #include <list>
@@ -1978,7 +1979,15 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
     const auto* fbs_ort_model_version = fbs_session->ort_version();
     ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
 
-    const auto model_version = std::stoi(fbs_ort_model_version->str());
+    int model_version = 0;
+    const std::string_view model_version_string = fbs_ort_model_version->string_view();
+    const auto [model_version_end, model_version_error] =
+        std::from_chars(model_version_string.data(),
+                        model_version_string.data() + model_version_string.size(),
+                        model_version);
+    ORT_RETURN_IF(model_version_error != std::errc{} ||
+                      model_version_end != model_version_string.data() + model_version_string.size(),
+                  "Invalid ORT format model version [", model_version_string, "].");
     const bool is_supported = IsOrtModelVersionSupported(model_version);
 
     OrtFormatLoadOptions load_options{};
@@ -2397,18 +2406,31 @@ common::Status InferenceSession::HasInvalidCombinationOfExecutionProviders() con
 #pragma warning(disable : 26117)
 #endif
 common::Status InferenceSession::Initialize() {
+  const auto start_telemetry = [this]() {
+    TimePoint start_time = std::chrono::high_resolution_clock::now();
+    if (session_profiler_.IsEnabled()) {
+      start_time = session_profiler_.Start();
+    }
+    Env::Default().GetTelemetryProvider().LogSessionCreationStart(session_id_);
+    return start_time;
+  };
+
   if (session_options_.IsLoadCancellationFlagSet()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
-                           "Session initialization canceled due to user request.");
+    const Status status = ORT_MAKE_STATUS(
+        ONNXRUNTIME, MODEL_LOAD_CANCELED,
+        "Session initialization canceled due to user request.");
+    return RecordSessionCreationEndTelemetry(start_telemetry(), status);
   }
 
   bool have_cpu_ep = false;
   {
-    std::lock_guard<std::mutex> initial_guard(session_mutex_);
+    std::unique_lock<std::mutex> initial_guard(session_mutex_);
 
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
-      return common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
+      const Status status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded.");
+      initial_guard.unlock();
+      return RecordSessionCreationEndTelemetry(start_telemetry(), status);
     }
 
     if (is_inited_) {
@@ -2420,13 +2442,7 @@ common::Status InferenceSession::Initialize() {
   }
 
   Status status = Status::OK();
-  TimePoint tp = std::chrono::high_resolution_clock::now();
-  if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.Start();
-  }
-
-  const Env& env = Env::Default();
-  env.GetTelemetryProvider().LogSessionCreationStart(session_id_);
+  const TimePoint tp = start_telemetry();
 
   ORT_TRY {
     status = [&]() -> Status {

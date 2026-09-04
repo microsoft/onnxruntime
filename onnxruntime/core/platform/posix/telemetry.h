@@ -147,6 +147,7 @@ class PosixTelemetry : public Telemetry {
 
   // Safe async event logging.
   void LogEventAsync(::Microsoft::Applications::Events::EventProperties&& props) const;
+  void RecordCensusActivity(bool emit_current_day) const;
 
   // All shared telemetry state below is static: PosixTelemetry is a process-wide singleton whose
   // lifetime is gated by global_register_count_ (the first instance initializes the SDK, the last
@@ -172,6 +173,7 @@ class PosixTelemetry : public Telemetry {
 
   // Process info tracking
   static std::atomic<bool> process_info_logged_;
+  static std::atomic<int64_t> census_utc_day_;
 
   // Global registration count for singleton behavior
   static std::atomic<uint32_t> global_register_count_;
