@@ -37,6 +37,17 @@ class IExternalDataLoader {
   // writing into a tensor allocated by the framework.
   virtual bool CreatesTensorForDevice(const OrtDevice& target_device) const;
 
+  // Optional preload hooks allow a loader to start I/O after model parsing but
+  // before execution-provider assignment is finalized.
+  virtual bool SupportsPreload() const;
+  virtual common::Status BeginPreload() const;
+  virtual common::Status PreloadTensor(const Env& env,
+                                       const std::filesystem::path& data_file_path,
+                                       std::string_view tensor_name,
+                                       FileOffsetType data_offset,
+                                       SafeInt<size_t> data_length) const;
+  virtual common::Status FinalizePreload(const std::function<bool()>& is_cancelled) const;
+
   // Batch hooks allow loaders to prepare all external tensors before any initializer
   // is exposed to prepacking. The default implementations are no-ops.
   virtual common::Status BeginLoad() const;

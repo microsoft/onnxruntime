@@ -9,6 +9,8 @@
 
 namespace onnxruntime {
 
+class Graph;
+
 // The external data loader manager manages all registered external data loaders to allow custom
 // external data loading implemented by execution providers.
 class ExternalDataLoaderManager {
@@ -23,7 +25,13 @@ class ExternalDataLoaderManager {
   void Clear() noexcept { external_data_loaders_.clear(); }
 
   const IExternalDataLoader* GetTensorCreator(const OrtDevice& target_device) const;
+  bool HasPreloader() const;
 
+  common::Status PreloadExternalData(
+      const Env& env,
+      const std::filesystem::path& model_path,
+      const Graph& graph,
+      const std::function<bool()>& is_cancelled) const;
   common::Status BeginLoad() const;
   common::Status FinalizeLoad(const std::function<bool()>& is_cancelled) const;
   void AbortLoad() const noexcept;

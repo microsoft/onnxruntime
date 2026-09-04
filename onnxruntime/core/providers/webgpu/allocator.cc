@@ -23,7 +23,7 @@ GpuBufferAllocator::GpuBufferAllocator(
                         OrtMemTypeDefault)),
       buffer_manager_getter_{std::move(buffer_manager_getter)},
       should_submit_zero_initialize_{std::move(should_submit_zero_initialize)},
-      mapped_at_creation_{is_read_only_allocator && buffer_manager_getter_().SupportsUMA()},
+      is_read_only_allocator_{is_read_only_allocator},
       initialize_to_zero_{!is_read_only_allocator} {
 }
 
@@ -34,11 +34,15 @@ void* GpuBufferAllocator::Alloc(size_t size) {
 
   stats_.num_allocs++;
 
-  wgpu::BufferUsage usage = mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
+  const auto& buffer_manager = buffer_manager_getter_();
+  if (!mapped_at_creation_.has_value()) {
+    mapped_at_creation_ = is_read_only_allocator_ && buffer_manager.SupportsUMA();
+  }
+  wgpu::BufferUsage usage = *mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
                                                 : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
   const bool submit_zero_initialize = should_submit_zero_initialize_ && should_submit_zero_initialize_();
-  return buffer_manager_getter_().Create(size, usage, initialize_to_zero_, submit_zero_initialize);
+  return buffer_manager.Create(size, usage, initialize_to_zero_, submit_zero_initialize);
 }
 
 void GpuBufferAllocator::Free(void* p) {

@@ -1062,6 +1062,17 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
+  auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();
+  if (p_external_data_loader) {
+    auto st = external_data_loader_mgr_.RegisterExternalDataLoader(std::move(p_external_data_loader));
+    if (!st.IsOK()) {
+      return st;
+    }
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF_ERROR_SESSIONID_(StartExternalDataPreload());
+#endif
+  }
+
   p_exec_provider->SetLogger(session_logger_);
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
   return execution_providers_.Add(provider_type, p_exec_provider);
@@ -1198,7 +1209,14 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
     model_ = p_tmp_model;
 
-    ORT_RETURN_IF_ERROR_SESSIONID_(DoPostLoadProcessing(*model_));
+    status = StartExternalDataPreload();
+    ORT_RETURN_IF_ERROR_SESSIONID_(status);
+
+    status = DoPostLoadProcessing(*model_);
+    if (!status.IsOK()) {
+      external_data_loader_mgr_.AbortLoad();
+      ORT_RETURN_IF_ERROR_SESSIONID_(status);
+    }
 
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
@@ -1206,6 +1224,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     telemetry_.event_name_ = event_name;
     ORT_TELEMETRY_CAPTURE_STATUS_END();
   }
+
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
@@ -1226,6 +1245,19 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 #endif
 
   return status;
+}
+
+common::Status InferenceSession::StartExternalDataPreload() {
+  if (external_data_preload_started_ || model_ == nullptr ||
+      !external_data_loader_mgr_.HasPreloader()) {
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr_.PreloadExternalData(
+      Env::Default(), model_location_, model_->MainGraph(),
+      [this]() { return session_options_.IsLoadCancellationFlagSet(); }));
+  external_data_preload_started_ = true;
+  return Status::OK();
 }
 
 common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
