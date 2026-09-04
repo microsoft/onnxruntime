@@ -11,6 +11,17 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 
+static bool IsMatrixTranspose(const Node& transpose_node) {
+  const auto perm_attr = transpose_node.GetAttributes().find("perm");
+  if (perm_attr != transpose_node.GetAttributes().end()) {
+    const auto perms = RetrieveValues<int64_t>(perm_attr->second);
+    return perms.size() == 2 && perms[0] == 1 && perms[1] == 0;
+  }
+
+  const auto* shape = transpose_node.InputDefs()[0]->Shape();
+  return shape != nullptr && shape->dim_size() == 2;
+}
+
 Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& modified, const logging::Logger&) const {
   auto& gemm_node = node;
   const Node* A_node_ptr = graph_utils::GetInputNode(gemm_node, 0);
@@ -25,7 +36,7 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
   auto new_gemm_input_defs = gemm_node.MutableInputDefs();
 
   // check if input A is a Transpose
-  if (A_node_ptr != nullptr && A_node_ptr->OpType() == "Transpose") {
+  if (A_node_ptr != nullptr && A_node_ptr->OpType() == "Transpose" && IsMatrixTranspose(*A_node_ptr)) {
     // make sure all consumers are gemm nodes to avoid possible double transpose
     std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*A_node_ptr, "Gemm");
     if (gemm_nodes.size() == A_node_ptr->GetOutputEdgesCount()) {
@@ -44,7 +55,7 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
     }
   }
   // check if input B is a Transpose
-  if (B_node_ptr != nullptr && B_node_ptr->OpType() == "Transpose") {
+  if (B_node_ptr != nullptr && B_node_ptr->OpType() == "Transpose" && IsMatrixTranspose(*B_node_ptr)) {
     std::vector<const Node*> gemm_nodes = graph_utils::FindChildrenByType(*B_node_ptr, "Gemm");
     if (gemm_nodes.size() == B_node_ptr->GetOutputEdgesCount()) {
       Node& B_node = *graph.GetNode(B_node_ptr->Index());
@@ -106,6 +117,7 @@ bool GemmTransposeFusion::SatisfyCondition(const Graph& graph, const Node& node,
   // Fusion can be applied if there is a transpose at either of the inputs
   for (auto node_it = node.InputNodesBegin(); node_it != node.InputNodesEnd(); ++node_it) {
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*node_it, "Transpose", {1, 13, 21, 23, 24, 25}) &&
+        IsMatrixTranspose(*node_it) &&
         !graph.NodeProducesGraphOutput(*node_it) &&
         // Make sure the two nodes do not span execution providers.
         node_it->GetExecutionProviderType() == node.GetExecutionProviderType()) {
@@ -130,6 +142,7 @@ bool GemmTransposeFusion::SatisfyCondition(const Graph& graph, const Node& node,
   const auto next_node_it = node.OutputNodesBegin();
   if (next_node_it != node.OutputNodesEnd() &&
       graph_utils::IsSupportedOptypeVersionAndDomain(*next_node_it, "Transpose", {1, 13, 21, 23, 24, 25}) &&
+      IsMatrixTranspose(*next_node_it) &&
       next_node_it->GetInputEdgesCount() == 1 &&
       // Make sure the two nodes do not span execution providers.
       next_node_it->GetExecutionProviderType() == node.GetExecutionProviderType()) {
