@@ -171,6 +171,13 @@ static const char* const kOrtSessionOptionsGraphOptimizationsLoopLevel = "sessio
 // Using device allocators means the memory allocation is made using malloc/new.
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
 
+// Number of parallel CPU read tasks used by the CUDA external-data loader to fill each 64 MiB pinned staging buffer.
+// The loader owns two pinned buffers. While CUDA asynchronously transfers one buffer to the initializer allocation in
+// the CUDA BFC arena, these tasks read disjoint ranges of the next file block into the other buffer. A value of "1"
+// uses one sequential read per block. Positive integer values up to 64 are accepted. The default value is "4".
+static const char* const kOrtSessionOptionsCudaExternalDataLoaderReadingThreads =
+    "session.cuda.external_data_loader_reading_threads";
+
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
 // "0": thread will block if found no job to run
 // "1": thread will spin a number of times before blocking

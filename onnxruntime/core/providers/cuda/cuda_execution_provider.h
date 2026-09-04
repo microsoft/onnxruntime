@@ -70,6 +70,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
+  // Replaces the framework fallback used when an EP has no external-data loader. That path
+  // materializes a pageable/mmap-backed CPU tensor before GPUDataTransfer copies it to CUDA.
+  // This loader instead reads into pinned buffers and copies directly to the CUDA BFC Arena.
+  std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph,
