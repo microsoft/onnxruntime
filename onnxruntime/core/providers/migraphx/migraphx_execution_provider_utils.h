@@ -57,6 +57,13 @@ inline std::size_t getNodeInputNum(const Node& node) {
   return node_num;
 }
 
+template <typename EdgeEnd>
+inline const NodeArg* GetOutputNodeArgForEdge(const Node& node, const EdgeEnd& edge) {
+  const auto src_arg_index = edge.GetSrcArgIndex();
+  ORT_ENFORCE(src_arg_index >= 0);
+  return node.OutputDefs().at(static_cast<size_t>(src_arg_index));
+}
+
 inline bool isInputNode(const Node* node, const std::string& name) {
   auto outputs = node->OutputDefs();
   return std::any_of(outputs.begin(), outputs.end(), [&](auto out) {
