@@ -116,6 +116,59 @@ void EndAccessNoThrow(ImportedAllocation& allocation) noexcept {
 
 }  // namespace
 
+common::Status CheckDirectStorageExternalWeightsSupport(WebGpuContext& context) {
+  ORT_RETURN_IF_NOT(context.HasDevice(),
+                    "DirectStorage external weights require a Dawn device.");
+  ORT_RETURN_IF_NOT(context.AdapterInfo().backendType == wgpu::BackendType::D3D12,
+                    "DirectStorage external weights require the Dawn D3D12 backend.");
+  ORT_RETURN_IF_NOT(
+      context.DeviceHasFeature(wgpu::FeatureName::SharedBufferMemoryD3D12Resource) &&
+          context.DeviceHasFeature(wgpu::FeatureName::SharedFenceDXGISharedHandle),
+      "DirectStorage external weights require Dawn SharedBufferMemoryD3D12Resource and "
+      "SharedFenceDXGISharedHandle features.");
+
+  ComPtr<ID3D12Device> d3d_device =
+      dawn::native::d3d12::GetD3D12Device(context.Device().Get());
+  ORT_RETURN_IF_NOT(d3d_device != nullptr,
+                    "Failed to access Dawn's D3D12 device.");
+
+  ComPtr<IDStorageFactory> factory;
+  HRESULT result = DStorageGetFactory(IID_PPV_ARGS(&factory));
+  ORT_RETURN_IF_ERROR(FAILED(result)
+                          ? HResultStatus("DStorageGetFactory", result)
+                          : common::Status::OK());
+
+  DSTORAGE_QUEUE_DESC queue_descriptor{};
+  queue_descriptor.SourceType = DSTORAGE_REQUEST_SOURCE_FILE;
+  queue_descriptor.Capacity = DSTORAGE_MIN_QUEUE_CAPACITY;
+  queue_descriptor.Priority = DSTORAGE_PRIORITY_NORMAL;
+  queue_descriptor.Name = "ORT WebGPU DirectStorage capability probe";
+  queue_descriptor.Device = d3d_device.Get();
+  ComPtr<IDStorageQueue> queue;
+  result = factory->CreateQueue(&queue_descriptor, IID_PPV_ARGS(&queue));
+  return FAILED(result)
+             ? HResultStatus("IDStorageFactory::CreateQueue", result)
+             : common::Status::OK();
+}
+
+common::Status ResolveDirectStorageExternalWeightsMode(
+    DirectStorageExternalWeightsMode mode,
+    const common::Status& support_status,
+    bool& enabled) {
+  enabled = false;
+  if (mode == DirectStorageExternalWeightsMode::Off) {
+    return common::Status::OK();
+  }
+  if (support_status.IsOK()) {
+    enabled = true;
+    return common::Status::OK();
+  }
+  if (mode == DirectStorageExternalWeightsMode::Required) {
+    return support_status;
+  }
+  return common::Status::OK();
+}
+
 struct DirectStorageInitializerState::Impl {
   std::mutex mutex;
   IAllocator* allocator = nullptr;
