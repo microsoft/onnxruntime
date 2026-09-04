@@ -13,23 +13,24 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
                                             bool dst_is_gpu,
                                             size_t bytes) const {
   if (bytes > 0) {
+    const auto& buffer_manager = buffer_manager_getter_();
     if (dst_is_gpu) {
       if (src_is_gpu) {
         // copy from GPU to GPU
-        buffer_manager_.MemCpy(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
-                               static_cast<WGPUBuffer>(dst_data),
-                               bytes);
+        buffer_manager.MemCpy(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
+                             static_cast<WGPUBuffer>(dst_data),
+                             bytes);
       } else {
         // copy from CPU to GPU
-        buffer_manager_.Upload(const_cast<void*>(src_data),
-                               static_cast<WGPUBuffer>(dst_data),
-                               bytes);
+        buffer_manager.Upload(const_cast<void*>(src_data),
+                              static_cast<WGPUBuffer>(dst_data),
+                              bytes);
       }
     } else {
       // copy from GPU to CPU
-      buffer_manager_.Download(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
-                               dst_data,
-                               bytes);
+      buffer_manager.Download(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
+                              dst_data,
+                              bytes);
     }
   }
 

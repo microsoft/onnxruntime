@@ -63,6 +63,7 @@ TEST(ExternalDataLoaderManagerTest, DefaultBatchLifecycleIsBackwardCompatible) {
 
   ExternalDataLoaderManager manager;
   ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::make_unique<LegacyExternalDataLoader>()));
+  EXPECT_FALSE(manager.HasPreloader());
   EXPECT_STATUS_OK(manager.BeginLoad());
   EXPECT_STATUS_OK(manager.FinalizeLoad([]() { return false; }));
   manager.AbortLoad();

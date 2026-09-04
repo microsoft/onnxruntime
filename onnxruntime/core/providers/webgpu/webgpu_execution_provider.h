@@ -49,8 +49,8 @@ std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, boo
 struct WebGpuExecutionProviderConfig {
   DataLayout data_layout{DataLayout::NHWC};      // preferred layout is NHWC by default
   bool enable_graph_capture{false};              // graph capture feature is disabled by default
-  webgpu::DirectStorageExternalWeightsMode direct_storage_external_weights_mode{
-      webgpu::DirectStorageExternalWeightsMode::Off};
+  webgpu::WeightLoadAccelerationMode weight_load_acceleration_mode{
+      webgpu::WeightLoadAccelerationMode::Off};
   bool enable_pix_capture{false};                // PIX capture is disabled by default
   bool enable_int64{false};                      // int64 ops are not enabled by default
   uint32_t multi_rotary_cache_concat_offset{0};  // offset for concatenated multi rotary cache (0 = disabled)
@@ -149,6 +149,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+  webgpu::WeightLoadAccelerationMode weight_load_acceleration_mode_{
+      webgpu::WeightLoadAccelerationMode::Off};
   std::shared_ptr<webgpu::DirectStorageInitializerState> direct_storage_initializer_state_;
   AllocatorPtr direct_storage_initializer_allocator_;
 #endif
