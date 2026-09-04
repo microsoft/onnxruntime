@@ -36,6 +36,21 @@
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out)
 
+/** \brief Log statistics for registered GPU BFC arenas and optionally shrink them.
+ *
+ * This diagnostic hook operates on all GPU BFC arenas in the current process.
+ *
+ * \param[in] checkpoint Label included in each diagnostic log line.
+ * \param[in] shrink Whether to call Shrink once on each registered GPU arena.
+ * \param[out] reclaimed_bytes Total bytes released by Shrink.
+ * \param[out] arena_count Number of registered GPU arenas.
+ */
+ORT_EXPERIMENTAL_API(29, OrtStatusPtr, OrtApi_DebugLogAndShrinkGpuArenas,
+                     _In_ const char* checkpoint,
+                     bool shrink,
+                     _Out_ int64_t* reclaimed_bytes,
+                     _Out_ size_t* arena_count)
+
 // ---------------------------------------------------------------------------
 // OrtModelPackageApi
 //

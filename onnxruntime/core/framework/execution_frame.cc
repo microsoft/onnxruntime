@@ -3,8 +3,11 @@
 
 #include "core/framework/execution_frame.h"
 
+#include <atomic>
+#include <iostream>
 #include <sstream>
 
+#include "core/platform/env_var_utils.h"
 #include "core/framework/mem_pattern_planner.h"
 #include "core/framework/execution_plan_base.h"
 #include "core/framework/sequential_execution_plan.h"
@@ -26,6 +29,19 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+namespace {
+
+bool WorkspaceLookupTraceEnabled() {
+  static const bool enabled =
+      ParseEnvironmentVariableWithDefault<int>(
+          "ORT_MATMULNBITS_TRACE_LEGACY_WORKSPACE", 0) != 0;
+  return enabled;
+}
+
+std::atomic<size_t> workspace_trace_frame_id{0};
+
+}  // namespace
+
 IExecutionFrame::IExecutionFrame(const OrtValueNameIdxMap& ort_value_idx_map,
                                  const NodeIndexInfo& node_index_info,
                                  gsl::span<const int> fetch_mlvalue_idxs)
@@ -435,6 +451,16 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
     // if there are some traditional ml value type in inputs disable the memory pattern optimization.
     if (all_tensors) {
       mem_patterns_ = session_state.GetMemoryPatternGroup(feeds, feed_mlvalue_idxs, inferred_shapes_);
+      if (WorkspaceLookupTraceEnabled()) {
+        const size_t frame_id =
+            workspace_trace_frame_id.fetch_add(1, std::memory_order_relaxed);
+        if (frame_id < 512) {
+          std::cerr << "[workspace_pattern_lookup] frame=" << frame_id
+                    << " state="
+                    << (mem_patterns_ == nullptr ? "cache_miss_recording" : "cache_hit")
+                    << std::endl;
+        }
+      }
       // if no existing patterns, generate one in this execution frame
       if (!mem_patterns_) {
         planner_.emplace(*session_state.GetExecutionPlan());
@@ -965,20 +991,81 @@ Status ExecutionFrame::GetPlannedWorkspace(int pattern_id, const OrtDevice& loca
                                            size_t allocation_bytes, size_t alignment_bytes,
                                            void** workspace) {
   *workspace = nullptr;
+  static std::atomic<bool> logged_recording_pattern{false};
+  static std::atomic<bool> logged_no_memory_pattern{false};
+  static std::atomic<bool> logged_no_location_pattern{false};
+  static std::atomic<bool> logged_no_block{false};
+  static std::atomic<bool> logged_size_mismatch{false};
+  static std::atomic<bool> logged_no_buffer{false};
+  static std::atomic<bool> logged_success{false};
 
   if (planner_.has_value()) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_recording_pattern.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=recording_pattern"
+                << " pattern_id=" << pattern_id
+                << " allocation_bytes=" << allocation_bytes
+                << std::endl;
+    }
     ORT_RETURN_IF_ERROR(planner_->TraceAllocation(pattern_id, location, allocation_bytes));
     return Status::OK();
   }
 
   if (mem_patterns_ == nullptr) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_no_memory_pattern.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=no_memory_pattern"
+                << " pattern_id=" << pattern_id
+                << std::endl;
+    }
     return Status::OK();
   }
 
   const auto* pattern = mem_patterns_->GetPatterns(location);
-  const auto* block = pattern == nullptr ? nullptr : pattern->GetBlock(pattern_id);
+  if (pattern == nullptr) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_no_location_pattern.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=no_location_pattern"
+                << " pattern_id=" << pattern_id
+                << " location=" << location.ToString()
+                << std::endl;
+    }
+    return Status::OK();
+  }
+
+  const auto* block = pattern->GetBlock(pattern_id);
+  if (block == nullptr) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_no_block.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=no_block"
+                << " pattern_id=" << pattern_id
+                << " location=" << location.ToString()
+                << std::endl;
+    }
+    return Status::OK();
+  }
+
+  if (block->size_ != allocation_bytes) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_size_mismatch.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=size_mismatch"
+                << " pattern_id=" << pattern_id
+                << " block_bytes=" << block->size_
+                << " allocation_bytes=" << allocation_bytes
+                << std::endl;
+    }
+    return Status::OK();
+  }
+
   auto buffer_it = buffers_.find(location);
-  if (block == nullptr || block->size_ != allocation_bytes || buffer_it == buffers_.end()) {
+  if (buffer_it == buffers_.end()) {
+    if (WorkspaceLookupTraceEnabled() &&
+        !logged_no_buffer.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_buffer_lookup] state=no_buffer"
+                << " pattern_id=" << pattern_id
+                << " location=" << location.ToString()
+                << std::endl;
+    }
     return Status::OK();
   }
 
@@ -991,6 +1078,14 @@ Status ExecutionFrame::GetPlannedWorkspace(int pattern_id, const OrtDevice& loca
   }
 
   *workspace = reinterpret_cast<void*>(address);
+  if (WorkspaceLookupTraceEnabled() &&
+      !logged_success.exchange(true, std::memory_order_relaxed)) {
+    std::cerr << "[workspace_buffer_lookup] state=success"
+              << " pattern_id=" << pattern_id
+              << " allocation_bytes=" << allocation_bytes
+              << " location=" << location.ToString()
+              << std::endl;
+  }
   return Status::OK();
 }
 

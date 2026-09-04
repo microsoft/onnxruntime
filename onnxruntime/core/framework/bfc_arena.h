@@ -501,6 +501,11 @@ class BFCArena : public IArena {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(BFCArena);
 };
 
+Status LogAndShrinkRegisteredGpuArenas(const char* checkpoint,
+                                       bool shrink,
+                                       int64_t* reclaimed_bytes,
+                                       size_t* arena_count);
+
 #ifdef ORT_ENABLE_STREAM
 class StreamAwareBFCArena : public BFCArena {
  public:

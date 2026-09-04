@@ -11,6 +11,7 @@
 #include "core/common/common.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/ep_context_options.h"
+#include "core/framework/bfc_arena.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_experimental_c_api.h"
@@ -55,6 +56,21 @@ ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_SinceV28,
   }
   *out = 12345;
   return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApi_DebugLogAndShrinkGpuArenas_SinceV29,
+                    _In_ const char* checkpoint,
+                    bool shrink,
+                    _Out_ int64_t* reclaimed_bytes,
+                    _Out_ size_t* arena_count) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(checkpoint == nullptr, ORT_INVALID_ARGUMENT, "checkpoint is null");
+  ORT_API_RETURN_IF(reclaimed_bytes == nullptr, ORT_INVALID_ARGUMENT, "reclaimed_bytes is null");
+  ORT_API_RETURN_IF(arena_count == nullptr, ORT_INVALID_ARGUMENT, "arena_count is null");
+  return onnxruntime::ToOrtStatus(
+      onnxruntime::LogAndShrinkRegisteredGpuArenas(
+          checkpoint, shrink, reclaimed_bytes, arena_count));
   API_IMPL_END
 }
 

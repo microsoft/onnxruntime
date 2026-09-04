@@ -4,11 +4,14 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
+#include <iostream>
 #include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/sequential_execution_plan.h"
 #include "core/framework/session_state.h"
+#include "core/platform/env_var_utils.h"
 #include "core/session/onnxruntime_c_api.h"
 
 // onnxruntime internal OpKernelContext derived class to provide additional
@@ -61,13 +64,38 @@ class OpKernelContextInternal : public OpKernelContext {
 
   Status GetPreallocatedWorkspace(int slot_id, size_t requested_bytes, void** workspace) override {
     *workspace = nullptr;
+    static const bool trace_workspace_lookup =
+        ParseEnvironmentVariableWithDefault<int>(
+            "ORT_MATMULNBITS_TRACE_LEGACY_WORKSPACE", 0) != 0;
+    static std::atomic<bool> logged_no_execution_plan{false};
+    static std::atomic<bool> logged_no_node_plan{false};
+    static std::atomic<bool> logged_no_matching_slot{false};
+    static std::atomic<bool> logged_frame_null{false};
+    static std::atomic<bool> logged_success{false};
+
     const auto* execution_plan = session_state_.GetExecutionPlan();
     if (execution_plan == nullptr) {
+      if (trace_workspace_lookup &&
+          !logged_no_execution_plan.exchange(true, std::memory_order_relaxed)) {
+        std::cerr << "[workspace_plan_lookup] state=no_execution_plan"
+                  << " node=" << GetNodeIndex()
+                  << " slot=" << slot_id
+                  << " requested_bytes=" << requested_bytes
+                  << std::endl;
+      }
       return Status::OK();
     }
 
     const auto node_it = execution_plan->workspace_allocation_plan.find(GetNodeIndex());
     if (node_it == execution_plan->workspace_allocation_plan.end()) {
+      if (trace_workspace_lookup &&
+          !logged_no_node_plan.exchange(true, std::memory_order_relaxed)) {
+        std::cerr << "[workspace_plan_lookup] state=no_node_plan"
+                  << " node=" << GetNodeIndex()
+                  << " slot=" << slot_id
+                  << " requested_bytes=" << requested_bytes
+                  << std::endl;
+      }
       return Status::OK();
     }
 
@@ -82,10 +110,33 @@ class OpKernelContextInternal : public OpKernelContext {
       ORT_RETURN_IF_ERROR(execution_frame_.GetPlannedWorkspace(
           workspace_plan.pattern_id, workspace_plan.location,
           workspace_plan.allocation_bytes, workspace_plan.alignment_bytes, workspace));
+      if (trace_workspace_lookup) {
+        auto& logged = *workspace == nullptr ? logged_frame_null : logged_success;
+        if (!logged.exchange(true, std::memory_order_relaxed)) {
+          std::cerr << "[workspace_plan_lookup] state="
+                    << (*workspace == nullptr ? "frame_returned_null" : "success")
+                    << " node=" << GetNodeIndex()
+                    << " slot=" << slot_id
+                    << " requested_bytes=" << requested_bytes
+                    << " planned_bytes=" << workspace_plan.size_bytes
+                    << " allocation_bytes=" << workspace_plan.allocation_bytes
+                    << " pattern_id=" << workspace_plan.pattern_id
+                    << std::endl;
+        }
+      }
       active_workspace_plans_.push_back(&workspace_plan);
       return Status::OK();
     }
 
+    if (trace_workspace_lookup &&
+        !logged_no_matching_slot.exchange(true, std::memory_order_relaxed)) {
+      std::cerr << "[workspace_plan_lookup] state=no_matching_slot"
+                << " node=" << GetNodeIndex()
+                << " slot=" << slot_id
+                << " requested_bytes=" << requested_bytes
+                << " declared_slots=" << node_it->second.size()
+                << std::endl;
+    }
     return Status::OK();
   }
 

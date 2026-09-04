@@ -13,9 +13,9 @@
 //      They live in this CUDA-only test target because they reach into CUDA-provider internals, but
 //      no kernel launch happens. Tests EffectiveArchSelection and Eligibility* are the regression
 //      guard against the Level-1 / constructor drift described in the issue.
-//   2. GetMatMulNBitsLastComputeWorkspaceBytes(): a small provider-world probe used by the companion
-//      end-to-end test (matmul_nbits_e2e_workspace_test.cc) to read the runtime workspace request off
-//      a constructed MatMulNBits<MLFloat16> kernel.
+//   2. GetMatMulNBitsLastComputeWorkspaceBytes(): a small provider-world probe used by companion
+//      end-to-end tests to read the runtime workspace request off a constructed
+//      MatMulNBits<MLFloat16> kernel.
 //
 // This is a plain .cc (host-compiled), NOT a .cu: it contains no device code, and including
 // matmul_nbits.h drags in gtest's re2-backed regex support, which the CUDA front-end (nvcc) cannot
@@ -43,6 +43,7 @@ namespace onnxruntime {
 namespace test {
 
 using onnxruntime::contrib::cuda::CheckFpAIntBEligibility;
+using onnxruntime::contrib::cuda::ComputeLegacyMatMulNBitsWorkspaceInfo;
 using onnxruntime::contrib::cuda::ComputeMatMulNBitsPrepackMemoryEstimate;
 using onnxruntime::contrib::cuda::EffectiveFpAIntBWorkspaceSm;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightNotPrepacked;
@@ -134,6 +135,42 @@ TEST(MatMulNBitsWorkspace, FormulaReturnsNulloptOnInvalidNegativeDim) {
   EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(-1, 64, 0, 90, 100).has_value());
   EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(64, -1, 0, 90, 100).has_value());
 #endif
+}
+
+TEST(MatMulNBitsWorkspace, LegacyWorkspaceUsesChunkForLargeOutputProjection) {
+  const auto workspace = ComputeLegacyMatMulNBitsWorkspaceInfo(
+      /*n=*/120818, /*k=*/2048, /*block_size=*/32, sizeof(MLFloat16),
+      /*column_wise_quantization=*/true, /*has_g_idx=*/false,
+      /*force_chunked=*/false, /*chunk_target_rows=*/32768);
+  ASSERT_TRUE(workspace.has_value());
+  EXPECT_TRUE(workspace->use_chunked);
+  EXPECT_EQ(workspace->k_padded, 2048);
+  EXPECT_EQ(workspace->scratch_rows, 32768);
+  EXPECT_EQ(workspace->size_bytes, size_t{128} * 1024 * 1024);
+}
+
+TEST(MatMulNBitsWorkspace, LegacyWorkspaceUsesFullBufferWhenChunkingIsUnavailable) {
+  const auto workspace = ComputeLegacyMatMulNBitsWorkspaceInfo(
+      /*n=*/4096, /*k=*/2050, /*block_size=*/32, sizeof(MLFloat16),
+      /*column_wise_quantization=*/true, /*has_g_idx=*/true,
+      /*force_chunked=*/true, /*chunk_target_rows=*/64);
+  ASSERT_TRUE(workspace.has_value());
+  EXPECT_FALSE(workspace->use_chunked);
+  EXPECT_EQ(workspace->k_padded, 2080);
+  EXPECT_EQ(workspace->scratch_rows, 4096);
+  EXPECT_EQ(workspace->size_bytes, size_t{4096} * 2080 * sizeof(MLFloat16));
+}
+
+TEST(MatMulNBitsWorkspace, LegacyWorkspaceRejectsInvalidMetadataAndOverflow) {
+  EXPECT_FALSE(ComputeLegacyMatMulNBitsWorkspaceInfo(
+                   /*n=*/0, /*k=*/2048, /*block_size=*/32, sizeof(MLFloat16),
+                   true, false, false, 32768)
+                   .has_value());
+  EXPECT_FALSE(ComputeLegacyMatMulNBitsWorkspaceInfo(
+                   std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(),
+                   /*block_size=*/32, sizeof(MLFloat16),
+                   true, false, false, 32768)
+                   .has_value());
 }
 
 TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
