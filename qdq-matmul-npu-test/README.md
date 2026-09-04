@@ -31,6 +31,8 @@ python -m venv .venv-winml
 
 Select the profile with `--qdq-profile onnx` or `--qdq-profile microsoft`. Per-tensor and per-channel weights support both profiles; blockwise weights require the `onnx` profile because `com.microsoft::DequantizeLinear` has no `block_size` attribute.
 
+Add `--add-vitisai-metadata` to write the CLIP model identity and Vitis AI quantization properties expected for uint16 activations, uint8 weights, and `OnnxStaticQuantization`.
+
 ```powershell
 .\.venv\Scripts\python.exe .\generate_qdq_matmul_model.py `
     --weight-quantization blockwise `

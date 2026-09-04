@@ -122,6 +122,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Add Relu nodes outside the DQ-MatMul-Q subgraph boundaries.",
     )
+    parser.add_argument(
+        "--add-vitisai-metadata",
+        action="store_true",
+        help="Add Vitis AI quantization and CLIP model metadata.",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
         "--output-scale",
@@ -411,6 +416,16 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
     if args.weight_quantization == "blockwise":
         model.metadata_props.add(key="block_size", value=str(args.block_size))
         model.metadata_props.add(key="block_axis", value=str(args.block_axis))
+    if args.add_vitisai_metadata:
+        vitisai_metadata = {
+            "architectures": "CLIPModel",
+            "model_type": "clip",
+            "activation_dtype": "QUInt16",
+            "weight_dtype": "QUInt8",
+            "quant_type": "OnnxStaticQuantization",
+        }
+        for key, value in vitisai_metadata.items():
+            model.metadata_props.add(key=key, value=value)
     model.metadata_props.add(
         key="boundary_nodes", value=str(args.add_boundary_nodes).lower()
     )
