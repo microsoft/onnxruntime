@@ -95,7 +95,8 @@ jobs:
     inputs:
       versionSpec: '22.x'
 
-  - script: python -m pip install flatbuffers
+  - script: |
+      python -m pip install flatbuffers
     displayName: 'Install python dependencies'
 
   - ${{if eq(parameters.WithCache, true)}}:

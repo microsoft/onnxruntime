@@ -18,8 +18,6 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - alpha
-  - beta
   - rc
   - none
   default: none
@@ -27,7 +25,7 @@ parameters:
 - name: PreReleaseVersionSuffixNumber
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
-  default: 0
+  default: 1
 
 - name: AdditionalBuildFlag
   displayName: Build flags to append to build command
@@ -87,7 +85,7 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     settings:
-      networkIsolationPolicy: CFSClean2,CFSClean3,DefaultDeny
+      networkIsolationPolicy: CFSClean,CFSClean2,CFSClean3,DefaultDeny
     featureFlags:
       binskimScanAllExtensions: true
     sdl:

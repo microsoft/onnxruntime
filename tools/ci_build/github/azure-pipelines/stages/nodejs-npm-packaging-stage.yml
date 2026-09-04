@@ -6,8 +6,6 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - alpha
-  - beta
   - rc
   - none
 
@@ -47,8 +45,6 @@ stages:
         NpmPackagingMode: 'rc'
       ${{ elseif not(parameters.IsReleaseBuild) }}:
         NpmPackagingMode: 'dev'
-      ${{ else }}: # IsReleaseBuild + beta, alpha, etc. We don't support those and those suffixes are deprecated.
-        NpmPackagingMode: '<INVALID/UNSUPPORTED COMBINATION>'
 
     steps:
     - template: ../templates/jobs/checkout-and-git-redirect.yml
