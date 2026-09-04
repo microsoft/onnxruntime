@@ -14,6 +14,7 @@
 #include "core/framework/resource_accountant.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_nhwc_ops.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -3544,26 +3545,46 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     } else {
       auto* node = graph.GetNode(node_index);
-      auto resource_count = std::get<0>(resource_accountant->ComputeResourceCount(*node));
+      std::optional<Level1MemoryEstimate> level1_memory_estimate;
 
 #if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
       // Level 1 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): a partition-time,
-      // kernel-independent workspace estimate for MatMulNBits. For this pilot it is log-only and
-      // does NOT change the budget number used by the accept/reject decision below (see the issue's
-      // "Open decision" (a)); it proves the estimate is available and correct at this pipeline stage.
+      // kernel-independent memory estimate for MatMulNBits. Runtime workspace and prepack
+      // allocations remain separate so their different lifetimes are visible in reporting.
       if (node != nullptr && node->OpType() == "MatMulNBits" && node->Domain() == kMSDomain) {
+        const auto& estimator_config = resource_accountant->GetWorkspaceEstimatorConfig();
+        const auto& fpa_intb_gemm = estimator_config.cuda_fpa_intb_gemm;
+        const auto& profile_m = estimator_config.cuda_fpa_intb_profile_m;
         const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
         const auto& input_defs = node->InputDefs();
         const TensorShape* input_a_shape =
             inferred_shapes.Empty() || input_defs.empty() || input_defs[0] == nullptr
                 ? nullptr
                 : inferred_shapes.GetShape(&graph.GetGraph(), input_defs[0]->Name());
-        const auto ws = input_a_shape != nullptr
-                            ? contrib::cuda::EstimateMatMulNBitsWorkspace(
-                                  *node, input_a_shape->GetDims(), GetDeviceProp())
-                            : contrib::cuda::EstimateMatMulNBitsWorkspace(*node, GetDeviceProp());
-        if (ws.has_value()) {
-          LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name() << ": " << *ws << " bytes";
+        const contrib::cuda::MatMulNBitsMemoryEstimateOptions estimate_options{
+            fpa_intb_gemm.has_value()
+                ? std::optional<std::string_view>{*fpa_intb_gemm}
+                : std::nullopt,
+            profile_m.has_value()
+                ? std::optional<std::string_view>{*profile_m}
+                : std::nullopt,
+            /*input_shape_is_upper_bound=*/input_a_shape != nullptr};
+        level1_memory_estimate =
+            input_a_shape != nullptr
+                ? contrib::cuda::EstimateMatMulNBitsMemory(
+                      *node, input_a_shape->GetDims(), GetDeviceProp(), estimate_options)
+                : contrib::cuda::EstimateMatMulNBitsMemory(
+                      *node, GetDeviceProp(), estimate_options);
+        if (level1_memory_estimate.has_value()) {
+          LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
+                                << ": runtime workspace="
+                                << level1_memory_estimate->runtime_workspace_bytes.value_or(0)
+                                << " bytes, runtime transient="
+                                << level1_memory_estimate->runtime_transient_bytes
+                                << " bytes, persistent prepack="
+                                << level1_memory_estimate->persistent_prepack_bytes
+                                << " bytes, temporary prepack="
+                                << level1_memory_estimate->temporary_prepack_bytes << " bytes";
         }
       }
 #endif
@@ -3589,6 +3610,9 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
 #endif
 
+      const auto resource_count_variant =
+          resource_accountant->ComputeResourceCount(*node, level1_memory_estimate);
+      const auto resource_count = std::get<size_t>(resource_count_variant);
       const auto would_be_consumed = resource_count + consumed_memory;
       LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count
                          << " would be consumed " << static_cast<size_t>(would_be_consumed)
@@ -3612,6 +3636,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       }
     }
   }
+
   /*
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {

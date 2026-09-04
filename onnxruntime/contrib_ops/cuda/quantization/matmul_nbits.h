@@ -14,10 +14,13 @@
 #include <vector>
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
+#include "core/framework/level1_memory_estimate.h"
 #include "core/framework/workspace_input_shape.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits_sm90_validation.h"
 #include "core/platform/env_var_utils.h"
 
@@ -50,14 +53,41 @@ constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
 
-// Session-option config keys. These are readable by BOTH the built-in CUDA EP and the CUDA plugin
-// EP: every kernel is created via KernelRegistryManager::CreateKernel, which injects the
-// session-level ConfigOptions, and the plugin CUDA EP wraps a CUDAExecutionProvider that reuses this
-// same kernel. Each key overrides its ORT_* environment-variable equivalent (config wins).
-//   ep.cuda.fpa_intb_gemm       <-> ORT_FPA_INTB_GEMM       (0/off, 1/on)
-//   ep.cuda.fpa_intb_profile_m  <-> ORT_FPA_INTB_PROFILE_M  (initial profile M buckets)
-constexpr const char* kConfigFpAIntBGemm = "ep.cuda.fpa_intb_gemm";
-constexpr const char* kConfigFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
+// Computes the prepack portion of the Level-1 estimate from model metadata only.
+// Persistent bytes describe newly allocated packed weight/scale/zero-point
+// destinations. An offline-prepacked weight is already a CUDA initializer and
+// is reused in place, so its bytes remain in base initializer accounting.
+// Temporary bytes describe the runtime weight-layout conversion scratch.
+inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstimate(
+    int64_t n, int64_t k, int64_t nbits, int64_t block_size,
+    int64_t weight_prepacked, bool has_zero_points) {
+  if (n <= 0 || k <= 0 || (nbits != 4 && nbits != 8) || block_size <= 0) {
+    return std::nullopt;
+  }
+
+  try {
+    const SafeInt<size_t> safe_n = n;
+    const SafeInt<size_t> safe_k = k;
+    const SafeInt<size_t> packed_weight_bytes = safe_n * safe_k / (8 / nbits);
+    const SafeInt<size_t> k_blocks = (safe_k + (block_size - 1)) / block_size;
+    const SafeInt<size_t> scale_bytes = safe_n * k_blocks * sizeof(uint16_t);
+
+    Level1MemoryEstimate estimate;
+    SafeInt<size_t> persistent_prepack_bytes =
+        scale_bytes + (has_zero_points ? scale_bytes : SafeInt<size_t>(0));
+    if (weight_prepacked == kMatMulNBitsWeightNotPrepacked) {
+      persistent_prepack_bytes += packed_weight_bytes;
+      constexpr size_t kPermutationMapBytes = 32 * sizeof(int32_t);
+      estimate.temporary_prepack_bytes =
+          static_cast<size_t>(packed_weight_bytes + kPermutationMapBytes);
+    }
+    estimate.persistent_prepack_bytes = static_cast<size_t>(persistent_prepack_bytes);
+
+    return estimate;
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
+}
 
 // Resolves a setting from the session config first (per-session, EP-agnostic), then the environment
 // variable, else empty. Session config wins so a model/session can override a process-wide env var.
@@ -91,7 +121,7 @@ inline int EffectiveFpAIntBWorkspaceSm(int device_sm, int64_t weight_prepacked) 
 
 // Single source of truth for the fpA_intB / CUTLASS weight-only-GEMM eligibility decision. Reads
 // only node attributes + input-0 dtype + device SM (no kernel instance required). Called from BOTH
-// the MatMulNBits constructor (to compute has_fpA_intB_gemm_) and EstimateMatMulNBitsWorkspace
+// the MatMulNBits constructor (to compute has_fpA_intB_gemm_) and EstimateMatMulNBitsMemory
 // (Level 1), so the two can never disagree about whether a node takes the fpA_intB path. Returns
 // true iff the node is eligible for the fpA_intB path.
 //
@@ -103,13 +133,6 @@ bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
                              int device_sm, int fpa_intb_option);
 
-// Level 1 partition-time workspace estimate for a MatMulNBits node, callable during GetCapability()
-// before any kernel instance exists. Returns nullopt when the node is not fpA_intB-eligible, when
-// the leading (M) dimension of input A is not statically known, or when the size formula overflows.
-std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop);
-// Uses an estimation-only input A shape, such as one propagated from maximum graph inputs.
-std::optional<size_t> EstimateMatMulNBitsWorkspace(
-    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop);
 #endif
 
 template <typename T>
@@ -179,9 +202,12 @@ class MatMulNBits final : public CudaKernel {
       // chooses the path for weights that are NOT prepacked. A prepacked weight is already stored in
       // the fpA_intB layout, so the choice was made at export time and cannot be turned off here.
       const int fpa_intb_option =
-          ParseFpAIntBEnabled(ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBGemm, kFpAIntBGemmOption)) ? 1 : 0;
+          ParseFpAIntBEnabled(ResolveFpAIntBConfigOrEnv(
+              info, kOrtSessionOptionsCudaFpAIntBGemm, kFpAIntBGemmOption))
+              ? 1
+              : 0;
       // Route the fpA_intB path decision through the single shared eligibility function so the
-      // constructor and the Level-1 EstimateMatMulNBitsWorkspace estimate can never disagree.
+      // constructor and the Level-1 EstimateMatMulNBitsMemory estimate can never disagree.
       const bool fpa_intb_eligible = CheckFpAIntBEligibility(
           onnxruntime::utils::ToTensorProtoElementType<T>(), N_, K_, nbits_, block_size_,
           weight_prepacked_, has_zero_points_, has_g_idx_, has_bias_, sm_, fpa_intb_option);
@@ -207,7 +233,7 @@ class MatMulNBits final : public CudaKernel {
         // Initial profile M buckets from session config (ep.cuda.fpa_intb_profile_m) with
         // ORT_FPA_INTB_PROFILE_M env fallback; empty -> profiler uses its default bucket set.
         std::vector<int> profile_m = WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
-            ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBProfileM,
+            ResolveFpAIntBConfigOrEnv(info, kOrtSessionOptionsCudaFpAIntBProfileM,
                                       onnxruntime::llm::kernels::weight_only::kEnvProfileM));
         gemmProfiler_->setProfileMOverride(profile_m);
 

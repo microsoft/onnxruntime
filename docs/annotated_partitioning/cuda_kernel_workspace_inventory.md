@@ -374,8 +374,12 @@ the PA/PMHA adapter treats zero-shaped hints as unavailable.
 | Buffer | Size formula | Depends on |
 |--------|--------------|-----------|
 | `workspace_buffer` | `weightOnlyGemmRunner_->getWorkspaceSize(m, n, k)` | Dims + tactic |
+| `fpA_intB_weight_buffer_` | `N * K * bits / 8` for runtime-prepacked weights; not allocated when an offline-prepacked CUDA initializer is reused in place | Weight shape + bits + `weight_prepacked` |
+| `fpA_intB_scale_buffer_` | `N * ceil(K / block_size) * sizeof(T)` | Weight shape + block size |
+| `fpA_intB_zero_buffer_` | Same as scale buffer, when zero points exist | Weight shape + block size |
 | `packed_transposed_weight_space` | `packed_weight_bytes` (transient) | Weight shape |
 | `permutation_map_buffer` | `32 * sizeof(int32_t)` (transient) | Constant |
+| tactic-profiler scratch | Aligned synthetic A/B/scales/zeros/bias/output plus GEMM workspace | N, K, bits, block size, profile M, SM count |
 
 **What's needed:** M, N, K dimensions, quantization bits, SM version.
 
@@ -384,8 +388,15 @@ the PA/PMHA adapter treats zero-shaped hints as unavailable.
 (`ComputeFpAIntBGemmWorkspaceSize`), independent of which CUTLASS tactic `profileTactics()` later
 selects for the actual GEMM. The earlier "upper bound only" note in this row was superseded once the
 formula was extracted and verified against the runtime value for MatMulNBits; see
-`onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.{h,cc}` (`EstimateWorkspace` /
+`onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.{h,cc}` (`EstimateMatMulNBitsMemory` /
 `DeclareWorkspaceRequirements`).
+
+The Level-1 estimate keeps runtime workspace, persistent prepack destinations, and initialization-only
+scratch (prepack conversion plus constructor-time tactic profiling) in separate fields. The current
+byte-count resource accountant conservatively charges all three, while Level 2 continues to declare only
+the runtime workspace slot.
+Offline-prepacked CUDA weights remain in base initializer accounting and are not also charged as a
+persistent prepack destination because `PrePack_B()` reuses the device initializer in place.
 
 ---
 

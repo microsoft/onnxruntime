@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -233,8 +234,9 @@ static std::optional<int64_t> StaticLeadingDimProduct(const NodeArg* input_a) {
   return ComputeMatMulNBitsLeadingDimProduct(dimensions);
 }
 
-static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
-    const Node& node, const cudaDeviceProp& device_prop, std::optional<int64_t> m) {
+static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
+    const Node& node, const cudaDeviceProp& device_prop, std::optional<int64_t> m,
+    MatMulNBitsMemoryEstimateOptions options) {
   auto get_attr = [&node](const std::string& name, int64_t default_value) -> int64_t {
     // Iterate rather than use attrs.find(): in the provider-bridge (shared library) build,
     // NodeAttributes exposes bridged iterators (IteratorHolder) that do not support find()/
@@ -281,22 +283,12 @@ static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
 
   const int device_sm = device_prop.major * 10 + device_prop.minor;
 
-  // Level 1 KNOWN LIMITATION (Major 2, issue microsoft/onnxruntime#29810): this estimate can only
-  // read the process-wide env var ORT_FPA_INTB_GEMM, NOT the per-session config ep.cuda.fpa_intb_gemm
-  // that the MatMulNBits constructor also honors (and which wins over the env var). The constructor
-  // has the session ConfigOptions via OpKernelInfo, but the only caller of this function -
-  // CUDAExecutionProvider::GetCapability() - does not: the IExecutionProvider::GetCapability()
-  // interface (shared by every EP) is not passed the session ConfigOptions, and CUDAExecutionProvider
-  // does not store them (info_ carries provider options only). Threading ConfigOptions into
-  // GetCapability() would be a cross-cutting change to the EP interface and is deferred.
-  //
-  // Consequence: a node enabled solely via ep.cuda.fpa_intb_gemm (env var unset) is judged eligible
-  // by the real kernel but NOT here, so Level 1 conservatively returns nullopt (no workspace
-  // pre-reservation) rather than over-estimating. Because Level 1 is currently log-only and does not
-  // change the partition budget, this divergence is safe. Prepacked weights are eligible regardless
-  // of the option, so they are unaffected.
+  const std::string fpa_intb_gemm =
+      options.fpa_intb_gemm.has_value()
+          ? std::string{*options.fpa_intb_gemm}
+          : ParseEnvironmentVariableWithDefault<std::string>(kFpAIntBGemmOption, "");
   const int fpa_intb_option =
-      ParseFpAIntBEnabled(ParseEnvironmentVariableWithDefault<std::string>(kFpAIntBGemmOption, "")) ? 1 : 0;
+      ParseFpAIntBEnabled(fpa_intb_gemm) ? 1 : 0;
 
   const bool fpa_intb_eligible = CheckFpAIntBEligibility(
       input0_elem_type, N, K, nbits, block_size, weight_prepacked,
@@ -305,30 +297,142 @@ static std::optional<size_t> EstimateMatMulNBitsWorkspaceImpl(
     return std::nullopt;
   }
 
-  if (!m.has_value()) {
+  auto estimate = ComputeMatMulNBitsPrepackMemoryEstimate(
+      N, K, nbits, block_size, weight_prepacked, has_zero_points);
+  if (!estimate.has_value()) {
     return std::nullopt;
   }
 
-  const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
   try {
-    return onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-        SafeInt<int>(*m), SafeInt<int>(N), SafeInt<int>(K), sm, device_prop.multiProcessorCount);
+    const std::string profile_m_value =
+        options.profile_m.has_value()
+            ? std::string{*options.profile_m}
+            : ParseEnvironmentVariableWithDefault<std::string>(
+                  onnxruntime::llm::kernels::weight_only::kEnvProfileM, "");
+    const std::vector<int> profile_m =
+        WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
+            profile_m_value);
+    const int requested_constructor_profile_max_m =
+        profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
+                          : profile_m.back();
+    const int constructor_profile_max_m =
+        onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+            requested_constructor_profile_max_m,
+            onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+
+    const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
+    const int packing_ratio = onnxruntime::llm::kernels::weight_only::FP16_BITS / SafeInt<int>(nbits);
+    const int packed_n = SafeInt<int>(N) / packing_ratio;
+    const int original_n = packed_n * packing_ratio;
+    const auto compute_profiler_scratch = [&](int profile_bucket_m) -> std::optional<size_t> {
+      const auto profiler_runner_workspace =
+          onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+              profile_bucket_m, original_n, SafeInt<int>(K), sm,
+              device_prop.multiProcessorCount);
+      if (!profiler_runner_workspace.has_value()) {
+        return std::nullopt;
+      }
+      return onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize(
+          profile_bucket_m, SafeInt<size_t>(packed_n), SafeInt<size_t>(K), SafeInt<int>(nbits),
+          SafeInt<size_t>(block_size), *profiler_runner_workspace);
+    };
+
+    const auto constructor_profile_scratch = compute_profiler_scratch(constructor_profile_max_m);
+    if (!constructor_profile_scratch.has_value()) {
+      return std::nullopt;
+    }
+    // Kernel construction profiling and PrePack_B conversion happen sequentially.
+    estimate->temporary_prepack_bytes =
+        std::max(estimate->temporary_prepack_bytes, *constructor_profile_scratch);
+
+    if (m.has_value()) {
+      estimate->runtime_workspace_bytes =
+          onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+              SafeInt<int>(*m), original_n, SafeInt<int>(K), sm,
+              device_prop.multiProcessorCount);
+    }
+
+    std::optional<int> lazy_profile_m;
+    if (!m.has_value()) {
+      // A dynamic M can request any rounded bucket at runtime.
+      lazy_profile_m = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
+    } else if (*m > 0) {
+      const auto initial_profile_m =
+          WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+              1, constructor_profile_max_m, profile_m);
+      if (options.input_shape_is_upper_bound) {
+        const int maximum_runtime_profile_m =
+            onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+                SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+        for (int candidate_m = 1; candidate_m <= maximum_runtime_profile_m; candidate_m *= 2) {
+          if (std::find(initial_profile_m.begin(), initial_profile_m.end(), candidate_m) ==
+              initial_profile_m.end()) {
+            lazy_profile_m = candidate_m;
+          }
+          if (candidate_m == maximum_runtime_profile_m) {
+            break;
+          }
+        }
+      } else {
+        const int runtime_profile_m =
+            onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+                SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+        const bool initially_profiled =
+            std::find(initial_profile_m.begin(), initial_profile_m.end(), *m) != initial_profile_m.end() ||
+            std::find(initial_profile_m.begin(), initial_profile_m.end(), runtime_profile_m) != initial_profile_m.end();
+        if (!initially_profiled) {
+          lazy_profile_m = runtime_profile_m;
+        }
+      }
+    }
+
+    if (lazy_profile_m.has_value()) {
+      const auto lazy_profile_scratch = compute_profiler_scratch(*lazy_profile_m);
+      if (!lazy_profile_scratch.has_value()) {
+        return std::nullopt;
+      }
+      // Lazy profiling occurs during Run() before the ordinary GEMM. The two allocations do not
+      // overlap, so the accountant peaks them rather than summing them.
+      estimate->runtime_transient_bytes = *lazy_profile_scratch;
+    }
+
+    return estimate;
   } catch (const OnnxRuntimeException&) {
-    // SafeInt<int> narrowing of m/N/K overflowed int range: treat as not estimable.
+    // Treat invalid or overflowing model-derived sizes as not estimable.
     return std::nullopt;
   }
 }
 
-std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop) {
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
+    const Node& node, const cudaDeviceProp& device_prop,
+    MatMulNBitsMemoryEstimateOptions options) {
   const auto& input_defs = node.InputDefs();
   const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
-  return EstimateMatMulNBitsWorkspaceImpl(node, device_prop, StaticLeadingDimProduct(input_a));
+  return EstimateMatMulNBitsMemoryImpl(
+      node, device_prop, StaticLeadingDimProduct(input_a), options);
+}
+
+std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop,
+    MatMulNBitsMemoryEstimateOptions options) {
+  const auto& input_defs = node.InputDefs();
+  const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
+  options.input_shape_is_upper_bound =
+      options.input_shape_is_upper_bound && !StaticLeadingDimProduct(input_a).has_value();
+  return EstimateMatMulNBitsMemoryImpl(
+      node, device_prop, ComputeMatMulNBitsLeadingDimProduct(input_a_shape), options);
+}
+
+std::optional<size_t> EstimateMatMulNBitsWorkspace(
+    const Node& node, const cudaDeviceProp& device_prop) {
+  const auto estimate = EstimateMatMulNBitsMemory(node, device_prop);
+  return estimate.has_value() ? estimate->runtime_workspace_bytes : std::nullopt;
 }
 
 std::optional<size_t> EstimateMatMulNBitsWorkspace(
     const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop) {
-  return EstimateMatMulNBitsWorkspaceImpl(
-      node, device_prop, ComputeMatMulNBitsLeadingDimProduct(input_a_shape));
+  const auto estimate = EstimateMatMulNBitsMemory(node, input_a_shape, device_prop);
+  return estimate.has_value() ? estimate->runtime_workspace_bytes : std::nullopt;
 }
 
 template <typename T>

@@ -548,67 +548,40 @@ Kernels without estimation continue using `ONNX_OPERATOR_TYPED_KERNEL_EX` unchan
 
 **Integration with GetCapability and the resource budget:**
 
-The estimation function is called during budget enforcement — by the EP directly (in-tree) or by the host bridge (plugin). The result is combined with the base cost from `IResourceAccountant`.
+The estimation function is called during budget enforcement by the in-tree CUDA EP. A future
+plugin-compatible contract will let the host bridge obtain the equivalent estimate.
 
-**Multiplier handling — non-member helper approach:**
+The MatMulNBits pilot now returns a structured Level-1 estimate rather than collapsing allocations with
+different lifetimes into one workspace scalar. `runtime_workspace_bytes` is optional so dynamic shapes can
+fall back to the heuristic while still reporting shape-independent prepack memory.
+`persistent_prepack_bytes` describes kernel-owned packed destinations, and `temporary_prepack_bytes`
+describes initialization-only scratch such as packing conversion and constructor-time tactic profiling.
+The current byte-count accountant conservatively charges all fields cumulatively; modeling initialization
+scratch as a session-wide peak remains future work.
+`DeclareWorkspaceRequirements()` remains a Level-2 runtime-workspace declaration and does not report
+already-allocated persistent prepack buffers.
 
-`ComputeResourceCount()` currently applies a 1.5x multiplier to approximate workspace for kernels without estimation functions. With precise workspace estimates available, the multiplier must be skipped. Rather than changing `ComputeResourceCount()`'s signature, we move the multiplier out and into a non-member helper that encapsulates the budget decision:
+**Current pilot integration and deferred plugin parity:**
 
-```cpp
-// Non-member helper (e.g., in resource_accountant_helpers.h):
-// Called by both in-tree GetCapability and the plugin host bridge.
-ResourceCount ComputeNodeCostForBudget(
-    IResourceAccountant& accountant,
-    const Node& node,
-    std::optional<ResourceCount> workspace_estimate) {
-  // ComputeResourceCount returns base cost: outputs + initializers (dedup'd)
-  // NO multiplier — multiplier is now applied here when needed
-  ResourceCount base_cost = accountant.ComputeResourceCount(node);
+The in-tree CUDA pilot passes an optional `Level1MemoryEstimate` to
+`IResourceAccountant::ComputeResourceCount()`. The accountant selects the runtime workspace source,
+adds persistent prepack and initialization-scratch estimates, and records the pending breakdown so only accepted
+nodes commit it. Without an estimable runtime workspace, the ad-hoc path retains the 1.5x heuristic.
 
-  if (workspace_estimate.has_value()) {
-    // Precise workspace known — add it directly, no multiplier
-    return AddResourceCounts(base_cost, *workspace_estimate);
-  }
-  // No workspace estimate — apply heuristic multiplier (1.5x)
-  return ApplyWorkspaceHeuristic(base_cost);
-}
+The generic plugin host bridge currently calls `ComputeResourceCount(node)` without an
+operator-specific estimate. Plugin EPs therefore continue to use profile/fallback accounting and do
+not yet have estimator parity with in-tree CUDA. This is an intentional incremental boundary for the
+pilot, tracked in the [#29775 implementation roadmap](https://github.com/microsoft/onnxruntime/issues/29775#issuecomment-5246062808).
 
-// Multiplier as an explicit utility:
-ResourceCount ApplyWorkspaceHeuristic(ResourceCount base) {
-  size_t bytes = std::get<0>(base);
-  return ResourceCount{static_cast<size_t>(bytes * 1.5)};
-}
-```
+Closing that gap requires an ABI-safe plugin estimator contract, not a CUDA special case in the host
+bridge. The contract must:
 
-**Design rationale:**
-- `ComputeResourceCount()` signature is **unchanged** — it returns the raw base cost (outputs + initializers with dedup). The 1.5x multiplier moves out of the accountant into this helper.
-- The helper is the **single decision point** for both code paths (in-tree and plugin host bridge). No duplicated logic.
-- `ApplyWorkspaceHeuristic()` makes the multiplier explicit and testable. It can be adjusted (e.g., per-EP or per-op-type) without changing any interface.
-- The helper integrates naturally with the existing budget check pattern:
-
-```cpp
-// Usage in GetCapability (both paths):
-auto total_cost = ComputeNodeCostForBudget(*accountant, node, workspace_estimate);
-auto would_be_consumed = AddResourceCounts(consumed, total_cost);
-
-if (has_budget && ResourceCountExceeds(would_be_consumed, budget)) {
-    accountant->SetStopAssignment();
-    break;
-}
-
-consumed = would_be_consumed;
-sub_graph->SetAccountant(accountant);
-sub_graph->AppendNodeCost(total_cost);
-```
-
-**Why this is clean with committed/uncommitted weights:**
-
-- **Weight dedup is unaffected.** `ComputeResourceCount()` handles pending/committed weight tracking internally. The workspace estimate is purely additive — it's not a weight, so it doesn't participate in dedup.
-- **`AppendNodeCost()` stores the combined total.** When `AccountForNode()` runs later (during `TryAssignNodes()`), it adds the stored cost (base + workspace) to `consumed_amount` and commits the weights. The workspace portion just inflates the per-node cost.
-- **`CommitWeightsForNode()` only touches initializers.** Workspace is a separate addend, not tracked in weight sets.
-- **`ResetForNewPass()` is fine.** The workspace estimate is stateless — recomputed fresh from node shapes each call, no state to carry across passes.
-
-If no estimation function is registered for a kernel, the helper applies the 1.5x multiplier as today (unchanged behavior).
+- carry runtime workspace, persistent prepack memory, and initialization scratch;
+- use plugin-visible shape/planning inputs without exposing in-tree `Node` or graph types across the
+  DLL boundary;
+- keep reusable estimator math graph-type-free, with separate in-tree and plugin parsing wrappers;
+- route in-tree and plugin estimates through equivalent source-selection and budget policy; and
+- include parity tests proving both paths make the same acceptance decision around a memory budget.
 
 **Example estimation function (CUDA Conv):**
 
@@ -1020,6 +993,10 @@ stable across compilers/STL versions the way a scalar with a sentinel value is.
   shape inference propagates those input hints to intermediate values without changing executable-graph
   metadata or runtime input validation. These propagated values are estimates, not proven upper
   bounds, because operator shape transformations are not necessarily monotonic.
+- With capacity-aware partitioning enabled, those propagated shapes feed both ad-hoc dynamic-output
+  sizing and Level-1 workspace estimation. They therefore affect the hard memory budget and can change
+  EP assignment. This is a planning decision based on user-provided estimates, not enforcement of a
+  runtime maximum.
 
 Level 1 consumes the current shadow result during `GetCapability()`. It reuses that result for the second
 capability pass when layout transformation reports no modification and rebuilds it after known graph

@@ -38,6 +38,20 @@
 
 namespace onnxruntime::llm::kernels::weight_only {
 
+constexpr int kMaxProfileM = 8192;
+
+constexpr int RoundUpProfileM(int value, int max_profile_m) {
+  if (value <= 0 || max_profile_m <= 0) {
+    return 0;
+  }
+
+  int rounded = 1;
+  while (rounded < value && rounded < max_profile_m) {
+    rounded *= 2;
+  }
+  return std::min(rounded, max_profile_m);
+}
+
 struct GemmDims {
   int64_t minM;
   int64_t maxM;
@@ -202,16 +216,6 @@ class GemmPluginProfiler {
 
   float profileTacticForProblem(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t stream);
 
-  int nextPowerOfTwo(int v) const {
-    --v;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    return ++v;
-  }
-
  protected:
   RunnerPtr mRunner{nullptr};
 
@@ -269,7 +273,7 @@ GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::GemmPluginPro
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 int GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getMaxProfileM() const {
-  return 8192;
+  return kMaxProfileM;
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
@@ -294,7 +298,12 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   mDims = dims;
   mHasWeightOnlyCudaKernel = hasWeightOnlyCudaKernel;
 
-  int const maxM = std::min(nextPowerOfTwo(static_cast<int>(dims.maxM)), getMaxProfileM());
+  const int max_profile_m = getMaxProfileM();
+  const int maxM = dims.maxM <= 1
+                       ? 1
+                   : dims.maxM >= max_profile_m
+                       ? max_profile_m
+                       : RoundUpProfileM(static_cast<int>(dims.maxM), max_profile_m);
 
   size_t workspace_bytes = computeTmpSize(maxM, dims.n, dims.k);
 
@@ -359,7 +368,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     return std::nullopt;
   }
 
-  int const mRounded = std::min(std::max(1, nextPowerOfTwo(m)), getMaxProfileM());
+  int const mRounded = RoundUpProfileM(std::max(1, m), getMaxProfileM());
   fflush(stdout);
 
   if (mMNKProfileMap->getMProfileMap(gemmId)->count(m) > 0) {
@@ -388,7 +397,7 @@ std::vector<int> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashTyp
       buckets.push_back(m);
     }
   } else {
-    for (int m = std::max(1, nextPowerOfTwo(minM)); m < maxM; m *= 2) {
+    for (int m = std::max(1, RoundUpProfileM(minM, getMaxProfileM())); m < maxM; m *= 2) {
       buckets.push_back(m);
     }
   }
@@ -403,7 +412,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     return std::nullopt;
   }
 
-  int const target = std::min(std::max(1, nextPowerOfTwo(m)), getMaxProfileM());
+  int const target = RoundUpProfileM(std::max(1, m), getMaxProfileM());
 
   // Fast path: an already-profiled (exact or rounded) bucket under a shared read lock.
   {

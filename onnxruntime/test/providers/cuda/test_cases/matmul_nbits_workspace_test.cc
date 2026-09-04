@@ -28,6 +28,7 @@
 #if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
 
 #include <cstring>
+#include <limits>
 
 // NOTE: do NOT include core/graph/onnx_protobuf.h here. matmul_nbits.h pulls in the CUDA-provider
 // shared-provider bridge (provider_api.h), which defines its own copies of the ONNX enums
@@ -42,12 +43,16 @@ namespace onnxruntime {
 namespace test {
 
 using onnxruntime::contrib::cuda::CheckFpAIntBEligibility;
+using onnxruntime::contrib::cuda::ComputeMatMulNBitsPrepackMemoryEstimate;
 using onnxruntime::contrib::cuda::EffectiveFpAIntBWorkspaceSm;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightNotPrepacked;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm80;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm90;
 using onnxruntime::contrib::cuda::MatMulNBits;
 using onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize;
+using onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize;
+using onnxruntime::llm::kernels::weight_only::RoundUpProfileM;
+using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 
 namespace {
 constexpr int32_t kFp16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
@@ -130,6 +135,74 @@ TEST(MatMulNBitsWorkspace, FormulaReturnsNulloptOnInvalidNegativeDim) {
   EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(-1, 64, 0, 90, 100).has_value());
   EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(64, -1, 0, 90, 100).has_value());
 #endif
+}
+
+TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
+  // B: 256*1024*4/8 = 131072 bytes.
+  // Scale: 256*(1024/32)*sizeof(fp16) = 16384 bytes.
+  const auto estimate = ComputeMatMulNBitsPrepackMemoryEstimate(
+      /*n=*/256, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
+      kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/false);
+  ASSERT_TRUE(estimate.has_value());
+  EXPECT_FALSE(estimate->runtime_workspace_bytes.has_value());
+  EXPECT_EQ(estimate->persistent_prepack_bytes, size_t{131072 + 16384});
+  EXPECT_EQ(estimate->temporary_prepack_bytes, size_t{131072 + 32 * sizeof(int32_t)});
+
+  const auto with_zero_points = ComputeMatMulNBitsPrepackMemoryEstimate(
+      /*n=*/256, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
+      kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/true);
+  ASSERT_TRUE(with_zero_points.has_value());
+  EXPECT_EQ(with_zero_points->persistent_prepack_bytes, size_t{131072 + 2 * 16384});
+
+  const auto offline_prepacked = ComputeMatMulNBitsPrepackMemoryEstimate(
+      /*n=*/256, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
+      kMatMulNBitsWeightPrepackedSm80, /*has_zero_points=*/false);
+  ASSERT_TRUE(offline_prepacked.has_value());
+  // The CUDA initializer already holds the offline-prepacked weight and is
+  // reused in place. Only the transposed scale destination is newly allocated.
+  EXPECT_EQ(offline_prepacked->persistent_prepack_bytes, size_t{16384});
+  EXPECT_EQ(offline_prepacked->temporary_prepack_bytes, size_t{0});
+}
+
+TEST(MatMulNBitsWorkspace, PrepackMemoryRejectsInvalidMetadata) {
+  EXPECT_FALSE(ComputeMatMulNBitsPrepackMemoryEstimate(
+                   /*n=*/0, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
+                   kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/false)
+                   .has_value());
+  EXPECT_FALSE(ComputeMatMulNBitsPrepackMemoryEstimate(
+                   /*n=*/256, /*k=*/1024, /*nbits=*/3, /*block_size=*/32,
+                   kMatMulNBitsWeightNotPrepacked, /*has_zero_points=*/false)
+                   .has_value());
+}
+
+TEST(MatMulNBitsWorkspace, TacticProfilerScratchIncludesAllAlignedBuffers) {
+  // A=4096, B=131072, scales=zeros=16384 each, bias=512, C=1024,
+  // runner workspace=1000 aligned to 1024.
+  const auto scratch = ComputeWeightOnlyGemmProfilerScratchSize(
+      /*max_m=*/2, /*packed_n=*/64, /*k=*/1024, /*quant_bits=*/4,
+      /*group_size=*/32, /*runner_workspace_bytes=*/1000);
+  ASSERT_TRUE(scratch.has_value());
+  EXPECT_EQ(*scratch, size_t{170496});
+
+  EXPECT_FALSE(ComputeWeightOnlyGemmProfilerScratchSize(
+                   /*max_m=*/2, /*packed_n=*/64, /*k=*/1024, /*quant_bits=*/3,
+                   /*group_size=*/32, /*runner_workspace_bytes=*/1000)
+                   .has_value());
+}
+
+TEST(MatMulNBitsWorkspace, TacticProfilerMaxMRoundingMatchesRuntime) {
+  EXPECT_EQ(RoundUpProfileM(1, 8192), 1);
+  EXPECT_EQ(RoundUpProfileM(3000, 8192), 4096);
+  EXPECT_EQ(RoundUpProfileM(std::numeric_limits<int>::max(), 8192), 8192);
+}
+
+TEST(MatMulNBitsWorkspace, InitialProfileBucketsMatchOverrideAndDefaultRules) {
+  EXPECT_EQ(WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+                /*min_m=*/1, /*max_m=*/256, {}),
+            (std::vector<int>{1, 2, 4, 8, 16, 32, 64, 128, 256}));
+  EXPECT_EQ(WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+                /*min_m=*/1, /*max_m=*/256, {8, 64}),
+            (std::vector<int>{1, 8, 64, 256}));
 }
 
 // ---------------------------------------------------------------------------

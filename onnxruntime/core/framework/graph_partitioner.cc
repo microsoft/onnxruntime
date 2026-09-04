@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core/common/inlined_containers.h"
+#include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/ep_context_utils.h"
@@ -380,13 +381,33 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     // be committed after the drop step below. The costs must be captured here because
     // capabilities.clear() destroys the pass-1 capabilities (and their costs) next.
     InlinedHashMap<NodeIndex, ResourceCount> pass1_node_costs;
+    InlinedHashMap<NodeIndex, WorkspaceEstimateSelection> pass1_workspace_estimates;
     if (params.resource_accountant != nullptr) {
+      const InlinedHashSet<NodeIndex> temporarily_assigned_nodes{
+          nodes_temporarily_assigned_to_ep.begin(), nodes_temporarily_assigned_to_ep.end()};
       for (const auto& capability : capabilities) {
         const auto& sub_graph = *capability->sub_graph;
         if (sub_graph.IsAccountingEnabled()) {
           for (size_t i = 0, limit = sub_graph.nodes.size(); i < limit; ++i) {
-            pass1_node_costs.insert_or_assign(sub_graph.nodes[i], sub_graph.GetNodeCost(i));
+            const NodeIndex node_index = sub_graph.nodes[i];
+            if (!temporarily_assigned_nodes.contains(node_index)) {
+              continue;
+            }
+
+            pass1_node_costs.insert_or_assign(node_index, sub_graph.GetNodeCost(i));
+            pass1_workspace_estimates.insert_or_assign(
+                node_index, params.resource_accountant->GetPendingWorkspaceEstimateSelection(node_index));
           }
+        }
+      }
+
+      // Provisionally reserve costs only for nodes that were actually tagged in pass 1. Pass 2 may
+      // introduce newly claimable nodes, and its admission decisions must include the cost of
+      // pass-1 survivors. Nodes that do not survive pass 2 are rolled back below.
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        if (const auto cost_it = pass1_node_costs.find(node_index);
+            cost_it != pass1_node_costs.end()) {
+          params.resource_accountant->AddConsumedAmount(cost_it->second);
         }
       }
     }
@@ -455,32 +476,38 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
       }
     }
 
-    // Commit resource-accountant budget for pass-1 tentatively-tagged nodes that survived
-    // the second pass (still claimed by this EP). Pass-1 deliberately deferred this commit
-    // (TryAssignNodes skipped accounting) so that nodes dropped in the loop above never
-    // leak phantom budget into later accounting decisions. New nodes introduced for the
-    // second pass (e.g. NHWC ops) carry their own costs and are accounted normally when
-    // their partitions are placed, so they are intentionally excluded here.
+    // Finalize the provisional pass-1 reservations. Remove costs for nodes dropped in pass 2;
+    // survivor costs remain reserved and therefore are not added again. New nodes introduced for
+    // pass 2 carry their own costs and are accounted normally when their partitions are placed.
     //
-    // Only the consumed total is adjusted here (AddConsumedAmount); the per-node initializer
-    // weight tracking (CommitWeightsForNode) is intentionally not replayed. The pending weight
-    // state computed in pass 1 is discarded by ResetForNewPass before pass 2 and cannot be
-    // committed for survivors without re-probing, which pass 2 does not do for already-tagged
-    // nodes. Leaving those weights uncommitted is the safe direction: in ad-hoc accounting mode
-    // a shared initializer may be re-counted in a later partitioning iteration (a conservative
-    // over-estimate) but is never under-counted, so the configured budget can never be exceeded.
+    // Only the consumed total and captured workspace estimate are adjusted here. Per-node
+    // initializer tracking from CommitResourcesForNode is intentionally not replayed. The
+    // pending weight state computed in pass 1 is discarded by ResetForNewPass before pass 2
+    // and cannot be committed for survivors without re-probing, which pass 2 does not do for
+    // already-tagged nodes. Leaving those weights uncommitted is the safe direction: in ad-hoc
+    // accounting mode a shared initializer may be re-counted in a later partitioning iteration
+    // (a conservative over-estimate) but is never under-counted, so the configured budget can
+    // never be exceeded.
     if (params.resource_accountant != nullptr) {
       for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        auto cost_it = pass1_node_costs.find(node_index);
+        if (cost_it == pass1_node_costs.end()) {
+          continue;
+        }
+
         if (pass2_node_indices.count(node_index) == 0) {
+          params.resource_accountant->RemoveConsumedAmount(cost_it->second);
           continue;
         }
         const auto* node = graph.GetNode(node_index);
         if (node == nullptr || node->GetExecutionProviderType() != ep_type) {
+          params.resource_accountant->RemoveConsumedAmount(cost_it->second);
           continue;
         }
-        auto cost_it = pass1_node_costs.find(node_index);
-        if (cost_it != pass1_node_costs.end()) {
-          params.resource_accountant->AddConsumedAmount(cost_it->second);
+
+        auto workspace_it = pass1_workspace_estimates.find(node_index);
+        if (workspace_it != pass1_workspace_estimates.end()) {
+          params.resource_accountant->AddCommittedWorkspaceEstimate(workspace_it->second);
         }
       }
     }
@@ -1524,6 +1551,52 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
                                                  ep_acc_map, *graph_optimizer_registry_, logger,
                                                  disable_model_compile));  // Pass param
+
+    if (ep_acc_map.has_value()) {
+      for (const auto& [ep_type, accountant] : *ep_acc_map) {
+        const auto consumed = accountant->GetConsumedAmount();
+        if (!std::holds_alternative<size_t>(consumed)) {
+          continue;
+        }
+
+        const size_t total_estimate = std::get<size_t>(consumed);
+        const size_t workspace_estimate = accountant->GetCommittedWorkspaceEstimate();
+        const size_t persistent_prepack_estimate =
+            accountant->GetCommittedPersistentPrepackEstimate();
+        const size_t temporary_prepack_estimate =
+            accountant->GetCommittedTemporaryPrepackEstimate();
+        const auto source_counts = accountant->GetWorkspaceEstimateSourceCounts();
+        const auto comparison = accountant->GetWorkspaceEstimateComparisonSummary();
+        const size_t categorized_estimate =
+            static_cast<size_t>(SafeInt<size_t>(workspace_estimate) +
+                                persistent_prepack_estimate);
+        const size_t non_workspace_estimate =
+            total_estimate >= categorized_estimate
+                ? total_estimate - categorized_estimate
+                : 0;
+        LOGS(logger, INFO) << "Resource estimation for EP '" << ep_type << "': "
+                           << "non-workspace memory: " << non_workspace_estimate << " bytes, "
+                           << "workspace memory: " << workspace_estimate << " bytes, "
+                           << "persistent prepack memory: " << persistent_prepack_estimate << " bytes, "
+                           << "peak initialization scratch memory (not included in budget): "
+                           << temporary_prepack_estimate << " bytes, "
+                           << "total estimated memory: " << total_estimate << " bytes, "
+                           << "workspace sources: fallback=" << source_counts.fallback
+                           << ", profile=" << source_counts.profile
+                           << ", estimator=" << source_counts.estimator
+                           << ", profile+estimator=" << source_counts.profile_and_estimator;
+        if (comparison.node_count > 0) {
+          LOGS(logger, INFO) << "Workspace profile-estimator comparison for EP '" << ep_type << "': "
+                             << comparison.node_count << " accepted node(s), "
+                             << "profile larger=" << comparison.profile_larger
+                             << ", estimator larger=" << comparison.estimator_larger
+                             << ", equal=" << comparison.equal
+                             << ", profiled workspace=" << comparison.profiled_bytes << " bytes"
+                             << ", Level-1 estimated workspace="
+                             << comparison.level1_estimated_bytes << " bytes";
+        }
+      }
+    }
 
     // Serialize here only when the output is EPContext-based (some EP produced EPContext nodes). The plain
     // form (no nodes compiled) is instead emitted by InferenceSession (epctx::BuildAndSaveOptimizedModel);

@@ -12,6 +12,7 @@
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
+#include "core/framework/level1_memory_estimate.h"
 #include "core/framework/max_shape_override.h"
 
 namespace onnxruntime {
@@ -26,6 +27,44 @@ struct Node;
 // Common holder for potentially different resource accounting
 // for different EPs
 using ResourceCount = std::variant<size_t>;
+
+enum class WorkspaceEstimateSource {
+  kNone,
+  kFallback,
+  kProfile,
+  kEstimator,
+  kProfileAndEstimator,
+};
+
+struct WorkspaceEstimateSelection {
+  size_t bytes = 0;
+  WorkspaceEstimateSource source = WorkspaceEstimateSource::kNone;
+  size_t profiled_bytes = 0;
+  size_t level1_estimated_bytes = 0;
+  size_t persistent_prepack_bytes = 0;
+  size_t temporary_prepack_bytes = 0;
+};
+
+struct WorkspaceEstimateSourceCounts {
+  size_t fallback = 0;
+  size_t profile = 0;
+  size_t estimator = 0;
+  size_t profile_and_estimator = 0;
+};
+
+struct WorkspaceEstimateComparisonSummary {
+  size_t node_count = 0;
+  size_t profile_larger = 0;
+  size_t estimator_larger = 0;
+  size_t equal = 0;
+  size_t profiled_bytes = 0;
+  size_t level1_estimated_bytes = 0;
+};
+
+struct WorkspaceEstimatorConfig {
+  std::optional<std::string> cuda_fpa_intb_gemm;
+  std::optional<std::string> cuda_fpa_intb_profile_m;
+};
 
 // Type-erased arithmetic for ResourceCount values.
 // Implementations use std::visit so the compiler enforces exhaustive handling
@@ -58,7 +97,16 @@ class IResourceAccountant {
   virtual ResourceCount GetConsumedAmount() const = 0;
   virtual void AddConsumedAmount(const ResourceCount& amount) = 0;
   virtual void RemoveConsumedAmount(const ResourceCount& amount) = 0;
-  virtual ResourceCount ComputeResourceCount(const Node& node) = 0;
+
+  // Computes the complete resource cost for a candidate node. A supplied
+  // Level-1 estimate contributes prepack memory and uses its runtime workspace
+  // instead of fallback workspace, or maximizes it with profiled workspace.
+  virtual ResourceCount ComputeResourceCount(
+      const Node& node, std::optional<Level1MemoryEstimate> level1_memory_estimate) = 0;
+
+  ResourceCount ComputeResourceCount(const Node& node) {
+    return ComputeResourceCount(node, std::nullopt);
+  }
 
   std::optional<ResourceCount> GetThreshold() const {
     return threshold_;
@@ -76,17 +124,27 @@ class IResourceAccountant {
 
   // Called before each GetCapability pass to reset per-pass state:
   // clears the stop flag (which only applies to the pass that set it)
-  // and discards pending weight tracking from a previous (discarded) pass.
-  // Subclasses override ResetPendingWeightsImpl for EP-specific cleanup.
+  // and discards pending resource tracking from a previous (discarded) pass.
   void ResetForNewPass() {
     stop_assignment_ = false;
-    ResetPendingWeightsImpl();
+    ResetPendingResourcesImpl();
   }
 
   // Called when a node's cost is committed (AccountForNode/AccountForAllNodes).
-  // Moves the node's pending weights into the committed set so they persist
-  // across GetCapability passes. Default no-op for stats-based accountants.
-  virtual void CommitWeightsForNode(size_t /*node_index*/) {}
+  // Commits any per-node resource breakdown tracked while ComputeResourceCount()
+  // was called. Default no-op for accountants without a resource breakdown.
+  virtual void CommitResourcesForNode(size_t /*node_index*/) {}
+
+  // Returns the pending workspace selection recorded while computing a node's cost.
+  // Used when layout transformation defers committing first-pass capabilities.
+  virtual WorkspaceEstimateSelection GetPendingWorkspaceEstimateSelection(
+      size_t /*node_index*/) const {
+    return {};
+  }
+
+  // Commits a workspace estimate whose original pending state is no longer available.
+  // Used for nodes that survive a layout-transformation second pass.
+  virtual void AddCommittedWorkspaceEstimate(WorkspaceEstimateSelection /*selection*/) {}
 
   static std::string MakeUniqueNodeName(const Node& node);
 
@@ -108,16 +166,40 @@ class IResourceAccountant {
     return max_shape_inference_result_;
   }
 
+  void SetWorkspaceEstimatorConfig(WorkspaceEstimatorConfig config) {
+    workspace_estimator_config_ = std::move(config);
+  }
+
+  const WorkspaceEstimatorConfig& GetWorkspaceEstimatorConfig() const {
+    return workspace_estimator_config_;
+  }
+
+  /// Returns workspace for nodes that were accepted and committed by partitioning.
+  virtual size_t GetCommittedWorkspaceEstimate() const { return 0; }
+
+  /// Returns persistent prepack memory conservatively charged for accepted nodes.
+  virtual size_t GetCommittedPersistentPrepackEstimate() const { return 0; }
+
+  /// Returns the peak initialization scratch estimate across accepted nodes.
+  /// This diagnostic is not included in the additive partitioning budget.
+  virtual size_t GetCommittedTemporaryPrepackEstimate() const { return 0; }
+
+  /// Returns accepted-node counts grouped by the workspace source used for budgeting.
+  virtual WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const { return {}; }
+
+  /// Compares profile and estimator workspace values for accepted nodes where both were available.
+  virtual WorkspaceEstimateComparisonSummary GetWorkspaceEstimateComparisonSummary() const { return {}; }
+
  protected:
-  // Override to discard EP-specific pending weight tracking.
-  // Default no-op for stats-based accountants.
-  virtual void ResetPendingWeightsImpl() {}
+  // Override to discard per-pass state for capabilities that were only probed.
+  virtual void ResetPendingResourcesImpl() {}
 
  private:
   bool stop_assignment_ = false;
   std::optional<ResourceCount> threshold_;
   MaxShapeOverrideMap max_shape_overrides_;
   MaxShapeInferenceResult max_shape_inference_result_;
+  WorkspaceEstimatorConfig workspace_estimator_config_;
 };
 
 // A map of Ep Type to a resource accountant for this EP

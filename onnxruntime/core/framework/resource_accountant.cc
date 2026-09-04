@@ -17,116 +17,230 @@
 #include "core/graph/graph.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
+#include <algorithm>
 #include <fstream>
 #include <optional>
 
 namespace onnxruntime {
 
-// Use this accountant if your resource can be counted with size_t type
-// This accountant uses NodeAllocationStats to compute resource consumption per node
-// which can be collected and saved to a file OR loaded from a file and used for partitioning.
-// This is currently used for CUDA EP.
-class SizeBasedStatsAccountant : public IResourceAccountant {
+// Accounts for resources represented as byte counts. Per-node costs can come from
+// profiling statistics, ad-hoc fallback estimation, or an operator-specific estimator.
+// This is currently used by CUDA EP.
+class SizeBasedResourceAccountant : public IResourceAccountant {
  public:
-  SizeBasedStatsAccountant() = default;
-  ~SizeBasedStatsAccountant() = default;
+  SizeBasedResourceAccountant() = default;
+  ~SizeBasedResourceAccountant() = default;
 
-  SizeBasedStatsAccountant(size_t threshold, InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
+  SizeBasedResourceAccountant(size_t threshold, InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
       : IResourceAccountant(threshold), node_stats_(std::move(node_stats)) {}
 
-  explicit SizeBasedStatsAccountant(size_t threshold) : IResourceAccountant(threshold) {}
+  explicit SizeBasedResourceAccountant(size_t threshold) : IResourceAccountant(threshold) {}
 
-  explicit SizeBasedStatsAccountant(InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
+  explicit SizeBasedResourceAccountant(InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
       : IResourceAccountant(), node_stats_(std::move(node_stats)) {}
 
   ResourceCount GetConsumedAmount() const noexcept override {
     return consumed_amount_;
   }
 
-  void AddConsumedAmount(const ResourceCount& amount) noexcept override {
+  void AddConsumedAmount(const ResourceCount& amount) override {
     if (std::holds_alternative<size_t>(amount)) {
-      consumed_amount_ += std::get<size_t>(amount);
+      consumed_amount_ =
+          static_cast<size_t>(SafeInt<size_t>(consumed_amount_) + std::get<size_t>(amount));
     }
   }
-  void RemoveConsumedAmount(const ResourceCount& amount) noexcept override {
+  void RemoveConsumedAmount(const ResourceCount& amount) override {
     if (std::holds_alternative<size_t>(amount)) {
-      consumed_amount_ -= std::get<0>(amount);
+      consumed_amount_ =
+          static_cast<size_t>(SafeInt<size_t>(consumed_amount_) - std::get<size_t>(amount));
     }
   }
 
-  ResourceCount ComputeResourceCount(const Node& node) override {
+  // Computes the resource cost for a candidate node.
+  //
+  // If profiling statistics are available, uses their non-workspace cost and
+  // profiled temporary allocations. If a Level-1 runtime workspace estimate is
+  // also provided, uses the maximum of the profiled and estimated workspace.
+  // Without profiling, computes known initializer/output bytes and uses the
+  // Level-1 runtime workspace or, when unavailable, fallback workspace.
+  // Initializer bytes are charged separately, so persistent prepack estimates
+  // must include only additional allocations, not storage reused directly from
+  // an initializer (for example, an offline-prepacked weight). Persistent
+  // prepack estimates are additional conservative charges in both paths.
+  // Initialization scratch remains diagnostic rather than part of the additive
+  // hard budget. MatMulNBits tactic profiling runs synchronously while
+  // each kernel is constructed, and PrePack() calls run sequentially after
+  // kernel creation; their scratch buffers are therefore created and released
+  // one at a time. Their true session-wide requirement is a peak, which cannot
+  // be represented by the reversible per-node ResourceCount scalar.
+  //
+  // GetCapability may probe nodes that are not ultimately assigned to this EP,
+  // so per-node weights and workspace remain pending. CommitResourcesForNode()
+  // promotes them after acceptance, while ResetForNewPass() discards state from
+  // rejected or superseded capabilities.
+  ResourceCount ComputeResourceCount(
+      const Node& node, std::optional<Level1MemoryEstimate> level1_memory_estimate) override {
     if (node_stats_) {
       const auto node_name = MakeUniqueNodeName(node);
       auto hit = node_stats_->find(node_name);
       if (hit != node_stats_->end()) {
         const auto& stats = hit->second;
-        return stats.input_sizes + stats.initializers_sizes +
-               stats.total_dynamic_sizes + stats.total_temp_allocations;
+        const bool has_runtime_workspace_estimator =
+            level1_memory_estimate.has_value() &&
+            level1_memory_estimate->runtime_workspace_bytes.has_value();
+        const size_t runtime_transient_bytes =
+            level1_memory_estimate.has_value() ? level1_memory_estimate->runtime_transient_bytes : 0;
+        const size_t level1_workspace_bytes =
+            std::max(level1_memory_estimate.has_value()
+                         ? level1_memory_estimate->runtime_workspace_bytes.value_or(0)
+                         : 0,
+                     runtime_transient_bytes);
+        const bool has_estimator = has_runtime_workspace_estimator || runtime_transient_bytes > 0;
+        const size_t selected_workspace =
+            std::max(stats.total_temp_allocations, level1_workspace_bytes);
+        const size_t persistent_prepack_bytes =
+            level1_memory_estimate.has_value() ? level1_memory_estimate->persistent_prepack_bytes : 0;
+        const size_t temporary_prepack_bytes =
+            level1_memory_estimate.has_value() ? level1_memory_estimate->temporary_prepack_bytes : 0;
+        pending_workspace_selection_by_node_.insert_or_assign(
+            node.Index(),
+            WorkspaceEstimateSelection{
+                selected_workspace,
+                has_estimator ? WorkspaceEstimateSource::kProfileAndEstimator
+                              : WorkspaceEstimateSource::kProfile,
+                stats.total_temp_allocations,
+                level1_workspace_bytes,
+                persistent_prepack_bytes,
+                temporary_prepack_bytes});
+        const SafeInt<size_t> resource_count =
+            SafeInt<size_t>(stats.input_sizes) + stats.initializers_sizes +
+            stats.total_dynamic_sizes + selected_workspace +
+            persistent_prepack_bytes;
+        return static_cast<size_t>(resource_count);
       }
-      return static_cast<size_t>(0U);
-    } else {
-      const auto* graph = node.GetContainingGraph();
-      if (!graph) return static_cast<size_t>(0);
 
-      SafeInt<size_t> total_size = 0;
-      for (const auto* input_def : node.InputDefs()) {
-        if (!input_def->Exists()) continue;
+      // Preserve the established partial-profile behavior: a node absent from
+      // the stats file has zero cost. Falling through to ad-hoc accounting
+      // would change existing partition decisions and mix profile-based costs
+      // with initializer bookkeeping that the profile path does not use.
+      return static_cast<size_t>(0);
+    }
 
-        const auto& name = input_def->Name();
-        constexpr bool check_outer_scope = true;
-        const auto* tensor_proto = graph->GetInitializer(name, check_outer_scope);
+    const auto* graph = node.GetContainingGraph();
+    if (!graph) return static_cast<size_t>(0);
+    const auto& max_shapes = GetMaxShapeInferenceResult();
 
-        if (tensor_proto) {
-          // Skip if already committed from a previous partitioning iteration
-          if (committed_weights_.count(name) > 0) {
-            continue;
-          }
+    SafeInt<size_t> total_size = 0;
+    for (const auto* input_def : node.InputDefs()) {
+      if (!input_def->Exists()) continue;
 
-          // Skip if already pending from another node in this GetCapability pass
-          if (pending_weights_.count(name) > 0) {
-            continue;
-          }
+      const auto& name = input_def->Name();
+      constexpr bool check_outer_scope = true;
+      const auto* tensor_proto = graph->GetInitializer(name, check_outer_scope);
 
-          size_t size = 0;
-          auto status = utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &size);
-
-          if (status.IsOK()) {
-            total_size += size;
-            pending_weights_.insert(name);
-            pending_weights_by_node_[node.Index()].insert(name);
-          }
+      if (tensor_proto) {
+        // Skip if already committed from a previous partitioning iteration
+        if (committed_weights_.count(name) > 0) {
+          continue;
         }
-      }
 
-      // Account for intermediate output tensors when shape info is available.
-      // GetSizeInBytesFromTensorTypeProto will only succeed when all dims are known
-      // (static shape) and a valid element type is present, so dynamic outputs are
-      // naturally skipped.
-      SafeInt<size_t> output_size = 0;
-      for (const auto* output_def : node.OutputDefs()) {
-        if (!output_def->Exists() || !output_def->HasTensorOrScalarShape()) continue;
-        const auto* type_proto = output_def->TypeAsProto();
-        if (!type_proto || !utils::HasTensorType(*type_proto)) continue;
+        // Skip if already pending from another node in this GetCapability pass
+        if (pending_weights_.count(name) > 0) {
+          continue;
+        }
 
         size_t size = 0;
-        if (utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK()) {
-          output_size += size;
+        auto status = utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &size);
+
+        if (status.IsOK()) {
+          total_size += size;
+          pending_weights_.insert(name);
+          pending_weights_by_node_[node.Index()].insert(name);
         }
       }
-
-      // Apply a safety multiplier for workspace/temp allocations we can't see
-      constexpr size_t kAdHocSafetyMultiplierPercent = 150;  // 1.5x
-      SafeInt<size_t> estimated = total_size + output_size;
-      return static_cast<size_t>(estimated * kAdHocSafetyMultiplierPercent / 100);
     }
+
+    // Account for intermediate output tensors when shape info is available.
+    // When max-shape inference is available, use it to resolve dynamic outputs.
+    // Otherwise, GetSizeInBytesFromTensorTypeProto will only succeed when all dims
+    // are known (static shape).
+    SafeInt<size_t> output_size = 0;
+    for (const auto* output_def : node.OutputDefs()) {
+      if (!output_def->Exists() || !output_def->HasTensorOrScalarShape()) continue;
+      const auto* type_proto = output_def->TypeAsProto();
+      if (!type_proto || !utils::HasTensorType(*type_proto)) continue;
+
+      size_t size = 0;
+      // Try max-shape inference first for dynamic outputs
+      if (!max_shapes.Empty()) {
+        if (const TensorShape* max_shape =
+                max_shapes.GetShape(graph, output_def->Name())) {
+          const auto& tensor_type = type_proto->tensor_type();
+          if (tensor_type.has_elem_type()) {
+            const SafeInt<size_t> inferred_size =
+                SafeInt<size_t>(max_shape->Size()) *
+                utils::GetElementSizeOfTensor(
+                    static_cast<ONNX_NAMESPACE::TensorProto_DataType>(tensor_type.elem_type()));
+            size = inferred_size;
+          }
+        }
+      }
+      // Fall back to static shape
+      if (size == 0 &&
+          !utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK()) {
+        continue;
+      }
+      output_size += size;
+    }
+
+    // Use the safety-margin portion as fallback workspace when no Level-1
+    // estimate is available. Max-shape inference makes tensor sizes concrete
+    // but does not, by itself, make kernel workspace requirements known.
+    constexpr size_t kAdHocSafetyMultiplierPercent = 150;
+    SafeInt<size_t> estimated = total_size + output_size;
+    const size_t fallback_workspace =
+        static_cast<size_t>(estimated * (kAdHocSafetyMultiplierPercent - 100) / 100);
+    const bool has_runtime_workspace_estimator =
+        level1_memory_estimate.has_value() &&
+        level1_memory_estimate->runtime_workspace_bytes.has_value();
+    const size_t runtime_transient_bytes =
+        level1_memory_estimate.has_value() ? level1_memory_estimate->runtime_transient_bytes : 0;
+    const size_t level1_workspace_bytes =
+        std::max(level1_memory_estimate.has_value()
+                     ? level1_memory_estimate->runtime_workspace_bytes.value_or(0)
+                     : 0,
+                 runtime_transient_bytes);
+    const size_t selected_workspace =
+        has_runtime_workspace_estimator
+            ? level1_workspace_bytes
+            : std::max(fallback_workspace, runtime_transient_bytes);
+    const bool has_estimator =
+        has_runtime_workspace_estimator || runtime_transient_bytes > fallback_workspace;
+    const size_t persistent_prepack_bytes =
+        level1_memory_estimate.has_value() ? level1_memory_estimate->persistent_prepack_bytes : 0;
+    const size_t temporary_prepack_bytes =
+        level1_memory_estimate.has_value() ? level1_memory_estimate->temporary_prepack_bytes : 0;
+    pending_workspace_selection_by_node_.insert_or_assign(
+        node.Index(),
+        WorkspaceEstimateSelection{
+            selected_workspace,
+            has_estimator ? WorkspaceEstimateSource::kEstimator
+                          : WorkspaceEstimateSource::kFallback,
+            0,
+            level1_workspace_bytes,
+            persistent_prepack_bytes,
+            temporary_prepack_bytes});
+    return static_cast<size_t>(estimated + selected_workspace +
+                               persistent_prepack_bytes);
   }
 
-  void ResetPendingWeightsImpl() override {
+  void ResetPendingResourcesImpl() override {
     pending_weights_.clear();
     pending_weights_by_node_.clear();
+    pending_workspace_selection_by_node_.clear();
   }
 
-  void CommitWeightsForNode(NodeIndex node_index) override {
+  void CommitResourcesForNode(NodeIndex node_index) override {
     auto it = pending_weights_by_node_.find(node_index);
     if (it != pending_weights_by_node_.end()) {
       for (const auto& name : it->second) {
@@ -135,18 +249,115 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
       committed_weights_.insert(it->second.begin(), it->second.end());
       pending_weights_by_node_.erase(it);
     }
+
+    auto workspace_it = pending_workspace_selection_by_node_.find(node_index);
+    if (workspace_it != pending_workspace_selection_by_node_.end()) {
+      CommitWorkspaceEstimate(workspace_it->second);
+      pending_workspace_selection_by_node_.erase(workspace_it);
+    }
+  }
+
+  WorkspaceEstimateSelection GetPendingWorkspaceEstimateSelection(
+      NodeIndex node_index) const override {
+    auto it = pending_workspace_selection_by_node_.find(node_index);
+    return it == pending_workspace_selection_by_node_.end() ? WorkspaceEstimateSelection{} : it->second;
+  }
+
+  void AddCommittedWorkspaceEstimate(WorkspaceEstimateSelection selection) override {
+    CommitWorkspaceEstimate(selection);
+  }
+
+  WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const override {
+    return workspace_source_counts_;
+  }
+
+  WorkspaceEstimateComparisonSummary GetWorkspaceEstimateComparisonSummary() const override {
+    return workspace_estimate_comparison_;
+  }
+
+  size_t GetCommittedWorkspaceEstimate() const override {
+    return committed_workspace_estimate_;
+  }
+
+  size_t GetCommittedPersistentPrepackEstimate() const override {
+    return committed_persistent_prepack_estimate_;
+  }
+
+  size_t GetCommittedTemporaryPrepackEstimate() const override {
+    return committed_temporary_prepack_estimate_;
   }
 
  private:
+  void CommitWorkspaceEstimate(WorkspaceEstimateSelection selection) {
+    const size_t new_workspace_estimate =
+        static_cast<size_t>(SafeInt<size_t>(committed_workspace_estimate_) + selection.bytes);
+    const size_t new_persistent_prepack_estimate =
+        static_cast<size_t>(SafeInt<size_t>(committed_persistent_prepack_estimate_) +
+                            selection.persistent_prepack_bytes);
+    // Kernel construction and PrePack() are sequential today, so committed
+    // initialization scratch is a session-wide peak rather than a sum.
+    const size_t new_temporary_prepack_estimate =
+        std::max(committed_temporary_prepack_estimate_, selection.temporary_prepack_bytes);
+
+    committed_workspace_estimate_ = new_workspace_estimate;
+    committed_persistent_prepack_estimate_ = new_persistent_prepack_estimate;
+    committed_temporary_prepack_estimate_ = new_temporary_prepack_estimate;
+    switch (selection.source) {
+      case WorkspaceEstimateSource::kFallback:
+        ++workspace_source_counts_.fallback;
+        break;
+      case WorkspaceEstimateSource::kProfile:
+        ++workspace_source_counts_.profile;
+        break;
+      case WorkspaceEstimateSource::kEstimator:
+        ++workspace_source_counts_.estimator;
+        break;
+      case WorkspaceEstimateSource::kProfileAndEstimator:
+        ++workspace_source_counts_.profile_and_estimator;
+        ++workspace_estimate_comparison_.node_count;
+        workspace_estimate_comparison_.profiled_bytes =
+            static_cast<size_t>(SafeInt<size_t>(workspace_estimate_comparison_.profiled_bytes) +
+                                selection.profiled_bytes);
+        workspace_estimate_comparison_.level1_estimated_bytes =
+            static_cast<size_t>(SafeInt<size_t>(workspace_estimate_comparison_.level1_estimated_bytes) +
+                                selection.level1_estimated_bytes);
+        if (selection.profiled_bytes > selection.level1_estimated_bytes) {
+          ++workspace_estimate_comparison_.profile_larger;
+        } else if (selection.profiled_bytes < selection.level1_estimated_bytes) {
+          ++workspace_estimate_comparison_.estimator_larger;
+        } else {
+          ++workspace_estimate_comparison_.equal;
+        }
+        break;
+      case WorkspaceEstimateSource::kNone:
+        break;
+    }
+  }
+
   size_t consumed_amount_ = 0;
   std::optional<InlinedHashMap<std::string, NodeAllocationStats>> node_stats_;
   // Weights committed from previous partitioning iterations.
   // These persist across GetCapability passes.
   InlinedHashSet<std::string> committed_weights_;
-  // Flat set of all pending weight names for O(1) membership checks.
+
+  // Initializers already counted during the current GetCapability pass. This
+  // prevents a shared initializer from being charged to multiple probed nodes.
   InlinedHashSet<std::string> pending_weights_;
-  // Same pending weights keyed by node index, used by CommitWeightsForNode.
+
+  // Initializers tentatively charged to each node. CommitResourcesForNode()
+  // uses this mapping to move accepted-node initializers into committed_weights_.
   InlinedHashMap<NodeIndex, InlinedHashSet<std::string>> pending_weights_by_node_;
+
+  // Selected workspace bytes and source for each probed node. Keeping them in
+  // one value prevents the reported source from diverging from the selected size.
+  InlinedHashMap<NodeIndex, WorkspaceEstimateSelection> pending_workspace_selection_by_node_;
+
+  // Workspace total and source counts for nodes ultimately accepted by the EP.
+  size_t committed_workspace_estimate_ = 0;
+  size_t committed_persistent_prepack_estimate_ = 0;
+  size_t committed_temporary_prepack_estimate_ = 0;
+  WorkspaceEstimateSourceCounts workspace_source_counts_;
+  WorkspaceEstimateComparisonSummary workspace_estimate_comparison_;
 };
 
 struct NodeStatsRecorder::Impl {
@@ -271,21 +482,31 @@ Status CreateAccountants(
 
       if (cuda_memory_limit && loaded_stats) {
         map.insert_or_assign(kCudaExecutionProvider,
-                             std::make_unique<SizeBasedStatsAccountant>(*cuda_memory_limit,
-                                                                        std::move(*loaded_stats)));
+                             std::make_unique<SizeBasedResourceAccountant>(*cuda_memory_limit,
+                                                                           std::move(*loaded_stats)));
       } else if (cuda_memory_limit) {
         map.insert_or_assign(kCudaExecutionProvider,
-                             std::make_unique<SizeBasedStatsAccountant>(*cuda_memory_limit));
+                             std::make_unique<SizeBasedResourceAccountant>(*cuda_memory_limit));
       } else if (loaded_stats) {
         map.insert_or_assign(kCudaExecutionProvider,
-                             std::make_unique<SizeBasedStatsAccountant>(std::move(*loaded_stats)));
+                             std::make_unique<SizeBasedResourceAccountant>(std::move(*loaded_stats)));
       } else {
-        map.insert_or_assign(kCudaExecutionProvider, std::make_unique<SizeBasedStatsAccountant>());
+        map.insert_or_assign(kCudaExecutionProvider, std::make_unique<SizeBasedResourceAccountant>());
       }
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid format for: ",
                              kOrtSessionOptionsResourceCudaPartitioningSettings,
                              " : expecting comma separated fields");
+    }
+  }
+
+  if (result.has_value()) {
+    WorkspaceEstimatorConfig estimator_config{
+        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
+        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
+    for (auto& [ep_type, accountant] : *result) {
+      ORT_UNUSED_PARAMETER(ep_type);
+      accountant->SetWorkspaceEstimatorConfig(estimator_config);
     }
   }
 
