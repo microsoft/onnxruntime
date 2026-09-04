@@ -46,7 +46,7 @@ jobs:
           python3 -m pip install --user --upgrade pip
           cd docs/python
           python3 -m pip install --user -r requirements.txt
-          python3 -m pip install --user --pre onnxruntime --extra-index-url https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly
+          python3 -m pip install --user --pre onnxruntime --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
           python3 -m pip list
       - name: Generate Python docs with Sphinx
         run: |
