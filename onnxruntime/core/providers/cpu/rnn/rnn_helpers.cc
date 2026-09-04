@@ -39,12 +39,12 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                                bool weights_transposed) {
   auto& X_shape = X.Shape();
 
+  if (X_shape.NumDimensions() != 3)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
+
   int64_t seq_length = X_shape[0];
   int64_t batch_size = X_shape[1];
   int64_t input_size = X_shape[2];
-
-  if (X_shape.NumDimensions() != 3)
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
 
   // The gate dimension (mult * hidden_size) and the input/hidden dimension are on dims 1 and 2
   // respectively for the standard layout, and swapped for the transposed (quantized) layout.
