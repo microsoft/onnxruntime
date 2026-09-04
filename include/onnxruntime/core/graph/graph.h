@@ -520,7 +520,7 @@ class Node {
   Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
                            const OrtFormatLoadOptions& load_options,
                            const logging::Logger& logger);
-  Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
+  Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, Graph& graph);
 
   /**
   @class Definitions
@@ -597,6 +597,8 @@ class Node {
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
+
+  static void AddControlEdgeBetweenNodes(Node& src_node, Node& dst_node);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   void Init(std::string_view name,
