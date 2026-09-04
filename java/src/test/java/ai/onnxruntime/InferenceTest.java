@@ -131,7 +131,7 @@ public class InferenceTest {
     try (OrtSession.SessionOptions options = new SessionOptions();
         OrtSession session = env.createSession(modelPath, options)) {
       assertNotNull(session);
-      assertEquals(3, session.getNumInputs());
+      assertEquals(2, session.getNumInputs());
       assertEquals(1, session.getNumOutputs());
 
       // Input and output collections.
@@ -147,15 +147,13 @@ public class InferenceTest {
             }
           };
 
-      // Graph has three scalar inputs, a, b, c, and a single output, ab.
+      // Graph has two scalar inputs, a and b, and a single output, ab.
       OnnxTensor a = OnnxTensor.createTensor(env, new float[] {2.0f});
       OnnxTensor b = OnnxTensor.createTensor(env, new float[] {3.0f});
-      OnnxTensor c = OnnxTensor.createTensor(env, new float[] {5.0f});
 
       // Request all outputs, supply all inputs
       inputMap.put("a:0", a);
       inputMap.put("b:0", b);
-      inputMap.put("c:0", c);
       requestedOutputs.add("ab:0");
       try (Result r = session.run(inputMap, requestedOutputs)) {
         assertEquals(1, r.size());
@@ -185,8 +183,8 @@ public class InferenceTest {
       inputMap.clear();
       requestedOutputs.clear();
 
-      // Request output but don't supply the inputs
-      inputMap.put("c:0", c);
+      // Request output but omit b
+      inputMap.put("a:0", a);
       requestedOutputs.add("ab:0");
       try (Result r = session.run(inputMap, requestedOutputs)) {
         fail("Expected to throw OrtException due to incorrect inputs");
@@ -197,7 +195,7 @@ public class InferenceTest {
       inputMap.clear();
       requestedOutputs.clear();
 
-      // Request output but don't supply all the inputs
+      // Request output but omit a
       inputMap.put("b:0", b);
       requestedOutputs.add("ab:0");
       try (Result r = session.run(inputMap, requestedOutputs)) {
