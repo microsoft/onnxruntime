@@ -27,8 +27,24 @@ const OrtDevice OpKernel::GetDevice(OrtMemType mem_type) const {
 
 OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
                                  _In_ Stream* stream,
-                                 _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger)
-    : execution_frame_(frame), kernel_(kernel), threadpool_(threadpool), logger_(&logger), stream_(stream) {
+                                 _In_opt_ concurrency::ThreadPool* threadpool, _In_ const logging::Logger& logger
+#if !defined(ORT_MINIMAL_BUILD)
+                                 ,
+                                 _In_opt_ const RunInstrumentationContext* run_instrumentation_context)
+#else
+                                 )
+#endif
+    : execution_frame_(frame),
+      kernel_(kernel),
+      threadpool_(threadpool),
+      logger_(&logger),
+      stream_(stream)
+#if !defined(ORT_MINIMAL_BUILD)
+      ,
+      run_instrumentation_context_(run_instrumentation_context) {
+#else
+{
+#endif
   ORT_ENFORCE(frame != nullptr, "Execution frame was null");
   ORT_ENFORCE(kernel != nullptr, "OpKernel was null");
 

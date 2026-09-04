@@ -47,7 +47,13 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const bool& terminate_flag,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode,
-                                   profiling::Profiler* run_profiler = nullptr);
+                                   profiling::Profiler* run_profiler = nullptr
+#if !defined(ORT_MINIMAL_BUILD)
+                                   ,
+                                   const RunInstrumentationContext* run_instrumentation_context = nullptr);
+#else
+);
+#endif
 
 #ifdef ENABLE_TRAINING
 onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,

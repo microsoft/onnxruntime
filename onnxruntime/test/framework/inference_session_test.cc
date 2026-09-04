@@ -29,6 +29,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/bfc_arena.h"
@@ -235,6 +236,34 @@ void RunModel(InferenceSession& session_object,
   ASSERT_TRUE(st.IsOK());
   VerifySingleOutput(fetches, expected_dims_mul_y, expected_values_mul_y);
 }
+
+Status RunModelWithValues(InferenceSession& session_object,
+                          const RunOptions& run_options,
+                          const std::vector<float>& values,
+                          const std::vector<int64_t>& dims = {3, 2}) {
+  OrtValue input;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims, values, &input);
+  NameMLValMap feeds{{"X", input}};
+  const std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  return session_object.Run(run_options, feeds, output_names, &fetches);
+}
+
+class ProfileEventCapturingSink final : public logging::ISink {
+ public:
+  void SendImpl(const Timestamp&, const std::string&, const Capture&) override {}
+
+  void SendProfileEvent(profiling::EventRecord& event) const override {
+    event_ = event;
+  }
+
+  const std::optional<profiling::EventRecord>& Event() const noexcept {
+    return event_;
+  }
+
+ private:
+  mutable std::optional<profiling::EventRecord> event_;
+};
 
 TEST(InferenceSessionTests, NoTimeout) {
   SessionOptions so;
@@ -883,6 +912,146 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 // WebAssembly will emit profiling data into console
 // TODO(hasesh): Investigate why this test fails on Windows CUDA builds
 #if (!defined(__wasm__) && !defined(_WIN32))
+
+TEST(InferenceSessionTests, ProfilerEscapesJsonAndPreservesRawArrays) {
+  const std::string profile_file = "profiler_json_escaping_test.json";
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
+  profiling::Profiler profiler;
+  profiler.Initialize(&logging::LoggingManager::DefaultLogger());
+  profiler.StartProfiling(profile_file);
+  InlinedHashMap<std::string, std::string> args;
+  args["key\"\n"] = "value\"\n";
+  args["forced_string"] = profiling::MakeStringEventArg("[request]");
+  args["raw_array"] = "[1,2]";
+  args["json_null"] = "null";
+  const TimePoint start_time = profiler.Start();
+  profiler.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "event\"\n", start_time, std::move(args));
+  profiler.EndProfiling();
+
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good());
+  const auto profile_json = nlohmann::json::parse(profile_stream);
+  ASSERT_EQ(profile_json.size(), 1U);
+  EXPECT_EQ(profile_json[0]["name"], "event\"\n");
+  EXPECT_EQ(profile_json[0]["args"]["key\"\n"], "value\"\n");
+  EXPECT_EQ(profile_json[0]["args"]["forced_string"], "[request]");
+  EXPECT_EQ(profile_json[0]["args"]["raw_array"], nlohmann::json({1, 2}));
+  EXPECT_TRUE(profile_json[0]["args"]["json_null"].is_null());
+}
+
+TEST(InferenceSessionTests, ProfilerQuotedStringIsPreservedForCustomLogger) {
+  auto capturing_sink = std::make_unique<ProfileEventCapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("profile_event_test");
+
+  profiling::Profiler profiler;
+  profiler.Initialize(logger.get());
+  profiler.StartProfiling(logger.get());
+  InlinedHashMap<std::string, std::string> args;
+  args["request_id"] = profiling::MakeStringEventArg("{request}");
+  profiler.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "event", profiler.Start(), std::move(args));
+  profiler.EndProfiling();
+
+  ASSERT_TRUE(capturing_sink_ptr->Event().has_value());
+  EXPECT_EQ(capturing_sink_ptr->Event()->args.at("request_id"), "\"{request}\"");
+}
+
+TEST(InferenceSessionTests, ProfilerOverflowIsMachineReadable) {
+  const std::string profile_file = "profiler_overflow_test.json";
+  auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
+
+  profiling::Profiler profiler;
+  profiler.Initialize(&logging::LoggingManager::DefaultLogger());
+  profiler.SetMaxNumEventsForTest(1);
+  profiler.StartProfiling(profile_file);
+  const TimePoint start_time = std::chrono::high_resolution_clock::now();
+  profiler.RecordEvent(profiling::SESSION_EVENT, "kept", start_time, start_time);
+  profiler.RecordEvent(profiling::SESSION_EVENT, "dropped", start_time, start_time);
+  profiler.EndProfiling();
+
+  std::ifstream profile_stream(profile_file);
+  ASSERT_TRUE(profile_stream.good());
+  const auto profile_json = nlohmann::json::parse(profile_stream);
+  ASSERT_EQ(profile_json.size(), 2U);
+  EXPECT_EQ(profile_json[0]["name"], "kept");
+  EXPECT_EQ(profile_json[1]["name"], "profile_truncated");
+  EXPECT_EQ(profile_json[1]["args"]["dropped_event_count"], "1");
+  EXPECT_EQ(profile_json[1]["args"]["max_num_events"], "1");
+}
+
+TEST(InferenceSessionTests, MoeInstrumentationLimitsRoutingVolume) {
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_instrumentation_limit");
+  RunInstrumentationContext instrumentation{"request", *logger};
+
+  EXPECT_TRUE(instrumentation.TryReserveMoeRoutingRecord(
+      RunInstrumentationContext::kMaxMoeRoutingElementsPerRun));
+  EXPECT_FALSE(instrumentation.TryReserveMoeRoutingRecord(1));
+
+  instrumentation.LogMoeStatisticsTruncation();
+  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
+  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("moe_routing_truncated"));
+  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_records\":1"));
+  EXPECT_THAT(capturing_sink_ptr->Messages()[0], testing::HasSubstr("\"dropped_routing_elements\":1"));
+}
+
+TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+}
+
+TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "true"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must be set to either \"0\" or \"1\""));
+}
+
+TEST(InferenceSessionTests, MoeRoutingLogIsStructuredJson) {
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  logging::LoggingManager logging_manager(
+      std::move(capturing_sink), logging::Severity::kINFO, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  auto logger = logging_manager.CreateLogger("moe_routing_json");
+  RunInstrumentationContext instrumentation{"request \"one\"", *logger};
+  const TimePoint now = std::chrono::high_resolution_clock::now();
+
+  instrumentation.RecordMoeRoutingEvent(
+      now, now, "layer/0/QMoE", 42, "[3,7]", "[0.75,0.25]", 1, 2, 0, 0, "");
+
+  ASSERT_EQ(capturing_sink_ptr->Messages().size(), 1U);
+  const std::string& message = capturing_sink_ptr->Messages()[0];
+  const size_t marker = message.find("moe_routing ");
+  ASSERT_NE(marker, std::string::npos);
+  const auto event = nlohmann::json::parse(message.substr(marker + std::string_view{"moe_routing "}.size()));
+  EXPECT_EQ(event["request_id"], "request \"one\"");
+  EXPECT_EQ(event["node_name"], "layer/0/QMoE");
+  EXPECT_EQ(event["node_index"], 42);
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({3, 7}));
+  EXPECT_EQ(event["router_weights"], nlohmann::json({0.75, 0.25}));
+  EXPECT_EQ(event["num_rows"], 1);
+  EXPECT_EQ(event["top_k"], 2);
+  EXPECT_EQ(event["execution_device_id"], 0);
+}
 
 // See issue #27732 for details on why this is disabled.
 TEST(InferenceSessionTests, DISABLED_CheckRunProfilerWithSessionOptions) {

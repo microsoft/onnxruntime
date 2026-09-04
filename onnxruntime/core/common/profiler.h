@@ -7,8 +7,15 @@
 #include <fstream>
 #include <initializer_list>
 #include <iostream>
+#if !defined(ORT_MINIMAL_BUILD)
+#include <sstream>
+#include <string_view>
+#endif
 #include <tuple>
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/common/json_utils.h"
+#endif
 #include "core/common/profiler_common.h"
 #include "core/common/logging/logging.h"
 #include <mutex>
@@ -16,6 +23,16 @@
 namespace onnxruntime {
 
 namespace profiling {
+
+#if !defined(ORT_MINIMAL_BUILD)
+// Serializes a profiler argument as a JSON string. The profile writer recognizes
+// the leading quote and preserves the serialized value.
+inline std::string MakeStringEventArg(std::string_view value) {
+  std::ostringstream stream;
+  common::WriteJsonString(stream, value);
+  return stream.str();
+}
+#endif
 
 // uncomment the macro below, or use -DENABLE_STATIC_PROFILER_INSTANCE for debugging
 // note that static profiler instance only works with single session
@@ -80,6 +97,22 @@ class Profiler {
                              InlinedHashMap<std::string, std::string> event_args = {},
                              bool sync_gpu = false);
 
+#if !defined(ORT_MINIMAL_BUILD)
+  void EndTimeAndRecordEvent(EventCategory category,
+                             const std::string& event_name,
+                             const TimePoint& start_time,
+                             const TimePoint& end_time,
+                             InlinedHashMap<std::string, std::string> event_args = {},
+                             bool sync_gpu = false);
+
+  // Records an event without changing execution-provider correlation state.
+  void RecordEvent(EventCategory category,
+                   const std::string& event_name,
+                   const TimePoint& start_time,
+                   const TimePoint& end_time,
+                   InlinedHashMap<std::string, std::string> event_args = {});
+#endif
+
   /*
   Write profile data to the given stream in chrome format defined below.
   https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview#
@@ -109,6 +142,14 @@ class Profiler {
   static void SetGlobalMaxNumEvents(size_t new_max_num_events) {
     global_max_num_events_.store(new_max_num_events);
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Testing only. Must be called before profiling starts.
+  void SetMaxNumEventsForTest(size_t max_num_events) {
+    ORT_ENFORCE(!enabled_ && events_.empty());
+    max_num_events_ = max_num_events;
+  }
+#endif
 
   void AddEpProfilers(std::unique_ptr<EpProfiler> ep_profiler) {
     if (ep_profiler) {
@@ -140,6 +181,15 @@ class Profiler {
    */
   static std::atomic<size_t> global_max_num_events_;
 
+#if !defined(ORT_MINIMAL_BUILD)
+  void RecordEventImpl(EventCategory category,
+                       const std::string& event_name,
+                       const TimePoint& start_time,
+                       const TimePoint& end_time,
+                       InlinedHashMap<std::string, std::string> event_args,
+                       bool stop_ep_profilers);
+#endif
+
   // Mutex controlling access to profiler data
   std::mutex mutex_;
   bool enabled_{false};
@@ -159,8 +209,15 @@ class Profiler {
   TimePoint profiling_start_time_;
   Events events_;
   bool max_events_reached{false};
+#if !defined(ORT_MINIMAL_BUILD)
+  size_t dropped_event_count_{0};
+#endif
   bool profile_with_logger_{false};
+#if !defined(ORT_MINIMAL_BUILD)
+  size_t max_num_events_{global_max_num_events_.load()};
+#else
   const size_t max_num_events_{global_max_num_events_.load()};
+#endif
 
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
   static Profiler* instance_;

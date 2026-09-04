@@ -3,6 +3,10 @@
 
 #include "profiler.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/common/json_utils.h"
+#endif
+
 namespace onnxruntime {
 namespace profiling {
 using namespace std::chrono;
@@ -82,7 +86,12 @@ void Profiler::EndTimeAndRecordEvent(
     const std::string& event_name,
     const TimePoint& start_time,
     InlinedHashMap<std::string, std::string> event_args,
-    bool /*sync_gpu*/) {
+    bool sync_gpu) {
+#if !defined(ORT_MINIMAL_BUILD)
+  EndTimeAndRecordEvent(category, event_name, start_time, std::chrono::high_resolution_clock::now(),
+                        std::move(event_args), sync_gpu);
+#else
+  ORT_UNUSED_PARAMETER(sync_gpu);
   long long dur = TimeDiffMicroSeconds(start_time);
   long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
 
@@ -108,7 +117,70 @@ void Profiler::EndTimeAndRecordEvent(
       }
     }
   }
+#endif
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+void Profiler::EndTimeAndRecordEvent(
+    EventCategory category,
+    const std::string& event_name,
+    const TimePoint& start_time,
+    const TimePoint& end_time,
+    InlinedHashMap<std::string, std::string> event_args,
+    bool /*sync_gpu*/) {
+  RecordEventImpl(category, event_name, start_time, end_time, std::move(event_args), true);
+}
+
+void Profiler::RecordEvent(
+    EventCategory category,
+    const std::string& event_name,
+    const TimePoint& start_time,
+    const TimePoint& end_time,
+    InlinedHashMap<std::string, std::string> event_args) {
+  RecordEventImpl(category, event_name, start_time, end_time, std::move(event_args), false);
+}
+
+void Profiler::RecordEventImpl(
+    EventCategory category,
+    const std::string& event_name,
+    const TimePoint& start_time,
+    const TimePoint& end_time,
+    InlinedHashMap<std::string, std::string> event_args,
+    bool stop_ep_profilers) {
+  if (!enabled_) {
+    return;
+  }
+
+  long long dur = TimeDiffMicroSeconds(start_time, end_time);
+  long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
+
+  EventRecord event(category, logging::GetProcessId(),
+                    logging::GetThreadId(), event_name, ts, dur, std::move(event_args));
+
+  if (stop_ep_profilers) {
+    for (const auto& ep_profiler : ep_profilers_) {
+      ep_profiler->Stop(ts, event);
+    }
+  }
+
+  if (profile_with_logger_) {
+    custom_logger_->SendProfileEvent(event);
+  } else {
+    // TODO: sync_gpu if needed.
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (events_.size() < max_num_events_) {
+      events_.emplace_back(std::move(event));
+    } else {
+      ++dropped_event_count_;
+      if (session_logger_ && !max_events_reached) {
+        LOGS(*session_logger_, ERROR)
+            << "Maximum number of events reached, could not record profile event.";
+        max_events_reached = true;
+      }
+    }
+  }
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 std::string Profiler::EndProfiling() {
   if (!enabled_) {
@@ -130,8 +202,32 @@ std::string Profiler::EndProfiling() {
     ep_profiler->EndProfiling(profiling_start_time_, events_);
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  if (dropped_event_count_ != 0) {
+    InlinedHashMap<std::string, std::string> args;
+    args["dropped_event_count"] = std::to_string(dropped_event_count_);
+    args["max_num_events"] = std::to_string(max_num_events_);
+    events_.emplace_back(
+        SESSION_EVENT, logging::GetProcessId(), logging::GetThreadId(),
+        "profile_truncated", TimeDiffMicroSeconds(profiling_start_time_), 0, std::move(args));
+  }
+#endif
+
   for (size_t i = 0; i < events_.size(); ++i) {
     auto& rec = events_[i];
+#if !defined(ORT_MINIMAL_BUILD)
+    profile_stream_ << R"({"cat" : )";
+    common::WriteJsonString(profile_stream_, event_category_names_[rec.cat]);
+    profile_stream_ << ",";
+    profile_stream_ << "\"pid\" :" << rec.pid << ",";
+    profile_stream_ << "\"tid\" :" << rec.tid << ",";
+    profile_stream_ << "\"dur\" :" << rec.dur << ",";
+    profile_stream_ << "\"ts\" :" << rec.ts << ",";
+    profile_stream_ << R"("ph" : "X",)";
+    profile_stream_ << R"("name" :)";
+    common::WriteJsonString(profile_stream_, rec.name);
+    profile_stream_ << ",";
+#else
     profile_stream_ << R"({"cat" : ")" << event_category_names_[rec.cat] << "\",";
     profile_stream_ << "\"pid\" :" << rec.pid << ",";
     profile_stream_ << "\"tid\" :" << rec.tid << ",";
@@ -139,15 +235,33 @@ std::string Profiler::EndProfiling() {
     profile_stream_ << "\"ts\" :" << rec.ts << ",";
     profile_stream_ << R"("ph" : "X",)";
     profile_stream_ << R"("name" :")" << rec.name << "\",";
+#endif
     profile_stream_ << "\"args\" : {";
     bool is_first_arg = true;
+#if !defined(ORT_MINIMAL_BUILD)
+    for (const auto& event_arg : rec.args) {
+#else
     for (std::pair<std::string, std::string> event_arg : rec.args) {
+#endif
       if (!is_first_arg) profile_stream_ << ",";
+#if !defined(ORT_MINIMAL_BUILD)
+      common::WriteJsonString(profile_stream_, event_arg.first);
+      profile_stream_ << " : ";
+      if (!event_arg.second.empty() &&
+          (event_arg.second[0] == '{' || event_arg.second[0] == '[' || event_arg.second[0] == '"')) {
+        profile_stream_ << event_arg.second;
+      } else if (event_arg.second == "null") {
+        profile_stream_ << "null";
+      } else {
+        common::WriteJsonString(profile_stream_, event_arg.second);
+      }
+#else
       if (!event_arg.second.empty() && (event_arg.second[0] == '{' || event_arg.second[0] == '[')) {
         profile_stream_ << "\"" << event_arg.first << "\" : " << event_arg.second << "";
       } else {
         profile_stream_ << "\"" << event_arg.first << "\" : \"" << event_arg.second << "\"";
       }
+#endif
       is_first_arg = false;
     }
     profile_stream_ << "}";

@@ -2,10 +2,19 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+
+#include "nlohmann/json.hpp"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -2552,6 +2561,227 @@ static void RunMoECpuTest(const std::vector<float>& input, const std::vector<flo
   execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+#if !defined(__wasm__) && !defined(_WIN32)
+static std::vector<nlohmann::json> ParseMoeRoutingLogs(const std::string& logs) {
+  constexpr std::string_view marker = "moe_routing ";
+  std::vector<nlohmann::json> events;
+  size_t position = 0;
+  while ((position = logs.find(marker, position)) != std::string::npos) {
+    position += marker.size();
+    const size_t end = logs.find('\n', position);
+    events.push_back(nlohmann::json::parse(logs.substr(position, end - position)));
+    if (end == std::string::npos) {
+      break;
+    }
+    position = end + 1;
+  }
+  return events;
+}
+
+static std::vector<nlohmann::json> RunMoECpuLoggingTest(bool enable_moe_statistics) {
+  constexpr int num_rows = 2;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = 4;
+  constexpr int inter_size = 8;
+  const std::vector<float> input = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f};
+  const std::vector<float> router_probs = {
+      0.8f, 0.2f,
+      0.3f, 0.7f};
+  const std::vector<float> fc1_experts_weights(num_experts * hidden_size * (2 * inter_size), 0.1f);
+  const std::vector<float> fc2_experts_weights(num_experts * inter_size * hidden_size, 0.1f);
+  const std::vector<float> output_data = {
+      1.169694f, 1.169694f, 1.169694f, 1.169694f,
+      6.970291f, 6.970291f, 6.970291f, 6.970291f};
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  tester.AddAttribute<float>("activation_beta", 1.0f);
+  tester.AddInput<float>("input_ids", {num_rows, hidden_size}, input);
+  tester.AddInput<float>("router_probs", {num_rows, num_experts}, router_probs);
+  tester.AddInput<float>("fc1_experts_weights", {num_experts, hidden_size, 2 * inter_size}, fc1_experts_weights);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("fc2_experts_weights", {num_experts, inter_size, hidden_size}, fc2_experts_weights);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {num_rows, hidden_size}, output_data);
+  tester.SetOutputTolerance(0.05f);
+
+  SessionOptions session_options;
+  session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  if (enable_moe_statistics) {
+    EXPECT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  }
+
+  RunOptions run_options;
+  run_options.run_tag = "{routing \"request\"}";
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  testing::internal::CaptureStderr();
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
+  return ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+}
+
+TEST(MoETest, MoECpuRoutingLogHasDecisionSchema) {
+  const auto routing_events = RunMoECpuLoggingTest(true);
+  ASSERT_EQ(routing_events.size(), 1U);
+  const auto& event = routing_events[0];
+  EXPECT_EQ(event["request_id"], "{routing \"request\"}");
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1}));
+  ASSERT_EQ(event["router_weights"].size(), 2U);
+  EXPECT_FLOAT_EQ(event["router_weights"][0].get<float>(), 1.0f);
+  EXPECT_FLOAT_EQ(event["router_weights"][1].get<float>(), 1.0f);
+  EXPECT_EQ(event["num_rows"], 2);
+  EXPECT_EQ(event["top_k"], 1);
+  EXPECT_EQ(event["execution_device_id"], -1);
+  EXPECT_TRUE(event.contains("node_index"));
+  EXPECT_TRUE(event.contains("node_name"));
+}
+
+TEST(MoETest, MoECpuRoutingLogDisabledHasNoDecision) {
+  EXPECT_TRUE(RunMoECpuLoggingTest(false).empty());
+}
+
+#ifdef USE_CUDA
+static void ConfigureCudaMoeRoutingTester(OpTester& tester) {
+  constexpr int num_rows = 2;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr int inter_size = kMoEMinCudaDim;
+
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "relu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<float>("input_ids", {num_rows, hidden_size},
+                         std::vector<float>(num_rows * hidden_size, 1.0f));
+  tester.AddInput<float>("router_probs", {num_rows, num_experts},
+                         {2.0f, 1.0f, 1.0f, 3.0f});
+  tester.AddInput<float>("fc1_experts_weights", {num_experts, inter_size, hidden_size},
+                         std::vector<float>(num_experts * inter_size * hidden_size, 0.0f));
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("fc2_experts_weights", {num_experts, hidden_size, inter_size},
+                         std::vector<float>(num_experts * hidden_size * inter_size, 0.0f));
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {num_rows, hidden_size},
+                          std::vector<float>(num_rows * hidden_size, 0.0f));
+}
+
+TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  ConfigureCudaMoeRoutingTester(tester);
+
+  SessionOptions session_options;
+  session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  RunOptions run_options;
+  run_options.run_tag = "cuda request";
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  testing::internal::CaptureStderr();
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
+  const auto routing_events = ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+
+  ASSERT_EQ(routing_events.size(), 1U);
+  const auto& event = routing_events[0];
+  EXPECT_EQ(event["request_id"], "cuda request");
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1}));
+  EXPECT_EQ(event["router_weights"], nlohmann::json({1.0f, 1.0f}));
+  EXPECT_GE(event["execution_device_id"].get<int>(), 0);
+}
+
+TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+
+  constexpr int num_rows = 3;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = kMoEMinCudaDim;
+  constexpr int inter_size = kMoEMinCudaDim;
+  constexpr int pack_size = 2;
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "relu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+  tester.AddInput<MLFloat16>("input_ids", {num_rows, hidden_size},
+                             ToFloat16(std::vector<float>(num_rows * hidden_size, 1.0f)));
+  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts},
+                             ToFloat16({2.0f, 1.0f, 1.0f, 3.0f, 4.0f, 0.0f}));
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, hidden_size, inter_size / pack_size},
+                           std::vector<uint8_t>(num_experts * hidden_size * inter_size / pack_size, 0));
+  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, inter_size},
+                             ToFloat16(std::vector<float>(num_experts * inter_size, 1.0f)));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, inter_size, hidden_size / pack_size},
+                           std::vector<uint8_t>(num_experts * inter_size * hidden_size / pack_size, 0));
+  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size},
+                             ToFloat16(std::vector<float>(num_experts * hidden_size, 1.0f)));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<uint8_t>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size},
+                              ToFloat16(std::vector<float>(num_rows * hidden_size, 0.0f)));
+
+  SessionOptions session_options;
+  session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      "ep.cuda.qmoe_row_tile_size", "1"));
+  RunOptions run_options;
+  run_options.run_tag = "qmoe tiled request";
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  testing::internal::CaptureStderr();
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
+  const auto routing_events = ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
+
+  ASSERT_EQ(routing_events.size(), 1U);
+  const auto& event = routing_events[0];
+  EXPECT_EQ(event["request_id"], "qmoe tiled request");
+  EXPECT_EQ(event["expert_ids"], nlohmann::json({0, 1, 0}));
+  EXPECT_EQ(event["router_weights"], nlohmann::json({1.0f, 1.0f, 1.0f}));
+  EXPECT_EQ(event["num_rows"], 3);
+  EXPECT_EQ(event["top_k"], 1);
+}
+
+TEST(MoETest, MoeStatisticsRejectsCudaGraphCapture) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  ConfigureCudaMoeRoutingTester(tester);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.enable_cuda_graph = 1;
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(CudaExecutionProviderWithOptions(&provider_options));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+             "is not supported when graph capture is enabled", {}, nullptr, &execution_providers);
+}
+#endif
+#endif
 
 TEST(MoETest, MoECpuTest_BasicSwiGLU) {
   int num_rows = 2;
