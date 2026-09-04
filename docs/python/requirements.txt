@@ -2,13 +2,12 @@ autopep8
 matplotlib
 scikit-learn
 skl2onnx
-sphinx==5.3.0
+sphinx>=6.0.0
 sphinx-gallery
 sphinxcontrib.imagesvg
 sphinxcontrib.googleanalytics
 sphinx_rtd_theme
 furo
-pyquickhelper
 pandas
 pydot
 flatbuffers
@@ -20,4 +19,3 @@ onnx >= 1.21.0
 sphinx_exec_code
 sphinx_tabs
 furo
-torch >= 2.6.0
