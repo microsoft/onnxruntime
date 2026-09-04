@@ -611,10 +611,36 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
           /*device_free=*/!context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-  if (config.direct_storage_external_weights) {
-    ORT_ENFORCE(context.HasDevice(), "DirectStorage external weights require a Dawn device.");
-    direct_storage_initializer_allocator_ =
-        CreateDirectStorageWebGpuAllocator(context_, direct_storage_initializer_state_);
+  if (config.direct_storage_external_weights_mode !=
+      webgpu::DirectStorageExternalWeightsMode::Off) {
+    const auto support_status =
+        webgpu::CheckDirectStorageExternalWeightsSupport(context_);
+    bool enable_direct_storage = false;
+    ORT_THROW_IF_ERROR(webgpu::ResolveDirectStorageExternalWeightsMode(
+        config.direct_storage_external_weights_mode, support_status,
+        enable_direct_storage));
+    if (!enable_direct_storage) {
+      LOGS_DEFAULT(WARNING)
+          << "DirectStorage external weights are unavailable; using the ordinary "
+             "WebGPU initializer loading path. Reason: "
+          << support_status.ErrorMessage();
+    } else {
+      direct_storage_initializer_allocator_ =
+          CreateDirectStorageWebGpuAllocator(context_, direct_storage_initializer_state_);
+    }
+  }
+#else
+  if (config.direct_storage_external_weights_mode ==
+      webgpu::DirectStorageExternalWeightsMode::Required) {
+    ORT_THROW(
+        "directStorageExternalWeights=required requires a native Windows WebGPU build "
+        "with onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE=ON.");
+  }
+  if (config.direct_storage_external_weights_mode ==
+      webgpu::DirectStorageExternalWeightsMode::Preferred) {
+    LOGS_DEFAULT(WARNING)
+        << "DirectStorage external weights are unavailable in this build; using the "
+           "ordinary WebGPU initializer loading path.";
   }
 #endif
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {

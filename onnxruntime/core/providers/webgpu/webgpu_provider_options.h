@@ -5,6 +5,13 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+enum class DirectStorageExternalWeightsMode {
+  Off,
+  Preferred,
+  Required,
+};
+
 namespace options {
 
 // The following are the options that can be set in the WebGPU provider options.
@@ -61,8 +68,9 @@ constexpr const char* kPreferredLayout_NHWC = "NHWC";
 constexpr const char* kEnableGraphCapture_ON = "1";
 constexpr const char* kEnableGraphCapture_OFF = "0";
 
-constexpr const char* kDirectStorageExternalWeights_ON = "1";
-constexpr const char* kDirectStorageExternalWeights_OFF = "0";
+constexpr const char* kDirectStorageExternalWeights_Off = "off";
+constexpr const char* kDirectStorageExternalWeights_Preferred = "preferred";
+constexpr const char* kDirectStorageExternalWeights_Required = "required";
 
 constexpr const char* kEnableInt64_ON = "1";
 constexpr const char* kEnableInt64_OFF = "0";

@@ -18,6 +18,7 @@
 #include "core/providers/providers.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/session_buffer_pool.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
@@ -48,7 +49,8 @@ std::shared_ptr<KernelRegistry> GetKernelRegistry(bool enable_graph_capture, boo
 struct WebGpuExecutionProviderConfig {
   DataLayout data_layout{DataLayout::NHWC};      // preferred layout is NHWC by default
   bool enable_graph_capture{false};              // graph capture feature is disabled by default
-  bool direct_storage_external_weights{false};   // DirectStorage external weights are disabled by default
+  webgpu::DirectStorageExternalWeightsMode direct_storage_external_weights_mode{
+      webgpu::DirectStorageExternalWeightsMode::Off};
   bool enable_pix_capture{false};                // PIX capture is disabled by default
   bool enable_int64{false};                      // int64 ops are not enabled by default
   uint32_t multi_rotary_cache_concat_offset{0};  // offset for concatenated multi rotary cache (0 = disabled)
