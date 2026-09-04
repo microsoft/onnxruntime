@@ -3468,6 +3468,18 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       continue;
 
     const auto& node = *p_node;
+    if (IsGraphCaptureEnabled() &&
+        node.OpType() == "PagedAttention" &&
+        node.Domain() == kMSDomain) {
+      const auto& inputs = node.InputDefs();
+      constexpr size_t kAttentionMetadataInputIndex = 16;
+      if (inputs.size() <= kAttentionMetadataInputIndex ||
+          inputs[kAttentionMetadataInputIndex] == nullptr ||
+          !inputs[kAttentionMetadataInputIndex]->Exists()) {
+        continue;
+      }
+    }
+
     if (!node.GetExecutionProviderType().empty()) {
       if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
         candidates.push_back(node.Index());

@@ -32,6 +32,9 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked
 Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
                                     const int32_t* past_seqlens, const int batch_size, cudaStream_t stream);
 
+Status LaunchSanitizeBlockTable(const int32_t* block_table, int32_t* sanitized_block_table,
+                                int element_count, int num_blocks, cudaStream_t stream);
+
 // Paged decode backend sizing helpers, used by paged_attention.cc to test eligibility (the kernel
 // needs more dynamic shared memory than the device provides for very wide heads) and to size the
 // split-KV workspaces.

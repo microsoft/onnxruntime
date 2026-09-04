@@ -83,6 +83,7 @@ struct IoBindingCase {
   std::vector<int32_t> block_table;
   std::vector<int32_t> attention_metadata;
   std::string expected_error;
+  std::string expected_initialization_error;
 };
 
 // Softmax with causal masking: masked positions get -inf → 0 after exp.
@@ -438,7 +439,13 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_NE(selected_device_memory_info, nullptr);
   const OrtMemoryInfo device_memory_info = *selected_device_memory_info;
   ASSERT_STATUS_OK(session.Load(model_stream));
-  ASSERT_STATUS_OK(session.Initialize());
+  const Status initialization_status = session.Initialize();
+  if (!c.expected_initialization_error.empty()) {
+    EXPECT_FALSE(initialization_status.IsOK());
+    EXPECT_THAT(initialization_status.ErrorMessage(), testing::HasSubstr(c.expected_initialization_error));
+    return;
+  }
+  ASSERT_STATUS_OK(initialization_status);
   auto device_alloc = session.GetAllocator(device_memory_info);
   ASSERT_NE(device_alloc, nullptr);
 
@@ -1283,6 +1290,20 @@ TEST(PagedAttention, Cuda_FlashSplitKvCudaGraphReplay) {
 #else
   GTEST_SKIP() << "Flash Attention is not enabled in this build.";
 #endif
+}
+
+TEST(PagedAttention, CudaGraphRequiresAttentionMetadata) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.expected_initialization_error = "requires PagedAttention input 'attention_metadata'";
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
 }
 
 TEST(PagedAttention, Cuda_FlashSplitKvInt8Cache) {

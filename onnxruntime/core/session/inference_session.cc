@@ -47,6 +47,7 @@
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/graph/model_saving_options.h"
+#include "core/providers/providers.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_optimizer_registry.h"
@@ -206,6 +207,24 @@ inline std::basic_string<T> GetCurrentTimeString() {
   std::basic_stringstream<T> ss;
   ss << time_str << T('_') << std::setfill(T('0')) << std::setw(3) << ms.count();
   return ss.str();
+}
+
+static bool HasPagedAttentionWithoutMetadata(const Graph& graph) {
+  constexpr size_t kAttentionMetadataInputIndex = 16;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() != "PagedAttention" || node.Domain() != kMSDomain) {
+      continue;
+    }
+
+    const auto& inputs = node.InputDefs();
+    if (inputs.size() <= kAttentionMetadataInputIndex ||
+        inputs[kAttentionMetadataInputIndex] == nullptr ||
+        !inputs[kAttentionMetadataInputIndex]->Exists()) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -2568,6 +2587,21 @@ common::Status InferenceSession::Initialize() {
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
     const bool loading_ort_format = !ort_format_model_bytes_.empty();
+
+    const auto validate_cuda_graph_paged_attention = [&]() -> Status {
+      for (const auto& ep : execution_providers_) {
+        if (ep->IsGraphCaptureEnabled() &&
+            ep->Type() == kCudaExecutionProvider &&
+            HasPagedAttentionWithoutMetadata(graph)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "CUDA graph capture requires PagedAttention input 'attention_metadata' "
+                                 "to avoid device-to-host synchronization");
+        }
+      }
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR_SESSIONID_(validate_cuda_graph_paged_attention());
+
     const bool saving_model = !session_options_.optimized_model_filepath.empty();
     const bool saving_ort_format = [&]() {
       if (saving_model) {
@@ -2675,6 +2709,8 @@ common::Status InferenceSession::Initialize() {
         return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                                "Session initialization canceled due to user request.");
       }
+
+      ORT_RETURN_IF_ERROR_SESSIONID_(validate_cuda_graph_paged_attention());
 
       // Check if any EP is configured for graph capture (e.g., CUDA Graph, DML Graph).
       // If so, validate the graph and cache the EP for triggering ReplayGraph() in Run().
@@ -2794,6 +2830,8 @@ common::Status InferenceSession::Initialize() {
           ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
                                                   cpu_ep, GetIntraOpThreadPoolToUse()));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+      ORT_RETURN_IF_ERROR_SESSIONID_(validate_cuda_graph_paged_attention());
     }
 
     // Compile-only: a compile-only session never runs inference, so skip session-state finalization (kernel creation,
