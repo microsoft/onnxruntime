@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+#include <type_traits>
+
 #include "gtest/gtest.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -10,6 +13,132 @@
 namespace onnxruntime {
 namespace test {
 constexpr float epsilon_ = 1e-12f;
+
+namespace {
+
+template <typename T>
+T ConvertToTensorType(float value) {
+  return T(value);
+}
+
+template <>
+float ConvertToTensorType(float value) {
+  return value;
+}
+
+template <typename T>
+float ConvertToFloat(T value) {
+  return value.ToFloat();
+}
+
+template <>
+float ConvertToFloat(float value) {
+  return value;
+}
+
+template <typename T>
+std::vector<T> ConvertToTensorType(const std::vector<float>& values) {
+  std::vector<T> converted;
+  converted.reserve(values.size());
+  for (float value : values) {
+    converted.push_back(ConvertToTensorType<T>(value));
+  }
+  return converted;
+}
+
+template <typename T>
+void RunCudaStatisticsCase(bool simplified) {
+  constexpr int64_t hidden_size = 8;
+  constexpr float epsilon = 1e-5f;
+  const std::vector<int64_t> input_dims{2, hidden_size};
+  const std::vector<int64_t> stat_dims{2, 1};
+  const std::vector<float> input_values{
+      1.0f, -2.0f, 3.0f, -4.0f, 5.0f, -6.0f, 7.0f, -8.0f,
+      0.5f, 1.5f, -2.5f, 3.5f, -4.5f, 5.5f, -6.5f, 7.5f};
+  const std::vector<float> skip_values{
+      0.25f, -0.5f, 0.75f, -1.0f, 1.25f, -1.5f, 1.75f, -2.0f,
+      -0.25f, 0.5f, -0.75f, 1.0f, -1.25f, 1.5f, -1.75f, 2.0f};
+  const std::vector<float> gamma_values{0.5f, -1.0f, 1.5f, -2.0f, 0.75f, 1.25f, -0.5f, 2.0f};
+  const std::vector<float> beta_values{0.1f, -0.2f, 0.3f, -0.4f, 0.5f, -0.6f, 0.7f, -0.8f};
+  const std::vector<float> bias_values{0.125f, -0.25f, 0.375f, -0.5f, 0.625f, -0.75f, 0.875f, -1.0f};
+
+  const auto input = ConvertToTensorType<T>(input_values);
+  const auto skip = ConvertToTensorType<T>(skip_values);
+  const auto gamma = ConvertToTensorType<T>(gamma_values);
+  const auto beta = ConvertToTensorType<T>(beta_values);
+  const auto bias = ConvertToTensorType<T>(bias_values);
+
+  std::vector<T> sum(input.size());
+  std::vector<T> expected_output(input.size());
+  std::vector<float> expected_mean(2);
+  std::vector<float> expected_inv_std(2);
+  for (int64_t row = 0; row < 2; ++row) {
+    double mean = 0.0;
+    double mean_square = 0.0;
+    for (int64_t column = 0; column < hidden_size; ++column) {
+      const size_t index = static_cast<size_t>(row * hidden_size + column);
+      T value = ConvertToTensorType<T>(ConvertToFloat(input[index]) + ConvertToFloat(bias[column]));
+      value = ConvertToTensorType<T>(ConvertToFloat(value) + ConvertToFloat(skip[index]));
+      sum[index] = value;
+      const double value_float = ConvertToFloat(value);
+      mean += value_float;
+      mean_square += value_float * value_float;
+    }
+    mean /= hidden_size;
+    mean_square /= hidden_size;
+
+    double variance = 0.0;
+    if (!simplified) {
+      for (int64_t column = 0; column < hidden_size; ++column) {
+        const double deviation =
+            ConvertToFloat(sum[static_cast<size_t>(row * hidden_size + column)]) - mean;
+        variance += deviation * deviation;
+      }
+      variance /= hidden_size;
+    }
+
+    const float inv_std =
+        static_cast<float>(1.0 / std::sqrt((simplified ? mean_square : variance) + epsilon));
+    expected_mean[static_cast<size_t>(row)] = simplified ? 0.0f : static_cast<float>(mean);
+    expected_inv_std[static_cast<size_t>(row)] = inv_std;
+    for (int64_t column = 0; column < hidden_size; ++column) {
+      const size_t index = static_cast<size_t>(row * hidden_size + column);
+      const float centered = ConvertToFloat(sum[index]) -
+                             (simplified ? 0.0f : expected_mean[static_cast<size_t>(row)]);
+      const float normalized = ConvertToFloat(gamma[column]) * centered * inv_std +
+                               (simplified ? 0.0f : ConvertToFloat(beta[column]));
+      expected_output[index] = ConvertToTensorType<T>(normalized);
+    }
+  }
+
+  OpTester test(simplified ? "SkipSimplifiedLayerNormalization" : "SkipLayerNormalization",
+                1, onnxruntime::kMSDomain);
+  test.AddAttribute("epsilon", epsilon);
+  test.AddInput<T>("input", input_dims, input);
+  test.AddInput<T>("skip", input_dims, skip);
+  test.AddInput<T>("gamma", {hidden_size}, gamma);
+  if (simplified) {
+    test.AddInput<T>("bias", {hidden_size}, bias);
+  } else {
+    test.AddInput<T>("beta", {hidden_size}, beta);
+    test.AddInput<T>("bias", {hidden_size}, bias);
+  }
+  test.AddOutput<T>("output", input_dims, expected_output);
+  test.AddOutput<float>("mean", stat_dims, expected_mean);
+  test.AddOutput<float>("inv_std_var", stat_dims, expected_inv_std);
+  test.AddOutput<T>("input_skip_bias_sum", input_dims, sum);
+
+  constexpr float output_tolerance = std::is_same_v<T, float>       ? 2e-5f
+                                     : std::is_same_v<T, MLFloat16> ? 1e-2f
+                                                                    : 4e-2f;
+  test.SetOutputAbsErr("output", output_tolerance);
+  test.SetOutputAbsErr("mean", 2e-5f);
+  test.SetOutputAbsErr("inv_std_var", 2e-5f);
+  test.SetOutputAbsErr("input_skip_bias_sum", output_tolerance);
+  test.ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+}
+
+}  // namespace
 
 static void RunOneTest(
     const std::vector<float>& input_data,
@@ -374,6 +503,94 @@ TEST(SkipLayerNormTest, SkipLayerNormPrePackAllowsEmptySkip) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cpu));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, CudaStatisticsFloat) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  RunCudaStatisticsCase<float>(false);
+  RunCudaStatisticsCase<float>(true);
+}
+
+TEST(SkipLayerNormTest, CudaStatisticsFloat16) {
+  if (!HasCudaEnvironment(530)) {
+    GTEST_SKIP() << "CUDA compute capability 5.3 or later is required for float16.";
+  }
+
+  RunCudaStatisticsCase<MLFloat16>(false);
+  RunCudaStatisticsCase<MLFloat16>(true);
+}
+
+TEST(SkipLayerNormTest, CudaStatisticsBFloat16) {
+  if (!CudaHasBF16Support()) {
+    GTEST_SKIP() << "CUDA bfloat16 support is required.";
+  }
+
+  RunCudaStatisticsCase<BFloat16>(false);
+  RunCudaStatisticsCase<BFloat16>(true);
+}
+
+TEST(SkipLayerNormTest, CudaStatisticsLargeMeanSmallVariance) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int64_t hidden_size = 7;
+  constexpr float epsilon = 1e-5f;
+  const std::vector<int64_t> input_dims{1, hidden_size};
+  const std::vector<float> input{
+      10003.0f, 10002.0f, 10001.0f, 10000.0f, 9999.0f, 9998.0f, 9997.0f};
+  const std::vector<float> skip(hidden_size, 0.0f);
+  const std::vector<float> gamma(hidden_size, 1.0f);
+  const std::vector<float> beta(hidden_size, 0.0f);
+  constexpr float expected_mean = 10000.0f;
+  constexpr float variance = 4.0f;
+  const float expected_inv_std = 1.0f / std::sqrt(variance + epsilon);
+  std::vector<float> expected_output(hidden_size);
+  for (int64_t i = 0; i < hidden_size; ++i) {
+    expected_output[static_cast<size_t>(i)] = (input[static_cast<size_t>(i)] - expected_mean) * expected_inv_std;
+  }
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("epsilon", epsilon);
+  test.AddInput<float>("input", input_dims, input);
+  test.AddInput<float>("skip", input_dims, skip);
+  test.AddInput<float>("gamma", {hidden_size}, gamma);
+  test.AddInput<float>("beta", {hidden_size}, beta);
+  test.AddOutput<float>("output", input_dims, expected_output);
+  test.AddOutput<float>("mean", {1, 1}, {expected_mean});
+  test.AddOutput<float>("inv_std_var", {1, 1}, {expected_inv_std});
+  test.SetOutputAbsErr("output", 2e-4f);
+  test.SetOutputAbsErr("mean", 2e-4f);
+  test.SetOutputAbsErr("inv_std_var", 2e-4f);
+  test.ConfigEp(std::move(cuda_ep)).RunWithConfig();
+}
+
+TEST(SkipLayerNormTest, CudaOptionalStatisticsAbsent) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  constexpr int64_t hidden_size = 4;
+  const std::vector<int64_t> input_dims{1, hidden_size};
+  const std::vector<float> input{1.0f, 2.0f, 3.0f, 4.0f};
+  const std::vector<float> skip{0.5f, -0.5f, 0.5f, -0.5f};
+  const std::vector<float> gamma(hidden_size, 1.0f);
+  const std::vector<float> expected_output{
+      0.55708563f, 0.55708563f, 1.29986644f, 1.29986644f};
+
+  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("epsilon", 1e-5f);
+  test.AddInput<float>("input", input_dims, input);
+  test.AddInput<float>("skip", input_dims, skip);
+  test.AddInput<float>("gamma", {hidden_size}, gamma);
+  test.AddOutput<float>("output", input_dims, expected_output);
+  test.SetOutputAbsErr("output", 2e-5f);
+  test.ConfigEp(std::move(cuda_ep)).RunWithConfig();
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormNullInput) {

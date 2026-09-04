@@ -14,6 +14,8 @@ void LaunchSkipLayerNormKernel(
     cudaStream_t stream,
     T* output,        // normalized output tensor
     T* sum_output,    // sum of the input and skip (and bias if it exists) tensors output
+    float* mean,      // per-row centering mean (zero for simplified layer normalization)
+    float* inv_std,   // per-row inverse standard deviation or inverse RMS
     const T* input,   // input tensor
     const T* skip,    // skip tensor
     const T* bias,    // bias tensor

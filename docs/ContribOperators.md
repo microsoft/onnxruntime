@@ -6654,9 +6654,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)Or 2D output tensor with shape (token_count, hidden_size)</dd>
 <dt><tt>mean</tt> (optional) : U</dt>
-<dd>Saved mean used during training to speed up gradient computation</dd>
+<dd>Saved centering mean. This is always zero because RMS normalization does not center its input.</dd>
 <dt><tt>inv_std_var</tt> (optional) : U</dt>
-<dd>Saved inverse standard variance used during training to speed up gradient computation.</dd>
+<dd>Saved inverse root mean square used during training to speed up gradient computation.</dd>
 <dt><tt>input_skip_bias_sum</tt> (optional) : T</dt>
 <dd>Sum of the input and skip inputs (and bias if it exists)with shape (batch_size, sequence_length, hidden_size) or (token_count, hidden_size).</dd>
 </dl>
@@ -7521,5 +7521,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-

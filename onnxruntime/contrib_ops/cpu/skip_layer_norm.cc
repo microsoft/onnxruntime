@@ -67,7 +67,9 @@ void ComputeJob(
   T* p_skip_input_bias_add_output = skip_input_bias_add_output_data == nullptr ? nullptr : skip_input_bias_add_output_data + offset;
 
   T mean(0.0f);
-  T mean_square(0.0f);
+  T squared_deviation_sum(0.0f);
+  T square_sum(0.0f);
+  int count = 0;
 
   for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
     T val = p_input[h] + p_skip[h];
@@ -81,31 +83,37 @@ void ComputeJob(
     }
 
     p_output[h] = val;
-    mean += val;
-    mean_square += val * val;
+    if (simplified) {
+      square_sum += val * val;
+    } else {
+      ++count;
+      const T delta = val - mean;
+      mean += delta / count;
+      squared_deviation_sum += delta * (val - mean);
+    }
   }
 
-  mean = mean / hidden_size;
+  T inv_std_var;
   if (simplified) {
-    mean_square = sqrt(mean_square / hidden_size + epsilon);
+    inv_std_var = 1 / sqrt(square_sum / hidden_size + epsilon);
   } else {
-    mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
+    inv_std_var = 1 / sqrt(squared_deviation_sum / hidden_size + epsilon);
   }
 
   if (mean_data != nullptr) {
-    mean_data[task_idx] = static_cast<float>(mean);
+    mean_data[task_idx] = simplified ? 0.0f : static_cast<float>(mean);
   }
   if (inv_std_var_data != nullptr) {
-    inv_std_var_data[task_idx] = static_cast<float>(1 / mean_square);
+    inv_std_var_data[task_idx] = static_cast<float>(inv_std_var);
   }
 
   for (decltype(hidden_size) h = 0; h < hidden_size; h++) {
     if (simplified) {
-      p_output[h] = p_output[h] / mean_square * gamma_data[h];
+      p_output[h] = p_output[h] * inv_std_var * gamma_data[h];
     } else if (nullptr == beta_data) {
-      p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h];
+      p_output[h] = (p_output[h] - mean) * inv_std_var * gamma_data[h];
     } else {
-      p_output[h] = (p_output[h] - mean) / mean_square * gamma_data[h] + beta_data[h];
+      p_output[h] = (p_output[h] - mean) * inv_std_var * gamma_data[h] + beta_data[h];
     }
   }
 }

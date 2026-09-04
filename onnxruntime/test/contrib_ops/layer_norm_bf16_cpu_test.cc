@@ -899,11 +899,14 @@ TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_InvStdVar) {
   test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
   test.AddInput<BFloat16>("gamma", {hidden_size}, ToBFloat16(gamma_f32));
   test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
-  test.AddOptionalOutputEdge<float>();
+  test.AddOutput<float>("mean", stat_dims, std::vector<float>(2, 0.0f));
   test.AddOutput<float>("inv_std_var", stat_dims, ref.inv_rms);
+  test.AddOutput<BFloat16>("skip_input_bias_add_output", input_dims, ToBFloat16(added));
 
   RunBF16CpuOnlyMultiOutput(test, {{"output", kBF16AbsTolerance},
-                                   {"inv_std_var", kF32StatTolerance}});
+                                   {"mean", kF32StatTolerance},
+                                   {"inv_std_var", kF32StatTolerance},
+                                   {"skip_input_bias_add_output", kBF16AbsTolerance}});
 }
 
 // =============================================================================

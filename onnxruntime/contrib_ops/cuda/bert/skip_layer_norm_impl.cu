@@ -45,6 +45,92 @@ constexpr int kMaxSize = kSizes[kNumOfSizes - 1];
 constexpr int kMinBlockSize = 32;
 constexpr int kMaxBlockSize = 1024;
 
+struct WelfordData {
+  float mean;
+  float m2;
+  int count;
+};
+
+__device__ __forceinline__ void WelfordUpdate(float value, WelfordData& stats) {
+  ++stats.count;
+  const float delta = value - stats.mean;
+  stats.mean += delta / stats.count;
+  stats.m2 += delta * (value - stats.mean);
+}
+
+struct WelfordCombine {
+  __device__ __forceinline__ WelfordData operator()(const WelfordData& a, const WelfordData& b) const {
+    if (a.count == 0) {
+      return b;
+    }
+    if (b.count == 0) {
+      return a;
+    }
+
+    const int count = a.count + b.count;
+    const float delta = b.mean - a.mean;
+    const float b_weight = static_cast<float>(b.count) / count;
+    const float correction = delta * delta *
+                             (static_cast<float>(a.count) * b.count / count);
+    return {a.mean + delta * b_weight, a.m2 + b.m2 + correction, count};
+  }
+};
+
+template <unsigned TPB>
+__device__ __forceinline__ void ComputeLayerNormStats(
+    const WelfordData& thread_stats,
+    float epsilon,
+    float* mean_output,
+    float* inv_std_output,
+    float& mean,
+    float& inv_std) {
+  using BlockReduce = cub::BlockReduce<WelfordData, TPB>;
+  __shared__ typename BlockReduce::TempStorage temp_storage;
+  __shared__ float shared_mean;
+  __shared__ float shared_inv_std;
+
+  const WelfordData stats = BlockReduce(temp_storage).Reduce(thread_stats, WelfordCombine{});
+  if (threadIdx.x == 0) {
+    shared_mean = stats.mean;
+    shared_inv_std = rsqrtf(stats.m2 / stats.count + epsilon);
+    if (mean_output != nullptr) {
+      mean_output[blockIdx.x] = shared_mean;
+    }
+    if (inv_std_output != nullptr) {
+      inv_std_output[blockIdx.x] = shared_inv_std;
+    }
+  }
+  __syncthreads();
+
+  mean = shared_mean;
+  inv_std = shared_inv_std;
+}
+
+template <unsigned TPB>
+__device__ __forceinline__ float ComputeRmsNormInvStd(
+    float thread_mean_square,
+    float epsilon,
+    float* mean_output,
+    float* inv_std_output) {
+  using BlockReduce = cub::BlockReduce<float, TPB>;
+  __shared__ typename BlockReduce::TempStorage temp_storage;
+  __shared__ float shared_inv_std;
+
+  const float mean_square = BlockReduce(temp_storage).Sum(thread_mean_square);
+  if (threadIdx.x == 0) {
+    shared_inv_std = rsqrtf(mean_square + epsilon);
+    if (mean_output != nullptr) {
+      mean_output[blockIdx.x] = 0.0f;
+    }
+    if (inv_std_output != nullptr) {
+      inv_std_output[blockIdx.x] = shared_inv_std;
+    }
+  }
+  __syncthreads();
+
+  return shared_inv_std;
+}
+
 int NextSize(int x) {
   for (size_t i = 0; i < kNumOfSizes; ++i) {
     if (x <= kSizes[i]) {
@@ -72,16 +158,14 @@ bool CanVectorized(void* output, void* sum_output, const void* input, const void
 
 template <typename T, unsigned TPB, bool Simplified>
 __global__ void SkipLayerNormKernel(
-    T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta,
+    T* output, T* sum_output, float* mean_output, float* inv_std_output,
+    const T* input, const T* skip, const T* bias, const T* gamma, const T* beta,
     float epsilon, const int ld, int skip_size) {
-  const float reverse_ld = 1.f / ld;
   const int offset = blockIdx.x * ld;
   const bool has_bias = (bias != nullptr);
 
-  // Reduce sum of x and x^2, and the results are divided by ld.
-  // Uses fp32 accumulation to avoid overflow in fp16/bf16.
-  KeyValuePairSum pair_sum;
-  cub::KeyValuePair<float, float> thread_data(0.f, 0.f);
+  WelfordData thread_stats{0.0f, 0.0f, 0};
+  float thread_mean_square = 0.0f;
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
@@ -93,8 +177,11 @@ __global__ void SkipLayerNormKernel(
     val += skip[idx % skip_size];
 
     const float val_f = static_cast<float>(val);
-    const float rldval = reverse_ld * val_f;
-    thread_data = pair_sum(thread_data, cub::KeyValuePair<float, float>(rldval, rldval * val_f));
+    if constexpr (Simplified) {
+      thread_mean_square += val_f * val_f / ld;
+    } else {
+      WelfordUpdate(val_f, thread_stats);
+    }
 
     if (sum_output != nullptr) {
       sum_output[idx] = val;
@@ -103,25 +190,40 @@ __global__ void SkipLayerNormKernel(
     output[idx] = val;
   }
 
-  if (Simplified) {
-    SimplifiedLayerNorm<T, TPB>(thread_data.value, ld, offset, gamma, epsilon, output);
-    return;
+  if constexpr (Simplified) {
+    const float inv_std =
+        ComputeRmsNormInvStd<TPB>(thread_mean_square, epsilon, mean_output, inv_std_output);
+    for (int i = threadIdx.x; i < ld; i += TPB) {
+      const int idx = offset + i;
+      output[idx] = static_cast<T>(
+          static_cast<float>(gamma[i]) * static_cast<float>(output[idx]) * inv_std);
+    }
+  } else {
+    float mean;
+    float inv_std;
+    ComputeLayerNormStats<TPB>(thread_stats, epsilon, mean_output, inv_std_output, mean, inv_std);
+    for (int i = threadIdx.x; i < ld; i += TPB) {
+      const int idx = offset + i;
+      const float beta_value = beta == nullptr ? 0.0f : static_cast<float>(beta[i]);
+      output[idx] = static_cast<T>(
+          static_cast<float>(gamma[i]) * (static_cast<float>(output[idx]) - mean) * inv_std + beta_value);
+    }
   }
-  LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
 }
 
 // Vectorized kernel
 template <typename T, unsigned TPB, int ILP, bool Simplified>
 __global__ void SkipLayerNormKernelSmall(
-    T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta,
+    T* output, T* sum_output, float* mean_output, float* inv_std_output,
+    const T* input, const T* skip, const T* bias, const T* gamma, const T* beta,
     float epsilon, int ld, int skip_size) {
-  const float rld = 1.f / ld;
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;
 
   using VecT = aligned_vector<T, ILP>;
   T sum_v[ILP];
 
-  cub::KeyValuePair<float, float> thread_data(0.f, 0.f);
+  WelfordData thread_stats{0.0f, 0.0f, 0};
+  float thread_mean_square = 0.0f;
 
   if (ILP * threadIdx.x < ld) {  // load data under this guard to avoid reading out-of-bounds
     T skip_v[ILP], bias_v[ILP];
@@ -139,8 +241,6 @@ __global__ void SkipLayerNormKernelSmall(
       *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
     }
 
-    float rldval_sum = 0.f;
-    float rldvalsq_sum = 0.f;
     const bool has_sum_output = (sum_output != nullptr);
 
 #pragma unroll
@@ -151,28 +251,52 @@ __global__ void SkipLayerNormKernelSmall(
       sum_v[i] += skip_v[i];
 
       const float val_f = static_cast<float>(sum_v[i]);
-      const float rldval = rld * val_f;
-      rldval_sum += rldval;
-      rldvalsq_sum += rldval * val_f;
+      if constexpr (Simplified) {
+        thread_mean_square += val_f * val_f / ld;
+      } else {
+        WelfordUpdate(val_f, thread_stats);
+      }
     }
 
     if (has_sum_output) {
       *(reinterpret_cast<VecT*>(&sum_output[idx])) = *reinterpret_cast<VecT*>(&sum_v);
     }
-
-    thread_data = cub::KeyValuePair<float, float>(rldval_sum, rldvalsq_sum);
   }
 
-  if (Simplified) {
-    SimplifiedLayerNormSmall<T, TPB, ILP>(sum_v, thread_data.value, ld, idx, gamma, epsilon, output);
-    return;
+  if constexpr (Simplified) {
+    const float inv_std =
+        ComputeRmsNormInvStd<TPB>(thread_mean_square, epsilon, mean_output, inv_std_output);
+    if (ILP * threadIdx.x < ld) {
+      T output_v[ILP];
+#pragma unroll
+      for (int i = 0; i < ILP; ++i) {
+        output_v[i] = static_cast<T>(
+            static_cast<float>(gamma[threadIdx.x * ILP + i]) *
+            static_cast<float>(sum_v[i]) * inv_std);
+      }
+      *reinterpret_cast<VecT*>(&output[idx]) = *reinterpret_cast<VecT*>(&output_v);
+    }
+  } else {
+    float mean;
+    float inv_std;
+    ComputeLayerNormStats<TPB>(thread_stats, epsilon, mean_output, inv_std_output, mean, inv_std);
+    if (ILP * threadIdx.x < ld) {
+      T output_v[ILP];
+#pragma unroll
+      for (int i = 0; i < ILP; ++i) {
+        const int column = threadIdx.x * ILP + i;
+        const float beta_value = beta == nullptr ? 0.0f : static_cast<float>(beta[column]);
+        output_v[i] = static_cast<T>(
+            static_cast<float>(gamma[column]) * (static_cast<float>(sum_v[i]) - mean) * inv_std + beta_value);
+      }
+      *reinterpret_cast<VecT*>(&output[idx]) = *reinterpret_cast<VecT*>(&output_v);
+    }
   }
-  LayerNormSmall<T, TPB, ILP>(sum_v, thread_data, ld, idx, beta, gamma, epsilon, output);
 }
 
 template <typename T, bool Simplified>
 void LaunchSkipLayerNormKernel(
-    cudaStream_t stream, T* output, T* sum_output,
+    cudaStream_t stream, T* output, T* sum_output, float* mean_output, float* inv_std_output,
     const T* input, const T* skip, const T* bias, const T* gamma, const T* beta, float epsilon,
     int ld, int row_count, int skip_size) {
   const int next_size = NextSize(ld);
@@ -188,11 +312,11 @@ void LaunchSkipLayerNormKernel(
 
 #define LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(num_unroll)                                                  \
   SkipLayerNormKernelSmall<T, block_size, num_unroll, Simplified><<<grid_size, block_size, 0, stream>>>( \
-      output, sum_output, input, skip, bias, gamma, beta, epsilon, ld, skip_size)
+      output, sum_output, mean_output, inv_std_output, input, skip, bias, gamma, beta, epsilon, ld, skip_size)
 
 #define LAUNCH_SKIP_LAYER_NORM_KERNEL()                                                 \
   SkipLayerNormKernel<T, block_size, Simplified><<<grid_size, block_size, 0, stream>>>( \
-      output, sum_output, input, skip, bias, gamma, beta, epsilon, ld, skip_size)
+      output, sum_output, mean_output, inv_std_output, input, skip, bias, gamma, beta, epsilon, ld, skip_size)
 
 #define CASE_NEXT_SIZE(next_size_value)                                         \
   case next_size_value: {                                                       \
@@ -247,6 +371,7 @@ void LaunchSkipLayerNormKernel(
 
 #define SKIPLAYERNORM_IMPL(T, Simplified)                                                                 \
   template void LaunchSkipLayerNormKernel<T, Simplified>(cudaStream_t stream, T * output, T * sum_output, \
+                                                         float* mean_output, float* inv_std_output,       \
                                                          const T* input, const T* skip, const T* bias,    \
                                                          const T* gamma, const T* beta, float epsilon,    \
                                                          int ld, int row_count, int skip_size);
