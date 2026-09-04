@@ -9,65 +9,51 @@ The static-plugin (wasm) half is already measured, in
 [the work log](static_plugin_ep_work_log.md#measured-cost-of-the-plugin-path-on-the-web-build). This document covers
 the native `--use_webgpu shared_lib` plugin against a built-in `--use_webgpu` baseline.
 
-**Status: not yet measured.** The measurement setup is complete and is recorded below, but the machine's f16-capable
-GPU is currently in a driver-failure state, so no numbers have been taken. The sections below record the setup, the
-environment finding, and one useful negative result, so that the run can be reproduced once the GPU is repaired.
-
 Commit under test: `873f221786`.
 
-## The measurement machine has no usable f16 GPU
+## Measurement environment
 
-The box has three display adapters. Only one of them can run WebGPU compute at all:
-
-| adapter | PnP status | notes |
+| adapter | PnP status | role |
 | --- | --- | --- |
-| Microsoft Remote Display Adapter | `Unknown` | remote-session indirect display, not a compute device |
-| NVIDIA Quadro P620 | `OK` | Pascal (GP107) — **no native 16-bit shader ops** |
-| NVIDIA GeForce RTX 5060 Ti | **`Error`** | **Code 31 / `CM_PROB_FAILED_ADD`** — driver failed to load |
+| NVIDIA GeForce RTX 5060 Ti | `OK`, driver `32.0.16.1656` (616.56), 16 GB | **the measurement device** |
+| NVIDIA Quadro P620 | `Error` | Pascal, stranded on the old driver — see below |
+| Microsoft Remote Display Adapter | `OK` | remote-session indirect display, not a compute device |
 
-`nvidia-smi -L` lists only the P620, and a running `onnxruntime_perf_test` was confirmed on it (86% utilization, the
-process visible under GPU 0). So **every native run taken on this machine today executed on the Quadro P620**, not on
-the RTX 5060 Ti.
+`nvidia-smi -L` reports the RTX 5060 Ti as the only NVIDIA GPU. This is a convenient property for an A/B: with a
+single real GPU adapter present there is no ambiguity about which device either arm ran on.
 
-The failure is recent: `nvlddmkm` errors (event IDs 153 and 14) were logged at 02:01-02:03 on 2026-09-04, immediately
-before that morning's 02:05 boot. Two different NVIDIA driver versions are installed side by side — `32.0.15.8267` for
-the P620 and `32.0.16.1062` for the 5060 Ti — which is the usual cause of this state. Measurements recorded in earlier
-sessions predate this boot and were most likely taken on a working RTX 5060 Ti.
+The P620 is unusable because NVIDIA ended Maxwell/Pascal/Volta support after the R570 driver branch, so the installed
+616.56 package contains no kernel driver that will bind to it. Only one NVIDIA kernel driver loads at a time, so
+installing a driver new enough for a Blackwell part necessarily drops the Pascal part. This is expected, not a
+misconfiguration.
 
-### Consequence: the fp16/int4 LLM case cannot run here
+### Earlier episode: measurements taken on the wrong GPU
 
-Pascal does not advertise `shader-f16`, so any model needing f16 fails at the first node:
+Recorded because it nearly corrupted this document's results, and because the same trap applies to anyone reusing
+this machine.
+
+For part of 2026-09-04 the situation was **inverted**: the RTX 5060 Ti was in a driver-failure state
+(`CM_PROB_FAILED_ADD`, Code 31) while the P620 was healthy, so every WebGPU run silently landed on the P620. Pascal
+does not advertise `shader-f16`, so f16 models failed at the first node with
 
 ```
 Program GatherBlockQuantized requires f16 but the device does not support it.
 ```
 
-raised by `ORT_RETURN_IF_NOT(webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ShaderF16), ...)` in
+from `ORT_RETURN_IF_NOT(webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ShaderF16), ...)` in
 `onnxruntime/core/providers/webgpu/shader_helper.cc:421`. `WebGpuContext` only requests `ShaderF16` when the adapter
-advertises it (`webgpu_context.cc:793-816`), so this is an adapter capability limit, not a configuration mistake.
+advertises it (`webgpu_context.cc:793-816`), so this was an adapter capability limit rather than a configuration
+mistake. Reinstalling the driver resolved it, and both Qwen scenarios then ran clean.
 
-## Negative result: the f16 failure is not plugin-specific
+Two lessons worth keeping:
 
-Worth recording, because a failure that shows up first on the plugin path invites the assumption that the plugin
-boundary caused it. It did not. The same model was run on both build shapes:
-
-| build | EP path | result |
-| --- | --- | --- |
-| `build/native_plugin` | plugin (`--plugin_ep_libs`) | fails: `GatherBlockQuantized requires f16` |
-| `build/int` | built-in (`-e webgpu`) | **fails identically** |
-
-Both arms reach the same `GetAvailableRequiredFeatures()` call on a single shared code path
-(`webgpu_context.cc:157`), which is why they agree. Three mitigations were tried on the built-in arm and all failed
-the same way:
-
-| mitigation | result |
-| --- | --- |
-| `-C "ep.webgpuexecutionprovider.powerPreference\|high-performance"` | still fails |
-| `-C "ep.webgpuexecutionprovider.dawnBackendType\|Vulkan"` | still fails |
-| verify DXC present (`dxcompiler.dll`, `dxil.dll`, `DAWN_USE_BUILT_DXC=ON`) | present in both builds; not the cause |
-
-The `use_dxc` toggle is already passed unconditionally by `GetEnabledAdapterToggles()`
-(`webgpu_context.cc:734-748`), so DXC was never missing.
+- **A failure seen first on the plugin path is not necessarily caused by the plugin path.** The f16 failure was
+  reproduced identically on the built-in arm (`build/int`, `-e webgpu`), which is what identified it as
+  environmental. Both arms reach the same `GetAvailableRequiredFeatures()` call (`webgpu_context.cc:157`), so they
+  agree by construction. Always run the built-in control before attributing anything to the plugin boundary.
+- **Timing runs do not announce which GPU they used.** Nothing in ORT's output names the adapter, so a machine with
+  more than one GPU can quietly produce numbers from the wrong one. Confirm the device externally — `nvidia-smi`
+  during a long run shows the process against a specific GPU — and record it alongside the numbers.
 
 ### There is no adapter-selection knob
 
@@ -76,9 +62,10 @@ The `use_dxc` toggle is already passed unconditionally by `GetEnabledAdapterTogg
 cross-device copy checks. ORT exposes no way to pick a physical adapter, so on a multi-GPU box the adapter is
 whatever Dawn selects.
 
-**This matters for the A/B itself, not just for f16.** Record the adapter actually used alongside any numbers. If the
-two arms could land on different adapters the comparison is meaningless. `--list_ep_devices` does not help — it
-reports vendor `Microsoft` with no GPU identity.
+**This matters for the A/B itself, not just for f16.** If the two arms could land on different adapters the
+comparison is meaningless, and neither ORT nor perf_test will tell you — `--list_ep_devices` reports vendor
+`Microsoft` with no GPU identity. On this machine the point is currently moot, since only one real GPU adapter is
+present, but record the adapter alongside any numbers regardless.
 
 ## Measurement setup
 
@@ -140,11 +127,11 @@ moot for this dynamic-library A/B, but it is a real gap if static-plugin native 
 
 ### Models
 
-`bench_compute` (16 nodes) and `bench_dispatch` (300 nodes) are fp32 and run on the P620 today. `bench_dispatch` is
-the dispatch-overhead-sensitive case and is where the wasm A/B found the per-kernel cost.
+`bench_compute` (16 nodes) and `bench_dispatch` (300 nodes) are fp32. `bench_dispatch` is the
+dispatch-overhead-sensitive case, and is where the wasm A/B found the per-kernel cost.
 
-A Qwen3.5-0.8B int4 case was also prepared, to check whether the per-kernel overhead is visible on a real LLM. It is
-blocked on f16 and has not run.
+A Qwen3.5-0.8B int4 case is also included, to check whether the per-kernel overhead is visible on a real LLM. Both
+its scenarios have been confirmed to run end to end on the RTX 5060 Ti.
 
 #### Why the Qwen inputs had to be generated by hand
 
@@ -181,8 +168,5 @@ GenAI runs the model.
 
 ## Results
 
-Pending. Re-measure once an f16-capable adapter is available, and replace the P620-era observations above with
-numbers taken on the repaired GPU.
-
-Record with the results: the adapter actually used, the commit SHA, both build command lines, the `CMakeCache.txt`
-delta, and the raw per-round minimums rather than only the medians.
+Pending — the matched build pair is still building. Record with the results: the adapter used, the commit SHA, both
+build command lines, the `CMakeCache.txt` delta, and the raw per-round minimums rather than only the medians.
