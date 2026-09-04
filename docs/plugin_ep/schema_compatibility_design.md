@@ -209,14 +209,23 @@ version.
 
 ### Adding a new operator
 
-Adding a brand-new contrib operator is not a contract change to any existing operator.
-It does not require a domain version bump, and new operators may continue to be
-introduced at `since_version 1` as they are today.
+A new contrib operator is introduced at the currently open `kMSDomainOpsetVersion`,
+the same rule ONNX and every other domain already follow. Adding an operator to an
+already-released opset would mutate the meaning of that opset: a core built before the
+addition resolves `com.microsoft` opset N to a smaller catalog than a core built after
+it, even though both claim to implement opset N. So if the domain is closed
+(`kMSDomainOpsetVersion == kMSDomainOpsetVersionLastReleased`), adding an operator
+opens the next version exactly like any other model-visible change; if the domain is
+already open, the new operator reuses the open version.
 
-This remains safe only because negotiation is per operator. A whole-domain catalog
-digest would change every time an operator is added to `OpSet_Microsoft_ver1`, which
-happens on most releases, and would quarantine every contrib kernel of a plugin built
-one commit earlier. See [Digest granularity](#digest-granularity).
+Adding an operator is still not a contract change to any *existing* operator. Existing
+schemas keep their `since_version`, existing plugins keep matching them, and only the
+new operator is unavailable to a plugin that was built before it existed.
+
+This granularity is what makes the rule cheap. A whole-domain catalog digest would
+change every time an operator is added to the open opset, which happens on most
+releases, and would quarantine every contrib kernel of a plugin built one commit
+earlier. See [Digest granularity](#digest-granularity).
 
 ### Opset imports created by optimizers
 
@@ -338,10 +347,33 @@ filtered out.
 
 ### Why a digest is needed
 
-An integer protects compatibility only if published schemas are never edited in
-place. The digest provides a fail-closed guard against accidental edits, release
-branch cherry-picks, or private builds that reuse a version number for a different
-contract.
+`since_version` is the contract. The digest never replaces it and never widens what a
+plugin may claim; it only verifies that both sides mean the same thing by a given
+version number.
+
+An integer alone protects compatibility only if published schemas are never edited in
+place, which is exactly the property `com.microsoft` has never enforced. Today every
+contrib schema sits at `since_version 1` and has been edited in place for years, so
+there is no historical evidence that the discipline holds on its own. The digest turns
+that convention into a checked invariant: `SchemaAbiDigestTest.MSManifestMatchesSchemas`
+fails the build when a published schema changes without a version bump, which is where
+the mistake is cheapest to fix.
+
+It also covers the cases a version number cannot:
+
+- **Open (unreleased) opsets.** Within a development train the open version is mutable
+  by design, so the same `since_version` legitimately denotes different contracts at
+  different commits. Nightly and CI plugin/core pairings are the combinations most
+  likely to be mixed, and they are precisely the ones `since_version` cannot separate.
+- **Release-branch cherry-picks and private builds** that patch a schema without
+  taking the version bump.
+- **Two independent shared-provider or plugin binaries** that each registered
+  `com.microsoft` from a different source snapshot.
+
+The cost is one 32-byte constant per manifest entry and one `memcmp` per operator at
+factory load. A mismatch is not fatal: it quarantines that single operator with a
+warning, and the rest of the plugin runs. Without it, the same situation is a silent
+contract violation that surfaces as a wrong result or a crash inside a kernel.
 
 ### Digest granularity
 
@@ -350,11 +382,11 @@ The digest covers **one operator schema**, not the whole operator set at an opse
 A whole-catalog digest was the first design and does not work in practice. The
 catalog at opset N is the resolved schema set for every operator with
 `since_version <= N`, so it changes whenever *any* contrib operator is added or
-changed. New contrib operators are added at `since_version 1` on most releases, which
-would change the frozen opset-1 catalog digest on most releases and quarantine every
-contrib kernel of a plugin built one commit earlier. The compatibility matrix would
-collapse to "core and plugin must be the same commit", defeating the goal of running a
-new plugin on an older core.
+changed. New contrib operators land in the open opset on most releases, which would
+change that opset's catalog digest on most releases and quarantine every contrib
+kernel of a plugin built one commit earlier. The compatibility matrix would collapse
+to "core and plugin must be the same commit", defeating the goal of running a new
+plugin on an older core.
 
 With per-operator digests, adding `NewOp@1` does not affect the digest of
 `GroupQueryAttention@1`, and a disagreement on one operator quarantines only that

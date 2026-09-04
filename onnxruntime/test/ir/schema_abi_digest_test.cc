@@ -4,6 +4,7 @@
 #include "core/graph/schema_abi_digest.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <set>
 #include <string>
@@ -72,7 +73,14 @@ TEST(SchemaAbiDigestTest, MSManifestSchemasAreUnavailableWhenContribOpsAreDisabl
   }
 }
 #else
-TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
+constexpr const char* kRegenerateHint =
+    "Regenerate onnxruntime/core/graph/contrib_ops/ms_schema_abi_manifest.inc with "
+    "'onnxruntime_test_all --gtest_also_run_disabled_tests "
+    "--gtest_filter=SchemaAbiDigestTest.DISABLED_GenerateMSManifest'.";
+
+// Returns the finalized com.microsoft schemas that the checked-in manifest must cover,
+// excluding schemas registered by unit tests.
+std::vector<ONNX_NAMESPACE::OpSchema> CollectMSDomainSchemas() {
   auto schemas = ONNX_NAMESPACE::OpSchemaRegistry::get_all_schemas_with_history();
   schemas.erase(std::remove_if(schemas.begin(), schemas.end(), [](const auto& schema) {
                   const auto& schema_file = schema.file();
@@ -81,6 +89,31 @@ TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
                   return schema.domain() != kMSDomain || is_test_schema;
                 }),
                 schemas.end());
+  std::sort(schemas.begin(), schemas.end(), [](const auto& lhs, const auto& rhs) {
+    if (lhs.Name() != rhs.Name()) {
+      return lhs.Name() < rhs.Name();
+    }
+    return lhs.since_version() < rhs.since_version();
+  });
+  return schemas;
+}
+
+// Disabled by default: prints the regenerated manifest body to stdout so it can be
+// redirected into ms_schema_abi_manifest.inc.
+TEST(SchemaAbiDigestTest, DISABLED_GenerateMSManifest) {
+  std::printf("// Generated file. Do not edit individual digest entries by hand.\n");
+  for (const auto& schema : CollectMSDomainSchemas()) {
+    const auto digest = Digest(schema);
+    std::printf("{kMSDomain, \"%s\", %d, {", schema.Name().c_str(), schema.since_version());
+    for (size_t i = 0; i < digest.size(); ++i) {
+      std::printf("%s0x%02x", i == 0 ? "" : ", ", digest[i]);
+    }
+    std::printf("}},\n");
+  }
+}
+
+TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
+  const auto schemas = CollectMSDomainSchemas();
 
 #if !defined(ENABLE_TRAINING_OPS) && !defined(ORT_USE_NCCL)
   // The checked-in manifest is the inference plugin catalog. Training and NCCL
@@ -88,7 +121,7 @@ TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
   // claim and therefore are not required to appear in this manifest.
   constexpr size_t manifest_size = sizeof(contrib::kMSDomainSchemaAbiManifest) /
                                    sizeof(contrib::kMSDomainSchemaAbiManifest[0]);
-  EXPECT_EQ(schemas.size(), manifest_size);
+  EXPECT_EQ(schemas.size(), manifest_size) << kRegenerateHint;
 #endif
 
   using SchemaKey = std::tuple<std::string, std::string, int>;
@@ -106,14 +139,16 @@ TEST(SchemaAbiDigestTest, MSManifestMatchesSchemas) {
     const auto digest = Digest(*schema);
     EXPECT_EQ(std::memcmp(digest.data(), entry.schema_abi_digest, digest.size()), 0)
         << entry.op_type << "@" << entry.since_version
-        << " changed without regenerating the com.microsoft schema ABI manifest";
+        << " changed without regenerating the com.microsoft schema ABI manifest. "
+        << kRegenerateHint;
   }
 
 #if !defined(ENABLE_TRAINING_OPS) && !defined(ORT_USE_NCCL)
   for (const auto& schema : schemas) {
     EXPECT_NE(manifest_keys.find(SchemaKey{kMSDomain, schema.Name(), schema.since_version()}),
               manifest_keys.end())
-        << "Missing manifest entry: " << schema.Name() << "@" << schema.since_version();
+        << "Missing manifest entry: " << schema.Name() << "@" << schema.since_version() << ". "
+        << kRegenerateHint;
   }
 #endif
 }
