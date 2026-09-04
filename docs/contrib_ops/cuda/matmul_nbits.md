@@ -166,6 +166,10 @@ units:
   and the launcher returns `false` if the total requirement exceeds the per-block limit.
 - **Inner loop:** each lane consumes eight packed int4 weights per iteration,
   followed by a warp reduction.
+- **FP16 block-32 latency hiding:** when the grid supplies fewer than eight CTAs
+  per SM, each lane keeps two packed-weight loads in flight. Wider grids retain
+  the original unrolled loop because explicit prefetching adds overhead once
+  the launch already has enough independent CTAs.
 - **Supported `block_size`:** 16 / 32 / 64 / 128.
 - **Bias:** not supported — the kernel returns `false` to `TryMatMul4Bits` when
   `bias != nullptr` (see §7 for how bias is then handled).

@@ -8,7 +8,7 @@ namespace contrib {
 namespace cuda {
 
 template bool TryMatMul4BitsM1<float>(
-    float*, const float*, const uint8_t*, const float*, const uint8_t*, int, int, int, size_t, cudaStream_t);
+    float*, const float*, const uint8_t*, const float*, const uint8_t*, int, int, int, size_t, int, cudaStream_t);
 
 }  // namespace cuda
 }  // namespace contrib
