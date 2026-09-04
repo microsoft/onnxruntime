@@ -17,6 +17,7 @@
 #include "core/framework/ep_context_options.h"
 #include "core/framework/resource_accountant.h"
 #include "core/framework/session_state.h"
+#include "core/framework/workspace_input_shape.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -139,6 +140,51 @@ class TestOpKernel : public OpKernel {
     return Status::OK();
   }
 };
+
+TEST(OpKernelTest, DefaultDeclareWorkspaceRequirementsClearsOutput) {
+  Model model("default_workspace_declaration", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  NodeArg input_arg("input", &tensor_type);
+  NodeArg output_arg("output", &tensor_type);
+  Node& node = graph.AddNode("identity", "Identity", "", {&input_arg}, {&output_arg});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ExecutionProviders execution_providers;
+  auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  CPUExecutionProvider* cpu_execution_provider_ptr = cpu_execution_provider.get();
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));
+
+  DataTransferManager data_transfer_manager;
+  ExternalDataLoaderManager external_data_loader_manager;
+  profiling::Profiler profiler;
+  SessionOptions session_options;
+  SessionState session_state(graph, execution_providers, nullptr, nullptr, data_transfer_manager,
+                             external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
+                             profiler, session_options);
+
+  auto kernel_def = KernelDefBuilder()
+                        .SetName("Identity")
+                        .Provider(kCpuExecutionProvider)
+                        .SinceVersion(1)
+                        .Build();
+  OpKernelInfo kernel_info(node, *kernel_def, *cpu_execution_provider_ptr,
+                           session_state.GetConstantInitializedTensors(),
+                           session_state.GetOrtValueNameIdxMap(), session_state.GetDataTransferMgr(),
+                           session_state.GetAllocators(), session_state.GetSessionOptions().config_options);
+  TestOpKernel kernel(kernel_info);
+
+  InlinedVector<WorkspaceInputShape> input_shapes;
+  input_shapes.push_back(WorkspaceInputShape::PresentWithoutShape());
+  InlinedVector<WorkspaceRequirement> requirements;
+  requirements.push_back(WorkspaceRequirement{123, /*slot_id=*/7, /*alignment_bytes=*/0});
+  ASSERT_STATUS_OK(kernel.DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
+  EXPECT_TRUE(requirements.empty());
+}
+
 class SessionStateAddGetKernelTest : public testing::TestWithParam<int> {};
 
 TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {

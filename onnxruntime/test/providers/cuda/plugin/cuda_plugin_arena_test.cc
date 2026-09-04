@@ -100,7 +100,8 @@ class ScopedCudaPluginRegistration {
 Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
   auto ep_devices = env.GetEpDevices();
   for (const auto& device : ep_devices) {
-    if (strcmp(device.EpName(), "CUDAExecutionProvider") == 0) {
+    if (strcmp(device.EpName(), "CUDAExecutionProvider") == 0 &&
+        device.EpMetadata().GetValue("cuda_device_id") != nullptr) {
       return device;
     }
   }
@@ -131,8 +132,8 @@ class CudaPluginArenaTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    EXPECT_EQ(cudaSuccess, cudaDeviceSynchronize());
     registration_.reset();
-    cudaDeviceSynchronize();
   }
 
   std::unique_ptr<ScopedCudaPluginRegistration> registration_;
@@ -201,6 +202,61 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_ArenaReusesMemory) {
 
   EXPECT_EQ(extensions_after_first, extensions_after_second)
       << "Arena should reuse previously freed chunk without extending.";
+}
+
+TEST_F(CudaPluginArenaTest, DeviceAllocator_ActiveCaptureReleaseQuarantinesChunk) {
+  auto allocator = ort_env->CreateSharedAllocator(
+      cuda_device_, OrtDeviceMemoryType_DEFAULT,
+      OrtDeviceAllocator, {});
+  ASSERT_NE(allocator, nullptr);
+  auto restore_default = std::unique_ptr<void, std::function<void(void*)>>(
+      reinterpret_cast<void*>(1), [&](void*) {
+        ort_env->CreateSharedAllocator(
+            cuda_device_, OrtDeviceMemoryType_DEFAULT,
+            OrtDeviceAllocator, {});
+      });
+
+  Ort::SyncStream stream = cuda_device_.CreateSyncStream();
+  auto* raw_allocator = static_cast<OrtAllocator*>(allocator);
+  auto* raw_stream = static_cast<OrtSyncStream*>(stream);
+  ASSERT_NE(raw_allocator->AllocOnStream, nullptr);
+
+  constexpr size_t kBytes = 4096;
+  void* quarantined_ptr = raw_allocator->AllocOnStream(raw_allocator, kBytes, raw_stream);
+  ASSERT_NE(quarantined_ptr, nullptr);
+  allocator.Free(quarantined_ptr);
+
+  cudaStream_t cuda_stream = static_cast<cudaStream_t>(stream.GetHandle());
+  bool capture_active = false;
+  cudaGraph_t graph = nullptr;
+  auto capture_cleanup = std::unique_ptr<void, std::function<void(void*)>>(
+      reinterpret_cast<void*>(1), [&](void*) {
+        if (capture_active) {
+          cudaGraph_t cleanup_graph = nullptr;
+          if (cudaStreamEndCapture(cuda_stream, &cleanup_graph) == cudaSuccess && cleanup_graph != nullptr) {
+            cudaGraphDestroy(cleanup_graph);
+          }
+        }
+        if (graph != nullptr) {
+          cudaGraphDestroy(graph);
+        }
+      });
+
+  ASSERT_EQ(cudaSuccess, cudaStreamBeginCapture(cuda_stream, cudaStreamCaptureModeThreadLocal));
+  capture_active = true;
+  ASSERT_EQ(cudaSuccess, cudaMemsetAsync(quarantined_ptr, 0, kBytes, cuda_stream));
+
+  const int64_t allocated_before_release = GetStatInt(allocator.GetStats(), "TotalAllocatedBytes");
+  stream = Ort::SyncStream{nullptr};
+
+  ASSERT_EQ(cudaSuccess, cudaStreamEndCapture(cuda_stream, &graph));
+  capture_active = false;
+  ASSERT_NE(graph, nullptr);
+
+  EXPECT_EQ(allocator.Alloc(kBytes), nullptr);
+
+  allocator.Shrink();
+  EXPECT_GE(GetStatInt(allocator.GetStats(), "TotalAllocatedBytes"), allocated_before_release);
 }
 
 // Verify multiple concurrent allocations from the arena.

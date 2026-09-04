@@ -729,7 +729,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     ${ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS}
     onnxruntime_optimizer
-    onnxruntime_providers
+    ${onnxruntime_providers_target}
     onnxruntime_util
     onnxruntime_lora
     onnxruntime_framework
@@ -920,12 +920,22 @@ endif()
 
 onnxruntime_add_static_library(onnxruntime_unittest_utils ${onnxruntime_unittest_utils_src})
 
+set(onnxruntime_unittest_utils_libs ${ONNXRUNTIME_TEST_LIBS})
+get_target_property(onnxruntime_providers_type ${onnxruntime_providers_target} TYPE)
+if (onnxruntime_providers_type STREQUAL "OBJECT_LIBRARY")
+  # Linking an object library into a static library copies its objects into that archive. Every
+  # target that links onnxruntime_unittest_utils also links the providers target directly, so only
+  # its usage requirements are needed here.
+  list(REMOVE_ITEM onnxruntime_unittest_utils_libs ${onnxruntime_providers_target})
+  list(APPEND onnxruntime_unittest_utils_libs $<COMPILE_ONLY:${onnxruntime_providers_target}>)
+endif()
+
 target_link_libraries(onnxruntime_unittest_utils PUBLIC
                       onnx
                       GTest::gtest
                       GTest::gmock
                       onnxruntime_test_utils
-                      ${ONNXRUNTIME_TEST_LIBS}
+                      ${onnxruntime_unittest_utils_libs}
                       ${onnxruntime_EXTERNAL_LIBRARIES}
                       )
 
@@ -993,6 +1003,11 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
     "${TEST_SRC_DIR}/providers/cuda/test_cases/*"
     ${onnxruntime_test_cuda_kernels_src_patterns}
   )
+
+  if (onnxruntime_DISABLE_CONTRIB_OPS OR onnxruntime_CUDA_MINIMAL)
+    list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/generation_cuda_impl_test.cc")
+  endif()
 
   # cuda_plugin_test_shims.cc provides onnxruntime::GetEnvironmentVar for the
   # BUILD_CUDA_EP_AS_PLUGIN unit-test object library, where provider_bridge_provider.cc
@@ -1933,7 +1948,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
       endif()
       if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-        list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
+        list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target} onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
       endif()
       target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
       if (onnxruntime_USE_CUDA OR onnxruntime_USE_NV OR onnxruntime_USE_TENSORRT)
@@ -2153,7 +2168,7 @@ endif()
     endif()
 
     if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-      list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 onnx)
+      list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target} onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 onnx)
     endif()
 
     AddTest(DYN
@@ -2324,7 +2339,7 @@ endif()
       ${onnxruntime_libs}
       # CUDA is dynamically loaded at runtime
       onnxruntime_optimizer
-      onnxruntime_providers
+      ${onnxruntime_providers_target}
       onnxruntime_util
       onnxruntime_lora
       onnxruntime_framework
@@ -2470,7 +2485,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_CUDA_MINIMAL
       list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
     if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
+      list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target} onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
     endif()
     AddTest(DYN
             TARGET onnxruntime_customopregistration_test
@@ -2730,7 +2745,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND
   endif()
 
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-    list(APPEND onnxruntime_autoep_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers
+    list(APPEND onnxruntime_autoep_test_LIBS onnxruntime_graph onnxruntime_session ${onnxruntime_providers_target}
                 onnxruntime_optimizer onnxruntime_mlas onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers
                 iconv re2 onnx)
   endif()
@@ -2755,7 +2770,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
 
   set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
-    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  onnxruntime_providers onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
+    list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  ${onnxruntime_providers_target} onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
      endif()
 
   if(NOT WIN32)
@@ -2821,7 +2836,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
   set(onnxruntime_ep_graph_test_LIBS ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils ${onnxruntime_EXTERNAL_LIBRARIES})
   if (CMAKE_SYSTEM_NAME MATCHES "AIX")
     list(APPEND onnxruntime_ep_graph_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework
-                                               onnxruntime_common onnxruntime_graph onnxruntime_providers onnxruntime_mlas
+                                               onnxruntime_common onnxruntime_graph ${onnxruntime_providers_target} onnxruntime_mlas
                                                onnxruntime_optimizer onnxruntime_flatbuffers iconv re2
                                                ${PROTOBUF_LIB} onnx onnx_proto)
   endif()

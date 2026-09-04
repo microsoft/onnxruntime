@@ -1706,6 +1706,12 @@ MlasRotaryEmbedOneRow(
  *        Uses platform-optimized kernel if available, otherwise returns false.
  *        Any platform (AMD64/ARM64/RISC-V) can register a LayerNormF32Kernel.
  *
+ *        On x86 (32-bit and 64-bit), the AVX2 kernel declines small rows
+ *        (returns false): NormSize < 8 for LayerNorm, or NormSize < 16 for
+ *        RMSNorm, where SIMD setup exceeds the benefit.
+ *        Callers must provide their own scalar fallback for small-N on x86.
+ *        Other platforms (e.g. RISC-V RVV) dispatch for any NormSize.
+ *
  * @return true if an optimized kernel was used, false if caller should fall back
  */
 bool

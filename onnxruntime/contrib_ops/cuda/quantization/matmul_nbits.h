@@ -15,6 +15,7 @@
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/framework/level1_memory_estimate.h"
+#include "core/framework/workspace_input_shape.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -286,25 +287,23 @@ class MatMulNBits final : public CudaKernel {
 #if USE_FPA_INTB_GEMM
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
   // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
-  // estimate, callable after CreateKernels(). Uses the same packing/workspace architecture rule as
-  // ComputeInternal(), so it equals the real runtime request when the queried input-A shape equals
-  // the runtime input shape. Declared only for the in-tree hierarchy; the plugin build inherits the
-  // adapter OpKernel's default no-op. See DeclareWorkspaceRequirements in op_kernel.h.
+  // estimate, callable after CreateKernels(). It is exact when runtime selects the CUTLASS GEMM
+  // branch for the queried input-A shape. If runtime instead selects the CUDA GEMV tactic, which
+  // requests no workspace, the declaration is a safe upper bound. Declared only for the in-tree
+  // hierarchy; the plugin build inherits the adapter OpKernel's unbridged default no-op.
   Status DeclareWorkspaceRequirements(
-      gsl::span<const TensorShape> input_shapes,
+      gsl::span<const WorkspaceInputShape> input_shapes,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
 #endif
 
-  // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size the CUTLASS runner
-  // requested on the most recent ComputeInternal() call so a test can verify the Level-2 estimate
-  // against the real runtime request. This atomic is not correlated to a specific Run() when
+  // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size requested by the most
+  // recent ComputeInternal() call (zero when it requested none) so a test can verify the Level-2
+  // estimate against the real runtime request. This atomic is not correlated to a specific Run() when
   // concurrent Run()s share one kernel instance; it is only meant for this pilot's single-threaded
   // tests. Do not build anything on top of it.
   //
-  // STALENESS: the value is only updated on the fpA_intB CUTLASS GEMM branch of ComputeInternal().
-  // It is therefore only meaningful immediately after a call that took that branch; a subsequent
-  // call that takes the GEMV (cuda-kernel) path or the non-fpA_intB path leaves it holding the old
-  // value from the previous GEMM call. It is NOT reset between calls.
+  // Every ComputeInternal() invocation first stores zero. The CUTLASS GEMM branch replaces it with
+  // the requested byte count; all early-return and no-workspace paths therefore remain zero.
   size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(std::memory_order_relaxed); }
 #endif
 

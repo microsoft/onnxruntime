@@ -247,6 +247,8 @@ function(setup_mlas_source_for_windows)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
+    set_source_files_properties(${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+
     set(mlas_platform_srcs_avx512
       ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
@@ -262,6 +264,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/dgemm.cpp
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
+      ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
@@ -340,9 +343,11 @@ function(setup_mlas_source_for_windows)
       )
     endif()
   else()
+    set_source_files_properties(${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
+      ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/i386/SgemmKernelSse2.asm
       ${MLAS_SRC_DIR}/i386/SgemmKernelAvx.asm
     )
@@ -701,6 +706,15 @@ else()
         endif()
     endif()
     if(POWER AND MLAS_SOURCE_IS_NOT_SET)
+        check_cxx_source_compiles("
+          #ifndef __VSX__
+          #error VSX is not supported
+          #endif
+          int main() { return 0; }"
+          MLAS_HAS_VSX
+        )
+    endif()
+    if(POWER AND MLAS_HAS_VSX AND MLAS_SOURCE_IS_NOT_SET)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/power/SgemmKernelPower.cpp
           ${MLAS_SRC_DIR}/dgemm.cpp
@@ -797,9 +811,15 @@ else()
         )
         set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
 
+        set(mlas_platform_srcs_avx2
+          ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
+        )
+        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
+
         set(mlas_platform_srcs
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
+          ${mlas_platform_srcs_avx2}
         )
 
         # In r23, NDK remove __x86.get_pc_thunk.* from libatomic. Add our own
@@ -884,6 +904,7 @@ else()
           ${MLAS_SRC_DIR}/qkv_quant_kernel.h
           ${MLAS_SRC_DIR}/qkv_quant_common.h
           ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2

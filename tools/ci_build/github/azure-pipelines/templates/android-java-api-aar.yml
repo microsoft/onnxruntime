@@ -82,6 +82,10 @@ jobs:
   steps:
   - template: jobs/checkout-and-git-redirect.yml
 
+  - template: setup-feeds-and-python-steps.yml
+    parameters:
+      architecture: x64
+
   - task: CmdLine@2
     displayName: Create artifacts directory
     inputs:
@@ -127,6 +131,10 @@ jobs:
           --volume $NDK_HOME:/ndk_home \
           --volume $(Build.BinariesDirectory)/.artifacts:/home/onnxruntimedev/.artifacts \
           --volume $(Build.BinariesDirectory)/.build_settings:/home/onnxruntimedev/.build_settings \
+          --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+          --volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
+          --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
+          --volume "${HOME}/.gitconfig:/home/onnxruntimedev/.gitconfig:ro" \
           $QNN_VOLUME \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
@@ -135,6 +143,8 @@ jobs:
           -e PUBLISH_EXECUTABLES=${{parameters.publish_executables}} \
           -e PACKAGE_NAME=${{parameters.packageName}} \
           -e RELEASE_VERSION_SUFFIX=${{parameters.ReleaseVersionSuffix}} \
+          -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+          -e PIP_INDEX_URL \
           onnxruntimecpubuildcentos8x64_packaging \
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)

@@ -156,6 +156,28 @@ TEST(SplitOperatorTest, Axis0EqualSplit) {
   SplitTestAxis0EqualSplit<std::string>();
 }
 
+#ifdef USE_CUDA
+TEST(SplitOperatorTest, EqualSized33OutputsCuda) {
+  constexpr int kOutputCount = 33;
+  OpTester test("Split", 13);
+  test.AddAttribute("axis", int64_t{0});
+
+  std::vector<float> input;
+  std::vector<int64_t> split_sizes(kOutputCount, 1);
+  input.reserve(kOutputCount);
+  for (int i = 0; i < kOutputCount; ++i) {
+    input.push_back(static_cast<float>(i));
+  }
+  test.AddInput<float>("input", {kOutputCount}, input);
+  test.AddInput<int64_t>("split", {kOutputCount}, split_sizes);
+  for (int i = 0; i < kOutputCount; ++i) {
+    const auto output_name = MakeString("output", i);
+    test.AddOutput<float>(output_name.c_str(), {1}, {input[i]});
+  }
+  test.ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+}
+#endif
+
 TEST(SplitOperatorTest, Axis0UnequalSplitFloat) {
   constexpr int64_t axis = 0;
   std::vector<ShapeAndFloatData> outputs;

@@ -8589,6 +8589,53 @@ TEST_F(GraphTransformationTests, BiasGeluFusionWebGpu) {
   ASSERT_NE(bias_gelu_node, nullptr);
   EXPECT_EQ(bias_gelu_node->GetExecutionProviderType(), expected_ep);
 }
+
+// Regression test for the WebGPU entry added to the Level-2 LayerNormFusion
+// allowlist (cpu_acl_cuda_dml_webgpu_eps in graph_transformer_utils.cc).
+// The other LayerNorm fusion tests construct the transformer directly with an
+// unrestricted provider set, so they pass regardless of that allowlist; this one
+// goes through GenerateTransformers so the registration is actually exercised.
+TEST_F(GraphTransformationTests, LayerNormFusionWebGpu) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_fp16.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kWebGpuExecutionProvider);
+  }
+
+  SessionOptions session_options;
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const InlinedHashSet<std::string> layer_norm_transformer_names = {"LayerNormFusionL1", "LayerNormFusionL2"};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  for (auto level : {TransformerLevel::Level1, TransformerLevel::Level2}) {
+    for (auto& transformer : optimizer_utils::GenerateTransformers(level, session_options, *cpu_ep, *logger_, {})) {
+      if (layer_norm_transformer_names.count(transformer->Name()) != 0) {
+        ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), level));
+      }
+    }
+  }
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["LayerNormalization"], 1);
+  ASSERT_EQ(op_to_count["ReduceMean"], 0);
+  ASSERT_EQ(op_to_count["Pow"], 0);
+  ASSERT_EQ(op_to_count["Sqrt"], 0);
+  ASSERT_EQ(op_to_count["Div"], 0);
+
+  const Node* layer_norm_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "LayerNormalization") {
+      layer_norm_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(layer_norm_node, nullptr);
+  EXPECT_EQ(layer_norm_node->GetExecutionProviderType(), kWebGpuExecutionProvider);
+  EXPECT_FLOAT_EQ(layer_norm_node->GetAttributes().at("epsilon").f(), static_cast<float>(MLFloat16(1e-4f)));
+}
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {

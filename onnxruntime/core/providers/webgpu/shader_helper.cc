@@ -73,7 +73,6 @@ Status ShaderHelper::Init() {
   }
 
   // init body string stream
-  bool is_1d_dispatch = dispatch_group_size_y_ == 1 && dispatch_group_size_z_ == 1;
   bool use_indirect_dispatch = program_.IndirectDispatchTensor() != nullptr;
 
   // append header for main function so it is ready for user to append main function body
@@ -103,10 +102,6 @@ Status ShaderHelper::Init() {
                 "  let num_workgroups_y = indirect_buffer[1];\n"
                 "  let workgroup_idx = workgroup_id.z * num_workgroups_x * num_workgroups_y + workgroup_id.y * num_workgroups_x + workgroup_id.x;\n"
                 "  let global_idx = workgroup_idx * (workgroup_size_x * workgroup_size_y * workgroup_size_z) + local_idx;\n";
-  } else if (is_1d_dispatch) {
-    body_ss_ << ") {\n";
-    body_ss_ << "  let global_idx = global_id.x;\n"
-                "  let workgroup_idx = workgroup_id.x;\n";
   } else {
     body_ss_ << ",\n"
                 "        @builtin(num_workgroups) num_workgroups : vec3<u32>) {\n";

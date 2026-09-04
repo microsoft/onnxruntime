@@ -299,7 +299,6 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // which has no page-alignment requirement.
   const int flash_min_block_size =
       parameters.head_size <= 64 ? 256 : (parameters.head_size <= 128 ? 128 : 64);
-  const bool flash_block_size_ok = kIsQuantizedCache || (parameters.block_size % flash_min_block_size) == 0;
 
   // LATENT (absorbed MLA) has exactly one eligible backend: neither FlashAttention nor the CUTLASS
   // fMHA wrapper supports v_head_size != head_size or a head_size of 576, and the paged decode
@@ -317,6 +316,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
 
 #if USE_FLASH_ATTENTION
+  const bool flash_block_size_ok = kIsQuantizedCache || (parameters.block_size % flash_min_block_size) == 0;
   const bool flash_eligible = !use_latent_attention &&
                               !disable_flash_attention_ &&
                               flash_block_size_ok &&
@@ -651,6 +651,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
           GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
     }
   }
+#else
+  ORT_UNUSED_PARAMETER(max_kv_len_lower_bound);
 #endif
 
   if (needs_dense_kv) {
