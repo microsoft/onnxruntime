@@ -144,6 +144,7 @@ struct WebGpuContextConfig {
   };
   bool enable_robustness_explicitly_set{false};
   bool preserve_device{false};
+  bool direct_storage_external_weights{false};
   // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
   // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
   bool compile_only{false};
@@ -440,6 +441,7 @@ class WebGpuContext final {
   // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;
   bool preserve_device_;
+  bool direct_storage_external_weights_{false};
   uint64_t max_storage_buffer_binding_size_;
   GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
 

@@ -62,6 +62,23 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  if (std::string direct_storage_external_weights_str;
+      config_options.TryGetConfigEntry(kDirectStorageExternalWeights, direct_storage_external_weights_str)) {
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+    if (direct_storage_external_weights_str == kDirectStorageExternalWeights_ON) {
+      webgpu_ep_config.direct_storage_external_weights = true;
+    } else if (direct_storage_external_weights_str == kDirectStorageExternalWeights_OFF) {
+      webgpu_ep_config.direct_storage_external_weights = false;
+    } else {
+      ORT_THROW("Invalid directStorageExternalWeights value: ", direct_storage_external_weights_str);
+    }
+#else
+    ORT_ENFORCE(direct_storage_external_weights_str == kDirectStorageExternalWeights_OFF,
+                "directStorageExternalWeights=1 requires a native Windows WebGPU build with "
+                "onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE=ON.");
+#endif
+  }
+
   if (std::string pool_generations_str;
       config_options.TryGetConfigEntry(kSessionBufferPoolGenerations, pool_generations_str)) {
     size_t pool_generations = 0;
@@ -143,6 +160,8 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
 
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP preferred layout: " << int(webgpu_ep_config.data_layout);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_config.enable_graph_capture;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP DirectStorage external weights enable: "
+                        << webgpu_ep_config.direct_storage_external_weights;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP force CPU node count: " << webgpu_ep_config.force_cpu_node_names.size();
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << webgpu_ep_config.enable_pix_capture;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable int64: " << webgpu_ep_config.enable_int64;
@@ -154,6 +173,11 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
 
 WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options) {
   WebGpuContextConfig config{};
+
+  if (std::string direct_storage_external_weights_str;
+      config_options.TryGetConfigEntry(kDirectStorageExternalWeights, direct_storage_external_weights_str)) {
+    config.direct_storage_external_weights = direct_storage_external_weights_str == kDirectStorageExternalWeights_ON;
+  }
 
   if (std::string context_id_str;
       config_options.TryGetConfigEntry(kDeviceId, context_id_str)) {

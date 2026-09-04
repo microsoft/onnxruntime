@@ -102,10 +102,17 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   if (utils::HasExternalData(tensor_proto)) {
     auto external_data_loader = external_data_loader_mgr.GetExternalDataLoader(memory_info);
     if (external_data_loader) {
-      // if custom external data loader is used, always allocate memory on device
-      ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+      if (external_data_loader->CreatesTensorForDevice(device)) {
+        ORT_RETURN_IF(memory_buffer != nullptr || alloc == nullptr,
+                      "An external data loader that creates tensors requires a device allocator.");
+        tensor = Tensor{type, tensor_shape, nullptr, alloc};
+      } else {
+        // if custom external data loader is used, always allocate memory on device
+        ORT_RETURN_IF_ERROR(
+            AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+      }
       ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
-                                                                    *external_data_loader, tensor));
+                                                                    *external_data_loader, alloc, tensor));
 
       Tensor::InitOrtValue(std::move(tensor), ort_value);
       return common::Status::OK();
@@ -328,8 +335,13 @@ common::Status SaveInitializedTensors(
     // - Values that are external and mapped from disk. We let the OS manage the memory.
     // - we do not trace values that are in memory because they may be sitting on top of the user allocated
     //   memory.
-    const bool trace_allocation = (exec_plan.GetLocation(ort_value_index) != default_cpu_device) ||
-                                  !utils::HasExternalData(*tensor_proto);
+    const bool loader_creates_tensor =
+        utils::HasExternalData(*tensor_proto) &&
+        !utils::HasExternalDataInMemory(*tensor_proto) &&
+        external_data_loader_mgr.GetTensorCreator(exec_plan.GetLocation(ort_value_index)) != nullptr;
+    const bool trace_allocation = !loader_creates_tensor &&
+                                  ((exec_plan.GetLocation(ort_value_index) != default_cpu_device) ||
+                                   !utils::HasExternalData(*tensor_proto));
 
     if (trace_allocation) {
       // can not trace string tensor, and they exist only on CPU
@@ -346,6 +358,11 @@ common::Status SaveInitializedTensors(
     }
     if (utils::HasString(*entry.second)) {
       // do not trace string tensor
+      continue;
+    }
+    if (utils::HasExternalData(*entry.second) &&
+        !utils::HasExternalDataInMemory(*entry.second) &&
+        external_data_loader_mgr.GetTensorCreator(exec_plan.GetLocation(entry.first)) != nullptr) {
       continue;
     }
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
@@ -372,6 +389,36 @@ common::Status SaveInitializedTensors(
   const bool use_device_allocator_for_initializers =
       session_options.config_options.GetConfigOrDefault(
           kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
+
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr.BeginLoad());
+  bool external_data_load_finalized = false;
+  auto abort_external_data_load = gsl::finally([&]() {
+    if (!external_data_load_finalized) {
+      external_data_loader_mgr.AbortLoad();
+    }
+  });
+
+  for (const auto& entry : id_to_initialized_tensor) {
+    if (user_supplied_initializer_ids.contains(entry.first) ||
+        !utils::HasExternalData(*entry.second) ||
+        utils::HasExternalDataInMemory(*entry.second)) {
+      continue;
+    }
+
+    if (session_options.IsLoadCancellationFlagSet()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "Preparing session state weights is canceled due to user request.");
+    }
+
+    const auto* tensor_creator = external_data_loader_mgr.GetTensorCreator(exec_plan.GetLocation(entry.first));
+    if (tensor_creator != nullptr) {
+      ORT_RETURN_IF_ERROR(
+          utils::PrepareExtDataForTensorFromTensorProto(env, graph_loc, *entry.second, *tensor_creator));
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr.FinalizeLoad(
+      [&session_options]() { return session_options.IsLoadCancellationFlagSet(); }));
 
   // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
@@ -460,6 +507,7 @@ common::Status SaveInitializedTensors(
 #endif
   }
 
+  external_data_load_finalized = true;
   LOGS(logger, INFO) << "Done saving initialized tensors";
   return common::Status::OK();
 }

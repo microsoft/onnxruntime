@@ -11,10 +11,35 @@
 
 namespace onnxruntime {
 
+bool IExternalDataLoader::CreatesTensorForDevice([[maybe_unused]] const OrtDevice& target_device) const {
+  return false;
+}
+
+common::Status IExternalDataLoader::BeginLoad() const {
+  return common::Status::OK();
+}
+
+common::Status IExternalDataLoader::PrepareTensor([[maybe_unused]] const Env& env,
+                                                  [[maybe_unused]] const std::filesystem::path& data_file_path,
+                                                  [[maybe_unused]] std::string_view tensor_name,
+                                                  [[maybe_unused]] FileOffsetType data_offset,
+                                                  [[maybe_unused]] SafeInt<size_t> data_length) const {
+  return common::Status::OK();
+}
+
+common::Status IExternalDataLoader::FinalizeLoad(const std::function<bool()>& /*is_cancelled*/) const {
+  return common::Status::OK();
+}
+
+void IExternalDataLoader::AbortLoad() const noexcept {
+}
+
 common::Status IExternalDataLoader::LoadTensor([[maybe_unused]] const Env& env,
                                                [[maybe_unused]] const std::filesystem::path& data_file_path,
+                                               [[maybe_unused]] std::string_view tensor_name,
                                                [[maybe_unused]] FileOffsetType data_offset,
                                                [[maybe_unused]] SafeInt<size_t> data_length,
+                                               [[maybe_unused]] const std::shared_ptr<IAllocator>& allocator,
                                                [[maybe_unused]] Tensor& tensor) const {
   ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
 }
