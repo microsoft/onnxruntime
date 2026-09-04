@@ -736,7 +736,9 @@ void WindowsTelemetry::LogEpDeviceUsage(uint32_t session_id,
                                         const std::string& hardware_vendor,
                                         const std::string& ep_vendor,
                                         const std::string& ep_version,
-                                        int assigned_node_count) const {
+                                        int assigned_node_count,
+                                        uint32_t total_runs_since_last,
+                                        int64_t total_run_duration_since_last) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -748,8 +750,8 @@ void WindowsTelemetry::LogEpDeviceUsage(uint32_t session_id,
                     TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
-                    // schemaVersion 2: inventory-only event; removed duplicated session run counters
-                    TraceLoggingUInt8(2, "schemaVersion"),
+                    // schemaVersion 1: added epVersion, runtimeVersion
+                    TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingString(ep_type.c_str(), "executionProviderType"),
                     TraceLoggingString(hardware_device_type.c_str(), "hardwareDeviceType"),
@@ -759,6 +761,8 @@ void WindowsTelemetry::LogEpDeviceUsage(uint32_t session_id,
                     TraceLoggingString(ep_vendor.c_str(), "epVendor"),
                     TraceLoggingString(ep_version.c_str(), "epVersion"),
                     TraceLoggingInt32(assigned_node_count, "assignedNodeCount"),
+                    TraceLoggingUInt32(total_runs_since_last, "totalRunsSinceLast"),
+                    TraceLoggingInt64(total_run_duration_since_last, "totalRunDurationSinceLast"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
@@ -891,9 +895,7 @@ void WindowsTelemetry::LogModelLoadStart(uint32_t session_id) const {
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
-void WindowsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status,
-                                       int64_t duration_us) const {
-  (void)duration_us;
+void WindowsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -915,9 +917,7 @@ void WindowsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status
 }
 
 void WindowsTelemetry::LogSessionCreationEnd(uint32_t session_id,
-                                             const common::Status& status,
-                                             int64_t duration_us) const {
-  (void)duration_us;
+                                             const common::Status& status) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
@@ -974,9 +974,7 @@ void WindowsTelemetry::LogRegisterEpLibraryStart(const std::string& registration
 }
 
 void WindowsTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
-                                               const common::Status& status,
-                                               int64_t duration_us) const {
-  (void)duration_us;
+                                               const common::Status& status) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 

@@ -894,6 +894,13 @@ InferenceSession::~InferenceSession() {
                                         telemetry_.total_runs_since_last_,
                                         telemetry_.total_run_duration_since_last_,
                                         telemetry_.duration_per_batch_size_);
+      for (const auto& ep_info : telemetry_.ep_device_info_) {
+        telemetry_provider.LogEpDeviceUsage(
+            session_id_, ep_info.ep_type, ep_info.hardware_device_type,
+            ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
+            ep_info.ep_version, ep_info.assigned_node_count,
+            telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
+      }
     }
   }
   ORT_CATCH(const std::exception& e) {
@@ -1192,7 +1199,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
   }
 
-  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
+  env.GetTelemetryProvider().LogModelLoadEndWithDuration(session_id_, status, TimeDiffMicroSeconds(tp));
 
   return status;
 }
@@ -2086,7 +2093,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
     return Status::OK();
   }();
 
-  env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, TimeDiffMicroSeconds(tp));
+  env.GetTelemetryProvider().LogModelLoadEndWithDuration(session_id_, status, TimeDiffMicroSeconds(tp));
   return status;
 }
 
@@ -3535,6 +3542,14 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                                   telemetry_.total_run_duration_since_last_,
                                                   telemetry_.duration_per_batch_size_);
 
+        for (const auto& ep_info : telemetry_.ep_device_info_) {
+          env.GetTelemetryProvider().LogEpDeviceUsage(
+              session_id_, ep_info.ep_type, ep_info.hardware_device_type,
+              ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
+              ep_info.ep_version, ep_info.assigned_node_count,
+              telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
+        }
+
         // reset counters
         telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
         telemetry_.total_runs_since_last_ = 0;
@@ -4289,7 +4304,7 @@ void InferenceSession::LogSessionCreationTelemetry(const onnxruntime::Graph& gra
 
   // Emit one inventory event per (EP, device) pair.
   for (const auto& ep_info : telemetry_.ep_device_info_) {
-    env.GetTelemetryProvider().LogEpDeviceUsage(
+    env.GetTelemetryProvider().LogEpDeviceInventory(
         session_id_, ep_info.ep_type, ep_info.hardware_device_type,
         ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
         ep_info.ep_version, ep_info.assigned_node_count);
@@ -4310,7 +4325,7 @@ common::Status InferenceSession::RecordSessionCreationEndTelemetry(const TimePoi
     }
   }
 
-  Env::Default().GetTelemetryProvider().LogSessionCreationEnd(
+  Env::Default().GetTelemetryProvider().LogSessionCreationEndWithDuration(
       session_id_, status, TimeDiffMicroSeconds(tp));
   return status;
 }

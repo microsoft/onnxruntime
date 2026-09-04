@@ -569,7 +569,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 
   if (ep_libraries_.count(registration_name) > 0) {
     auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
-    env.GetTelemetryProvider().LogRegisterEpLibraryEnd(
+    env.GetTelemetryProvider().LogRegisterEpLibraryEndWithDuration(
         registration_name, status, TimeDiffMicroSeconds(tp));
     return status;
   }
@@ -626,7 +626,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     });
   }
 
-  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(
+  env.GetTelemetryProvider().LogRegisterEpLibraryEndWithDuration(
       registration_name, status, TimeDiffMicroSeconds(tp));
   return status;
 }

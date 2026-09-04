@@ -1213,8 +1213,8 @@ void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
   (void)session_id;
 }
 
-void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status,
-                                     int64_t duration_us) const {
+void PosixTelemetry::LogModelLoadEndWithDuration(uint32_t session_id, const common::Status& status,
+                                                 int64_t duration_us) const {
   RunTelemetryOperation("LogModelLoadEnd", [&]() {
     if (!IsEnabled()) {
       return;
@@ -1236,8 +1236,8 @@ void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& 
   });
 }
 
-void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::Status& status,
-                                           int64_t duration_us) const {
+void PosixTelemetry::LogSessionCreationEndWithDuration(uint32_t session_id, const common::Status& status,
+                                                       int64_t duration_us) const {
   RunTelemetryOperation("LogSessionCreationEnd", [&]() {
     if (!IsEnabled()) {
       return;
@@ -1260,6 +1260,31 @@ void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::St
 }
 
 void PosixTelemetry::LogEpDeviceUsage(
+    uint32_t session_id,
+    const std::string& ep_type,
+    const std::string& hardware_device_type,
+    uint32_t hardware_vendor_id,
+    uint32_t hardware_device_id,
+    const std::string& hardware_vendor,
+    const std::string& ep_vendor,
+    const std::string& ep_version,
+    int assigned_node_count,
+    uint32_t total_runs_since_last,
+    int64_t total_run_duration_since_last) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(ep_type);
+  ORT_UNUSED_PARAMETER(hardware_device_type);
+  ORT_UNUSED_PARAMETER(hardware_vendor_id);
+  ORT_UNUSED_PARAMETER(hardware_device_id);
+  ORT_UNUSED_PARAMETER(hardware_vendor);
+  ORT_UNUSED_PARAMETER(ep_vendor);
+  ORT_UNUSED_PARAMETER(ep_version);
+  ORT_UNUSED_PARAMETER(assigned_node_count);
+  ORT_UNUSED_PARAMETER(total_runs_since_last);
+  ORT_UNUSED_PARAMETER(total_run_duration_since_last);
+}
+
+void PosixTelemetry::LogEpDeviceInventory(
     uint32_t session_id,
     const std::string& ep_type,
     const std::string& hardware_device_type,
@@ -1297,9 +1322,9 @@ void PosixTelemetry::LogRegisterEpLibraryStart(const std::string& registration_n
   (void)registration_name;
 }
 
-void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
-                                             const common::Status& status,
-                                             int64_t duration_us) const {
+void PosixTelemetry::LogRegisterEpLibraryEndWithDuration(const std::string& registration_name,
+                                                         const common::Status& status,
+                                                         int64_t duration_us) const {
   RunTelemetryOperation("LogRegisterEpLibraryEnd", [&]() {
     if (!IsEnabled()) {
       return;
