@@ -915,6 +915,74 @@ TEST(TopKOperator, StableHybridBFloat16LargeLastAxis) {
   RunStableHybridTopKCases<BFloat16>(24, {{248320, 16}, {248320, 65}, {500000, 256}});
 }
 
+static void RunExactCudaTopKCase(const std::vector<float>& input_vals,
+                                 const std::vector<float>& expected_vals,
+                                 const std::vector<int64_t>& expected_indices,
+                                 int64_t sorted = 1,
+                                 bool check_zero_sign = false,
+                                 int64_t largest = 1) {
+  const int64_t dimension = static_cast<int64_t>(input_vals.size());
+  const int64_t k = static_cast<int64_t>(expected_vals.size());
+  OpTester test("TopK", 11);
+  if (sorted == 0) {
+    test.AddAttribute("sorted", sorted);
+  }
+  if (largest == 0) {
+    test.AddAttribute("largest", largest);
+  }
+  test.AddInput<float>("X", {1, dimension}, input_vals);
+  test.AddInput<int64_t>("K", {1}, {k});
+  test.AddOutput<float>("Values", {1, k}, expected_vals);
+  test.AddOutput<int64_t>("Indices", {1, k}, expected_indices);
+  test.SetCustomOutputVerifier(
+      [expected_vals, expected_indices, check_zero_sign](const std::vector<OrtValue>& fetches,
+                                                         const std::string& /*provider_type*/) {
+        ASSERT_EQ(fetches.size(), 2u);
+        const auto* values = fetches[0].Get<Tensor>().Data<float>();
+        const auto* indices = fetches[1].Get<Tensor>().Data<int64_t>();
+        for (size_t i = 0; i < expected_vals.size(); ++i) {
+          EXPECT_EQ(values[i], expected_vals[i]);
+          EXPECT_EQ(indices[i], expected_indices[i]);
+          if (check_zero_sign) {
+            EXPECT_EQ(std::signbit(values[i]), std::signbit(expected_vals[i]));
+          }
+        }
+      });
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(session_options).ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+}
+
+static void RunScatteredCudaTopKCase(int64_t dimension,
+                                     const std::vector<int64_t>& expected_indices) {
+  std::vector<float> input_vals(dimension, -1000.0f);
+  std::vector<float> expected_vals(expected_indices.size());
+  for (size_t i = 0; i < expected_indices.size(); ++i) {
+    expected_vals[i] = 100.0f - static_cast<float>(i);
+    input_vals[expected_indices[i]] = expected_vals[i];
+  }
+  RunExactCudaTopKCase(input_vals, expected_vals, expected_indices);
+}
+
+TEST(TopKOperator, HybridScatteredWinners) {
+  RunScatteredCudaTopKCase(20000, {19999, 17, 4095, 8193, 12001, 2000, 16000, 6001});
+}
+
+TEST(TopKOperator, SmallKScatteredWinners) {
+  RunScatteredCudaTopKCase(50000, {17, 17000, 33000, 49999});
+}
+
+TEST(TopKOperator, SmallKUnsortedUsesValueOrder) {
+  constexpr int64_t dimension = 5000;
+  std::vector<float> input_vals(dimension, -1000.0f);
+  input_vals[4000] = 7.0f;
+  input_vals[1000] = 10.0f;
+  input_vals[3000] = 8.0f;
+  input_vals[2000] = 9.0f;
+  RunExactCudaTopKCase(input_vals, {10.0f, 9.0f, 8.0f, 7.0f}, {1000, 2000, 3000, 4000}, 0);
+}
+
 TEST(TopKOperator, StableSmallKBFloat16Smallest) {
   constexpr int64_t dimension = 5000;
   constexpr int64_t k = 16;
@@ -931,11 +999,10 @@ static void RunStableSignedZeroTopKCase(int64_t dimension, int64_t k, int64_t la
   for (int64_t i = 0; i < 2 * k; ++i) {
     input_vals[i] = i % 2 == 0 ? -0.0f : 0.0f;
   }
-  std::vector<float> expected_vals(k, 0.0f);
+  std::vector<float> expected_vals(input_vals.begin(), input_vals.begin() + k);
   std::vector<int64_t> expected_indices(k);
   std::iota(expected_indices.begin(), expected_indices.end(), 0);
-  RunTest(11, k, input_vals, {1, dimension}, expected_vals, expected_indices, {1, k}, false,
-          -1, largest, 1, OpTester::ExpectResult::kExpectSuccess, "", true);
+  RunExactCudaTopKCase(input_vals, expected_vals, expected_indices, 1, true, largest);
 }
 
 TEST(TopKOperator, StableHybridSignedZero) {

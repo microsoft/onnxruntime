@@ -268,19 +268,21 @@ __global__ void CooperativeReduce(int* indices1,
 }
 
 template <typename T>
-__global__ void WriteOutput(const float* scores,
+__global__ void WriteOutput(const T* input,
                             const int* indices,
                             T* output_scores,
                             int64_t* output_indices,
                             int rows,
+                            int dimension,
                             int k,
                             int stride) {
   const int row = blockIdx.x;
   if (row < rows && threadIdx.x < k) {
     const size_t input_offset = static_cast<size_t>(row) * stride + threadIdx.x;
     const size_t output_offset = static_cast<size_t>(row) * k + threadIdx.x;
-    output_scores[output_offset] = static_cast<T>(scores[input_offset]);
-    output_indices[output_offset] = indices[input_offset];
+    const int index = indices[input_offset];
+    output_scores[output_offset] = input[static_cast<size_t>(row) * dimension + index];
+    output_indices[output_offset] = index;
   }
 }
 
@@ -324,7 +326,8 @@ bool CheckCooperativeSupport(const CudaKernel* kernel, int rows, int num_partiti
 }
 
 inline bool IsSupported(const CudaKernel* kernel, int64_t rows, int64_t dimension, int64_t k) {
-  if (rows <= 0 || rows > kernel->GetDeviceProp().maxGridSize[1] ||
+  if (kernel->GetDeviceProp().cooperativeLaunch == 0 ||
+      rows <= 0 || rows > kernel->GetDeviceProp().maxGridSize[1] ||
       dimension <= 0 || dimension > std::numeric_limits<int>::max() || k <= 0 || k > kMaxK) {
     return false;
   }
@@ -401,10 +404,9 @@ Status Launch(const CudaKernel* kernel,
         dim3(block_size), args, 0, stream));
   }
 
-  const float* final_scores = (factors.steps == 1 || factors.steps == 3) ? scores2.get() : scores1.get();
   const int* final_indices = (factors.steps == 1 || factors.steps == 3) ? indices2.get() : indices1.get();
   WriteOutput<T><<<rows, K, 0, stream>>>(
-      final_scores, final_indices, output_scores, output_indices, rows, k, K);
+      input, final_indices, output_scores, output_indices, rows, dimension, k, K);
   return CUDA_CALL(cudaGetLastError());
 }
 

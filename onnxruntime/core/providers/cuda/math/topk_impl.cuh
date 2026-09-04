@@ -465,6 +465,7 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
 
   if constexpr (smallk_topk::Supported<CudaT>::value) {
     if (smallk_topk::IsSupported(kernel, axis, size, N, dimension, K)) {
+      // ONNX leaves output order unspecified when sorted == 0. SmallK keeps value order in both modes.
       return smallk_topk::Run(kernel, stream, alloc_stream, input_x_ptr, output_v_ptr, output_i,
                               N, dimension, K, largest);
     }
