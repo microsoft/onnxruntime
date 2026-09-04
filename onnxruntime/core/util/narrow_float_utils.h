@@ -5,8 +5,11 @@
 
 #include <cstddef>
 #include <type_traits>
+#include <utility>
 
 #include "core/common/float16.h"
+#include "core/framework/allocator.h"
+#include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -42,5 +45,25 @@ void FloatToNarrow(const float* src, T* dst, size_t count) {
 template <typename T>
 inline constexpr bool is_narrow_float_v = std::is_same_v<T, MLFloat16> ||
                                           std::is_same_v<T, BFloat16>;
+
+inline void ConvertNarrowFloatToFloatIfNeeded(
+    const Tensor& tensor, AllocatorPtr alloc, IAllocatorUniquePtr<float>& dest, bool& is_packed) {
+  const auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+  if (tensor.GetElementType() == utils::ToTensorProtoElementType<MLFloat16>()) {
+    auto float_ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+    if (tensor_size > 0) {
+      NarrowToFloat(tensor.Data<MLFloat16>(), float_ptr.get(), tensor_size);
+    }
+    dest = std::move(float_ptr);
+    is_packed = true;
+  } else if (tensor.GetElementType() == utils::ToTensorProtoElementType<BFloat16>()) {
+    auto float_ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+    if (tensor_size > 0) {
+      NarrowToFloat(tensor.Data<BFloat16>(), float_ptr.get(), tensor_size);
+    }
+    dest = std::move(float_ptr);
+    is_packed = true;
+  }
+}
 
 }  // namespace onnxruntime

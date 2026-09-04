@@ -2327,12 +2327,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "mean",
-                "Saved mean used during training to speed up gradient computation",
+                "Saved centering mean. This is always zero because RMS normalization does not center its input.",
                 "U",
                 OpSchema::Optional)
         .Output(2,
                 "inv_std_var",
-                "Saved inverse standard variance used during training to speed up gradient computation.",
+                "Saved inverse root mean square used during training to speed up gradient computation.",
                 "U",
                 OpSchema::Optional)
         .Output(3,
