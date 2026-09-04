@@ -8,6 +8,8 @@
 #include <iterator>
 #include <map>
 #include <unordered_set>
+#include <optional>
+#include <shared_mutex>
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -27,9 +29,6 @@ using onnxruntime::cann::SupportONNXModel;
 using onnxruntime::common::Status;
 
 namespace onnxruntime {
-
-// Models can only be parsed and built serially in the same process
-std::mutex g_mutex;
 
 class Memcpy final : public OpKernel {
  public:
@@ -1392,23 +1391,60 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       // It is very necessary to provide a new mechanism for memory reclamation to avoid inference failure caused by
       // device memory exhaustion
       uint32_t modelID;
-      if (modelIDs_.find(filename) != modelIDs_.end()) {
-        modelID = modelIDs_[filename];
+
+      static std::shared_mutex g_map_mutex;
+
+      auto get_model_if_exists = [&]() -> std::optional<uint32_t> {
+        std::shared_lock<std::shared_mutex> map_guard(g_map_mutex);
+        if (auto it = modelIDs_.find(filename); it != modelIDs_.end()) {
+          return it->second;
+        }
+        return std::nullopt;
+      };
+
+      if (auto modelID_opt = get_model_if_exists(); modelID_opt.has_value()) {
+        modelID = modelID_opt.value();
       } else {
-        std::lock_guard<std::mutex> lock(g_mutex);
+        std::optional<cann::InterprocessFileLock> ipc_lock;
+        std::unique_lock<cann::InterprocessFileLock> lock;
+        ORT_TRY {
+          ipc_lock.emplace(filename);
+          lock = std::unique_lock<cann::InterprocessFileLock>(ipc_lock.value());
+        }
+        ORT_CATCH(const std::exception& e) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
+        };
         auto filename_with_suffix = cann::MatchFile(filename);
         if (!filename_with_suffix.empty()) {
+          lock.unlock();
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
         } else {
+          // Only hold the lock while saving an .om file
+          if (!info_.dump_om_model) {
+            lock.unlock();
+          }
+
+          // Models can only be parsed and built serially in the same process
+          static std::mutex g_mutex;
+          std::unique_lock<std::mutex> build_guard(g_mutex);
+
           ge::Graph graph{cann_state->node_name.c_str()};
           ORT_RETURN_IF_ERROR(ParserONNXModel(string_model, graph));
 
           ge::ModelBufferData model;
           ORT_RETURN_IF_ERROR(BuildONNXModel(graph, input_shape, soc_name_, filename, info_, model));
 
+          build_guard.unlock();
+
+          // May have already been unlocked if dump_om_model is false
+          if (lock.owns_lock()) {
+            lock.unlock();
+          }
+
           CANN_RETURN_IF_ERROR(aclmdlLoadFromMem(model.data.get(), model.length, &modelID));
         }
 
+        std::unique_lock<std::shared_mutex> map_guard(g_map_mutex);
         modelIDs_.emplace(filename, modelID);
       }
 
