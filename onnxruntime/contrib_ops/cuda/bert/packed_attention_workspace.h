@@ -20,6 +20,43 @@ enum class PackedAttentionBackend {
   Unfused,
 };
 
+enum class PackedAttentionBackendMask : uint32_t {
+  None = 0,
+  Trt = 1U << 0,
+  Flash = 1U << 1,
+  MemoryEfficient = 1U << 2,
+  Unfused = 1U << 3,
+};
+
+constexpr PackedAttentionBackendMask operator|(PackedAttentionBackendMask left,
+                                               PackedAttentionBackendMask right) noexcept {
+  return static_cast<PackedAttentionBackendMask>(
+      static_cast<uint32_t>(left) | static_cast<uint32_t>(right));
+}
+
+constexpr bool HasPackedAttentionBackend(PackedAttentionBackendMask mask,
+                                         PackedAttentionBackend backend) noexcept {
+  PackedAttentionBackendMask flag = PackedAttentionBackendMask::None;
+  switch (backend) {
+    case PackedAttentionBackend::Trt:
+      flag = PackedAttentionBackendMask::Trt;
+      break;
+    case PackedAttentionBackend::Flash:
+      flag = PackedAttentionBackendMask::Flash;
+      break;
+    case PackedAttentionBackend::MemoryEfficient:
+      flag = PackedAttentionBackendMask::MemoryEfficient;
+      break;
+    case PackedAttentionBackend::Unfused:
+      flag = PackedAttentionBackendMask::Unfused;
+      break;
+    default:
+      return false;
+  }
+
+  return (static_cast<uint32_t>(mask) & static_cast<uint32_t>(flag)) != 0;
+}
+
 enum class PackedAttentionWorkspaceError {
   None,
   InvalidArgument,
@@ -196,6 +233,29 @@ struct PackedAttentionWorkspaceResult {
   PackedAttentionWorkspaceRecipe recipe;
 };
 
+// AOT routes are mutually exclusive, so the attention component is the maximum
+// single-route recipe. These bound aggregates deliberately skip exact-runtime
+// equal-head route gates: a route may be reachable only at a smaller equal-head
+// geometry, but its checked recipe is evaluated at the supplied componentwise
+// maximum bounds. If any included route's max-geometry recipe is invalid,
+// aggregation fails rather than omitting that route. A successful nonempty
+// aggregate describes one operator-owned, 256-byte-aligned root with this
+// graph-free layout:
+//   projection: [0, projection_bytes)
+//   attention:  [attention_workspace_offset_bytes,
+//                attention_workspace_offset_bytes + attention_workspace_bytes)
+// The attention offset is projection_bytes rounded up to
+// kPackedAttentionWorkspaceAlignment, and total_workspace_bytes is the end of
+// the attention region. PMHA has no projection or padding, so its attention
+// offset is zero. A valid empty aggregate has all size and offset fields zero.
+struct PackedAttentionWorkspaceAggregate {
+  PackedAttentionWorkspaceStatus status;
+  size_t projection_bytes = 0;
+  size_t attention_workspace_offset_bytes = 0;
+  size_t attention_workspace_bytes = 0;
+  size_t total_workspace_bytes = 0;
+};
+
 PackedAttentionWorkspaceStatus CheckedPackedAttentionAdd(size_t left, size_t right, size_t& result) noexcept;
 
 PackedAttentionWorkspaceStatus CheckedPackedAttentionMultiply(size_t left, size_t right,
@@ -217,6 +277,14 @@ PackedAttentionWorkspaceResult GetPackedAttentionWorkspaceRecipe(
 
 PackedAttentionWorkspaceResult GetPackedMultiHeadAttentionWorkspaceRecipe(
     const PackedMultiHeadAttentionProblem& problem) noexcept;
+
+PackedAttentionWorkspaceAggregate GetPackedAttentionWorkspaceAggregateForBounds(
+    const PackedAttentionProblem& problem,
+    PackedAttentionBackendMask reachable_backends) noexcept;
+
+PackedAttentionWorkspaceAggregate GetPackedMultiHeadAttentionWorkspaceAggregateForBounds(
+    const PackedMultiHeadAttentionProblem& problem,
+    PackedAttentionBackendMask reachable_backends) noexcept;
 
 PackedAttentionWorkspaceStatus ValidatePackedAttentionWorkspaceRecipe(
     const PackedAttentionWorkspaceRecipe& recipe) noexcept;

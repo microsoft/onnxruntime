@@ -47,6 +47,12 @@ class PackedAttention final : public TrtFusedAttention<T> {
   PackedAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
+#if !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+  Status DeclareWorkspaceRequirements(
+      gsl::span<const WorkspaceInputShape> input_shapes,
+      /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
+#endif
+
  private:
   Status CheckInputs(const TensorShape& input_shape,
                      const TensorShape& weights_shape,

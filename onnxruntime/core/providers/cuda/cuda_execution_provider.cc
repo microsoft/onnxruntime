@@ -8,6 +8,9 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/parse_string.h"
 #include "core/framework/int4.h"
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "core/framework/node_shape_resolver.h"
+#endif
 #include "core/framework/resource_accountant.h"
 #include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
@@ -43,6 +46,10 @@
 
 #if !defined(DISABLE_CONTRIB_OPS) && USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/quantization/matmul_nbits_workspace_estimate.h"
+#endif
+
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "contrib_ops/cuda/bert/packed_attention_workspace_estimate.h"
 #endif
 
 using namespace onnxruntime::common;
@@ -3557,6 +3564,27 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                             : contrib::cuda::EstimateMatMulNBitsWorkspace(*node, GetDeviceProp());
         if (ws.has_value()) {
           LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name() << ": " << *ws << " bytes";
+        }
+      }
+#endif
+
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+      // PackedAttention and PackedMultiHeadAttention use the same Level-1
+      // log-only contract as MatMulNBits. Route-aware workspace is not added to
+      // the partition budget until the planner integration is available.
+      if (node != nullptr &&
+          (node->OpType() == "PackedAttention" ||
+           node->OpType() == "PackedMultiHeadAttention") &&
+          node->Domain() == kMSDomain) {
+        const auto input_shapes = ResolveNodeInputShapes(
+            *node, &graph.GetGraph(),
+            resource_accountant->GetMaxShapeInferenceResult());
+        const auto ws = contrib::cuda::EstimatePackedAttentionWorkspace(
+            *node, gsl::make_span(input_shapes), GetDeviceProp(),
+            *GetAttentionKernelOptions());
+        if (ws.has_value()) {
+          LOGS(logger, INFO) << "Level-1 workspace estimate for " << node->Name()
+                             << ": " << ws->total_workspace_bytes << " bytes";
         }
       }
 #endif
