@@ -31,25 +31,21 @@ template <bool is_channels_last, bool is_fused>
 Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context) const {
   bool has_bias = context.InputCount() > 2;
   const auto* input = context.Input<Tensor>(0);
-  const Tensor* kernel = nullptr;
-  bool kernel_is_prepacked = false;
-  if (ohwi_kernel_) {
-    kernel = ohwi_kernel_.get();
-  } else if (transposed_kernel_) {
-    kernel = transposed_kernel_.get();
-    kernel_is_prepacked = true;
-  } else {
-    kernel = context.Input<Tensor>(1);
-  }
+  const Tensor* kernel = prepacked_kernel_ ? prepacked_kernel_.get() : context.Input<Tensor>(1);
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
   TensorShape input_shape = input->Shape();
   ORT_ENFORCE(kernel != nullptr, "Conv kernel tensor is required.");
   // Prepacked kernels are stored permuted; recover the logical OIHW shape.
   TensorShape kernel_shape = kernel->Shape();
-  if (kernel_is_prepacked) {  // HWIO -> OIHW
-    kernel_shape = TensorShape(TensorShapeVector{kernel_shape[3], kernel_shape[2], kernel_shape[0], kernel_shape[1]});
-  } else if (ohwi_kernel_) {  // OHWI -> OIHW
-    kernel_shape = TensorShape(TensorShapeVector{kernel_shape[0], kernel_shape[3], kernel_shape[1], kernel_shape[2]});
+  switch (kernel_layout_) {
+    case KernelLayout::OIHW:
+      break;
+    case KernelLayout::HWIO:
+      kernel_shape = TensorShape(TensorShapeVector{kernel_shape[3], kernel_shape[2], kernel_shape[0], kernel_shape[1]});
+      break;
+    case KernelLayout::OHWI:
+      kernel_shape = TensorShape(TensorShapeVector{kernel_shape[0], kernel_shape[3], kernel_shape[1], kernel_shape[2]});
+      break;
   }
   ConvAttributes::ConvPadVector local_pads(conv_attrs_.pads.begin(), conv_attrs_.pads.end());
   TensorShapeVector local_dilations(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end());
@@ -174,27 +170,37 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
                                   kernel_shape,
                                   onnxruntime::narrow<uint32_t>(conv_attrs_.group),
                                   kernel->DataType())) {
+    // A prepacked kernel must be OHWI here. If it were packed for another consumer, the
+    // argument below would be null and ApplyIm2ColMatMulProgram would fall back to
+    // transposing input 1 -- which PrePackInternal already had ORT release.
+    ORT_ENFORCE(!prepacked_kernel_ || kernel_layout_ == KernelLayout::OHWI,
+                "Im2ColMatMul path reached with a kernel prepacked for a different layout.");
     return ApplyIm2ColMatMulProgram(context,
                                     is_channels_last,
                                     activation_,
                                     dilations,
                                     pads,
                                     strides,
-                                    ohwi_kernel_.get(),
+                                    kernel_layout_ == KernelLayout::OHWI ? kernel : nullptr,
                                     output);
   }
 
-  // The OHWI prepacked layout is only understood by the im2col path above. Reaching here
-  // with `ohwi_kernel_` set would mean PrePackInternal and ComputeInternal disagree on
-  // whether the im2col path applies, and the branches below -- which treat a kernel that
-  // is not `kernel_is_prepacked` as OIHW -- would silently misread the layout.
-  ORT_ENFORCE(!ohwi_kernel_, "Kernel was prepacked as OHWI but the Im2ColMatMul path was not taken.");
+  // The OHWI layout is only understood by the im2col path above. Reaching here with it
+  // would mean PrePackInternal and ComputeInternal disagree on whether the im2col path
+  // applies, and the branches below -- which expect either OIHW or HWIO -- would
+  // silently misread the layout.
+  ORT_ENFORCE(kernel_layout_ != KernelLayout::OHWI,
+              "Kernel was prepacked as OHWI but the Im2ColMatMul path was not taken.");
+
+  // Every remaining consumer wants HWIO, so the kernel has to be transposed unless
+  // PrePackInternal already produced that layout.
+  const bool kernel_needs_transpose = kernel_layout_ != KernelLayout::HWIO;
 
   if (conv_attrs_.group > 1) {
     Tensor transposed_kernel;
     if (is_channels_last) {
       const Tensor* grouped_kernel = kernel;
-      if (!kernel_is_prepacked) {
+      if (kernel_needs_transpose) {
         ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
         grouped_kernel = &transposed_kernel;
       }
@@ -233,7 +239,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     if (is_channels_last) {
       // Transpose weights
       const Tensor* matmul_kernel = kernel;
-      if (!kernel_is_prepacked) {
+      if (kernel_needs_transpose) {
         ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
         matmul_kernel = &transposed_kernel;
       }
@@ -297,7 +303,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   // Transpose weights when necessary
   Tensor transposed_kernel;
   const Tensor* conv_kernel = kernel;
-  if (!kernel_is_prepacked) {
+  if (kernel_needs_transpose) {
     ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
     conv_kernel = &transposed_kernel;
   }
@@ -350,7 +356,8 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
   if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_,
                                   kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group),
                                   tensor.DataType())) {
-    ORT_RETURN_IF_ERROR(PrePackIm2ColMatMulWeight(context, tensor, alloc, ohwi_kernel_));
+    ORT_RETURN_IF_ERROR(PrePackIm2ColMatMulWeight(context, tensor, alloc, prepacked_kernel_));
+    kernel_layout_ = KernelLayout::OHWI;
     is_packed = true;  // set this flag to true so that ORT will release the initializer tensor
     return Status::OK();
   }
@@ -426,11 +433,12 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
 
   // Create the transposed kernel tensor using the prepack allocator.
   // This allocator creates GPU buffers without mapping, suitable for GPU-based operations.
-  transposed_kernel_ = std::make_unique<Tensor>(tensor.DataType(), transposed_kernel_shape, alloc);
+  prepacked_kernel_ = std::make_unique<Tensor>(tensor.DataType(), transposed_kernel_shape, alloc);
 
   // Perform GPU-based transpose directly from the input GPU tensor
-  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, tensor, *transposed_kernel_));
+  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, tensor, *prepacked_kernel_));
 
+  kernel_layout_ = KernelLayout::HWIO;
   is_packed = true;  // set this flag to true so that ORT will release the initializer tensor
 
   return Status::OK();
