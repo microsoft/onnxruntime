@@ -53,6 +53,46 @@ Status LaunchXQAPagedKernel(
     void* workspace,
     size_t workspace_size);
 
+// Multi-token speculative-verification launcher. The implementation is deliberately limited to
+// the DFlash2 target geometry: FP16/BF16 query/output, H256, group size 6, and matching native or
+// INT8/FP8 paged KV.
+Status LaunchXQAPagedSpecDecKernel(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    const void* query,  // [token_count, num_heads, head_size]
+    const void* key_cache,
+    const void* value_cache,
+    void* output,  // [token_count, num_heads, head_size]
+    const int* page_table,
+    const int batch_size,
+    const int num_heads,
+    const int kv_num_heads,
+    const int head_size,
+    const int max_pages_per_seq,
+    const float scale,
+    const int local_window_size,
+    const int* past_seq_lens,
+    const int max_query_len,
+    const int* cumulative_seqlens_q,
+    const uint32_t* spec_dec_mask,
+    const float* attention_sinks,
+    const float* k_cache_scale,
+    const float* v_cache_scale,
+    const XqaQuantType kv_quant_type,
+    const bool is_bf16,  // dtype of query and output; native cache has the same dtype
+    void* workspace,
+    size_t workspace_size);
+
+size_t GetXQAPagedSpecDecWorkspaceSize(
+    const cudaDeviceProp& device_prop,
+    int batch_size,
+    int kv_num_heads,
+    int max_pages_per_seq,
+    int max_query_len,
+    XqaQuantType kv_quant_type);
+
+size_t GetXQAPagedSpecDecRequiredSharedMemoryBytes(XqaQuantType kv_quant_type);
+
 // Workspace bytes required by LaunchXQAPagedKernel (semaphores + multi-block scratch). The paged
 // and contiguous kernels share the CTA tile and the scratch layout, so this is GetXQAScratchSize
 // called with max_seq_len = max_pages_per_seq * kXqaTokensPerPage.

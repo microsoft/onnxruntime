@@ -52,9 +52,12 @@ class PagedAttention final : public CudaKernel {
   // Tensor-core XQA decode kernel for a quantized paged cache. Defaults on; ORT_ENABLE_XQA=0
   // disables it and falls back to the portable PagedDecodeSplitKV kernel.
   bool enable_xqa_;
+  // Native FP16/BF16 cache specializations are opt-in because FlashAttention is competitive.
+  bool enable_native_xqa_;
   // -1 = not yet resolved, 0 = the kernel needs more shared memory than this device allows,
   // 1 = it fits. Resolved once per node because it only depends on head_size / group size.
   mutable std::atomic<int> xqa_shared_memory_ok_{-1};
+  mutable std::atomic<int> xqa_spec_dec_shared_memory_ok_{-1};
   const AttentionKernelOptions* kernel_options_;
 };
 

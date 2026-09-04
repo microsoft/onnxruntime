@@ -495,7 +495,7 @@ __device__ inline void applyMaskFromInput(const Warp& warp, WarpAcc& acc, const 
 
             const bool begMaskFlag = ctaNeedBegMask ? (begMask & (1ULL << col)) : true;
 
-            acc(m, n)(i, j) = maskFlag && begMaskFlag && col < nbValidCols ? acc(m, n)(i, j) : safeInitRowMax;
+            acc(m, n)(i, j) = maskFlag && begMaskFlag && col < nbValidCols ? acc(m, n)(i, j) : SAFE_INIT_ROW_MAX;
           }
         }
       }
@@ -766,6 +766,7 @@ __device__ inline GemmOutRegTile loadGemmOutTile(const Warp& warp, const SharedM
 __device__ inline void copyOutputToGlobalMem(const Warp& warp, OutputHead* dst, uint32_t nbQHeads,
 #if SPEC_DEC
                                              uint32_t headGrpSize, uint32_t idxHeadGrpOffset, uint32_t nbValidHeadTokens,
+                                             uint32_t actualQSeqLen,
 #else
                                              uint32_t idxHeadGrp,
 #endif
@@ -773,6 +774,7 @@ __device__ inline void copyOutputToGlobalMem(const Warp& warp, OutputHead* dst, 
   static_assert(sizeof(PaddedInputHead) == grainBytes * SharedMem::XSmemBuffer::cols * gemm1WarpsPerGrp);
 #if SPEC_DEC
   static_assert(warpTile.y <= SharedMem::XSmemBuffer::rows);
+  unused(actualQSeqLen);
 #else
   static_assert(nbValidRows <= SharedMem::XSmemBuffer::rows);
 #endif
@@ -794,16 +796,17 @@ __device__ inline void copyOutputToGlobalMem(const Warp& warp, OutputHead* dst, 
 #endif
       break;
     }
-    assert(m < nbValidRows);
 #if SPEC_DEC
+    // m is a request-wide flattened (token, head) row, so it is not bounded by one tile's height.
     const uint32_t idxBeam = 0;
     const uint32_t idxInGrp = m;
     const uint32_t tokenIdx = idxInGrp / headGrpSize;
     const uint32_t headIdx = idxInGrp % headGrpSize;
     assert(idxBeam < beamWidth);
     const uint32_t idxHead = idxHeadGrpOffset + tokenIdx * nbQHeads + headIdx;
-    assert(idxHead < nbValidHeadTokens * nbQHeads);
+    assert(idxHead < actualQSeqLen * nbQHeads);
 #else
+    assert(m < nbValidRows);
     const uint32_t idxBeam = m / headGrpSize;
     const uint32_t idxInGrp = m % headGrpSize;
     assert(idxBeam < beamWidth);
@@ -1219,12 +1222,24 @@ __device__ inline ThrdRegRowMax mergeRowMax(
 }
 
 __device__ inline void addAttentionSinks(
-    ThrdRegRowMax& globalRowSum, const ThrdRegRowMax globalRowMax, const float* attentionSinks) {
+    ThrdRegRowMax& globalRowSum, const ThrdRegRowMax globalRowMax, const float* attentionSinks
+#if SPEC_DEC
+    ,
+    uint32_t rowOffset, uint32_t nbValidHeadTokens
+#endif
+) {
   for (uint32_t i = 0; i < globalRowSum.size; i++) {
     uint32_t srcOffset = warp_size * i + laneId();
+#if SPEC_DEC
+    // Rows are flattened (token, head) pairs, so every token reuses its own head's sink.
+    if (srcOffset < nbValidHeadTokens) {
+      globalRowSum[i] += expf(attentionSinks[(rowOffset + srcOffset) % headGrpSize] - globalRowMax[i]);
+    }
+#else
     if (srcOffset < headGrpSize) {
       globalRowSum[i] += expf(attentionSinks[srcOffset] - globalRowMax[i]);
     }
+#endif
   }
 }
 
@@ -1283,7 +1298,12 @@ CUBIN_EXPORT __global__
   assert(!isMultiBlock || (semaphores != nullptr && scratch != nullptr));
 
   // gridDim: x - K/V sequence-dim split; y - number of K or V heads per token; z - number of requests
+#if SPEC_DEC
+  // In speculative mode gridDim.y also fans out over the token tiles of each head group.
+  assert(gridDim.z == batchSize && gridDim.y % nbKHeads == 0);
+#else
   assert(gridDim.z == batchSize && gridDim.y == nbKHeads);
+#endif
   extern __shared__ char smemByteBuf[];
   SharedMem& smem = *reinterpret_cast<SharedMem*>(&smemByteBuf[0]);
 
@@ -1292,6 +1312,9 @@ CUBIN_EXPORT __global__
   // Variable query sequence length support.
   const bool variableQSeqLen = qCuSeqLens != nullptr;
   const uint32_t actualQSeqLen = variableQSeqLen ? uint32_t(qCuSeqLens[idxReq + 1] - qCuSeqLens[idxReq]) : qSeqLen;
+  if (actualQSeqLen == 0) {
+    return;
+  }
   // Same as idxReq * qSeqLen if all sequences all the same.
   // Take different beams as different requests/sequences currently.
   const uint32_t reqSeqOffset = variableQSeqLen ? uint32_t(qCuSeqLens[idxReq]) : (qSeqLen * idxReq);
@@ -1429,9 +1452,15 @@ CUBIN_EXPORT __global__
   }
 #endif
 
-  const uint32_t cacheSeqLen = getCacheSeqLen<usePagedKVCache>(cacheList, idxReq);
+  const uint32_t cacheSeqLen = getCacheSeqLen<usePagedKVCache>(cacheList, idxReq)
+#if SPEC_DEC
+                               + (actualQSeqLen > 0 ? actualQSeqLen - 1 : 0)
+#endif
+      ;
 #if SLIDING_WINDOW && SPEC_DEC && !IS_SPEC_DEC_TREE
-  const uint32_t tok0SeqLen = cacheSeqLen - actualQSeqLen + 1 + idxHeadTokenInGrp;  // ctaTokOffset;
+  // Position of the request's first query token. applyMaskFromInput() adds the per-row query-token
+  // index (derived from the flattened row offset) on top of this, so no tile offset belongs here.
+  const uint32_t tok0SeqLen = cacheSeqLen - actualQSeqLen + 1;
   const int32_t tok0WinBeg = int32_t(tok0SeqLen) - int32_t(slidingWinSize);
   const uint32_t nbTotalSkipTokens = mha::max(0, tok0WinBeg);
 
@@ -2167,7 +2196,12 @@ CUBIN_EXPORT __global__
       // The attention sinks are moved to the multi-block reduction part if the multi-block is enabled.
       if (!isMultiBlock && attentionSinks != nullptr) {
         // Attention sinks are per head.
-        addAttentionSinks(globalRowSum, globalRowMax, attentionSinks + headGrpSize * idxHeadGrp);
+        addAttentionSinks(globalRowSum, globalRowMax, attentionSinks + headGrpSize * idxHeadGrp
+#if SPEC_DEC
+                          ,
+                          idxHeadTokenInGrp, nbValidHeadTokens
+#endif
+        );
       }
       const ThrdRegRowMax rcpRowSum = __frcp_rn(globalRowSum);
 #if LOW_PREC_OUTPUT
@@ -2340,7 +2374,12 @@ CUBIN_EXPORT __global__
         }
         if (attentionSinks != nullptr) {
           // Attention sinks are per head.
-          addAttentionSinks(mergedRowSum, mergedRowMax, attentionSinks + headGrpSize * idxHeadGrp);
+          addAttentionSinks(mergedRowSum, mergedRowMax, attentionSinks + headGrpSize * idxHeadGrp
+#if SPEC_DEC
+                            ,
+                            idxHeadTokenInGrp, nbValidHeadTokens
+#endif
+          );
         }
         __syncthreads();
         rescaleAcc(warp, sumAcc, fullRescaleMask, __frcp_rn(mergedRowSum));
@@ -2351,7 +2390,7 @@ CUBIN_EXPORT __global__
     if (warpGrpIdx == 0) {
 #if SPEC_DEC
       copyOutputToGlobalMem(warp, &output[reqSeqOffset * nbQHeads], nbQHeads, headGrpSize,
-                            (idxHeadGrp * headGrpSize), nbValidHeadTokens,
+                            (idxHeadGrp * headGrpSize), nbValidHeadTokens, actualQSeqLen,
                             uint2{warpTile.x * warpIdxInGrp, nbValidRows * warpIdx.y + idxHeadTokenInGrp}, *smemOutTile);
 #else
       copyOutputToGlobalMem(warp, &output[nbQHeads * beamWidth * idxReq], nbQHeads, idxHeadGrp,

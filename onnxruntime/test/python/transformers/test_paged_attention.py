@@ -2379,12 +2379,217 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         self._check_xqa(paged_kv_block_size=64)
 
     def test_multi_token_step_falls_back(self):
-        # More than one new token in a sequence: XQA emits one row per sequence, so this has to use
-        # a backend that handles a ragged step.
+        # More than one new token in a sequence: without 'attention_metadata' the speculative XQA
+        # specialization is not eligible, so this has to use a backend that handles a ragged step.
         config = self._config(
             sequence_length=2, kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR"
         )
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+
+@unittest.skipIf(not has_xqa(), reason="XQA requires an SM80 or newer GPU")
+class TestPagedAttentionXqaSpeculative(unittest.TestCase):
+    """Coverage for the multi-token (speculative decoding) paged XQA specialization.
+
+    Head size 256 / group size 6 / 2..8 new tokens per sequence routes a speculative verification
+    step onto XQA with a packed lower-triangular mask instead of the ragged fallback. The mask is
+    the whole point of these tests: a kernel that ignores it lets a draft token attend to its own
+    future, which stays inside a loose tolerance when K and V barely vary with position.
+    `parity_check_paged_attention` uses random K/V and a torch reference, so a dropped mask shows
+    up as a large error on every row except the last."""
+
+    def setUp(self):
+        torch.manual_seed(0)
+
+    def _check(
+        self,
+        new_seqlens=None,
+        rtol=5e-3,
+        atol=5e-3,
+        expect_xqa=None,
+        local_window_size=None,
+        **overrides,
+    ):
+        kwargs = {
+            "batch_size": 4,
+            "sequence_length": 8,
+            "total_sequence_length": 1024,
+            "num_heads": 6,
+            "kv_num_heads": 1,
+            "head_size": 256,
+            "paged_kv_block_size": 256,
+            "local": False,
+            "rotary": False,
+            "rotary_interleaved": False,
+            "packed": False,
+            "softcap": 0.0,
+        }
+        features = {k: overrides.pop(k) for k in list(overrides) if k not in kwargs}
+        kwargs.update(overrides)
+        config = Config(**kwargs)
+        for key, value in {
+            "kv_cache_type": "int8",
+            "k_quant_type": "PER_TENSOR",
+            "v_quant_type": "PER_TENSOR",
+            "use_attention_metadata": True,
+            **features,
+        }.items():
+            setattr(config, key, value)
+        override = None
+        if new_seqlens is not None:
+            override = torch.tensor(new_seqlens, dtype=torch.int32)
+
+        def run():
+            parity_check_paged_attention(
+                config,
+                rtol=rtol,
+                atol=atol,
+                new_seqlens_override=override,
+                local_window_size_override=local_window_size,
+            )
+
+        # Output parity alone would still pass if a dispatch regression routed the case to the
+        # ragged fallback, leaving the mask, page-table and scale paths untested. Assert the
+        # selected backend wherever the case is meant to prove speculative XQA behavior.
+        if expect_xqa is None:
+            run()
+            return
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+        ):
+            debug_output = capture_native_stdout(run)
+        if expect_xqa:
+            self.assertIn("SdpaKernel=XQA", debug_output)
+        else:
+            self.assertNotIn("SdpaKernel=XQA", debug_output)
+
+    @parameterized.expand([(f"q{q}", q) for q in range(2, 9)])
+    def test_spec_dec_query_length(self, _, query_length):
+        self._check(sequence_length=query_length, new_seqlens=[query_length] * 4)
+
+    @parameterized.expand([("int8", "int8"), ("native_fp16", "float16")])
+    def test_spec_dec_dispatches_to_xqa(self, _, kv_cache_type):
+        is_native_cache = kv_cache_type == "float16"
+        quant = "NONE" if kv_cache_type == "float16" else "PER_TENSOR"
+        config = Config(4, 8, 1024, 6, 1, 256, 256, False, False, False, False, 0.0)
+        for key, value in {
+            "kv_cache_type": kv_cache_type,
+            "k_quant_type": quant,
+            "v_quant_type": quant,
+            "use_attention_metadata": True,
+        }.items():
+            setattr(config, key, value)
+        with patch.dict(
+            os.environ,
+            {
+                "ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1",
+                "ORT_ENABLE_XQA": "1",
+                "ORT_ENABLE_XQA_NATIVE_KV": "1" if is_native_cache else "0",
+            },
+        ):
+            debug_output = capture_native_stdout(
+                lambda: parity_check_paged_attention(
+                    config, rtol=5e-3, atol=5e-3, new_seqlens_override=torch.tensor([8, 8, 8, 8], dtype=torch.int32)
+                )
+            )
+        self.assertIn("SdpaKernel=XQA", debug_output)
+
+        if is_native_cache:
+            with patch.dict(
+                os.environ,
+                {
+                    "ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1",
+                    "ORT_ENABLE_XQA": "1",
+                    "ORT_ENABLE_XQA_NATIVE_KV": "0",
+                },
+            ):
+                debug_output = capture_native_stdout(
+                    lambda: parity_check_paged_attention(
+                        config,
+                        rtol=5e-3,
+                        atol=5e-3,
+                        new_seqlens_override=torch.tensor([8, 8, 8, 8], dtype=torch.int32),
+                    )
+                )
+            self.assertNotIn("SdpaKernel=XQA", debug_output)
+            self.assertIn("SdpaKernel=FLASH_ATTENTION", debug_output)
+
+    @parameterized.expand(
+        [
+            ("ragged", [1, 8, 3, 8]),
+            ("inactive", [0, 0, 0, 7]),
+            ("uniform2", [2, 2, 2, 2]),
+            # token_count (2) <= batch_size (4): the gate is the metadata query bound, not the
+            # aggregate token count, so this still routes to the speculative kernel.
+            ("fewer_tokens_than_sequences", [0, 0, 0, 2]),
+        ]
+    )
+    def test_spec_dec_ragged_batch(self, _, new_seqlens):
+        # A continuous-batching step mixes acceptance lengths, and a scheduled sequence may
+        # contribute no token at all.
+        self._check(new_seqlens=new_seqlens, expect_xqa=True)
+
+    @parameterized.expand([("64", 64), ("256", 256), ("1000", 1000), ("8192", 8192)])
+    def test_spec_dec_context_length(self, _, total_sequence_length):
+        # 8192 splits the sequence across CTAs and reduces through the XQA scratch; 1000 is not
+        # page aligned, so the masked tail straddles the last two tiles.
+        self._check(batch_size=2, total_sequence_length=total_sequence_length, new_seqlens=[8, 8], expect_xqa=True)
+
+    @parameterized.expand([("128", 128), ("512", 512)])
+    def test_spec_dec_block_size(self, _, block_size):
+        self._check(batch_size=2, paged_kv_block_size=block_size, new_seqlens=[8, 8], expect_xqa=True)
+
+    def test_spec_dec_per_channel_scales(self):
+        self._check(k_quant_type="PER_CHANNEL", v_quant_type="PER_CHANNEL", expect_xqa=True)
+
+    def test_spec_dec_batch_one(self):
+        self._check(batch_size=1, new_seqlens=[8], expect_xqa=True)
+
+    @parameterized.expand([(f"q{q}", q) for q in range(6, 9)])
+    def test_spec_dec_local_window(self, _, query_length):
+        # 6..8 query tokens with group size 6 spill past the 32-row tile, so the second tile has to
+        # derive each row's window from its own query position instead of the tile offset.
+        self._check(
+            batch_size=2,
+            sequence_length=query_length,
+            total_sequence_length=1024,
+            new_seqlens=[query_length, query_length],
+            local=True,
+            local_window_size=64,
+            expect_xqa=True,
+        )
+
+    @parameterized.expand([(f"q{q}", q) for q in range(6, 9)])
+    def test_spec_dec_head_sink(self, _, query_length):
+        # Rows are flattened (token, head) pairs here, so every row past the first tile must still
+        # pick up its own head's sink.
+        self._check(
+            batch_size=2,
+            sequence_length=query_length,
+            new_seqlens=[query_length, query_length],
+            use_head_sink=True,
+            expect_xqa=True,
+        )
+
+    def test_spec_dec_head_sink_and_local(self):
+        self._check(
+            batch_size=2,
+            new_seqlens=[8, 8],
+            use_head_sink=True,
+            local=True,
+            local_window_size=64,
+            expect_xqa=True,
+        )
+
+    def test_spec_dec_native_fp16_cache(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA_NATIVE_KV": "1"}):
+            self._check(kv_cache_type="float16", k_quant_type="NONE", v_quant_type="NONE", expect_xqa=True)
+
+    def test_bound_above_specialization_falls_back(self):
+        # A query bound of 9 is outside the 2..8 window, so this must land on the ragged backend
+        # and still be correct.
+        self._check(sequence_length=9, new_seqlens=[9] * 4, expect_xqa=False)
 
 
 @unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
