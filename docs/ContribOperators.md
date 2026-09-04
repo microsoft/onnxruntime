@@ -68,6 +68,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
   * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
+  * <a href="#com.microsoft.MixedPrecisionGroupQueryAttention">com.microsoft.MixedPrecisionGroupQueryAttention</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MultiHeadAttention">com.microsoft.MultiHeadAttention</a>
@@ -4022,6 +4023,145 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input0 and output types to float tensors</dd>
+</dl>
+
+
+### <a name="com.microsoft.MixedPrecisionGroupQueryAttention"></a><a name="com.microsoft.mixedprecisiongroupqueryattention">**com.microsoft.MixedPrecisionGroupQueryAttention**</a>
+
+  Mixed-precision Group Query Attention with an OSCAR 2-bit (PER_GROUP) KV cache.
+  
+  This is a CPU-only specialization of GroupQueryAttention for the OSCAR mixed-precision KV cache
+  scheme. INT2 per-group asymmetric quantization is inherent to the operator (there is no bit-width or
+  quantization-mode selector). The long tail of KV history is packed to 2 bits with per-group scale and
+  zero-point stored inline in the cache row, while a small sink+recent window is kept in high precision
+  in the separate past_hp_key / past_hp_value (present_hp_key / present_hp_value) tensors. An optional
+  per-kv-head spectral rotation (oscar_rotation_k / oscar_rotation_v) is applied to post-RoPE rows before
+  2-bit quantization so the history quantizes with much lower error while leaving QK scores invariant.
+  
+  **Cache format:** the quantized present_key / present_value are uint8 rows of
+  `head_size/4` packed 2-bit codes followed by `num_groups` inline scale/zero-point pairs
+  (`metadata_type` selects fp32 or fp16 metadata). `num_groups = head_size / kv_quant_group_size`.
+  `cache_format_version` pins this layout.
+  
+  **Window sizes:** sink_size and recent_size are node attributes (part of the model), so the cache
+  partition is self-contained and shape inference does not depend on session configuration.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>cache_format_version</tt> : int</dt>
+<dd>Version of the packed 2-bit cache row layout. Only version 1 is currently supported. Default value is 1.</dd>
+<dt><tt>causal</tt> : int</dt>
+<dd>Whether to apply a causal mask. Must be 0 or 1. Default value is 1. Set to 0 for bidirectional attention.</dd>
+<dt><tt>do_rotary</tt> : int</dt>
+<dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>k_quant_rho</tt> : float</dt>
+<dd>Magnitude percentile (0,1] used to clip outliers before computing per-group K min/max. 1.0 (default) disables clipping.</dd>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for k and v</dd>
+<dt><tt>kv_quant_group_size</tt> : int</dt>
+<dd>Group size for the PER_GROUP 2-bit KV quantization. 0 (default) means the whole head is one group.</dd>
+<dt><tt>local_window_size</tt> : int</dt>
+<dd>left_window_size for causal local attention (like Mistral). Must be -1 when causal is 0. Default value is -1 meaning unused.</dd>
+<dt><tt>metadata_type</tt> : string</dt>
+<dd>Storage type for the inline per-group scale/zero-point metadata. One of 'fp32' (default) or 'fp16'. fp16 shrinks the packed history row from head_size/4 + num_groups*8 to head_size/4 + num_groups*4 bytes.</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for q</dd>
+<dt><tt>qk_output</tt> : int</dt>
+<dd>Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).</dd>
+<dt><tt>recent_size</tt> : int</dt>
+<dd>Number of trailing (recent) tokens kept in high precision instead of 2-bit quantized. Default value is 0.</dd>
+<dt><tt>rotary_interleaved</tt> : int</dt>
+<dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>sink_size</tt> : int</dt>
+<dd>Number of leading (sink) tokens kept in high precision instead of 2-bit quantized. Default value is 0.</dd>
+<dt><tt>smooth_softmax</tt> : int</dt>
+<dd>Use a smooth factor in softmax.</dd>
+<dt><tt>softcap</tt> : float</dt>
+<dd>Softcap value for attention weights. Default value is 0.</dd>
+<dt><tt>v_quant_rho</tt> : float</dt>
+<dd>Magnitude percentile (0,1] used to clip outliers before computing per-group V min/max. 1.0 (default) disables clipping.</dd>
+</dl>
+
+#### Inputs (7 - 20)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape(batch_size, sequence_length, d) where d is (num_heads * head_size + 2 * kv_num_heads * head_size).</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Key with shape (batch_size, kv_sequence_length, kv_hidden_size) </dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Value with shape (batch_size, kv_sequence_length, kv_hidden_size)</dd>
+<dt><tt>past_key</tt> (optional) : T_CACHE</dt>
+<dd>Quantized (2-bit packed uint8) past state key in BNSH format. See operator doc for the packed row layout.</dd>
+<dt><tt>past_value</tt> (optional) : T_CACHE</dt>
+<dd>Quantized (2-bit packed uint8) past state value in BNSH format. See past_key.</dd>
+<dt><tt>seqlens_k</tt> : M</dt>
+<dd>1D Tensor of shape (batch_size). Equivalent to (total_sequence_lengths - 1).</dd>
+<dt><tt>total_sequence_length</tt> : M</dt>
+<dd>Scalar tensor equivalent to the maximum total sequence length (past + new) of the batch. Used for checking inputs and determining prompt vs token generation case.</dd>
+<dt><tt>cos_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dt><tt>sin_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max_sequence_length, head_size / 2).</dd>
+<dt><tt>position_ids</tt> (optional) : tensor(int64)</dt>
+<dd>2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel uses only the first element</dd>
+<dt><tt>attention_bias</tt> (optional) : T</dt>
+<dd>additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)</dd>
+<dt><tt>head_sink</tt> (optional) : T</dt>
+<dd>1D tensor with shape (num_heads). Each head has a smooth factor adding to the denominator of softmax.</dd>
+<dt><tt>k_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Reserved input for the shared GroupQueryAttention input layout; not used by this operator (2-bit scales are computed dynamically and stored inline in the cache).</dd>
+<dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Reserved input for the shared GroupQueryAttention input layout; not used by this operator. See k_scale.</dd>
+<dt><tt>q_norm_weight</tt> (optional) : T</dt>
+<dd>Reserved input for the shared GroupQueryAttention input layout; not supported by this CPU operator.</dd>
+<dt><tt>k_norm_weight</tt> (optional) : T</dt>
+<dd>Reserved input for the shared GroupQueryAttention input layout; not supported by this CPU operator.</dd>
+<dt><tt>past_hp_key</tt> (optional) : T</dt>
+<dd>High-precision (unquantized) past keys for the sink+recent window, shape (batch_size, kv_num_heads, sink_size+recent_size, head_size).</dd>
+<dt><tt>past_hp_value</tt> (optional) : T</dt>
+<dd>High-precision (unquantized) past values for the sink+recent window. See past_hp_key.</dd>
+<dt><tt>oscar_rotation_k</tt> (optional) : T</dt>
+<dd>Optional OSCAR spectral rotation for keys, shape (kv_num_heads, head_size, head_size). Rotates post-RoPE query and key rows by this per-kv-head orthogonal matrix before 2-bit quantization. QK scores are invariant to this shared rotation. Provided as a constant initializer.</dd>
+<dt><tt>oscar_rotation_v</tt> (optional) : T</dt>
+<dd>Optional OSCAR spectral rotation for values, shape (kv_num_heads, head_size, head_size). Rotates value rows before 2-bit quantization; the attention output is un-rotated by its transpose. See oscar_rotation_k.</dd>
+</dl>
+
+#### Outputs (1 - 6)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dt><tt>present_key</tt> (optional) : T_CACHE</dt>
+<dd>Quantized (2-bit packed uint8) present state key in BNSH format.</dd>
+<dt><tt>present_value</tt> (optional) : T_CACHE</dt>
+<dd>Quantized (2-bit packed uint8) present state value in BNSH format.</dd>
+<dt><tt>output_qk</tt> (optional) : T</dt>
+<dd>Values of QK matrix multiplication, either before or after softmax normalization</dd>
+<dt><tt>present_hp_key</tt> (optional) : T</dt>
+<dd>High-precision present keys for the sink+recent window. See past_hp_key.</dd>
+<dt><tt>present_hp_value</tt> (optional) : T</dt>
+<dd>High-precision present values for the sink+recent window. See past_hp_key.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain input and output to float tensors.</dd>
+<dt><tt>T_CACHE</tt> : tensor(uint8)</dt>
+<dd>Constrain quantized KV cache to packed uint8.</dd>
+<dt><tt>T_KV_SCALE</tt> : tensor(float)</dt>
+<dd>Constrain KV cache scale types.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask to int tensor.</dd>
 </dl>
 
 
