@@ -81,7 +81,6 @@ stages:
       parameters:
         architecture: x64
 
-
     - script: |
         git submodule sync -- cmake/external/onnx
         git submodule update --init -- cmake/external/onnx

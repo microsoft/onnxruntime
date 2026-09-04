@@ -97,7 +97,6 @@ jobs:
 
   - script: |
       python -m pip install flatbuffers
-      sudo apt-get install -y libffi-dev
     displayName: 'Install python dependencies'
 
   - ${{if eq(parameters.WithCache, true)}}:

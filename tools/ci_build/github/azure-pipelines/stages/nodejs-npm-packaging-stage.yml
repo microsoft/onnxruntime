@@ -45,8 +45,6 @@ stages:
         NpmPackagingMode: 'rc'
       ${{ elseif not(parameters.IsReleaseBuild) }}:
         NpmPackagingMode: 'dev'
-      ${{ else }}:
-        NpmPackagingMode: '<INVALID/UNSUPPORTED COMBINATION>'
 
     steps:
     - template: ../templates/jobs/checkout-and-git-redirect.yml

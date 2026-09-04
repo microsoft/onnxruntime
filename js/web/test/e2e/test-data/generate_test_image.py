@@ -5,8 +5,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-IMAGE_SIZE = 2048
-TILE_SIZE = 128
+IMAGE_SIZE = 256
+TILE_SIZE = 32
 
 
 def generate_image(output_path: Path) -> None:

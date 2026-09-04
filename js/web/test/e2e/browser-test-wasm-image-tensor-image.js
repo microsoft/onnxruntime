@@ -98,7 +98,6 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
 
   compareTensors(inputTensorDataURL, inputTensorImageData, 'BUG in ImageData & Data URL use case');
   // Testing URL --> Tensor --> ImageData --> Tensor
-  // Testing URL --> Tensor --> ImageData --> Tensor
   if (typeof __ort_arg_port === 'undefined') {
     throw new Error('test flag --port=<PORT> is required');
   }
