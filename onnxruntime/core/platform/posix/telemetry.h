@@ -174,6 +174,8 @@ class PosixTelemetry : public Telemetry {
   // Process info tracking
   static std::atomic<bool> process_info_logged_;
   static std::atomic<int64_t> census_utc_day_;
+  static std::atomic<bool> census_emit_current_day_pending_;
+  static std::mutex census_mutex_;
 
   // Global registration count for singleton behavior
   static std::atomic<uint32_t> global_register_count_;

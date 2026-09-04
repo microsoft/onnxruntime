@@ -123,10 +123,10 @@ TEST(DeviceIdDeathTest, RepairsCorruptedFile) {
 TEST(DeviceIdDeathTest, AccumulatesAndEmitsCompletedCensusDay) {
   ScopedTestDirectory test_dir{"device_census"};
   const fs::path home = test_dir.Path() / "home";
-  const fs::path census_state =
-      home / ".cache/Microsoft/DeveloperTools/.onnxruntime/devicecensus.state";
   ScopedEnvironmentVariables environment{
       EnvVarMap{{"HOME", home.string()}, {"XDG_CACHE_HOME", nullopt}}};
+  const fs::path census_state =
+      fs::path(DeviceId::GetStorageDirectory()) / "devicecensus.state";
 
   EXPECT_EXIT(
       {
@@ -167,10 +167,10 @@ TEST(DeviceIdDeathTest, AccumulatesAndEmitsCompletedCensusDay) {
 TEST(DeviceIdDeathTest, EmitsImmediatelyForNewDeviceIdWithoutRolloverDuplicate) {
   ScopedTestDirectory test_dir{"device_census_first_use"};
   const fs::path home = test_dir.Path() / "home";
-  const fs::path census_state =
-      home / ".cache/Microsoft/DeveloperTools/.onnxruntime/devicecensus.state";
   ScopedEnvironmentVariables environment{
       EnvVarMap{{"HOME", home.string()}, {"XDG_CACHE_HOME", nullopt}}};
+  const fs::path census_state =
+      fs::path(DeviceId::GetStorageDirectory()) / "devicecensus.state";
 
   EXPECT_EXIT(
       {
@@ -208,10 +208,10 @@ TEST(DeviceIdDeathTest, EmitsImmediatelyForNewDeviceIdWithoutRolloverDuplicate) 
 TEST(DeviceIdDeathTest, ResetsCensusForDifferentDeviceId) {
   ScopedTestDirectory test_dir{"device_census_identity"};
   const fs::path home = test_dir.Path() / "home";
-  const fs::path census_state =
-      home / ".cache/Microsoft/DeveloperTools/.onnxruntime/devicecensus.state";
   ScopedEnvironmentVariables environment{
       EnvVarMap{{"HOME", home.string()}, {"XDG_CACHE_HOME", nullopt}}};
+  const fs::path census_state =
+      fs::path(DeviceId::GetStorageDirectory()) / "devicecensus.state";
 
   EXPECT_EXIT(
       {

@@ -94,6 +94,8 @@ std::atomic<bool> PosixTelemetry::network_context_suppressed_{false};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
 std::atomic<int64_t> PosixTelemetry::census_utc_day_{-1};
+std::atomic<bool> PosixTelemetry::census_emit_current_day_pending_{false};
+std::mutex PosixTelemetry::census_mutex_;
 
 #if !defined(ORT_TELEMETRY_TENANT_TOKEN)
 namespace {
@@ -885,18 +887,32 @@ void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
 void PosixTelemetry::LogEvaluationStart(uint32_t session_id) const {
   (void)session_id;
   RunTelemetryOperation("RecordCensusActivity", [&]() {
+    if (!IsEnabled()) {
+      return;
+    }
     RecordCensusActivity(false);
   });
 }
 
 void PosixTelemetry::RecordCensusActivity(bool emit_current_day) const {
+  if (emit_current_day) {
+    census_emit_current_day_pending_.store(true, std::memory_order_release);
+  }
+
   const int64_t utc_day = GetUtcDay();
-  int64_t previous_day = census_utc_day_.load(std::memory_order_acquire);
-  if (previous_day == utc_day ||
-      !census_utc_day_.compare_exchange_strong(
-          previous_day, utc_day, std::memory_order_acq_rel)) {
+  if (census_utc_day_.load(std::memory_order_acquire) == utc_day &&
+      !census_emit_current_day_pending_.load(std::memory_order_acquire)) {
     return;
   }
+
+  std::lock_guard<std::mutex> lock(census_mutex_);
+  if (census_utc_day_.load(std::memory_order_relaxed) == utc_day &&
+      !census_emit_current_day_pending_.load(std::memory_order_relaxed)) {
+    return;
+  }
+
+  const bool should_emit_current_day =
+      census_emit_current_day_pending_.load(std::memory_order_relaxed);
 
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
   const std::string device_id_status = "Mobile";
@@ -942,17 +958,18 @@ void PosixTelemetry::RecordCensusActivity(bool emit_current_day) const {
 #endif
       recorded = DeviceId::RecordCensusActivity(
           HashDeviceId(platform_device_id), storage_directory,
-          utc_day, ORT_VERSION, emit_current_day, emit);
+          utc_day, ORT_VERSION, should_emit_current_day, emit);
     }
   }
 #else
   recorded = DeviceId::Instance().RecordCensusActivity(
-      utc_day, ORT_VERSION, emit_current_day, emit);
+      utc_day, ORT_VERSION, should_emit_current_day, emit);
 #endif
-  if (!recorded) {
-    int64_t expected_day = utc_day;
-    census_utc_day_.compare_exchange_strong(
-        expected_day, previous_day, std::memory_order_acq_rel);
+  if (recorded) {
+    census_utc_day_.store(utc_day, std::memory_order_release);
+    if (should_emit_current_day) {
+      census_emit_current_day_pending_.store(false, std::memory_order_release);
+    }
   }
 }
 
