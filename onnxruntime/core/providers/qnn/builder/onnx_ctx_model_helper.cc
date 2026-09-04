@@ -107,19 +107,20 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
 
   // Validate that the cache path does not escape the model directory.
   // Rejects absolute paths, ".." traversal, and symlink-based escapes.
+  constexpr const char* path_resolution_guidance =
+      ". If session.model_external_initializers_file_folder_path is set, set ep.context_file_path to the "
+      "EPContext model path so relative ep_cache_context paths are resolved from the EPContext model directory.";
   auto validate_status = ::onnxruntime::utils::ValidateExternalDataPath(
       std::filesystem::path(ctx_onnx_model_path), std::filesystem::path(external_qnn_ctx_binary_file_name));
   if (!validate_status.IsOK()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, validate_status.ErrorMessage());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, validate_status.ErrorMessage(), path_resolution_guidance);
   }
 
   std::filesystem::path context_binary_path = folder_path / external_qnn_ctx_binary_file_name;
   if (!std::filesystem::is_regular_file(context_binary_path)) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_GRAPH, "The external EP context file '", context_binary_path.string(),
-        "' does not exist or is not accessible. If session.model_external_initializers_file_folder_path is set, "
-        "set ep.context_file_path to the EPContext model path so relative ep_cache_context paths are resolved from "
-        "the EPContext model directory.");
+        "' does not exist or is not accessible", path_resolution_guidance);
   }
 
   std::string context_binary_path_str = context_binary_path.string();

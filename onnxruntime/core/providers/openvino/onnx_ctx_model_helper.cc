@@ -115,13 +115,16 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
     if (blob_filepath.empty() && !graph_viewer.ModelPath().empty()) {
       blob_filepath = graph_viewer.ModelPath();
     }
-    ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(blob_filepath, std::filesystem::path(ep_cache_context)));
+    constexpr const char* path_resolution_guidance =
+        ". If session.model_external_initializers_file_folder_path is set, set ep.context_file_path to the "
+        "EPContext model path so relative ep_cache_context paths are resolved from the EPContext model directory.";
+    const auto validate_status =
+        utils::ValidateExternalDataPath(blob_filepath, std::filesystem::path(ep_cache_context));
+    ORT_ENFORCE(validate_status.IsOK(), validate_status.ErrorMessage(), path_resolution_guidance);
     blob_filepath = blob_filepath.parent_path() / ep_cache_context;
     ORT_ENFORCE(
         std::filesystem::exists(blob_filepath),
-        "External EP context file not found: ", blob_filepath.string(),
-        ". If session.model_external_initializers_file_folder_path is set, set ep.context_file_path to the "
-        "EPContext model path so relative ep_cache_context paths are resolved from the EPContext model directory.");
+        "External EP context file not found: ", blob_filepath.string(), path_resolution_guidance);
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
   }
 
