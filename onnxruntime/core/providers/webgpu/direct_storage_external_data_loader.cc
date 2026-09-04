@@ -805,11 +805,15 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
     return common::Status::OK();
   };
   if (batch.request_count == 0) {
+    common::Status preload_status = common::Status::OK();
     if (impl_->preload_future.valid()) {
-      impl_->preload_future.wait();
+      preload_status = impl_->preload_future.get();
     }
     impl_->preload_batch.reset();
     impl_->context.ContinueInitialize();
+    if (!preload_status.IsOK()) {
+      return fail_or_fallback(preload_status);
+    }
     impl_->context.WaitForInitializeComplete();
     batch.finalized = true;
     return common::Status::OK();
@@ -883,7 +887,7 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
                         tensor.key.name, "\" into Dawn.");
 
       wgpu::SharedBufferMemoryProperties properties{};
-      ORT_RETURN_IF_NOT(tensor.memory.GetProperties(&properties),
+      ORT_RETURN_IF_NOT(tensor.memory.GetProperties(&properties) == wgpu::Status::Success,
                         "Failed to query imported DirectStorage initializer \"",
                         tensor.key.name, "\".");
       ORT_RETURN_IF(properties.size <
@@ -905,7 +909,7 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
       wgpu::SharedBufferMemoryBeginAccessDescriptor access_descriptor{};
       access_descriptor.initialized = true;
       ORT_RETURN_IF_NOT(tensor.memory.BeginAccess(
-                            tensor.buffer, &access_descriptor),
+                            tensor.buffer, &access_descriptor) == wgpu::Status::Success,
                         "Failed to begin Dawn access for DirectStorage initializer \"",
                         tensor.key.name, "\".");
       tensor.access_started = true;
