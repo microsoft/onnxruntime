@@ -208,6 +208,19 @@ class PagedAttentionPackMetadataProgram final : public Program<PagedAttentionPac
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 };
 
+// Derive the exact per-request query and KV lengths on GPU when the caller
+// supplies host-side upper bounds through attention_metadata.
+class PagedAttentionPrepareMetadataProgram final : public Program<PagedAttentionPrepareMetadataProgram> {
+ public:
+  PagedAttentionPrepareMetadataProgram() : Program{"PagedAttentionPrepareMetadata"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+};
+
 // Op contract, phased delivery plan, and reuse strategy are documented in
 // docs/design/webgpu_paged_attention.md.
 class PagedAttention final : public WebGpuKernel {
