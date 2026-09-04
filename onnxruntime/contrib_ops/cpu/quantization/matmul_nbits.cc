@@ -385,12 +385,8 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   // 36x K=4096/N=6144, and 1x K=4096/N=151936. Mean warm-cache session creation over five runs:
   // sequential 8.84 s, outer parallelism 1.84 s, non-LUT inner parallelism 8.38 s, and both
   // outer plus non-LUT inner parallelism 2.16 s. Reusing the session pool across nodes performed best.
-#if !defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const bool outer_parallel_prepack =
       OpKernel::Info().GetConfigOptions().GetConfigEntry(kOrtSessionOptionsEnableParallelPrepack) == "1";
-#else
-  constexpr bool outer_parallel_prepack = false;
-#endif
   if (prefer_lut_gemm_ && !outer_parallel_prepack) {
     OrtThreadPoolParams tpo;
     tpo.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();

@@ -773,8 +773,7 @@ static void CreateSimpleGraph(Graph& graph, const std::string& op_type = "PrePac
   ASSERT_TRUE(status.IsOK());
 }
 
-#if !defined(ORT_NO_EXCEPTIONS) && \
-    (!defined(__ANDROID__) || !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD))
+#if !defined(ORT_NO_EXCEPTIONS)
 static void CreateThrowingPrepackGraph(Graph& graph) {
   TypeProto type;
   type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
@@ -1071,9 +1070,7 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
 };
 
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackConvertsExceptionsToStatus) {
-#if defined(__ANDROID__) && defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
-  GTEST_SKIP() << "Parallel prepack is disabled in minimal Android builds.";
-#elif defined(ORT_NO_EXCEPTIONS)
+#if defined(ORT_NO_EXCEPTIONS)
   GTEST_SKIP() << "Exceptions are disabled.";
 #else
   SessionOptions sess_options;

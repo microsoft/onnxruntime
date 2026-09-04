@@ -183,8 +183,7 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 // (the pre-packed-weights container, initializer use counts) is synchronized internally; the
 // per-node PrePack() calls that do the heavy lifting are not, and run concurrently. Kernel-local
 // prepack thread pools are suppressed while this option is enabled to avoid nested parallelism.
-// The feature is available in standard and extended-minimal Android builds, but is compiled out of
-// basic minimal Android builds (such as the no-operators binary-size baseline).
+// The feature is also available in Android minimal builds.
 static const char* const kOrtSessionOptionsEnableParallelPrepack = "session.prepack.enable_parallel";
 
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
