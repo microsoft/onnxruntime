@@ -102,6 +102,12 @@ static_assert(DensePrefillFitsWorkgroupStorage(true, true, 128, 0, false, 64, 16
 static_assert(DensePrefillFitsWorkgroupStorage(false, true, 128, 0, false, 64, 16384));
 static_assert(!DensePrefillFitsWorkgroupStorage(true, true, 128, 8, true, 64, 16384));
 
+constexpr size_t Q8QuantizationWorkgroupStorageBytes(int head_size) {
+  return 2 * static_cast<size_t>(head_size) * sizeof(uint32_t) + 64 * sizeof(float);
+}
+
+static_assert(Q8QuantizationWorkgroupStorageBytes(4096) == 33024);
+
 constexpr size_t DecodeWorkgroupStorageBytes(uint32_t m_tile,
                                              uint32_t tile_size,
                                              uint32_t head_size_vec,
@@ -935,6 +941,15 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Q8 block-quantized KV cache requires head_size to be divisible by 4. Got head_size=",
                            parameters.head_size_);
+  }
+  if (use_q8_block_quant &&
+      Q8QuantizationWorkgroupStorageBytes(parameters.head_size_) >
+          context.DeviceLimits().maxComputeWorkgroupStorageSize) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "Q8 block-quantized KV cache requires more workgroup storage than the device supports. Required=",
+        Q8QuantizationWorkgroupStorageBytes(parameters.head_size_),
+        " bytes, supported=", context.DeviceLimits().maxComputeWorkgroupStorageSize, " bytes.");
   }
 
   // Compressed head dimension, expressed in two units:
