@@ -1240,6 +1240,134 @@ TEST_F(GraphTransformationTests, LayerNormFusionCurrentOpsetTest) {
                                         ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
+TEST_F(GraphTransformationTests, LayerNormFusionDoesNotUseIntermediateAsScale) {
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeInput<float>({{2, 1}});
+    auto* bias = builder.MakeInput<float>({{2}});
+    auto* exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1.0e-5f});
+    auto* axes = builder.MakeInitializer<int64_t>({1}, {-1});
+    auto* mean = builder.MakeIntermediate();
+    auto* centered = builder.MakeIntermediate();
+    auto* squared = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* variance_epsilon = builder.MakeIntermediate();
+    auto* standard_deviation = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* multiplied = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input, axes}, {mean});
+    builder.AddNode("Sub", {input, mean}, {centered});
+    builder.AddNode("Pow", {centered, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared, axes}, {variance});
+    builder.AddNode("Add", {variance, epsilon}, {variance_epsilon});
+    builder.AddNode("Sqrt", {variance_epsilon}, {standard_deviation});
+    builder.AddNode("Div", {centered, standard_deviation}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {multiplied});
+    builder.AddNode("Add", {multiplied, bias}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("LayerNormalization") == op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.find("Div") != op_to_count.end() && op_to_count.at("Div") == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, current_opset, *logger_,
+      std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level1),
+      TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+      ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionDoesNotUseIntermediateAsBias) {
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeInput<float>({{2}});
+    auto* bias = builder.MakeInput<float>({{2, 1}});
+    auto* exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1.0e-5f});
+    auto* axes = builder.MakeInitializer<int64_t>({1}, {-1});
+    auto* mean = builder.MakeIntermediate();
+    auto* centered = builder.MakeIntermediate();
+    auto* squared = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* variance_epsilon = builder.MakeIntermediate();
+    auto* standard_deviation = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* multiplied = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input, axes}, {mean});
+    builder.AddNode("Sub", {input, mean}, {centered});
+    builder.AddNode("Pow", {centered, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared, axes}, {variance});
+    builder.AddNode("Add", {variance, epsilon}, {variance_epsilon});
+    builder.AddNode("Sqrt", {variance_epsilon}, {standard_deviation});
+    builder.AddNode("Div", {centered, standard_deviation}, {normalized});
+    builder.AddNode("Mul", {normalized, scale}, {multiplied});
+    // Reverse the Add operands so the removed Mul output is the final candidate
+    // visited by the bias-selection loop.
+    builder.AddNode("Add", {bias, multiplied}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("LayerNormalization") == op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.find("Div") != op_to_count.end() && op_to_count.at("Div") == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, current_opset, *logger_,
+      std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level1),
+      TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+      ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionDoesNotUseIntermediateAsScale) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2}});
+    auto* scale = builder.MakeInput<float>({{2, 1}});
+    auto* exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1.0e-5f});
+    auto* squared = builder.MakeIntermediate();
+    auto* variance = builder.MakeIntermediate();
+    auto* variance_epsilon = builder.MakeIntermediate();
+    auto* standard_deviation = builder.MakeIntermediate();
+    auto* normalized = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, exponent}, {squared});
+    builder.AddNode("ReduceMean", {squared}, {variance})
+        .AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {variance, epsilon}, {variance_epsilon});
+    builder.AddNode("Sqrt", {variance_epsilon}, {standard_deviation});
+    builder.AddNode("Div", {input, standard_deviation}, {normalized});
+    // The invalid rank-1 Div output is visited last by the scale-selection loop.
+    builder.AddNode("Mul", {scale, normalized}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("SimplifiedLayerNormalization") == op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.find("Div") != op_to_count.end() && op_to_count.at("Div") == 1);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, SkipLayerNormFusionCurrentOpsetTest) {
   // SkipLayerNorm pattern: Add(input, skip) -> LayerNormalization(gamma, beta)
   int current_opset = GetCurrentOnnxOpset();
