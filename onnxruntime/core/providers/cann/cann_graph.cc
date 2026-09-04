@@ -127,7 +127,7 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
             if (!info.optypelist_for_implmode.empty())
               options.emplace(ge::ir_option::OPTYPELIST_FOR_IMPLMODE, info.optypelist_for_implmode.c_str());
 
-            CANN_CALL_THROW(ge::aclgrphBuildInitialize(options));
+            CANN_GRAPH_CALL_THROW(ge::aclgrphBuildInitialize(options));
             g_ge_state->promise_init.set_value();
 
             try {

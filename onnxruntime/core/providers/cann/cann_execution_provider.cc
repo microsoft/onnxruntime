@@ -1067,9 +1067,13 @@ Status CANNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_op
 }
 
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
+static bool s_owns_acl = false;
 
 void InitializeRegistry() {
+  s_owns_acl = false;
+  cann::SetRepeatInitFlag(false);
   CANN_CALL_THROW(aclInit(nullptr));
+  s_owns_acl = !cann::GetRepeatInitFlag();
 
   s_kernel_registry = KernelRegistry::Create();
   ORT_THROW_IF_ERROR(cann::RegisterCANNKernels(*s_kernel_registry));
@@ -1077,6 +1081,7 @@ void InitializeRegistry() {
 
 void DeleteRegistry() {
   s_kernel_registry.reset();
+  std::exception_ptr ex_ptr_final;
 
   {
     std::unique_lock<std::shared_mutex> lock(cann::g_ge_mutex);
@@ -1088,16 +1093,21 @@ void DeleteRegistry() {
         cann::g_ge_state->thread.join();
       }
 
-      if (cann::g_ge_state->ex_ptr_final) {
-        std::rethrow_exception(cann::g_ge_state->ex_ptr_final);
-      }
-
+      ex_ptr_final = cann::g_ge_state->ex_ptr_final;
       cann::g_ge_state.reset();
     }
   }
 
-  if (!cann::GetRepeatInitFlag()) {
-    CANN_CALL_THROW(aclFinalize());
+  if (std::exchange(s_owns_acl, false)) {
+    if (ex_ptr_final) {
+      CANN_CALL(aclFinalize());
+    } else {
+      CANN_CALL_THROW(aclFinalize());
+    }
+  }
+
+  if (ex_ptr_final) {
+    std::rethrow_exception(ex_ptr_final);
   }
 }
 
