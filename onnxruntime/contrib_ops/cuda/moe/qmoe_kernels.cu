@@ -3,14 +3,18 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
-#include "core/common/narrow.h"
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cu_inc/cub.cuh"
-#include "core/providers/cuda/cu_inc/topk_warp_sort.cuh"
-#include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
+
 #include <cuda_bf16.h>
+#include <cuda_fp8.h>
+
 #include <algorithm>
 #include <cfloat>
+
+#include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
+#include "core/common/narrow.h"
+#include "core/providers/cuda/cu_inc/cub.cuh"
+#include "core/providers/cuda/cu_inc/topk_warp_sort.cuh"
+#include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -1215,6 +1219,158 @@ void LaunchQMoEDequantizeFp4Weights(
     int k,
     cudaStream_t stream) {
   LaunchQMoEDequantizeFp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k, stream);
+}
+
+// ---------------------------------------------------------------------------
+// MXFP4 -> FP8 (e4m3) weight conversion for the QMoE DeepGEMM path.
+//
+// The FP8 GEMM scales B by one fp32 factor per [128 N, 128 K] block. Factoring the arbitrary
+// per-expert global scale out of the FP8 value and rounding the remaining block scale to a
+// *power of two* makes the conversion bit-exact: an E2M1 code carries at most two significant
+// bits, e4m3 carries four, and a power-of-two scale only shifts exponents. The conventional
+// amax/448 scale would give every weight a full mantissa before rounding it to three bits
+// (measured 4.76% max relative error).
+//
+// Losslessness still needs the quantized magnitudes to stay inside e4m3's range, i.e. the
+// per-block spread of the MXFP4 group exponents must be at most 14. It is 6 for this model, but
+// the second pass verifies the round trip element-by-element rather than assuming it.
+// ---------------------------------------------------------------------------
+constexpr int kQMoEFp8BlockN = 128;
+constexpr int kQMoEFp8BlockK = 128;
+constexpr int kQMoEFp8ScaleThreads = 256;
+constexpr int kQMoEFp8VecK = 16;
+constexpr int kQMoEFp8TileN = 64;
+constexpr int kQMoEFp8TileK = 128;
+constexpr float kQMoEFp8Max = 448.0f;
+
+// One CUDA block per [128 N, 128 K] weight block, emitting sfb[expert][n / 128][k / 128].
+__global__ void QMoEFp4ToFp8BlockScaleKernel(
+    const uint8_t* __restrict__ packed_weights,
+    const uint8_t* __restrict__ block_scales,
+    const float* __restrict__ global_scales,
+    float* __restrict__ output_scales,
+    int n,
+    int k) {
+  using BlockReduce = cub::BlockReduce<float, kQMoEFp8ScaleThreads>;
+  __shared__ typename BlockReduce::TempStorage temp_storage;
+
+  const int n_block = static_cast<int>(blockIdx.x);
+  const int k_block = static_cast<int>(blockIdx.y);
+  const int expert = static_cast<int>(blockIdx.z);
+  const int packed_n = n >> 1;
+  const int scale_k = k >> 5;  // MXFP4 group size is 32
+  constexpr int kHalfRows = kQMoEFp8BlockN / 2;
+
+  float local_max = 0.0f;
+  for (int i = static_cast<int>(threadIdx.x); i < kQMoEFp8BlockK * kHalfRows; i += kQMoEFp8ScaleThreads) {
+    const int col = k_block * kQMoEFp8BlockK + i / kHalfRows;
+    const int half = i % kHalfRows;
+    const uint8_t packed = packed_weights[(static_cast<int64_t>(expert) * k + col) * packed_n +
+                                          n_block * kHalfRows + half];
+    const int row = n_block * kQMoEFp8BlockN + 2 * half;
+    const int64_t scale_base = (static_cast<int64_t>(expert) * n + row) * scale_k + (col >> 5);
+    const float even = DecodeFp4E2M1(static_cast<uint8_t>(packed & 0x0F)) * DecodeUE8M0(block_scales[scale_base]);
+    const float odd = DecodeFp4E2M1(static_cast<uint8_t>(packed >> 4)) * DecodeUE8M0(block_scales[scale_base + scale_k]);
+    local_max = fmaxf(local_max, fmaxf(fabsf(even), fabsf(odd)));
+  }
+  const float amax = BlockReduceMax<BlockReduce>(local_max, temp_storage);
+
+  if (threadIdx.x == 0) {
+    // Preserve the arbitrary fp32 global scale and round only the MXFP4 exponent component.
+    // frexpf gives amax/448 = m * 2^e with m in [0.5, 1).
+    float scale = 1.0f;
+    const float global_scale = fabsf(global_scales[expert]);
+    if (amax > 0.0f && global_scale > 0.0f) {
+      int exponent = 0;
+      const float mantissa = frexpf(amax * (1.0f / kQMoEFp8Max), &exponent);
+      exponent -= mantissa == 0.5f;
+      scale = ldexpf(global_scale, exponent);
+    }
+    output_scales[(static_cast<int64_t>(expert) * (n / kQMoEFp8BlockN) + n_block) * (k / kQMoEFp8BlockK) + k_block] =
+        scale;
+  }
+}
+
+// Second pass: quantize with the power-of-two block scale from above. Tiling matches
+// QMoEDequantizeFp4WeightsVecKernel (8 lanes of one row, 16 bytes each = one 128-byte store).
+__global__ void QMoEFp4ToFp8WeightsKernel(
+    const uint8_t* __restrict__ packed_weights,
+    const uint8_t* __restrict__ block_scales,
+    const float* __restrict__ global_scales,
+    const float* __restrict__ output_scales,
+    uint8_t* __restrict__ output,
+    int* __restrict__ inexact,
+    int n,
+    int k) {
+  const int row = static_cast<int>(blockIdx.x) * kQMoEFp8TileN + static_cast<int>(threadIdx.y);
+  if (row >= n) {
+    return;
+  }
+  const int k_base = static_cast<int>(blockIdx.y) * kQMoEFp8TileK + static_cast<int>(threadIdx.x) * kQMoEFp8VecK;
+  const int expert = static_cast<int>(blockIdx.z);
+
+  const int packed_n = n >> 1;
+  const int shift = (row & 1) ? 4 : 0;
+  const int64_t weight_base = (static_cast<int64_t>(expert) * k + k_base) * packed_n + (row >> 1);
+
+  const int scale_k = k >> 5;
+  const float group_scale =
+      DecodeUE8M0(block_scales[(static_cast<int64_t>(expert) * n + row) * scale_k + (k_base >> 5)]);
+  const float block_scale =
+      output_scales[(static_cast<int64_t>(expert) * (n / kQMoEFp8BlockN) + row / kQMoEFp8BlockN) *
+                        (k / kQMoEFp8BlockK) +
+                    k_base / kQMoEFp8BlockK];
+  const float scaled_global = global_scales[expert] / block_scale;
+
+  union {
+    uint4 vec;
+    uint8_t bytes[kQMoEFp8VecK];
+  } staged;
+  bool exact = true;
+#pragma unroll
+  for (int j = 0; j < kQMoEFp8VecK; ++j) {
+    const uint8_t packed = packed_weights[weight_base + static_cast<int64_t>(j) * packed_n];
+    const float fp4_value = DecodeFp4E2M1(static_cast<uint8_t>((packed >> shift) & 0x0F));
+    const float value = fp4_value * group_scale * global_scales[expert];
+    const __nv_fp8_e4m3 quantized(fp4_value * group_scale * scaled_global);
+    staged.bytes[j] = quantized.__x;
+    exact = exact && (static_cast<float>(quantized) * block_scale == value);
+  }
+  *reinterpret_cast<uint4*>(output + (static_cast<int64_t>(expert) * n + row) * k + k_base) = staged.vec;
+  if (!exact) {
+    *inexact = 1;
+  }
+}
+
+void LaunchQMoEQuantizeFp4WeightsToFp8(
+    const uint8_t* packed_weights,
+    const uint8_t* block_scales,
+    const float* global_scales,
+    uint8_t* output,
+    float* output_scales,
+    int* inexact_flag,
+    int num_experts,
+    int n,
+    int k,
+    cudaStream_t stream) {
+  ORT_ENFORCE(n % kQMoEFp8BlockN == 0 && k % kQMoEFp8BlockK == 0 && (n % kQMoEFp8TileN) == 0,
+              "QMoE MXFP4->FP8 conversion requires n a multiple of ", kQMoEFp8BlockN,
+              " and k a multiple of ", kQMoEFp8BlockK, ", got n=", n, " k=", k);
+  static_assert(kQMoEFp8VecK * sizeof(uint8_t) == sizeof(uint4), "vector store must be 16 bytes");
+  // 32 is the MXFP4 group size; a thread's kQMoEFp8VecK values must share one group scale.
+  static_assert(32 % kQMoEFp8VecK == 0);
+  static_assert(kQMoEFp8TileK % kQMoEFp8VecK == 0);
+
+  const dim3 scale_grid(n / kQMoEFp8BlockN, k / kQMoEFp8BlockK, num_experts);
+  QMoEFp4ToFp8BlockScaleKernel<<<scale_grid, kQMoEFp8ScaleThreads, 0, stream>>>(
+      packed_weights, block_scales, global_scales, output_scales, n, k);
+  CUDA_CALL_THROW(cudaGetLastError());
+
+  const dim3 grid(n / kQMoEFp8TileN, k / kQMoEFp8TileK, num_experts);
+  const dim3 block(kQMoEFp8TileK / kQMoEFp8VecK, kQMoEFp8TileN);
+  QMoEFp4ToFp8WeightsKernel<<<grid, block, 0, stream>>>(
+      packed_weights, block_scales, global_scales, output_scales, output, inexact_flag, n, k);
+  CUDA_CALL_THROW(cudaGetLastError());
 }
 
 template <typename T>
