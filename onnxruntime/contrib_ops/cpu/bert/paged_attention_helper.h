@@ -255,8 +255,9 @@ Status CheckBlockTable(const T* block_table, const int batch_size, int& max_num_
 // slot_mapping (input 10) is the scheduler-owned write map: one flat slot index per query token
 // into the cache viewed as [num_blocks * block_size, kv_num_heads, head_size], or -1 to skip the
 // K/V store for that token. Element range is not validated on the host: that would require a
-// device-to-host copy every step. Out-of-range values are undefined behavior, exactly as for
-// block_table today.
+// device-to-host copy every step. The kernel bound-checks it on device instead, skipping any slot
+// outside [0, num_blocks * block_size); block_table is sanitized against num_blocks the same way,
+// via LaunchSanitizeBlockTable, before any attention backend reads it.
 template <typename T = Tensor>
 Status CheckSlotMapping(const T* slot_mapping, const int token_count) {
   const auto& dims = slot_mapping->Shape().GetDims();
