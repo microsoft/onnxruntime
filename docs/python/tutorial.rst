@@ -28,7 +28,7 @@ Step 1: Train a model using your favorite framework
 
 We'll use the famous iris datasets.
 
-.. code_block:: python
+.. code-block:: python
 
     from sklearn.datasets import load_iris
     from sklearn.model_selection import train_test_split
@@ -50,7 +50,7 @@ There are `tools <https://github.com/onnx/tutorials>`_
 to convert other model formats into ONNX. Here we will use
 `ONNXMLTools <https://github.com/onnx/onnxmltools>`_.
 
-.. code_block:: python
+.. code-block:: python
 
     from skl2onnx import convert_sklearn
     from skl2onnx.common.data_types import FloatTensorType
