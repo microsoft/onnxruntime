@@ -57,7 +57,8 @@ inline Status Launch(
     [[maybe_unused]] const bool is_bsnh,
     [[maybe_unused]] const int* past_seq_lens,
     [[maybe_unused]] const float* attention_sinks,
-    [[maybe_unused]] const float* kv_cache_scale,
+    [[maybe_unused]] const float* k_cache_scale,
+    [[maybe_unused]] const float* v_cache_scale,
     [[maybe_unused]] void* workspace,
     [[maybe_unused]] size_t workspace_size,
     // No default: every caller must thread local_window_size through explicitly so a future
@@ -104,7 +105,7 @@ inline Status Launch(
   // same "last N tokens incl. current" definition, so pass it through directly. For global
   // attention, use max_seq_len so the kernel's runtime guard (cacheSeqLen > slidingWinSize) is
   // never taken and no masking work is performed (numerically identical to the global kernel).
-  uint32_t const sliding_win_size = (local_window_size > 0)
+  const uint32_t sliding_win_size = (local_window_size > 0)
                                         ? static_cast<uint32_t>(local_window_size)
                                         : static_cast<uint32_t>(max_seq_len);
 #endif
@@ -125,14 +126,40 @@ inline Status Launch(
       static_cast<uint32_t>(max_seq_len),
       reinterpret_cast<const uint32_t*>(past_seq_lens),
       static_cast<uint32_t>(batch_size),
-      kv_cache_scale,  // Pass kv_cache_scale for INT8 dequantization
-      semaphores,      // semaphores
-      scratch,         // scratch
+      k_cache_scale,  // K dequantization scale (INT8/FP8 KV cache only)
+      v_cache_scale,  // V dequantization scale (INT8/FP8 KV cache only)
+      semaphores,     // semaphores
+      scratch,        // scratch
       stream);
   return Status::OK();
 #else
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA is only supported on Ampere (SM80) or newer GPUs.");
 #endif
 }
+
+#ifndef GENERATE_CUBIN
+// Host helper: dynamic shared-memory size (bytes) this kernel instantiation requests at launch,
+// read from the device `smemSize` symbol. Because it is read from the loaded module, the value
+// reflects the ACTUAL kernel that will run -- including a kernel JIT-compiled from PTX for a
+// different SM, whose shared-memory layout (and therefore smemSize) was fixed at PTX-generation
+// time. The GQA dispatcher uses this to avoid selecting XQA on devices whose per-block opt-in
+// shared memory is smaller than the kernel needs, which would otherwise fail at launch with
+// cudaErrorInvalidValue (e.g. consumer Blackwell sm_120 running a kernel JIT'd from sm_90 PTX,
+// where the Hopper layout needs ~140 KB but sm_120 allows only ~99 KB). Returns 0 if the value
+// cannot be queried.
+inline size_t GetSmemSize() {
+#ifdef XQA_HAS_SM80_TARGET
+  uint32_t size = 0;
+  if (cudaMemcpyFromSymbol(&size, smemSize, sizeof(smemSize)) != cudaSuccess) {
+    (void)cudaGetLastError();  // clear any sticky error so it does not leak to the next CUDA call
+    return 0;
+  }
+  return static_cast<size_t>(size);
+#else
+  return 0;
+#endif
+}
+#endif  // GENERATE_CUBIN
+
 #undef XQA_HAS_SM80_TARGET
 }  // namespace NAMESPACE_NAME

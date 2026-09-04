@@ -277,12 +277,20 @@ Status RoiAlign<T>::Compute(OpKernelContext* context) const {
     return status;
   }
 
+  const T* rois_data = rois_ptr->Data<T>();
+  const int64_t rois_size = rois_ptr->Shape().Size();
+  for (int64_t i = 0; i < rois_size; ++i) {
+    if (!std::isfinite(rois_data[i])) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "All 'rois' values must be finite.");
+    }
+  }
+
   auto& Y = *context->Output(0, {num_rois, num_channels, this->output_height_, this->output_width_});
 
   RoiAlignForward<T>(Y.Shape(), X_ptr->Data<T>(), this->spatial_scale_,
                      x_dims[2],  // height
                      x_dims[3],  // width
-                     this->sampling_ratio_, rois_ptr->Data<T>(), num_roi_cols, Y.template MutableData<T>(), this->mode_, this->half_pixel_,
+                     this->sampling_ratio_, rois_data, num_roi_cols, Y.template MutableData<T>(), this->mode_, this->half_pixel_,
                      batch_indices_ptr->Data<int64_t>(), context->GetOperatorThreadPool());
 
   return Status::OK();

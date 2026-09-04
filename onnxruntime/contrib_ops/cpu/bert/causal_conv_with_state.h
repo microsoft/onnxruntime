@@ -19,7 +19,12 @@ class CausalConvWithState final : public OpKernel {
 
  private:
   int ndim_;
+  int dilation_;
+  bool channels_last_;
   std::string activation_;
+  // Always 0 on CPU (a state window is CUDA-only), but kept so the shared shape helper in
+  // causal_conv_with_state_helper.h is driven the same way on every EP.
+  int state_window_;
 };
 
 }  // namespace contrib

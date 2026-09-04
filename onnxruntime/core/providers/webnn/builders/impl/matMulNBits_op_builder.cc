@@ -161,12 +161,25 @@ Status MatMulNBitsBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val dq =
       model_builder.GetBuilder().call<emscripten::val>("dequantizeLinear", dq_x, x_scale, x_zero_point, options);
 
-  // Reshape DequantizeLinear to [N, K]
+  // Reshape DequantizeLinear from [N, n_blocks_per_col, block_size] to 2D [N, K].
+  // MatMulNBits pads K up to n_blocks_per_col * block_size when K is not an exact
+  // multiple of block_size, so reshape to the (possibly padded) width first and then
+  // slice off the padding columns below to obtain exactly [N, K].
+  const uint32_t padded_K = n_blocks_per_col * block_size;
   options.set("label", node.Name() + "_reshape_dequantizeLinear");
-  const std::vector<uint32_t> new_dq_shape{N, K};
+  const std::vector<uint32_t> new_dq_shape{N, padded_K};
   emscripten::val new_dq_shape_array = emscripten::val::array(new_dq_shape);
   emscripten::val dq_reshaped =
       model_builder.GetBuilder().call<emscripten::val>("reshape", dq, new_dq_shape_array, options);
+
+  // Discard the K-padding columns (only present when K % block_size != 0): slice [0:N, 0:K].
+  if (padded_K != K) {
+    options.set("label", node.Name() + "_slice_dequantizeLinear");
+    const std::vector<uint32_t> slice_starts{0, 0};
+    const std::vector<uint32_t> slice_sizes{N, K};
+    dq_reshaped = model_builder.GetBuilder().call<emscripten::val>(
+        "slice", dq_reshaped, emscripten::val::array(slice_starts), emscripten::val::array(slice_sizes), options);
+  }
 
   // Transpose reshaped DequantizeLinear to [K, N]
   options.set("label", node.Name() + "_transpose_dequantizeLinear");
@@ -280,7 +293,7 @@ bool MatMulNBitsBuilder::HasSupportedInputsImpl(const GraphViewer&,
                                  wnn_limits, "input", "x", logger) &&
          IsDataTypeSupportedByOp("DequantizeLinear", dq_input_type,
                                  wnn_limits, "zeroPoint", "x_zero_point", logger) &&
-         IsInputRankSupported(wnn_limits, "matmul", "a", input_shape.size(), node.Name(), logger);
+         IsRankSupportedByWebNNOp(wnn_limits, "matmul", "a", input_shape.size(), node.Name(), logger);
 }
 
 bool MatMulNBitsBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,

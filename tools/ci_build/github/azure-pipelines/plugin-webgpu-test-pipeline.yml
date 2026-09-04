@@ -48,6 +48,11 @@ parameters:
   type: boolean
   default: true
 
+- name: test_linux_aarch64
+  displayName: 'Test Linux AArch64'
+  type: boolean
+  default: true
+
 - name: test_macos_arm64
   displayName: 'Test macOS ARM64'
   type: boolean
@@ -60,7 +65,7 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     settings:
-      networkIsolationPolicy: Permissive
+      networkIsolationPolicy: Permissive,AzureContainerRegistry
     sdl:
       # No top-level `pool:` is declared for this pipeline (each stage
       # template pins its own pool), so source analysis needs an
@@ -103,6 +108,14 @@ extends:
       # Linux x64
       - ${{ if eq(parameters.test_linux_x64, true) }}:
         - template: stages/plugin-linux-webgpu-test-stage.yml
+          parameters:
+            arch: 'x64'
+
+      # Linux AArch64
+      - ${{ if eq(parameters.test_linux_aarch64, true) }}:
+        - template: stages/plugin-linux-webgpu-test-stage.yml
+          parameters:
+            arch: 'aarch64'
 
       # macOS ARM64
       - ${{ if eq(parameters.test_macos_arm64, true) }}:

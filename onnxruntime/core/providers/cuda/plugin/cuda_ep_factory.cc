@@ -49,6 +49,15 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
 }
 
 CudaEpFactory::~CudaEpFactory() {
+  for (auto& [key, entry] : device_cache_) {
+    static_cast<void>(key);
+    if (entry.device_arena_has_quarantine || entry.device_arena_abandoned) {
+      // Completion of quarantined work is unknown. Intentionally abandon the arena so its
+      // device regions cannot be freed while the retained stream may still reference them.
+      static_cast<void>(entry.device_arena.release());
+    }
+  }
+
   if (kernel_registry_ != nullptr) {
     ep_api_.ReleaseKernelRegistry(kernel_registry_);
   }
@@ -718,6 +727,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
                                           factory.ort_api_, factory.default_logger_,
                                           entry->device_arena);
       if (status != nullptr) return status;
+    } else if (entry->device_arena_abandoned) {
+      return factory.ort_api_.CreateStatus(
+          ORT_FAIL, "CUDA device arena is unavailable after an undrained stream release.");
     } else if (allocator_options) {
       LogWarning(factory.ort_api_, factory.default_logger_, ORT_FILE, __LINE__, __FUNCTION__,
                  "CUDA device arena already exists; session arena options are ignored.");
@@ -784,7 +796,15 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
                      "Refcount underflow in ReleaseAllocatorImpl (device_arena). Ignoring release.");
           return;
         }
-        if (--entry.num_device_arena_users == 0) entry.device_arena.reset();
+        if (--entry.num_device_arena_users == 0) {
+          if (entry.device_arena_has_quarantine || entry.device_arena_abandoned) {
+            static_cast<void>(entry.device_arena.release());
+            entry.device_arena_has_quarantine = false;
+            entry.device_arena_abandoned = false;
+          } else {
+            entry.device_arena.reset();
+          }
+        }
         return;
       }
       if (allocator == entry.pinned_arena.get()) {
@@ -902,11 +922,94 @@ CudaArenaAllocator* CudaEpFactory::GetDeviceArenaForDevice(int device_id) {
 
 OrtStatus* CudaEpFactory::ResetDeviceArenaChunksUsingStream(int device_id,
                                                             const OrtSyncStreamImpl* stream_impl) {
-  DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
-  if (!entry) return nullptr;
-  std::lock_guard<std::mutex> lock{entry->arena_mutex};
-  if (!entry->device_arena) return nullptr;
-  return entry->device_arena->ResetChunksUsingStream(stream_impl);
+  OrtStatus* status = nullptr;
+  ORT_TRY {
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
+    if (!entry) return nullptr;
+    std::lock_guard<std::mutex> lock{entry->arena_mutex};
+    if (!entry->device_arena) return nullptr;
+    status = entry->device_arena->ResetChunksUsingStream(stream_impl);
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, "ResetDeviceArenaChunksUsingStream failed.");
+  }
+  return status;
+}
+
+OrtStatus* CudaEpFactory::QuarantineDeviceArenaChunksUsingStream(
+    int device_id, const OrtSyncStreamImpl* stream_impl) {
+  OrtStatus* status = nullptr;
+  ORT_TRY {
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinal(device_id);
+    if (!entry) return nullptr;
+    std::lock_guard<std::mutex> lock{entry->arena_mutex};
+    if (!entry->device_arena) return nullptr;
+    bool quarantined = false;
+    status = entry->device_arena->QuarantineChunksUsingStream(stream_impl, quarantined);
+    if (status == nullptr && quarantined) {
+      entry->device_arena_has_quarantine = true;
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, "QuarantineDeviceArenaChunksUsingStream failed.");
+  }
+  return status;
+}
+
+OrtStatus* CudaEpFactory::QuarantineAndAbandonDeviceArena(
+    int device_id, const OrtSyncStreamImpl* stream_impl) noexcept {
+  OrtStatus* status = nullptr;
+  ORT_TRY {
+    std::lock_guard<std::mutex> cache_lock(device_cache_mutex_);
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinalLocked(device_id);
+    if (!entry) return nullptr;
+    std::lock_guard<std::mutex> arena_lock{entry->arena_mutex};
+    if (!entry->device_arena) return nullptr;
+
+    // Disable allocation/free/shrink before fallible stream-map detachment so no
+    // concurrent user can observe a partially quarantined arena.
+    entry->device_arena->Abandon();
+    entry->device_arena_abandoned = true;
+
+    bool quarantined = false;
+    status = entry->device_arena->QuarantineChunksUsingStream(stream_impl, quarantined);
+    entry->device_arena_has_quarantine = quarantined;
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    status = ort_api_.CreateStatus(ORT_RUNTIME_EXCEPTION, "QuarantineAndAbandonDeviceArena failed.");
+  }
+  return status;
+}
+
+void CudaEpFactory::AbandonDeviceArena(int device_id) noexcept {
+  ORT_TRY {
+    std::lock_guard<std::mutex> cache_lock(device_cache_mutex_);
+    DeviceCacheEntry* entry = FindDeviceCacheEntryByOrdinalLocked(device_id);
+    if (!entry) return;
+    std::lock_guard<std::mutex> arena_lock{entry->arena_mutex};
+    if (!entry->device_arena) return;
+    entry->device_arena->Abandon();
+    entry->device_arena_abandoned = true;
+  }
+  ORT_CATCH(...) {
+    // Last-resort path from a noexcept release callback. There is no safe way to
+    // free an arena whose stream completion and chunk detachment are both unknown.
+  }
 }
 
 }  // namespace cuda_plugin

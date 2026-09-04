@@ -71,11 +71,18 @@ if(onnxruntime_BUILD_SHARED_LIB)
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
     list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
   endforeach()
+  if(ANDROID AND onnxruntime_USE_TELEMETRY)
+    set(ANDROID_TELEMETRY_SYMBOL_FILE
+        "${ONNXRUNTIME_ROOT}/core/platform/posix/android_telemetry_symbols.txt")
+    list(APPEND SYMBOL_FILES "${ANDROID_TELEMETRY_SYMBOL_FILE}")
+    set(ANDROID_TELEMETRY_SYMBOL_ARGS --extra_symbol_file "${ANDROID_TELEMETRY_SYMBOL_FILE}")
+  endif()
 
   add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
     COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
       --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
-      --config ${ONNXRUNTIME_PROVIDER_NAMES} --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
+      --config ${ONNXRUNTIME_PROVIDER_NAMES} ${ANDROID_TELEMETRY_SYMBOL_ARGS}
+      --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
       --output_source ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
     DEPENDS ${SYMBOL_FILES}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
@@ -114,6 +121,18 @@ if(onnxruntime_BUILD_SHARED_LIB)
       string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
     endif()
 
+    if(onnxruntime_USE_TELEMETRY)
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        set(APPLE_SYSTEM_FRAMEWORKS
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\", \\\"UIKit\\\"")
+        set(APPLE_SYSTEM_LIBRARIES "")
+      else()
+        set(APPLE_SYSTEM_FRAMEWORKS
+          "\\\"CoreFoundation\\\", \\\"Foundation\\\", \\\"IOKit\\\", \\\"Network\\\", \\\"Security\\\", \\\"SystemConfiguration\\\"")
+        set(APPLE_SYSTEM_LIBRARIES "")
+      endif()
+    endif()
+
     set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
     configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
     configure_file(
@@ -134,6 +153,11 @@ if(onnxruntime_BUILD_SHARED_LIB)
         target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
       endif()
     endif()
+  endif()
+
+  if(ANDROID AND onnxruntime_USE_TELEMETRY)
+    target_sources(onnxruntime PRIVATE
+      "${ONNXRUNTIME_ROOT}/core/platform/posix/android_telemetry_jni.cc")
   endif()
 
   add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -245,7 +269,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_INTERNAL_PROVIDER_LIBRARIES}
   ${onnxruntime_winml}
   onnxruntime_optimizer
-  onnxruntime_providers
+  ${onnxruntime_providers_target}
   onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph
@@ -285,8 +309,15 @@ else()
   )
 endif()
 
-if(WIN32)
+# Delay-load flags only apply to the actual onnxruntime.dll. In a static build the onnxruntime target is an
+# INTERFACE library, which rejects the PRIVATE keyword ("may only set INTERFACE properties on INTERFACE targets"),
+# and delay-loading is meaningless for a static lib anyway. Consumers that need delay-load in a static build (e.g.
+# the WebGPU plugin EP DLL) apply onnxruntime_DELAYLOAD_FLAGS to their own target.
+if(WIN32 AND onnxruntime_BUILD_SHARED_LIB)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+  if(onnxruntime_DELAYLOAD_FLAGS)
+    target_link_libraries(onnxruntime PRIVATE delayimp.lib)
+  endif()
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT WIN32)

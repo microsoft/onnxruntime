@@ -1,0 +1,109 @@
+name: 'Install Visual Studio Spectre-Mitigated Libraries'
+description: |
+  Installs the Visual Studio component Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre
+  if the Spectre-mitigated MSVC runtime libraries are not already present.
+  These libraries are required by BinSkim-compliant builds that pass --use_binskim_compliant_compile_flags,
+  which adds /Qspectre to the compiler flags. Without them CMake's compiler probe fails with:
+    MSB8040: Spectre-mitigated libraries are required for this project.
+inputs:
+  architecture:
+    description: 'Target architecture to verify (x64 or x86)'
+    required: false
+    default: 'x64'
+runs:
+  using: "composite"
+  steps:
+    - name: Install Spectre-mitigated libs if missing
+      shell: pwsh
+      run: |
+        $arch = "${{ inputs.architecture }}"
+        if ($arch -notin @("x64", "x86")) {
+          Write-Error "Unsupported architecture '$arch'. Expected one of: x64, x86."
+          exit 1
+        }
+
+        # Helper: find the Spectre lib directory for the given architecture.
+        # VCToolsInstallDir is exported into the GitHub Actions environment by the
+        # locate-vcvarsall-and-setup-env action that must run before this step.
+        function Find-SpectreLibDir {
+          param([string]$Arch)
+
+          if ($env:VCToolsInstallDir) {
+            return (Join-Path $env:VCToolsInstallDir "lib\spectre\$Arch")
+          }
+
+          # Fallback: derive path from vswhere + the default tools version file.
+          $vswherePath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswherePath)) { return $null }
+
+          $vsInstallPath = & $vswherePath -latest -property installationPath 2>$null
+          if (-not $vsInstallPath) { return $null }
+
+          $toolsVersionFile = Join-Path $vsInstallPath "VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt"
+          if (-not (Test-Path $toolsVersionFile)) { return $null }
+
+          $toolsVersion = (Get-Content $toolsVersionFile -Raw).Trim()
+          return (Join-Path $vsInstallPath "VC\Tools\MSVC\$toolsVersion\lib\spectre\$Arch")
+        }
+
+        $spectreLibDir = Find-SpectreLibDir -Arch $arch
+
+        if ($spectreLibDir -and (Test-Path $spectreLibDir)) {
+          Write-Host "Spectre-mitigated libraries already present at: $spectreLibDir"
+          exit 0
+        }
+
+        Write-Host "Spectre-mitigated libraries not found (checked: $spectreLibDir)"
+        Write-Host "Installing Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre..."
+
+        # Locate the Visual Studio Installer.
+        $vsInstallerPath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+        if (-not (Test-Path $vsInstallerPath)) {
+          Write-Error "vs_installer.exe not found at: $vsInstallerPath. Cannot install Spectre-mitigated libraries."
+          exit 1
+        }
+
+        # Determine the VS installation path (needed for the 'modify' command).
+        $vswherePath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        if (-not (Test-Path $vswherePath)) {
+          Write-Error "vswhere.exe not found at: $vswherePath"
+          exit 1
+        }
+        $vsInstallPath = & $vswherePath -latest -property installationPath 2>$null
+        if (-not $vsInstallPath) {
+          Write-Error "Could not determine Visual Studio installation path via vswhere."
+          exit 1
+        }
+
+        Write-Host "Visual Studio installation path: $vsInstallPath"
+        Write-Host "Invoking VS Installer to add Spectre-mitigated libs..."
+
+        # Invoke directly so PowerShell preserves the install path as one argument.
+        & $vsInstallerPath modify `
+          --installPath $vsInstallPath `
+          --add "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre" `
+          --includeRecommended `
+          --passive `
+          --norestart
+        $installerExitCode = $LASTEXITCODE
+
+        if ($installerExitCode -notin @(0, 3010)) {
+          Get-ChildItem -Path $env:TEMP -Filter "dd_*.log" -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending |
+              Select-Object -First 3 |
+              ForEach-Object {
+                Write-Host "Last 50 lines of Visual Studio Installer log: $($_.FullName)"
+                Get-Content $_.FullName -Tail 50
+              }
+          Write-Error "VS Installer exited with code $installerExitCode. Spectre-mitigated library installation failed."
+          exit 1
+        }
+
+        # Re-derive the path in case VCToolsInstallDir changed after installation.
+        $spectreLibDir = Find-SpectreLibDir -Arch $arch
+        if ($spectreLibDir -and (Test-Path $spectreLibDir)) {
+          Write-Host "Successfully installed Spectre-mitigated libraries at: $spectreLibDir"
+        } else {
+          Write-Error "Spectre-mitigated libraries still not found at '$spectreLibDir' after installation."
+          exit 1
+        }

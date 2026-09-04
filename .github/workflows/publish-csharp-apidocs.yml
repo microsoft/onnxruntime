@@ -27,13 +27,14 @@ jobs:
   build:
     runs-on: [
       "self-hosted",
-      "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+      "1ES.Pool=onnxruntime-github-vs2022-latest",
       "JobId=publish-csharp-apidocs-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
       ]
+    timeout-minutes: 210
     env:
       DOCFXVERSION: 2.62.2
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
     - name: Install DocFX
       run: |
         dotnet tool update -g docfx
@@ -66,7 +67,7 @@ jobs:
         Move-Item -Path csharp\ApiDocs\csharp -Destination $OutputDirectory
     - name: Upload docs artifact
       if: github.ref == 'refs/heads/main'
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: onnxruntime-csharp-apidocs
         path: _site

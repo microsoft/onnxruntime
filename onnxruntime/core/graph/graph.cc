@@ -57,6 +57,7 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 #if !defined(ORT_MINIMAL_BUILD)
+
 #define NO_CHANGE_ON_SYNC_FLAG(...)                  \
   do {                                               \
     const bool sync_needed = GraphProtoSyncNeeded(); \
@@ -3179,6 +3180,15 @@ Status Graph::InferAndVerifySubgraphTypes(const Node& node, Graph& subgraph,
   status = subgraph.PerformTypeAndShapeInferencing(options);
   ORT_RETURN_IF_ERROR(status);
 
+  // Record that this subgraph had type/shape inferencing (and thus node/op verification via
+  // VerifyNodeAndOpMatch) performed here through the containing op's inference function
+  // (Scan/If/Loop and similar). The parent's "verify subgraphs" loop uses this to skip a redundant
+  // VerifyNodeAndOpMatch on the same subgraph, avoiding exponential re-traversal of deeply nested
+  // subgraphs.
+  if (subgraph.parent_graph_ != nullptr) {
+    subgraph.parent_graph_->resolve_context_.inferred_subgraphs.insert(&subgraph);
+  }
+
   auto& subgraph_outputs = subgraph.GetOutputs();
   for (const auto* output : subgraph_outputs) {
     output_types.push_back(output->TypeAsProto());
@@ -3672,7 +3682,14 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         }
       }
 
-      ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+      // Skip verification if this subgraph already had type/shape inferencing (and node/op
+      // verification) performed via the containing op's inference function (e.g. Scan/If/Loop).
+      // This avoids exponential re-traversal of deeply nested subgraphs. Ops whose inference
+      // function does not descend into subgraphs (e.g. BeamSearch) are not recorded, so their
+      // subgraphs are still verified here.
+      if (!resolve_context_.inferred_subgraphs.contains(subgraph)) {
+        ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
+      }
     }
   }
 
@@ -3978,6 +3995,30 @@ Status Graph::ConvertInitializersIntoOrtValues() {
   };
 
   return ForThisAndAllSubgraphs(all_subgraphs, inline_external_attr_tensors_func);
+}
+
+Status Graph::ValidateInMemoryInitializers() {
+  std::vector<Graph*> all_subgraphs;
+  FindAllSubgraphs(all_subgraphs);
+
+  auto validate_graph = [](Graph& graph) -> Status {
+    for (const auto& [name, tensor_proto] : graph.GetAllInitializedTensors()) {
+      if (!utils::HasExternalDataInMemory(*tensor_proto)) {
+        continue;
+      }
+
+      OrtValue ort_value;
+      ORT_RETURN_IF_NOT(graph.GetOrtValueInitializer(name, ort_value),
+                        "The model contains initializers with arbitrary in-memory references. ",
+                        "This is an invalid model.");
+      ORT_RETURN_IF_NOT(graph_utils::CheckInMemoryDataMatch(*tensor_proto, ort_value.Get<Tensor>()),
+                        "In-memory data mismatch for initializer: ", name, ". This is an invalid model.");
+    }
+
+    return Status::OK();
+  };
+
+  return ForThisAndAllSubgraphs(all_subgraphs, validate_graph);
 }
 
 void Graph::SetName(const std::string& name) {
@@ -5459,10 +5500,10 @@ Status Graph::ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocatio
 }
 
 void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {
-  graph_proto_->clear_node();
-  graph_proto_->clear_input();
-  graph_proto_->clear_output();
-  graph_proto_->clear_value_info();
+  graph_proto.clear_node();
+  graph_proto.clear_input();
+  graph_proto.clear_output();
+  graph_proto.clear_value_info();
   graph_proto.set_name(Name());
   graph_proto.set_doc_string(Description());
 

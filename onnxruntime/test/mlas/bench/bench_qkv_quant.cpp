@@ -107,6 +107,37 @@ static void BM_QKGemm(benchmark::State& state) {
                           (M * K * sizeof(float) + N * MlasKVQuantPackedRowBytes(qt, K)));
 }
 
+static void BM_QKGemmFp16(benchmark::State& state) {
+  const size_t M = static_cast<size_t>(state.range(0));
+  const size_t N = static_cast<size_t>(state.range(1));
+  const size_t K = static_cast<size_t>(state.range(2));
+  const auto qt = static_cast<MLAS_KV_QUANT_TYPE>(state.range(3));
+
+  const auto A_fp32 = RandomFloats(M * K, 42);
+  std::vector<MLAS_FP16> A(M * K);
+  for (size_t i = 0; i < A.size(); ++i) {
+    A[i] = MLAS_FP16(A_fp32[i]);
+  }
+  auto B_fp = RandomFloats(N * K, 123);
+
+  std::vector<uint8_t> B_quant;
+  std::vector<float> scales;
+  QuantizeMatrix(B_fp.data(), N, K, qt, B_quant, scales);
+
+  std::vector<float> C(M * N, 0.0f);
+  const float alpha = 1.0f / std::sqrt(static_cast<float>(K));
+
+  MlasQKGemmFp16(M, N, K, alpha, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, nullptr);
+
+  for (auto _ : state) {
+    MlasQKGemmFp16(M, N, K, alpha, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, nullptr);
+  }
+
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * M * N * K * 2);
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                          (M * K * sizeof(MLAS_FP16) + N * MlasKVQuantPackedRowBytes(qt, K)));
+}
+
 //
 // Benchmark MlasSVGemm: C[M,N] = A[M,K] * B[K,N]
 //
@@ -132,6 +163,32 @@ static void BM_SVGemm(benchmark::State& state) {
 
   for (auto _ : state) {
     MlasSVGemm(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
+  }
+
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * M * N * K * 2);
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
+                          (M * K * sizeof(float) + K * MlasKVQuantPackedRowBytes(qt, N)));
+}
+
+static void BM_SVGemmFp16(benchmark::State& state) {
+  const size_t M = static_cast<size_t>(state.range(0));
+  const size_t N = static_cast<size_t>(state.range(1));
+  const size_t K = static_cast<size_t>(state.range(2));
+  const auto qt = static_cast<MLAS_KV_QUANT_TYPE>(state.range(3));
+
+  auto A = RandomFloats(M * K, 42);
+  auto B_fp = RandomFloats(K * N, 456);
+
+  std::vector<uint8_t> B_quant;
+  std::vector<float> scales;
+  QuantizeMatrix(B_fp.data(), K, N, qt, B_quant, scales);
+
+  std::vector<MLAS_FP16> C(M * N);
+
+  MlasSVGemmFp16(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
+
+  for (auto _ : state) {
+    MlasSVGemmFp16(M, N, K, A.data(), K, B_quant.data(), qt, scales.data(), C.data(), N, 0.0f, nullptr);
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * M * N * K * 2);
@@ -169,7 +226,9 @@ static void SVGemmArgs(benchmark::internal::Benchmark* b) {
 }
 
 BENCHMARK(BM_QKGemm)->Apply(QKGemmArgs)->UseRealTime();
+BENCHMARK(BM_QKGemmFp16)->Apply(QKGemmArgs)->UseRealTime();
 BENCHMARK(BM_SVGemm)->Apply(SVGemmArgs)->UseRealTime();
+BENCHMARK(BM_SVGemmFp16)->Apply(SVGemmArgs)->UseRealTime();
 
 //
 // Scalar fallback benchmarks: temporarily null the dispatch to force the scalar path.

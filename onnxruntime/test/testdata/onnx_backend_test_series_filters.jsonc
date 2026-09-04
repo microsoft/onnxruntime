@@ -29,8 +29,6 @@
 
     // Tests that are failing temporarily and should be fixed
     "current_failing_tests": [
-        // TODO(titaiwang): onnx 1.21 should fix lpnorm zero norm issue
-        "^test_l2normalization*",
         "^test_adagrad",
         "^test_adagrad_multiple",
         "^test_attention_4d_fp16*",  // precision issue: 1 / 192 mismatched elements
@@ -368,8 +366,6 @@
         // Size(21) from ONNX 1.16.0 is not implemented in cuda.
         "^test_size_cuda",
         "^test_size_example_cuda",
-        // DequantizeLinear(21) blocked quantization from ONNX 1.16.0 is not implemented in ORT yet.
-        "^test_dequantizelinear_blocked",
         "^test_quantizelinear_blocked_asymmetric",
         "^test_quantizelinear_blocked_symmetric",
         // Bug with test model: node's input name does not match the model's input name (x_zero_point vs zero_point)
@@ -380,9 +376,11 @@
         "^test_quantizelinear_uint4",
         // topk uint64 is not implemented in ORT yet.
         "^test_top_k_uint64",
-        // ORT DFT kernel does not implement IRFFT (inverse real FFT) — it always outputs
-        // complex (last dim=2) which is wrong for IRFFT. These ONNX backend tests were
-        // added in onnx commit ee910d0e4 for DFT-20 spec clarification.
+        // ORT DFT rfft/irfft outputs are numerically near-correct but a few
+        // near-zero elements exceed the runner's tight ~1e-5 absolute tolerance
+        // (platform-dependent FFT roundoff: passes on Windows CPU, fails on Linux
+        // CPU by <=~1.6e-4). Mirrors onnxruntime/test/onnx/TestCase.cc so the C++
+        // materialized runner stays at parity with this python conformance suite.
         "^test_dft_rfft",
         "^test_dft_irfft",
         "^test_dft_rfft_opset19",

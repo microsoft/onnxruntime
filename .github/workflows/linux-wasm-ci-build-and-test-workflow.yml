@@ -42,6 +42,7 @@ jobs:
         "1ES.Pool=onnxruntime-github-linux-large",
         "JobId=build-wasm-${{inputs.job_name}}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
+    timeout-minutes: 120
     env:
       buildArch: x64
       common_build_args: >-
@@ -63,17 +64,17 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           submodules: recursive
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
           architecture: ${{ env.buildArch }}
@@ -82,14 +83,14 @@ jobs:
         run: python -m pip install flatbuffers
 
       - name: Setup CCache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
           key: ccache | web.yml | ${{ inputs.job_name }}
           path: ~/.cache/ccache
 
       - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           key: vcpkg-cache | web.yml | ${{ inputs.job_name }}
           path: ~/.cache/vcpkg
@@ -176,7 +177,7 @@ jobs:
 
       - name: Upload WASM artifacts
         if: ${{ inputs.skip_publish != true }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: ${{ inputs.build_config }}_wasm
           path: ${{ github.workspace }}/artifacts/wasm
@@ -205,7 +206,7 @@ jobs:
 
       - name: Publish test results
         if: ${{ always() && inputs.build_config == 'Debug' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: test-results
           path: ${{ github.workspace }}/build/**/*.results.xml

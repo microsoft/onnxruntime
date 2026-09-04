@@ -954,6 +954,10 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const int64_t hidden_size = moe_params.hidden_size;
   const int64_t inter_size = moe_params.inter_size;
   const int64_t num_experts = moe_params.num_experts;
+
+  ORT_RETURN_IF_NOT(k_ <= num_experts,
+                    "QMoE attribute 'k' must be <= num_experts; got k=", k_,
+                    ", num_experts=", num_experts);
   const int64_t fc1_out_features = inter_size * (swiglu_fusion_ > 0 ? 2 : 1);
 
   auto* output = context->Output(0, input_shape);

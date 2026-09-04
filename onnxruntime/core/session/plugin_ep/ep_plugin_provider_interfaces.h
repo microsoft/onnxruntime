@@ -174,6 +174,7 @@ class PluginExecutionProvider : public IExecutionProvider {
   std::vector<const OrtEpDevice*> ep_devices_;
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
   bool generate_ep_ctx_model_ = false;
+  bool weightless_requested_ = false;  // True if app set ep.enable_weightless=1
 
   // Provider options extracted from session-level config (excluding arena.*).
   // Exposed through GetProviderOptions() so the framework reports the effective EP configuration.

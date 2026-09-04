@@ -34,6 +34,7 @@
 #include <cudnn.h>
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/cudnn_loader.h"
+#include "core/providers/cuda/cufft_loader.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
 
 #ifdef __CUDACC__
@@ -279,6 +280,11 @@ using ::onnxruntime::HandleNegativeAxis;
   {                                                                                                                                                                 \
     cufftResult _status = (expr);                                                                                                                                   \
     if (_status != CUFFT_SUCCESS) {                                                                                                                                 \
+      if (!onnxruntime::cuda::CufftLibrary::Get().Available()) {                                                                                                    \
+        return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,                                                  \
+                                           std::string("cuFFT is unavailable for CUDA Plugin Execution Provider: ") +                                               \
+                                               onnxruntime::cuda::CufftLibrary::Get().Error());                                                                     \
+      }                                                                                                                                                             \
       return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, std::string("cuFFT error: ") + std::to_string((int)_status)); \
     }                                                                                                                                                               \
   }
@@ -533,6 +539,13 @@ struct CudaKernelAdapterRuntimeConfig {
   bool do_copy_in_default_stream = true;
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
+  std::mutex captured_host_buffers_mutex;
+  std::vector<std::shared_ptr<void>> captured_host_buffers;
+
+  void RetainBufferForGraphCapture(std::shared_ptr<void> buffer) {
+    std::lock_guard<std::mutex> lock(captured_host_buffers_mutex);
+    captured_host_buffers.push_back(std::move(buffer));
+  }
 };
 template <typename T>
 struct SizeOf {
@@ -1064,8 +1077,30 @@ class CudaKernel : public OpKernel {
           std::string("cuDNN is unavailable or disabled for CUDA Plugin Execution Provider: ") +
               onnxruntime::cuda::CudnnLibrary::Get().Error()));
     }
-    if (handle != nullptr && stream != nullptr) {
-      CUDNN_CALL_THROW(cudnnSetStream(handle, stream));
+    // Bind the shared handle to the current compute stream. cudaStream_t 0/nullptr is the default
+    // stream, which is still a valid stream to bind, so do this unconditionally to avoid leaving
+    // the handle bound to a stale stream from a previous call.
+    CUDNN_CALL_THROW(cudnnSetStream(handle, stream));
+    return handle;
+  }
+
+  cudnnHandle_t TryGetCudnnHandle(OpKernelContext* ctx) const {
+    auto stream = Stream(ctx);
+    auto handle = GetCudnnHandle(stream);
+    if (handle != nullptr) {
+      return handle;
+    }
+
+    handle = DefaultCudnnHandle();
+    if (handle != nullptr) {
+      // Bind the shared handle to the current compute stream. cudaStream_t 0/nullptr is the default
+      // stream, which is still a valid stream to bind, so do this unconditionally to avoid leaving
+      // the handle bound to a stale stream from a previous call.
+      // Keep this accessor non-throwing: if the stream cannot be bound, treat it as "no cuDNN handle"
+      // so callers can fall back to a cuDNN-free path instead of failing.
+      if (!CUDNN_CALL(cudnnSetStream(handle, stream)).IsOK()) {
+        return nullptr;
+      }
     }
     return handle;
   }
@@ -1230,6 +1265,14 @@ class CudaKernel : public OpKernel {
   }
 
   template <typename T>
+  inline void RetainBufferForGraphCapture(IAllocatorUniquePtr<T> buffer) const {
+    auto deleter = buffer.get_deleter();
+    runtime_config_->RetainBufferForGraphCapture(
+        std::shared_ptr<void>(buffer.release(),
+                              [deleter](void* p) { deleter(static_cast<T*>(p)); }));
+  }
+
+  template <typename T>
   class CudaAsyncBuffer {
    public:
     CudaAsyncBuffer(const CudaKernel* ok) : gpu_(nullptr, [](T*) {}), count_(0), op_kernel_(ok) {}
@@ -1258,7 +1301,15 @@ class CudaKernel : public OpKernel {
           ORT_THROW("CUDA async buffer copy size overflow for ", count_, " elements");
         }
         if (cudaMemcpyAsync(gpu_.get(), cpu_.get(), bytes, cudaMemcpyHostToDevice, static_cast<cudaStream_t>(s)) != cudaSuccess) return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "Memcpy fail");
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_.release(), s);
+        cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+        if (s != nullptr) {
+          CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(static_cast<cudaStream_t>(s), &capture_status));
+        }
+        if (capture_status != cudaStreamCaptureStatusNone) {
+          op_kernel_->RetainBufferForGraphCapture(std::move(cpu_));
+        } else {
+          op_kernel_->AddDeferredReleaseCPUPtr(cpu_.release(), s);
+        }
       }
       return Status::OK();
     }

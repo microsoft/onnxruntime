@@ -6,6 +6,7 @@
 #include <memory>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <vector>
 
@@ -53,6 +54,7 @@ struct SessionState;
 }  // namespace fbs
 
 class ExecutionProviders;
+class MaxShapeInferenceResult;
 class KernelDef;
 class OpKernel;
 class NodeIndexInfo;
@@ -165,6 +167,16 @@ class SessionState {
    * The lifetime of returned OrtValues are limited by this SessionState object.
    */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
+
+  /**
+   * Gets the constant initialized tensors for use during kernel creation (constructor and PrePack).
+   * For subgraph session states this extends GetConstantInitializedTensors() with outer-scope
+   * constant initializers from parent graphs, re-indexed to the current subgraph's value map.
+   * This allows TryGetConstantInput to resolve parent-scope constants inside kernel constructors
+   * and PrePack (e.g. MatMulNBits packing scales alongside B when both live in the parent graph).
+   * For top-level graphs this is identical to GetConstantInitializedTensors().
+   */
+  const std::unordered_map<int, OrtValue>& GetConstantInitializedTensorsForKernelCreation() const;
 
   const PrepackedWeightsForGraph& GetPrepackedIniitializersForGraph() const;
 
@@ -432,6 +444,7 @@ class SessionState {
                                   bool remove_initializers,
                                   bool save_prepacked_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+                                  const MaxShapeInferenceResult& max_shape_inference_result,
                                   const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
@@ -494,6 +507,20 @@ class SessionState {
   std::unordered_map<int, OrtValue> initialized_tensors_;  // key is ort_value_index
   // subset of initialized_tensors_ that are constant and cannot be overridden at runtime
   std::unordered_map<int, OrtValue> constant_initialized_tensors_;
+  // For subgraph session states: constant_initialized_tensors_ extended with outer-scope constant
+  // initializers (from parent graphs) re-indexed to this subgraph's ort_value_name_idx_map_.
+  // Populated in FinalizeSessionStateImpl before CreateKernels; empty for top-level graphs.
+  // Returned by GetConstantInitializedTensorsForKernelCreation() so kernel constructors and
+  // PrePack can resolve parent-graph constants via TryGetConstantInput.
+  // After the subgraph finalization loop, the parent-scope copies in this map are erased
+  // (tracked via outer_scope_parent_only_indices_) to allow parent memory to be freed once
+  // prepack use counts reach zero.
+  std::unordered_map<int, OrtValue> outer_scope_augmented_constant_tensors_;
+  // Indices in outer_scope_augmented_constant_tensors_ that were added from parent scope
+  // (not present in constant_initialized_tensors_).  Erased from the augmented map after
+  // all subgraphs are finalized to release the extra OrtValue refcounts.
+  std::unordered_set<int> outer_scope_parent_only_indices_;
+  bool outer_scope_augmented_map_built_{false};
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   // This is an auxiliary lookup to check if the OrtValue was actually a sparse tensor

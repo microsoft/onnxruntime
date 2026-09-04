@@ -311,6 +311,12 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
 
 Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   bool has_sliding_window = local_window_size_ != -1;
+  const std::string value_max_expr = components_ == 4
+                                         ? "max(max(value.x, value.y), max(value.z, value.w))"
+                                         : (components_ == 2 ? "max(value.x, value.y)" : "value");
+  const std::string shifted_exp_sum_expr = components_ == 4
+                                               ? "(shifted_exp.x + shifted_exp.y + shifted_exp.z + shifted_exp.w)"
+                                               : (components_ == 2 ? "(shifted_exp.x + shifted_exp.y)" : "shifted_exp");
 
   if (has_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
@@ -347,14 +353,21 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let effective_seq_length = seq_causal_length;\n";
   }
   shader.MainFunctionBody()
-      << "var thread_max_vector = f32_val_t(-3.4028234663852886e+38f);\n"
+      << "var thread_max_local: f32 = -3.4028234663852886e+38f;\n"
+      << "var thread_sum_local: f32 = 0.0;\n"
       << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
       << "  let actual_pos = local_offset + i + start_offset;\n"
       << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
-      << "      thread_max_vector = max(f32_val_t(x[offset + i + start_offset]), thread_max_vector);\n"
+      << "    let value = f32_val_t(x[offset + i + start_offset]);\n"
+      << "    let value_max = " << value_max_expr << ";\n"
+      << "    let new_max = max(thread_max_local, value_max);\n"
+      << "    let shifted_exp = exp(value - f32_val_t(new_max));\n"
+      << "    thread_sum_local = thread_sum_local * exp(thread_max_local - new_max) + " << shifted_exp_sum_expr << ";\n"
+      << "    thread_max_local = new_max;\n"
       << "  }\n"
       << "}\n"
-      << "thread_max[local_idx] = " << (components_ == 4 ? "max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w))" : (components_ == 2 ? "max(thread_max_vector.x, thread_max_vector.y)" : "thread_max_vector")) << ";\n"
+      << "thread_max[local_idx] = thread_max_local;\n"
+      << "thread_sum[local_idx] = thread_sum_local;\n"
       << "workgroupBarrier();\n";
 
   if (has_head_sink_) {
@@ -370,18 +383,9 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
                             << "  max_value = max(thread_max[i], max_value);\n"
                             << "}\n"
-                            << "var sum_vector = f32_val_t(0);\n"
-                            << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
-                            << "  let actual_pos = local_offset + i + start_offset;\n"
-                            << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
-                            << "     sum_vector += exp(f32_val_t(x[offset + i + start_offset]) - max_value);\n"
-                            << "  }\n"
-                            << "}\n"
-                            << "thread_sum[local_idx] = " << (components_ == 4 ? "sum_vector.x + sum_vector.y + sum_vector.z + sum_vector.w" : (components_ == 2 ? "sum_vector.x + sum_vector.y" : "sum_vector")) << ";\n"
-                            << "workgroupBarrier();\n"
-                            << "var sum: f32 = 0;\n"
+                            << "var sum: f32 = 0.0;\n"
                             << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
-                            << "  sum += thread_sum[i]\n;"
+                            << "  sum += thread_sum[i] * exp(thread_max[i] - max_value);\n"
                             << "}\n";
 
   if (has_head_sink_) {
@@ -403,7 +407,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "    let pos = offset + i + start_offset;\n"
                             << "    if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
                             << "       var f32input = f32_val_t(x[pos]);\n"
-                            << "       x[pos] = x_value_t(exp(f32input - max_value) / sum);\n"
+                            << "       x[pos] = x_value_t(exp(f32input - f32_val_t(max_value)) / f32_val_t(sum));\n"
                             << "    }\n"
                             << "  }\n"
                             << "}\n";

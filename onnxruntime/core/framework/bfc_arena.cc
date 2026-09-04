@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/bfc_arena.h"
 #include <type_traits>
@@ -260,9 +261,9 @@ void BFCArena::DeallocateChunk(ChunkHandle h) {
 
 // static
 size_t BFCArena::RoundedBytes(size_t bytes) {
-  size_t rounded_bytes =
-      (kMinAllocationSize *
-       ((bytes + kMinAllocationSize - 1) / kMinAllocationSize));
+  SafeInt<size_t> rounded_bytes =
+      kMinAllocationSize *
+      ((SafeInt<size_t>(bytes) + kMinAllocationSize - 1) / kMinAllocationSize);
   ORT_ENFORCE(size_t{0} == rounded_bytes % kMinAllocationSize);
   return rounded_bytes;
 }

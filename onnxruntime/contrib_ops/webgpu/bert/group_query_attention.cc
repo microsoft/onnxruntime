@@ -27,6 +27,9 @@ Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
   const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform);
   const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
+  if (use_total_sequence_length_input_) {
+    sh.AddInput("total_sequence_length_input", ShaderUsage::None);
+  }
 
   const auto& query = sh.AddOutput("query", ShaderUsage::UseUniform);
   const auto& key = sh.AddOutput("key", ShaderUsage::UseUniform);
@@ -36,6 +39,7 @@ Status SplitPackedQKVWithRotaryEmbeddingProgram::GenerateShaderCode(ShaderHelper
                              WGSL_TEMPLATE_PARAMETER(interleaved, interleaved_),
                              WGSL_TEMPLATE_PARAMETER(multi_rotary_cache_concat_offset, multi_rotary_cache_concat_offset_),
                              WGSL_TEMPLATE_PARAMETER(use_multi_rotary_cache_concat, multi_rotary_cache_concat_offset_ > 0),
+                             WGSL_TEMPLATE_PARAMETER(use_total_sequence_length_input, use_total_sequence_length_input_),
                              WGSL_TEMPLATE_VARIABLE(cos_cache, cos_cache),
                              WGSL_TEMPLATE_VARIABLE(key, key),
                              WGSL_TEMPLATE_VARIABLE(packed_qkv, packed_qkv),
@@ -50,6 +54,7 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
                                             const WebgpuAttentionParameters& params,
                                             const Tensor* packedQKV,
                                             const Tensor* seqlen_k,
+                                            const Tensor* total_seqlen,
                                             const Tensor* cos_cache,
                                             const Tensor* sin_cache,
                                             Tensor* query,
@@ -79,15 +84,23 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
   auto dispatch_size = static_cast<uint32_t>(params.batch_size_ * params.sequence_length_ * params.num_heads_ * work_per_head_vec);
 
   const uint32_t multi_rotary_cache_concat_offset = context.MultiRotaryCacheConcatOffset();
-  SplitPackedQKVWithRotaryEmbeddingProgram program(params.rotary_interleaved_, multi_rotary_cache_concat_offset);
+  const bool use_total_sequence_length_input =
+      context.IsGraphCaptureEnabled() && multi_rotary_cache_concat_offset > 0;
+  SplitPackedQKVWithRotaryEmbeddingProgram program(params.rotary_interleaved_,
+                                                   multi_rotary_cache_concat_offset,
+                                                   use_total_sequence_length_input);
   program
-      .CacheHint(params.rotary_interleaved_, multi_rotary_cache_concat_offset)
+      .CacheHint(params.rotary_interleaved_, multi_rotary_cache_concat_offset, use_total_sequence_length_input)
       .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddInputs({
           {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
           {cos_cache, ProgramTensorMetadataDependency::Rank, components},
           {sin_cache, ProgramTensorMetadataDependency::Rank, components},
-      })
+      });
+  if (use_total_sequence_length_input) {
+    program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
+  }
+  program
       .AddOutputs({{query, ProgramTensorMetadataDependency::None, components},
                    {key, ProgramTensorMetadataDependency::None, components},
                    {val, ProgramTensorMetadataDependency::None, components}})
@@ -99,6 +112,7 @@ Status RunSplitPackedQKVWithRotaryEmbedding(onnxruntime::webgpu::ComputeContext&
           {static_cast<uint32_t>(params.kv_num_heads_)},
           {static_cast<uint32_t>(head_size_vec)},
           {static_cast<uint32_t>(half_rotary_embedding_dim_vec)},
+          {static_cast<uint32_t>(params.total_sequence_length_)},
           {static_cast<uint32_t>(dispatch_size)},
       })
       .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
@@ -419,7 +433,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
     vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
     ORT_RETURN_IF_ERROR(RunSplitPackedQKVWithRotaryEmbedding(context, parameters,
-                                                             query, seqlen_k,
+                                                             query, seqlen_k, total_seqlen_tensor,
                                                              cos_cache, sin_cache,
                                                              &qSplit, &kSplit, &vSplit));
     parameters.is_packed_qkv_ = false;

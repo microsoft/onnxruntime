@@ -13,9 +13,9 @@ add_compile_definitions(COREML_ENABLE_MLPROGRAM=1)
 if(LINUX)
   find_library(LibUUID_LIBRARY NAMES uuid)
   find_path(LibUUID_INCLUDE_DIR NAMES uuid/uuid.h)
-  if (NOT LibUUID_INCLUDE_DIR)
-    message(FATAL "uuid/uuid.h was not found as is required for ML Program support. "
-                    "Run `sudo apt install uuid-dev` if you need to test ML Program related CoreML EP code. ")
+  if (NOT LibUUID_INCLUDE_DIR OR NOT LibUUID_LIBRARY)
+    message(FATAL_ERROR "libuuid (uuid/uuid.h) was not found and is required for ML Program support. "
+                        "Run `sudo apt install uuid-dev`, or build with `--use_vcpkg` so the libuuid port is used. ")
   endif()
 endif()
 
@@ -194,7 +194,8 @@ target_include_directories(onnxruntime_providers_coreml PRIVATE
 )
 
 if (LINUX)
-  target_link_libraries(onnxruntime_providers_coreml PRIVATE uuid)
+  target_include_directories(onnxruntime_providers_coreml PRIVATE ${LibUUID_INCLUDE_DIR})
+  target_link_libraries(onnxruntime_providers_coreml PRIVATE ${LibUUID_LIBRARY})
 endif()
 
 

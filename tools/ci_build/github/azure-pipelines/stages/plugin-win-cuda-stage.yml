@@ -1,4 +1,11 @@
 parameters:
+- name: arch
+  type: string
+  default: x64
+  values:
+  - x64
+  - arm64
+
 - name: package_version
   type: string
   default: dev
@@ -23,24 +30,47 @@ parameters:
   type: string
   default: '12.8'
 
+# win-arm64 uses a separate CUDA toolkit and cuDNN build than win-x64. NVIDIA only
+# ships Windows-on-ARM CUDA for 13.x, hosted under a 'win-arm64/' blob path prefix.
+- name: arm64_cuda_version
+  type: string
+  default: '13.1'
+
+- name: arm64_cudnn_folder
+  type: string
+  default: '9.24.0.17_cuda13'
+
 - name: python_package_name
   type: string
 
 - name: cmake_cuda_archs
   type: string
-  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+  default: '61-real;75-real;86-real;89-real;120-real;120-virtual'
+
+- name: enable_cuda_fatbin_size_compression
+  type: boolean
+  default: false
+
+- name: enable_fpa_intb_gemm
+  type: boolean
+  default: true
 
 stages:
-  - stage: Win_plugin_cuda_x64_Build
+  - stage: Win_plugin_cuda_${{ parameters.arch }}_Build
     dependsOn: []
     jobs:
-    - job: Win_plugin_cuda_x64_Build
+    - job: Win_plugin_cuda_${{ parameters.arch }}_Build
       timeoutInMinutes: 360
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
-        os: windows
+        ${{ if eq(parameters.arch, 'arm64') }}:
+          name: onnxruntime-medium-arm64-scus
+          os: windows
+          hostArchitecture: Arm64
+        ${{ else }}:
+          name: onnxruntime-Win-CPU-VS2022-Latest
+          os: windows
       templateContext:
         sdl:
           codeSignValidation:
@@ -54,21 +84,29 @@ stages:
         outputs:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
-          artifactName: cuda_plugin_win_x64
+          artifactName: cuda_plugin_win_${{ parameters.arch }}
       variables:
       - template: ../templates/common-variables.yml
       - name: GRADLE_OPTS
         value: '-Dorg.gradle.daemon=false'
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
+      - name: FatbinCompressOption
+        ${{ if eq(parameters.enable_cuda_fatbin_size_compression, true) }}:
+          value: '--cmake_extra_defines onnxruntime_CUDA_FATBIN_COMPRESS_SIZE=ON'
+        ${{ else }}:
+          value: ''
+      - name: FpaIntBGemmOption
+        ${{ if eq(parameters.enable_fpa_intb_gemm, true) }}:
+          value: '--cmake_extra_defines onnxruntime_USE_FPA_INTB_GEMM=ON'
+        ${{ else }}:
+          value: '--cmake_extra_defines onnxruntime_USE_FPA_INTB_GEMM=OFF'
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:
-          host_cpu_arch: 'x64'
+          host_cpu_arch: ${{ parameters.arch }}
           python_version: ${{ parameters.python_version }}
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
@@ -85,26 +123,68 @@ stages:
         env:
           TMPDIR: "$(Agent.TempDirectory)"
 
-      - task: AzureCLI@2
-        displayName: 'Download CUDA SDK v${{ parameters.cuda_version }}'
-        inputs:
-          azureSubscription: AIInfraBuildOnnxRuntimeOSS
-          scriptType: 'batch'
-          scriptLocation: 'inlineScript'
-          inlineScript: |
-            set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
-            azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }} "$(Agent.TempDirectory)"
+      - ${{ if eq(parameters.arch, 'arm64') }}:
+        - powershell: |
+            $azCopyArchive = "$(Agent.TempDirectory)\azcopy.zip"
+            $azCopyDirectory = "$(Agent.TempDirectory)\azcopy"
+            Invoke-WebRequest `
+              -Uri "https://aka.ms/downloadazcopy-v10-windows-arm64" `
+              -OutFile $azCopyArchive `
+              -UseBasicParsing
+            Expand-Archive -Path $azCopyArchive -DestinationPath $azCopyDirectory -Force
 
-      # Since CUDA 13.0, CUDA DLLs are in bin\x64 folder instead of bin folder for Windows.
-      - powershell: |
-          Write-Host "Adding CUDA to PATH"
-          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin"
-          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin\x64"
-          Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
-        displayName: 'Add CUDA to PATH'
+            $azCopyExecutable = Get-ChildItem -Path $azCopyDirectory -Recurse -Filter azcopy.exe |
+              Select-Object -First 1
+            if (-not $azCopyExecutable) {
+              throw "AzCopy executable was not found after extracting $azCopyArchive."
+            }
 
-      # Download cuDNN separately for CUDA 13.0
-      - ${{ if eq(parameters.cuda_version, '13.0') }}:
+            $azCopyPath = $azCopyExecutable.FullName
+            Write-Host "##vso[task.prependpath]$($azCopyExecutable.DirectoryName)"
+            & $azCopyPath --version
+          displayName: 'Install AzCopy for win-arm64'
+
+      # CUDA SDK download. win-x64 toolkits live at cuda_sdk/v<ver>; win-arm64 toolkits
+      # live at cuda_sdk/win-arm64/v<ver> (NVIDIA Windows-on-ARM CUDA is 13.x only).
+      - ${{ if ne(parameters.arch, 'arm64') }}:
+        - task: AzureCLI@2
+          displayName: 'Download CUDA SDK v${{ parameters.cuda_version }}'
+          inputs:
+            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            scriptType: 'batch'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/v${{ parameters.cuda_version }} "$(Agent.TempDirectory)"
+
+        # Since CUDA 13.0, CUDA DLLs are in bin\x64 folder instead of bin folder for Windows.
+        - powershell: |
+            Write-Host "Adding CUDA to PATH"
+            Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin"
+            Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\bin\x64"
+            Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.cuda_version }}\extras\CUPTI\lib64"
+          displayName: 'Add CUDA to PATH'
+
+      - ${{ else }}:
+        - task: AzureCLI@2
+          displayName: 'Download CUDA SDK win-arm64 v${{ parameters.arm64_cuda_version }}'
+          inputs:
+            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            scriptType: 'batch'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cuda_sdk/win-arm64/v${{ parameters.arm64_cuda_version }} "$(Agent.TempDirectory)"
+
+        - powershell: |
+            Write-Host "Adding CUDA to PATH"
+            Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.arm64_cuda_version }}\bin"
+            Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.arm64_cuda_version }}\bin\arm64"
+            Write-Host "##vso[task.prependpath]$env:AGENT_TEMPDIRECTORY\v${{ parameters.arm64_cuda_version }}\extras\CUPTI\lib64"
+          displayName: 'Add CUDA to PATH'
+
+      # Download cuDNN separately for CUDA 13.0 (win-x64)
+      - ${{ if and(ne(parameters.arch, 'arm64'), eq(parameters.cuda_version, '13.0')) }}:
         - task: AzureCLI@2
           displayName: 'Download cuDNN for CUDA 13.0'
           inputs:
@@ -115,8 +195,20 @@ stages:
               set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
               azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/$(cuda13_cudnn_folder) "$(Agent.TempDirectory)"
 
-      # CUDA 12.x build (no separate cuDNN)
-      - ${{ if ne(parameters.cuda_version, '13.0') }}:
+      # Download cuDNN for win-arm64 (hosted under cudnn_sdk/win-arm64/<folder>).
+      - ${{ if eq(parameters.arch, 'arm64') }}:
+        - task: AzureCLI@2
+          displayName: 'Download cuDNN for win-arm64 (${{ parameters.arm64_cudnn_folder }})'
+          inputs:
+            azureSubscription: AIInfraBuildOnnxRuntimeOSS
+            scriptType: 'batch'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              set AZCOPY_AUTO_LOGIN_TYPE=AZCLI
+              azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/cudnn_sdk/win-arm64/${{ parameters.arm64_cudnn_folder }} "$(Agent.TempDirectory)"
+
+      # CUDA 12.x build (no separate cuDNN). win-x64 only — win-arm64 always uses CUDA 13.x.
+      - ${{ if and(ne(parameters.arch, 'arm64'), ne(parameters.cuda_version, '13.0')) }}:
         - task: PythonScript@0
           displayName: 'Build CUDA Plugin (CUDA ${{ parameters.cuda_version }})'
           inputs:
@@ -140,11 +232,13 @@ stages:
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
               --cmake_extra_defines $(PluginEpVersionDefine)
+              $(FatbinCompressOption)
+              $(FpaIntBGemmOption)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
 
-      # CUDA 13.0 build (separate cuDNN folder)
-      - ${{ if eq(parameters.cuda_version, '13.0') }}:
+      # CUDA 13.0 build (separate cuDNN folder). win-x64 only — win-arm64 handled below.
+      - ${{ if and(ne(parameters.arch, 'arm64'), eq(parameters.cuda_version, '13.0')) }}:
         - task: PythonScript@0
           displayName: 'Build CUDA Plugin (CUDA ${{ parameters.cuda_version }})'
           inputs:
@@ -169,6 +263,41 @@ stages:
               --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
               --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
               --cmake_extra_defines $(PluginEpVersionDefine)
+              $(FatbinCompressOption)
+              $(FpaIntBGemmOption)
+              $(TelemetryOption)
+            workingDirectory: '$(Build.BinariesDirectory)'
+
+      # win-arm64 build (CUDA 13.x with a separate cuDNN folder). Runs natively on the
+      # ARM64 agent, so build.py auto-selects the ARM64 toolset (-A ARM64).
+      - ${{ if eq(parameters.arch, 'arm64') }}:
+        - task: PythonScript@0
+          displayName: 'Build CUDA Plugin (win-arm64 CUDA ${{ parameters.arm64_cuda_version }})'
+          inputs:
+            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+            arguments: >-
+              --config ${{ parameters.cmake_build_type }}
+              --build_dir $(Build.BinariesDirectory)
+              --skip_submodule_sync
+              --cmake_generator "$(VSGenerator)"
+              --parallel
+              --nvcc_threads 1
+              --flash_nvcc_threads 1
+              --use_vcpkg
+              --use_vcpkg_ms_internal_asset_cache
+              --use_binskim_compliant_compile_flags
+              --update
+              --build
+              --use_cuda
+              --cuda_home="$(Agent.TempDirectory)\v${{ parameters.arm64_cuda_version }}"
+              --cudnn_home="$(Agent.TempDirectory)\${{ parameters.arm64_cudnn_folder }}"
+              --skip_tests
+              --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="${{ parameters.cmake_cuda_archs }}"
+              --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines $(PluginEpVersionDefine)
+              $(FatbinCompressOption)
+              $(FpaIntBGemmOption)
               $(TelemetryOption)
             workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -186,8 +315,29 @@ stages:
             Write-Error "Expected plugin binary not found at '$pluginPath'. Failing build to avoid publishing an invalid package."
             exit 1
           }
-          Write-Host "Verified plugin binary exists at: $pluginPath"
-        displayName: 'Verify plugin binary exists'
+
+          $versionInfo = (Get-Item $pluginPath).VersionInfo
+          $requiredProperties = @(
+            'FileDescription',
+            'FileVersion',
+            'OriginalFilename',
+            'ProductName',
+            'ProductVersion',
+            'LegalCopyright',
+            'Language'
+          )
+          foreach ($property in $requiredProperties) {
+            if ([string]::IsNullOrWhiteSpace($versionInfo.$property)) {
+              throw "Plugin DLL version property '$property' is missing."
+            }
+          }
+          if ($versionInfo.OriginalFilename -ne 'onnxruntime_providers_cuda.dll') {
+            throw "Unexpected OriginalFilename '$($versionInfo.OriginalFilename)'."
+          }
+
+          Write-Host "Verified plugin DLL version information:"
+          $versionInfo | Format-List $requiredProperties
+        displayName: 'Verify plugin binary and version information'
 
       - task: CopyFiles@2
         displayName: 'Copy plugin binaries to staging directory'
@@ -203,29 +353,35 @@ stages:
           type nul > "$(Build.ArtifactStagingDirectory)\version\$(PluginPackageVersion)"
         displayName: 'Create version marker file'
 
-    - job: Win_plugin_cuda_x64_Python_Package
-      dependsOn: Win_plugin_cuda_x64_Build
+    - job: Win_plugin_cuda_${{ parameters.arch }}_Python_Package
+      dependsOn: Win_plugin_cuda_${{ parameters.arch }}_Build
       timeoutInMinutes: 30
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
-        os: windows
+        ${{ if eq(parameters.arch, 'arm64') }}:
+          name: onnxruntime-medium-arm64-scus
+          os: windows
+          hostArchitecture: Arm64
+        ${{ else }}:
+          name: onnxruntime-Win-CPU-VS2022-Latest
+          os: windows
       templateContext:
         outputs:
         - output: pipelineArtifact
           targetPath: '$(Build.ArtifactStagingDirectory)\python'
-          artifactName: cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}
+          ${{ if eq(parameters.arch, 'arm64') }}:
+            artifactName: cuda_plugin_python_win_arm64_cuda${{ replace(parameters.arm64_cuda_version, '.', '') }}
+          ${{ else }}:
+            artifactName: cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}
       variables:
       - template: ../templates/common-variables.yml
       steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:
-          host_cpu_arch: 'x64'
+          host_cpu_arch: ${{ parameters.arch }}
           python_version: ${{ parameters.python_version }}
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
@@ -239,18 +395,19 @@ stages:
       - task: DownloadPipelineArtifact@2
         displayName: 'Download plugin build artifacts'
         inputs:
-          artifactName: cuda_plugin_win_x64
+          artifactName: cuda_plugin_win_${{ parameters.arch }}
           targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
 
-      - task: PowerShell@2
+      - powershell: |
+          if ('${{ parameters.arch }}' -eq 'arm64') {
+            $env:_PYTHON_HOST_PLATFORM = 'win-arm64'
+          } else {
+            $env:_PYTHON_HOST_PLATFORM = 'win-amd64'
+          }
+          python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-cuda\python\requirements-build-wheel.txt"
+          python "$(Build.SourcesDirectory)\plugin-ep-cuda\python\build_wheel.py" `
+            --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
+            --version "$(PluginPythonPackageVersion)" `
+            --package_name "${{ parameters.python_package_name }}" `
+            --output_dir "$(Build.ArtifactStagingDirectory)\python"
         displayName: 'Build Python wheel'
-        inputs:
-          targetType: inline
-          pwsh: true
-          script: |
-            python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-cuda\python\requirements-build-wheel.txt"
-            python "$(Build.SourcesDirectory)\plugin-ep-cuda\python\build_wheel.py" `
-              --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
-              --version "$(PluginPythonPackageVersion)" `
-              --package_name "${{ parameters.python_package_name }}" `
-              --output_dir "$(Build.ArtifactStagingDirectory)\python"

@@ -39,8 +39,9 @@ class EpLibraryInternal : public EpLibrary {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryInternal);
 
-  // create instances for all internal EPs included in this build.
-  static std::vector<std::unique_ptr<EpLibraryInternal>> CreateInternalEps();
+  // create instances for all internal EPs included in this build. allow_virtual_devices is forwarded to
+  // the WebGPU EP factory (the only internal EP that can register a virtual device); see CreateWebGpuEp.
+  static std::vector<std::unique_ptr<EpLibraryInternal>> CreateInternalEps(bool allow_virtual_devices);
 
  private:
   static std::unique_ptr<EpLibraryInternal> CreateCpuEp();
@@ -48,7 +49,7 @@ class EpLibraryInternal : public EpLibrary {
   static std::unique_ptr<EpLibraryInternal> CreateDmlEp();
 #endif
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
-  static std::unique_ptr<EpLibraryInternal> CreateWebGpuEp();
+  static std::unique_ptr<EpLibraryInternal> CreateWebGpuEp(bool allow_virtual_devices);
 #endif
 
   std::unique_ptr<EpFactoryInternal> factory_;  // all internal EPs register a single factory currently

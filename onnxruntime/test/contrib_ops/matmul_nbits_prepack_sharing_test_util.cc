@@ -26,6 +26,7 @@ void CheckSharedPrepackedWeights(OpTester& test, PrepackSharingMode mode,
 
   switch (mode) {
     case PrepackSharingMode::kAddInitializer:
+    case PrepackSharingMode::kAddInitializerExpectNoPrepack:
       // Register B as an explicitly shared initializer (the pre-existing sharing mechanism).
       Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape(b_dims), b_data.data(),
                            OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b_ortvalue);
@@ -60,6 +61,23 @@ void CheckSharedPrepackedWeights(OpTester& test, PrepackSharingMode mode,
   }
 
   const auto number_of_elements_in_shared_container = test.GetNumPrePackedWeightsShared();
+
+  if (mode == PrepackSharingMode::kAddInitializerExpectNoPrepack) {
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, static_cast<size_t>(0));
+    ASSERT_EQ(number_of_elements_in_shared_container, static_cast<size_t>(0));
+
+    {
+      size_t number_of_pre_packed_weights_counter_session_2 = 0;
+      auto ep_vec = cpu_ep();
+      test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &ep_vec, {},
+               &number_of_pre_packed_weights_counter_session_2,
+               &number_of_shared_pre_packed_weights_counter);
+      ASSERT_EQ(number_of_pre_packed_weights_counter_session_2, static_cast<size_t>(0));
+      ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+      ASSERT_EQ(test.GetNumPrePackedWeightsShared(), static_cast<size_t>(0));
+    }
+    return;
+  }
 
   if (mode == PrepackSharingMode::kNoSharing) {
     // Without opting in, pre-packed weights must not be placed in the shared container.

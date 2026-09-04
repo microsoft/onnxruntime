@@ -72,6 +72,8 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ASSERT_STREQ(metadata.GetValue("supported_devices"), "CrackGriffin 7+");
   // Verify the example plugin's expected os_driver_version value.
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_OSDriverVersion), "31.0.101.1000");
+  // Verify the example plugin reports weightless support for all initializers.
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport), "all");
 
   auto options = test_ep_device->EpOptions();
   ASSERT_STREQ(options.GetValue("run_really_fast"), "true");

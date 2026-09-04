@@ -317,6 +317,20 @@ Status Lstm::ComputeInternal(ComputeContext& context) const {
     input_size = X_shape[2];
   }
 
+  // Validate that the W and R weight shapes are consistent with the hidden_size attribute. ONNX shape
+  // inference does not verify this relationship, so an inconsistent model (e.g. a bogus hidden_size)
+  // would otherwise be used to drive the cell computation and read out of bounds from the W/R buffers.
+  const auto& W_shape = W->Shape();
+  const auto& R_shape = R->Shape();
+  ORT_RETURN_IF(W_shape.NumDimensions() != 3 || W_shape[0] != num_directions ||
+                    W_shape[1] != 4 * hidden_size_ || W_shape[2] != input_size,
+                "LSTM: Input W must have shape {", num_directions, ", 4*", hidden_size_, ", ", input_size,
+                "}. Actual: ", W_shape);
+  ORT_RETURN_IF(R_shape.NumDimensions() != 3 || R_shape[0] != num_directions ||
+                    R_shape[1] != 4 * hidden_size_ || R_shape[2] != hidden_size_,
+                "LSTM: Input R must have shape {", num_directions, ", 4*", hidden_size_, ", ", hidden_size_,
+                "}. Actual: ", R_shape);
+
   uint32_t H = static_cast<uint32_t>(hidden_size_);
 
   // Output shapes

@@ -278,14 +278,16 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedWebGpuResults
                                                        /*expect_skip_input=*/false));
   };
 
+  // Tolerance sized to the FP16 accumulation envelope of these kernels across Dawn/Tint versions;
+  // baseline (3x MatMulNBits) and fused (single QKV decode) use different reduction trees.
   RunWebGpuFusionTransformerTest(
       BuildMatMulNBitsQkvWebGpuPattern,
       check_transformed_graph,
       TransformerLevel::Level1,
       TransformerLevel::Level2,
       21,
-      1e-3,
-      1e-3,
+      2e-3,
+      5e-3,
       std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       []() { return DefaultWebGpuExecutionProvider(); });
 }
@@ -319,8 +321,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuRes
       TransformerLevel::Level1,
       TransformerLevel::Level2,
       21,
-      1e-3,
-      1e-3,
+      2e-3,
+      5e-3,
       std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       []() { return DefaultWebGpuExecutionProvider(); });
 }
@@ -359,8 +361,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsQkvFusionMatchesUnfusedSkipWebGpuRes
       TransformerLevel::Level1,
       TransformerLevel::Level2,
       21,
-      1e-3,
-      1e-3,
+      2e-3,
+      5e-3,
       std::make_unique<MatMulNBitsQkvFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       []() { return DefaultWebGpuExecutionProvider(); },
       add_session_options);

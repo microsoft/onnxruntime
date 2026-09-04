@@ -2,8 +2,13 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#endif
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -76,6 +81,25 @@ TEST(ConcatOpTest, Concat1D_2) {
             kOpenVINOExecutionProvider,  // OpenVINO: does not support 0 size input
             kQnnExecutionProvider});     // QNN: not support dynamic shape tensor
 }
+
+#ifdef USE_CUDA
+TEST(ConcatOpTest, EqualSized33InputsCuda) {
+  constexpr int kInputCount = 33;
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  std::vector<float> expected;
+  expected.reserve(kInputCount);
+  for (int i = 0; i < kInputCount; ++i) {
+    const auto value = static_cast<float>(i);
+    const auto input_name = MakeString("input", i);
+    test.AddInput<float>(input_name.c_str(), {1}, {value});
+    expected.push_back(value);
+  }
+  test.AddOutput<float>("concat_result", {kInputCount}, expected);
+  test.ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+}
+#endif
 
 TYPED_TEST(ConcatOpTest, Concat2D_1) {
   OpTester test("Concat");
@@ -538,6 +562,31 @@ TEST(ConcatOpTest, Concat3D_exceed_maxStorageBuffersPerShaderStage_mixed_sizes) 
                                                        // batch 1
                                                        2, 6, 7, 8, 11, 12, 14});
   test.Run();
+}
+
+TEST(ConcatOpTest, Concat_int64_webgpu) {
+  // int64 support on the WebGPU EP is gated behind the enableInt64 provider option.
+  ConfigOptions provider_options{};
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(provider_options);
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+  // Include values outside the int32 range (2^32, 2^33+1, a large negative, INT64_MAX) to prove
+  // the full 64-bit value is preserved via a raw vec2<u32> storage copy rather than truncated to i32.
+  test.AddInput<int64_t>("input1", {1, 2}, {1, 4294967296});                                        // 1, 2^32
+  test.AddInput<int64_t>("input2", {2, 2}, {8589934593, -4294967297, 100, 9223372036854775807LL});  // 2^33+1, -(2^32+1), 100, INT64_MAX
+  test.AddOutput<int64_t>("concat_result", {3, 2}, {1, 4294967296, 8589934593, -4294967297, 100, 9223372036854775807LL});
+
+  // Disable CPU-EP fallback so the Concat node must run on the WebGPU kernel.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(so)
+      .ConfigEp(std::move(provider))
+      .RunWithConfig();
 }
 #endif  // USE_WEBGPU
 

@@ -1773,9 +1773,8 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
 
-    // "expected 0.793675 (3f4b2e44), got 0.79232 (3f4ad584), diff: 0.00135422, tol=0.000179367 idx=4276.
-    // 1713 of 8192 differ"
-    // Loose the atol a bit because we see the MatMuls results differ once we move Gather before it.
+    // Moving Gather before MatMul changes the MatMul shapes and may alter the
+    // floating-point accumulation order, so allow a small numerical difference.
     constexpr double per_sample_tolerance = 2e-3;
     constexpr double relative_per_sample_tolerance = 2e-3;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {

@@ -25,7 +25,7 @@ namespace onnxruntime::llm::kernels::cutlass_kernels {
 // ============================== Infer GEMM sizes =================================
 // TODO Could linear search be better for small # experts
 template <class T>
-__device__ inline int64_t findTotalEltsLessThanTarget(T const* sorted_indices, int64_t const arr_length, T const target) {
+__device__ inline int64_t findTotalEltsLessThanTarget(const T* sorted_indices, const int64_t arr_length, const T target) {
   int64_t low = 0, high = arr_length - 1, target_location = -1;
   while (low <= high) {
     int64_t mid = (low + high) / 2;
@@ -150,7 +150,7 @@ __device__ auto quantizePackedFPXValue(ComputeElem& post_act_val, float global_s
 template <int VecSize, int ElementsPerThread>
 __device__ void writeSF(int64_t num_tokens_before_expert, int64_t expert_id, int64_t source_token_id, int64_t token_id,
                         int64_t elem_idx, int64_t num_cols, TmaWarpSpecializedGroupedGemmInput::ElementSF* act_sf_flat,
-                        TmaWarpSpecializedGroupedGemmInput::ElementSF const* input_sf) {
+                        const TmaWarpSpecializedGroupedGemmInput::ElementSF* input_sf) {
   static constexpr int NumThreadsPerSF = VecSize / ElementsPerThread;
 
   // We need to offset into the scaling factors for just this expert
@@ -165,7 +165,7 @@ __device__ void writeSF(int64_t num_tokens_before_expert, int64_t expert_id, int
       num_cols, act_sf_expert, FP4QuantizationSFLayout::SWIZZLED);
   if (sf_out) {
     if (input_sf) {
-      auto const sf_in = cvt_quant_to_fp4_get_sf_out_offset<TmaWarpSpecializedGroupedGemmInput::ElementSF, NumThreadsPerSF,
+      const auto sf_in = cvt_quant_to_fp4_get_sf_out_offset<TmaWarpSpecializedGroupedGemmInput::ElementSF, NumThreadsPerSF,
                                                             VecSize>(std::nullopt /* batchIdx */, source_token_id, elem_idx, std::nullopt /* numRows */,
                                                                      num_cols, const_cast<TmaWarpSpecializedGroupedGemmInput::ElementSF*>(input_sf),
                                                                      FP4QuantizationSFLayout::SWIZZLED);
@@ -177,7 +177,7 @@ __device__ void writeSF(int64_t num_tokens_before_expert, int64_t expert_id, int
 }
 
 template <class T, class U>
-__host__ __device__ constexpr static U arrayConvert(T const& input) {
+__host__ __device__ constexpr static U arrayConvert(const T& input) {
   cutlass::NumericArrayConverter<typename U::Element, typename T::Element, U::kElements> converter;
   return converter(input);
 }

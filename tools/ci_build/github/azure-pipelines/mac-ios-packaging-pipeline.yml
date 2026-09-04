@@ -47,6 +47,7 @@ parameters:
   default: normal
 
 name: "$(Date:yyyyMMdd)$(Rev:rrr)"  # build number format
+
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
   # For non-production pipelines, use "Unofficial" as defined below.

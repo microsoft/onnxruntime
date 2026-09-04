@@ -186,3 +186,85 @@ class QgemmShortExecuteTest<AType, BType, float, Packed, Threaded> : public Mlas
   size_t M_, N_, K_;
   uint8_t offa_, offb_;
 };
+
+//
+// Explicit S8U8 coverage for signed A boundary values (-128/-1/0/127); the
+// generic buffer fill never produces bytes outside [21,63].
+//
+template <bool Threaded>
+class QgemmS8U8SignedInputTest : public MlasTestFixture<MlasQgemmTest<int8_t, uint8_t, int32_t, false, Threaded>> {
+ public:
+  QgemmS8U8SignedInputTest(size_t M, size_t N, size_t K, uint8_t offa, uint8_t offb)
+      : M_(M), N_(N), K_(K), offa_(offa), offb_(offb) {
+  }
+
+  void TestBody() override {
+    static const int8_t a_values[] = {-128, -1, 0, 1, 127, -64, 64, -33};
+    static const uint8_t b_values[] = {0, 1, 127, 128, 255, 63, 200, 17};
+
+    uint8_t* A = BufferA.GetFilledBuffer(M_ * K_, [](uint8_t* p, size_t n) {
+      for (size_t i = 0; i < n; i++) {
+        p[i] = uint8_t(a_values[i % _countof(a_values)]);
+      }
+    });
+    uint8_t* B = BufferB.GetFilledBuffer(K_ * N_, [](uint8_t* p, size_t n) {
+      for (size_t i = 0; i < n; i++) {
+        p[i] = b_values[i % _countof(b_values)];
+      }
+    });
+    int32_t* C = BufferC.GetBuffer(M_ * N_);
+    int32_t* CReference = BufferCReference.GetBuffer(M_ * N_);
+
+    MlasTestFixture<MlasQgemmTest<int8_t, uint8_t, int32_t, false, Threaded>>::mlas_tester
+        ->Test(M_, N_, K_, 1, A, K_, offa_, B, N_, offb_, C, CReference, N_);
+  }
+
+  static size_t RegisterSingleTest(size_t M, size_t N, size_t K, uint8_t offa, uint8_t offb) {
+    std::stringstream ss;
+    ss << "M" << M << "xN" << N << "xK" << K << "/"
+       << "offa" << (unsigned)offa << "/"
+       << "offb" << (unsigned)offb;
+    auto test_name = ss.str();
+
+    testing::RegisterTest(
+        Threaded ? "QGemmS8U8_Int32_SignedInput_Threaded" : "QGemmS8U8_Int32_SignedInput_SingleThread",
+        test_name.c_str(),
+        nullptr,
+        test_name.c_str(),
+        __FILE__,
+        __LINE__,
+        [=]() -> MlasTestFixture<MlasQgemmTest<int8_t, uint8_t, int32_t, false, Threaded>>* {
+          return new QgemmS8U8SignedInputTest<Threaded>(M, N, K, offa, offb);
+        });
+    return 1;
+  }
+
+  static size_t RegisterShortExecuteTests() {
+    size_t test_registered = 0;
+
+    static const size_t Ks[] = {1, 3, 4, 5, 7, 8, 9, 15, 16, 17};
+    static const size_t Ms[] = {1, 2, 3, 4, 7, 8, 9};
+    static const uint8_t offas[] = {0, 128, 255};
+    static const uint8_t offbs[] = {0, 255};
+
+    for (size_t k = 0; k < _countof(Ks); k++) {
+      for (size_t m = 0; m < _countof(Ms); m++) {
+        for (size_t a = 0; a < _countof(offas); a++) {
+          for (size_t b = 0; b < _countof(offbs); b++) {
+            test_registered += RegisterSingleTest(Ms[m], 16, Ks[k], offas[a], offbs[b]);
+          }
+        }
+      }
+    }
+
+    return test_registered;
+  }
+
+ private:
+  MatrixGuardBuffer<uint8_t> BufferA;
+  MatrixGuardBuffer<uint8_t> BufferB;
+  MatrixGuardBuffer<int32_t> BufferC;
+  MatrixGuardBuffer<int32_t> BufferCReference;
+  size_t M_, N_, K_;
+  uint8_t offa_, offb_;
+};

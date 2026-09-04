@@ -48,17 +48,16 @@
     "onnx",
     {
       "name": "protobuf",
-      "version>=": "3.21.12"
+      "version>=": "6.33.6"
     },
     {
       "name": "protobuf",
       "host": true,
-      "version>=": "3.21.12"
+      "version>=": "6.33.6"
     },
     "pybind11",
     "re2",
     "safeint",
-    "utf8-range",
     {
       "name": "vcpkg-cmake",
       "host": true
@@ -87,7 +86,13 @@
     },
     "coreml-ep": {
       "description": "Build with CoreML EP",
-      "dependencies": ["fp16"]
+      "dependencies": [
+        "fp16",
+        {
+          "name": "libuuid",
+          "platform": "linux"
+        }
+      ]
     },
     "dml-ep": {
       "description": "Build with DirectML EP",
@@ -96,16 +101,57 @@
     "webgpu-ep": {
       "description": "Build with WebGPU EP",
       "dependencies": []
+    },
+    "telemetry": {
+      "description": "Build with static 1DS telemetry support on non-Windows platforms",
+      "dependencies": [
+        {
+          "name": "cpp-client-telemetry",
+          "platform": "!windows & !android & !emscripten & !uwp"
+        },
+        {
+          "name": "curl",
+          "default-features": false,
+          "features": [
+            "mbedtls"
+          ],
+          "platform": "linux"
+        },
+        {
+          "name": "mbedtls",
+          "features": [
+            "pthreads"
+          ],
+          "platform": "linux"
+        },
+        {
+          "name": "sqlite3",
+          "default-features": false,
+          "platform": "!windows & !android & !emscripten & !uwp"
+        }
+      ]
     }
   },
   "overrides": [
     {
+      "name": "benchmark",
+      "version": "1.9.4"
+    },
+    {
+      "name": "directx-headers",
+      "version": "1.616.0"
+    },
+    {
       "name": "protobuf",
-      "version": "3.21.12#4"
+      "version": "6.33.6#0"
     },
     {
       "name": "flatbuffers",
       "version": "23.5.26"
+    },
+    {
+      "name": "mimalloc",
+      "version": "2.1.1"
     }
   ]
 }

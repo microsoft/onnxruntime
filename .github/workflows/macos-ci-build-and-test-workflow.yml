@@ -51,6 +51,7 @@ jobs:
     # "macos-15" is an arm64 image.
     # see also: https://github.com/actions/runner-images/blob/main/README.md
     runs-on: ${{ matrix.machine == 'x86_64' && 'macos-15-intel' || 'macos-15' }}
+    timeout-minutes: 120
     env:
       build_flags: >
         --build_dir ./build
@@ -76,8 +77,8 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.9
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
         with:
           vcpkg-version: '2025.08.27'
           vcpkg-hash: 9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079
@@ -94,7 +95,7 @@ jobs:
           xcode_version: ${{ env.xcode_version }}
           use_cache: true
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         id: onnx-node-tests-cache
         with:
           path: ${{ github.workspace }}/js/test/

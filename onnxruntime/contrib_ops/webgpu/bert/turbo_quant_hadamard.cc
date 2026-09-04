@@ -24,7 +24,9 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
   if (use_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::None);
   }
+  // Use the batch-wide GPU value for dispatch sizing: batch 0 is not necessarily the longest batch.
   if (prepare_indirect_dispatch_) {
+    shader.AddInput("total_sequence_length_input", ShaderUsage::None);
     shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
@@ -60,7 +62,7 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
                                         const Tensor* K, const Tensor* past_key, Tensor* present_key,
                                         const Tensor* V, const Tensor* past_value, Tensor* present_value,
                                         uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer,
-                                        uint32_t num_q_tiles) {
+                                        uint32_t num_q_tiles, const Tensor* total_seqlen) {
   const int head_size = parameters.head_size_;
   const int components = head_size % 4 == 0 ? 4 : (head_size % 2 == 0 ? 2 : 1);
   ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 8,
@@ -81,13 +83,6 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   bool use_seqlen_k = (seqlen_k != nullptr);
-  ORT_RETURN_IF_ERROR(
-      (!use_seqlen_k || parameters.batch_size_ == 1)
-          ? Status::OK()
-          : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "TurboQuant graph-capture decode path reads seqlen_k[0] for all batches and "
-                            "currently supports batch_size == 1 only; got batch_size = ",
-                            parameters.batch_size_));
   bool kv_BNSH = parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH;
 
   TurboQuantHadamardProgram program{"TurboQuantCopyToQuantizedKVCache", has_past, kv_BNSH,
@@ -113,6 +108,9 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
   if (use_seqlen_k) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
+  if (prepare_indirect_dispatch) {
+    program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
+  }
 
   // Past KV cache is already u32-packed (no vectorization).
   if (has_past) {
@@ -128,6 +126,7 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
     program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
   }
 
+  const uint32_t past_input_seq_length = has_past ? static_cast<uint32_t>(past_key->Shape()[2]) : 0u;
   // present_key has shape (batch, kv_num_heads, present_seq_length, compressed_head_size_u32)
   uint32_t present_seq_length = static_cast<uint32_t>(present_key->Shape()[2]);
 
@@ -137,11 +136,13 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
                  prepare_indirect_dispatch, use_seqlen_k, head_size_log2, components, compressed_head_size_u32)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
+                            {static_cast<uint32_t>(copy_sequence_length)},
                             {static_cast<uint32_t>(kv_num_heads)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(parameters.num_heads_)},
                             {num_q_tiles},
                             {num_slices_per_kv},
+                            {past_input_seq_length},
                             {present_seq_length},
                             {tile_size},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)}});
@@ -156,6 +157,10 @@ Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) co
 
   if (use_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::None);
+  }
+  // Use the batch-wide GPU value for dispatch sizing: batch 0 is not necessarily the longest batch.
+  if (prepare_indirect_dispatch_) {
+    shader.AddInput("total_sequence_length_input", ShaderUsage::None);
   }
 
   const auto& query = shader.AddOutput("query", ShaderUsage::UseUniform);
@@ -195,7 +200,8 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
                                                       Tensor* present_value,
                                                       Tensor* indirect_buffer,
                                                       uint32_t tile_size,
-                                                      uint32_t num_q_tiles) {
+                                                      uint32_t num_q_tiles,
+                                                      const Tensor* total_seqlen) {
   const int head_size = parameters.head_size_;
   ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 8,
               "head_size must be a power of 2 >= 8 for TurboQuant fused rotary, got ", head_size);
@@ -215,13 +221,6 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
 
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   bool use_seqlen_k = (seqlen_k != nullptr);
-  ORT_RETURN_IF_ERROR(
-      (!use_seqlen_k || parameters.batch_size_ == 1)
-          ? Status::OK()
-          : ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "TurboQuant graph-capture decode path reads seqlen_k[0] for all batches and "
-                            "currently supports batch_size == 1 only; got batch_size = ",
-                            parameters.batch_size_));
   const uint32_t multi_rotary_cache_concat_offset = context.MultiRotaryCacheConcatOffset();
 
   TurboQuantFusedRotaryProgram program{"TurboQuantFusedRotary", head_size_log2,
@@ -239,6 +238,9 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
 
   if (use_seqlen_k) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
+  }
+  if (prepare_indirect_dispatch) {
+    program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
   }
 
   program.AddOutputs({{query, ProgramTensorMetadataDependency::None},

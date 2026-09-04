@@ -1,50 +1,56 @@
 parameters:
-- name: machine_pool
+- name: arch
   type: string
-  default: 'onnxruntime-Ubuntu2404-AMD-CPU'
+  values:
+  - x64
+  - aarch64
 
 - name: package_version
   type: string
-  default: dev
 
 - name: version_file
   type: string
 
 - name: cmake_build_type
   type: string
-  default: 'Release'
   values:
    - Debug
    - Release
    - RelWithDebInfo
    - MinSizeRel
 
-- name: docker_base_image
-  type: string
-  default: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1'
-
 stages:
-- stage: Linux_plugin_webgpu_x64_Build
+- stage: Linux_plugin_webgpu_${{ parameters.arch }}_Build
   dependsOn: []
+  pool:
+    ${{ if eq(parameters.arch, 'aarch64') }}:
+      name: onnxruntime-linux-ARM64-CPU-2019
+      os: linux
+      hostArchitecture: Arm64
+    ${{ else }}:
+      name: onnxruntime-Ubuntu2404-AMD-CPU
+      os: linux
+  variables:
+    ${{ if eq(parameters.arch, 'aarch64') }}:
+      DockerBaseImage: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_almalinux8_gcc14:20251017.1
+      DockerRepository: onnxruntimewebgpupluginaarch64
+    ${{ else }}:
+      DockerBaseImage: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1
+      DockerRepository: onnxruntimewebgpuplugin
   jobs:
-  - job: Linux_plugin_webgpu_x64_Build
+  - job: Linux_plugin_webgpu_${{ parameters.arch }}_Build
     timeoutInMinutes: 240
     workspace:
       clean: all
-    pool:
-      name: ${{ parameters.machine_pool }}
-      os: linux
     templateContext:
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
-        artifactName: webgpu_plugin_linux_x64
+        artifactName: webgpu_plugin_linux_${{ parameters.arch }}
     variables:
       - template: ../templates/common-variables.yml
     steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
@@ -54,15 +60,17 @@ stages:
           version_file: ${{ parameters.version_file }}
 
       - template: ../templates/setup-feeds-and-python-steps.yml
+        parameters:
+          architecture: ${{ parameters.arch }}
 
       - template: ../templates/get-docker-image-steps.yml
         parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu/Dockerfile
-          Context: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu
-          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimewebgpuplugin
+          Dockerfile: tools/ci_build/github/linux/docker/inference/shared/python/webgpu/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/shared/python/webgpu
+          DockerBuildArgs: "--build-arg BASEIMAGE=$(DockerBaseImage) --build-arg BUILD_UID=$( id -u )"
+          Repository: $(DockerRepository)
 
-      - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_package.sh -i onnxruntimewebgpuplugin -c ${{ parameters.cmake_build_type }}
+      - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_package.sh -i $(DockerRepository) -c ${{ parameters.cmake_build_type }}
         workingDirectory: $(Build.SourcesDirectory)
         displayName: 'Build WebGPU Plugin'
         env:
@@ -86,25 +94,20 @@ stages:
         displayName: 'Create version marker file'
 
   # Python package build job
-  - job: Linux_plugin_webgpu_x64_Python_Package
-    dependsOn: Linux_plugin_webgpu_x64_Build
+  - job: Linux_plugin_webgpu_${{ parameters.arch }}_Build_Python_Package
+    dependsOn: Linux_plugin_webgpu_${{ parameters.arch }}_Build
     timeoutInMinutes: 60
     workspace:
       clean: all
-    pool:
-      name: ${{ parameters.machine_pool }}
-      os: linux
     templateContext:
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)/python
-        artifactName: webgpu_plugin_python_linux_x64
+        artifactName: webgpu_plugin_python_linux_${{ parameters.arch }}
     variables:
     - template: ../templates/common-variables.yml
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/set-nightly-build-option-variable-step.yml
 
@@ -114,23 +117,25 @@ stages:
         version_file: ${{ parameters.version_file }}
 
     - template: ../templates/setup-feeds-and-python-steps.yml
+      parameters:
+        architecture: ${{ parameters.arch }}
 
     - template: ../templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu/Dockerfile
-        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/webgpu
-        DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimewebgpuplugin
+        Dockerfile: tools/ci_build/github/linux/docker/inference/shared/python/webgpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/shared/python/webgpu
+        DockerBuildArgs: "--build-arg BASEIMAGE=$(DockerBaseImage) --build-arg BUILD_UID=$( id -u )"
+        Repository: $(DockerRepository)
 
     - task: DownloadPipelineArtifact@2
       displayName: 'Download plugin build artifacts'
       inputs:
-        artifactName: webgpu_plugin_linux_x64
+        artifactName: webgpu_plugin_linux_${{ parameters.arch }}
         targetPath: '$(Build.BinariesDirectory)/plugin_artifacts'
 
     - script: |
         set -e -x
         $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_webgpu_plugin_python_package.sh \
-          -i onnxruntimewebgpuplugin \
+          -i $(DockerRepository) \
           -v "$(PluginPythonPackageVersion)"
       displayName: 'Build Python wheel'
