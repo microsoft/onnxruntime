@@ -7,17 +7,23 @@
 #include "core/platform/posix/telemetry_no_throw.h"
 #include "core/platform/posix/telemetry_sampling.h"
 #include "core/platform/posix/telemetry_sha256.h"
+#include "core/platform/device_census.h"
 #include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_guid.h"
 #include "core/platform/telemetry_redaction.h"
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>
+#include <mach-o/dyld.h>
 #endif
 
+#include <unistd.h>
 // 1DS SDK
 #include <LogManagerProvider.hpp>
 #include <ILogConfiguration.hpp>
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+#include "pal/PAL.hpp"
+#endif
 #if defined(__ANDROID__)
 #include "http/HttpClient_Android.hpp"
 #endif
@@ -43,6 +49,7 @@
 #include <random>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers_fwd.h"
@@ -86,6 +93,9 @@ std::atomic<bool> PosixTelemetry::telemetry_disabled_{false};
 std::atomic<bool> PosixTelemetry::network_context_suppressed_{false};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
+std::atomic<int64_t> PosixTelemetry::census_utc_day_{-1};
+std::atomic<bool> PosixTelemetry::census_emit_current_day_pending_{false};
+std::mutex PosixTelemetry::census_mutex_;
 
 #if !defined(ORT_TELEMETRY_TENANT_TOKEN)
 namespace {
@@ -139,6 +149,8 @@ enum class EventPriority {
   HIGH = EventLatency_RealTime,     // RuntimeError
   CRITICAL = EventLatency_RealTime  // ProcessInfo, SessionCreation
 };
+
+const std::string kDeviceCensusLibraryName = "ort";
 
 // Helper class to build events with common properties
 class EventBuilder {
@@ -360,6 +372,35 @@ bool PrepareSampledEvent(EventBuilder& event, uint32_t session_id) {
 
   event.SetPopsample(telemetry_internal::kModelSessionSampleRatePercent);
   return true;
+}
+
+bool PrepareHighVolumeEvent(EventBuilder& event, uint32_t session_id) {
+  if (!telemetry_internal::ShouldSampleSession(
+          GetAppSessionGuid(), session_id,
+          telemetry_internal::kHighVolumeEventSampleRatePercent)) {
+    return false;
+  }
+
+  event.SetPopsample(telemetry_internal::kHighVolumeEventSampleRatePercent);
+  return true;
+}
+
+bool PrepareProcessEvent(EventBuilder& event) {
+  if (!telemetry_internal::ShouldSampleSession(
+          GetAppSessionGuid(), 0,
+          telemetry_internal::kProcessEventSampleRatePercent)) {
+    return false;
+  }
+
+  event.SetPopsample(telemetry_internal::kProcessEventSampleRatePercent);
+  return true;
+}
+
+int64_t GetUtcDay() {
+  const auto hours_since_epoch = std::chrono::duration_cast<std::chrono::hours>(
+                                     std::chrono::system_clock::now().time_since_epoch())
+                                     .count();
+  return hours_since_epoch / 24;
 }
 
 int32_t GetProcessorCount() {
@@ -795,44 +836,46 @@ void PosixTelemetry::LogProcessInfo() const {
       return;
     }
 
-#if !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    if (DeviceId::Instance().GetStatus() == DeviceIdStatus::Failed) {
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+    RecordCensusActivity(true);
+#else
+    auto& device_id = DeviceId::Instance();
+    const DeviceIdStatus device_id_status = device_id.GetStatus();
+    if (device_id_status == DeviceIdStatus::Failed) {
       ORT_TELEMETRY_WARN("Failed to persist telemetry device ID; using an in-memory identifier");
+    }
+    if (device_id_status != DeviceIdStatus::Failed) {
+      RecordCensusActivity(
+          device_id_status == DeviceIdStatus::New ||
+          device_id_status == DeviceIdStatus::Corrupted);
     }
 #endif
 
-    auto builder = EventBuilder("ProcessInfo", EventPriority::CRITICAL)
-                       .AddString("runtimeVersion", ORT_VERSION)
+    auto builder = EventBuilder("ProcessInfo", EventPriority::CRITICAL);
+    if (!PrepareProcessEvent(builder)) {
+      return;
+    }
+
+    builder.AddString("runtimeVersion", ORT_VERSION)
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
-                       .AddString("DeviceInfo.Status", "Mobile")
+        .AddString("DeviceInfo.Status", "Mobile")
 #else
-                       .AddString("DeviceInfo.Status", DeviceId::Instance().GetStatusString())
+        .AddString("DeviceInfo.Status", DeviceId::Instance().GetStatusString())
 #endif
-                       .AddString("osDescription", GetOsDescription())
-                       .AddString("architecture", GetArchitecture())
-                       .AddString("cpuModel", GetCpuModel())
-                       .AddString("deviceClass", GetDeviceClass())
-                       .AddInt32("processorCount", GetProcessorCount())
-                       .AddInt64("totalMemoryMB", GetTotalMemoryMB());
+        .AddString("osDescription", GetOsDescription())
+        .AddString("architecture", GetArchitecture())
+        .AddString("cpuModel", GetCpuModel())
+        .AddString("deviceClass", GetDeviceClass())
+        .AddInt32("processorCount", GetProcessorCount())
+        .AddInt64("totalMemoryMB", GetTotalMemoryMB());
 
     LogEventAsync(builder.Build());
   });
 }
 
 void PosixTelemetry::LogSessionCreationStart(uint32_t session_id) const {
-  RunTelemetryOperation("LogSessionCreationStart", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-
-    auto builder = EventBuilder("SessionCreationStart", EventPriority::CRITICAL);
-    if (!PrepareSampledEvent(builder, session_id)) {
-      return;
-    }
-    auto event = builder.AddUInt32("sessionId", session_id).Build();
-
-    LogEventAsync(std::move(event));
-  });
+  // Start/stop markers are retained by TraceLogging. 1DS completion events carry local durations.
+  (void)session_id;
 }
 
 void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
@@ -843,6 +886,91 @@ void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
 
 void PosixTelemetry::LogEvaluationStart(uint32_t session_id) const {
   (void)session_id;
+  RunTelemetryOperation("RecordCensusActivity", [&]() {
+    if (!IsEnabled()) {
+      return;
+    }
+    RecordCensusActivity(false);
+  });
+}
+
+void PosixTelemetry::RecordCensusActivity(bool emit_current_day) const {
+  if (emit_current_day) {
+    census_emit_current_day_pending_.store(true, std::memory_order_release);
+  }
+
+  const int64_t utc_day = GetUtcDay();
+  if (census_utc_day_.load(std::memory_order_acquire) == utc_day &&
+      !census_emit_current_day_pending_.load(std::memory_order_acquire)) {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(census_mutex_);
+  if (census_utc_day_.load(std::memory_order_relaxed) == utc_day &&
+      !census_emit_current_day_pending_.load(std::memory_order_relaxed)) {
+    return;
+  }
+
+  const bool should_emit_current_day =
+      census_emit_current_day_pending_.load(std::memory_order_relaxed);
+
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+  const std::string device_id_status = "Mobile";
+#else
+  const std::string device_id_status =
+      DeviceId::Instance().GetStatusString();
+#endif
+  const auto emit = [&](int64_t census_day,
+                        const std::vector<std::string>& versions) {
+    auto event = EventBuilder("DeviceCensus", EventPriority::CRITICAL)
+                     .AddInt64("censusSchemaVersion",
+                               telemetry_internal::kDeviceCensusSchemaVersion)
+                     .AddInt64("censusDay", census_day)
+                     .AddString("libraryName", kDeviceCensusLibraryName)
+                     .AddStringList("libraryVersions", versions)
+                     .AddString("deviceIdStatus", device_id_status)
+                     .Build();
+    LogEventAsync(std::move(event));
+  };
+
+  bool recorded = false;
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
+  const auto device_information = PAL::GetDeviceInformation();
+  if (device_information) {
+    const std::string& platform_device_id =
+        device_information->GetDeviceId();
+#if defined(__ANDROID__)
+    const bool has_platform_device_id =
+        platform_device_id.size() > 2 &&
+        platform_device_id.compare(0, 2, "a:") == 0;
+#else
+    const bool has_platform_device_id =
+        platform_device_id.size() > 2 &&
+        platform_device_id.compare(0, 2, "i:") == 0;
+#endif
+    if (has_platform_device_id) {
+#if defined(__ANDROID__)
+      const std::string& storage_directory =
+          HttpClient_Android::GetCacheFilePath();
+#else
+      const std::string storage_directory =
+          DeviceId::EnsureStorageDirectory();
+#endif
+      recorded = DeviceId::RecordCensusActivity(
+          HashDeviceId(platform_device_id), storage_directory,
+          utc_day, ORT_VERSION, should_emit_current_day, emit);
+    }
+  }
+#else
+  recorded = DeviceId::Instance().RecordCensusActivity(
+      utc_day, ORT_VERSION, should_emit_current_day, emit);
+#endif
+  if (recorded) {
+    census_utc_day_.store(utc_day, std::memory_order_release);
+    if (should_emit_current_day) {
+      census_emit_current_day_pending_.store(false, std::memory_order_release);
+    }
+  }
 }
 
 void PosixTelemetry::LogSessionCreation(
@@ -975,7 +1103,7 @@ void PosixTelemetry::LogRuntimeError(
     const std::string scrubbed_file = ScrubStringForTelemetry(file_view);
 
     auto builder = EventBuilder("RuntimeError", EventPriority::HIGH);
-    if (!PrepareSampledEvent(builder, session_id)) {
+    if (!PrepareHighVolumeEvent(builder, session_id)) {
       return;
     }
     auto event = builder.AddUInt32("sessionId", session_id)
@@ -1000,7 +1128,7 @@ void PosixTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common:
     }
 
     auto builder = EventBuilder("RuntimeInferenceError", EventPriority::HIGH);
-    if (!PrepareSampledEvent(builder, session_id)) {
+    if (!PrepareHighVolumeEvent(builder, session_id)) {
       return;
     }
     auto event = builder.AddUInt32("sessionId", session_id)
@@ -1026,7 +1154,7 @@ void PosixTelemetry::LogRuntimePerf(
     }
 
     auto builder = EventBuilder("RuntimePerf", EventPriority::NORMAL);
-    if (!PrepareSampledEvent(builder, session_id)) {
+    if (!PrepareHighVolumeEvent(builder, session_id)) {
       return;
     }
     auto event = builder.AddUInt32("sessionId", session_id)
@@ -1036,7 +1164,6 @@ void PosixTelemetry::LogRuntimePerf(
                      .Build();
 
     LogEventAsync(std::move(event));
-    LogSystemMetrics(session_id);
   });
 }
 
@@ -1083,22 +1210,11 @@ void PosixTelemetry::LogAutoEpSelection(
 }
 
 void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
-  RunTelemetryOperation("LogModelLoadStart", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-
-    auto builder = EventBuilder("ModelLoadStart", EventPriority::NORMAL);
-    if (!PrepareSampledEvent(builder, session_id)) {
-      return;
-    }
-    auto event = builder.AddUInt32("sessionId", session_id).Build();
-
-    LogEventAsync(std::move(event));
-  });
+  (void)session_id;
 }
 
-void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
+void PosixTelemetry::LogModelLoadEndWithDuration(uint32_t session_id, const common::Status& status,
+                                                 int64_t duration_us) const {
   RunTelemetryOperation("LogModelLoadEnd", [&]() {
     if (!IsEnabled()) {
       return;
@@ -1113,13 +1229,15 @@ void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& 
                      .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                      .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
                      .AddString("errorMessage", ScrubStringForTelemetry(status.ErrorMessage()))
+                     .AddInt64("durationUs", duration_us)
                      .Build();
 
     LogEventAsync(std::move(event));
   });
 }
 
-void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::Status& status) const {
+void PosixTelemetry::LogSessionCreationEndWithDuration(uint32_t session_id, const common::Status& status,
+                                                       int64_t duration_us) const {
   RunTelemetryOperation("LogSessionCreationEnd", [&]() {
     if (!IsEnabled()) {
       return;
@@ -1134,6 +1252,7 @@ void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::St
                      .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                      .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
                      .AddString("errorMessage", ScrubStringForTelemetry(status.ErrorMessage()))
+                     .AddInt64("durationUs", duration_us)
                      .Build();
 
     LogEventAsync(std::move(event));
@@ -1152,6 +1271,29 @@ void PosixTelemetry::LogEpDeviceUsage(
     int assigned_node_count,
     uint32_t total_runs_since_last,
     int64_t total_run_duration_since_last) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(ep_type);
+  ORT_UNUSED_PARAMETER(hardware_device_type);
+  ORT_UNUSED_PARAMETER(hardware_vendor_id);
+  ORT_UNUSED_PARAMETER(hardware_device_id);
+  ORT_UNUSED_PARAMETER(hardware_vendor);
+  ORT_UNUSED_PARAMETER(ep_vendor);
+  ORT_UNUSED_PARAMETER(ep_version);
+  ORT_UNUSED_PARAMETER(assigned_node_count);
+  ORT_UNUSED_PARAMETER(total_runs_since_last);
+  ORT_UNUSED_PARAMETER(total_run_duration_since_last);
+}
+
+void PosixTelemetry::LogEpDeviceInventory(
+    uint32_t session_id,
+    const std::string& ep_type,
+    const std::string& hardware_device_type,
+    uint32_t hardware_vendor_id,
+    uint32_t hardware_device_id,
+    const std::string& hardware_vendor,
+    const std::string& ep_vendor,
+    const std::string& ep_version,
+    int assigned_node_count) const {
   RunTelemetryOperation("LogEpDeviceUsage", [&]() {
     if (!IsEnabled()) {
       return;
@@ -1170,8 +1312,6 @@ void PosixTelemetry::LogEpDeviceUsage(
                      .AddString("epVendor", ep_vendor)
                      .AddString("epVersion", ep_version)
                      .AddInt32("assignedNodeCount", assigned_node_count)
-                     .AddUInt32("totalRunsSinceLast", total_runs_since_last)
-                     .AddInt64("totalRunDurationSinceLast", total_run_duration_since_last)
                      .Build();
 
     LogEventAsync(std::move(event));
@@ -1179,32 +1319,27 @@ void PosixTelemetry::LogEpDeviceUsage(
 }
 
 void PosixTelemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
-  RunTelemetryOperation("LogRegisterEpLibraryStart", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-
-    auto event = EventBuilder("RegisterEpLibraryStart", EventPriority::NORMAL)
-                     .AddString("registrationName", registration_name)
-                     .Build();
-
-    LogEventAsync(std::move(event));
-  });
+  (void)registration_name;
 }
 
-void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
-                                             const common::Status& status) const {
+void PosixTelemetry::LogRegisterEpLibraryEndWithDuration(const std::string& registration_name,
+                                                         const common::Status& status,
+                                                         int64_t duration_us) const {
   RunTelemetryOperation("LogRegisterEpLibraryEnd", [&]() {
     if (!IsEnabled()) {
       return;
     }
 
-    auto event = EventBuilder("RegisterEpLibraryEnd", EventPriority::NORMAL)
-                     .AddString("registrationName", registration_name)
+    auto builder = EventBuilder("RegisterEpLibraryEnd", EventPriority::NORMAL);
+    if (!PrepareProcessEvent(builder)) {
+      return;
+    }
+    auto event = builder.AddString("registrationName", registration_name)
                      .AddBool("isSuccess", status.IsOK())
                      .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                      .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
                      .AddString("errorMessage", ScrubStringForTelemetry(status.ErrorMessage()))
+                     .AddInt64("durationUs", duration_us)
                      .Build();
 
     LogEventAsync(std::move(event));
@@ -1219,49 +1354,15 @@ void PosixTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registra
     }
 
     const std::string scrubbed_lib_path = ScrubStringForTelemetry(lib_path);
-    auto event = EventBuilder("RegisterEpLibraryWithLibPath", EventPriority::NORMAL)
-                     .AddString("registrationName", registration_name)
+    auto builder = EventBuilder("RegisterEpLibraryWithLibPath", EventPriority::NORMAL);
+    if (!PrepareProcessEvent(builder)) {
+      return;
+    }
+    auto event = builder.AddString("registrationName", registration_name)
                      .AddString("libPath", scrubbed_lib_path)
                      .Build();
 
     LogEventAsync(std::move(event));
-  });
-}
-
-void PosixTelemetry::LogSystemMetrics(uint32_t session_id) const {
-  RunTelemetryOperation("LogSystemMetrics", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-
-    auto builder = EventBuilder("SystemMetrics", EventPriority::NORMAL);
-    if (!PrepareSampledEvent(builder, session_id)) {
-      return;
-    }
-
-    struct rusage usage;
-    if (getrusage(RUSAGE_SELF, &usage) == 0) {
-      // ru_maxrss is in KB on Linux, bytes on macOS
-#ifdef __APPLE__
-      int64_t max_rss_kb = usage.ru_maxrss / 1024;
-#else
-      int64_t max_rss_kb = usage.ru_maxrss;
-#endif
-
-      auto event = builder.AddUInt32("sessionId", session_id)
-                       .AddInt64("maxRssKb", max_rss_kb)
-                       .AddInt64("userCpuTimeSec", usage.ru_utime.tv_sec)
-                       .AddInt64("userCpuTimeUsec", usage.ru_utime.tv_usec)
-                       .AddInt64("systemCpuTimeSec", usage.ru_stime.tv_sec)
-                       .AddInt64("systemCpuTimeUsec", usage.ru_stime.tv_usec)
-                       .AddInt64("minorPageFaults", usage.ru_minflt)
-                       .AddInt64("majorPageFaults", usage.ru_majflt)
-                       .AddInt64("voluntaryContextSwitches", usage.ru_nvcsw)
-                       .AddInt64("involuntaryContextSwitches", usage.ru_nivcsw)
-                       .Build();
-
-      LogEventAsync(std::move(event));
-    }
   });
 }
 

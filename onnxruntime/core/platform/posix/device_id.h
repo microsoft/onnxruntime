@@ -3,8 +3,12 @@
 
 #pragma once
 
+#include <cstdint>
+#include <functional>
 #include <string>
+#include <string_view>
 #include <mutex>
+#include <vector>
 #include "core/common/common.h"
 
 namespace onnxruntime {
@@ -36,6 +40,26 @@ class DeviceId {
 
   // Get human-readable status string
   std::string GetStatusString();
+
+  // Records activity for the current UTC day. A new or repaired DeviceId emits immediately;
+  // otherwise the last active day's completed census is emitted on the first later active day.
+  bool RecordCensusActivity(
+      int64_t utc_day,
+      std::string_view library_version,
+      bool emit_current_day,
+      const std::function<void(
+          int64_t, const std::vector<std::string>&)>& emit_completed_day);
+
+  // Records census activity using an externally managed identity fingerprint and storage directory.
+  // Mobile derives the fingerprint from the platform identifier that 1DS attaches to events.
+  static bool RecordCensusActivity(
+      std::string_view census_identity,
+      std::string_view storage_directory,
+      int64_t utc_day,
+      std::string_view library_version,
+      bool emit_current_day,
+      const std::function<void(
+          int64_t, const std::vector<std::string>&)>& emit_completed_day);
 
   // Get the directory path for device ID / telemetry cache storage
   // (macOS: ~/Library/Application Support/...; Linux: $XDG_CACHE_HOME or ~/.cache/...).
