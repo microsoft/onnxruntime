@@ -83,6 +83,11 @@ struct IoBindingCase {
   std::vector<int32_t> block_table;
   std::vector<int32_t> attention_metadata;
   std::string expected_error;
+  // When set, the block_table range check below is skipped and the reference
+  // model treats any block_id outside [0, num_blocks) the same as an explicit
+  // -1 (unmapped): excluded from the softmax and never dereferenced. Lets a
+  // test assert that the CUDA kernel does the same.
+  bool allow_out_of_range_block_table = false;
 };
 
 // Softmax with causal masking: masked positions get -inf → 0 after exp.
@@ -307,9 +312,11 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_EQ(num_heads % kv_num_heads, 0);
   ASSERT_TRUE(c.block_table.empty() ||
               c.block_table.size() == static_cast<size_t>(batch_size * max_num_blocks_per_seq));
-  for (int32_t block_id : c.block_table) {
-    ASSERT_GE(block_id, 0);
-    ASSERT_LT(block_id, num_blocks);
+  if (!c.allow_out_of_range_block_table) {
+    for (int32_t block_id : c.block_table) {
+      ASSERT_GE(block_id, 0);
+      ASSERT_LT(block_id, num_blocks);
+    }
   }
 
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMSDomain, 1}};
@@ -731,6 +738,11 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
         for (int slot = 0; slot <= new_slot; ++slot) {
           const int block_id =
               block_table_data[b * max_num_blocks_per_seq + slot / block_size];
+          if (block_id < 0 || block_id >= num_blocks) {
+            // Unmapped: excluded from the softmax, same as the kernel.
+            scores[slot] = -std::numeric_limits<float>::infinity();
+            continue;
+          }
           float dot = 0.0f;
           for (int dim = 0; dim < head_size; ++dim) {
             const int query_index = (b * num_heads + q_head) * head_size + dim;
@@ -749,6 +761,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
         for (int dim = 0; dim < head_size; ++dim) {
           float numerator = 0.0f;
           for (int slot = 0; slot <= new_slot; ++slot) {
+            if (scores[slot] == 0.0f) continue;  // unmapped slot, nothing to gather
             const int block_id =
                 block_table_data[b * max_num_blocks_per_seq + slot / block_size];
             const int cache_index = CacheIndex(block_id, slot % block_size, kv_head, dim,
@@ -1160,6 +1173,30 @@ TEST(PagedAttention, Cuda_XqaNativeFp16CacheMultiTokenBoundFallsBack) {
   EXPECT_TRUE(debug_output.find("SdpaKernel=FLASH_ATTENTION") != std::string::npos ||
               debug_output.find("SdpaKernel=DECODER_ATTENTION") != std::string::npos)
       << debug_output;
+}
+
+// A block_table entry outside [0, num_blocks) must be treated as unmapped,
+// the same as an explicit -1, rather than read out of bounds of the paged
+// cache. Regression test for the read-path bound check: block_table[0]
+// covers the historical KV (slots 0..3); block_table[1] is the write target
+// for the new token and stays valid in both runs. Each run's own reference
+// model (patched above to skip unmapped slots) proves the kernel excludes
+// them from the softmax instead of dereferencing them.
+TEST(PagedAttention, Cuda_OutOfRangeBlockTableTreatedAsUnmapped) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  for (int32_t sentinel : {-1, 99}) {
+    IoBindingCase c;
+    c.block_size = 16;
+    c.num_blocks = 3;
+    c.max_num_blocks_per_seq = 2;
+    c.past_seqlen = 16;
+    c.block_table = {sentinel, 1};
+    c.allow_out_of_range_block_table = true;
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  }
 }
 
 TEST(PagedAttention, Cuda_AttentionMetadataValidation) {
