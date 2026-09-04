@@ -104,6 +104,17 @@ TEST(BeamSearchParametersTest, AcceptsValidWhisperBeginningTimestampTokenId) {
   EXPECT_NO_THROW(parameters.ValidateWhisperTimestampTokenId());
 }
 
+TEST(BeamSearchParametersTest, ValidatesWhisperCrossQKPairCountWithoutRequiringUniquePairs) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.num_layers = 1;
+  parameters.num_heads = 1;
+
+  EXPECT_NO_THROW(parameters.ValidateWhisperCrossQKPairCount(0));
+  EXPECT_NO_THROW(parameters.ValidateWhisperCrossQKPairCount(2));
+  EXPECT_THROW(parameters.ValidateWhisperCrossQKPairCount(-1), OnnxRuntimeException);
+  EXPECT_THROW(parameters.ValidateWhisperCrossQKPairCount(65536), OnnxRuntimeException);
+}
+
 TEST(BeamSearchTest, ExpandBufferSupportsRankGreaterThanFour) {
   AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   OrtValue input;

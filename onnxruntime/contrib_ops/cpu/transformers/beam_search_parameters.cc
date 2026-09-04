@@ -168,6 +168,10 @@ void BeamSearchParameters::ValidateWhisperTimestampTokenId() const {
   }
 }
 
+void BeamSearchParameters::ValidateWhisperCrossQKPairCount(int64_t pair_count) const {
+  ORT_ENFORCE(pair_count >= 0 && pair_count < 65536, "layer_head_pair_count must be in [0, 65536)");
+}
+
 void WhisperBeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
   BeamSearchParameters::ParseFromAttributes(info);
   model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", IGenerationParameters::kModelTypeWhisper));

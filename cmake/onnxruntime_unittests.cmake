@@ -1004,6 +1004,11 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
     ${onnxruntime_test_cuda_kernels_src_patterns}
   )
 
+  if (onnxruntime_DISABLE_CONTRIB_OPS OR onnxruntime_CUDA_MINIMAL)
+    list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/generation_cuda_impl_test.cc")
+  endif()
+
   # cuda_plugin_test_shims.cc provides onnxruntime::GetEnvironmentVar for the
   # BUILD_CUDA_EP_AS_PLUGIN unit-test object library, where provider_bridge_provider.cc
   # is not linked. In the non-plugin onnxruntime_providers_cuda_ut module the symbol is
