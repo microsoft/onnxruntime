@@ -5,7 +5,6 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-
 IMAGE_SIZE = 2048
 TILE_SIZE = 128
 
