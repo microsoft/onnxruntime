@@ -100,8 +100,8 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
     std::map<ge::AscendString, ge::AscendString> options;
     options.emplace(ge::ir_option::SOC_VERSION, soc_name);
 
-    if (!info.precision_mode.empty())
-      options.emplace(ge::ir_option::PRECISION_MODE, info.precision_mode.c_str());
+    if (!info.precision_mode_v2.empty())
+      options.emplace(ge::ir_option::PRECISION_MODE_V2, info.precision_mode_v2.c_str());
     if (!info.op_select_impl_mode.empty())
       options.emplace(ge::ir_option::OP_SELECT_IMPL_MODE, info.op_select_impl_mode.c_str());
     if (!info.optypelist_for_implmode.empty())
@@ -111,6 +111,14 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
   });
 
   std::map<ge::AscendString, ge::AscendString> options;
+  if (!info.input_format.empty())
+    options.emplace(ge::ir_option::INPUT_FORMAT, info.input_format.c_str());
+  if (!info.dynamic_batch_size.empty())
+    options.emplace(ge::ir_option::DYNAMIC_BATCH_SIZE, info.dynamic_batch_size.c_str());
+  if (!info.dynamic_image_size.empty())
+    options.emplace(ge::ir_option::DYNAMIC_IMAGE_SIZE, info.dynamic_image_size.c_str());
+  if (!info.dynamic_dims.empty())
+    options.emplace(ge::ir_option::DYNAMIC_DIMS, info.dynamic_dims.c_str());
   options.emplace(ge::ir_option::INPUT_SHAPE, input_shape.c_str());
   CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphBuildModel(graph, options, model));
 
