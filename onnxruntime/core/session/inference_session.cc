@@ -1181,11 +1181,15 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     status = StartExternalDataPreload();
     ORT_RETURN_IF_ERROR_SESSIONID_(status);
 
+    bool post_load_processing_succeeded = false;
+    auto abort_external_data_preload = gsl::finally([&]() {
+      if (!post_load_processing_succeeded) {
+        external_data_loader_mgr_.AbortLoad();
+      }
+    });
     status = DoPostLoadProcessing(*model_);
-    if (!status.IsOK()) {
-      external_data_loader_mgr_.AbortLoad();
-      ORT_RETURN_IF_ERROR_SESSIONID_(status);
-    }
+    ORT_RETURN_IF_ERROR_SESSIONID_(status);
+    post_load_processing_succeeded = true;
 
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
