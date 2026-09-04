@@ -35,7 +35,7 @@ class IExternalDataLoader {
                                     const std::filesystem::path& data_file_path,
                                     FileOffsetType data_offset,
                                     SafeInt<size_t> data_length,
-                                    Tensor& tensor) const;
+                                    Tensor& tensor) const = 0;
 };
 
 #if defined(__wasm__)
