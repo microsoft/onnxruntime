@@ -161,6 +161,23 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
                 std::from_chars(context_id_str.data(), context_id_str.data() + context_id_str.size(), config.context_id).ec);
   }
 
+  if (std::string adapter_index_str;
+      config_options.TryGetConfigEntry(kAdapterIndex, adapter_index_str)) {
+    uint32_t adapter_index = 0;
+    const auto result = std::from_chars(adapter_index_str.data(),
+                                        adapter_index_str.data() + adapter_index_str.size(),
+                                        adapter_index);
+    ORT_ENFORCE(result.ec == std::errc{} && result.ptr == adapter_index_str.data() + adapter_index_str.size(),
+                "Invalid adapterIndex value: ", adapter_index_str,
+                ". Must be a non-negative integer.");
+    config.adapter_index = adapter_index;
+  }
+
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  ORT_ENFORCE(!config.adapter_index,
+              "adapterIndex requires a native Dawn build with adapter enumeration support.");
+#endif
+
   if (std::string webgpu_instance_str;
       config_options.TryGetConfigEntry(kWebGpuInstance, webgpu_instance_str)) {
     static_assert(sizeof(WGPUInstance) == sizeof(size_t), "WGPUInstance size mismatch");
@@ -267,6 +284,8 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   }
 
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP Device ID: " << config.context_id;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP adapter index: "
+                        << (config.adapter_index ? std::to_string(*config.adapter_index) : "automatic");
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUInstance: " << reinterpret_cast<size_t>(config.instance);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUDevice: " << reinterpret_cast<size_t>(config.device);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << reinterpret_cast<size_t>(config.dawn_proc_table);
