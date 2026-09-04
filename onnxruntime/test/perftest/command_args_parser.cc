@@ -170,6 +170,10 @@ ABSL_FLAG(std::string, C, "",
           "[Example] -C \"session.disable_cpu_ep_fallback|1 ep.context_enable|1\" \n");
 ABSL_FLAG(std::string, R, "", "Allows user to register custom op by .so or .dll file.");
 ABSL_FLAG(bool, A, !DefaultPerformanceTestConfig().run_config.enable_cpu_mem_arena, "Disables memory arena.");
+ABSL_FLAG(std::string, run_config, "",
+          "Specifies run configuration entries as key-value pairs:\n"
+          " --run_config \"<key1>|<value1> <key2>|<value2>\"\n"
+          "[Example] --run_config \"gpu_graph_id|1 qnn.htp_perf_mode|burst\"\n");
 ABSL_FLAG(std::string, shrink_arena_between_runs, "", "When arena is enabled call Shrink for specified devices 'cpu:0;gpu:0'");
 ABSL_FLAG(std::string, enable_cuda_mempool, "", "When cuda is enabled use CudaMempoolArena with params 'pool_release_threshold;bytes_to_keep_on_shrink'");
 ABSL_FLAG(bool, M, !DefaultPerformanceTestConfig().run_config.enable_memory_pattern, "Disables memory pattern.");
@@ -307,6 +311,22 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // -A
   test_config.run_config.enable_cpu_mem_arena = !absl::GetFlag(FLAGS_A);
+
+  // --run_config
+  {
+    const auto& run_configs = absl::GetFlag(FLAGS_run_config);
+    if (!run_configs.empty()) {
+      ORT_TRY {
+        ParseSessionConfigs(run_configs, test_config.run_config.run_config_entries);
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          fprintf(stderr, "Error parsing run configuration entries: %s\n", ex.what());
+        });
+        return false;
+      }
+    }
+  }
 
   // --shrink_arena_between_runs
   if (test_config.run_config.enable_cpu_mem_arena) {
