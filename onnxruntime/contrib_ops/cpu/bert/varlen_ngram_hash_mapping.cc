@@ -71,7 +71,9 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
                         multipliers->Shape()[0] == max_ngram_size_,
                     "multipliers must have shape (max_ngram_size)");
-  const int64_t num_heads = (max_ngram_size_ - 1) * n_head_per_ngram_;
+  int64_t num_heads = 0;
+  ORT_RETURN_IF_NOT(engram_helper::TryMultiplyDims(max_ngram_size_ - 1, n_head_per_ngram_, num_heads),
+                    "VarlenNGramHashMapping: (max_ngram_size - 1) * n_head_per_ngram overflows int64_t");
   ORT_RETURN_IF_NOT(vocab_sizes->Shape().NumDimensions() == 1 && vocab_sizes->Shape()[0] == num_heads,
                     "vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
   ORT_RETURN_IF_NOT(cu_seqlens->Shape().NumDimensions() == 1 && cu_seqlens->Shape()[0] >= 2,

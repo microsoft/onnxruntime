@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <type_traits>
 
 namespace onnxruntime {
@@ -47,6 +49,20 @@ template <typename T>
 inline T WrappedMultiply(T a, T b) {
   using UnsignedT = typename std::make_unsigned<T>::type;
   return static_cast<T>(static_cast<UnsignedT>(a) * static_cast<UnsignedT>(b));
+}
+
+// Multiplies two non-negative, attribute-derived dimensions (e.g. (max_ngram_size - 1) *
+// n_head_per_ngram) with an overflow check. Both factors are user-controlled model attributes with
+// only lower-bound checks, so the product must be validated before it is used to size any tensor or
+// index: an unchecked signed multiplication would otherwise be free to silently wrap (undefined
+// behavior in the general case) before ever reaching a tensor-shape validation. Returns false, and
+// leaves `result` unset, when the product would overflow int64_t.
+inline bool TryMultiplyDims(int64_t a, int64_t b, int64_t& result) {
+  if (a != 0 && b > std::numeric_limits<int64_t>::max() / a) {
+    return false;
+  }
+  result = a * b;
+  return true;
 }
 
 }  // namespace engram_helper

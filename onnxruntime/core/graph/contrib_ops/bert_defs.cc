@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -2763,6 +2764,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (n_head_per_ngram < 1) {
             fail_shape_inference("VarlenNGramHashMapping: n_head_per_ngram must be positive");
           }
+          // max_ngram_size and n_head_per_ngram are model-controlled attributes with only
+          // lower-bound checks above, so (max_ngram_size - 1) * n_head_per_ngram must be
+          // multiplied with an overflow check: e.g. max_ngram_size == INT64_MAX would otherwise
+          // silently wrap this signed multiplication before it ever reaches tensor-shape
+          // validation.
+          const int64_t state_length = max_ngram_size - 1;
+          if (state_length != 0 && n_head_per_ngram > std::numeric_limits<int64_t>::max() / state_length) {
+            fail_shape_inference(
+                "VarlenNGramHashMapping: (max_ngram_size - 1) * n_head_per_ngram overflows int64_t");
+          }
+          const int64_t num_heads = state_length * n_head_per_ngram;
 
           if (hasInputShape(ctx, 0)) {
             const auto& input_shape = getInputShape(ctx, 0);
@@ -2771,7 +2783,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
             TensorShapeProto output_shape;
             *output_shape.add_dim() = input_shape.dim(0);
-            output_shape.add_dim()->set_dim_value((max_ngram_size - 1) * n_head_per_ngram);
+            output_shape.add_dim()->set_dim_value(num_heads);
             updateOutputShape(ctx, 0, output_shape);
           }
 
@@ -2783,6 +2795,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             TensorShapeProto present_shape;
             const auto& cu_dim = cu_seqlen_shape.dim(0);
             if (cu_dim.has_dim_value()) {
+              // Runtime requires at least 2 elements (batch_size >= 1); a declared static shape of
+              // [0] or [1] would otherwise infer a present_ids batch dimension of -1 or 0.
+              if (cu_dim.dim_value() < 2) {
+                fail_shape_inference(
+                    "VarlenNGramHashMapping: cumulative_sequence_length must have at least 2 elements");
+              }
               present_shape.add_dim()->set_dim_value(cu_dim.dim_value() - 1);
             } else {
               present_shape.add_dim();  // unknown batch size

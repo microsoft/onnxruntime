@@ -34,10 +34,64 @@ __device__ __forceinline__ T HistoryId(const T* past_ids, int64_t b, int64_t slo
   return past_ids[b * state_length + slot];
 }
 
-// For memory-safety containment, each block validates cumulative_sequence_length[0] == 0,
-// cumulative_sequence_length[batch_size] == total_tokens, and its own local range
-// 0 <= start <= end <= total_tokens before accessing input_ids, past_ids, or the outputs.
-// Malformed offsets cause the affected block to return without those accesses.
+// Scans the complete cumulative_sequence_length array once, on a single thread, to establish
+// global monotonicity: cu_seqlens[0] == 0, cu_seqlens[batch_size] == total_tokens, and every
+// adjacent pair strictly increasing. Per-block local checks (start < end within [0, total_tokens])
+// are not sufficient on their own: a single out-of-order middle entry (e.g. [0, 3, 2, 5]) makes one
+// block's local check fail while a different, unrelated block's local check still passes, so that
+// block still writes an output range that overlaps a different valid block's range, producing a
+// data race between two blocks computing different values for the same output element. Gating
+// every output-producing kernel on this single global flag (computed before they run, on the same
+// stream) makes such overlap impossible: writes only ever occur when the whole array is valid, in
+// which case ranges are provably disjoint.
+__global__ void ValidateVarlenCuSeqlensKernel(
+    const int32_t* __restrict__ cu_seqlens,
+    int batch_size,
+    int total_tokens,
+    int32_t* is_valid) {
+  bool valid = batch_size > 0 && cu_seqlens[0] == 0 && cu_seqlens[batch_size] == total_tokens;
+  for (int b = 0; valid && b < batch_size; ++b) {
+    const int32_t start = cu_seqlens[b];
+    const int32_t end = cu_seqlens[b + 1];
+    if (start < 0 || start >= end || end > total_tokens) {
+      valid = false;
+    }
+  }
+  *is_valid = valid ? 1 : 0;
+}
+
+// Writes deterministic default contents (zero hash ids, pad_id present_ids) whenever the global
+// validity flag is false. Every thread reads the flag exactly once and either writes its assigned
+// default element or returns immediately, so these writes and VarlenNGramHashMappingKernel's writes
+// are mutually exclusive per output element: this kernel only writes when the array is invalid, the
+// main kernel only writes when it is valid.
+template <typename T>
+__global__ void VarlenNGramFillDefaultKernel(
+    T* __restrict__ output,
+    T* __restrict__ present_ids,
+    int64_t output_count,
+    int64_t present_count,
+    T pad_id,
+    const int32_t* __restrict__ is_valid) {
+  if (*is_valid) {
+    return;
+  }
+  const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.x;
+  const int64_t start = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  for (int64_t idx = start; idx < output_count; idx += stride) {
+    output[idx] = T{};
+  }
+  if (present_ids != nullptr) {
+    for (int64_t idx = start; idx < present_count; idx += stride) {
+      present_ids[idx] = pad_id;
+    }
+  }
+}
+
+// Gated on the global validity flag computed by ValidateVarlenCuSeqlensKernel: a block only
+// accesses input_ids, past_ids, or the outputs once the entire cumulative_sequence_length array is
+// known to be well-formed, so its own local range 0 <= start < end <= total_tokens is guaranteed
+// disjoint from every other block's range. The local recheck below is defense in depth.
 template <typename T>
 __global__ void VarlenNGramHashMappingKernel(
     const T* __restrict__ input_ids,
@@ -51,7 +105,11 @@ __global__ void VarlenNGramHashMappingKernel(
     int total_tokens,
     int64_t max_ngram_size,
     int64_t n_head_per_ngram,
-    T pad_id) {
+    T pad_id,
+    const int32_t* __restrict__ is_valid) {
+  if (!(*is_valid)) {
+    return;
+  }
   const int b = blockIdx.x;
   const int32_t first = cu_seqlens[0];
   const int32_t last = cu_seqlens[batch_size];
@@ -110,7 +168,8 @@ Status LaunchVarlenNGramHashMappingKernel(
     int64_t max_ngram_size,
     int64_t n_head_per_ngram,
     T pad_id,
-    int max_threads_per_block) {
+    int max_threads_per_block,
+    int32_t* is_valid_scratch) {
   if (batch_size == 0) {
     return Status::OK();
   }
@@ -119,19 +178,43 @@ Status LaunchVarlenNGramHashMappingKernel(
                     "VarlenNGramHashMapping: batch_size and total_tokens must fit in a 32-bit int");
 
   const int64_t num_heads = (max_ngram_size - 1) * n_head_per_ngram;
+  const int64_t state_length = max_ngram_size - 1;
+
+  // 1) Compute global validity once, before any output-producing kernel runs.
+  ValidateVarlenCuSeqlensKernel<<<1, 1, 0, stream>>>(
+      cu_seqlens, static_cast<int>(batch_size), static_cast<int>(total_tokens), is_valid_scratch);
+  ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+
+  // 2) Fill deterministic defaults if (and only if) the array turned out to be invalid. This and
+  // step 3 below are mutually exclusive on every output element because both are gated on the same
+  // flag computed in step 1, so their relative launch order cannot create a race.
+  const int64_t output_count = total_tokens * num_heads;
+  const int64_t present_count = present_ids == nullptr ? 0 : batch_size * state_length;
+  if (output_count > 0 || present_count > 0) {
+    const int fill_threads = std::min(256, max_threads_per_block);
+    const int64_t max_elements = std::max(output_count, present_count);
+    const int64_t fill_blocks = std::min<int64_t>(
+        65535, (max_elements + fill_threads - 1) / fill_threads);
+    VarlenNGramFillDefaultKernel<T><<<static_cast<unsigned int>(std::max<int64_t>(1, fill_blocks)),
+                                       fill_threads, 0, stream>>>(
+        output, present_ids, output_count, present_count, pad_id, is_valid_scratch);
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
+  }
+
+  // 3) Compute real values if (and only if) the array is valid.
   const int threads = static_cast<int>(std::max<int64_t>(
       1, std::min<int64_t>(num_heads, std::min(256, max_threads_per_block))));
   VarlenNGramHashMappingKernel<T><<<static_cast<unsigned int>(batch_size), threads, 0, stream>>>(
       input_ids, multipliers, vocab_sizes, cu_seqlens, past_ids, output, present_ids,
       static_cast<int>(batch_size), static_cast<int>(total_tokens), max_ngram_size, n_head_per_ngram,
-      pad_id);
+      pad_id, is_valid_scratch);
   return CUDA_CALL(cudaGetLastError());
 }
 
 #define INSTANTIATE_VARLEN_NGRAM_HASH_MAPPING(T)                                                      \
   template Status LaunchVarlenNGramHashMappingKernel<T>(                                              \
       cudaStream_t, const T*, const T*, const T*, const int32_t*, const T*, T*, T*, int64_t, int64_t, \
-      int64_t, int64_t, T, int);
+      int64_t, int64_t, T, int, int32_t*);
 
 INSTANTIATE_VARLEN_NGRAM_HASH_MAPPING(int32_t)
 INSTANTIATE_VARLEN_NGRAM_HASH_MAPPING(int64_t)

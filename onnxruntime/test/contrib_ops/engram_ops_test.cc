@@ -874,9 +874,12 @@ void RunVarlenNGramHashMappingChunkedTest() {
             present_after_decode3);
 }
 
-// cumulative_sequence_length is validated on the host for every EP (it never lives purely on
-// device the way vocab_sizes can for GPU EPs), so this is exercised on the default CPU provider
-// only, mirroring VarlenCausalConvWithState's MalformedOffsetsAreContained coverage.
+// cumulative_sequence_length content (values, not just shape) is validated on the host only for
+// the CPU EP, so malformed content there surfaces as an OpTester failure with a specific message.
+// GPU EPs cannot afford a host round-trip to validate device-resident cu_seqlens content on every
+// call, so they instead validate on-device once per Compute() call and, when invalid, deterministic-
+// ally fall back to defaults (zero hash_ids, pad_id present_ids) covering the *entire* output --
+// this is exercised for CUDA/WebGPU by RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest below.
 template <typename T>
 void RunVarlenNGramHashMappingMalformedCuSeqlensTest(const std::vector<int32_t>& cu_seqlens,
                                                      int64_t total_tokens,
@@ -901,6 +904,41 @@ void RunVarlenNGramHashMappingMalformedCuSeqlensTest(const std::vector<int32_t>&
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
 }
+
+// GPU EPs validate cu_seqlens content on-device once per call and, when it's globally invalid
+// (including cases where every individual request's own start < end / end <= total_tokens check
+// would locally pass, e.g. descending or repeated offsets), fall back to deterministic defaults for
+// the *entire* output instead of failing: zero hash_ids, pad_id present_ids. This exercises exactly
+// the offsets patterns called out in review 5107886057 (descending, repeated, wrong first, wrong
+// final) on CUDA/WebGPU, where the previous per-request-only local checks could otherwise let two
+// requests race on an overlapping output range.
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
+void RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest(
+    const std::vector<int32_t>& cu_seqlens, int32_t total_tokens,
+    std::unique_ptr<IExecutionProvider> execution_provider) {
+  using T = int32_t;
+  const int64_t batch_size = static_cast<int64_t>(cu_seqlens.size()) - 1;
+  const std::vector<T> ids(static_cast<size_t>(total_tokens), T{1});
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {total_tokens}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {total_tokens, 4}, std::vector<T>(static_cast<size_t>(total_tokens * 4), T{0}));
+  test.AddOutput<T>("present_ids", {batch_size, 2},
+                    std::vector<T>(static_cast<size_t>(batch_size * 2), static_cast<T>(kPadId)));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // defined(USE_CUDA) || defined(USE_WEBGPU)
 
 }  // namespace
 
@@ -1097,6 +1135,63 @@ TEST(EngramOpsTest, VarlenNGramHashMappingRejectsRepeatedOffsets) {
   RunVarlenNGramHashMappingMalformedCuSeqlensTest<int64_t>(
       {0, 2, 2, 4}, 4, "cumulative_sequence_length must be strictly increasing");
 }
+
+// A statically-shaped cumulative_sequence_length with fewer than 2 elements has no valid
+// batch_size (batch_size = shape[0] - 1 would be <= 0), so shape inference must reject it up
+// front rather than silently inferring a present_ids batch dimension of -1 or 0.
+void RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(int64_t cu_seqlens_len) {
+  using T = int64_t;
+  const std::vector<T> ids{1, 2, 3};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<int32_t> cu_seqlens(static_cast<size_t>(cu_seqlens_len), 0);
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {3}, ids);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {cu_seqlens_len}, cu_seqlens);
+  test.AddOptionalInputEdge<T>();
+  test.AddOutput<T>("hash_ids", {3, 4}, std::vector<T>(12, T{0}));
+  test.AddOutput<T>("present_ids", {1, 2}, std::vector<T>(2, T{0}));
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "VarlenNGramHashMapping: cumulative_sequence_length must have at least 2 elements");
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsEmptyCuSeqlens) {
+  RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(0);
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsSingleElementCuSeqlens) {
+  RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(1);
+}
+
+#ifdef USE_CUDA
+TEST(EngramOpsTest, VarlenNGramHashMappingMalformedCuSeqlensDefaultsCuda) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({1, 3}, 3, DefaultCudaExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 2}, 3, DefaultCudaExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 3, 2, 4}, 4, DefaultCudaExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 2, 2, 4}, 4, DefaultCudaExecutionProvider());
+}
+#endif
+
+#ifdef USE_WEBGPU
+TEST(EngramOpsTest, VarlenNGramHashMappingMalformedCuSeqlensDefaultsWebGpu) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({1, 3}, 3, DefaultWebGpuExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 2}, 3, DefaultWebGpuExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 3, 2, 4}, 4, DefaultWebGpuExecutionProvider());
+  RunVarlenNGramHashMappingMalformedCuSeqlensDefaultsTest({0, 2, 2, 4}, 4, DefaultWebGpuExecutionProvider());
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

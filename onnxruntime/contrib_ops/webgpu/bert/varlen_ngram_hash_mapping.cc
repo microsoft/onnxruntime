@@ -3,6 +3,7 @@
 
 #include "contrib_ops/webgpu/bert/varlen_ngram_hash_mapping.h"
 
+#include "contrib_ops/cpu/bert/engram_helper.h"
 #include "contrib_ops/webgpu/bert/engram_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -24,11 +25,61 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()),
     VarlenNGramHashMapping);
 
+Status VarlenNGramValidateCuSeqlensProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& cu_seqlens = shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
+  const auto& is_valid = shader.AddOutput("is_valid", ShaderUsage::UseUniform);
+
+  // Single-invocation scan: per-workgroup local checks elsewhere (start < end, end <= total_tokens)
+  // only look at one request's own pair of offsets and cannot detect a globally non-monotonic
+  // cu_seqlens array (see the class comment in the header for the concrete race).
+  shader.MainFunctionBody()
+      << "  if (global_idx != 0u) { return; }\n"
+      << "  var valid = 1u;\n"
+      << "  if (uniforms.batch_size == 0u) {\n"
+      << "    valid = 0u;\n"
+      << "  } else {\n"
+      << "    if (" << cu_seqlens.GetByOffset("0u") << " != 0) { valid = 0u; }\n"
+      << "    for (var i = 0u; i < uniforms.batch_size; i++) {\n"
+      << "      let start = " << cu_seqlens.GetByOffset("i") << ";\n"
+      << "      let end = " << cu_seqlens.GetByOffset("i + 1u") << ";\n"
+      << "      if (start < 0 || start >= end || u32(end) > uniforms.total_tokens) { valid = 0u; }\n"
+      << "    }\n"
+      << "    if (u32(" << cu_seqlens.GetByOffset("uniforms.batch_size") << ") != uniforms.total_tokens) {\n"
+      << "      valid = 0u;\n"
+      << "    }\n"
+      << "  }\n"
+      << "  " << is_valid.SetByOffset("0u", "valid") << "\n";
+  return Status::OK();
+}
+
+Status VarlenNGramFillDefaultProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& is_valid = shader.AddInput("is_valid", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* present_ids = nullptr;
+  if (has_present_ids_) {
+    present_ids = &shader.AddOutput("present_ids", ShaderUsage::UseUniform);
+  }
+
+  shader.MainFunctionBody()
+      << "  if (" << is_valid.GetByOffset("0u") << " != 0u) { return; }\n"
+      << "  if (global_idx < uniforms.output_count) {\n"
+      << "    " << output.SetByOffset("global_idx", "0i") << "\n"
+      << "  }\n";
+  if (has_present_ids_) {
+    shader.MainFunctionBody()
+        << "  if (global_idx < uniforms.present_count) {\n"
+        << "    " << present_ids->SetByOffset("global_idx", "uniforms.pad_id") << "\n"
+        << "  }\n";
+  }
+  return Status::OK();
+}
+
 Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input_ids = shader.AddInput("input_ids", ShaderUsage::UseUniform);
   const auto& multipliers = shader.AddInput("multipliers", ShaderUsage::UseUniform);
   const auto& vocab_sizes = shader.AddInput("vocab_sizes", ShaderUsage::UseUniform);
   const auto& cu_seqlens = shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
+  const auto& is_valid = shader.AddInput("is_valid", ShaderUsage::UseUniform);
   const ShaderVariableHelper* past_ids = nullptr;
   if (has_past_ids_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
@@ -37,18 +88,20 @@ Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) c
 
   shader.AdditionalImplementation() << engram_helper::kPositiveModWgsl;
 
-  // Malformed offsets make this workgroup return before any input, history, or output access.
+  // Every workgroup bails out immediately (leaving VarlenNGramFillDefaultProgram's defaults in
+  // place) unless VarlenNGramValidateCuSeqlensProgram found cu_seqlens globally valid. The two
+  // programs' writes are therefore mutually exclusive, so the output is always fully and
+  // unambiguously written regardless of launch order (see the header comment for why per-workgroup
+  // local checks alone are not enough).
   shader.MainFunctionBody()
+      << "  if (" << is_valid.GetByOffset("0u") << " == 0u) { return; }\n"
       << "  let b = workgroup_idx;\n"
       << "  if (b >= uniforms.batch_size) { return; }\n"
-      << "  let first = " << cu_seqlens.GetByOffset("0u") << ";\n"
-      << "  let last = " << cu_seqlens.GetByOffset("uniforms.batch_size") << ";\n"
       << "  let start = " << cu_seqlens.GetByOffset("b") << ";\n"
       << "  let end = " << cu_seqlens.GetByOffset("b + 1u") << ";\n"
-      << "  if (first != 0 || u32(last) != uniforms.total_tokens || start < 0 || start >= end ||\n"
-      << "      u32(end) > uniforms.total_tokens) {\n"
-      << "    return;\n"
-      << "  }\n"
+      // Defense-in-depth: is_valid already guarantees this globally, but keep the local check too
+      // in case a future change narrows what is_valid covers.
+      << "  if (start < 0 || start >= end || u32(end) > uniforms.total_tokens) { return; }\n"
       << "  let local_length = u32(end - start);\n"
       << "  let state_length = uniforms.max_ngram_size - 1u;\n"
       << "  let num_heads = state_length * uniforms.n_head_per_ngram;\n"
@@ -85,6 +138,7 @@ Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) c
 
 Status VarlenNGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& cu_seqlens = shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
+  const auto& is_valid = shader.AddInput("is_valid", ShaderUsage::UseUniform);
   const ShaderVariableHelper* input_ids = nullptr;
   if (has_input_ids_) {
     input_ids = &shader.AddInput("input_ids", ShaderUsage::UseUniform);
@@ -95,20 +149,19 @@ Status VarlenNGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) co
   }
   const auto& present_ids = shader.AddOutput("present_ids", ShaderUsage::UseUniform);
 
-  // Malformed offsets make this thread's request fall back to an all-pad_id present_ids row
-  // instead of indexing into input_ids/past_ids with an out-of-range start/end, mirroring the
-  // containment applied by VarlenNGramHashMappingProgram.
+  // Left in place (rather than overwritten) by VarlenNGramFillDefaultProgram's pad_id defaults
+  // unless VarlenNGramValidateCuSeqlensProgram found cu_seqlens globally valid; see
+  // VarlenNGramHashMappingProgram for why a per-request local check alone is not enough.
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
+      << "  if (" << is_valid.GetByOffset("0u") << " == 0u) { return; }\n"
       << "  let slot = global_idx % uniforms.state_length;\n"
       << "  let b = global_idx / uniforms.state_length;\n"
-      << "  let first = " << cu_seqlens.GetByOffset("0u") << ";\n"
-      << "  let last = " << cu_seqlens.GetByOffset("uniforms.batch_size") << ";\n"
       << "  let start = " << cu_seqlens.GetByOffset("b") << ";\n"
       << "  let end = " << cu_seqlens.GetByOffset("b + 1u") << ";\n"
       << "  var token = uniforms.pad_id;\n"
-      << "  if (first == 0 && u32(last) == uniforms.total_tokens && start >= 0 && start < end &&\n"
-      << "      u32(end) <= uniforms.total_tokens) {\n"
+      // Defense-in-depth: is_valid already guarantees this globally.
+      << "  if (start >= 0 && start < end && u32(end) <= uniforms.total_tokens) {\n"
       << "    let local_length = u32(end - start);\n";
   if (has_input_ids_) {
     shader.MainFunctionBody()
@@ -152,7 +205,17 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_NOT(input_ids->Shape().NumDimensions() == 1, "input_ids must have rank 1 (total_tokens)");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 && multipliers->Shape()[0] == max_ngram_size_,
                     "multipliers must have shape (max_ngram_size)");
-  const int64_t num_heads = (max_ngram_size_ - 1) * n_head_per_ngram_;
+  int64_t num_heads = 0;
+  ORT_RETURN_IF_NOT(
+      onnxruntime::contrib::engram_helper::TryMultiplyDims(max_ngram_size_ - 1, n_head_per_ngram_, num_heads),
+      "VarlenNGramHashMapping: (max_ngram_size - 1) * n_head_per_ngram overflows int64_t");
+  // Even though max_ngram_size and n_head_per_ngram individually fit the uint32_t uniforms below
+  // (WebGpuKernel construction already narrows each of them), their product is recomputed inside the
+  // WGSL shader as u32 arithmetic and could itself overflow a uint32_t even when int64_t num_heads
+  // does not. Reject that case here instead of letting the shader silently wrap.
+  ORT_RETURN_IF_NOT(num_heads <= std::numeric_limits<uint32_t>::max(),
+                    "VarlenNGramHashMapping: (max_ngram_size - 1) * n_head_per_ngram must fit in a uint32_t "
+                    "for the WebGPU execution provider");
   ORT_RETURN_IF_NOT(vocab_sizes->Shape() == TensorShape({num_heads}),
                     "vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
 
@@ -177,12 +240,52 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
   auto* output = context.Output(0, TensorShape({total_tokens, num_heads}));
   auto* present_ids = context.Output(1, TensorShape({batch_size, state_length}));
 
-  if (present_ids != nullptr && batch_size * state_length > 0) {
-    const int64_t present_total = batch_size * state_length;
+  if (batch_size == 0) {
+    return Status::OK();
+  }
+
+  // Establish global monotonicity of cu_seqlens exactly once, before any output-producing program
+  // runs. VarlenNGramHashMappingProgram and VarlenNGramPresentIdsProgram only ever access
+  // input_ids/past_ids/write outputs once this flag confirms the whole array is well-formed; when
+  // it is not, VarlenNGramFillDefaultProgram (and the pad_id fallback embedded directly in
+  // VarlenNGramPresentIdsProgram) supplies deterministic defaults instead. See
+  // VarlenNGramValidateCuSeqlensProgram's declaration for why per-request local range checks alone
+  // cannot detect this.
+  Tensor is_valid = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), TensorShape({1}));
+  VarlenNGramValidateCuSeqlensProgram validate_program{};
+  validate_program.AddInput({cu_seqlens, ProgramTensorMetadataDependency::None})
+      .AddOutput({&is_valid, ProgramTensorMetadataDependency::None})
+      .SetDispatchGroupSize(1)
+      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(batch_size)},
+                            {onnxruntime::narrow<uint32_t>(total_tokens)}});
+  ORT_RETURN_IF_ERROR(context.RunProgram(validate_program));
+
+  const int64_t output_count = total_tokens * num_heads;
+  const int64_t present_count = present_ids == nullptr ? 0 : batch_size * state_length;
+  if (output_count > 0 || present_count > 0) {
+    const bool has_present_ids = present_count > 0;
+    VarlenNGramFillDefaultProgram fill_program{has_present_ids};
+    fill_program.CacheHint(has_present_ids);
+    fill_program.AddInput({&is_valid, ProgramTensorMetadataDependency::None});
+    fill_program.AddOutput({output, ProgramTensorMetadataDependency::None});
+    if (has_present_ids) {
+      fill_program.AddOutput({present_ids, ProgramTensorMetadataDependency::None});
+    }
+    const int64_t max_elements = std::max(output_count, present_count);
+    fill_program
+        .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(max_elements) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(output_count)},
+                              {onnxruntime::narrow<uint32_t>(present_count)},
+                              {onnxruntime::narrow<int32_t>(pad_id_)}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(fill_program));
+  }
+
+  if (present_count > 0) {
     const bool has_input_ids = total_tokens > 0;
     VarlenNGramPresentIdsProgram present_program{has_input_ids, has_past_ids};
     present_program.CacheHint(has_input_ids, has_past_ids);
     present_program.AddInput({cu_seqlens, ProgramTensorMetadataDependency::None});
+    present_program.AddInput({&is_valid, ProgramTensorMetadataDependency::None});
     if (has_input_ids) {
       present_program.AddInput({input_ids, ProgramTensorMetadataDependency::None});
     }
@@ -190,8 +293,8 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
       present_program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
     }
     present_program.AddOutput({present_ids, ProgramTensorMetadataDependency::None})
-        .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(present_total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(present_total)},
+        .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(present_count) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(present_count)},
                               {onnxruntime::narrow<uint32_t>(state_length)},
                               {onnxruntime::narrow<uint32_t>(batch_size)},
                               {onnxruntime::narrow<uint32_t>(total_tokens)},
@@ -199,7 +302,7 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
     ORT_RETURN_IF_ERROR(context.RunProgram(present_program));
   }
 
-  if (total_tokens == 0 || batch_size == 0) {
+  if (total_tokens == 0) {
     return Status::OK();
   }
 
@@ -208,7 +311,8 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
       .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
                   {multipliers, ProgramTensorMetadataDependency::None},
                   {vocab_sizes, ProgramTensorMetadataDependency::None},
-                  {cu_seqlens, ProgramTensorMetadataDependency::None}});
+                  {cu_seqlens, ProgramTensorMetadataDependency::None},
+                  {&is_valid, ProgramTensorMetadataDependency::None}});
   if (has_past_ids) {
     program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
   }

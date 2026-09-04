@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/bert/varlen_ngram_hash_mapping.h"
 #include "contrib_ops/cuda/bert/varlen_ngram_hash_mapping_impl.h"
+#include "contrib_ops/cpu/bert/engram_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 
 #include <limits>
@@ -60,7 +61,9 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
                         multipliers->Shape()[0] == max_ngram_size_,
                     "multipliers must have shape (max_ngram_size)");
-  const int64_t num_heads = (max_ngram_size_ - 1) * n_head_per_ngram_;
+  int64_t num_heads = 0;
+  ORT_RETURN_IF_NOT(onnxruntime::contrib::engram_helper::TryMultiplyDims(max_ngram_size_ - 1, n_head_per_ngram_, num_heads),
+                    "VarlenNGramHashMapping: (max_ngram_size - 1) * n_head_per_ngram overflows int64_t");
   ORT_RETURN_IF_NOT(vocab_sizes->Shape().NumDimensions() == 1 && vocab_sizes->Shape()[0] == num_heads,
                     "vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
 
@@ -86,6 +89,12 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
   Tensor* output = context->Output(0, TensorShape({total_tokens, num_heads}));
   Tensor* present_ids = context->Output(1, TensorShape({batch_size, state_length}));
 
+  // Device-resident scratch flag: cumulative_sequence_length's values cannot be validated
+  // host-side, so LaunchVarlenNGramHashMappingKernel computes global monotonicity into this flag
+  // on-device before any output-producing kernel runs (see the impl file for why per-block local
+  // checks alone are not sufficient).
+  auto is_valid_buffer = GetScratchBuffer<int32_t>(1, context->GetComputeStream());
+
   return LaunchVarlenNGramHashMappingKernel<T>(
       Stream(context),
       input_ids->Data<T>(),
@@ -100,7 +109,8 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
       max_ngram_size_,
       n_head_per_ngram_,
       pad_id_,
-      GetDeviceProp().maxThreadsPerBlock);
+      GetDeviceProp().maxThreadsPerBlock,
+      is_valid_buffer.get());
 }
 
 template class VarlenNGramHashMapping<int32_t>;
