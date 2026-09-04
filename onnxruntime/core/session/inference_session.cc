@@ -10,6 +10,7 @@
 #include <list>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <thread>
 #include <queue>
 #include <iomanip>
@@ -1260,8 +1261,15 @@ common::Status InferenceSession::StartExternalDataPreload() {
     return Status::OK();
   }
 
+  std::unordered_set<std::string> excluded_initializer_names;
+  excluded_initializer_names.reserve(session_options_.initializers_to_share_map.size());
+  for (const auto& [name, initializer] : session_options_.initializers_to_share_map) {
+    ORT_UNUSED_PARAMETER(initializer);
+    excluded_initializer_names.insert(name);
+  }
+
   ORT_RETURN_IF_ERROR(external_data_loader_mgr_.PreloadExternalData(
-      Env::Default(), model_location_, model_->MainGraph(),
+      Env::Default(), model_location_, model_->MainGraph(), excluded_initializer_names,
       [this]() { return session_options_.IsLoadCancellationFlagSet(); }));
   external_data_preload_started_ = true;
   return Status::OK();
