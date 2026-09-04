@@ -126,6 +126,10 @@ common::Status LoadBatchToD3D12(
     const std::function<bool()>& is_cancelled,
     DirectStorageLoadMetrics& metrics) {
   ORT_RETURN_IF_NOT(d3d_device != nullptr, "A D3D12 device is required.");
+  if (is_cancelled && is_cancelled()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                           "DirectStorage initializer loading was canceled.");
+  }
   ORT_RETURN_IF(batch.request_count >
                     static_cast<size_t>(DSTORAGE_MAX_QUEUE_CAPACITY) - 2,
                 "DirectStorage initializer batch requires ", batch.request_count,
@@ -147,6 +151,9 @@ common::Status LoadBatchToD3D12(
           const size_t index = next_index.fetch_add(1, std::memory_order_relaxed);
           if (index >= batch.tensors.size()) {
             return;
+          }
+          if (batch.tensors[index].key.length == 0) {
+            continue;
           }
 
           const uint64_t resource_size =
@@ -384,8 +391,6 @@ common::Status PrepareTensorForBatch(
                 "\" has a negative file offset.");
 
   const size_t length = static_cast<size_t>(data_length);
-  ORT_RETURN_IF(length == 0, "DirectStorage initializer \"", tensor_name,
-                "\" has zero length.");
   ORT_RETURN_IF(length > std::numeric_limits<uint64_t>::max() - 3,
                 "DirectStorage initializer \"", tensor_name,
                 "\" is too large to align.");
@@ -608,7 +613,15 @@ struct DirectStorageExternalDataLoader::Impl {
 
   void ResolveSupport() const {
     std::call_once(support_once, [this]() {
-      const auto support_status = CheckDirectStorageExternalWeightsSupport(context);
+      auto support_status = CheckDirectStorageExternalWeightsSupport(context);
+      if (support_status.IsOK() &&
+          mode == WeightLoadAccelerationMode::RequiredPipelined &&
+          !context.PipelinedWeightLoadingEnabled()) {
+        support_status = ORT_MAKE_STATUS(
+            ONNXRUNTIME, FAIL,
+            "weightLoadAcceleration=required-pipelined requires the WebGPU "
+            "context to be initialized with pipelined weight loading.");
+      }
       resolved_status =
           ResolveWeightLoadAccelerationMode(mode, support_status, enabled);
       if (!enabled) {
@@ -701,7 +714,7 @@ common::Status DirectStorageExternalDataLoader::FinalizePreload(
   }
   ORT_RETURN_IF_NOT(impl_->preload_batch != nullptr,
                     "DirectStorage preload batch has not been started.");
-  if (impl_->preload_batch->tensors.empty()) {
+  if (impl_->preload_batch->request_count == 0) {
     impl_->context.ContinueInitialize();
     return common::Status::OK();
   }
@@ -783,7 +796,7 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
     impl_->context.WaitForInitializeComplete();
     return common::Status::OK();
   };
-  if (batch.tensors.empty()) {
+  if (batch.request_count == 0) {
     if (impl_->preload_future.valid()) {
       impl_->preload_future.wait();
     }
@@ -847,6 +860,9 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
                       "DirectStorage and Dawn used different D3D12 devices.");
 
     for (auto& tensor : batch.tensors) {
+      if (tensor.key.length == 0) {
+        continue;
+      }
       dawn::native::d3d12::SharedBufferMemoryD3D12ResourceDescriptor
           resource_descriptor;
       resource_descriptor.resource = tensor.resource;
@@ -977,12 +993,17 @@ common::Status DirectStorageExternalDataLoader::LoadTensor(
   ORT_RETURN_IF(prepared.claimed,
                 "DirectStorage initializer \"", tensor_name,
                 "\" has already been consumed.");
-  ORT_RETURN_IF_NOT(prepared.buffer && prepared.access_started,
-                    "DirectStorage initializer \"", tensor_name,
-                    "\" does not have an imported buffer.");
   ORT_RETURN_IF(length != tensor.SizeInBytes(),
                 "DirectStorage initializer \"", tensor_name,
                 "\" length does not match the placeholder tensor.");
+  if (length == 0) {
+    prepared.claimed = true;
+    tensor = Tensor{tensor.DataType(), tensor.Shape(), nullptr, allocator};
+    return common::Status::OK();
+  }
+  ORT_RETURN_IF_NOT(prepared.buffer && prepared.access_started,
+                    "DirectStorage initializer \"", tensor_name,
+                    "\" does not have an imported buffer.");
 
   auto imported = std::make_unique<ImportedAllocation>();
   imported->resource = std::move(prepared.resource);
