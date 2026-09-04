@@ -244,7 +244,7 @@ def main() -> int:
     if not args.skip_verify:
         verify_command = [str(perf_test), "-e", "webgpu"]
         if args.direct_storage:
-            verify_command += ["-i", "directStorageExternalWeights|1"]
+            verify_command += ["-i", "directStorageExternalWeights|required"]
         verify_command += ["-o", "0", "-n", str(output_model)]
         _run(verify_command, "Verifying fused model with runtime graph optimization disabled")
 

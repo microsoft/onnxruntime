@@ -78,7 +78,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
     max_num_pending_dispatches_ = config.max_num_pending_dispatches;
     enable_robustness_ = config.enable_robustness;
-    direct_storage_external_weights_ = config.direct_storage_external_weights;
+    direct_storage_external_weights_mode_ = config.direct_storage_external_weights_mode;
 
     // Three easily-conflated concepts, at three layers (a pipeline, not the same flag):
     //   * allow_virtual_devices (env)     -- selectability: surface a virtual GPU OrtEpDevice so WebGPU is
@@ -818,7 +818,8 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
     if (adapter.HasFeature(feature)) {
       required_features.push_back(feature);
     } else {
-      ORT_ENFORCE(!direct_storage_external_weights_,
+      ORT_ENFORCE(direct_storage_external_weights_mode_ !=
+                      DirectStorageExternalWeightsMode::Required,
                   "The selected Dawn D3D12 adapter does not support a feature required by "
                   "directStorageExternalWeights: ",
                   static_cast<uint32_t>(feature));

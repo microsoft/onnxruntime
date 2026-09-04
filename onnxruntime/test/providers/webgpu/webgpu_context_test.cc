@@ -22,6 +22,10 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/asserts.h"
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#include "core/providers/webgpu/direct_storage_external_data_loader.h"
+#endif
+
 #if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
 #endif
@@ -35,6 +39,18 @@ using namespace webgpu::options;
 ConfigOptions RobustnessOptions(const char* value) {
   ConfigOptions options;
   ORT_THROW_IF_ERROR(options.AddConfigEntry(kEnableRobustness, value));
+  return options;
+}
+
+ConfigOptions DirectStorageOptions(const char* value) {
+  ConfigOptions options;
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kDirectStorageExternalWeights, value));
+  return options;
+}
+
+ConfigOptions CompileOnlyDirectStorageOptions(const char* value) {
+  auto options = DirectStorageOptions(value);
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
   return options;
 }
 
@@ -268,6 +284,62 @@ TEST(WebGpuContextTest, EnableRobustnessUsesBuildDefault) {
 TEST(WebGpuContextTest, EnableRobustnessRejectsInvalidValue) {
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(RobustnessOptions("true")), OnnxRuntimeException);
 }
+
+TEST(WebGpuContextTest, DirectStorageRejectsBooleanAndUnknownModes) {
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(DirectStorageOptions("1")),
+               OnnxRuntimeException);
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(DirectStorageOptions("automatic")),
+               OnnxRuntimeException);
+}
+
+TEST(WebGpuContextTest, DirectStorageOffDoesNotRequireDeviceSupport) {
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                CompileOnlyDirectStorageOptions(kDirectStorageExternalWeights_Off))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+}
+
+TEST(WebGpuContextTest, DirectStoragePreferredFallsBackWithoutDeviceSupport) {
+  auto ep = WebGpuProviderFactoryCreator::Create(
+                CompileOnlyDirectStorageOptions(kDirectStorageExternalWeights_Preferred))
+                ->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+}
+
+TEST(WebGpuContextTest, DirectStorageRequiredFailsWithoutDeviceSupport) {
+  auto factory = WebGpuProviderFactoryCreator::Create(
+      CompileOnlyDirectStorageOptions(kDirectStorageExternalWeights_Required));
+  EXPECT_THROW(factory->CreateProvider(), OnnxRuntimeException);
+}
+
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+TEST(WebGpuContextTest, DirectStorageModeResolution) {
+  const auto unsupported =
+      ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DirectStorage unavailable");
+  bool enabled = true;
+
+  EXPECT_STATUS_OK(webgpu::ResolveDirectStorageExternalWeightsMode(
+      webgpu::DirectStorageExternalWeightsMode::Off, unsupported, enabled));
+  EXPECT_FALSE(enabled);
+
+  enabled = true;
+  EXPECT_STATUS_OK(webgpu::ResolveDirectStorageExternalWeightsMode(
+      webgpu::DirectStorageExternalWeightsMode::Preferred, unsupported, enabled));
+  EXPECT_FALSE(enabled);
+
+  enabled = false;
+  EXPECT_STATUS_OK(webgpu::ResolveDirectStorageExternalWeightsMode(
+      webgpu::DirectStorageExternalWeightsMode::Preferred, common::Status::OK(), enabled));
+  EXPECT_TRUE(enabled);
+
+  enabled = true;
+  const auto required_status = webgpu::ResolveDirectStorageExternalWeightsMode(
+      webgpu::DirectStorageExternalWeightsMode::Required, unsupported, enabled);
+  EXPECT_FALSE(required_status.IsOK());
+  EXPECT_FALSE(enabled);
+  EXPECT_EQ(required_status.ErrorMessage(), unsupported.ErrorMessage());
+}
+#endif
 
 TEST(WebGpuContextTest, CompileOnlyContextDoesNotCreateDevice) {
   auto options = RobustnessOptions("0");
