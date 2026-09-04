@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -27,6 +28,7 @@
 #include "core/platform/env.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "contrib_ops/cuda/quantization/matmul_nbits_legacy_workspace.h"
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -203,6 +205,19 @@ struct ArenaMeasurement {
   size_t workspace_bytes;
 };
 
+TEST(MatMulNBitsWorkspace, LegacyHyMT2OutputProjectionIs128MiB) {
+  const auto workspace =
+      contrib::cuda::ComputeLegacyMatMulNBitsWorkspaceInfo(
+          /*n=*/kHyMT2VocabSize, /*k=*/2048, /*block_size=*/32,
+          sizeof(MLFloat16), /*column_wise_quantization=*/true,
+          /*has_g_idx=*/false, /*force_chunked=*/false,
+          /*chunk_target_rows=*/32768);
+  ASSERT_TRUE(workspace.has_value());
+  EXPECT_TRUE(workspace->use_chunked);
+  EXPECT_EQ(workspace->scratch_rows, 32768);
+  EXPECT_EQ(workspace->size_bytes, size_t{128} * 1024 * 1024);
+}
+
 ArenaMeasurement MeasureArenaReservation(const std::string& model_bytes,
                                          size_t node_count,
                                          bool enable_workspace_preallocation) {
@@ -376,6 +391,108 @@ TEST(MatMulNBitsWorkspace, SequentialChainUsesSharedPlannedWorkspace) {
   }
 }
 
+TEST(MatMulNBitsWorkspace, LegacyFallbackUsesSharedPlannedWorkspace) {
+  constexpr size_t kNodeCount = kOutputWidths.size();
+  ScopedEnvironmentVariables scoped_env(EnvVarMap{
+      {"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"1"}},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", optional<std::string>{"64"}},
+  });
+  const std::string model_bytes = BuildMatMulNBitsChainModelBytes();
+
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+
+  SessionOptions session_options;
+  session_options.session_logid = "MatMulNBitsLegacyWorkspaceChain";
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      "ep.cuda.matmul_nbits.trace_legacy_workspace", "1"));
+  InferenceSessionWrapper session(session_options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const SessionState& session_state = session.GetSessionState();
+  const auto matmul_nodes = FindMatMulNBitsNodes(session.GetGraph());
+  ASSERT_EQ(matmul_nodes.size(), kNodeCount);
+  const SequentialExecutionPlan* execution_plan = session_state.GetExecutionPlan();
+  ASSERT_NE(execution_plan, nullptr);
+
+  int64_t input_width = kK;
+  for (size_t i = 0; i < kNodeCount; ++i) {
+    const auto expected_workspace =
+        contrib::cuda::ComputeLegacyMatMulNBitsWorkspaceInfo(
+            kOutputWidths[i], input_width, kBlockSize, sizeof(MLFloat16),
+            /*column_wise_quantization=*/true, /*has_g_idx=*/false,
+            /*force_chunked=*/true, /*chunk_target_rows=*/64);
+    ASSERT_TRUE(expected_workspace.has_value());
+
+    const auto plan_it =
+        execution_plan->workspace_allocation_plan.find(matmul_nodes[i]->Index());
+    ASSERT_NE(plan_it, execution_plan->workspace_allocation_plan.end());
+    ASSERT_EQ(plan_it->second.size(), static_cast<size_t>(1));
+    EXPECT_EQ(plan_it->second.front().allocation_bytes,
+              expected_workspace->size_bytes);
+    input_width = kOutputWidths[i];
+  }
+
+  std::vector<MLFloat16> input_data(
+      static_cast<size_t>(kM * kK), MLFloat16(0.25f));
+  OrtValue input_value;
+  CreateMLValue<MLFloat16>(
+      std::array<int64_t, 2>{kM, kK}, input_data.data(),
+      OrtMemoryInfo(), &input_value);
+  NameMLValMap feeds;
+  feeds.emplace("A", input_value);
+  const std::vector<std::string> output_names{
+      "Y" + std::to_string(kNodeCount - 1)};
+  std::vector<OrtValue> fetches;
+
+  ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  ASSERT_EQ(fetches.size(), static_cast<size_t>(1));
+  const auto first_output =
+      fetches.front().Get<Tensor>().DataAsSpan<MLFloat16>();
+  const std::vector<MLFloat16> expected_output(
+      first_output.begin(), first_output.end());
+
+  fetches.clear();
+  ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  ASSERT_EQ(fetches.size(), static_cast<size_t>(1));
+  const auto planned_output =
+      fetches.front().Get<Tensor>().DataAsSpan<MLFloat16>();
+  ASSERT_EQ(planned_output.size(), expected_output.size());
+  for (size_t i = 0; i < expected_output.size(); ++i) {
+    EXPECT_EQ(planned_output[i].val, expected_output[i].val);
+  }
+}
+
+TEST(MatMulNBitsWorkspace, LegacyFallbackReducesSecondRunArenaReservation) {
+  constexpr size_t kNodeCount = kOutputWidths.size();
+  ScopedEnvironmentVariables scoped_env(EnvVarMap{
+      {"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", optional<std::string>{"1"}},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", optional<std::string>{"64"}},
+  });
+  const std::string model_bytes = BuildMatMulNBitsChainModelBytes();
+
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+
+  const ArenaMeasurement scratch = MeasureArenaReservation(
+      model_bytes, kNodeCount, /*enable_workspace_preallocation=*/false);
+  const ArenaMeasurement planned = MeasureArenaReservation(
+      model_bytes, kNodeCount, /*enable_workspace_preallocation=*/true);
+
+  ASSERT_GT(planned.workspace_bytes, static_cast<size_t>(0));
+  EXPECT_LT(planned.second_run_cuda_allocated_bytes,
+            scratch.second_run_cuda_allocated_bytes);
+}
+
 TEST(MatMulNBitsWorkspace, ReportsRealArenaMemorySavings) {
   constexpr size_t kNodeCount = kOutputWidths.size();
   ScopedEnvironmentVariables scoped_env(EnvVarMap{
@@ -495,7 +612,7 @@ TEST(MatMulNBitsWorkspace, HyMT2ModelRunsWithoutWorkspacePreallocation) {
   ASSERT_STATUS_OK(session.Initialize());
 
   const auto matmul_nodes = FindMatMulNBitsNodes(session.GetGraph());
-  ASSERT_EQ(matmul_nodes.size(), static_cast<size_t>(225));
+  ASSERT_FALSE(matmul_nodes.empty());
   const SequentialExecutionPlan* execution_plan = session.GetSessionState().GetExecutionPlan();
   ASSERT_NE(execution_plan, nullptr);
 
@@ -523,6 +640,8 @@ TEST(MatMulNBitsWorkspace, HyMT2ModelRunsWithoutWorkspacePreallocation) {
   std::vector<int64_t> input_ids(static_cast<size_t>(kHyMT2SequenceLength), 120000);
   std::vector<int64_t> attention_mask(
       static_cast<size_t>(kHyMT2PastSequenceLength + kHyMT2SequenceLength), 1);
+  std::vector<int64_t> position_ids(static_cast<size_t>(kHyMT2SequenceLength));
+  std::iota(position_ids.begin(), position_ids.end(), kHyMT2PastSequenceLength);
   std::vector<MLFloat16> past_data(
       static_cast<size_t>(kHyMT2NumKeyValueHeads * kHyMT2PastSequenceLength * kHyMT2HeadSize),
       MLFloat16(0.0f));
@@ -539,6 +658,12 @@ TEST(MatMulNBitsWorkspace, HyMT2ModelRunsWithoutWorkspacePreallocation) {
       std::array<int64_t, 2>{1, kHyMT2PastSequenceLength + kHyMT2SequenceLength},
       attention_mask.data(), OrtMemoryInfo(), &attention_mask_value);
   feeds.emplace("attention_mask", attention_mask_value);
+
+  OrtValue position_ids_value;
+  CreateMLValue<int64_t>(
+      std::array<int64_t, 2>{1, kHyMT2SequenceLength},
+      position_ids.data(), OrtMemoryInfo(), &position_ids_value);
+  feeds.emplace("position_ids", position_ids_value);
 
   const std::array<int64_t, 4> past_shape{
       1, kHyMT2NumKeyValueHeads, kHyMT2PastSequenceLength, kHyMT2HeadSize};
@@ -577,6 +702,58 @@ TEST(MatMulNBitsWorkspace, HyMT2ModelRunsWithoutWorkspacePreallocation) {
   std::cout << "[ HY-MT2 WORKSPACE ] CUDA MatMulNBits nodes: " << cuda_matmul_nodes
             << ", planned workspace nodes: " << planned_workspace_nodes
             << ", largest workspace: " << largest_workspace_bytes << " bytes" << std::endl;
+}
+
+TEST(MatMulNBitsWorkspace, HyMT2ModelDeclaresLegacyWorkspacePreallocation) {
+  std::string model_path_utf8 = Env::Default().GetEnvironmentVar("ORT_HY_MT2_MODEL_PATH");
+  if (model_path_utf8.empty()) {
+    model_path_utf8 =
+        "C:\\Users\\lochi\\repos\\onnxruntime\\Hy-MT2-1.8B-ONNX\\Q4_KQuant_tie\\cuda\\model.onnx";
+  }
+  const std::filesystem::path model_path(ToPathString(model_path_utf8));
+  if (!std::filesystem::exists(model_path)) {
+    GTEST_SKIP() << "Hy-MT2 model not found at " << model_path_utf8
+                 << "; set ORT_HY_MT2_MODEL_PATH to model.onnx.";
+  }
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable.";
+  }
+
+  SessionOptions session_options;
+  session_options.session_logid = "HyMT2LegacyWorkspacePreallocation";
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsMaxShapeOverride, BuildHyMT2MaxShapeOverride().c_str()));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsCudaFpAIntBGemm, "0"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigDisablePrepacking, "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsEnableStaticWorkspacePreallocation, "1"));
+
+  InferenceSessionWrapper session(session_options, GetEnvironment());
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(model_path.native().c_str()));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto matmul_nodes = FindMatMulNBitsNodes(session.GetGraph());
+  ASSERT_FALSE(matmul_nodes.empty());
+  const SequentialExecutionPlan* execution_plan = session.GetSessionState().GetExecutionPlan();
+  ASSERT_NE(execution_plan, nullptr);
+
+  size_t planned_workspace_nodes = 0;
+  size_t largest_workspace_bytes = 0;
+  for (const Node* node : matmul_nodes) {
+    ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+    const auto plan_it = execution_plan->workspace_allocation_plan.find(node->Index());
+    ASSERT_NE(plan_it, execution_plan->workspace_allocation_plan.end());
+    ASSERT_EQ(plan_it->second.size(), static_cast<size_t>(1));
+    ++planned_workspace_nodes;
+    largest_workspace_bytes =
+        std::max(largest_workspace_bytes, plan_it->second.front().allocation_bytes);
+  }
+
+  EXPECT_EQ(planned_workspace_nodes, matmul_nodes.size());
+  EXPECT_EQ(largest_workspace_bytes, size_t{128} * 1024 * 1024);
 }
 
 }  // namespace

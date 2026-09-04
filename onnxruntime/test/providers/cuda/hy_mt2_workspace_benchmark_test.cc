@@ -19,6 +19,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -32,6 +33,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/allocator_stats.h"
 #include "core/framework/session_state.h"
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/test_environment.h"
@@ -46,8 +48,11 @@ namespace {
 
 using Microsoft::WRL::ComPtr;
 
-constexpr int64_t kSequenceLength = 1024;
-constexpr int64_t kPastSequenceLength = 1;
+constexpr int64_t kDefaultSequenceLength = 1024;
+constexpr int kDefaultWarmupRuns = 5;
+constexpr int kDefaultMemoryMeasurementRuns = 3;
+constexpr int kDefaultMeasuredRuns = 30;
+constexpr int64_t kDefaultPastSequenceLength = 0;
 constexpr int kMinFpAIntBSm = 75;
 
 enum class CacheLayout {
@@ -100,6 +105,29 @@ ArenaMemoryBreakdown GetArenaMemoryBreakdown(const AllocatorStats& stats) {
           : static_cast<double>(internal_fragmentation_bytes) /
                 static_cast<double>(stats.bytes_in_use),
   };
+}
+
+void LogArenaCheckpoint(std::string_view checkpoint,
+                        const AllocatorStats& stats,
+                        size_t wddm_local_bytes) {
+  const ArenaMemoryBreakdown breakdown = GetArenaMemoryBreakdown(stats);
+  std::cout << "[ ARENA CHECKPOINT ]"
+            << " checkpoint=" << checkpoint
+            << " total_allocated_bytes=" << stats.total_allocated_bytes
+            << " reserved_bytes=" << stats.reserved_bytes
+            << " bfc_region_bytes=" << breakdown.bfc_region_bytes
+            << " bytes_in_use=" << stats.bytes_in_use
+            << " bytes_requested_in_use=" << stats.bytes_requested_in_use
+            << " arena_slack_bytes=" << breakdown.arena_slack_bytes
+            << " internal_fragmentation_bytes=" << breakdown.internal_fragmentation_bytes
+            << " max_bytes_in_use=" << stats.max_bytes_in_use
+            << " max_alloc_size=" << stats.max_alloc_size
+            << " num_allocs=" << stats.num_allocs
+            << " num_reserves=" << stats.num_reserves
+            << " num_arena_extensions=" << stats.num_arena_extensions
+            << " num_arena_shrinkages=" << stats.num_arena_shrinkages
+            << " wddm_local_bytes=" << wddm_local_bytes
+            << std::endl;
 }
 
 constexpr ModelProfile kHyMT2Profile{
@@ -366,12 +394,15 @@ const ModelProfile& GetModelProfile() {
             kQwen3_8BProfile.name, ", but got: ", model_name);
 }
 
-std::string BuildMaxShapeOverride(const ModelProfile& profile) {
+std::string BuildMaxShapeOverride(const ModelProfile& profile,
+                                  int64_t sequence_length,
+                                  int64_t past_sequence_length) {
+  const int64_t max_past_sequence_length = std::max<int64_t>(past_sequence_length, 1);
   std::ostringstream shapes;
-  shapes << "input_ids:[1," << kSequenceLength << "]"
-         << ";attention_mask:[1," << kPastSequenceLength + kSequenceLength << "]";
+  shapes << "input_ids:[1," << sequence_length << "]"
+         << ";attention_mask:[1," << max_past_sequence_length + sequence_length << "]";
   if (profile.cache_layout == CacheLayout::Qwen35Hybrid) {
-    shapes << ";position_ids:[1," << kSequenceLength << "]";
+    shapes << ";position_ids:[1," << sequence_length << "]";
   }
 
   for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
@@ -379,7 +410,7 @@ std::string BuildMaxShapeOverride(const ModelProfile& profile) {
         profile.cache_layout == CacheLayout::Transformer || layer % 4 == 3;
     if (uses_full_attention) {
       const std::string shape = ":[1," + std::to_string(profile.num_key_value_heads) + "," +
-                                std::to_string(kPastSequenceLength) + "," +
+                                std::to_string(max_past_sequence_length) + "," +
                                 std::to_string(profile.head_size) + "]";
       shapes << ";past_key_values." << layer << ".key" << shape
              << ";past_key_values." << layer << ".value" << shape;
@@ -435,18 +466,33 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
       GetBinaryEnvironmentValue("ORT_WORKSPACE_BENCHMARK_USE_DEVICE_INITIALIZERS", "0");
   const std::string enable_fpa_intb =
       GetBinaryEnvironmentValue("ORT_WORKSPACE_BENCHMARK_FPA_INTB_GEMM", "1");
+  const std::string detailed_arena_metrics =
+      GetBinaryEnvironmentValue("ORT_WORKSPACE_BENCHMARK_DETAILED_ARENA_METRICS", "0");
+  const int64_t sequence_length = ParseEnvironmentVariableWithDefault<int64_t>(
+      "ORT_WORKSPACE_BENCHMARK_SEQUENCE_LENGTH", kDefaultSequenceLength);
+  const int64_t past_sequence_length = ParseEnvironmentVariableWithDefault<int64_t>(
+      "ORT_WORKSPACE_BENCHMARK_PAST_SEQUENCE_LENGTH", kDefaultPastSequenceLength);
+  const int warmup_runs = ParseEnvironmentVariableWithDefault<int>(
+      "ORT_WORKSPACE_BENCHMARK_WARMUP_RUNS", kDefaultWarmupRuns);
+  const int memory_measurement_runs = ParseEnvironmentVariableWithDefault<int>(
+      "ORT_WORKSPACE_BENCHMARK_MEMORY_RUNS", kDefaultMemoryMeasurementRuns);
+  const int measured_runs = ParseEnvironmentVariableWithDefault<int>(
+      "ORT_WORKSPACE_BENCHMARK_MEASURED_RUNS", kDefaultMeasuredRuns);
 
   ASSERT_FALSE(disable_prepacking == "1" && enable_fpa_intb == "1")
       << "The fpA_intB path requires PrePack. Set ORT_WORKSPACE_BENCHMARK_FPA_INTB_GEMM=0 when "
          "ORT_WORKSPACE_BENCHMARK_DISABLE_PREPACKING=1.";
-  ASSERT_FALSE(enable_workspace_preallocation == "1" && enable_fpa_intb == "0")
-      << "This model only declares workspace through the fpA_intB path. Enable "
-         "ORT_WORKSPACE_BENCHMARK_FPA_INTB_GEMM when benchmarking workspace preallocation.";
+  ASSERT_GT(sequence_length, 0);
+  ASSERT_GE(past_sequence_length, 0);
+  ASSERT_GT(warmup_runs, 0);
+  ASSERT_GT(memory_measurement_runs, 0);
+  ASSERT_GT(measured_runs, 0);
 
   SessionOptions session_options;
   session_options.session_logid = "ModelWorkspacePreallocationBenchmark";
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsMaxShapeOverride, BuildMaxShapeOverride(profile).c_str()));
+      kOrtSessionOptionsMaxShapeOverride,
+      BuildMaxShapeOverride(profile, sequence_length, past_sequence_length).c_str()));
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsCudaFpAIntBGemm, enable_fpa_intb.c_str()));
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
@@ -492,6 +538,10 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   ASSERT_NE(cuda_arena, nullptr);
   AllocatorStats post_initialize_stats;
   cuda_allocator->GetStats(&post_initialize_stats);
+  if (detailed_arena_metrics == "1") {
+    LogArenaCheckpoint(
+        "post_initialize", post_initialize_stats, wddm_after_initialize_local_bytes);
+  }
 
   size_t matmul_nbits_nodes = 0;
   size_t cuda_matmul_nbits_nodes = 0;
@@ -526,40 +576,40 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
     ASSERT_EQ(largest_workspace_bytes, static_cast<size_t>(0));
   }
 
-  std::vector<int64_t> input_ids(static_cast<size_t>(kSequenceLength), profile.bos_token_id);
+  std::vector<int64_t> input_ids(static_cast<size_t>(sequence_length), profile.bos_token_id);
   std::vector<int64_t> attention_mask(
-      static_cast<size_t>(kPastSequenceLength + kSequenceLength), 1);
+      static_cast<size_t>(past_sequence_length + sequence_length), 1);
   std::vector<MLFloat16> past_data(
-      static_cast<size_t>(profile.num_key_value_heads * kPastSequenceLength * profile.head_size),
+      static_cast<size_t>(profile.num_key_value_heads * past_sequence_length * profile.head_size),
       MLFloat16(0.0f));
-  std::vector<int64_t> position_ids(static_cast<size_t>(kSequenceLength));
-  std::iota(position_ids.begin(), position_ids.end(), kPastSequenceLength);
+  std::vector<int64_t> position_ids(static_cast<size_t>(sequence_length));
+  std::iota(position_ids.begin(), position_ids.end(), past_sequence_length);
   std::vector<MLFloat16> conv_state_data(6144 * 3, MLFloat16(0.0f));
   std::vector<MLFloat16> recurrent_state_data(16 * 128 * 128, MLFloat16(0.0f));
 
   NameMLValMap feeds;
   OrtValue input_ids_value;
   CreateMLValue<int64_t>(
-      std::array<int64_t, 2>{1, kSequenceLength},
+      std::array<int64_t, 2>{1, sequence_length},
       input_ids.data(), OrtMemoryInfo(), &input_ids_value);
   feeds.emplace("input_ids", input_ids_value);
 
   OrtValue attention_mask_value;
   CreateMLValue<int64_t>(
-      std::array<int64_t, 2>{1, kPastSequenceLength + kSequenceLength},
+      std::array<int64_t, 2>{1, past_sequence_length + sequence_length},
       attention_mask.data(), OrtMemoryInfo(), &attention_mask_value);
   feeds.emplace("attention_mask", attention_mask_value);
 
   if (profile.cache_layout == CacheLayout::Qwen35Hybrid) {
     OrtValue position_ids_value;
     CreateMLValue<int64_t>(
-        std::array<int64_t, 2>{1, kSequenceLength},
+        std::array<int64_t, 2>{1, sequence_length},
         position_ids.data(), OrtMemoryInfo(), &position_ids_value);
     feeds.emplace("position_ids", position_ids_value);
   }
 
   const std::array<int64_t, 4> past_shape{
-      1, profile.num_key_value_heads, kPastSequenceLength, profile.head_size};
+      1, profile.num_key_value_heads, past_sequence_length, profile.head_size};
   for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
     const bool uses_full_attention =
         profile.cache_layout == CacheLayout::Transformer || layer % 4 == 3;
@@ -589,23 +639,34 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
     }
   }
 
-  const std::vector<std::string> output_names{"logits"};
+  std::vector<std::string> output_names{"logits"};
+  output_names.reserve(static_cast<size_t>(1 + 2 * profile.num_layers));
+  for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
+    output_names.emplace_back("present." + std::to_string(layer) + ".key");
+    output_names.emplace_back("present." + std::to_string(layer) + ".value");
+  }
   std::vector<OrtValue> fetches;
-  constexpr int kWarmupRuns = 5;
-  for (int i = 0; i < kWarmupRuns; ++i) {
+  for (int i = 0; i < warmup_runs; ++i) {
     fetches.clear();
     ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
   }
   ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
 
-  ASSERT_EQ(fetches.size(), static_cast<size_t>(1));
+  ASSERT_EQ(fetches.size(), output_names.size());
   ASSERT_EQ(fetches.front().Get<Tensor>().Shape(),
-            TensorShape({1, kSequenceLength, profile.vocab_size}));
+            TensorShape({1, sequence_length, profile.vocab_size}));
   fetches.clear();
 
   AllocatorStats post_warmup_stats;
   cuda_allocator->GetStats(&post_warmup_stats);
+  const size_t wddm_post_warmup_local_bytes =
+      GetWddmLocalUsageBytes(dxgi_adapter.Get());
+  if (detailed_arena_metrics == "1") {
+    LogArenaCheckpoint(
+        "post_warmup", post_warmup_stats, wddm_post_warmup_local_bytes);
+  }
   ASSERT_STATUS_OK(cuda_arena->Shrink());
+  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
   AllocatorStats post_shrink_stats;
   cuda_allocator->GetStats(&post_shrink_stats);
   ASSERT_GE(post_warmup_stats.total_allocated_bytes, post_shrink_stats.total_allocated_bytes);
@@ -613,13 +674,16 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
       post_warmup_stats.total_allocated_bytes - post_shrink_stats.total_allocated_bytes;
   const size_t wddm_before_inference_local_bytes =
       GetWddmLocalUsageBytes(dxgi_adapter.Get());
+  if (detailed_arena_metrics == "1") {
+    LogArenaCheckpoint(
+        "post_shrink", post_shrink_stats, wddm_before_inference_local_bytes);
+  }
   AllocatorStats before_memory_measurement;
   cuda_allocator->GetStats(&before_memory_measurement);
 
-  constexpr int kMemoryMeasurementRuns = 3;
   CudaMemorySampler inference_memory_sampler(0);
   WddmMemorySampler inference_wddm_sampler(dxgi_adapter);
-  for (int i = 0; i < kMemoryMeasurementRuns; ++i) {
+  for (int i = 0; i < memory_measurement_runs; ++i) {
     fetches.clear();
     ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
   }
@@ -630,14 +694,19 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   ASSERT_TRUE(SUCCEEDED(inference_wddm_sampler.Error()));
   AllocatorStats after_memory_measurement;
   cuda_allocator->GetStats(&after_memory_measurement);
+  const size_t wddm_after_memory_measurement_local_bytes =
+      GetWddmLocalUsageBytes(dxgi_adapter.Get());
+  if (detailed_arena_metrics == "1") {
+    LogArenaCheckpoint(
+        "post_cached_run", after_memory_measurement, wddm_after_memory_measurement_local_bytes);
+  }
   const int64_t measurement_new_arena_bytes =
       after_memory_measurement.total_allocated_bytes -
       before_memory_measurement.total_allocated_bytes;
 
-  constexpr int kMeasuredRuns = 30;
   std::vector<double> latencies_ms;
-  latencies_ms.reserve(kMeasuredRuns);
-  for (int i = 0; i < kMeasuredRuns; ++i) {
+  latencies_ms.reserve(static_cast<size_t>(measured_runs));
+  for (int i = 0; i < measured_runs; ++i) {
     fetches.clear();
     ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
     const auto start = Clock::now();
@@ -700,6 +769,11 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             << " disable_prepacking=" << disable_prepacking
             << " use_device_initializers=" << use_device_initializers
             << " fpa_intb_gemm=" << enable_fpa_intb
+            << " sequence_length=" << sequence_length
+            << " past_sequence_length=" << past_sequence_length
+            << " warmup_runs=" << warmup_runs
+            << " memory_measurement_runs=" << memory_measurement_runs
+            << " measured_runs=" << measured_runs
             << " planned_workspace_nodes=" << planned_workspace_nodes
             << " largest_workspace_bytes=" << largest_workspace_bytes
             << " serialized_model_bytes=" << serialized_model_bytes
