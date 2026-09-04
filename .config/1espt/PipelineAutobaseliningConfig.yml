@@ -7,13 +7,13 @@ pipelines:
         credscan:
           lastModifiedDate: 2024-10-25
         policheck:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-22
         eslint:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-22
         psscriptanalyzer:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-22
         armory:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-22
       binary:
         credscan:
           lastModifiedDate: 2025-02-06
@@ -22,46 +22,47 @@ pipelines:
         spotbugs:
           lastModifiedDate: 2025-02-06
     usedNonDefaultBranch: true
+    usedBinskimScanAllExtensions: true
   1299:
     retail:
       source:
         credscan:
           lastModifiedDate: 2024-10-25
         eslint:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-20
         psscriptanalyzer:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-20
         armory:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-20
         policheck:
-          lastModifiedDate: 2024-10-29
+          lastModifiedDate: 2026-08-20
       binary:
         credscan:
           lastModifiedDate: 2024-10-25
         binskim:
-          lastModifiedDate: 2025-04-25
+          lastModifiedDate: 2026-08-20
         spotbugs:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2026-08-20
   1625:
     retail:
       source:
         credscan:
           lastModifiedDate: 2024-11-05
         policheck:
-          lastModifiedDate: 2024-11-05
+          lastModifiedDate: 2026-08-15
         eslint:
-          lastModifiedDate: 2024-11-05
+          lastModifiedDate: 2026-08-15
         psscriptanalyzer:
-          lastModifiedDate: 2024-11-05
+          lastModifiedDate: 2026-08-15
         armory:
-          lastModifiedDate: 2024-11-05
+          lastModifiedDate: 2026-08-15
       binary:
         credscan:
           lastModifiedDate: 2024-11-13
         binskim:
-          lastModifiedDate: 2025-04-25
+          lastModifiedDate: 2026-08-26
         spotbugs:
-          lastModifiedDate: 2024-11-13
+          lastModifiedDate: 2026-08-26
   1626:
     retail:
       source:
@@ -88,11 +89,11 @@ pipelines:
         credscan:
           lastModifiedDate: 2025-02-12
         eslint:
-          lastModifiedDate: 2025-02-12
+          lastModifiedDate: 2026-08-15
         psscriptanalyzer:
-          lastModifiedDate: 2025-02-12
+          lastModifiedDate: 2026-08-15
         armory:
-          lastModifiedDate: 2025-02-12
+          lastModifiedDate: 2026-08-15
   1313:
     retail:
       source:
@@ -128,18 +129,18 @@ pipelines:
         credscan:
           lastModifiedDate: 2025-04-24
         eslint:
-          lastModifiedDate: 2025-04-24
+          lastModifiedDate: 2026-08-19
         psscriptanalyzer:
-          lastModifiedDate: 2025-04-24
+          lastModifiedDate: 2026-08-19
         armory:
-          lastModifiedDate: 2025-04-24
+          lastModifiedDate: 2026-08-19
         policheck:
-          lastModifiedDate: 2025-07-25
+          lastModifiedDate: 2026-08-19
       binary:
         credscan:
           lastModifiedDate: 2025-04-25
         binskim:
-          lastModifiedDate: 2025-07-25
+          lastModifiedDate: 2026-08-19
         spotbugs:
           lastModifiedDate: 2025-04-25
     usedBinskimScanAllExtensions: true
@@ -196,3 +197,114 @@ pipelines:
           lastModifiedDate: 2025-07-18
         armory:
           lastModifiedDate: 2025-07-18
+  1080:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2025-07-31
+        eslint:
+          lastModifiedDate: 2026-08-27
+        psscriptanalyzer:
+          lastModifiedDate: 2026-08-27
+        armory:
+          lastModifiedDate: 2026-08-27
+      binary:
+        credscan:
+          lastModifiedDate: 2025-07-31
+        binskim:
+          lastModifiedDate: 2026-08-27
+        spotbugs:
+          lastModifiedDate: 2026-08-27
+  2186:
+    retail:
+      source:
+        policheck:
+          lastModifiedDate: 2026-08-15
+        eslint:
+          lastModifiedDate: 2026-08-15
+        psscriptanalyzer:
+          lastModifiedDate: 2026-08-15
+        armory:
+          lastModifiedDate: 2026-08-15
+      binary:
+        binskim:
+          lastModifiedDate: 2026-08-15
+        spotbugs:
+          lastModifiedDate: 2026-08-15
+  2214:
+    retail:
+      source:
+        policheck:
+          lastModifiedDate: 2026-08-05
+        eslint:
+          lastModifiedDate: 2026-08-05
+        psscriptanalyzer:
+          lastModifiedDate: 2026-08-05
+        armory:
+          lastModifiedDate: 2026-08-05
+      binary:
+        binskim:
+          lastModifiedDate: 2026-08-05
+        spotbugs:
+          lastModifiedDate: 2026-08-05
+  2294:
+    retail:
+      source:
+        policheck:
+          lastModifiedDate: 2026-08-13
+        eslint:
+          lastModifiedDate: 2026-08-13
+        psscriptanalyzer:
+          lastModifiedDate: 2026-08-13
+        armory:
+          lastModifiedDate: 2026-08-13
+      binary:
+        binskim:
+          lastModifiedDate: 2026-08-13
+        spotbugs:
+          lastModifiedDate: 2026-08-13
+  2303:
+    retail:
+      source:
+        policheck:
+          lastModifiedDate: 2026-08-14
+        eslint:
+          lastModifiedDate: 2026-08-14
+        psscriptanalyzer:
+          lastModifiedDate: 2026-08-14
+        armory:
+          lastModifiedDate: 2026-08-14
+  2212:
+    retail:
+      source:
+        policheck:
+          lastModifiedDate: 2026-08-16
+        eslint:
+          lastModifiedDate: 2026-08-16
+        psscriptanalyzer:
+          lastModifiedDate: 2026-08-16
+        armory:
+          lastModifiedDate: 2026-08-16
+  2104:
+    retail:
+      source:
+        policheck:
+          lastModifiedDate: 2026-08-23
+        eslint:
+          lastModifiedDate: 2026-08-23
+        psscriptanalyzer:
+          lastModifiedDate: 2026-08-23
+        armory:
+          lastModifiedDate: 2026-08-23
+      binary:
+        binskim:
+          lastModifiedDate: 2026-08-23
+        spotbugs:
+          lastModifiedDate: 2026-08-23
+  2293:
+    retail:
+      binary:
+        binskim:
+          lastModifiedDate: 2026-09-04
+        spotbugs:
+          lastModifiedDate: 2026-09-04
