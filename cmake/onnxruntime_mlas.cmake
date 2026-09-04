@@ -891,6 +891,7 @@ else()
           ${MLAS_SRC_DIR}/x86_64/LogisticKernelFma3.S
           ${MLAS_SRC_DIR}/x86_64/TanhKernelFma3.S
           ${MLAS_SRC_DIR}/x86_64/ErfKernelFma3.S
+          ${MLAS_SRC_DIR}/intrinsics/avx2/halfgemv_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/qladd_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/saturation_check_avx2.cpp

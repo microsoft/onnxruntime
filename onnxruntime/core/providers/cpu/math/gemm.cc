@@ -206,6 +206,23 @@ void Gemm_MLFloat16(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   if (c_data == nullptr)
     beta = onnxruntime::MLFloat16::Zero;
 
+  if (M == 1 && trans_a == CblasNoTrans &&
+      MlasHalfGemmDecodeSupported(trans_a, trans_b)) {
+    GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
+
+    const auto decode_beta = c_data == nullptr
+                                 ? onnxruntime::MLFloat16::Zero
+                                 : beta;
+    MlasGemm(
+        trans_a, trans_b,
+        static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K),
+        a_data, static_cast<size_t>(K),
+        b_data, static_cast<size_t>(trans_b == CblasTrans ? K : N),
+        y_data, static_cast<size_t>(N),
+        alpha.val, decode_beta.val, thread_pool);
+    return;
+  }
+
   const bool has_accelerated_half_gemm =
       MlasHalfGemmAccelerationSupported(mlas_backend_kernel_selector_config);
   bool support_mlas_bias = false;

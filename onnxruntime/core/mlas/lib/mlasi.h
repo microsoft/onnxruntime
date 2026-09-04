@@ -1673,6 +1673,19 @@ extern const MLAS_ROPE_DISPATCH MlasRopeDispatchRvv;
 struct MLAS_HGEMM_DISPATCH;
 extern const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon;
 
+#if defined(MLAS_TARGET_AMD64)
+void
+MLASCALL
+MlasHalfGemmDecodeKernelAvx2(
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_HGEMM_DATA_PARAMS* Data,
+    size_t StartN,
+    size_t CountN
+    );
+#endif
+
 // softmax dispatch structure
 struct MLAS_SOFTMAX_DISPATCH;
 extern const MLAS_SOFTMAX_DISPATCH MlasSoftmaxDispatchNeon;
@@ -1762,6 +1775,7 @@ struct MLAS_PLATFORM {
     // TODO: move to cpuinfo
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
+    bool HalfGemmDecodeSupported_ = false;
     bool KVQuantGemmFp16Supported_ = false;
     bool ArmNeonIsQuantActivationsUnsigned = false;
 
