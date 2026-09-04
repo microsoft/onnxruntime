@@ -1171,7 +1171,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(3,
                "bias",
                "Bias tensor with shape (hidden_size + kv_hidden_size + kv_v_hidden_size) from input projection. "
-               "Not supported when key and value are 4-D BNSH tensors",
+               "The key and value parts are assumed to be zero when key and value are 4-D BNSH tensors",
                "T",
                OpSchema::Optional)
         .Input(4,

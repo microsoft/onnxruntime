@@ -4103,7 +4103,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (batch_size, kv_sequence_length, kv_num_heads * v_head_size), or past_value with shape (batch_size, kv_num_heads, kv_sequence_length, v_head_size)</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
-<dd>Bias tensor with shape (hidden_size + kv_hidden_size + kv_v_hidden_size) from input projection. Not supported when key and value are 4-D BNSH tensors</dd>
+<dd>Bias tensor with shape (hidden_size + kv_hidden_size + kv_v_hidden_size) from input projection. The key and value parts are assumed to be zero when key and value are 4-D BNSH tensors</dd>
 <dt><tt>key_padding_mask</tt> (optional) : M</dt>
 <dd>Key padding mask with shape (batch_size), (3 * batch_size + 2), (batch_size, kv_sequence_length), (batch_size, total_sequence_length), or (batch_size, sequence_length, total_sequence_length)</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>

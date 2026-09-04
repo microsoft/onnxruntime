@@ -455,11 +455,6 @@ Status CheckInputs(const T* query,
     if (qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H && bias != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' shall be empty when packed kv is used");
     }
-
-    if (qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH && bias != nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'bias' shall be empty when key and value are 4-D BNSH tensors");
-    }
   }
 
   if (bias != nullptr) {

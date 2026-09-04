@@ -902,12 +902,19 @@ TEST(MultiHeadAttentionTest, GroupedQueryAttentionCpuBnshKeyValueDifferentHeadSi
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(MultiHeadAttentionTest, GroupedQueryAttentionBnshKeyValueRejectsBias) {
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionBnshKeyValueIgnoresKeyValueBias) {
   constexpr int num_heads = 4;
   constexpr int kv_num_heads = 2;
   constexpr int head_size = 2;
   constexpr int v_head_size = 1;
   constexpr int kv_sequence_length = 2;
+  constexpr int query_bias_length = num_heads * head_size;
+  constexpr int kv_bias_length = kv_num_heads * (head_size + v_head_size);
+
+  // The kernel assumes the key/value parts of bias are zero when key and value are 4-D BNSH tensors,
+  // so non-zero values there must not change the result.
+  std::vector<float> bias(query_bias_length, 0.0f);
+  bias.insert(bias.end(), kv_bias_length, 1.0f);
 
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", num_heads);
@@ -917,9 +924,8 @@ TEST(MultiHeadAttentionTest, GroupedQueryAttentionBnshKeyValueRejectsBias) {
   tester.AddInput<float>("key", {1, kv_num_heads, kv_sequence_length, head_size},
                          std::vector<float>(kv_num_heads * kv_sequence_length * head_size, 0.0f));
   tester.AddInput<float>("value", {1, kv_num_heads, kv_sequence_length, v_head_size},
-                         std::vector<float>(kv_num_heads * kv_sequence_length * v_head_size, 0.0f));
-  tester.AddInput<float>("bias", {num_heads * head_size + kv_num_heads * (head_size + v_head_size)},
-                         std::vector<float>(num_heads * head_size + kv_num_heads * (head_size + v_head_size), 0.0f));
+                         {1.0f, 3.0f, 5.0f, 7.0f});
+  tester.AddInput<float>("bias", {query_bias_length + kv_bias_length}, bias);
   tester.AddOptionalInputEdge<int32_t>();  // key_padding_mask
   tester.AddOptionalInputEdge<float>();    // attention_bias
   tester.AddOptionalInputEdge<float>();    // past_key
@@ -927,13 +933,11 @@ TEST(MultiHeadAttentionTest, GroupedQueryAttentionBnshKeyValueRejectsBias) {
   tester.AddOptionalInputEdge<int32_t>();  // past_sequence_length
   tester.AddOptionalInputEdge<int32_t>();  // cache_indirection
   tester.AddOutput<float>("output", {1, 1, num_heads * v_head_size},
-                          std::vector<float>(num_heads * v_head_size, 0.0f));
+                          {2.0f, 2.0f, 6.0f, 6.0f});
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "Input 'bias' shall be empty when key and value are 4-D BNSH tensors",
-             {}, nullptr, &execution_providers);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(MultiHeadAttentionTest, GroupedQueryAttentionCudaWithBiasAndPresent) {
