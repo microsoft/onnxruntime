@@ -1398,9 +1398,21 @@ Graph::Graph(const Model& owning_model,
     }
 
     NodeArg* matching_graph_input = GetNodeArg(tensor.name());
-    TypeProto t{utils::TypeProtoFromTensorProto(tensor)};
+    TypeProto t;
+#if !defined(DISABLE_SPARSE_TENSORS)
+    if (IsSparseInitializer(tensor.name())) {
+      auto* sparse_tensor_type = t.mutable_sparse_tensor_type();
+      sparse_tensor_type->set_elem_type(tensor.data_type());
+      for (const auto dim : tensor.dims()) {
+        sparse_tensor_type->mutable_shape()->add_dim()->set_dim_value(dim);
+      }
+    } else
+#endif
+    {
+      t = utils::TypeProtoFromTensorProto(tensor);
+    }
 
-    if (!utils::HasElemType(t.tensor_type())) {
+    if (!utils::HasElementType(t)) {
       ORT_THROW("This is an invalid model. Tensor does not have type information.");
     }
 
@@ -3474,7 +3486,14 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
     if (nullptr != node_arg) {
       const TensorProto* tensor_proto = initializer_pair.second;
       TypeProto tensor_type;
-      tensor_type.mutable_tensor_type()->set_elem_type(tensor_proto->data_type());
+#if !defined(DISABLE_SPARSE_TENSORS)
+      if (IsSparseInitializer(name)) {
+        tensor_type.mutable_sparse_tensor_type()->set_elem_type(tensor_proto->data_type());
+      } else
+#endif
+      {
+        tensor_type.mutable_tensor_type()->set_elem_type(tensor_proto->data_type());
+      }
       auto initializer_type = DataTypeUtils::ToType(tensor_type);
       auto nodearg_type = node_arg->Type();
       if (nullptr == nodearg_type)
