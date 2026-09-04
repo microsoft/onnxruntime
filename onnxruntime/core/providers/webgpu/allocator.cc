@@ -39,7 +39,7 @@ void* GpuBufferAllocator::Alloc(size_t size) {
     mapped_at_creation_ = is_read_only_allocator_ && buffer_manager.SupportsUMA();
   }
   wgpu::BufferUsage usage = *mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
-                                                : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
+                                                 : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
   const bool submit_zero_initialize = should_submit_zero_initialize_ && should_submit_zero_initialize_();
   return buffer_manager.Create(size, usage, initialize_to_zero_, submit_zero_initialize);
