@@ -1946,6 +1946,42 @@ TEST_F(GraphTransformationTests, ConstantFoldingSubByteOutputSizeIsPacked) {
   }
 }
 
+// #32130: an op with no type-and-shape inference function reports an unknown
+// (negative) pre-execution output-size estimate. GreaterOrEqual/LessOrEqual
+// have no such function below opset 16. With the output-size limit enabled the
+// node must still be folded -- bounded by the post-execution actual-size check
+// -- rather than skipped just because the size could not be estimated upfront.
+TEST_F(GraphTransformationTests, ConstantFoldingUnknownPreEstimatedSizeIsFolded) {
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* a = builder.MakeInitializer<int64_t>({3}, {1, 2, 3});
+    auto* b = builder.MakeInitializer<int64_t>({3}, {2, 2, 2});
+    auto* output_arg = builder.MakeOutput();
+    builder.AddNode("GreaterOrEqual", {a, b}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["GreaterOrEqual"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    // 3-byte bool output is well within the limit, so folding must proceed even
+    // though GreaterOrEqual has no shape inference function at opset 15.
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["GreaterOrEqual"] == 0);
+    return Status::OK();
+  };
+
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "1048576"));
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 15, *logger_,
+                                        std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                        TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
 // Test that small constant folding still works with the size limit.
 TEST_F(GraphTransformationTests, ConstantFoldingSmallOutputAllowed) {
   // Build a model with a small Expand: scalar -> [4, 4] = 16 * 4 = 64 bytes.
