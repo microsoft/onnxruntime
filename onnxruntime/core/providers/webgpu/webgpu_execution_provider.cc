@@ -772,7 +772,9 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
   return std::make_unique<webgpu::DataTransfer>(
-      [this]() -> const webgpu::BufferManager& { return BufferManager(); });
+      [&context = context_]() -> const webgpu::BufferManager& {
+        return context.BufferManager();
+      });
 }
 
 #if defined(__wasm__)
