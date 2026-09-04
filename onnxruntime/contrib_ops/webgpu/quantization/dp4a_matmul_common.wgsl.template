@@ -1,13 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param acc_f32
 #param n_bits
 #param has_zero_points
 
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
-#if n_bits == 4
+// Precision in which the integer dot product is scaled, before the result reaches the
+// cross-K accumulator. For 8 bits this is f32 unconditionally: dot4I8Packed can return an
+// int32 that f16 cannot represent, whatever the accumulator is. For 4 and 2 bits it has to
+// follow acc_element_t, or the scaled tile result rounds (and can saturate) in f16 on its
+// way into an f32 accumulator, which would leave the main DP4A path ignoring the option.
+#if n_bits == 8
+    alias mul_precision = f32;
+#elif acc_f32
+    alias mul_precision = f32;
+#else
     alias mul_precision = output_element_t;
+#endif
+
+#if n_bits == 4
     fn DequantizedFrom4BitsTo8Bits(in: vec2<u32>, zero: i32) -> vec4<u32>
     {
         var out = vec4<u32>(0);
@@ -24,9 +37,6 @@
 #endif
 
 #if n_bits == 8
-    // For 8bits, in case data overflow when converting from int32 (output of dot4I8Packed) to f16, we force it convert to f32.
-    // Then do the scale. Finally, convert to output element type.
-    alias mul_precision = f32;
     fn AlignWithZeroPoint(in: vec4<u32>) -> vec4<u32>
     {
         var out = vec4<u32>(0);
@@ -39,7 +49,6 @@
 #endif
 
 #if n_bits == 2
-    alias mul_precision = output_element_t;
 #if has_zero_points
     const lut_size = 1024;
     var<workgroup> shm_dequantization_table  : array<u32, lut_size>;

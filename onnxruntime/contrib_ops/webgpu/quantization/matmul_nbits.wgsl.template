@@ -23,10 +23,11 @@
 
 // Precision of the partial sums accumulated along K, selected by the
 // "enableMatmulFp32Accumulation" provider option. With fp16 outputs and an f16
-// accumulator, summing 2048+ f16 products can overflow the f16 max (65504) and poison the
-// output with +Inf/NaN (issue #26732); f32 costs extra registers and shared memory instead.
-// Either way only the accumulator changes: the block-local `sum` stays in output_element_t
-// and global memory traffic is identical.
+// accumulator, a partial sum along K has no headroom guarantee: WGSL permits extra
+// intermediate precision but does not require it, so a backend that rounds strictly can
+// saturate at the f16 max (65504) and poison the output with +Inf/NaN. f32 costs extra
+// registers and shared memory instead. Either way only the accumulator changes: the
+// block-local `sum` stays in output_element_t and global memory traffic is identical.
 #if acc_f32
 alias acc_element_t = f32;
 #else
@@ -235,8 +236,8 @@ $MAIN {
 #endif
 #endif
 
-        // Explicit cast: Dawn/D3D12 re-demotes temporaries to f16 when
-        // 'enable f16;' is active (issue #26732).
+        // Explicit cast rather than relying on the implicit one: Dawn/D3D12 re-demotes
+        // temporaries to f16 when 'enable f16;' is active.
         inter_results[local_row_offset + idy][idx] += acc_element_t(sum);
       }
     }
