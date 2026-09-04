@@ -631,6 +631,149 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreQwenTilingBoundaries) {
         static_cast<int>(shape.n), static_cast<int>(shape.k), sm_count);
     EXPECT_EQ(config.k_split, shape.k_split);
     EXPECT_EQ(config.col_tiles, shape.col_tiles);
+    EXPECT_EQ(config.col_groups, 1);
+  }
+}
+
+// Selection boundaries for the column-grouped tiling. Grouping halves the column grid, so it is
+// only worth taking while the grouped grid still covers kMinBlocksPerSm blocks per SM; below that
+// the launcher must fall back to the ungrouped ladder.
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreGroupedTilingBoundaries) {
+  struct Case {
+    int64_t n;
+    int64_t k;
+    int k_split;
+    int col_groups;
+  };
+  constexpr int sm_count = 132;
+  // Grouping needs ceil(N / 32) >= 2 * sm_count == 264 blocks, i.e. N >= 32 * 263 + 1 == 8417.
+  const Case cases[] = {
+      {8416, 5120, 16, 1},   // 263 grouped blocks: one short, falls back to the ungrouped ladder
+      {8417, 5120, 8, 2},    // 264 grouped blocks: the first shape that groups
+      {17408, 5120, 4, 2},   // Qwen3.8 gate/up_proj; 544 blocks cap KSplit at 4
+      {17408, 128, 1, 2},    // a single K window leaves nothing to split
+      {5120, 17408, 16, 1},  // tall and narrow: only 160 grouped blocks, so no grouping
+  };
+
+  for (const Case& shape : cases) {
+    SCOPED_TRACE("N = " + std::to_string(shape.n) + ", K = " + std::to_string(shape.k));
+    const auto config = onnxruntime::contrib::cuda::PickFp4MmaGroupedConfig(
+        static_cast<int>(shape.n), static_cast<int>(shape.k), sm_count);
+    EXPECT_EQ(config.k_split, shape.k_split);
+    EXPECT_EQ(config.col_tiles, 1);
+    EXPECT_EQ(config.col_groups, shape.col_groups);
+  }
+}
+
+// Runs the column-grouped kernel, which the launcher only selects for M <= 8 and an N wide enough
+// to keep the halved grid busy -- so N has to be derived from the device rather than hard-coded.
+//
+// MakeMmaCase above cannot be reused here. Its weight codes cycle with period 4 along N and its
+// block scales with period 2, and the two tiles a grouped warp owns are 16 columns apart, so both
+// patterns repeat exactly across the group boundary and a warp that applied group 0's weights or
+// scales to group 1 would still produce the right answer. Everything below cycles with period 3
+// instead, which is coprime to both 16 and the 8-column lo/hi split, so every one of the four
+// columns a lane touches carries a different value.
+//
+// The ragged widths are the other half of the test: with 32 columns per block, a tail of 20 leaves
+// the first group full and the second holding 4 of its 16 columns, and a tail of 8 leaves the
+// first group with only its low half in range and the second entirely out of range. Both must be
+// masked per group at the store, which a grid that divides evenly by 32 never exercises.
+namespace {
+
+// E2M1 codes +1.0, -2.0, +0.5, and E4M3 scale bytes 1.0, 2.0, 0.5.
+constexpr uint8_t kGroupCodes[3] = {0x2, 0xC, 0x1};
+constexpr float kGroupValues[3] = {1.0f, -2.0f, 0.5f};
+constexpr uint8_t kGroupScaleBytes[3] = {0x38, 0x40, 0x30};
+constexpr float kGroupScaleValues[3] = {1.0f, 2.0f, 0.5f};
+
+int GroupCodeIndex(int64_t col, int64_t kk) { return static_cast<int>((kk + col) % 3); }
+int GroupScaleIndex(int64_t col, int64_t blk) { return static_cast<int>((col + 2 * blk) % 3); }
+float GroupActValue(int64_t row, int64_t kk) { return static_cast<float>((kk % 3) + 1 + row); }
+
+// Every product is a multiple of 0.25 and every partial sum stays well below 2^23, so the fp32
+// reference is exact and independent of summation order.
+void MakeGroupedCase(int64_t m, int64_t n, int64_t k,
+                     std::vector<uint8_t>& b, std::vector<uint8_t>& weight_scale,
+                     std::vector<float>& a, std::vector<float>& expected) {
+  const int64_t k_blocks = k / 16;
+  b.assign(n * (k / 2), 0);
+  weight_scale.assign(n * k_blocks, 0);
+  for (int64_t col = 0; col < n; ++col) {
+    for (int64_t kk = 0; kk < k; kk += 2) {
+      const uint8_t lo = kGroupCodes[GroupCodeIndex(col, kk)];
+      const uint8_t hi = kGroupCodes[GroupCodeIndex(col, kk + 1)];
+      b[col * (k / 2) + kk / 2] = static_cast<uint8_t>(lo | (hi << 4));
+    }
+    for (int64_t blk = 0; blk < k_blocks; ++blk) {
+      weight_scale[col * k_blocks + blk] = kGroupScaleBytes[GroupScaleIndex(col, blk)];
+    }
+  }
+
+  a.assign(m * k, 0.0f);
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t kk = 0; kk < k; ++kk) {
+      a[row * k + kk] = GroupActValue(row, kk);
+    }
+  }
+
+  expected.assign(m * n, 0.0f);
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t col = 0; col < n; ++col) {
+      float sum = 0.0f;
+      for (int64_t kk = 0; kk < k; ++kk) {
+        sum += kGroupValues[GroupCodeIndex(col, kk)] *
+               kGroupScaleValues[GroupScaleIndex(col, kk / 16)] * GroupActValue(row, kk);
+      }
+      expected[row * n + col] = sum;
+    }
+  }
+}
+
+}  // namespace
+
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreColumnGroupedFp16) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp4Weight.";
+  }
+
+  cudaDeviceProp device_prop{};
+  int device_id = 0;
+  ASSERT_EQ(cudaGetDevice(&device_id), cudaSuccess);
+  ASSERT_EQ(cudaGetDeviceProperties(&device_prop, device_id), cudaSuccess);
+
+  // Smallest N that groups: ceil(N / 32) >= 2 * sm_count.
+  const int64_t n_grouped = 32 * 2 * device_prop.multiProcessorCount;
+  constexpr int64_t k = 256;  // two K windows, and k_blocks = 16 so the paired scale load aligns
+
+  for (int64_t n : {n_grouped, n_grouped + 20, n_grouped + 8}) {
+    ASSERT_EQ(onnxruntime::contrib::cuda::PickFp4MmaGroupedConfig(
+                  static_cast<int>(n), static_cast<int>(k), device_prop.multiProcessorCount)
+                  .col_groups,
+              2)
+        << "N = " << n << " should select the grouped tiling on this device";
+
+    for (int m_val : {1, 2, 7, 8}) {
+      const int64_t m = m_val;
+      SCOPED_TRACE("N = " + std::to_string(n) + ", M = " + std::to_string(m));
+
+      std::vector<uint8_t> b, weight_scale;
+      std::vector<float> a, expected;
+      MakeGroupedCase(m, n, k, b, weight_scale, a, expected);
+
+      OpTester test("MatMulBlockQuantizedFp4Weight", 1, onnxruntime::kMSDomain);
+      test.AddAttribute<int64_t>("block_size", 16);
+      test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+      test.AddInput<uint8_t>("B", {n, k / 2}, b);
+      test.AddInput<uint8_t>("weight_scale", {n, k / 16}, weight_scale);
+      test.AddInput<float>("weight_scale_2", {1}, {1.0f});
+      test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+      test.SetOutputTolerance(0.5f);
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
   }
 }
 

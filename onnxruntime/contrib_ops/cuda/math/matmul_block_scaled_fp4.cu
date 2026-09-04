@@ -571,7 +571,7 @@ __device__ __forceinline__ void Fp4DecodeWord(uint32_t word, typename Fp4Cvt<T>:
   Fp4Cvt<T>::DecodeQuad(mag >> 16, sgn >> 16, out[2], out[3]);
 }
 
-template <typename T, int KSplit, int ColTiles, int MTiles>
+template <typename T, int KSplit, int ColTiles, int MTiles, int ColGroups>
 __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantizedFp4WeightMmaGemvKernel(
     T* __restrict__ y,
     const T* __restrict__ a,
@@ -597,18 +597,29 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
   const int warp_k = (KSplit == 1) ? 0 : (warp % KSplit);
   const int warp_c = (KSplit == 1) ? warp : (warp / KSplit);
 
-  const int col_lo = (static_cast<int>(blockIdx.x) * ColTiles + warp_c) * 16 + g;
-  const int col_hi = col_lo + 8;
-  const bool lo_ok = col_lo < n;
-  const bool hi_ok = col_hi < n;
-
-  // Out-of-range columns fold onto column 0 so every load stays in bounds; their results
-  // are masked off at the store.
+  // A warp owns ColGroups adjacent 16-column tiles. The activation fragment is the same for all
+  // of them, so grouping trades registers for L1 traffic: one window costs 2 * ColGroups weight
+  // loads against a fixed 4 activation loads instead of 2 against 4.
+  const int col_base = (static_cast<int>(blockIdx.x) * ColTiles + warp_c) * (16 * ColGroups);
   const int half_k = k >> 1;
-  const uint8_t* b_lo = b_packed + static_cast<size_t>(lo_ok ? col_lo : 0) * half_k;
-  const uint8_t* b_hi = b_packed + static_cast<size_t>(hi_ok ? col_hi : 0) * half_k;
-  const uint8_t* ws_lo = weight_scale + static_cast<size_t>(lo_ok ? col_lo : 0) * k_blocks;
-  const uint8_t* ws_hi = weight_scale + static_cast<size_t>(hi_ok ? col_hi : 0) * k_blocks;
+
+  // Out-of-range columns fold onto column 0 so every load stays in bounds; their results are
+  // masked off at the store. Row bases are hoisted so the K loop carries no 64-bit address math.
+  const uint8_t* b_lo[ColGroups];
+  const uint8_t* b_hi[ColGroups];
+  const uint8_t* ws_lo[ColGroups];
+  const uint8_t* ws_hi[ColGroups];
+#pragma unroll
+  for (int cg = 0; cg < ColGroups; ++cg) {
+    const int col_lo = col_base + (cg << 4) + g;
+    const int col_hi = col_lo + 8;
+    const int src_lo = col_lo < n ? col_lo : 0;
+    const int src_hi = col_hi < n ? col_hi : 0;
+    b_lo[cg] = b_packed + static_cast<size_t>(src_lo) * half_k;
+    b_hi[cg] = b_packed + static_cast<size_t>(src_hi) * half_k;
+    ws_lo[cg] = weight_scale + static_cast<size_t>(src_lo) * k_blocks;
+    ws_hi[cg] = weight_scale + static_cast<size_t>(src_hi) * k_blocks;
+  }
 
   // Each M tile is a different group of 8 activation rows sharing one pass over the packed
   // weight. The weight stream, not the mma, is what this kernel is bound by, so verifying a few
@@ -622,66 +633,87 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
     a_row[mt] = a + static_cast<size_t>(a_ok[mt] ? row : 0) * k;
   }
 
-  float acc[MTiles][4] = {};
+  float acc[ColGroups][MTiles][4] = {};
   const int windows = k >> 7;
 
   for (int wi = warp_k; wi < windows; wi += KSplit) {
     const int kbase = (wi << 7) + (t << 5);
-    const uint4 wl4 = *reinterpret_cast<const uint4*>(b_lo + (kbase >> 1));
-    const uint4 wh4 = *reinterpret_cast<const uint4*>(b_hi + (kbase >> 1));
     const int kb = (wi << 3) + (t << 1);
-    const T2 sl[2] = {MmaOp::BroadcastScale(ws_lo[kb]), MmaOp::BroadcastScale(ws_lo[kb + 1])};
-    const T2 sh[2] = {MmaOp::BroadcastScale(ws_hi[kb]), MmaOp::BroadcastScale(ws_hi[kb + 1])};
+
+    // Issue every column group's weight load before any decoding so the loads overlap.
+    uint4 wl4[ColGroups], wh4[ColGroups];
+    T2 sl[ColGroups][2], sh[ColGroups][2];
+#pragma unroll
+    for (int cg = 0; cg < ColGroups; ++cg) {
+      wl4[cg] = *reinterpret_cast<const uint4*>(b_lo[cg] + (kbase >> 1));
+      wh4[cg] = *reinterpret_cast<const uint4*>(b_hi[cg] + (kbase >> 1));
+      // The two E4M3 scales a lane needs are adjacent, and `kb` and `k_blocks` are both
+      // multiples of two, so one 16-bit load replaces two byte loads. This kernel is L1
+      // wavefront bound (86% L1/TEX at 29% DRAM on H200), and the byte loads were half of
+      // its memory instructions for one percent of its bytes.
+      const uint16_t sl_raw = *reinterpret_cast<const uint16_t*>(ws_lo[cg] + kb);
+      const uint16_t sh_raw = *reinterpret_cast<const uint16_t*>(ws_hi[cg] + kb);
+      sl[cg][0] = MmaOp::BroadcastScale(static_cast<uint8_t>(sl_raw));
+      sl[cg][1] = MmaOp::BroadcastScale(static_cast<uint8_t>(sl_raw >> 8));
+      sh[cg][0] = MmaOp::BroadcastScale(static_cast<uint8_t>(sh_raw));
+      sh[cg][1] = MmaOp::BroadcastScale(static_cast<uint8_t>(sh_raw >> 8));
+    }
+
     const uint4* ap[MTiles];
 #pragma unroll
     for (int mt = 0; mt < MTiles; ++mt) {
       ap[mt] = reinterpret_cast<const uint4*>(a_row[mt] + kbase);
     }
-    const uint32_t wl[4] = {wl4.x, wl4.y, wl4.z, wl4.w};
-    const uint32_t wh[4] = {wh4.x, wh4.y, wh4.z, wh4.w};
 
 #pragma unroll
     for (int w = 0; w < 4; ++w) {
-      T2 bl[4], bh[4];
-      Fp4DecodeWord<T>(wl[w], bl);
-      Fp4DecodeWord<T>(wh[w], bh);
-      // Words 0,1 fall in the first 16-element scale block of this lane's slice, words 2,3
-      // in the second.
-      const T2 s0 = sl[w >> 1];
-      const T2 s1 = sh[w >> 1];
-#pragma unroll
-      for (int i = 0; i < 4; ++i) {
-        bl[i] = Cvt::Mul(bl[i], s0);
-        bh[i] = Cvt::Mul(bh[i], s1);
-      }
+      // One activation quarter-window, reused by every column group.
       uint4 av4[MTiles];
 #pragma unroll
       for (int mt = 0; mt < MTiles; ++mt) {
         av4[mt] = a_ok[mt] ? ap[mt][w] : make_uint4(0u, 0u, 0u, 0u);
       }
 #pragma unroll
-      for (int j = 0; j < 2; ++j) {
-        // A regs are (row g, k 2t..2t+1), (row g+8, ...), (row g, k 2t+8..), (row g+8, ...).
-        const uint32_t ra[4] = {MmaOp::Pack(bl[2 * j]), MmaOp::Pack(bh[2 * j]),
-                                MmaOp::Pack(bl[2 * j + 1]), MmaOp::Pack(bh[2 * j + 1])};
+      for (int cg = 0; cg < ColGroups; ++cg) {
+        T2 bl[4], bh[4];
+        Fp4DecodeWord<T>(reinterpret_cast<const uint32_t*>(&wl4[cg])[w], bl);
+        Fp4DecodeWord<T>(reinterpret_cast<const uint32_t*>(&wh4[cg])[w], bh);
+        // Words 0,1 fall in the first 16-element scale block of this lane's slice, words 2,3
+        // in the second.
+        const T2 s0 = sl[cg][w >> 1];
+        const T2 s1 = sh[cg][w >> 1];
 #pragma unroll
-        for (int mt = 0; mt < MTiles; ++mt) {
-          const uint32_t* av = reinterpret_cast<const uint32_t*>(&av4[mt]);
-          const uint32_t rb[2] = {av[2 * j], av[2 * j + 1]};
-          MmaOp::Mma(acc[mt], ra, rb);
+        for (int i = 0; i < 4; ++i) {
+          bl[i] = Cvt::Mul(bl[i], s0);
+          bh[i] = Cvt::Mul(bh[i], s1);
+        }
+#pragma unroll
+        for (int j = 0; j < 2; ++j) {
+          // A regs are (row g, k 2t..2t+1), (row g+8, ...), (row g, k 2t+8..), (row g+8, ...).
+          const uint32_t ra[4] = {MmaOp::Pack(bl[2 * j]), MmaOp::Pack(bh[2 * j]),
+                                  MmaOp::Pack(bl[2 * j + 1]), MmaOp::Pack(bh[2 * j + 1])};
+#pragma unroll
+          for (int mt = 0; mt < MTiles; ++mt) {
+            const uint32_t* av = reinterpret_cast<const uint32_t*>(&av4[mt]);
+            const uint32_t rb[2] = {av[2 * j], av[2 * j + 1]};
+            MmaOp::Mma(acc[cg][mt], ra, rb);
+          }
         }
       }
     }
   }
 
   if constexpr (KSplit > 1) {
-    __shared__ float red[ColTiles * KSplit * 32 * 4 * MTiles];
-    float* mine = red + ((warp_c * KSplit + warp_k) * 32 + lane) * (4 * MTiles);
+    __shared__ float red[ColTiles * KSplit * 32 * 4 * MTiles * ColGroups];
+    float* mine = red + ((warp_c * KSplit + warp_k) * 32 + lane) * (4 * MTiles * ColGroups);
 #pragma unroll
-    for (int mt = 0; mt < MTiles; ++mt) {
+    for (int cg = 0; cg < ColGroups; ++cg) {
 #pragma unroll
-      for (int i = 0; i < 4; ++i) {
-        mine[mt * 4 + i] = acc[mt][i];
+      for (int mt = 0; mt < MTiles; ++mt) {
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+          mine[(cg * MTiles + mt) * 4 + i] = acc[cg][mt][i];
+        }
       }
     }
     __syncthreads();
@@ -690,12 +722,15 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
     }
 #pragma unroll
     for (int ws = 1; ws < KSplit; ++ws) {
-      const float* other = red + ((warp_c * KSplit + ws) * 32 + lane) * (4 * MTiles);
+      const float* other = red + ((warp_c * KSplit + ws) * 32 + lane) * (4 * MTiles * ColGroups);
 #pragma unroll
-      for (int mt = 0; mt < MTiles; ++mt) {
+      for (int cg = 0; cg < ColGroups; ++cg) {
 #pragma unroll
-        for (int i = 0; i < 4; ++i) {
-          acc[mt][i] += other[mt * 4 + i];
+        for (int mt = 0; mt < MTiles; ++mt) {
+#pragma unroll
+          for (int i = 0; i < 4; ++i) {
+            acc[cg][mt][i] += other[(cg * MTiles + mt) * 4 + i];
+          }
         }
       }
     }
@@ -705,25 +740,32 @@ __global__ __launch_bounds__(32 * KSplit * ColTiles, 1) void MatMulBlockQuantize
   // columns and mma columns are our M rows.
   const float g2 = *weight_scale_2;
   const int r0 = t << 1;
-  const float bias_lo = (bias != nullptr && lo_ok) ? to_float<T>(bias[col_lo]) : 0.0f;
-  const float bias_hi = (bias != nullptr && hi_ok) ? to_float<T>(bias[col_hi]) : 0.0f;
 #pragma unroll
-  for (int mt = 0; mt < MTiles; ++mt) {
-    const int row = r0 + (mt << 3);
-    if (lo_ok) {
-      if (row < m) {
-        y[static_cast<size_t>(row) * n + col_lo] = from_float<T>(acc[mt][0] * g2 + bias_lo);
+  for (int cg = 0; cg < ColGroups; ++cg) {
+    const int col_lo = col_base + (cg << 4) + g;
+    const int col_hi = col_lo + 8;
+    const bool lo_ok = col_lo < n;
+    const bool hi_ok = col_hi < n;
+    const float bias_lo = (bias != nullptr && lo_ok) ? to_float<T>(bias[col_lo]) : 0.0f;
+    const float bias_hi = (bias != nullptr && hi_ok) ? to_float<T>(bias[col_hi]) : 0.0f;
+#pragma unroll
+    for (int mt = 0; mt < MTiles; ++mt) {
+      const int row = r0 + (mt << 3);
+      if (lo_ok) {
+        if (row < m) {
+          y[static_cast<size_t>(row) * n + col_lo] = from_float<T>(acc[cg][mt][0] * g2 + bias_lo);
+        }
+        if (row + 1 < m) {
+          y[static_cast<size_t>(row + 1) * n + col_lo] = from_float<T>(acc[cg][mt][1] * g2 + bias_lo);
+        }
       }
-      if (row + 1 < m) {
-        y[static_cast<size_t>(row + 1) * n + col_lo] = from_float<T>(acc[mt][1] * g2 + bias_lo);
-      }
-    }
-    if (hi_ok) {
-      if (row < m) {
-        y[static_cast<size_t>(row) * n + col_hi] = from_float<T>(acc[mt][2] * g2 + bias_hi);
-      }
-      if (row + 1 < m) {
-        y[static_cast<size_t>(row + 1) * n + col_hi] = from_float<T>(acc[mt][3] * g2 + bias_hi);
+      if (hi_ok) {
+        if (row < m) {
+          y[static_cast<size_t>(row) * n + col_hi] = from_float<T>(acc[cg][mt][2] * g2 + bias_hi);
+        }
+        if (row + 1 < m) {
+          y[static_cast<size_t>(row + 1) * n + col_hi] = from_float<T>(acc[cg][mt][3] * g2 + bias_hi);
+        }
       }
     }
   }
@@ -772,6 +814,8 @@ Fp4MmaConfig ApplyFp4MmaConfigOverrides(Fp4MmaConfig config, int n, int k) {
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_KSPLIT", 0);
   static int const col_tiles =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_COL_TILES", 0);
+  static int const col_groups =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_COL_GROUPS", 0);
   static int const match_n =
       onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_MATCH_N", 0);
   static int const match_k =
@@ -781,6 +825,8 @@ Fp4MmaConfig ApplyFp4MmaConfigOverrides(Fp4MmaConfig config, int n, int k) {
               "ORT_FP4_GEMV_KSPLIT must be 0, 1, 2, 4, 8, or 16.");
   ORT_ENFORCE(col_tiles == 0 || col_tiles == 1 || col_tiles == 4,
               "ORT_FP4_GEMV_COL_TILES must be 0, 1, or 4.");
+  ORT_ENFORCE(col_groups == 0 || col_groups == 1 || col_groups == 2,
+              "ORT_FP4_GEMV_COL_GROUPS must be 0, 1, or 2.");
   ORT_ENFORCE(match_n >= 0 && match_k >= 0,
               "ORT_FP4_GEMV_MATCH_N and ORT_FP4_GEMV_MATCH_K must be non-negative.");
 
@@ -794,8 +840,13 @@ Fp4MmaConfig ApplyFp4MmaConfigOverrides(Fp4MmaConfig config, int n, int k) {
   if (col_tiles != 0) {
     config.col_tiles = col_tiles;
   }
+  if (col_groups != 0) {
+    config.col_groups = col_groups;
+  }
   ORT_ENFORCE(config.col_tiles == 1 || config.k_split <= 2,
               "ORT_FP4_GEMV_COL_TILES=4 supports only KSplit 1 or 2.");
+  ORT_ENFORCE(config.col_groups == 1 || config.col_tiles == 1,
+              "ORT_FP4_GEMV_COL_GROUPS=2 supports only ColTiles 1.");
   return config;
 }
 
@@ -978,66 +1029,79 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
   // GEMV takes over -- and that one re-reads the packed weight once per row tile, which is why the
   // cap below is much lower without the mma.
   if (device_prop.major >= 8 && k % 128 == 0 && m <= kFp4MmaGemvTileM && Fp4GemvMmaEnabled()) {
-    const Fp4MmaConfig cfg = ApplyFp4MmaConfigOverrides(
-        PickFp4MmaConfig(n, k, device_prop.multiProcessorCount), n, k);
-    const int cols_per_block = 16 * cfg.col_tiles;
     const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);
+    // Column grouping needs the whole M to live in one mma row tile; see PickFp4MmaGroupedConfig.
+    const Fp4MmaConfig cfg = ApplyFp4MmaConfigOverrides(
+        mtiles == 1 ? PickFp4MmaGroupedConfig(n, k, device_prop.multiProcessorCount)
+                    : PickFp4MmaConfig(n, k, device_prop.multiProcessorCount),
+        n, k);
+    const int cols_per_block = 16 * cfg.col_tiles * cfg.col_groups;
     const dim3 mma_threads{32, static_cast<unsigned int>(cfg.k_split * cfg.col_tiles)};
     const dim3 mma_blocks{static_cast<unsigned int>((n + cols_per_block - 1) / cols_per_block)};
     const uint8_t* mbp = reinterpret_cast<const uint8_t*>(b_packed);
     const uint8_t* mws = reinterpret_cast<const uint8_t*>(weight_scale);
 
-#define ORT_LAUNCH_FP4_MMA_GEMV(T, KS, CT, MT)                                                   \
-  MatMulBlockQuantizedFp4WeightMmaGemvKernel<T, KS, CT, MT>                                      \
+#define ORT_LAUNCH_FP4_MMA_GEMV(T, KS, CT, MT, CG)                                               \
+  MatMulBlockQuantizedFp4WeightMmaGemvKernel<T, KS, CT, MT, CG>                                  \
       <<<mma_blocks, mma_threads, 0, stream>>>(reinterpret_cast<T*>(y),                          \
                                                reinterpret_cast<const T*>(a), mbp, mws,          \
                                                weight_scale_2, reinterpret_cast<const T*>(bias), \
                                                m, n, k, k_blocks)
 
+#define ORT_DISPATCH_FP4_MMA_GEMV_KS(T, MT, CG)    \
+  do {                                             \
+    switch (cfg.k_split) {                         \
+      case 16:                                     \
+        ORT_LAUNCH_FP4_MMA_GEMV(T, 16, 1, MT, CG); \
+        break;                                     \
+      case 8:                                      \
+        ORT_LAUNCH_FP4_MMA_GEMV(T, 8, 1, MT, CG);  \
+        break;                                     \
+      case 4:                                      \
+        ORT_LAUNCH_FP4_MMA_GEMV(T, 4, 1, MT, CG);  \
+        break;                                     \
+      case 2:                                      \
+        ORT_LAUNCH_FP4_MMA_GEMV(T, 2, 1, MT, CG);  \
+        break;                                     \
+      default:                                     \
+        ORT_LAUNCH_FP4_MMA_GEMV(T, 1, 1, MT, CG);  \
+        break;                                     \
+    }                                              \
+  } while (0)
+
 #define ORT_DISPATCH_FP4_MMA_GEMV_MT(T, MT)      \
   do {                                           \
     if (cfg.col_tiles == 4) {                    \
       if (cfg.k_split >= 2) {                    \
-        ORT_LAUNCH_FP4_MMA_GEMV(T, 2, 4, MT);    \
+        ORT_LAUNCH_FP4_MMA_GEMV(T, 2, 4, MT, 1); \
       } else {                                   \
-        ORT_LAUNCH_FP4_MMA_GEMV(T, 1, 4, MT);    \
+        ORT_LAUNCH_FP4_MMA_GEMV(T, 1, 4, MT, 1); \
       }                                          \
     } else {                                     \
-      switch (cfg.k_split) {                     \
-        case 16:                                 \
-          ORT_LAUNCH_FP4_MMA_GEMV(T, 16, 1, MT); \
-          break;                                 \
-        case 8:                                  \
-          ORT_LAUNCH_FP4_MMA_GEMV(T, 8, 1, MT);  \
-          break;                                 \
-        case 4:                                  \
-          ORT_LAUNCH_FP4_MMA_GEMV(T, 4, 1, MT);  \
-          break;                                 \
-        case 2:                                  \
-          ORT_LAUNCH_FP4_MMA_GEMV(T, 2, 1, MT);  \
-          break;                                 \
-        default:                                 \
-          ORT_LAUNCH_FP4_MMA_GEMV(T, 1, 1, MT);  \
-          break;                                 \
-      }                                          \
+      ORT_DISPATCH_FP4_MMA_GEMV_KS(T, MT, 1);    \
     }                                            \
   } while (0)
 
 // Only 1, 2 and 4 row tiles are instantiated; an M of 17..24 rounds up to 4 and masks the
-// remainder, which costs nothing next to the weight traffic it shares.
-#define ORT_DISPATCH_FP4_MMA_GEMV(T)        \
-  do {                                      \
-    switch (mtiles) {                       \
-      case 1:                               \
-        ORT_DISPATCH_FP4_MMA_GEMV_MT(T, 1); \
-        break;                              \
-      case 2:                               \
-        ORT_DISPATCH_FP4_MMA_GEMV_MT(T, 2); \
-        break;                              \
-      default:                              \
-        ORT_DISPATCH_FP4_MMA_GEMV_MT(T, 4); \
-        break;                              \
-    }                                       \
+// remainder, which costs nothing next to the weight traffic it shares. Column grouping is
+// instantiated for the single row tile only.
+#define ORT_DISPATCH_FP4_MMA_GEMV(T)             \
+  do {                                           \
+    switch (mtiles) {                            \
+      case 1:                                    \
+        if (cfg.col_groups == 2) {               \
+          ORT_DISPATCH_FP4_MMA_GEMV_KS(T, 1, 2); \
+        } else {                                 \
+          ORT_DISPATCH_FP4_MMA_GEMV_MT(T, 1);    \
+        }                                        \
+        break;                                   \
+      case 2:                                    \
+        ORT_DISPATCH_FP4_MMA_GEMV_MT(T, 2);      \
+        break;                                   \
+      default:                                   \
+        ORT_DISPATCH_FP4_MMA_GEMV_MT(T, 4);      \
+        break;                                   \
+    }                                            \
   } while (0)
 
     if (is_bf16) {
@@ -1047,6 +1111,7 @@ Status LaunchMatMulBlockQuantizedFp4WeightGemv(void* y,
     }
 #undef ORT_DISPATCH_FP4_MMA_GEMV
 #undef ORT_DISPATCH_FP4_MMA_GEMV_MT
+#undef ORT_DISPATCH_FP4_MMA_GEMV_KS
 #undef ORT_LAUNCH_FP4_MMA_GEMV
     return CUDA_CALL(cudaGetLastError());
   }
