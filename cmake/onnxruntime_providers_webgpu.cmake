@@ -51,11 +51,11 @@
     # Prefix the plugin EP entry points so that multiple statically linked plugin EPs can coexist in one binary.
     # ORT core declares the prefixed names in onnxruntime/core/session/plugin_ep/ep_static_plugins.cc.
     #
-    # ORT_SKIP_API_MANUAL_INIT tells the shared plugin EP headers that OrtGetApiBase() is available in-process,
-    # so the C++ API must not be built with ORT_API_MANUAL_INIT (the rest of the binary is not).
+    # ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT tells the shared plugin EP headers that OrtGetApiBase() is available
+    # in-process, so the C++ API must not be built with ORT_API_MANUAL_INIT (the rest of the binary is not).
     target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
                                ORT_PLUGIN_EP_STATICALLY_LINKED=1
-                               ORT_SKIP_API_MANUAL_INIT=1)
+                               ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT=1)
   else()
     #
     # Build WebGPU EP as a shared library

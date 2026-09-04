@@ -757,7 +757,7 @@ side was fictional flexibility anyway, since ORT core already spells `WebGpu_Cre
 in `ep_static_plugins.cc`.
 
 Separately, the manual-init switch in the public header `include/onnxruntime/ep/api.h` was renamed from
-`ORT_PLUGIN_EP_STATICALLY_LINKED` to `ORT_SKIP_API_MANUAL_INIT`, since it says nothing about linkage — it says
+`ORT_PLUGIN_EP_STATICALLY_LINKED` to `ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT`, since it says nothing about linkage — it says
 whether `OrtGetApiBase()` is reachable in-process. The negative polarity is deliberate and was kept: undefined
 must continue to mean manual init *on*, which is the safe default for a separately built plugin. A positive
 spelling would silently flip that for any out-of-tree plugin that relies on the header. `webgpu/ep/api.cc` has

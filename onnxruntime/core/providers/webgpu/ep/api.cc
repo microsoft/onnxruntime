@@ -1,21 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// See the comment on ORT_SKIP_API_MANUAL_INIT in include/onnxruntime/ep/api.h for why manual init of the C++ API is
-// only used when this EP is built as its own shared library. Key this off the same macro so that every translation
-// unit in the binary agrees on ORT_API_MANUAL_INIT.
-#if !defined(ORT_SKIP_API_MANUAL_INIT)
-#define ORT_API_MANUAL_INIT
-#include "onnxruntime_cxx_api.h"
-#undef ORT_API_MANUAL_INIT
-#else
-#include "onnxruntime_cxx_api.h"
-#endif
-
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+
+#include "ep/api.h"
 
 #include "core/platform/env_var.h"
 #include "core/providers/webgpu/ep/factory.h"
