@@ -363,8 +363,9 @@ __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, 
   }
   const float inv_sum = SafeInvSum(WarpReduceSum(local_sum));
 
-  __syncwarp();
+  // Each lane reads back only the slots it wrote above, so the sort needs no barrier before it.
   WarpMergeSorter::Sort(s_scores, s_indices, temp_storage, num_experts);
+  // Sort's blocked write-back must be visible to the strided reads below.
   __syncwarp();
 
   // s_scores[r]/s_indices[r] now hold the rank-r logit/expert index.
