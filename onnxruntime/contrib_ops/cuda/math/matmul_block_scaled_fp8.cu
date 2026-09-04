@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/math/matmul_block_scaled_fp8.h"
+#include "contrib_ops/cuda/math/matmul_block_scaled_fp8_tiling.h"
 
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
@@ -852,19 +853,53 @@ int MatMulBlockScaledFp8GemvMaxM(int k, int block_size, const cudaDeviceProp& de
 #endif
 }
 
-Status LaunchMatMulBlockScaledFp8Gemv(void* y,
-                                      const void* a,
-                                      const void* b_fp8,
-                                      const float* weight_scale,
-                                      const void* bias,
-                                      const float* act_scale,
-                                      int m,
-                                      int n,
-                                      int k,
-                                      int block_size,
-                                      bool is_bf16,
-                                      const cudaDeviceProp& device_prop,
-                                      cudaStream_t stream) {
+int ApplyFp8MmaKSplitOverride(int k_split, int m, int n, int k) {
+  static int const override_k_split =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_KSPLIT", 0);
+  static int const match_n =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_MATCH_N", 0);
+  static int const match_k =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_MATCH_K", 0);
+  ORT_ENFORCE(override_k_split == 0 || override_k_split == 4 || override_k_split == 8 ||
+                  override_k_split == 16 || override_k_split == 32,
+              "ORT_FP8_GEMV_KSPLIT must be 0, 4, 8, 16, or 32.");
+  ORT_ENFORCE(match_n >= 0 && match_k >= 0,
+              "ORT_FP8_GEMV_MATCH_N and ORT_FP8_GEMV_MATCH_K must be non-negative.");
+
+  if ((match_n != 0 && n != match_n) || (match_k != 0 && k != match_k) ||
+      override_k_split == 0) {
+    return k_split;
+  }
+  ORT_ENFORCE(override_k_split != 32 || m <= 8,
+              "ORT_FP8_GEMV_KSPLIT=32 supports M up to 8, got M=", m, ".");
+  return override_k_split;
+}
+
+bool Fp8MmaGb10TuningEnabled() {
+  static bool const enabled = [] {
+    const int disable_tuning =
+        onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_DISABLE_GB10_TUNING", 0);
+    ORT_ENFORCE(disable_tuning == 0 || disable_tuning == 1,
+                "ORT_FP8_GEMV_DISABLE_GB10_TUNING must be 0 or 1.");
+    return disable_tuning == 0;
+  }();
+  return enabled;
+}
+
+static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
+                                                 const void* a,
+                                                 const void* b_fp8,
+                                                 const float* weight_scale,
+                                                 const void* bias,
+                                                 const float* act_scale,
+                                                 int m,
+                                                 int n,
+                                                 int k,
+                                                 int block_size,
+                                                 bool is_bf16,
+                                                 const cudaDeviceProp& device_prop,
+                                                 cudaStream_t stream,
+                                                 bool enable_gb10_ksplit32) {
 #if !defined(DISABLE_FLOAT8_TYPES) && defined(CUDA_VERSION) && CUDA_VERSION >= 11080
   if (m <= 0 || n <= 0 || k <= 0) {
     return Status::OK();
@@ -884,14 +919,14 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
                       "MatMulBlockQuantizedFp8Weight GEMV supports M above ", kFp8MmaGemvTileM,
                       " only on the mma sub-path, got M=", m, ".");
     const size_t element_size = is_bf16 ? sizeof(__nv_bfloat16) : sizeof(half);
-    ORT_RETURN_IF_ERROR(LaunchMatMulBlockScaledFp8Gemv(
+    ORT_RETURN_IF_ERROR(LaunchMatMulBlockScaledFp8GemvImpl(
         y, a, b_fp8, weight_scale, bias, act_scale, kFp8MmaGemvTileM, n, k, block_size,
-        is_bf16, device_prop, stream));
-    return LaunchMatMulBlockScaledFp8Gemv(
+        is_bf16, device_prop, stream, false));
+    return LaunchMatMulBlockScaledFp8GemvImpl(
         static_cast<uint8_t*>(y) + static_cast<size_t>(kFp8MmaGemvTileM) * n * element_size,
         static_cast<const uint8_t*>(a) + static_cast<size_t>(kFp8MmaGemvTileM) * k * element_size,
         b_fp8, weight_scale, bias, act_scale, m - kFp8MmaGemvTileM, n, k, block_size,
-        is_bf16, device_prop, stream);
+        is_bf16, device_prop, stream, false);
   }
 
   // Tensor-core path (SM80+). Beats the FMA kernel at every M on H200: 1.06-1.23x at M == 1 and
@@ -905,10 +940,13 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   if (device_prop.major >= 8 && m <= kFp8MmaGemvTileM && k % 64 == 0 && k >= 256 &&
       block_size % 64 == 0 && Fp8GemvMmaEnabled()) {
     const int windows = k / 64;
-    int k_split = (n >= 8192) ? 8 : 16;  // wide N already fills the grid, so fewer warps per block
-    if (windows < k_split) {
-      k_split = (windows >= 8) ? 8 : 4;
-    }
+    // Preserve the generic schedule for recursive tiles from requests above the qualified M range.
+    const int selected_k_split =
+        enable_gb10_ksplit32 && Fp8MmaGb10TuningEnabled()
+            ? PickFp8MmaKSplit(n, m, windows, device_prop.multiProcessorCount,
+                               device_prop.major, device_prop.minor)
+            : PickGenericFp8MmaKSplit(n, windows);
+    const int k_split = ApplyFp8MmaKSplitOverride(selected_k_split, m, n, k);
     const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);
     const dim3 mma_blocks{static_cast<unsigned int>((n + 15) / 16)};
     const auto launch_mma = [&]<int KSplit, int MTiles>() {
@@ -934,7 +972,10 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
         launch_mma.template operator()<KSplit, 4>();
       }
     };
-    if (k_split == 16) {
+    if (k_split == 32) {
+      ORT_ENFORCE(mtiles == 1, "FP8 GEMV KSplit32 supports only M up to 8.");
+      launch_mma.template operator()<32, 1>();
+    } else if (k_split == 16) {
       launch_for_ksplit.template operator()<16>();
     } else if (k_split == 8) {
       launch_for_ksplit.template operator()<8>();
@@ -1023,8 +1064,27 @@ Status LaunchMatMulBlockScaledFp8Gemv(void* y,
   ORT_UNUSED_PARAMETER(is_bf16);
   ORT_UNUSED_PARAMETER(device_prop);
   ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(enable_gb10_ksplit32);
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MatMulBlockQuantizedFp8Weight requires CUDA 11.8 or later.");
 #endif
+}
+
+Status LaunchMatMulBlockScaledFp8Gemv(void* y,
+                                      const void* a,
+                                      const void* b_fp8,
+                                      const float* weight_scale,
+                                      const void* bias,
+                                      const float* act_scale,
+                                      int m,
+                                      int n,
+                                      int k,
+                                      int block_size,
+                                      bool is_bf16,
+                                      const cudaDeviceProp& device_prop,
+                                      cudaStream_t stream) {
+  return LaunchMatMulBlockScaledFp8GemvImpl(
+      y, a, b_fp8, weight_scale, bias, act_scale, m, n, k, block_size,
+      is_bf16, device_prop, stream, true);
 }
 
 }  // namespace onnxruntime::contrib::cuda

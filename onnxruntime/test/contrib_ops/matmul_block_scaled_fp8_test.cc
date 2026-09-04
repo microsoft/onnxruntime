@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdlib>
+
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -8,11 +10,19 @@
 #include "test/unittest_util/conversion.h"
 #include "test/util/include/scoped_env_vars.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <limits.h>
+#include <unistd.h>
+#endif
+
 #if defined(USE_CUDA)
 // CUDA_VERSION comes from cuda.h. Without this include the guard below silently
 // evaluates to false and every test in this file is compiled out.
 #include <cuda.h>
 
+#include "contrib_ops/cuda/math/matmul_block_scaled_fp8_tiling.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
 
@@ -30,6 +40,22 @@ namespace onnxruntime::test {
 // Dequantized weight value is fp8_e4m3(B[n, k]) * b_scale[n, k / block_size].
 
 namespace {
+std::string CurrentExecutablePath() {
+#ifdef _WIN32
+  std::string path(MAX_PATH, '\0');
+  const DWORD length = GetModuleFileNameA(nullptr, path.data(), static_cast<DWORD>(path.size()));
+  ORT_ENFORCE(length != 0 && length < path.size(), "GetModuleFileNameA failed.");
+  path.resize(length);
+  return path;
+#else
+  std::string path(PATH_MAX, '\0');
+  const ssize_t length = readlink("/proc/self/exe", path.data(), path.size());
+  ORT_ENFORCE(length > 0 && static_cast<size_t>(length) < path.size(), "readlink(/proc/self/exe) failed.");
+  path.resize(static_cast<size_t>(length));
+  return path;
+#endif
+}
+
 // Builds a [N, K] FP8 E4M3 weight where every element of row r equals row_value[r].
 std::vector<Float8E4M3FN> MakeConstRowWeight(const std::vector<float>& row_value, int64_t k) {
   std::vector<Float8E4M3FN> b(static_cast<size_t>(row_value.size()) * static_cast<size_t>(k));
@@ -41,6 +67,138 @@ std::vector<Float8E4M3FN> MakeConstRowWeight(const std::vector<float>& row_value
   return b;
 }
 }  // namespace
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreKSplitSelection) {
+  struct Case {
+    int n;
+    int m;
+    int windows;
+    int sm_count;
+    int compute_capability_major;
+    int compute_capability_minor;
+    int expected;
+  };
+  const Case cases[] = {
+      {17408, 1, 80, 48, 12, 1, 32},
+      {16384, 8, 80, 48, 12, 1, 32},
+      {5120, 8, 128, 48, 12, 1, 32},
+      {16383, 1, 80, 48, 12, 1, 8},
+      {16384, 1, 79, 48, 12, 1, 8},
+      {5119, 1, 128, 48, 12, 1, 16},
+      {5120, 1, 127, 48, 12, 1, 16},
+      {1024, 4, 80, 48, 12, 1, 16},
+      {7168, 8, 80, 48, 12, 1, 16},
+      {10240, 9, 80, 48, 12, 1, 8},
+      {10240, 16, 80, 48, 12, 1, 8},
+      {10240, 1, 8, 48, 12, 1, 8},
+      {10240, 1, 80, 47, 12, 1, 8},
+      {10240, 1, 80, 49, 12, 1, 8},
+      {10240, 1, 80, 48, 12, 0, 8},
+      {10240, 1, 80, 48, 9, 0, 8},
+  };
+
+  for (const Case& c : cases) {
+    SCOPED_TRACE("N = " + std::to_string(c.n) +
+                 ", M = " + std::to_string(c.m) +
+                 ", windows = " + std::to_string(c.windows) +
+                 ", SMs = " + std::to_string(c.sm_count) +
+                 ", CC = " + std::to_string(c.compute_capability_major) + "." +
+                 std::to_string(c.compute_capability_minor));
+    EXPECT_EQ(onnxruntime::contrib::cuda::PickFp8MmaKSplit(
+                  c.n, c.m, c.windows, c.sm_count,
+                  c.compute_capability_major, c.compute_capability_minor),
+              c.expected);
+  }
+}
+
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreForcedKSplit32) {
+  constexpr const char* kChildProcessVariable = "ORT_FP8_GEMV_KSPLIT_TEST_CHILD";
+  const bool is_child_process = !Env::Default().GetEnvironmentVar(kChildProcessVariable).empty();
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_FP8_GEMV_KSPLIT", "32"},
+      {"ORT_FP8_GEMV_MATCH_N", "17"},
+      {"ORT_FP8_GEMV_MATCH_K", "2112"},
+      {kChildProcessVariable, "1"},
+  }};
+  if (!is_child_process) {
+    const std::string command =
+        "\"" + CurrentExecutablePath() +
+        "\" --gtest_filter=MatMulBlockQuantizedFp8WeightOpTest.GemvTensorCoreForcedKSplit32 --gtest_color=no";
+    ASSERT_EQ(std::system(command.c_str()), 0);
+    return;
+  }
+
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  constexpr int64_t m = 8;
+  constexpr int64_t n = 17;
+  constexpr int64_t k = 2112;  // 33 windows exercise a ragged KSplit32 reduction.
+  constexpr int64_t block_size = 64;
+  constexpr int64_t k_blocks = k / block_size;
+
+  static const float kWeightValues[] = {1.0f, 2.0f, -1.0f};
+  static const float kActValues[] = {1.0f, -1.0f, 0.5f, -0.5f};
+  std::vector<Float8E4M3FN> b(static_cast<size_t>(n * k));
+  std::vector<float> b_ref(static_cast<size_t>(n * k));
+  for (int64_t col = 0; col < n; ++col) {
+    for (int64_t i = 0; i < k; ++i) {
+      const float value = kWeightValues[(col + i) % 3];
+      b[static_cast<size_t>(col * k + i)] = Float8E4M3FN(value);
+      b_ref[static_cast<size_t>(col * k + i)] = value;
+    }
+  }
+  std::vector<float> b_scale(static_cast<size_t>(n * k_blocks));
+  for (int64_t col = 0; col < n; ++col) {
+    for (int64_t kb = 0; kb < k_blocks; ++kb) {
+      b_scale[static_cast<size_t>(col * k_blocks + kb)] =
+          static_cast<float>(1 + (col + kb) % 3) / 4.0f;
+    }
+  }
+  std::vector<float> a(static_cast<size_t>(m * k));
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t i = 0; i < k; ++i) {
+      a[static_cast<size_t>(row * k + i)] = kActValues[(row + i) % 4];
+    }
+  }
+  std::vector<float> expected(static_cast<size_t>(m * n));
+  for (int64_t row = 0; row < m; ++row) {
+    for (int64_t col = 0; col < n; ++col) {
+      float acc = 0.0f;
+      for (int64_t i = 0; i < k; ++i) {
+        acc += a[static_cast<size_t>(row * k + i)] * b_ref[static_cast<size_t>(col * k + i)] *
+               b_scale[static_cast<size_t>(col * k_blocks + i / block_size)];
+      }
+      expected[static_cast<size_t>(row * n + col)] = acc;
+    }
+  }
+
+  {
+    OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+    test.AddAttribute<int64_t>("block_size", block_size);
+    test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+    test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+    test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+    test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
+    test.SetOutputTolerance(0.005f);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+  {
+    OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+    test.AddAttribute<int64_t>("block_size", block_size);
+    test.AddInput<BFloat16>("A", {m, k}, FloatsToBFloat16s(a));
+    test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+    test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+    test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected));
+    test.SetOutputTolerance(0.05f);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
 
 // GEMM path (K not a multiple of 16 forces the cuBLAS dequant path), FP16 activations.
 // Weights are constant per row, so Y[m, n] = W_val[n] * sum_k A[m, k].
