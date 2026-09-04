@@ -17,7 +17,7 @@ At a high level, you can:
    for more details.
 3. Load and run the model using *ONNX Runtime*.
 
-In this tutorial, we will briefly create a 
+In this tutorial, we will briefly create a
 pipeline with *scikit-learn*, convert it into
 ONNX format and run the first predictions.
 
@@ -28,18 +28,17 @@ Step 1: Train a model using your favorite framework
 
 We'll use the famous iris datasets.
 
-.. exec_code::
+.. code_block:: python
 
     from sklearn.datasets import load_iris
     from sklearn.model_selection import train_test_split
     iris = load_iris()
     X, y = iris.data, iris.target
-    X_train, X_test, y_train, y_test = train_test_split(X, y)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
 
     from sklearn.linear_model import LogisticRegression
-    clr = LogisticRegression()
+    clr = LogisticRegression(max_iter=200, random_state=42)
     clr.fit(X_train, y_train)
-    print(clr)
 
 Step 2: Convert or export the model into ONNX format
 ++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -51,19 +50,7 @@ There are `tools <https://github.com/onnx/tutorials>`_
 to convert other model formats into ONNX. Here we will use
 `ONNXMLTools <https://github.com/onnx/onnxmltools>`_.
 
-.. exec_code::
-
-    # hide: start
-    from sklearn.datasets import load_iris
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import train_test_split
-
-    iris = load_iris()
-    X, y = iris.data, iris.target
-    X_train, X_test, y_train, y_test = train_test_split(X, y)
-    clr = LogisticRegression()
-    clr.fit(X_train, y_train)
-    # hide: stop
+.. code_block:: python
 
     from skl2onnx import convert_sklearn
     from skl2onnx.common.data_types import FloatTensorType
@@ -76,7 +63,7 @@ to convert other model formats into ONNX. Here we will use
 Step 3: Load and run the model using ONNX Runtime
 +++++++++++++++++++++++++++++++++++++++++++++++++
 
-We will use *ONNX Runtime* to compute the predictions 
+We will use *ONNX Runtime* to compute the predictions
 for this machine learning model.
 
 .. exec_code::
@@ -90,8 +77,8 @@ for this machine learning model.
 
     iris = load_iris()
     X, y = iris.data, iris.target
-    X_train, X_test, y_train, y_test = train_test_split(X, y)
-    clr = LogisticRegression()
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+    clr = LogisticRegression(max_iter=200, random_state=42)
     clr.fit(X_train, y_train)
     initial_type = [('float_input', FloatTensorType([None, 4]))]
     onx = convert_sklearn(clr, initial_types=initial_type)
@@ -121,8 +108,8 @@ by specifying its name into a list.
 
     iris = load_iris()
     X, y = iris.data, iris.target
-    X_train, X_test, y_train, y_test = train_test_split(X, y)
-    clr = LogisticRegression()
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+    clr = LogisticRegression(max_iter=200, random_state=42)
     clr.fit(X_train, y_train)
     initial_type = [('float_input', FloatTensorType([None, 4]))]
     onx = convert_sklearn(clr, initial_types=initial_type)
