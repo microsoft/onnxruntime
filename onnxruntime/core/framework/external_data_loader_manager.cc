@@ -51,6 +51,7 @@ Status ExternalDataLoaderManager::PreloadExternalData(
     const Env& env,
     const std::filesystem::path& model_path,
     const Graph& graph,
+    const std::unordered_set<std::string>& excluded_initializer_names,
     const std::function<bool()>& is_cancelled) const {
   bool has_preloader = false;
   for (const auto& loader : external_data_loaders_) {
@@ -76,8 +77,8 @@ Status ExternalDataLoaderManager::PreloadExternalData(
 
   std::unordered_set<std::filesystem::path> validated_external_files;
   for (const auto& [name, tensor_proto] : graph.GetAllInitializedTensors()) {
-    ORT_UNUSED_PARAMETER(name);
-    if (!utils::HasExternalData(*tensor_proto) ||
+    if (excluded_initializer_names.contains(name) ||
+        !utils::HasExternalData(*tensor_proto) ||
         utils::HasExternalDataInMemory(*tensor_proto)) {
       continue;
     }
