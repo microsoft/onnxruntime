@@ -725,6 +725,80 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_range_with_float_inputs(self):
+        # Range start/limit/delta are floats here. Truncating them to int makes a
+        # sub-unit delta zero (ZeroDivisionError) and rounds larger ones.
+        cases = [
+            (0.0, 1.0, 0.3),
+            (0.0, 1.0, 0.25),
+            (0.0, 2.0, 0.7),
+            (5.0, 0.0, -1.5),
+            (0.0, -1.0, -0.3),
+            (1.0, 1.0, 0.5),
+        ]
+        for start, limit, delta in cases:
+            with self.subTest(start=start, limit=limit, delta=delta):
+                expected = len(numpy.arange(start, limit, delta, dtype=numpy.float32))
+                initializers = [
+                    numpy_helper.from_array(numpy.array(start, dtype=numpy.float32), "start"),
+                    numpy_helper.from_array(numpy.array(limit, dtype=numpy.float32), "limit"),
+                    numpy_helper.from_array(numpy.array(delta, dtype=numpy.float32), "delta"),
+                ]
+                graph = helper.make_graph(
+                    [
+                        helper.make_node("Range", ["start", "limit", "delta"], ["temp"]),
+                        helper.make_node("Identity", ["temp"], ["output"]),
+                    ],
+                    "Range_Float_Test",
+                    [],
+                    [
+                        helper.make_tensor_value_info("output", TensorProto.FLOAT, [expected]),
+                    ],
+                    initializers,
+                )
+                model = helper.make_model(graph, producer_name="Range_Float_Test_Model")
+                model.opset_import[0].version = 18
+
+                inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                expected_shapes = [
+                    helper.make_tensor_value_info("temp", TensorProto.FLOAT, [expected]),
+                    helper.make_tensor_value_info("output", TensorProto.FLOAT, [expected]),
+                ]
+                self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_range_with_int_inputs(self):
+        # Integer Range must be unaffected by allowing float values through.
+        cases = [(0, 10, 1), (0, 10, 3), (10, 0, -1), (10, 0, -3), (5, 5, 1), (0, 7, 2)]
+        for start, limit, delta in cases:
+            with self.subTest(start=start, limit=limit, delta=delta):
+                expected = len(numpy.arange(start, limit, delta))
+                initializers = [
+                    numpy_helper.from_array(numpy.array(start, dtype=numpy.int64), "start"),
+                    numpy_helper.from_array(numpy.array(limit, dtype=numpy.int64), "limit"),
+                    numpy_helper.from_array(numpy.array(delta, dtype=numpy.int64), "delta"),
+                ]
+                graph = helper.make_graph(
+                    [
+                        helper.make_node("Range", ["start", "limit", "delta"], ["temp"]),
+                        helper.make_node("Identity", ["temp"], ["output"]),
+                    ],
+                    "Range_Int_Test",
+                    [],
+                    [
+                        helper.make_tensor_value_info("output", TensorProto.INT64, [expected]),
+                    ],
+                    initializers,
+                )
+                model = helper.make_model(graph, producer_name="Range_Int_Test_Model")
+                model.opset_import[0].version = 18
+
+                inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+                expected_shapes = [
+                    helper.make_tensor_value_info("temp", TensorProto.INT64, [expected]),
+                    helper.make_tensor_value_info("output", TensorProto.INT64, [expected]),
+                ]
+                self._check_shapes(graph, inferred.graph, expected_shapes)
+
 
 class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
     def check_slice_of_concat(self, input_dims, start, end, step, expected_output_dim):
