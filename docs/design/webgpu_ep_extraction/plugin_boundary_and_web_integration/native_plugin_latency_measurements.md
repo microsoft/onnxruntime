@@ -1,0 +1,188 @@
+# Native plugin EP latency measurements
+
+Tracks the native (shared-library) half of this workstream's latency criterion:
+
+> Inference latency stays within an accepted tolerance of the same baselines, for both static plugin registration and
+> the native shared-library plugin.
+
+The static-plugin (wasm) half is already measured, in
+[the work log](static_plugin_ep_work_log.md#measured-cost-of-the-plugin-path-on-the-web-build). This document covers
+the native `--use_webgpu shared_lib` plugin against a built-in `--use_webgpu` baseline.
+
+**Status: not yet measured.** The measurement setup is complete and is recorded below, but the machine's f16-capable
+GPU is currently in a driver-failure state, so no numbers have been taken. The sections below record the setup, the
+environment finding, and one useful negative result, so that the run can be reproduced once the GPU is repaired.
+
+Commit under test: `873f221786`.
+
+## The measurement machine has no usable f16 GPU
+
+The box has three display adapters. Only one of them can run WebGPU compute at all:
+
+| adapter | PnP status | notes |
+| --- | --- | --- |
+| Microsoft Remote Display Adapter | `Unknown` | remote-session indirect display, not a compute device |
+| NVIDIA Quadro P620 | `OK` | Pascal (GP107) — **no native 16-bit shader ops** |
+| NVIDIA GeForce RTX 5060 Ti | **`Error`** | **Code 31 / `CM_PROB_FAILED_ADD`** — driver failed to load |
+
+`nvidia-smi -L` lists only the P620, and a running `onnxruntime_perf_test` was confirmed on it (86% utilization, the
+process visible under GPU 0). So **every native run taken on this machine today executed on the Quadro P620**, not on
+the RTX 5060 Ti.
+
+The failure is recent: `nvlddmkm` errors (event IDs 153 and 14) were logged at 02:01-02:03 on 2026-09-04, immediately
+before that morning's 02:05 boot. Two different NVIDIA driver versions are installed side by side — `32.0.15.8267` for
+the P620 and `32.0.16.1062` for the 5060 Ti — which is the usual cause of this state. Measurements recorded in earlier
+sessions predate this boot and were most likely taken on a working RTX 5060 Ti.
+
+### Consequence: the fp16/int4 LLM case cannot run here
+
+Pascal does not advertise `shader-f16`, so any model needing f16 fails at the first node:
+
+```
+Program GatherBlockQuantized requires f16 but the device does not support it.
+```
+
+raised by `ORT_RETURN_IF_NOT(webgpu_context_.DeviceHasFeature(wgpu::FeatureName::ShaderF16), ...)` in
+`onnxruntime/core/providers/webgpu/shader_helper.cc:421`. `WebGpuContext` only requests `ShaderF16` when the adapter
+advertises it (`webgpu_context.cc:793-816`), so this is an adapter capability limit, not a configuration mistake.
+
+## Negative result: the f16 failure is not plugin-specific
+
+Worth recording, because a failure that shows up first on the plugin path invites the assumption that the plugin
+boundary caused it. It did not. The same model was run on both build shapes:
+
+| build | EP path | result |
+| --- | --- | --- |
+| `build/native_plugin` | plugin (`--plugin_ep_libs`) | fails: `GatherBlockQuantized requires f16` |
+| `build/int` | built-in (`-e webgpu`) | **fails identically** |
+
+Both arms reach the same `GetAvailableRequiredFeatures()` call on a single shared code path
+(`webgpu_context.cc:157`), which is why they agree. Three mitigations were tried on the built-in arm and all failed
+the same way:
+
+| mitigation | result |
+| --- | --- |
+| `-C "ep.webgpuexecutionprovider.powerPreference\|high-performance"` | still fails |
+| `-C "ep.webgpuexecutionprovider.dawnBackendType\|Vulkan"` | still fails |
+| verify DXC present (`dxcompiler.dll`, `dxil.dll`, `DAWN_USE_BUILT_DXC=ON`) | present in both builds; not the cause |
+
+The `use_dxc` toggle is already passed unconditionally by `GetEnabledAdapterToggles()`
+(`webgpu_context.cc:734-748`), so DXC was never missing.
+
+### There is no adapter-selection knob
+
+`kDeviceId` (`ep.webgpuexecutionprovider.deviceId`) looks like an adapter index but is not one. It is parsed into
+`WebGpuContextConfig::context_id` (`webgpu_provider_factory.cc:155-162`) and used only for context caching and
+cross-device copy checks. ORT exposes no way to pick a physical adapter, so on a multi-GPU box the adapter is
+whatever Dawn selects.
+
+**This matters for the A/B itself, not just for f16.** Record the adapter actually used alongside any numbers. If the
+two arms could land on different adapters the comparison is meaningless. `--list_ep_devices` does not help — it
+reports vendor `Microsoft` with no GPU identity.
+
+## Measurement setup
+
+### The matched build pair
+
+Two Ninja build directories from the same commit, differing only in the EP flag:
+
+```
+python tools\ci_build\build.py --config Release --build_dir D:\source\onnxruntime_4\build\nat_builtin ^
+  --cmake_generator Ninja --build_shared_lib --skip_submodule_sync --parallel --update --build --skip_tests ^
+  --target onnxruntime_perf_test --use_webgpu
+```
+
+and the same command with `--build_dir ...\build\nat_plugin --use_webgpu shared_lib`.
+
+Constraints that are easy to get wrong:
+
+- **`--build_shared_lib` is required on both arms.** The plugin DLL resolves `OrtGetApiBase` from the host, so a
+  statically linked host executable cannot load it.
+- **Do not disable unit tests.** `onnxruntime_perf_test` is defined in `onnxruntime_unittests.cmake`; `--skip_tests`
+  only skips *running* them, which is what is wanted.
+- **The plugin arm needs a second build step**, `ninja onnxruntime_providers_webgpu`, because perf_test `dlopen`s the
+  plugin and `--target onnxruntime_perf_test` alone does not produce the DLL.
+- `build/int` is **not** usable as the baseline: it differs in four ways at once (RelWithDebInfo vs Release, Visual
+  Studio vs Ninja generator, `BUILD_SHARED_LIB=OFF` vs `ON`, and `ENABLE_DAWN_BACKEND_VULKAN=ON` vs `OFF`). It is
+  fine as a qualitative control, as used for the f16 result above, but not for timing.
+
+**Fairness control:** diff the two `CMakeCache.txt` files and confirm that every delta is an EP-path option. This is
+the check that makes the comparison trustworthy; do not skip it on the assumption that the build commands matched.
+
+### Invocations
+
+Built-in arm:
+
+```
+onnxruntime_perf_test.exe -e webgpu -m times -r <N> <model_dir>\model.onnx
+```
+
+Plugin arm:
+
+```
+onnxruntime_perf_test.exe --plugin_ep_libs "WebGPU|onnxruntime_providers_webgpu.dll" ^
+  --plugin_eps WebGpuExecutionProvider -m times -r <N> <model_dir>\model.onnx
+```
+
+- The EP name is **`WebGpuExecutionProvider`**, not `WebGPU`. The registration name before the `|` is arbitrary.
+- perf_test **rejects a model directory** — pass the `.onnx` file. It picks up `test_data_set_0` from that directory.
+- `-i` is ignored for WebGPU: `-e webgpu` hardcodes `AppendExecutionProvider("WebGPU", {})`
+  (`ort_test_session.cc:608-613`). Use **`-C "ep.webgpuexecutionprovider.<key>|<value>"`**, which routes through
+  `ConfigOptions` and therefore applies **identically on both arms** — exactly what an A/B needs. The available keys
+  are in `webgpu_provider_options.h`.
+
+Methodology: interleaved rounds, taking the median of each round's minimum — the same procedure used for the wasm
+numbers, so the two sets are directly relatable.
+
+Note that perf_test **cannot drive a *statically* linked plugin EP**: both `common_utils.cc:93-99` and
+`ort_test_session.cc:111-112` gate on `registered_plugin_eps`, which is populated only by `--plugin_ep_libs`. That is
+moot for this dynamic-library A/B, but it is a real gap if static-plugin native perf is ever needed.
+
+### Models
+
+`bench_compute` (16 nodes) and `bench_dispatch` (300 nodes) are fp32 and run on the P620 today. `bench_dispatch` is
+the dispatch-overhead-sensitive case and is where the wasm A/B found the per-kernel cost.
+
+A Qwen3.5-0.8B int4 case was also prepared, to check whether the per-kernel overhead is visible on a real LLM. It is
+blocked on f16 and has not run.
+
+#### Why the Qwen inputs had to be generated by hand
+
+perf_test's `-I` flag cannot produce valid inputs for this model. `InitializeTensorWithSeed`
+(`ort_test_session.cc:1020-1040`) randomizes only `float` and `int8_t`/`uint8_t`; every other type falls through to
+`random_init = false` and prints "this type of data won't be random initialized". `input_ids` and `position_ids` are
+`int64` and would be left **uninitialized**, indexing far outside the 248320-entry embedding table. Unspecified free
+dimensions also default to 1 (`:1135-1137`), which would give a nonsense shape regardless.
+
+So a real `test_data_set_0` was generated instead. Tensor **names** are set on every `TensorProto`, which makes the
+lexicographic `input_10.pb` < `input_2.pb` file ordering harmless — `TestCase.cc:621-624` prefers the name over the
+positional index whenever the name is non-empty.
+
+The model is hybrid-attention (`qwen3_5_text`: 24 layers, vocab 248320, hidden 1024, 8 heads, 2 KV heads,
+head size 256), so its 51 inputs are not uniform:
+
+| input | index | type | shape |
+| --- | --- | --- | --- |
+| `input_ids` | 0 | int64 | `[B, S]` |
+| `attention_mask` | 1 | int64 | `[B, T]` |
+| `past_key_values.{L}.key`, L in {3,7,11,15,19,23} | 2-7 | float16 | `[B, 2, P, 256]` |
+| `past_key_values.{L}.value`, same L | 8-13 | float16 | `[B, 2, P, 256]` |
+| `position_ids` | 14 | int64 | `[B, S]` |
+| `past_key_values.{L}.conv_state`, the other 18 layers | 15-50 | float16 | `[B, 6144, 3]` |
+| `past_key_values.{L}.recurrent_state`, same 18 layers | 15-50 | float16 | `[B, 16, 128, 128]` |
+
+Only 6 of the 24 layers carry a KV cache; the remaining 18 are linear-attention layers with convolution and
+recurrent state. Two scenarios were materialized under `D:\test\qwen_perf`: `decode` (B=1, S=1, P=128, T=129, the
+dispatch-sensitive case) and `prefill` (B=1, S=128, P=0, T=128, a compute-bound control).
+
+`genai_config.json` sets `past_present_share_buffer: true` and WebGPU options `enableGraphCapture: "0"` /
+`validationMode: "basic"`. perf_test does not apply these, so pass them with `-C` if the comparison should match how
+GenAI runs the model.
+
+## Results
+
+Pending. Re-measure once an f16-capable adapter is available, and replace the P620-era observations above with
+numbers taken on the repaired GPU.
+
+Record with the results: the adapter actually used, the commit SHA, both build command lines, the `CMakeCache.txt`
+delta, and the raw per-round minimums rather than only the medians.
