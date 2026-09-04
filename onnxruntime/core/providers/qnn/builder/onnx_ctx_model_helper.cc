@@ -115,7 +115,11 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
 
   std::filesystem::path context_binary_path = folder_path / external_qnn_ctx_binary_file_name;
   if (!std::filesystem::is_regular_file(context_binary_path)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_GRAPH, "The external EP context file '", context_binary_path.string(),
+        "' does not exist or is not accessible. If session.model_external_initializers_file_folder_path is set, "
+        "set ep.context_file_path to the EPContext model path so relative ep_cache_context paths are resolved from "
+        "the EPContext model directory.");
   }
 
   std::string context_binary_path_str = context_binary_path.string();

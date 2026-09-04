@@ -398,6 +398,39 @@ TEST_P(OVEPOVIRModelsExportEPContextTests, ExportEpCtxFromOVIRModel) {
     RunAndValidate(session);
   }
 
+  if (!embed_mode) {
+    const std::filesystem::path external_initializers_dir = out_dir / "external_initializers";
+    std::filesystem::create_directories(external_initializers_dir);
+
+    {
+      Ort::SessionOptions session_options;
+      session_options.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath,
+                                     external_initializers_dir.string().c_str());
+      std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
+      session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+      try {
+        Ort::Session session(*ort_env, epctx_model.c_str(), session_options);
+        FAIL() << "Session creation should fail when the EP context binary is resolved from the initializer folder.";
+      } catch (const Ort::Exception& ex) {
+        EXPECT_THAT(ex.what(), ::testing::HasSubstr("session.model_external_initializers_file_folder_path"));
+        EXPECT_THAT(ex.what(), ::testing::HasSubstr("ep.context_file_path"));
+      }
+    }
+
+    {
+      Ort::SessionOptions session_options;
+      session_options.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath,
+                                     external_initializers_dir.string().c_str());
+      session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, epctx_model.string().c_str());
+      std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
+      session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+      Ort::Session session(*ort_env, epctx_model.c_str(), session_options);
+      RunAndValidate(session);
+    }
+  }
+
   std::filesystem::remove_all(out_dir);
 }
 

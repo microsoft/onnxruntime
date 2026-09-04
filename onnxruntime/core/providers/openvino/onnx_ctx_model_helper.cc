@@ -117,7 +117,11 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
     }
     ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(blob_filepath, std::filesystem::path(ep_cache_context)));
     blob_filepath = blob_filepath.parent_path() / ep_cache_context;
-    ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
+    ORT_ENFORCE(
+        std::filesystem::exists(blob_filepath),
+        "External EP context file not found: ", blob_filepath.string(),
+        ". If session.model_external_initializers_file_folder_path is set, set ep.context_file_path to the "
+        "EPContext model path so relative ep_cache_context paths are resolved from the EPContext model directory.");
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
   }
 
