@@ -272,38 +272,38 @@ Status ComputeMatMul(ComputeContext* context,
   uint32_t split_dim_inner = 1;
   uint32_t splits_per_batch = 1;
 
-  // Current Split-K implementation relies on atomic operations, which are not deterministic.
-  if (!context->KernelContext().GetUseDeterministicCompute()) {
-    const SplitKConfig& split_k_config = context->GetSplitKConfig();
-    const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
-    if (need_split_k) {
-      ORT_ENFORCE(is_vec4, "Split-K MatMul requires vec4 packing.");
+  // Split-K partial sums. Empty unless Split-K is used; `partials` must outlive both dispatches.
+  Tensor partials;
 
-      if (has_bias) {
-        ORT_ENFORCE(is_channels_last, "Split-K MatMul only supports channels-last format.");
-      }
+  const SplitKConfig& split_k_config = context->GetSplitKConfig();
+  const bool need_split_k = split_k_config.UseSplitK(is_vec4, activation.activation_kind_, batch_size, dim_a_outer, dim_b_outer, dim_inner, is_channels_last);
+  if (need_split_k) {
+    ORT_RETURN_IF_NOT(is_vec4, "Split-K MatMul requires vec4 packing.");
+    ORT_RETURN_IF_NOT(dim_b_outer % 4 == 0, "Split-K MatMul requires dim_b_outer to be a multiple of 4.");
+    ORT_RETURN_IF_NOT(!has_bias || is_channels_last, "Split-K MatMul with bias requires channels-last.");
 
-      // Initialize `output_tensor` with 0 or bias before MatMulProgram with Split-K enabled.
-      const auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(bias, output_tensor, /*is_gemm*/ false, /*beta*/ 1.0f, /*bias_components*/ 4, output_shape_temp, narrow<uint32_t>(batch_size));
-      ORT_RETURN_IF_ERROR(context->RunProgram(fill_bias_program));
+    split_dim_inner = split_k_config.GetSplitDimInner();
+    splits_per_batch = (dim_inner + split_dim_inner - 1) / split_dim_inner;
+    // One dispatch per (batch, split) pair; the shader recovers both from `logical_global_id.z`.
+    const uint64_t dispatch_z_u64 = static_cast<uint64_t>(batch_size) * static_cast<uint64_t>(splits_per_batch);
+    ORT_RETURN_IF_NOT(dispatch_z_u64 <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                      "dispatch_z exceeds uint32_t range: ", dispatch_z_u64);
+    dispatch_z = narrow<uint32_t>(dispatch_z_u64);
 
-      // `bias` has been handled in the execution of `fill_bias_program` so we don't need to set
-      // `bias` again in `MatMulProgram`.
-      use_bias_in_matmul = false;
+    // Bias is applied by the reduction, once, after the partials are summed.
+    use_bias_in_matmul = false;
 
-      // With Split-K, `dim_inner` will be split into multiple parts. `dispatch_z` encodes
-      // both the split-k index and the batch index: dispatch_z = splits_per_batch * batch_size.
-      split_dim_inner = split_k_config.GetSplitDimInner();
-      splits_per_batch = (dim_inner + split_dim_inner - 1) / split_dim_inner;
-      const uint64_t dispatch_z_u64 = static_cast<uint64_t>(batch_size) * static_cast<uint64_t>(splits_per_batch);
-      ORT_ENFORCE(dispatch_z_u64 <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
-                  "dispatch_z exceeds uint32_t range: ", dispatch_z_u64);
-      dispatch_z = narrow<uint32_t>(dispatch_z_u64);
+    const uint64_t out_elems = static_cast<uint64_t>(batch_size) * dim_a_outer * (dim_b_outer / components);
+    const uint64_t scratch_elems = splits_per_batch * out_elems;
+    const uint64_t scratch_scalars = scratch_elems * components;
+    ORT_RETURN_IF_NOT(scratch_scalars <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max()),
+                      "Split-K scratch size exceeds int64_t range: ", scratch_scalars);
+    partials = context->CreateGPUTensor(output_tensor->DataType(),
+                                        TensorShape{static_cast<int64_t>(scratch_scalars)});
 
-      // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
-      // built-in functions.
-      output.is_atomic = true;
-    }
+    // Pass 1 writes whole vec4 elements at a flat offset, so bind the scratch as rank 1.
+    output = ProgramOutput(&partials, ProgramTensorMetadataDependency::TypeAndRank,
+                           TensorShape{static_cast<int64_t>(scratch_elems)}, components);
   }
 
   MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
@@ -325,43 +325,66 @@ Status ComputeMatMul(ComputeContext* context,
     matmul_program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});
   }
 
-  return context->RunProgram(matmul_program);
+  ORT_RETURN_IF_ERROR(context->RunProgram(matmul_program));
+
+  if (!need_split_k) {
+    return Status::OK();
+  }
+
+  // Pass 2: sum the per-split partials in a fixed index order, apply bias, and write the output.
+  auto reduce_program = CreateMatMulSplitKReduceProgram(
+      partials, bias, output_tensor, /*is_gemm*/ false, activation, /*beta*/ 1.0f,
+      /*output_components*/ narrow<uint32_t>(components), /*bias_components*/ narrow<uint32_t>(components),
+      output_shape_temp, splits_per_batch, narrow<uint32_t>(batch_size));
+  return context->RunProgram(reduce_program);
 }
 
-MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
+MatMulSplitKReduceProgram CreateMatMulSplitKReduceProgram(
+    const Tensor& partials,
     const Tensor* bias,
     Tensor* output,
     bool is_gemm,
+    const Activation& activation,
     float beta,
     uint32_t output_components,
+    uint32_t bias_components,
     const TensorShape& output_shape,
+    uint32_t splits,
     uint32_t batch_size) {
   const bool has_bias = bias != nullptr;
   const bool bias_is_scalar = has_bias ? bias->Shape().Size() == 1 : false;
 
-  MatMulFillBiasOrZeroBeforeSplitKProgram program(is_gemm, has_bias, output_components, bias_is_scalar);
+  MatMulSplitKReduceProgram program(is_gemm, has_bias, output_components, bias_is_scalar, activation);
 
   const uint32_t dim_a_outer = narrow<uint32_t>(output_shape[output_shape.NumDimensions() - 2]);
-  const uint32_t dim_b_outer = narrow<uint32_t>(output_shape[output_shape.NumDimensions() - 1]);
+  // `output_shape` carries the last dimension in components; the shader expects elements.
+  const uint32_t dim_b_outer = narrow<uint32_t>(output_shape[output_shape.NumDimensions() - 1]) * output_components;
 
-  // Fill one value per invocation across all batches.
+  // One invocation per output element, so the dispatch covers them a workgroup at a time.
   const uint64_t total_outputs = static_cast<uint64_t>(batch_size) *
                                  static_cast<uint64_t>(dim_a_outer) *
-                                 static_cast<uint64_t>(dim_b_outer);
+                                 static_cast<uint64_t>(dim_b_outer / output_components);
   const uint64_t dispatch_x_u64 = CeilDiv(total_outputs, static_cast<uint64_t>(WORKGROUP_SIZE));
   ORT_ENFORCE(dispatch_x_u64 <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
               "dispatch_x exceeds uint32_t range: ", dispatch_x_u64);
   const uint32_t dispatch_x = narrow<uint32_t>(dispatch_x_u64);
 
-  const uint32_t dim_b_outer_components = narrow<uint32_t>(dim_b_outer * output_components);
-  program.CacheHint(is_gemm, has_bias, output_components, bias_is_scalar)
-      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, static_cast<int32_t>(output_components)})
-      .AddUniformVariables({{dim_a_outer}, {dim_b_outer_components}, {beta}, {batch_size}})
+  const TensorShape partials_shape = TensorShape{static_cast<int64_t>(total_outputs * splits)};
+
+  program.CacheHint(is_gemm, has_bias, output_components, bias_is_scalar, activation.CacheKey())
+      .AddInput({&partials, ProgramTensorMetadataDependency::TypeAndRank, partials_shape,
+                 static_cast<int32_t>(output_components)})
+      .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape,
+                  static_cast<int32_t>(output_components)})
+      .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {beta}, {batch_size}, {splits}})
       .SetDispatchGroupSize(dispatch_x);
+  // Must stay last among uniform appends: definitions pair with values by index, not by name.
+  AppendActivationUniformsData(activation, program);
 
   if (has_bias) {
-    const TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), output_components);
-    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape, static_cast<int32_t>(output_components)});
+    const TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
+    program.AddInput({bias, ProgramTensorMetadataDependency::TypeAndRank, reduced_bias_shape,
+                      static_cast<int32_t>(bias_components)});
   }
 
   return program;

@@ -51,58 +51,21 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
                                     << "    " << output.SetByIndices("coords", "value") << "\n";
 }
 
-void HandleMatMulWithSplitK(
-    ShaderHelper& shader,
-    bool is_gemm,
-    const ShaderVariableHelper& output,
-    ProgramVariableDataType output_variable_type) {
-  if (is_gemm) {
-    shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));";
-  } else {
-    shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
-  }
+void HandleMatMulWriteToSplitKPartials(ShaderHelper& shader,
+                                       bool is_gemm,
+                                       const ShaderVariableHelper& output) {
+  // Split-K pass 1. Laid out split-major so a split's writes stay contiguous in `colIn` and the
+  // reduction's reads stay coalesced within each split.
+  const std::string batch_size = is_gemm
+                                     ? std::string{"1"}
+                                     : std::string{"i32(uniforms.logical_dispatch_z / uniforms.splits_per_batch)"};
 
-  // With Split-K, the final output will be the sum of the sub-outputs from multiple workgroups,
-  // so we must add them with atomic built-in functions. Because currently WebGPU doesn't support
-  // atomic built-in functions on `f32` or `f16`, we implement the `atomicAdd` on `f32` and `f16`
-  // with `atomicLoad` and `atomicCompareExchangeWeak`:
-  // 1. Get `old_output_i32` from `output[offset]` with `atomicLoad`.
-  // 2. Convert `old_output_i32` into `f32` (`old_output_f32`) or `vec2h` (`old_output_vec2h`).
-  // 3. Add incoming `value` into `old_output_f32` or `old_output_vec2h`.
-  // 4. Convert the result of step 3 into `i32` values.
-  // 5. Try assigning the result of step 4 into `output[offset]` with `atomicCompareExchangeWeak`
-  //    and `old_output_i32`. The assignment will fail if at this time `output[offset]` is not
-  //    equal to `old_output_i32` (it is updated in another invocation). If the assignment fails
-  //    we have to go to step 1 and repeat all the above steps.
-  switch (output_variable_type) {
-    case ProgramVariableDataType::Float32x4: {
-      shader.AdditionalImplementation() << R"(
-    let offset0 = i2o_output(coords) * 4u;
-    for (var i = 0u; i < 4u; i++) {
-        let offset = offset0 + i;
-)";
-      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(output, "offset", "f32", "value[i]") << R"(
-    }
-)";
-      break;
-    }
-    case ProgramVariableDataType::Float16x4: {
-      shader.AdditionalImplementation() << R"(
-    let offset0 = i2o_output(coords) * 2u;
-    var vec2h_values : array<vec2h, 2>;
-    vec2h_values[0] = value.xy;
-    vec2h_values[1] = value.zw;
-    for (var i = 0u; i < 2u; i++) {
-        let offset = offset0 + i;
-)";
-      shader.AdditionalImplementation() << GenerateAtomicAddNonIntegerCode(output, "offset", "vec2h", "vec2h_values[i]") << R"(
-    }
-)";
-      break;
-    }
-    default:
-      break;
-  }
+  shader.AdditionalImplementation()
+      << "    let dim_b_outer_vec = i32(uniforms.dim_b_outer) / " << output.NumComponents() << ";\n"
+      << "    let split_k_out_elems = " << batch_size << " * i32(uniforms.dim_a_outer) * dim_b_outer_vec;\n"
+      << "    let split_k_offset = splitIndex * split_k_out_elems + "
+      << "(batch * i32(uniforms.dim_a_outer) + row) * dim_b_outer_vec + colIn;\n"
+      << "    " << output.SetByOffset("u32(split_k_offset)", "value") << "\n";
 }
 
 // Compute `logical_workgroup_id` and `logical_global_id` because the dispatch workgroup size in
@@ -119,10 +82,13 @@ void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
       << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
 }
 
-void EmitMatMulWriteFnHeader(ShaderHelper& shader, const ShaderVariableHelper& output) {
+void EmitMatMulWriteFnHeader(ShaderHelper& shader, const ShaderVariableHelper& output,
+                             bool with_split_index = false) {
   const int output_components = output.NumComponents();
   shader.AdditionalImplementation()
-      << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: output_value_t) {\n";
+      << "fn mm_write(batch: i32, row: i32, colIn: i32, "
+      << (with_split_index ? "splitIndex: i32, " : "")
+      << "valueIn: output_value_t) {\n";
 
   shader.AdditionalImplementation() << "  let col = colIn * " << output_components << ";\n";
 
@@ -210,10 +176,9 @@ void MatMulWriteFnSourceForGemm(ShaderHelper& shader,
 
 void MatMulWriteFnSourceWithSplitK(ShaderHelper& shader,
                                    const ShaderVariableHelper& output,
-                                   bool is_gemm,
-                                   ProgramVariableDataType output_variable_type) {
-  EmitMatMulWriteFnHeader(shader, output);
-  HandleMatMulWithSplitK(shader, is_gemm, output, output_variable_type);
+                                   bool is_gemm) {
+  EmitMatMulWriteFnHeader(shader, output, /*with_split_index = */ true);
+  HandleMatMulWriteToSplitKPartials(shader, is_gemm, output);
   EmitMatMulWriteFnFooter(shader);
 }
 
@@ -263,6 +228,14 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                            workgroup_size_y, ". elements_per_thread_x: ", elements_per_thread_x, " must be 4.");
   }
 
+  // The Split-K partial store writes whole `output_components`-wide elements and indexes the scratch
+  // buffer in those units, so it requires the vec4 output path. `SplitKConfig::UseSplitK` already gates
+  // on `is_vec4`; this catches a caller that enables Split-K without honouring it.
+  if (split_k && output_components != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Split-K requires a vec4 output, but output_components is ", output_components, ".");
+  }
+
   shader.AdditionalImplementation()
       << "var<workgroup> mm_Asub: array<array<vec" << inner_elements_size << "<" << data_type << ">, " << tile_a_width / inner_elements_size << ">, " << tile_a_height << ">;\n"
       << "var<workgroup> mm_Bsub: array<array<vec4<" << data_type << ">, " << tile_b_outer / elements_per_thread_x << ">, " << tile_inner << ">;\n"
@@ -298,15 +271,16 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     //                                                     [c2 c2]]
     //
     //  With Split-K:
-    //  1. Initialize output Y with B in `MatMulFillBiasOrZeroBeforeSplitKProgram`:  Y = [[d1, d2]
-    //                                                                                   [d1, d2]]
-    //  2. Split the original 1 workgroup into 3 workgroups (now `dispatch_z = 3` in API side)
+    //  1. Split the original 1 workgroup into 3 workgroups (now `dispatch_z = 3` in API side)
     //     Workgroup1: compute (A1 * A2)  Workgroup2: compute (B1 * B2)
     //     Workgroup3: compute (C1 * C2)
     //     In each workgroup:
     //     - `num_tiles` is computed with `kSplitK`, and `kStart` is computed with `logical_global_id.z`
-    //     - When the computation in each workgroup is completed, add the result to Y with several
-    //       atomic built-in functions in `HandleMatMulWithSplitK()`.
+    //     - When the computation in each workgroup is completed, the result is stored to that split's
+    //       own slot of the scratch buffer in `HandleMatMulWriteToSplitKPartials()`.
+    //  2. `MatMulSplitKReduceProgram` sums the per-split slots in a fixed index order, adds bias (B)
+    //     and any activation, and writes Y. Because the order is fixed by index rather than by the
+    //     order in which workgroups retire, the result is bit-reproducible.
     shader.MainFunctionBody()
         << "const kSplitK = " << split_dim_inner << ";\n"
         << "  let num_tiles = (kSplitK - 1) / tileInner + 1;\n";
@@ -326,7 +300,8 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     } else {
       // With Split-K without batch (in Gemm), `logical_global_id.z` is exactly the Split-K index.
       shader.MainFunctionBody()
-          << "  var kStart = kSplitK * i32(logical_global_id.z);\n"
+          << "  let split_index = i32(logical_global_id.z);\n"
+          << "  var kStart = kSplitK * split_index;\n"
           << "  let batch = 0;\n"
           << "  let batchIndices = 0u;\n";
     }
@@ -457,6 +432,8 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
     shader.MainFunctionBody() << " for (var i = 0; i < innerElementSize; i = i + 1) {\n"
                               << "    mm_write(batch, globalRow + innerRow, globalCol * innerElementSize + i, acc[innerRow][i]);\n"
                               << "  }\n";
+  } else if (split_k) {
+    shader.MainFunctionBody() << "    mm_write(batch, globalRow + innerRow, globalCol, split_index, acc[innerRow]);\n";
   } else {
     shader.MainFunctionBody() << "    mm_write(batch, globalRow + innerRow, globalCol, acc[innerRow]);\n";
   }

@@ -3,6 +3,8 @@
 
 #include "core/providers/webgpu/math/gemm_packed.h"
 
+#include <limits>
+
 #include "core/providers/webgpu/webgpu_utils.h"
 
 #include "core/providers/webgpu/math/matmul.h"
@@ -14,12 +16,7 @@ namespace webgpu {
 
 Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const bool need_split_k = NeedSplitK();
-  ShaderUsage output_usage = ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias;
-  if (need_split_k) {
-    // When Split-K is enabled, we will declare output as `atomic<i32>` to call atomic built-in
-    // functions on it, so we need below information to correctly compute the index on the output.
-    output_usage |= ShaderUsage::UseIndicesToOffset | ShaderUsage::UseShapeAndStride;
-  }
+  const ShaderUsage output_usage = ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias;
   const ShaderVariableHelper& output = shader.AddOutput("output", output_usage);
 
   // Each thread compute 4*4 elements
@@ -45,8 +42,9 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   if (need_split_k) {
-    const ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
-    MatMulWriteFnSourceWithSplitK(shader, output, /*is_gemm = */ true, output_var_type);
+    // `beta * C` is applied by `MatMulSplitKReduceProgram` after the partials are summed, so the bias
+    // input is deliberately left unbound here.
+    MatMulWriteFnSourceWithSplitK(shader, output, /*is_gemm = */ true);
   } else {
     MatMulWriteFnSourceForGemm(shader, output, c, c_is_scalar_);
   }
@@ -107,40 +105,44 @@ Status ApplyGemmPacked(const Tensor* a,
   ProgramOutput output(y, ProgramTensorMetadataDependency::TypeAndRank, output_components);
   uint32_t dispatch_z = 1;
   uint32_t split_dim_inner = 1;
+  uint32_t splits = 1;
 
-  // Current Split-K implementation relies on atomic operations, which are not deterministic.
-  if (!context.KernelContext().GetUseDeterministicCompute()) {
-    const SplitKConfig& split_k_config = context.GetSplitKConfig();
-    // Currently we require the components for Y must also be a multiple of 4 when Split-K is used.
-    const bool output_is_vec4 = output_components == 4;
-    // We need to use `true` as `is_channels_last` to meet the requirement in `UseSplitK`.
-    const bool need_split_k = split_k_config.UseSplitK(is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, M, N, K);
-    if (need_split_k) {
-      const Tensor* bias = nullptr;
-      uint32_t output_components_in_fill_bias_program = 4;
-      if (need_handle_bias) {
-        bias = c;
-        output_components_in_fill_bias_program = c_components;
-      }
-      const TensorShape output_shape = TensorShape{M, N / output_components_in_fill_bias_program};
+  // Split-K partial sums. Empty unless Split-K is used; `partials` must outlive both dispatches.
+  Tensor partials;
 
-      auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
-          bias, y, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, output_shape);
-      ORT_RETURN_IF_ERROR(context.RunProgram(fill_bias_program));
+  const SplitKConfig& split_k_config = context.GetSplitKConfig();
+  // Currently we require the components for Y must also be a multiple of 4 when Split-K is used.
+  const bool output_is_vec4 = output_components == 4;
+  // We need to use `true` as `is_channels_last` to meet the requirement in `UseSplitK`.
+  const bool need_split_k = split_k_config.UseSplitK(is_vec4 && output_is_vec4, ActivationKind::None, /*batch_size*/ 1, M, N, K);
+  if (need_split_k) {
+    ORT_RETURN_IF_NOT(N % 4 == 0, "Split-K GEMM requires N to be a multiple of 4.");
 
-      // When Split-K is used, `bias` will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
-      // instead of here.
-      need_handle_bias = false;
+    // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
+    // number of splits along `dim_inner`.
+    split_dim_inner = split_k_config.GetSplitDimInner();
+    splits = (K + split_dim_inner - 1) / split_dim_inner;
+    dispatch_z = splits;
 
-      // With Split-K, `dim_inner` will be split into multiple parts and `dispatch_z` will be the
-      // number of splits along `dim_inner`.
-      split_dim_inner = split_k_config.GetSplitDimInner();
-      dispatch_z = (K + split_dim_inner - 1) / split_dim_inner;
+    // Each split writes to its own slot of `partials` instead of accumulating into the shared output,
+    // so the summation order is fixed by index in the reduction below. `beta * C` is applied there.
+    const uint64_t out_elems = static_cast<uint64_t>(M) * (N / output_components);
+    const uint64_t scratch_elems = static_cast<uint64_t>(splits) * out_elems;
+    const uint64_t scratch_scalars = scratch_elems * output_components;
+    ORT_RETURN_IF_NOT(scratch_scalars <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max()),
+                      "Split-K scratch size exceeds int64_t range: ", scratch_scalars);
+    partials = context.CreateGPUTensor(y->DataType(),
+                                       TensorShape{static_cast<int64_t>(scratch_scalars)});
 
-      // The output should be declared in atomic types in `MatMulProgram` for the use of atomic
-      // built-in functions.
-      output.is_atomic = true;
-    }
+    // Pass 1 writes whole vec4 elements at a flat offset, so bind the scratch as rank 1.
+    output = ProgramOutput(&partials, ProgramTensorMetadataDependency::TypeAndRank,
+                           TensorShape{static_cast<int64_t>(scratch_elems)}, output_components);
+  }
+
+  // `beta * C` is applied by the Split-K reduction rather than by `GemmProgram`.
+  const bool reduce_handles_bias = need_split_k && need_handle_bias;
+  if (need_split_k) {
+    need_handle_bias = false;
   }
 
   GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, output_components, is_vec4, split_dim_inner};
@@ -172,7 +174,18 @@ Status ApplyGemmPacked(const Tensor* a,
                             {dispatch_z}} /* logical_dispatch_z */
       );
 
-  return context.RunProgram(program);
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+
+  if (!need_split_k) {
+    return Status::OK();
+  }
+
+  // Pass 2: sum the per-split partials in a fixed index order, apply `beta * C`, and write Y.
+  const TensorShape reduce_output_shape = TensorShape{M, N / output_components};
+  auto reduce_program = CreateMatMulSplitKReduceProgram(
+      partials, reduce_handles_bias ? c : nullptr, y, /*is_gemm*/ true, Activation{}, beta,
+      narrow<uint32_t>(output_components), narrow<uint32_t>(c_components), reduce_output_shape, splits);
+  return context.RunProgram(reduce_program);
 }
 
 }  // namespace webgpu
