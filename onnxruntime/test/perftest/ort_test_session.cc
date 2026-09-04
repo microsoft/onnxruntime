@@ -101,7 +101,8 @@ RunTiming OnnxRuntimeTestSession::Run() {
 OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device& rd,
                                                const PerformanceTestConfig& performance_test_config,
                                                const TestModelInfo& m)
-    : rand_engine_(rd()),
+    : env_(env),
+      rand_engine_(rd()),
       input_names_(m.GetInputCount()),
       input_names_str_(m.GetInputCount()),
       input_length_(m.GetInputCount()),
@@ -110,13 +111,23 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   // Add EP devices if any (created by plugin EP)
   if (!performance_test_config.registered_plugin_eps.empty()) {
-    perftest::utils::AppendPluginExecutionProviders(env, session_options, performance_test_config);
-
     if (performance_test_config.run_config.enable_cuda_io_binding &&
         perftest::utils::UsesNvidiaDevice(env, performance_test_config) &&
         device_memory_name_.empty()) {
       device_memory_name_ = CUDA;
+      // Initialize external CUDA stream for Nvidia EP device
+      std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
+      for (size_t index = 0; index < ep_devices.size(); ++index) {
+        Ort::ConstEpDevice& device = ep_devices[index];
+        const auto hardware_device = device.Device();
+        if (hardware_device.Type() == OrtDevice::GPU && hardware_device.VendorId() == OrtDevice::VendorIds::NVIDIA) {
+          if (ext_stream_ == nullptr) {
+            ext_stream_ = device.CreateSyncStream();
+          }
+        }
+      }
     }
+    perftest::utils::AppendPluginExecutionProviders(env, session_options, performance_test_config, performance_test_config.run_config.enable_cuda_io_binding ? &ext_stream_ : nullptr);
   }
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
@@ -244,32 +255,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
-#endif
-  } else if (provider_name_ == onnxruntime::kNvTensorRTRTXExecutionProvider) {
-#ifdef USE_NV
-#ifdef _MSC_VER
-    std::string opt_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
-#else
-    std::string opt_string = performance_test_config.run_config.ep_runtime_config_string;
-#endif
-    ParseSessionConfigs(opt_string, provider_options);
-    if (!provider_options.empty()) {
-      std::cout << "Setting NV TensorRT RTX provider options to:\n";
-      for (const auto& provider_option : provider_options) {
-        std::cout << "\t" << provider_option.first << ":" << provider_option.second << "\n";
-      }
-    }
-    if (performance_test_config.run_config.enable_cuda_io_binding) {
-      device_memory_name_ = CUDA;
-      if (cudaStreamCreate(&stream_) != cudaError_t::cudaSuccess) {
-        ORT_THROW("Unable to create CUDA stream for IOBinding");
-      }
-      auto stream_str = std::to_string(reinterpret_cast<uintptr_t>(stream_));
-      provider_options["user_compute_stream"] = stream_str;
-    }
-    session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
-#else
-    ORT_THROW("NV TensorRT RTX is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
@@ -1108,28 +1093,35 @@ void OnnxRuntimeTestSession::CreateAndStoreGeneratedInput(size_t test_data_id, s
                                                        dims.size(), element_type);
     InitializeTensorWithSeed(seed, input_tensor);
     PreLoadTestData(test_data_id, input_idx, std::move(input_tensor));
+    return;
   }
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
-  else {
-    Ort::AllocatorWithDefaultOptions default_allocator;
-    Ort::Value default_tensor = Ort::Value::CreateTensor(default_allocator, (const int64_t*)dims.data(),
-                                                         dims.size(), element_type);
-    InitializeTensorWithSeed(seed, default_tensor);
 
-    const void* default_ptr = default_tensor.GetTensorRawData();
-    size_t total_bytes = default_tensor.GetTensorSizeInBytes();
+  Ort::AllocatorWithDefaultOptions default_allocator;
+  Ort::Value default_tensor = Ort::Value::CreateTensor(default_allocator, dims.data(),
+                                                       dims.size(), element_type);
+  InitializeTensorWithSeed(seed, default_tensor);
 
-    Ort::Value cuda_tensor = Ort::Value::CreateTensor(allocator_, dims.data(),
+  Ort::Value device_tensor = Ort::Value::CreateTensor(allocator_, dims.data(),
                                                       dims.size(), element_type);
-    void* cuda_ptr = cuda_tensor.GetTensorMutableData<void>();
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
+  {
+    const void* default_ptr = default_tensor.GetTensorRawData();
+    const size_t total_bytes = default_tensor.GetTensorSizeInBytes();
+    void* device_ptr = device_tensor.GetTensorMutableData<void>();
 
-    cudaError_t cuda_err = cudaMemcpy(cuda_ptr, default_ptr, total_bytes, cudaMemcpyHostToDevice);
+    cudaError_t cuda_err = cudaMemcpy(device_ptr, default_ptr, total_bytes, cudaMemcpyHostToDevice);
     if (cuda_err != cudaSuccess) {
       ORT_THROW("Failed to copy tensor data from CPU to CUDA device. CUDA Error: ", cudaGetErrorString(cuda_err));
     }
-    PreLoadTestData(test_data_id, input_idx, std::move(cuda_tensor));
+  }
+#else
+  Ort::Status copy_status = env_.CopyTensor(default_tensor, device_tensor, nullptr);
+  if (!copy_status.IsOK()) {
+    ORT_THROW("Failed to copy tensor data from CPU to CUDA device: ", copy_status.GetErrorMessage());
   }
 #endif
+
+  PreLoadTestData(test_data_id, input_idx, std::move(device_tensor));
 }
 
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {

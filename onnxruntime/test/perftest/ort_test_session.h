@@ -8,7 +8,7 @@
 #include "test_configuration.h"
 #include "test_session.h"
 
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
 #include <cuda_runtime.h>
 #endif
 
@@ -51,6 +51,8 @@ class OnnxRuntimeTestSession : public TestSession {
                                     const std::vector<int64_t>& dims,
                                     ONNXTensorElementDataType element_type, int32_t seed);
 
+  Ort::Env& env_;
+  Ort::SyncStream ext_stream_{nullptr};
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
@@ -74,8 +76,8 @@ class OnnxRuntimeTestSession : public TestSession {
   bool has_dynamic_output_shapes_ = false;
   std::atomic<size_t> round_robin_counter_{0};
   bool use_round_robin_{false};
-#if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
-  cudaStream_t stream_;  // Device stream if required by IO bindings
+#if defined(USE_CUDA) || defined(USE_TENSORRT)
+  cudaStream_t stream_{nullptr};  // Device stream if required by IO bindings
 #endif
   Ort::ArenaCfg cuda_mempool_arena_cfg_{nullptr};
 };

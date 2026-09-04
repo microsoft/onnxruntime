@@ -35,7 +35,8 @@ void ListEpDevices(const Ort::Env& env);
 
 void AppendPluginExecutionProviders(Ort::Env& env,
                                     Ort::SessionOptions& session_options,
-                                    const PerformanceTestConfig& test_config);
+                                    const PerformanceTestConfig& test_config,
+                                    Ort::SyncStream* ext_stream = nullptr);
 
 bool UsesNvidiaDevice(Ort::Env& env, const PerformanceTestConfig& test_config);
 
