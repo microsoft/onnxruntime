@@ -659,6 +659,41 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch1) {
           hidden_size);
 }
 
+TEST(SkipLayerNormTest, SkipLayerNormStatistics) {
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", epsilon_);
+  const std::vector<int64_t> input_dims{1, 1, 4};
+  const std::vector<int64_t> stat_dims{1, 1, 1};
+  test.AddInput<float>("input", input_dims, {10000.0f, 10001.0f, 9999.0f, 10000.0f});
+  test.AddInput<float>("skip", input_dims, {0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddInput<float>("gamma", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("beta", {4}, {0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", input_dims, {0.0f, 1.4142135f, -1.4142135f, 0.0f});
+  test.AddOutput<float>("mean", stat_dims, {10000.0f});
+  test.AddOutput<float>("inv_std_var", stat_dims, {1.4142135f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(SkipLayerNormTest, SkipSimplifiedLayerNormStatistics) {
+  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<float>("epsilon", epsilon_);
+  const std::vector<int64_t> input_dims{1, 1, 4};
+  const std::vector<int64_t> stat_dims{1, 1, 1};
+  test.AddInput<float>("input", input_dims, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<float>("skip", input_dims, {0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddInput<float>("gamma", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddOutput<float>("output", input_dims, {0.3651484f, 0.7302967f, 1.0954452f, 1.4605935f});
+  test.AddOutput<float>("mean", stat_dims, {0.0f});
+  test.AddOutput<float>("inv_std_var", stat_dims, {0.3651484f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(SkipLayerNormTest, SkipLayerNormBatch1_Float16) {
   int batch_size = 1;
   int sequence_length = 2;

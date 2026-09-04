@@ -629,119 +629,7 @@ TEST(LayerNormBFloat16CpuTest, SimplifiedLayerNorm_LargerNormSize) {
   RunBF16CpuOnly(test, kBF16AbsTolerance, "Y");
 }
 
-// =============================================================================
-// SkipLayerNormalization (contrib, kMSDomain opset 1) — BFloat16 on CPU
-// output = LayerNorm(input + skip, gamma, beta)
-// =============================================================================
-
-TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_Basic) {
-  constexpr float epsilon = 1e-12f;
-  constexpr int64_t hidden_size = 4;
-  std::vector<int64_t> input_dims{1, 2, hidden_size};
-  std::vector<int64_t> gamma_dims{hidden_size};
-  std::vector<int64_t> stat_dims{1, 2, 1};
-
-  std::vector<float> input_f32 = {1.0f, 2.0f, 3.0f, 4.0f,
-                                  5.0f, 6.0f, 7.0f, 8.0f};
-  std::vector<float> skip_f32 = {0.5f, -0.5f, 0.5f, -0.5f,
-                                 -1.0f, 1.0f, -1.0f, 1.0f};
-  std::vector<float> gamma_f32 = {1.0f, 1.0f, 1.0f, 1.0f};
-  std::vector<float> beta_f32 = {0.0f, 0.0f, 0.0f, 0.0f};
-
-  auto input_rt = RoundTripBF16(input_f32);
-  auto skip_rt = RoundTripBF16(skip_f32);
-  auto gamma_rt = RoundTripBF16(gamma_f32);
-  auto beta_rt = RoundTripBF16(beta_f32);
-  std::vector<float> added(input_rt.size());
-  for (size_t i = 0; i < added.size(); ++i) {
-    added[i] = input_rt[i] + skip_rt[i];
-  }
-  auto ref = LayerNormRef(added, gamma_rt, beta_rt, hidden_size, epsilon);
-
-  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
-  test.AddAttribute("epsilon", epsilon);
-  test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
-  test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
-  test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32));
-  test.AddInput<BFloat16>("beta", gamma_dims, ToBFloat16(beta_f32));
-  test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
-  test.AddOutput<float>("mean", stat_dims, ref.mean);
-  test.AddOutput<float>("inv_std_var", stat_dims, ref.inv_std_dev);
-  test.AddOutput<BFloat16>("skip_input_bias_add_output", input_dims, ToBFloat16(added));
-
-  RunBF16CpuOnlyMultiOutput(test, {{"output", kBF16AbsTolerance},
-                                   {"mean", kF32StatTolerance},
-                                   {"inv_std_var", kF32StatTolerance},
-                                   {"skip_input_bias_add_output", kBF16AbsTolerance}});
-}
-
-TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_NoBeta) {
-  constexpr float epsilon = 1e-12f;
-  constexpr int64_t hidden_size = 5;
-  std::vector<int64_t> input_dims{2, hidden_size};
-  std::vector<int64_t> gamma_dims{hidden_size};
-
-  std::vector<float> input_f32 = {1.0f, -2.0f, 3.0f, -1.5f, 0.5f,
-                                  -3.0f, 2.0f, -0.5f, 4.0f, -1.0f};
-  std::vector<float> skip_f32 = {-0.5f, 1.0f, -1.5f, 2.0f, -0.3f,
-                                 1.5f, -1.0f, 0.8f, -2.0f, 3.0f};
-  std::vector<float> gamma_f32 = {0.5f, -1.0f, 2.0f, -0.5f, 1.5f};
-
-  auto input_rt = RoundTripBF16(input_f32);
-  auto skip_rt = RoundTripBF16(skip_f32);
-  auto gamma_rt = RoundTripBF16(gamma_f32);
-  std::vector<float> added(input_rt.size());
-  for (size_t i = 0; i < added.size(); ++i) {
-    added[i] = input_rt[i] + skip_rt[i];
-  }
-  auto ref = LayerNormRef(added, gamma_rt, /*bias=*/{}, hidden_size, epsilon);
-
-  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
-  test.AddAttribute("epsilon", epsilon);
-  test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
-  test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
-  test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32));
-  test.AddOptionalInputEdge<BFloat16>();  // no beta
-  test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
-
-  RunBF16CpuOnly(test, kBF16AbsTolerance);
-}
-
-TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_LargerHiddenSize) {
-  constexpr float epsilon = 1e-12f;
-  constexpr int64_t hidden_size = 128;
-  constexpr int64_t num_tokens = 8;
-  std::vector<int64_t> input_dims{num_tokens, hidden_size};
-  std::vector<int64_t> gamma_dims{hidden_size};
-
-  RandomValueGenerator random{99};
-  std::vector<float> input_f32 = random.Uniform<float>(input_dims, -5.0f, 5.0f);
-  std::vector<float> skip_f32 = random.Uniform<float>(input_dims, -5.0f, 5.0f);
-  std::vector<float> gamma_f32 = random.Uniform<float>(gamma_dims, -2.0f, 2.0f);
-  std::vector<float> beta_f32 = random.Uniform<float>(gamma_dims, -1.0f, 1.0f);
-
-  auto input_rt = RoundTripBF16(input_f32);
-  auto skip_rt = RoundTripBF16(skip_f32);
-  auto gamma_rt = RoundTripBF16(gamma_f32);
-  auto beta_rt = RoundTripBF16(beta_f32);
-  std::vector<float> added(input_rt.size());
-  for (size_t i = 0; i < added.size(); ++i) {
-    added[i] = input_rt[i] + skip_rt[i];
-  }
-  auto ref = LayerNormRef(added, gamma_rt, beta_rt, hidden_size, epsilon);
-
-  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
-  test.AddAttribute("epsilon", epsilon);
-  test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
-  test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
-  test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32));
-  test.AddInput<BFloat16>("beta", gamma_dims, ToBFloat16(beta_f32));
-  test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
-
-  RunBF16CpuOnly(test, kBF16AbsTolerance);
-}
-
-TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_MeanInvStdVar) {
+TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_Statistics) {
   constexpr float epsilon = 1e-12f;
   constexpr int64_t hidden_size = 4;
   std::vector<int64_t> input_dims{2, hidden_size};
@@ -770,111 +658,15 @@ TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_MeanInvStdVar) {
   test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
   test.AddOutput<float>("mean", stat_dims, ref.mean);
   test.AddOutput<float>("inv_std_var", stat_dims, ref.inv_std_dev);
+  test.AddOutput<BFloat16>("input_skip_bias_sum", input_dims, ToBFloat16(added));
 
   RunBF16CpuOnlyMultiOutput(test, {{"output", kBF16AbsTolerance},
                                    {"mean", kF32StatTolerance},
-                                   {"inv_std_var", kF32StatTolerance}});
+                                   {"inv_std_var", kF32StatTolerance},
+                                   {"input_skip_bias_sum", kBF16AbsTolerance}});
 }
 
-// =============================================================================
-// SkipSimplifiedLayerNormalization (contrib, kMSDomain opset 1) — BFloat16 on CPU
-// output = RMSNorm(input + skip) * gamma
-// =============================================================================
-
-TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_Basic) {
-  constexpr float epsilon = 1e-12f;
-  constexpr int64_t hidden_size = 4;
-  std::vector<int64_t> input_dims{1, 2, hidden_size};
-  std::vector<int64_t> gamma_dims{hidden_size};
-
-  std::vector<float> input_f32 = {1.0f, 2.0f, 3.0f, 4.0f,
-                                  5.0f, 6.0f, 7.0f, 8.0f};
-  std::vector<float> skip_f32 = {0.5f, -0.5f, 0.5f, -0.5f,
-                                 -1.0f, 1.0f, -1.0f, 1.0f};
-  std::vector<float> gamma_f32 = {1.0f, 1.0f, 1.0f, 1.0f};
-
-  auto input_rt = RoundTripBF16(input_f32);
-  auto skip_rt = RoundTripBF16(skip_f32);
-  auto gamma_rt = RoundTripBF16(gamma_f32);
-  std::vector<float> added(input_rt.size());
-  for (size_t i = 0; i < added.size(); ++i) {
-    added[i] = input_rt[i] + skip_rt[i];
-  }
-  auto ref = RMSNormRef(added, gamma_rt, hidden_size, epsilon);
-
-  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
-  test.AddAttribute("epsilon", epsilon);
-  test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
-  test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
-  test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32));
-  test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
-
-  RunBF16CpuOnly(test, kBF16AbsTolerance);
-}
-
-TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_NonMultipleNormSize) {
-  constexpr float epsilon = 1e-12f;
-  constexpr int64_t hidden_size = 5;
-  std::vector<int64_t> input_dims{2, hidden_size};
-  std::vector<int64_t> gamma_dims{hidden_size};
-
-  std::vector<float> input_f32 = {1.0f, -2.0f, 3.0f, -1.5f, 0.5f,
-                                  -3.0f, 2.0f, -0.5f, 4.0f, -1.0f};
-  std::vector<float> skip_f32 = {-0.5f, 1.0f, -1.5f, 2.0f, -0.3f,
-                                 1.5f, -1.0f, 0.8f, -2.0f, 3.0f};
-  std::vector<float> gamma_f32 = {0.5f, -1.0f, 2.0f, -0.5f, 1.5f};
-
-  auto input_rt = RoundTripBF16(input_f32);
-  auto skip_rt = RoundTripBF16(skip_f32);
-  auto gamma_rt = RoundTripBF16(gamma_f32);
-  std::vector<float> added(input_rt.size());
-  for (size_t i = 0; i < added.size(); ++i) {
-    added[i] = input_rt[i] + skip_rt[i];
-  }
-  auto ref = RMSNormRef(added, gamma_rt, hidden_size, epsilon);
-
-  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
-  test.AddAttribute("epsilon", epsilon);
-  test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
-  test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
-  test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32));
-  test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
-
-  RunBF16CpuOnly(test, kBF16AbsTolerance);
-}
-
-TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_LargerHiddenSize) {
-  constexpr float epsilon = 1e-12f;
-  constexpr int64_t hidden_size = 128;
-  constexpr int64_t num_tokens = 8;
-  std::vector<int64_t> input_dims{num_tokens, hidden_size};
-  std::vector<int64_t> gamma_dims{hidden_size};
-
-  RandomValueGenerator random{77};
-  std::vector<float> input_f32 = random.Uniform<float>(input_dims, -5.0f, 5.0f);
-  std::vector<float> skip_f32 = random.Uniform<float>(input_dims, -5.0f, 5.0f);
-  std::vector<float> gamma_f32 = random.Uniform<float>(gamma_dims, -2.0f, 2.0f);
-
-  auto input_rt = RoundTripBF16(input_f32);
-  auto skip_rt = RoundTripBF16(skip_f32);
-  auto gamma_rt = RoundTripBF16(gamma_f32);
-  std::vector<float> added(input_rt.size());
-  for (size_t i = 0; i < added.size(); ++i) {
-    added[i] = input_rt[i] + skip_rt[i];
-  }
-  auto ref = RMSNormRef(added, gamma_rt, hidden_size, epsilon);
-
-  OpTester test("SkipSimplifiedLayerNormalization", 1, onnxruntime::kMSDomain);
-  test.AddAttribute("epsilon", epsilon);
-  test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
-  test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
-  test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32));
-  test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
-
-  RunBF16CpuOnly(test, kBF16AbsTolerance);
-}
-
-TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_InvStdVar) {
+TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_Statistics) {
   constexpr float epsilon = 1e-12f;
   constexpr int64_t hidden_size = 4;
   std::vector<int64_t> input_dims{2, hidden_size};
@@ -901,12 +693,12 @@ TEST(LayerNormBFloat16CpuTest, SkipSimplifiedLayerNorm_InvStdVar) {
   test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
   test.AddOutput<float>("mean", stat_dims, std::vector<float>(2, 0.0f));
   test.AddOutput<float>("inv_std_var", stat_dims, ref.inv_rms);
-  test.AddOutput<BFloat16>("skip_input_bias_add_output", input_dims, ToBFloat16(added));
+  test.AddOutput<BFloat16>("input_skip_bias_sum", input_dims, ToBFloat16(added));
 
   RunBF16CpuOnlyMultiOutput(test, {{"output", kBF16AbsTolerance},
                                    {"mean", kF32StatTolerance},
                                    {"inv_std_var", kF32StatTolerance},
-                                   {"skip_input_bias_add_output", kBF16AbsTolerance}});
+                                   {"input_skip_bias_sum", kBF16AbsTolerance}});
 }
 
 // =============================================================================
@@ -943,49 +735,6 @@ TEST(LayerNormBFloat16CpuTest, LayerNorm17_PrePack_ScaleBiasInitializers) {
     RunBF16CpuOnly(test, kBF16AbsTolerance, "Y", &pre_packed_counter);
     if (is_initializer) {
       EXPECT_EQ(pre_packed_counter, 2u) << "Scale and Bias should both be pre-packed";
-    } else {
-      EXPECT_EQ(pre_packed_counter, 0u) << "No weights should be pre-packed for graph inputs";
-    }
-  }
-}
-
-TEST(LayerNormBFloat16CpuTest, SkipLayerNorm_PrePack_GammaBetaInitializers) {
-  constexpr float epsilon = 1e-12f;
-  constexpr int64_t hidden_size = 4;
-  std::vector<int64_t> input_dims{2, hidden_size};
-  std::vector<int64_t> gamma_dims{hidden_size};
-
-  std::vector<float> input_f32 = {1.0f, 2.0f, 3.0f, 4.0f,
-                                  5.0f, 6.0f, 7.0f, 8.0f};
-  std::vector<float> skip_f32 = {0.5f, -0.5f, 0.5f, -0.5f,
-                                 -1.0f, 1.0f, -1.0f, 1.0f};
-  std::vector<float> gamma_f32 = {1.0f, 0.5f, -1.0f, 2.0f};
-  std::vector<float> beta_f32 = {0.1f, -0.2f, 0.3f, -0.1f};
-
-  auto input_rt = RoundTripBF16(input_f32);
-  auto skip_rt = RoundTripBF16(skip_f32);
-  auto gamma_rt = RoundTripBF16(gamma_f32);
-  auto beta_rt = RoundTripBF16(beta_f32);
-  std::vector<float> added(input_rt.size());
-  for (size_t i = 0; i < added.size(); ++i) {
-    added[i] = input_rt[i] + skip_rt[i];
-  }
-  auto ref = LayerNormRef(added, gamma_rt, beta_rt, hidden_size, epsilon);
-
-  for (bool is_initializer : {false, true}) {
-    SCOPED_TRACE(is_initializer ? "PrePack (initializer)" : "Non-PrePack (graph input)");
-    OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
-    test.AddAttribute("epsilon", epsilon);
-    test.AddInput<BFloat16>("input", input_dims, ToBFloat16(input_f32));
-    test.AddInput<BFloat16>("skip", input_dims, ToBFloat16(skip_f32));
-    test.AddInput<BFloat16>("gamma", gamma_dims, ToBFloat16(gamma_f32), is_initializer);
-    test.AddInput<BFloat16>("beta", gamma_dims, ToBFloat16(beta_f32), is_initializer);
-    test.AddOutput<BFloat16>("output", input_dims, ToBFloat16(ref.output));
-
-    size_t pre_packed_counter = 0;
-    RunBF16CpuOnly(test, kBF16AbsTolerance, "output", &pre_packed_counter);
-    if (is_initializer) {
-      EXPECT_EQ(pre_packed_counter, 2u) << "Gamma and Beta should both be pre-packed";
     } else {
       EXPECT_EQ(pre_packed_counter, 0u) << "No weights should be pre-packed for graph inputs";
     }
