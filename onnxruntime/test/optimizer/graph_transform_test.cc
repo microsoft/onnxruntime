@@ -5414,8 +5414,8 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2Inputs) {
 
 TEST_F(GraphTransformationTests, GemmTransposeFusionDoesNotFuseIdentityTranspose) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<float>({3, 4});
-    auto* weight = builder.MakeInput<float>({4, 5});
+    auto* input = builder.MakeInput<float>({{3, 4}});
+    auto* weight = builder.MakeInput<float>({{4, 5}});
     auto* transposed_weight = builder.MakeIntermediate<float>(std::vector<int64_t>{4, 5});
     auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
 
@@ -5441,8 +5441,8 @@ TEST_F(GraphTransformationTests, GemmTransposeFusionDoesNotFuseIdentityTranspose
 
 TEST_F(GraphTransformationTests, GemmTransposeFusionDoesNotFuseIdentityTransposeAtOutput) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<float>({3, 4});
-    auto* weight = builder.MakeInput<float>({4, 5});
+    auto* input = builder.MakeInput<float>({{3, 4}});
+    auto* weight = builder.MakeInput<float>({{4, 5}});
     auto* gemm_output = builder.MakeIntermediate<float>(std::vector<int64_t>{3, 5});
     auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
 
