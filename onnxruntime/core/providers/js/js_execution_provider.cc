@@ -851,8 +851,7 @@ std::unique_ptr<onnxruntime::IDataTransfer> JsExecutionProvider::GetDataTransfer
   return std::make_unique<js::DataTransfer>();
 }
 
-std::unique_ptr<onnxruntime::IExternalDataLoader> JsExecutionProvider::GetExternalDataLoader(
-    const ConfigOptions*) const {
+std::unique_ptr<onnxruntime::IExternalDataLoader> JsExecutionProvider::GetExternalDataLoader() const {
   return std::make_unique<js::ExternalDataLoader>();
 }
 

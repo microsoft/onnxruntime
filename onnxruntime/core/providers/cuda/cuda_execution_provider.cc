@@ -20,7 +20,6 @@
 #include "core/providers/cuda/cuda_profiler.h"
 #include "core/providers/cuda/cuda_mempool_arena.h"
 #include "core/providers/cuda/cudnn_loader.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
 #ifndef USE_CUDA_MINIMAL
@@ -3420,20 +3419,8 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
   return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
-std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExternalDataLoader(
-    const ConfigOptions* config_options) const {
-  constexpr size_t kMaxReadingThreadCount = 64;
-  const std::string value =
-      config_options == nullptr
-          ? "4"
-          : config_options->GetConfigOrDefault(kOrtSessionOptionsCudaExternalDataLoaderReadingThreads, "4");
-  size_t reading_thread_count = 0;
-  ORT_ENFORCE(TryParseStringWithClassicLocale(value, reading_thread_count) &&
-                  reading_thread_count > 0 && reading_thread_count <= kMaxReadingThreadCount,
-              kOrtSessionOptionsCudaExternalDataLoaderReadingThreads,
-              " must be an integer between 1 and ", kMaxReadingThreadCount,
-              ". Got: ", value);
-  return std::make_unique<cuda::ExternalDataLoader>(info_.device_id, reading_thread_count);
+std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExternalDataLoader() const {
+  return std::make_unique<cuda::ExternalDataLoader>(info_.device_id, 4);
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
