@@ -213,6 +213,25 @@ transposes and the BNHS boundary. Reloading it with the key still set would inse
 swap the boundary back to a BNSH declaration while the application still feeds BNHS — broken, and
 broken quietly.
 
+**Boundaries are not necessarily adjacent.** `MemcpyTransformer` runs inside `TransformGraph`, before
+an optimized model is serialized, so a model saved from a non-CPU session can carry a device copy
+between a boundary and the provider-side nodes:
+
+```
+graph input (BNHS) -> MemcpyFromHost -> Transpose -> GQA -> Transpose -> MemcpyToHost -> graph output (BNHS)
+```
+
+`TraceGqaBoundaryBackThroughDeviceCopies` / `...ForwardThroughDeviceCopies` walk through
+`MemcpyFromHost` / `MemcpyToHost` to find the real boundary, in both the detection and the
+classification paths. Assuming adjacency broke both directions: detection missed a converted model, so
+an explicit BNSH request was accepted against a BNHS boundary; and classification called an
+unconverted boundary out of scope, so a BNHS request silently left it BNSH. The first is what the
+review raised; the second is the same defect seen from the other side.
+
+An unconverted boundary behind a copy is an **error**, not a conversion: placing the Transpose across
+a copy node that `MemcpyTransformer` positioned for a specific device assignment is not something this
+transformer can do safely.
+
 The two Value operands are classified **independently**, from the graph structure — not from a
 metadata marker, which does not survive the ORT-format round trip reliably. `ClassifyPastValue` and
 `ClassifyPresentValue` each return one `OperandStatus`:
@@ -589,6 +608,13 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
   boundary is absent from `GetInputs()` but present in `GetInputsIncludingInitializers()`, so it
   provably exercises the distinction, and the test fails against the narrow predicate.
 - An invalid option value on an ORT format model reports the bad value, not the format restriction.
+- Detection traces through device copies, and an unconverted boundary behind one is rejected. The
+  fixture asserts the Transpose is not adjacent to the boundary, and the detection test fails against
+  the adjacency assumption. The copies are built directly, since no non-CPU EP is available in the
+  unit tests.
+- Requesting BNHS for a model with no main-graph GQA succeeds and converts nothing, which is also
+  what a subgraph-only GQA looks like from the main graph. ORT warns rather than failing, because it
+  cannot tell the two apart without recursing.
 - An ORT format model carrying BNHS boundaries is rejected when BNSH is explicitly requested and loads
   when the option is unset. The fixture round-trips a converted model through ORT format serialization
   rather than checking in a binary fixture, so it stays honest if the format changes.

@@ -41,6 +41,17 @@ bool IsGqaDeclaredGraphInput(const Graph& graph, const NodeArg* arg);
 // be swapped, but an initializer's data cannot, so an initializer-backed one is rejected instead.
 bool IsGqaNonInitializerGraphInput(const Graph& graph, const NodeArg* arg);
 
+// Walks back / forward from `arg` through any device copy nodes (MemcpyFromHost / MemcpyToHost) to
+// the graph input or graph output it connects to, or nullptr if it does not reach one. Returns `arg`
+// itself when it is already the boundary.
+//
+// MemcpyTransformer runs inside TransformGraph, before an optimized model is serialized, so a model
+// saved from a non-CPU session can have a copy spliced between a boundary and the provider-side
+// nodes. Exposed so the transformer can tell a genuinely internal cache apart from an
+// application-visible one that merely sits behind a copy.
+const NodeArg* TraceGqaBoundaryBackThroughDeviceCopies(const Graph& graph, const NodeArg* arg);
+const NodeArg* TraceGqaBoundaryForwardThroughDeviceCopies(const Graph& graph, const NodeArg* arg);
+
 // If this node's past_value already arrives through a value-layout Transpose from a graph input,
 // returns true and sets boundary_name to that graph input.
 bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name);

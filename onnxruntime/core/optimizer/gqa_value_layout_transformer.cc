@@ -105,33 +105,67 @@ Status ClassifyPastValue(const Graph& graph, const Node& node, OperandStatus& st
                 "' option cannot convert: the initializer data would stay BNSH. Remove the initializer so the "
                 "input is supplied by the application, or transpose it to BNHS when producing the model.");
 
-  status = IsGqaNonInitializerGraphInput(graph, arg) ? OperandStatus::kConvertible : OperandStatus::kOutOfScope;
-  if (status == OperandStatus::kConvertible) {
+  if (IsGqaNonInitializerGraphInput(graph, arg)) {
+    status = OperandStatus::kConvertible;
     boundary_name = arg->Name();
+    return Status::OK();
   }
+
+  // Not at the boundary directly, but reaching one through device copies means the application does
+  // bind this cache -- a model saved from a non-CPU session has MemcpyFromHost spliced in. Calling
+  // that out of scope would silently leave an application-visible boundary BNSH after the caller
+  // asked for BNHS. Converting it is not safe either: the Transpose would have to be placed across a
+  // copy node that MemcpyTransformer positioned for a specific device assignment.
+  ORT_RETURN_IF(TraceGqaBoundaryBackThroughDeviceCopies(graph, arg) != nullptr,
+                "GroupQueryAttention node '", DescribeNode(node),
+                "' reads past_value from a graph input through a "
+                "device copy node, which the '",
+                kOrtSessionOptionsGqaValueLayout,
+                "' option cannot convert. Apply the layout to the original model rather than to one already saved "
+                "with device copies in place.");
+
+  status = OperandStatus::kOutOfScope;
   return Status::OK();
 }
 
-OperandStatus ClassifyPresentValue(const Graph& graph, const Node& node, std::string& boundary_name) {
+Status ClassifyPresentValue(const Graph& graph, const Node& node, OperandStatus& status,
+                            std::string& boundary_name) {
+  status = OperandStatus::kAbsent;
   boundary_name.clear();
   if (!HasOutput(node, kPresentValueOutputIndex)) {
-    return OperandStatus::kAbsent;
+    return Status::OK();
   }
 
   // Shared with the ORT format path. Note this deliberately returns false for an operand that is
   // itself a graph output, even when something downstream transposes it onward: that operand is an
   // application-visible BNSH boundary in its own right and still needs converting.
   if (FindConvertedPresentValueBoundary(graph, node, boundary_name)) {
-    return OperandStatus::kConverted;
+    status = OperandStatus::kConverted;
+    return Status::OK();
   }
 
   const NodeArg* arg = node.OutputDefs()[kPresentValueOutputIndex];
   if (graph.IsOutput(arg)) {
+    status = OperandStatus::kConvertible;
     boundary_name = arg->Name();
-    return OperandStatus::kConvertible;
+    return Status::OK();
   }
 
-  return OperandStatus::kOutOfScope;
+  // Mirrors ClassifyPastValue(): reaching a graph output through device copies means the application
+  // does read this cache, so calling it out of scope would silently leave an application-visible
+  // boundary BNSH after the caller asked for BNHS. Converting it is not safe either, because the
+  // Transpose would have to be placed across a copy node that MemcpyTransformer positioned for a
+  // specific device assignment.
+  ORT_RETURN_IF(TraceGqaBoundaryForwardThroughDeviceCopies(graph, arg) != nullptr,
+                "GroupQueryAttention node '", DescribeNode(node),
+                "' writes present_value to a graph output through "
+                "a device copy node, which the '",
+                kOrtSessionOptionsGqaValueLayout,
+                "' option cannot convert. Apply the layout to the original model rather than to one already saved "
+                "with device copies in place.");
+
+  status = OperandStatus::kOutOfScope;
+  return Status::OK();
 }
 
 // How many input slots of `node` reference `arg_name`. Graph::GetConsumerNodes() de-duplicates by
@@ -285,8 +319,9 @@ Status ClassifyNode(const Graph& graph, const Node& node, const logging::Logger&
   std::string past_value_boundary;
   ORT_RETURN_IF_ERROR(ClassifyPastValue(graph, node, past_value_status, past_value_boundary));
 
+  OperandStatus present_value_status = OperandStatus::kAbsent;
   std::string present_value_boundary;
-  const OperandStatus present_value_status = ClassifyPresentValue(graph, node, present_value_boundary);
+  ORT_RETURN_IF_ERROR(ClassifyPresentValue(graph, node, present_value_status, present_value_boundary));
 
   const auto in_scope = [](OperandStatus status) {
     return status == OperandStatus::kConverted || status == OperandStatus::kConvertible;

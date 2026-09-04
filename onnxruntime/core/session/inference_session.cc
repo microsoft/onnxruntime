@@ -1679,6 +1679,19 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   if (gqa_value_layout != kGqaValueLayoutBNSH) {
     GqaValueLayoutTransformer gqa_value_layout_transformer{&converted_gqa_value_boundaries};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(gqa_value_layout_transformer, *session_logger_, graph));
+
+    // Requesting BNHS and converting nothing is a silent no-op today. It is legitimate when the model
+    // has no GroupQueryAttention at all, but it also covers the case where GQA lives only inside a
+    // subgraph (a Loop body, a BeamSearch decoder): the transformer only walks the main graph, so the
+    // application would bind BNHS buffers to boundaries that are still BNSH. Not an error, because
+    // ORT cannot tell those two apart without recursing, but it should not pass unremarked.
+    if (converted_gqa_value_boundaries.Empty()) {
+      LOGS(*session_logger_, WARNING)
+          << "'" << kOrtSessionOptionsGqaValueLayout << "' was set to '" << kGqaValueLayoutBNHS
+          << "' but no GroupQueryAttention Value cache boundary was converted. The model may contain no "
+             "GroupQueryAttention node, or it may have one only inside a subgraph, which this option does not "
+             "reach. Value cache buffers bound to this session are still BNSH.";
+    }
   } else if (gqa_value_layout_explicitly_set) {
     // An explicit BNSH request is a claim about the boundary, so it has to be enforced rather than
     // merely not acted on. A model saved from a BNHS session (via session.optimized_model_filepath)

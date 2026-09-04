@@ -28,6 +28,19 @@ bool IsGroupQueryAttention(const Node& node) {
   return node.OpType() == "GroupQueryAttention" && node.Domain() == kMSDomain;
 }
 
+// A device copy inserted by MemcpyTransformer. Those run inside TransformGraph, before the optimized
+// model is serialized, so a model saved from a non-CPU session can have one spliced between a graph
+// boundary and the provider-side nodes: graph input -> MemcpyFromHost -> Transpose -> GQA, or
+// GQA -> Transpose -> MemcpyToHost -> graph output. The op type is not schema-backed and carries no
+// meaningful domain, so match on the name alone.
+bool IsDeviceCopy(const Node& node) {
+  return node.OpType() == "MemcpyFromHost" || node.OpType() == "MemcpyToHost";
+}
+
+// MemcpyTransformer inserts at most one copy per boundary, but walk a few hops so a future pass that
+// chains them still resolves, while staying bounded against a malformed graph.
+constexpr int kMaxDeviceCopyHops = 4;
+
 }  // namespace
 
 bool IsGqaValueLayoutTranspose(const Node& node) {
@@ -71,6 +84,42 @@ bool IsGqaNonInitializerGraphInput(const Graph& graph, const NodeArg* arg) {
   return arg != nullptr && ContainsByName(graph.GetInputs(), arg);
 }
 
+const NodeArg* TraceGqaBoundaryBackThroughDeviceCopies(const Graph& graph, const NodeArg* arg) {
+  for (int hops = 0; arg != nullptr && hops <= kMaxDeviceCopyHops; ++hops) {
+    if (IsGqaDeclaredGraphInput(graph, arg)) {
+      return arg;
+    }
+
+    const Node* producer = graph.GetProducerNode(arg->Name());
+    if (producer == nullptr || !IsDeviceCopy(*producer) || producer->InputDefs().empty()) {
+      return nullptr;
+    }
+    arg = producer->InputDefs()[0];
+  }
+  return nullptr;
+}
+
+const NodeArg* TraceGqaBoundaryForwardThroughDeviceCopies(const Graph& graph, const NodeArg* arg) {
+  for (int hops = 0; arg != nullptr && hops <= kMaxDeviceCopyHops; ++hops) {
+    if (graph.IsOutput(arg)) {
+      return arg;
+    }
+
+    const NodeArg* next = nullptr;
+    for (const Node* consumer : graph.GetConsumerNodes(arg->Name())) {
+      if (consumer != nullptr && IsDeviceCopy(*consumer) && !consumer->OutputDefs().empty()) {
+        next = consumer->OutputDefs()[0];
+        break;
+      }
+    }
+    if (next == nullptr) {
+      return nullptr;
+    }
+    arg = next;
+  }
+  return nullptr;
+}
+
 bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name) {
   boundary_name.clear();
   if (!HasOperand(node.InputDefs(), kPastValueInputIndex)) {
@@ -83,12 +132,17 @@ bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::s
   // initializer-backed boundary itself: swapping a declared shape cannot transpose baked-in data, but
   // data that arrived BNHS needs no transposing.
   const Node* producer = graph.GetProducerNode(node.InputDefs()[kPastValueInputIndex]->Name());
-  if (producer == nullptr || !IsGqaValueLayoutTranspose(*producer) ||
-      !IsGqaDeclaredGraphInput(graph, producer->InputDefs()[0])) {
+  if (producer == nullptr || !IsGqaValueLayoutTranspose(*producer) || producer->InputDefs().empty()) {
     return false;
   }
 
-  boundary_name = producer->InputDefs()[0]->Name();  // the graph input, not the GQA operand
+  // Not necessarily adjacent to the boundary: trace back through any device copies.
+  const NodeArg* boundary = TraceGqaBoundaryBackThroughDeviceCopies(graph, producer->InputDefs()[0]);
+  if (boundary == nullptr) {
+    return false;
+  }
+
+  boundary_name = boundary->Name();  // the graph input, not the GQA operand
   return true;
 }
 
@@ -110,8 +164,14 @@ bool FindConvertedPresentValueBoundary(const Graph& graph, const Node& node, std
   // Search the consumers rather than requiring a single one: the BNSH result may legitimately feed
   // other internal BNSH readers, and those must not hide the conversion.
   for (const Node* consumer : graph.GetConsumerNodes(arg->Name())) {
-    if (consumer != nullptr && IsGqaValueLayoutTranspose(*consumer) && graph.IsOutput(consumer->OutputDefs()[0])) {
-      boundary_name = consumer->OutputDefs()[0]->Name();  // the graph output, not the GQA operand
+    if (consumer == nullptr || !IsGqaValueLayoutTranspose(*consumer) || consumer->OutputDefs().empty()) {
+      continue;
+    }
+
+    // Not necessarily adjacent to the boundary: trace forward through any device copies.
+    const NodeArg* boundary = TraceGqaBoundaryForwardThroughDeviceCopies(graph, consumer->OutputDefs()[0]);
+    if (boundary != nullptr) {
+      boundary_name = boundary->Name();  // the graph output, not the GQA operand
       return true;
     }
   }
