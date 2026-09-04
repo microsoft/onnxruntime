@@ -205,7 +205,7 @@
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
 
   if(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
-    target_compile_definitions(onnxruntime_providers_webgpu PRIVATE ENABLE_WEBGPU_DIRECT_STORAGE=1)
+    target_compile_definitions(onnxruntime_providers_webgpu PUBLIC ENABLE_WEBGPU_DIRECT_STORAGE=1)
     target_include_directories(onnxruntime_providers_webgpu PRIVATE "${_directstorage_include_dir}")
     target_link_libraries(onnxruntime_providers_webgpu PRIVATE "${_directstorage_library}")
     add_custom_command(TARGET onnxruntime_providers_webgpu POST_BUILD
