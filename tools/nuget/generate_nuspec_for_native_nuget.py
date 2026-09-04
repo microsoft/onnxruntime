@@ -655,6 +655,12 @@ def generate_files(line_list, args):
                 files_list.append(
                     "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.dll") + runtimes + " />"
                 )
+                for directstorage_runtime in ["dstorage.dll", "dstoragecore.dll"]:
+                    directstorage_runtime_path = os.path.join(args.native_build_path, directstorage_runtime)
+                    if os.path.exists(directstorage_runtime_path):
+                        files_list.append(
+                            "<file src=" + '"' + directstorage_runtime_path + runtimes + " />"
+                        )
                 if include_pdbs and os.path.exists(os.path.join(args.native_build_path, "onnxruntime.pdb")):
                     files_list.append(
                         "<file src=" + '"' + os.path.join(args.native_build_path, "onnxruntime.pdb") + runtimes + " />"
