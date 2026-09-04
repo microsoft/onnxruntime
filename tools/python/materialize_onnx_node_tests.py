@@ -197,11 +197,9 @@ def _write_case(case, output_root: str) -> None:
     n_graph_in = len(case.model.graph.input)
     n_graph_out = len(case.model.graph.output)
     for i, (inputs, outputs) in enumerate(case.data_sets):
-        # Fail loud BEFORE writing any .pb for this dataset: the writer indexes
-        # graph.input[j]/graph.output[j] per collected value, so more collected
-        # values than graph arity would raise a bare IndexError mid-write (not
-        # caught by main's MaterializeError handler) and leave a partial tree.
-        if len(inputs) > n_graph_in or len(outputs) > n_graph_out:
+        # Fail loud before writing a partial dataset if positional values do not
+        # exactly match their graph-value declarations.
+        if len(inputs) != n_graph_in or len(outputs) != n_graph_out:
             raise MaterializeError(
                 f"node case {case.name!r} data_set {i}: arity mismatch -- collected "
                 f"{len(inputs)} input(s)/{len(outputs)} output(s) but the model graph "

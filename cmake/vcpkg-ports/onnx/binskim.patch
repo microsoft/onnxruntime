@@ -46,3 +46,30 @@ index 3887169..8432613 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
+diff --git a/onnx/defs/printer.cc b/onnx/defs/printer.cc
+index 1d43bcc..0000000 100644
+--- a/onnx/defs/printer.cc
++++ b/onnx/defs/printer.cc
+@@ -30,16 +30,22 @@ std::vector<Widened> ParseRawIntData(const TensorProto& tensor) {
+ // Format numbers with std::to_chars: locale-independent and, for floating
+ // point, the shortest form that round-trips through the parser.
+ template <typename T>
+ void PrintNumber(std::ostream& os, T value) {
++#if defined(__APPLE__) && defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__) && \
++    __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ < 160300
++  // std::to_chars is unavailable when targeting iOS releases before 16.3.
++  os << value;
++#else
+   if constexpr (std::is_floating_point_v<T>) {
+     // Normalize NaN: MSVC's to_chars emits payload forms like "nan(ind)"
+     // that the parser does not accept.
+     if (std::isnan(value)) {
+       os << (std::signbit(value) ? "-nan" : "nan");
+       return;
+     }
+   }
+   std::array<char, 32> buf{};
+   const auto res = std::to_chars(buf.data(), buf.data() + buf.size(), value);
+   os.write(buf.data(), res.ptr - buf.data());
++#endif
+ }

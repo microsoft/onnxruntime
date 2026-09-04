@@ -1711,13 +1711,15 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   # coverage gap this feature exists to close.
   # ---------------------------------------------------------------------------
   if (onnxruntime_MATERIALIZE_ONNX_NODE_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    # onnx version pin: derive from the archive URL in cmake/deps.txt (single source of truth).
-    string(REGEX MATCH "v([0-9]+\\.[0-9]+\\.[0-9]+)" _onnx_url_ver "${DEP_URL_onnx}")
-    if(CMAKE_MATCH_1)
-      set(_onnx_pinned_version ${CMAKE_MATCH_1})
+    # Commit-pinned archives do not encode a release version in DEP_URL_onnx. Keep the
+    # expected wheel version in deps.txt alongside the exact archive pin.
+    file(STRINGS "${REPO_ROOT}/cmake/deps.txt" _onnx_version_line REGEX "^# ONNX_VERSION=")
+    string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_pinned_version "${_onnx_version_line}")
+    if(_onnx_pinned_version)
+      string(STRIP "${_onnx_pinned_version}" _onnx_pinned_version)
     else()
-      message(FATAL_ERROR "Could not parse the pinned onnx version from DEP_URL_onnx='${DEP_URL_onnx}' "
-        "(expected a vX.Y.Z tag). Fix cmake/deps.txt or this regex.")
+      message(FATAL_ERROR "Could not parse ONNX_VERSION=X.Y.Z from cmake/deps.txt. "
+        "Fix the ONNX dependency metadata or this parser.")
     endif()
 
     # Python interpreter is not guaranteed for static test-only builds (the top-level
@@ -1843,6 +1845,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       VERBATIM)
     add_custom_target(onnx_node_tests_materialized ALL
       DEPENDS ${_materialized_node_root}/.stamp)
+    # Keep the corpus available for targeted onnx_test_runner builds as well as
+    # normal ALL builds. The runner is the direct C++ consumer of this artifact.
+    add_dependencies(onnx_test_runner onnx_node_tests_materialized)
 
     if (NOT onnxruntime_REDUCED_OPS_BUILD)
       # First-class ctest over the materialized node corpus (the durable replacement for the

@@ -37,7 +37,7 @@ class IOnnxRuntimeOpSchemaCollection : public ONNX_NAMESPACE::ISchemaRegistry {
 
   using ISchemaRegistry::GetSchema;
 
-  const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& key, const int maxInclusiveVersion,
+  const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& key, int maxInclusiveVersion,
                                             const std::string& domain) const final {
     const ONNX_NAMESPACE::OpSchema* latest_schema = nullptr;
     int earliest_opset_where_unchanged = std::numeric_limits<int>::max();
