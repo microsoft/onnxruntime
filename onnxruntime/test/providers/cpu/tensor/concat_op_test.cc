@@ -82,6 +82,25 @@ TEST(ConcatOpTest, Concat1D_2) {
             kQnnExecutionProvider});     // QNN: not support dynamic shape tensor
 }
 
+#ifdef USE_CUDA
+TEST(ConcatOpTest, EqualSized33InputsCuda) {
+  constexpr int kInputCount = 33;
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  std::vector<float> expected;
+  expected.reserve(kInputCount);
+  for (int i = 0; i < kInputCount; ++i) {
+    const auto value = static_cast<float>(i);
+    const auto input_name = MakeString("input", i);
+    test.AddInput<float>(input_name.c_str(), {1}, {value});
+    expected.push_back(value);
+  }
+  test.AddOutput<float>("concat_result", {kInputCount}, expected);
+  test.ConfigEp(DefaultCudaExecutionProvider()).RunWithConfig();
+}
+#endif
+
 TYPED_TEST(ConcatOpTest, Concat2D_1) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
