@@ -40,6 +40,8 @@ inline constexpr std::string_view kWebGpuExecutionProviderPluginName{"WebGpuExec
 // Configuration for initializing the dynamic plugin EP infrastructure.
 struct InitializationConfig {
   std::string ep_library_registration_name{};
+  // Path to the EP library to register. May be empty if the EP does not need to be registered by the test
+  // infrastructure, e.g. a plugin EP that is statically linked into the ORT binary and registered by ORT core.
   std::string ep_library_path{};
 
   // Note: Exactly one of `selected_ep_name` or `selected_ep_device_indices` should be set.
@@ -59,6 +61,8 @@ struct InitializationConfig {
 
 // Parses `InitializationConfig` from JSON.
 // The configuration JSON object should have keys and values that match the `InitializationConfig` fields.
+// `ep_library_path` may be omitted for a plugin EP that is already registered (e.g. statically linked into the ORT
+// binary and registered by ORT core).
 // E.g.:
 // {
 //   "ep_library_registration_name": "example_plugin_ep",

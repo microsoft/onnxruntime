@@ -70,6 +70,44 @@ const appendEpOption = (epOptions: Array<[number, number]>, key: string, value: 
   epOptions.push([keyDataOffset, valueDataOffset]);
 };
 
+/**
+ * Get the OrtEpDevice instances registered with the environment, grouped by execution provider name.
+ *
+ * An execution provider may register more than one device, e.g. one per GPU, and all of them share its name.
+ *
+ * @returns a map of execution provider name to the OrtEpDevice pointers registered under it.
+ */
+const getEpDevicesByEpName = (): Map<string, number[]> => {
+  const wasm = getInstance();
+  const stack = wasm.stackSave();
+  try {
+    const epDevicesPtr = wasm.stackAlloc(wasm.PTR_SIZE);
+    const numEpDevicesPtr = wasm.stackAlloc(wasm.PTR_SIZE);
+    if (wasm._OrtGetEpDevices(epDevicesPtr, numEpDevicesPtr) !== 0) {
+      checkLastError("Can't get execution provider devices.");
+    }
+    // The array is owned by the environment, so only the pointers are read out here.
+    // getValue() with '*' returns a BigInt in a wasm64 build, so convert before doing pointer arithmetic.
+    const epDevices = Number(wasm.getValue(epDevicesPtr, '*'));
+    const numEpDevices = Number(wasm.getValue(numEpDevicesPtr, '*'));
+
+    const epDevicesByEpName = new Map<string, number[]>();
+    for (let i = 0; i < numEpDevices; i++) {
+      const epDevice = Number(wasm.getValue(epDevices + i * wasm.PTR_SIZE, '*'));
+      const epName = wasm.UTF8ToString(wasm._OrtEpDevice_EpName(epDevice));
+      const devices = epDevicesByEpName.get(epName);
+      if (devices) {
+        devices.push(epDevice);
+      } else {
+        epDevicesByEpName.set(epName, [epDevice]);
+      }
+    }
+    return epDevicesByEpName;
+  } finally {
+    wasm.stackRestore(stack);
+  }
+};
+
 const setExecutionProviders = async (
   sessionOptionsHandle: number,
   sessionOptions: InferenceSession.SessionOptions,
@@ -79,6 +117,10 @@ const setExecutionProviders = async (
   for (const ep of executionProviders) {
     let epName = typeof ep === 'string' ? ep : ep.name;
     const epOptions: Array<[number, number]> = [];
+    // True when the EP is selected as a plugin EP (by OrtEpDevice) rather than by ORT's built-in EP name table.
+    // The built-in name table has no WebGPU entry in an ORT_USE_EP_API_ADAPTERS build, which is what the wasm
+    // binary paired with this bundle is built as (see BUILD_DEFS.DISABLE_WEBGPU below).
+    let selectAsPluginEp = false;
 
     // check EP name
     switch (epName) {
@@ -99,7 +141,10 @@ const setExecutionProviders = async (
         break;
       case 'webgpu':
         if (!BUILD_DEFS.DISABLE_WEBGPU) {
-          epName = 'WebGPU';
+          // The plugin EP is registered under its canonical name (OrtEpFactory::GetName), not the short 'WebGPU'
+          // alias that ORT's built-in EP name table used.
+          epName = 'WebGpuExecutionProvider';
+          selectAsPluginEp = true;
           let customDevice: GPUDevice | undefined;
 
           if (typeof ep !== 'string') {
@@ -183,7 +228,6 @@ const setExecutionProviders = async (
         throw new Error(`not supported execution provider: ${epName}`);
     }
 
-    const epNameDataOffset = allocWasmString(epName, allocs);
     const epOptionsCount = epOptions.length;
     let keysOffset = 0;
     let valuesOffset = 0;
@@ -197,15 +241,52 @@ const setExecutionProviders = async (
         getInstance().setValue(valuesOffset + i * getInstance().PTR_SIZE, epOptions[i][1], '*');
       }
     }
-    if (
-      (await getInstance()._OrtAppendExecutionProvider(
+
+    let appendErrorCode: number;
+    if (selectAsPluginEp) {
+      const epDevicesByEpName = getEpDevicesByEpName();
+      const epDevices = epDevicesByEpName.get(epName);
+      if (!epDevices) {
+        const registered = [...epDevicesByEpName.keys()].join(', ') || '(none)';
+        throw new Error(`no execution provider device is registered for: ${epName}. registered: ${registered}.`);
+      }
+
+      // Select a single OrtEpDevice, even though more than one may match the EP name.
+      //
+      // Necessary: the WebGPU EP backs a session with one Dawn device, so its factory rejects any device
+      // count other than 1 (see Factory::CreateEpImpl in core/providers/webgpu/ep/factory.cc).
+      //
+      // Safe to take the first: the factory reads nothing from the device except whether it is virtual, and
+      // Emscripten device discovery reports a single GPU entry derived from navigator.gpu, so there is at
+      // most one real candidate. Which GPU is used is decided by the adapter ORT Web hands to Dawn, not by
+      // this device (see env.webgpu.adapter and the WebGPU EP `device` option). A second entry only appears
+      // when virtual devices are enabled, and the factory registers those after the real ones, so the first
+      // is still a real device. Should that order ever change, EP creation fails with an explicit
+      // "selected on a virtual GPU device" error rather than silently running on the wrong device.
+      const epDevicesOffset = getInstance()._malloc(getInstance().PTR_SIZE);
+      allocs.push(epDevicesOffset);
+      getInstance().setValue(epDevicesOffset, epDevices[0], '*');
+
+      appendErrorCode = await getInstance()._OrtAppendExecutionProviderV2(
+        sessionOptionsHandle,
+        epDevicesOffset,
+        1,
+        keysOffset,
+        valuesOffset,
+        epOptionsCount,
+      );
+    } else {
+      const epNameDataOffset = allocWasmString(epName, allocs);
+      appendErrorCode = await getInstance()._OrtAppendExecutionProvider(
         sessionOptionsHandle,
         epNameDataOffset,
         keysOffset,
         valuesOffset,
         epOptionsCount,
-      )) !== 0
-    ) {
+      );
+    }
+
+    if (appendErrorCode !== 0) {
       checkLastError(`Can't append execution provider: ${epName}.`);
     }
   }

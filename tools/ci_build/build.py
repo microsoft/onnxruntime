@@ -911,6 +911,9 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_EP_API_ADAPTERS=ON"]
         if args.build_wasm:
             raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
+    elif args.use_webgpu == "static_plugin":
+        # Plugin EP that is linked into the ORT binary.
+        cmake_args += ["-Donnxruntime_USE_EP_API_ADAPTERS=ON", "-Donnxruntime_WEBGPU_STATIC_PLUGIN=ON"]
 
     if args.use_dawn_agility_sdk:
         if not is_windows():

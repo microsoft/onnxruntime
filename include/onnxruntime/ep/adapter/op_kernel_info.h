@@ -9,7 +9,11 @@
 
 #include <memory>
 #include <shared_mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/common/status.h"
@@ -154,7 +158,7 @@ struct OpKernelInfo {
 
   template <typename T>
   [[nodiscard]] T GetAttrOrDefault(const std::string& name, const T& default_value) const {
-    T tmp;
+    T tmp{};
     return GetAttr<T>(name, &tmp).IsOK() ? tmp : default_value;
   }
   template <typename T>
@@ -164,27 +168,17 @@ struct OpKernelInfo {
   }
   template <typename T>
   [[nodiscard]] T GetAttr(const std::string& name) const {
-    T value;
+    T value{};
     ORT_THROW_IF_ERROR(GetAttr(name, &value));
     return value;
   }
   template <typename T>
   Status GetAttr(const std::string& name, T* value) const {
-    try {
-      *value = info_.GetAttribute<T>(name.c_str());
-      return Status::OK();
-    } catch (const Ort::Exception& ex) {
-      return Status(onnxruntime::common::ONNXRUNTIME, ex.GetOrtErrorCode(), ex.what());
-    }
+    return GetAttrImpl(cache_->kernel_info_, name.c_str(), value);
   }
   template <typename T>
   Status GetAttrs(const std::string& name, std::vector<T>& values) const {
-    try {
-      values = info_.GetAttributes<T>(name.c_str());
-      return Status::OK();
-    } catch (const Ort::Exception& ex) {
-      return Status(onnxruntime::common::ONNXRUNTIME, ex.GetOrtErrorCode(), ex.what());
-    }
+    return GetAttrsImpl(cache_->kernel_info_, name.c_str(), values);
   }
 
   Status GetAttrs(const std::string& name, TensorShapeVector& out) const {
@@ -210,6 +204,98 @@ struct OpKernelInfo {
   }
 
  private:
+  // A missing optional attribute is normal control flow for GetAttrOrDefault()/GetAttrsOrDefault(), so these
+  // accessors must not depend on catching the exception thrown by the Ort:: C++ wrappers: a plugin EP may be
+  // compiled with C++ exception catching disabled. The ORT Web build is one such case -- it builds with
+  // `-sDISABLE_EXCEPTION_CATCHING` everywhere except the C API boundary, so a `catch` in this inlined header
+  // never matches and the exception escapes all the way out of session creation. Use the non-throwing C API
+  // directly instead.
+  static Status ToStatus(OrtStatus* ort_status) {
+    if (ort_status == nullptr) {
+      return Status::OK();
+    }
+    const Ort::Status status{ort_status};  // takes ownership
+    return Status(onnxruntime::common::ONNXRUNTIME, status.GetErrorCode(), status.GetErrorMessage());
+  }
+
+  static Status GetAttrImpl(const OrtKernelInfo* info, const char* name, float* out) {
+    return ToStatus(Ort::GetApi().KernelInfoGetAttribute_float(info, name, out));
+  }
+
+  static Status GetAttrImpl(const OrtKernelInfo* info, const char* name, int64_t* out) {
+    return ToStatus(Ort::GetApi().KernelInfoGetAttribute_int64(info, name, out));
+  }
+
+  static Status GetAttrImpl(const OrtKernelInfo* info, const char* name, std::string* out) {
+    size_t size = 0;
+    // Feed nullptr for the data buffer to query the true size of the string attribute.
+    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttribute_string(info, name, nullptr, &size)));
+
+    std::string value;
+    value.resize(size);
+    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttribute_string(info, name, value.data(), &size)));
+    value.resize(size - 1);  // remove the terminating character '\0'
+    *out = std::move(value);
+    return Status::OK();
+  }
+
+  static Status GetAttrsImpl(const OrtKernelInfo* info, const char* name, std::vector<float>& out) {
+    size_t size = 0;
+    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_float(info, name, nullptr, &size)));
+
+    std::vector<float> values(size);
+    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_float(info, name, values.data(), &size)));
+    out.swap(values);
+    return Status::OK();
+  }
+
+  static Status GetAttrsImpl(const OrtKernelInfo* info, const char* name, std::vector<int64_t>& out) {
+    size_t size = 0;
+    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_int64(info, name, nullptr, &size)));
+
+    std::vector<int64_t> values(size);
+    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_int64(info, name, values.data(), &size)));
+    out.swap(values);
+    return Status::OK();
+  }
+
+  static Status GetAttrsImpl(const OrtKernelInfo* info, const char* name, std::vector<std::string>& out) {
+    Ort::AllocatorWithDefaultOptions allocator;
+    size_t size = 0;
+    ORT_RETURN_IF_ERROR(
+        ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_string(info, name, allocator, nullptr, &size)));
+    if (size == 0) {
+      out.clear();
+      return Status::OK();
+    }
+
+    char** raw_values = nullptr;
+    ORT_RETURN_IF_ERROR(
+        ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_string(info, name, allocator, &raw_values, &size)));
+
+    // The allocator owns both the array and every string in it, so release them on all exit paths: constructing the
+    // std::string copies below can throw. Free through the OrtAllocator function pointer rather than
+    // Ort::AllocatorWithDefaultOptions::Free(), which throws on failure and so must not run in this deleter.
+    OrtAllocator* raw_allocator = allocator;
+    auto free_raw_values = [raw_allocator, size](char** values_to_free) {
+      for (size_t i = 0; i < size; ++i) {
+        if (values_to_free[i] != nullptr) {
+          raw_allocator->Free(raw_allocator, values_to_free[i]);
+        }
+      }
+      raw_allocator->Free(raw_allocator, values_to_free);
+    };
+    std::unique_ptr<char*, decltype(free_raw_values)> raw_values_guard{raw_values, std::move(free_raw_values)};
+
+    std::vector<std::string> values;
+    values.reserve(size);
+    for (size_t i = 0; i < size; ++i) {
+      values.emplace_back(raw_values[i] != nullptr ? raw_values[i] : "");
+    }
+    out.swap(values);
+    return Status::OK();
+  }
+
   const Ort::ConstKernelInfo info_;
   std::shared_ptr<KernelInfoCache> cache_;
 };

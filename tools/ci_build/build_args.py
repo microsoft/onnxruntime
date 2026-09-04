@@ -99,7 +99,7 @@ def _openvino_verify_device_type(device_read: str) -> str:
 
 def _webgpu_verify_library_kind(library_kind: str) -> str:
     """Verifies the library kind for the WebGPU Execution Provider."""
-    choices = ["shared_lib", "static_lib"]
+    choices = ["shared_lib", "static_lib", "static_plugin"]
     if library_kind not in choices:
         print("\nYou have specified an invalid library kind for WebGPU EP.")
         print(f"The invalid library kind was: {library_kind}")
@@ -823,7 +823,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         nargs="?",
         const="static_lib",
         type=_webgpu_verify_library_kind,
-        help="Enable WebGPU EP. Optionally specify 'static_lib' (default) or 'shared_lib'.",
+        help="Enable WebGPU EP. Optionally specify 'static_lib' (default), 'shared_lib', or 'static_plugin'. "
+        "'static_lib' builds the EP as an internal ORT EP. 'shared_lib' builds it as a separate plugin EP "
+        "library that is loaded at runtime. 'static_plugin' builds it as a plugin EP that is linked into the "
+        "ORT binary and registered at environment creation.",
     )
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."

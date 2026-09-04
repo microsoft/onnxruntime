@@ -4,6 +4,7 @@
 // this file contains implementations of the C API
 
 #include <cassert>
+#include <utility>
 
 #include "ort_env.h"
 #include "core/session/ort_apis.h"
@@ -29,7 +30,7 @@ void CleanupWebGpuContexts();
 
 OrtEnv* OrtEnv::p_instance_;
 int OrtEnv::ref_count_ = 0;
-std::mutex OrtEnv::m_;
+std::recursive_mutex OrtEnv::m_;
 
 OrtEnv::OrtEnv(std::unique_ptr<onnxruntime::Environment> value1)
     : value_(std::move(value1)) {
@@ -57,7 +58,7 @@ OrtEnvPtr OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionIn
                                       onnxruntime::common::Status& status,
                                       const OrtThreadingOptions* tp_options,
                                       const OrtKeyValuePairs* config_entries) {
-  std::lock_guard<std::mutex> lock(m_);
+  std::lock_guard<std::recursive_mutex> lock(m_);
   if (!p_instance_) {
     std::unique_ptr<LoggingManager> lmgr;
     std::string name = lm_info.logid;
@@ -89,6 +90,26 @@ OrtEnvPtr OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionIn
     // Use 'new' to allocate OrtEnv, as it will be managed by p_instance_
     // and deleted in ReleaseEnv or leaked if g_is_process_shutting_down is true.
     p_instance_ = new OrtEnv(std::move(env));
+
+    // Take this caller's reference before running any execution provider code below, so that if a provider
+    // acquires and releases an OrtEnvPtr the instance isn't destroyed out from under us. Holding it in an OrtEnvPtr
+    // also unpublishes and destroys the half-built instance if anything below fails or throws.
+    ++ref_count_;
+    OrtEnvPtr instance{p_instance_, OrtEnv::Release};
+
+#if !defined(ORT_MINIMAL_BUILD)
+    // Register statically linked plugin EPs *after* p_instance_ is published. They use the public ORT API, so any
+    // OrtEnv API they call while enumerating their devices must be able to find the instance. m_ is recursive so
+    // that such a call from this thread doesn't self-deadlock. See
+    // docs/design/webgpu_ep_extraction/plugin_boundary_and_web_integration/static_plugin_ep_registration_design.md
+    status = p_instance_->GetEnvironment().CreateAndRegisterStaticPluginEps();
+
+    if (!status.IsOK()) {
+      return OrtEnvPtr(nullptr, OrtEnv::Release);
+    }
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+    return instance;
   }
 
   ++ref_count_;
@@ -104,7 +125,7 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
   OrtEnv* instance_to_delete = nullptr;
 
   {  // Scope for the lock guard
-    std::lock_guard<std::mutex> lock(m_);
+    std::lock_guard<std::recursive_mutex> lock(m_);
     assert(p_instance_ == env_ptr);
 
     --ref_count_;
@@ -135,7 +156,7 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
 
 /*static*/
 OrtEnvPtr OrtEnv::TryGetInstance() {
-  std::lock_guard<std::mutex> lock(m_);
+  std::lock_guard<std::recursive_mutex> lock(m_);
 
   if (p_instance_) {
     ++ref_count_;

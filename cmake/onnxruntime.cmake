@@ -257,7 +257,7 @@ if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_qnn)
 endif()
 
-if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+if (onnxruntime_WEBGPU_LINKED_INTO_HOST)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_webgpu)
 endif()
 
