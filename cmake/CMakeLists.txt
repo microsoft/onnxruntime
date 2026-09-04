@@ -183,6 +183,10 @@ option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external depen
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
 option(onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP "Adding frame present for PIX to capture a frame" OFF)
+option(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE
+       "Enable experimental DirectStorage external weights for native Windows WebGPU/D3D12" OFF)
+set(onnxruntime_DIRECT_STORAGE_ROOT "" CACHE PATH
+    "Optional path to the DirectStorage NuGet native directory (containing include, lib, and bin)")
 # The following 2 options are only for Windows
 option(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN "Enable Vulkan backend for Dawn (on Windows)" OFF)
 option(onnxruntime_ENABLE_DAWN_BACKEND_D3D12 "Enable D3D12 backend for Dawn (on Windows)" ON)
