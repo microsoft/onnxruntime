@@ -102,37 +102,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool has_head_sink = false,
                         uint32_t kv_cache_quantization_bits = 0,
                         int compressed_head_size_u32 = 0,
-                        bool use_seqlens_q = false)
-      : Program{kernel_name},
-        has_attention_bias_(has_attention_bias),
-        is_qualcomm_(is_qualcomm),
-        qkv_head_size_(qkv_head_size),
-        qkv_num_heads_(qkv_num_heads),
-        is_unidirectional_(is_unidirectional),
-        is_nvidia_(is_nvidia),
-        use_shm_path_(is_apple || is_nvidia || !has_subgroups),
-        q_BNSH_(q_BNSH),
-        use_seqlen_k_(use_seqlen_k),
-        has_head_sink_(has_head_sink),
-        kv_cache_quantization_(kv_cache_quantization_bits != 0),
-        kv_cache_quantization_bits_(kv_cache_quantization_bits),
-        compressed_head_size_u32_(compressed_head_size_u32),
-        use_seqlens_q_(use_seqlens_q) {
-    if (use_shm_path_) {
-      // Use shared-memory loop-based path with dynamic max_k_step.
-      // Compute max_k_step from workgroup shared memory budget: k_tile + v_tile = 2 * element_size * head_size * max_k_step
-      const int element_size = is_fp16 ? 2 : 4;
-      constexpr int kMinWorkgroupStorageBudgetBytes = 16384;
-      int max_k_from_shm = kMinWorkgroupStorageBudgetBytes / (2 * element_size * qkv_head_size);
-      if (max_k_from_shm >= 32) {
-        max_k_step_ = 32;
-      } else {
-        max_k_step_ = 16;
-      }
-    } else {
-      max_k_step_ = 16;
-    }
-  }
+                        bool use_seqlens_q = false);
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 

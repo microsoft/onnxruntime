@@ -54,6 +54,54 @@ fn populate_indirect_dispatch_buffer(x: u32, y: u32, z: u32) {
 }
 )";
 
+constexpr int SelectDensePrefillMaxKStep(bool use_shm_path, bool is_fp16, int head_size) {
+  if (!use_shm_path) {
+    return 16;
+  }
+
+  // Preserve the existing tile selection, which targets the guaranteed WebGPU
+  // workgroup-storage budget even when the device exposes a higher limit.
+  const int element_size = is_fp16 ? 2 : 4;
+  constexpr int kMinWorkgroupStorageBudgetBytes = 16384;
+  const int max_k_from_shm = kMinWorkgroupStorageBudgetBytes / (2 * element_size * head_size);
+  return max_k_from_shm >= 32 ? 32 : 16;
+}
+
+constexpr size_t DensePrefillWorkgroupStorageBytes(bool use_shm_path,
+                                                   bool is_fp16,
+                                                   int head_size,
+                                                   uint32_t kv_cache_quantization_bits,
+                                                   bool is_qualcomm,
+                                                   uint32_t workgroup_size) {
+  const size_t element_size = is_fp16 ? 2 : 4;
+  const size_t max_k_step = SelectDensePrefillMaxKStep(use_shm_path, is_fp16, head_size);
+  const size_t head_size_bytes = static_cast<size_t>(head_size) * element_size;
+  const size_t kv_tiles = 2 * head_size_bytes * max_k_step;
+  const size_t q4_lut = kv_cache_quantization_bits == 4 ? 16 * sizeof(float) : 0;
+  const size_t qualcomm_output_tile = is_qualcomm ? head_size_bytes * workgroup_size / 2 : 0;
+  return kv_tiles + q4_lut + qualcomm_output_tile;
+}
+
+constexpr bool DensePrefillFitsWorkgroupStorage(bool use_shm_path,
+                                                bool is_fp16,
+                                                int head_size,
+                                                uint32_t kv_cache_quantization_bits,
+                                                bool is_qualcomm,
+                                                uint32_t workgroup_size,
+                                                uint64_t max_workgroup_storage_size) {
+  return DensePrefillWorkgroupStorageBytes(use_shm_path, is_fp16, head_size,
+                                           kv_cache_quantization_bits, is_qualcomm,
+                                           workgroup_size) <=
+         max_workgroup_storage_size;
+}
+
+static_assert(!DensePrefillFitsWorkgroupStorage(true, false, 256, 8, false, 64, 16384));
+static_assert(DensePrefillFitsWorkgroupStorage(true, false, 256, 8, false, 64, 32768));
+static_assert(!DensePrefillFitsWorkgroupStorage(true, false, 128, 4, false, 64, 16384));
+static_assert(DensePrefillFitsWorkgroupStorage(true, true, 128, 0, false, 64, 16384));
+static_assert(DensePrefillFitsWorkgroupStorage(false, true, 128, 0, false, 64, 16384));
+static_assert(!DensePrefillFitsWorkgroupStorage(true, true, 128, 8, true, 64, 16384));
+
 constexpr size_t DecodeWorkgroupStorageBytes(uint32_t m_tile,
                                              uint32_t tile_size,
                                              uint32_t head_size_vec,
@@ -100,6 +148,40 @@ static_assert(SelectDecodeMTile(4, 64, 96 / 4, sizeof(float), 8, false, 16384) =
 static_assert(SelectDecodeMTile(4, 64, 128 / 4, sizeof(float), 8, false, 16384) == 2);
 static_assert(SelectDecodeMTile(4, 64, 128 / 4, sizeof(MLFloat16), 0, false, 16384) == 4);
 static_assert(SelectDecodeMTile(4, 64, 128 / 4, sizeof(float), 0, true, 16384) == 4);
+
+FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
+                                             bool has_attention_bias,
+                                             bool is_qualcomm,
+                                             bool is_fp16,
+                                             int qkv_head_size,
+                                             int qkv_num_heads,
+                                             bool is_unidirectional,
+                                             bool is_nvidia,
+                                             bool is_apple,
+                                             bool has_subgroups,
+                                             bool q_BNSH,
+                                             bool use_seqlen_k,
+                                             bool has_head_sink,
+                                             uint32_t kv_cache_quantization_bits,
+                                             int compressed_head_size_u32,
+                                             bool use_seqlens_q)
+    : Program{kernel_name},
+      has_attention_bias_(has_attention_bias),
+      is_qualcomm_(is_qualcomm),
+      qkv_head_size_(qkv_head_size),
+      qkv_num_heads_(qkv_num_heads),
+      is_unidirectional_(is_unidirectional),
+      is_nvidia_(is_nvidia),
+      use_shm_path_(is_apple || is_nvidia || !has_subgroups),
+      q_BNSH_(q_BNSH),
+      use_seqlen_k_(use_seqlen_k),
+      has_head_sink_(has_head_sink),
+      max_k_step_(SelectDensePrefillMaxKStep(use_shm_path_, is_fp16, qkv_head_size)),
+      kv_cache_quantization_(kv_cache_quantization_bits != 0),
+      kv_cache_quantization_bits_(kv_cache_quantization_bits),
+      compressed_head_size_u32_(compressed_head_size_u32),
+      use_seqlens_q_(use_seqlens_q) {
+}
 
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
@@ -1107,7 +1189,21 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Split-reduce wins for short Q (sequence_length < 32) across all KV
   // cache lengths measured: 1.13x-2.07x faster at total_sequence_length
   // 128 / 500 / 2000 on a representative LLM (32 heads, head_size 96).
-  const bool use_split_reduce = parameters.sequence_length_ < 32;
+  const bool is_fp16_q =
+      Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  const bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
+  const bool is_apple = context.AdapterInfo().vendor == std::string_view{"apple"};
+  const bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
+  const bool has_subgroups = context.HasFeature(wgpu::FeatureName::Subgroups);
+  const uint32_t dense_prefill_workgroup_size = is_apple ? 128 : tile_size;
+  const bool dense_prefill_fits_workgroup_storage =
+      DensePrefillFitsWorkgroupStorage(
+          is_apple || is_nvidia || !has_subgroups, is_fp16_q, parameters.head_size_,
+          kv_cache_quantization_bits, is_qualcomm, dense_prefill_workgroup_size,
+          context.DeviceLimits().maxComputeWorkgroupStorageSize);
+  const bool use_split_reduce =
+      parameters.sequence_length_ < 32 ||
+      (!use_paged_kv_cache && !dense_prefill_fits_workgroup_storage);
 
   if (!use_split_reduce) {
     // Ask the shared helper whether the fused paged-prefill shader can run on
@@ -1117,8 +1213,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     // varlen-metadata inputs). Keeping the adapter/dtype/shape gate in the
     // helper is the anti-drift invariant: PagedAttention uses the same
     // predicate to decide whether it can hand FA a packed-varlen Q view.
-    const bool is_fp16_q =
-        Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
     const bool use_paged_prefill =
         use_paged_kv_cache && !kv_cache_quantization_enabled &&
         attention_bias == nullptr && head_sink == nullptr &&
@@ -1171,11 +1265,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
       }
       // Prefill path: FlashAttentionProgram (single kernel with subgroup shuffles)
       bool has_attention_bias = attention_bias != nullptr;
-      bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
-      bool is_nvidia = context.AdapterInfo().vendor == std::string_view{"nvidia"};
-      bool is_apple = context.AdapterInfo().vendor == std::string_view{"apple"};
-      bool has_subgroups = context.HasFeature(wgpu::FeatureName::Subgroups);
-      bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+      bool is_fp16 = is_fp16_q;
       bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
       bool has_head_sink = head_sink != nullptr;
       FlashAttentionProgram program{"FlashAttention",
