@@ -136,8 +136,9 @@ The bridge should not expose unrelated ORT private implementation details.
 
 ## Work packages
 
-1. **Size and latency baselines:** measure `onnxruntime-web` WebAssembly size and inference latency before any
-   plugin-path change lands, since the size and latency completion criteria are relative to them.
+1. **Size and latency baselines:** measure `onnxruntime-web` WebAssembly size and inference latency, and native
+   inference latency, on the non-plugin path while it still exists, since the size and latency completion criteria
+   compare the plugin path against those numbers.
 2. **Static registration core:** implement and contract-test generic static factory registration.
 3. **Global lifetime contract:** inventory process-global state and implement safe ownership and teardown rules.
 4. **Emscripten prototype:** compile the plugin path statically and run a small model.
@@ -145,8 +146,9 @@ The bridge should not expose unrelated ORT private implementation details.
 6. **Browser bridge:** specify and prototype object and lifetime exchange.
 7. **Parity and retirement:** run the existing suite through the plugin path and remove the legacy path.
 
-Baselines come first, because they cannot be captured once the plugin path has changed anything. Packages 2 through 6
-can then proceed largely in parallel. Legacy-path removal waits for their convergence.
+Packages 1 through 6 can proceed largely in parallel, and legacy-path removal waits for their convergence. That
+ordering matters for the baselines in particular: the non-plugin path is the comparison, so once package 7 removes it
+the numbers can no longer be captured.
 
 ## Interfaces with other workstreams
 
@@ -174,7 +176,8 @@ can then proceed largely in parallel. Legacy-path removal waits for their conver
 - Browser object ownership and lifecycle are documented and tested.
 - Reduced WebAssembly builds retain required plugin infrastructure within accepted size budgets, measured against
   the baselines established before the work begins.
-- Inference latency through static plugin registration stays within an accepted tolerance of the same baselines.
+- Inference latency stays within an accepted tolerance of the same baselines, for both static plugin registration and
+  the native shared-library plugin.
 - The direct `IExecutionProvider` WebGPU path is removed.
 
 ## Open questions

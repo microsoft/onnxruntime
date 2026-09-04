@@ -127,13 +127,15 @@ The other convergence points between workstreams:
 
 These are the outcomes that show the whole effort is complete:
 
-- Static and shared builds execute the same provider implementation, through the public plugin EP API, against the
-  same operator tests.
+- Static and shared builds execute the same provider implementation through the public plugin EP API, and pass the
+  same conformance suite.
 - The ORT repository retains provider integration shims only, and no longer contains WebGPU EP implementation, build,
   or packaging inputs.
 - The external repository owns WebGPU code, dependencies, tests, packages, and releases.
 - ORT updates its pinned WebGPU revision through a routine dependency update.
-- `onnxruntime-web` preserves supported functionality and accepted size and performance characteristics.
+- Supported consumers keep their functionality, and inference performance on the plugin path stays within an accepted
+  tolerance of the current built-in implementation. `onnxruntime-web` additionally stays within its WebAssembly size
+  budget.
 - Native ORT packages remain usable without installing WebGPU.
 - Existing Node WebGPU users have a documented and tested migration path.
 - Compatibility failures produce clear build-time or registration-time diagnostics.
