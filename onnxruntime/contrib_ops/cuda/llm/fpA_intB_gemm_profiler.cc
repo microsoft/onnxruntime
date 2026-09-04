@@ -160,13 +160,18 @@ std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(c
 
 std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
     int minM, int maxM, bool /*hasWeightOnlyCudaKernel*/) const {
-  int const lo = std::max(1, minM);
-  int const hi = std::max(lo, maxM);
+  return GetInitialProfileMBuckets(minM, maxM, mProfileMOverride);
+}
+
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+    int min_m, int max_m, const std::vector<int>& profile_m_override) {
+  int const lo = std::max(1, min_m);
+  int const hi = std::max(lo, max_m);
 
   std::set<int> buckets;
 
-  if (!mProfileMOverride.empty()) {
-    for (int m : mProfileMOverride) {
+  if (!profile_m_override.empty()) {
+    for (int m : profile_m_override) {
       buckets.insert(std::min(std::max(lo, m), hi));
     }
   } else {

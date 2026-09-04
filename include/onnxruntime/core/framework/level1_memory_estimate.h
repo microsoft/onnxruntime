@@ -30,6 +30,10 @@ struct Level1MemoryEstimate {
 
   // Initialization-only scratch, including prepack conversion and constructor-time profiling.
   size_t temporary_prepack_bytes = 0;
+
+  // Temporary allocation that can occur during Run() but does not overlap the ordinary kernel
+  // workspace. The accountant peaks this with runtime_workspace_bytes (or fallback workspace).
+  size_t runtime_transient_bytes = 0;
 };
 
 }  // namespace onnxruntime

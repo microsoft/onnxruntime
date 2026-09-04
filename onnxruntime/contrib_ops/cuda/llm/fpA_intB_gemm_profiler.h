@@ -72,6 +72,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   // session-config key and the ORT_FPA_INTB_PROFILE_M env var, both resolved by the kernel.
   static std::vector<int> ParseProfileMList(const std::string& value);
 
+  // Returns the exact initial bucket set used by construction-time profiling.
+  static std::vector<int> GetInitialProfileMBuckets(
+      int min_m, int max_m, const std::vector<int>& profile_m_override);
+
   // Overrides the initial profile M-bucket set for this profiler instance (per session). An empty
   // list keeps the built-in default bucket set. Resolved by the kernel from session config / env.
   void setProfileMOverride(std::vector<int> ms) {

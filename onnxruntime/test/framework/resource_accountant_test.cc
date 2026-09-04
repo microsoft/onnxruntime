@@ -287,6 +287,34 @@ TEST(ResourceAccountantTest, InitializationScratchIsCommittedAsPeakAndExcludedFr
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), GetSizeT(cost_a) + GetSizeT(cost_b));
 }
 
+TEST(ResourceAccountantTest, RuntimeTransientIsPeakedWithFallbackOrEstimatedWorkspace) {
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
+  std::optional<ResourceAccountantMap> acc_map;
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
+
+  const auto fallback_cost = accountant->ComputeResourceCount(
+      *h.node_a,
+      Level1MemoryEstimate{
+          /*runtime_workspace_bytes=*/std::nullopt,
+          /*persistent_prepack_bytes=*/0,
+          /*temporary_prepack_bytes=*/0,
+          /*runtime_transient_bytes=*/1200});
+  EXPECT_EQ(GetSizeT(fallback_cost), size_t{3200});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSelection(h.node_a->Index()).bytes, size_t{1200});
+
+  const auto estimated_cost = accountant->ComputeResourceCount(
+      *h.node_b,
+      Level1MemoryEstimate{
+          /*runtime_workspace_bytes=*/250,
+          /*persistent_prepack_bytes=*/0,
+          /*temporary_prepack_bytes=*/0,
+          /*runtime_transient_bytes=*/700});
+  EXPECT_EQ(GetSizeT(estimated_cost), size_t{1700});
+  EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSelection(h.node_b->Index()).bytes, size_t{700});
+}
+
 TEST(ResourceAccountantTest, CommittedWorkspaceRejectsOverflow) {
   std::optional<ResourceAccountantMap> acc_map;
   IResourceAccountant* accountant = nullptr;

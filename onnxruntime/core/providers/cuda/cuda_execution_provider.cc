@@ -3571,6 +3571,8 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
           LOGS(logger, VERBOSE) << "Level-1 memory estimate for " << node->Name()
                                 << ": runtime workspace="
                                 << level1_memory_estimate->runtime_workspace_bytes.value_or(0)
+                                << " bytes, runtime transient="
+                                << level1_memory_estimate->runtime_transient_bytes
                                 << " bytes, persistent prepack="
                                 << level1_memory_estimate->persistent_prepack_bytes
                                 << " bytes, temporary prepack="

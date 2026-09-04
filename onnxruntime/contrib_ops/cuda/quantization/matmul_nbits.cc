@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -311,50 +312,73 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
     const std::vector<int> profile_m =
         WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
             profile_m_value);
-    const int requested_profile_max_m =
+    const int requested_constructor_profile_max_m =
         profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
                           : profile_m.back();
-    int profile_max_m = onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
-        requested_profile_max_m, onnxruntime::llm::kernels::weight_only::kMaxProfileM);
-    if (m.has_value()) {
-      const int runtime_profile_m =
-          onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
-              SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
-      profile_max_m = std::max(profile_max_m, runtime_profile_m);
-    } else {
-      // A dynamic M can lazily profile any bucket at runtime. Reserve the largest supported bucket
-      // so capacity admission cannot accept a node whose later lazy-profile allocation exceeds the
-      // partition-time estimate.
-      profile_max_m = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
-    }
+    const int constructor_profile_max_m =
+        onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+            requested_constructor_profile_max_m,
+            onnxruntime::llm::kernels::weight_only::kMaxProfileM);
 
     const int sm = EffectiveFpAIntBWorkspaceSm(device_sm, weight_prepacked);
     const int packing_ratio = onnxruntime::llm::kernels::weight_only::FP16_BITS / SafeInt<int>(nbits);
     const int packed_n = SafeInt<int>(N) / packing_ratio;
     const int original_n = packed_n * packing_ratio;
-    const auto profiler_runner_workspace =
-        onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
-            profile_max_m, original_n, SafeInt<int>(K), sm,
-            device_prop.multiProcessorCount);
-    if (!profiler_runner_workspace.has_value()) {
-      return std::nullopt;
-    }
+    const auto compute_profiler_scratch = [&](int profile_bucket_m) -> std::optional<size_t> {
+      const auto profiler_runner_workspace =
+          onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
+              profile_bucket_m, original_n, SafeInt<int>(K), sm,
+              device_prop.multiProcessorCount);
+      if (!profiler_runner_workspace.has_value()) {
+        return std::nullopt;
+      }
+      return onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize(
+          profile_bucket_m, SafeInt<size_t>(packed_n), SafeInt<size_t>(K), SafeInt<int>(nbits),
+          SafeInt<size_t>(block_size), *profiler_runner_workspace);
+    };
 
-    const auto profiler_scratch =
-        onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize(
-            profile_max_m, SafeInt<size_t>(packed_n), SafeInt<size_t>(K), SafeInt<int>(nbits),
-            SafeInt<size_t>(block_size), *profiler_runner_workspace);
-    if (!profiler_scratch.has_value()) {
+    const auto constructor_profile_scratch = compute_profiler_scratch(constructor_profile_max_m);
+    if (!constructor_profile_scratch.has_value()) {
       return std::nullopt;
     }
-    estimate->temporary_prepack_bytes = static_cast<size_t>(
-        SafeInt<size_t>(estimate->temporary_prepack_bytes) + *profiler_scratch);
+    // Kernel construction profiling and PrePack_B conversion happen sequentially.
+    estimate->temporary_prepack_bytes =
+        std::max(estimate->temporary_prepack_bytes, *constructor_profile_scratch);
 
     if (m.has_value()) {
       estimate->runtime_workspace_bytes =
           onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize(
               SafeInt<int>(*m), original_n, SafeInt<int>(K), sm,
               device_prop.multiProcessorCount);
+    }
+
+    std::optional<int> lazy_profile_m;
+    if (!m.has_value()) {
+      // A dynamic M can request any rounded bucket at runtime.
+      lazy_profile_m = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
+    } else if (*m > 0) {
+      const int runtime_profile_m =
+          onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+              SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+      const auto initial_profile_m =
+          WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+              1, constructor_profile_max_m, profile_m);
+      const bool initially_profiled =
+          std::find(initial_profile_m.begin(), initial_profile_m.end(), *m) != initial_profile_m.end() ||
+          std::find(initial_profile_m.begin(), initial_profile_m.end(), runtime_profile_m) != initial_profile_m.end();
+      if (!initially_profiled) {
+        lazy_profile_m = runtime_profile_m;
+      }
+    }
+
+    if (lazy_profile_m.has_value()) {
+      const auto lazy_profile_scratch = compute_profiler_scratch(*lazy_profile_m);
+      if (!lazy_profile_scratch.has_value()) {
+        return std::nullopt;
+      }
+      // Lazy profiling occurs during Run() before the ordinary GEMM. The two allocations do not
+      // overlap, so the accountant peaks them rather than summing them.
+      estimate->runtime_transient_bytes = *lazy_profile_scratch;
     }
 
     return estimate;

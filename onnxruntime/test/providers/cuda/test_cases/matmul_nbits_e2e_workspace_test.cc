@@ -314,7 +314,7 @@ std::optional<size_t> EstimateWorkspaceFromGraphProtoShape(
 
 }  // namespace
 
-TEST(MatMulNBitsWorkspace, GetCapabilityBudgetExcludesSequentialProfileScratch) {
+TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
   if (device_sm < 0) {
     GTEST_SKIP() << "No CUDA device available; skipping budget integration test.";
@@ -331,10 +331,46 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetExcludesSequentialProfileScratch) 
                 {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"2048"}}});
   const std::string model_bytes = BuildMatMulNBitsModelBytes();
 
-  // profile_m=1 limits the initial profile sweep, but static M=256 can later trigger lazy
-  // profiling of the rounded M=256 bucket. That scratch allocation is sequential and is reported
-  // as an initialization peak rather than summed into the additive hard budget. The remaining
-  // initializer, output, runtime-workspace, and persistent-prepack total is between 410 and 430 KiB.
+  // profile_m=1 limits constructor profiling to M=1. The first M=256 run therefore performs lazy
+  // profiling. Its scratch is runtime transient memory and must be included in the hard budget,
+  // while constructor-profile and PrePack_B scratch remain a non-additive initialization peak.
+  {
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "2048,"));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(mm_node, nullptr);
+    EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
+
+    const auto estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
+        *mm_node, cuda_ep->GetDeviceProp(),
+        {/*fpa_intb_gemm=*/std::string_view{"1"}, /*profile_m=*/std::string_view{"1"}});
+    ASSERT_TRUE(estimate.has_value());
+    ASSERT_TRUE(estimate->runtime_workspace_bytes.has_value());
+    EXPECT_GT(estimate->runtime_transient_bytes, *estimate->runtime_workspace_bytes);
+    EXPECT_GT(estimate->runtime_transient_bytes, estimate->temporary_prepack_bytes);
+
+    std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.0f));
+    OrtValue a_value;
+    CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kE2eM, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
+    NameMLValMap feeds;
+    feeds.emplace("A", a_value);
+    const std::vector<std::string> output_names{"Y"};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  // This budget admitted the node before lazy-profile scratch was charged.
   {
     SessionOptions so;
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
@@ -343,25 +379,6 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetExcludesSequentialProfileScratch) 
         kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsResourceCudaPartitioningSettings, "430,"));
-    InferenceSessionWrapper session(so, GetEnvironment());
-    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
-        std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
-    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
-    ASSERT_STATUS_OK(session.Initialize());
-
-    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
-    ASSERT_NE(mm_node, nullptr);
-    EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
-  }
-
-  {
-    SessionOptions so;
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsCudaFpAIntBGemm, "1"));
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsResourceCudaPartitioningSettings, "410,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
@@ -602,6 +619,7 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   const size_t runtime = GetMatMulNBitsLastComputeWorkspaceBytes(op_kernel);
 
   std::cout << "[ WORKSPACE ] Level1(runtime)=" << level1_runtime_workspace
+            << " bytes, Level1(runtime transient)=" << level1->runtime_transient_bytes
             << " bytes, Level1(persistent prepack)=" << level1->persistent_prepack_bytes
             << " bytes, Level1(temporary prepack)=" << level1->temporary_prepack_bytes
             << " bytes, Level2(declare)=" << level2
@@ -834,6 +852,7 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
       << "Level-1 runtime workspace must be unknown for a dynamic (symbolic) leading dim.";
   EXPECT_GT(level1->persistent_prepack_bytes, size_t{0});
   EXPECT_GT(level1->temporary_prepack_bytes, size_t{0});
+  EXPECT_GT(level1->runtime_transient_bytes, size_t{0});
 
   // A separately inferred maximum shape makes the same dynamic node estimable without
   // modifying its canonical shape metadata.

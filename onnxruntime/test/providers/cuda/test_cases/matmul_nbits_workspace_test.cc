@@ -195,6 +195,15 @@ TEST(MatMulNBitsWorkspace, TacticProfilerMaxMRoundingMatchesRuntime) {
   EXPECT_EQ(RoundUpProfileM(std::numeric_limits<int>::max(), 8192), 8192);
 }
 
+TEST(MatMulNBitsWorkspace, InitialProfileBucketsMatchOverrideAndDefaultRules) {
+  EXPECT_EQ(WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+                /*min_m=*/1, /*max_m=*/256, {}),
+            (std::vector<int>{1, 2, 4, 8, 16, 32, 64, 128, 256}));
+  EXPECT_EQ(WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+                /*min_m=*/1, /*max_m=*/256, {8, 64}),
+            (std::vector<int>{1, 8, 64, 256}));
+}
+
 // ---------------------------------------------------------------------------
 // Test A: EffectiveFpAIntBWorkspaceSm drift guard.
 // Native SM90 arch only when device is SM90 AND weights were prepacked for the Hopper layout.
