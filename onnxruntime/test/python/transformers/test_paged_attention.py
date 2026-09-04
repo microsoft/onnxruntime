@@ -2401,7 +2401,15 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
     def setUp(self):
         torch.manual_seed(0)
 
-    def _check(self, new_seqlens=None, rtol=5e-3, atol=5e-3, **overrides):
+    def _check(
+        self,
+        new_seqlens=None,
+        rtol=5e-3,
+        atol=5e-3,
+        expect_xqa=None,
+        local_window_size=None,
+        **overrides,
+    ):
         kwargs = {
             "batch_size": 4,
             "sequence_length": 8,
@@ -2430,7 +2438,31 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
         override = None
         if new_seqlens is not None:
             override = torch.tensor(new_seqlens, dtype=torch.int32)
-        parity_check_paged_attention(config, rtol=rtol, atol=atol, new_seqlens_override=override)
+
+        def run():
+            parity_check_paged_attention(
+                config,
+                rtol=rtol,
+                atol=atol,
+                new_seqlens_override=override,
+                local_window_size_override=local_window_size,
+            )
+
+        # Output parity alone would still pass if a dispatch regression routed the case to the
+        # ragged fallback, leaving the mask, page-table and scale paths untested. Assert the
+        # selected backend wherever the case is meant to prove speculative XQA behavior.
+        if expect_xqa is None:
+            run()
+            return
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+        ):
+            debug_output = capture_native_stdout(run)
+        if expect_xqa:
+            self.assertIn("SdpaKernel=XQA", debug_output)
+        else:
+            self.assertNotIn("SdpaKernel=XQA", debug_output)
 
     @parameterized.expand([(f"q{q}", q) for q in range(2, 9)])
     def test_spec_dec_query_length(self, _, query_length):
@@ -2496,32 +2528,68 @@ class TestPagedAttentionXqaSpeculative(unittest.TestCase):
     def test_spec_dec_ragged_batch(self, _, new_seqlens):
         # A continuous-batching step mixes acceptance lengths, and a scheduled sequence may
         # contribute no token at all.
-        self._check(new_seqlens=new_seqlens)
+        self._check(new_seqlens=new_seqlens, expect_xqa=True)
 
     @parameterized.expand([("64", 64), ("256", 256), ("1000", 1000), ("8192", 8192)])
     def test_spec_dec_context_length(self, _, total_sequence_length):
         # 8192 splits the sequence across CTAs and reduces through the XQA scratch; 1000 is not
         # page aligned, so the masked tail straddles the last two tiles.
-        self._check(batch_size=2, total_sequence_length=total_sequence_length, new_seqlens=[8, 8])
+        self._check(batch_size=2, total_sequence_length=total_sequence_length, new_seqlens=[8, 8], expect_xqa=True)
 
     @parameterized.expand([("128", 128), ("512", 512)])
     def test_spec_dec_block_size(self, _, block_size):
-        self._check(batch_size=2, paged_kv_block_size=block_size, new_seqlens=[8, 8])
+        self._check(batch_size=2, paged_kv_block_size=block_size, new_seqlens=[8, 8], expect_xqa=True)
 
     def test_spec_dec_per_channel_scales(self):
-        self._check(k_quant_type="PER_CHANNEL", v_quant_type="PER_CHANNEL")
+        self._check(k_quant_type="PER_CHANNEL", v_quant_type="PER_CHANNEL", expect_xqa=True)
 
     def test_spec_dec_batch_one(self):
-        self._check(batch_size=1, new_seqlens=[8])
+        self._check(batch_size=1, new_seqlens=[8], expect_xqa=True)
+
+    @parameterized.expand([(f"q{q}", q) for q in range(6, 9)])
+    def test_spec_dec_local_window(self, _, query_length):
+        # 6..8 query tokens with group size 6 spill past the 32-row tile, so the second tile has to
+        # derive each row's window from its own query position instead of the tile offset.
+        self._check(
+            batch_size=2,
+            sequence_length=query_length,
+            total_sequence_length=1024,
+            new_seqlens=[query_length, query_length],
+            local=True,
+            local_window_size=64,
+            expect_xqa=True,
+        )
+
+    @parameterized.expand([(f"q{q}", q) for q in range(6, 9)])
+    def test_spec_dec_head_sink(self, _, query_length):
+        # Rows are flattened (token, head) pairs here, so every row past the first tile must still
+        # pick up its own head's sink.
+        self._check(
+            batch_size=2,
+            sequence_length=query_length,
+            new_seqlens=[query_length, query_length],
+            use_head_sink=True,
+            expect_xqa=True,
+        )
+
+    def test_spec_dec_head_sink_and_local(self):
+        self._check(
+            batch_size=2,
+            new_seqlens=[8, 8],
+            use_head_sink=True,
+            local=True,
+            local_window_size=64,
+            expect_xqa=True,
+        )
 
     def test_spec_dec_native_fp16_cache(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA_NATIVE_KV": "1"}):
-            self._check(kv_cache_type="float16", k_quant_type="NONE", v_quant_type="NONE")
+            self._check(kv_cache_type="float16", k_quant_type="NONE", v_quant_type="NONE", expect_xqa=True)
 
     def test_bound_above_specialization_falls_back(self):
         # A query bound of 9 is outside the 2..8 window, so this must land on the ragged backend
         # and still be correct.
-        self._check(sequence_length=9, new_seqlens=[9] * 4)
+        self._check(sequence_length=9, new_seqlens=[9] * 4, expect_xqa=False)
 
 
 @unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")

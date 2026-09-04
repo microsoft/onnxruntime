@@ -1094,6 +1094,28 @@ bool IsNativeFp16HeadSize256Group6XqaRunnable() {
   return debug_output.find("SdpaKernel=XQA") != std::string::npos;
 }
 
+// The speculative specialization asks for more shared memory than the single-token XQA kernel, so
+// it can legitimately fall back on a device where plain XQA runs. Only the dtype flags pick the
+// specialization, so a minimal two-token probe answers for every case built on that dtype.
+bool IsSpecDecHeadSize256Group6XqaRunnable(bool bf16_query, bool int8_cache, bool fp8_cache) {
+  IoBindingCase c;
+  c.token_count = 2;
+  c.cumulative_seqlens_q = {0, 2};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.past_seqlen = 122;
+  c.bf16_query = bf16_query;
+  c.int8_cache = int8_cache;
+  c.fp8_cache = fp8_cache;
+  c.attention_metadata = {2, 124, 124};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  return debug_output.find("SdpaKernel=XQA") != std::string::npos;
+}
+
 TEST(PagedAttention, Cuda_NativeXqaRequiresOptIn) {
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{
@@ -1307,9 +1329,15 @@ TEST(PagedAttention, Cuda_XqaSpecDecNativeFp16CacheHeadSize256Group6) {
   c.discriminating_attention = true;
   c.attention_metadata = {7, 256, 256};
 
+  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(false, false, false);
+
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
   const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (native FP16) is not runnable in this "
+                    "build/device configuration; output parity was still checked.";
+  }
   EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
   EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
 }
@@ -1350,10 +1378,19 @@ TEST(PagedAttention, Cuda_XqaSpecDecNativeBf16CacheHeadSize256Group6) {
   c.replay_past_seqlens = {{122}, {249}, {122}};
   c.attention_metadata = {7, 256, 256};
 
+  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(true, false, false);
+
   testing::internal::CaptureStdout();
   RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
                    kCudaExecutionProvider, true, false, c);
   const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    // XQA promotion is speculative for a native cache, so a failed probe has to restore paged
+    // Flash rather than leave a BF16 step on the portable scalar paged-decode fallback.
+    EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (native BF16) is not runnable in this "
+                    "build/device configuration; output parity and the Flash fallback were still checked.";
+  }
   EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
   EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
 }
@@ -1389,9 +1426,15 @@ TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize256Group6) {
   c.discriminating_attention = true;
   c.attention_metadata = {7, 256, 256};
 
+  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(false, true, false);
+
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
   const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (INT8 cache) is not runnable in this "
+                    "build/device configuration; output parity was still checked.";
+  }
   EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
   EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
 }
@@ -1425,9 +1468,15 @@ TEST(PagedAttention, Cuda_XqaSpecDecFp8CacheHeadSize256Group6) {
   c.discriminating_attention = true;
   c.attention_metadata = {7, 129, 129};
 
+  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(false, false, true);
+
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
   const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (FP8 cache) is not runnable in this "
+                    "build/device configuration; output parity was still checked.";
+  }
   EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
   EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
 }

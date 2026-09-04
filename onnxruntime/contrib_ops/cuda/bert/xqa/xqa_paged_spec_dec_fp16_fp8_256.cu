@@ -18,4 +18,6 @@
 #pragma warning(disable : 4459)
 #endif
 
+#ifdef USE_FP8_KV_CACHE
 #include "xqa_paged_loader_impl.cuh"
+#endif

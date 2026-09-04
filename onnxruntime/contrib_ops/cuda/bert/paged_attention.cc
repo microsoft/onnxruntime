@@ -467,7 +467,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // Speculative verification steps (2..8 new tokens per sequence) run on the paged XQA kernel with
   // a packed lower-triangular mask built by PagedXqaSpecDecCausalMaskKernel. The gate is the
   // metadata query bound, not the aggregate token count: a zero-heavy ragged step can have
-  // token_count <= batch_size while still carrying a multi-token sequence.
+  // token_count <= batch_size while still carrying a multi-token sequence. Local windows and
+  // attention sinks stay eligible: the kernel's rows are flattened (query token, query head) pairs,
+  // so it derives the window from each row's own query position and the sink from its own head.
   const bool xqa_spec_dec_candidate =
       decode_eligible && has_metadata_bounds &&
       ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value) || native_spec_xqa_eligible) &&
@@ -602,8 +604,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // Native-cache XQA promotion is speculative until the one-token-per-sequence and shared-memory
   // checks pass. Restore Flash for ragged decode steps and unsupported devices instead of leaving
   // them on the portable scalar paged-decode fallback. This is safe without dense KV staging
-  // because the native FP16 cache is already a Flash-supported dtype.
-  if (!use_xqa_decode && fp16_xqa_eligible && !kIsQuantizedCache && flash_eligible) {
+  // because the native FP16/BF16 cache is already a Flash-supported dtype.
+  if (!use_xqa_decode && (fp16_xqa_eligible || native_spec_xqa_eligible) && !kIsQuantizedCache &&
+      flash_eligible) {
     use_paged_decode = false;
     use_flash_attention = true;
   }

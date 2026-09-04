@@ -792,7 +792,7 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > requires SM89 or SM90+. Quantized-cache XQA is enabled by default. Native FP16/BF16-cache XQA is
 > disabled by default because it has not shown a consistent advantage over FlashAttention; set
 > `ORT_ENABLE_XQA_NATIVE_KV=1` to opt in. Setting `ORT_ENABLE_XQA=0` disables all XQA. When Flash is eligible, the operator restores paged Flash
-> Attention for native FP16 cache when a ragged step is not one-token-per-sequence, the selected
+> Attention for a native FP16/BF16 cache when a ragged step is not one-token-per-sequence, the selected
 > image has no compatible XQA kernel, or its dynamic shared-memory requirement exceeds the device
 > limit. Other quantized configurations use `PagedDecodeSplitKV` and `PagedDecodeReduce` from
 > `paged_attention_impl.cu`.
@@ -823,6 +823,16 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   in-sequence position from `cumulative_seqlens_q` on device, and masks against
 >   `past_seqlens[b] + q_index + 1`, so the kernel is correct for arbitrary ragged input (including
 >   full prefill) and a wrong heuristic only costs speed. That is what removes the D→H sync.
+> - **Multi-token XQA gating.** The speculative H256/group-6 XQA specialization is gated on the
+>   `attention_metadata` query bound being in `[2, 8]`, *not* on `token_count <= batch_size`: a
+>   zero-heavy ragged step can satisfy the aggregate test while still carrying a multi-token
+>   sequence, and a step with more tokens than sequences is equally valid. Nothing about the gate is
+>   specific to speculative verification -- any short multi-token query shape (a prefill chunk tail,
+>   for instance) takes the same path, with the packed lower-triangular mask supplying bottom-right
+>   causality. Query bounds of 1 keep the single-token kernel and bounds above 8 fall back to the
+>   ragged backends. Local windows and attention sinks are supported on this path: rows are
+>   flattened `(query token, query head)` pairs, so the window is derived from each row's own query
+>   position and the sink from its own head.
 > - Split-KV: `ComputePagedDecodeSplits` splits the KV range across up to 32 CTAs only when
 >   `token_count * num_heads` would leave the device under-occupied. `max_kv_len` may be an upper
 >   bound. FlashAttention keeps the replay-wide split count and workspaces fixed while partitioning
