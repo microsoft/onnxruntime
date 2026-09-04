@@ -500,7 +500,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     direct_storage_shared_resource_features_available_ =
         has_shared_buffer_memory && has_shared_fence;
     wgpu::AdapterInfo supplied_adapter_info;
-    if (device_.GetAdapterInfo(&supplied_adapter_info)) {
+    if (device_.GetAdapterInfo(&supplied_adapter_info) == wgpu::Status::Success) {
       requested_backend_type_ = supplied_adapter_info.backendType;
     }
     if (requested_backend_type_ == wgpu::BackendType::D3D12 &&
