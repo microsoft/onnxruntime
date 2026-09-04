@@ -22,7 +22,6 @@
 #include "core/platform/env_var_utils.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -301,12 +300,11 @@ class GQAAttentionBase {
     kv_quant_enabled_ = (k_quant_type_ != KVQuantizationType::NONE);
 
     // OSCAR mixed-precision windows: keep the first `sink` and last `recent` tokens in high
-    // precision (not 2-bit quantized). Configured per-session at runtime.
-    {
-      const auto& cfg = info.GetConfigOptions();
-      kv_quant_sink_ = std::max(0, std::stoi(cfg.GetConfigOrDefault(kOrtSessionOptionsGqaKvQuantSink, "0")));
-      kv_quant_recent_ = std::max(0, std::stoi(cfg.GetConfigOrDefault(kOrtSessionOptionsGqaKvQuantRecent, "0")));
-    }
+    // precision (not 2-bit quantized). MixedPrecisionGroupQueryAttention supplies these as the
+    // sink_size / recent_size node attributes; the legacy GroupQueryAttention op does not declare
+    // them (GetAttrOrDefault returns 0 = no high-precision window).
+    kv_quant_sink_ = std::max<int>(0, static_cast<int>(info.GetAttrOrDefault<int64_t>("sink_size", 0)));
+    kv_quant_recent_ = std::max<int>(0, static_cast<int>(info.GetAttrOrDefault<int64_t>("recent_size", 0)));
 
     disable_gqa_flash_ = ParseEnvironmentVariableWithDefault<bool>("ORT_GQA_DISABLE_FLASH_ATTENTION", false);
 
@@ -333,8 +331,8 @@ class GQAAttentionBase {
   float v_quant_rho_;                // percentile clip for V in PER_GROUP mode (1.0 = no clip)
   bool kv_quant_meta_fp16_ = false;  // OSCAR: store per-group scale/zero as fp16 (else fp32)
   bool kv_quant_enabled_;
-  int kv_quant_sink_ = 0;    // OSCAR: leading tokens kept in high precision (session config)
-  int kv_quant_recent_ = 0;  // OSCAR: trailing tokens kept in high precision (session config)
+  int kv_quant_sink_ = 0;    // OSCAR: leading tokens kept in high precision (attribute or session config)
+  int kv_quant_recent_ = 0;  // OSCAR: trailing tokens kept in high precision (attribute or session config)
   bool disable_gqa_flash_;
 
   template <typename T>

@@ -197,12 +197,53 @@ void MoveKvCacheRows(const uint8_t* src,
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
+// CPU-only OSCAR mixed-precision GQA. Quantized cache is packed uint8; scales are inline, so there is
+// no separate T_KV_SCALE cache input in practice, but the shared input layout keeps the constraint.
+#define REGISTER_MIXED_PRECISION_KERNEL_TYPED(T)                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
+      MixedPrecisionGroupQueryAttention,                                      \
+      kMSDomain,                                                              \
+      1,                                                                      \
+      T,                                                                      \
+      kCpuExecutionProvider,                                                  \
+      KernelDefBuilder()                                                      \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
+          .TypeConstraint("T_CACHE", DataTypeImpl::GetTensorType<uint8_t>())  \
+          .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),       \
+      MixedPrecisionGroupQueryAttention<T>);
+
+REGISTER_MIXED_PRECISION_KERNEL_TYPED(float)
+REGISTER_MIXED_PRECISION_KERNEL_TYPED(MLFloat16)
+
 template <typename T>
 GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
     : OpKernel(info), GQAAttentionBase(info, true) {
   sliding_window_cache_ = info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 1;
   ORT_ENFORCE(!sliding_window_cache_ || local_window_size_ > 0,
               "GroupQueryAttention (CPU): sliding_window_cache=1 requires local_window_size > 0.");
+}
+
+template <typename T>
+MixedPrecisionGroupQueryAttention<T>::MixedPrecisionGroupQueryAttention(const OpKernelInfo& info)
+    : GroupQueryAttention<T>(info) {
+  // INT2 PER_GROUP (OSCAR) quantization is inherent to this operator; force it on regardless of the
+  // (absent) quantization-selector attributes parsed by the base constructor.
+  this->k_quant_type_ = KVQuantizationType::PER_GROUP;
+  this->v_quant_type_ = KVQuantizationType::PER_GROUP;
+  this->kv_cache_bit_width_ = 2;
+  this->kv_quant_enabled_ = true;
+
+  const int64_t cache_format_version = info.GetAttrOrDefault<int64_t>("cache_format_version", 1);
+  ORT_ENFORCE(cache_format_version == 1,
+              "MixedPrecisionGroupQueryAttention (CPU): unsupported cache_format_version ", cache_format_version,
+              " (only version 1 is supported).");
+
+  const std::string metadata_type = info.GetAttrOrDefault<std::string>("metadata_type", "fp32");
+  ORT_ENFORCE(metadata_type == "fp32" || metadata_type == "fp16",
+              "MixedPrecisionGroupQueryAttention (CPU): metadata_type must be 'fp32' or 'fp16', got '",
+              metadata_type, "'.");
+  this->kv_quant_meta_fp16_ = (metadata_type == "fp16");
 }
 
 template <typename T>

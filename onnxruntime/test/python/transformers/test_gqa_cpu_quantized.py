@@ -9,9 +9,11 @@ import math
 import unittest
 
 import numpy as np
+import onnx
 from onnx import TensorProto, helper
 
 from onnxruntime import InferenceSession, SessionOptions
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 
 # Whether to run the full matrix of tests or a subset for CI.
 pipeline_mode = True
@@ -1124,7 +1126,8 @@ def create_oscar2bit_gqa_graph(
     meta_fp16=False,
     io_fp16=False,
 ):
-    """ONNX graph for GroupQueryAttention with the 2-bit PER_GROUP (OSCAR) KV cache.
+    """ONNX graph for MixedPrecisionGroupQueryAttention with the 2-bit PER_GROUP (OSCAR) KV cache
+    and no high-precision sink/recent window (sink_size == recent_size == 0).
 
     Unlike the INT8/INT4 path, scales/zeros are packed inline in the cache rows, so
     there are no k_scale/v_scale inputs and the cache dtype is UINT8. Independent
@@ -1140,19 +1143,17 @@ def create_oscar2bit_gqa_graph(
     io_dtype = TensorProto.FLOAT16 if io_fp16 else TensorProto.FLOAT
 
     node = helper.make_node(
-        op_type="GroupQueryAttention",
+        op_type="MixedPrecisionGroupQueryAttention",
         inputs=["query", "key", "value", "past_key", "past_value", "seqlens_k", "total_sequence_length"],
         outputs=["output", "present_key", "present_value"],
-        name="GroupQueryAttention_0",
+        name="MixedPrecisionGroupQueryAttention_0",
         num_heads=num_heads,
         kv_num_heads=kv_num_heads,
-        k_quant_type="PER_GROUP",
-        v_quant_type="PER_GROUP",
-        kv_cache_bit_width=2,
         kv_quant_group_size=group_size,
         k_quant_rho=float(k_rho),
         v_quant_rho=float(v_rho),
-        kv_quant_metadata_fp16=1 if meta_fp16 else 0,
+        metadata_type="fp16" if meta_fp16 else "fp32",
+        cache_format_version=1,
         domain="com.microsoft",
     )
 
@@ -1370,7 +1371,8 @@ def run_oscar2bit_gqa_decode_test(
 
 
 class TestGQACPUQuantizedKVOscar2Bit(unittest.TestCase):
-    """Test CPU GroupQueryAttention with the 2-bit PER_GROUP (OSCAR) KV cache."""
+    """Test CPU MixedPrecisionGroupQueryAttention with the 2-bit PER_GROUP (OSCAR) KV cache
+    and no high-precision sink/recent window."""
 
     def test_2bit_basic(self):
         run_oscar2bit_gqa_prompt_test(1, 8, 2, 2, 16, 8)
@@ -1411,7 +1413,7 @@ class TestGQACPUQuantizedKVOscar2Bit(unittest.TestCase):
     def test_2bit_long_sequence(self):
         run_oscar2bit_gqa_prompt_test(1, 128, 8, 2, 64, 8, k_rho=0.96, v_rho=0.92)
 
-    # ---- fp16 metadata (kv_quant_metadata_fp16=1) variants ----
+    # ---- fp16 metadata (metadata_type="fp16") variants ----
     # Scale/zero stored as fp16 inline in each packed row (40B vs 48B for head_size=64,
     # group_size=8). atol is loosened slightly to absorb the fp16 rounding of scale/zero.
 
@@ -1486,7 +1488,7 @@ class TestGQACPUQuantizedKVOscar2Bit(unittest.TestCase):
         phs = oscar2bit_packed_head_size(head_size, group_size)
 
         node = helper.make_node(
-            op_type="GroupQueryAttention",
+            op_type="MixedPrecisionGroupQueryAttention",
             inputs=[
                 "query",
                 "key",
@@ -1501,15 +1503,13 @@ class TestGQACPUQuantizedKVOscar2Bit(unittest.TestCase):
                 "attention_bias",  # attention_bias at index 10
             ],
             outputs=["output", "present_key", "present_value"],
-            name="GroupQueryAttention_0",
+            name="MixedPrecisionGroupQueryAttention_0",
             num_heads=num_heads,
             kv_num_heads=kv_num_heads,
-            k_quant_type="PER_GROUP",
-            v_quant_type="PER_GROUP",
-            kv_cache_bit_width=2,
             kv_quant_group_size=group_size,
             k_quant_rho=1.0,
             v_quant_rho=1.0,
+            cache_format_version=1,
             domain="com.microsoft",
         )
         graph_input = [
@@ -1564,104 +1564,6 @@ def _mixed_kv_ref(kv_bnsh, group_size, rho, sink, recent):
     return out
 
 
-def create_oscar2bit_mixed_gqa_graph(
-    batch_size,
-    q_len,
-    past_len,
-    present_len,
-    hp_past_len,
-    hp_present_len,
-    num_heads,
-    kv_num_heads,
-    head_size,
-    group_size,
-    k_rho,
-    v_rho,
-    io_fp16=False,
-):
-    """GroupQueryAttention graph for the OSCAR mixed-precision (Option C split-tensor) cache:
-    2-bit history in present_{key,value} plus a high-precision FP window in present_hp_{key,value}.
-    The FP window I/O sit at fixed node input indices 16/17 and output indices 4/5.
-
-    io_fp16 selects the Q/K/V/output AND high-precision window dtype (FLOAT16 vs FLOAT);
-    the packed 2-bit history stays UINT8. The hp window carries the model compute dtype."""
-    hidden_size = num_heads * head_size
-    kv_hidden_size = kv_num_heads * head_size
-    phs = oscar2bit_packed_head_size(head_size, group_size)
-    io_dtype = TensorProto.FLOAT16 if io_fp16 else TensorProto.FLOAT
-
-    node = helper.make_node(
-        op_type="GroupQueryAttention",
-        inputs=[
-            "query",
-            "key",
-            "value",
-            "past_key",
-            "past_value",
-            "seqlens_k",
-            "total_sequence_length",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",  # indices 7..15 (unused optional inputs)
-            "past_hp_key",
-            "past_hp_value",  # indices 16, 17
-        ],
-        outputs=["output", "present_key", "present_value", "", "present_hp_key", "present_hp_value"],
-        name="GroupQueryAttention_0",
-        num_heads=num_heads,
-        kv_num_heads=kv_num_heads,
-        k_quant_type="PER_GROUP",
-        v_quant_type="PER_GROUP",
-        kv_cache_bit_width=2,
-        kv_quant_group_size=group_size,
-        k_quant_rho=float(k_rho),
-        v_quant_rho=float(v_rho),
-        domain="com.microsoft",
-    )
-
-    graph_input = [
-        helper.make_tensor_value_info("query", io_dtype, [batch_size, q_len, hidden_size]),
-        helper.make_tensor_value_info("key", io_dtype, [batch_size, q_len, kv_hidden_size]),
-        helper.make_tensor_value_info("value", io_dtype, [batch_size, q_len, kv_hidden_size]),
-        helper.make_tensor_value_info("past_key", TensorProto.UINT8, [batch_size, kv_num_heads, past_len, phs]),
-        helper.make_tensor_value_info("past_value", TensorProto.UINT8, [batch_size, kv_num_heads, past_len, phs]),
-        helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size]),
-        helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
-        helper.make_tensor_value_info("past_hp_key", io_dtype, [batch_size, kv_num_heads, hp_past_len, head_size]),
-        helper.make_tensor_value_info("past_hp_value", io_dtype, [batch_size, kv_num_heads, hp_past_len, head_size]),
-    ]
-    graph_output = [
-        helper.make_tensor_value_info("output", io_dtype, [batch_size, q_len, hidden_size]),
-        helper.make_tensor_value_info("present_key", TensorProto.UINT8, [batch_size, kv_num_heads, present_len, phs]),
-        helper.make_tensor_value_info("present_value", TensorProto.UINT8, [batch_size, kv_num_heads, present_len, phs]),
-        helper.make_tensor_value_info(
-            "present_hp_key", io_dtype, [batch_size, kv_num_heads, hp_present_len, head_size]
-        ),
-        helper.make_tensor_value_info(
-            "present_hp_value", io_dtype, [batch_size, kv_num_heads, hp_present_len, head_size]
-        ),
-    ]
-
-    graph = helper.make_graph([node], "Oscar2BitMixedGQA_Graph", graph_input, graph_output)
-    model = helper.make_model(
-        graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
-    )
-    return model.SerializeToString()
-
-
-def _mixed_session(model_str, sink, recent):
-    so = SessionOptions()
-    so.add_session_config_entry("gqa.kv_quant.sink", str(int(sink)))
-    so.add_session_config_entry("gqa.kv_quant.recent", str(int(recent)))
-    return InferenceSession(model_str, so, providers=["CPUExecutionProvider"])
-
-
 def run_oscar2bit_mixed_prompt_test(
     batch_size,
     seq_len,
@@ -1697,7 +1599,7 @@ def run_oscar2bit_mixed_prompt_test(
     past_v = np.zeros((batch_size, kv_num_heads, seq_len, phs), dtype=np.uint8)
     hp_empty = np.zeros((batch_size, kv_num_heads, 0, head_size), dtype=io_np)
 
-    model = create_oscar2bit_mixed_gqa_graph(
+    model = create_mixed_precision_gqa_graph(
         batch_size,
         seq_len,
         seq_len,
@@ -1708,11 +1610,13 @@ def run_oscar2bit_mixed_prompt_test(
         kv_num_heads,
         head_size,
         group_size,
+        sink,
+        recent,
         k_rho,
         v_rho,
         io_fp16=io_fp16,
     )
-    sess = _mixed_session(model, sink, recent)
+    sess = InferenceSession(model, SessionOptions(), providers=["CPUExecutionProvider"])
     out_ort = sess.run(
         None,
         {
@@ -1774,7 +1678,7 @@ def run_oscar2bit_mixed_decode_test(
     v1 = np.random.uniform(-0.5, 0.5, (batch_size, s, kv_hidden_size)).astype(io_np)
     hp_empty = np.zeros((batch_size, kv_num_heads, 0, head_size), dtype=io_np)
 
-    model1 = create_oscar2bit_mixed_gqa_graph(
+    model1 = create_mixed_precision_gqa_graph(
         batch_size,
         s,
         s,
@@ -1785,11 +1689,13 @@ def run_oscar2bit_mixed_decode_test(
         kv_num_heads,
         head_size,
         group_size,
+        sink,
+        recent,
         k_rho,
         v_rho,
         io_fp16=io_fp16,
     )
-    sess1 = _mixed_session(model1, sink, recent)
+    sess1 = InferenceSession(model1, SessionOptions(), providers=["CPUExecutionProvider"])
     out1 = sess1.run(
         None,
         {
@@ -1810,7 +1716,7 @@ def run_oscar2bit_mixed_decode_test(
     k2 = np.random.uniform(-0.5, 0.5, (batch_size, 1, kv_hidden_size)).astype(io_np)
     v2 = np.random.uniform(-0.5, 0.5, (batch_size, 1, kv_hidden_size)).astype(io_np)
 
-    model2 = create_oscar2bit_mixed_gqa_graph(
+    model2 = create_mixed_precision_gqa_graph(
         batch_size,
         1,
         s,
@@ -1821,11 +1727,13 @@ def run_oscar2bit_mixed_decode_test(
         kv_num_heads,
         head_size,
         group_size,
+        sink,
+        recent,
         k_rho,
         v_rho,
         io_fp16=io_fp16,
     )
-    sess2 = _mixed_session(model2, sink, recent)
+    sess2 = InferenceSession(model2, SessionOptions(), providers=["CPUExecutionProvider"])
     out_ort = sess2.run(
         None,
         {
@@ -1987,16 +1895,18 @@ def create_oscar2bit_mixed_rot_gqa_graph(
     kv_num_heads,
     head_size,
     group_size,
+    sink,
+    recent,
     k_rho,
     v_rho,
 ):
-    """Like create_oscar2bit_mixed_gqa_graph but also wires oscar_rotation_k/v at inputs 18/19."""
+    """Like create_mixed_precision_gqa_graph but also wires oscar_rotation_k/v at inputs 18/19."""
     hidden_size = num_heads * head_size
     kv_hidden_size = kv_num_heads * head_size
     phs = oscar2bit_packed_head_size(head_size, group_size)
 
     node = helper.make_node(
-        op_type="GroupQueryAttention",
+        op_type="MixedPrecisionGroupQueryAttention",
         inputs=[
             "query",
             "key",
@@ -2020,15 +1930,15 @@ def create_oscar2bit_mixed_rot_gqa_graph(
             "oscar_rotation_v",  # indices 18, 19
         ],
         outputs=["output", "present_key", "present_value", "", "present_hp_key", "present_hp_value"],
-        name="GroupQueryAttention_0",
+        name="MixedPrecisionGroupQueryAttention_0",
         num_heads=num_heads,
         kv_num_heads=kv_num_heads,
-        k_quant_type="PER_GROUP",
-        v_quant_type="PER_GROUP",
-        kv_cache_bit_width=2,
         kv_quant_group_size=group_size,
         k_quant_rho=float(k_rho),
         v_quant_rho=float(v_rho),
+        sink_size=int(sink),
+        recent_size=int(recent),
+        cache_format_version=1,
         domain="com.microsoft",
     )
 
@@ -2118,10 +2028,12 @@ def run_oscar2bit_mixed_rot_prompt_test(
         kv_num_heads,
         head_size,
         group_size,
+        sink,
+        recent,
         k_rho,
         v_rho,
     )
-    sess = _mixed_session(model, sink, recent)
+    sess = InferenceSession(model, SessionOptions(), providers=["CPUExecutionProvider"])
     out_ort = sess.run(
         None,
         {
@@ -2218,14 +2130,16 @@ def run_oscar2bit_mixed_rot_identity_test(
         kv_num_heads,
         head_size,
         group_size,
+        sink,
+        recent,
         k_rho,
         v_rho,
     )
-    out_rot = _mixed_session(rot_model, sink, recent).run(
+    out_rot = InferenceSession(rot_model, SessionOptions(), providers=["CPUExecutionProvider"]).run(
         None, {**inputs_common, "oscar_rotation_k": eye, "oscar_rotation_v": eye}
     )[0]
 
-    plain_model = create_oscar2bit_mixed_gqa_graph(
+    plain_model = create_mixed_precision_gqa_graph(
         batch_size,
         seq_len,
         seq_len,
@@ -2236,10 +2150,14 @@ def run_oscar2bit_mixed_rot_identity_test(
         kv_num_heads,
         head_size,
         group_size,
+        sink,
+        recent,
         k_rho,
         v_rho,
     )
-    out_plain = _mixed_session(plain_model, sink, recent).run(None, inputs_common)[0]
+    out_plain = InferenceSession(plain_model, SessionOptions(), providers=["CPUExecutionProvider"]).run(
+        None, inputs_common
+    )[0]
 
     np.testing.assert_allclose(
         out_rot,
@@ -2286,9 +2204,22 @@ def run_oscar2bit_mixed_rot_decode_test(
 
     # Step 1: prompt. Build the rotated 2-bit history + FP sink/recent window in one call.
     model1 = create_oscar2bit_mixed_rot_gqa_graph(
-        batch_size, s, s, s, 0, hp_prompt_len, num_heads, kv_num_heads, head_size, group_size, k_rho, v_rho
+        batch_size,
+        s,
+        s,
+        s,
+        0,
+        hp_prompt_len,
+        num_heads,
+        kv_num_heads,
+        head_size,
+        group_size,
+        sink,
+        recent,
+        k_rho,
+        v_rho,
     )
-    sess1 = _mixed_session(model1, sink, recent)
+    sess1 = InferenceSession(model1, SessionOptions(), providers=["CPUExecutionProvider"])
     out1 = sess1.run(
         None,
         {
@@ -2323,10 +2254,12 @@ def run_oscar2bit_mixed_rot_decode_test(
         kv_num_heads,
         head_size,
         group_size,
+        sink,
+        recent,
         k_rho,
         v_rho,
     )
-    sess2 = _mixed_session(model2, sink, recent)
+    sess2 = InferenceSession(model2, SessionOptions(), providers=["CPUExecutionProvider"])
     out_ort = sess2.run(
         None,
         {
@@ -2367,8 +2300,9 @@ def run_oscar2bit_mixed_rot_decode_test(
     )
 
 
-class TestGQACPUQuantizedKVOscar2BitMixed(unittest.TestCase):
-    """CPU GroupQueryAttention: OSCAR 2-bit KV cache with the mixed-precision sink/recent window."""
+class TestMixedPrecisionGQAOscar2Bit(unittest.TestCase):
+    """com.microsoft.MixedPrecisionGroupQueryAttention: OSCAR 2-bit KV cache with the
+    mixed-precision sink/recent window (sink_size / recent_size attributes)."""
 
     def test_mixed_middle_history(self):
         """seq > sink+recent so a 2-bit middle exists."""
@@ -2433,8 +2367,9 @@ class TestGQACPUQuantizedKVOscar2BitMixed(unittest.TestCase):
         run_oscar2bit_mixed_decode_test(1, 5, 2, 2, 128, 64, sink=4, recent=4, atol=2e-2, io_fp16=True)
 
 
-class TestGQACPUQuantizedKVOscar2BitRotation(unittest.TestCase):
-    """CPU GroupQueryAttention: OSCAR 2-bit KV cache with in-kernel post-RoPE R_K/R_V rotation."""
+class TestMixedPrecisionGQAOscar2BitRotation(unittest.TestCase):
+    """com.microsoft.MixedPrecisionGroupQueryAttention: OSCAR 2-bit KV cache with in-kernel
+    post-RoPE R_K/R_V rotation."""
 
     def test_rotation_identity_matches_plain(self):
         """R = I must reproduce the un-rotated mixed output bit-for-bit."""
@@ -2468,6 +2403,124 @@ class TestGQACPUQuantizedKVOscar2BitRotation(unittest.TestCase):
 
     def test_rotation_decode_two_groups(self):
         run_oscar2bit_mixed_rot_decode_test(1, 12, 2, 2, 32, 16, sink=2, recent=4)
+
+
+def create_mixed_precision_gqa_graph(
+    batch_size,
+    q_len,
+    past_len,
+    present_len,
+    hp_past_len,
+    hp_present_len,
+    num_heads,
+    kv_num_heads,
+    head_size,
+    group_size,
+    sink,
+    recent,
+    k_rho=1.0,
+    v_rho=1.0,
+    metadata_type="fp32",
+    io_fp16=False,
+):
+    """com.microsoft.MixedPrecisionGroupQueryAttention graph for the OSCAR mixed-precision cache:
+    2-bit history in present_{key,value} plus a high-precision FP window in present_hp_{key,value}
+    (I/O at node input indices 16/17 and output indices 4/5). INT2/PER_GROUP is inherent and the
+    sink/recent window sizes are node attributes (sink_size / recent_size)."""
+    hidden_size = num_heads * head_size
+    kv_hidden_size = kv_num_heads * head_size
+    phs = oscar2bit_packed_head_size(head_size, group_size)
+    io_dtype = TensorProto.FLOAT16 if io_fp16 else TensorProto.FLOAT
+
+    node = helper.make_node(
+        op_type="MixedPrecisionGroupQueryAttention",
+        inputs=[
+            "query",
+            "key",
+            "value",
+            "past_key",
+            "past_value",
+            "seqlens_k",
+            "total_sequence_length",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",  # indices 7..15 (unused optional inputs)
+            "past_hp_key",
+            "past_hp_value",  # indices 16, 17
+        ],
+        outputs=["output", "present_key", "present_value", "", "present_hp_key", "present_hp_value"],
+        name="MixedPrecisionGroupQueryAttention_0",
+        num_heads=num_heads,
+        kv_num_heads=kv_num_heads,
+        kv_quant_group_size=group_size,
+        k_quant_rho=float(k_rho),
+        v_quant_rho=float(v_rho),
+        sink_size=int(sink),
+        recent_size=int(recent),
+        metadata_type=metadata_type,
+        cache_format_version=1,
+        domain="com.microsoft",
+    )
+
+    graph_input = [
+        helper.make_tensor_value_info("query", io_dtype, [batch_size, q_len, hidden_size]),
+        helper.make_tensor_value_info("key", io_dtype, [batch_size, q_len, kv_hidden_size]),
+        helper.make_tensor_value_info("value", io_dtype, [batch_size, q_len, kv_hidden_size]),
+        helper.make_tensor_value_info("past_key", TensorProto.UINT8, [batch_size, kv_num_heads, past_len, phs]),
+        helper.make_tensor_value_info("past_value", TensorProto.UINT8, [batch_size, kv_num_heads, past_len, phs]),
+        helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [batch_size]),
+        helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
+        helper.make_tensor_value_info("past_hp_key", io_dtype, [batch_size, kv_num_heads, hp_past_len, head_size]),
+        helper.make_tensor_value_info("past_hp_value", io_dtype, [batch_size, kv_num_heads, hp_past_len, head_size]),
+    ]
+    graph_output = [
+        helper.make_tensor_value_info("output", io_dtype, [batch_size, q_len, hidden_size]),
+        helper.make_tensor_value_info("present_key", TensorProto.UINT8, [batch_size, kv_num_heads, present_len, phs]),
+        helper.make_tensor_value_info("present_value", TensorProto.UINT8, [batch_size, kv_num_heads, present_len, phs]),
+        helper.make_tensor_value_info(
+            "present_hp_key", io_dtype, [batch_size, kv_num_heads, hp_present_len, head_size]
+        ),
+        helper.make_tensor_value_info(
+            "present_hp_value", io_dtype, [batch_size, kv_num_heads, hp_present_len, head_size]
+        ),
+    ]
+
+    graph = helper.make_graph([node], "MixedPrecisionGQA_Graph", graph_input, graph_output)
+    model = helper.make_model(
+        graph, opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)]
+    )
+    return model.SerializeToString()
+
+
+class TestMixedPrecisionGroupQueryAttention(unittest.TestCase):
+    """com.microsoft.MixedPrecisionGroupQueryAttention operator-config validation.
+
+    Numeric correctness of the attribute-driven OSCAR 2-bit cache is covered by
+    TestMixedPrecisionGQAOscar2Bit and TestMixedPrecisionGQAOscar2BitRotation; this class checks
+    the op-specific attribute enforcement (cache_format_version / metadata_type)."""
+
+    def test_bad_cache_format_version_rejected(self):
+        model = create_mixed_precision_gqa_graph(1, 8, 8, 8, 0, 4, 2, 2, 128, 64, sink=2, recent=2)
+        # Patch cache_format_version to an unsupported value.
+        m = onnx.load_model_from_string(model)
+        for attr in m.graph.node[0].attribute:
+            if attr.name == "cache_format_version":
+                attr.i = 2
+        with self.assertRaises(Fail):
+            InferenceSession(m.SerializeToString(), SessionOptions(), providers=["CPUExecutionProvider"])
+
+    def test_bad_metadata_type_rejected(self):
+        model = create_mixed_precision_gqa_graph(
+            1, 8, 8, 8, 0, 4, 2, 2, 128, 64, sink=2, recent=2, metadata_type="bf16"
+        )
+        with self.assertRaises(Fail):
+            InferenceSession(model, SessionOptions(), providers=["CPUExecutionProvider"])
 
 
 if __name__ == "__main__":

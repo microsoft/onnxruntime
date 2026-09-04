@@ -724,11 +724,3 @@ static const char* const kOrtSessionOptionsConfigUsePerSessionThreads = "session
 // "0": disable; "1": enable.
 // Equivalent to OrtApi::SetDeterministicCompute.
 static const char* const kOrtSessionOptionsConfigUseDeterministicCompute = "session.use_deterministic_compute";
-
-// GroupQueryAttention OSCAR 2-bit KV cache: number of leading "sink" tokens kept in
-// high precision (not quantized). Default "0". Example: "16".
-static const char* const kOrtSessionOptionsGqaKvQuantSink = "gqa.kv_quant.sink";
-
-// GroupQueryAttention OSCAR 2-bit KV cache: number of trailing "recent" tokens kept in
-// high precision (not quantized). Default "0". Example: "32".
-static const char* const kOrtSessionOptionsGqaKvQuantRecent = "gqa.kv_quant.recent";
