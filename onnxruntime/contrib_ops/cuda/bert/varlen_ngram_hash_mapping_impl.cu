@@ -205,7 +205,7 @@ Status LaunchVarlenNGramHashMappingKernel(
     const int64_t fill_blocks = std::min<int64_t>(
         65535, (max_elements + fill_threads - 1) / fill_threads);
     VarlenNGramFillDefaultKernel<T><<<static_cast<unsigned int>(std::max<int64_t>(1, fill_blocks)),
-                                       fill_threads, 0, stream>>>(
+                                      fill_threads, 0, stream>>>(
         output, present_ids, output_count, present_count, pad_id, is_valid_scratch);
     ORT_RETURN_IF_ERROR(CUDA_CALL(cudaGetLastError()));
   }
