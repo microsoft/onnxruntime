@@ -3515,6 +3515,24 @@ static std::unique_ptr<IExecutionProvider> WebGpuEPWithKVCacheQuantization(
   return WebGpuEPForGqaOptions(enable_graph_capture, bit_width);
 }
 
+static std::vector<float> RunGQAReference(
+    int batch_size,
+    int sequence_length,
+    int num_heads,
+    int kv_num_heads,
+    int head_size,
+    const std::vector<float>& query_data,
+    const std::vector<float>& key_data,
+    const std::vector<float>& value_data,
+    bool do_rotary,
+    bool use_fp16 = false,
+    bool rotary_interleaved = false);
+
+static void ExpectBlockQuantInt8Close(const std::vector<float>& reference,
+                                      const std::vector<float>& actual,
+                                      float max_relative_rmse,
+                                      float max_absolute_error);
+
 // Graph capture requires the indirect-dispatch dimensions to be prepared on the GPU.
 // Verify that static-cache preprocessing uses the batch-wide total_sequence_length input
 // instead of deriving the dispatch width from batch 0's (possibly shorter) seqlens_k value. The
@@ -3522,7 +3540,8 @@ static std::unique_ptr<IExecutionProvider> WebGpuEPWithKVCacheQuantization(
 // covering the right-padding underflow clamp with true static-cache aliasing.
 static void RunIndirectDispatchGraphCapture(bool do_rotary,
                                             uint32_t kv_cache_quant_bits,
-                                            bool enable_multi_rotary_cache) {
+                                            bool enable_multi_rotary_cache,
+                                            bool rotary_interleaved = false) {
   constexpr int batch_size = 2;
   constexpr int sequence_length = 4;
   constexpr int short_total_sequence_length = 2;
@@ -3581,6 +3600,7 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
     node.AddAttribute("kv_num_heads", static_cast<int64_t>(kv_num_heads));
     if (do_rotary) {
       node.AddAttribute("do_rotary", int64_t{1});
+      node.AddAttribute("rotary_interleaved", static_cast<int64_t>(rotary_interleaved));
     }
     ORT_THROW_IF_ERROR(graph.Resolve());
   }
@@ -3731,6 +3751,30 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
   ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
   auto first_output = read_output();
 
+  if (kv_cache_quant_bits == 8 && do_rotary && rotary_interleaved) {
+    constexpr int reference_sequence_length = short_total_sequence_length;
+    std::vector<float> reference_query(reference_sequence_length * hidden_size);
+    std::vector<float> reference_key(reference_sequence_length * kv_hidden_size);
+    std::vector<float> reference_value(reference_sequence_length * kv_hidden_size);
+    for (int seq = 0; seq < reference_sequence_length; ++seq) {
+      const size_t packed_base = seq * packed_hidden_size;
+      std::copy_n(query_data.data() + packed_base, hidden_size,
+                  reference_query.data() + seq * hidden_size);
+      std::copy_n(query_data.data() + packed_base + hidden_size, kv_hidden_size,
+                  reference_key.data() + seq * kv_hidden_size);
+      std::copy_n(query_data.data() + packed_base + hidden_size + kv_hidden_size, kv_hidden_size,
+                  reference_value.data() + seq * kv_hidden_size);
+    }
+    const auto reference = RunGQAReference(
+        /*batch_size=*/1, reference_sequence_length, num_heads, kv_num_heads, head_size,
+        reference_query, reference_key, reference_value, /*do_rotary=*/true,
+        /*use_fp16=*/false, /*rotary_interleaved=*/true);
+    const std::vector<float> actual(first_output.begin(),
+                                    first_output.begin() + reference_sequence_length * hidden_size);
+    ExpectBlockQuantInt8Close(reference, actual, /*max_relative_rmse=*/0.02f,
+                              /*max_absolute_error=*/0.03f);
+  }
+
   // Batch 0 has only two logical tokens in a four-token input. TurboQuant static-cache
   // slots for its two padded tokens must retain their original contents. The standard
   // path currently writes padding slots, which is unrelated to cache-bank selection.
@@ -3751,7 +3795,7 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
     expect_padding_unchanged(read_gpu_bytes(past_key_value), past_key_data, "key");
     expect_padding_unchanged(read_gpu_bytes(past_value_value), past_value_data, "value");
   }
-  if (kv_cache_quant_bits == 8 && do_rotary) {
+  if (kv_cache_quant_bits == 8 && do_rotary && !rotary_interleaved) {
     const auto key_bytes = read_gpu_bytes(past_key_value);
     const auto value_bytes = read_gpu_bytes(past_value_value);
     std::vector<uint32_t> key_words(key_bytes.size() / sizeof(uint32_t));
@@ -3854,6 +3898,13 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_FusedRotary
   RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
                                   /*kv_cache_quant_bits=*/8,
                                   /*enable_multi_rotary_cache=*/false);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_InterleavedRotaryFallback) {
+  RunIndirectDispatchGraphCapture(/*do_rotary=*/true,
+                                  /*kv_cache_quant_bits=*/8,
+                                  /*enable_multi_rotary_cache=*/false,
+                                  /*rotary_interleaved=*/true);
 }
 
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_NoRotary) {
@@ -4220,6 +4271,18 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonPowerOf2HeadSize) {
   tester.Run(OpTester::ExpectResult::kExpectFailure,
              "KV cache quantization requires head_size >= 8 and a power of 2",
              {}, nullptr, &execution_providers);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_RejectsHeadSizeNotDivisibleBy4) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  RunGQATurboQuant(/*batch_size=*/1, /*sequence_length=*/1, /*past_seq_len=*/8,
+                   /*num_heads=*/2, /*kv_num_heads=*/1, /*head_size=*/98,
+                   /*do_rotary=*/false, /*is_packed_qkv=*/false,
+                   /*bit_width=*/8, OpTester::ExpectResult::kExpectFailure,
+                   "Q8 block-quantized KV cache requires head_size to be divisible by 4");
 }
 
 // --- Success paths: TurboQuant with flash attention at various K sizes ---
@@ -4758,7 +4821,8 @@ static std::vector<float> RunGQAReference(
     const std::vector<float>& key_data,
     const std::vector<float>& value_data,
     bool do_rotary,
-    bool use_fp16 = false) {
+    bool use_fp16,
+    bool rotary_interleaved) {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int total_sequence_length = sequence_length;  // no past
@@ -4768,6 +4832,7 @@ static std::vector<float> RunGQAReference(
   tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
   if (do_rotary) {
     tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
+    tester.AddAttribute<int64_t>("rotary_interleaved", static_cast<int64_t>(rotary_interleaved));
   }
 
   if (use_fp16) {
