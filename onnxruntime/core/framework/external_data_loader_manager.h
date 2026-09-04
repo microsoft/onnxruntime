@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <string>
+#include <unordered_set>
+
 #include "core/common/status.h"
 #include "core/common/common.h"
 #include "core/framework/external_data_loader.h"
@@ -28,6 +31,7 @@ class ExternalDataLoaderManager {
       const Env& env,
       const std::filesystem::path& model_path,
       const Graph& graph,
+      const std::unordered_set<std::string>& excluded_initializer_names,
       const std::function<bool()>& is_cancelled) const;
   common::Status BeginLoad() const;
   common::Status FinalizeLoad(const std::function<bool()>& is_cancelled) const;

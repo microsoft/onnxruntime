@@ -95,17 +95,22 @@ WebGpuContext::~WebGpuContext() {
 void WebGpuContext::StartInitialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, config]() {
     device_free_ = config.compile_only;
+    auto initialize = [this, config]() {
+      initialize_thread_id_ = std::this_thread::get_id();
+      ORT_TRY {
+        Initialize(config);
+      }
+      ORT_CATCH(...) {
+        SignalStartInitializeComplete(std::current_exception());
+        ORT_RETHROW;
+      }
+    };
+#if defined(__wasm__) && !defined(__EMSCRIPTEN_PTHREADS__)
+    initialize();
+#else
     initialize_future_ =
-        std::async(std::launch::async, [this, config]() {
-          initialize_thread_id_ = std::this_thread::get_id();
-          ORT_TRY {
-            Initialize(config);
-          }
-          ORT_CATCH(...) {
-            SignalStartInitializeComplete(std::current_exception());
-            ORT_RETHROW;
-          }
-        }).share();
+        std::async(std::launch::async, std::move(initialize)).share();
+#endif
   });
 
   WaitForStartInitializeComplete();
@@ -131,9 +136,13 @@ void WebGpuContext::StartInitialize(const WebGpuContextConfig& config) {
     }
   }
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
   if (!IsWeightLoadAccelerationEnabled(config.weight_load_acceleration_mode)) {
     WaitForInitializeComplete();
   }
+#else
+  WaitForInitializeComplete();
+#endif
 }
 
 void WebGpuContext::WaitForStartInitializeComplete() const {
@@ -395,10 +404,12 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     }
 #endif
     SignalStartInitializeComplete();
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
     if (IsWeightLoadAccelerationEnabled(weight_load_acceleration_mode_)) {
       std::unique_lock<std::mutex> lock{initialize_mutex_};
       initialize_condition_.wait(lock, [this]() { return continue_initialize_; });
     }
+#endif
 
     // Create wgpu::Device
     wgpu::DeviceDescriptor device_desc = {};

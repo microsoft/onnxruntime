@@ -44,6 +44,14 @@ constexpr uint64_t kMaxRequestSize = 64ull * 1024ull * 1024ull;
 constexpr uint32_t kMaxAllocationWorkers = 4;
 constexpr uint64_t kCancellationTag = 1;
 
+constexpr uint32_t GrowQueueCapacity(uint32_t capacity) {
+  return capacity > DSTORAGE_MAX_QUEUE_CAPACITY / 2
+             ? DSTORAGE_MAX_QUEUE_CAPACITY
+             : capacity * 2;
+}
+
+static_assert(GrowQueueCapacity(32768) == DSTORAGE_MAX_QUEUE_CAPACITY);
+
 double Milliseconds(Clock::duration duration) {
   return std::chrono::duration<double, std::milli>(duration).count();
 }
@@ -246,7 +254,7 @@ common::Status LoadBatchToD3D12(
   uint32_t queue_capacity = DSTORAGE_MIN_QUEUE_CAPACITY;
   const size_t required_capacity = batch.request_count + 2;
   while (queue_capacity < required_capacity) {
-    queue_capacity *= 2;
+    queue_capacity = GrowQueueCapacity(queue_capacity);
   }
   if (initialization_status.IsOK()) {
     DSTORAGE_QUEUE_DESC queue_descriptor{};
@@ -356,15 +364,15 @@ common::Status LoadBatchToD3D12(
         wait_result, ".");
   }
   const auto io_end = Clock::now();
-  result = status_array->GetHResult(0);
-  ORT_RETURN_IF_ERROR(
-      FAILED(result) ? HResultStatus("DirectStorage request", result)
-                     : common::Status::OK());
   if (cancelled) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, MODEL_LOAD_CANCELED,
         "Loading DirectStorage external weights was canceled due to user request.");
   }
+  result = status_array->GetHResult(0);
+  ORT_RETURN_IF_ERROR(
+      FAILED(result) ? HResultStatus("DirectStorage request", result)
+                     : common::Status::OK());
 
   metrics.initialization_ms =
       Milliseconds(initialization_end - initialization_start);
