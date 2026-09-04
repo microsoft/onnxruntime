@@ -353,6 +353,14 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, GetComputeStream(context));
   int* cumulative_seqlens_kv_ptr = reinterpret_cast<int*>(cumulative_seqlens_kv_buffer.get());
 
+  // block_table is a graph input; CheckBlockTable validates only its shape, never entry values.
+  // Sanitize it once into a scratch copy so every attention backend can keep indexing the paged
+  // cache with a raw block_table entry, the way the write path already does.
+  size_t sanitized_block_table_bytes =
+      sizeof(int) * static_cast<size_t>(parameters.batch_size) * parameters.max_num_blocks_per_seq;
+  auto sanitized_block_table_buffer = GetScratchBuffer<void>(sanitized_block_table_bytes, GetComputeStream(context));
+  int* sanitized_block_table_ptr = reinterpret_cast<int*>(sanitized_block_table_buffer.get());
+
   // The fused prologue (QK-Norm and/or rotary) writes densified Q and K into the workspace, so it
   // needs room for both. Plain packed-QKV only needs to densify Q.
   const bool needs_qk_prologue = do_rotary_ || parameters.use_qk_norm;
@@ -372,6 +380,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>()),
       reinterpret_cast<const int*>(past_seqlens->Data<int>()),
       parameters.batch_size, cuda_stream));
+
+  ORT_RETURN_IF_ERROR(LaunchSanitizeBlockTable(
+      sanitized_block_table_ptr, reinterpret_cast<const int*>(block_table->Data<int>()), parameters.num_blocks,
+      parameters.batch_size, parameters.max_num_blocks_per_seq, cuda_stream));
 
   int total_kv_tokens = 0;
   int max_query_len = 0;
@@ -765,7 +777,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.cumulative_seqlens_q = reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>());
   data.past_seqlens = reinterpret_cast<const int*>(past_seqlens->Data<int>());
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
-  data.block_table = reinterpret_cast<const int*>(block_table->Data<int>());
+  data.block_table = sanitized_block_table_ptr;
   data.slot_mapping = slot_mapping == nullptr ? nullptr : reinterpret_cast<const int*>(slot_mapping->Data<int>());
   data.head_sink = head_sink == nullptr ? nullptr : reinterpret_cast<const CudaT*>(head_sink->Data<T>());
   data.q_norm_weight = q_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());
