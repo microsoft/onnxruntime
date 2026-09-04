@@ -2,11 +2,43 @@
 // Licensed under the MIT License.
 #include "core/providers/webgpu/webgpu_utils.h"
 
-#include <sstream>
-#include "core/providers/webgpu/shader_variable.h"
+#include <string>
+#include "core/platform/env_var.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+namespace {
+
+// Test/measurement override for Split-K gating, read from `ORT_WEBGPU_SPLIT_K`. `on` and `off` let a
+// single binary produce both arms of an A/B comparison, and let tests exercise the Split-K path on
+// adapters whose vendor table leaves it disabled.
+enum class SplitKOverride {
+  Default,
+  ForceOff,
+  ForceOn,
+};
+
+SplitKOverride ReadSplitKOverride() {
+  const std::string value = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_SPLIT_K");
+  if (value == "off" || value == "0") {
+    return SplitKOverride::ForceOff;
+  }
+  if (value == "on" || value == "1") {
+    return SplitKOverride::ForceOn;
+  }
+  return SplitKOverride::Default;
+}
+
+// Relu and unit-alpha QuickGelu, which is SiLU, are the kinds the Split-K reduction has been
+// measured with. Others are excluded pending measurement.
+bool IsActivationSupportedBySplitK(const Activation& activation) {
+  return activation.activation_kind_ == ActivationKind::None ||
+         activation.activation_kind_ == ActivationKind::Relu ||
+         activation.HasUnitQuickGeluAlpha();
+}
+
+}  // namespace
 
 TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components) {
   // Reduce the last dimensions by components creating a new tensor shape.
@@ -26,6 +58,12 @@ TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components
 }
 
 SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
+  const SplitKOverride override_mode = ReadSplitKOverride();
+  if (override_mode == SplitKOverride::ForceOff) {
+    // `enable_split_k_` defaults to false, and `UseSplitK` short-circuits on it.
+    return;
+  }
+
   if (adapter_info.vendor == std::string_view{"intel"}) {
     // Disable Split-K on old Intel GPUs.
     if (adapter_info.architecture == std::string_view{"gen-7"} ||
@@ -74,6 +112,21 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
       configs_per_dim_inner_range_.emplace_back(4096, 6.0);
     }
   }
+
+  if (override_mode == SplitKOverride::ForceOn && !enable_split_k_) {
+    // The override must produce a usable config on an adapter the vendor table left disabled, so it
+    // carries its own thresholds.
+    enable_split_k_ = true;
+
+    max_batch_size_ = 8;
+    split_dim_inner_ = 256;
+    min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
+
+    configs_per_dim_inner_range_.emplace_back(768, 52.0);
+    configs_per_dim_inner_range_.emplace_back(2304, 35.0);
+    configs_per_dim_inner_range_.emplace_back(3072, 21.5);
+    configs_per_dim_inner_range_.emplace_back(4096, 16.0);
+  }
 }
 
 SplitKConfig::ConfigAtRange::ConfigAtRange(uint32_t max_dim_inner, double rate)
@@ -86,7 +139,7 @@ uint32_t SplitKConfig::GetMaxDimInnerWithSplitK() const {
 
 bool SplitKConfig::UseSplitK(
     bool is_vec4,
-    ActivationKind activation_kind,
+    const Activation& activation,
     uint64_t batch_size,
     uint32_t dim_a_outer,
     uint32_t dim_b_outer,
@@ -98,8 +151,8 @@ bool SplitKConfig::UseSplitK(
 
   bool use_split_k = true;
 
-  // TODO: support the cases below.
-  use_split_k &= activation_kind == ActivationKind::None;
+  use_split_k &= IsActivationSupportedBySplitK(activation);
+  // TODO: support the scalar (non-vec4) path.
   use_split_k &= is_vec4;
 
   // Larger batches increase parallelism on their own, so we temporarily set a batch size threshold
@@ -110,7 +163,7 @@ bool SplitKConfig::UseSplitK(
   // MatMul/Conv|MatMul path. For GEMM and for MatMul or Conv|MatMul without bias, we need to
   // use `true` as `is_channels_last` to make `UseSplitK` ignore `is_channels_last`.
   // When `is_channels_last` has a valid value here, it is required to be true because we only
-  // generate `vec4` shaders in `MatMulFillBiasOrZeroBeforeSplitKProgram`.
+  // generate `vec4` shaders in `MatMulSplitKReduceProgram`, which is where bias is applied.
   use_split_k &= is_channels_last;
 
   // Split-K works best when `dim_inner` is relatively large compared with `dim_a_outer` and
@@ -134,24 +187,6 @@ bool SplitKConfig::UseSplitK(
 
 uint32_t SplitKConfig::GetSplitDimInner() const {
   return split_dim_inner_;
-}
-
-std::string GenerateAtomicAddNonIntegerCode(const ShaderVariableHelper& output, const std::string& offset, const std::string& output_type, const std::string& add_value) {
-  std::ostringstream ss;
-
-  std::string get_output_by_offset = output.GetByOffset(offset);
-  ss << "while (true) {\n"
-     << "  let old_output_i32 = atomicLoad(&" << get_output_by_offset << ");\n"
-     << "  let old_output_" << output_type << " = bitcast<" << output_type << ">(old_output_i32);\n"
-     << "  let new_output_" << output_type << " = old_output_" << output_type << " + " << add_value << ";\n"
-     << "  let new_output_i32 = bitcast<i32>(new_output_" << output_type << ");\n"
-     << "  let output_compare_exchange = atomicCompareExchangeWeak(&" << get_output_by_offset << ", old_output_i32, new_output_i32);\n"
-     << "  if (output_compare_exchange.old_value == old_output_i32) {\n"
-     << "    break;\n"
-     << "  }\n"
-     << "}\n";
-
-  return ss.str();
 }
 
 }  // namespace webgpu

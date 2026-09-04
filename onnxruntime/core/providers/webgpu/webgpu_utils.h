@@ -13,8 +13,6 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class ShaderVariableHelper;
-
 template <typename T>
 inline T CeilDiv(T numerator, T denominator) {
   return (numerator + denominator - 1) / denominator;
@@ -106,7 +104,7 @@ class SplitKConfig {
   explicit SplitKConfig(const wgpu::AdapterInfo& adapter_info);
 
   bool UseSplitK(
-      bool is_vec4, ActivationKind activation_kind, uint64_t batch_size,
+      bool is_vec4, const Activation& activation, uint64_t batch_size,
       uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last = true) const;
 
   uint32_t GetSplitDimInner() const;
@@ -126,22 +124,6 @@ class SplitKConfig {
   };
   std::vector<ConfigAtRange> configs_per_dim_inner_range_;
 };
-
-/**
- * Generates WGSL (WebGPU Shading Language) code for performing an atomic add operation
- * on a non-integer value (e.g., floating-point) in a shader.
- *
- * Since WGSL natively supports atomic operations only on integer types, this function
- * generates code that emulates atomic addition for non-integer types using a compare-and-swap loop.
- *
- * @param output        A reference to the ShaderVariableHelper representing the atomic variable
- *                      to be updated. This encapsulates the variable's name and access logic.
- * @param offset        The offset or index within the atomic variable where the operation is applied.
- * @param output_type   The WGSL type of the value being added (e.g., "f32").
- * @param add_value     The expression or variable representing the value to add.
- * @return              A string containing the generated WGSL code for the atomic add operation.
- */
-std::string GenerateAtomicAddNonIntegerCode(const ShaderVariableHelper& output, const std::string& offset, const std::string& output_type, const std::string& add_value);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
