@@ -664,8 +664,10 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreSm121Tiling) {
       {1, 24512, 5120, 48, 12, 1, 16, 1},  // Just below eight wide-grid waves uses the override.
       {1, 24576, 5120, 48, 12, 1, 2, 4},   // Eight wide-grid waves retain the generic selector.
       {1, 248320, 5120, 48, 12, 1, 2, 4},  // Wide output grids retain the generic selector.
-      {1, 17408, 5120, 64, 12, 1, 16, 1},  // The override includes 64-SM SM121 devices.
-      {1, 17408, 5120, 65, 12, 1, 2, 4},   // Larger SM121 devices retain the generic selector.
+      {1, 17408, 5120, 47, 12, 1, 2, 4},   // Other SM counts retain the generic selector.
+      {1, 17408, 5120, 49, 12, 1, 2, 4},   // Other SM counts retain the generic selector.
+      {1, 17408, 5120, 64, 12, 1, 2, 4},   // Other SM counts retain the generic selector.
+      {1, 17408, 5120, 65, 12, 1, 2, 4},   // Other SM counts retain the generic selector.
       {1, 17408, 5120, 132, 12, 1, 2, 1},  // Large SM121 devices retain the generic selector.
       {1, 17408, 5120, 36, 12, 0, 2, 4},   // SM120 retains the generic selector.
       {1, 5120, 17408, 36, 12, 0, 8, 1},   // SM120 retains the generic selector.
