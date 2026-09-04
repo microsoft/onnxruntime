@@ -154,23 +154,29 @@ __device__ void reduce_all(
   // One thread reduces MAX_NUM_ELEMENTS_PER_THREAD elements to a thread register
   // in one iteration.
   TBuf value = 0;
-  for (int id = tid_in_grid_row; id < num_elements; id += MAX_NUM_ELEMENTS_PER_THREAD * num_threads_in_grid_row) {
+  const int scan_step = MAX_NUM_ELEMENTS_PER_THREAD * num_threads_in_grid_row;
+  for (int id = tid_in_grid_row; id < num_elements;) {
+    const int remaining = num_elements - id;
     TIn v[MAX_NUM_ELEMENTS_PER_THREAD];
 
 #pragma unroll
     for (int i = 0; i < MAX_NUM_ELEMENTS_PER_THREAD; i++) {
-      const int offset = id + i * num_threads_in_grid_row;
-      if (offset < num_elements) {
-        v[i] = input[offset];
+      const int delta = i * num_threads_in_grid_row;
+      if (reduction_scan_delta_is_valid(delta, remaining)) {
+        v[i] = input[id + delta];
       }
     }
 
 #pragma unroll
     for (int i = 0; i < MAX_NUM_ELEMENTS_PER_THREAD; i++) {
-      const int offset = id + i * num_threads_in_grid_row;
-      if (offset < num_elements) {
+      const int delta = i * num_threads_in_grid_row;
+      if (reduction_scan_delta_is_valid(delta, remaining)) {
         value += TOp()(TBuf(v[i]));
       }
+    }
+
+    if (!advance_reduction_scan(num_elements, scan_step, id)) {
+      break;
     }
   }
 
@@ -388,7 +394,6 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
   const int t_count_y_in_grid = blockDim.y * gridDim.y;
   const int x_grid_stride = t_count_x_in_grid * x_load_count_per_thread;
   const int y_grid_stride = t_count_y_in_grid * y_load_count_per_thread;
-  const int tid_x_in_grid = threadIdx.x + blockDim.x * blockIdx.x;
   const int tid_y_in_grid = threadIdx.y + blockDim.y * blockIdx.y;
   const int tid_in_block = threadIdx.x + blockDim.x * threadIdx.y;
 
@@ -399,20 +404,27 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
   // to prevent int overflow in index calculation for input size m*n
   const int64_t n_int64 = static_cast<int64_t>(n);
 
-  for (int col = tid_x_in_grid; col < n; col += x_grid_stride) {
+  const int64_t first_col_base = static_cast<int64_t>(blockIdx.x) * blockDim.x;
+  for (int64_t col_base = first_col_base; col_base < n; col_base += x_grid_stride) {
+    const int64_t col = col_base + threadIdx.x;
+    const bool valid_col = col < n;
     shared_memory[tid_in_block] = TBuf(0.0f);
     TBuf sum = TBuf(0.0f);
     // This loops load multiple blockDim.y-by-blockDim.x sub-tensors from the input.
-    for (int row = tid_y_in_grid; row < m; row += y_grid_stride) {
+    for (int row = tid_y_in_grid; row < m;) {
+      const int remaining_rows = m - row;
       // Thread-level reduction. Each thread loads y_load_count_per_thread values
       // and aggregrate them.
 #pragma unroll y_load_count_per_thread
       for (int row_inner = 0; row_inner < y_load_count_per_thread; ++row_inner) {
-        int row_final = row + row_inner * t_count_y_in_grid;
-        int col_final = col;
-        if (row_final < m && col_final < n) {
-          sum += TBuf(input[row_final * n_int64 + col_final]);
+        const int row_delta = row_inner * t_count_y_in_grid;
+        if (valid_col && reduction_scan_delta_is_valid(row_delta, remaining_rows)) {
+          sum += TBuf(input[(row + row_delta) * n_int64 + col]);
         }
+      }
+
+      if (!advance_reduction_scan(m, y_grid_stride, row)) {
+        break;
       }
     }
     // Write thread-level reduction result into shared memory.
@@ -431,7 +443,7 @@ __global__ void reduce_matrix_rows_kernel(const TIn* input, TOut* output, int m,
       __syncthreads();
     }
 
-    if (threadIdx.y == 0) {
+    if (threadIdx.y == 0 && valid_col) {
       atomic_add(output + col, TOut(shared_memory[threadIdx.x]));
     }
   }
