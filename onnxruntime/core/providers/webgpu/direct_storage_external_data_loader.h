@@ -9,11 +9,19 @@
 
 #include "core/framework/allocator.h"
 #include "core/framework/external_data_loader.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 class WebGpuContext;
+
+common::Status CheckDirectStorageExternalWeightsSupport(WebGpuContext& context);
+
+common::Status ResolveDirectStorageExternalWeightsMode(
+    DirectStorageExternalWeightsMode mode,
+    const common::Status& support_status,
+    bool& enabled);
 
 // Shared by the loader and allocator so imported resources outlive initializer loading.
 class DirectStorageInitializerState {
