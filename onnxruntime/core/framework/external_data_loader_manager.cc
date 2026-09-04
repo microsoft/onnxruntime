@@ -26,4 +26,44 @@ const IExternalDataLoader* ExternalDataLoaderManager::GetExternalDataLoader(cons
   return nullptr;
 }
 
+const IExternalDataLoader* ExternalDataLoaderManager::GetTensorCreator(const OrtDevice& target_device) const {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    if (external_data_loader->CreatesTensorForDevice(target_device)) {
+      return external_data_loader.get();
+    }
+  }
+
+  return nullptr;
+}
+
+Status ExternalDataLoaderManager::BeginLoad() const {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    auto status = external_data_loader->BeginLoad();
+    if (!status.IsOK()) {
+      AbortLoad();
+      return status;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status ExternalDataLoaderManager::FinalizeLoad(const std::function<bool()>& is_cancelled) const {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    auto status = external_data_loader->FinalizeLoad(is_cancelled);
+    if (!status.IsOK()) {
+      AbortLoad();
+      return status;
+    }
+  }
+
+  return Status::OK();
+}
+
+void ExternalDataLoaderManager::AbortLoad() const noexcept {
+  for (const auto& external_data_loader : external_data_loaders_) {
+    external_data_loader->AbortLoad();
+  }
+}
+
 }  // namespace onnxruntime

@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#include "core/providers/webgpu/direct_storage_external_data_loader.h"
+#endif
 
 #include <mutex>
 #include <string_view>
@@ -607,6 +610,13 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       prepack_allocator_{CreateWebGpuAllocator(
           /*device_free=*/!context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+  if (config.direct_storage_external_weights) {
+    ORT_ENFORCE(context.HasDevice(), "DirectStorage external weights require a Dawn device.");
+    direct_storage_initializer_allocator_ =
+        CreateDirectStorageWebGpuAllocator(context_, direct_storage_initializer_state_);
+  }
+#endif
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
         config.session_buffer_pool_generations);
@@ -625,6 +635,11 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   const bool device_free = !context_.HasDevice();
   return {
       // allocator for initializers
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+      direct_storage_initializer_allocator_ != nullptr
+          ? direct_storage_initializer_allocator_
+          :
+#endif
       CreateWebGpuAllocator(
           device_free,
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true),
@@ -746,6 +761,15 @@ std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTran
 #if defined(__wasm__)
 std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
   return std::make_unique<webgpu::ExternalDataLoader>();
+}
+#elif defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
+  if (direct_storage_initializer_state_ == nullptr) {
+    return nullptr;
+  }
+
+  return std::make_unique<webgpu::DirectStorageExternalDataLoader>(
+      context_, direct_storage_initializer_state_);
 }
 #endif
 

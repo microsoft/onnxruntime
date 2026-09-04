@@ -19,6 +19,12 @@ class ExternalDataLoaderManager {
 
   const IExternalDataLoader* GetExternalDataLoader(const OrtMemoryInfo& target_memory_info) const;
 
+  const IExternalDataLoader* GetTensorCreator(const OrtDevice& target_device) const;
+
+  common::Status BeginLoad() const;
+  common::Status FinalizeLoad(const std::function<bool()>& is_cancelled) const;
+  void AbortLoad() const noexcept;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExternalDataLoaderManager);
 
