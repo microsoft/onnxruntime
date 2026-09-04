@@ -409,7 +409,7 @@ common::Status PrepareTensorForBatch(
                   data_file_path.string(), "\": ", path_error.message());
     file_iterator =
         batch.files.emplace(
-            file_key, DirectStorageBatch::FileInfo{normalized_path, file_length})
+                       file_key, DirectStorageBatch::FileInfo{normalized_path, file_length})
             .first;
   }
 
@@ -539,9 +539,9 @@ class DirectStorageWebGpuAllocator final : public IAllocator {
   DirectStorageWebGpuAllocator(WebGpuContext& context,
                                std::shared_ptr<DirectStorageInitializerState> state)
       : IAllocator(OrtMemoryInfo(WEBGPU_BUFFER,
-                                OrtAllocatorType::OrtReadOnlyAllocator,
-                                WebGpuDevice,
-                                OrtMemTypeDefault)),
+                                 OrtAllocatorType::OrtReadOnlyAllocator,
+                                 WebGpuDevice,
+                                 OrtMemTypeDefault)),
         context_{context},
         state_{std::move(state)} {
   }
@@ -689,9 +689,9 @@ common::Status DirectStorageExternalDataLoader::PreloadTensor(
     return common::Status::OK();
   }
   ORT_RETURN_IF_NOT(impl_->preload_batch != nullptr,
-                     "DirectStorage preload batch has not been started.");
+                    "DirectStorage preload batch has not been started.");
   return PrepareTensorForBatch(*impl_->preload_batch, env, data_file_path,
-                                tensor_name, data_offset, data_length);
+                               tensor_name, data_offset, data_length);
 }
 
 common::Status DirectStorageExternalDataLoader::FinalizePreload(
@@ -700,7 +700,7 @@ common::Status DirectStorageExternalDataLoader::FinalizePreload(
     return common::Status::OK();
   }
   ORT_RETURN_IF_NOT(impl_->preload_batch != nullptr,
-                     "DirectStorage preload batch has not been started.");
+                    "DirectStorage preload batch has not been started.");
   if (impl_->preload_batch->tensors.empty()) {
     impl_->context.ContinueInitialize();
     return common::Status::OK();
@@ -708,14 +708,14 @@ common::Status DirectStorageExternalDataLoader::FinalizePreload(
 
   ComPtr<ID3D12Device> d3d_device = impl_->context.DirectStorageD3D12Device();
   ORT_RETURN_IF_NOT(d3d_device != nullptr,
-                     "Failed to access the DirectStorage D3D12 device.");
+                    "Failed to access the DirectStorage D3D12 device.");
   try {
     impl_->preload_future = std::async(
         std::launch::async,
         [batch = impl_->preload_batch.get(), &metrics = impl_->preload_metrics,
-          d3d_device, is_cancelled]() {
-           return LoadBatchToD3D12(
-               *batch, d3d_device.Get(), is_cancelled, metrics);
+         d3d_device, is_cancelled]() {
+          return LoadBatchToD3D12(
+              *batch, d3d_device.Get(), is_cancelled, metrics);
         });
   } catch (const std::exception& ex) {
     const auto status = ORT_MAKE_STATUS(
@@ -723,8 +723,8 @@ common::Status DirectStorageExternalDataLoader::FinalizePreload(
         "Failed to start the DirectStorage initializer preload: ", ex.what());
     if (!IsWeightLoadAccelerationRequired(impl_->mode)) {
       LOGS_DEFAULT(WARNING)
-         << status.ErrorMessage()
-         << " Using the ordinary WebGPU initializer path.";
+          << status.ErrorMessage()
+          << " Using the ordinary WebGPU initializer path.";
       impl_->enabled = false;
       impl_->preload_batch.reset();
       impl_->context.ContinueInitialize();
