@@ -540,7 +540,7 @@ $MAIN {
     }
     previous_max = new_max;
     previous_denom = d;
-    let o_ratio = dleft / d;
+    let o_ratio = q_element_t(dleft / d);
     let qk_1_value = q_value_t(qk_1);
     let qk_2_value = q_value_t(qk_2);
     let qk_3_value = q_value_t(qk_3);

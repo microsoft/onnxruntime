@@ -5297,6 +5297,40 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_FP16_HighMagnitude_SplitRedu
   RunFp16HighMagnitudeAttention(/*sequence_length=*/4, /*bit_width=*/8);
 }
 
+TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_FP16_TinyScale) {
+  auto ep = WebGpuEPWithKVCacheQuantization(8);
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 128;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size, 1.0f);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  for (int s = 0; s < sequence_length; ++s) {
+    for (int d = 0; d < head_size; ++d) {
+      const float sign = d % 2 == 0 ? 1.0f : -1.0f;
+      key_data[s * kv_hidden_size + d] = sign * (2.0e-6f + static_cast<float>(s) * 2.0e-7f);
+      value_data[s * kv_hidden_size + d] = sign * (1.5e-6f + static_cast<float>(s) * 2.0e-7f);
+    }
+  }
+
+  const auto reference = RunGQAReference(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                         query_data, key_data, value_data, /*do_rotary=*/false);
+  const auto actual = RunGQATurboQuantNoPast(batch_size, sequence_length, num_heads, kv_num_heads, head_size,
+                                             query_data, key_data, value_data, /*do_rotary=*/false,
+                                             /*bit_width=*/8, /*use_fp16=*/true);
+  ExpectBlockQuantInt8Close(reference, actual, /*max_relative_rmse=*/0.1f,
+                            /*max_absolute_error=*/5.0e-7f);
+}
+
 TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_CrossValidate_Decode) {
   auto ep = WebGpuEPWithKVCacheQuantization(8);
   if (!ep) {
