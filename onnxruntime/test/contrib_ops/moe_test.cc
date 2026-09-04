@@ -1494,6 +1494,76 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
 }
 
 #if defined(USE_WEBGPU)
+// Packed QMoE does not need cumulative sequence lengths: every token is routed and evaluated
+// independently. This fixture represents three requests of lengths [2, 1, 2] concatenated into a
+// single 2D token-major input. Expert-specific FC2 biases make the selected expert visible in each
+// output row, so the test also catches token reordering or accidental interaction between requests.
+TEST(MoETest, QMoETest_WebGPU_PackedRaggedBatch) {
+  constexpr int num_rows = 5;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = 64;
+  constexpr int inter_size = 64;
+
+  std::vector<float> input(num_rows * hidden_size, 0.25f);
+  const std::vector<float> router_probs = {
+      10.0f,
+      0.0f,
+      0.0f,
+      10.0f,
+      0.0f,
+      10.0f,
+      10.0f,
+      0.0f,
+      0.0f,
+      10.0f,
+  };
+
+  // 0x88 encodes two zero-valued INT4 weights. FC2 bias is therefore the expert output.
+  std::vector<uint8_t> fc1_experts_weights(num_experts * 2 * inter_size * hidden_size / 2, 0x88);
+  std::vector<uint8_t> fc2_experts_weights(num_experts * hidden_size * inter_size / 2, 0x88);
+  std::vector<float> fc1_scales(num_experts * 2 * inter_size, 0.01f);
+  std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);
+  std::vector<float> fc2_bias(hidden_size, 1.0f);
+  fc2_bias.insert(fc2_bias.end(), hidden_size, 2.0f);
+
+  std::vector<float> expected_output;
+  expected_output.reserve(num_rows * hidden_size);
+  for (float expert_value : {1.0f, 2.0f, 2.0f, 1.0f, 2.0f}) {
+    expected_output.insert(expected_output.end(), hidden_size, expert_value);
+  }
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+
+  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
+  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
+  tester.AddInput<uint8_t>("fc1_experts_weights",
+                           {num_experts, 2 * inter_size, hidden_size / 2},
+                           fc1_experts_weights);
+  tester.AddInput<MLFloat16>("fc1_scales",
+                             {num_experts, 2 * inter_size},
+                             ToFloat16(fc1_scales));
+  tester.AddOptionalInputEdge<MLFloat16>();  // fc1_experts_bias
+  tester.AddInput<uint8_t>("fc2_experts_weights",
+                           {num_experts, hidden_size, inter_size / 2},
+                           fc2_experts_weights);
+  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size}, ToFloat16(fc2_scales));
+  tester.AddInput<MLFloat16>("fc2_experts_bias", {num_experts, hidden_size}, ToFloat16(fc2_bias));
+  tester.AddOptionalInputEdge<uint8_t>();    // fc3_experts_weights
+  tester.AddOptionalInputEdge<MLFloat16>();  // fc3_scales
+  tester.AddOptionalInputEdge<MLFloat16>();  // fc3_experts_bias
+  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected_output));
+  tester.SetOutputTolerance(0.01f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // Test QMoE with num_rows=1 on WebGPU to exercise the fused 1-token decode path.
 // Uses SwiGLU activation without FC3 (2-gate fused in FC1), which is the configuration
 // used by real MoE models on WebGPU (e.g., gpt-oss-20b).
