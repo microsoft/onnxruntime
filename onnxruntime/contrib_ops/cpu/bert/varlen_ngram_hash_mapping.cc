@@ -84,6 +84,11 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(total_tokens >= batch_size,
                     "total_tokens must be at least batch_size because every request must contain a token");
   const int64_t state_length = max_ngram_size_ - 1;
+  int64_t output_count = 0;
+  int64_t present_count = 0;
+  ORT_RETURN_IF_NOT(engram_helper::TryMultiplyDims(total_tokens, num_heads, output_count) &&
+                        engram_helper::TryMultiplyDims(batch_size, state_length, present_count),
+                    "VarlenNGramHashMapping: output dimensions overflow int64_t");
   if (past_ids != nullptr) {
     ORT_RETURN_IF_NOT(past_ids->Shape() == TensorShape({batch_size, state_length}),
                       "past_ids must have shape (batch_size, max_ngram_size - 1)");

@@ -227,10 +227,25 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
   const int64_t batch_size = cu_seqlens_shape[0] - 1;
 
   const int64_t total_tokens = input_ids->Shape()[0];
+  const int64_t state_length = max_ngram_size_ - 1;
+  ORT_RETURN_IF_NOT(max_ngram_size_ <= std::numeric_limits<uint32_t>::max() &&
+                        n_head_per_ngram_ <= std::numeric_limits<uint32_t>::max() &&
+                        batch_size <= std::numeric_limits<uint32_t>::max() &&
+                        total_tokens <= std::numeric_limits<uint32_t>::max() &&
+                        state_length <= std::numeric_limits<uint32_t>::max(),
+                    "VarlenNGramHashMapping: dimensions must fit in WebGPU uint32_t indices");
   ORT_RETURN_IF_NOT(total_tokens >= batch_size,
                     "total_tokens must be at least batch_size because every request must contain a token");
 
-  const int64_t state_length = max_ngram_size_ - 1;
+  int64_t output_count = 0;
+  int64_t present_count = 0;
+  ORT_RETURN_IF_NOT(onnxruntime::contrib::engram_helper::TryMultiplyDims(total_tokens, num_heads, output_count) &&
+                        onnxruntime::contrib::engram_helper::TryMultiplyDims(batch_size, state_length, present_count),
+                    "VarlenNGramHashMapping: output dimensions overflow int64_t");
+  ORT_RETURN_IF_NOT(num_heads <= std::numeric_limits<uint32_t>::max() &&
+                        output_count <= std::numeric_limits<uint32_t>::max() &&
+                        present_count <= std::numeric_limits<uint32_t>::max(),
+                    "VarlenNGramHashMapping: output dimensions must fit in WebGPU uint32_t indices");
   if (past_ids != nullptr) {
     ORT_RETURN_IF_NOT(past_ids->Shape() == TensorShape({batch_size, state_length}),
                       "past_ids must have shape (batch_size, max_ngram_size - 1)");
@@ -260,8 +275,6 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
                             {onnxruntime::narrow<uint32_t>(total_tokens)}});
   ORT_RETURN_IF_ERROR(context.RunProgram(validate_program));
 
-  const int64_t output_count = total_tokens * num_heads;
-  const int64_t present_count = present_ids == nullptr ? 0 : batch_size * state_length;
   if (output_count > 0 || present_count > 0) {
     const bool has_present_ids = present_count > 0;
     VarlenNGramFillDefaultProgram fill_program{has_present_ids};

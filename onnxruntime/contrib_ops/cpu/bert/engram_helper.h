@@ -58,7 +58,7 @@ inline T WrappedMultiply(T a, T b) {
 // behavior in the general case) before ever reaching a tensor-shape validation. Returns false, and
 // leaves `result` unset, when the product would overflow int64_t.
 inline bool TryMultiplyDims(int64_t a, int64_t b, int64_t& result) {
-  if (a != 0 && b > std::numeric_limits<int64_t>::max() / a) {
+  if (a < 0 || b < 0 || (a != 0 && b > std::numeric_limits<int64_t>::max() / a)) {
     return false;
   }
   result = a * b;

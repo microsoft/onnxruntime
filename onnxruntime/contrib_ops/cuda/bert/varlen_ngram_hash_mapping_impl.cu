@@ -177,8 +177,17 @@ Status LaunchVarlenNGramHashMappingKernel(
                         total_tokens <= std::numeric_limits<int>::max(),
                     "VarlenNGramHashMapping: batch_size and total_tokens must fit in a 32-bit int");
 
-  const int64_t num_heads = (max_ngram_size - 1) * n_head_per_ngram;
   const int64_t state_length = max_ngram_size - 1;
+  ORT_RETURN_IF_NOT(n_head_per_ngram > 0 &&
+                        state_length <= std::numeric_limits<int64_t>::max() / n_head_per_ngram,
+                    "VarlenNGramHashMapping: number of heads overflows int64_t");
+  const int64_t num_heads = state_length * n_head_per_ngram;
+  ORT_RETURN_IF_NOT(total_tokens == 0 ||
+                        total_tokens <= std::numeric_limits<int64_t>::max() / num_heads,
+                    "VarlenNGramHashMapping: output dimensions overflow int64_t");
+  ORT_RETURN_IF_NOT(batch_size == 0 ||
+                        state_length <= std::numeric_limits<int64_t>::max() / batch_size,
+                    "VarlenNGramHashMapping: present dimensions overflow int64_t");
 
   // 1) Compute global validity once, before any output-producing kernel runs.
   ValidateVarlenCuSeqlensKernel<<<1, 1, 0, stream>>>(
