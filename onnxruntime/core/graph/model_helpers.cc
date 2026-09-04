@@ -64,6 +64,38 @@ void CollectLocalFunctionCalls(
 
 }  // namespace
 
+Status ValidateModelSubgraphDepth(const ONNX_NAMESPACE::ModelProto& model_proto) {
+  using NodeRange = const google::protobuf::RepeatedPtrField<ONNX_NAMESPACE::NodeProto>*;
+  InlinedVector<std::pair<NodeRange, size_t>> pending{{&model_proto.graph().node(), 0}};
+  for (const auto& function : model_proto.functions()) {
+    pending.push_back({&function.node(), 0});
+  }
+
+  while (!pending.empty()) {
+    const auto [nodes, depth] = pending.back();
+    pending.pop_back();
+    for (const auto& node : *nodes) {
+      for (const auto& attr : node.attribute()) {
+        const size_t subgraph_depth = depth + 1;
+        if ((attr.has_g() || !attr.graphs().empty()) && subgraph_depth > kMaxModelSubgraphDepth) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, NOT_IMPLEMENTED,
+              "Model subgraph depth ", subgraph_depth,
+              " exceeds the maximum supported depth of ", kMaxModelSubgraphDepth, ".");
+        }
+        if (attr.has_g()) {
+          pending.push_back({&attr.g().node(), subgraph_depth});
+        }
+        for (const auto& graph : attr.graphs()) {
+          pending.push_back({&graph.node(), subgraph_depth});
+        }
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 Status BuildLocalFunctionCallGraph(
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
     LocalFunctionCallGraph& call_graph) {

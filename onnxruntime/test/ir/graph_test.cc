@@ -13,6 +13,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
+#include "core/graph/model_helpers.h"
 #include "core/graph/op.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/session/inference_session.h"
@@ -3874,6 +3875,32 @@ TEST_F(GraphTest, DeeplyNestedLoopSubgraphsResolveInReasonableTime) {
   EXPECT_LT(elapsed_seconds, 60) << "Loading the 30-level nested Loop model took " << elapsed_seconds
                                  << "s, which suggests the subgraph type/shape inferencing recursion "
                                     "regression has returned.";
+}
+
+static ModelProto CreateNestedSubgraphModel(size_t depth) {
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain(kOnnxDomain);
+  opset->set_version(21);
+
+  auto* graph = model_proto.mutable_graph();
+  for (size_t i = 0; i < depth; ++i) {
+    auto* node = graph->add_node();
+    auto* attr = node->add_attribute();
+    graph = attr->mutable_g();
+  }
+
+  return model_proto;
+}
+
+TEST_F(GraphTest, ExcessiveSubgraphDepthRejected) {
+  auto model_proto = CreateNestedSubgraphModel(kMaxModelSubgraphDepth + 1);
+  std::shared_ptr<Model> model;
+  const auto status = Model::Load(std::move(model_proto), model, nullptr, *logger_);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
 }  // namespace test
