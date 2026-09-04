@@ -113,7 +113,7 @@ __global__ void FindPartitionTopK(const T* __restrict__ input,
     const int index = partition_start + threadIdx.x + item * kStage1Threads;
     keys[item] = index < dimension
                      ? topk::PackStableSortKey(static_cast<float>(row_input[index]), index)
-                     : topk::PackStableSortKey(topk::kNegativeInfinity, INT_MAX);
+                     : topk::kPaddingSortKey;
   }
   Sort(storage).SortDescendingBlockedToStriped(keys);
   if (threadIdx.x < K) {
@@ -158,13 +158,14 @@ __device__ void ReducePartitions(const float* input_scores,
     }
     __syncthreads();
     if (threadIdx.x < topk::kWarpSize) {
-      float score = threadIdx.x < valid_items ? storage.values.scores[threadIdx.x]
-                                              : topk::kNegativeInfinity;
-      int index = threadIdx.x < valid_items ? storage.values.indices[threadIdx.x] : INT_MAX;
-      topk::WarpBitonicSortDescending(score, index);
+      uint64_t key = threadIdx.x < valid_items
+                         ? topk::PackStableSortKey(storage.values.scores[threadIdx.x],
+                                                   storage.values.indices[threadIdx.x])
+                         : topk::kPaddingSortKey;
+      topk::WarpBitonicSortDescending(key);
       if (threadIdx.x < K) {
-        storage.values.scores[threadIdx.x] = score;
-        storage.values.indices[threadIdx.x] = index;
+        storage.values.scores[threadIdx.x] = topk::UnpackStableSortScore(key);
+        storage.values.indices[threadIdx.x] = topk::UnpackStableSortIndex(key);
       }
     }
   } else if constexpr (SortSize <= topk::kWarpMergeMaxSize) {
@@ -190,7 +191,7 @@ __device__ void ReducePartitions(const float* input_scores,
         const size_t offset = static_cast<size_t>(first_partition) * K + item_index;
         keys[item] = topk::PackStableSortKey(input_scores[offset], input_indices[offset]);
       } else {
-        keys[item] = topk::PackStableSortKey(topk::kNegativeInfinity, INT_MAX);
+        keys[item] = topk::kPaddingSortKey;
       }
     }
     Sort(reinterpret_cast<typename Sort::TempStorage&>(storage.block_merge))
@@ -281,7 +282,9 @@ __global__ void WriteOutput(const T* input,
     const size_t input_offset = static_cast<size_t>(row) * stride + threadIdx.x;
     const size_t output_offset = static_cast<size_t>(row) * k + threadIdx.x;
     const int index = indices[input_offset];
-    output_scores[output_offset] = input[static_cast<size_t>(row) * dimension + index];
+    output_scores[output_offset] = index >= 0 && index < dimension
+                                       ? input[static_cast<size_t>(row) * dimension + index]
+                                       : T(0);
     output_indices[output_offset] = index;
   }
 }

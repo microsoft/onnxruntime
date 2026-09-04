@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+#include <limits>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -935,14 +938,23 @@ static void RunExactCudaTopKCase(const std::vector<float>& input_vals,
   test.AddOutput<float>("Values", {1, k}, expected_vals);
   test.AddOutput<int64_t>("Indices", {1, k}, expected_indices);
   test.SetCustomOutputVerifier(
-      [expected_vals, expected_indices, check_zero_sign](const std::vector<OrtValue>& fetches,
-                                                         const std::string& /*provider_type*/) {
+      [expected_vals, expected_indices, check_zero_sign, dimension](const std::vector<OrtValue>& fetches,
+                                                                    const std::string& /*provider_type*/) {
         ASSERT_EQ(fetches.size(), 2u);
         const auto* values = fetches[0].Get<Tensor>().Data<float>();
         const auto* indices = fetches[1].Get<Tensor>().Data<int64_t>();
         for (size_t i = 0; i < expected_vals.size(); ++i) {
-          EXPECT_EQ(values[i], expected_vals[i]);
+          if (std::isnan(expected_vals[i])) {
+            EXPECT_TRUE(std::isnan(values[i]));
+          } else {
+            EXPECT_EQ(values[i], expected_vals[i]);
+          }
           EXPECT_EQ(indices[i], expected_indices[i]);
+          EXPECT_GE(indices[i], 0);
+          EXPECT_LT(indices[i], dimension);
+          for (size_t j = 0; j < i; ++j) {
+            EXPECT_NE(indices[i], indices[j]);
+          }
           if (check_zero_sign) {
             EXPECT_EQ(std::signbit(values[i]), std::signbit(expected_vals[i]));
           }
@@ -967,6 +979,26 @@ static void RunScatteredCudaTopKCase(int64_t dimension,
 
 TEST(TopKOperator, HybridScatteredWinners) {
   RunScatteredCudaTopKCase(20000, {19999, 17, 4095, 8193, 12001, 2000, 16000, 6001});
+}
+
+TEST(TopKOperator, HybridNaNUsesStablePackedOrdering) {
+  constexpr int64_t dimension = 248320;
+  constexpr int64_t k = 8;
+  constexpr int64_t nan_index = 12345;
+  std::vector<float> input_vals(dimension);
+  for (int64_t i = 0; i < dimension; ++i) {
+    input_vals[i] = static_cast<float>(i % 201 - 100);
+  }
+  input_vals[nan_index] = std::numeric_limits<float>::quiet_NaN();
+
+  RunExactCudaTopKCase(input_vals,
+                       {std::numeric_limits<float>::quiet_NaN(), 100.0f, 100.0f, 100.0f,
+                        100.0f, 100.0f, 100.0f, 100.0f},
+                       {nan_index, 200, 401, 602, 803, 1004, 1205, 1406});
+
+  const float negative_nan = -std::numeric_limits<float>::quiet_NaN();
+  std::fill(input_vals.begin(), input_vals.end(), negative_nan);
+  RunExactCudaTopKCase(input_vals, std::vector<float>(k, negative_nan), {0, 1, 2, 3, 4, 5, 6, 7});
 }
 
 TEST(TopKOperator, SmallKScatteredWinners) {
