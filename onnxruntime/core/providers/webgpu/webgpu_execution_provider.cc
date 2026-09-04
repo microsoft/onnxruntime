@@ -621,41 +621,31 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
       recording_{std::make_unique<webgpu::CommandRecordingState>()},
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+      weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
+#endif
       prepack_allocator_{CreateWebGpuAllocator(
-          /*device_free=*/!context.HasDevice(),
+          context.IsDeviceFree(),
           [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); }, false)} {
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-  if (config.direct_storage_external_weights_mode !=
-      webgpu::DirectStorageExternalWeightsMode::Off) {
-    const auto support_status =
-        webgpu::CheckDirectStorageExternalWeightsSupport(context_);
-    bool enable_direct_storage = false;
-    ORT_THROW_IF_ERROR(webgpu::ResolveDirectStorageExternalWeightsMode(
-        config.direct_storage_external_weights_mode, support_status,
-        enable_direct_storage));
-    if (!enable_direct_storage) {
-      LOGS_DEFAULT(WARNING)
-          << "DirectStorage external weights are unavailable; using the ordinary "
-             "WebGPU initializer loading path. Reason: "
-          << support_status.ErrorMessage();
-    } else {
-      direct_storage_initializer_allocator_ =
-          CreateDirectStorageWebGpuAllocator(context_, direct_storage_initializer_state_);
-    }
+  if (webgpu::IsWeightLoadAccelerationEnabled(
+          config.weight_load_acceleration_mode)) {
+    direct_storage_initializer_allocator_ =
+        CreateDirectStorageWebGpuAllocator(context_, direct_storage_initializer_state_);
   }
 #else
-  if (config.direct_storage_external_weights_mode ==
-      webgpu::DirectStorageExternalWeightsMode::Required) {
+  if (webgpu::IsWeightLoadAccelerationRequired(
+          config.weight_load_acceleration_mode)) {
     ORT_THROW(
-        "directStorageExternalWeights=required requires a native Windows WebGPU build "
-        "with onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE=ON.");
+        "The requested weightLoadAcceleration mode requires a supported "
+        "disk-to-GPU weight loading implementation.");
   }
-  if (config.direct_storage_external_weights_mode ==
-      webgpu::DirectStorageExternalWeightsMode::Preferred) {
+  if (webgpu::IsWeightLoadAccelerationEnabled(
+          config.weight_load_acceleration_mode)) {
     LOGS_DEFAULT(WARNING)
-        << "DirectStorage external weights are unavailable in this build; using the "
-           "ordinary WebGPU initializer loading path.";
+        << "Accelerated weight loading is unavailable in this build; using "
+           "the ordinary WebGPU initializer loading path.";
   }
 #endif
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
@@ -675,7 +665,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
-  const bool device_free = !context_.HasDevice();
+  const bool device_free = context_.IsDeviceFree();
   return {
       // allocator for initializers
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
@@ -801,7 +791,8 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 #endif  // !defined(ORT_USE_EP_API_ADAPTERS)
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(BufferManager(), Recording());
+  return std::make_unique<webgpu::DataTransfer>(
+      [this]() -> const webgpu::BufferManager& { return BufferManager(); }, Recording());
 }
 
 #if defined(__wasm__)
@@ -815,7 +806,8 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
   }
 
   return std::make_unique<webgpu::DirectStorageExternalDataLoader>(
-      context_, direct_storage_initializer_state_);
+      context_, direct_storage_initializer_state_,
+      weight_load_acceleration_mode_);
 }
 #endif
 

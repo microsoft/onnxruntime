@@ -2,7 +2,12 @@
 // Licensed under the MIT License.
 
 #include "core/framework/external_data_loader_manager.h"
+
+#include <algorithm>
+
 #include "core/framework/tensor.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 using namespace common;
@@ -34,6 +39,69 @@ const IExternalDataLoader* ExternalDataLoaderManager::GetTensorCreator(const Ort
   }
 
   return nullptr;
+}
+
+bool ExternalDataLoaderManager::HasPreloader() const {
+  return std::any_of(
+      external_data_loaders_.begin(), external_data_loaders_.end(),
+      [](const auto& loader) { return loader->SupportsPreload(); });
+}
+
+Status ExternalDataLoaderManager::PreloadExternalData(
+    const Env& env,
+    const std::filesystem::path& model_path,
+    const Graph& graph,
+    const std::function<bool()>& is_cancelled) const {
+  bool has_preloader = false;
+  for (const auto& loader : external_data_loaders_) {
+    if (loader->SupportsPreload()) {
+      has_preloader = true;
+      auto status = loader->BeginPreload();
+      if (!status.IsOK()) {
+        AbortLoad();
+        return status;
+      }
+    }
+  }
+  if (!has_preloader) {
+    return Status::OK();
+  }
+
+  bool preload_finalized = false;
+  auto abort_preload = gsl::finally([&]() {
+    if (!preload_finalized) {
+      AbortLoad();
+    }
+  });
+
+  std::unordered_set<std::filesystem::path> validated_external_files;
+  for (const auto& [name, tensor_proto] : graph.GetAllInitializedTensors()) {
+    ORT_UNUSED_PARAMETER(name);
+    if (!utils::HasExternalData(*tensor_proto) ||
+        utils::HasExternalDataInMemory(*tensor_proto)) {
+      continue;
+    }
+    if (is_cancelled && is_cancelled()) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, MODEL_LOAD_CANCELED,
+          "Preloading external weights was canceled due to user request.");
+    }
+    for (const auto& loader : external_data_loaders_) {
+      if (loader->SupportsPreload()) {
+        ORT_RETURN_IF_ERROR(utils::PrepareExtDataForTensorFromTensorProto(
+            env, model_path, *tensor_proto, *loader, true,
+            &validated_external_files));
+      }
+    }
+  }
+
+  for (const auto& loader : external_data_loaders_) {
+    if (loader->SupportsPreload()) {
+      ORT_RETURN_IF_ERROR(loader->FinalizePreload(is_cancelled));
+    }
+  }
+  preload_finalized = true;
+  return Status::OK();
 }
 
 Status ExternalDataLoaderManager::BeginLoad() const {
