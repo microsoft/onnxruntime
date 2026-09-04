@@ -728,6 +728,255 @@ TEST(ModelEditorAPITest, CreateTypeInfo) {
   api.ReleaseTypeInfo(base_tensor_type_info);
 }
 
+// Regression test for a bug in ModelEditorValueInfoToOnnx (core/graph/graph.cc)
+// where all dynamic dimensions of a graph input were assigned the same name
+// (the first one in dim_params) instead of preserving each dim's individual name.
+//
+// The bug: inside ModelEditorValueInfoToOnnx, `size_t idx = 0;` was declared
+// before the loop but never incremented, so `dim_params[idx]` always read
+// `dim_params[0]`.
+//
+// Repro: create a graph input with three dynamic dimensions named "N", "H", "W".
+// Before the fix, GetInputTypeInfo after finalizing the session would return
+// `["N", "N", "N"]` instead of `["N", "H", "W"]`.
+//
+// This also triggers a downstream TensorRT EP failure when the user supplies
+// a dynamic shape profile (trt_profile_{min,opt,max}_shapes) — TRT sees dim 0
+// bounded to [1..16] and dim 1 bounded to [192..2160] *under the same
+// name "N"* and errors with:
+//   "N: Input dimensions with this name have different constant values or
+//    have contradictory IOptimizationProfile kMIN/kMAX constraints."
+TEST(ModelEditorAPITest, SymbolicDimensions_DistinctNamesPreserved) {
+  // Build a minimal model: input x -> Identity -> output y, where x has
+  // 3 dynamic dims named {"N", "H", "W"}.
+  Ort::Graph graph;
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<ValueInfo> graph_outputs;
+
+  std::vector<int64_t> dims = {-1, -1, -1};
+  std::vector<std::string> sym = {"N", "H", "W"};
+
+  TensorTypeAndShapeInfo input_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims, &sym);
+  auto input_type_info = TypeInfo::CreateTensorInfo(input_info.GetConst());
+  graph_inputs.emplace_back("x", input_type_info.GetConst());
+
+  TensorTypeAndShapeInfo output_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims, &sym);
+  auto output_type_info = TypeInfo::CreateTensorInfo(output_info.GetConst());
+  graph_outputs.emplace_back("y", output_type_info.GetConst());
+
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+
+  Ort::Node identity("Identity", onnxruntime::kOnnxDomain, "id", {"x"}, {"y"});
+  graph.AddNode(identity);
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 21}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  auto session = CreateSession(*ort_env, model);
+
+  // Query back the input type info.
+  auto queried_type_info = session.GetInputTypeInfo(0);
+  auto queried_tensor_info = queried_type_info.GetTensorTypeAndShapeInfo();
+
+  auto queried_dims = queried_tensor_info.GetShape();
+  ASSERT_EQ(queried_dims.size(), 3u) << "Expected 3 dimensions";
+  EXPECT_EQ(queried_dims[0], -1);
+  EXPECT_EQ(queried_dims[1], -1);
+  EXPECT_EQ(queried_dims[2], -1);
+
+  auto queried_sym = queried_tensor_info.GetSymbolicDimensions();
+  ASSERT_EQ(queried_sym.size(), 3u) << "Expected 3 symbolic dim names";
+  ASSERT_NE(queried_sym[0], nullptr);
+  ASSERT_NE(queried_sym[1], nullptr);
+  ASSERT_NE(queried_sym[2], nullptr);
+
+  // Each dim's symbolic name must match what we set. The bug caused all
+  // three names to equal queried_sym[0] ("N").
+  EXPECT_STREQ(queried_sym[0], "N") << "dim 0 name must be preserved";
+  EXPECT_STREQ(queried_sym[1], "H") << "dim 1 name must be preserved (bug would yield \"N\")";
+  EXPECT_STREQ(queried_sym[2], "W") << "dim 2 name must be preserved (bug would yield \"N\")";
+}
+
+// Regression test: partially-named symbolic dimensions. Covers the case where
+// only some dimensions carry a symbolic name and others are unnamed (or static).
+// This is the exact example given in the Basic_CApi test's doc comment:
+//   "call SetDimensions with {-1, 3, 2} and SetSymbolicDimensions with
+//    {\"N\", nullptr, nullptr} to create a shape of {\"N\", 3, 2}"
+// This test uses the C++ wrapper, which takes `std::vector<std::string>*` and
+// therefore represents "no name" as an empty string. A companion test below
+// (SymbolicDimensions_CApi_NullNames) exercises the raw C API with nullptr
+// entries to cover the nullptr path documented in Basic_CApi's comment.
+TEST(ModelEditorAPITest, SymbolicDimensions_PartiallyNamedDimensions) {
+  // Shape: [N, 3, -1]
+  //   dim 0 = dynamic, named "N"
+  //   dim 1 = static, size 3
+  //   dim 2 = dynamic, unnamed
+  Ort::Graph graph;
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<ValueInfo> graph_outputs;
+
+  std::vector<int64_t> dims = {-1, 3, -1};
+  std::vector<std::string> sym = {"N", "", ""};  // static and unnamed dims get empty strings
+
+  TensorTypeAndShapeInfo input_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims, &sym);
+  auto input_type_info = TypeInfo::CreateTensorInfo(input_info.GetConst());
+  graph_inputs.emplace_back("x", input_type_info.GetConst());
+
+  TensorTypeAndShapeInfo output_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims, &sym);
+  auto output_type_info = TypeInfo::CreateTensorInfo(output_info.GetConst());
+  graph_outputs.emplace_back("y", output_type_info.GetConst());
+
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+
+  Ort::Node identity("Identity", onnxruntime::kOnnxDomain, "id", {"x"}, {"y"});
+  graph.AddNode(identity);
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 21}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  auto session = CreateSession(*ort_env, model);
+
+  auto queried_type_info = session.GetInputTypeInfo(0);
+  auto queried_tensor_info = queried_type_info.GetTensorTypeAndShapeInfo();
+
+  auto queried_dims = queried_tensor_info.GetShape();
+  ASSERT_EQ(queried_dims.size(), 3u);
+  EXPECT_EQ(queried_dims[0], -1);
+  EXPECT_EQ(queried_dims[1], 3);  // static
+  EXPECT_EQ(queried_dims[2], -1);
+
+  auto queried_sym = queried_tensor_info.GetSymbolicDimensions();
+  ASSERT_EQ(queried_sym.size(), 3u);
+
+  // Dim 0 retains its symbolic name.
+  ASSERT_NE(queried_sym[0], nullptr);
+  EXPECT_STREQ(queried_sym[0], "N") << "dim 0 name must be preserved";
+  // Dim 1 is static; dim 2 is dynamic but unnamed. In both cases, the
+  // corresponding dim_proto should not have a dim_param set, so the C API
+  // returns an empty string.
+  ASSERT_NE(queried_sym[1], nullptr);
+  EXPECT_STREQ(queried_sym[1], "") << "dim 1 is static; no dim_param expected";
+  ASSERT_NE(queried_sym[2], nullptr);
+  EXPECT_STREQ(queried_sym[2], "") << "dim 2 is dynamic but unnamed; no dim_param expected";
+}
+
+// Regression test: raw C API with nullptr entries in SetSymbolicDimensions.
+// Covers two things the other tests don't:
+//   1. That multiple distinct symbolic names on different dynamic dims all
+//      round-trip correctly through the raw C API (this path also exhibited
+//      the bug before the fix).
+//   2. The nullptr-for-unnamed-dim convention from the Basic_CApi doc comment:
+//        "call SetDimensions with {-1, 3, 2} and SetSymbolicDimensions with
+//         {\"N\", nullptr, nullptr} to create a shape of {\"N\", 3, 2}"
+// The C++ TensorTypeAndShapeInfo wrapper takes std::vector<std::string>* and
+// cannot pass nullptr entries, so this test drops to the raw C API.
+TEST(ModelEditorAPITest, SymbolicDimensions_CApi_NullNames) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  // Shape: [N, 3, H, W]
+  //   dim 0 = dynamic, named "N"
+  //   dim 1 = static, size 3 (nullptr in names list to match the doc example)
+  //   dim 2 = dynamic, named "H"
+  //   dim 3 = dynamic, named "W"
+  // Before the fix, dims 2 and 3 would both come back as "N" (always
+  // reading dim_params[0]).
+  OrtTensorTypeAndShapeInfo* input_tensor_info = nullptr;
+  Ort::ThrowOnError(api.CreateTensorTypeAndShapeInfo(&input_tensor_info));
+  Ort::ThrowOnError(api.SetTensorElementType(input_tensor_info, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  std::vector<int64_t> dims = {-1, 3, -1, -1};
+  Ort::ThrowOnError(api.SetDimensions(input_tensor_info, dims.data(), dims.size()));
+  std::vector<const char*> sym = {"N", nullptr, "H", "W"};
+  Ort::ThrowOnError(api.SetSymbolicDimensions(input_tensor_info, sym.data(), sym.size()));
+
+  OrtTypeInfo* input_type_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(input_tensor_info, &input_type_info));
+  api.ReleaseTensorTypeAndShapeInfo(input_tensor_info);
+
+  OrtValueInfo* input_value_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateValueInfo("x", input_type_info, &input_value_info));
+  api.ReleaseTypeInfo(input_type_info);
+
+  // Output has the same shape (Identity op).
+  OrtTensorTypeAndShapeInfo* output_tensor_info = nullptr;
+  Ort::ThrowOnError(api.CreateTensorTypeAndShapeInfo(&output_tensor_info));
+  Ort::ThrowOnError(api.SetTensorElementType(output_tensor_info, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
+  Ort::ThrowOnError(api.SetDimensions(output_tensor_info, dims.data(), dims.size()));
+  Ort::ThrowOnError(api.SetSymbolicDimensions(output_tensor_info, sym.data(), sym.size()));
+
+  OrtTypeInfo* output_type_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateTensorTypeInfo(output_tensor_info, &output_type_info));
+  api.ReleaseTensorTypeAndShapeInfo(output_tensor_info);
+
+  OrtValueInfo* output_value_info = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateValueInfo("y", output_type_info, &output_value_info));
+  api.ReleaseTypeInfo(output_type_info);
+
+  OrtGraph* graph = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateGraph(&graph));
+  std::vector<OrtValueInfo*> graph_inputs = {input_value_info};
+  std::vector<OrtValueInfo*> graph_outputs = {output_value_info};
+  Ort::ThrowOnError(model_editor_api.SetGraphInputs(graph, graph_inputs.data(), graph_inputs.size()));
+  Ort::ThrowOnError(model_editor_api.SetGraphOutputs(graph, graph_outputs.data(), graph_outputs.size()));
+
+  std::vector<const char*> node_inputs = {"x"};
+  std::vector<const char*> node_outputs = {"y"};
+  OrtNode* identity_node = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateNode("Identity", onnxruntime::kOnnxDomain, "id",
+                                                node_inputs.data(), node_inputs.size(),
+                                                node_outputs.data(), node_outputs.size(),
+                                                nullptr, 0, &identity_node));
+  Ort::ThrowOnError(model_editor_api.AddNodeToGraph(graph, identity_node));
+
+  std::vector<const char*> opset_domains = {onnxruntime::kOnnxDomain};
+  std::vector<int> opset_versions = {21};
+  OrtModel* model = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateModel(opset_domains.data(), opset_versions.data(),
+                                                 opset_domains.size(), &model));
+  Ort::ThrowOnError(model_editor_api.AddGraphToModel(model, graph));
+
+  Ort::SessionOptions session_options;
+  OrtSession* session = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateSessionFromModel(*ort_env, model, session_options, &session));
+  api.ReleaseModel(model);
+
+  // Query back and verify each dim.
+  OrtTypeInfo* queried_type_info = nullptr;
+  Ort::ThrowOnError(api.SessionGetInputTypeInfo(session, 0, &queried_type_info));
+
+  const OrtTensorTypeAndShapeInfo* queried_tensor_info = nullptr;
+  Ort::ThrowOnError(api.CastTypeInfoToTensorInfo(queried_type_info, &queried_tensor_info));
+
+  size_t dim_count = 0;
+  Ort::ThrowOnError(api.GetDimensionsCount(queried_tensor_info, &dim_count));
+  ASSERT_EQ(dim_count, 4u);
+
+  std::vector<int64_t> queried_dims(dim_count, -42);
+  Ort::ThrowOnError(api.GetDimensions(queried_tensor_info, queried_dims.data(), queried_dims.size()));
+  EXPECT_EQ(queried_dims[0], -1);
+  EXPECT_EQ(queried_dims[1], 3);
+  EXPECT_EQ(queried_dims[2], -1);
+  EXPECT_EQ(queried_dims[3], -1);
+
+  std::vector<const char*> queried_sym(dim_count, nullptr);
+  Ort::ThrowOnError(api.GetSymbolicDimensions(queried_tensor_info, queried_sym.data(), queried_sym.size()));
+  ASSERT_NE(queried_sym[0], nullptr);
+  EXPECT_STREQ(queried_sym[0], "N") << "dim 0 keeps its symbolic name";
+  ASSERT_NE(queried_sym[1], nullptr);
+  EXPECT_STREQ(queried_sym[1], "") << "dim 1 is static (nullptr name); no dim_param expected";
+  ASSERT_NE(queried_sym[2], nullptr);
+  EXPECT_STREQ(queried_sym[2], "H") << "dim 2 name must be preserved (bug would yield \"N\")";
+  ASSERT_NE(queried_sym[3], nullptr);
+  EXPECT_STREQ(queried_sym[3], "W") << "dim 3 name must be preserved (bug would yield \"N\")";
+
+  api.ReleaseTypeInfo(queried_type_info);
+  api.ReleaseSession(session);
+}
+
 //
 // Tests for Model Editor API + Compile API integration
 //
