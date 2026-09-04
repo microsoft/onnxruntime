@@ -167,6 +167,10 @@ When the `sliding_window_cache` attribute is set to `1`, the KV cache operates i
 to the full sequence length. This significantly reduces memory usage for long-context models that
 employ local attention (e.g., GPT-OSS with layer-wise sliding windows).
 
+The CPU documentation's **Windowed (Sliding-Window) KV Cache** section is the normative source for
+the shared layout semantics. This page documents the CUDA-supported subset and its additional
+restrictions.
+
 **Key behaviors:**
 
 - **Cache capacity:** The CUDA kernel requires the cache buffer's sequence dimension to be exactly
