@@ -3555,19 +3555,20 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
         const auto& estimator_config = resource_accountant->GetWorkspaceEstimatorConfig();
         const auto& fpa_intb_gemm = estimator_config.cuda_fpa_intb_gemm;
         const auto& profile_m = estimator_config.cuda_fpa_intb_profile_m;
-        const contrib::cuda::MatMulNBitsMemoryEstimateOptions estimate_options{
-            fpa_intb_gemm.has_value()
-                ? std::optional<std::string_view>{*fpa_intb_gemm}
-                : std::nullopt,
-            profile_m.has_value()
-                ? std::optional<std::string_view>{*profile_m}
-                : std::nullopt};
         const auto& inferred_shapes = resource_accountant->GetMaxShapeInferenceResult();
         const auto& input_defs = node->InputDefs();
         const TensorShape* input_a_shape =
             inferred_shapes.Empty() || input_defs.empty() || input_defs[0] == nullptr
                 ? nullptr
                 : inferred_shapes.GetShape(&graph.GetGraph(), input_defs[0]->Name());
+        const contrib::cuda::MatMulNBitsMemoryEstimateOptions estimate_options{
+            fpa_intb_gemm.has_value()
+                ? std::optional<std::string_view>{*fpa_intb_gemm}
+                : std::nullopt,
+            profile_m.has_value()
+                ? std::optional<std::string_view>{*profile_m}
+                : std::nullopt,
+            /*input_shape_is_upper_bound=*/input_a_shape != nullptr};
         level1_memory_estimate =
             input_a_shape != nullptr
                 ? contrib::cuda::EstimateMatMulNBitsMemory(

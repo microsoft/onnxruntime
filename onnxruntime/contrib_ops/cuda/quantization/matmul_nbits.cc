@@ -357,17 +357,32 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
       // A dynamic M can request any rounded bucket at runtime.
       lazy_profile_m = onnxruntime::llm::kernels::weight_only::kMaxProfileM;
     } else if (*m > 0) {
-      const int runtime_profile_m =
-          onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
-              SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
       const auto initial_profile_m =
           WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
               1, constructor_profile_max_m, profile_m);
-      const bool initially_profiled =
-          std::find(initial_profile_m.begin(), initial_profile_m.end(), *m) != initial_profile_m.end() ||
-          std::find(initial_profile_m.begin(), initial_profile_m.end(), runtime_profile_m) != initial_profile_m.end();
-      if (!initially_profiled) {
-        lazy_profile_m = runtime_profile_m;
+      if (options.input_shape_is_upper_bound) {
+        const int maximum_runtime_profile_m =
+            onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+                SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+        for (int candidate_m = 1; candidate_m <= maximum_runtime_profile_m; candidate_m *= 2) {
+          if (std::find(initial_profile_m.begin(), initial_profile_m.end(), candidate_m) ==
+              initial_profile_m.end()) {
+            lazy_profile_m = candidate_m;
+          }
+          if (candidate_m == maximum_runtime_profile_m) {
+            break;
+          }
+        }
+      } else {
+        const int runtime_profile_m =
+            onnxruntime::llm::kernels::weight_only::RoundUpProfileM(
+                SafeInt<int>(*m), onnxruntime::llm::kernels::weight_only::kMaxProfileM);
+        const bool initially_profiled =
+            std::find(initial_profile_m.begin(), initial_profile_m.end(), *m) != initial_profile_m.end() ||
+            std::find(initial_profile_m.begin(), initial_profile_m.end(), runtime_profile_m) != initial_profile_m.end();
+        if (!initially_profiled) {
+          lazy_profile_m = runtime_profile_m;
+        }
       }
     }
 
@@ -400,6 +415,10 @@ std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
 std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemory(
     const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop,
     MatMulNBitsMemoryEstimateOptions options) {
+  const auto& input_defs = node.InputDefs();
+  const NodeArg* input_a = input_defs.empty() ? nullptr : input_defs[0];
+  options.input_shape_is_upper_bound =
+      options.input_shape_is_upper_bound && !StaticLeadingDimProduct(input_a).has_value();
   return EstimateMatMulNBitsMemoryImpl(
       node, device_prop, ComputeMatMulNBitsLeadingDimProduct(input_a_shape), options);
 }

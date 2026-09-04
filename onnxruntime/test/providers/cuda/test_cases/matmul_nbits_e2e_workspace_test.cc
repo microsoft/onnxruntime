@@ -391,6 +391,86 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
   }
 }
 
+TEST(MatMulNBitsWorkspace, MaxShapeBudgetChargesMissingSmallerProfileBucket) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping budget integration test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible.";
+  }
+
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
+                {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"2048"}}});
+  const std::string model_bytes = BuildMatMulNBitsModelBytes("seq");
+
+  // Construction profiles only {1, 256}. The maximum-shape hint is a planning bound, not an exact
+  // runtime shape, so M=64 remains valid and must reserve lazy-profile scratch in the hard budget.
+  {
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM, "256"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMaxShapeOverride, "A:[256,1024]"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "1024,"));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(mm_node, nullptr);
+    EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
+
+    const TensorShape planning_shape({256, kE2eK});
+    const auto estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
+        *mm_node, planning_shape.GetDims(), cuda_ep->GetDeviceProp(),
+        {/*fpa_intb_gemm=*/std::string_view{"1"},
+         /*profile_m=*/std::string_view{"256"},
+         /*input_shape_is_upper_bound=*/true});
+    ASSERT_TRUE(estimate.has_value());
+    const TensorShape missing_bucket_shape({128, kE2eK});
+    const auto missing_bucket_estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
+        *mm_node, missing_bucket_shape.GetDims(), cuda_ep->GetDeviceProp(),
+        {/*fpa_intb_gemm=*/std::string_view{"1"},
+         /*profile_m=*/std::string_view{"256"}});
+    ASSERT_TRUE(missing_bucket_estimate.has_value());
+    EXPECT_EQ(estimate->runtime_transient_bytes, missing_bucket_estimate->runtime_transient_bytes);
+    EXPECT_GT(estimate->runtime_transient_bytes, size_t{0});
+
+    constexpr int64_t runtime_m = 64;
+    std::vector<MLFloat16> a_data(static_cast<size_t>(runtime_m * kE2eK), MLFloat16(0.0f));
+    OrtValue a_value;
+    CreateMLValue<MLFloat16>(std::array<int64_t, 2>{runtime_m, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
+    NameMLValMap feeds;
+    feeds.emplace("A", a_value);
+    const std::vector<std::string> output_names{"Y"};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  {
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM, "256"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMaxShapeOverride, "A:[256,1024]"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "430,"));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(mm_node, nullptr);
+    EXPECT_NE(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
+  }
+}
+
 TEST(MatMulNBitsWorkspace, GetCapabilityBudgetDoesNotDuplicateOfflinePrepackedGpuWeight) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
   if (device_sm < 0) {
@@ -526,6 +606,14 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
       onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
           *mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp());
   ASSERT_TRUE(level1.has_value()) << "Level-1 estimate returned nullopt for an eligible node.";
+  const auto static_shape_with_bound_option =
+      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
+          *mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp(),
+          {/*fpa_intb_gemm=*/std::string_view{"1"},
+           /*profile_m=*/std::string_view{"256"},
+           /*input_shape_is_upper_bound=*/true});
+  ASSERT_TRUE(static_shape_with_bound_option.has_value());
+  EXPECT_EQ(static_shape_with_bound_option->runtime_transient_bytes, size_t{0});
   ASSERT_TRUE(level1->runtime_workspace_bytes.has_value())
       << "Level-1 runtime workspace was not estimable for a static input shape.";
   const size_t level1_runtime_workspace = *level1->runtime_workspace_bytes;

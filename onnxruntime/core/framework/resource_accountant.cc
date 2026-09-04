@@ -95,6 +95,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
                          ? level1_memory_estimate->runtime_workspace_bytes.value_or(0)
                          : 0,
                      runtime_transient_bytes);
+        const bool has_estimator = has_runtime_workspace_estimator || runtime_transient_bytes > 0;
         const size_t selected_workspace =
             std::max(stats.total_temp_allocations, level1_workspace_bytes);
         const size_t persistent_prepack_bytes =
@@ -105,8 +106,8 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
             node.Index(),
             WorkspaceEstimateSelection{
                 selected_workspace,
-                has_runtime_workspace_estimator ? WorkspaceEstimateSource::kProfileAndEstimator
-                                                : WorkspaceEstimateSource::kProfile,
+                has_estimator ? WorkspaceEstimateSource::kProfileAndEstimator
+                              : WorkspaceEstimateSource::kProfile,
                 stats.total_temp_allocations,
                 level1_workspace_bytes,
                 persistent_prepack_bytes,

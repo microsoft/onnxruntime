@@ -637,6 +637,34 @@ TEST(RealAccountantTest, StatsPath_Level1EstimateUsesMaximumWorkspace) {
   EXPECT_EQ(comparison.equal, size_t{0});
   EXPECT_EQ(comparison.profiled_bytes, size_t{500});
   EXPECT_EQ(comparison.level1_estimated_bytes, size_t{1050});
+
+  std::optional<ResourceAccountantMap> transient_acc_map;
+  ASSERT_STATUS_OK(CreateAccountants(config, stats_dir / "dummy_model.onnx", transient_acc_map));
+  auto* transient_accountant = transient_acc_map->at(kCudaExecutionProvider).get();
+  const auto transient_cost = transient_accountant->ComputeResourceCount(
+      *h.node_a,
+      Level1MemoryEstimate{
+          /*runtime_workspace_bytes=*/std::nullopt,
+          /*persistent_prepack_bytes=*/0,
+          /*temporary_prepack_bytes=*/0,
+          /*runtime_transient_bytes=*/800});
+  EXPECT_EQ(GetSizeT(transient_cost), size_t{1400});
+  const auto transient_selection =
+      transient_accountant->GetPendingWorkspaceEstimateSelection(h.node_a->Index());
+  EXPECT_EQ(transient_selection.bytes, size_t{800});
+  EXPECT_EQ(transient_selection.source, WorkspaceEstimateSource::kProfileAndEstimator);
+
+  IndexedSubGraph transient_sub_graph;
+  transient_sub_graph.nodes.push_back(h.node_a->Index());
+  transient_sub_graph.SetAccountant(transient_accountant);
+  transient_sub_graph.AppendNodeCost(transient_cost);
+  transient_sub_graph.AccountForAllNodes();
+  EXPECT_EQ(transient_accountant->GetWorkspaceEstimateSourceCounts().profile_and_estimator, size_t{1});
+  const auto transient_comparison = transient_accountant->GetWorkspaceEstimateComparisonSummary();
+  EXPECT_EQ(transient_comparison.node_count, size_t{1});
+  EXPECT_EQ(transient_comparison.estimator_larger, size_t{1});
+  EXPECT_EQ(transient_comparison.profiled_bytes, size_t{400});
+  EXPECT_EQ(transient_comparison.level1_estimated_bytes, size_t{800});
 }
 
 // A stats file may have incomplete coverage. Preserve the historical behavior
