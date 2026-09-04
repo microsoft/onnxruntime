@@ -1053,6 +1053,20 @@ class CudaKernel : public OpKernel {
     return onnxruntime::OrtStreamAdapter(cuda_stream, framework_stream);
   }
 
+  // The stable framework stream of the current Compute call, or null when the host ORT predates
+  // KernelContext_GetSyncStream. This is the only stream pointer that may be handed to a stream
+  // aware allocator: the arena retains it past the call and queries sync ids through the EP stream
+  // API, which requires a real OrtSyncStream. The Stream* inside OrtStreamAdapter is not
+  // interchangeable - on an older host it is a stack owned PluginStreamShim that exists only to
+  // carry the native CUDA handle. Callers have to treat null as "allocate untagged", matching what
+  // GetScratchBuffer does through GetFrameworkStreamForStreamArg.
+  inline onnxruntime::Stream* GetAllocationStream(OpKernelContext* ctx) const {
+    if (ctx == nullptr) {
+      return nullptr;
+    }
+    return reinterpret_cast<onnxruntime::Stream*>(ctx->GetSyncStream());
+  }
+
   static cudnnHandle_t GetCudnnHandle(cudaStream_t s) {
     auto* sync = cuda_plugin::CudaSyncStream::FromCudaStream(s);
     return sync ? sync->GetCudnnHandle() : nullptr;
