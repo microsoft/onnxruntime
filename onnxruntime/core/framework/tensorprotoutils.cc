@@ -1857,9 +1857,11 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
 
 Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                               const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                              const IExternalDataLoader& ext_data_loader) {
+                                              const IExternalDataLoader& ext_data_loader,
+                                              bool preload,
+                                              std::unordered_set<std::filesystem::path>*
+                                                  validated_external_files) {
   ORT_ENFORCE(HasExternalData(tensor_proto));
-  ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
 
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
@@ -1871,6 +1873,10 @@ Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesys
   SafeInt<size_t> raw_data_safe_len = 0;
   ORT_RETURN_IF_ERROR(
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+  if (validated_external_files == nullptr ||
+      validated_external_files->insert(external_data_file_path).second) {
+    ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
+  }
 
   size_t tensor_byte_size = 0;
   ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
@@ -1882,8 +1888,13 @@ Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesys
                     external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
 
-  return ext_data_loader.PrepareTensor(env, external_data_file_path, tensor_proto.name(), file_offset,
-                                       raw_data_safe_len);
+  return preload
+             ? ext_data_loader.PreloadTensor(
+                   env, external_data_file_path, tensor_proto.name(), file_offset,
+                   raw_data_safe_len)
+             : ext_data_loader.PrepareTensor(
+                   env, external_data_file_path, tensor_proto.name(), file_offset,
+                   raw_data_safe_len);
 }
 
 #define CASE_PROTO(X, Y)                                                                                            \

@@ -42,14 +42,14 @@ ConfigOptions RobustnessOptions(const char* value) {
   return options;
 }
 
-ConfigOptions DirectStorageOptions(const char* value) {
+ConfigOptions WeightLoadAccelerationOptions(const char* value) {
   ConfigOptions options;
-  ORT_THROW_IF_ERROR(options.AddConfigEntry(kDirectStorageExternalWeights, value));
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kWeightLoadAcceleration, value));
   return options;
 }
 
-ConfigOptions CompileOnlyDirectStorageOptions(const char* value) {
-  auto options = DirectStorageOptions(value);
+ConfigOptions CompileOnlyWeightLoadAccelerationOptions(const char* value) {
+  auto options = WeightLoadAccelerationOptions(value);
   ORT_THROW_IF_ERROR(options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
   return options;
 }
@@ -285,56 +285,94 @@ TEST(WebGpuContextTest, EnableRobustnessRejectsInvalidValue) {
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(RobustnessOptions("true")), OnnxRuntimeException);
 }
 
-TEST(WebGpuContextTest, DirectStorageRejectsBooleanAndUnknownModes) {
-  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(DirectStorageOptions("1")),
+TEST(WebGpuContextTest, WeightLoadAccelerationRejectsBooleanAndUnknownModes) {
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(
+                   WeightLoadAccelerationOptions("1")),
                OnnxRuntimeException);
-  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(DirectStorageOptions("automatic")),
+  EXPECT_THROW(WebGpuProviderFactoryCreator::Create(
+                   WeightLoadAccelerationOptions("automatic")),
                OnnxRuntimeException);
 }
 
-TEST(WebGpuContextTest, DirectStorageOffDoesNotRequireDeviceSupport) {
+TEST(WebGpuContextTest, WeightLoadAccelerationOffDoesNotRequireDeviceSupport) {
   auto ep = WebGpuProviderFactoryCreator::Create(
-                CompileOnlyDirectStorageOptions(kDirectStorageExternalWeights_Off))
+                CompileOnlyWeightLoadAccelerationOptions(
+                    kWeightLoadAcceleration_Off))
                 ->CreateProvider();
   ASSERT_NE(ep, nullptr);
 }
 
-TEST(WebGpuContextTest, DirectStoragePreferredFallsBackWithoutDeviceSupport) {
-  auto ep = WebGpuProviderFactoryCreator::Create(
-                CompileOnlyDirectStorageOptions(kDirectStorageExternalWeights_Preferred))
-                ->CreateProvider();
-  ASSERT_NE(ep, nullptr);
+TEST(WebGpuContextTest, PreferredWeightLoadAccelerationFallsBackWithoutDeviceSupport) {
+  for (const char* mode : {kWeightLoadAcceleration_Preferred,
+                           kWeightLoadAcceleration_PreferredPipelined}) {
+    auto ep = WebGpuProviderFactoryCreator::Create(
+                  CompileOnlyWeightLoadAccelerationOptions(mode))
+                  ->CreateProvider();
+    ASSERT_NE(ep, nullptr);
+  }
 }
 
-TEST(WebGpuContextTest, DirectStorageRequiredFailsWithoutDeviceSupport) {
-  auto factory = WebGpuProviderFactoryCreator::Create(
-      CompileOnlyDirectStorageOptions(kDirectStorageExternalWeights_Required));
-  EXPECT_THROW(factory->CreateProvider(), OnnxRuntimeException);
+TEST(WebGpuContextTest, RequiredWeightLoadAccelerationFailsWithoutDeviceSupport) {
+  for (const char* mode : {kWeightLoadAcceleration_Required,
+                           kWeightLoadAcceleration_RequiredPipelined}) {
+    auto factory = WebGpuProviderFactoryCreator::Create(
+        CompileOnlyWeightLoadAccelerationOptions(mode));
+    auto ep = factory->CreateProvider();
+    ASSERT_NE(ep, nullptr);
+    auto loader = ep->GetExternalDataLoader();
+    ASSERT_NE(loader, nullptr);
+    EXPECT_FALSE(loader->BeginPreload().IsOK());
+  }
 }
 
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
-TEST(WebGpuContextTest, DirectStorageModeResolution) {
+TEST(WebGpuContextTest, DirectStorageCanBeEnabledAfterInitialOffSession) {
+  auto off_factory = WebGpuProviderFactoryCreator::Create(
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Off));
+  auto off_ep = off_factory->CreateProvider();
+  ASSERT_NE(off_ep, nullptr);
+
+  auto& context = webgpu::WebGpuContextFactory::GetContext(0);
+  const auto support_status =
+      webgpu::CheckDirectStorageExternalWeightsSupport(context);
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  auto required_factory = WebGpuProviderFactoryCreator::Create(
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Required));
+  auto required_ep = required_factory->CreateProvider();
+  ASSERT_NE(required_ep, nullptr);
+  auto loader = required_ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  EXPECT_STATUS_OK(loader->BeginPreload());
+  loader->AbortLoad();
+}
+
+TEST(WebGpuContextTest, WeightLoadAccelerationModeResolution) {
   const auto unsupported =
       ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DirectStorage unavailable");
   bool enabled = true;
 
-  EXPECT_STATUS_OK(webgpu::ResolveDirectStorageExternalWeightsMode(
-      webgpu::DirectStorageExternalWeightsMode::Off, unsupported, enabled));
+  EXPECT_STATUS_OK(webgpu::ResolveWeightLoadAccelerationMode(
+      webgpu::WeightLoadAccelerationMode::Off, unsupported, enabled));
   EXPECT_FALSE(enabled);
 
   enabled = true;
-  EXPECT_STATUS_OK(webgpu::ResolveDirectStorageExternalWeightsMode(
-      webgpu::DirectStorageExternalWeightsMode::Preferred, unsupported, enabled));
+  EXPECT_STATUS_OK(webgpu::ResolveWeightLoadAccelerationMode(
+      webgpu::WeightLoadAccelerationMode::Preferred, unsupported, enabled));
   EXPECT_FALSE(enabled);
 
   enabled = false;
-  EXPECT_STATUS_OK(webgpu::ResolveDirectStorageExternalWeightsMode(
-      webgpu::DirectStorageExternalWeightsMode::Preferred, common::Status::OK(), enabled));
+  EXPECT_STATUS_OK(webgpu::ResolveWeightLoadAccelerationMode(
+      webgpu::WeightLoadAccelerationMode::PreferredPipelined,
+      common::Status::OK(), enabled));
   EXPECT_TRUE(enabled);
 
   enabled = true;
-  const auto required_status = webgpu::ResolveDirectStorageExternalWeightsMode(
-      webgpu::DirectStorageExternalWeightsMode::Required, unsupported, enabled);
+  const auto required_status = webgpu::ResolveWeightLoadAccelerationMode(
+      webgpu::WeightLoadAccelerationMode::RequiredPipelined, unsupported,
+      enabled);
   EXPECT_FALSE(required_status.IsOK());
   EXPECT_FALSE(enabled);
   EXPECT_EQ(required_status.ErrorMessage(), unsupported.ErrorMessage());

@@ -710,6 +710,7 @@ class InferenceSession {
                                               const std::string& event_name);
 
   [[nodiscard]] common::Status DoPostLoadProcessing(onnxruntime::Model& model);
+  [[nodiscard]] common::Status StartExternalDataPreload();
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -995,6 +996,7 @@ class InferenceSession {
 
   // External data loader manager.
   ExternalDataLoaderManager external_data_loader_mgr_;
+  bool external_data_preload_started_ = false;
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;

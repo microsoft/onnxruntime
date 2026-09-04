@@ -1056,6 +1056,9 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     if (!st.IsOK()) {
       return st;
     }
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF_ERROR_SESSIONID_(StartExternalDataPreload());
+#endif
   }
 
   p_exec_provider->SetLogger(session_logger_);
@@ -1175,14 +1178,21 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
     model_ = p_tmp_model;
 
-    status = DoPostLoadProcessing(*model_);
+    status = StartExternalDataPreload();
     ORT_RETURN_IF_ERROR_SESSIONID_(status);
+
+    status = DoPostLoadProcessing(*model_);
+    if (!status.IsOK()) {
+      external_data_loader_mgr_.AbortLoad();
+      ORT_RETURN_IF_ERROR_SESSIONID_(status);
+    }
 
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
 
     telemetry_.event_name_ = event_name;
   }
+
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
@@ -1201,6 +1211,19 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status);
 
   return status;
+}
+
+common::Status InferenceSession::StartExternalDataPreload() {
+  if (external_data_preload_started_ || model_ == nullptr ||
+      !external_data_loader_mgr_.HasPreloader()) {
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr_.PreloadExternalData(
+      Env::Default(), model_location_, model_->MainGraph(),
+      [this]() { return session_options_.IsLoadCancellationFlagSet(); }));
+  external_data_preload_started_ = true;
+  return Status::OK();
 }
 
 common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
