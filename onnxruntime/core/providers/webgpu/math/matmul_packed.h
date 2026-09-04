@@ -42,18 +42,30 @@ class MatMulProgram final : public Program<MatMulProgram> {
   uint32_t split_dim_inner_ = 1;
 };
 
-// The program to initialize the output with 0 or bias before doing MatMul with Split-K. In Split-K,
-// we set the output values with `atomicLoad` and `atomicCompareExchangeWeak` instead of a direct
-// assignment (see the function `HandleMatMulWithSplitK()` in `gemm_utils.cc`), so we must initialize
-// the output with 0 or bias first to make sure `atomicLoad` won't return garbage data.
-class MatMulFillBiasOrZeroBeforeSplitKProgram final : public Program<MatMulFillBiasOrZeroBeforeSplitKProgram> {
+// Pass 2 of the deterministic two-pass Split-K reduction.
+//
+// Pass 1 leaves each split's partial sum in its own slot of a scratch buffer laid out split-major:
+//
+//   partials[split_index * out_elems + output_id],  out_elems = batch_size * dim_a_outer * dim_b_outer_vec
+//
+// This runs one invocation per output element, sums the `splits` slots in a fixed index order,
+// applies bias (or `beta * C` for GEMM), and writes the output once. Fixing the order by index
+// rather than by the order pass-1 workgroups retire is what makes the result reproducible.
+//
+// It subsumes MatMul_Fill_Bias_Or_Zero_Before_Split_K, which the atomic path needed to seed the
+// output before `atomicLoad`; nothing is read back now, so the path still costs two dispatches.
+//
+// `splits` is a uniform rather than a shader constant so one pipeline serves every split count.
+class MatMulSplitKReduceProgram final : public Program<MatMulSplitKReduceProgram> {
  public:
-  MatMulFillBiasOrZeroBeforeSplitKProgram(bool is_gemm, bool has_bias, uint32_t output_components, bool bias_is_scalar)
-      : Program{"MatMul_Fill_Bias_Or_Zero_Before_Split_K"},
+  MatMulSplitKReduceProgram(bool is_gemm, bool has_bias, uint32_t output_components, bool bias_is_scalar,
+                            const Activation& activation)
+      : Program{"MatMul_Split_K_Reduce"},
         is_gemm_(is_gemm),
         has_bias_(has_bias),
         output_components_(output_components),
-        bias_is_scalar_(bias_is_scalar) {
+        bias_is_scalar_(bias_is_scalar),
+        activation_(activation) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -61,13 +73,16 @@ class MatMulFillBiasOrZeroBeforeSplitKProgram final : public Program<MatMulFillB
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
                                           {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
                                           {"beta", ProgramUniformVariableDataType::Float32},
-                                          {"batch_size", ProgramUniformVariableDataType::Uint32});
+                                          {"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"splits", ProgramUniformVariableDataType::Uint32},
+                                          WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
 
  private:
   bool is_gemm_ = false;
   bool has_bias_ = false;
   uint32_t output_components_ = 0;
   bool bias_is_scalar_ = false;
+  Activation activation_;
 };
 
 }  // namespace webgpu
