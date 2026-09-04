@@ -1798,19 +1798,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.EngramGate"></a><a name="com.microsoft.engramgate">**com.microsoft.EngramGate**</a>
 
   Fuses the Engram gate.
-
+  
   The op consumes already projected keys in (batch_size, sequence_length, hc_mult, hidden_size) layout,
   the hidden-state queries in the same layout, an already projected value in
   (batch_size, sequence_length, hidden_size) layout that is shared by every hyper-connection, and the two
   RMSNorm scales. The key and value projections stay outside the op so they can run on the execution
   provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the value
   projection is computed once per token instead of once per hyper-connection.
-
+  
   It computes the Engram gate:
-
+  
   gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
   dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
-
+  
   The output is gate * value, broadcast across the hyper-connections. The optional gated_value_normed
   output applies RMSNorm to gate * value with conv_norm_scale, which can feed a following
   CausalConvWithState. The final Engram residual value + short_conv(value) is then expressed with
@@ -2331,9 +2331,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs, and by the
   Qwen4-Exp text QSA/PLE gated norms:
-
+  
     Y = X * rsqrt(mean(X^2) + epsilon) * scale * activation(gate)
-
+  
   where `activation` is SiLU by default (`Y = X * rsqrt(mean(X^2) + epsilon) * scale *
   gate * Sigmoid(gate)`) or plain Sigmoid when the `activation` attribute is set to
   `"sigmoid"` (`Y = X * rsqrt(mean(X^2) + epsilon) * scale * Sigmoid(gate)`).
@@ -2383,7 +2383,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 </dl>
-
 
 
 ### <a name="com.microsoft.GatedRelativePositionBias"></a><a name="com.microsoft.gatedrelativepositionbias">**com.microsoft.GatedRelativePositionBias**</a>
@@ -4282,14 +4281,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.NGramHashMapping"></a><a name="com.microsoft.ngramhashmapping">**com.microsoft.NGramHashMapping**</a>
 
   Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
-
+  
   For n in [2, max_ngram_size], the op creates causal shifts of input_ids, padding positions before the
   sequence with pad_id, and computes
   mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
   For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
   The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
   heads for n=2 first, then n=3, and so on.
-
+  
   An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op causal
   across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
   those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
@@ -4298,9 +4297,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   Running the op once over a full sequence and running it over consecutive chunks while threading
   present_ids into past_ids produce identical hash ids. When past_ids is omitted the missing history is
   pad_id, or eos_token_id when it is provided.
-
+  
   Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
-
+  
   - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
     boundaries: any shifted position at or before the most recent EOS strictly before the current
     position is replaced with eos_token_id instead of the real token.
