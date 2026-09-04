@@ -3,6 +3,7 @@
 
 #include "core/optimizer/slice_concat_to_space_to_depth_fusion.h"
 
+#include <algorithm>
 #include <array>
 #include <limits>
 #include <numeric>
@@ -283,24 +284,11 @@ TypeProto MakeSpaceToDepthOutputTypeProto(const NodeArg& input) {
   return output_type;
 }
 
-bool TryMatchSlicePhase(const Graph& graph,
-                        const Node& slice,
-                        const NodeArg& common_input,
-                        const logging::Logger& logger,
-                        NormalizedSliceParams& params,
-                        SlicePhase& phase) {
-  if (slice.InputDefs().empty() || slice.InputDefs()[0] != &common_input) {
-    return false;
-  }
-
-  IntValues starts;
-  IntValues ends;
-  IntValues axes;
-  IntValues steps;
-  if (!GetSliceInfo(graph, slice, logger, starts, ends, axes, steps)) {
-    return false;
-  }
-
+bool NormalizeSliceParams(const IntValues& starts,
+                          const IntValues& ends,
+                          const IntValues& axes,
+                          const IntValues& steps,
+                          NormalizedSliceParams& params) {
   params.starts = {0, 0, 0, 0};
   params.ends = {
       std::numeric_limits<int64_t>::max(),
@@ -316,15 +304,16 @@ bool TryMatchSlicePhase(const Graph& graph,
       return false;
     }
 
-    if (axis_seen[onnxruntime::narrow<size_t>(axis)]) {
+    const size_t axis_index = onnxruntime::narrow<size_t>(axis);
+    if (axis_seen[axis_index]) {
       return false;
     }
 
-    axis_seen[onnxruntime::narrow<size_t>(axis)] = true;
+    axis_seen[axis_index] = true;
 
-    params.starts[onnxruntime::narrow<size_t>(axis)] = starts[i];
-    params.ends[onnxruntime::narrow<size_t>(axis)] = ends[i];
-    params.steps[onnxruntime::narrow<size_t>(axis)] = steps[i];
+    params.starts[axis_index] = starts[i];
+    params.ends[axis_index] = ends[i];
+    params.steps[axis_index] = steps[i];
   }
 
   for (size_t axis = 0; axis < params.starts.size(); ++axis) {
@@ -333,31 +322,132 @@ bool TryMatchSlicePhase(const Graph& graph,
     }
   }
 
-  if (params.starts[0] != 0 || params.starts[1] != 0 ||
-      params.steps[0] != 1 || params.steps[1] != 1 ||
-      params.steps[kHeightAxis] != kBlockSize || params.steps[kWidthAxis] != kBlockSize) {
-    return false;
-  }
-
-  if (!IsFullExtentEnd(common_input, 0, params.ends[0]) ||
-      !IsFullExtentEnd(common_input, 1, params.ends[1]) ||
-      !IsFullExtentEnd(common_input, kHeightAxis, params.ends[kHeightAxis]) ||
-      !IsFullExtentEnd(common_input, kWidthAxis, params.ends[kWidthAxis])) {
-    return false;
-  }
-
-  const int64_t h_offset = params.starts[kHeightAxis];
-  const int64_t w_offset = params.starts[kWidthAxis];
-  if ((h_offset != 0 && h_offset != 1) || (w_offset != 0 && w_offset != 1)) {
-    return false;
-  }
-
-  phase = {h_offset, w_offset};
   return true;
 }
 
-bool IsSingleConsumerOfConcat(const Node& slice, const Node& concat) {
-  return HasSingleOutputEdgeToNode(slice, concat);
+// A focus branch is not always a single Slice that strides both spatial axes.
+// Exporters commonly emit one Slice per axis, so a branch can be a chain of two
+// Slice nodes. Two chained nodes is enough to cover height and width.
+constexpr size_t kMaxSliceChainLength = 2;
+
+struct SliceChain {
+  // Ordered from the Concat backwards, so index 0 feeds the Concat.
+  InlinedVector<Node*> nodes;
+  const NodeArg* root_input;
+  SlicePhase phase;
+};
+
+// Walks back from one Concat input through up to kMaxSliceChainLength Slice
+// nodes, accumulating which spatial axis each one strides. Succeeds only when
+// height and width are each strided exactly once and every other axis passes
+// through untouched.
+bool TryMatchSliceChain(Graph& graph,
+                        Node& concat,
+                        size_t input_index,
+                        const std::string& provider_type,
+                        const logging::Logger& logger,
+                        SliceChain& chain) {
+  chain.nodes.clear();
+  chain.root_input = nullptr;
+
+  std::array<bool, 4> axis_strided{};
+  std::array<int64_t, 4> axis_offset{};
+
+  Node* node = GetMutableInputProducerNode(graph, concat, input_index);
+  const Node* consumer = &concat;
+
+  while (chain.nodes.size() < kMaxSliceChainLength) {
+    if (node == nullptr || node == &concat ||
+        node->GetExecutionProviderType() != provider_type ||
+        graph.NodeProducesGraphOutput(*node)) {
+      return false;
+    }
+
+    // The node feeding the Concat must be ours alone. A node further upstream
+    // may legitimately be shared with a sibling branch, which is how a focus
+    // layer that splits height once and width twice is usually exported.
+    if (chain.nodes.empty()) {
+      if (!HasSingleOutputEdgeToNode(*node, *consumer)) {
+        return false;
+      }
+    } else if (node->GetOutputEdgesCount() == 0) {
+      return false;
+    }
+
+    IntValues starts;
+    IntValues ends;
+    IntValues axes;
+    IntValues steps;
+    if (!GetSliceInfo(graph, *node, logger, starts, ends, axes, steps)) {
+      return false;
+    }
+
+    NormalizedSliceParams params{};
+    if (!NormalizeSliceParams(starts, ends, axes, steps, params)) {
+      return false;
+    }
+
+    if (node->InputDefs().empty()) {
+      return false;
+    }
+
+    const NodeArg* node_input = node->InputDefs()[0];
+    if (node_input == nullptr || !node_input->Exists()) {
+      return false;
+    }
+
+    // Batch and channel must pass through untouched.
+    for (const int64_t axis : {int64_t{0}, kChannelAxis}) {
+      const size_t axis_index = onnxruntime::narrow<size_t>(axis);
+      if (params.starts[axis_index] != 0 || params.steps[axis_index] != 1 ||
+          !IsFullExtentEnd(*node_input, axis, params.ends[axis_index])) {
+        return false;
+      }
+    }
+
+    bool strided_here = false;
+
+    for (const int64_t axis : {kHeightAxis, kWidthAxis}) {
+      const size_t axis_index = onnxruntime::narrow<size_t>(axis);
+
+      if (!IsFullExtentEnd(*node_input, axis, params.ends[axis_index])) {
+        return false;
+      }
+
+      if (params.steps[axis_index] == kBlockSize) {
+        if (axis_strided[axis_index] ||
+            (params.starts[axis_index] != 0 && params.starts[axis_index] != 1)) {
+          return false;
+        }
+
+        axis_strided[axis_index] = true;
+        axis_offset[axis_index] = params.starts[axis_index];
+        strided_here = true;
+      } else if (params.steps[axis_index] != 1 || params.starts[axis_index] != 0) {
+        return false;
+      }
+    }
+
+    if (!strided_here) {
+      return false;
+    }
+
+    chain.nodes.push_back(node);
+
+    const size_t height_index = onnxruntime::narrow<size_t>(kHeightAxis);
+    const size_t width_index = onnxruntime::narrow<size_t>(kWidthAxis);
+
+    if (axis_strided[height_index] && axis_strided[width_index]) {
+      chain.root_input = node_input;
+      chain.phase = {axis_offset[height_index], axis_offset[width_index]};
+      return true;
+    }
+
+    consumer = node;
+    node = GetMutableInputProducerNode(graph, *node, 0);
+  }
+
+  return false;
 }
 
 bool TryGetPhasePermutation(const std::array<SlicePhase, 4>& actual_phases,
@@ -414,10 +504,9 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
     return false;
   }
 
-  Node* slice_nodes[4]{};
   const NodeArg* common_input = nullptr;
   const auto& provider_type = concat.GetExecutionProviderType();
-  NormalizedSliceParams reference_params{};
+  std::array<SliceChain, 4> chains{};
   std::array<SlicePhase, 4> actual_phases{};
 
   for (size_t i = 0; i < concat.InputDefs().size(); ++i) {
@@ -426,44 +515,24 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
       return false;
     }
 
-    Node* slice = GetMutableInputProducerNode(graph, concat, i);
-    if (slice == nullptr || slice == &concat || slice->GetExecutionProviderType() != provider_type ||
-        !IsSingleConsumerOfConcat(*slice, concat)) {
+    if (!TryMatchSliceChain(graph, concat, i, provider_type, logger, chains[i])) {
       return false;
     }
 
     if (i == 0) {
-      common_input = slice->InputDefs()[0];
+      common_input = chains[i].root_input;
       if (common_input == nullptr || !IsSupportedSpaceToDepthInputType(*common_input)) {
         return false;
       }
-    }
-
-    ORT_ENFORCE(common_input != nullptr);
-
-    NormalizedSliceParams current_params{};
-    SlicePhase phase{};
-    if (!TryMatchSlicePhase(graph, *slice, *common_input, logger, current_params, phase)) {
+    } else if (chains[i].root_input != common_input) {
+      // Every branch has to strip the same tensor.
       return false;
     }
 
-    actual_phases[i] = phase;
-
-    if (i == 0) {
-      reference_params = current_params;
-    } else if (current_params.ends != reference_params.ends ||
-               current_params.steps != reference_params.steps ||
-               current_params.starts[0] != reference_params.starts[0] ||
-               current_params.starts[1] != reference_params.starts[1]) {
-      return false;
-    }
-
-    if (graph.NodeProducesGraphOutput(*slice)) {
-      return false;
-    }
-
-    slice_nodes[i] = slice;
+    actual_phases[i] = chains[i].phase;
   }
+
+  ORT_ENFORCE(common_input != nullptr);
 
   std::array<int64_t, 4> phase_permutation{};
   if (!TryGetPhasePermutation(actual_phases, phase_permutation)) {
@@ -527,11 +596,13 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
     replacement_end = &gather;
   }
 
-  // Explicitly transfer the shared data-input edge from the first Slice to
-  // SpaceToDepth. This avoids graph_utils::MoveAllNodeInputEdges(), which is
-  // not defined in extended minimal builds.
+  // Explicitly transfer the shared data-input edge from the topmost Slice of
+  // the first branch to SpaceToDepth. This avoids
+  // graph_utils::MoveAllNodeInputEdges(), which is not defined in extended
+  // minimal builds.
   {
-    const auto data_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(*slice_nodes[0], 0);
+    Node& chain_root = *chains[0].nodes.back();
+    const auto data_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(chain_root, 0);
     if (!data_input_edges.empty()) {
       ORT_ENFORCE(data_input_edges.size() == 1, "Expected a single data input edge for Slice node.");
       const auto& data_input_edge = data_input_edges[0];
@@ -546,9 +617,33 @@ bool FuseSliceConcatToSpaceToDepth(Node& concat, Graph& graph, const logging::Lo
     graph.AddEdge(replacement_end->Index(), edge.dst_node, 0, edge.dst_arg_index);
   }
 
-  for (Node* node : {slice_nodes[0], slice_nodes[1], slice_nodes[2], slice_nodes[3], &concat}) {
-    graph_utils::RemoveNodeOutputEdges(graph, *node);
-    graph.RemoveNode(node->Index());
+  // Drop the Concat and the Slice nodes that fed it directly, then any upstream
+  // Slice left without consumers. Upstream nodes can be shared between two
+  // branches, so they are deduplicated and only removed once orphaned.
+  InlinedVector<Node*> upstream_nodes;
+
+  graph_utils::RemoveNodeOutputEdges(graph, concat);
+  graph.RemoveNode(concat.Index());
+
+  for (const SliceChain& chain : chains) {
+    for (size_t i = 1; i < chain.nodes.size(); ++i) {
+      if (std::find(upstream_nodes.begin(), upstream_nodes.end(), chain.nodes[i]) == upstream_nodes.end()) {
+        upstream_nodes.push_back(chain.nodes[i]);
+      }
+    }
+  }
+
+  for (const SliceChain& chain : chains) {
+    Node& node = *chain.nodes[0];
+    graph_utils::RemoveNodeOutputEdges(graph, node);
+    graph.RemoveNode(node.Index());
+  }
+
+  for (Node* node : upstream_nodes) {
+    if (node->GetOutputEdgesCount() == 0 && !graph.NodeProducesGraphOutput(*node)) {
+      graph_utils::RemoveNodeOutputEdges(graph, *node);
+      graph.RemoveNode(node->Index());
+    }
   }
 
   LOGS(logger, INFO) << "Fused Slice+Concat downsample pattern into "

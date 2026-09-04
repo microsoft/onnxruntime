@@ -7493,6 +7493,166 @@ TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForR
                                         1, pre_graph_checker, post_graph_checker));
 }
 
+namespace {
+
+// Builds the initializers shared by the chained-Slice focus tests below.
+struct ChainedSliceInitializers {
+  NodeArg* axis_h;
+  NodeArg* axis_w;
+  NodeArg* step2;
+  NodeArg* start0;
+  NodeArg* start1;
+  NodeArg* end_full;
+};
+
+ChainedSliceInitializers MakeChainedSliceInitializers(ModelTestBuilder& builder, int64_t extent) {
+  return {builder.Make1DInitializer<int64_t>({2}),
+          builder.Make1DInitializer<int64_t>({3}),
+          builder.Make1DInitializer<int64_t>({2}),
+          builder.Make1DInitializer<int64_t>({0}),
+          builder.Make1DInitializer<int64_t>({1}),
+          builder.Make1DInitializer<int64_t>({extent})};
+}
+
+int GetOpCountOrZero(const OpCountMap& op_to_count, std::string_view op_type) {
+  const auto it = op_to_count.find(std::string(op_type));
+  return it == op_to_count.end() ? 0 : it->second;
+}
+
+}  // namespace
+
+// A focus layer is commonly exported as two chained Slice nodes per branch, one
+// striding height and one striding width, rather than a single Slice striding
+// both axes. The composed phase is still a blocksize=2 space-to-depth, so the
+// chain must fuse.
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionChainedSlicesTest) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+    const auto init = MakeChainedSliceInitializers(builder, 8);
+
+    auto slice_height_then_width = [&](NodeArg* h_start, NodeArg* w_start) {
+      auto* h_out = builder.MakeIntermediate();
+      auto* w_out = builder.MakeIntermediate();
+      builder.AddNode("Slice", {input, h_start, init.end_full, init.axis_h, init.step2}, {h_out});
+      builder.AddNode("Slice", {h_out, w_start, init.end_full, init.axis_w, init.step2}, {w_out});
+      return w_out;
+    };
+
+    // Canonical block order, so no channel permutation is required.
+    auto* branch00 = slice_height_then_width(init.start0, init.start0);
+    auto* branch01 = slice_height_then_width(init.start0, init.start1);
+    auto* branch10 = slice_height_then_width(init.start1, init.start0);
+    auto* branch11 = slice_height_then_width(init.start1, init.start1);
+
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Concat", {branch00, branch01, branch10, branch11}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Slice"), 0);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Concat"), 0);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "SpaceToDepth"), 1);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Gather"), 0);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level1, 13, 0.0, 0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
+}
+
+// The height Slice is normally shared by two width branches, so the graph holds
+// six Slice nodes rather than eight and the upstream node has two consumers.
+// This is the shape a YOLO focus layer actually exports, including its
+// non-canonical (0,0) (1,0) (0,1) (1,1) block order, which needs a Gather to
+// restore the channel order that Concat produced.
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionSharedHeightSliceTest) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+    const auto init = MakeChainedSliceInitializers(builder, 8);
+
+    auto slice_height = [&](NodeArg* h_start) {
+      auto* h_out = builder.MakeIntermediate();
+      builder.AddNode("Slice", {input, h_start, init.end_full, init.axis_h, init.step2}, {h_out});
+      return h_out;
+    };
+    auto slice_width = [&](NodeArg* h_out, NodeArg* w_start) {
+      auto* w_out = builder.MakeIntermediate();
+      builder.AddNode("Slice", {h_out, w_start, init.end_full, init.axis_w, init.step2}, {w_out});
+      return w_out;
+    };
+
+    auto* top = slice_height(init.start0);
+    auto* bottom = slice_height(init.start1);
+
+    auto* top_left = slice_width(top, init.start0);
+    auto* top_right = slice_width(top, init.start1);
+    auto* bottom_left = slice_width(bottom, init.start0);
+    auto* bottom_right = slice_width(bottom, init.start1);
+
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Concat", {top_left, bottom_left, top_right, bottom_right}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    // Both the width Slices and the shared height Slices must be gone.
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Slice"), 0);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Concat"), 0);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "SpaceToDepth"), 1);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Gather"), 1);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level1, 13, 0.0, 0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
+}
+
+// A chain that strides the same axis twice is a 4x height decimation, not a
+// space-to-depth, and must be left alone.
+TEST_F(GraphTransformationTests, SliceConcatToSpaceToDepthFusionNotTriggeredForRepeatedAxisChainTest) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1, 3, 8, 8}, -1.0f, 1.0f);
+    const auto init = MakeChainedSliceInitializers(builder, 8);
+
+    auto slice_height_twice = [&](NodeArg* first_start, NodeArg* second_start) {
+      auto* first_out = builder.MakeIntermediate();
+      auto* second_out = builder.MakeIntermediate();
+      builder.AddNode("Slice", {input, first_start, init.end_full, init.axis_h, init.step2}, {first_out});
+      builder.AddNode("Slice", {first_out, second_start, init.end_full, init.axis_h, init.step2}, {second_out});
+      return second_out;
+    };
+
+    auto* branch00 = slice_height_twice(init.start0, init.start0);
+    auto* branch01 = slice_height_twice(init.start0, init.start1);
+    auto* branch10 = slice_height_twice(init.start1, init.start0);
+    auto* branch11 = slice_height_twice(init.start1, init.start1);
+
+    auto* concat_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+    builder.AddNode("Concat", {branch00, branch01, branch10, branch11}, {concat_out})
+        .AddAttribute("axis", static_cast<int64_t>(1));
+    builder.AddNode("Identity", {concat_out}, {output});
+  };
+
+  auto check_transformed_graph = [](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Slice"), 8);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "Concat"), 1);
+    ASSERT_EQ(GetOpCountOrZero(op_to_count, "SpaceToDepth"), 0);
+  };
+
+  TransformerTester(build_test_case, check_transformed_graph, TransformerLevel::Default,
+                    TransformerLevel::Level1, 13, 0.0, 0.0,
+                    std::make_unique<SliceConcatToSpaceToDepthFusion>());
+}
+
 TEST_F(GraphTransformationTests, ExpandElimination) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "expand_elimination.onnx";
   std::shared_ptr<Model> model;
