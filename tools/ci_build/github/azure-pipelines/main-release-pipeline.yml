@@ -68,8 +68,6 @@ parameters:
   type: string
   default: 'none'
   values:
-  - alpha
-  - beta
   - rc
   - none
 
