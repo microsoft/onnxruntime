@@ -131,7 +131,8 @@ tensors alias.
 ### Capacity constraints per execution provider
 
 The formulas below are written for the general case `C >= W`, but an execution provider may accept
-only part of that range:
+only part of that range. A configuration with `C < W` (equivalently, `W > C`) is invalid and the
+CPU validator rejects it with `INVALID_ARGUMENT`.
 
 | EP | Accepted capacity | `G` | Resulting `L(T)` |
 |---|---|---|---|
@@ -210,6 +211,11 @@ Any `S >= 1` is accepted, including `S > C`. When a step would evict positions t
 query still has to read, the CPU kernel runs the step against a staging cache of `L(T - S) + S`
 entries and writes back only the surviving tail, so correctness never depends on the step fitting
 inside `C`.
+
+For example, with `C = 6`, `W = 4`, a current length of `P = 8`, and a chunk of `S = 20` tokens,
+the staging cache holds `L(P) + S = 5 + 20 = 25` entries while the chunk runs. The final length is
+`T = 28`, so `L(28) = 4`; only the four rows for positions 24 through 27 are written back to the
+real cache. This is the same result as processing those 20 tokens one at a time.
 
 This inherits the operator-wide restriction that `batch_size` must be 1 when `S > 1` and past
 context is present, so multi-token verification steps run one sequence at a time.
