@@ -312,8 +312,8 @@ TEST(WebGpuContextTest, AdapterIndexRejectsOutOfRangeValue) {
   GTEST_SKIP() << "Physical adapter enumeration requires a native Dawn build.";
 #else
   ConfigOptions options;
-  ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex,
-                                            std::to_string(std::numeric_limits<uint32_t>::max())));
+  const std::string adapter_index = std::to_string(std::numeric_limits<uint32_t>::max());
+  ORT_THROW_IF_ERROR(options.AddConfigEntry(kAdapterIndex, adapter_index.c_str()));
 
   EXPECT_THROW(WebGpuProviderFactoryCreator::Create(options), OnnxRuntimeException);
 #endif
