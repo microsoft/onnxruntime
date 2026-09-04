@@ -12,9 +12,6 @@ import onnx
 from onnx import TensorProto, checker, helper, numpy_helper, shape_inference
 
 
-OPSET_VERSION = 21
-
-
 @dataclass(frozen=True)
 class Projection:
     input_shape: tuple[int, ...]
@@ -25,6 +22,19 @@ class Projection:
     weight_zero_point: int
     output_scale: float
     output_zero_point: int
+
+
+@dataclass(frozen=True)
+class QdqProfile:
+    standard_opset: int
+    qdq_domain: str
+    qdq_opset: int
+
+
+QDQ_PROFILES = {
+    "onnx": QdqProfile(21, "", 21),
+    "microsoft": QdqProfile(17, "com.microsoft", 1),
+}
 
 
 PROJECTIONS = {
@@ -88,6 +98,12 @@ def parse_args() -> argparse.Namespace:
         help="Asymmetric uint8 weight quantization mode; default: per-tensor.",
     )
     parser.add_argument(
+        "--qdq-profile",
+        choices=tuple(QDQ_PROFILES),
+        default="onnx",
+        help="Coupled QDQ domain and opset profile; default: onnx.",
+    )
+    parser.add_argument(
         "--block-size",
         type=int,
         choices=(32, 128),
@@ -115,6 +131,14 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.output_scale is not None and args.output_scale <= 0:
         parser.error("--output-scale must be greater than zero")
+    if (
+        args.qdq_profile == "microsoft"
+        and args.weight_quantization == "blockwise"
+    ):
+        parser.error(
+            "--qdq-profile microsoft does not support blockwise quantization "
+            "because com.microsoft::DequantizeLinear has no block_size attribute"
+        )
     projection = PROJECTIONS[args.projection]
     weight_shape = (
         projection.weight_shape
@@ -213,6 +237,7 @@ def quantize_weight(
 
 def build_model(args: argparse.Namespace) -> onnx.ModelProto:
     projection = PROJECTIONS[args.projection]
+    qdq_profile = QDQ_PROFILES[args.qdq_profile]
     weight_shape = (
         projection.weight_shape
         if args.weight_shape is None
@@ -281,6 +306,7 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
                 [quantize_input, "activation_scale", "activation_zero_point"],
                 ["activation_quantized"],
                 name="QuantizeActivation",
+                domain=qdq_profile.qdq_domain,
             ),
             helper.make_node(
                 "DequantizeLinear",
@@ -291,12 +317,14 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
                 ],
                 ["activation"],
                 name="DequantizeActivation",
+                domain=qdq_profile.qdq_domain,
             ),
             helper.make_node(
                 "DequantizeLinear",
                 ["weight_quantized", "weight_scale", "weight_zero_point"],
                 ["weight"],
                 name="DequantizeWeight",
+                domain=qdq_profile.qdq_domain,
                 **weight_attributes,
             ),
         ]
@@ -318,12 +346,14 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
                 ["matmul", "output_scale", "output_zero_point"],
                 ["output_quantized"],
                 name="QuantizeOutput",
+                domain=qdq_profile.qdq_domain,
             ),
             helper.make_node(
                 "DequantizeLinear",
                 ["output_quantized", "output_scale", "output_zero_point"],
                 [dequantized_output],
                 name="DequantizeOutput",
+                domain=qdq_profile.qdq_domain,
             ),
         )
     )
@@ -354,16 +384,24 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
         ],
         initializer=initializers,
     )
+    opset_imports = [helper.make_opsetid("", qdq_profile.standard_opset)]
+    if qdq_profile.qdq_domain:
+        opset_imports.append(
+            helper.make_opsetid(
+                qdq_profile.qdq_domain, qdq_profile.qdq_opset
+            )
+        )
     model = helper.make_model(
         graph,
         producer_name=Path(__file__).name,
-        opset_imports=[helper.make_opsetid("", OPSET_VERSION)],
+        opset_imports=opset_imports,
     )
     model.ir_version = 8
     model.metadata_props.add(
         key="reference_model", value="amd-clip/clip_vit_base_patch16_amd.onnx"
     )
     model.metadata_props.add(key="projection", value=args.projection)
+    model.metadata_props.add(key="qdq_profile", value=args.qdq_profile)
     model.metadata_props.add(
         key="weight_quantization", value=args.weight_quantization
     )

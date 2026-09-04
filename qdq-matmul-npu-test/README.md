@@ -24,6 +24,13 @@ python -m venv .venv-winml
 
 `generate_qdq_matmul_model.py` creates a float32-input/output model with asymmetric uint16 activation QDQ, asymmetric uint8 constant-weight DQ, and MatMul. Weight quantization can be per-tensor, per-channel, or blockwise.
 
+| QDQ profile | Standard opset | Q/DQ domain | Q/DQ opset |
+|---|---:|---|---:|
+| `onnx` | 21 | Default ONNX | 21 |
+| `microsoft` | 17 | `com.microsoft` | 1 |
+
+Select the profile with `--qdq-profile onnx` or `--qdq-profile microsoft`. Per-tensor and per-channel weights support both profiles; blockwise weights require the `onnx` profile because `com.microsoft::DequantizeLinear` has no `block_size` attribute.
+
 ```powershell
 .\.venv\Scripts\python.exe .\generate_qdq_matmul_model.py `
     --weight-quantization blockwise `
@@ -31,6 +38,18 @@ python -m venv .venv-winml
 ```
 
 The default input shape is `[1, 2520, 768]`, the default weight shape is `[768, 768]`, and the default output is `unit-models\clip_visual_dq_matmul_q.onnx`. Run `.\.venv\Scripts\python.exe .\generate_qdq_matmul_model.py -h` for all options.
+
+
+### Gemma-4-E2B-IT vision model's MatMul shapes for reference
+| Gemma 4 E2B-IT vision MatMul use | Left input shape | Right input shape | Output shape | Count |
+|---|---|---|---|---:|
+| 768-wide projection | `[batch, num_patches, 768]` | `[768, 768]` | `[batch, num_patches, 768]` | 65 |
+| Attention QK transpose | `[batch, 12, num_patches, 64]` | `[batch, 12, 64, num_patches]` | `[batch, 12, num_patches, num_patches]` | 16 |
+| Attention probabilities by V | `[batch, 12, num_patches, num_patches]` | `[batch, 12, num_patches, 64]` | `[batch, 12, num_patches, 64]` | 16 |
+| MLP gate/up projection | `[batch, num_patches, 768]` | `[768, 3072]` | `[batch, num_patches, 3072]` | 32 |
+| MLP down projection | `[batch, num_patches, 3072]` | `[3072, 768]` | `[batch, num_patches, 768]` | 16 |
+| Pooler | `[batch, _d0, num_patches]` | `[batch, num_patches, 768]` | `[batch, _d0, 768]` | 1 |
+| Projector | `[batch, _d0, 768]` | `[768, 1536]` | `[batch, _d0, 1536]` | 1 |
 
 ## Run a model
 
