@@ -18,8 +18,8 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
       if (src_is_gpu) {
         // copy from GPU to GPU
         buffer_manager.MemCpy(static_cast<WGPUBuffer>(const_cast<void*>(src_data)),
-                             static_cast<WGPUBuffer>(dst_data),
-                             bytes);
+                              static_cast<WGPUBuffer>(dst_data),
+                              bytes);
       } else {
         // copy from CPU to GPU
         buffer_manager.Upload(const_cast<void*>(src_data),

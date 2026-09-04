@@ -650,15 +650,15 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   const bool device_free = context_.IsDeviceFree();
   return {
-      // allocator for initializers
+  // allocator for initializers
 #if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
       direct_storage_initializer_allocator_ != nullptr
           ? direct_storage_initializer_allocator_
           :
 #endif
-      CreateWebGpuAllocator(
-          device_free,
-          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true),
+          CreateWebGpuAllocator(
+              device_free,
+              [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true),
       // default allocator
       CreateWebGpuAllocator(
           device_free,
