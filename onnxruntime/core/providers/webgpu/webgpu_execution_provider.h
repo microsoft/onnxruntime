@@ -78,7 +78,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 #endif
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 #if defined(__wasm__)
-  std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
+  std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader(
+      const ConfigOptions* config_options = nullptr) const override;
 #endif
 
   DataLayout GetPreferredLayout() const override { return preferred_data_layout_; }

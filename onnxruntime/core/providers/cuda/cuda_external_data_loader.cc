@@ -18,7 +18,6 @@ namespace {
 
 constexpr size_t kBufferSize = 64 * 1024 * 1024;
 constexpr size_t kParallelReadThreshold = 16 * 1024 * 1024;
-constexpr size_t kReaderCount = 4;
 
 class CudaDeviceGuard {
  public:
@@ -43,8 +42,9 @@ class CudaDeviceGuard {
 };
 
 common::Status ReadChunk(const Env& env, const std::filesystem::path& path,
-                         FileOffsetType offset, size_t length, void* buffer) {
-  const size_t reader_count = length >= kParallelReadThreshold ? kReaderCount : 1;
+                         FileOffsetType offset, size_t length, void* buffer,
+                         size_t configured_reader_count) {
+  const size_t reader_count = length >= kParallelReadThreshold ? configured_reader_count : 1;
   std::vector<std::future<common::Status>> reads;
   reads.reserve(reader_count);
 
@@ -73,7 +73,8 @@ void SwapByteOrderInplace(void* buffer, size_t length, size_t element_size) {
 
 }  // namespace
 
-ExternalDataLoader::ExternalDataLoader(int device_id) : device_id_(device_id) {}
+ExternalDataLoader::ExternalDataLoader(int device_id, size_t reading_thread_count)
+    : device_id_(device_id), reading_thread_count_(reading_thread_count) {}
 
 ExternalDataLoader::~ExternalDataLoader() {
   ReleaseResources();
@@ -185,7 +186,8 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
     }
 
     const auto read_status =
-        ReadChunk(env, data_file_path, data_offset + offset, chunk_size, buffers_[buffer_index]);
+        ReadChunk(env, data_file_path, data_offset + offset, chunk_size, buffers_[buffer_index],
+                  reading_thread_count_);
     if (!read_status.IsOK()) {
       ORT_IGNORE_RETURN_VALUE(synchronize_streams());
       return read_status;

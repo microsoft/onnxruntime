@@ -18,6 +18,7 @@
 
 namespace onnxruntime {
 class GraphViewer;
+class ConfigOptions;
 struct ComputeCapability;
 class KernelRegistry;
 struct KernelCreateInfo;
@@ -124,7 +125,8 @@ class IExecutionProvider {
    * directly into GPU memory, this method is overridden to provide a custom external data loader to avoid the extra
    * CPU memory usage.
    */
-  virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const {
+  virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader(
+      const ConfigOptions* /*config_options*/ = nullptr) const {
     return nullptr;
   }
 

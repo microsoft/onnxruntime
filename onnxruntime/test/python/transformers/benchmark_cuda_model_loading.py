@@ -24,6 +24,13 @@ import time
 import onnxruntime
 
 
+def reading_thread_count(value):
+    count = int(value)
+    if not 1 <= count <= 64:
+        raise argparse.ArgumentTypeError("must be between 1 and 64")
+    return count
+
+
 def evict_file_cache(path):
     if not hasattr(os, "posix_fadvise"):
         raise RuntimeError("file-cache eviction requires os.posix_fadvise")
@@ -44,6 +51,11 @@ def main():
     parser.add_argument("--device-id", type=int, default=0, help="CUDA device ID")
     parser.add_argument("--threads", type=int, default=96, help="Intra-op thread count")
     parser.add_argument(
+        "--reading-threads",
+        type=reading_thread_count,
+        help="Override parallel reads per CUDA pinned staging buffer (runtime default: 4)",
+    )
+    parser.add_argument(
         "--evict-file-cache",
         action="store_true",
         help="Advise the OS to evict the model and external-data files before creating the session",
@@ -62,6 +74,11 @@ def main():
     options = onnxruntime.SessionOptions()
     options.intra_op_num_threads = args.threads
     options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    if args.reading_threads is not None:
+        options.add_session_config_entry(
+            "session.cuda.external_data_loader_reading_threads",
+            str(args.reading_threads),
+        )
 
     start = time.perf_counter()
     session = onnxruntime.InferenceSession(
@@ -81,6 +98,7 @@ def main():
                 "device_id": args.device_id,
                 "evict_file_cache": args.evict_file_cache,
                 "model": os.path.abspath(args.model),
+                "reading_threads": args.reading_threads or 4,
                 "seconds": elapsed,
                 "threads": args.threads,
             },

@@ -50,7 +50,8 @@ class JsExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
-  std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
+  std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader(
+      const ConfigOptions* config_options = nullptr) const override;
 
   DataLayout GetPreferredLayout() const override { return preferred_data_layout_; }
 

@@ -1050,7 +1050,8 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
-  auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();
+  auto p_external_data_loader =
+      p_exec_provider->GetExternalDataLoader(&session_options_.config_options);
   if (p_external_data_loader) {
     auto st = external_data_loader_mgr_.RegisterExternalDataLoader(std::move(p_external_data_loader));
     if (!st.IsOK()) {

@@ -14,7 +14,7 @@ namespace cuda {
 
 class ExternalDataLoader final : public IExternalDataLoader {
  public:
-  explicit ExternalDataLoader(int device_id);
+  ExternalDataLoader(int device_id, size_t reading_thread_count);
   ~ExternalDataLoader() override;
 
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
@@ -33,6 +33,7 @@ class ExternalDataLoader final : public IExternalDataLoader {
   mutable std::mutex mutex_;
   mutable std::array<void*, 2> buffers_{};
   mutable std::array<cudaStream_t, 2> streams_{};
+  const size_t reading_thread_count_;
 };
 
 }  // namespace cuda
