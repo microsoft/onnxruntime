@@ -107,11 +107,29 @@ TEST(MatMulNBitsWorkspace, FormulaSm90DependsOnMultiProcessorCount) {
   EXPECT_EQ(ComputeFpAIntBGemmWorkspaceSize(1, 1, 0, 90, 20),
             ComputeFpAIntBGemmWorkspaceSize(9999, 9999, 0, 90, 20));
 }
+
 #endif
+
+TEST(MatMulNBitsWorkspace, FormulaEmptyOutputIsZeroBeforeSm90Math) {
+  // The native SM90 formula normally depends only on the SM count. Empty output must be handled
+  // first so it cannot reserve the multi-megabyte stream-K workspace. Keep this test enabled when
+  // SM90 kernels are excluded: the shared early guard is intentionally architecture-independent.
+  EXPECT_EQ(ComputeFpAIntBGemmWorkspaceSize(/*m=*/0, /*n=*/256, /*k=*/1024,
+                                            /*sm=*/90, /*mpc=*/132),
+            std::optional<size_t>{0});
+  EXPECT_EQ(ComputeFpAIntBGemmWorkspaceSize(/*m=*/256, /*n=*/0, /*k=*/1024,
+                                            /*sm=*/90, /*mpc=*/132),
+            std::optional<size_t>{0});
+}
 
 TEST(MatMulNBitsWorkspace, FormulaReturnsNulloptOnInvalidNegativeDim) {
   // A negative dimension cannot be represented as an unsigned size and must yield nullopt (not throw).
   EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(-1, 64, 0, 80, 100).has_value());
+  EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(64, -1, 0, 80, 100).has_value());
+#ifndef EXCLUDE_SM_90
+  EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(-1, 64, 0, 90, 100).has_value());
+  EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(64, -1, 0, 90, 100).has_value());
+#endif
 }
 
 // ---------------------------------------------------------------------------

@@ -1841,7 +1841,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   }
 
   // Level-2 workspace declaration: after kernels are created and PrePack'd, call
-  // DeclareWorkspaceRequirements() on each kernel whose input shapes can be resolved.
+  // DeclareWorkspaceRequirements() on each kernel with positional input presence/shape metadata.
   // Static graph shapes remain usable when no max-shape inference result is available.
   // This collects workspace slot requirements for future offset planning.
   for (const auto& node : graph_viewer_->Nodes()) {
@@ -1849,11 +1849,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     if (kernel == nullptr) continue;
 
     auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
-    if (!resolved.has_value()) continue;
 
     InlinedVector<WorkspaceRequirement> requirements;
     ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
-        gsl::make_span(resolved->data(), resolved->size()), requirements));
+        gsl::make_span(resolved), requirements));
 
     if (!requirements.empty()) {
       LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
@@ -1862,7 +1861,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       // For now, log the declarations so we can verify the wiring works.
       for (const auto& req : requirements) {
         LOGS(logger_, VERBOSE) << "  slot_id=" << req.slot_id
-                               << " size=" << req.size_bytes << " bytes";
+                               << " size=" << req.size_bytes << " bytes"
+                               << " alignment=" << req.alignment_bytes << " bytes";
       }
     }
   }
