@@ -2,7 +2,7 @@ autopep8
 matplotlib
 scikit-learn
 skl2onnx
-sphinx==6.2.1
+sphinx>=6.0.0
 sphinx-gallery
 sphinxcontrib.imagesvg
 sphinxcontrib.googleanalytics
