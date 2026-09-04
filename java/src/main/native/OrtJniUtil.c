@@ -644,25 +644,30 @@ OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValu
     throwOrtException(jniEnv, 1, "Not enough memory");
     return ORT_FAIL;
   }
+  char * characterBuffer = NULL;
+  size_t * offsets = NULL;
   // Get the buffer size needed
   size_t totalStringLength = 0;
   OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, &totalStringLength));
   if (code != ORT_OK) {
-    return code;
+    goto string_tensor_cleanup;
   }
 
   // Create the character and offset buffers
-  char * characterBuffer = malloc(sizeof(char)*(totalStringLength+length));
+  characterBuffer = malloc(sizeof(char)*(totalStringLength+length));
   if (characterBuffer == NULL) {
     throwOrtException(jniEnv, 1, "Not enough memory");
-    return ORT_FAIL;
+    code = ORT_FAIL;
+    goto string_tensor_cleanup;
   }
   // length + 1 as we need to write out the final offset
-  size_t * offsets = allocarray(sizeof(size_t), length+1);
+  offsets = allocarray(sizeof(size_t), length+1);
   if (offsets == NULL) {
     free((void*)characterBuffer);
+    characterBuffer = NULL;
     throwOrtException(jniEnv, 1, "Not enough memory");
-    return ORT_FAIL;
+    code = ORT_FAIL;
+    goto string_tensor_cleanup;
   }
 
   // Get a view on the String data
@@ -686,7 +691,16 @@ OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValu
         memcpy(tempBuffer,characterBuffer+offsets[i],curSize);
         tempBuffer[curSize-1] = '\0';
         jobject tempString = (*jniEnv)->NewStringUTF(jniEnv,tempBuffer);
+        if (tempString == NULL) {
+          code = ORT_FAIL;
+          goto string_tensor_cleanup;
+        }
         (*jniEnv)->SetObjectArrayElement(jniEnv,outputArray,safecast_size_t_to_jsize(i),tempString);
+        (*jniEnv)->DeleteLocalRef(jniEnv, tempString);
+        if ((*jniEnv)->ExceptionCheck(jniEnv)) {
+          code = ORT_FAIL;
+          goto string_tensor_cleanup;
+        }
       }
     }
   }
