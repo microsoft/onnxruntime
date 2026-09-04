@@ -17,7 +17,7 @@ OPSET_VERSION = 21
 
 @dataclass(frozen=True)
 class Projection:
-    input_shape: tuple[int, int]
+    input_shape: tuple[int, ...]
     weight_shape: tuple[int, int]
     activation_scale: float
     activation_zero_point: int
@@ -29,8 +29,8 @@ class Projection:
 
 PROJECTIONS = {
     "visual": Projection(
-        (1, 768),
-        (768, 512),
+        (1, 2520, 768),
+        (768, 768),
         0.0001934150350280106,
         36400,
         0.0009047564235515893,
@@ -92,7 +92,14 @@ def parse_args() -> argparse.Namespace:
         type=int,
         choices=(32, 128),
         default=32,
-        help="Input-axis block size for blockwise weights; default: 32.",
+        help="Block size for blockwise weights; default: 32.",
+    )
+    parser.add_argument(
+        "--block-axis",
+        type=int,
+        choices=(0, 1),
+        default=0,
+        help="Weight axis partitioned by blockwise quantization; default: 0.",
     )
     parser.add_argument(
         "--add-boundary-nodes",
@@ -148,6 +155,7 @@ def quantize_weight(
     projection: Projection,
     mode: str,
     block_size: int,
+    block_axis: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, int]]:
     attributes: dict[str, int] = {}
     if mode == "per-tensor":
@@ -160,23 +168,40 @@ def quantize_weight(
         attributes["axis"] = 1
     else:
         rows, columns = values.shape
-        block_count = (rows + block_size - 1) // block_size
-        scale = np.empty((block_count, columns), dtype=np.float32)
-        zero_point = np.empty((block_count, columns), dtype=np.uint8)
         quantized = np.empty(values.shape, dtype=np.float32)
-        for block_index in range(block_count):
-            start = block_index * block_size
-            end = min(start + block_size, rows)
-            block_scale, block_zero_point = asymmetric_params(
-                values[start:end, :], axis=0
-            )
-            scale[block_index, :] = block_scale
-            zero_point[block_index, :] = block_zero_point
-            quantized[start:end, :] = (
-                np.rint(values[start:end, :] / block_scale[None, :])
-                + block_zero_point[None, :]
-            )
-        attributes.update(axis=0, block_size=block_size)
+        if block_axis == 0:
+            block_count = (rows + block_size - 1) // block_size
+            scale = np.empty((block_count, columns), dtype=np.float32)
+            zero_point = np.empty((block_count, columns), dtype=np.uint8)
+            for block_index in range(block_count):
+                start = block_index * block_size
+                end = min(start + block_size, rows)
+                block_scale, block_zero_point = asymmetric_params(
+                    values[start:end, :], axis=0
+                )
+                scale[block_index, :] = block_scale
+                zero_point[block_index, :] = block_zero_point
+                quantized[start:end, :] = (
+                    np.rint(values[start:end, :] / block_scale[None, :])
+                    + block_zero_point[None, :]
+                )
+        else:
+            block_count = (columns + block_size - 1) // block_size
+            scale = np.empty((rows, block_count), dtype=np.float32)
+            zero_point = np.empty((rows, block_count), dtype=np.uint8)
+            for block_index in range(block_count):
+                start = block_index * block_size
+                end = min(start + block_size, columns)
+                block_scale, block_zero_point = asymmetric_params(
+                    values[:, start:end], axis=1
+                )
+                scale[:, block_index] = block_scale
+                zero_point[:, block_index] = block_zero_point
+                quantized[:, start:end] = (
+                    np.rint(values[:, start:end] / block_scale[:, None])
+                    + block_zero_point[:, None]
+                )
+        attributes.update(axis=block_axis, block_size=block_size)
 
     return (
         np.clip(quantized, 0, 255).astype(np.uint8),
@@ -207,6 +232,7 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
             projection,
             args.weight_quantization,
             args.block_size,
+            args.block_axis,
         )
     )
     output_scale = (
@@ -346,6 +372,7 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
     )
     if args.weight_quantization == "blockwise":
         model.metadata_props.add(key="block_size", value=str(args.block_size))
+        model.metadata_props.add(key="block_axis", value=str(args.block_axis))
     model.metadata_props.add(
         key="boundary_nodes", value=str(args.add_boundary_nodes).lower()
     )

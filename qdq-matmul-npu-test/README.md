@@ -26,13 +26,11 @@ python -m venv .venv-winml
 
 ```powershell
 .\.venv\Scripts\python.exe .\generate_qdq_matmul_model.py `
-    --input-shape 1 768 `
-    --weight-shape 768 512 `
     --weight-quantization blockwise `
     --block-size 32
 ```
 
-The default output is `unit-models\clip_visual_dq_matmul_q.onnx`. Run `.\.venv\Scripts\python.exe .\generate_qdq_matmul_model.py -h` for all options.
+The default input shape is `[1, 2520, 768]`, the default weight shape is `[768, 768]`, and the default output is `unit-models\clip_visual_dq_matmul_q.onnx`. Run `.\.venv\Scripts\python.exe .\generate_qdq_matmul_model.py -h` for all options.
 
 ## Run a model
 
