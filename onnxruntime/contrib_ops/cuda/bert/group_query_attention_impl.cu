@@ -29,7 +29,6 @@ limitations under the License.
 #include <cuda_fp16.h>
 
 #include <cassert>
-
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
@@ -673,6 +672,7 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
                                    const int batch_size,
                                    const int sequence_length,
                                    const bool is_first_prompt,
+                                   const int max_total_sequence_length,
                                    const int kv_cache_capacity,
                                    const int kv_cache_real_capacity) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -681,7 +681,8 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
     // Clamp the negative case at the source so the derived lengths below stay non-negative and
     // cannot flow as negative offsets into KV-cache or attention index computations.
     const int seqlens_k = total_seq_lens_minus_one[i];
-    const int total_len = (seqlens_k > 0 ? seqlens_k : 0) + 1;
+    const int bounded_seqlens_k = seqlens_k < 0 ? 0 : min(seqlens_k, max_total_sequence_length - 1);
+    const int total_len = bounded_seqlens_k + 1;
     total_seq_lens[i] = total_len;
     int past_len;
     if (is_first_prompt) {
@@ -757,6 +758,7 @@ Status LaunchGetSequenceLengths(
     const int batch_size,
     const int sequence_length,
     const bool is_first_prompt,
+    const int max_total_sequence_length,
     const int kv_cache_capacity,
     const int kv_cache_real_capacity,
     cudaStream_t stream,
@@ -765,7 +767,8 @@ Status LaunchGetSequenceLengths(
   GetSequenceLengths<<<blocks, max_threads_per_block, 0, stream>>>(
       total_seq_lens_minus_one, past_seq_lens, total_seq_lens, padded_seq_lens,
       cache_past_seq_lens, cache_total_seq_lens, evict_counts,
-      batch_size, sequence_length, is_first_prompt, kv_cache_capacity, kv_cache_real_capacity);
+      batch_size, sequence_length, is_first_prompt, max_total_sequence_length,
+      kv_cache_capacity, kv_cache_real_capacity);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -1506,9 +1509,10 @@ Status EfficientAttention(
   p.causal = parameters.is_unidirectional;
   p.scale = scale;
   p.softcap = parameters.softcap;
-  p.seqlen_k_ptr = parameters.is_windowed_kv_cache
-                       ? data.cache_total_seq_lens
-                       : (parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens);
+  const int32_t* seqlen_k_ptr = parameters.is_windowed_kv_cache
+                                    ? data.cache_total_seq_lens
+                                    : (parameters.is_first_prompt ? data.padded_seq_lens : data.total_seq_lens);
+  p.seqlen_k_ptr = seqlen_k_ptr;
   p.seqstart_q_ptr = nullptr;
   p.seqstart_k_ptr = nullptr;
   p.query = query;
