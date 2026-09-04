@@ -1494,6 +1494,10 @@ MlasReorderOutputNchwBlock16Avx512F(
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
     MLAS_LAYERNORM_F32_KERNEL MlasLayerNormKernelRvv;
 #endif
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
+    MLAS_LAYERNORM_F32_KERNEL MlasLayerNormKernelAvx2;
+#endif
 }
 
 //
