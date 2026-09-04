@@ -369,16 +369,15 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
   return CUDA_CALL(cudaGetLastError());
 }
 
-// block_table is a graph input; CheckBlockTable validates only its shape, never entry values. Every
-// read path indexes the paged cache with block_table entries directly, so an entry >= num_blocks
-// would read out of bounds. Sanitize once here, the same way the write path already bound-checks its
-// own slot, so every downstream consumer can keep treating "< 0" as its only unmapped-block check.
+// block_table is a graph input and may contain out-of-range entries. Clamp entries >= num_blocks
+// into range before any read path indexes the paged cache with them; negative entries (the
+// existing "unmapped block" sentinel) are left as-is.
 __global__ void SanitizeBlockTable(int* __restrict__ sanitized_block_table, const int* __restrict__ block_table,
                                     const int num_blocks, const int total_entries) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= total_entries) return;
   const int block_id = block_table[i];
-  sanitized_block_table[i] = (block_id < 0 || block_id >= num_blocks) ? -1 : block_id;
+  sanitized_block_table[i] = block_id >= num_blocks ? 0 : block_id;
 }
 
 Status LaunchSanitizeBlockTable(int* sanitized_block_table, const int* block_table, const int num_blocks,
