@@ -93,7 +93,7 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
   // host-side, so LaunchVarlenNGramHashMappingKernel computes global monotonicity into this flag
   // on-device before any output-producing kernel runs (see the impl file for why per-block local
   // checks alone are not sufficient).
-  auto is_valid_buffer = GetScratchBuffer<int32_t>(1, context->GetComputeStream());
+  auto is_valid_buffer = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
 
   return LaunchVarlenNGramHashMappingKernel<T>(
       Stream(context),
