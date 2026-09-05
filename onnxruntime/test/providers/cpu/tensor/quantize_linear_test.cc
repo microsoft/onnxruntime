@@ -565,6 +565,18 @@ TEST(QuantizeLinearOpMLFloat16Test, Uint8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
 }
 
+TEST(QuantizeLinearOpMLFloat16Test, Int8RoundsFractionalValues) {
+  OpTester test("QuantizeLinear", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<MLFloat16>("x", dims,
+                           {MLFloat16(0.050018310546875f), MLFloat16(-0.050018310546875f),
+                            MLFloat16(0.04998779296875f), MLFloat16(-0.04998779296875f)});
+  test.AddInput<MLFloat16>("y_scale", {}, {MLFloat16(0.0999755859375f)});
+  test.AddInput<int8_t>("y_zero_point", {}, {0});
+  test.AddOutput<int8_t>("y", dims, {1, -1, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 // quantize with scalar zero point and scale
 TEST(QuantizeLinearOpTest, Int8) {
   // TODO: Unskip when fixed #41968513
