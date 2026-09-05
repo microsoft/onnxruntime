@@ -4584,6 +4584,7 @@ TEST(MathOpTest, ErfCheckMultiThreadDataChunking) {
 }
 
 constexpr int ModOp_ver = 10;
+constexpr int ModOp_ver28 = 28;
 
 TEST(ModOpTest, Fmod_float_mixed_sign) {
   OpTester test("Mod", ModOp_ver);
@@ -4635,6 +4636,87 @@ TEST(ModOpTest, Fmod_bfloat16_mixed_sign) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
+
+TEST(ModOpTest, FloorMod_float_mixed_sign) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddInput<float>("X", {6}, {-4.3f, 7.2f, 5.0f, 4.3f, -7.2f, 8.0f});
+  test.AddInput<float>("Y", {6}, {2.1f, -3.4f, 8.0f, -2.1f, 3.4f, 5.0f});
+  test.AddOutput<float>("Z", {6}, {2.0f, -3.0f, 5.0f, -2.0f, 3.0f, 3.0f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, FloorMod_double_mixed_sign) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddInput<double>("X", {6}, {-4.3, 7.2, 5.0, 4.3, -7.2, 8.0});
+  test.AddInput<double>("Y", {6}, {2.1, -3.4, 8.0, -2.1, 3.4, 5.0});
+  test.AddOutput<double>("Z", {6}, {2.0, -3.0, 5.0, -2.0, 3.0, 3.0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, FloorMod_float16_mixed_sign) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddInput<MLFloat16>("X", {6}, MakeMLFloat16({-4.3f, 7.2f, 5.0f, 4.3f, -7.2f, 8.0f}));
+  test.AddInput<MLFloat16>("Y", {6}, MakeMLFloat16({2.1f, -3.4f, 8.0f, -2.1f, 3.4f, 5.0f}));
+  test.AddOutput<MLFloat16>("Z", {6}, MakeMLFloat16({2.0f, -3.0f, 5.0f, -2.0f, 3.0f, 3.0f}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, FloorMod_float_edge_cases) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float inf = std::numeric_limits<float>::infinity();
+  OpTester test("Mod", ModOp_ver28);
+  test.AddInput<float>("X", {14},
+                       {0.0f, -0.0f, 0.0f, -0.0f, -3.0f, 3.0f, -1.0f, 1.0f,
+                        inf, -inf, 1.0f, 1.0f, nan, 1.0f});
+  test.AddInput<float>("Y", {14},
+                       {-2.0f, 2.0f, 2.0f, -2.0f, inf, inf, -inf, -inf,
+                        2.0f, 2.0f, 0.0f, -0.0f, 2.0f, nan});
+  test.AddOutput<float>("Z", {14},
+                        {-0.0f, 0.0f, 0.0f, -0.0f, inf, 3.0f, -1.0f, -inf,
+                         nan, nan, nan, nan, nan, nan});
+  test.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
+                                  const std::string& /*provider_type*/) {
+    ASSERT_EQ(fetches.size(), 1u);
+    ASSERT_TRUE(fetches[0].IsTensor());
+    const float* output = fetches[0].Get<Tensor>().Data<float>();
+
+    EXPECT_TRUE(std::signbit(output[0]));
+    EXPECT_FALSE(std::signbit(output[1]));
+    EXPECT_FALSE(std::signbit(output[2]));
+    EXPECT_TRUE(std::signbit(output[3]));
+    EXPECT_EQ(output[4], std::numeric_limits<float>::infinity());
+    EXPECT_EQ(output[5], 3.0f);
+    EXPECT_EQ(output[6], -1.0f);
+    EXPECT_EQ(output[7], -std::numeric_limits<float>::infinity());
+    for (size_t i = 8; i < 14; ++i) {
+      EXPECT_TRUE(std::isnan(output[i])) << "output index " << i;
+    }
+  });
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, Signed_integer_overflow_case) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddInput<int32_t>("X", {2}, {std::numeric_limits<int32_t>::min(), 7});
+  test.AddInput<int32_t>("Y", {2}, {-1, -3});
+  test.AddOutput<int32_t>("Z", {2}, {0, -2});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+TEST(ModOpTest, Signed_integer_overflow_case_fmod) {
+  OpTester test("Mod", ModOp_ver28);
+  test.AddAttribute<int64_t>("fmod", 1);
+  test.AddInput<int32_t>("X", {2}, {std::numeric_limits<int32_t>::min(), 7});
+  test.AddInput<int32_t>("Y", {2}, {-1, -3});
+  test.AddOutput<int32_t>("Z", {2}, {0, 1});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
 
 TEST(ModOpTest, Int8_mixed_sign) {
   OpTester test("Mod", ModOp_ver);
