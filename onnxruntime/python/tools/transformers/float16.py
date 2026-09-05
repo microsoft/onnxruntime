@@ -75,8 +75,8 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finit
 
     Args:
         tensor (TensorProto): the tensor to convert.
-        min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
-        max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+        min_positive_val (float, optional): minimal positive value. Defaults to 5.96e-08.
+        max_finite_val (float, optional): maximal finite value. Defaults to 65504.
 
     Raises:
         ValueError: input type is not TensorProto.
