@@ -20,6 +20,8 @@ namespace cuda {
 #define GEMM_FLOAT8_CONSTRAINTS BuildKernelDefConstraints<MLFloat16, BFloat16, float>()
 #endif
 
+#define GEMM_FLOAT8_C_CONSTRAINTS BuildKernelDefConstraints<MLFloat16, BFloat16, float>()
+
 #define REGISTER_KERNEL()                                            \
   ONNX_OPERATOR_KERNEL_EX(                                           \
       GemmFloat8,                                                    \
@@ -29,6 +31,7 @@ namespace cuda {
       (*KernelDefBuilder::Create())                                  \
           .TypeConstraint("TA", GEMM_FLOAT8_CONSTRAINTS)             \
           .TypeConstraint("TB", GEMM_FLOAT8_CONSTRAINTS)             \
+          .TypeConstraint("TC", GEMM_FLOAT8_C_CONSTRAINTS)           \
           .TypeConstraint("TR", GEMM_FLOAT8_CONSTRAINTS)             \
           .TypeConstraint("TS", BuildKernelDefConstraints<float>()), \
       GemmFloat8);
@@ -43,10 +46,6 @@ GemmFloat8::GemmFloat8(const OpKernelInfo& info) : CudaKernel(info) {
   sm_count_ = device_prop.multiProcessorCount;
   alpha_ = info.GetAttrOrDefault<float>("alpha", 1);
   beta_ = info.GetAttrOrDefault<float>("beta", 0);
-
-#if (CUDA_VERSION < 12000)
-  ORT_ENFORCE(beta_ == 0, "CUDA < 12.0 does not support bias, beta must be 0.");
-#endif
 
   std::string stemp = info.GetAttrOrDefault<std::string>("activation", "NONE");
   if (stemp == "NONE") {
