@@ -183,9 +183,12 @@ constexpr int64_t kDefaultConv2dMMElementsPerThreadY = 4;
 static_assert(kDefaultConv2dMMWorkgroupSizeY * kDefaultConv2dMMElementsPerThreadY == kConv2dMMTileAOuter,
               "The default Conv2dMM workgroup must cover exactly kConv2dMMTileAOuter rows of A.");
 
-// Conv2dMM reads a wider inner tile than MatMul, so it needs more warps in flight to hide the
-// extra loads: 8 subgroups rather than MatMul's 4. Both counts are empirical, and neither is a
-// WebGPU capability, which is why the rule stays vendor-gated.
+// Conv2dMM asks for 8 subgroups where MatMul asks for 4. This is the configuration the
+// numbers in the PR description were measured with: on NVIDIA it derives a 32-thread y
+// dimension, which is what the ResNet-50, YOLO26n and EfficientNet-B0 runs used. Dropping it
+// to 4 for symmetry with MatMul would derive 16 instead and discard that measurement, so the
+// asymmetry is deliberate. Neither count is a WebGPU capability, which is why the rule stays
+// vendor-gated.
 constexpr uint32_t kNvidiaSubgroupsPerWorkgroup = 8;
 
 // Chooses the Conv2dMM workgroup y dimension and the matching elements-per-thread.
@@ -194,6 +197,14 @@ std::pair<uint32_t, int64_t> SelectConv2dMMWorkgroupConfig(const PackedTileCaps&
                                                            bool is_vec4,
                                                            int64_t in_channels,
                                                            uint32_t dim_a_outer) {
+  // Preconditions of SelectSubgroupAlignedTileConfigY, checked here because every argument it
+  // takes other than the caps is a compile-time constant.
+  static_assert(kConv2dMMWorkgroupSizeX > 0 && kDefaultConv2dMMWorkgroupSizeY > 0 &&
+                    kNvidiaSubgroupsPerWorkgroup > 0,
+                "Workgroup dimensions and the subgroup count must be non-zero.");
+  static_assert(kConv2dMMTileAOuter % kDefaultConv2dMMWorkgroupSizeY == 0,
+                "The default workgroup y dimension must divide the A tile.");
+
   // Narrow outputs are bounded by dim_a_outer rather than by the tile, so they take one row
   // per thread and never reach kConv2dMMTileAOuter.
   if (dim_a_outer <= 8) {

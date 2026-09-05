@@ -45,8 +45,13 @@ inline bool IsNvidiaAdapter(const wgpu::AdapterInfo& adapter_info) {
  * plain scalars: wgpu::AdapterInfo has const members and cannot be synthesized by a test.
  */
 struct PackedTileCaps {
-  // wgpu::AdapterInfo::subgroupMaxSize, or 0 when the adapter reports no subgroup size.
-  // On NVIDIA this is the warp size, and subgroupMinSize reports the same value.
+  // The adapter's reported subgroup size, or 0 when it reports none.
+  //
+  // This is wgpu::AdapterInfo::subgroupMinSize, not subgroupMaxSize: on D3D12 the max is
+  // derived from WaveLaneCountMax, which Dawn documents as unreliable and "not intended to be
+  // used" (D3D12Info.cpp). The min comes from WaveLaneCountMin, which Dawn does rely on, and is
+  // what contrib_ops/webgpu/quantization/matmul_nbits.cc reads. NVIDIA reports 32 for both, so
+  // the rule below derives the same value either way on the hardware it is gated to.
   uint32_t subgroup_size = 0;
   // wgpu::Limits::maxComputeWorkgroupSizeY.
   uint32_t max_workgroup_size_y = 0;
@@ -79,9 +84,15 @@ PackedTileCaps GetPackedTileCaps(const wgpu::AdapterInfo& adapter_info, const wg
  * memory per core, so `subgroups_per_workgroup` stays a caller-supplied, empirically tuned
  * value. The subgroup size and the workgroup limits it is combined with are both queried.
  *
+ * Preconditions, which callers are expected to static_assert since every argument other than
+ * `caps` is a compile-time constant at the call site: `workgroup_size_x`,
+ * `subgroups_per_workgroup` and `default_workgroup_size_y` are non-zero, and
+ * `default_workgroup_size_y` divides `tile_a_outer`.
+ *
  * @return {workgroup_size_y, elements_per_thread_y}, whose product is always `tile_a_outer`.
  *         Falls back to the default y dimension when the adapter reports no subgroup size, or
- *         when the derived size would exceed a device limit or break the tile invariant.
+ *         when the derived size would exceed a device limit or break the tile invariant. A
+ *         fallback on a vendor-gated adapter is logged, since it silently disables the tuning.
  */
 std::pair<uint32_t, int64_t> SelectSubgroupAlignedTileConfigY(const PackedTileCaps& caps,
                                                               uint32_t workgroup_size_x,
