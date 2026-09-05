@@ -126,6 +126,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.UnfoldTensor">com.microsoft.UnfoldTensor</a>
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
   * <a href="#com.microsoft.VarlenCausalConvWithState">com.microsoft.VarlenCausalConvWithState</a>
+  * <a href="#com.microsoft.VarlenNGramHashMapping">com.microsoft.VarlenNGramHashMapping</a>
   * <a href="#com.microsoft.WhisperBeamSearch">com.microsoft.WhisperBeamSearch</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
@@ -7397,6 +7398,82 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain cumulative_sequence_length and capture_count to device int32 tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.VarlenNGramHashMapping"></a><a name="com.microsoft.varlenngramhashmapping">**com.microsoft.VarlenNGramHashMapping**</a>
+
+  Computes Engram n-gram hash ids from pre-compressed tokenizer ids over a packed, token-major batch
+  of variable-length sequences.
+  
+  input_ids has shape (total_tokens) and hash_ids has shape (total_tokens, (max_ngram_size - 1) *
+  n_head_per_ngram). cumulative_sequence_length is a device-resident int32 tensor of shape
+  (batch_size + 1); request i occupies [cumulative_sequence_length[i], cumulative_sequence_length[i +
+  1]) of the packed buffer. Every request contributes at least one token.
+  
+  For n in [2, max_ngram_size], the op creates causal shifts of each request's own tokens, padding
+  positions before that request's start with pad_id (or its own past_ids history, see below), and
+  computes mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1]. For every
+  head of that n-gram order it emits mix modulo the corresponding head vocabulary size. The n-gram
+  window never reads tokens belonging to a different packed request; it is clamped at each request's
+  own boundary exactly like VarlenCausalConvWithState clamps its causal convolution.
+  
+  An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op
+  causal across invocations (chunked prefill or autoregressive decode) for every concurrent request in
+  the packed batch, the optional past_ids input carries those preceding ids per request and
+  present_ids returns the ids to pass to the next call. Both have shape (batch_size, max_ngram_size -
+  1) and are right-aligned, so the last slot is the most recent id, and are indexed by request
+  (batch_size), not by position in the packed buffer. Positions before the start of a request's whole
+  sequence use pad_id. Running NGramHashMapping once per sequence and running this op once over those
+  sequences packed together (optionally split into packed chunks with present_ids threaded into
+  past_ids) produce identical hash ids.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>max_ngram_size</tt> : int (required)</dt>
+<dd>Maximum n-gram order. Must be at least 2.</dd>
+<dt><tt>n_head_per_ngram</tt> : int (required)</dt>
+<dd>Number of hash heads emitted for each n-gram order.</dd>
+<dt><tt>pad_id</tt> : int (required)</dt>
+<dd>Compressed tokenizer id used to pad causal shifts before the beginning of a request's sequence.</dd>
+</dl>
+
+#### Inputs (4 - 5)
+
+<dl>
+<dt><tt>input_ids</tt> : M</dt>
+<dd>Token-major packed compressed tokenizer ids with shape (total_tokens).</dd>
+<dt><tt>multipliers</tt> : M</dt>
+<dd>Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any value is accepted.</dd>
+<dt><tt>vocab_sizes</tt> : M</dt>
+<dd>Per-output-head vocabulary sizes, conventionally prime, with shape ((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. The CPU implementation rejects a non-positive entry; GPU implementations guard the modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.</dd>
+<dt><tt>cumulative_sequence_length</tt> : S</dt>
+<dd>Device tensor with shape (batch_size + 1) giving the half-open packed token range of each request.</dd>
+<dt><tt>past_ids</tt> (optional) : M</dt>
+<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id, and indexed by request rather than by packed position. If omitted the history is pad_id.</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>hash_ids</tt> : M</dt>
+<dd>Token-major packed hash ids with shape (total_tokens, (max_ngram_size - 1) * n_head_per_ngram).</dd>
+<dt><tt>present_ids</tt> (optional) : M</dt>
+<dd>Trailing max_ngram_size - 1 ids of past_ids followed by each request's own tokens, with shape (batch_size, max_ngram_size - 1). Feed this back as past_ids on the next call.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>M</tt> : tensor(int32), tensor(int64)</dt>
+<dd>Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.</dd>
+<dt><tt>S</tt> : tensor(int32)</dt>
+<dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>
 </dl>
 
 
