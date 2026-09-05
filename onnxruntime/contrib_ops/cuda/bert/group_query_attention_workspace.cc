@@ -196,7 +196,7 @@ GQAWorkspaceStatus AppendRegion(size_t bytes, size_t& cursor, size_t& offset) no
   }
 
   size_t aligned_cursor = 0;
-  auto status = CheckedGQAWorkspaceAlign(cursor, kGQAPreparationAlignment, aligned_cursor);
+  auto status = CheckedGQAWorkspaceAlign(cursor, kGQAWorkspaceAlignment, aligned_cursor);
   if (!status.IsOK()) {
     return status;
   }
@@ -362,7 +362,7 @@ GQAWorkspaceStatus ValidateTopLevelRanges(
       continue;
     }
 
-    if (range.offset % kGQAPreparationAlignment != 0) {
+    if (range.offset % kGQAWorkspaceAlignment != 0) {
       return Invalid("A GQA preparation region offset is not 256-byte aligned.");
     }
 

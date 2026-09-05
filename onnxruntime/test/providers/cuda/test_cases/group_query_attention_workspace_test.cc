@@ -23,7 +23,7 @@ using contrib::cuda::GQAPreparationRoute;
 using contrib::cuda::GQAPreprocessMode;
 using contrib::cuda::GQAWorkspaceError;
 using contrib::cuda::GQAWorkspaceProblem;
-using contrib::cuda::kGQAPreparationAlignment;
+using contrib::cuda::kGQAWorkspaceAlignment;
 using contrib::cuda::ValidateGQAPreparationRecipe;
 
 namespace {
@@ -390,7 +390,7 @@ TEST(GroupQueryAttentionWorkspaceTest, RegionOffsetsAreAlignedContainedAndNonOve
     if (bytes == 0) {
       continue;
     }
-    EXPECT_EQ(offset % kGQAPreparationAlignment, 0U);
+    EXPECT_EQ(offset % kGQAWorkspaceAlignment, 0U);
     EXPECT_GE(offset, previous_end);
     EXPECT_LE(offset + bytes, recipe.total_preparation_bytes);
     previous_end = offset + bytes;
