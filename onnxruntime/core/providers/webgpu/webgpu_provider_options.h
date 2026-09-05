@@ -18,6 +18,13 @@ constexpr const char* kSessionBufferPoolGenerations = "ep.webgpuexecutionprovide
 constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
 constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvCacheQuantizationBits";
+// Accumulate the dot products of the MatMulNBits kernels in f32 instead of in the output element
+// type. Weights and activations are unaffected: only the register/workgroup accumulators change,
+// so global memory traffic is identical either way. Enabling it avoids saturating the f16 maximum
+// (65504) when partial sums along K grow large, at the cost of registers and shared memory.
+// Today this covers MatMulNBits and its fused variants; the unquantized MatMul family is planned
+// as follow-up work under the same option.
+constexpr const char* kEnableMatmulFp32Accumulation = "ep.webgpuexecutionprovider.enableMatmulFp32Accumulation";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 
@@ -74,6 +81,9 @@ constexpr const char* kPreserveDevice_OFF = "0";
 // (Future: "8" for 8-bit.)
 constexpr const char* kKvCacheQuantizationBits_OFF = "0";
 constexpr const char* kKvCacheQuantizationBits_4Bit = "4";
+
+constexpr const char* kEnableMatmulFp32Accumulation_ON = "1";
+constexpr const char* kEnableMatmulFp32Accumulation_OFF = "0";
 
 constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";

@@ -907,6 +907,182 @@ TEST(MatMulNBits, Float32_Large) {
 
   RunTest<float>(4 /*M*/, 8388612 /*N*/, 32 /*K*/, block_size, has_zeropoint, zp_is_4bit, abs_error);
 }
+
+// Guards the accumulator precision of the MatMulNBits WebGPU kernel along K.
+//
+// Every other MatMulNBits test in this file draws its inputs from Gaussian(0, 0.25), which keeps the
+// running partial sum in the single digits even at K = 11008. That is why an f16 accumulator has never
+// been caught here: the tests cannot reach the f16 ceiling, not even by accident.
+//
+// This case is built so that the partial sum crosses 65504 while both the inputs and the exact result
+// stay comfortably inside the f16 range:
+//
+//   A            = 8 everywhere
+//   B, first half of K  = +112  (quantized 15, zero point 8, scale 16)
+//   B, second half of K = -112  (quantized 1,  zero point 8, scale 16)
+//   exact Y = 0
+//
+// In both cases the accumulator climbs on the first half of K and comes back down on the second. With
+// f32 every partial sum is exact and Y is exactly 0; with f16 the midpoint saturates to +Inf and no
+// later subtraction recovers it, so Y comes back Inf or NaN even though the correct answer is 0.
+//
+// M selects the dispatch, and the two that the option reaches from a MatMulNBits node are both covered:
+//   M = 1  -> matmul_nbits.wgsl.template. K is split over tile_size_k_vec lanes and carried in
+//             inter_results, so a lane walks K/tile_size_k_vec = 256 elements and peaks at
+//             128 * 8 * 112 = 114688. The block-local `sum` stays in output_element_t by design and
+//             peaks at 32 * 896 = 28672, well inside range, so this isolates the cross-K accumulator.
+//   M = 8  -> matmul_nbits_wide_tile.wgsl.template. No cross-lane split of K here: results[m] carries
+//             the whole prefix and peaks at 4096 * 8 * 112 = 3670016, which is still exact in f32
+//             (under 2^24) and far outside f16.
+//
+// One limitation, so nobody reads more into a pass than it carries: WGSL permits extra intermediate
+// precision, and Intel's D3D12 compiler promotes unrolled f16 `acc +=` chains to f32 on its own. On
+// such a configuration this test can pass even with an f16 accumulator. It is a regression guard for
+// the backends that round strictly (Vulkan, and the looped code shapes), not a universal detector.
+//
+// The EP is built with enableMatmulFp32Accumulation on because that is the setting under test; the
+// shipped default is off and would legitimately produce +Inf here.
+TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
+  constexpr int64_t N = 8;
+  constexpr int64_t K = 8192;
+  constexpr int64_t block_size = 32;
+  constexpr int64_t k_blocks = K / block_size;
+  constexpr int64_t blob_size = block_size / 2;  // 4 bits per element
+  constexpr float scale = 16.0f;
+  constexpr float a_value = 8.0f;
+
+  ConfigOptions config_options{};
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation,
+                                            webgpu::options::kEnableMatmulFp32Accumulation_ON)
+                  .IsOK());
+
+  // Checked before any OpTester exists: on a build where the WebGPU EP is a dynamic plugin this
+  // returns nullptr, and both ConfigEps and the OpTester destructor object to a test that never ran.
+  if (!WebGpuExecutionProviderWithOptions(config_options)) {
+    GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+  }
+
+  // Quantized B, laid out as {N, k_blocks, blob_size}. Every nibble in a block is 15 (dequantizes to
+  // +112) for the first half of K and 1 (dequantizes to -112) for the second half.
+  std::vector<uint8_t> input1_vals(static_cast<size_t>(N * k_blocks * blob_size));
+  std::vector<float> scales(static_cast<size_t>(N * k_blocks), scale);
+  for (int64_t n = 0; n < N; ++n) {
+    for (int64_t kb = 0; kb < k_blocks; ++kb) {
+      const uint8_t packed = (kb * block_size < K / 2) ? 0xFF : 0x11;
+      auto* blob = input1_vals.data() + (n * k_blocks + kb) * blob_size;
+      for (int64_t i = 0; i < blob_size; ++i) {
+        blob[i] = packed;
+      }
+    }
+  }
+
+  for (const int64_t M : {int64_t{1}, int64_t{8}}) {
+    SCOPED_TRACE("M:" + std::to_string(M));
+
+    std::vector<float> input0_vals(static_cast<size_t>(M * K), a_value);
+    // Exact result: the two halves of K cancel to zero for every output column.
+    std::vector<float> expected_vals(static_cast<size_t>(M * N), 0.0f);
+
+    OpTester test("MatMulNBits", 1, kMSDomain);
+    test.AddAttribute<int64_t>("K", K);
+    test.AddAttribute<int64_t>("N", N);
+    test.AddAttribute<int64_t>("block_size", block_size);
+    test.AddAttribute<int64_t>("bits", QBits);
+    test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+    test.AddInput<MLFloat16>("A", {1, M, K}, FloatsToMLFloat16s(input0_vals), false);
+    test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, input1_vals, true);
+    test.AddInput<MLFloat16>("scales", {N, k_blocks}, FloatsToMLFloat16s(scales), true);
+    test.AddOptionalInputEdge<uint8_t>();    // zero_points: unset, so the default 8 applies
+    test.AddOptionalInputEdge<int32_t>();    // g_idx
+    test.AddOptionalInputEdge<MLFloat16>();  // bias
+    test.AddOutput<MLFloat16>("Y", {1, M, N}, FloatsToMLFloat16s(expected_vals));
+
+    // The f32 accumulator path is exact here, so the tolerance only has to exclude Inf/NaN.
+    test.SetOutputAbsErr("Y", 0.05f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
+    test.ConfigEps(std::move(execution_providers));
+    test.RunWithConfig();
+  }
+}
+
+// Float16_LargeK_AccumulatorOverflow above is the numerical case, and it covers the generic and
+// wide-tile kernels with the option on. This one is the opposite: ordinary Gaussian inputs, but every
+// dispatch that reads the option, in both of its states. It is there so that a shader variant that
+// fails to compile, an uninitialised accumulator flag or a cache hint that cannot tell the two variants
+// apart shows up as a test failure rather than as garbage on someone's GPU.
+//
+// Being explicit about what it does not do: on Gaussian(0, 0.25) both accumulator widths give the same
+// answer to within the tolerance, so a run that quietly ignored the flag would still pass here. The
+// numerical discrimination lives in the test above, and only for the two dispatches it reaches. The
+// dp4a paths have no equivalent case: A is int8-quantized before the kernel sees it, so a construction
+// whose exact result stays in range while the f16 prefix saturates needs a different setup, and I have
+// not written one.
+//
+// The shapes below pick the dispatch:
+//   M = 1                  -> matmul_nbits.wgsl.template
+//   M = 8,  block_size 32  -> matmul_nbits_wide_tile.wgsl.template
+//   accuracy_level 4       -> dp4a_matmul*.wgsl.template (where the adapter supports it)
+// With the option on and an adapter that has subgroup matrices, the subgroup-matrix path declines
+// itself (its cooperative-matrix result type is f16 and cannot honour the request) and the dispatch
+// falls through to one of the kernels above; that fallback is exercised here too.
+//
+// The fused MLP and QKV decode kernels also read the option, but they are reached through graph fusion
+// rather than through a MatMulNBits node; they are covered by the option-enabled cases in
+// matmul_nbits_mlp_fusion_test.cc and matmul_nbits_qkv_fusion_test.cc.
+TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
+  constexpr float abs_error = 0.055f;
+
+  struct Case {
+    int64_t M;
+    int64_t N;
+    int64_t K;
+    int64_t block_size;
+    int64_t accuracy_level;
+    bool has_bias;
+  };
+  constexpr Case cases[] = {
+      {1, 128, 1024, 32, 0, false},  // generic, decode shape
+      {1, 128, 1024, 32, 0, true},   // generic, with bias
+      {8, 128, 1024, 32, 0, false},  // wide tile, prefill shape
+      {8, 128, 1024, 32, 0, true},   // wide tile, with bias
+      {8, 128, 4096, 32, 4, false},  // dp4a where available, otherwise wide tile
+      {2, 128, 4096, 32, 4, false},  // dp4a small-M where available
+  };
+
+  for (const auto& c : cases) {
+    for (const char* acc_f32 : {webgpu::options::kEnableMatmulFp32Accumulation_OFF,
+                                webgpu::options::kEnableMatmulFp32Accumulation_ON}) {
+      SCOPED_TRACE(std::string{"enableMatmulFp32Accumulation:"} + acc_f32);
+
+      TestOptions opts{};
+      opts.M = c.M;
+      opts.N = c.N;
+      opts.K = c.K;
+      opts.block_size = c.block_size;
+      opts.accuracy_level = c.accuracy_level;
+      opts.has_zero_point = false;
+      opts.has_bias = c.has_bias;
+      opts.output_abs_error = abs_error;
+      opts.output_rel_error = 0.02f;
+
+      ConfigOptions config_options{};
+      ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, acc_f32)
+                      .IsOK());
+
+      auto ep = WebGpuExecutionProviderWithOptions(config_options);
+      if (!ep) {
+        GTEST_SKIP() << "WebGPU EP unavailable in this build.";
+      }
+
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(std::move(ep));
+      RunTest<MLFloat16>(opts, std::move(execution_providers));
+    }
+  }
+}
 #endif
 
 #ifdef USE_CUDA

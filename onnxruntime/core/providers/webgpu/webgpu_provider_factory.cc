@@ -110,6 +110,17 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  std::string enable_matmul_fp32_accumulation_str;
+  if (config_options.TryGetConfigEntry(kEnableMatmulFp32Accumulation, enable_matmul_fp32_accumulation_str)) {
+    if (enable_matmul_fp32_accumulation_str == kEnableMatmulFp32Accumulation_ON) {
+      webgpu_ep_config.enable_matmul_fp32_accumulation = true;
+    } else if (enable_matmul_fp32_accumulation_str == kEnableMatmulFp32Accumulation_OFF) {
+      webgpu_ep_config.enable_matmul_fp32_accumulation = false;
+    } else {
+      ORT_THROW("Invalid enableMatmulFp32Accumulation value: ", enable_matmul_fp32_accumulation_str, ". Must be \"0\" or \"1\".");
+    }
+  }
+
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.

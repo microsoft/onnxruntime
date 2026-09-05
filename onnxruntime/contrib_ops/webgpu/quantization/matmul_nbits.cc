@@ -51,6 +51,7 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   ORT_ENFORCE(nbits_ == 4 || nbits_ == 8, "Only 4/8 bits are supported for webgpu matmulnbits.");
 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_wide_tile.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx_),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect_),
@@ -91,6 +92,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                             WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                              WGSL_TEMPLATE_PARAMETER(broadcast_a_row, broadcast_a_row_),
                              WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                              WGSL_TEMPLATE_PARAMETER(component_b, components_b),
@@ -276,7 +278,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                            ? context.AdapterInfo().subgroupMinSize
                                            : 0u;
 
-    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), subgroup_min_size};
+    const bool wide_tile_acc_f32 = context.EnableMatmulFp32Accumulation();
+    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), subgroup_min_size, wide_tile_acc_f32};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
 
@@ -317,7 +320,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                  {num_N_tile},
                                  {num_M_tile},
                                  {weight_index}});
-    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size);
+    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size, wide_tile_acc_f32);
 
     return context.RunProgram(program);
   }
@@ -332,7 +335,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a};
+  const bool acc_f32 = context.EnableMatmulFp32Accumulation();
+  MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a, acc_f32};
   program.SetWorkgroupSize(workgroup_size);
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
   program.SetDispatchGroupSize(num_N_tile, dispatch_M, batch_count);
@@ -353,7 +357,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                             {batch_count},
                             {weight_index},
                             {dispatch_M}})
-      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a);
+      .CacheHint(nbits, has_zero_points, single_scale_weights, has_bias, has_weight_idx, has_weight_idx_indirect, tile_size_k_vec, broadcast_a, acc_f32);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param acc_f32
 #param a_length_per_tile
 #param broadcast_a_row
 #param component_a
@@ -20,9 +21,22 @@
 
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
+// Precision of the partial sums accumulated along K, selected by the
+// "enableMatmulFp32Accumulation" provider option. With fp16 outputs and an f16
+// accumulator, a partial sum along K has no headroom guarantee: WGSL permits extra
+// intermediate precision but does not require it, so a backend that rounds strictly can
+// saturate at the f16 max (65504) and poison the output with +Inf/NaN. f32 costs extra
+// registers and shared memory instead. Either way only the accumulator changes: the
+// block-local `sum` stays in output_element_t and global memory traffic is identical.
+#if acc_f32
+alias acc_element_t = f32;
+#else
+alias acc_element_t = output_element_t;
+#endif
+
 // Shared memory
 var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
-var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
+var<workgroup> inter_results: array<array<acc_element_t, tile_size_k_vec>, tile_size>;
 
 fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
 {
@@ -222,7 +236,9 @@ $MAIN {
 #endif
 #endif
 
-        inter_results[local_row_offset + idy][idx] += sum;
+        // Explicit cast rather than relying on the implicit one: Dawn/D3D12 re-demotes
+        // temporaries to f16 when 'enable f16;' is active.
+        inter_results[local_row_offset + idy][idx] += acc_element_t(sum);
       }
     }
     workgroupBarrier();
@@ -233,7 +249,7 @@ $MAIN {
   }
 
   if (local_idx < tile_size) {
-    var output_value = output_element_t(0);
+    var output_value = acc_element_t(0);
     for (var b = 0u; b < tile_size_k_vec; b++) {
       output_value += inter_results[local_idx][b];
     }
@@ -241,9 +257,10 @@ $MAIN {
     let output_idx = batch * uniforms.dispatch_M * uniforms.N + a_global * uniforms.N + b_global;
     if (b_global < uniforms.N) {
 #if has_bias
-      output_value += bias[b_global + b_bias_offset];
+      output_value += acc_element_t(bias[b_global + b_bias_offset]);
 #endif
-      output.setByOffset(output_idx, output_value);
+      // Downcast to the output type only at the final write.
+      output.setByOffset(output_idx, output_element_t(output_value));
     }
   }
 }  // MAIN
