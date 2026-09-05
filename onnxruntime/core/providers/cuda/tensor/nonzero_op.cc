@@ -51,13 +51,12 @@ NONZERO_TYPED_KERNEL(float)
 
 template <typename T>
 Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
-  static const TensorShape kScalarDims{1};
   const auto x = context->Input<Tensor>(0);
 
   int nonzero_elements = 0;
   const auto& x_shape = x->Shape();
-  const int x_rank = x_shape.IsScalar() ? 1 : static_cast<int>(x_shape.NumDimensions());
-  auto x_dims = (x_shape.IsScalar()) ? kScalarDims.GetDims() : x_shape.GetDims();
+  const int x_rank = static_cast<int>(x_shape.NumDimensions());
+  const auto x_dims = x_shape.GetDims();
   const int64_t x_size = x_shape.Size();
   if (x_size > 0) {
     auto x_data = reinterpret_cast<const typename ToCudaType<T>::MappedType*>(x->Data<T>());
@@ -78,17 +77,19 @@ Status NonZero<T>::ComputeInternal(OpKernelContext* context) const {
         &nonzero_elements, prefix_counts + number_of_blocks - 1,
         sizeof(int), cudaMemcpyDeviceToHost, Stream(context)));
 
-    TArray<fast_divmod> fdm_x_strides(x_rank);
-    TensorPitches x_strides(x_dims);
-    for (auto i = 0; i < x_rank; i++) {
-      fdm_x_strides[i] = fast_divmod(static_cast<int>(x_strides[i]));
-    }
-
     auto* output_tensor = context->Output(0, {x_rank, nonzero_elements});
     ORT_ENFORCE(output_tensor, "failed to get first output!");
-    CUDA_RETURN_IF_ERROR(NonZeroOutputPositions(
-        Stream(context), x_data, x_size, x_rank, fdm_x_strides,
-        prefix_counts, nonzero_elements, output_tensor->MutableData<int64_t>()));
+    if (x_rank > 0) {
+      TArray<fast_divmod> fdm_x_strides(x_rank);
+      TensorPitches x_strides(x_dims);
+      for (auto i = 0; i < x_rank; i++) {
+        fdm_x_strides[i] = fast_divmod(static_cast<int>(x_strides[i]));
+      }
+
+      CUDA_RETURN_IF_ERROR(NonZeroOutputPositions(
+          Stream(context), x_data, x_size, x_rank, fdm_x_strides,
+          prefix_counts, nonzero_elements, output_tensor->MutableData<int64_t>()));
+    }
   } else {
     context->Output(0, {x_rank, nonzero_elements});
   }

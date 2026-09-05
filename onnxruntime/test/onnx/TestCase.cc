@@ -1254,6 +1254,19 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
                           "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
   }
 
+  if (provider_name == "cpu") {
+    // The model computes a scalar (rank-0) mask via ConstantOfShape/NonZero and relies on
+    // NonZero's legacy shape (1, N) for a scalar input: the NonZero output is Transpose'd
+    // ([1,0]) and then Squeeze'd on axis 1, which only works if that axis is of size 1. Per
+    // https://github.com/microsoft/onnxruntime/issues/11232 and the ONNX spec, a rank-0 input
+    // must produce shape (0, N), which breaks this Squeeze. Skip until the model is re-exported
+    // to be spec-compliant.
+    broken_tests->insert({"RoBERTa-SequenceClassification",
+                           "Model relies on NonZero's pre-spec-compliance scalar shape (1, N); "
+                           "breaks with spec-compliant (0, N) output (onnxruntime#11232)",
+                           {"opset9"}});
+  }
+
   if (provider_name == "nnapi") {
     broken_tests->insert({"scan9_sum", "Error with the extra graph"});
     broken_tests->insert({"scan_sum", "Error with the extra graph"});
