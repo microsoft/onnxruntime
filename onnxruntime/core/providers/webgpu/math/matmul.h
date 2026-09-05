@@ -63,9 +63,11 @@ class MatMul final : public WebGpuKernel {
   // True when input 1 (B) is a constant initializer. See b_is_constant_.
   bool IsBConstant() const { return b_is_constant_; }
 
-  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
-  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
-  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
+  // Defaults for the packed MatMul workgroup. The y dimension is a default because
+  // ComputeMatMul can raise it to trade elements-per-thread for occupancy.
+  constexpr static uint32_t DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
+  constexpr static uint32_t DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
+  constexpr static uint32_t DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 
  private:
   // Alternative optimized implementation (lazily created on the first Compute call,

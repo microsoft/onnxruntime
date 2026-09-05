@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include <string>
+#include <utility>
 #include <vector>
 #include <iterator>
 #include <algorithm>
@@ -168,7 +169,62 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
                   : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0);
 }
 
-Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes) {
+namespace {
+
+// The Conv2dMM workgroup is kConv2dMMWorkgroupSizeX x <y> x 1, where y defaults to
+// kDefaultConv2dMMWorkgroupSizeY.
+constexpr uint32_t kConv2dMMWorkgroupSizeX = 8;
+constexpr uint32_t kDefaultConv2dMMWorkgroupSizeY = 8;
+constexpr uint32_t kConv2dMMWorkgroupSizeZ = 1;
+
+// Rows of A that one Conv2dMM workgroup tile covers above the narrow-shape gate.
+constexpr uint32_t kConv2dMMTileAOuter = 32;
+constexpr int64_t kDefaultConv2dMMElementsPerThreadY = 4;
+static_assert(kDefaultConv2dMMWorkgroupSizeY * kDefaultConv2dMMElementsPerThreadY == kConv2dMMTileAOuter,
+              "The default Conv2dMM workgroup must cover exactly kConv2dMMTileAOuter rows of A.");
+
+// Conv2dMM asks for 8 subgroups where MatMul asks for 4. This is the configuration the
+// numbers in the PR description were measured with: on NVIDIA it derives a 32-thread y
+// dimension, which is what the ResNet-50, YOLO26n and EfficientNet-B0 runs used. Dropping it
+// to 4 for symmetry with MatMul would derive 16 instead and discard that measurement, so the
+// asymmetry is deliberate. Neither count is a WebGPU capability, which is why the rule stays
+// vendor-gated.
+constexpr uint32_t kNvidiaSubgroupsPerWorkgroup = 8;
+
+// Chooses the Conv2dMM workgroup y dimension and the matching elements-per-thread.
+// Returns {workgroup_size_y, elements_per_thread_y}.
+std::pair<uint32_t, int64_t> SelectConv2dMMWorkgroupConfig(const PackedTileCaps& caps,
+                                                           bool is_vec4,
+                                                           int64_t in_channels,
+                                                           uint32_t dim_a_outer) {
+  // Preconditions of SelectSubgroupAlignedTileConfigY, checked here because every argument it
+  // takes other than the caps is a compile-time constant.
+  static_assert(kConv2dMMWorkgroupSizeX > 0 && kDefaultConv2dMMWorkgroupSizeY > 0 &&
+                    kNvidiaSubgroupsPerWorkgroup > 0,
+                "Workgroup dimensions and the subgroup count must be non-zero.");
+  static_assert(kConv2dMMTileAOuter % kDefaultConv2dMMWorkgroupSizeY == 0,
+                "The default workgroup y dimension must divide the A tile.");
+
+  // Narrow outputs are bounded by dim_a_outer rather than by the tile, so they take one row
+  // per thread and never reach kConv2dMMTileAOuter.
+  if (dim_a_outer <= 8) {
+    return {kDefaultConv2dMMWorkgroupSizeY, 1};
+  }
+
+  // in_channels % 4 == 0 keeps inner_element_size at 4, which is what pins tile_inner to
+  // kConv2dMMTileAOuter; a 3-wide inner element would shift the tile and break the invariant.
+  if (is_vec4 && in_channels % 4 == 0 && caps.is_nvidia) {
+    return SelectSubgroupAlignedTileConfigY(caps, kConv2dMMWorkgroupSizeX,
+                                            kNvidiaSubgroupsPerWorkgroup, kConv2dMMTileAOuter,
+                                            kDefaultConv2dMMWorkgroupSizeY);
+  }
+
+  return {kDefaultConv2dMMWorkgroupSizeY, kDefaultConv2dMMElementsPerThreadY};
+}
+
+}  // namespace
+
+Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const PackedTileCaps& caps, const std::vector<TensorShape>& input_output_shapes) {
   const auto* input = inputs[0];
   const auto* weight = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -186,8 +242,10 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   // TODO: fine tune size
   const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;
   const auto dispatch_y = is_channels_last ? output_width * output_height : output_channels;
-  std::vector<uint32_t> workgroup_size = {8, 8, 1};
-  InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
+  const auto [workgroup_size_y, elements_per_thread_y] =
+      SelectConv2dMMWorkgroupConfig(caps, is_vec4, in_channels, dim_a_outer);
+  std::vector<uint32_t> workgroup_size = {kConv2dMMWorkgroupSizeX, workgroup_size_y, kConv2dMMWorkgroupSizeZ};
+  InlinedVector<int64_t> elements_per_thread = {4, elements_per_thread_y, 1};
   auto integer_ceil = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
 
   const std::vector<uint32_t> dispatch = {
