@@ -614,7 +614,7 @@ std::vector<T> VarlenNGramHashMappingReference(const std::vector<std::vector<T>>
 
 template <typename T>
 std::vector<T> PresentIdsReference(const std::vector<T>& ids, const std::vector<T>& history,
-                                   int64_t pad_id);
+                                   int64_t pad_id = kPadId);
 
 template <typename T>
 std::vector<T> VarlenNGramHashMappingQwenReference(
@@ -626,7 +626,6 @@ std::vector<T> VarlenNGramHashMappingQwenReference(
     const std::vector<T>& head_offsets,
     T eos_token_id) {
   constexpr int64_t state_length = kMaxNGramSize - 1;
-  constexpr int64_t num_heads = state_length * kHeadsPerNGram;
   std::vector<T> output;
 
   for (size_t b = 0; b < sequences.size(); ++b) {
@@ -754,7 +753,7 @@ void RunVarlenNGramHashMappingEosPaddingTest() {
 // with pad_id for positions before the start of the whole (unpacked) sequence.
 template <typename T>
 std::vector<T> PresentIdsReference(const std::vector<T>& ids, const std::vector<T>& history,
-                                   int64_t pad_id = kPadId) {
+                                   int64_t pad_id) {
   constexpr int64_t state_length = kMaxNGramSize - 1;
   const int64_t local_length = static_cast<int64_t>(ids.size());
   std::vector<T> present(static_cast<size_t>(state_length));
