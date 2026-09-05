@@ -116,7 +116,7 @@ class CoreMLEpFactory : public EpFactoryInternalImpl {
                                       size_t num_devices,
                                       const OrtSessionOptions* session_options,
                                       const OrtLogger* session_logger,
-                                      std::unique_ptr<IExecutionProvider>* ep) noexcept override;
+                                      std::unique_ptr<IExecutionProvider>* ep) override;
 };
 
 }  // namespace onnxruntime

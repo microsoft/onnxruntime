@@ -98,40 +98,23 @@ OrtStatus* CoreMLEpFactory::GetSupportedDevices(EpFactoryInternal& ep_factory,
                                                 OrtEpDevice** ep_devices,
                                                 size_t max_ep_devices,
                                                 size_t* p_num_ep_devices) noexcept {
-  OrtStatus* status = nullptr;
+  const auto selected =
+      SelectDevicesToClaim(gsl::make_span(devices, num_devices), coreml::util::CoreMLVersion(), max_ep_devices);
 
-  ORT_TRY {
-    const auto selected =
-        SelectDevicesToClaim(gsl::make_span(devices, num_devices), coreml::util::CoreMLVersion(), max_ep_devices);
+  // Do not attach MLComputeUnits to individual OrtEpDevice instances. Per-device defaults would assign different
+  // values to the NPU and GPU, creating a conflict when both are selected. CreateIExecutionProvider instead computes
+  // a single value from all selected devices. Any MLComputeUnits value already present in the session options was
+  // provided by the caller and is preserved if it is compatible with the selection.
+  const auto create_ep_device =
+      [&ep_factory](const OrtHardwareDevice& device, OrtEpDevice** ep_device) -> OrtStatus* {
+    return OrtExecutionProviderApi::CreateEpDevice(&ep_factory, &device, nullptr, nullptr, ep_device);
+  };
 
-    // Do not attach MLComputeUnits to individual OrtEpDevice instances. Per-device defaults would assign different
-    // values to the NPU and GPU, creating a conflict when both are selected. CreateIExecutionProvider instead computes
-    // a single value from all selected devices. Any MLComputeUnits value already present in the session options was
-    // provided by the caller and is preserved if it is compatible with the selection.
-    const auto create_ep_device =
-        [&ep_factory](const OrtHardwareDevice& device, OrtEpDevice** ep_device) -> OrtStatus* {
-      return OrtExecutionProviderApi::CreateEpDevice(&ep_factory, &device, nullptr, nullptr, ep_device);
-    };
+  const auto release_ep_device = [](OrtEpDevice* ep_device) {
+    OrtExecutionProviderApi::ReleaseEpDevice(ep_device);
+  };
 
-    const auto release_ep_device = [](OrtEpDevice* ep_device) {
-      OrtExecutionProviderApi::ReleaseEpDevice(ep_device);
-    };
-
-    status = CreateAndPublishEpDevices(
-        selected,
-        create_ep_device,
-        release_ep_device,
-        ep_devices, p_num_ep_devices);
-  }
-  ORT_CATCH(const std::exception& ex) {
-    // Convert local allocation failures to OrtStatus because this method is noexcept. Device selection and storage
-    // reservation finish before CreateEpDevice is called, so this exception path cannot leak an OrtEpDevice.
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = OrtApis::CreateStatus(ORT_FAIL, ex.what());
-    });
-  }
-
-  return status;
+  return CreateAndPublishEpDevices(selected, create_ep_device, release_ep_device, ep_devices, p_num_ep_devices);
 }
 
 OrtStatus* CoreMLEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
@@ -139,30 +122,22 @@ OrtStatus* CoreMLEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* co
                                                      size_t num_devices,
                                                      const OrtSessionOptions* session_options,
                                                      const OrtLogger* session_logger,
-                                                     std::unique_ptr<IExecutionProvider>* ep) noexcept {
-  OrtStatus* status = nullptr;
+                                                     std::unique_ptr<IExecutionProvider>* ep) {
   *ep = nullptr;
 
-  ORT_TRY {
-    ProviderOptions options = GetOptionsFromSessionOptions(session_options->value);
+  ProviderOptions options = GetOptionsFromSessionOptions(session_options->value);
 
-    // OrtEpDevice instances carry no MLComputeUnits default, so any existing session option can only come from
-    // the caller. Validate the device selection, derive MLComputeUnits when absent, and reject recognized values
-    // that enable an unselected accelerator.
-    // CoreMLOptions performs the remaining option validation during provider creation.
-    ORT_API_RETURN_IF_ERROR(ValidateDeviceSelectionAndResolveMLComputeUnits(devices, num_devices, options));
+  // OrtEpDevice instances carry no MLComputeUnits default, so any existing session option can only come from
+  // the caller. Validate the device selection, derive MLComputeUnits when absent, and reject recognized values
+  // that enable an unselected accelerator.
+  // CoreMLOptions performs the remaining option validation during provider creation.
+  ORT_API_RETURN_IF_ERROR(ValidateDeviceSelectionAndResolveMLComputeUnits(devices, num_devices, options));
 
-    const auto provider_factory = CoreMLProviderFactoryCreator::Create(options);
-    *ep = provider_factory->CreateProvider();
-    (*ep)->SetLogger(session_logger->ToInternal());
-  }
-  ORT_CATCH(const std::exception& ex) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = OrtApis::CreateStatus(ORT_FAIL, ex.what());
-    });
-  }
+  const auto provider_factory = CoreMLProviderFactoryCreator::Create(options);
+  *ep = provider_factory->CreateProvider();
+  (*ep)->SetLogger(session_logger->ToInternal());
 
-  return status;
+  return nullptr;
 }
 
 OrtStatus* CoreMLEpFactory::ValidateDeviceSelectionAndResolveMLComputeUnits(
