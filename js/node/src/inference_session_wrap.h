@@ -8,6 +8,8 @@
 #include <memory>
 #include <napi.h>
 
+#include "ort_instance_data.h"
+
 // class InferenceSessionWrap is a N-API object wrapper for native InferenceSession.
 class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
  public:
@@ -17,6 +19,8 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   ~InferenceSessionWrap();
 
  private:
+  class RunAsyncWorker;
+
   /**
    * [sync] initialize ONNX Runtime once.
    *
@@ -53,10 +57,10 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   Napi::Value GetMetadata(const Napi::CallbackInfo& info);
 
   /**
-   * [sync] run the model.
+   * [async] run the model.
    * @param arg0 input object: all keys must present, value is object
    * @param arg1 output object: at least one key must present, value can be null.
-   * @returns an object that every output specified will present and value must be object
+   * @returns a Promise resolving to an object that contains every specified output
    * @throw error if status code != 0
    */
   Napi::Value Run(const Napi::CallbackInfo& info);
@@ -77,12 +81,43 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
    */
   Napi::Value EndProfiling(const Napi::CallbackInfo& info);
 
+  // Run bookkeeping. Every access happens on the JS thread: Run(), Dispose() and EndProfiling() are
+  // called from Javascript, and RunAsyncWorker::Complete() runs from the AsyncWorker completion
+  // callback, which node-addon-api also invokes there. Execute() never touches these.
+  void BeginRun();
+  void EndRun();
+  // Settle and drain a run that failed during preparation, without double-counting or double-settling
+  // a worker that already owns them.
+  void FailRun(RunAsyncWorker* worker, Napi::Promise::Deferred& deferred, Napi::Value error);
+  // Release the ORT objects. Deferred until the last in-flight run finishes if one is outstanding.
+  void TeardownSession();
+  // Take ownership of a freshly created session and set up cpu_allocator_ for it.
+  void AdoptSession(Ort::Session&& session);
+  // Drop our reference to the ORT session, through the device lock if its provider needs that.
+  void ReleaseSession();
+  // Hold the device lock for the duration of the returned guard, if this session's provider needs it.
+  OrtInstanceData::DeviceLock LockDeviceIfRequired();
+
   // private members
 
   // session objects
   bool initialized_;
   bool disposed_;
-  std::unique_ptr<Ort::Session> session_;
+  // Whether runs on this session must hold OrtInstanceData::DeviceMutex(); see ParseSessionOptions.
+  bool requires_device_serialization_{false};
+  // Set when dispose() is called while runs are still in flight; EndRun() completes the teardown.
+  bool teardown_pending_{false};
+  size_t active_runs_{0};
+  // Shared rather than unique: a gpu-buffer Tensor handed to Javascript outlives the run, and the
+  // buffer behind it belongs to an allocator owned by this session's execution provider. Releasing
+  // such a value after the session is gone crashes, so each one holds a reference to the session
+  // and the last of them destroys it. Aliases a holder that also owns cpu_allocator_ (see
+  // AdoptSession), so anything pinning the session pins the allocator its input copies came from.
+  std::shared_ptr<Ort::Session> session_;
+  // The session's own CPU allocator, used for input copies so they follow enableCpuMemArena and, with
+  // the arena on, reuse already-mapped memory. Owned by the holder behind session_: valid exactly
+  // while session_ is set, and every value created from it is released before that holder is.
+  OrtAllocator* cpu_allocator_{nullptr};
 
   // input/output metadata
   std::vector<std::string> inputNames_;
@@ -92,5 +127,4 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
 
   // preferred output locations
   std::vector<int> preferredOutputLocations_;
-  std::unique_ptr<Ort::IoBinding> ioBinding_;
 };
