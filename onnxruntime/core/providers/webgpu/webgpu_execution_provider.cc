@@ -710,6 +710,17 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
       }
     }
 
+    // The WebGPU MultiHeadAttention kernel currently assumes the same head count for Q, K, and V.
+    if (node.OpType() == "MultiHeadAttention" && node.Domain() == kMSDomain) {
+      const auto& attributes = node.GetAttributes();
+      const auto num_heads = attributes.find("num_heads");
+      const auto kv_num_heads = attributes.find("kv_num_heads");
+      if (num_heads != attributes.end() && kv_num_heads != attributes.end() &&
+          num_heads->second.i() != kv_num_heads->second.i()) {
+        continue;
+      }
+    }
+
     // Check for MatMulBnb4
     if (node.OpType() == "MatMulBnb4" && node.Domain() == kMSDomain) {
       // Current implementation only supports the forward case (transB=1). transB defaults to 1.

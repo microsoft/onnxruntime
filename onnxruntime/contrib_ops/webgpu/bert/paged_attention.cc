@@ -931,8 +931,6 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   gqa_params.total_sequence_length = static_cast<int>(max_kv_len);
   gqa_params.hidden_size = parameters.hidden_size;
   gqa_params.head_size = parameters.head_size;
-  gqa_params.v_hidden_size = parameters.kv_hidden_size;
-  gqa_params.v_head_size = parameters.head_size;
   gqa_params.num_heads = parameters.num_heads;
   gqa_params.is_unidirectional = true;
   gqa_params.past_present_share_buffer = false;

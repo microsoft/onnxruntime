@@ -824,6 +824,17 @@ std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapabili
                                << node.OpType() << " node name: " << node.Name();
       continue;
     }
+
+    // The JavaScript MultiHeadAttention kernel currently assumes the same head count for Q, K, and V.
+    if (node.OpType() == "MultiHeadAttention" && node.Domain() == kMSDomain) {
+      const auto& attributes = node.GetAttributes();
+      const auto num_heads = attributes.find("num_heads");
+      const auto kv_num_heads = attributes.find("kv_num_heads");
+      if (num_heads != attributes.end() && kv_num_heads != attributes.end() &&
+          num_heads->second.i() != kv_num_heads->second.i()) {
+        continue;
+      }
+    }
     candidates.push_back(node.Index());
     tenative_candidates.push_back(node.Index());
   }

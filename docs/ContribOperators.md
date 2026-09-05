@@ -4164,6 +4164,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>kv_num_heads</tt> : int</dt>
+<dd>Number of attention heads for key and value. Defaults to num_heads when not specified. For grouped query attention, num_heads shall be a multiple of kv_num_heads</dd>
 <dt><tt>mask_filter_value</tt> : float</dt>
 <dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
@@ -4180,19 +4182,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>query</tt> : T</dt>
 <dd>Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)</dd>
 <dt><tt>key</tt> (optional) : T</dt>
-<dd>Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)</dd>
+<dd>Key with shape (batch_size, kv_sequence_length, kv_num_heads * head_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), or past_key with shape (batch_size, kv_num_heads, kv_sequence_length, head_size). Grouped query attention requires separate key and value inputs</dd>
 <dt><tt>value</tt> (optional) : T</dt>
-<dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size), or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size)</dd>
+<dd>Value with shape (batch_size, kv_sequence_length, kv_num_heads * v_head_size), or past_value with shape (batch_size, kv_num_heads, kv_sequence_length, v_head_size)</dd>
 <dt><tt>bias</tt> (optional) : T</dt>
-<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
+<dd>Bias tensor with shape (hidden_size + kv_hidden_size + kv_v_hidden_size) from input projection. The key and value parts are assumed to be zero when key and value are 4-D BNSH tensors</dd>
 <dt><tt>key_padding_mask</tt> (optional) : M</dt>
 <dd>Key padding mask with shape (batch_size), (3 * batch_size + 2), (batch_size, kv_sequence_length), (batch_size, total_sequence_length), or (batch_size, sequence_length, total_sequence_length)</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>
 <dd>bias added to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)</dd>
 <dt><tt>past_key</tt> (optional) : T</dt>
-<dd>past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used</dd>
+<dd>past state for key with shape (batch_size, kv_num_heads, past_sequence_length, head_size) or (batch_size, kv_num_heads, max_sequence_length, head_size) when buffer sharing is used</dd>
 <dt><tt>past_value</tt> (optional) : T</dt>
-<dd>past state for value with shape (batch_size, num_heads, past_sequence_length, head_size) or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used</dd>
+<dd>past state for value with shape (batch_size, kv_num_heads, past_sequence_length, v_head_size) or (batch_size, kv_num_heads, max_sequence_length, v_head_size) when buffer sharing is used</dd>
 <dt><tt>past_sequence_length</tt> (optional) : M</dt>
 <dd>The past_sequence_length buffer sharing is used with</dd>
 <dt><tt>cache_indirection</tt> (optional) : M</dt>
@@ -4203,11 +4205,11 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, num_heads * v_head_size)</dd>
 <dt><tt>present_key</tt> (optional) : T</dt>
-<dd>present state for key with shape (batch_size, num_heads, total_sequence_length, head_size) or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used</dd>
+<dd>present state for key with shape (batch_size, kv_num_heads, total_sequence_length, head_size) or (batch_size, kv_num_heads, max_sequence_length, head_size) when buffer sharing is used</dd>
 <dt><tt>present_value</tt> (optional) : T</dt>
-<dd>present state for value with shape (batch_size, num_heads, total_sequence_length, head_size) or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used</dd>
+<dd>present state for value with shape (batch_size, kv_num_heads, total_sequence_length, v_head_size) or (batch_size, kv_num_heads, max_sequence_length, v_head_size) when buffer sharing is used</dd>
 <dt><tt>qk</tt> (optional) : QK</dt>
 <dd>normalized Q * K, of shape (batch_size, num_heads, sequence_length, total_sequence_length). </dd>
 </dl>

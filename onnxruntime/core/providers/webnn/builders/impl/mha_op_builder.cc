@@ -229,6 +229,11 @@ bool MultiHeadAttentionOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_vie
     LOGS(logger, VERBOSE) << "Attributes num_heads is required.";
     return false;
   }
+  const uint32_t kv_num_heads = helper.Get("kv_num_heads", num_heads);
+  if (kv_num_heads != num_heads) {
+    LOGS(logger, VERBOSE) << "Grouped query MultiHeadAttention is not supported by WebNN.";
+    return false;
+  }
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger)) {

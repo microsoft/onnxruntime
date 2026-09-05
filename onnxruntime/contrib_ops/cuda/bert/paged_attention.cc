@@ -246,7 +246,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // hidden_size in every SEPARATE-mode model.
   TensorShapeVector output_shape(2);
   output_shape[0] = static_cast<int64_t>(parameters.token_count);
-  output_shape[1] = static_cast<int64_t>(parameters.v_hidden_size);
+  output_shape[1] = static_cast<int64_t>(parameters.GetOutputHiddenSize());
   Tensor* output = context->Output(0, output_shape);
 
   TensorShapeVector key_cache_out_shape(4);

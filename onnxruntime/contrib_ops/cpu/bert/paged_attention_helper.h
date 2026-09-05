@@ -591,7 +591,6 @@ Status CheckInputs(const T* query,
     output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->head_size = head_size;
     output_parameters->v_head_size = v_head_size;
-    output_parameters->v_hidden_size = num_heads * v_head_size;
     output_parameters->is_latent_kv = is_latent_kv;
     output_parameters->rotary_offset = rotary_offset;
     output_parameters->block_size = block_size;
