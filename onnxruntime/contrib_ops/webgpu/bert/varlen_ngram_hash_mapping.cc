@@ -254,6 +254,10 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
 
   auto* output = context.Output(0, TensorShape({total_tokens, num_heads}));
   auto* present_ids = context.Output(1, TensorShape({batch_size, state_length}));
+  const bool has_present_ids = present_ids != nullptr;
+  if (!has_present_ids) {
+    present_count = 0;
+  }
 
   if (batch_size == 0) {
     return Status::OK();
@@ -276,7 +280,6 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(context.RunProgram(validate_program));
 
   if (output_count > 0 || present_count > 0) {
-    const bool has_present_ids = present_count > 0;
     VarlenNGramFillDefaultProgram fill_program{has_present_ids};
     fill_program.CacheHint(has_present_ids);
     fill_program.AddInput({&is_valid, ProgramTensorMetadataDependency::None});

@@ -2787,26 +2787,28 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputShape(ctx, 0, output_shape);
           }
 
-          if (ctx.getNumOutputs() > 1 && hasInputShape(ctx, 3)) {
+          if (hasInputShape(ctx, 3)) {
             const auto& cu_seqlen_shape = getInputShape(ctx, 3);
             if (cu_seqlen_shape.dim_size() != 1) {
               fail_shape_inference("VarlenNGramHashMapping: cumulative_sequence_length must have rank 1");
             }
-            TensorShapeProto present_shape;
-            const auto& cu_dim = cu_seqlen_shape.dim(0);
-            if (cu_dim.has_dim_value()) {
-              // Runtime requires at least 2 elements (batch_size >= 1); a declared static shape of
-              // [0] or [1] would otherwise infer a present_ids batch dimension of -1 or 0.
-              if (cu_dim.dim_value() < 2) {
-                fail_shape_inference(
-                    "VarlenNGramHashMapping: cumulative_sequence_length must have at least 2 elements");
+            if (ctx.getNumOutputs() > 1) {
+              TensorShapeProto present_shape;
+              const auto& cu_dim = cu_seqlen_shape.dim(0);
+              if (cu_dim.has_dim_value()) {
+                // Runtime requires at least 2 elements (batch_size >= 1); a declared static shape of
+                // [0] or [1] would otherwise infer a present_ids batch dimension of -1 or 0.
+                if (cu_dim.dim_value() < 2) {
+                  fail_shape_inference(
+                      "VarlenNGramHashMapping: cumulative_sequence_length must have at least 2 elements");
+                }
+                present_shape.add_dim()->set_dim_value(cu_dim.dim_value() - 1);
+              } else {
+                present_shape.add_dim();  // unknown batch size
               }
-              present_shape.add_dim()->set_dim_value(cu_dim.dim_value() - 1);
-            } else {
-              present_shape.add_dim();  // unknown batch size
+              present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
+              updateOutputShape(ctx, 1, present_shape);
             }
-            present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
-            updateOutputShape(ctx, 1, present_shape);
           }
         }));
 
