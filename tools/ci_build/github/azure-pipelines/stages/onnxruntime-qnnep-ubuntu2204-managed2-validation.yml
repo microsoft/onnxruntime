@@ -1,0 +1,95 @@
+parameters:
+- name: machine_pool
+  displayName: 'The agent pool to run on (must use onnxruntime-qnnep-ubuntu2204-managed2 image)'
+  type: string
+  default: 'onnxruntime-qnn-ubuntu-2204-cpu'
+
+- name: QnnSdk
+  displayName: QNN SDK version
+  type: string
+  default: '2.42.0.251225'
+
+stages:
+- stage: Linux_QNN_Build_Test
+  dependsOn: []
+  jobs:
+  - job: Build_QNN_EP_Linux
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+    variables:
+      skipComponentGovernanceDetection: true
+    timeoutInMinutes: 120
+    workspace:
+      clean: all
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - script: |
+        ls -R /data/qnn_test_data
+      displayName: Check QNN test data
+
+    - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
+      displayName: Install coreutils and ninja
+
+    - template: ../templates/jobs/download_linux_qnn_sdk.yml
+      parameters:
+        QnnSDKVersion: ${{ parameters.QnnSdk }}
+
+    - script: |
+        python3 tools/ci_build/build.py \
+          --build_dir build \
+          --config Release \
+          --use_binskim_compliant_compile_flags \
+          --build_shared_lib \
+          --use_qnn shared_lib \
+          --qnn_home $(QnnSDKRootDir) \
+          --cmake_generator=Ninja \
+          --update --build --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+      displayName: Build QNN EP
+
+    - script: |
+        python3 tools/ci_build/build.py \
+          --build_dir build \
+          --config Release \
+          --use_binskim_compliant_compile_flags \
+          --build_shared_lib \
+          --use_qnn shared_lib \
+          --qnn_home $(QnnSDKRootDir) \
+          --cmake_generator=Ninja \
+          --test --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+      displayName: Run unit tests
+
+    - task: CmdLine@2
+      displayName: Run ONNX tests
+      inputs:
+        script: |
+          ./build/Release/onnx_test_runner -e qnn \
+            -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnCpu.so" \
+            cmake/external/onnx/onnx/backend/test/data/node
+
+    - task: CmdLine@2
+      displayName: Run float32 model tests
+      inputs:
+        script: |
+          ./build/Release/onnx_test_runner -e qnn \
+            -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnCpu.so" \
+            /data/float32_models
+
+    - task: CmdLine@2
+      displayName: Run QDQ model tests
+      inputs:
+        script: |
+          ./build/Release/onnx_test_runner -e qnn \
+            -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnHtp.so" \
+            /data/qdq_models
+
+    - task: CmdLine@2
+      displayName: Run QDQ model tests with context cache enabled
+      inputs:
+        script: |
+          ./build/Release/onnx_test_runner -e qnn \
+            -f -j 1 -i "backend_path|$(QnnSDKRootDir)/lib/x86_64-linux-clang/libQnnHtp.so" \
+            /data/qdq_models/mobilenetv2-1.0_add_transpose_quant
