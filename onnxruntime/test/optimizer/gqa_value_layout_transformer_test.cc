@@ -9,9 +9,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/framework/execution_providers.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_registry_manager.h"
 #include "core/graph/model.h"
 #include "onnx/defs/schema.h"
 #include "core/optimizer/gqa_value_layout_transformer.h"
+#include "core/optimizer/transformer_memcpy.h"
 #include "core/session/IOBinding.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -30,6 +34,17 @@ namespace test {
 #if !defined(DISABLE_CONTRIB_OPS)
 
 namespace {
+
+class LocalDeviceExecutionProvider final : public IExecutionProvider {
+ public:
+  static constexpr const char* kType = "LocalGqaMemcpyTestExecutionProvider";
+
+  LocalDeviceExecutionProvider()
+      : IExecutionProvider(kType,
+                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                                     OrtDevice::VendorIds::NONE, 0)) {
+  }
+};
 
 // Geometry kept small, but with max_sequence_length != head_size so that a transpose which fails to
 // swap the last two dimensions is caught by the shape assertions rather than passing silently.
@@ -1266,6 +1281,85 @@ TEST_F(GqaValueLayoutTransformerTest, LoadsABnhsConvertedModelWhenNoLayoutIsRequ
 
   // Untouched: the model's own Transposes are still there and nothing was added.
   ASSERT_STATUS_OK(ExpectTransposeCount(session.GetGraph(), 2));
+}
+
+TEST_F(GqaValueLayoutTransformerTest, MemcpyNodesDoNotHideConvertedBoundaries) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutMemcpyRepro", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto device_ep = std::make_unique<LocalDeviceExecutionProvider>();
+  const std::string device_ep_type = device_ep->Type();
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(node.OpType() == "GroupQueryAttention"
+                                      ? device_ep_type
+                                      : kCpuExecutionProvider);
+  }
+
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(device_ep_type, std::move(device_ep)));
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, DefaultCpuExecutionProvider()));
+
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+  auto device_registry = std::make_shared<KernelRegistry>();
+  KernelDefBuilder device_kernel_def;
+  device_kernel_def.SetName("GroupQueryAttention")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Provider(device_ep_type);
+  ASSERT_STATUS_OK(device_registry->Register(
+      device_kernel_def,
+      [](FuncManager&, const OpKernelInfo&, std::unique_ptr<OpKernel>&) { return Status::OK(); }));
+  kernel_registry_manager.RegisterKernelRegistry(std::move(device_registry));
+
+  InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
+  for (const auto& provider : execution_providers) {
+    providers.push_back(provider.get());
+  }
+
+  MemcpyTransformer memcpy_transformer{std::move(providers), kernel_registry_manager};
+  bool modified = false;
+  ASSERT_STATUS_OK(memcpy_transformer.Apply(graph, modified, *logger_));
+  ASSERT_TRUE(modified);
+
+  const Node* gqa = FindGqa(graph);
+  ASSERT_NE(gqa, nullptr);
+  const Node* past_copy = graph.GetProducerNode(gqa->InputDefs()[4]->Name());
+  ASSERT_NE(past_copy, nullptr);
+  EXPECT_EQ(past_copy->OpType(), "MemcpyFromHost");
+  const Node* past_transpose = graph.GetProducerNode(past_copy->InputDefs()[0]->Name());
+  ASSERT_NE(past_transpose, nullptr);
+  EXPECT_TRUE(IsGqaValueLayoutTranspose(*past_transpose));
+
+  const auto present_consumers = graph.GetConsumerNodes(gqa->OutputDefs()[2]->Name());
+  ASSERT_EQ(present_consumers.size(), 1u);
+  ASSERT_NE(present_consumers[0], nullptr);
+  EXPECT_EQ(present_consumers[0]->OpType(), "MemcpyToHost");
+  const auto transpose_consumers = graph.GetConsumerNodes(present_consumers[0]->OutputDefs()[0]->Name());
+  ASSERT_EQ(transpose_consumers.size(), 1u);
+  ASSERT_NE(transpose_consumers[0], nullptr);
+  EXPECT_TRUE(IsGqaValueLayoutTranspose(*transpose_consumers[0]));
+
+  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+  std::shared_ptr<Model> reloaded_model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), PathString(), reloaded_model, nullptr, *logger_));
+
+  const GqaValueLayoutBoundaries boundaries =
+      FindConvertedGqaValueLayoutBoundaries(reloaded_model->MainGraph());
+  EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
+  EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
 }
 
 TEST_F(GqaValueLayoutTransformerTest, RejectsAnInvalidLayoutValue) {
