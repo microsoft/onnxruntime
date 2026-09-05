@@ -982,9 +982,5 @@
         ["opset11", "^test_unique_not_sorted_without_axis"],
         // those test cases are generated incorrectly
         ["opset14", "^test_convtranspose_autopad_same"]
-    ],
-    "test_with_types_disabled_due_to_binary_size_concerns": [
-        "^test_bitshift_right_uint16",
-        "^test_bitshift_left_uint16"
     ]
 }
