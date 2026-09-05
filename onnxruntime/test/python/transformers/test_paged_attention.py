@@ -2788,14 +2788,21 @@ def create_mla_graph(
     with_qk_norm=False,
     kv_cache_layout="LATENT",
     v_head_size=None,
+    max_selected_kv=0,
+    num_kv_tokens=None,
+    with_slot_mapping=False,
 ):
     """Build a single-node LATENT PagedAttention model. Every deviation from a valid MLA graph is a
-    keyword here so that the negative tests can construct rejected models."""
+    keyword here so that the negative tests can construct rejected models.
+
+    'num_kv_tokens' defaults to num_tokens; a larger value gives 'key' surplus rows that no query
+    token owns."""
     cache_proto_type = KV_CACHE_TENSOR_PROTO[mla_config.kv_cache_type]
     head_size = mla_config.head_size
     v_head_size = mla_config.v_head_size if v_head_size is None else v_head_size
     rotary_offset = mla_config.rotary_offset if rotary_offset is None else rotary_offset
     rotary_dim = mla_config.qk_rope_head_dim
+    num_kv_tokens = num_tokens if num_kv_tokens is None else num_kv_tokens
 
     attrs = {
         "num_heads": mla_config.num_heads,
@@ -2833,11 +2840,14 @@ def create_mla_graph(
                 "block_table",
                 "cos_cache" if do_rotary else "",
                 "sin_cache" if do_rotary else "",
-                "",  # slot_mapping
+                "slot_mapping" if with_slot_mapping else "",
                 "head_sink" if with_head_sink else "",
                 "q_norm_weight" if with_qk_norm else "",
                 "k_norm_weight" if with_qk_norm else "",
                 "k_scale" if mla_config.k_quant_type != "NONE" else "",
+                "",  # v_scale
+                "",  # attention_metadata
+                "kv_indices" if max_selected_kv else "",
             ],
             node_outputs,
             "PagedAttention_MLA",
@@ -2848,7 +2858,7 @@ def create_mla_graph(
     cache_dims = [num_blocks, mla_config.block_size, mla_config.kv_num_heads, head_size]
     graph_input = [
         helper.make_tensor_value_info("query", TensorProto.FLOAT16, [num_tokens, mla_config.num_heads * head_size]),
-        helper.make_tensor_value_info("key", TensorProto.FLOAT16, [num_tokens, mla_config.kv_num_heads * head_size]),
+        helper.make_tensor_value_info("key", TensorProto.FLOAT16, [num_kv_tokens, mla_config.kv_num_heads * head_size]),
         helper.make_tensor_value_info("key_cache", cache_proto_type, cache_dims),
         helper.make_tensor_value_info("cumulative_sequence_length", TensorProto.INT32, [mla_config.batch_size + 1]),
         helper.make_tensor_value_info("past_seqlens", TensorProto.INT32, [mla_config.batch_size]),
@@ -2885,6 +2895,12 @@ def create_mla_graph(
     if mla_config.k_quant_type != "NONE":
         scale_shape = [1] if mla_config.k_quant_type == "PER_TENSOR" else [mla_config.kv_num_heads, 1, head_size]
         graph_input.append(helper.make_tensor_value_info("k_scale", TensorProto.FLOAT, scale_shape))
+    if with_slot_mapping:
+        graph_input.append(helper.make_tensor_value_info("slot_mapping", TensorProto.INT32, [num_kv_tokens]))
+    if max_selected_kv:
+        graph_input.append(
+            helper.make_tensor_value_info("kv_indices", TensorProto.INT32, [num_tokens, max_selected_kv])
+        )
 
     graph_output = [
         helper.make_tensor_value_info("output", TensorProto.FLOAT16, [num_tokens, mla_config.num_heads * v_head_size]),
@@ -2908,6 +2924,9 @@ def run_mla(
     cos=None,
     sin=None,
     k_scale=None,
+    head_sink=None,
+    kv_indices=None,
+    slot_mapping=None,
     **graph_kwargs,
 ):
     """Run a LATENT PagedAttention model and return (output, key_cache) with the cache updated in
@@ -2919,6 +2938,10 @@ def run_mla(
         key_cache.shape[0],
         block_table.shape[1],
         do_rotary=cos is not None,
+        with_head_sink=head_sink is not None,
+        max_selected_kv=0 if kv_indices is None else kv_indices.shape[1],
+        num_kv_tokens=key.shape[0],
+        with_slot_mapping=slot_mapping is not None,
         **graph_kwargs,
     )
     ort_session = InferenceSession(onnx_model_str, SessionOptions(), providers=["CUDAExecutionProvider"])
@@ -2934,6 +2957,12 @@ def run_mla(
         io_binding.bind_cpu_input("sin_cache", sin.detach().cpu().numpy())
     if k_scale is not None:
         io_binding.bind_cpu_input("k_scale", k_scale.detach().cpu().numpy())
+    if head_sink is not None:
+        io_binding.bind_cpu_input("head_sink", head_sink.detach().cpu().numpy())
+    if kv_indices is not None:
+        io_binding.bind_cpu_input("kv_indices", kv_indices.detach().cpu().numpy())
+    if slot_mapping is not None:
+        io_binding.bind_cpu_input("slot_mapping", slot_mapping.detach().cpu().numpy())
 
     cache_proto_type = KV_CACHE_TENSOR_PROTO[mla_config.kv_cache_type]
     key_cache = key_cache.contiguous()
@@ -2955,8 +2984,13 @@ def mla_reference(
     scale,
     local_window_size=-1,
     softcap=0.0,
+    head_sink=None,
+    kv_indices=None,
 ):
-    """Straightforward fp32 MLA: K is the whole latent row, V its leading v_head_size channels."""
+    """Straightforward fp32 MLA: K is the whole latent row, V its leading v_head_size channels.
+
+    With 'kv_indices' the selection replaces the causal range outright -- no causal or sliding-window
+    mask is layered on top -- which is what the op promises (design doc §22.2)."""
     v_head_size = mla_config.v_head_size
     token_count = int(cum_seqlens[-1].item())
     out = torch.zeros(token_count, mla_config.num_heads, v_head_size, dtype=torch.float32, device="cuda")
@@ -2964,23 +2998,44 @@ def mla_reference(
     for b in range(mla_config.batch_size):
         start = int(cum_seqlens[b].item())
         for j in range(int(new_seqlens[b].item())):
-            kv_end = int(past_seqlens[b].item()) + j + 1
-            kv_begin = max(0, kv_end - local_window_size) if local_window_size > 0 else 0
-            k = latent_cache[b, kv_begin:kv_end].to(torch.float32)  # [L, head_size]
+            if kv_indices is not None:
+                positions = kv_indices[start + j]
+                # Mirror the kernel: negatives are padding and anything past the sequence's
+                # block-table capacity is dropped rather than read.
+                capacity = latent_cache.shape[1]
+                positions = positions[(positions >= 0) & (positions < capacity)].to(torch.long)
+                k = latent_cache[b][positions].to(torch.float32)  # [L, head_size]
+            else:
+                kv_end = int(past_seqlens[b].item()) + j + 1
+                kv_begin = max(0, kv_end - local_window_size) if local_window_size > 0 else 0
+                k = latent_cache[b, kv_begin:kv_end].to(torch.float32)  # [L, head_size]
             v = k[:, :v_head_size]
             logits = torch.einsum("nh,lh->nl", q[start + j], k) * scale
             if softcap > 0.0:
                 logits = softcap * torch.tanh(logits / softcap)
-            probs = torch.softmax(logits, dim=-1)
+            if head_sink is not None:
+                # The sink is a raw logit: it joins the softmax denominator but contributes no value.
+                sink = head_sink.to(torch.float32).reshape(-1, 1)
+                probs = torch.softmax(torch.cat([logits, sink], dim=-1), dim=-1)[:, : logits.shape[-1]]
+            elif logits.shape[-1] == 0:
+                probs = logits
+            else:
+                probs = torch.softmax(logits, dim=-1)
+            if probs.shape[-1] == 0:
+                continue
             out[start + j] = torch.einsum("nl,lv->nv", probs, v)
     return out
 
 
-def make_mla_batch(mla_config, past_seqlens, new_seqlens, device="cuda"):
+def make_mla_batch(mla_config, past_seqlens, new_seqlens, device="cuda", capacity=None):
     """Allocate a shuffled paged latent cache pre-filled with the 'past' tokens, plus the block
-    table and cumulative sequence lengths. Returns everything both paged and densified."""
+    table and cumulative sequence lengths. Returns everything both paged and densified.
+
+    'capacity' over-allocates each sequence beyond past+new, which the DeepSeek tests use to park
+    compressed KV rows at positions above the token range.
+    """
     total_seqlens = past_seqlens + new_seqlens
-    max_total = int(total_seqlens.max().item())
+    max_total = max(int(total_seqlens.max().item()), capacity or 0)
     blocks_per_seq = math.ceil(max_total / mla_config.block_size)
     num_blocks = blocks_per_seq * mla_config.batch_size
     # A shuffled permutation makes block-table indirection load-bearing: a kernel that ignored it
@@ -3007,6 +3062,34 @@ def densify_latent(mla_config, latent_paged, block_table, total_len):
         "(b nblocks) block_size h d -> b (nblocks block_size) (h d)",
         b=mla_config.batch_size,
     )[:, :total_len]
+
+
+def make_causal_kv_indices(past_seqlens, new_seqlens, cum_seqlens, keep=None, device="cuda"):
+    """Build a 'kv_indices' tensor for a packed batch.
+
+    Each query token's candidate set is its causal range [0, past + j]. With keep=None the whole
+    range is enumerated, which must reproduce dense attention exactly. With keep=K a random subset
+    of at most K positions is drawn -- deliberately unsorted and non-contiguous, so a kernel that
+    assumed an interval would fail -- and short rows are padded with -1.
+    """
+    token_count = int(cum_seqlens[-1].item())
+    batch_size = int(new_seqlens.shape[0])
+    rows = []
+    width = 0
+    for b in range(batch_size):
+        for j in range(int(new_seqlens[b].item())):
+            causal = int(past_seqlens[b].item()) + j + 1
+            if keep is None or keep >= causal:
+                picked = torch.arange(causal, dtype=torch.int32)
+            else:
+                picked = torch.randperm(causal)[:keep].to(torch.int32)
+            rows.append(picked)
+            width = max(width, picked.numel())
+    assert len(rows) == token_count
+    out = torch.full((token_count, max(width, 1)), -1, dtype=torch.int32)
+    for i, row in enumerate(rows):
+        out[i, : row.numel()] = row
+    return out.to(device)
 
 
 def apply_offset_rope(x, cos, sin, positions, rotary_offset, rotary_dim, interleaved):
@@ -3049,7 +3132,16 @@ class TestPagedAttentionMLA(unittest.TestCase):
         defaults.update(kwargs)
         return MLAConfig(**defaults)
 
-    def _run_case(self, mla_config, past_seqlens, new_seqlens, local_window_size=-1, softcap=0.0):
+    def _run_case(
+        self,
+        mla_config,
+        past_seqlens,
+        new_seqlens,
+        local_window_size=-1,
+        softcap=0.0,
+        head_sink=None,
+        kv_indices_fn=None,
+    ):
         """Shared body: build a paged latent cache, run the op, compare against mla_reference."""
         device = "cuda"
         past_seqlens = torch.tensor(past_seqlens, dtype=torch.int32, device=device)
@@ -3059,6 +3151,9 @@ class TestPagedAttentionMLA(unittest.TestCase):
 
         query = torch.randn(token_count, mla_config.num_heads, mla_config.head_size, device=device, dtype=torch.float16)
         new_key = torch.randn(token_count, mla_config.head_size, device=device, dtype=torch.float16)
+
+        # The selection is built from the batch layout, so it is only available once the layout is.
+        kv_indices = None if kv_indices_fn is None else kv_indices_fn(past_seqlens, new_seqlens, cum_seqlens)
 
         scale = mla_config.softmax_scale
         out, latent_paged = run_mla(
@@ -3072,6 +3167,8 @@ class TestPagedAttentionMLA(unittest.TestCase):
             scale=scale,
             local_window_size=local_window_size,
             softcap=softcap,
+            head_sink=head_sink,
+            kv_indices=kv_indices,
         )
 
         # The op scattered the new keys into the cache in place, so densifying afterwards gives the
@@ -3087,6 +3184,8 @@ class TestPagedAttentionMLA(unittest.TestCase):
             scale,
             local_window_size=local_window_size,
             softcap=softcap,
+            head_sink=head_sink,
+            kv_indices=kv_indices,
         )
         out = out.reshape(token_count, mla_config.num_heads, mla_config.v_head_size).to(device).to(torch.float32)
         torch.testing.assert_close(out, ref, rtol=2e-3, atol=2e-3)
@@ -3112,6 +3211,166 @@ class TestPagedAttentionMLA(unittest.TestCase):
     def test_softcap(self):
         config = self._config()
         self._run_case(config, past_seqlens=[12, 12], new_seqlens=[4, 4], softcap=30.0)
+
+    def test_head_sink(self):
+        # DeepSeek-V4-Flash gives every head a learnable sink logit. It was rejected in LATENT until
+        # that model needed it; the epilogue is the same math the SEPARATE backends already use.
+        config = self._config()
+        head_sink = torch.tensor([-1.0, 0.0, 2.5, 8.0], device="cuda", dtype=torch.float16)
+        self._run_case(config, past_seqlens=[14, 6], new_seqlens=[5, 3], head_sink=head_sink)
+
+    def test_surplus_kv_rows(self):
+        """'key' may carry rows that no query token owns (§12.11).
+
+        DeepSeek-V4-Flash's compressor emits pooled latent rows that must be stored *and* attended
+        to in the same step, but the op writes one cache row per query token, so there is no second
+        write port. Surplus rows are that port: they are stored at their slot_mapping slots, are
+        immediately visible to kv_indices, and own no output row.
+        """
+        device = "cuda"
+        config = self._config()
+        past_seqlens = torch.tensor([12, 5], dtype=torch.int32, device=device)
+        new_seqlens = torch.tensor([3, 3], dtype=torch.int32, device=device)
+        surplus_per_seq = 2
+
+        # Park the surplus rows above every sequence's token range, which is where the compressed
+        # stream lives in the model's own flat cache.
+        capacity = int((past_seqlens + new_seqlens).max().item()) + surplus_per_seq
+        latent_paged, block_table, cum_seqlens, total_len = make_mla_batch(
+            config, past_seqlens, new_seqlens, capacity=capacity
+        )
+        token_count = int(cum_seqlens[-1].item())
+        surplus_count = config.batch_size * surplus_per_seq
+
+        def slot_of(b, logical):
+            block = int(block_table[b, logical // config.block_size].item())
+            return block * config.block_size + logical % config.block_size
+
+        # Real tokens land at their own sequence positions; surplus rows at the parked positions.
+        slots = []
+        surplus_positions = []
+        for b in range(config.batch_size):
+            for j in range(int(new_seqlens[b].item())):
+                slots.append(slot_of(b, int(past_seqlens[b].item()) + j))
+        for b in range(config.batch_size):
+            base = int((past_seqlens[b] + new_seqlens[b]).item())
+            for e in range(surplus_per_seq):
+                surplus_positions.append((b, base + e))
+                slots.append(slot_of(b, base + e))
+        slot_mapping = torch.tensor(slots, dtype=torch.int32, device=device)
+
+        query = torch.randn(token_count, config.num_heads, config.head_size, device=device, dtype=torch.float16)
+        key = torch.randn(token_count + surplus_count, config.head_size, device=device, dtype=torch.float16)
+
+        # Every query token attends to its causal range plus the surplus rows written this step, so
+        # the test fails if those rows are not already in the cache when attention runs.
+        rows = []
+        for b in range(config.batch_size):
+            extra = [p for (sb, p) in surplus_positions if sb == b]
+            for j in range(int(new_seqlens[b].item())):
+                rows.append(torch.tensor(list(range(int(past_seqlens[b].item()) + j + 1)) + extra, dtype=torch.int32))
+        width = max(r.numel() for r in rows)
+        kv_indices = torch.full((token_count, width), -1, dtype=torch.int32)
+        for i, r in enumerate(rows):
+            kv_indices[i, : r.numel()] = r
+        kv_indices = kv_indices.to(device)
+
+        scale = config.softmax_scale
+        out, latent_paged = run_mla(
+            config,
+            query.reshape(token_count, -1),
+            key,
+            latent_paged,
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            scale=scale,
+            kv_indices=kv_indices,
+            slot_mapping=slot_mapping,
+        )
+        self.assertEqual(out.shape[0], token_count)
+
+        dense = densify_latent(config, latent_paged, block_table, total_len)
+        # Load-bearing: without this the output comparison below would pass even if the surplus
+        # rows were never written, since the reference reads the same (stale) cache.
+        for i, (b, pos) in enumerate(surplus_positions):
+            torch.testing.assert_close(dense[b, pos].to(torch.float32), key[token_count + i].to(torch.float32))
+
+        ref = mla_reference(config, query, dense, past_seqlens, new_seqlens, cum_seqlens, scale, kv_indices=kv_indices)
+        out = out.reshape(token_count, config.num_heads, config.v_head_size).to(device).to(torch.float32)
+        torch.testing.assert_close(out, ref, rtol=2e-3, atol=2e-3)
+
+    def test_head_sink_dominates(self):
+        # A very large sink drives every real probability to ~0, so the output must approach zero.
+        config = self._config()
+        head_sink = torch.full((config.num_heads,), 30.0, device="cuda", dtype=torch.float16)
+        out = self._run_case(config, past_seqlens=[8, 8], new_seqlens=[2, 2], head_sink=head_sink)
+        torch.testing.assert_close(out, torch.zeros_like(out), rtol=0, atol=2e-2)
+
+    def test_kv_indices_listing_the_whole_causal_range_matches_dense(self):
+        # The strongest statement of the contract: a selection that enumerates exactly the dense
+        # causal range must reproduce the dense result bit-for-bit-close.
+        config = self._config()
+        past, new = [10, 4], [3, 2]
+
+        def enumerate_causal(past_seqlens, new_seqlens, cum_seqlens):
+            return make_causal_kv_indices(past_seqlens, new_seqlens, cum_seqlens, keep=None)
+
+        sparse = self._run_case(config, past_seqlens=past, new_seqlens=new, kv_indices_fn=enumerate_causal)
+        torch.manual_seed(20240727)  # replay the same random draws for the dense run
+        dense = self._run_case(config, past_seqlens=past, new_seqlens=new)
+        torch.testing.assert_close(sparse, dense, rtol=2e-3, atol=2e-3)
+
+    def test_kv_indices_sparse_selection(self):
+        # An arbitrary, per-token, non-contiguous subset -- the shape of a lightning-indexer top-k.
+        config = self._config()
+
+        def pick(past_seqlens, new_seqlens, cum_seqlens):
+            return make_causal_kv_indices(past_seqlens, new_seqlens, cum_seqlens, keep=5)
+
+        self._run_case(config, past_seqlens=[24, 17], new_seqlens=[4, 3], kv_indices_fn=pick)
+
+    def test_kv_indices_all_padding_with_sink_gives_zero(self):
+        # A row of -1 selects nothing. Without a sink that is 0/0; with one the denominator is the
+        # sink alone, so the output must be exactly zero rather than NaN.
+        config = self._config()
+        head_sink = torch.zeros(config.num_heads, device="cuda", dtype=torch.float16)
+
+        def nothing(past_seqlens, new_seqlens, cum_seqlens):
+            token_count = int(cum_seqlens[-1].item())
+            return torch.full((token_count, 4), -1, dtype=torch.int32, device="cuda")
+
+        out = self._run_case(
+            config, past_seqlens=[9, 9], new_seqlens=[2, 2], head_sink=head_sink, kv_indices_fn=nothing
+        )
+        self.assertFalse(torch.isnan(out).any())
+        torch.testing.assert_close(out, torch.zeros_like(out), rtol=0, atol=0)
+
+    def test_kv_indices_out_of_capacity_entries_are_skipped(self):
+        # Memory safety is the one bound the kernel still enforces: a position past the sequence's
+        # block-table capacity must be dropped, not read.
+        config = self._config()
+
+        def with_garbage(past_seqlens, new_seqlens, cum_seqlens):
+            selection = make_causal_kv_indices(past_seqlens, new_seqlens, cum_seqlens, keep=3)
+            oob = torch.full((selection.shape[0], 1), 1 << 20, dtype=torch.int32, device="cuda")
+            return torch.cat([selection, oob], dim=1)
+
+        self._run_case(config, past_seqlens=[12, 12], new_seqlens=[3, 3], kv_indices_fn=with_garbage)
+
+    def test_deepseek_v4_flash_geometry(self):
+        # DeepSeek-V4-Flash-0731: head_dim 512 = 448 nope + 64 rope, kv_num_heads 1, and V is the
+        # whole latent row (the model inverse-RoPEs the last 64 output channels in the graph), so
+        # v_head_size == head_size and the default 512**-0.5 scale is already correct. num_heads is
+        # cut from 64 to keep the test cheap; the widths are the model's.
+        config = self._config(num_heads=4, kv_lora_rank=448, qk_rope_head_dim=64, block_size=16)
+        config.v_head_size = config.head_size  # V is the full row, not just the nope prefix
+        head_sink = torch.randn(config.num_heads, device="cuda", dtype=torch.float16)
+
+        def top_k(past_seqlens, new_seqlens, cum_seqlens):
+            return make_causal_kv_indices(past_seqlens, new_seqlens, cum_seqlens, keep=8)
+
+        self._run_case(config, past_seqlens=[40, 33], new_seqlens=[4, 2], head_sink=head_sink, kv_indices_fn=top_k)
 
     def test_deepseek_v3_geometry(self):
         # The real absorbed shape: head_size 576, v_head_size 512, kv_num_heads 1.
@@ -3340,7 +3599,7 @@ class TestPagedAttentionMLA(unittest.TestCase):
         out = out.reshape(token_count, config.num_heads, config.v_head_size).to(device).to(torch.float32)
         torch.testing.assert_close(out, ref, rtol=5e-3, atol=5e-3)
 
-    # ---- rejected configurations (design doc §12.9, §12.10) ----
+    # ---- rejected configurations (design doc §12.9, §12.10, §12.11) ----
 
     def _expect_rejected(self, message_fragment, **graph_kwargs):
         """Build a LATENT model with one deliberate violation and assert the op rejects it. Schema
@@ -3348,6 +3607,7 @@ class TestPagedAttentionMLA(unittest.TestCase):
         wrapped."""
         config = graph_kwargs.pop("config", None) or self._config()
         num_tokens, num_blocks, max_blocks = 4, 4, 2
+        num_kv_tokens = graph_kwargs.get("num_kv_tokens") or num_tokens
         head_size = config.head_size
 
         def build_and_run():
@@ -3355,7 +3615,7 @@ class TestPagedAttentionMLA(unittest.TestCase):
             session = InferenceSession(model, SessionOptions(), providers=["CUDAExecutionProvider"])
             feeds = {
                 "query": torch.randn(num_tokens, config.num_heads * head_size).to(torch.float16).numpy(),
-                "key": torch.randn(num_tokens, config.kv_num_heads * head_size).to(torch.float16).numpy(),
+                "key": torch.randn(num_kv_tokens, config.kv_num_heads * head_size).to(torch.float16).numpy(),
                 "key_cache": torch.randn(num_blocks, config.block_size, config.kv_num_heads, head_size)
                 .to(torch.float16)
                 .numpy(),
@@ -3378,6 +3638,10 @@ class TestPagedAttentionMLA(unittest.TestCase):
             if graph_kwargs.get("with_qk_norm"):
                 feeds["q_norm_weight"] = torch.ones(head_size).to(torch.float16).numpy()
                 feeds["k_norm_weight"] = torch.ones(head_size).to(torch.float16).numpy()
+            if graph_kwargs.get("max_selected_kv"):
+                feeds["kv_indices"] = numpy.zeros((num_tokens, graph_kwargs["max_selected_kv"]), dtype=numpy.int32)
+            if graph_kwargs.get("with_slot_mapping"):
+                feeds["slot_mapping"] = numpy.zeros(num_kv_tokens, dtype=numpy.int32)
             session.run(None, feeds)
 
         with self.assertRaises(Exception) as ctx:
@@ -3397,11 +3661,26 @@ class TestPagedAttentionMLA(unittest.TestCase):
     def test_reject_value_cache_output(self):
         self._expect_rejected("value_cache_out must be absent", scale=0.1, with_value_cache_out=True)
 
-    def test_reject_head_sink(self):
-        self._expect_rejected("'head_sink'", scale=0.1, with_head_sink=True)
-
     def test_reject_qk_norm(self):
         self._expect_rejected("q_norm_weight", scale=0.1, with_qk_norm=True)
+
+    def test_reject_kv_indices_with_local_window(self):
+        # Both are masks. Silently letting one win would be invisible, so the combination is an error.
+        self._expect_rejected(
+            "must be unset when 'kv_indices' is provided", scale=0.1, max_selected_kv=4, local_window_size=2
+        )
+
+    def test_reject_kv_indices_in_separate_layout(self):
+        self._expect_rejected(
+            "only supported when 'kv_cache_layout' is 'LATENT'",
+            scale=0.1,
+            max_selected_kv=4,
+            kv_cache_layout="SEPARATE",
+            v_head_size=0,
+            with_value=True,
+            with_value_cache=True,
+            with_value_cache_out=True,
+        )
 
     def test_reject_multi_kv_head(self):
         config = self._config()
@@ -3427,6 +3706,341 @@ class TestPagedAttentionMLA(unittest.TestCase):
         self._expect_rejected(
             "must not exceed head_size", config=config, scale=0.1, do_rotary=True, rotary_offset=config.head_size
         )
+
+    def test_rejects_fewer_key_rows_than_query(self):
+        # Surplus KV rows are allowed; a deficit is not, since every query token stores its own row.
+        self._expect_rejected("must be at least", scale=0.1, num_kv_tokens=2, with_slot_mapping=True)
+
+    def test_rejects_surplus_key_rows_without_slot_mapping(self):
+        # Without slot_mapping the slot is derived from cumulative_sequence_length, which does not
+        # describe a row that belongs to no query token.
+        self._expect_rejected("'slot_mapping' is required", scale=0.1, num_kv_tokens=6)
+
+    def test_rejects_surplus_key_rows_with_rotary(self):
+        # Same reason: the surplus rows have no sequence position to rotate by.
+        self._expect_rejected(
+            "In-kernel rotary is not supported",
+            scale=0.1,
+            num_kv_tokens=6,
+            with_slot_mapping=True,
+            do_rotary=True,
+        )
+
+
+# =================================================================================================
+# DeepSeek-V4-Flash-0731 reference attention.
+#
+# Transcribed from the model's own inference code so that PagedAttention is checked against what
+# the model actually computes, not against a re-derivation of it:
+#   inference/kernel.py :: sparse_attn_kernel     -> dsv4_sparse_attn
+#   inference/model.py  :: get_window_topk_idxs   -> dsv4_window_topk_idxs
+#   inference/model.py  :: get_compress_topk_idxs -> dsv4_compress_topk_idxs
+# (https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731)
+#
+# Attention.forward calls sparse_attn(q, kv, attn_sink, topk_idxs, softmax_scale) where kv is the
+# full head_dim-wide latent row: K and V are the same tensor, so v_head_size == head_size. The
+# sliding window and the compressed taps are both already materialized in topk_idxs, which is
+# exactly the contract of the op's 'kv_indices' input (design doc section 22).
+# =================================================================================================
+
+# DeepSeek-V4-Flash-0731 inference/config.json.
+DSV4_HEAD_DIM = 512
+DSV4_ROPE_HEAD_DIM = 64
+DSV4_N_HEADS = 64
+DSV4_WINDOW_SIZE = 128
+
+
+def dsv4_sparse_attn(q, kv, attn_sink, topk_idxs, softmax_scale):
+    """fp32 transcription of inference/kernel.py::sparse_attn_kernel.
+
+    q: [b, m, h, d]  kv: [b, n, d]  attn_sink: [h]  topk_idxs: [b, m, topk] int32.
+    A -1 index contributes a zero KV row and a -inf logit, and the sink joins the denominator only:
+        sum_exp[i] += exp(attn_sink[i] - scores_max[i]); acc_o[i] /= sum_exp[i]
+    """
+    b, m, h, d = q.shape
+    out = torch.zeros(b, m, h, d, dtype=torch.float32, device=q.device)
+    q = q.to(torch.float32)
+    kv = kv.to(torch.float32)
+    sink = None if attn_sink is None else attn_sink.to(torch.float32)
+    for i in range(b):
+        for j in range(m):
+            idxs = topk_idxs[i, j].to(torch.long)
+            valid = idxs >= 0
+            if not bool(valid.any()):
+                # Unreachable in the model (the window always contains the token itself); the
+                # kernel's 1/inf limit is zero, which is what an all-zero row already holds.
+                continue
+            gathered = torch.where(valid.unsqueeze(-1), kv[i, idxs.clamp(min=0)], torch.zeros((), device=q.device))
+            logits = (q[i, j] @ gathered.transpose(0, 1)) * softmax_scale  # [h, topk]
+            logits = torch.where(valid.unsqueeze(0), logits, torch.full_like(logits, float("-inf")))
+            scores_max = logits.max(dim=-1).values  # [h]
+            probs = torch.exp(logits - scores_max.unsqueeze(-1))
+            sum_exp = probs.sum(-1)
+            if sink is not None:
+                sum_exp = sum_exp + torch.exp(sink - scores_max)
+            out[i, j] = (probs @ gathered) / sum_exp.unsqueeze(-1)
+    return out
+
+
+def dsv4_window_topk_idxs(window_size, bsz, seqlen, start_pos):
+    """Transcription of inference/model.py::get_window_topk_idxs.
+
+    Only the start_pos < window_size - 1 regime is used here: past that point the model's ring
+    buffer wraps and the indices become physical slots, which in ORT is the block table's job.
+    """
+    assert start_pos < window_size - 1, "wrapped ring-buffer indices are not logical positions"
+    if start_pos > 0:
+        matrix = torch.nn.functional.pad(torch.arange(start_pos + 1), (0, window_size - start_pos - 1), value=-1)
+    else:
+        base = torch.arange(seqlen).unsqueeze(1)
+        matrix = (base - window_size + 1).clamp(0) + torch.arange(min(seqlen, window_size))
+        matrix = torch.where(matrix > base, -1, matrix)
+    return matrix.int().unsqueeze(0).expand(bsz, -1, -1).contiguous()
+
+
+def dsv4_compress_topk_idxs(ratio, bsz, seqlen, start_pos, offset):
+    """Transcription of inference/model.py::get_compress_topk_idxs. 'offset' is where the
+    compressed rows begin; the model puts them right after the window region."""
+    if start_pos > 0:
+        matrix = torch.arange(0, (start_pos + 1) // ratio) + offset
+    else:
+        matrix = torch.arange(seqlen // ratio).repeat(seqlen, 1)
+        mask = matrix >= torch.arange(1, seqlen + 1).unsqueeze(1) // ratio
+        matrix = torch.where(mask, -1, matrix + offset)
+    return matrix.int().unsqueeze(0).expand(bsz, -1, -1).contiguous()
+
+
+@unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
+class TestPagedAttentionDeepSeekV4Flash(unittest.TestCase):
+    """PagedAttention vs. DeepSeek-V4-Flash-0731's own sparse_attn (design doc section 22).
+
+    Every case feeds the op the index pattern the model's Attention.forward would emit and compares
+    against dsv4_sparse_attn, so a divergence in masking, sink placement or V aliasing shows up as a
+    numeric failure rather than as a plausible-looking but different answer.
+    """
+
+    def setUp(self):
+        torch.manual_seed(20260803)
+
+    def _config(self, num_heads=4, kv_lora_rank=DSV4_HEAD_DIM - DSV4_ROPE_HEAD_DIM, block_size=16):
+        config = MLAConfig(
+            batch_size=2,
+            num_heads=num_heads,
+            kv_lora_rank=kv_lora_rank,
+            qk_rope_head_dim=DSV4_ROPE_HEAD_DIM,
+            block_size=block_size,
+        )
+        # V is the whole latent row: Attention.forward inverse-RoPEs o[..., -rope_head_dim:] in the
+        # graph, so sparse_attn returns all head_dim channels.
+        config.v_head_size = config.head_size
+        return config
+
+    def _run(self, config, seqlen, start_pos, topk_idxs, head_sink, capacity, do_rotary=False):
+        """Run the op on a uniform batch and assert it equals dsv4_sparse_attn on the same inputs.
+
+        topk_idxs is [batch, seqlen, topk] in the model's layout; the op takes it flattened over the
+        packed token dimension. softmax_scale is left to the op's default 1/sqrt(head_size), which
+        is precisely DeepSeek's `self.softmax_scale = head_dim ** -0.5`.
+        """
+        device = "cuda"
+        batch_size = config.batch_size
+        past_seqlens = torch.full((batch_size,), start_pos, dtype=torch.int32, device=device)
+        new_seqlens = torch.full((batch_size,), seqlen, dtype=torch.int32, device=device)
+        latent_paged, block_table, cum_seqlens, total_len = make_mla_batch(
+            config, past_seqlens, new_seqlens, capacity=capacity
+        )
+        token_count = int(cum_seqlens[-1].item())
+
+        query = torch.randn(token_count, config.num_heads, config.head_size, device=device, dtype=torch.float16)
+        new_key = torch.randn(token_count, config.head_size, device=device, dtype=torch.float16)
+        kv_indices = topk_idxs.reshape(token_count, -1).to(device).to(torch.int32)
+
+        cos = sin = None
+        if do_rotary:
+            cos = torch.randn(total_len, config.qk_rope_head_dim // 2, device=device, dtype=torch.float16)
+            sin = torch.randn(total_len, config.qk_rope_head_dim // 2, device=device, dtype=torch.float16)
+
+        out, latent_paged = run_mla(
+            config,
+            query.reshape(token_count, -1),
+            new_key,
+            latent_paged,
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            cos=cos,
+            sin=sin,
+            head_sink=head_sink,
+            kv_indices=kv_indices,
+        )
+
+        # The op scattered (and, with do_rotary, rotated) the new keys in place, so the densified
+        # cache is the model's `kv` argument: window rows below 'capacity' plus the pre-existing
+        # rows above it standing in for compressed KV.
+        kv = densify_latent(config, latent_paged, block_table, total_len)
+        ref_q = query
+        if do_rotary:
+            positions = torch.cat([torch.arange(start_pos, start_pos + seqlen)] * batch_size).to(device)
+            ref_q = apply_offset_rope(query, cos, sin, positions, config.rotary_offset, config.qk_rope_head_dim, False)
+        ref = dsv4_sparse_attn(
+            ref_q.reshape(batch_size, seqlen, config.num_heads, config.head_size),
+            kv,
+            head_sink,
+            topk_idxs.to(device),
+            config.head_size**-0.5,
+        )
+        out = out.reshape(batch_size, seqlen, config.num_heads, config.v_head_size).to(device).to(torch.float32)
+        torch.testing.assert_close(out, ref.to(torch.float32), rtol=2e-3, atol=2e-3)
+        return out
+
+    def _head_sink(self, config):
+        # attn_sink is an unconstrained fp32 parameter; spread it around zero.
+        return (torch.randn(config.num_heads, device="cuda") * 2.0).to(torch.float16)
+
+    def test_prefill_sliding_window_only(self):
+        # compress_ratios[layer] == 0: topk_idxs is the sliding window alone.
+        config = self._config()
+        window, seqlen = 8, 12
+        topk = dsv4_window_topk_idxs(window, config.batch_size, seqlen, 0)
+        self._run(config, seqlen, 0, topk, self._head_sink(config), capacity=seqlen)
+
+    def test_prefill_window_shorter_than_sequence(self):
+        # seqlen > window: every late row is a strict interior window, so a kernel that quietly
+        # re-derived a causal mask from position 0 would disagree.
+        config = self._config()
+        window, seqlen = 4, 17
+        topk = dsv4_window_topk_idxs(window, config.batch_size, seqlen, 0)
+        self._run(config, seqlen, 0, topk, self._head_sink(config), capacity=seqlen)
+
+    def test_prefill_window_plus_compressed(self):
+        # compress_ratios[layer] == 4: Attention.forward concatenates the window indices with the
+        # indexer's compressed picks, which live at offset kv.size(1) == seqlen.
+        config = self._config()
+        window, seqlen, ratio = 8, 16, 4
+        topk = torch.cat(
+            [
+                dsv4_window_topk_idxs(window, config.batch_size, seqlen, 0),
+                dsv4_compress_topk_idxs(ratio, config.batch_size, seqlen, 0, seqlen),
+            ],
+            dim=-1,
+        )
+        self._run(config, seqlen, 0, topk, self._head_sink(config), capacity=seqlen + seqlen // ratio)
+
+    def test_decode_window_plus_compressed(self):
+        # start_pos > 0 with a single new token, before the ring buffer wraps.
+        config = self._config()
+        window, start_pos, ratio = 16, 11, 4
+        topk = torch.cat(
+            [
+                dsv4_window_topk_idxs(window, config.batch_size, 1, start_pos),
+                dsv4_compress_topk_idxs(ratio, config.batch_size, 1, start_pos, window),
+            ],
+            dim=-1,
+        )
+        self._run(config, 1, start_pos, topk, self._head_sink(config), capacity=window + (start_pos + 1) // ratio)
+
+    def test_prefill_with_graph_rope(self):
+        # The model RoPEs the rope_head_dim suffix of q and kv before sparse_attn; the op does the
+        # same in-kernel via rotary_offset, so the two must still agree.
+        config = self._config()
+        window, seqlen = 8, 12
+        topk = dsv4_window_topk_idxs(window, config.batch_size, seqlen, 0)
+        self._run(config, seqlen, 0, topk, self._head_sink(config), capacity=seqlen, do_rotary=True)
+
+    def test_no_head_sink(self):
+        # attn_sink is always present in the checkpoint, but the op must stay correct without it.
+        config = self._config()
+        topk = dsv4_window_topk_idxs(8, config.batch_size, 10, 0)
+        self._run(config, 10, 0, topk, None, capacity=10)
+
+    def test_released_geometry(self):
+        # The shipped config: head_dim 512 = 448 nope + 64 rope, 64 heads, window 128.
+        config = self._config(num_heads=DSV4_N_HEADS, block_size=64)
+        self.assertEqual(config.head_size, DSV4_HEAD_DIM)
+        seqlen, ratio = 6, 4
+        topk = torch.cat(
+            [
+                dsv4_window_topk_idxs(DSV4_WINDOW_SIZE, config.batch_size, seqlen, 0),
+                dsv4_compress_topk_idxs(ratio, config.batch_size, seqlen, 0, seqlen),
+            ],
+            dim=-1,
+        )
+        self._run(config, seqlen, 0, topk, self._head_sink(config), capacity=seqlen + seqlen // ratio)
+
+    def test_decode_compressed_row_written_in_same_step(self):
+        """The compressor's row for the step being decoded is stored *and* read by that step.
+
+        The cases above pre-park the compressed rows, which sidesteps the hard part. In the model
+        `should_compress` fires exactly when `start_pos // ratio < (start_pos + 1) // ratio`, and
+        the row it then produces is already inside get_compress_topk_idxs' range, so the write
+        cannot be deferred to the next step. It also cannot be a second node, because key_cache may
+        be touched once. The graph therefore carries it as a surplus 'key' row (§12.11): this test
+        is that path end to end, at DeepSeek's own cache layout of window rows followed by the
+        compressed stream at offset window_size.
+        """
+        device = "cuda"
+        config = self._config()
+        window, ratio, start_pos = 16, 4, 11
+        n_comp = (start_pos + 1) // ratio  # compressed rows visible to this step
+        self.assertLess(start_pos // ratio, n_comp)  # ... the last of which is produced by it
+        batch_size = config.batch_size
+
+        past_seqlens = torch.full((batch_size,), start_pos, dtype=torch.int32, device=device)
+        new_seqlens = torch.ones(batch_size, dtype=torch.int32, device=device)
+        latent_paged, block_table, cum_seqlens, total_len = make_mla_batch(
+            config, past_seqlens, new_seqlens, capacity=window + n_comp
+        )
+        token_count = int(cum_seqlens[-1].item())
+        self.assertEqual(token_count, batch_size)
+
+        def slot_of(b, logical):
+            block = int(block_table[b, logical // config.block_size].item())
+            return block * config.block_size + logical % config.block_size
+
+        fresh_slot = window + n_comp - 1
+        slot_mapping = torch.tensor(
+            [slot_of(b, start_pos) for b in range(batch_size)] + [slot_of(b, fresh_slot) for b in range(batch_size)],
+            dtype=torch.int32,
+            device=device,
+        )
+
+        query = torch.randn(token_count, config.num_heads, config.head_size, device=device, dtype=torch.float16)
+        # Rows 0..batch_size-1 are the new tokens' latent rows; the rest are the compressor's.
+        key = torch.randn(token_count + batch_size, config.head_size, device=device, dtype=torch.float16)
+
+        topk = torch.cat(
+            [
+                dsv4_window_topk_idxs(window, batch_size, 1, start_pos),
+                dsv4_compress_topk_idxs(ratio, batch_size, 1, start_pos, window),
+            ],
+            dim=-1,
+        )
+        head_sink = self._head_sink(config)
+        out, latent_paged = run_mla(
+            config,
+            query.reshape(token_count, -1),
+            key,
+            latent_paged,
+            cum_seqlens,
+            past_seqlens,
+            block_table,
+            head_sink=head_sink,
+            kv_indices=topk.reshape(token_count, -1).to(device).to(torch.int32),
+            slot_mapping=slot_mapping,
+        )
+
+        kv = densify_latent(config, latent_paged, block_table, total_len)
+        for b in range(batch_size):
+            torch.testing.assert_close(kv[b, fresh_slot].to(torch.float32), key[token_count + b].to(torch.float32))
+        ref = dsv4_sparse_attn(
+            query.reshape(batch_size, 1, config.num_heads, config.head_size),
+            kv,
+            head_sink,
+            topk.to(device),
+            config.head_size**-0.5,
+        )
+        out = out.reshape(batch_size, 1, config.num_heads, config.v_head_size).to(device).to(torch.float32)
+        torch.testing.assert_close(out, ref.to(torch.float32), rtol=2e-3, atol=2e-3)
 
 
 if __name__ == "__main__":

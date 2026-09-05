@@ -4794,13 +4794,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Quantization granularity of the value cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. Must be non-'NONE' exactly when 'value_cache' has a quantized element type, and then 'v_scale' is required. Default value is 'NONE'.</dd>
 </dl>
 
-#### Inputs (8 - 17)
+#### Inputs (8 - 18)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
 <dd>Query with shape (num_tokens, hidden_size), or packed QKV with shape (num_tokens, d) where d is (num_heads * head_size + 2 * kv_num_heads * head_size).</dd>
 <dt><tt>key</tt> (optional) : T</dt>
-<dd>Key with shape (num_tokens, kv_hidden_size) </dd>
+<dd>Key with shape (kv_token_count, kv_hidden_size). kv_token_count equals the query token count except in 'LATENT' mode, where it may be larger: the surplus rows are stored into the cache at their 'slot_mapping' slots but own no output row and attend to nothing, which lets a graph write a secondary KV stream in the same step that reads it. Surplus rows require 'slot_mapping' and are incompatible with in-kernel rotary.</dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (num_tokens, kv_hidden_size). Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 <dt><tt>key_cache</tt> : T_CACHE</dt>
@@ -4818,7 +4818,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>sin_cache</tt> (optional) : T</dt>
 <dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
 <dt><tt>slot_mapping</tt> (optional) : S</dt>
-<dd>1D tensor with shape (num_tokens). For each query token, the flat slot index (block_id * block_size + offset_in_block) at which its key/value is written into the KV cache. A value of -1 skips the cache write for that token, which lets a scheduler suppress stores for prefix-cache hits or rejected speculative tokens. When absent, slots are derived from 'past_seqlens', 'cumulative_sequence_length' and 'block_table' as before. 'block_table' is still required, because it defines the read path.</dd>
+<dd>1D tensor with shape (kv_token_count). For each stored key/value row, the flat slot index (block_id * block_size + offset_in_block) at which it is written into the KV cache. A value of -1 skips the cache write for that row, which lets a scheduler suppress stores for prefix-cache hits or rejected speculative tokens. When absent, slots are derived from 'past_seqlens', 'cumulative_sequence_length' and 'block_table' as before. 'block_table' is still required, because it defines the read path.</dd>
 <dt><tt>head_sink</tt> (optional) : T</dt>
 <dd>1D tensor with shape (num_heads). Each head has a learnable sink logit that participates in the softmax denominator but contributes no value, so attention can 'do nothing'.</dd>
 <dt><tt>q_norm_weight</tt> (optional) : T</dt>
@@ -4831,6 +4831,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Dequantization scale of the value cache. Shape is (1) when 'v_quant_type' is 'PER_TENSOR' and (kv_num_heads, 1, head_size) when it is 'PER_CHANNEL'. Quantization is symmetric (no zero point).</dd>
 <dt><tt>attention_metadata</tt> (optional) : S</dt>
 <dd>1D tensor with shape (2) or (3) holding [max_query_len_bound, max_kv_len_bound, optional max_kv_len_lower_bound] in CPU memory. max_query_len_bound is an upper bound on the number of new tokens any one sequence contributes; max_kv_len_bound is an upper bound on past_seqlens[i] + query_len[i]. Both are replay-wide upper bounds, never exact per-step values: they must hold for every step this node -- or a CUDA Graph capturing it -- will serve, and 0 means 'unknown'. They may only select the backend and size launch dimensions and workspaces; they never enter a mask comparison, so over-estimating only costs empty work. max_kv_len_lower_bound is a replay-wide lower bound on the largest per-sequence KV length in the batch and 0 means 'unknown'. It is a provider-neutral performance hint; omitting it preserves the shape-(2) contract and disables optimizations that require a lower bound unless the op reads exact lengths back from the device. The op can otherwise obtain the upper bounds only by copying 'cumulative_sequence_length' and 'past_seqlens' back from the device and synchronizing the stream on every call, which stalls the pipeline once per node per step and makes the op impossible to capture into a CUDA Graph. Schedulers already track these bounds on the host, so supplying them is normally free. When absent, the op falls back to the device readback. The upper bounds are trusted: an under-sized bound violates the contract and may omit attention work.</dd>
+<dt><tt>kv_indices</tt> (optional) : S</dt>
+<dd>2D tensor with shape (num_tokens, max_selected_kv) selecting, per query token, the logical KV positions it attends. Entry (t, j) is a 0-based position within the sequence that token t belongs to, resolved through 'block_table' exactly like a dense position; a negative entry is padding and is skipped, so rows may select fewer than max_selected_kv positions. This is the query-aware token sparsity used by DeepSeek sparse attention, where a lightning indexer picks the top-k cached positions per token and the selected set is not an interval. The selection is authoritative and complete: the kernel applies no causal or sliding-window mask on top of it, so the producer owns causality and must not list a position at or beyond the query token's own, nor list the same position twice (a duplicate would be counted twice by the softmax). Positions outside the sequence's block-table capacity, and positions whose block is unmapped, are skipped. Only supported when 'kv_cache_layout' is 'LATENT'. When absent, every token attends the dense causal range narrowed by 'local_window_size'.</dd>
 </dl>
 
 #### Outputs (1 - 3)

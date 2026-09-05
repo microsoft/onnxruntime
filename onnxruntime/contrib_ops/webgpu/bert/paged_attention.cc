@@ -482,6 +482,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                                           k_scale,
                                                           v_scale,
                                                           attention_metadata,
+                                                          /*kv_indices*/ static_cast<const Tensor*>(nullptr),
                                                           &parameters,
                                                           num_heads_,
                                                           kv_num_heads_,

@@ -153,7 +153,7 @@ under a both-or-neither rule, and the seven attributes `num_heads`, `kv_num_head
 
 ### 4.3 Inputs
 
-Indices 0–9 are unchanged from the shipped schema. Indices 10–18 are new and optional. The order
+Indices 0–9 are unchanged from the shipped schema. Indices 10–19 are new and optional. The order
 matches the landing order in [§19](#19-phasing), so the schema grows monotonically per phase.
 
 | Idx | Name | Type | Shape | Status |
@@ -175,8 +175,9 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 | 14 | `k_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8** |
 | 15 | `v_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8**; absent in `LATENT` |
 | 16 | `attention_metadata` | `S` (opt, **CPU**) | `(2,)` or `(3,)` | **new — trusted bounds only, §4.7** |
-| 17 | `query_positions` | `S` (opt) | `(token_count,)` | **new — §4.8** |
-| 18 | `attention_bias` | `T` (opt) | `(batch_size or 1, num_heads or 1, query_length_capacity, context_length_capacity)` | **new — §10** |
+| 17 | `kv_indices` | `S` (opt) | `(token_count, max_selected_kv)` | **new — §22** |
+| 18 | `query_positions` | `S` (opt) | `(token_count,)` | **new — §4.8** |
+| 19 | `attention_bias` | `T` (opt) | `(batch_size or 1, num_heads or 1, query_length_capacity, context_length_capacity)` | **new — §10** |
 
 `max_context_len` is the largest per-sequence total KV length in the batch, bounded above by
 `block_table.shape[1] * block_size`.
@@ -1229,8 +1230,9 @@ exactly as decode does. The operator itself does not distinguish the three cases
 | Quantized cache (§8) | **Supported** | An FP8 latent cache is standard in DeepSeek deployments. `PER_CHANNEL` scale shape becomes `(1, 1, head_size)` since `kv_num_heads == 1`. Because V *is* K, the same bytes are written once with `k_scale` and read back as both, so `k_scale` alone describes the cache and `v_scale` / `v_quant_type` must be unset — a second scale for the same bytes could only disagree. A `PER_CHANNEL` V dequant therefore indexes the scale with the `head_size` stride, reading only its leading `v_head_size` entries. |
 | RoPE | **Supported** via `rotary_offset` (§12.5) | |
 | `softcap` | Allowed, unused by DeepSeek | |
-| Sliding window (§9) | Allowed but untested | No MLA model uses it; semantics are well defined (window is over positions, not channels). |
-| `head_sink` (§6) | **Rejected** | No MLA model uses sinks. The LSE epilogue is valid math here, but shipping an untested combination invites silent errors. Revisit if a model needs it. |
+| Sliding window (§9) | Allowed but untested | No MLA model uses it; semantics are well defined (window is over positions, not channels). Mutually exclusive with `kv_indices` (§22). |
+| `head_sink` (§6) | **Supported** | Was rejected until DeepSeek-V4-Flash, whose sparse attention gives every head a learnable sink logit so a head can select nothing. The LSE epilogue is the same math as elsewhere: the sink is a raw logit, not scaled by `scale`, and joins only the denominator. Implemented on the unfused latent kernel. |
+| Query-aware sparsity (§22) | **Supported** | `kv_indices` is only accepted in `"LATENT"` mode, because it is the only backend that walks the block table itself. |
 | QK-Norm (§7) | **Rejected** | DeepSeek's `q_a_layernorm` / `kv_a_layernorm` act on the *latent* projections in the graph, before absorption. A `head_size`-wide RMSNorm in absorbed space is a different operation; accepting it would let an exporter produce silently wrong math. |
 | `attention_bias` / `output_qk` (§10, §11) | Supported on the unfused path | `output_qk` shape is unchanged: `(num_heads, token_count, max_context_len)`. |
 
@@ -1247,10 +1249,53 @@ exactly as decode does. The operator itself does not distinguish the three cases
 - `rotary_offset >= 0`, `rotary_offset % 8 == 0`, `rotary_offset + rotary_dim <= head_size`.
 - In `"LATENT"` mode `head_size` may exceed 256, but the selected backend must accept it; otherwise
   return `INVALID_ARGUMENT` naming the backend and the supported head widths.
-- `head_sink` or QK-Norm weights combined with `"LATENT"` ⇒ `INVALID_ARGUMENT` (§12.9).
+- QK-Norm weights combined with `"LATENT"` ⇒ `INVALID_ARGUMENT` (§12.9). `head_sink` is accepted.
+- `kv_indices` requires `kv_cache_layout == "LATENT"`, and `local_window_size` must then be `0`
+  (§22.4).
 - `v_scale` and a non-`"NONE"` `v_quant_type` combined with `"LATENT"` ⇒ `INVALID_ARGUMENT`: there is
   one physical cache and `k_scale` already describes it (§12.9).
+- `key` dimension 0 must be **at least** `token_count`; a surplus is allowed only in `"LATENT"` mode
+  and only with `slot_mapping` present and in-kernel rotary off (§12.11).
+- `slot_mapping` dimension 0 must equal `key` dimension 0, not `token_count`.
 - Dispatch only to an MLA-capable backend or the unfused reference; never silently ignore an input.
+
+### 12.11 Surplus KV rows
+
+In every other mode `key` has exactly one row per query token, because the row a token writes is the
+row it is. `"LATENT"` relaxes that to `kv_token_count >= token_count`: the trailing
+`kv_token_count - token_count` rows of `key` are **stored and nothing else**. They own no output row
+and no `kv_indices` row; `output` stays `(token_count, num_heads * v_head_size)`.
+
+The reason is a model with a second KV stream. DeepSeek-V4-Flash-0731 keeps, besides the sliding
+window, a *compressed* stream: every `compress_ratio` tokens, a pooled latent row is written at
+cache position `window_size + pos / compress_ratio`. That row is read by the very step that produces
+it — the model's `should_compress` fires on the same forward pass whose `topk_idxs` then select the
+new row — so the write cannot be deferred to the next step. And it cannot be a separate `ScatterND`
+on the cache, because `key_cache` and `key_cache_out` must alias the same buffer (§5), so exactly one
+node may touch a given cache tensor. Surplus rows are the write port that removes the conflict: the
+graph concatenates the compressed rows onto `key`, gives them slots in `slot_mapping`, and selects
+them through `kv_indices` in the same node.
+
+The alternative — padding the batch with *phantom query tokens* whose `kv_indices` rows are all `-1`
+purely to carry the extra writes — costs real time. The latent kernel is indexed by global query
+token, so a phantom still launches its CTA, loads `q`, walks its full `kv_indices` row and writes an
+output row it then discards. Measured at DeepSeek-V4-Flash's released geometry (1M context,
+`compress_ratio` 4, 640 selected positions, 8-way TP, H200): ~0.9–1.3 µs per phantom token at batch
+256 and ~1.9 µs at batch 64, against ~6.3 µs for a real token — **+30% at batch 256 and +60% at
+batch 64**, on 41 of 43 layers, forever. Relaxing the shape check costs nothing at all: the store
+and the attention are already two separate kernel launches, and only the store's loop bound changes.
+
+Two restrictions follow from what a surplus row does *not* have, namely a sequence position:
+
+- **`slot_mapping` is required.** Without it the destination slot is derived from the token's
+  position via `cumulative_sequence_length`, which does not describe a row that belongs to no token.
+- **In-kernel rotary is rejected** (`cos_cache` present). The rotation angle is that same position.
+  A model that needs its surplus rows rotated must rotate them in the graph, which is where a pooled
+  row's position is known anyway.
+
+`kv_indices` is unchanged: it stays `(token_count, max_selected_kv)`, one row per *query* token. The
+surplus rows are referred to by the logical positions their slots correspond to, exactly like any
+row written on an earlier step.
 
 ## 13. Kernel Dispatch and Backend Plan
 
@@ -1503,8 +1548,8 @@ GQA cannot be the oracle here — it has no MLA mode — so MLA needs its own re
   be rejected in `LATENT` mode.
 - **MLA × paging.** Shuffled block tables, `slot_mapping` with `-1`, and an FP8 latent cache, each
   combined with MLA.
-- **Rejected combinations.** MLA + `head_sink` and MLA + QK-Norm must fail with the documented
-  message, not silently compute something.
+- **Rejected combinations.** MLA + QK-Norm must fail with the documented message, not silently
+  compute something. (MLA + `head_sink` was rejected until DeepSeek-V4-Flash needed it — §22.)
 
 ### 17.4 Reference implementations
 
@@ -1595,7 +1640,7 @@ These block the feature work and should land ahead of it.
 | **P3 — Memory** | Quantized cache INT8/FP8, `PER_TENSOR` + `PER_CHANNEL`, dequant-on-gather read path (§8) | `T_CACHE`, `T_KV_SCALE`, inputs 14–15, 4 attrs |
 | **P4 — MLA (correctness)** | `kv_cache_layout="LATENT"`, `v_head_size`, `rotary_offset`, V-aliases-K, optional `value_cache`, unfused MLA reference kernel, absorbed↔non-absorbed equivalence tests (§12) | attrs `kv_cache_layout`, `v_head_size`, `rotary_offset`; input 4 optional |
 | **P5 — Performance** | Paged decode kernel with in-kernel dequant; fused MLA backend (FlashMLA / FlashInfer MLA, §12.7); `softcap` on decode; **remove the D→H sync and make the op CUDA-graph-capturable (§4.7)**; optional `attention_metadata` replay-wide bounds | input 16 |
-| **P6 — Completeness** | `query_positions` (§4.8); `attention_bias` (§10); `output_qk` (§11) | inputs 17–18, output 3, attr `qk_output` |
+| **P6 — Completeness** | `query_positions` (§4.8); `attention_bias` (§10); `output_qk` (§11) | inputs 18–19, output 3, attr `qk_output` |
 | **Later** | INT4 cache; MLA quantized latent cache tuning; non-CUDA EPs | — |
 
 Status: P0–P4 are implemented, except the `.Alias` registration. P5 is partially
@@ -1878,3 +1923,146 @@ migration tool over serialized graphs is cheap compared with breaking a shipped 
 | `attention_metadata` | Yes | **Adopted, redesigned** — §4.7 |
 | `query_positions` | Yes | **Adopted** — §4.8 |
 | `kv_cache_layout`, `v_head_size`, `rotary_offset` | Yes | **Adopted** — §4.5, §12 |
+
+---
+
+## 22. Feature: Query-Aware Token Sparsity (`kv_indices`)
+
+### 22.1 The model that needs it
+
+[DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731) keeps the
+absorbed-MLA cache of §12 (`head_size = 512 = 448 nope + 64 rope`, `kv_num_heads = 1`,
+`num_heads = 64`) but replaces the dense causal score matrix with a **selection**. A cheap
+"lightning indexer" — a separate 64-head, 128-wide scorer that runs in the graph, not in this
+operator — ranks the cached positions for each query token and keeps the top `index_topk = 512`.
+Attention then runs only over that set:
+
+```python
+o = sparse_attn(q, kv, self.attn_sink, topk_idxs, self.softmax_scale)
+```
+
+`topk_idxs` is `[batch, seqlen_q, K]` of int32 positions into the layer's KV buffer, with `-1`
+marking an unused slot. Two things about it drive the design:
+
+1. **The selection is not an interval.** It is an arbitrary, per-query-token, per-step subset. It
+   cannot be expressed by `local_window_size`, by `block_table`, or by any `(begin, end)` range,
+   which is what every existing PagedAttention backend consumes.
+2. **The selection is the whole mask.** The model's local window (`sliding_window = 128`) and its
+   compressed long-range taps (per-layer `compress_ratios`, e.g. `4` or `128`) are *both* already
+   materialized as entries of `topk_idxs`. There is no second mask to apply.
+
+Two other pieces of the same layer map onto features that already exist: `attn_sink` is a per-head
+fp32 sink logit (§6) and `softmax_scale = 512^-0.5` is exactly the default `1/sqrt(head_size)`, so no
+`scale` attribute is needed. The only genuinely new primitive is the selection.
+
+### 22.2 Design: one optional index list, semantics owned by the producer
+
+```
+kv_indices : (token_count, max_selected_kv) int32, optional, input 17
+```
+
+Entry `(t, j)` is a **0-based logical position within the sequence that token `t` belongs to** —
+the same coordinate space as a dense position, resolved through `block_table` by the identical
+`pos / block_size` → `block_table[b][·]` → `pos % block_size` walk. A negative entry is padding and
+is skipped, so a row may select fewer than `max_selected_kv` positions without the producer having
+to pad with a repeated valid position.
+
+`token_count` rather than `(batch, seqlen_q)` because PagedAttention is packed and ragged; the row
+index is the packed token index, which the kernel already computes from `cumulative_seqlens_q`.
+
+**The selection is authoritative and complete.** The kernel applies no causal mask and no sliding
+window on top of it. This is the load-bearing decision, and it is deliberate:
+
+- It is what the model means. Layering a causal mask on `topk_idxs` would be a no-op at best (the
+  indexer never selects a future token) and a silent corruption at worst if a future primitive wants
+  to select non-causally — tree attention, cross attention, or an encoder prefix.
+- It keeps the kernel's inner loop free of a position comparison. The loop counter ranges over
+  *list slots*, and the list length is uniform across tokens, so there is no per-token trip-count
+  divergence.
+- It puts the invariant where it can actually be checked. The producer built the list; the operator
+  would have to re-derive the query token's own position to validate it, which is exactly the work
+  the selection was supposed to remove.
+
+The obligations this places on the producer are therefore contractual, not enforced:
+
+- do not list a position at or beyond the query token's own logical position;
+- do not list the same position twice in one row — a duplicate is counted twice by the softmax, and
+  the kernel cannot detect it without sorting;
+- `local_window_size` must be `0`; express the window by listing its positions.
+
+The bounds the kernel *does* enforce are the memory-safety ones, and only those: a position outside
+`max_num_blocks_per_seq * block_size` is skipped, and a position whose `block_table` entry is `-1`
+(unmapped, §9.2) is skipped. This mirrors the trust boundary already drawn for `block_table`,
+`slot_mapping` and `attention_metadata` — device-resident index arrays are validated for shape on
+the host and for bounds on the device, never for meaning.
+
+### 22.3 Why `"LATENT"` only
+
+`kv_indices` is rejected outside `kv_cache_layout == "LATENT"`. Every other backend is either a
+vendored kernel whose masking is compiled in (FlashAttention's causal/window predicate, XQA's tile
+walk) or assumes the KV range is contiguous so it can compute tile bounds once per sequence. Adding
+a gather to any of them is a kernel rewrite, not a plumbing change.
+
+The unfused latent kernel of §12 already resolves *every* position through the block table
+individually, one tile of 64 at a time, staging `block_id` in shared memory. Turning that into a
+gather costs one extra shared-memory array (`block_offset`, since `pos % block_size` is no longer
+recoverable from the tile counter) and one indirection when reading the position. That is the whole
+implementation — which is also the argument that this is the right place to land it first.
+
+Sparsity is what makes the unfused kernel viable at DeepSeek-V4-Flash's scale: at 128k context the
+dense latent path reads 128k × 576 elements per query token, while the sparse path reads 512 × 576,
+a 256× reduction that moves the kernel from "reference only" to "usable".
+
+### 22.4 Validation
+
+- `kv_indices` present requires `kv_cache_layout == "LATENT"` ⇒ otherwise `INVALID_ARGUMENT`.
+- rank 2, `dim0 == token_count`, `dim1 >= 1`; `dim1` becomes `max_selected_kv`.
+- `local_window_size > 0` combined with `kv_indices` ⇒ `INVALID_ARGUMENT`. Silently ignoring one of
+  the two would be the worst outcome: both are masks, and which one won would be invisible.
+- Element values are **not** validated on the host — they live in device memory, and reading them
+  back would reintroduce the per-step synchronization §4.7 exists to remove.
+
+### 22.5 Interaction with the other features
+
+| Feature | With `kv_indices` | Rationale |
+|---|---|---|
+| `head_sink` (§6) | **Supported** | DeepSeek-V4-Flash uses both together; with a selection the sink matters *more*, since a row whose entries are all `-1` must produce zeros rather than a division by zero. |
+| Sliding window (§9) | **Rejected** | Redundant or contradictory — §22.4. |
+| Quantized cache (§8) | **Supported** | Orthogonal: the gather changes which row is read, not how it is dequantized. |
+| `slot_mapping` (§5) | **Supported** | Write path only. |
+| RoPE / `rotary_offset` (§12.5) | **Supported** | Applied in the shared prologue before the cache write, so the gathered rows are already rotated. |
+| CUDA Graphs (§4.7) | **Supported** | `max_selected_kv` is a static shape dimension, so the launch geometry and trip count are replay-invariant — strictly better than the dense path, whose trip count depends on `past_seqlens`. |
+
+### 22.6 Testing
+
+`TestPagedAttentionDeepSeekV4Flash` in
+[test_paged_attention_cuda.py](../../../onnxruntime/test/python/transformers/test_paged_attention_cuda.py)
+compares the operator against the model's own inference code rather than against a re-derivation of
+it. Three functions are transcribed to fp32 PyTorch and used as the oracle:
+
+| Reference | Transcribed as | Supplies |
+|---|---|---|
+| `inference/kernel.py::sparse_attn_kernel` | `dsv4_sparse_attn` | the attention itself, including the `-1` gather/mask convention and `sum_exp += exp(attn_sink - scores_max)` |
+| `inference/model.py::get_window_topk_idxs` | `dsv4_window_topk_idxs` | the sliding-window index pattern |
+| `inference/model.py::get_compress_topk_idxs` | `dsv4_compress_topk_idxs` | the compressed-tap index pattern |
+
+The index generators matter as much as the kernel: they emit interior windows and `-1`-padded rows
+that are *not* prefixes of the causal range, so a kernel that quietly re-derived a causal mask, or
+that treated the selection as an interval, fails numerically instead of looking plausible. Cases
+cover a window-only layer (`compress_ratios[layer] == 0`), a window-plus-compressed layer, a decode
+step, in-op `rotary_offset` against graph-applied RoPE, the no-sink path, and the shipped geometry
+(`head_dim` 512 = 448 + 64, 64 heads, window 128). `softmax_scale` is deliberately left unset so the
+operator's default `1/sqrt(head_size)` is checked against DeepSeek's `head_dim ** -0.5`.
+
+Only the un-wrapped regime (`start_pos < window_size - 1`) of `get_window_topk_idxs` is exercised:
+beyond it the model's indices become ring-buffer *physical* slots, which in ORT is the block table's
+job, so a producer targeting this operator must emit logical positions instead.
+
+### 22.7 Not in scope
+
+The lightning indexer itself stays in the graph: it is a small dense attention-like scorer plus a
+top-k, both of which are existing ONNX operators, and fusing it would put a second attention
+mechanism inside this operator. Likewise DeepSeek-V4-Flash's MoE, hyper-connections and DSpark
+speculative decoding are model-level structures with no bearing on the attention contract — the
+speculative path already has what it needs in `slot_mapping` (§5), which lets a scheduler suppress
+cache writes for rejected tokens.

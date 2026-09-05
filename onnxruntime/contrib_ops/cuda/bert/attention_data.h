@@ -244,6 +244,9 @@ struct PagedAttentionData {
   // QK-Norm weights (head_size,), shared across heads. Both are set or neither is.
   const T* q_norm_weight = nullptr;
   const T* k_norm_weight = nullptr;
+  // Query-aware token sparsity: (token_count, max_selected_kv) logical KV positions per query
+  // token, negative entries skipped. nullptr means dense attention over the causal range.
+  const int* kv_indices = nullptr;
 
   // Flash buffers. FlashAttention always emits FP32 log-sum-exp regardless of T.
   float* softmax_lse = nullptr;

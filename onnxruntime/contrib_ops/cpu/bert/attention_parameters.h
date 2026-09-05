@@ -156,6 +156,12 @@ struct PagedAttentionParameters : AttentionParameters {
   // [rotary_offset, rotary_offset + rotary_dim); channels outside are copied through. Default 0
   // reproduces the original prefix-RoPE behavior. MLA uses rotary_offset == kv_lora_rank.
   int rotary_offset = 0;
+  // Query-aware token sparsity (input 17, 'kv_indices'). 0 means dense attention over the causal
+  // range; otherwise it is kv_indices.shape[1], the number of KV positions listed per query token.
+  int max_selected_kv = 0;
+  // Rows of 'key' stored into the cache. Equals token_count except in LATENT mode, where a graph
+  // may append KV rows that no query token owns (see paged_attention.md 12.11).
+  int kv_token_count = 0;
 };
 
 // Parameters for sparse attention.

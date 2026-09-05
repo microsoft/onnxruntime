@@ -1419,7 +1419,7 @@ cumulative_sequence_length records cumulated length of each sequence length.
 // Shape inference for PagedAttention. Here are the shapes of inputs and output:
 // When Q, K and V are not packed:
 //   Input 'query':                      (token_count, hidden_size)
-//   Input 'key':                        (token_count, kv_hidden_size)
+//   Input 'key':                        (kv_token_count, kv_hidden_size), kv_token_count >= token_count
 //   Input 'value':                      (token_count, kv_hidden_size)
 // When Q, K and V are packed:
 //   Input 'query':                      (token_count, (num_heads + 2 * kv_num_heads) * head_size)
@@ -1432,7 +1432,7 @@ cumulative_sequence_length records cumulated length of each sequence length.
 // Input 'block_table':                  (batch_size, max_blocks_per_sequence)
 // Input 'cos_cache':                    (max_seq_len, head_size / 2)
 // Input 'sin_cache':                    (max_seq_len, head_size / 2)
-// Input 'slot_mapping':                 (token_count)
+// Input 'slot_mapping':                 (kv_token_count)
 // Input 'head_sink':                    (num_heads)
 // Input 'q_norm_weight':                (head_size)
 // Input 'k_norm_weight':                (head_size)
@@ -1441,6 +1441,7 @@ cumulative_sequence_length records cumulated length of each sequence length.
 // Input 'attention_metadata':           (2) or (3), CPU memory:
 //                                       [max_query_len_bound, max_kv_len_bound,
 //                                        optional max_kv_len_lower_bound]
+// Input 'kv_indices':                   (token_count, max_selected_kv)
 // Output 'output':                      (token_count, num_heads * v_head_size)
 // Output 'key_cache_out':               (num_blocks, block_size, kv_num_heads, head_size)
 // Output 'value_cache_out':             (num_blocks, block_size, kv_num_heads, head_size), absent for LATENT
@@ -1643,7 +1644,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(1,
                "key",
-               "Key with shape (num_tokens, kv_hidden_size) ",
+               "Key with shape (kv_token_count, kv_hidden_size). kv_token_count equals the query token count "
+               "except in 'LATENT' mode, where it may be larger: the surplus rows are stored into the cache at "
+               "their 'slot_mapping' slots but own no output row and attend to nothing, which lets a graph write "
+               "a secondary KV stream in the same step that reads it. Surplus rows require 'slot_mapping' and "
+               "are incompatible with in-kernel rotary.",
                "T",
                OpSchema::Optional)
         .Input(2,
@@ -1690,9 +1695,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(10,
                "slot_mapping",
-               "1D tensor with shape (num_tokens). For each query token, the flat slot index "
-               "(block_id * block_size + offset_in_block) at which its key/value is written into the KV cache. "
-               "A value of -1 skips the cache write for that token, which lets a scheduler suppress stores for "
+               "1D tensor with shape (kv_token_count). For each stored key/value row, the flat slot index "
+               "(block_id * block_size + offset_in_block) at which it is written into the KV cache. "
+               "A value of -1 skips the cache write for that row, which lets a scheduler suppress stores for "
                "prefix-cache hits or rejected speculative tokens. When absent, slots are derived from "
                "'past_seqlens', 'cumulative_sequence_length' and 'block_table' as before. 'block_table' is still "
                "required, because it defines the read path.",
@@ -1748,6 +1753,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "supplying them is normally free. When absent, the op falls back to the device readback. "
                "The upper bounds are trusted: an under-sized bound violates the contract and may omit "
                "attention work.",
+               "S",
+               OpSchema::Optional)
+        .Input(17,
+               "kv_indices",
+               "2D tensor with shape (num_tokens, max_selected_kv) selecting, per query token, the logical KV "
+               "positions it attends. Entry (t, j) is a 0-based position within the sequence that token t "
+               "belongs to, resolved through 'block_table' exactly like a dense position; a negative entry is "
+               "padding and is skipped, so rows may select fewer than max_selected_kv positions. This is the "
+               "query-aware token sparsity used by DeepSeek sparse attention, where a lightning indexer picks "
+               "the top-k cached positions per token and the selected set is not an interval. The selection is "
+               "authoritative and complete: the kernel applies no causal or sliding-window mask on top of it, so "
+               "the producer owns causality and must not list a position at or beyond the query token's own, nor "
+               "list the same position twice (a duplicate would be counted twice by the softmax). Positions "
+               "outside the sequence's block-table capacity, and positions whose block is unmapped, are skipped. "
+               "Only supported when 'kv_cache_layout' is 'LATENT'. When absent, every token attends the dense "
+               "causal range narrowed by 'local_window_size'.",
                "S",
                OpSchema::Optional)
         .Output(0,

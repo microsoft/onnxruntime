@@ -40,8 +40,11 @@ int ComputePagedDecodeSplits(const int token_count, const int num_heads, const i
                              const int multi_processor_count);
 
 // Shared memory required by the unfused latent (absorbed MLA) kernel. Used by paged_attention.cc to
-// reject a latent configuration the device cannot hold instead of failing at launch time.
+// reject a latent configuration the device cannot hold instead of failing at launch time, and to
+// size the latent split-KV workspaces (whose accumulator is v_head_size wide, not head_size).
 size_t GetPagedLatentSharedMemoryBytes(const int head_size, const int v_head_size);
+int ComputePagedLatentSplits(const int token_count, const int num_heads, const int max_kv_len,
+                             const int multi_processor_count);
 
 }  // namespace cuda
 }  // namespace contrib

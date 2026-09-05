@@ -171,6 +171,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* v_scale = context->Input<Tensor>(15);
   // Resident in CPU memory (see the kernel def's InputMemoryType above).
   const Tensor* attention_metadata = context->Input<Tensor>(16);
+  const Tensor* kv_indices = context->Input<Tensor>(17);
 
   auto& device_prop = GetDeviceProp();
   PagedAttentionParameters parameters;
@@ -197,6 +198,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                           k_scale,
                                                           v_scale,
                                                           attention_metadata,
+                                                          kv_indices,
                                                           &parameters,
                                                           num_heads_,
                                                           kv_num_heads_,
@@ -218,6 +220,16 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
 
+  // 'kv_indices' is the complete selection, so a sliding window on top of it would be either
+  // redundant (the window positions are already listed, as in DeepSeek-V4) or a second mask the
+  // producer did not ask for. Reject the combination instead of silently ignoring one of them.
+  if (kv_indices != nullptr && local_window_size_ > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "PagedAttention: 'local_window_size' (", local_window_size_,
+                           ") must be unset when 'kv_indices' is provided: the selection is complete, so a "
+                           "sliding window must be expressed by listing its positions in 'kv_indices'.");
+  }
+
   DUMP_STRING_INIT();
   DUMP_STRING("Batch size = ", parameters.batch_size);
   DUMP_STRING("Token count = ", parameters.token_count);
@@ -234,6 +246,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   DUMP_STRING("Max num blocks per sequence = ", parameters.max_num_blocks_per_seq);
   DUMP_STRING("Rotary dimension = ", parameters.rotary_dim);
   DUMP_STRING("Is packed QKV = ", parameters.is_packed_qkv);
+  DUMP_STRING("Max selected KV per token = ", parameters.max_selected_kv);
 
   // Check rotary
   if (do_rotary_ && (cos_cache == nullptr || sin_cache == nullptr)) {
@@ -690,16 +703,34 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 
   // Split-KV workspaces for the decode kernel: one partial (accumulator, max, denominator) per
   // split. Splitting only pays off when there are too few (token, head) pairs to fill the GPU.
+  //
+  // The latent (MLA) kernel needs the same treatment and needs it more: it is the only backend
+  // DeepSeek-V4-Flash decode reaches, and with 64 heads sharded over 8 ranks a single-token step
+  // launches 8 CTAs against ~132 SMs. Its accumulator is v_head_size wide, not head_size, and its
+  // KV extent is the selection length when 'kv_indices' is supplied.
   int num_splits = 1;
   IAllocatorUniquePtr<void> decode_partial_out_buffer;
   IAllocatorUniquePtr<void> decode_partial_max_buffer;
   IAllocatorUniquePtr<void> decode_partial_sum_buffer;
-  if (use_paged_decode && !use_xqa_decode) {
-    num_splits = ComputePagedDecodeSplits(parameters.token_count, parameters.num_heads, max_kv_len,
-                                          device_prop.multiProcessorCount);
+  if (use_latent_attention || (use_paged_decode && !use_xqa_decode)) {
+    // The latent split is sized from replay-invariant bounds, never from a device read: the
+    // selection length when 'kv_indices' is supplied, the block-table capacity otherwise. An
+    // over-estimate only costs splits that publish a neutral partial and exit.
+    const int split_kv_len = !use_latent_attention   ? max_kv_len
+                             : kv_indices != nullptr ? parameters.max_selected_kv
+                                                     : max_kv_len_bound;
+    const int accum_size = use_latent_attention ? parameters.v_head_size : parameters.head_size;
+    num_splits = use_latent_attention
+                     ? ComputePagedLatentSplits(parameters.token_count, parameters.num_heads, split_kv_len,
+                                                device_prop.multiProcessorCount)
+                     : ComputePagedDecodeSplits(parameters.token_count, parameters.num_heads, split_kv_len,
+                                                device_prop.multiProcessorCount);
+    // Allocated regardless of num_splits: PagedDecodeSplitKV publishes its partials and
+    // PagedDecodeReduce runs even for a single split, so the buffers are not optional there. The
+    // latent kernel writes straight to the output when it is not split, and simply ignores them.
     const size_t rows = static_cast<size_t>(num_splits) * parameters.token_count * parameters.num_heads;
     decode_partial_out_buffer =
-        GetScratchBuffer<void>(sizeof(float) * rows * parameters.head_size, GetComputeStream(context));
+        GetScratchBuffer<void>(sizeof(float) * rows * accum_size, GetComputeStream(context));
     decode_partial_max_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
     decode_partial_sum_buffer = GetScratchBuffer<void>(sizeof(float) * rows, GetComputeStream(context));
   }
@@ -806,6 +837,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.head_sink = head_sink == nullptr ? nullptr : reinterpret_cast<const CudaT*>(head_sink->Data<T>());
   data.q_norm_weight = q_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());
   data.k_norm_weight = k_norm_weight == nullptr ? nullptr : reinterpret_cast<const CudaT*>(k_norm_weight->Data<T>());
+  data.kv_indices = kv_indices == nullptr ? nullptr : reinterpret_cast<const int*>(kv_indices->Data<int>());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
@@ -833,7 +865,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     data.gathered_value = reinterpret_cast<CudaT*>(gathered_value_buffer.get());
     data.total_kv_tokens = total_kv_tokens;
   }
-  if (use_paged_decode && !use_xqa_decode) {
+  if (decode_partial_out_buffer != nullptr) {
     data.decode_partial_out = reinterpret_cast<float*>(decode_partial_out_buffer.get());
     data.decode_partial_max = reinterpret_cast<float*>(decode_partial_max_buffer.get());
     data.decode_partial_sum = reinterpret_cast<float*>(decode_partial_sum_buffer.get());
