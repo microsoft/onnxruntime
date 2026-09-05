@@ -75,7 +75,7 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
   // check if output node is Transpose
   if (output_node_ptr != gemm_node.OutputNodesEnd() &&
       gemm_node.InputDefs().size() <= 2 &&  // C is missing
-      output_node_ptr->OpType() == "Transpose") {
+      output_node_ptr->OpType() == "Transpose" && IsMatrixTranspose(*output_node_ptr)) {
     Node& output_node = *graph.GetNode(output_node_ptr->Index());
     // (AB)' = B'A' : reverse the inputs
     std::reverse(new_gemm_input_defs.begin(), new_gemm_input_defs.end());
