@@ -26,8 +26,8 @@ constexpr uint32_t kTileAOuter = 32;
 constexpr uint32_t kWorkgroupSizeX = 8;
 constexpr uint32_t kDefaultWorkgroupSizeY = 8;
 
-// MatMul targets one subgroup per NVIDIA warp-scheduler sub-partition; Conv2dMM asks for
-// twice that to hide its wider inner tile.
+// MatMul targets one subgroup per NVIDIA warp scheduler; Conv2dMM asks for twice that to hide
+// its wider inner tile.
 constexpr uint32_t kMatMulSubgroups = 4;
 constexpr uint32_t kConv2dMMSubgroups = 8;
 
@@ -38,7 +38,7 @@ std::pair<uint32_t, int64_t> Select(const PackedTileCaps& caps, uint32_t subgrou
 
 }  // namespace
 
-// 32 lanes x 4 sub-partitions = 128 invocations, and 128 / 8 = 16 threads in y.
+// 32 lanes x 4 warp schedulers = 128 invocations, and 128 / 8 = 16 threads in y.
 TEST(SubgroupAlignedTileConfigTest, NvidiaMatMulDerivesSixteenThreadsInY) {
   const auto [workgroup_size_y, elements_per_thread_y] = Select(kNvidiaCaps, kMatMulSubgroups);
 
