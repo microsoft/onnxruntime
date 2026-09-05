@@ -14,6 +14,7 @@
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/program_cache_key.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 #include "default_providers.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -29,7 +30,7 @@ struct Conv2dMMKeyInfo {
 
 Conv2dMMKeyInfo BuildConv2dMMKeyInfo(int64_t output_height,
                                      int64_t output_width,
-                                     bool use_reported_nvidia_pascal_tuning,
+                                     const webgpu::PackedTileCaps& caps,
                                      int64_t in_channels = 8,
                                      int64_t out_channels = 16) {
   const webgpu::Activation activation;  // ActivationKind::None
@@ -57,7 +58,7 @@ Conv2dMMKeyInfo BuildConv2dMMKeyInfo(int64_t output_height,
   webgpu::Conv2dMMProgram program = webgpu::CreateConv2dMMProgram(
       activation, inputs, pads, strides, dilations, &output,
       dim_a_outer, dim_b_outer, dim_inner, /*is_channels_last=*/true,
-      use_reported_nvidia_pascal_tuning, input_output_shapes);
+      caps, input_output_shapes);
 
   std::vector<uint32_t> inputs_segments(program.Inputs().size(), 1u);
   std::vector<uint32_t> outputs_segments(program.Outputs().size(), 1u);
@@ -77,13 +78,20 @@ Conv2dMMKeyInfo BuildConv2dMMKeyInfo(int64_t output_height,
 constexpr int64_t kTunedOutputHeight = 32;
 constexpr int64_t kTunedOutputWidth = 32;
 
+// NVIDIA reports a 32-lane subgroup (the warp size); desktop adapters report 1024 for both
+// compute workgroup limits.
+constexpr webgpu::PackedTileCaps kNvidiaCaps{/*subgroup_size=*/32, /*max_workgroup_size_y=*/1024,
+                                             /*max_invocations_per_workgroup=*/1024, /*is_nvidia=*/true};
+constexpr webgpu::PackedTileCaps kNonNvidiaCaps{/*subgroup_size=*/32, /*max_workgroup_size_y=*/1024,
+                                                /*max_invocations_per_workgroup=*/1024, /*is_nvidia=*/false};
+
 }  // namespace
 
 // Both paths reach tile_a_outer 32, as 32*1 and 8*4, so they share a cache hint even though
 // they bake different elements_per_thread into their WGSL.
 TEST(Conv2dMMCacheKeyTest, TunedAndUntunedShareAHintButNotAKey) {
-  const auto tuned = BuildConv2dMMKeyInfo(kTunedOutputHeight, kTunedOutputWidth, /*tuning=*/true);
-  const auto untuned = BuildConv2dMMKeyInfo(kTunedOutputHeight, kTunedOutputWidth, /*tuning=*/false);
+  const auto tuned = BuildConv2dMMKeyInfo(kTunedOutputHeight, kTunedOutputWidth, kNvidiaCaps);
+  const auto untuned = BuildConv2dMMKeyInfo(kTunedOutputHeight, kTunedOutputWidth, kNonNvidiaCaps);
 
   ASSERT_EQ(tuned.cache_hint, untuned.cache_hint);
   EXPECT_EQ(tuned.workgroup_size_y, 32u);
@@ -97,16 +105,27 @@ TEST(Conv2dMMCacheKeyTest, TunedAndUntunedShareAHintButNotAKey) {
 
 // dim_a_outer = 8 does not clear the > 8 gate, so both paths emit the same WGSL.
 TEST(Conv2dMMCacheKeyTest, TuningIsInertBelowTheGate) {
-  const auto tuned = BuildConv2dMMKeyInfo(2, 4, /*tuning=*/true);
-  const auto untuned = BuildConv2dMMKeyInfo(2, 4, /*tuning=*/false);
+  const auto tuned = BuildConv2dMMKeyInfo(2, 4, kNvidiaCaps);
+  const auto untuned = BuildConv2dMMKeyInfo(2, 4, kNonNvidiaCaps);
 
   EXPECT_EQ(tuned.workgroup_size_y, 8u);
   EXPECT_EQ(untuned.workgroup_size_y, 8u);
   EXPECT_EQ(tuned.key, untuned.key);
 }
 
-// Runs the tiled Conv2dMM shader: 32x1 workgroups on adapters reporting NVIDIA Pascal,
-// the default 8x4 elsewhere.
+// The derived workgroup must respect the device's reported limits, not just the vendor.
+TEST(Conv2dMMCacheKeyTest, WorkgroupSizeYLimitClampsTheDerivedConfig) {
+  webgpu::PackedTileCaps capped = kNvidiaCaps;
+  capped.max_workgroup_size_y = 16;
+
+  const auto clamped = BuildConv2dMMKeyInfo(kTunedOutputHeight, kTunedOutputWidth, capped);
+
+  EXPECT_EQ(clamped.workgroup_size_y, 16u);
+  EXPECT_NE(clamped.key.find("8,16,1"), std::string::npos);
+}
+
+// Runs the tiled Conv2dMM shader: the subgroup-derived workgroup on NVIDIA adapters, the
+// default 8x4 elsewhere.
 TEST(Conv2dMMTest, ChannelsLastVec4ConvAboveTheTilingGate) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {

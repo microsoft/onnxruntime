@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string_view>
+#include <utility>
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
@@ -33,12 +34,60 @@ inline int GetMaxComponents(int64_t size) {
   return 1;
 }
 
-// Some newer NVIDIA parts also report "pascal", so this matches the reported
-// architecture rather than the actual silicon.
-inline bool IsReportedNvidiaPascalAdapter(const wgpu::AdapterInfo& adapter_info) {
-  return adapter_info.vendor == std::string_view{"nvidia"} &&
-         adapter_info.architecture == std::string_view{"pascal"};
+inline bool IsNvidiaAdapter(const wgpu::AdapterInfo& adapter_info) {
+  return adapter_info.vendor == std::string_view{"nvidia"};
 }
+
+/**
+ * The device capabilities the packed-tile workgroup rule keys off.
+ *
+ * Read from wgpu::AdapterInfo and wgpu::Limits by GetPackedTileCaps so the rule itself takes
+ * plain scalars: wgpu::AdapterInfo has const members and cannot be synthesized by a test.
+ */
+struct PackedTileCaps {
+  // wgpu::AdapterInfo::subgroupMaxSize, or 0 when the adapter reports no subgroup size.
+  // On NVIDIA this is the warp size, and subgroupMinSize reports the same value.
+  uint32_t subgroup_size = 0;
+  // wgpu::Limits::maxComputeWorkgroupSizeY.
+  uint32_t max_workgroup_size_y = 0;
+  // wgpu::Limits::maxComputeInvocationsPerWorkgroup.
+  uint32_t max_invocations_per_workgroup = 0;
+  // The warp-scheduler count the rule targets is an NVIDIA hardware fact rather than a WebGPU
+  // capability, so callers keep the rule vendor-gated on this.
+  bool is_nvidia = false;
+};
+
+PackedTileCaps GetPackedTileCaps(const wgpu::AdapterInfo& adapter_info, const wgpu::Limits& limits);
+
+/**
+ * Derives the y dimension of a packed MatMul/Conv2d workgroup from WebGPU capabilities,
+ * holding the A tile constant.
+ *
+ * The workgroup is sized to hold a whole number of subgroups -- `subgroups_per_workgroup` of
+ * them, at the size the adapter reports -- then clamped to the workgroup limits that
+ * ShaderHelper::Init enforces.
+ *
+ * Why this helps: `mm_Asub` and `mm_Bsub` are sized from tile_a_outer, tile_inner and
+ * tile_b_outer (see MakeMatMulPackedVec4Source), so pinning workgroup_size_y *
+ * elements_per_thread_y to `tile_a_outer` leaves shared memory per workgroup unchanged while
+ * raising the invocations per workgroup. Where shared memory is what caps how many workgroups
+ * are co-resident on a core -- the usual case for a tiled GEMM -- more invocations per
+ * workgroup means proportionally more resident threads. The dispatch grid is unchanged too,
+ * because the tile still covers the same rows of A.
+ *
+ * WebGPU deliberately exposes no core count, achieved occupancy, register-file size or shared
+ * memory per core, so `subgroups_per_workgroup` stays a caller-supplied, empirically tuned
+ * value. The subgroup size and the workgroup limits it is combined with are both queried.
+ *
+ * @return {workgroup_size_y, elements_per_thread_y}, whose product is always `tile_a_outer`.
+ *         Falls back to the default y dimension when the adapter reports no subgroup size, or
+ *         when the derived size would exceed a device limit or break the tile invariant.
+ */
+std::pair<uint32_t, int64_t> SelectSubgroupAlignedTileConfigY(const PackedTileCaps& caps,
+                                                              uint32_t workgroup_size_x,
+                                                              uint32_t subgroups_per_workgroup,
+                                                              uint32_t tile_a_outer,
+                                                              uint32_t default_workgroup_size_y);
 
 /**
  * Returns a string representing a WGSL expression that sums the components of a value T.
