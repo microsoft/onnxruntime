@@ -36,14 +36,25 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
 using EnabledReverseSequenceDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, ReverseSequence, Input, 0);
 
-ONNX_OPERATOR_KERNEL_EX(ReverseSequence,
-                        kOnnxDomain,
-                        10,
-                        kCpuExecutionProvider,
-                        KernelDefBuilder()
-                            .TypeConstraint("T",
-                                            BuildKernelDefConstraintsFromTypeList<EnabledReverseSequenceDataTypes>()),
-                        ReverseSequenceOp);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    ReverseSequence,
+    kOnnxDomain,
+    10, 27,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<EnabledReverseSequenceDataTypes>()),
+    ReverseSequenceOp);
+
+ONNX_OPERATOR_KERNEL_EX(
+    ReverseSequence,
+    kOnnxDomain,
+    28,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<EnabledReverseSequenceDataTypes>()),
+    ReverseSequenceOp);
 
 template <typename T>
 static Status ReverseSequenceImpl(const Tensor& X, Tensor& Y, gsl::span<const int64_t> sequence_lengths,

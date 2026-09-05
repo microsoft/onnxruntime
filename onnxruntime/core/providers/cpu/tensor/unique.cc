@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Unique, Input, 0,
-    float, int64_t, int8_t, std::string, double);
+    float, int64_t, int8_t, std::string, double, BFloat16);
 }
 
 using EnabledUniqueDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
@@ -78,9 +78,17 @@ ONNX_OPERATOR_SET_SCHEMA(
             OpSchema::all_tensor_types(),
             "Input can be of any tensor type.")
 */
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Unique,
     11,
+    27,
+    KernelDefBuilder().TypeConstraint("T",
+                                      BuildKernelDefConstraintsFromTypeList<EnabledUniqueDataTypes>()),
+    Unique);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    Unique,
+    28,
     KernelDefBuilder().TypeConstraint("T",
                                       BuildKernelDefConstraintsFromTypeList<EnabledUniqueDataTypes>()),
     Unique);
@@ -99,6 +107,8 @@ Status Unique::Compute(OpKernelContext* context) const {
     status = ComputeImpl<int64_t>(*context);
   else if (input.IsDataType<int8_t>())
     status = ComputeImpl<int8_t>(*context);
+  else if (input.IsDataType<BFloat16>())
+    status = ComputeImpl<BFloat16>(*context);
   else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context);
   else
