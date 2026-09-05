@@ -106,6 +106,7 @@ Status SplitImpl::Compute(OpKernelContext* context) const {
     output_dimensions[narrow<size_t>(axis)] = split_size;
 
     Tensor* output = context->Output(i, TensorShape{output_dimensions});
+    ORT_RETURN_IF(output == nullptr, "Split: output ", i, " is not available");
     const auto output_strides = StridesForTensor(*output);
 
     ORT_RETURN_IF_ERROR(DispatchStridedCopy<EnabledSplitDataTypes>(context->GetOperatorThreadPool(),
