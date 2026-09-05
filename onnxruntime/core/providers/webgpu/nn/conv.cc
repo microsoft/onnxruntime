@@ -212,11 +212,9 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   const auto same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
   if (same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1)) {
     Tensor transposed_kernel;
-    TensorShape input_reshape;
-    TensorShape kernel_reshape;
-    TensorShape matmul_output_shape;
+    TensorShape matmul_a_shape;
+    TensorShape matmul_b_shape;
     std::vector<const Tensor*> matmul_inputs;
-    std::vector<TensorShape> matmul_input_reshapes;
     if (is_channels_last) {
       // Transpose weights
       const Tensor* matmul_kernel = kernel;
@@ -227,59 +225,31 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       inputs[1] = matmul_kernel;
       if (same_size) {
         const auto shared_dim = input_height * input_width * input_channels;
-        input_reshape = TensorShape({1, batch, shared_dim});
-        kernel_reshape = TensorShape({1, shared_dim, output_channels});
-        matmul_output_shape = TensorShape({1, batch, output_channels});
+        matmul_a_shape = TensorShape({1, batch, shared_dim});
+        matmul_b_shape = TensorShape({shared_dim, output_channels});
       } else {
-        input_reshape = TensorShape({batch, input_height * input_width, input_channels});
-        kernel_reshape = TensorShape({1, input_channels, output_channels});
-        matmul_output_shape = TensorShape({batch, output_height * output_width, output_channels});
+        matmul_a_shape = TensorShape({batch, input_height * input_width, input_channels});
+        matmul_b_shape = TensorShape({input_channels, output_channels});
       }
       matmul_inputs.push_back(input);
       matmul_inputs.push_back(matmul_kernel);
-      matmul_input_reshapes.push_back(input_reshape);
-      matmul_input_reshapes.push_back(kernel_reshape);
     } else {
-      input_reshape = TensorShape({batch, input_channels, input_height * input_width});
-      kernel_reshape = TensorShape({1, output_channels, input_channels});
-      matmul_output_shape = TensorShape({batch, output_channels, output_height * output_width});
+      matmul_a_shape = TensorShape({1, output_channels, input_channels});
+      matmul_b_shape = TensorShape({batch, input_channels, input_height * input_width});
       matmul_inputs.push_back(kernel);
       matmul_inputs.push_back(input);
-      matmul_input_reshapes.push_back(kernel_reshape);
-      matmul_input_reshapes.push_back(input_reshape);
     }
+    const bool matmul_b_is_constant =
+        is_channels_last && transposed_kernel_ != nullptr && matmul_inputs[1] == transposed_kernel_.get();
+    Tensor matmul_a = CreateTensorView(*matmul_inputs[0], matmul_a_shape);
+    Tensor matmul_b = CreateTensorView(*matmul_inputs[1], matmul_b_shape);
+    matmul_inputs[0] = &matmul_a;
+    matmul_inputs[1] = &matmul_b;
     if (has_bias) {
       matmul_inputs.push_back(bias);
     }
-    auto N = matmul_output_shape[2];
-    auto matmul_first_input_numdims = matmul_input_reshapes[0].NumDimensions();
-    auto K = matmul_input_reshapes[0].GetDims()[matmul_first_input_numdims - 1];
-    if (N < 8 && K < 8) {
-      const auto components = GetMaxComponents(N);
-      const auto a_components = GetMaxComponents(K);
-      const auto output_number = GetMaxComponents(output_shape[1]);
-      uint32_t output_size = static_cast<uint32_t>(output_shape.Size() / components / output_number);
-      const size_t output_rank = matmul_output_shape.NumDimensions();
-      TensorShape outer_dims = output_rank > 2 ? matmul_output_shape.Slice(0, output_rank - 2) : TensorShape({});
-      MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias, is_channels_last);
-      program
-          .CacheHint(activation_.CacheKey(), std::to_string(components), std::to_string(a_components), std::to_string(output_number), std::to_string(is_channels_last))
-          .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[0], a_components), int(a_components)},
-                      {matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[1], components), int(components)}});
-      if (has_bias) {
-        program.AddInput({bias, ProgramTensorMetadataDependency::Rank, ReduceShapeByComponents(bias->Shape(), components), components});
-      }
-      program
-          .AddOutputs({{output, ProgramTensorMetadataDependency::None, ReduceShapeByComponents(matmul_output_shape, components), int(components)}})
-          .SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
-          .AddIndices(outer_dims)
-          .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
-      // Activation uniforms must remain last because definitions and values are matched by index.
-      AppendActivationUniformsData(activation_, program);
-      return context.RunProgram(program);
-    } else {
-      return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
-    }
+    return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last,
+                         matmul_compute_cache_, matmul_b_is_constant);
   }
   // Transpose weights when necessary
   Tensor transposed_kernel;

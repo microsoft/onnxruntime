@@ -88,6 +88,25 @@ void RunBothTypes(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   RunTestTyped<MLFloat16, version>(a_dims, b_dims);
 }
 
+TEST(MatMulNaiveProgramTest, Broadcast4DExecution) {
+  RunTestTyped<float>({3, 1, 1, 2}, {2, 2, 2});
+  RunTestTyped<float>({2, 2, 3, 2}, {2, 1});
+  RunTestTyped<float>({2, 3, 2}, {3, 2, 2, 1});
+}
+
+TEST(MatMulNaiveProgramTest, VectorExecution) {
+  RunTestTyped<float>({2}, {2, 3});
+  RunTestTyped<float>({3}, {3});
+}
+
+TEST(MatMulProgramTest, VectorFallbackExecution) {
+  RunTestTyped<float>({8}, {8, 3});
+  RunTestTyped<float>({2, 8}, {8});
+  RunTestTyped<float>({8}, {8});
+  RunTestTyped<float>({8}, {2, 8, 3});
+  RunTestTyped<float>({2, 2, 8}, {8});
+}
+
 // 2D aligned baseline shapes.
 TEST(MatMul_Large, DISABLED_Aligned) {
   RunBothTypes({128, 64}, {64, 1024});
