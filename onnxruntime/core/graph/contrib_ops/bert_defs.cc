@@ -161,6 +161,15 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
+  const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+  const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", num_heads);
+  if (num_heads <= 0 || kv_num_heads <= 0) {
+    fail_shape_inference("num_heads and kv_num_heads must be positive integers");
+  }
+  if (num_heads % kv_num_heads != 0) {
+    fail_shape_inference("Number of query heads shall be a multiple of number of key/value heads");
+  }
+
   // Shape inference
   int64_t sequence_length = 0;
   if (hasInputShape(ctx, 0)) {
@@ -188,9 +197,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
         sequence_length = value_dims[1].dim_value();
       }
 
-      const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
-      const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", num_heads);
-      const bool is_grouped_query = num_heads > 0 && kv_num_heads > 0 && num_heads != kv_num_heads;
+      const bool is_grouped_query = num_heads != kv_num_heads;
 
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       *output_shape.add_dim() = query_dims[0];

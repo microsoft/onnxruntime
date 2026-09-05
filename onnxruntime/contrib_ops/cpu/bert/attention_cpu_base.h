@@ -143,6 +143,31 @@ class AttentionCPUBase : public AttentionBase {
       max_sequence_length = static_cast<int>(past_key->Shape().GetDims()[2]);
     }
 
+    // Past inputs participate in attention even when either optional present output is omitted.
+    // Materialize any missing cache internally so the GEMMs always see P + L rows.
+    BufferUniquePtr temporary_present_key;
+    BufferUniquePtr temporary_present_value;
+    if (past_sequence_length > 0 && past_key_data != nullptr && present_key_data == nullptr) {
+      const int cache_sequence_length = past_present_share_buffer ? max_sequence_length : total_sequence_length;
+      const size_t cache_bytes = SafeInt<size_t>(batch_size) * kv_num_heads * cache_sequence_length *
+                                 qk_head_size * sizeof(T);
+      temporary_present_key = BufferUniquePtr(allocator->Alloc(cache_bytes), BufferDeleter(allocator));
+      present_key_data = static_cast<T*>(temporary_present_key.get());
+      if (past_present_share_buffer) {
+        memcpy(present_key_data, past_key_data, past_key->SizeInBytes());
+      }
+    }
+    if (past_sequence_length > 0 && past_value_data != nullptr && present_value_data == nullptr) {
+      const int cache_sequence_length = past_present_share_buffer ? max_sequence_length : total_sequence_length;
+      const size_t cache_bytes = SafeInt<size_t>(batch_size) * kv_num_heads * cache_sequence_length *
+                                 v_head_size * sizeof(T);
+      temporary_present_value = BufferUniquePtr(allocator->Alloc(cache_bytes), BufferDeleter(allocator));
+      present_value_data = static_cast<T*>(temporary_present_value.get());
+      if (past_present_share_buffer) {
+        memcpy(present_value_data, past_value_data, past_value->SizeInBytes());
+      }
+    }
+
     // Compute the attention score.
     const ptrdiff_t batch_head_count = SafeInt<ptrdiff_t>(batch_size) * num_heads_;
     size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
@@ -325,11 +350,13 @@ class AttentionCPUBase : public AttentionBase {
       for (std::ptrdiff_t kv_index = begin; kv_index < end; ++kv_index) {
         const T* k = K + kv_input_chunk_length * kv_index;
         if (nullptr != present) {
+          // The packed state stores key and value in one past/present tensor.
           ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, kv_index);
         } else if (past_present_share_buffer) {
           memcpy(present_key + cache_chunk_length * kv_index + past_chunk_length,
                  k, kv_input_chunk_length * sizeof(T));
         } else {
+          // The standalone key cache uses its own past_key/present_key tensors.
           ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, kv_index);
         }
       }
@@ -555,11 +582,13 @@ class AttentionCPUBase : public AttentionBase {
         for (std::ptrdiff_t kv_index = begin; kv_index < end; ++kv_index) {
           const T* v = V + kv_input_chunk_length * kv_index;
           if (nullptr != present) {
+            // The packed state stores key and value in one past/present tensor.
             ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, kv_index);
           } else if (past_present_share_buffer) {
             memcpy(present_value + cache_chunk_length * kv_index + past_chunk_length,
                    v, kv_input_chunk_length * sizeof(T));
           } else {
+            // The standalone value cache uses its own past_value/present_value tensors.
             ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, kv_index);
           }
         }

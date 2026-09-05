@@ -97,6 +97,9 @@ public:
             : m_inputTensorDescs[dmlQueryIndex].GetSizes()[0];
 
         const uint32_t numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
+        const uint32_t kvNumHeads = gsl::narrow_cast<uint32_t>(
+            kernelCreationContext.GetOptionalAttribute<int64_t>(AttrName::KvNumHeads, numHeads));
+        ML_CHECK_VALID_ARGUMENT(kvNumHeads == numHeads);
         const uint32_t headSize = stackedQkv
             ? m_inputTensorDescs[dmlStackedQueryKeyValueIndex].GetSizes()[4]
             : m_inputTensorDescs[dmlQueryIndex].GetSizes()[2] / numHeads;
@@ -299,6 +302,14 @@ public:
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
+
+void CALLBACK QueryMultiHeadAttention(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
+{
+    MLOperatorAttributes attributes(context);
+    const int64_t numHeads = attributes.GetOptionalAttribute<int64_t>(AttrName::NumHeads, 0);
+    const int64_t kvNumHeads = attributes.GetOptionalAttribute<int64_t>(AttrName::KvNumHeads, numHeads);
+    *isSupported = numHeads > 0 && kvNumHeads == numHeads;
+}
 
 DML_OP_DEFINE_CREATION_FUNCTION(MultiHeadAttention, DmlOperatorMultiHeadAttention);
 } // namespace Dml

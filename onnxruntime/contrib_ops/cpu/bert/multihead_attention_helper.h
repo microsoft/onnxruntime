@@ -472,6 +472,14 @@ Status CheckInputs(const T* query,
     }
   }
 
+  if (past_present_share_buffer && kv_sequence_length > max_sequence_length - past_sequence_length) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "past_sequence_length + kv_sequence_length must not exceed max_sequence_length (",
+        max_sequence_length, "), got past_sequence_length=", past_sequence_length,
+        " and kv_sequence_length=", kv_sequence_length);
+  }
+
   int total_sequence_length = past_sequence_length + kv_sequence_length;
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
   if (key_padding_mask != nullptr) {

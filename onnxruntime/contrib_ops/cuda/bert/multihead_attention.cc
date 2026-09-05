@@ -141,6 +141,10 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
                                                                       kMultiHeadAttention,
                                                                       device_prop.maxThreadsPerBlock,
                                                                       kv_num_heads_));
+  if (parameters.kv_num_heads != parameters.num_heads && cache_indirection != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Grouped query MultiHeadAttention with cache indirection is not implemented for CUDA");
+  }
   DUMP_STRING_INIT();
   DUMP_STRING("Batch size = ", parameters.batch_size);
   DUMP_STRING("Sequence length = ", parameters.sequence_length);
