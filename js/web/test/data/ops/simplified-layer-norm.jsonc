@@ -44,5 +44,47 @@
         ]
       }
     ]
+  },
+  {
+    "name": "SimplifiedLayerNormalization MS domain optional output",
+    "operator": "SimplifiedLayerNormalization",
+    "opset": { "domain": "com.microsoft", "version": 1 },
+    "attributes": [
+      {
+        "name": "epsilon",
+        "data": 1e-5,
+        "type": "float"
+      }
+    ],
+    "inputShapeDefinitions": "rankOnly",
+    "cases": [
+      {
+        "name": "inverse standard deviation",
+        "inputs": [
+          {
+            "data": [3, 4],
+            "dims": [1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [1, 1],
+            "dims": [2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.84852785, 1.1313705],
+            "dims": [1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [0.2828426],
+            "dims": [1, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
   }
 ]

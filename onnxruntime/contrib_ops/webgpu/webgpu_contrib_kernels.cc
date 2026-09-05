@@ -52,6 +52,11 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, SkipLayerNormalization)>,
     // LayerNormalization used to be a contrib op that (incorrectly) used kOnnxDomain so we need to version it
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 16, LayerNormalization)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, float,
+                                                                      SimplifiedLayerNormalization)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, MLFloat16,
+                                                                      SimplifiedLayerNormalization)>,
+    // For backward compatibility: SimplifiedLayerNormalization was previously incorrectly registered to the ONNX domain
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, SimplifiedLayerNormalization)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, SkipSimplifiedLayerNormalization)>,
     // BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, MoE)>,
