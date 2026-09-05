@@ -4,6 +4,8 @@
 #pragma once
 
 #include <functional>
+#include <memory>
+#include <mutex>
 
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
@@ -12,6 +14,8 @@ namespace onnxruntime {
 namespace webgpu {
 
 class BufferManager;
+struct CommandRecordingState;
+class WebGpuContext;
 
 inline constexpr OrtDevice WebGpuDevice{OrtDevice::GPU,
                                         OrtDevice::MemType::DEFAULT,
@@ -24,6 +28,7 @@ class GpuBufferAllocator : public IAllocator {
   // BufferManager. This allows the EP to route allocations to different
   // buffer managers (e.g., per-graph) without explicit refresh calls.
   GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter,
+                     std::function<CommandRecordingState&()> recording_getter,
                      bool is_read_only_allocator,
                      std::function<bool()> should_submit_zero_initialize = {});
 
@@ -34,11 +39,28 @@ class GpuBufferAllocator : public IAllocator {
  private:
   AllocatorStats stats_;
   std::function<const BufferManager&()> buffer_manager_getter_;
+  std::function<CommandRecordingState&()> recording_getter_;
   std::function<bool()> should_submit_zero_initialize_;
   bool mapped_at_creation_;
   // Cached writable buffers are cleared explicitly by BufferManager::Create. Fresh buffers rely on Dawn's
   // "lazy_clear_resource_on_first_use" toggle, which is enabled by WebGpuContext.
   bool initialize_to_zero_;
+};
+
+// Environment-level shared allocator. External tensors are not transient session workspace, so
+// they bypass the context BufferManager and do not participate in a session recording timeline.
+class ExternalGpuBufferAllocator : public IAllocator {
+ public:
+  explicit ExternalGpuBufferAllocator(std::shared_ptr<WebGpuContext> context);
+
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
+  void GetStats(AllocatorStats* stats) override;
+
+ private:
+  std::shared_ptr<WebGpuContext> context_;
+  std::mutex stats_mutex_;
+  AllocatorStats stats_;
 };
 
 // No-op allocator used for the WebGPU device when the context has no Dawn device (a device-free /
@@ -59,6 +81,7 @@ class WebGpuNoOpAllocator : public IAllocator {
 // allocation ever happens.
 AllocatorPtr CreateWebGpuAllocator(bool device_free,
                                    std::function<const BufferManager&()> buffer_manager_getter,
+                                   std::function<CommandRecordingState&()> recording_getter,
                                    bool is_read_only_allocator,
                                    std::function<bool()> should_submit_zero_initialize = {});
 

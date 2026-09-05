@@ -108,6 +108,21 @@ struct CapturedCommandInfo {
   std::optional<PendingKernelInfo> pending_kernel_info;
 };
 
+// State for one session's command recording timeline. WebGpuContext is shared across sessions,
+// but Dawn command encoders and deferred dispatch windows must not be.
+struct CommandRecordingState {
+  std::recursive_mutex mutex;
+  wgpu::CommandEncoder command_encoder;
+  wgpu::ComputePassEncoder compute_pass_encoder;
+  uint32_t num_pending_dispatches = 0;
+  bool has_unsubmitted_work = false;
+  std::vector<wgpu::Buffer> pending_buffers;
+  std::vector<CapturedCommandInfo> deferred_dispatches;
+  std::vector<PendingKernelInfo> pending_kernels;
+  GraphCaptureState graph_capture_state{GraphCaptureState::Default};
+  std::vector<CapturedCommandInfo>* external_captured_commands = nullptr;
+};
+
 struct WebGpuBufferCacheConfig {
   struct ConfigEntry {
     BufferCacheMode mode;
@@ -185,6 +200,11 @@ class WebGpuContextFactory {
   static WebGpuContext& GetContext(int context_id);
 
   /// <summary>
+  /// Retain an existing WebGPU context. (ref-count based)
+  /// </summary>
+  static void RetainContext(int context_id);
+
+  /// <summary>
   /// Release the WebGPU context. (ref-count based)
   /// </summary>
   static void ReleaseContext(int context_id);
@@ -226,56 +246,54 @@ class WebGpuContext final {
   bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 
-  const wgpu::CommandEncoder& GetCommandEncoder() {
-    if (!current_command_encoder_) {
-      current_command_encoder_ = device_.CreateCommandEncoder();
+  const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
+    if (!recording.command_encoder) {
+      recording.command_encoder = device_.CreateCommandEncoder();
+      recording.has_unsubmitted_work = true;
     }
-    return current_command_encoder_;
+    return recording.command_encoder;
   }
 
-  const wgpu::ComputePassEncoder& GetComputePassEncoder() {
-    if (!current_compute_pass_encoder_) {
-      auto& command_encoder = GetCommandEncoder();
+  const wgpu::ComputePassEncoder& GetComputePassEncoder(CommandRecordingState& recording) {
+    if (!recording.compute_pass_encoder) {
+      auto& command_encoder = GetCommandEncoder(recording);
 
       wgpu::ComputePassDescriptor compute_pass_desc{};
 
-      if (is_profiling_ && query_type_ == TimestampQueryType::AtPasses && graph_capture_state_ != GraphCaptureState::Capturing) {
+      if (is_profiling_ && query_type_ == TimestampQueryType::AtPasses &&
+          recording.graph_capture_state != GraphCaptureState::Capturing) {
         wgpu::PassTimestampWrites timestampWrites = {
             nullptr,
             query_set_,
-            num_pending_dispatches_ * 2,
-            num_pending_dispatches_ * 2 + 1};
+            recording.num_pending_dispatches * 2,
+            recording.num_pending_dispatches * 2 + 1};
         compute_pass_desc.timestampWrites = &timestampWrites;
       }
 
-      current_compute_pass_encoder_ = command_encoder.BeginComputePass(&compute_pass_desc);
+      recording.compute_pass_encoder = command_encoder.BeginComputePass(&compute_pass_desc);
     }
-    return current_compute_pass_encoder_;
+    return recording.compute_pass_encoder;
   }
 
-  void EndComputePass() {
-    if (current_compute_pass_encoder_) {
-      current_compute_pass_encoder_.End();
-      current_compute_pass_encoder_ = nullptr;
+  void EndComputePass(CommandRecordingState& recording) {
+    if (recording.compute_pass_encoder) {
+      recording.compute_pass_encoder.End();
+      recording.compute_pass_encoder = nullptr;
     }
   }
-  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager);
-  void CaptureEnd();
-  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager);
+  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands,
+                    const webgpu::BufferManager& buffer_manager,
+                    CommandRecordingState& recording);
+  void CaptureEnd(CommandRecordingState& recording);
+  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands,
+              const webgpu::BufferManager& buffer_manager,
+              CommandRecordingState& recording);
   void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
 
-  Status Flush(const webgpu::BufferManager& buffer_mgr);
+  Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
-  /**
-   * Get the buffer manager.
-   */
+  // Context-level managers are shared by sessions and synchronize their buffer caches internally.
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
-
-  /**
-   * Get the initializer buffer manager.
-   *
-   * This buffer manager is used for read-only buffers (e.g. initializers).
-   */
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
   inline webgpu::ValidationMode ValidationMode() const {
@@ -359,15 +377,15 @@ class WebGpuContext final {
                                   const std::vector<uint32_t>& bind_buffers_segments,
                                   const wgpu::BindGroupLayout& bind_group_layout,
                                   std::string_view label) const;
-  void DispatchCommand(const webgpu::CapturedCommandInfo& command);
-  Status EncodeDeferredDispatches();
+  void DispatchCommand(const webgpu::CapturedCommandInfo& command, CommandRecordingState& recording);
+  Status EncodeDeferredDispatches(CommandRecordingState& recording);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
   std::vector<const char*> GetDisabledDeviceToggles() const;
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
   wgpu::Limits GetRequiredLimits(const wgpu::Adapter& adapter) const;
-  void WriteTimestamp(uint32_t query_index);
+  void WriteTimestamp(CommandRecordingState& recording, uint32_t query_index);
 
   struct PendingQueryInfo {
     PendingQueryInfo(std::vector<PendingKernelInfo>&& kernels, wgpu::Buffer query_buffer)
@@ -382,8 +400,8 @@ class WebGpuContext final {
   };
 
   // Find the build owner for a cache key in the current deferred window.
-  PendingPipelineBuild* FindPendingPipelineBuild(std::string_view key);
-  Status WaitForDeferredPipelineBuilds();
+  PendingPipelineBuild* FindPendingPipelineBuild(CommandRecordingState& recording, std::string_view key);
+  Status WaitForDeferredPipelineBuilds(CommandRecordingState& recording);
 
   friend class BufferManager;
   friend class ComputeContext;
@@ -404,18 +422,11 @@ class WebGpuContext final {
   std::unordered_set<wgpu::FeatureName> device_features_;
   wgpu::AdapterPropertiesSubgroupMatrixConfigs subgroup_matrix_configs_;
 
-  wgpu::CommandEncoder current_command_encoder_;
-  wgpu::ComputePassEncoder current_compute_pass_encoder_;
-
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;
   std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
 
-  uint32_t num_pending_dispatches_ = 0;
   uint32_t max_num_pending_dispatches_ = 16;
-
-  // Owns the active dispatch window and the unique pending builds referenced within that window.
-  std::vector<webgpu::CapturedCommandInfo> deferred_dispatches_;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
 
@@ -424,8 +435,6 @@ class WebGpuContext final {
   wgpu::QuerySet query_set_;
   wgpu::Buffer query_resolve_buffer_;
 
-  // info of kernels pending submission for a single batch
-  std::vector<PendingKernelInfo> pending_kernels_;
   // info of queries pending appending to profiling events
   std::vector<PendingQueryInfo> pending_queries_;
 
@@ -441,10 +450,6 @@ class WebGpuContext final {
   profiling::Events events_;
   bool preserve_device_;
   uint64_t max_storage_buffer_binding_size_;
-  GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
-
-  // External vector to store captured commands, owned by EP
-  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
 };
 
 }  // namespace webgpu
