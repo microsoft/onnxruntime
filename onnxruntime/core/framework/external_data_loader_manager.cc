@@ -3,12 +3,14 @@
 
 #include "core/framework/external_data_loader_manager.h"
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
 #include <algorithm>
 
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
+#endif
 
 namespace onnxruntime {
 using namespace common;
@@ -32,9 +34,23 @@ const IExternalDataLoader* ExternalDataLoaderManager::GetExternalDataLoader(cons
   return nullptr;
 }
 
-const IExternalDataLoader* ExternalDataLoaderManager::GetTensorCreator(const OrtDevice& target_device) const {
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+const IExternalDataLoader* ExternalDataLoaderManager::GetExternalDataLoader(
+    const OrtMemoryInfo& target_memory_info, int32_t tensor_data_type) const {
+  for (auto& external_data_loader : external_data_loaders_) {
+    if (external_data_loader->CanLoad(target_memory_info) &&
+        external_data_loader->SupportsDataType(tensor_data_type)) {
+      return external_data_loader.get();
+    }
+  }
+  return nullptr;
+}
+
+const IExternalDataLoader* ExternalDataLoaderManager::GetTensorCreator(
+    const OrtDevice& target_device, int32_t tensor_data_type) const {
   for (const auto& external_data_loader : external_data_loaders_) {
-    if (external_data_loader->CreatesTensorForDevice(target_device)) {
+    if (external_data_loader->SupportsDataType(tensor_data_type) &&
+        external_data_loader->CreatesTensorForDevice(target_device)) {
       return external_data_loader.get();
     }
   }
@@ -97,7 +113,8 @@ Status ExternalDataLoaderManager::PreloadExternalData(
           "Preloading external weights was canceled due to user request.");
     }
     for (const auto& loader : external_data_loaders_) {
-      if (loader->SupportsPreload()) {
+      if (loader->SupportsPreload() &&
+          loader->SupportsDataType(tensor_proto->data_type())) {
         ORT_RETURN_IF_ERROR(utils::PrepareExtDataForTensorFromTensorProto(
             env, model_path, *tensor_proto, *loader, true,
             &validated_external_files));
@@ -143,5 +160,6 @@ void ExternalDataLoaderManager::AbortLoad() const noexcept {
     external_data_loader->AbortLoad();
   }
 }
+#endif
 
 }  // namespace onnxruntime
