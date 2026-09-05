@@ -1208,6 +1208,25 @@ It also supports optional float8, int8 or int4 quantization for the KV cache to 
 **Cache Format:**
 The past and present KV cache tensors are expected in a BNSH format: `(batch_size, num_heads, cache_sequence_length, head_size)`, where `cache_sequence_length` is the length of the cached key/value sequences, or the maximum sequence length when past and present buffer sharing is used.
 
+**Windowed KV Cache (`sliding_window_cache` attribute):**
+When `sliding_window_cache` is 1, the past/present buffers are window-sized instead of full-length and the operator evicts internally. Let `C` be the cache capacity (dimension 2 of `past_key`, which is also the sequence dimension of `present_key`), `W` be `local_window_size`, and `T` be the absolute number of tokens processed so far by this batch entry, i.e. `seqlens_k[b] + 1`. The scalar `total_sequence_length` input is only the batch maximum of `T`; the layout below is per batch entry, so a ragged batch gets a different resident range per entry. `C` must be at least `W`.
+
+After a step, rows `[0, L)` of `present_key` and `present_value` hold the `L` most recent positions in increasing position order, so row `i` holds absolute position `T - L + i`. The retained positions are always physically contiguous and start at row 0; the layout never wraps around, so a ring-buffer layout cannot be exposed through these outputs. Rows `[L, C)` are unspecified. The resident count `L` is a function of `T` alone:
+
+```
+G = C - W + 1
+L(T) = T                            if T <= C
+L(T) = T - G * ceil((T - C) / G)    otherwise
+```
+
+Hence `min(T, W) <= L(T) <= min(T, C)`: the whole window stays resident, and eviction reclaims `G` positions at once rather than one position per step, so consumers must not assume that the cache is kept full at `min(T, C)`.
+
+  Because `L` depends only on `T`, the resulting layout is independent of how the tokens were split into steps: a multi-token step of `S` tokens (speculative decoding, chunked prefill) leaves exactly the layout that the same tokens would produce one at a time. Any `S >= 1` is accepted, including `S > C`; a step that would evict positions it still has to read is staged internally, so the capacity does not have to cover the step. When past context is present, the existing operator restriction still applies: `sequence_length > 1` requires `batch_size == 1`.
+
+  An execution provider may accept only part of the `C >= W` range. A configuration with `C < W` (equivalently, `W > C`) is invalid and is rejected with `INVALID_ARGUMENT`. The CUDA implementation requires `C == W`, so there `G` is 1 and `L(T)` is `min(T, C)`; a larger capacity is rejected. The CPU implementation accepts any `C >= W`, and slack above the window amortizes compaction over `G` steps.
+
+To drop the last `k` tokens, for example after rejecting speculative draft tokens, re-run with the smaller `total_sequence_length` and `seqlens_k` and leave the buffer untouched. That is exact when `L(T - k) == L(T) - k`, which callers can evaluate with the formula above. Otherwise the shorter layout needs positions that have already been evicted, and the window has to be re-materialized.
+
 **Quantization:**
 When quantization is enabled, `past_key` and `past_value` inputs can be of type `float8e4m3fn`, `uint8` or `int8`. The corresponding `k_scale` and `v_scale` tensors must be provided.
 The operator will output `present_key` and `present_value` in same format as the `past_key` and `past_value`.
@@ -1247,11 +1266,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               static_cast<int64_t>(-1))
         .Attr("sliding_window_cache",
               "Set to 1 when the past/present KV buffers are window-sized instead of holding the whole "
-              "sequence. The op then keeps only the min(total_sequence_length, cache_capacity) most recent "
-              "tokens, contiguously, using cache-relative indexing and evicting from the front as needed. "
-              "Requires local_window_size > 0 and a cache capacity of at least local_window_size. "
-              "Multi-token steps may use a temporary staging buffer, so the capacity need not cover the "
-              "entire step. Default value is 0 (full-length cache).",
+              "sequence. The op then evicts internally and indexes the buffers in cache-relative "
+              "coordinates, keeping the most recent positions contiguously at rows [0, L) with "
+              "min(T, local_window_size) <= L <= min(T, capacity), where T is seqlens_k[b] + 1 for that "
+              "batch entry. Requires local_window_size > 0 and a cache capacity of at least "
+              "local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA "
+              "implementation additionally requires the capacity to equal local_window_size. Multi-token "
+              "steps of any length are supported and produce the same layout as single-token steps, so the "
+              "capacity need not cover the entire step. When past context is present, sequence_length > 1 "
+              "requires batch_size == 1. See the "
+              "Windowed KV Cache section of the operator description for the exact resident-range, "
+              "eviction and rollback contract. Default value is 0 (full-length cache).",
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Attr("do_rotary",
@@ -1296,13 +1321,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(3,
                "past_key",
                "past state key with support for format BNSH. When past_key uses same tensor as present_key"
-               "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
+               "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length. "
+               "When sliding_window_cache is 1 this length is the window cache capacity C, which is chosen by the "
+               "caller independently of the sequence length and must be at least local_window_size.",
                "T_CACHE",
                OpSchema::Optional)
         .Input(4,
                "past_value",
                "past state value with support for format BNSH. When past_value uses same tensor as present_value"
-               "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length.",
+               "(k-v cache), it is of length max_sequence_length... otherwise of length past_sequence_length. "
+               "When sliding_window_cache is 1 this length is the window cache capacity C, which is chosen by the "
+               "caller independently of the sequence length and must be at least local_window_size.",
                "T_CACHE",
                OpSchema::Optional)
         .Input(5,
@@ -1332,7 +1361,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(10,
                "attention_bias",
-               "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)",
+               "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length). "
+               "The last dimension is indexed by absolute key position and stays total_sequence_length when "
+               "sliding_window_cache is 1: it is not reduced to the cache capacity or to local_window_size. The "
+               "operator reads the columns of the positions that are resident in the cache and ignores the rest. "
+               "CPU supports this windowed absolute-column indexing; CUDA rejects attention_bias when "
+               "sliding_window_cache is 1.",
                "T",
                OpSchema::Optional)
         .Input(11,
