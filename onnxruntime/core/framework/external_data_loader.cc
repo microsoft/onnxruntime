@@ -11,10 +11,67 @@
 
 namespace onnxruntime {
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+bool IExternalDataLoader::SupportsDataType([[maybe_unused]] int32_t tensor_data_type) const {
+  return true;
+}
+
+bool IExternalDataLoader::CreatesTensorForDevice([[maybe_unused]] const OrtDevice& target_device) const {
+  return false;
+}
+
+bool IExternalDataLoader::SupportsPreload() const {
+  return false;
+}
+
+common::Status IExternalDataLoader::BeginPreload() const {
+  return common::Status::OK();
+}
+
+common::Status IExternalDataLoader::PreloadTensor(
+    [[maybe_unused]] const Env& env,
+    [[maybe_unused]] const std::filesystem::path& data_file_path,
+    [[maybe_unused]] std::string_view tensor_name,
+    [[maybe_unused]] FileOffsetType data_offset,
+    [[maybe_unused]] SafeInt<size_t> data_length) const {
+  return common::Status::OK();
+}
+
+common::Status IExternalDataLoader::FinalizePreload(
+    const std::function<bool()>& /*is_cancelled*/) const {
+  return common::Status::OK();
+}
+
+common::Status IExternalDataLoader::BeginLoad() const {
+  return common::Status::OK();
+}
+
+common::Status IExternalDataLoader::PrepareTensor([[maybe_unused]] const Env& env,
+                                                  [[maybe_unused]] const std::filesystem::path& data_file_path,
+                                                  [[maybe_unused]] std::string_view tensor_name,
+                                                  [[maybe_unused]] FileOffsetType data_offset,
+                                                  [[maybe_unused]] SafeInt<size_t> data_length) const {
+  return common::Status::OK();
+}
+
+common::Status IExternalDataLoader::FinalizeLoad(const std::function<bool()>& /*is_cancelled*/) const {
+  return common::Status::OK();
+}
+
+void IExternalDataLoader::AbortLoad() const noexcept {
+}
+#endif
+
 common::Status IExternalDataLoader::LoadTensor([[maybe_unused]] const Env& env,
                                                [[maybe_unused]] const std::filesystem::path& data_file_path,
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+                                               [[maybe_unused]] std::string_view tensor_name,
+#endif
                                                [[maybe_unused]] FileOffsetType data_offset,
                                                [[maybe_unused]] SafeInt<size_t> data_length,
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+                                               [[maybe_unused]] const std::shared_ptr<IAllocator>& allocator,
+#endif
                                                [[maybe_unused]] Tensor& tensor) const {
   ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
 }

@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#include "core/providers/webgpu/direct_storage_external_data_loader.h"
+#endif
 
 #include <mutex>
 #include <string_view>
@@ -604,9 +607,32 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+      weight_load_acceleration_mode_{config.weight_load_acceleration_mode},
+#endif
       prepack_allocator_{CreateWebGpuAllocator(
-          /*device_free=*/!context.HasDevice(),
+          context.IsDeviceFree(),
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+  if (webgpu::IsWeightLoadAccelerationEnabled(
+          config.weight_load_acceleration_mode)) {
+    direct_storage_initializer_allocator_ =
+        CreateDirectStorageWebGpuAllocator(context_, direct_storage_initializer_state_);
+  }
+#else
+  if (webgpu::IsWeightLoadAccelerationRequired(
+          config.weight_load_acceleration_mode)) {
+    ORT_THROW(
+        "The requested weightLoadAcceleration mode requires a supported "
+        "disk-to-GPU weight loading implementation.");
+  }
+  if (webgpu::IsWeightLoadAccelerationEnabled(
+          config.weight_load_acceleration_mode)) {
+    LOGS_DEFAULT(WARNING)
+        << "Accelerated weight loading is unavailable in this build; using "
+           "the ordinary WebGPU initializer loading path.";
+  }
+#endif
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
         config.session_buffer_pool_generations);
@@ -622,12 +648,17 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
-  const bool device_free = !context_.HasDevice();
+  const bool device_free = context_.IsDeviceFree();
   return {
-      // allocator for initializers
-      CreateWebGpuAllocator(
-          device_free,
-          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true),
+  // allocator for initializers
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+      direct_storage_initializer_allocator_ != nullptr
+          ? direct_storage_initializer_allocator_
+          :
+#endif
+          CreateWebGpuAllocator(
+              device_free,
+              [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true),
       // default allocator
       CreateWebGpuAllocator(
           device_free,
@@ -740,12 +771,25 @@ std::vector<std::unique_ptr<ComputeCapability>> WebGpuExecutionProvider::GetCapa
 #endif  // !defined(ORT_USE_EP_API_ADAPTERS)
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(BufferManager());
+  return std::make_unique<webgpu::DataTransfer>(
+      [&context = context_]() -> const webgpu::BufferManager& {
+        return context.BufferManager();
+      });
 }
 
 #if defined(__wasm__)
 std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
   return std::make_unique<webgpu::ExternalDataLoader>();
+}
+#elif defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetExternalDataLoader() const {
+  if (direct_storage_initializer_state_ == nullptr) {
+    return nullptr;
+  }
+
+  return std::make_unique<webgpu::DirectStorageExternalDataLoader>(
+      context_, direct_storage_initializer_state_,
+      weight_load_acceleration_mode_);
 }
 #endif
 

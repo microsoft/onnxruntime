@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <functional>
+
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
@@ -16,7 +18,8 @@ class BufferManager;
 // Used by both DataTransfer (IDataTransfer subclass) and the C API data transfer wrapper.
 class DataTransferImpl {
  public:
-  DataTransferImpl(const BufferManager& buffer_manager) : buffer_manager_{buffer_manager} {};
+  explicit DataTransferImpl(std::function<const BufferManager&()> buffer_manager_getter)
+      : buffer_manager_getter_{std::move(buffer_manager_getter)} {}
 
   common::Status CopyTensor(void const* src_data,
                             bool src_is_gpu,
@@ -25,12 +28,13 @@ class DataTransferImpl {
                             size_t bytes) const;
 
  private:
-  const BufferManager& buffer_manager_;
+  std::function<const BufferManager&()> buffer_manager_getter_;
 };
 
 class DataTransfer : public IDataTransfer {
  public:
-  DataTransfer(const BufferManager& buffer_manager) : impl_{buffer_manager} {};
+  explicit DataTransfer(std::function<const BufferManager&()> buffer_manager_getter)
+      : impl_{std::move(buffer_manager_getter)} {}
   ~DataTransfer() {};
 
   // Device-compatibility half of CanCopy, split out because it needs no BufferManager and so can
