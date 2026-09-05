@@ -130,6 +130,15 @@ class EinsumComputePreprocessor final {
   }
 
   inline Status Run() {
+    ORT_RETURN_IF_ERROR(Analyze());
+    return MaterializeInputs();
+  }
+
+  inline Status Analyze() {
+    if (analysis_complete_) {
+      return Status::OK();
+    }
+
     ORT_RETURN_IF_ERROR(ProcessSubscripts());
 
     ORT_RETURN_IF_ERROR(PostProcessBroadcastedDims());
@@ -138,8 +147,18 @@ class EinsumComputePreprocessor final {
 
     ORT_RETURN_IF_ERROR(CalculateOutputShape());
 
-    ORT_RETURN_IF_ERROR(PreprocessInputs());
+    analysis_complete_ = true;
+    return Status::OK();
+  }
 
+  inline Status MaterializeInputs() {
+    ORT_RETURN_IF_NOT(analysis_complete_, "Einsum semantic analysis must complete before materializing inputs");
+    if (inputs_materialized_) {
+      return Status::OK();
+    }
+
+    ORT_RETURN_IF_ERROR(PreprocessInputs());
+    inputs_materialized_ = true;
     return Status::OK();
   }
 
@@ -151,7 +170,7 @@ class EinsumComputePreprocessor final {
     return preprocessed_inputs_;
   }
 
-  inline const std::vector<const Tensor*>& GetRawInputTensors() {
+  inline const std::vector<const Tensor*>& GetRawInputTensors() const {
     return inputs_;
   }
 
@@ -169,6 +188,18 @@ class EinsumComputePreprocessor final {
 
   inline size_t GetNumSubscriptIndices() const {
     return num_subscript_indices_;
+  }
+
+  inline size_t GetNumEllipsisDims() const {
+    return num_of_ellipsis_dims_;
+  }
+
+  inline const std::vector<std::vector<int64_t>>& GetInputSubscriptIndices() const {
+    return input_subscript_indices_;
+  }
+
+  inline const std::vector<int64_t>& GetSubscriptIndicesToDimValue() const {
+    return subscript_indices_to_dim_value_;
   }
 
   inline void SetDeviceHelpers(const EinsumOp::DeviceHelpers::Diagonal& device_diagonal_func,
@@ -205,6 +236,8 @@ class EinsumComputePreprocessor final {
 
       std::vector<int64_t> current_subscript_indices;
       current_subscript_indices.reserve(rank);
+      std::array<int64_t, EinsumOp::num_of_letters> current_letter_to_dim;
+      current_letter_to_dim.fill(-1);
 
       // Temp variables to deal with "ellipsis" in the input
       bool is_in_middle_of_ellipsis = false;
@@ -274,16 +307,25 @@ class EinsumComputePreprocessor final {
           }
 
           auto dim_value = dims[dim_counter];
+          const size_t letter_array_index = onnxruntime::narrow<size_t>(letter_index);
+          if (current_letter_to_dim[letter_array_index] >= 0 &&
+              current_letter_to_dim[letter_array_index] != dim_value) {
+            return ORT_MAKE_STATUS(
+                ONNXRUNTIME, INVALID_ARGUMENT,
+                "Einsum repeated labels within one input must have equal dimensions. Input ",
+                input_index, " has incompatible repeated label '", subscript_label, "'.");
+          }
+          current_letter_to_dim[letter_array_index] = dim_value;
 
           // Subscript label not found in global subscript label array
           // Hence add it to both local and global subscript arrays
-          if (letter_to_count_[onnxruntime::narrow<size_t>(letter_index)] == 0) {
-            letter_to_index_[onnxruntime::narrow<size_t>(letter_index)] = num_subscript_indices_++;
+          if (letter_to_count_[letter_array_index] == 0) {
+            letter_to_index_[letter_array_index] = num_subscript_indices_++;
             subscript_indices_to_dim_value_.push_back(dim_value);
             subscript_indices_to_last_input_.push_back(input_index);
           } else {  // This subscript label has been seen in atleast one other operand's subscript
             // It must be equal unless one of them is a 1 (Numpy allows this)
-            auto mapped_index = letter_to_index_[onnxruntime::narrow<size_t>(letter_index)];
+            auto mapped_index = letter_to_index_[letter_array_index];
 
             subscript_indices_to_last_input_[onnxruntime::narrow<size_t>(mapped_index)] = input_index;
 
@@ -306,9 +348,9 @@ class EinsumComputePreprocessor final {
             }
           }
 
-          ++letter_to_count_[onnxruntime::narrow<size_t>(letter_index)];
+          ++letter_to_count_[letter_array_index];
 
-          current_subscript_indices.push_back(letter_to_index_[onnxruntime::narrow<size_t>(letter_index)]);
+          current_subscript_indices.push_back(letter_to_index_[letter_array_index]);
           if (++dim_counter > rank) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                    "Einsum subscripts string contains too many subscript labels when compared to the rank of the input ",
@@ -515,6 +557,27 @@ class EinsumComputePreprocessor final {
     return Status::OK();
   }
 
+  static bool IsReshapeOnlyPermutation(gsl::span<const int64_t> input_dims,
+                                       gsl::span<const size_t> permutation,
+                                       TensorShapeVector& output_dims) {
+    size_t last_non_singleton_axis = 0;
+    for (const size_t input_axis : permutation) {
+      if (input_dims[input_axis] == 1) {
+        continue;
+      }
+      if (input_axis < last_non_singleton_axis) {
+        return false;
+      }
+      last_non_singleton_axis = input_axis;
+    }
+
+    output_dims.resize(permutation.size());
+    for (size_t output_axis = 0; output_axis < permutation.size(); ++output_axis) {
+      output_dims[output_axis] = input_dims[permutation[output_axis]];
+    }
+    return true;
+  }
+
   inline Status PreprocessInputs() {
     preprocessed_inputs_.reserve(inputs_.size());
     homogenized_input_dims_.reserve(inputs_.size());
@@ -570,9 +633,18 @@ class EinsumComputePreprocessor final {
       // (Identify no-op transpose and prevent triggering the transpose)
       if (EinsumOp::IsTransposeRequired(preprocessed ? preprocessed->Shape().GetDims().size() : inputs_[input_iter]->Shape().GetDims().size(),
                                         permutation)) {
-        preprocessed = EinsumOp::Transpose(preprocessed ? *preprocessed : *inputs_[input_iter],
-                                           preprocessed ? preprocessed->Shape().GetDims() : inputs_[input_iter]->Shape().GetDims(),
-                                           permutation, allocator_, einsum_ep_assets_, device_transpose_func_, device_create_tensor_func_);
+        const auto source_dims =
+            preprocessed ? preprocessed->Shape().GetDims() : inputs_[input_iter]->Shape().GetDims();
+        TensorShapeVector reshape_dims;
+        if (IsReshapeOnlyPermutation(source_dims, permutation, reshape_dims)) {
+          if (preprocessed) {
+            preprocessed->Reshape(reshape_dims);
+          }
+        } else {
+          preprocessed = EinsumOp::Transpose(preprocessed ? *preprocessed : *inputs_[input_iter],
+                                             source_dims, permutation, allocator_, einsum_ep_assets_,
+                                             device_transpose_func_, device_create_tensor_func_);
+        }
       }
 
       // pre-processed may be null if the input didn't have need diagonals parsed and didn't need transposing
@@ -653,6 +725,9 @@ class EinsumComputePreprocessor final {
 
   // Holds EP-specific assets required for (auxiliary) ops that need to be executed on non-CPU EPs
   void* einsum_ep_assets_;
+
+  bool analysis_complete_ = false;
+  bool inputs_materialized_ = false;
 };
 
 }  // namespace onnxruntime
