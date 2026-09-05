@@ -133,7 +133,7 @@ jobs:
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
             onnxruntime_BUILD_DAWN_SHARED_LIBRARY=ON `
-            ${{ matrix.vcpkg_option == 'novcpkg' && 'onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE=ON' || '' }}
+            onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
