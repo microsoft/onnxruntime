@@ -623,6 +623,50 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // (internal and external) and works in both JIT and AOT flows.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
 
+// Layout of the Value KV-cache tensors that the application binds to the past_value input and
+// present_value output of com.microsoft.GroupQueryAttention. Applies to every GQA node in the
+// model. The Key cache (past_key/present_key) is not affected.
+//
+// Option values:
+// - "BNSH": (batch_size, num_heads, sequence_length, head_size). Matches the operator schema. [DEFAULT]
+// - "BNHS": (batch_size, num_heads, head_size, sequence_length).
+//
+// When "BNHS" is selected, ORT keeps the GQA node itself in BNSH and inserts a
+// Transpose(perm=[0,1,3,2]) between the past_value graph input and the node, and another between
+// the node and the present_value graph output. An EP that prefers BNHS is expected to fuse that
+// Transpose -> GroupQueryAttention -> Transpose sequence into a single operation; an EP that does
+// not will execute the transposes, which is correct but costs a full copy of the Value cache in
+// each direction per step. The application may still bind one buffer to both past_value and
+// present_value; what it loses is the GQA kernel's in-place update of that buffer, because the
+// kernel now reads and writes ORT-allocated BNSH intermediates instead.
+//
+// Query an EP's preference via the "gqa_preferred_value_layout" OrtEpDevice metadata key
+// (kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout in onnxruntime_ep_device_ep_metadata_keys.h).
+//
+// Setting "BNSH" explicitly is a claim that the model's Value cache boundary is BNSH, and session
+// initialization fails if the model already carries the BNHS conversion (as one saved from a BNHS
+// session via "session.optimized_model_filepath" does). Leaving the option unset makes no claim: such
+// a model loads unchanged, with a warning, exactly as it did before this option existed.
+//
+// Scope: this option only describes Value caches that the application itself binds, that is, a
+// past_value that is a graph input and a present_value that is a graph output. A Value cache that
+// stays inside the graph keeps the BNSH layout, because the application never sees it; ORT logs a
+// warning naming the node in that case.
+//
+// Requesting "BNHS" fails session initialization when a cache is application visible but cannot be
+// converted, rather than silently leaving it BNSH and letting the application bind buffers in the
+// wrong layout. That happens when:
+// - a past_value graph input is read by more than one node, or a present_value graph output is also
+//   consumed inside the graph (the layout of a shared cache cannot be changed for one reader only);
+// - a node already has the layout applied to only one of past_value / present_value;
+// - the Value cache is 4-bit quantized (two values are packed per byte along head_size);
+// - a Value cache tensor is not rank 4;
+// - the model is in ORT format, which does not run the graph transform that applies this option.
+//
+// This option takes effect at all graph optimization levels, including ORT_DISABLE_ALL, because it
+// changes the layout the session expects at its inputs and outputs rather than optimizing the graph.
+static const char* const kOrtSessionOptionsGqaValueLayout = "session.gqa_value_layout";
+
 // Enable weightless mode for all initializers (internal and external).
 //
 // When enabled, ONNX Runtime requests that the execution provider operate without embedding or copying
