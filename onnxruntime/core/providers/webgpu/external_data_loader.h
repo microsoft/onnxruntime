@@ -19,10 +19,14 @@ class ExternalDataLoader : public IExternalDataLoader {
 
   common::Status LoadTensor(const Env& env,
                             const std::filesystem::path& data_file_path,
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
                             std::string_view tensor_name,
+#endif
                             FileOffsetType data_offset,
                             SafeInt<size_t> data_length,
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
                             const std::shared_ptr<IAllocator>& allocator,
+#endif
                             Tensor& tensor) const override;
 };
 

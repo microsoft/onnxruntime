@@ -18,6 +18,7 @@ namespace onnxruntime {
 namespace test {
 namespace {
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
 class BatchLifecycleExternalDataLoader final : public IExternalDataLoader {
  public:
   enum class FailurePoint {
@@ -66,6 +67,10 @@ class PreloadTrackingExternalDataLoader final : public IExternalDataLoader {
     return false;
   }
 
+  bool SupportsDataType(int32_t tensor_data_type) const override {
+    return tensor_data_type != ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+  }
+
   bool SupportsPreload() const override {
     return true;
   }
@@ -84,11 +89,12 @@ class PreloadTrackingExternalDataLoader final : public IExternalDataLoader {
 };
 
 ONNX_NAMESPACE::TensorProto CreateExternalTensorProto(
-    const std::string& name, const std::string& location) {
+    const std::string& name, const std::string& location,
+    int32_t data_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
   ONNX_NAMESPACE::TensorProto tensor_proto;
   tensor_proto.set_name(name);
   tensor_proto.add_dims(1);
-  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.set_data_type(data_type);
   tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
   auto* location_entry = tensor_proto.add_external_data();
   location_entry->set_key("location");
@@ -175,6 +181,9 @@ TEST(ExternalDataLoaderManagerTest, PreloadSkipsExcludedInitializersAndFiles) {
       CreateExternalTensorProto("excluded_by_name", "missing.bin"));
   graph.AddInitializedTensor(
       CreateExternalTensorProto("excluded_by_file", "supplied.bin"));
+  graph.AddInitializedTensor(
+      CreateExternalTensorProto("unsupported_type", "missing_bool.bin",
+                                ONNX_NAMESPACE::TensorProto_DataType_BOOL));
 
   ExternalDataLoaderManager manager;
   auto loader = std::make_unique<PreloadTrackingExternalDataLoader>();
@@ -189,6 +198,7 @@ TEST(ExternalDataLoaderManagerTest, PreloadSkipsExcludedInitializersAndFiles) {
   EXPECT_EQ(loader_ptr->preloaded_tensor_names,
             std::vector<std::string>{"included"});
 }
+#endif
 
 }  // namespace
 }  // namespace test

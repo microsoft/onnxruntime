@@ -710,7 +710,9 @@ class InferenceSession {
                                               const std::string& event_name);
 
   [[nodiscard]] common::Status DoPostLoadProcessing(onnxruntime::Model& model);
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
   [[nodiscard]] common::Status StartExternalDataPreload();
+#endif
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -996,7 +998,9 @@ class InferenceSession {
 
   // External data loader manager.
   ExternalDataLoaderManager external_data_loader_mgr_;
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
   bool external_data_preload_started_ = false;
+#endif
 
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;

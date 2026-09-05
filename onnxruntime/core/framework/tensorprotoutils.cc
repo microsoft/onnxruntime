@@ -1828,7 +1828,9 @@ Status GetExtDataFromTensorProto(const Env& env,
 Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                           const IExternalDataLoader& ext_data_loader,
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
                                           const AllocatorPtr& allocator,
+#endif
                                           Tensor& tensor) {
   ORT_ENFORCE(HasExternalData(tensor_proto));
   // Defense-in-depth path validation for callers reaching this function outside Graph::Resolve.
@@ -1851,10 +1853,15 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag || external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
                 "Memory address tag is not supported by custom external data loader.");
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
   return ext_data_loader.LoadTensor(env, external_data_file_path, tensor_proto.name(), file_offset,
                                     raw_data_safe_len, allocator, tensor);
+#else
+  return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
+#endif
 }
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
 Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                               const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                               const IExternalDataLoader& ext_data_loader,
@@ -1896,6 +1903,7 @@ Status PrepareExtDataForTensorFromTensorProto(const Env& env, const std::filesys
                    env, external_data_file_path, tensor_proto.name(), file_offset,
                    raw_data_safe_len);
 }
+#endif
 
 #define CASE_PROTO(X, Y)                                                                                            \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                                              \

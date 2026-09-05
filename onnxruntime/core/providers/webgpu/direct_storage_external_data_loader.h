@@ -55,6 +55,7 @@ class DirectStorageExternalDataLoader final : public IExternalDataLoader {
   ~DirectStorageExternalDataLoader() override;
 
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
+  bool SupportsDataType(int32_t tensor_data_type) const override;
   bool CreatesTensorForDevice(const OrtDevice& target_device) const override;
   bool SupportsPreload() const override;
   common::Status BeginPreload() const override;
