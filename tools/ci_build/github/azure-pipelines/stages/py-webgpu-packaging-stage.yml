@@ -32,7 +32,7 @@ stages:
           PYTHON_VERSION: ${{ python_version }}
           EP_BUILD_FLAGS: --enable_lto --use_webgpu
           ${{ if eq(python_version, '3.11') }}:
-            DIRECT_STORAGE_BUILD_ARGS: --cmake_extra_defines onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE=ON
+            RUN_DIRECT_STORAGE_TESTS: true
 
     - ${{ each python_version in parameters.PythonVersions }}:
       - stage:  MacOS_py_webgpu_Wheels_${{ replace(python_version,'.','_') }}_Build

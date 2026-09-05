@@ -155,7 +155,7 @@ TEST(ExternalDataLoaderManagerTest, FinalizeFailureAbortsEveryLoader) {
   EXPECT_EQ(unfinalized_ptr->abort_count, 1);
 }
 
-TEST(ExternalDataLoaderManagerTest, PreloadSkipsExcludedInitializers) {
+TEST(ExternalDataLoaderManagerTest, PreloadSkipsExcludedInitializersAndFiles) {
   TemporaryDirectory temp_dir{ORT_TSTR("external_data_preload_exclusions")};
   const auto temp_path = std::filesystem::path{temp_dir.Path()};
   const auto data_path = temp_path / ORT_TSTR("included.bin");
@@ -172,17 +172,20 @@ TEST(ExternalDataLoaderManagerTest, PreloadSkipsExcludedInitializers) {
   graph.AddInitializedTensor(
       CreateExternalTensorProto("included", "included.bin"));
   graph.AddInitializedTensor(
-      CreateExternalTensorProto("excluded", "missing.bin"));
+      CreateExternalTensorProto("excluded_by_name", "missing.bin"));
+  graph.AddInitializedTensor(
+      CreateExternalTensorProto("excluded_by_file", "supplied.bin"));
 
   ExternalDataLoaderManager manager;
   auto loader = std::make_unique<PreloadTrackingExternalDataLoader>();
   auto* loader_ptr = loader.get();
   ASSERT_STATUS_OK(manager.RegisterExternalDataLoader(std::move(loader)));
 
-  const std::unordered_set<std::string> excluded_initializer_names{"excluded"};
+  const std::unordered_set<std::string> excluded_initializer_names{"excluded_by_name"};
+  const std::unordered_set<PathString> excluded_external_data_files{ORT_TSTR("supplied.bin")};
   ASSERT_STATUS_OK(manager.PreloadExternalData(
       Env::Default(), temp_path / ORT_TSTR("model.onnx"), graph,
-      excluded_initializer_names, []() { return false; }));
+      excluded_initializer_names, excluded_external_data_files, []() { return false; }));
   EXPECT_EQ(loader_ptr->preloaded_tensor_names,
             std::vector<std::string>{"included"});
 }

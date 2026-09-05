@@ -1225,14 +1225,33 @@ common::Status InferenceSession::StartExternalDataPreload() {
   }
 
   std::unordered_set<std::string> excluded_initializer_names;
-  excluded_initializer_names.reserve(session_options_.initializers_to_share_map.size());
+  size_t excluded_initializer_count = session_options_.initializers_to_share_map.size();
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
+  excluded_initializer_count += session_options_.external_initializers.size();
+#endif
+  excluded_initializer_names.reserve(excluded_initializer_count);
   for (const auto& [name, initializer] : session_options_.initializers_to_share_map) {
     ORT_UNUSED_PARAMETER(initializer);
     excluded_initializer_names.insert(name);
   }
 
+  std::unordered_set<PathString> excluded_external_data_files;
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
+  for (const auto& [name, initializer] : session_options_.external_initializers) {
+    ORT_UNUSED_PARAMETER(initializer);
+    excluded_initializer_names.insert(name);
+  }
+
+  excluded_external_data_files.reserve(session_options_.external_initializer_files_mmap.size());
+  for (const auto& [file_name, file] : session_options_.external_initializer_files_mmap) {
+    ORT_UNUSED_PARAMETER(file);
+    excluded_external_data_files.insert(file_name);
+  }
+#endif
+
   ORT_RETURN_IF_ERROR(external_data_loader_mgr_.PreloadExternalData(
       Env::Default(), model_location_, model_->MainGraph(), excluded_initializer_names,
+      excluded_external_data_files,
       [this]() { return session_options_.IsLoadCancellationFlagSet(); }));
   external_data_preload_started_ = true;
   return Status::OK();
