@@ -11,16 +11,20 @@
 namespace onnxruntime {
 namespace test {
 
+using contrib::cuda::GQAFlashWorkspaceRecipe;
 using contrib::cuda::GQAPreparationRecipe;
 using contrib::cuda::GQAPreparationRoute;
 using contrib::cuda::GQAWorkspaceProblem;
 using contrib::cuda::GQAWorkspaceStatus;
 using contrib::cuda::IsSupportedGQAXqaGroupSize;
 using contrib::cuda::IsSupportedGQAXqaHeadSize;
+using contrib::cuda::GQAXqaWorkspaceRecipe;
 
 static_assert(std::is_trivially_copyable_v<GQAWorkspaceProblem>);
 static_assert(std::is_trivially_copyable_v<GQAPreparationRoute>);
 static_assert(std::is_trivially_copyable_v<GQAPreparationRecipe>);
+static_assert(std::is_trivially_copyable_v<GQAXqaWorkspaceRecipe>);
+static_assert(std::is_trivially_copyable_v<GQAFlashWorkspaceRecipe>);
 static_assert(std::is_trivially_copyable_v<GQAWorkspaceStatus>);
 static_assert(IsSupportedGQAXqaHeadSize(64));
 static_assert(!IsSupportedGQAXqaHeadSize(96));
