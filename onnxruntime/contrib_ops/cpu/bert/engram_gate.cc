@@ -42,6 +42,7 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* key_norm_scale = context->Input<Tensor>(3);
   const Tensor* query_norm_scale = context->Input<Tensor>(4);
+  const Tensor* conv_norm_scale = context->Input<Tensor>(5);
 
   const TensorShape& key_shape = key->Shape();
   ORT_RETURN_IF_NOT(key_shape.NumDimensions() == 4,
@@ -58,8 +59,15 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
                     "key_norm_scale must have shape (hc_mult, hidden_size)");
   ORT_RETURN_IF_NOT(query_norm_scale->Shape() == TensorShape({hc_mult, hidden_size}),
                     "query_norm_scale must have shape (hc_mult, hidden_size)");
+  if (conv_norm_scale != nullptr) {
+    ORT_RETURN_IF_NOT(conv_norm_scale->Shape() == TensorShape({hc_mult, hidden_size}),
+                      "conv_norm_scale must have shape (hc_mult, hidden_size)");
+  }
 
   Tensor* output = context->Output(0, key_shape);
+  Tensor* output_normed = context->OutputCount() > 1 ? context->Output(1, key_shape) : nullptr;
+  ORT_RETURN_IF_NOT(output_normed == nullptr || conv_norm_scale != nullptr,
+                    "conv_norm_scale is required to produce the gated_value_normed output");
   if (key_shape.Size() == 0) {
     return Status::OK();
   }
@@ -69,12 +77,12 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
   const T* value_data = value->Data<T>();
   const T* key_scale_data = key_norm_scale->Data<T>();
   const T* query_scale_data = query_norm_scale->Data<T>();
+  const T* conv_scale_data = conv_norm_scale == nullptr ? nullptr : conv_norm_scale->Data<T>();
   T* output_data = output->MutableData<T>();
+  T* output_normed_data = output_normed == nullptr ? nullptr : output_normed->MutableData<T>();
 
   const int64_t rows = batch_size * sequence_length * hc_mult;
   ThreadPool::TryParallelFor(
-      // Each row makes one fused reduction pass and one output pass over hidden_size, plus a
-      // handful of scalar transcendentals. Costing it as a single pass would over-partition.
       context->GetOperatorThreadPool(), narrow<ptrdiff_t>(rows),
       static_cast<double>(2 * hidden_size + 32),
       [&](ptrdiff_t begin, ptrdiff_t end) {
@@ -84,12 +92,10 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
           const T* key_row = key_data + row * hidden_size;
           const T* query_row = query_data + row * hidden_size;
           const T* value_row = value_data + token * hidden_size;
-
-          // Both inverse RMS factors are scalars, so they can be pulled out of the dot product and
-          // applied afterwards. That folds the two reductions into one pass over key_row and
-          // query_row, which is what the CUDA and WGSL kernels already do.
           const T* key_scale_row = key_scale_data + g * hidden_size;
           const T* query_scale_row = query_scale_data + g * hidden_size;
+          const T* conv_scale_row = conv_scale_data == nullptr ? nullptr : conv_scale_data + g * hidden_size;
+
           float key_sum_sq = 0.0f;
           float query_sum_sq = 0.0f;
           float dot_numerator = 0.0f;
@@ -109,8 +115,21 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
           const float gate = engram_helper::SigmoidFloat(engram_helper::EngramGateArg(dot));
 
           T* output_row = output_data + row * hidden_size;
+          float gated_sum_sq = 0.0f;
           for (int64_t c = 0; c < hidden_size; ++c) {
-            output_row[c] = static_cast<T>(gate * static_cast<float>(value_row[c]));
+            const float gated_value = gate * static_cast<float>(value_row[c]);
+            gated_sum_sq += gated_value * gated_value;
+            output_row[c] = static_cast<T>(gated_value);
+          }
+
+          if (output_normed_data != nullptr) {
+            const float normed_inv_rms =
+                1.0f / std::sqrt(gated_sum_sq / static_cast<float>(hidden_size) + epsilon_);
+            T* output_normed_row = output_normed_data + row * hidden_size;
+            for (int64_t c = 0; c < hidden_size; ++c) {
+              output_normed_row[c] = static_cast<T>(static_cast<float>(output_row[c]) * normed_inv_rms *
+                                                    static_cast<float>(conv_scale_row[c]));
+            }
           }
         }
       });

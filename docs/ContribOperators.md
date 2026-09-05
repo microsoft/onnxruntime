@@ -1811,8 +1811,10 @@ This version of the operator has been available since version 1 of the 'com.micr
   gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
   dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
   
-  The output is gate * value, broadcast across the hyper-connections. The final Engram residual
-  value + short_conv(value) is then expressed with RMSNorm, CausalConvWithState and Add.
+  The output is gate * value, broadcast across the hyper-connections. The optional gated_value_normed
+  output applies RMSNorm to gate * value with conv_norm_scale, which can feed a following
+  CausalConvWithState. The final Engram residual value + short_conv(value) is then expressed with
+  RMSNorm, CausalConvWithState and Add.
 
 #### Version
 
@@ -1825,7 +1827,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Epsilon used by both RMS normalization steps. Default is 1e-5.</dd>
 </dl>
 
-#### Inputs
+#### Inputs (5 - 6)
 
 <dl>
 <dt><tt>key</tt> : T</dt>
@@ -1838,13 +1840,17 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>RMSNorm scale for keys with shape (hc_mult, hidden_size).</dd>
 <dt><tt>query_norm_scale</tt> : T</dt>
 <dd>RMSNorm scale for queries with shape (hc_mult, hidden_size).</dd>
+<dt><tt>conv_norm_scale</tt> (optional) : T</dt>
+<dd>Optional RMSNorm scale for the gated value, with shape (hc_mult, hidden_size). Required when gated_value_normed is requested.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 2)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
+<dt><tt>gated_value_normed</tt> (optional) : T</dt>
+<dd>Optional RMS-normalized gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).</dd>
 </dl>
 
 #### Type Constraints
@@ -2323,15 +2329,20 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.GatedRMSNorm"></a><a name="com.microsoft.gatedrmsnorm">**com.microsoft.GatedRMSNorm**</a>
 
-  Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
+  Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs, and by the
+  Qwen4-Exp text QSA/PLE gated norms:
   
-    Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
+    Y = X * rsqrt(mean(X^2) + epsilon) * scale * activation(gate)
+  
+  where `activation` is SiLU by default (`Y = X * rsqrt(mean(X^2) + epsilon) * scale *
+  gate * Sigmoid(gate)`) or plain Sigmoid when the `activation` attribute is set to
+  `"sigmoid"` (`Y = X * rsqrt(mean(X^2) + epsilon) * scale * Sigmoid(gate)`).
   
   The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
   length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
   per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
-  All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
-  the reference implementation, so this replaces the exported
+  All arithmetic including the activation is done in float32 regardless of the tensor type,
+  matching the reference implementation, so this replaces the exported
   SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
   single launch.
 
@@ -2342,6 +2353,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Gate activation function. One of: 'silu', 'sigmoid'. Default is 'silu', which preserves the original Y = ... * gate * Sigmoid(gate) behavior.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon added to the mean of squares before the reciprocal square root.</dd>
 </dl>
@@ -4280,12 +4293,21 @@ This version of the operator has been available since version 1 of the 'com.micr
   across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
   those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
   (batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
-  Positions before the start of the whole sequence use pad_id. Running the op once over a full sequence
-  and running it over consecutive chunks while threading present_ids into past_ids produce identical
-  hash ids. When past_ids is omitted the missing history is pad_id, which matches a fresh sequence.
-  past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
-  only when the whole operator call is unconditionally committed; a caller that may select a prefix or
-  roll back must preserve past_ids.
+  Positions before the start of the whole sequence use pad_id, or eos_token_id when it is provided.
+  Running the op once over a full sequence and running it over consecutive chunks while threading
+  present_ids into past_ids produce identical hash ids. When past_ids is omitted the missing history is
+  pad_id, or eos_token_id when it is provided.
+  
+  Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
+  
+  - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
+    boundaries: any shifted position at or before the most recent EOS strictly before the current
+    position is replaced with eos_token_id instead of the real token.
+  - segment_ids, when provided, additionally resets causal history at any position whose segment id
+    differs from the immediately preceding position's segment id within input_ids. Segment boundaries
+    are not checked against past_ids history.
+  - head_offsets, when provided, adds a fixed per-output-head offset after the modulo by the head's
+    vocabulary size, letting all heads across all n-gram orders share one flat embedding table.
 
 #### Version
 
@@ -4300,19 +4322,27 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of hash heads emitted for each n-gram order.</dd>
 <dt><tt>pad_id</tt> : int (required)</dt>
 <dd>Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.</dd>
+<dt><tt>reset_on_eos</tt> : int</dt>
+<dd>When non-zero and the eos_token_id input is provided, reset causal n-gram history at EOS boundaries as described in the op doc. Default is 0 (disabled), which preserves the original pad_id-only behavior.</dd>
 </dl>
 
-#### Inputs (3 - 4)
+#### Inputs (3 - 7)
 
 <dl>
 <dt><tt>input_ids</tt> : M</dt>
 <dd>Compressed tokenizer ids with shape (batch_size, sequence_length).</dd>
 <dt><tt>multipliers</tt> : M</dt>
-<dd>Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any value is accepted.</dd>
+<dd>Per-shift hash multipliers with shape at least (max_ngram_size). Conventionally odd, but any value is accepted.</dd>
 <dt><tt>vocab_sizes</tt> : M</dt>
 <dd>Per-output-head vocabulary sizes, conventionally prime, with shape ((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. The CPU implementation rejects a non-positive entry; GPU implementations guard the modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.</dd>
 <dt><tt>past_ids</tt> (optional) : M</dt>
-<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id. If omitted the history is pad_id.</dd>
+<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id. If omitted the history is pad_id, or eos_token_id when provided.</dd>
+<dt><tt>head_offsets</tt> (optional) : M</dt>
+<dd>Optional per-output-head additive offset with shape ((max_ngram_size - 1) * n_head_per_ngram), added after the modulo.</dd>
+<dt><tt>eos_token_id</tt> (optional) : M</dt>
+<dd>Optional scalar end-of-sequence token id, same type as input_ids. Required for reset_on_eos to take effect and for EOS-based substitution of unavailable prior context; see the op doc.</dd>
+<dt><tt>segment_ids</tt> (optional) : tensor(int32)</dt>
+<dd>Optional per-token segment id with shape (batch_size, sequence_length), used to reset causal history at packed-sequence boundaries within input_ids.</dd>
 </dl>
 
 #### Outputs (1 - 2)

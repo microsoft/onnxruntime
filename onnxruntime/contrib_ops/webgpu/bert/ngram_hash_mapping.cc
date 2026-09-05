@@ -32,35 +32,83 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_past_ids_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* head_offsets = nullptr;
+  if (has_head_offsets_) {
+    head_offsets = &shader.AddInput("head_offsets", ShaderUsage::UseUniform);
+  }
+  const ShaderVariableHelper* eos_token_id = nullptr;
+  if (has_eos_token_id_) {
+    eos_token_id = &shader.AddInput("eos_token_id", ShaderUsage::UseUniform);
+  }
+  const ShaderVariableHelper* segment_ids = nullptr;
+  if (has_segment_ids_) {
+    segment_ids = &shader.AddInput("segment_ids", ShaderUsage::UseUniform);
+  }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation() << engram_helper::kPositiveModWgsl;
+  shader.AdditionalImplementation()
+      << "fn combined_value(b: i32, history_length: i32, eos_value: i32, idx: i32) -> i32 {\n"
+      << "  if (idx < history_length) {\n";
+  if (has_past_ids_) {
+    shader.AdditionalImplementation()
+        << "    return " << past_ids->GetByOffset("b * history_length + idx") << ";\n";
+  } else {
+    shader.AdditionalImplementation() << "    return eos_value;\n";
+  }
+  shader.AdditionalImplementation()
+      << "  }\n"
+      << "  return " << input_ids.GetByOffset("b * i32(uniforms.sequence_length) + idx - history_length") << ";\n"
+      << "}\n";
 
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.total")
+      << "  let history_length = i32(uniforms.max_ngram_size - 1u);\n"
+      << "  let sequence_length = i32(uniforms.sequence_length);\n";
+  if (has_eos_token_id_) {
+    shader.MainFunctionBody() << "  let eos_value = " << eos_token_id->GetByOffset("0") << ";\n";
+  } else {
+    shader.MainFunctionBody() << "  let eos_value = uniforms.pad_id;\n";
+  }
+  const bool do_reset = has_eos_token_id_ && reset_on_eos_;
+
+  shader.MainFunctionBody()
       << "  let num_heads = (uniforms.max_ngram_size - 1u) * uniforms.n_head_per_ngram;\n"
-      << "  let t = global_idx % uniforms.sequence_length;\n"
-      << "  let b = global_idx / uniforms.sequence_length;\n"
-      << "  let input_base = b * uniforms.sequence_length;\n"
-      << "  let output_base = global_idx * num_heads;\n"
-      << "  let state_length = uniforms.max_ngram_size - 1u;\n"
-      << "  let past_base = b * state_length;\n"
+      << "  let t = i32(global_idx % uniforms.sequence_length);\n"
+      << "  let b = i32(global_idx / uniforms.sequence_length);\n"
+      << "  let input_base = b * sequence_length;\n"
+      << "  let output_base = i32(global_idx) * i32(num_heads);\n"
+      << "  let idx = history_length + t;\n"
+      << "  var last_reset = -(history_length + 2);\n"
+      << "  var j = idx - 1;\n"
+      << "  loop {\n"
+      << "    if (j < idx - history_length || j < 0) { break; }\n"
+      << "    var boundary = false;\n";
+  if (do_reset) {
+    shader.MainFunctionBody() << "    boundary = combined_value(b, history_length, eos_value, j) == eos_value;\n";
+  }
+  if (has_segment_ids_) {
+    shader.MainFunctionBody()
+        << "    if (!boundary && j >= history_length) {\n"
+        << "      let tj = j - history_length;\n"
+        << "      if (" << segment_ids->GetByOffset("input_base + tj") << " != "
+        << segment_ids->GetByOffset("input_base + tj + 1") << ") {\n"
+        << "        boundary = true;\n"
+        << "      }\n"
+        << "    }\n";
+  }
+  shader.MainFunctionBody()
+      << "    if (boundary) { last_reset = j; break; }\n"
+      << "    j -= 1;\n"
+      << "  }\n"
       << "  for (var n = 2u; n <= uniforms.max_ngram_size; n++) {\n"
       << "    var mix = 0i;\n"
       << "    for (var k = 0u; k < n; k++) {\n"
-      << "      var token = uniforms.pad_id;\n"
-      << "      if (t >= k) {\n"
-      << "        token = " << input_ids.GetByOffset("input_base + t - k") << ";\n"
-      << "      }\n";
-  if (has_past_ids_) {
-    // past_ids is right-aligned, so position -1 is its last slot. k <= max_ngram_size - 1 keeps the
-    // slot inside the window, so no additional bounds check is needed here.
-    shader.MainFunctionBody()
-        << "      if (t < k) {\n"
-        << "        token = " << past_ids->GetByOffset("past_base + state_length + t - k") << ";\n"
-        << "      }\n";
-  }
-  shader.MainFunctionBody()
+      << "      let source = idx - i32(k);\n"
+      << "      var token = eos_value;\n"
+      << "      if (last_reset < source) {\n"
+      << "        token = combined_value(b, history_length, eos_value, source);\n"
+      << "      }\n"
       << "      let product = token * " << multipliers.GetByOffset("k") << ";\n"
       << "      if (k == 0u) { mix = product; } else { mix = mix ^ product; }\n"
       << "    }\n"
@@ -71,8 +119,12 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "      var result = 0i;\n"
       << "      if (mod_value > 0i) {\n"
       << "        result = positive_mod(mix, mod_value);\n"
-      << "      }\n"
-      << "      " << output.SetByOffset("output_base + out_h", "result") << "\n"
+      << "      }\n";
+  if (has_head_offsets_) {
+    shader.MainFunctionBody() << "      result = result + " << head_offsets->GetByOffset("out_h") << ";\n";
+  }
+  shader.MainFunctionBody()
+      << "      " << output.SetByOffset("output_base + i32(out_h)", "result") << "\n"
       << "    }\n"
       << "  }\n";
   return Status::OK();
@@ -87,26 +139,25 @@ Status NGramPresentIdsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_past_ids_ && !past_aliases_present_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* eos_token_id = nullptr;
+  if (has_eos_token_id_) {
+    eos_token_id = &shader.AddInput("eos_token_id", ShaderUsage::UseUniform);
+  }
   const auto& present_ids = shader.AddOutput("present_ids", ShaderUsage::UseUniform);
-  // When past_ids aliases present_ids the history lives in the output buffer itself, and reading it
-  // through the read_write binding is the only spec-legal way to reach it.
   const ShaderVariableHelper* history = past_aliases_present_ ? &present_ids : past_ids;
 
-  // past_ids and present_ids may be the same buffer, which is what threading present_ids straight
-  // back into past_ids produces; `history` above then points at the output binding. Slot `slot`
-  // writes index `slot` and reads index `slot + sequence_length`, so the read and write ranges
-  // overlap and must be separated. One workgroup owns one batch row and walks it in ascending
-  // workgroup-sized chunks: a barrier separates the chunk's reads from its writes, and a chunk only
-  // writes indices strictly below the read indices of every later chunk.
+  if (has_eos_token_id_) {
+    shader.MainFunctionBody() << "  let missing_history_value = " << eos_token_id->GetByOffset("0") << ";\n";
+  } else {
+    shader.MainFunctionBody() << "  let missing_history_value = uniforms.pad_id;\n";
+  }
   shader.MainFunctionBody()
       << "  let b = workgroup_idx;\n"
-      // NormalizeDispatchGroupSize reshapes an oversized 1-D dispatch to a 2-D grid that rounds up,
-      // so a large batch_size can produce workgroups past the last row.
       << "  if (b >= uniforms.batch_size) { return; }\n"
       << "  let row_base = b * uniforms.state_length;\n"
       << "  for (var chunk = 0u; chunk < uniforms.state_length; chunk += workgroup_size_x) {\n"
       << "    let slot = chunk + local_idx;\n"
-      << "    var token = uniforms.pad_id;\n"
+      << "    var token = missing_history_value;\n"
       << "    if (slot < uniforms.state_length) {\n";
   if (has_input_ids_) {
     shader.MainFunctionBody()
@@ -143,6 +194,7 @@ NGramHashMapping::NGramHashMapping(const OpKernelInfo& info) : WebGpuKernel(info
   ORT_ENFORCE(n_head_per_ngram_ >= 1, "n_head_per_ngram must be positive");
   ORT_ENFORCE(pad_id_ >= std::numeric_limits<int32_t>::min() && pad_id_ <= std::numeric_limits<int32_t>::max(),
               "WebGPU NGramHashMapping only supports int32 ids");
+  reset_on_eos_ = info.GetAttrOrDefault<int64_t>("reset_on_eos", 0);
 }
 
 Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
@@ -150,37 +202,62 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
   const auto* multipliers = context.Input(1);
   const auto* vocab_sizes = context.Input(2);
   const auto* past_ids = context.Input(3);
+  const auto* head_offsets = context.Input(4);
+  const auto* eos_token_id = context.Input(5);
+  const auto* segment_ids = context.Input(6);
   const auto& input_shape = input_ids->Shape();
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "input_ids must have rank 2");
-  ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 && multipliers->Shape()[0] == max_ngram_size_,
+  ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 && multipliers->Shape()[0] >= max_ngram_size_,
                     "multipliers must have shape (max_ngram_size)");
   const int64_t num_heads = (max_ngram_size_ - 1) * n_head_per_ngram_;
   ORT_RETURN_IF_NOT(vocab_sizes->Shape() == TensorShape({num_heads}),
                     "vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
+
   const int64_t batch_size = input_shape[0];
   const int64_t sequence_length = input_shape[1];
-  // An n-gram window reaches this many positions before the current token.
   const int64_t state_length = max_ngram_size_ - 1;
+
   if (past_ids != nullptr) {
     ORT_RETURN_IF_NOT(past_ids->Shape() == TensorShape({batch_size, state_length}),
                       "past_ids must have shape (batch_size, max_ngram_size - 1)");
   }
+  if (head_offsets != nullptr) {
+    ORT_RETURN_IF_NOT(head_offsets->Shape() == TensorShape({num_heads}),
+                      "head_offsets must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
+  }
+  if (eos_token_id != nullptr) {
+    ORT_RETURN_IF_NOT(eos_token_id->Shape().Size() == 1, "eos_token_id must be a scalar");
+  }
+  if (segment_ids != nullptr) {
+    ORT_RETURN_IF_NOT(segment_ids->Shape() == TensorShape({batch_size, sequence_length}),
+                      "segment_ids must have shape (batch_size, sequence_length)");
+  }
   const bool has_past_ids = past_ids != nullptr;
+  const bool has_eos_token_id = eos_token_id != nullptr;
 
   auto* output = context.Output(0, TensorShape({batch_size, sequence_length, num_heads}));
   auto* present_ids = context.Output(1, TensorShape({batch_size, state_length}));
 
-  // The hash program reads past_ids and the present program writes present_ids, so when the caller
-  // aliases the two the hash program must be queued first.
   const int64_t total = input_shape.Size();
   if (total > 0) {
-    NGramHashMappingProgram program{has_past_ids};
-    program.CacheHint(has_past_ids)
+    NGramHashMappingProgram program{has_past_ids, head_offsets != nullptr, has_eos_token_id,
+                                    segment_ids != nullptr, reset_on_eos_ != 0};
+    program.CacheHint(has_past_ids, head_offsets != nullptr, has_eos_token_id,
+                      segment_ids != nullptr, reset_on_eos_ != 0)
         .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
                     {multipliers, ProgramTensorMetadataDependency::None},
                     {vocab_sizes, ProgramTensorMetadataDependency::None}});
     if (has_past_ids) {
       program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
+    }
+    if (head_offsets != nullptr) {
+      program.AddInput({head_offsets, ProgramTensorMetadataDependency::None});
+    }
+    if (has_eos_token_id) {
+      program.AddInput({eos_token_id, ProgramTensorMetadataDependency::None});
+    }
+    if (segment_ids != nullptr) {
+      program.AddInput({segment_ids, ProgramTensorMetadataDependency::None});
     }
     program.AddOutput({output, ProgramTensorMetadataDependency::None})
         .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
@@ -193,23 +270,19 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
   }
 
   if (present_ids != nullptr && batch_size * state_length > 0) {
-    // WebGPU rejects zero-sized storage buffer bindings, so an empty input_ids tensor must not be
-    // bound. When sequence_length == 0 every present slot comes from history (or pad_id), so the
-    // input_ids branch of the shader is dead anyway.
     const bool has_input_ids = sequence_length > 0;
-    // WebGPU rejects a bind group that exposes one buffer as both read-only and read-write storage
-    // in the same compute pass, so an aliased past_ids must not be bound a second time.
     const bool past_aliases_present = has_past_ids && past_ids->DataRaw() == present_ids->DataRaw();
-    NGramPresentIdsProgram present_program{has_input_ids, has_past_ids, past_aliases_present};
-    present_program.CacheHint(has_input_ids, has_past_ids, past_aliases_present);
+    NGramPresentIdsProgram present_program{has_input_ids, has_past_ids, has_eos_token_id, past_aliases_present};
+    present_program.CacheHint(has_input_ids, has_past_ids, has_eos_token_id, past_aliases_present);
     if (has_input_ids) {
       present_program.AddInput({input_ids, ProgramTensorMetadataDependency::None});
     }
     if (has_past_ids && !past_aliases_present) {
       present_program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
     }
-    // One workgroup per batch row, so the shader can use a workgroup barrier to order its reads
-    // against its writes.
+    if (has_eos_token_id) {
+      present_program.AddInput({eos_token_id, ProgramTensorMetadataDependency::None});
+    }
     present_program.AddOutput({present_ids, ProgramTensorMetadataDependency::None})
         .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch_size))
         .AddUniformVariables({{onnxruntime::narrow<uint32_t>(batch_size)},
