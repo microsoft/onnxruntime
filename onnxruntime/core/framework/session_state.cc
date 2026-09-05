@@ -3,9 +3,10 @@
 
 #include "core/framework/session_state.h"
 
+#include <atomic>
+#include <mutex>
 #include <sstream>
 
-#include <mutex>
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
@@ -478,240 +479,425 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 Status SessionState::PrepackConstantInitializedTensors(
     InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
-  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
-                                        bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
-    for (auto& node : GetGraphViewer().Nodes()) {
-      if (sess_options_.IsLoadCancellationFlagSet()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
-                               "Weight pre-packing was canceled due to user request.");
-      }
-      auto kernel = GetMutableKernel(node.Index());
-      int input_idx = 0;
-      for (auto& input_def : node.InputDefs()) {
-        if (input_def->Exists()) {
-          const std::string& input_name = input_def->Name();
-          SessionState* st = this;
-          auto* prepacked_for_graph = &graph_.GetPrepacked();
-          // subgraph can use the value from outer scope,
-          // so it needs to check if current node uses constant initialized tensor from current and outer graphs
-          do {
-            int ort_value_idx;
-            if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
-              std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
+  // Guards the bookkeeping that mutates state shared across nodes (the constant-initializer/
+  // use-count maps, the per-graph PrepackedWeightsForGraph container, and the prepack counter)
+  // when the per-node work below runs concurrently across the intra-op thread pool. It is only
+  // acquired on the (default) path that doesn't use cross-session pre-packed-weight sharing --
+  // that path is already fully serialized by the mutex_ lock further down. kernel->PrePack()
+  // itself -- the expensive part: reading a (possibly mmap'd, multi-GB) constant tensor and
+  // repacking it -- runs unguarded and can proceed concurrently across nodes, since it only
+  // touches that node's own kernel instance and a node-local scratch PrePackedWeights object.
+  std::mutex commit_mutex;
 
-              if (constant_initialized_tensors.count(ort_value_idx)) {
-                bool is_packed = false;
-                const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
+  // On the parallel path, erasing a fully-consumed constant initializer from
+  // SessionState::constant_initialized_tensors_ while another node's PrePack() concurrently reads that same
+  // map (e.g. via OpKernelInfo::TryGetConstantInput(), which is unguarded) is undefined behavior even though
+  // the two operations target different keys. Defer the actual erase() calls until every parallel task has
+  // joined below, where they can run single-threaded.
+  InlinedVector<std::pair<SessionState*, int>> pending_erasures;
 
-                auto iter = initializers_to_share_map.find(input_name);
-                bool is_shared_initializer = (iter != initializers_to_share_map.end());
+  auto process_node = [this, &constant_initializers_use_count, &initializers_to_share_map, &commit_mutex,
+                       &pending_erasures](
+                          const Node& node, bool should_cache_prepacked_weights_for_shared_initializers,
+                          bool guard_bookkeeping) -> Status {
+    auto kernel = GetMutableKernel(node.Index());
+    int input_idx = 0;
+    for (auto& input_def : node.InputDefs()) {
+      if (input_def->Exists()) {
+        const std::string& input_name = input_def->Name();
+        SessionState* st = this;
+        auto* prepacked_for_graph = &graph_.GetPrepacked();
+        // subgraph can use the value from outer scope,
+        // so it needs to check if current node uses constant initialized tensor from current and outer graphs
+        do {
+          int ort_value_idx;
+          if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
+            std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
 
-                // CPU EP only. An initializer joins the shared pre-packed container either when it was
-                // registered via OrtApi::AddInitializer (is_shared_initializer) or when a graph transformer
-                // tagged this synthesized initializer with a sharing identity. Only the tag's *presence*
-                // matters here: it is the enrollment signal. The container key below is the packed-bytes
-                // hash, never the tag value (see the rationale at the key computation).
-                const bool enroll_tagged_initializer =
-                    (st->graph_.GetSharedPrepackInitializerId(input_name) != nullptr);
-                if ((is_shared_initializer || enroll_tagged_initializer) &&
-                    should_cache_prepacked_weights_for_shared_initializers &&
-                    node.GetExecutionProviderType() == kCpuExecutionProvider) {
-                  // caching of pre-packed weights' turned ON
+            OrtValue const_initialized_value;
+            bool has_const_initializer = false;
+            {
+              std::unique_lock<std::mutex> initializer_lock(commit_mutex, std::defer_lock);
+              if (guard_bookkeeping) {
+                initializer_lock.lock();
+              }
 
-                  AllocatorPtr allocator_for_caching = prepacked_weights_container_->GetOrCreateAllocator(CPU);
-                  ORT_ENFORCE(allocator_for_caching.get() != nullptr);
+              const auto initializer_it = constant_initialized_tensors.find(ort_value_idx);
+              if (initializer_it != constant_initialized_tensors.end()) {
+                // Keep the tensor alive while PrePack runs. Another node may consume the final use
+                // and erase the map entry as soon as the bookkeeping lock is released.
+                const_initialized_value = initializer_it->second;
+                has_const_initializer = true;
+              }
+            }
 
-                  PrePackedWeights weights_to_be_filled_in;
-                  // The reason we invoke PrePack() before looking into the container for any pre-packed weight
-                  // cached by another instance of the same op_type (for the same constant initializer) is because
-                  // to truly know if we can use a cached pre-packed weight, we would have to compare the cached
-                  // pre-packed  weight with the pre-packed weight generated by this instance of the same op_type
-                  // because other static properties of the node like node attributes could play a role in the
-                  // pre-packed weights' contents.
-                  ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, allocator_for_caching,
-                                                      is_packed,
-                                                      &weights_to_be_filled_in));
+            if (has_const_initializer) {
+              bool is_packed = false;
+              const Tensor& const_initialized_tensor = const_initialized_value.Get<Tensor>();
 
-                  if (is_packed) {
-                    // BUG CHECK: Ensure that a kernel either filled in the pre-packed weights
-                    // to be cached, or explicitly marked the packed weights as kernel-owned.
-                    ORT_RETURN_IF_NOT(!weights_to_be_filled_in.buffers_.empty() ||
-                                          weights_to_be_filled_in.has_kernel_owned_packed_weights_,
-                                      "The kernel corresponding to the node ", node.Name(),
-                                      " doesn't have an implementation that can cache computed pre-packed weights");
-                  }
+              auto iter = initializers_to_share_map.find(input_name);
+              bool is_shared_initializer = (iter != initializers_to_share_map.end());
 
-                  if (is_packed && !weights_to_be_filled_in.has_kernel_owned_packed_weights_) {
-                    const auto& op_type = node.OpType();
+              // CPU EP only. An initializer joins the shared pre-packed container either when it was
+              // registered via OrtApi::AddInitializer (is_shared_initializer) or when a graph transformer
+              // tagged this synthesized initializer with a sharing identity. Only the tag's *presence*
+              // matters here: it is the enrollment signal. The container key below is the packed-bytes
+              // hash, never the tag value (see the rationale at the key computation).
+              const bool enroll_tagged_initializer =
+                  (st->graph_.GetSharedPrepackInitializerId(input_name) != nullptr);
 
-                    // Sanity check
-                    // TODO: Check if some version of the ONNX IR allows op_type to be empty
-                    ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
+              // Deferred lock covering the bookkeeping below. Only actually acquired when
+              // guard_bookkeeping is set (parallel path, no cross-session sharing); left unowned
+              // (no-op) on the sequential/cross-session-sharing paths.
+              std::unique_lock<std::mutex> bookkeeping_lock(commit_mutex, std::defer_lock);
 
-                    // Key by the packed-bytes hash (op_type + a hash of the packed buffer), exactly as the
-                    // AddInitializer path does, so only byte-identical packed buffers are ever shared. The
-                    // tag is solely the enrollment signal that opted this fusion-generated initializer into
-                    // the container; it must NOT be used as the key, because it is derived from the
-                    // *unpacked* initializer content and so cannot distinguish packings that differ by node
-                    // options/attributes that change the packed layout (e.g. mlas.use_lut_gemm or a CPU
-                    // backend-selector difference). Two sessions that share a container but differ in such an
-                    // option compute the same tag yet produce different packed bytes; keying by the packed
-                    // bytes gives them distinct keys and prevents reusing an incompatible buffer
-                    // (wrong results/crash).
-                    const std::string prepacked_weights_container_key =
-                        GenerateKeyForPrepackedWeightsMap(op_type, weights_to_be_filled_in);
+              if ((is_shared_initializer || enroll_tagged_initializer) &&
+                  should_cache_prepacked_weights_for_shared_initializers &&
+                  node.GetExecutionProviderType() == kCpuExecutionProvider) {
+                // caching of pre-packed weights' turned ON
 
-                    bool container_contains_packed_weight = prepacked_weights_container_->HasWeight(
+                AllocatorPtr allocator_for_caching = prepacked_weights_container_->GetOrCreateAllocator(CPU);
+                ORT_ENFORCE(allocator_for_caching.get() != nullptr);
+
+                PrePackedWeights weights_to_be_filled_in;
+                // The reason we invoke PrePack() before looking into the container for any pre-packed weight
+                // cached by another instance of the same op_type (for the same constant initializer) is because
+                // to truly know if we can use a cached pre-packed weight, we would have to compare the cached
+                // pre-packed  weight with the pre-packed weight generated by this instance of the same op_type
+                // because other static properties of the node like node attributes could play a role in the
+                // pre-packed weights' contents.
+                ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, allocator_for_caching,
+                                                    is_packed,
+                                                    &weights_to_be_filled_in));
+
+                if (is_packed) {
+                  // BUG CHECK: Ensure that a kernel either filled in the pre-packed weights
+                  // to be cached, or explicitly marked the packed weights as kernel-owned.
+                  ORT_RETURN_IF_NOT(!weights_to_be_filled_in.buffers_.empty() ||
+                                        weights_to_be_filled_in.has_kernel_owned_packed_weights_,
+                                    "The kernel corresponding to the node ", node.Name(),
+                                    " doesn't have an implementation that can cache computed pre-packed weights");
+                }
+
+                if (is_packed && !weights_to_be_filled_in.has_kernel_owned_packed_weights_) {
+                  const auto& op_type = node.OpType();
+
+                  // Sanity check
+                  // TODO: Check if some version of the ONNX IR allows op_type to be empty
+                  ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
+
+                  // Key by the packed-bytes hash (op_type + a hash of the packed buffer), exactly as the
+                  // AddInitializer path does, so only byte-identical packed buffers are ever shared. The
+                  // tag is solely the enrollment signal that opted this fusion-generated initializer into
+                  // the container; it must NOT be used as the key, because it is derived from the
+                  // *unpacked* initializer content and so cannot distinguish packings that differ by node
+                  // options/attributes that change the packed layout (e.g. mlas.use_lut_gemm or a CPU
+                  // backend-selector difference). Two sessions that share a container but differ in such an
+                  // option compute the same tag yet produce different packed bytes; keying by the packed
+                  // bytes gives them distinct keys and prevents reusing an incompatible buffer
+                  // (wrong results/crash).
+                  const std::string prepacked_weights_container_key =
+                      GenerateKeyForPrepackedWeightsMap(op_type, weights_to_be_filled_in);
+
+                  bool container_contains_packed_weight = prepacked_weights_container_->HasWeight(
+                      prepacked_weights_container_key);
+
+                  if (container_contains_packed_weight) {
+                    LOGS(logger_, INFO) << "Using cached version of pre-packed weight for constant initializer: "
+                                        << input_name
+                                        << " used in the node: " << node.Name() << " which is of op type: "
+                                        << node.OpType();
+
+                    const auto& prepacked_shared = prepacked_weights_container_->GetWeight(
                         prepacked_weights_container_key);
+                    ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
+                                                                        prepacked_shared,
+                                                                        node.Name()));
 
-                    if (container_contains_packed_weight) {
-                      LOGS(logger_, INFO) << "Using cached version of pre-packed weight for constant initializer: "
-                                          << input_name
-                                          << " used in the node: " << node.Name() << " which is of op type: "
-                                          << node.OpType();
+                    ++used_shared_pre_packed_weights_counter_;
 
-                      const auto& prepacked_shared = prepacked_weights_container_->GetWeight(
-                          prepacked_weights_container_key);
-                      ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
-                                                                          prepacked_shared,
-                                                                          node.Name()));
+                    // Write references to what is stored in the shared container
+                    // and release memory mapped entries this container may have loaded from disk
+                    prepacked_for_graph->DiscardAndReplaceWithReferenceIfSaving(
+                        input_name, prepacked_weights_container_key, prepacked_shared);
 
-                      ++used_shared_pre_packed_weights_counter_;
+                  } else {
+                    // container doesn't contain the pre-packed weight - so write into it for sharing across
+                    // kernel instances
 
-                      // Write references to what is stored in the shared container
-                      // and release memory mapped entries this container may have loaded from disk
-                      prepacked_for_graph->DiscardAndReplaceWithReferenceIfSaving(
-                          input_name, prepacked_weights_container_key, prepacked_shared);
+                    // Check if we loaded it from disk, then put it into the shared container so
+                    // everybody can share the same memory mapped entry
+                    // the shared container takes ownership of the memory mapped entries
 
-                    } else {
-                      // container doesn't contain the pre-packed weight - so write into it for sharing across
-                      // kernel instances
-
-                      // Check if we loaded it from disk, then put it into the shared container so
-                      // everybody can share the same memory mapped entry
-                      // the shared container takes ownership of the memory mapped entries
-
-                      // The next line replaces the existing entry with references to it
-                      // and returns the container that holds the memory mapped entries
-                      // so we can transfer it to shared container.
-                      // if there is not an entry, we replace it with references to weights_to_be_filled_in
-                      // in saving mode and return std::nullopt
-                      auto prepacked_from_disk = prepacked_for_graph->ReplaceWithReferenceIfSaving(
-                          input_name,
-                          prepacked_weights_container_key,
-                          weights_to_be_filled_in);
-
-                      if (prepacked_from_disk.has_value()) {
-                        weights_to_be_filled_in = std::move(*prepacked_from_disk);
-                      }
-
-                      if (!prepacked_weights_container_->WriteWeight(prepacked_weights_container_key,
-                                                                     std::move(weights_to_be_filled_in))) {
-                        return ORT_MAKE_STATUS(
-                            ONNXRUNTIME, FAIL,
-                            "Unable to write the provided PrePackedWeights instance into the container");
-                      }
-
-                      const auto& shared_prepacked = prepacked_weights_container_->GetWeight(
-                          prepacked_weights_container_key);
-                      ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
-                                                                          shared_prepacked,
-                                                                          node.Name()));
-                    }
-                  }
-
-                } else {
-                  // cross session caching of pre-packed weights' turned OFF
-                  // we use serialization container to share weights loaded from disk
-                  // within this session. Or if the weight is not present on disk,
-                  // we store the newly minted pre-packed data.
-
-                  AllocatorPtr session_initializer_alloc = GetInitializerAllocator(
-                      kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
-                  // A plugin EP registered as a separate library may not have an initializer
-                  // allocator registered under the kernel's device key, so the lookup above can
-                  // return null. Fall back to the kernel's own default-memory allocator (resolved
-                  // through the EP), which is always valid. This keeps PrePack implementations from
-                  // each having to special-case a null allocator at the library boundary.
-                  if (!session_initializer_alloc) {
-                    session_initializer_alloc = kernel->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
-                  }
-                  PrePackedWeights weights_to_be_filled_in;
-                  // The reason we invoke PrePack() before looking into the container for any pre-packed weight
-                  // cached by another instance of the same op_type (for the same constant initializer) is because
-                  // to truly know if we can use a cached pre-packed weight, we would have to compare the cached
-                  // pre-packed weight with the pre-packed weight generated by this instance of the same op_type because
-                  // other static properties of the node like node attributes could play a role in the pre-packed
-                  // weights' contents.
-                  ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, session_initializer_alloc,
-                                                      is_packed,
-                                                      &weights_to_be_filled_in));
-
-                  // Some kernels (non-CPU related kernels) do not share their pre-packed results
-                  // even though they set is_packed = true so we leave it up to them.
-                  // We can change their behavior if we wish do so in a separate PR
-                  if (is_packed && !weights_to_be_filled_in.buffers_.empty()) {
-                    const auto& op_type = node.OpType();
-                    const std::string prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(
-                        op_type,
+                    // The next line replaces the existing entry with references to it
+                    // and returns the container that holds the memory mapped entries
+                    // so we can transfer it to shared container.
+                    // if there is not an entry, we replace it with references to weights_to_be_filled_in
+                    // in saving mode and return std::nullopt
+                    auto prepacked_from_disk = prepacked_for_graph->ReplaceWithReferenceIfSaving(
+                        input_name,
+                        prepacked_weights_container_key,
                         weights_to_be_filled_in);
 
-                    // See if we can use pre-packed data from disk
-                    const auto* weights_to_use = prepacked_for_graph->GetPrepackedWeights(
-                        prepacked_weights_container_key);
-
-                    if (weights_to_use == nullptr) {
-                      // In this case pre-packed container owns the data
-                      prepacked_for_graph->WritePackedMaybeForSave(input_name, prepacked_weights_container_key,
-                                                                   std::move(weights_to_be_filled_in));
-                      weights_to_use = prepacked_for_graph->GetPrepackedWeights(prepacked_weights_container_key);
-                      assert(weights_to_use != nullptr);
+                    if (prepacked_from_disk.has_value()) {
+                      weights_to_be_filled_in = std::move(*prepacked_from_disk);
                     }
 
+                    if (!prepacked_weights_container_->WriteWeight(prepacked_weights_container_key,
+                                                                   std::move(weights_to_be_filled_in))) {
+                      return ORT_MAKE_STATUS(
+                          ONNXRUNTIME, FAIL,
+                          "Unable to write the provided PrePackedWeights instance into the container");
+                    }
+
+                    const auto& shared_prepacked = prepacked_weights_container_->GetWeight(
+                        prepacked_weights_container_key);
                     ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
-                                                                        *weights_to_use,
+                                                                        shared_prepacked,
                                                                         node.Name()));
                   }
                 }
 
-                if (is_packed) {
-                  ++number_of_prepacks_counter_;
+              } else {
+                // cross session caching of pre-packed weights' turned OFF
+                // we use serialization container to share weights loaded from disk
+                // within this session. Or if the weight is not present on disk,
+                // we store the newly minted pre-packed data.
 
-                  if (constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
-                    // release the constant initialized tensor
+                AllocatorPtr session_initializer_alloc = GetInitializerAllocator(
+                    kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
+                // A plugin EP registered as a separate library may not have an initializer
+                // allocator registered under the kernel's device key, so the lookup above can
+                // return null. Fall back to the kernel's own default-memory allocator (resolved
+                // through the EP), which is always valid. This keeps PrePack implementations from
+                // each having to special-case a null allocator at the library boundary.
+                if (!session_initializer_alloc) {
+                  session_initializer_alloc = kernel->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+                }
+                PrePackedWeights weights_to_be_filled_in;
+                // The reason we invoke PrePack() before looking into the container for any pre-packed weight
+                // cached by another instance of the same op_type (for the same constant initializer) is because
+                // to truly know if we can use a cached pre-packed weight, we would have to compare the cached
+                // pre-packed weight with the pre-packed weight generated by this instance of the same op_type because
+                // other static properties of the node like node attributes could play a role in the pre-packed
+                // weights' contents.
+                //
+                // This is the expensive step (reads/repacks the full constant tensor, which may be
+                // mmap'd external data): intentionally left unguarded so it can run concurrently with
+                // other nodes' PrePack() calls on the parallel path.
+                ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, session_initializer_alloc,
+                                                    is_packed,
+                                                    &weights_to_be_filled_in));
+
+                if (guard_bookkeeping) {
+                  bookkeeping_lock.lock();
+                }
+
+                // Some kernels (non-CPU related kernels) do not share their pre-packed results
+                // even though they set is_packed = true so we leave it up to them.
+                // We can change their behavior if we wish do so in a separate PR
+                if (is_packed && !weights_to_be_filled_in.buffers_.empty()) {
+                  const auto& op_type = node.OpType();
+                  const std::string prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(
+                      op_type,
+                      weights_to_be_filled_in);
+
+                  // See if we can use pre-packed data from disk
+                  const auto* weights_to_use = prepacked_for_graph->GetPrepackedWeights(
+                      prepacked_weights_container_key);
+
+                  if (weights_to_use == nullptr) {
+                    // In this case pre-packed container owns the data
+                    prepacked_for_graph->WritePackedMaybeForSave(input_name, prepacked_weights_container_key,
+                                                                 std::move(weights_to_be_filled_in));
+                    weights_to_use = prepacked_for_graph->GetPrepackedWeights(prepacked_weights_container_key);
+                    assert(weights_to_use != nullptr);
+                  }
+
+                  ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
+                                                                      *weights_to_use,
+                                                                      node.Name()));
+                }
+              }
+
+              if (is_packed) {
+                if (guard_bookkeeping && !bookkeeping_lock.owns_lock()) {
+                  bookkeeping_lock.lock();
+                }
+
+                ++number_of_prepacks_counter_;
+
+                if (constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
+                  // release the constant initialized tensor
+                  if (guard_bookkeeping) {
+                    // Defer the erase() calls to after the parallel tasks have joined; see the comment on
+                    // pending_erasures above.
+                    pending_erasures.emplace_back(st, ort_value_idx);
+                  } else {
                     st->initialized_tensors_.erase(ort_value_idx);
                     constant_initialized_tensors.erase(ort_value_idx);
                   }
                 }
               }
-              // stop searching in 2 cases:
-              // 1. value is not from OuterScope
-              // 2. value is from OuterScope and the current OuterScope has the value
-              if (st != this || !st->graph_.IsOuterScopeValue(input_name)) {
-                break;
-              }
             }
-            st = st->Parent();
-            prepacked_for_graph = &st->graph_.GetPrepacked();
-          } while (st);
-        }
-        input_idx++;
+            // stop searching in 2 cases:
+            // 1. value is not from OuterScope
+            // 2. value is from OuterScope and the current OuterScope has the value
+            if (st != this || !st->graph_.IsOuterScopeValue(input_name)) {
+              break;
+            }
+          }
+          st = st->Parent();
+          prepacked_for_graph = &st->graph_.GetPrepacked();
+        } while (st);
       }
+      input_idx++;
     }
 
     return Status::OK();
   };
 
+  // Initializers may already have been removed from Graph after being materialized as OrtValues, so
+  // Graph::GetConstantInitializer() cannot reliably find them here. Use the materialized constants map, which
+  // includes outer-scope constants re-indexed for subgraphs.
+  auto has_constant_initializer_input = [this](const Node& node) {
+    const auto& constant_initialized_tensors = GetConstantInitializedTensorsForKernelCreation();
+    for (const auto* input_def : node.InputDefs()) {
+      if (!input_def->Exists()) {
+        continue;
+      }
+
+      int ort_value_idx;
+      if (GetOrtValueNameIdxMap().GetIdx(input_def->Name(), ort_value_idx).IsOK() &&
+          constant_initialized_tensors.count(ort_value_idx) != 0) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   bool should_cache_prepacked_weights_for_shared_initializers = (prepacked_weights_container_ != nullptr);
+
+  auto is_parallel_prepack_candidate = [&has_constant_initializer_input](const Node& node) {
+    return node.GetExecutionProviderType() == kCpuExecutionProvider && has_constant_initializer_input(node);
+  };
+
+  std::vector<const Node*> parallel_prepack_nodes;
+  auto* intra_op_thread_pool = GetThreadPool();
+  if (!should_cache_prepacked_weights_for_shared_initializers &&
+      concurrency::ThreadPool::DegreeOfParallelism(intra_op_thread_pool) > 1 &&
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableParallelPrepack, "1") == "1") {
+    parallel_prepack_nodes.reserve(GetGraphViewer().NumberOfNodes());
+    for (auto& node : GetGraphViewer().Nodes()) {
+      if (is_parallel_prepack_candidate(node)) {
+        parallel_prepack_nodes.push_back(&node);
+      }
+    }
+  }
+
+  const bool enable_parallel_prepack = parallel_prepack_nodes.size() > 1;
+
+  // Let kernels (e.g. MatMulNBits's LUT GEMM temporary pool) see whether this session is actually
+  // dispatching prepacking in parallel, rather than just the raw requested option, so they only
+  // suppress their own temporary pool when doing so avoids real oversubscription. This also preserves
+  // the kernel's own pool when fewer than two CPU prepack jobs can overlap.
+  // sess_options_ is a `const SessionOptions&` here, but the referenced object is owned (non-const)
+  // by the InferenceSession that created this SessionState, and this write happens single-threaded
+  // before any node's PrePack() runs, so it cannot race with the concurrent reads performed later.
+  ORT_RETURN_IF_ERROR(const_cast<SessionOptions&>(sess_options_).config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, enable_parallel_prepack ? "1" : "0"));
 
   if (should_cache_prepacked_weights_for_shared_initializers) {
     // serialize calls to the method that looks up the container, calls UseCachedPrePackedWeight/PrePack
     // and writes pre-packed weights to the container
     std::lock_guard<std::mutex> l(prepacked_weights_container_->mutex_);
-    return prepacked_constant_weights(true);
-  } else {
-    return prepacked_constant_weights(false);
+    for (auto& node : GetGraphViewer().Nodes()) {
+      if (sess_options_.IsLoadCancellationFlagSet()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                               "Weight pre-packing was canceled due to user request.");
+      }
+      ORT_RETURN_IF_ERROR(process_node(node, /*should_cache*/ true, /*guard_bookkeeping*/ false));
+    }
+    return Status::OK();
   }
+
+  if (!enable_parallel_prepack) {
+    for (auto& node : GetGraphViewer().Nodes()) {
+      if (sess_options_.IsLoadCancellationFlagSet()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                               "Weight pre-packing was canceled due to user request.");
+      }
+      ORT_RETURN_IF_ERROR(process_node(node, /*should_cache*/ false, /*guard_bookkeeping*/ false));
+    }
+    return Status::OK();
+  }
+
+  // Parallel path: fan out the per-node CPU work (dominated by kernel->PrePack(), which reads and
+  // repacks each node's constant initializer) across the intra-op thread pool. EPs that do not
+  // advertise concurrent kernel execution are left on the sequential path.
+  LOGS(logger_, INFO) << "Pre-packing constant initializers using the intra-op thread pool.";
+  for (auto& node : GetGraphViewer().Nodes()) {
+    if (is_parallel_prepack_candidate(node)) {
+      continue;
+    }
+
+    if (sess_options_.IsLoadCancellationFlagSet()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "Weight pre-packing was canceled due to user request.");
+    }
+    ORT_RETURN_IF_ERROR(process_node(node, /*should_cache*/ false, /*guard_bookkeeping*/ false));
+  }
+
+  std::vector<Status> statuses(parallel_prepack_nodes.size());
+  std::atomic<bool> cancellation_requested{false};
+  concurrency::ThreadPool::TrySimpleParallelFor(
+      intra_op_thread_pool, static_cast<std::ptrdiff_t>(parallel_prepack_nodes.size()),
+      [&](std::ptrdiff_t i) {
+        if (sess_options_.IsLoadCancellationFlagSet()) {
+          cancellation_requested = true;
+          return;
+        }
+
+        Status& status = statuses[static_cast<size_t>(i)];
+        const Node* node = parallel_prepack_nodes[static_cast<size_t>(i)];
+        ORT_TRY {
+          status = process_node(*node, /*should_cache*/ false, /*guard_bookkeeping*/ true);
+        }
+        ORT_CATCH(const OnnxRuntimeException& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            status = Status(ex.Category(), ex.Code(),
+                            MakeString("Exception while pre-packing node '", node->Name(), "': ", ex.what()));
+          });
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            status = ORT_MAKE_STATUS(
+                ONNXRUNTIME, RUNTIME_EXCEPTION, "Exception while pre-packing node '", node->Name(), "': ", ex.what());
+          });
+        }
+        ORT_CATCH(...) {
+          status = ORT_MAKE_STATUS(
+              ONNXRUNTIME, RUNTIME_EXCEPTION, "Unknown exception while pre-packing node '", node->Name(), "'.");
+        }
+      });
+
+  // All parallel tasks have joined; it is now safe to perform the deferred erasures single-threaded.
+  for (const auto& [st, ort_value_idx] : pending_erasures) {
+    st->initialized_tensors_.erase(ort_value_idx);
+    st->constant_initialized_tensors_.erase(ort_value_idx);
+  }
+
+  // A worker's initial cancellation check can pass before the flag is set, letting it spend a long time
+  // inside PrePack() while cancellation_requested stays false. Recheck the shared flag directly now that
+  // every task has joined, instead of relying solely on what individual workers observed.
+  if (cancellation_requested || sess_options_.IsLoadCancellationFlagSet()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                           "Weight pre-packing was canceled due to user request.");
+  }
+  for (auto& st : statuses) {
+    ORT_RETURN_IF_ERROR(st);
+  }
+  return Status::OK();
 }
 
 static int64_t

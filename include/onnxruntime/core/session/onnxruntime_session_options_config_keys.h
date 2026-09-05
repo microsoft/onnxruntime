@@ -171,6 +171,21 @@ static const char* const kOrtSessionOptionsGraphOptimizationsLoopLevel = "sessio
 // Using device allocators means the memory allocation is made using malloc/new.
 static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
 
+// Enable running each node's kernel->PrePack() call (constant-initializer weight pre-packing, done
+// once during session Initialize()) across the intra-op thread pool instead of a single thread.
+// "1": enable; "0": disable. The default is "1", and it only takes effect when the intra-op thread
+// pool has a degree of parallelism greater than one. PrePack() is where the real, potentially large,
+// CPU work (and page-ins for mmap'd external-data tensors) happens for ops like MatMulNBits, so this
+// can noticeably reduce load time for models dominated by such ops. It also only takes effect when
+// cross-session pre-packed-weight caching (OrtApi::AddInitializer /
+// SessionOptions.AddInitializer-based sharing) is NOT in use for this session -- that path is
+// already serialized across sessions and is left untouched. Bookkeeping shared across nodes
+// (the pre-packed-weights container, initializer use counts) is synchronized internally; the
+// per-node PrePack() calls that do the heavy lifting are not, and run concurrently. Kernel-local
+// prepack thread pools are suppressed while this option is enabled to avoid nested parallelism.
+// The feature is also available in Android minimal builds.
+static const char* const kOrtSessionOptionsEnableParallelPrepack = "session.prepack.enable_parallel";
+
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
 // "0": thread will block if found no job to run
 // "1": thread will spin a number of times before blocking

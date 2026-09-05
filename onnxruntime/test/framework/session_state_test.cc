@@ -767,6 +767,28 @@ class BrokenPrePackingTestOpKernel : public OpKernel {
   }
 };
 
+#if !defined(ORT_NO_EXCEPTIONS)
+class ThrowingPrePackingTestOpKernel : public OpKernel {
+ public:
+  ThrowingPrePackingTestOpKernel(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(is_packed);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
+    ORT_THROW("parallel prepack failure");
+  }
+};
+#endif
+
 static void CreateSimpleGraph(Graph& graph, const std::string& op_type = "PrePackingTest") {
   // node creation and placement
   TypeProto type;
@@ -796,6 +818,32 @@ static void CreateSimpleGraph(Graph& graph, const std::string& op_type = "PrePac
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
 }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+static void CreateThrowingPrepackGraph(Graph& graph) {
+  TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  for (int i = 0; i < 4; ++i) {
+    const std::string prefix = "throwing_node_" + std::to_string(i);
+    NodeArg& input = graph.GetOrCreateNodeArg(prefix + "_input", &type);
+    NodeArg& initializer = graph.GetOrCreateNodeArg(prefix + "_initializer", &type);
+    NodeArg& output = graph.GetOrCreateNodeArg(prefix + "_output", &type);
+    graph.AddNode(prefix, "ThrowingPrePackingTest", "throwing prepack node",
+                  {&input, &initializer}, {&output});
+
+    ONNX_NAMESPACE::TensorProto tensor;
+    tensor.add_dims(1);
+    tensor.add_float_data(1.0f);
+    tensor.set_data_type(TensorProto_DataType_FLOAT);
+    tensor.set_name(initializer.Name());
+    graph.AddInitializedTensor(tensor);
+  }
+
+  ASSERT_STATUS_OK(graph.Resolve());
+}
+#endif
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch) {
   Model model(then_branch ? "If_then" : "If_else", false, DefaultLoggingManager().DefaultLogger());
@@ -917,6 +965,13 @@ void RegisterPrePackingTestSchemaOnce() {
         .Input(0, "Input_0", "input 0", "tensor(float)")
         .Input(1, "Input_1", "input 1", "tensor(float)")
         .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+#if !defined(ORT_NO_EXCEPTIONS)
+    ONNX_OPERATOR_SCHEMA(ThrowingPrePackingTest)
+        .SetDoc("Faking a throwing node for parallel PrePack")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+#endif
   });
 }
 }  // namespace
@@ -1041,9 +1096,53 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
                            return Status::OK();
                          })));
 
+#if !defined(ORT_NO_EXCEPTIONS)
+    auto throwing_kernel_def = KernelDefBuilder()
+                                   .SetName("ThrowingPrePackingTest")
+                                   .Provider(kCpuExecutionProvider)
+                                   .SinceVersion(1)
+                                   .Build();
+
+    ASSERT_STATUS_OK(kernel_registry->Register(
+        KernelCreateInfo(std::move(throwing_kernel_def),
+                         [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           out = std::make_unique<ThrowingPrePackingTestOpKernel>(info);
+                           return Status::OK();
+                         })));
+#endif
+
     kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
   }
 };
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackConvertsExceptionsToStatus) {
+#if defined(ORT_NO_EXCEPTIONS)
+  GTEST_SKIP() << "Exceptions are disabled.";
+#else
+  SessionOptions sess_options;
+
+  Model model("parallel_prepack_exception", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateThrowingPrepackGraph(model.MainGraph());
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager),
+      "parallel prepack failure");
+#endif
+}
 
 // Pre-packing enabled + no shared initializers, however, we put all the pre-packs
 // in a session_state container for ownership.
