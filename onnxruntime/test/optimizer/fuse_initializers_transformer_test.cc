@@ -512,6 +512,40 @@ TEST(TransformerTest, FuseFp16InitializersWithGraphOutputs) {
   ASSERT_STATUS_OK(session.Run(inputs, output_names, &outputs));
 }  // FuseFp16InitializersWithGraphOutputs
 
+TEST(TransformerTest, FuseInitializersUsesConsumerEdgeInputIndex) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("FuseInitializersUsesConsumerEdgeInputIndex", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 23}}, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  NodeArg* initializer = builder.MakeInitializer<MLFloat16>({1}, {MLFloat16(1.0f)});
+  NodeArg* cast_output = builder.MakeIntermediate<float>(std::vector<int64_t>{1});
+  Node& cast = graph.AddNode("cast_node", "Cast", "description", {initializer}, {cast_output});
+  cast.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  NodeArg* output = builder.MakeOutput<float>(std::vector<int64_t>{1});
+  Node& exp = builder.AddNode("Exp", {cast_output}, {output});
+
+  graph.SetOutputs({output});
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_NE(cast.Name(), cast_output->Name());
+
+  FuseInitializersTransformer transformer("TransformerTest.FusedInitializers",
+                                          DataTypeImpl::GetTensorType<MLFloat16>(),
+                                          DataTypeImpl::GetTensorType<float>());
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, logger));
+
+  EXPECT_TRUE(modified);
+  EXPECT_EQ(0, CountOpsInGraph(graph)["Cast"]);
+  EXPECT_EQ(1, CountOpsInGraph(graph)["Exp"]);
+  ASSERT_EQ(1, exp.InputDefs().size());
+  EXPECT_NE(cast_output->Name(), exp.InputDefs()[0]->Name());
+  EXPECT_NE(nullptr, graph_utils::GetConstantInitializer(graph, exp.InputDefs()[0]->Name()));
+  EXPECT_EQ(DataTypeImpl::GetTensorType<float>(),
+            DataTypeImpl::TypeFromProto(*exp.InputDefs()[0]->TypeAsProto()));
+}
+
 TEST(TransformerTest, FuseInitializersSkipsOverridableInitializer) {
   auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model("FuseInitializersSkipsOverridableInitializer", false, ModelMetaData(), PathString(),
