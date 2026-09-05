@@ -184,6 +184,22 @@ aggregate must therefore compute a conservative envelope over the bounded
 domain or report unavailable; evaluating only the componentwise maximum is not
 safe.
 
+### GroupQueryAttention MEA, unfused, and complete-route recipes
+
+The stacked route-composition follow-up adds the remaining selected backends:
+
+- Memory-efficient Attention retains separate K and V head-expansion
+  allocations at the effective staged cache capacity and its optional FP32
+  output accumulator.
+- Unfused retains the single combined allocation containing aligned Q BNSH,
+  aligned Y BNSH, aligned FP32 QK, and the aligned softmax upper bound.
+
+A complete concrete route places its preparation regions once, then places the
+selected backend's simultaneously-live allocation regions at checked
+256-byte-aligned offsets. This does not change runtime allocation topology and
+does not select or aggregate routes. cuDNN is explicitly unavailable because a
+graph-free recipe must not query or build a cuDNN graph.
+
 MHA and GQA are high-value coverage targets and have high estimation-drift risk. Their runtime behavior can include
 dynamic internal backend dispatch, cache lifecycle and aliasing, optional inputs, non-monotonic fallback paths, and
 unfused workspace governed by `S_q * S_kv_total`. GQA additionally has different Q and KV head counts. MHA can have

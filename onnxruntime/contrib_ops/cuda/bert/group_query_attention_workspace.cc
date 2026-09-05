@@ -131,7 +131,7 @@ GQAWorkspaceStatus ValidateProblem(const GQAWorkspaceProblem& problem,
     case GQAPreprocessMode::Xqa:
     case GQAPreprocessMode::Flash:
     case GQAPreprocessMode::MemoryEfficient:
-    case GQAPreprocessMode::Fallback:
+    case GQAPreprocessMode::Unfused:
       break;
     default:
       return Invalid("GQA preprocess mode is invalid.");
@@ -331,7 +331,7 @@ GQAWorkspaceStatus ComputeQkvPreprocessBytes(
         preprocess_elements = q_elements;
       }
       break;
-    case GQAPreprocessMode::Fallback:
+    case GQAPreprocessMode::Unfused:
       // The unfused fallback materializes Q for rotary, packed input, or QK-Norm.
       if (problem.do_rotary || problem.is_packed_qkv || problem.use_qk_norm) {
         preprocess_elements = q_elements;

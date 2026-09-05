@@ -44,7 +44,7 @@ GQAWorkspaceProblem ValidProblem() {
 testing::AssertionResult BuildRecipe(
     const GQAWorkspaceProblem& problem,
     GQAPreparationRecipe& recipe,
-    GQAPreprocessMode mode = GQAPreprocessMode::Fallback,
+    GQAPreprocessMode mode = GQAPreprocessMode::Unfused,
     bool fast_decode = false) {
   const auto result = GetGQAPreparationRecipe(
       problem, GQAPreparationRoute{mode, fast_decode});
@@ -205,7 +205,7 @@ INSTANTIATE_TEST_SUITE_P(
     Contradictions,
     GroupQueryAttentionFastDecodeValidationTest,
     testing::Values(
-        FastDecodeContradictionCase{"NonFlashMode", GQAPreprocessMode::Fallback,
+        FastDecodeContradictionCase{"NonFlashMode", GQAPreprocessMode::Unfused,
                                     false, false, GQAKvQuantizationType::None,
                                     GQAKvQuantizationType::None, false},
         FastDecodeContradictionCase{"FirstPrompt", GQAPreprocessMode::Flash,
@@ -302,10 +302,10 @@ INSTANTIATE_TEST_SUITE_P(
         QkvPreprocessCase{"MemoryEfficientRotaryQk", GQAPreprocessMode::MemoryEfficient,
                           false, true, false, false,
                           GQAKvQuantizationType::None, GQAKvQuantizationType::None, 576},
-        QkvPreprocessCase{"FallbackRotaryQ", GQAPreprocessMode::Fallback,
+        QkvPreprocessCase{"UnfusedRotaryQ", GQAPreprocessMode::Unfused,
                           false, true, false, false,
                           GQAKvQuantizationType::None, GQAKvQuantizationType::None, 384},
-        QkvPreprocessCase{"FallbackQkNormQ", GQAPreprocessMode::Fallback,
+        QkvPreprocessCase{"UnfusedQkNormQ", GQAPreprocessMode::Unfused,
                           false, false, false, true,
                           GQAKvQuantizationType::None, GQAKvQuantizationType::None, 384}),
     [](const testing::TestParamInfo<QkvPreprocessCase>& info) {
