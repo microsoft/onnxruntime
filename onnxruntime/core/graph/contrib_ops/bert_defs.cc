@@ -1270,11 +1270,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "coordinates, keeping the most recent positions contiguously at rows [0, L) with "
               "min(T, local_window_size) <= L <= min(T, capacity), where T is seqlens_k[b] + 1 for that "
               "batch entry. Requires local_window_size > 0 and a cache capacity of at least "
-               "local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA "
-               "implementation additionally requires the capacity to equal local_window_size. Multi-token "
-               "steps of any length are supported and produce the same layout as single-token steps, so the "
-               "capacity need not cover the entire step. When past context is present, sequence_length > 1 "
-               "requires batch_size == 1. See the "
+              "local_window_size; a smaller capacity (W > C) is rejected with INVALID_ARGUMENT. The CUDA "
+              "implementation additionally requires the capacity to equal local_window_size. Multi-token "
+              "steps of any length are supported and produce the same layout as single-token steps, so the "
+              "capacity need not cover the entire step. When past context is present, sequence_length > 1 "
+              "requires batch_size == 1. See the "
               "Windowed KV Cache section of the operator description for the exact resident-range, "
               "eviction and rollback contract. Default value is 0 (full-length cache).",
               AttributeProto::INT,
