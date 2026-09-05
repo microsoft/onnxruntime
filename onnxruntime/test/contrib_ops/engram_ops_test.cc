@@ -612,6 +612,144 @@ std::vector<T> VarlenNGramHashMappingReference(const std::vector<std::vector<T>>
   return output;
 }
 
+template <typename T>
+std::vector<T> PresentIdsReference(const std::vector<T>& ids, const std::vector<T>& history,
+                                   int64_t pad_id);
+
+template <typename T>
+std::vector<T> VarlenNGramHashMappingQwenReference(
+    const std::vector<std::vector<T>>& sequences,
+    const std::vector<std::vector<T>>& histories,
+    const std::vector<std::vector<int32_t>>& segment_ids,
+    const std::vector<T>& multipliers,
+    const std::vector<T>& vocab_sizes,
+    const std::vector<T>& head_offsets,
+    T eos_token_id) {
+  constexpr int64_t state_length = kMaxNGramSize - 1;
+  constexpr int64_t num_heads = state_length * kHeadsPerNGram;
+  std::vector<T> output;
+
+  for (size_t b = 0; b < sequences.size(); ++b) {
+    std::vector<T> combined = histories[b];
+    combined.insert(combined.end(), sequences[b].begin(), sequences[b].end());
+    int64_t last_reset = -1;
+    for (int64_t i = 0; i < state_length; ++i) {
+      if (combined[static_cast<size_t>(i)] == eos_token_id) {
+        last_reset = i;
+      }
+    }
+
+    for (int64_t t = 0; t < static_cast<int64_t>(sequences[b].size()); ++t) {
+      const int64_t idx = state_length + t;
+      if (t > 0) {
+        const int64_t previous = idx - 1;
+        if (combined[static_cast<size_t>(previous)] == eos_token_id ||
+            segment_ids[b][static_cast<size_t>(t)] != segment_ids[b][static_cast<size_t>(t - 1)]) {
+          last_reset = previous;
+        }
+      }
+
+      for (int64_t n = 2; n <= kMaxNGramSize; ++n) {
+        T mix = 0;
+        for (int64_t k = 0; k < n; ++k) {
+          const int64_t source = idx - k;
+          const T token = source <= last_reset ? eos_token_id : combined[static_cast<size_t>(source)];
+          using U = std::make_unsigned_t<T>;
+          const T product = static_cast<T>(static_cast<U>(token) *
+                                           static_cast<U>(multipliers[static_cast<size_t>(k)]));
+          mix = k == 0 ? product : static_cast<T>(mix ^ product);
+        }
+        for (int64_t h = 0; h < kHeadsPerNGram; ++h) {
+          const int64_t out_h = (n - 2) * kHeadsPerNGram + h;
+          T value = static_cast<T>(mix % vocab_sizes[static_cast<size_t>(out_h)]);
+          if (value < 0) {
+            value = static_cast<T>(value + vocab_sizes[static_cast<size_t>(out_h)]);
+          }
+          output.push_back(static_cast<T>(value + head_offsets[static_cast<size_t>(out_h)]));
+        }
+      }
+    }
+  }
+
+  return output;
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingQwenTest() {
+  constexpr T eos_token_id = 9;
+  constexpr int64_t state_length = kMaxNGramSize - 1;
+  constexpr int64_t num_heads = state_length * kHeadsPerNGram;
+  const std::vector<std::vector<T>> sequences{{4, 5, eos_token_id, 6, 7}, {3, 4, 5}};
+  const std::vector<std::vector<T>> histories{{1, 2}, {eos_token_id, 8}};
+  const std::vector<std::vector<int32_t>> segment_ids{{0, 0, 0, 0, 1}, {0, 0, 0}};
+  const std::vector<T> multipliers{11, 13, 17, 19};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> head_offsets{1000, 2000, 3000, 4000};
+  const std::vector<T> expected_hash = VarlenNGramHashMappingQwenReference(
+      sequences, histories, segment_ids, multipliers, vocab_sizes, head_offsets, eos_token_id);
+
+  std::vector<T> flat_ids;
+  std::vector<T> flat_history;
+  std::vector<int32_t> flat_segment_ids;
+  std::vector<T> expected_present;
+  for (size_t b = 0; b < sequences.size(); ++b) {
+    flat_ids.insert(flat_ids.end(), sequences[b].begin(), sequences[b].end());
+    flat_history.insert(flat_history.end(), histories[b].begin(), histories[b].end());
+    flat_segment_ids.insert(flat_segment_ids.end(), segment_ids[b].begin(), segment_ids[b].end());
+    const auto present = PresentIdsReference(sequences[b], histories[b], eos_token_id);
+    expected_present.insert(expected_present.end(), present.begin(), present.end());
+  }
+  const std::vector<int32_t> cu_seqlens = CuSeqLensFrom(sequences);
+  const int64_t total_tokens = static_cast<int64_t>(flat_ids.size());
+  const int64_t batch_size = static_cast<int64_t>(sequences.size());
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {total_tokens}, flat_ids);
+  test.AddInput<T>("multipliers", {4}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {batch_size + 1}, cu_seqlens);
+  test.AddInput<T>("past_ids", {batch_size, state_length}, flat_history);
+  test.AddInput<T>("head_offsets", {4}, head_offsets);
+  test.AddInput<T>("eos_token_id", {}, {eos_token_id});
+  test.AddInput<int32_t>("segment_ids", {total_tokens}, flat_segment_ids);
+  test.AddOutput<T>("hash_ids", {total_tokens, num_heads}, expected_hash);
+  test.AddOutput<T>("present_ids", {batch_size, state_length}, expected_present);
+  test.Run();
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingEosPaddingTest() {
+  constexpr T eos_token_id = 9;
+  const std::vector<std::vector<T>> sequences{{4}};
+  const std::vector<std::vector<T>> eos_history{{eos_token_id, eos_token_id}};
+  const std::vector<std::vector<int32_t>> segment_ids{{0}};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> zero_offsets(4, T{});
+  const std::vector<T> expected_hash = VarlenNGramHashMappingQwenReference(
+      sequences, eos_history, segment_ids, multipliers, vocab_sizes, zero_offsets, eos_token_id);
+
+  OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {1}, sequences[0]);
+  test.AddInput<T>("multipliers", {3}, multipliers);
+  test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+  test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("eos_token_id", {}, {eos_token_id});
+  test.AddOutput<T>("hash_ids", {1, 4}, expected_hash);
+  test.AddOutput<T>("present_ids", {1, 2}, {eos_token_id, 4});
+  test.Run();
+}
+
 // present_ids for a single request: the right-aligned trailing window of (history ++ ids), padded
 // with pad_id for positions before the start of the whole (unpacked) sequence.
 template <typename T>
@@ -1085,6 +1223,22 @@ TEST(EngramOpsTest, VarlenNGramHashMappingMatchesPerSequenceInt64) {
 // int32 is the only type the WebGPU kernel supports, so it must be covered explicitly.
 TEST(EngramOpsTest, VarlenNGramHashMappingMatchesPerSequenceInt32) {
   RunVarlenNGramHashMappingTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingQwenInt64) {
+  RunVarlenNGramHashMappingQwenTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingQwenInt32) {
+  RunVarlenNGramHashMappingQwenTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingEosPaddingInt64) {
+  RunVarlenNGramHashMappingEosPaddingTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingEosPaddingInt32) {
+  RunVarlenNGramHashMappingEosPaddingTest<int32_t>();
 }
 
 TEST(EngramOpsTest, VarlenNGramHashMappingNoCrossSequenceLeakageInt64) {
