@@ -21,18 +21,6 @@ Status ComputeMatMul(ComputeContext* context, const Activation& activation, std:
                      const TensorShape& input_a_reshape = TensorShape(),
                      const TensorShape& input_b_reshape = TensorShape());
 
-struct MatMulWorkgroupConfig {
-  uint32_t workgroup_size_y;
-  int64_t elements_per_thread_y;
-};
-
-// workgroup_size_y * elements_per_thread_y is held constant, so the A tile and dispatch
-// grid do not change with the shape this returns.
-MatMulWorkgroupConfig SelectMatMulWorkgroupConfig(bool use_reported_nvidia_pascal_tuning,
-                                                  bool is_channels_last,
-                                                  bool is_vec4,
-                                                  uint32_t dim_a_outer);
-
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,
     Tensor* output,
@@ -75,9 +63,11 @@ class MatMul final : public WebGpuKernel {
   // True when input 1 (B) is a constant initializer. See b_is_constant_.
   bool IsBConstant() const { return b_is_constant_; }
 
-  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
-  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
-  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
+  // Defaults for the packed MatMul workgroup. The y dimension is a default because
+  // ComputeMatMul can raise it to trade elements-per-thread for occupancy.
+  constexpr static uint32_t DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
+  constexpr static uint32_t DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
+  constexpr static uint32_t DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 
  private:
   // Alternative optimized implementation (lazily created on the first Compute call,

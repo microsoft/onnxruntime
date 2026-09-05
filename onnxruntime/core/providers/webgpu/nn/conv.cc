@@ -296,7 +296,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   modified_input_output_shapes[1] = transposed_kernel_shape;
   Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(
       activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer,
-      dim_inner, is_channels_last, IsReportedNvidiaPascalAdapter(context.AdapterInfo()),
+      dim_inner, is_channels_last, GetPackedTileCaps(context.AdapterInfo(), context.DeviceLimits()),
       modified_input_output_shapes);
   return context.RunProgram(conv2d_mm_program);
 }

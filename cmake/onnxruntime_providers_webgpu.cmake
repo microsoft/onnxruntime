@@ -345,8 +345,10 @@
       SOURCES ${WGSL_TEMPLATE_FILES}
     )
 
-    # PUBLIC because shader_helper.h reaches the generated index.h, so header consumers need it.
-    # BUILD_INTERFACE keeps this build-tree path out of the target exported by install() below.
+    # shader_helper.h includes generated WGSL headers (e.g., index.h), so consumers
+    # of onnxruntime_providers_webgpu need this include dir. Expose it as PUBLIC for
+    # in-tree builds, but wrap in BUILD_INTERFACE so the build-tree path is not
+    # exported/installed.
     target_include_directories(onnxruntime_providers_webgpu PUBLIC $<BUILD_INTERFACE:${WGSL_GENERATED_ROOT}>)
 
     # Make sure generation happens before building the provider

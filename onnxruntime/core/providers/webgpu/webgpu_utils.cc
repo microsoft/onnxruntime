@@ -2,11 +2,65 @@
 // Licensed under the MIT License.
 #include "core/providers/webgpu/webgpu_utils.h"
 
+#include <algorithm>
 #include <sstream>
+#include <utility>
 #include "core/providers/webgpu/shader_variable.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+PackedTileCaps GetPackedTileCaps(const wgpu::AdapterInfo& adapter_info, const wgpu::Limits& limits) {
+  return PackedTileCaps{adapter_info.subgroupMaxSize,
+                        limits.maxComputeWorkgroupSizeY,
+                        limits.maxComputeInvocationsPerWorkgroup,
+                        IsNvidiaAdapter(adapter_info)};
+}
+
+std::pair<uint32_t, int64_t> SelectSubgroupAlignedTileConfigY(const PackedTileCaps& caps,
+                                                              uint32_t workgroup_size_x,
+                                                              uint32_t subgroups_per_workgroup,
+                                                              uint32_t tile_a_outer,
+                                                              uint32_t default_workgroup_size_y) {
+  ORT_ENFORCE(workgroup_size_x > 0 && default_workgroup_size_y > 0 && subgroups_per_workgroup > 0,
+              "Workgroup dimensions and the subgroup count must be non-zero.");
+  ORT_ENFORCE(tile_a_outer % default_workgroup_size_y == 0,
+              "The default workgroup y dimension (", default_workgroup_size_y,
+              ") must divide the A tile (", tile_a_outer, ").");
+  const std::pair<uint32_t, int64_t> fallback{default_workgroup_size_y,
+                                              tile_a_outer / default_workgroup_size_y};
+
+  // Adapters are not required to report a subgroup size; 0 means "unknown".
+  if (caps.subgroup_size == 0) {
+    return fallback;
+  }
+
+  // Give every warp scheduler a subgroup, spreading them along y since x is already fixed by
+  // the B tile.
+  const uint32_t target_invocations = caps.subgroup_size * subgroups_per_workgroup;
+  if (target_invocations % workgroup_size_x != 0) {
+    return fallback;
+  }
+
+  // Clamp to the limits ShaderHelper::Init would otherwise reject the program for.
+  const uint32_t workgroup_size_y = std::min({target_invocations / workgroup_size_x,
+                                              caps.max_workgroup_size_y,
+                                              caps.max_invocations_per_workgroup / workgroup_size_x});
+
+  // Clamping can land on a y that no longer divides the tile, which would change how many rows
+  // a workgroup covers and therefore the dispatch grid. Keep the default instead.
+  if (workgroup_size_y == 0 || tile_a_outer % workgroup_size_y != 0) {
+    return fallback;
+  }
+
+  const uint32_t elements_per_thread_y = tile_a_outer / workgroup_size_y;
+  // The invariant the whole optimization rests on: the A tile is unchanged, so callers can
+  // vary workgroup_size_y without recomputing their dispatch grid.
+  ORT_ENFORCE(workgroup_size_y * elements_per_thread_y == tile_a_outer,
+              "Derived workgroup y (", workgroup_size_y, ") x elements per thread (",
+              elements_per_thread_y, ") must cover exactly ", tile_a_outer, " rows of A.");
+  return {workgroup_size_y, elements_per_thread_y};
+}
 
 TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components) {
   // Reduce the last dimensions by components creating a new tensor shape.
