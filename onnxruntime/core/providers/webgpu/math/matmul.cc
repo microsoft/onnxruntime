@@ -218,6 +218,15 @@ std::pair<uint32_t, int64_t> SelectMatMulWorkgroupConfig(const PackedTileCaps& c
                                                          bool is_channels_last,
                                                          bool is_vec4,
                                                          uint32_t dim_a_outer) {
+  // Preconditions of SelectSubgroupAlignedTileConfigY, checked here because every argument it
+  // takes other than the caps is a compile-time constant.
+  static_assert(MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X > 0 &&
+                    MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y > 0 &&
+                    kNvidiaSubgroupsPerWorkgroup > 0,
+                "Workgroup dimensions and the subgroup count must be non-zero.");
+  static_assert(kMatMulTileAOuter % MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y == 0,
+                "The default workgroup y dimension must divide the A tile.");
+
   // Narrow outputs are bounded by dim_a_outer rather than by the tile, so they take one row
   // per thread and never reach kMatMulTileAOuter.
   if (dim_a_outer <= 8) {

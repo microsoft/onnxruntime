@@ -15,9 +15,8 @@ namespace {
 using webgpu::PackedTileCaps;
 using webgpu::SelectSubgroupAlignedTileConfigY;
 
-// NVIDIA reports a 32-lane subgroup (the warp size) for both subgroupMinSize and
-// subgroupMaxSize, and desktop adapters report 1024 for both compute workgroup limits,
-// well above the 256 the WebGPU spec guarantees.
+// NVIDIA reports a 32-lane subgroup (the warp size) for subgroupMinSize, and desktop adapters
+// report 1024 for both compute workgroup limits, well above the 256 the WebGPU spec guarantees.
 constexpr PackedTileCaps kNvidiaCaps{/*subgroup_size=*/32, /*max_workgroup_size_y=*/1024,
                                      /*max_invocations_per_workgroup=*/1024, /*is_nvidia=*/true};
 
@@ -54,8 +53,8 @@ TEST(SubgroupAlignedTileConfigTest, NvidiaConv2dMMDerivesThirtyTwoThreadsInY) {
   EXPECT_EQ(elements_per_thread_y, 1);
 }
 
-// subgroupMaxSize is 0 when the adapter reports no subgroup size, which is the one input the
-// rule cannot do without.
+// The subgroup size is 0 when the adapter reports none, which is the one input the rule cannot
+// do without. Reachable in a browser, where it comes from the JS GPUAdapterInfo.
 TEST(SubgroupAlignedTileConfigTest, UnreportedSubgroupSizeKeepsTheDefault) {
   PackedTileCaps caps = kNvidiaCaps;
   caps.subgroup_size = 0;

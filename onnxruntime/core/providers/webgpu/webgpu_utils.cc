@@ -4,14 +4,16 @@
 
 #include <algorithm>
 #include <sstream>
+#include <string_view>
 #include <utility>
+#include "core/common/logging/logging.h"
 #include "core/providers/webgpu/shader_variable.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
 PackedTileCaps GetPackedTileCaps(const wgpu::AdapterInfo& adapter_info, const wgpu::Limits& limits) {
-  return PackedTileCaps{adapter_info.subgroupMaxSize,
+  return PackedTileCaps{adapter_info.subgroupMinSize,
                         limits.maxComputeWorkgroupSizeY,
                         limits.maxComputeInvocationsPerWorkgroup,
                         IsNvidiaAdapter(adapter_info)};
@@ -22,24 +24,31 @@ std::pair<uint32_t, int64_t> SelectSubgroupAlignedTileConfigY(const PackedTileCa
                                                               uint32_t subgroups_per_workgroup,
                                                               uint32_t tile_a_outer,
                                                               uint32_t default_workgroup_size_y) {
-  ORT_ENFORCE(workgroup_size_x > 0 && default_workgroup_size_y > 0 && subgroups_per_workgroup > 0,
-              "Workgroup dimensions and the subgroup count must be non-zero.");
-  ORT_ENFORCE(tile_a_outer % default_workgroup_size_y == 0,
-              "The default workgroup y dimension (", default_workgroup_size_y,
-              ") must divide the A tile (", tile_a_outer, ").");
   const std::pair<uint32_t, int64_t> fallback{default_workgroup_size_y,
                                               tile_a_outer / default_workgroup_size_y};
+  // Callers static_assert the remaining preconditions; only the device-reported values below
+  // can vary at runtime. Taking the fallback here is silent otherwise, so it is logged: an
+  // adapter that reports no subgroup size would turn this tuning into a no-op that still
+  // looks like a success.
+  const auto fall_back = [&](std::string_view reason) {
+    LOGS_DEFAULT(VERBOSE) << "Packed-tile workgroup tuning fell back to the default y dimension ("
+                          << default_workgroup_size_y << "): " << reason
+                          << " [subgroup_size=" << caps.subgroup_size
+                          << ", max_workgroup_size_y=" << caps.max_workgroup_size_y
+                          << ", max_invocations_per_workgroup=" << caps.max_invocations_per_workgroup << "]";
+    return fallback;
+  };
 
   // Adapters are not required to report a subgroup size; 0 means "unknown".
   if (caps.subgroup_size == 0) {
-    return fallback;
+    return fall_back("the adapter reports no subgroup size");
   }
 
   // Give every warp scheduler a subgroup, spreading them along y since x is already fixed by
   // the B tile.
   const uint32_t target_invocations = caps.subgroup_size * subgroups_per_workgroup;
   if (target_invocations % workgroup_size_x != 0) {
-    return fallback;
+    return fall_back("the target invocation count is not a multiple of the workgroup x dimension");
   }
 
   // Clamp to the limits ShaderHelper::Init would otherwise reject the program for.
@@ -50,12 +59,13 @@ std::pair<uint32_t, int64_t> SelectSubgroupAlignedTileConfigY(const PackedTileCa
   // Clamping can land on a y that no longer divides the tile, which would change how many rows
   // a workgroup covers and therefore the dispatch grid. Keep the default instead.
   if (workgroup_size_y == 0 || tile_a_outer % workgroup_size_y != 0) {
-    return fallback;
+    return fall_back("the device limits clamp the workgroup below a size that divides the A tile");
   }
 
   const uint32_t elements_per_thread_y = tile_a_outer / workgroup_size_y;
   // The invariant the whole optimization rests on: the A tile is unchanged, so callers can
-  // vary workgroup_size_y without recomputing their dispatch grid.
+  // vary workgroup_size_y without recomputing their dispatch grid. This is the one check that
+  // depends on a runtime, device-reported value, so it stays.
   ORT_ENFORCE(workgroup_size_y * elements_per_thread_y == tile_a_outer,
               "Derived workgroup y (", workgroup_size_y, ") x elements per thread (",
               elements_per_thread_y, ") must cover exactly ", tile_a_outer, " rows of A.");
