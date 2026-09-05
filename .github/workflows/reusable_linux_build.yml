@@ -63,6 +63,11 @@ on:
         required: false
         type: boolean
         default: false
+      artifact_name_suffix:
+        description: 'Optional suffix for uploaded artifact names, including any leading separator'
+        required: false
+        type: string
+        default: ''
       job_identifier:
         description: 'A unique identifier for the job, used for hosted pool tracking'
         required: true
@@ -208,7 +213,7 @@ jobs:
         if: inputs.upload_build_output == true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: build-output-${{ inputs.architecture }}-${{ inputs.build_config }}
+          name: build-output-${{ inputs.architecture }}-${{ inputs.build_config }}${{ inputs.artifact_name_suffix }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}
           if-no-files-found: error
 
@@ -217,6 +222,6 @@ jobs:
         if: steps.update_step.outcome == 'failure' || steps.build_step.outcome == 'failure'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
+          name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}${{ inputs.artifact_name_suffix }}
           path: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log
           if-no-files-found: ignore
