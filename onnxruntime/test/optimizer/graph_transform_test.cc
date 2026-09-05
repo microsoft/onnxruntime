@@ -5412,6 +5412,122 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2Inputs) {
   ASSERT_TRUE(new_input_defs[1]->Name() == "B");
 }
 
+TEST_F(GraphTransformationTests, GemmTransposeFusionDoesNotFuseIdentityTranspose) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{3, 4}});
+    auto* weight = builder.MakeInput<float>({{4, 5}});
+    auto* transposed_weight = builder.MakeIntermediate<float>(std::vector<int64_t>{4, 5});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
+
+    builder.AddNode("Transpose", {weight}, {transposed_weight}).AddAttribute("perm", std::vector<int64_t>{0, 1});
+    auto& gemm = builder.AddNode("Gemm", {input, transposed_weight}, {output});
+    gemm.AddAttribute("transA", int64_t{0});
+    gemm.AddAttribute("transB", int64_t{0});
+    gemm.AddAttribute("alpha", 1.0f);
+    gemm.AddAttribute("beta", 1.0f);
+  };
+
+  auto check_graph = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gemm"] == 1);
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1,
+                                        1, check_graph, check_graph));
+}
+
+TEST_F(GraphTransformationTests, GemmTransposeFusionDoesNotFuseIdentityTransposeAtOutput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{4, 3}}, "A");
+    auto* weight = builder.MakeInput<float>({{4, 5}}, "B");
+    auto* gemm_output = builder.MakeIntermediate<float>(std::vector<int64_t>{3, 5});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
+
+    auto& gemm = builder.AddNode("Gemm", {input, weight}, {gemm_output});
+    gemm.AddAttribute("transA", int64_t{1});
+    gemm.AddAttribute("transB", int64_t{0});
+    gemm.AddAttribute("alpha", 2.0f);
+    gemm.AddAttribute("beta", 3.0f);
+    builder.AddNode("Transpose", {gemm_output}, {output}).AddAttribute("perm", std::vector<int64_t>{0, 1});
+  };
+
+  auto check_graph = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gemm"] == 1);
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Gemm") {
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("transA").i() == 1);
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("transB").i() == 0);
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("alpha").f() == 2.0f);
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("beta").f() == 3.0f);
+        TEST_RETURN_IF_NOT(node.InputDefs()[0]->Name() == "A");
+        TEST_RETURN_IF_NOT(node.InputDefs()[1]->Name() == "B");
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1,
+                                        1, check_graph, check_graph));
+}
+
+TEST_F(GraphTransformationTests, GemmTransposeFusionPreservesIdentityOutputWhenFusingInput) {
+  for (bool transpose_input_b : {false, true}) {
+    SCOPED_TRACE(transpose_input_b);
+    auto build_test_case = [transpose_input_b](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>(transpose_input_b ? std::vector<int64_t>{3, 4}
+                                                               : std::vector<int64_t>{4, 3},
+                                             "A");
+      auto* weight = builder.MakeInput<float>(transpose_input_b ? std::vector<int64_t>{5, 4}
+                                                                : std::vector<int64_t>{4, 5},
+                                              "B");
+      auto* transposed_input = builder.MakeIntermediate();
+      auto* gemm_output = builder.MakeIntermediate<float>(std::vector<int64_t>{3, 5});
+      auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
+
+      builder.AddNode("Transpose", {transpose_input_b ? weight : input}, {transposed_input})
+          .AddAttribute("perm", std::vector<int64_t>{1, 0});
+      auto& gemm = builder.AddNode("Gemm", {transpose_input_b ? input : transposed_input, transpose_input_b ? transposed_input : weight},
+                                   {gemm_output});
+      gemm.AddAttribute("transA", int64_t{0});
+      gemm.AddAttribute("transB", int64_t{0});
+      gemm.AddAttribute("alpha", 2.0f);
+      gemm.AddAttribute("beta", 3.0f);
+      builder.AddNode("Transpose", {gemm_output}, {output}).AddAttribute("perm", std::vector<int64_t>{0, 1});
+    };
+
+    auto check_graph = [transpose_input_b](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gemm"] == 1);
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() == "Gemm") {
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("transA").i() == (transpose_input_b ? 0 : 1));
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("transB").i() == (transpose_input_b ? 1 : 0));
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("alpha").f() == 2.0f);
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("beta").f() == 3.0f);
+          TEST_RETURN_IF_NOT(node.InputDefs()[0]->Name() == "A");
+          TEST_RETURN_IF_NOT(node.InputDefs()[1]->Name() == "B");
+        } else if (node.OpType() == "Transpose") {
+          const auto perm = RetrieveValues<int64_t>(node.GetAttributes().at("perm"));
+          TEST_RETURN_IF_NOT(perm == std::vector<int64_t>({0, 1}));
+          TEST_RETURN_IF_NOT(graph.NodeProducesGraphOutput(node));
+        }
+      }
+      return Status::OK();
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer),
+                                          TransformerLevel::Level1, 1, nullptr, check_graph));
+  }
+}
+
 // (A')'B' = AB' where transpose has multiple consumers
 TEST_F(GraphTransformationTests, GemmTransposeFusion2OutputsFromTranspose) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gemm_transpose_2outputs_from_transpose.onnx";
