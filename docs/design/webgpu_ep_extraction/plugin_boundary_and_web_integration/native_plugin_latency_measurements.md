@@ -93,8 +93,42 @@ Constraints that are easy to get wrong:
   Studio vs Ninja generator, `BUILD_SHARED_LIB=OFF` vs `ON`, and `ENABLE_DAWN_BACKEND_VULKAN=ON` vs `OFF`). It is
   fine as a qualitative control, as used for the f16 result above, but not for timing.
 
-**Fairness control:** diff the two `CMakeCache.txt` files and confirm that every delta is an EP-path option. This is
-the check that makes the comparison trustworthy; do not skip it on the assumption that the build commands matched.
+### Fairness control: verify the two builds differ only in the EP
+
+Identical `build.py` command lines do **not** guarantee identical builds, so verify the generated build rather than
+trusting the invocation.
+
+1. Diff the two `CMakeCache.txt` files and confirm every delta is an EP-path option. Normalize the build-directory
+   name first, or the path embedded in most entries will swamp the diff.
+2. Confirm the optimization flags actually reached the compiler, by counting them in the generated `build.ninja`:
+
+```powershell
+$bn = 'D:\source\onnxruntime_4\build\<dir>\Release\build.ninja'
+foreach ($f in '/O2','/Ob2','/DNDEBUG') {
+  "$f = " + (Select-String -Path $bn -Pattern $f -SimpleMatch -AllMatches | Measure-Object).Count
+}
+```
+
+Both arms should report several thousand of each. **Zero means an unoptimized build**: MSVC defaults to `/Od` when
+no `/O` flag is given, and a missing `/DNDEBUG` also leaves asserts enabled.
+
+This is not hypothetical — step 2 caught exactly that failure here. A first `nat_builtin` configure was interrupted
+part-way through and left `CMAKE_CXX_FLAGS_RELEASE` **empty** in its cache. A later `build.py --update` reused the
+damaged cache rather than regenerating it, and the build then completed with no error, producing a working but
+**unoptimized** `onnxruntime_perf_test.exe`. The two arms' compile flags were otherwise character-identical:
+
+```
+nat_builtin: ... -DEIGEN_HAS_C99_MATH                   -std:c++20 -MD -Zi /GR /W4 ...
+nat_plugin:  ... -DEIGEN_HAS_C99_MATH /O2 /Ob2 /DNDEBUG -std:c++20 -MD -Zi /GR /W4 ...
+```
+
+Had this gone unnoticed it would have produced a large, entirely bogus result in the plugin's favour. The fix is to
+**delete the build directory and configure from scratch** — repairing a cache in an unknown state is not worth the
+risk. A corrupted cache also shows a secondary tell: stray `CMAKE_ADDR2LINE`, `CMAKE_NM`, `CMAKE_OBJCOPY`,
+`CMAKE_OBJDUMP`, `CMAKE_READELF`, `CMAKE_STRIP` and `CMAKE_TAPI` entries that the healthy cache does not have.
+
+**Generalization: if a build directory was ever interrupted mid-configure, do not measure with it.** Interrupted
+CMake configures fail silently in a way that survives `--update` and still produces a runnable binary.
 
 ### Invocations
 
@@ -117,6 +151,10 @@ onnxruntime_perf_test.exe --plugin_ep_libs "WebGPU|onnxruntime_providers_webgpu.
   (`ort_test_session.cc:608-613`). Use **`-C "ep.webgpuexecutionprovider.<key>|<value>"`**, which routes through
   `ConfigOptions` and therefore applies **identically on both arms** — exactly what an A/B needs. The available keys
   are in `webgpu_provider_options.h`.
+- **Do not gate on the process exit code.** perf_test returns non-zero even on a fully successful run, because ORT's
+  memory-leak checker reports a handful of 16-byte CRT static-initializer allocations (`initterm`) at shutdown. The
+  report is emitted after timing and affects both arms identically, so it does not bias the comparison — but scripts
+  should parse `Min Latency` from stdout rather than trusting the exit status.
 
 Methodology: interleaved rounds, taking the median of each round's minimum — the same procedure used for the wasm
 numbers, so the two sets are directly relatable.
