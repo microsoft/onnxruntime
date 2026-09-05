@@ -429,6 +429,14 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       continue;
     }
 
+    // The fusion rebuilds the GQA inputs from the matched projection and rotary nodes. It does not preserve
+    // optional slots already present beyond sin_cache, including empty placeholders whose input arg counts
+    // remain nonzero. Dropping those slots would produce an invalid graph at resolve time.
+    if (node.InputDefs().size() > 9) {
+      DEBUG_LOG("Skipping GroupQueryAttention fusion because the node uses an optional input beyond sin_cache.");
+      continue;
+    }
+
     const TensorProto* k_proj_tensor = nullptr;
     const TensorProto* k_scale_tensor = nullptr;
     const TensorProto* k_zero_points_tensor = nullptr;
