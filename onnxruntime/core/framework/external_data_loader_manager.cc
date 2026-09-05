@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "core/framework/tensor.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 
@@ -52,6 +53,7 @@ Status ExternalDataLoaderManager::PreloadExternalData(
     const std::filesystem::path& model_path,
     const Graph& graph,
     const std::unordered_set<std::string>& excluded_initializer_names,
+    const std::unordered_set<PathString>& excluded_external_data_files,
     const std::function<bool()>& is_cancelled) const {
   bool has_preloader = false;
   for (const auto& loader : external_data_loaders_) {
@@ -81,6 +83,13 @@ Status ExternalDataLoaderManager::PreloadExternalData(
         !utils::HasExternalData(*tensor_proto) ||
         utils::HasExternalDataInMemory(*tensor_proto)) {
       continue;
+    }
+    if (!excluded_external_data_files.empty()) {
+      std::unique_ptr<ExternalDataInfo> external_data_info;
+      ORT_RETURN_IF_ERROR(ExternalDataInfo::Create(tensor_proto->external_data(), external_data_info));
+      if (excluded_external_data_files.contains(external_data_info->GetRelPath())) {
+        continue;
+      }
     }
     if (is_cancelled && is_cancelled()) {
       return ORT_MAKE_STATUS(
