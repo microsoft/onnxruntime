@@ -3,9 +3,11 @@
 
 #include "quantize_linear.cuh"
 
+#include <cstdint>
 #include <limits>
 
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/shared_inc/fast_divmod.h"
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 #include "cuda_fp8.h"
@@ -248,16 +250,14 @@ __global__ void QuantizeLinearKernelStdInt4(const InT* input, OutT* output, cons
 }
 
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
-__global__ void QuantizeLinearKernelAxisStd(const InT* input, OutT* output, const InT* scale_ptr, const OutT* zero_point_ptr, CUDA_LONG N, size_t batch_size, size_t n_scales, RoundStd<InT, OutT> round) {
+__global__ void QuantizeLinearKernelAxisStd(const InT* input, OutT* output, const InT* scale_ptr, const OutT* zero_point_ptr, CUDA_LONG N, fast_divmod fdm_same_scale, fast_divmod fdm_n_scales, RoundStd<InT, OutT> round) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
-  // The scale needs to change every n_same_scale.
-  CUDA_LONG n_same_scale = N / (batch_size * n_scales);
-  int scale_id;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      scale_id = (id / n_same_scale) % n_scales;
+      // The scale changes every n_same_scale elements, and wraps every n_scales groups.
+      const int32_t scale_id{fdm_n_scales.mod(fdm_same_scale.div(id))};
       output[id] = round(input[id], scale_ptr[scale_id], zero_point_ptr == nullptr ? static_cast<OutT>(0) : zero_point_ptr[scale_id]);
       id += NumThreadsPerBlock;
     }
@@ -270,19 +270,18 @@ __global__ void QuantizeLinearKernelAxisStd(const InT* input, OutT* output, cons
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void QuantizeLinearKernelAxisStdInt4(const InT* input, OutT* output, const InT* scale_ptr,
                                                 const OutT* zero_point_ptr, CUDA_LONG num_element,
-                                                size_t batch_size, size_t n_scales,
+                                                fast_divmod fdm_same_scale, fast_divmod fdm_n_scales,
                                                 RoundStdInt4<InT, OutT> round) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + (threadIdx.x << 1);
   // Process continuous NumElementsPerThread int4 per thread.
   int i = 0;
-  // The scale needs to change every n_same_scale.
-  CUDA_LONG n_same_scale = num_element / (batch_size * n_scales);
   constexpr int step = NumThreadsPerBlock << 1;
 
 #pragma unroll
   for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += step) {
-    int scale_id0 = (id / n_same_scale) % n_scales;
-    int scale_id1 = ((id + 1) / n_same_scale) % n_scales;
+    // The scale changes every n_same_scale elements, and wraps every n_scales groups.
+    const int32_t scale_id0{fdm_n_scales.mod(fdm_same_scale.div(id))};
+    const int32_t scale_id1{fdm_n_scales.mod(fdm_same_scale.div(id + 1))};
     int zp0 = zero_point_ptr == nullptr ? 0 : ExtractInt4FromByte(zero_point_ptr[scale_id0 >> 1], scale_id0 & 1);
     int zp1 = zero_point_ptr == nullptr ? 0 : ExtractInt4FromByte(zero_point_ptr[scale_id1 >> 1], scale_id1 & 1);
     output[id >> 1] = round(input[id],
@@ -294,7 +293,7 @@ __global__ void QuantizeLinearKernelAxisStdInt4(const InT* input, OutT* output, 
   }
 
   if (i < NumElementsPerThread && id < num_element) {
-    int scale_id0 = (id / n_same_scale) % n_scales;
+    const int32_t scale_id0{fdm_n_scales.mod(fdm_same_scale.div(id))};
     int zp0 = zero_point_ptr == nullptr ? 0 : ExtractInt4FromByte(zero_point_ptr[scale_id0 >> 1], scale_id0 & 1);
     output[id >> 1] = round(input[id],
                             0.0,
@@ -310,8 +309,9 @@ __global__ void QuantizeLinearKernelAxisStdInt4(const InT* input, OutT* output, 
 // NumElementsPerThread must be multiple of 2.
 template <int NumThreadsPerBlock, int NumElementsPerThread, typename OutT, typename InT>
 __global__ void QuantizeLinearKernelBlockStdInt4(const InT* input, OutT* output, const InT* scale_ptr,
-                                                 const OutT* zero_point_ptr, CUDA_LONG num_element, size_t KN,
-                                                 size_t N, size_t scale_KN, size_t block_size,
+                                                 const OutT* zero_point_ptr, CUDA_LONG num_element,
+                                                 fast_divmod fdm_KN, fast_divmod fdm_N, fast_divmod fdm_block_size,
+                                                 int32_t N, int32_t scale_KN,
                                                  RoundStdInt4<InT, OutT> round) {
   // Process continuous NumElementsPerThread int4 per thread.
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + (threadIdx.x << 1);
@@ -321,11 +321,13 @@ __global__ void QuantizeLinearKernelBlockStdInt4(const InT* input, OutT* output,
 #pragma unroll
   // Process two elements which belong to one byte at a time.
   for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += step) {
-    int x0 = id / KN, x1 = (id + 1) / KN;
-    int y0 = id % KN / N, y1 = (id + 1) % KN / N;
-    int z0 = id % N, z1 = (id + 1) % N;
-    int scale_id0 = x0 * scale_KN + y0 / block_size * N + z0;
-    int scale_id1 = x1 * scale_KN + y1 / block_size * N + z1;
+    int32_t x0, x1, rem0, rem1, y0, y1, z0, z1;
+    fdm_KN.divmod(id, x0, rem0);
+    fdm_N.divmod(rem0, y0, z0);
+    fdm_KN.divmod(id + 1, x1, rem1);
+    fdm_N.divmod(rem1, y1, z1);
+    const int32_t scale_id0{x0 * scale_KN + fdm_block_size.div(y0) * N + z0};
+    const int32_t scale_id1{x1 * scale_KN + fdm_block_size.div(y1) * N + z1};
     output[id >> 1] = round(input[id],
                             input[id + 1],
                             scale_ptr[scale_id0],
@@ -340,10 +342,10 @@ __global__ void QuantizeLinearKernelBlockStdInt4(const InT* input, OutT* output,
 
   // last non-paired element
   if (i < NumElementsPerThread && id < num_element) {
-    int x0 = id / KN;
-    int y0 = id % KN / N;
-    int z0 = id % N;
-    int scale_id0 = x0 * scale_KN + y0 / block_size * N + z0;
+    int32_t x0, rem0, y0, z0;
+    fdm_KN.divmod(id, x0, rem0);
+    fdm_N.divmod(rem0, y0, z0);
+    const int32_t scale_id0{x0 * scale_KN + fdm_block_size.div(y0) * N + z0};
     output[id >> 1] = round(input[id],
                             0.0,
                             scale_ptr[scale_id0],
@@ -436,14 +438,16 @@ Status CudaQuantizeLinearAxisStd(cudaStream_t stream, const InT* input, OutT* ou
     return Status::OK();
 
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  const fast_divmod fdm_same_scale{static_cast<int32_t>(num_of_element / (batch_size * n_scales))};
+  const fast_divmod fdm_n_scales{static_cast<int32_t>(n_scales)};
   QuantizeLinearKernelAxisStd<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input,
       output,
       scale,
       zero_point,
       static_cast<int>(num_of_element),
-      batch_size,
-      n_scales,
+      fdm_same_scale,
+      fdm_n_scales,
       RoundStd<InT, OutT>());
   return Status::OK();
 }
@@ -459,6 +463,8 @@ Status CudaQuantizeLinearAxisStdInt4(cudaStream_t stream, const InT* input, OutT
 
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element,
                                                GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  const fast_divmod fdm_same_scale{static_cast<int32_t>(num_of_element / (batch_size * n_scales))};
+  const fast_divmod fdm_n_scales{static_cast<int32_t>(n_scales)};
   QuantizeLinearKernelAxisStdInt4<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input,
@@ -466,8 +472,8 @@ Status CudaQuantizeLinearAxisStdInt4(cudaStream_t stream, const InT* input, OutT
           scale,
           zero_point,
           static_cast<int>(num_of_element),
-          batch_size,
-          n_scales,
+          fdm_same_scale,
+          fdm_n_scales,
           RoundStdInt4<InT, OutT>());
   return Status::OK();
 }
@@ -493,10 +499,11 @@ Status CudaQuantizeLinearBlockStdInt4(cudaStream_t stream, const InT* input, Out
           scale,
           zero_point,
           static_cast<int>(num_of_element),
-          KN,
-          N,
-          scale_KN,
-          block_size,
+          fast_divmod{static_cast<int32_t>(KN)},
+          fast_divmod{static_cast<int32_t>(N)},
+          fast_divmod{static_cast<int32_t>(block_size)},
+          static_cast<int32_t>(N),
+          static_cast<int32_t>(scale_KN),
           RoundStdInt4<InT, OutT>());
   return Status::OK();
 }
@@ -582,16 +589,14 @@ __global__ void DequantizeLinearKernelStdInt4(const InT* input, OutT* output, co
 
 template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void DequantizeLinearKernelAxisStd(const InT* input, OutT* output, const OutT* scale_ptr, const InT* zero_point_ptr, CUDA_LONG N,
-                                              size_t batch_size, size_t n_scales) {
+                                              fast_divmod fdm_same_scale, fast_divmod fdm_n_scales) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + threadIdx.x;
-  // The scale needs to change every n_same_scale.
-  CUDA_LONG n_same_scale = N / (batch_size * n_scales);
-  int scale_id;
 
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-      scale_id = (id / n_same_scale) % n_scales;
+      // The scale changes every n_same_scale elements, and wraps every n_scales groups.
+      const int32_t scale_id{fdm_n_scales.mod(fdm_same_scale.div(id))};
       output[id] = (zero_point_ptr == nullptr ? static_cast<OutT>(input[id]) : static_cast<OutT>(input[id] - zero_point_ptr[scale_id])) * scale_ptr[scale_id];
       id += NumThreadsPerBlock;
     }
@@ -601,18 +606,17 @@ __global__ void DequantizeLinearKernelAxisStd(const InT* input, OutT* output, co
 template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void DequantizeLinearKernelAxisStdInt4(const InT* input, OutT* output, const OutT* scale_ptr,
                                                   const InT* zero_point_ptr, CUDA_LONG num_element,
-                                                  size_t batch_size, size_t n_scales) {
+                                                  fast_divmod fdm_same_scale, fast_divmod fdm_n_scales) {
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + (threadIdx.x << 1);
-  // The scale needs to change every n_same_scale.
-  CUDA_LONG n_same_scale = num_element / (batch_size * n_scales);
   int i = 0;
   int scale_id0, scale_id1, zp0, zp1, v0, v1;
   constexpr int step = NumThreadsPerBlock << 1;
 
 #pragma unroll
   for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += step) {
-    scale_id0 = (id / n_same_scale) % n_scales;
-    scale_id1 = ((id + 1) / n_same_scale) % n_scales;
+    // The scale changes every n_same_scale elements, and wraps every n_scales groups.
+    scale_id0 = fdm_n_scales.mod(fdm_same_scale.div(id));
+    scale_id1 = fdm_n_scales.mod(fdm_same_scale.div(id + 1));
 
     v0 = ExtractInt4FromByte(input[id >> 1], 0);
     v1 = ExtractInt4FromByte(input[id >> 1], 1);
@@ -623,7 +627,7 @@ __global__ void DequantizeLinearKernelAxisStdInt4(const InT* input, OutT* output
   }
 
   if (i < NumElementsPerThread && id < num_element) {
-    scale_id0 = (id / n_same_scale) % n_scales;
+    scale_id0 = fdm_n_scales.mod(fdm_same_scale.div(id));
     v0 = ExtractInt4FromByte(input[id >> 1], 0);
     zp0 = zero_point_ptr == nullptr ? 0 : ExtractInt4FromByte(zero_point_ptr[scale_id0 >> 1], scale_id0 & 1);
     output[id] = static_cast<OutT>(v0 - zp0) * scale_ptr[scale_id0];
@@ -636,7 +640,8 @@ __global__ void DequantizeLinearKernelAxisStdInt4(const InT* input, OutT* output
 template <class InT, class OutT, int NumThreadsPerBlock, int NumElementsPerThread>
 __global__ void DequantizeLinearKernelBlockStdInt4(const InT* input, OutT* output, const OutT* scale_ptr,
                                                    const InT* zero_point_ptr, CUDA_LONG num_element,
-                                                   size_t KN, size_t N, size_t scale_KN, size_t block_size) {
+                                                   fast_divmod fdm_KN, fast_divmod fdm_N, fast_divmod fdm_block_size,
+                                                   int32_t N, int32_t scale_KN) {
   // Process continuous NumElementsPerThread int4 per thread.
   CUDA_LONG id = NumElementsPerThread * NumThreadsPerBlock * blockIdx.x + (threadIdx.x << 1);
   int i = 0;
@@ -645,11 +650,13 @@ __global__ void DequantizeLinearKernelBlockStdInt4(const InT* input, OutT* outpu
 #pragma unroll
   // Process two elements which belong to one byte at a time.
   for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += step) {
-    int x0 = id / KN, x1 = (id + 1) / KN;
-    int y0 = id % KN / N, y1 = (id + 1) % KN / N;
-    int z0 = id % N, z1 = (id + 1) % N;
-    int scale_id0 = x0 * scale_KN + y0 / block_size * N + z0;
-    int scale_id1 = x1 * scale_KN + y1 / block_size * N + z1;
+    int32_t x0, x1, rem0, rem1, y0, y1, z0, z1;
+    fdm_KN.divmod(id, x0, rem0);
+    fdm_N.divmod(rem0, y0, z0);
+    fdm_KN.divmod(id + 1, x1, rem1);
+    fdm_N.divmod(rem1, y1, z1);
+    const int32_t scale_id0{x0 * scale_KN + fdm_block_size.div(y0) * N + z0};
+    const int32_t scale_id1{x1 * scale_KN + fdm_block_size.div(y1) * N + z1};
 
     int v0 = ExtractInt4FromByte(input[id >> 1], 0);
     int v1 = ExtractInt4FromByte(input[id >> 1], 1);
@@ -661,10 +668,10 @@ __global__ void DequantizeLinearKernelBlockStdInt4(const InT* input, OutT* outpu
 
   // last non-paired element
   if (i < NumElementsPerThread && id < num_element) {
-    int x0 = id / KN;
-    int y0 = id % KN / N;
-    int z0 = id % N;
-    int scale_id0 = x0 * scale_KN + y0 / block_size * N + z0;
+    int32_t x0, rem0, y0, z0;
+    fdm_KN.divmod(id, x0, rem0);
+    fdm_N.divmod(rem0, y0, z0);
+    const int32_t scale_id0{x0 * scale_KN + fdm_block_size.div(y0) * N + z0};
 
     int v0 = ExtractInt4FromByte(input[id >> 1], 0);
     int zp0 = zero_point_ptr == nullptr ? 0 : ExtractInt4FromByte(zero_point_ptr[scale_id0 >> 1], scale_id0 & 1);
@@ -821,14 +828,16 @@ Status CudaDequantizeLinearAxisStd(cudaStream_t stream, const InT* input, OutT* 
     return Status::OK();
 
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  const fast_divmod fdm_same_scale{static_cast<int32_t>(num_of_element / (batch_size * n_scales))};
+  const fast_divmod fdm_n_scales{static_cast<int32_t>(n_scales)};
   DequantizeLinearKernelAxisStd<InT, OutT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input,
       output,
       scale,
       zero_point,
       static_cast<int>(num_of_element),
-      batch_size,
-      n_scales);
+      fdm_same_scale,
+      fdm_n_scales);
   return Status::OK();
 }
 
@@ -843,6 +852,8 @@ Status CudaDequantizeLinearAxisStdInt4(cudaStream_t stream, const InT* input, Ou
 
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element,
                                                GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
+  const fast_divmod fdm_same_scale{static_cast<int32_t>(num_of_element / (batch_size * n_scales))};
+  const fast_divmod fdm_n_scales{static_cast<int32_t>(n_scales)};
   DequantizeLinearKernelAxisStdInt4<InT, OutT, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
       <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input,
@@ -850,8 +861,8 @@ Status CudaDequantizeLinearAxisStdInt4(cudaStream_t stream, const InT* input, Ou
           scale,
           zero_point,
           static_cast<int>(num_of_element),
-          batch_size,
-          n_scales);
+          fdm_same_scale,
+          fdm_n_scales);
   return Status::OK();
 }
 
@@ -876,10 +887,11 @@ Status CudaDequantizeLinearBlockStdInt4(cudaStream_t stream, const T* input, U* 
           scale,
           zero_point,
           static_cast<CUDA_LONG>(num_of_element),
-          KN,
-          N,
-          scale_KN,
-          block_size);
+          fast_divmod{static_cast<int32_t>(KN)},
+          fast_divmod{static_cast<int32_t>(N)},
+          fast_divmod{static_cast<int32_t>(block_size)},
+          static_cast<int32_t>(N),
+          static_cast<int32_t>(scale_KN));
   return Status::OK();
 }
 

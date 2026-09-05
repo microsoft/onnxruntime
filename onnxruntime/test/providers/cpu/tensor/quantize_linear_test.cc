@@ -951,6 +951,46 @@ TEST(DequantizeLinearOpTest, Opset25_BlockedUInt4_Cuda) {
 
   RunQDQOp25CudaOnly(test);
 }
+
+// The tests above are [2, 4] with axis=1, so N == 1 and the scale index degenerates. These cover
+// N > 1: [2, 3, 2] axis=1 block_size=2 gives K=3, N=2, with 8 distinct scales.
+TEST(DequantizeLinearOpTest, Opset25_BlockedInt4_InnerDim_Cuda) {
+  OpTester test("DequantizeLinear", 25);
+  std::vector<int64_t> dims{2, 3, 2};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  // int4 values, in flat order: 1,2,3,4,5,6, 7,1,2,3,4,5
+  test.AddInput<Int4x2>("x", dims,
+                        {Int4x2(1, 2), Int4x2(3, 4), Int4x2(5, 6),
+                         Int4x2(7, 1), Int4x2(2, 3), Int4x2(4, 5)});
+  test.AddInput<float>("x_scale", {2, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<Int4x2>("x_zero_point", {2, 2, 2},
+                        {Int4x2(0, 0), Int4x2(0, 0), Int4x2(0, 0), Int4x2(0, 0)});
+  // scale_id per element: 0,1,0,1,2,3, 4,5,4,5,6,7
+  test.AddOutput<float>("y", dims,
+                        {1.0f, 4.0f, 3.0f, 8.0f, 15.0f, 24.0f,
+                         35.0f, 6.0f, 10.0f, 18.0f, 28.0f, 40.0f});
+
+  RunQDQOp25CudaOnly(test);
+}
+
+TEST(QuantizeLinearOpTest, Opset25_BlockedInt4_InnerDim_Cuda) {
+  OpTester test("QuantizeLinear", 25);
+  std::vector<int64_t> dims{2, 3, 2};
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("block_size", 2);
+  test.AddInput<float>("x", dims,
+                       {1.0f, 4.0f, 3.0f, 8.0f, 15.0f, 24.0f,
+                        35.0f, 6.0f, 10.0f, 18.0f, 28.0f, 40.0f});
+  test.AddInput<float>("y_scale", {2, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<Int4x2>("y_zero_point", {2, 2, 2},
+                        {Int4x2(0, 0), Int4x2(0, 0), Int4x2(0, 0), Int4x2(0, 0)});
+  test.AddOutput<Int4x2>("y", dims,
+                         {Int4x2(1, 2), Int4x2(3, 4), Int4x2(5, 6),
+                          Int4x2(7, 1), Int4x2(2, 3), Int4x2(4, 5)});
+
+  RunQDQOp25CudaOnly(test);
+}
 #endif  // USE_CUDA
 
 template <bool Signed>
