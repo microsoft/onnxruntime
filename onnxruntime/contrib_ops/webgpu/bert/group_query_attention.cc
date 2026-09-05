@@ -7,6 +7,7 @@
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "contrib_ops/webgpu/bert/rotary_embedding.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
+#include "contrib_ops/webgpu/bert/kv_cache_quantization.h"
 
 #include "core/common/narrow.h"
 #include "core/providers/webgpu/nn/layer_norm.h"
@@ -256,8 +257,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   GroupQueryAttentionParameters params = {};
 
-  // KV cache quantization uses 4-bit quantization with 32 extra bits (1 u32) per head for the L2 norm.
-  // Requires head_size >= 8 and power-of-2.
+  // KV cache quantization uses 32 extra bits (1 fp32 scale) per head followed by 4 or 8 bit values.
   const uint32_t kv_cache_bits = context.KvCacheQuantizationBits();
   const bool kv_cache_quant = kv_cache_bits != 0;
   const int kv_cache_bit_width = static_cast<int>(kv_cache_bits);
@@ -266,9 +266,14 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     const int qkv_last_dim = static_cast<int>(query->Shape().GetDims()[2]);
     const bool is_packed = (key == nullptr);
     const int hs = is_packed ? qkv_last_dim / (num_heads_ + 2 * kv_num_heads_) : qkv_last_dim / num_heads_;
-    if (hs < 8 || (hs & (hs - 1)) != 0) {
+    if (kv_cache_bits == 4 && (hs < 8 || (hs & (hs - 1)) != 0)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "KV cache quantization requires head_size >= 8 and a power of 2. Got head_size=", hs);
+    }
+    if (kv_cache_bits == 8 && (hs < 4 || hs % 4 != 0)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Q8 block-quantized KV cache requires head_size to be divisible by 4. Got head_size=",
+                             hs);
     }
   }
 
@@ -343,12 +348,12 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size_);
   Tensor* output = context.Output(0, output_shape);
 
-  // When TurboQuant is enabled, the KV cache head dimension is compressed.
+  // Quantized KV caches store one fp32 scale followed by packed values.
   // Derive from quantization parameters: (head_size * bit_width + extra_bits) / bits_per_element.
   int64_t kv_head_dim = parameters.head_size_;
   if (kv_cache_bit_width > 0) {
-    int bits_per_element = static_cast<int>(query->DataType()->Size()) * 8;
-    kv_head_dim = (parameters.head_size_ * kv_cache_bit_width + kv_cache_extra_bits) / bits_per_element;
+    kv_head_dim = KvCacheQuantizedHeadSize(parameters.head_size_, kv_cache_bits,
+                                           query->DataType()->Size());
   }
   std::vector<int64_t> present_dims{
       parameters.batch_size_,
@@ -420,8 +425,10 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     }
   } else if (parameters.is_packed_qkv_ && do_rotary_) {
     // Use the ultimate fused operation when FlashAttention and static KV cache is enabled.
-    // When TurboQuant is active, ApplyFlashAttention handles the fused split+rotary+Hadamard+quantize path.
-    if (will_use_flash_attention && parameters.past_present_share_buffer_) {
+    // Quantized fused rotary shaders currently implement only split-half RoPE; use the generic
+    // split/rotate path for interleaved RoPE.
+    if (will_use_flash_attention && parameters.past_present_share_buffer_ &&
+        (!kv_cache_quant || !parameters.rotary_interleaved_)) {
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,

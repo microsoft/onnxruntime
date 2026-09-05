@@ -1,0 +1,30 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Dequantization helpers shared by attention shaders.
+// The includer must define q_value_t/q_element_t and preload tq_lut for Q4.
+
+#param bit_width
+
+const KV_CACHE_QUANT_BITS : u32 = bit_width;
+const KV_CACHE_QUANT_ELEMENTS_PER_WORD : u32 = 32u / KV_CACHE_QUANT_BITS;
+const KV_CACHE_QUANT_VEC4S_PER_WORD : u32 = KV_CACHE_QUANT_ELEMENTS_PER_WORD / 4u;
+const KV_CACHE_QUANT_VALUE_MASK : u32 = (1u << KV_CACHE_QUANT_BITS) - 1u;
+
+fn kv_cache_quant_unpack_vec4(packed: u32) -> q_value_t {
+#if bit_width == 4
+  return q_value_t(
+      q_element_t(tq_lut[packed & KV_CACHE_QUANT_VALUE_MASK]),
+      q_element_t(tq_lut[(packed >> KV_CACHE_QUANT_BITS) & KV_CACHE_QUANT_VALUE_MASK]),
+      q_element_t(tq_lut[(packed >> (2u * KV_CACHE_QUANT_BITS)) & KV_CACHE_QUANT_VALUE_MASK]),
+      q_element_t(tq_lut[(packed >> (3u * KV_CACHE_QUANT_BITS)) & KV_CACHE_QUANT_VALUE_MASK]));
+#else
+  let bytes = vec4<u32>(packed, packed >> 8u, packed >> 16u, packed >> 24u) & vec4<u32>(0xffu);
+  let signed_values = vec4<i32>(bytes) - vec4<i32>(128);
+  return q_value_t(signed_values);
+#endif
+}
+
+fn kv_cache_quant_dequant_vec4(packed: u32, scale: f32) -> q_value_t {
+  return q_value_t(vec4<f32>(kv_cache_quant_unpack_vec4(packed)) * scale);
+}

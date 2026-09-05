@@ -105,8 +105,11 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
       webgpu_ep_config.kv_cache_quantization_bits = 0;
     } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_4Bit) {
       webgpu_ep_config.kv_cache_quantization_bits = 4;
+    } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_8Bit) {
+      webgpu_ep_config.kv_cache_quantization_bits = 8;
     } else {
-      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str, ". Must be \"0\" or \"4\".");
+      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str,
+                ". Must be \"0\", \"4\", or \"8\".");
     }
   }
 

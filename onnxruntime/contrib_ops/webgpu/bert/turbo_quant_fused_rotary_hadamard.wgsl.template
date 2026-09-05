@@ -1,19 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Fused TurboQuant: Split packed QKV + Rotary K + Hadamard + Quantize K/V + Rotary Q.
+// Fused Q4 TurboQuant: split packed QKV, apply rotary to Q/K, then
+// apply Walsh-Hadamard and centroid quantization to K/V.
 //
 // A single dispatch handles all three components:
-//   Workgroups [0, num_kv_slices):                K — split from packed QKV, apply rotary, WHT, quantize, write to present_key
-//   Workgroups [num_kv_slices, 2*num_kv_slices):  V — split from packed QKV, WHT, quantize, write to present_value
+//   Workgroups [0, num_kv_slices):                K — split from packed QKV, apply rotary, quantize, write to present_key
+//   Workgroups [num_kv_slices, 2*num_kv_slices):  V — split from packed QKV, quantize, write to present_value
 //   Workgroups [2*num_kv_slices, total):           Q — split from packed QKV, apply rotary, write to query output
 //
-// K/V path: apply Walsh-Hadamard butterfly transform in shared memory, compute L2 norm,
-// quantize each element to a 4-bit centroid index, pack 8 indices per u32, and store
-// norm (as bitcast<u32>(f32)) followed by packed index words.
+// K/V path: apply Walsh-Hadamard, L2 normalization, and centroid quantization.
 // Q path: per-element rotary embedding and return (no shared memory or barriers needed).
 //
-// Output layout per KV head: [norm_u32, packed_indices_0, ..., packed_indices_(HEAD_SIZE/8 - 1)]
+// Output layout per KV head: [scale_u32, packed_values_0, ...]
 
 #param hadamard_size_log2
 #param half_rotary_dim
@@ -38,7 +37,7 @@ var<workgroup> hadamard_buffer : array<f32, HEAD_SIZE>;
 #endif
 
 var<workgroup> scale_reduction_buffer : array<f32, 64>;
-// Reuse shared memory for packing: store centroid indices (0-15) as u32 per element.
+// Reuse shared memory for packing: store one centroid index per element.
 var<workgroup> index_buffer : array<u32, HEAD_SIZE>;
 
 $MAIN {
@@ -215,39 +214,37 @@ $MAIN {
     }
     workgroupBarrier();
   }
-  let l2_norm = sqrt(scale_reduction_buffer[0]);
-  let inv_l2 = select(0.0f, 1.0f / l2_norm, l2_norm > 0.0f);
+  let quant_scale = sqrt(scale_reduction_buffer[0]);
+  let inv_quant_scale = select(0.0f, 1.0f / quant_scale, quant_scale > 0.0f);
 
   // Quantize: compute centroid index for each element and store in index_buffer.
   for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
-    let unit_val = hadamard_buffer[i] * inv_l2;
+    let unit_val = hadamard_buffer[i] * inv_quant_scale;
     index_buffer[i] = snap_to_centroid_index(unit_val);
   }
   workgroupBarrier();
 
-  // Pack 8 indices per u32 word and write to output.
-  // Thread 0 writes the norm word.
+  // Pack quantized values into u32 words and write to output.
+  // Thread 0 writes the fp32 scale word.
   if (local_idx == 0u) {
     if (!is_value) {
-      present_key.setByOffset(present_base, bitcast<u32>(l2_norm));
+      present_key.setByOffset(present_base, bitcast<u32>(quant_scale));
     } else {
-      present_value.setByOffset(present_base, bitcast<u32>(l2_norm));
+      present_value.setByOffset(present_base, bitcast<u32>(quant_scale));
     }
   }
 
-  // Each thread packs one or more u32 words (HEAD_SIZE/8 words total).
-  let num_packed_words = HEAD_SIZE >> 3u;
+  let num_packed_words = HEAD_SIZE / 8u;
   for (var w = local_idx; w < num_packed_words; w += workgroup_size_x) {
-    let base_elem = w << 3u;
-    var packed = 0u;
-    packed |= (index_buffer[base_elem + 0u] & 0xFu);
-    packed |= (index_buffer[base_elem + 1u] & 0xFu) << 4u;
-    packed |= (index_buffer[base_elem + 2u] & 0xFu) << 8u;
-    packed |= (index_buffer[base_elem + 3u] & 0xFu) << 12u;
-    packed |= (index_buffer[base_elem + 4u] & 0xFu) << 16u;
-    packed |= (index_buffer[base_elem + 5u] & 0xFu) << 20u;
-    packed |= (index_buffer[base_elem + 6u] & 0xFu) << 24u;
-    packed |= (index_buffer[base_elem + 7u] & 0xFu) << 28u;
+    let base_elem = w * 8u;
+    let packed = (index_buffer[base_elem] & 0xFu) |
+                 ((index_buffer[base_elem + 1u] & 0xFu) << 4u) |
+                 ((index_buffer[base_elem + 2u] & 0xFu) << 8u) |
+                 ((index_buffer[base_elem + 3u] & 0xFu) << 12u) |
+                 ((index_buffer[base_elem + 4u] & 0xFu) << 16u) |
+                 ((index_buffer[base_elem + 5u] & 0xFu) << 20u) |
+                 ((index_buffer[base_elem + 6u] & 0xFu) << 24u) |
+                 ((index_buffer[base_elem + 7u] & 0xFu) << 28u);
     if (!is_value) {
       present_key.setByOffset(present_base + 1u + w, packed);
     } else {
