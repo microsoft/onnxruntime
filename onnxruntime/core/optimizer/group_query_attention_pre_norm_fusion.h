@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "core/optimizer/graph_transformer.h"
 
 namespace onnxruntime {
@@ -37,11 +39,16 @@ kernels reject q_norm_weight / k_norm_weight inputs.
 class GroupQueryAttentionPreNormFusion : public GraphTransformer {
  public:
   explicit GroupQueryAttentionPreNormFusion(
-      const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("GroupQueryAttentionPreNormFusion", compatible_execution_providers) {
+      const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+      NodeKernelSupportChecker node_kernel_support_checker = {}) noexcept
+      : GraphTransformer("GroupQueryAttentionPreNormFusion", compatible_execution_providers),
+        node_kernel_support_checker_(std::move(node_kernel_support_checker)) {
   }
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+ private:
+  const NodeKernelSupportChecker node_kernel_support_checker_;
 };
 
 }  // namespace onnxruntime

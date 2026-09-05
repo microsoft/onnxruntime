@@ -286,12 +286,30 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 
   ORT_TRY {
 #if !defined(ORT_MINIMAL_BUILD)
-    // Register Microsoft domain with min/max op_set version as 1/1.
+    // Register the Microsoft domain's current and last-released opset versions.
     std::call_once(schemaRegistrationOnceFlag, []() {
       auto& domainToVersionRangeInstance = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance();
-      if (domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain) == domainToVersionRangeInstance.Map().end()) {
-        // External shared providers may have already added kMSDomain
-        domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
+      const auto existing_ms_domain = domainToVersionRangeInstance.Map().find(onnxruntime::kMSDomain);
+      if (existing_ms_domain == domainToVersionRangeInstance.Map().end()) {
+        domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSDomain, 1,
+                                                        onnxruntime::kMSDomainOpsetVersion,
+                                                        onnxruntime::kMSDomainOpsetVersionLastReleased);
+      } else {
+        // External shared providers may have registered kMSDomain first. They
+        // may declare an older maximum, but must not redefine its minimum or
+        // claim schemas newer than this core understands.
+        ORT_ENFORCE(existing_ms_domain->second.first == 1 &&
+                        existing_ms_domain->second.second <= onnxruntime::kMSDomainOpsetVersion,
+                    "An external provider registered an incompatible ", onnxruntime::kMSDomain,
+                    " opset range [", existing_ms_domain->second.first, ", ",
+                    existing_ms_domain->second.second, "]; this core supports [1, ",
+                    onnxruntime::kMSDomainOpsetVersion, "].");
+        // Core owns both the current and last-released values. Always normalize
+        // both maps, including when an external provider already registered the
+        // current maximum with the default last-release value.
+        domainToVersionRangeInstance.UpdateDomainToVersion(
+            onnxruntime::kMSDomain, 1, onnxruntime::kMSDomainOpsetVersion,
+            onnxruntime::kMSDomainOpsetVersionLastReleased);
       }
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
       domainToVersionRangeInstance.AddDomainToVersion(onnxruntime::kMSNchwcDomain, 1, 1);

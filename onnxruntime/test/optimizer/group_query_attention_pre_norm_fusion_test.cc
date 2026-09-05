@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "core/graph/node_attr_utils.h"
@@ -254,9 +255,11 @@ std::unique_ptr<GroupQueryAttentionPreNormFusion> MakeWebGpuTransformer() {
 }
 
 // Helper: build the production-compatible transformer.
-std::unique_ptr<GroupQueryAttentionPreNormFusion> MakeCudaWebGpuTransformer() {
+std::unique_ptr<GroupQueryAttentionPreNormFusion> MakeCudaWebGpuTransformer(
+    GraphTransformer::NodeKernelSupportChecker node_kernel_support_checker = {}) {
   return std::make_unique<GroupQueryAttentionPreNormFusion>(
-      InlinedHashSet<std::string_view>{kCudaExecutionProvider, kWebGpuExecutionProvider});
+      InlinedHashSet<std::string_view>{kCudaExecutionProvider, kWebGpuExecutionProvider},
+      std::move(node_kernel_support_checker));
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPattern) {
@@ -276,6 +279,55 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesCudaAssign
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesWhenNegotiatedKernelIsAvailable) {
+  auto build = [](ModelTestBuilder& builder) {
+    BuildQwenQkPostNormPattern(builder, BuildOptions{});
+    for (auto& node : builder.graph_.Nodes()) {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+    }
+  };
+
+  size_t support_check_count = 0;
+  auto checker = [&support_check_count](const Node& node, const logging::Logger&) {
+    ++support_check_count;
+    EXPECT_EQ(node.Domain(), kMSDomain);
+    EXPECT_EQ(node.OpType(), "GroupQueryAttention");
+    EXPECT_EQ(node.SinceVersion(), 1);
+    EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    return true;
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(std::move(checker)),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
+  EXPECT_EQ(support_check_count, 1u);
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionSkipsQuarantinedPluginKernel) {
+  auto build = [](ModelTestBuilder& builder) {
+    BuildQwenQkPostNormPattern(builder, BuildOptions{});
+    for (auto& node : builder.graph_.Nodes()) {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+    }
+  };
+
+  size_t support_check_count = 0;
+  auto checker = [&support_check_count](const Node& node, const logging::Logger&) {
+    ++support_check_count;
+    EXPECT_EQ(node.Domain(), kMSDomain);
+    EXPECT_EQ(node.OpType(), "GroupQueryAttention");
+    EXPECT_EQ(node.SinceVersion(), 1);
+    EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    // A schema-digest mismatch removes the plugin kernel from the effective registry.
+    return false;
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeCudaWebGpuTransformer(std::move(checker)),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+  EXPECT_EQ(support_check_count, 1u);
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPatternCurrentOpset) {

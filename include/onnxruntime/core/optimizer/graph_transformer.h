@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #pragma once
+
+#include <functional>
 #include <string>
 
 #include "core/common/common.h"
@@ -19,6 +21,12 @@ The interface for in-place transformation of a Graph.
 */
 class GraphTransformer {
  public:
+  // Reusable session-time check that the execution provider assigned to a node has a
+  // compatible kernel for it. Plugin EP kernel registries are filtered during schema
+  // compatibility negotiation, so transformers using this check cannot extend a node
+  // whose schema contract was quarantined.
+  using NodeKernelSupportChecker = std::function<bool(const Node&, const logging::Logger&)>;
+
   GraphTransformer(const std::string& name,
                    const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
       : name_(name), compatible_provider_types_(compatible_execution_providers) {

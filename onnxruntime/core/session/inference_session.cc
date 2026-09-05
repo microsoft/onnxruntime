@@ -4452,7 +4452,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
                                                        GetIntraOpThreadPoolToUse(),
-                                                       &execution_providers_);
+                                                       &execution_providers_,
+                                                       &kernel_registry_manager_);
         };
       }
     } else {
@@ -4467,7 +4468,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
             return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                          optimizers_to_disable_,
                                                          GetIntraOpThreadPoolToUse(),
-                                                         &execution_providers_);
+                                                         &execution_providers_,
+                                                         &kernel_registry_manager_);
           } else {
             const auto sat_context =
                 minimal_build_optimization_handling ==

@@ -6,6 +6,7 @@
 
 #include "gtest/gtest.h"
 #include "core/common/span_utils.h"
+#include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/framework/model_builder_utils.h"
@@ -291,6 +292,21 @@ TEST(ShapeInferenceCustomOpTest, custom_op_optional_input_inference_test) {
       ASSERT_EQ(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, type_proto->tensor_type().elem_type());
     }
   }
+}
+
+TEST(ShapeInferenceCustomOpTest, RejectsOrtOwnedDomain) {
+  MyCustomOpWithOptionalInput custom_op{onnxruntime::kCpuExecutionProvider};
+  Ort::CustomOpDomain op_domain(kMSDomain);
+  op_domain.Add(&custom_op);
+  std::initializer_list<OrtCustomOpDomain*> op_domains = {static_cast<OrtCustomOpDomain*>(op_domain)};
+
+  SessionOptions sess_opts;
+  InferenceSessionWrapper session{sess_opts, GetEnvironment(), OPTIONAL_INPUT_CUSTOM_OP_MODEL_URI_2};
+  const auto status = session.AddCustomOpDomains(AsSpan(op_domains));
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("Custom operators may not be registered in ORT-owned domain 'com.microsoft'"),
+            std::string::npos);
 }
 
 }  // namespace test

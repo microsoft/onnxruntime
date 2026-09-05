@@ -4,6 +4,7 @@
 #include "cuda_ep_factory.h"
 #include "cuda_ep.h"
 #include "cuda_plugin_kernels.h"
+#include "core/graph/contrib_ops/ms_schema_abi_manifest.h"
 #include "core/common/string_utils.h"
 #include "core/session/onnxruntime_c_api.h"
 #include <algorithm>
@@ -46,6 +47,7 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
   CreateDataTransfer = CreateDataTransferImpl;
   IsStreamAware = IsStreamAwareImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+  GetOperatorCompatibilityInfo = GetOperatorCompatibilityInfoImpl;
 }
 
 CudaEpFactory::~CudaEpFactory() {
@@ -102,6 +104,17 @@ uint32_t ORT_API_CALL CudaEpFactory::GetVendorIdImpl(const OrtEpFactory* this_pt
 /*static*/
 const char* ORT_API_CALL CudaEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
   return static_cast<const CudaEpFactory*>(this_ptr)->ep_version_.c_str();
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEpFactory::GetOperatorCompatibilityInfoImpl(
+    OrtEpFactory* /*this_ptr*/,
+    const OrtEpOperatorCompatibilityInfo** entries,
+    size_t* num_entries) noexcept {
+  *entries = contrib::kMSDomainSchemaAbiManifest;
+  *num_entries = sizeof(contrib::kMSDomainSchemaAbiManifest) /
+                 sizeof(contrib::kMSDomainSchemaAbiManifest[0]);
+  return nullptr;
 }
 
 namespace {
