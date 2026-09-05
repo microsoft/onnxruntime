@@ -187,6 +187,9 @@ option(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE
        "Enable experimental DirectStorage external weights for native Windows WebGPU/D3D12" OFF)
 set(onnxruntime_DIRECT_STORAGE_ROOT "" CACHE PATH
     "Optional path to the DirectStorage NuGet native directory (containing include, lib, and bin)")
+if(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
+  add_compile_definitions(ENABLE_WEBGPU_DIRECT_STORAGE=1)
+endif()
 # The following 2 options are only for Windows
 option(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN "Enable Vulkan backend for Dawn (on Windows)" OFF)
 option(onnxruntime_ENABLE_DAWN_BACKEND_D3D12 "Enable D3D12 backend for Dawn (on Windows)" ON)

@@ -678,6 +678,10 @@ bool DirectStorageExternalDataLoader::CanLoad(
          impl_->enabled;
 }
 
+bool DirectStorageExternalDataLoader::SupportsDataType(int32_t tensor_data_type) const {
+  return tensor_data_type != ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+}
+
 bool DirectStorageExternalDataLoader::CreatesTensorForDevice(
     const OrtDevice& target_device) const {
   impl_->ResolveSupport();
@@ -724,6 +728,10 @@ common::Status DirectStorageExternalDataLoader::FinalizePreload(
                     "DirectStorage preload batch has not been started.");
   if (impl_->preload_batch->request_count == 0) {
     impl_->context.ContinueInitialize();
+    if (is_cancelled && is_cancelled()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "DirectStorage initializer preloading was canceled.");
+    }
     return common::Status::OK();
   }
 
@@ -814,7 +822,17 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
     if (!preload_status.IsOK()) {
       return fail_or_fallback(preload_status);
     }
+    if (is_cancelled && is_cancelled()) {
+      return fail_or_fallback(ORT_MAKE_STATUS(
+          ONNXRUNTIME, MODEL_LOAD_CANCELED,
+          "DirectStorage initializer loading was canceled."));
+    }
     impl_->context.WaitForInitializeComplete();
+    if (is_cancelled && is_cancelled()) {
+      return fail_or_fallback(ORT_MAKE_STATUS(
+          ONNXRUNTIME, MODEL_LOAD_CANCELED,
+          "DirectStorage initializer loading was canceled."));
+    }
     batch.finalized = true;
     return common::Status::OK();
   }
@@ -858,6 +876,11 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
     }
   }
   impl_->context.WaitForInitializeComplete();
+  if (is_cancelled && is_cancelled()) {
+    return fail_or_fallback(ORT_MAKE_STATUS(
+        ONNXRUNTIME, MODEL_LOAD_CANCELED,
+        "DirectStorage initializer loading was canceled."));
+  }
 
   const auto import_start = Clock::now();
   const auto import_status = [&]() -> common::Status {
@@ -872,6 +895,11 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
                       "DirectStorage and Dawn used different D3D12 devices.");
 
     for (auto& tensor : batch.tensors) {
+      if (is_cancelled && is_cancelled()) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, MODEL_LOAD_CANCELED,
+            "DirectStorage initializer loading was canceled.");
+      }
       if (tensor.key.length == 0) {
         continue;
       }

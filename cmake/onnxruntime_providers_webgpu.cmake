@@ -14,6 +14,9 @@
     if(onnxruntime_USE_EXTERNAL_DAWN OR onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       message(FATAL_ERROR "WebGPU DirectStorage requires the in-tree statically linked Dawn build.")
     endif()
+    if(onnxruntime_USE_EP_API_ADAPTERS)
+      message(FATAL_ERROR "WebGPU DirectStorage is not supported with EP API adapter/plugin builds.")
+    endif()
 
     set(_directstorage_native_root "${onnxruntime_DIRECT_STORAGE_ROOT}")
     if(NOT _directstorage_native_root)
@@ -205,7 +208,6 @@
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
 
   if(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
-    target_compile_definitions(onnxruntime_providers_webgpu PUBLIC ENABLE_WEBGPU_DIRECT_STORAGE=1)
     target_include_directories(onnxruntime_providers_webgpu PRIVATE "${_directstorage_include_dir}")
     target_link_libraries(onnxruntime_providers_webgpu PRIVATE "${_directstorage_library}")
     add_custom_command(TARGET onnxruntime_providers_webgpu POST_BUILD

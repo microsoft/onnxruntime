@@ -409,6 +409,10 @@ TEST(WebGpuContextTest, DirectStorageLoadsExternalTensorAndEmptyTensor) {
   ASSERT_NE(ep, nullptr);
   auto loader = ep->GetExternalDataLoader();
   ASSERT_NE(loader, nullptr);
+  EXPECT_FALSE(loader->SupportsDataType(
+      ONNX_NAMESPACE::TensorProto_DataType_BOOL));
+  EXPECT_TRUE(loader->SupportsDataType(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
   auto allocators = ep->CreatePreferredAllocators();
   ASSERT_FALSE(allocators.empty());
   const auto& allocator = allocators.front();
@@ -483,6 +487,89 @@ TEST(WebGpuContextTest, PreferredDirectStoragePreservesCancellation) {
   ASSERT_STATUS_OK(loader->PrepareTensor(
       Env::Default(), data_path, "weights", 0, sizeof(data)));
   const auto status = loader->FinalizeLoad([]() { return true; });
+  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
+  loader->AbortLoad();
+}
+
+TEST(WebGpuContextTest, DirectStorageZeroRequestPreloadPreservesCancellation) {
+  auto options =
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  ASSERT_STATUS_OK(loader->BeginPreload());
+  const auto status = loader->FinalizePreload([]() { return true; });
+  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
+  loader->AbortLoad();
+}
+
+TEST(WebGpuContextTest, DirectStorageZeroRequestFinalBatchPreservesCancellation) {
+  auto options =
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  ASSERT_STATUS_OK(loader->BeginPreload());
+  ASSERT_STATUS_OK(loader->FinalizePreload([]() { return false; }));
+  ASSERT_STATUS_OK(loader->BeginLoad());
+  const auto status = loader->FinalizeLoad([]() { return true; });
+  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
+  loader->AbortLoad();
+}
+
+TEST(WebGpuContextTest, DirectStorageChecksCancellationDuringImport) {
+  TemporaryDirectory temp_dir{
+      ORT_TSTR("webgpu_direct_storage_import_cancellation_test")};
+  const auto data_path =
+      std::filesystem::path{temp_dir.Path()} / ORT_TSTR("weights.bin");
+  const std::array<uint32_t, 16> data{};
+  {
+    std::ofstream stream{data_path,
+                         std::ios::binary | std::ios::trunc};
+    ASSERT_TRUE(stream.good());
+    stream.write(reinterpret_cast<const char*>(data.data()),
+                 static_cast<std::streamsize>(sizeof(data)));
+    ASSERT_TRUE(stream.good());
+  }
+
+  auto options =
+      WeightLoadAccelerationOptions(kWeightLoadAcceleration_Preferred);
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  auto loader = ep->GetExternalDataLoader();
+  ASSERT_NE(loader, nullptr);
+  const auto support_status = webgpu::CheckDirectStorageExternalWeightsSupport(
+      webgpu::WebGpuContextFactory::GetContext(0));
+  if (!support_status.IsOK()) {
+    GTEST_SKIP() << support_status.ErrorMessage();
+  }
+
+  ASSERT_STATUS_OK(loader->BeginPreload());
+  ASSERT_STATUS_OK(loader->PreloadTensor(
+      Env::Default(), data_path, "weights", 0, sizeof(data)));
+  ASSERT_STATUS_OK(loader->FinalizePreload([]() { return false; }));
+  ASSERT_STATUS_OK(loader->BeginLoad());
+  ASSERT_STATUS_OK(loader->PrepareTensor(
+      Env::Default(), data_path, "weights", 0, sizeof(data)));
+
+  size_t cancellation_checks = 0;
+  const auto status = loader->FinalizeLoad([&cancellation_checks]() {
+    return cancellation_checks++ != 0;
+  });
   EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
   loader->AbortLoad();
 }

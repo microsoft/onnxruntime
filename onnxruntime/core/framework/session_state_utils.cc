@@ -100,8 +100,14 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   const auto device = memory_info.device;
 
   if (utils::HasExternalData(tensor_proto)) {
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+    auto external_data_loader =
+        external_data_loader_mgr.GetExternalDataLoader(memory_info, tensor_proto.data_type());
+#else
     auto external_data_loader = external_data_loader_mgr.GetExternalDataLoader(memory_info);
+#endif
     if (external_data_loader) {
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
       if (external_data_loader->CreatesTensorForDevice(device)) {
         ORT_RETURN_IF(memory_buffer != nullptr || alloc == nullptr,
                       "An external data loader that creates tensors requires a device allocator.");
@@ -111,8 +117,18 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
         ORT_RETURN_IF_ERROR(
             AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
       }
+#else
+      // if custom external data loader is used, always allocate memory on device
+      ORT_RETURN_IF_ERROR(
+          AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+#endif
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
       ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
                                                                     *external_data_loader, alloc, tensor));
+#else
+      ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
+                                                                    *external_data_loader, tensor));
+#endif
 
       Tensor::InitOrtValue(std::move(tensor), ort_value);
       return common::Status::OK();
@@ -335,13 +351,19 @@ common::Status SaveInitializedTensors(
     // - Values that are external and mapped from disk. We let the OS manage the memory.
     // - we do not trace values that are in memory because they may be sitting on top of the user allocated
     //   memory.
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
     const bool loader_creates_tensor =
         utils::HasExternalData(*tensor_proto) &&
         !utils::HasExternalDataInMemory(*tensor_proto) &&
-        external_data_loader_mgr.GetTensorCreator(exec_plan.GetLocation(ort_value_index)) != nullptr;
+        external_data_loader_mgr.GetTensorCreator(
+            exec_plan.GetLocation(ort_value_index), tensor_proto->data_type()) != nullptr;
     const bool trace_allocation = !loader_creates_tensor &&
                                   ((exec_plan.GetLocation(ort_value_index) != default_cpu_device) ||
                                    !utils::HasExternalData(*tensor_proto));
+#else
+    const bool trace_allocation = (exec_plan.GetLocation(ort_value_index) != default_cpu_device) ||
+                                  !utils::HasExternalData(*tensor_proto);
+#endif
 
     if (trace_allocation) {
       // can not trace string tensor, and they exist only on CPU
@@ -360,11 +382,14 @@ common::Status SaveInitializedTensors(
       // do not trace string tensor
       continue;
     }
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
     if (utils::HasExternalData(*entry.second) &&
         !utils::HasExternalDataInMemory(*entry.second) &&
-        external_data_loader_mgr.GetTensorCreator(exec_plan.GetLocation(entry.first)) != nullptr) {
+        external_data_loader_mgr.GetTensorCreator(
+            exec_plan.GetLocation(entry.first), entry.second->data_type()) != nullptr) {
       continue;
     }
+#endif
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
 
@@ -390,6 +415,7 @@ common::Status SaveInitializedTensors(
       session_options.config_options.GetConfigOrDefault(
           kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
   ORT_RETURN_IF_ERROR(external_data_loader_mgr.BeginLoad());
   bool external_data_load_finalized = false;
   auto abort_external_data_load = gsl::finally([&]() {
@@ -410,7 +436,8 @@ common::Status SaveInitializedTensors(
                              "Preparing session state weights is canceled due to user request.");
     }
 
-    const auto* tensor_creator = external_data_loader_mgr.GetTensorCreator(exec_plan.GetLocation(entry.first));
+    const auto* tensor_creator = external_data_loader_mgr.GetTensorCreator(
+        exec_plan.GetLocation(entry.first), entry.second->data_type());
     if (tensor_creator != nullptr) {
       ORT_RETURN_IF_ERROR(
           utils::PrepareExtDataForTensorFromTensorProto(env, graph_loc, *entry.second, *tensor_creator));
@@ -419,6 +446,7 @@ common::Status SaveInitializedTensors(
 
   ORT_RETURN_IF_ERROR(external_data_loader_mgr.FinalizeLoad(
       [&session_options]() { return session_options.IsLoadCancellationFlagSet(); }));
+#endif
 
   // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
@@ -507,7 +535,9 @@ common::Status SaveInitializedTensors(
 #endif
   }
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
   external_data_load_finalized = true;
+#endif
   LOGS(logger, INFO) << "Done saving initialized tensors";
   return common::Status::OK();
 }
