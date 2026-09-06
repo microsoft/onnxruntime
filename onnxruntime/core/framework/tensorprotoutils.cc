@@ -194,6 +194,77 @@ DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(UInt2x4, CalcNumInt2Quads)
 DEFINE_4BIT_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(Float4E2M1x2, CalcNumFloat4Pairs)
 #endif
 
+template <typename FLOAT6_TYPE>
+Status UnpackFloat6Tensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                         /*out*/ FLOAT6_TYPE* p_data, size_t expected_num_elems) {
+  if (p_data == nullptr) {
+    const size_t size = raw_data != nullptr ? raw_data_len : static_cast<size_t>(tensor.int32_data_size());
+    return size == 0 ? Status::OK() : Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  if (raw_data != nullptr) {
+    const size_t expected_num_bytes = FLOAT6_TYPE::CalcNumFloat6Bytes(expected_num_elems);
+    ORT_RETURN_IF_NOT(raw_data_len == expected_num_bytes, "Unexpected number of packed float6 bytes");
+    const auto* packed_data = static_cast<const uint8_t*>(raw_data);
+    for (size_t i = 0; i < expected_num_elems; ++i) {
+      const uint8_t* packed_group = packed_data + (i / 4) * 3;
+      uint8_t bits;
+      switch (i % 4) {
+        case 0:
+          bits = packed_group[0] & 0x3F;
+          break;
+        case 1:
+          bits = static_cast<uint8_t>((packed_group[0] >> 6) | ((packed_group[1] & 0x0F) << 2));
+          break;
+        case 2:
+          bits = static_cast<uint8_t>((packed_group[1] >> 4) | ((packed_group[2] & 0x03) << 4));
+          break;
+        default:
+          bits = packed_group[2] >> 2;
+          break;
+      }
+      p_data[i] = FLOAT6_TYPE(bits, FLOAT6_TYPE::FromBits());
+    }
+    return Status::OK();
+  }
+
+  ORT_RETURN_IF_NOT(static_cast<size_t>(tensor.int32_data_size()) == expected_num_elems,
+                    "UnpackTensor: the pre-allocated size does not match the size in proto");
+  for (int i = 0; i < tensor.int32_data_size(); ++i) {
+    const int32_t value = tensor.int32_data(i);
+    ORT_RETURN_IF(value < 0 || value > 0x3F, "Float6 int32_data values must use only bits 0-5");
+    p_data[i] = FLOAT6_TYPE(static_cast<uint8_t>(value), FLOAT6_TYPE::FromBits());
+  }
+  return Status::OK();
+}
+
+template <typename FLOAT6_TYPE>
+std::string PackFloat6Tensor(const FLOAT6_TYPE* data, size_t num_elements) {
+  std::string packed_data(FLOAT6_TYPE::CalcNumFloat6Bytes(num_elements), '\0');
+  auto* packed_bytes = reinterpret_cast<uint8_t*>(packed_data.data());
+  for (size_t i = 0; i < num_elements; ++i) {
+    const uint8_t bits = data[i].ToBits();
+    uint8_t* packed_group = packed_bytes + (i / 4) * 3;
+    switch (i % 4) {
+      case 0:
+        packed_group[0] |= bits;
+        break;
+      case 1:
+        packed_group[0] |= bits << 6;
+        packed_group[1] |= bits >> 2;
+        break;
+      case 2:
+        packed_group[1] |= bits << 4;
+        packed_group[2] |= bits >> 4;
+        break;
+      default:
+        packed_group[2] |= bits << 2;
+        break;
+    }
+  }
+  return packed_data;
+}
+
 // Read external data for tensor in unint8_t* form and return Status::OK() if the data is read successfully.
 // Uses the tensor_proto_dir to construct the full path for external data. If tensor_proto_dir == nullptr
 // then uses the current directory instead.
@@ -589,7 +660,14 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            ? std::filesystem::path(location)
                            : (tensor_proto_dir / location);
 
-  ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
+  if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3 ||
+      tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
+    const TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
+    ORT_RETURN_IF(tensor_shape.Size() < 0, "External initializer has negative dimensions");
+    tensor_byte_size = Float6E2M3::CalcNumFloat6Bytes(gsl::narrow_cast<size_t>(tensor_shape.Size()));
+  } else {
+    ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
+  }
   const size_t external_data_length = external_data_info->GetLength();
   ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
                     "TensorProto: ", tensor_proto.name(),
@@ -783,6 +861,30 @@ DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(UInt2x4, CalcNumInt2Quads)
 DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(Float4E2M1x2, CalcNumFloat4Pairs)
 #endif
 
+template <typename FLOAT6_TYPE>
+Status UnpackFloat6TensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                          const std::filesystem::path& tensor_proto_dir,
+                                          size_t expected_num_elements, FLOAT6_TYPE* p_data) {
+  ORT_RETURN_IF(p_data == nullptr, "nullptr == p_data");
+  std::vector<uint8_t> packed_data;
+  ORT_RETURN_IF_ERROR(ReadExternalDataForTensor(tensor, tensor_proto_dir, packed_data));
+  return UnpackFloat6Tensor(tensor, packed_data.data(), packed_data.size(), p_data, expected_num_elements);
+}
+
+template <>
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const std::filesystem::path& tensor_proto_dir,
+                                    size_t expected_num_elements, Float6E2M3* p_data) {
+  return UnpackFloat6TensorWithExternalData(tensor, tensor_proto_dir, expected_num_elements, p_data);
+}
+
+template <>
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const std::filesystem::path& tensor_proto_dir,
+                                    size_t expected_num_elements, Float6E3M2* p_data) {
+  return UnpackFloat6TensorWithExternalData(tensor, tensor_proto_dir, expected_num_elements, p_data);
+}
+
 #define INSTANTIATE_UNPACK_EXTERNAL_TENSOR(type)                                                                 \
   template Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto&, const std::filesystem::path&, \
                                                size_t, type*);
@@ -823,6 +925,22 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*
 template <typename T>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                     /*out*/ T* p_data, size_t expected_num_elements);
+
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float6E2M3* p_data, size_t expected_num_elems) {
+  ORT_RETURN_IF(tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3,
+                "Unexpected Float6E2M3 tensor type");
+  return UnpackFloat6Tensor(tensor, raw_data, raw_data_len, p_data, expected_num_elems);
+}
+
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ Float6E3M2* p_data, size_t expected_num_elems) {
+  ORT_RETURN_IF(tensor.data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2,
+                "Unexpected Float6E3M2 tensor type");
+  return UnpackFloat6Tensor(tensor, raw_data, raw_data_len, p_data, expected_num_elems);
+}
 
 #define DEFINE_UNPACK_TENSOR_IMPL(T, Type, field_name, field_size)                                          \
   template <>                                                                                               \
@@ -1386,6 +1504,8 @@ static common::Status GetSizeInBytesFromTensorElemCountAndType(size_t elem_count
     CASE_PROTO_TRACE(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
     CASE_PROTO_TRACE(FLOAT8E8M0, Float8E8M0);
 #endif
+    CASE_PROTO_TRACE(FLOAT6E2M3, Float6E2M3);
+    CASE_PROTO_TRACE(FLOAT6E3M2, Float6E3M2);
     CASE_PROTO_TRACE_INT4(UINT4, UInt4x2);
     CASE_PROTO_TRACE_INT4(INT4, Int4x2);
     CASE_PROTO_TRACE_INT2(UINT2, UInt2x4);
@@ -1466,10 +1586,15 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
                     " byte limit for embedded initializer data. Use external data for large initializers.");
 
   if (HasRawData(tensor_proto)) {
-    ORT_RETURN_IF_NOT(tensor_proto.raw_data().size() == byte_size_from_shape,
+    size_t expected_raw_data_size = byte_size_from_shape;
+    if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3 ||
+        tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
+      expected_raw_data_size = Float6E2M3::CalcNumFloat6Bytes(num_elems_unsigned);
+    }
+    ORT_RETURN_IF_NOT(tensor_proto.raw_data().size() == expected_raw_data_size,
                       "Initializer '", tensor_proto.name(), "': raw_data size (", tensor_proto.raw_data().size(),
                       " bytes) does not match expected size from shape and data type (",
-                      byte_size_from_shape, " bytes)");
+                      expected_raw_data_size, " bytes)");
   } else if (HasString(tensor_proto)) {
     ORT_RETURN_IF_NOT(tensor_proto.string_data_size() == num_elems_signed,
                       "Initializer '", tensor_proto.name(), "': string_data count (", tensor_proto.string_data_size(),
@@ -1506,6 +1631,11 @@ common::Status ValidateEmbeddedTensorProtoDataSizeAndShape(const ONNX_NAMESPACE:
       case TensorProto_DataType_INT2:
       case TensorProto_DataType_UINT2:
         expected_count = static_cast<int64_t>(Int2x4::CalcNumInt2Quads(num_elems_unsigned));
+        actual_count = tensor_proto.int32_data_size();
+        break;
+      case TensorProto_DataType_FLOAT6E2M3:
+      case TensorProto_DataType_FLOAT6E3M2:
+        expected_count = num_elems_signed;
         actual_count = tensor_proto.int32_data_size();
         break;
 #if !defined(DISABLE_FLOAT4_TYPES)
@@ -1666,6 +1796,24 @@ Status GetExtDataFromTensorProto(const Env& env,
   // function is reached outside Graph::Resolve (e.g. training checkpoint load, custom-op init).
   // In-memory address markers are passed through; their validity is enforced upstream.
   ORT_RETURN_IF_ERROR(ValidateExternalFilePathForTensor(tensor_proto, model_path));
+
+  if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3 ||
+      tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
+    const TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
+    const DataTypeImpl* type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
+    Tensor tensor{type, tensor_shape, CPUAllocator::DefaultInstance()};
+    const size_t num_elements = gsl::narrow_cast<size_t>(tensor_shape.Size());
+    const auto tensor_proto_dir = model_path.empty() ? std::filesystem::path{} : model_path.parent_path();
+    if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3) {
+      ORT_RETURN_IF_ERROR(UnpackTensorWithExternalData(
+          tensor_proto, tensor_proto_dir, num_elements, tensor.MutableData<Float6E2M3>()));
+    } else {
+      ORT_RETURN_IF_ERROR(UnpackTensorWithExternalData(
+          tensor_proto, tensor_proto_dir, num_elements, tensor.MutableData<Float6E3M2>()));
+    }
+    Tensor::InitOrtValue(std::move(tensor), ort_value);
+    return Status::OK();
+  }
 
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
@@ -1843,13 +1991,31 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   ORT_RETURN_IF_ERROR(
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
 
+  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag ||
+                    external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
+                "Memory address tag is not supported by custom external data loader.");
+  ORT_RETURN_IF(file_offset < 0, "External initializer: ", tensor_proto.name(),
+                " has a negative offset: ", file_offset);
+
+  if (tensor_proto.data_type() == TensorProto_DataType_FLOAT6E2M3 ||
+      tensor_proto.data_type() == TensorProto_DataType_FLOAT6E3M2) {
+    ORT_RETURN_IF(tensor.Location().device.Type() != OrtDevice::CPU,
+                  "FP6 external data requires a CPU destination when loaded through IExternalDataLoader.");
+    Tensor packed_tensor{DataTypeImpl::GetType<uint8_t>(), TensorShape({static_cast<int64_t>(raw_data_safe_len)}),
+                         CPUAllocator::DefaultInstance()};
+    ORT_RETURN_IF_ERROR(ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len,
+                                                    packed_tensor));
+    ONNX_NAMESPACE::TensorProto packed_proto = tensor_proto;
+    packed_proto.clear_external_data();
+    packed_proto.set_data_location(TensorProto_DataLocation_DEFAULT);
+    packed_proto.set_raw_data(packed_tensor.DataRaw(), raw_data_safe_len);
+    return TensorProtoToTensor(env, model_path, packed_proto, tensor);
+  }
+
   ORT_RETURN_IF(file_offset < 0 || raw_data_safe_len != tensor.SizeInBytes(),
                 "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
                 " size to read: ", static_cast<size_t>(raw_data_safe_len),
                 " does not match the tensor size: ", tensor.SizeInBytes());
-  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag || external_data_file_path == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag,
-                "Memory address tag is not supported by custom external data loader.");
-
   return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
 }
 
@@ -1955,6 +2121,8 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     CASE_PROTO(UINT4, UInt4x2);
     CASE_PROTO(INT2, Int2x4);
     CASE_PROTO(UINT2, UInt2x4);
+    CASE_PROTO(FLOAT6E2M3, Float6E2M3);
+    CASE_PROTO(FLOAT6E3M2, Float6E3M2);
 
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_PROTO(FLOAT4E2M1, Float4E2M1x2);
@@ -2053,6 +2221,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_TYPE(FLOAT4E2M1)
 #endif
+    CASE_TYPE(FLOAT6E2M3)
+    CASE_TYPE(FLOAT6E3M2)
 
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
@@ -2079,6 +2249,8 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
   // String tensors cannot use the external data in-memory optimization because their raw buffer
   // contains std::string objects (with internal pointers), not serializable string content.
   if (use_tensor_buffer && !tensor.IsDataTypeString() &&
+      tensor.GetElementType() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3 &&
+      tensor.GetElementType() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2 &&
       tensor.SizeInBytes() > kSmallTensorExternalDataThreshold) {
     // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/graph/graph_flatbuffers_utils.cc#L302
     const auto* raw_data = tensor.DataRaw();
@@ -2101,6 +2273,10 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
       for (; f < end; ++f) {
         *mutable_string_data->Add() = *f;
       }
+    } else if (tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3) {
+      *tensor_proto.mutable_raw_data() = PackFloat6Tensor(tensor.Data<Float6E2M3>(), tensor.Shape().Size());
+    } else if (tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2) {
+      *tensor_proto.mutable_raw_data() = PackFloat6Tensor(tensor.Data<Float6E3M2>(), tensor.Shape().Size());
     } else {
       SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), tensor.SizeInBytes());
     }
@@ -2819,6 +2995,14 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
         initializer,
         model_path.parent_path(),
         unpacked_tensor));
+    if (initializer.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E2M3 ||
+        initializer.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT6E3M2) {
+      ONNX_NAMESPACE::TensorProto packed_initializer = initializer;
+      packed_initializer.clear_external_data();
+      packed_initializer.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
+      packed_initializer.set_raw_data(unpacked_tensor.data(), unpacked_tensor.size());
+      return UnpackInitializerData(packed_initializer, {}, unpacked_tensor);
+    }
     return Status::OK();
   }
 
@@ -2851,6 +3035,24 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
 #if !defined(DISABLE_FLOAT4_TYPES)
     CASE_UNPACK_SUBBYTE_TYPE(FLOAT4E2M1, Float4E2M1x2, int32_data_size, CalcNumFloat4Pairs);
 #endif
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT6E2M3: {
+      TensorShape tensor_shape = GetTensorShapeFromTensorProto(initializer);
+      const size_t element_count = static_cast<size_t>(tensor_shape.Size());
+      unpacked_tensor.resize(element_count * sizeof(Float6E2M3));
+      return onnxruntime::utils::UnpackTensor(initializer,
+                                              initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,
+                                              initializer.has_raw_data() ? initializer.raw_data().size() : 0,
+                                              reinterpret_cast<Float6E2M3*>(unpacked_tensor.data()), element_count);
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT6E3M2: {
+      TensorShape tensor_shape = GetTensorShapeFromTensorProto(initializer);
+      const size_t element_count = static_cast<size_t>(tensor_shape.Size());
+      unpacked_tensor.resize(element_count * sizeof(Float6E3M2));
+      return onnxruntime::utils::UnpackTensor(initializer,
+                                              initializer.has_raw_data() ? initializer.raw_data().data() : nullptr,
+                                              initializer.has_raw_data() ? initializer.raw_data().size() : 0,
+                                              reinterpret_cast<Float6E3M2*>(unpacked_tensor.data()), element_count);
+    }
 
     default:
       break;
