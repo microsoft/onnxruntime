@@ -18,9 +18,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                               DataTypeImpl::GetTensorType<int8_t>()}),
     SpaceToDepth);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     SpaceToDepth,
     13,
+    27,
+    KernelDefBuilder()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>()}),
+    SpaceToDepth);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    SpaceToDepth,
+    28,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
@@ -47,9 +58,20 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
                               DataTypeImpl::GetTensorType<int8_t>()}),
     DepthToSpace);
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     DepthToSpace,
     13,
+    27,
+    KernelDefBuilder()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<uint8_t>(),
+                              DataTypeImpl::GetTensorType<int8_t>()}),
+    DepthToSpace);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    DepthToSpace,
+    28,
     KernelDefBuilder()
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                               DataTypeImpl::GetTensorType<double>(),
@@ -107,7 +129,8 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
 
   Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
 
-  std::array<Eigen::DenseIndex, IntermediateTensorRank> permutation{{0, 3, 5, 1, 2, 4}};
+  const auto permutation = is_dcr_ ? std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 3, 5, 1, 2, 4}}
+                                   : std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 1, 3, 5, 2, 4}};
 
   if (input.IsDataType<float>()) {
     SpaceDepthOpCpuImpl<float>(input.Data<float>(), output.MutableData<float>(), permutation,

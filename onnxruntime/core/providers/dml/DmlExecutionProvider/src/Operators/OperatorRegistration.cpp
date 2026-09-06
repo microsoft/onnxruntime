@@ -815,9 +815,11 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
 
     {REG_INFO(      7,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     13,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO(     28,  SpaceToDepth,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(      7,  DepthToSpace,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     11,  DepthToSpace,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     13,  DepthToSpace,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO(     28,  DepthToSpace,                       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Tile,                               typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},
     {REG_INFO(     13,  Tile,                               typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},
     {REG_INFO(      8,  Expand,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},

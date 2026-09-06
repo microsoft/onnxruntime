@@ -58,6 +58,12 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
                       padding_mode.c_str());
   }
 
+  if (op_type == "SpaceToDepth") {
+    NodeAttrHelper node_helper(node_unit);
+    std::string mode = node_helper.Get("mode", "DCR");
+    ORT_RETURN_IF_NOT(mode == "DCR", "QNN SpaceToDepth only supports DCR mode.");
+  }
+
   // To DO: Remove once QNN CPU supports ScatterND
   const auto qnn_backend_type = qnn_model_wrapper.GetQnnBackendType();
   if (op_type == "ScatterND") {

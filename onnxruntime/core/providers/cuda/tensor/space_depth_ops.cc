@@ -37,10 +37,23 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     SpaceToDepth<LAYOUT_NHWC>);
 #endif
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     SpaceToDepth,
     kOnnxDomain,
     13,
+    27,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T",
+                        {DataTypeImpl::GetTensorType<float>(),
+                         DataTypeImpl::GetTensorType<double>(),
+                         DataTypeImpl::GetTensorType<MLFloat16>()}),
+    SpaceToDepth<LAYOUT_NCHW>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SpaceToDepth,
+    kOnnxDomain,
+    28,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T",
@@ -50,10 +63,23 @@ ONNX_OPERATOR_KERNEL_EX(
     SpaceToDepth<LAYOUT_NCHW>);
 
 #ifdef ENABLE_CUDA_NHWC_OPS
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     SpaceToDepth,
     kMSInternalNHWCDomain,
     13,
+    27,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T",
+                        {DataTypeImpl::GetTensorType<float>(),
+                         DataTypeImpl::GetTensorType<double>(),
+                         DataTypeImpl::GetTensorType<MLFloat16>()}),
+    SpaceToDepth<LAYOUT_NHWC>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SpaceToDepth,
+    kMSInternalNHWCDomain,
+    28,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T",
@@ -119,10 +145,23 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     DepthToSpace<LAYOUT_NHWC>);
 #endif
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     DepthToSpace,
     kOnnxDomain,
     13,
+    27,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T",
+                        {DataTypeImpl::GetTensorType<float>(),
+                         DataTypeImpl::GetTensorType<double>(),
+                         DataTypeImpl::GetTensorType<MLFloat16>()}),
+    DepthToSpace<LAYOUT_NCHW>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    DepthToSpace,
+    kOnnxDomain,
+    28,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T",
@@ -132,10 +171,23 @@ ONNX_OPERATOR_KERNEL_EX(
     DepthToSpace<LAYOUT_NCHW>);
 
 #ifdef ENABLE_CUDA_NHWC_OPS
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     DepthToSpace,
     kMSInternalNHWCDomain,
     13,
+    27,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T",
+                        {DataTypeImpl::GetTensorType<float>(),
+                         DataTypeImpl::GetTensorType<double>(),
+                         DataTypeImpl::GetTensorType<MLFloat16>()}),
+    DepthToSpace<LAYOUT_NHWC>);
+
+ONNX_OPERATOR_KERNEL_EX(
+    DepthToSpace,
+    kMSInternalNHWCDomain,
+    28,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T",
@@ -191,15 +243,25 @@ Status SpaceToDepth<Layout>::ComputeInternal(OpKernelContext* context) const {
                                                       input_width / blocksize_, blocksize_, input_depth};
 
   // We will pass in the "virtual" output shape to be used by DoTranspose() in SpaceDepthOpCudaImpl(...)
-  TensorShape virtual_output_shape = (Layout == LAYOUT_NCHW)
-                                         ? TensorShape{batch, blocksize_, blocksize_, input_depth,
-                                                       input_height / blocksize_, input_width / blocksize_}
-                                         : TensorShape{batch, input_height / blocksize_, input_width / blocksize_,
-                                                       blocksize_, blocksize_, input_depth};
-
-  std::vector<size_t> permutation = (Layout == LAYOUT_NCHW)
-                                        ? std::vector<size_t>{0, 3, 5, 1, 2, 4}
-                                        : std::vector<size_t>{0, 1, 3, 2, 4, 5};
+  TensorShape virtual_output_shape;
+  std::vector<size_t> permutation;
+  if (is_dcr_) {
+    virtual_output_shape = (Layout == LAYOUT_NCHW)
+                               ? TensorShape{batch, blocksize_, blocksize_, input_depth,
+                                            input_height / blocksize_, input_width / blocksize_}
+                               : TensorShape{batch, input_height / blocksize_, input_width / blocksize_,
+                                            blocksize_, blocksize_, input_depth};
+    permutation = (Layout == LAYOUT_NCHW)
+                      ? std::vector<size_t>{0, 3, 5, 1, 2, 4}
+                      : std::vector<size_t>{0, 1, 3, 2, 4, 5};
+  } else {
+    virtual_output_shape = (Layout == LAYOUT_NCHW)
+                               ? TensorShape{batch, input_depth, blocksize_, blocksize_,
+                                            input_height / blocksize_, input_width / blocksize_}
+                               : TensorShape{batch, input_height / blocksize_, input_width / blocksize_,
+                                            input_depth, blocksize_, blocksize_};
+    permutation = {0, 1, 3, 5, 2, 4};
+  }
 
   ORT_RETURN_IF_ERROR(
       SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(context), GetCublasHandle(context), input, output, permutation,
