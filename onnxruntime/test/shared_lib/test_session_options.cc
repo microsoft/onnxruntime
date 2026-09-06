@@ -97,21 +97,6 @@ TEST(CApiTest, session_options_provider_interface_fail_add_cuda) {
 }
 #endif  // defined(USE_CUDA_PROVIDER_INTERFACE)
 
-#if defined(USE_NV_PROVIDER_INTERFACE)
-// Test that loading NV EP when only the interface is built (but not the full EP) fails.
-TEST(CApiTest, session_options_provider_interface_fail_add_nv) {
-  const OrtApi& api = Ort::GetApi();
-  Ort::SessionOptions session_options;
-
-  Ort::Status status = Ort::Status{api.SessionOptionsAppendExecutionProvider(session_options,
-                                                                             kNvTensorRTRTXExecutionProvider,
-                                                                             nullptr, nullptr, 0)};
-  ASSERT_TRUE(!status.IsOK());
-  EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
-  EXPECT_THAT(status.GetErrorMessage(), testing::HasSubstr("Failed to load"));
-}
-#endif  // defined(USE_OPENVINO_PROVIDER_INTERFACE)
-
 #if defined(USE_TENSORRT_PROVIDER_INTERFACE)
 // Test that loading TensorRT EP when only the interface is built (but not the full EP) fails.
 TEST(CApiTest, session_options_provider_interface_fail_add_tensorrt) {

@@ -26,9 +26,6 @@
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #endif
 
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
-#endif
 using namespace onnxruntime;
 
 namespace onnxruntime {
@@ -100,7 +97,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     JS,
     VitisAI,
     CoreML,
-    NvTensorRtRtx,  // TensorRt EP for RTX GPUs.
     MIGraphX,
     CPU
   };
@@ -111,7 +107,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 14> supported_eps = {
+  static std::array<EpToAppend, 13> supported_eps = {
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
@@ -123,7 +119,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       EpToAppend{EpID::JS, "JS", kJsExecutionProvider},
       EpToAppend{EpID::VitisAI, "VitisAI", kVitisAIExecutionProvider},
       EpToAppend{EpID::CoreML, "CoreML", kCoreMLExecutionProvider},
-      EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider},
       EpToAppend{EpID::MIGraphX, "MIGraphX", kMIGraphXExecutionProvider},
       EpToAppend{EpID::CPU, "CPU", kCpuExecutionProvider}};
 
@@ -311,19 +306,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     case EpID::CoreML: {
 #if defined(USE_COREML)
       options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
-#else
-      status = create_not_supported_status();
-#endif
-      break;
-    }
-    case EpID::NvTensorRtRtx: {
-#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
-      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options, &(options->value));
-      if (factory) {
-        options->provider_factories.push_back(factory);
-      } else {
-        status = create_failed_to_load_provider_status();
-      }
 #else
       status = create_not_supported_status();
 #endif

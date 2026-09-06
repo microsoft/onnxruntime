@@ -1511,35 +1511,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNode_ForeignSourceSkipped) {
 }
 
 /*
- * Test: Classic TensorRT EP should NOT claim an EPContext node whose "source"
- * attribute is set to the NvTensorRTRTX EP name.
- */
-TEST(TensorrtExecutionProviderTest, EPContextNode_NvRtxSourceSkipped) {
-  std::string model_path_str = "ep_context_nv_rtx_source_trt.onnx";
-  PathString model_path = ToPathString(model_path_str);
-  CreateSyntheticEPContextModel(model_path_str, "NvTensorRTRTXExecutionProvider");
-
-  SessionOptions so;
-  so.session_logid = "EPContextNode_NvRtxSourceSkipped";
-  InferenceSession session{so, GetEnvironment()};
-  OrtTensorRTProviderOptionsV2 params;
-  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
-  EXPECT_TRUE(session.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-
-  auto status = session.Load(model_path);
-  ASSERT_TRUE(status.IsOK());
-
-  // Initialization should fail because TRT EP correctly skips the foreign EPContext node.
-  status = session.Initialize();
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_TRUE(status.ErrorMessage().find("EPContext") != std::string::npos)
-      << "Error should mention EPContext. Actual: " << status.ErrorMessage();
-
-  // Clean up
-  std::filesystem::remove(model_path);
-}
-
-/*
  * Test: Classic TensorRT EP should still claim an EPContext node that has NO
  * "source" attribute (backward compatibility with legacy context models).
  *

@@ -92,7 +92,8 @@ std::vector<char*> CStringsFromStrings(std::vector<std::string>& utf8_args) {
 
 void AppendPluginExecutionProviders(Ort::Env& env,
                                     Ort::SessionOptions& session_options,
-                                    const PerformanceTestConfig& test_config) {
+                                    const PerformanceTestConfig& test_config,
+                                    Ort::SyncStream* ext_stream) {
   if (test_config.registered_plugin_eps.empty()) {
     return;
   }
@@ -196,6 +197,17 @@ void AppendPluginExecutionProviders(Ort::Env& env,
   for (auto& ep_and_devices : added_ep_devices) {
     auto& ep = ep_and_devices.first;
     auto& devices = ep_and_devices.second;
+    if (ext_stream) {
+      size_t ext_stream_addr = reinterpret_cast<size_t>(ext_stream->GetHandle());
+      std::string ext_stream_address = std::to_string(ext_stream_addr);
+      for (auto device : devices) {
+        auto hardware_device = device.Device();
+        if (hardware_device.Type() == OrtDevice::GPU && hardware_device.VendorId() == OrtDevice::VendorIds::NVIDIA) {
+          ep_options_map[ep]["user_compute_stream"] = ext_stream_address.c_str();
+          ep_options_map[ep]["has_user_compute_stream"] = "1";
+        }
+      }
+    }
     session_options.AppendExecutionProvider_V2(env, devices, ep_options_map[ep]);
   }
 }
