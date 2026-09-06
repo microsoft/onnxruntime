@@ -12981,6 +12981,214 @@ TEST_F(GraphTransformationTests, DivMulFusion_MultiElementInitializer) {
 // `dropout_elimination.cc` remains as pure defense-in-depth against future
 // internal callers that may bypass shape inference.
 
+TEST_F(GraphTransformationTests, STFTDecomposition_Float3DWithWindow) {
+  constexpr int64_t batch_size = 3;
+  constexpr int64_t signal_length = 20;
+  constexpr int64_t dft_size = 10;
+  constexpr int64_t frame_step = 3;
+  constexpr int64_t output_num_frames = 4;
+  constexpr int64_t dft_unique_bins = 6;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    std::vector<float> signal_data(batch_size * signal_length);
+    for (size_t i = 0; i < signal_data.size(); ++i) {
+      signal_data[i] = static_cast<float>((static_cast<int>(i % 17) - 8) * 0.125f);
+    }
+
+    auto* signal = builder.MakeInput<float>({batch_size, signal_length, 1}, signal_data);
+    auto* frame_step_arg = builder.MakeScalarInitializer<int64_t>(frame_step);
+    auto* window = builder.Make1DInitializer<float>({0.0f, 0.25f, 0.75f, 1.0f, 0.75f,
+                                                     0.25f, 0.125f, 0.5f, 0.875f, 1.0f});
+    auto* frame_length = builder.MakeScalarInitializer<int64_t>(dft_size);
+    auto* output = builder.MakeOutput<float>({{batch_size, output_num_frames, dft_unique_bins, 2}});
+
+    builder.AddNode("STFT", {signal, frame_step_arg, window, frame_length}, {output})
+        .AddAttribute("onesided", static_cast<int64_t>(1));
+  };
+
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(op_to_count.count("STFT"), 0);
+    ASSERT_EQ(op_to_count.at("Conv"), 1);
+    ASSERT_EQ(op_to_count.at("Reshape"), 2);
+    ASSERT_EQ(op_to_count.at("Transpose"), 1);
+    ASSERT_EQ(op_to_count.count("Concat"), 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    17,
+                    3e-4,
+                    3e-4,
+                    std::make_unique<STFTDecomposition>());
+}
+
+TEST_F(GraphTransformationTests, STFTDecomposition_Float3DWithRuntimeWindow) {
+  constexpr int64_t batch_size = 3;
+  constexpr int64_t signal_length = 20;
+  constexpr int64_t dft_size = 10;
+  constexpr int64_t frame_step = 3;
+  constexpr int64_t output_num_frames = 4;
+  constexpr int64_t dft_unique_bins = 6;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    std::vector<float> signal_data(batch_size * signal_length);
+    for (size_t i = 0; i < signal_data.size(); ++i) {
+      signal_data[i] = static_cast<float>((static_cast<int>(i % 17) - 8) * 0.125f);
+    }
+
+    auto* signal = builder.MakeInput<float>({batch_size, signal_length, 1}, signal_data);
+    auto* frame_step_arg = builder.MakeScalarInitializer<int64_t>(frame_step);
+    auto* window = builder.MakeInput<float>({dft_size}, {0.0f, 0.25f, 0.75f, 1.0f, 0.75f,
+                                                         0.25f, 0.125f, 0.5f, 0.875f, 1.0f});
+    auto* frame_length = builder.MakeScalarInitializer<int64_t>(dft_size);
+    auto* output = builder.MakeOutput<float>({{batch_size, output_num_frames, dft_unique_bins, 2}});
+
+    builder.AddNode("STFT", {signal, frame_step_arg, window, frame_length}, {output})
+        .AddAttribute("onesided", static_cast<int64_t>(1));
+  };
+
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(op_to_count.count("STFT"), 0);
+    ASSERT_EQ(op_to_count.at("Conv"), 1);
+    ASSERT_EQ(op_to_count.at("Mul"), 1);
+    ASSERT_EQ(op_to_count.at("Reshape"), 3);
+    ASSERT_EQ(op_to_count.at("Transpose"), 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    17,
+                    3e-4,
+                    3e-4,
+                    std::make_unique<STFTDecomposition>());
+}
+
+TEST_F(GraphTransformationTests, STFTDecomposition_Float2DNoWindow) {
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t signal_length = 12;
+  constexpr int64_t dft_size = 5;
+  constexpr int64_t frame_step = 2;
+  constexpr int64_t output_num_frames = 4;
+  constexpr int64_t dft_unique_bins = 3;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    std::vector<float> signal_data(batch_size * signal_length);
+    for (size_t i = 0; i < signal_data.size(); ++i) {
+      signal_data[i] = static_cast<float>((static_cast<int>(i % 11) - 5) * 0.2f);
+    }
+
+    auto* signal = builder.MakeInput<float>({batch_size, signal_length}, signal_data);
+    auto* frame_step_arg = builder.MakeScalarInitializer<int64_t>(frame_step);
+    auto* frame_length = builder.MakeScalarInitializer<int64_t>(dft_size);
+    auto* output = builder.MakeOutput<float>({{batch_size, output_num_frames, dft_unique_bins, 2}});
+
+    builder.AddNode("STFT", {signal, frame_step_arg, builder.MakeEmptyInput(), frame_length}, {output})
+        .AddAttribute("onesided", static_cast<int64_t>(1));
+  };
+
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(op_to_count.count("STFT"), 0);
+    ASSERT_EQ(op_to_count.at("Conv"), 1);
+    ASSERT_EQ(op_to_count.at("Reshape"), 2);
+    ASSERT_EQ(op_to_count.at("Transpose"), 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    17,
+                    3e-4,
+                    3e-4,
+                    std::make_unique<STFTDecomposition>());
+}
+
+TEST_F(GraphTransformationTests, STFTDecomposition_RunsAtLevel1ByDefault) {
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t signal_length = 12;
+  constexpr int64_t dft_size = 5;
+  constexpr int64_t frame_step = 2;
+  constexpr int64_t output_num_frames = 4;
+  constexpr int64_t dft_unique_bins = 3;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    std::vector<float> signal_data(batch_size * signal_length);
+    for (size_t i = 0; i < signal_data.size(); ++i) {
+      signal_data[i] = static_cast<float>((static_cast<int>(i % 11) - 5) * 0.2f);
+    }
+
+    auto* signal = builder.MakeInput<float>({batch_size, signal_length}, signal_data);
+    auto* frame_step_arg = builder.MakeScalarInitializer<int64_t>(frame_step);
+    auto* frame_length = builder.MakeScalarInitializer<int64_t>(dft_size);
+    auto* output = builder.MakeOutput<float>({{batch_size, output_num_frames, dft_unique_bins, 2}});
+
+    builder.AddNode("STFT", {signal, frame_step_arg, builder.MakeEmptyInput(), frame_length}, {output})
+        .AddAttribute("onesided", static_cast<int64_t>(1));
+  };
+
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(op_to_count.count("STFT"), 0);
+    ASSERT_EQ(op_to_count.at("Conv"), 1);
+    ASSERT_EQ(op_to_count.at("Reshape"), 2);
+    ASSERT_EQ(op_to_count.at("Transpose"), 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    17,
+                    3e-4,
+                    3e-4);
+}
+
+TEST_F(GraphTransformationTests, STFTDecomposition_DoubleSkippedForCpu) {
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t signal_length = 12;
+  constexpr int64_t dft_size = 5;
+  constexpr int64_t frame_step = 2;
+  constexpr int64_t output_num_frames = 4;
+  constexpr int64_t dft_unique_bins = 3;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    std::vector<double> signal_data(batch_size * signal_length);
+    for (size_t i = 0; i < signal_data.size(); ++i) {
+      signal_data[i] = static_cast<double>((static_cast<int>(i % 11) - 5) * 0.2);
+    }
+
+    auto* signal = builder.MakeInput<double>({batch_size, signal_length}, signal_data);
+    auto* frame_step_arg = builder.MakeScalarInitializer<int64_t>(frame_step);
+    auto* frame_length = builder.MakeScalarInitializer<int64_t>(dft_size);
+    auto* output = builder.MakeOutput<double>({{batch_size, output_num_frames, dft_unique_bins, 2}});
+
+    builder.AddNode("STFT", {signal, frame_step_arg, builder.MakeEmptyInput(), frame_length}, {output})
+        .AddAttribute("onesided", static_cast<int64_t>(1));
+  };
+
+  auto check_transformed_graph = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    ASSERT_EQ(op_to_count.at("STFT"), 1);
+    ASSERT_EQ(op_to_count.count("Conv"), 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_transformed_graph,
+                    TransformerLevel::Default,
+                    TransformerLevel::Level1,
+                    17,
+                    0.0,
+                    0.0,
+                    std::make_unique<STFTDecomposition>());
+}
+
 // These tests verify that STFTDecomposition skips malformed models
 // instead of crashing with OOB writes from negative initializer values.
 TEST_F(GraphTransformationTests, STFTDecomposition_NegativeFrameLength) {
