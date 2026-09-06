@@ -256,6 +256,14 @@ export const setSessionOptions = async (options?: InferenceSession.SessionOption
       checkLastError("Can't create session options.");
     }
 
+    // EP factories consume session config when they are appended. Apply extra
+    // settings first so ep.* entries affect provider construction.
+    if (sessionOptions.extra !== undefined) {
+      iterateExtraOptions(sessionOptions.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
+        appendSessionConfig(sessionOptionsHandle, key, value, allocs);
+      });
+    }
+
     if (sessionOptions.executionProviders) {
       await setExecutionProviders(sessionOptionsHandle, sessionOptions, allocs);
     }
@@ -285,12 +293,6 @@ export const setSessionOptions = async (options?: InferenceSession.SessionOption
           checkLastError(`Can't set a free dimension override: ${name} - ${value}.`);
         }
       }
-    }
-
-    if (sessionOptions.extra !== undefined) {
-      iterateExtraOptions(sessionOptions.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
-        appendSessionConfig(sessionOptionsHandle, key, value, allocs);
-      });
     }
 
     return [sessionOptionsHandle, allocs];
