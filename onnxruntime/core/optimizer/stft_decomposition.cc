@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <limits>
+#include <optional>
 
 #include "core/optimizer/stft_decomposition.h"
 #include "core/optimizer/initializer.h"
@@ -18,6 +19,32 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+namespace {
+
+constexpr size_t kMaxSTFTConvWeightSizeInBytes = 64 * 1024 * 1024;
+
+std::optional<int64_t> ReadScalarIntegerInitializer(const Graph& graph,
+                                                    const ONNX_NAMESPACE::TensorProto* initializer) {
+  if (initializer == nullptr) {
+    return std::nullopt;
+  }
+
+  const Initializer tensor(*initializer, graph.ModelPath());
+  if (tensor.size() != 1) {
+    return std::nullopt;
+  }
+
+  switch (initializer->data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      return static_cast<int64_t>(*tensor.data<int32_t>());
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      return *tensor.data<int64_t>();
+    default:
+      return std::nullopt;
+  }
+}
+
+}  // namespace
 
 STFTDecomposition::STFTDecomposition(const InlinedHashSet<std::string_view>& compatible_execution_providers) noexcept
     : GraphTransformer("STFTDecomposition", compatible_execution_providers) {
@@ -160,7 +187,8 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     CONTINUE_IF_NULL(node);
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
-    if (node->OpType() != "STFT" || !graph_utils::IsSupportedProvider(*node, compatible_eps)) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "STFT", {17}) ||
+        !graph_utils::IsSupportedProvider(*node, compatible_eps)) {
       continue;
     }
 
@@ -211,15 +239,19 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    auto read_int64_initializer = [](Graph& graph, const ONNX_NAMESPACE::TensorProto* initializer) {
-      return *Initializer(*initializer, graph.ModelPath()).data<int64_t>();
-    };
-    auto frame_step_value = read_int64_initializer(graph, frame_step_initializer);
+    auto frame_step_value = ReadScalarIntegerInitializer(graph, frame_step_initializer);
+    if (!frame_step_value.has_value()) {
+      continue;
+    }
 
     // Get DFT Size
     int64_t dft_size = 0;
     if (frame_length_initializer) {
-      dft_size = read_int64_initializer(graph, frame_length_initializer);
+      auto frame_length_value = ReadScalarIntegerInitializer(graph, frame_length_initializer);
+      if (!frame_length_value.has_value()) {
+        continue;
+      }
+      dft_size = *frame_length_value;
     }
     if (dft_size == 0 && window_initializer) {
       const auto* window_shape = window->Shape();
@@ -233,9 +265,9 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
 
     // Validate model-provided scalar values before using them in size calculations.
     // These come from untrusted model initializers/shapes and must be positive.
-    if (dft_size <= 0 || frame_step_value <= 0) {
+    if (dft_size <= 0 || *frame_step_value <= 0) {
       LOGS(logger, WARNING) << "STFT decomposition skipped: invalid dft_size (" << dft_size
-                            << ") or frame_step_value (" << frame_step_value << ")";
+                            << ") or frame_step_value (" << *frame_step_value << ")";
       continue;
     }
 
@@ -252,19 +284,25 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       }
     }
 
-    const int64_t output_num_frames = ((signal_length - dft_size) / frame_step_value) + 1;
+    const int64_t output_num_frames = ((signal_length - dft_size) / *frame_step_value) + 1;
     auto dft_unique_bins = is_onesided ? ((dft_size >> 1) + 1) : dft_size;
 
     Node* signal_recipient = nullptr;
     Node* window_recipient = nullptr;
     Node* stft_producer = nullptr;
     if (is_real) {
-      size_t dft_size_sz, dft_unique_bins_sz, weight_size, conv_channels;
+      size_t dft_size_sz, dft_unique_bins_sz, weight_size, conv_channels, weight_size_in_bytes;
       if (!SafeCast(dft_unique_bins, dft_unique_bins_sz) ||
           !SafeCast(dft_size, dft_size_sz) ||
           !SafeMultiply(dft_unique_bins_sz, static_cast<size_t>(2), conv_channels) ||
-          !SafeMultiply(conv_channels, dft_size_sz, weight_size)) {
+          !SafeMultiply(conv_channels, dft_size_sz, weight_size) ||
+          !SafeMultiply(weight_size, sizeof(float), weight_size_in_bytes)) {
         LOGS(logger, WARNING) << "STFT decomposition skipped: weight size overflow";
+        continue;
+      }
+      if (weight_size_in_bytes > kMaxSTFTConvWeightSizeInBytes) {
+        LOGS(logger, VERBOSE) << "STFT decomposition skipped: generated Conv weights would require "
+                              << weight_size_in_bytes << " bytes";
         continue;
       }
 
@@ -348,7 +386,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       NodeArg* conv_output = nullptr;
       std::tie(conv_node, conv_output) =
           AddNode(graph, "Conv", stft.GetExecutionProviderType(), conv_inputs, &stft);
-      conv_node->AddAttribute("strides", std::vector<int64_t>{1, frame_step_value});
+      conv_node->AddAttribute("strides", std::vector<int64_t>{1, *frame_step_value});
 
       NodeArg* output_reshape_inputs[] = {conv_output, output_shape};
       NodeArg* reshaped_output = nullptr;

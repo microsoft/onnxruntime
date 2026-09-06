@@ -280,7 +280,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<FreeDimensionOverrideTransformer>(
           session_options.free_dimension_overrides));
       transformers.emplace_back(std::make_unique<SliceConcatToSpaceToDepthFusion>());
-      transformers.emplace_back(std::make_unique<STFTDecomposition>());
+      // This decomposition targets CPU STFT performance. Level1 runs before EP partitioning,
+      // so only register the default transformer for CPU-only sessions.
+      const bool cpu_only_session = execution_providers == nullptr ||
+          (execution_providers->NumProviders() == 1 &&
+          execution_providers->Get(onnxruntime::kCpuExecutionProvider) != nullptr);
+      if (cpu_only_session) {
+        transformers.emplace_back(std::make_unique<STFTDecomposition>());
+      }
       transformers.emplace_back(std::make_unique<GeluFusion>());
       transformers.emplace_back(std::make_unique<LayerNormFusion>());
 
