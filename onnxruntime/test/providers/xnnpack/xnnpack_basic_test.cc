@@ -725,6 +725,34 @@ TEST(XnnpackEP, TestGemm_DynamicM) {
                });
 }
 
+// Regression test for https://github.com/microsoft/onnxruntime/issues/32298.
+// tf2onnx (opset 11) exports Resize with a zero-length `scales` initializer passed positionally
+// alongside a real `sizes` input. GetConstantInitializer returns a non-null but empty tensor, and
+// Resize::IsOnnxNodeSupported indexed the resulting zero-length gsl::span (scales[1]), tripping the
+// GSL bounds check -> std::terminate() during GetCapability graph partitioning, before any kernel
+// ran. The support check must reject the node cleanly so it falls back to the CPU EP.
+TEST(XnnpackEP, TestResize_EmptyScales_NoTerminate) {
+  const std::vector<int64_t> input_shape = {1, 3, 32, 32};
+  auto modelBuilder = [&](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(input_shape, -1.f, 1.f);
+    auto* roi = builder.MakeInitializer<float>({0}, {});     // empty optional input
+    auto* scales = builder.MakeInitializer<float>({0}, {});  // empty -> the trigger
+    auto* sizes = builder.Make1DInitializer<int64_t>({1, 3, 16, 16});
+    auto* output_arg = builder.MakeOutput();
+    auto& resize_node = builder.AddNode("Resize", {input, roi, scales, sizes}, {output_arg});
+    resize_node.AddAttribute("mode", "linear");
+    resize_node.AddAttribute("coordinate_transformation_mode", "asymmetric");
+  };
+  // ExpectedEPNodeAssignment::None asserts both that the session initialized without aborting AND
+  // that XNNPACK rejected the malformed Resize. RunModelTest also compares the run against the pure
+  // CPU baseline, verifying the fallback is numerically correct.
+  RunModelTest(modelBuilder, "xnnpack_test_graph_resize_empty_scales",
+               {
+                   ExpectedEPNodeAssignment::None,
+                   1e-4f /* fp32_abs_err */,
+               });
+}
+
 #endif
 
 }  // namespace test
