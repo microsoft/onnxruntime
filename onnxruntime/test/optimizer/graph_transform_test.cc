@@ -13273,6 +13273,79 @@ TEST_F(GraphTransformationTests, STFTDecomposition_SkipsLargeConvWeight) {
                                         post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, STFTDecomposition_DmlTransformerAcceptsUnassignedNode) {
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t signal_length = 12;
+  constexpr int64_t dft_size = 5;
+  constexpr int64_t frame_step = 2;
+  constexpr int64_t output_num_frames = 4;
+  constexpr int64_t dft_unique_bins = 3;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* signal = builder.MakeInput<float>(std::vector<int64_t>{batch_size, signal_length});
+    auto* frame_step_arg = builder.MakeScalarInitializer<int64_t>(frame_step);
+    auto* frame_length = builder.MakeScalarInitializer<int64_t>(dft_size);
+    auto* output = builder.MakeOutput<float>({{batch_size, output_num_frames, dft_unique_bins, 2}});
+
+    builder.AddNode("STFT", {signal, frame_step_arg, builder.MakeEmptyInput(), frame_length}, {output})
+        .AddAttribute("onesided", static_cast<int64_t>(1));
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.count("STFT") == 0);
+    TEST_RETURN_IF_NOT(op_to_count.at("Conv") == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> dml_ep = {kDmlExecutionProvider};
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case,
+                                        17,
+                                        *logger_,
+                                        std::make_unique<STFTDecomposition>(dml_ep),
+                                        TransformerLevel::Level1,
+                                        1,
+                                        nullptr,
+                                        post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, STFTDecomposition_DmlTransformerSkipsAssignedCpuNode) {
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t signal_length = 12;
+  constexpr int64_t dft_size = 5;
+  constexpr int64_t frame_step = 2;
+  constexpr int64_t output_num_frames = 4;
+  constexpr int64_t dft_unique_bins = 3;
+
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* signal = builder.MakeInput<float>(std::vector<int64_t>{batch_size, signal_length});
+    auto* frame_step_arg = builder.MakeScalarInitializer<int64_t>(frame_step);
+    auto* frame_length = builder.MakeScalarInitializer<int64_t>(dft_size);
+    auto* output = builder.MakeOutput<float>({{batch_size, output_num_frames, dft_unique_bins, 2}});
+
+    auto& stft = builder.AddNode("STFT", {signal, frame_step_arg, builder.MakeEmptyInput(), frame_length}, {output});
+    stft.AddAttribute("onesided", static_cast<int64_t>(1));
+    stft.SetExecutionProviderType(kCpuExecutionProvider);
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("STFT") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.count("Conv") == 0);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> dml_ep = {kDmlExecutionProvider};
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case,
+                                        17,
+                                        *logger_,
+                                        std::make_unique<STFTDecomposition>(dml_ep),
+                                        TransformerLevel::Level1,
+                                        1,
+                                        nullptr,
+                                        post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, STFTDecomposition_DoubleSkippedForCpu) {
   constexpr int64_t batch_size = 2;
   constexpr int64_t signal_length = 12;

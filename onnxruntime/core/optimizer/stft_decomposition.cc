@@ -188,7 +188,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "STFT", {17}) ||
-        !graph_utils::IsSupportedProvider(*node, compatible_eps)) {
+        (!node->GetExecutionProviderType().empty() && !graph_utils::IsSupportedProvider(*node, compatible_eps))) {
       continue;
     }
 
@@ -253,7 +253,7 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       }
       dft_size = *frame_length_value;
     }
-    if (dft_size == 0 && window_initializer) {
+    if (!frame_length_initializer && window_initializer) {
       const auto* window_shape = window->Shape();
       if (window_shape == nullptr || window_shape->dim_size() != 1) {
         continue;
