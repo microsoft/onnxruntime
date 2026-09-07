@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <array>
 #include <cstdio>
 #include <memory>
 #include <vector>
@@ -32,7 +31,7 @@ void CreateExternalDataFile(size_t length, PathString& path) {
   path = ORT_TSTR("cuda_external_data_loader_XXXXXX");
   CreateTestFile(file, path);
 
-  std::array<uint8_t, 1024 * 1024> chunk{};
+  std::vector<uint8_t> chunk(1024 * 1024);
   ASSERT_EQ(kFilePrefixSize, fwrite(chunk.data(), 1, kFilePrefixSize, file));
   for (size_t offset = 0; offset < length;) {
     const size_t chunk_size = std::min(chunk.size(), length - offset);
