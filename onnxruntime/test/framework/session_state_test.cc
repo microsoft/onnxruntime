@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <chrono>
+#include <condition_variable>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -767,6 +769,60 @@ class BrokenPrePackingTestOpKernel : public OpKernel {
   }
 };
 
+class ParallelPrepackTestState {
+ public:
+  void WaitForOverlap() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    ++active_calls_;
+    if (active_calls_ > 1) {
+      overlap_observed_ = true;
+      condition_.notify_all();
+    } else if (!wait_attempted_) {
+      wait_attempted_ = true;
+      condition_.wait_for(lock, std::chrono::seconds(5), [this]() { return overlap_observed_; });
+    }
+    --active_calls_;
+  }
+
+  bool OverlapObserved() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return overlap_observed_;
+  }
+
+ private:
+  mutable std::mutex mutex_;
+  std::condition_variable condition_;
+  size_t active_calls_{0};
+  bool wait_attempted_{false};
+  bool overlap_observed_{false};
+};
+
+class ConcurrentPrePackingTestOpKernel : public OpKernel {
+ public:
+  ConcurrentPrePackingTestOpKernel(const OpKernelInfo& info, std::shared_ptr<ParallelPrepackTestState> state)
+      : OpKernel(info), state_(std::move(state)) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
+
+    state_->WaitForOverlap();
+    is_packed = true;
+    return Status::OK();
+  }
+
+ private:
+  std::shared_ptr<ParallelPrepackTestState> state_;
+};
+
 #if !defined(ORT_NO_EXCEPTIONS)
 class ThrowingPrePackingTestOpKernel : public OpKernel {
  public:
@@ -819,18 +875,17 @@ static void CreateSimpleGraph(Graph& graph, const std::string& op_type = "PrePac
   ASSERT_TRUE(status.IsOK());
 }
 
-#if !defined(ORT_NO_EXCEPTIONS)
-static void CreateThrowingPrepackGraph(Graph& graph) {
+static void CreateMultiNodePrepackGraph(Graph& graph, const std::string& op_type) {
   TypeProto type;
   type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
   for (int i = 0; i < 4; ++i) {
-    const std::string prefix = "throwing_node_" + std::to_string(i);
+    const std::string prefix = "prepack_node_" + std::to_string(i);
     NodeArg& input = graph.GetOrCreateNodeArg(prefix + "_input", &type);
     NodeArg& initializer = graph.GetOrCreateNodeArg(prefix + "_initializer", &type);
     NodeArg& output = graph.GetOrCreateNodeArg(prefix + "_output", &type);
-    graph.AddNode(prefix, "ThrowingPrePackingTest", "throwing prepack node",
+    graph.AddNode(prefix, op_type, "parallel prepack test node",
                   {&input, &initializer}, {&output});
 
     ONNX_NAMESPACE::TensorProto tensor;
@@ -840,10 +895,8 @@ static void CreateThrowingPrepackGraph(Graph& graph) {
     tensor.set_name(initializer.Name());
     graph.AddInitializedTensor(tensor);
   }
-
   ASSERT_STATUS_OK(graph.Resolve());
 }
-#endif
 
 static const ONNX_NAMESPACE::GraphProto CreateSubgraph(bool then_branch) {
   Model model(then_branch ? "If_then" : "If_else", false, DefaultLoggingManager().DefaultLogger());
@@ -965,6 +1018,11 @@ void RegisterPrePackingTestSchemaOnce() {
         .Input(0, "Input_0", "input 0", "tensor(float)")
         .Input(1, "Input_1", "input 1", "tensor(float)")
         .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+    ONNX_OPERATOR_SCHEMA(ConcurrentPrePackingTest)
+        .SetDoc("Faking nodes that detect concurrent PrePack calls")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
 #if !defined(ORT_NO_EXCEPTIONS)
     ONNX_OPERATOR_SCHEMA(ThrowingPrePackingTest)
         .SetDoc("Faking a throwing node for parallel PrePack")
@@ -1057,12 +1115,14 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   profiling::Profiler profiler;
   KernelRegistryManager kernel_registry_manager;
   std::unique_ptr<concurrency::ThreadPool> tp;
+  std::shared_ptr<ParallelPrepackTestState> parallel_prepack_test_state;
 
   void SetUp() override {
     OrtThreadPoolParams to{};
     // Use a small, fixed intra-op pool size to keep thread/memory overhead low (e.g., under ASan).
     to.thread_pool_size = 2;
     tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+    parallel_prepack_test_state = std::make_shared<ParallelPrepackTestState>();
     RegisterPrePackingTestSchemaOnce();
 
     auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
@@ -1096,6 +1156,20 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
                            return Status::OK();
                          })));
 
+    auto concurrent_kernel_def = KernelDefBuilder()
+                                     .SetName("ConcurrentPrePackingTest")
+                                     .Provider(kCpuExecutionProvider)
+                                     .SinceVersion(1)
+                                     .Build();
+
+    ASSERT_STATUS_OK(kernel_registry->Register(
+        KernelCreateInfo(std::move(concurrent_kernel_def),
+                         [state = parallel_prepack_test_state](
+                             FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           out = std::make_unique<ConcurrentPrePackingTestOpKernel>(info, state);
+                           return Status::OK();
+                         })));
+
 #if !defined(ORT_NO_EXCEPTIONS)
     auto throwing_kernel_def = KernelDefBuilder()
                                    .SetName("ThrowingPrePackingTest")
@@ -1125,7 +1199,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackConvertsE
               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
               std::vector<ONNX_NAMESPACE::FunctionProto>(),
               DefaultLoggingManager().DefaultLogger());
-  CreateThrowingPrepackGraph(model.MainGraph());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "ThrowingPrePackingTest");
   PlaceAllNodesToCPUEP(model.MainGraph());
 
   SessionState session_state(model.MainGraph(),
@@ -1142,6 +1216,31 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackConvertsE
       session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager),
       "parallel prepack failure");
 #endif
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackCallsOverlap) {
+  SessionOptions sess_options;
+
+  Model model("parallel_prepack_overlap", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "ConcurrentPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                      kernel_registry_manager));
+  EXPECT_TRUE(parallel_prepack_test_state->OverlapObserved());
 }
 
 // Pre-packing enabled + no shared initializers, however, we put all the pre-packs

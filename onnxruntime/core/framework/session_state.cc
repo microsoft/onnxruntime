@@ -798,15 +798,6 @@ Status SessionState::PrepackConstantInitializedTensors(
 
   const bool enable_parallel_prepack = parallel_prepack_nodes.size() > 1;
 
-  // Let kernels (e.g. MatMulNBits's LUT GEMM temporary pool) see whether this session is actually
-  // dispatching prepacking in parallel, rather than just the raw requested option, so they only
-  // suppress their own temporary pool when doing so avoids real oversubscription. This also preserves
-  // the kernel's own pool when fewer than two CPU prepack jobs can overlap.
-  // sess_options_ is a `const SessionOptions&` here, but the referenced object is owned (non-const)
-  // by the InferenceSession that created this SessionState, and this write happens single-threaded
-  // before any node's PrePack() runs, so it cannot race with the concurrent reads performed later.
-  ORT_RETURN_IF_ERROR(const_cast<SessionOptions&>(sess_options_).config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, enable_parallel_prepack ? "1" : "0"));
-
   if (should_cache_prepacked_weights_for_shared_initializers) {
     // serialize calls to the method that looks up the container, calls UseCachedPrePackedWeight/PrePack
     // and writes pre-packed weights to the container

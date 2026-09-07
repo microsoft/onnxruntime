@@ -20,7 +20,6 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 #include "core/platform/threadpool.h"
-#include "core/util/thread_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -372,35 +371,6 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 #endif
 
-  // Create a temporary threadpool for parallel packing unless session initialization is already
-  // dispatching PrePack calls in parallel. Avoiding nested pools bounds load-time threads to the
-  // session pool instead of multiplying physical-core-sized pools by the number of concurrent nodes.
-  std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
-  concurrency::ThreadPool* threadpool_ptr = nullptr;
-
-  // Only create threadpool for LUT GEMM path which can benefit from parallel packing
-  // TODO: Consider extending threadpool usage to non-LUT path (CompInt8) with appropriate tests
-  // Release benchmark on a 96-core Intel Xeon with qwen3-8b-int4-mb (181 MatMulNBits, 4-bit,
-  // block_size 32): 72x K=4096/N=12288, 36x K=4096/N=4096, 36x K=12288/N=4096,
-  // 36x K=4096/N=6144, and 1x K=4096/N=151936. Mean warm-cache session creation over five runs:
-  // sequential 8.84 s, outer parallelism 1.84 s, non-LUT inner parallelism 8.38 s, and both
-  // outer plus non-LUT inner parallelism 2.16 s. Reusing the session pool across nodes performed best.
-  const bool outer_parallel_prepack =
-      OpKernel::Info().GetConfigOptions().GetConfigEntry(kOrtSessionOptionsEnableParallelPrepack) == "1";
-  if (prefer_lut_gemm_ && !outer_parallel_prepack) {
-    OrtThreadPoolParams tpo;
-    tpo.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
-    tpo.allow_spinning = false;  // Don't spin during model load
-    tpo.auto_set_affinity = false;
-
-    temp_threadpool = concurrency::CreateThreadPool(
-        &Env::Default(),
-        tpo,
-        concurrency::ThreadPoolType::INTRA_OP);
-
-    threadpool_ptr = temp_threadpool.get();
-  }
-
   if (input_idx == InputIndex::B) {
     const Tensor* scales = nullptr;
     OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
@@ -439,7 +409,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
           zp_ptr,
           is_float_zp,
           static_cast<std::byte*>(packed_b_.get()),
-          threadpool_ptr);
+          nullptr);
 
       // Do not append packed_b_ here. Both the LUT and non-LUT branches share the single append
       // after this if/else, so each records exactly one buffer. Appending here as well would move
@@ -499,7 +469,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         std::memset(packed_b_.get(), 0, packed_b_size_);
       }
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, qptr, packed_b_.get(), scale_ptr,
-                                  has_zp_input_, zp_ptr, threadpool_ptr, &mlas_backend_kernel_selector_config_);
+                                  has_zp_input_, zp_ptr, nullptr, &mlas_backend_kernel_selector_config_);
 
       // Fold the scales and (constant) zero points into packed_b_ now, during the B PrePack, instead
       // of deferring them to the later scales/zero_points PrePack calls. Pre-packed weight sharing
