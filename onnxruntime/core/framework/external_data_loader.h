@@ -31,11 +31,13 @@ class IExternalDataLoader {
   virtual bool CanLoad(const OrtMemoryInfo& target_memory_info) const = 0;
 
   // Tensor should be already allocated with the correct memory info and size.
-  virtual common::Status LoadTensor(const Env& env,
-                                    const std::filesystem::path& data_file_path,
-                                    FileOffsetType data_offset,
-                                    SafeInt<size_t> data_length,
-                                    Tensor& tensor) const = 0;
+  virtual common::Status LoadTensor([[maybe_unused]] const Env& env,
+                                    [[maybe_unused]] const std::filesystem::path& data_file_path,
+                                    [[maybe_unused]] FileOffsetType data_offset,
+                                    [[maybe_unused]] SafeInt<size_t> data_length,
+                                    [[maybe_unused]] Tensor& tensor) const {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
 };
 
 #if defined(__wasm__)
