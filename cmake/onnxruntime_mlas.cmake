@@ -616,9 +616,27 @@ else()
             list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp)
             set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+i8mm -fno-stack-protector ${ORT_SVE_ABI_FLAGS} ")
           endif()
-          # SVE FP16 GEMM (HGEMM) compute kernels, driven by hgemm.cpp.
-          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/halfgemm_kernel_sve.cpp)
-          set_source_files_properties(${MLAS_SRC_DIR}/sve/halfgemm_kernel_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ${ORT_SVE_ABI_FLAGS} ")
+          # SVE FP16 GEMM (HGEMM) compute kernels, driven by hgemm.cpp. As with
+          # the elementwise and QGEMM kernels, the portable machine-code variant
+          # is the production default; configure with
+          # -Donnxruntime_SVE_HGEMM_ASM=OFF to build the SVE intrinsics
+          # reference instead (the regeneration source for
+          # aarch64/halfgemm_sve_asm.S, script sve/gen_sve_asm.py).
+          option(onnxruntime_SVE_HGEMM_ASM
+                 "Build the portable machine-code SVE HGEMM kernels instead of the intrinsics reference" ON)
+          if (onnxruntime_SVE_HGEMM_ASM)
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/aarch64/halfgemm_sve_asm.S)
+          else()
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/halfgemm_kernel_sve.cpp)
+            set_source_files_properties(${MLAS_SRC_DIR}/sve/halfgemm_kernel_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 -fno-tree-loop-distribute-patterns ${ORT_SVE_ABI_FLAGS} ")
+          endif()
+          # SVE FP16 matrix-vector (N == 1) kernel, same ASM/intrinsics choice.
+          if (onnxruntime_SVE_HGEMM_ASM)
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/aarch64/halfgemv_sve_asm.S)
+          else()
+            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/halfgemv_kernel_sve.cpp)
+            set_source_files_properties(${MLAS_SRC_DIR}/sve/halfgemv_kernel_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ${ORT_SVE_ABI_FLAGS} ")
+          endif()
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
