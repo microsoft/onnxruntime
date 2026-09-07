@@ -234,6 +234,10 @@ struct KVCacheList<true> {
   const KVCachePageIndex* kvCachePageList;  // shape: KVCachePageIndex[batchSize][beamWidth][2][maxNbPagesPerSeq].
   const SeqLenDataType* seqLenList;         // shape: [batchSize][beamWidth] (for compatibility)
   uint32_t maxNbPagesPerSeq;
+  // Added to the value read from seqLenList. ORT callers pass the *past* sequence length (the
+  // length before the token being decoded) plus extraSeqLen == 1, matching the contiguous
+  // KVCacheList<false> specialization below and keeping getCacheSeqLen() uniform over both.
+  uint32_t extraSeqLen;
 };
 
 template <>

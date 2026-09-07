@@ -7,29 +7,20 @@
 #include <cublas_v2.h>
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
-#include "contrib_ops/cuda/bert/attention_data.h"
+#include "contrib_ops/cuda/bert/packed_attention_data.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-size_t GetAttentionScratchSize(
-    size_t element_size,
-    size_t batch_size,
-    size_t num_heads,
-    size_t sequence_length);
+template <typename T>
+T* PackedAttentionWorkspaceAt(T* workspace, size_t offset_bytes) {
+  if (offset_bytes == 0) {
+    return workspace;
+  }
 
-size_t GetAttentionWorkspaceSize(
-    size_t element_size,
-    size_t batch_size,
-    size_t num_heads,
-    size_t qk_head_size,
-    size_t v_head_size,
-    size_t sequence_length,
-    void* fused_runner,
-    bool use_flash_attention,
-    bool use_memory_efficient_attention,
-    bool no_qkv_workspace);
+  return reinterpret_cast<T*>(reinterpret_cast<uint8_t*>(workspace) + offset_bytes);
+}
 
 template <typename T>
 Status QkvToContext(

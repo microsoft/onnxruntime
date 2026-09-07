@@ -133,6 +133,10 @@ extern "C" void ortenv_setup() {
             "  \"ep_library_registration_name\": \"WebGpuExecutionProvider.virtual\",\n"
             "  \"ep_library_path\": \"" ORT_UNIT_TEST_WEBGPU_PLUGIN_EP_LIBRARY_PATH
             "\",\n"
+            // Enable int64 so the generic (EP-agnostic) int64 operator tests exercise the WebGPU
+            // int64 kernels on the plugin path too (mirrors DefaultWebGpuExecutionProvider on the
+            // static path). The key is the un-prefixed provider option name for plugin EPs.
+            "  \"default_ep_options\": { \"enableInt64\": \"1\" },\n"
             "  \"selected_ep_name\": \"WebGpuExecutionProvider\"\n"
             "}");
       }

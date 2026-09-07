@@ -20,9 +20,11 @@ static size_t SymmQgemmRegistShortExecute() {
   }
 
   size_t count = SymmQgemmShortExecuteTest<int8_t, int32_t, false>::RegisterShortExecuteTests();
+  count += SymmQgemmS8SignedInputTest<false>::RegisterShortExecuteTests();
 
   if (GetMlasThreadPool() != nullptr) {
     count += SymmQgemmShortExecuteTest<int8_t, int32_t, true>::RegisterShortExecuteTests();
+    count += SymmQgemmS8SignedInputTest<true>::RegisterShortExecuteTests();
   }
 
   return count;

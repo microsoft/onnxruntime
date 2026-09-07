@@ -5,6 +5,11 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
+#if defined(USE_WEBGPU)
+#include "core/framework/session_options.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -566,6 +571,64 @@ TEST(TensorOpTest, TileRepeatsMustMatchInputRankWebGpu) {
            "same length as the 'input' tensor",
            {}, nullptr, &execution_providers);
 }
+
+// int64 Tile must run on the WebGPU kernel (not fall back to CPU) when int64 is
+// enabled via the session config option. Values with high-32-bit bits set are
+// used to verify that the full 64-bit element is copied without truncation.
+TEST(TensorOpTest, TileInt64TypeWebGpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
+  // Values chosen so the high 32 bits are non-zero, ensuring a correct raw
+  // 64-bit copy (not a sign-extended i32 copy) is verified.
+  const int64_t v0 = int64_t{0x0001000200030004LL};
+  const int64_t v1 = int64_t{0x0005000600070008LL};
+  const int64_t v2 = int64_t{-1LL};  // 0xFFFFFFFFFFFFFFFF
+
+  // 1-D: input [v0, v1, v2], repeat 2 -> [v0, v1, v2, v0, v1, v2]
+  {
+    OpTester test("Tile", 13);
+    test.AddInput<int64_t>("input", {3}, {v0, v1, v2});
+    test.AddInput<int64_t>("repeats", {1}, {2});
+    test.AddOutput<int64_t>("output", {6}, {v0, v1, v2, v0, v1, v2});
+    ConfigOptions config_options{};
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+    auto provider = WebGpuExecutionProviderWithOptions(config_options);
+    test.ConfigEp(std::move(provider))
+        .ConfigExcludeEps({kCpuExecutionProvider})
+        .RunWithConfig();
+  }
+
+  // 2-D: input [[v0, v1], [v2, v0]], repeat [2, 1]
+  {
+    OpTester test("Tile", 13);
+    test.AddInput<int64_t>("input", {2, 2}, {v0, v1, v2, v0});
+    test.AddInput<int64_t>("repeats", {2}, {2, 1});
+    test.AddOutput<int64_t>("output", {4, 2}, {v0, v1, v2, v0, v0, v1, v2, v0});
+    ConfigOptions config_options{};
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+    auto provider = WebGpuExecutionProviderWithOptions(config_options);
+    test.ConfigEp(std::move(provider))
+        .ConfigExcludeEps({kCpuExecutionProvider})
+        .RunWithConfig();
+  }
+
+  // 3-D: input [[[v0, v1, v2]]], repeat [1, 2, 1]
+  {
+    OpTester test("Tile", 13);
+    test.AddInput<int64_t>("input", {1, 1, 3}, {v0, v1, v2});
+    test.AddInput<int64_t>("repeats", {3}, {1, 2, 1});
+    test.AddOutput<int64_t>("output", {1, 2, 3}, {v0, v1, v2, v0, v1, v2});
+    ConfigOptions config_options{};
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+    auto provider = WebGpuExecutionProviderWithOptions(config_options);
+    test.ConfigEp(std::move(provider))
+        .ConfigExcludeEps({kCpuExecutionProvider})
+        .RunWithConfig();
+  }
+}
+
 #endif  // defined(USE_WEBGPU)
 
 }  // namespace test

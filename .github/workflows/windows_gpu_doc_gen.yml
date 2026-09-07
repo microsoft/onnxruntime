@@ -19,16 +19,6 @@ on:
     branches:
       - main
       - rel-*
-    paths:
-      - '**'
-      - '!docs/**'
-      - 'docs/OperatorKernels.md'
-      - 'docs/ContribOperators.md'
-      - '!README.md'
-      - '!CONTRIBUTING.md'
-      - '!BUILD.md'
-      - '!js/web/**'
-      - '!onnxruntime/core/providers/js/**'
   workflow_dispatch:
 
 concurrency:
@@ -36,8 +26,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  kernel_documentation:
-    name: Windows GPU Kernel Documentation Validation
+  detect_changes:
+    name: Detect relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      run_documentation_build: ${{ steps.changes.outputs.run_documentation_build }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: 'none'
+
+      - name: Check changed paths
+        id: changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "run_documentation_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          run_documentation_build=false
+          while IFS= read -r path; do
+            case "$path" in
+              docs/OperatorKernels.md|docs/ContribOperators.md)
+                run_documentation_build=true
+                break
+                ;;
+              docs/*|README.md|CONTRIBUTING.md|BUILD.md|js/web/*|onnxruntime/core/providers/js/*)
+                ;;
+              *)
+                run_documentation_build=true
+                break
+                ;;
+            esac
+          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+          echo "run_documentation_build=$run_documentation_build" >> "$GITHUB_OUTPUT"
+
+  kernel_documentation_build:
+    name: Windows GPU Kernel Documentation Build
+    needs: detect_changes
+    if: needs.detect_changes.outputs.run_documentation_build == 'true'
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -52,12 +86,12 @@ jobs:
         ]
     timeout-minutes: 300
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           submodules: 'none'
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
           architecture: x64
@@ -92,11 +126,11 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '20.x'
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -112,14 +146,14 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         env:
           PROCESSOR_ARCHITECTURE: x64
         with:
           dotnet-version: '8.x'
 
       - name: Use Nuget 6.x
-        uses: nuget/setup-nuget@v2
+        uses: nuget/setup-nuget@d105a947828025cd7a980103c35ba2bfae586d0f # v2.0.2
         with:
           nuget-version: '6.x'
 
@@ -164,9 +198,43 @@ jobs:
 
       - name: Upload updated documentation
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: updated-docs
           path: |
             ${{ github.workspace }}/docs/OperatorKernels.md
             ${{ github.workspace }}/docs/ContribOperators.md
+
+  kernel_documentation:
+    name: Windows GPU Kernel Documentation Validation
+    needs:
+      - detect_changes
+      - kernel_documentation_build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check documentation build result
+        env:
+          DETECT_CHANGES_RESULT: ${{ needs.detect_changes.result }}
+          RUN_DOCUMENTATION_BUILD: ${{ needs.detect_changes.outputs.run_documentation_build }}
+          DOCUMENTATION_BUILD_RESULT: ${{ needs.kernel_documentation_build.result }}
+        shell: bash
+        run: |
+          if [[ "$DETECT_CHANGES_RESULT" != "success" ]]; then
+            echo "::error::Failed to determine whether the documentation build is required."
+            exit 1
+          fi
+
+          if [[ "$RUN_DOCUMENTATION_BUILD" != "true" && "$RUN_DOCUMENTATION_BUILD" != "false" ]]; then
+            echo "::error::Unexpected path detection result: $RUN_DOCUMENTATION_BUILD"
+            exit 1
+          fi
+
+          if [[ "$RUN_DOCUMENTATION_BUILD" == "true" && "$DOCUMENTATION_BUILD_RESULT" != "success" ]]; then
+            echo "::error::Documentation build result: $DOCUMENTATION_BUILD_RESULT"
+            exit 1
+          fi
+
+          if [[ "$RUN_DOCUMENTATION_BUILD" != "true" ]]; then
+            echo "Documentation build is not required for the changed paths."
+          fi

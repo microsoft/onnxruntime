@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <type_traits>
+
 #include "core/providers/cuda/tensor/gather_elements_impl.h"
 #include "core/providers/cuda/tensor/scatter_elements_impl.h"
 #ifdef ENABLE_TRAINING_OPS
@@ -264,46 +266,73 @@ Status ScatterElementsImplInternal(cudaStream_t stream, const T* input_data, con
 template <typename T, typename TIndex>
 Status ScatterElementsImpl(cudaStream_t stream, const T* input_data, const TIndex* indices_data, const T* updates_data,
                            T* output_data, const GatherScatterElementsArgs& args) {
-  if (args.operation == GatherScatterElementsArgs::Operation::NONE) {
-    return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
-                                       FuncAssignment<T>());
-  } else if (args.operation == GatherScatterElementsArgs::Operation::ADD) {
+  if constexpr (std::is_same_v<T, int8_t> || std::is_same_v<T, half> || std::is_same_v<T, float> ||
+                std::is_same_v<T, double>) {
+    if (args.operation == GatherScatterElementsArgs::Operation::NONE) {
+      return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
+                                         FuncAssignment<T>());
+    }
+  }
+
+  if (args.operation == GatherScatterElementsArgs::Operation::ADD) {
     return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
                                        FuncAdd<T>());
-  } else if (args.operation == GatherScatterElementsArgs::Operation::MUL) {
+  }
+  if (args.operation == GatherScatterElementsArgs::Operation::MUL) {
     return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
                                        FuncMul<T>());
-  } else if (args.operation == GatherScatterElementsArgs::Operation::MAX) {
+  }
+  if (args.operation == GatherScatterElementsArgs::Operation::MAX) {
     return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
                                        FuncMax<T>());
-  } else if (args.operation == GatherScatterElementsArgs::Operation::MIN) {
+  }
+  if (args.operation == GatherScatterElementsArgs::Operation::MIN) {
     return ScatterElementsImplInternal(stream, input_data, indices_data, updates_data, output_data, args,
                                        FuncMin<T>());
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported reduction operator.");
   }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported reduction operator.");
 }
 
-#define GATHER_SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                                     \
-  template void GatherElementsImpl<T, TIndex>(cudaStream_t stream, const T* input_data, const TIndex* indices_data,    \
-                                              T* output_data, const GatherScatterElementsArgs& args);                  \
+#define GATHER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                                          \
+  template void GatherElementsImpl<T, TIndex>(cudaStream_t stream, const T* input_data, const TIndex* indices_data, \
+                                              T* output_data, const GatherScatterElementsArgs& args);
+
+#define SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, TIndex)                                                            \
   template Status ScatterElementsImpl<T, TIndex>(cudaStream_t stream, const T* input_data, const TIndex* indices_data, \
                                                  const T* updates_data, T* output_data,                                \
                                                  const GatherScatterElementsArgs& args);
 
-#define GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(T)           \
-  GATHER_SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, int32_t) \
-  GATHER_SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, int64_t)
+#define GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(T)    \
+  GATHER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, int32_t)  \
+  GATHER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, int64_t)  \
+  SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, int32_t) \
+  SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, int64_t)
 
-// GatherElementsGrad needs atomic_add which supports float types only, so use half, float and double for 16, 32, and 64
-// bits data respectively.
+#define SCATTER_ELEMENTS_SPECIALIZED_IMPL(T)           \
+  SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, int32_t) \
+  SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL(T, int64_t)
+
+// Keep GatherElements limited to the existing representative types.
+// Instantiate additional semantic types for ScatterElements only.
 GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(int8_t)
 GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(half)
 GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(float)
 GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(double)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(int32_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(uint8_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(int16_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(uint16_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(uint32_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(int64_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(uint64_t)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(BFloat16)
+SCATTER_ELEMENTS_SPECIALIZED_IMPL(bool)
 
+#undef SCATTER_ELEMENTS_SPECIALIZED_IMPL
 #undef GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL
-#undef GATHER_SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL
+#undef SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL
+#undef GATHER_ELEMENTS_SPECIALIZED_TINDEX_IMPL
 
 #ifdef ENABLE_TRAINING_OPS
 

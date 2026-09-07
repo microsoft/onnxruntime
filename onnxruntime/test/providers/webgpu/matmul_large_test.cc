@@ -41,7 +41,8 @@ static void ComputeExpectedResult(const std::vector<float>& a_vals, const std::v
 }
 
 template <typename T, int version = 13>
-void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims) {
+void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims,
+                  bool b_is_constant = false) {
   static_assert(std::is_same_v<T, float> || std::is_same_v<T, MLFloat16>, "unexpected type for T");
 
   auto webgpu_ep = DefaultWebGpuExecutionProvider();
@@ -68,11 +69,11 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   OpTester test("MatMul", version);
   if constexpr (std::is_same_v<T, float>) {
     test.AddInput<T>("A", a_dims, a_vals);
-    test.AddInput<T>("B", b_dims, b_vals);
+    test.AddInput<T>("B", b_dims, b_vals, b_is_constant);
     test.AddOutput<T>("Y", output_dims, expected_vals);
   } else {
     test.AddInput<T>("A", a_dims, FloatsToMLFloat16s(a_vals));
-    test.AddInput<T>("B", b_dims, FloatsToMLFloat16s(b_vals));
+    test.AddInput<T>("B", b_dims, FloatsToMLFloat16s(b_vals), b_is_constant);
     test.AddOutput<T>("Y", output_dims, FloatsToMLFloat16s(expected_vals));
     test.SetOutputAbsErr("Y", 0.055f);
     test.SetOutputRelErr("Y", 0.02f);
@@ -85,6 +86,25 @@ template <int version = 13>
 void RunBothTypes(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims) {
   RunTestTyped<float, version>(a_dims, b_dims);
   RunTestTyped<MLFloat16, version>(a_dims, b_dims);
+}
+
+TEST(MatMulNaiveProgramTest, Broadcast4DExecution) {
+  RunTestTyped<float>({3, 1, 1, 2}, {2, 2, 2});
+  RunTestTyped<float>({2, 2, 3, 2}, {2, 1});
+  RunTestTyped<float>({2, 3, 2}, {3, 2, 2, 1});
+}
+
+TEST(MatMulNaiveProgramTest, VectorExecution) {
+  RunTestTyped<float>({2}, {2, 3});
+  RunTestTyped<float>({3}, {3});
+}
+
+TEST(MatMulProgramTest, VectorFallbackExecution) {
+  RunTestTyped<float>({8}, {8, 3});
+  RunTestTyped<float>({2, 8}, {8});
+  RunTestTyped<float>({8}, {8});
+  RunTestTyped<float>({8}, {2, 8, 3});
+  RunTestTyped<float>({2, 2, 8}, {8});
 }
 
 // 2D aligned baseline shapes.
@@ -146,6 +166,23 @@ TEST(MatMul_Large, DISABLED_BatchedB_4D) {
 TEST(MatMul_Large, DISABLED_BatchedB_LargeBatchSmallTile) {
   RunBothTypes({64, 16, 128}, {64, 128, 32});
   RunBothTypes({128, 8, 256}, {128, 256, 16});
+}
+
+// Constant f16 weight with odd N. The Intel f16 subgroup-matrix load needs an
+// even B row stride, so a non-constant odd-N B falls back to the generic path. When
+// B is a constant initializer, the first Compute lazily pads it to an even stride
+// (N+1) and the subgroup kernel consumes the cached copy via the N_b uniform (output
+// is still written at the real, odd N). Marking B constant here exercises that
+// padded path for both shared 2D and batched weights across several odd N (1023,
+// 33, 65), with even K and both aligned and partial M. Results must match the
+// reference. f16 only: the subgroup kernel is f16, so a float B would take the
+// generic path.
+TEST(MatMul_Large, DISABLED_ConstantWeightOddN) {
+  RunTestTyped<MLFloat16>({128, 64}, {64, 1023}, /*b_is_constant=*/true);
+  RunTestTyped<MLFloat16>({127, 64}, {64, 1023}, /*b_is_constant=*/true);
+  RunTestTyped<MLFloat16>({64, 96}, {96, 33}, /*b_is_constant=*/true);
+  RunTestTyped<MLFloat16>({130, 80}, {80, 65}, /*b_is_constant=*/true);
+  RunTestTyped<MLFloat16>({2, 127, 64}, {2, 64, 1023}, /*b_is_constant=*/true);
 }
 
 // Broadcasted batch dims that are NOT identical but share the same batch

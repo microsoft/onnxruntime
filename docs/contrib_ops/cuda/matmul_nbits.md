@@ -103,10 +103,10 @@ native SM90 (Hopper) layout and set `weight_prepacked=2` on the node.
 `weight_prepacked=2` selects the native SM90 (Hopper TMA/WGMMA) mixed-GEMM
 kernel and its Hopper weight layout. It requires a compute capability 9.0 device
 and `block_size` in `{64, 128}` (the SM90 kernel needs `group_size` to be a
-multiple of the 64-element Hopper K tile, so `block_size=32` is SM80-only). On
-SM90 devices, runtime-prepacked (`weight_prepacked=0`) and SM80-prepacked
-(`weight_prepacked=1`) weights continue to route to the SM80 CUTLASS
-kernel/layout.
+multiple of the 64-element Hopper K tile, so `block_size=32` uses the
+non-Hopper kernel). On SM90 devices, runtime-prepacked (`weight_prepacked=0`)
+and SM80-prepacked (`weight_prepacked=1`) weights continue to route to the SM80
+CUTLASS kernel/layout.
 
 ---
 
@@ -147,31 +147,37 @@ dispatches by bit width:
 first applies a guard common to all fused kernels:
 
 ```
-n % kColsPerThreadBlock (8) == 0   and   k % 8 == 0   and   m <= 1
+n % kColsPerThreadBlock (8) == 0   and   k % 8 == 0   and   m <= 16
 ```
 
-i.e. the fast path is a **GEMV** (single token). If the guard passes it then
-chooses between the router specialization (§4.2) and the generic kernel (§4.1).
+i.e. the fused path handles a single token or a small batch. If the guard passes,
+it chooses between the M=1 kernel (§4.1), the small-M batched kernels (§4.2),
+and the router specialization (§4.3).
 
-### 4.1 Generic 4-bit GEMV kernel
+### 4.1 Generic 4-bit M=1 GEMV kernel
 
-`MatMulFloatInt4Kernel<T, block_size, has_zero_point>`:
+`MatMulFloat4BitsKernelM1<T, block_size, has_zero_point>` is implemented in
+`matmul_4bits_m1_impl.cuh` and instantiated by the dtype-specific translation
+units:
 
-- **Launch:** grid `(ceil(N / 8), M)`, block `(warpSize, 8)` — one **warp per
+- **Launch:** grid `(ceil(N / 8), 1)`, block `(warpSize, 8)` — one **warp per
   output column** (`kColsPerThreadBlock = 8` warps per block).
 - **Scales / zero points** are staged into shared memory once per thread block
-  (hence the `shared_mem_size > sharedMemPerBlock` bail-out in
-  `TryMatMul4Bits`).
-- **Inner loop:** each lane consumes `kElementsPerThreadPerIteration = 8`
-  weights per step; a warp covers `warpSize × 8 = 256` `K` elements per
-  iteration via `AccumulateEightElements4b` (a `prmt` + `lop3`-based int4→half2
-  conversion). A 3-tier macro unroll (`×16`, `×4`, `×1`) plus a scalar remainder
-  step walks all of `K`, followed by a warp-shuffle reduction.
-- **Supported `block_size`:** 16 / 32 / 64 / 128 (others throw).
+  and the launcher returns `false` if the total requirement exceeds the per-block limit.
+- **Inner loop:** each lane consumes eight packed int4 weights per iteration,
+  followed by a warp reduction.
+- **Supported `block_size`:** 16 / 32 / 64 / 128.
 - **Bias:** not supported — the kernel returns `false` to `TryMatMul4Bits` when
   `bias != nullptr` (see §7 for how bias is then handled).
 
-### 4.2 Router GEMV specialization
+### 4.2 Small-M batched GEMV
+
+For `2 <= M <= 16`, `TryMatMul4Bits` first attempts the register-tiled
+half/BF16 batched kernel and then the shared-memory `MatMulFloatInt4KernelSmallM`
+path. These paths dequantize each packed weight word once and reuse it across
+multiple activation rows.
+
+### 4.3 Router GEMV specialization
 
 `MatMulFloatInt4RouterKernel<T, BlockSize>` is a specialization for MoE-router
 GEMVs (`output(1, N) = A(1, K) · dequant(B(N, K)) + bias(N)`). It is selected by
@@ -236,23 +242,29 @@ tile saturates the SMs while keeping scratch ≲128 MB.
 
 ## 6. fpA_intB_gemm Path (CUTLASS weight-only)
 
-When built with `onnxruntime_USE_FPA_INTB_GEMM=ON` (`USE_FPA_INTB_GEMM` in C++)
-and enabled via `ORT_FPA_INTB_GEMM`, FP16/BF16 MatMulNBits can use the
-TensorRT-LLM-derived CUTLASS weight-only kernels. The constructor sets
-`has_fpA_intB_gemm_` only when:
+`onnxruntime_USE_FPA_INTB_GEMM` is the master build option and defaults to `ON`
+for CUDA builds. Its default kernel set is intentionally compact, excludes the
+native Hopper kernel, and covers the SM80-layout RC model contract:
 
-- dtype is FP16 or BF16, `bits ∈ {4, 8}`, `block_size ∈ {32, 64, 128}`,
-- no `g_idx`, `N % (bits==8 ? 32 : 64) == 0`, `K % block_size == 0`,
-- `sm_ >= 75`, and weight/scale/zero-point inputs are constant initializers that
-  ORT can prepack.
+- FP16 activations and INT4 or INT8 weights,
+- scale-only quantization with `block_size=32` and no zero-points, bias, or
+  `g_idx`,
+- `N % (bits==8 ? 32 : 64) == 0`, `K % block_size == 0`, and `sm_ >= 75`,
+- unpacked weights or `weight_prepacked=1` (the SM80 layout).
 
-`block_size=32` is served by the SM80/Ampere-class fine-grained kernel (and its
-SM90 compatibility path); the native SM90 kernel (`weight_prepacked=2`) supports
-only `block_size ∈ {64, 128}` — see §2.1.
+Set `onnxruntime_USE_FPA_INTB_GEMM_FULL=ON` to build the legacy full kernel
+matrix. Full mode additionally supports BF16, block sizes 64 and 128,
+zero-points, bias, and the native SM90 layout (`weight_prepacked=2`). The
+native SM90 kernel supports only `block_size ∈ {64, 128}`; see §2.1.
+
+When enabled via `ORT_FPA_INTB_GEMM`, eligible MatMulNBits nodes use the
+TensorRT-LLM-derived CUTLASS weight-only kernels. Weight and scale inputs (and
+zero-points in full mode) must be constant initializers that ORT can prepack.
 
 At run time a profiler picks the best tactic; small `M` may use a dedicated CUDA
 GEMV kernel (`bestTactic->enableCudaKernel`), otherwise a CUTLASS grouped GEMM.
-This path takes precedence over everything in §3 when active.
+The compact fpA_intB GEMV does not support zero-points or bias. This path takes
+precedence over everything in §3 when active.
 
 For `weight_prepacked=0`, the CUDA EP preprocesses the standard MatMulNBits
 weight initializer into the fpA_intB layout during ORT prepacking. For
@@ -267,8 +279,9 @@ Prepacked weights are intentionally strict:
   flag (`ep.cuda.fpa_intb_gemm` session config, or the `ORT_FPA_INTB_GEMM` env
   var) is ignored for prepacked weights — the layout choice was fixed at export
   time and cannot be turned off at run time.
-- Nonzero `weight_prepacked` requires FP16 or BF16 input `A`, because only the
-  CUDA fpA_intB path consumes this layout.
+- Nonzero `weight_prepacked` requires FP16 input `A` in the default compact
+  build, or FP16/BF16 in a full build, because only the CUDA fpA_intB path
+  consumes this layout.
 - `weight_prepacked` must match the layout the selected kernel expects: `1` is
   the SM80 layout, `2` is the native SM90 (Hopper) layout. `2` additionally
   requires a compute-capability 9.0 device and `block_size ∈ {64, 128}` and is
@@ -278,7 +291,7 @@ Prepacked weights are intentionally strict:
 
 ## 7. Bias Handling
 
-Only the router specialization (§4.2) fuses bias inside the GEMV. For every other
+Only the router specialization (§4.3) fuses bias inside the GEMV. For every other
 fast-path shape, `TryMatMul4Bits` / `TryMatMul8Bits` return `false` when bias is
 present. `ComputeInternal` then:
 
@@ -294,7 +307,7 @@ present. `ComputeInternal` then:
 
 | Variable | Type / default | Effect |
 |----------|----------------|--------|
-| `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.2); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
+| `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.3); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
 | `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic. |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |

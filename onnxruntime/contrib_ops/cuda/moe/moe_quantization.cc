@@ -8,6 +8,7 @@
 #endif
 
 #include "contrib_ops/cuda/moe/moe_quantization.h"
+#include <charconv>
 #include <type_traits>
 #include "core/common/float8.h"
 #include "cutlass/numeric_types.h"
@@ -20,20 +21,27 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
+#if defined(HAS_SM90_OR_LATER)
+#include "contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.h"
+#endif
 
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 
+#include <algorithm>
+#include <array>
 #include <cstring>
+#include <iostream>
 #include <limits>
 #include <mutex>
-#include <vector>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 namespace {
+constexpr size_t kMinH200GlobalMemoryBytes = size_t{120} << 30;
+
 void LogQMoESwigluFusionRemapOnce() {
   static std::once_flag log_warning;
   std::call_once(log_warning, []() {
@@ -61,6 +69,31 @@ bool Fp4GemvAutotuneEnabled() {
 
 bool Fp4GemvAutotuneLogEnabled() {
   return onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_GEMV_AUTOTUNE_LOG", 0) == 1;
+}
+
+bool Fp4GemvSkipExpandDisabled() {
+  return onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_FP4_GEMV_SKIP_EXPAND", 0) == 1;
+}
+
+void PrintQMoEKernelDebugInfo(const char* route, int64_t num_rows,
+                              int64_t row_tile_size, int64_t final_row_tile_size,
+                              int64_t tactic_m, int64_t final_tactic_m,
+                              size_t runner_workspace_bytes, size_t total_scratch_bytes) {
+  std::cout << "\x1B[36m"
+            << "Operator=QMoE"
+            << " Route=" << route
+            << " Rows=" << num_rows
+            << " RowTileSize=" << row_tile_size
+            << " RunnerWorkspaceBytes=" << runner_workspace_bytes
+            << " TotalScratchBytes=" << total_scratch_bytes
+            << " TacticMBucket="
+            << onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(tactic_m);
+  if (final_row_tile_size != row_tile_size) {
+    std::cout << " FinalRowTileSize=" << final_row_tile_size
+              << " FinalTacticMBucket="
+              << onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(final_tactic_m);
+  }
+  std::cout << "\x1B[0m" << std::endl;
 }
 
 const char* QMoEGemvConfigName(onnxruntime::llm::kernels::moe_gemv::MoeGemvConfig config) {
@@ -136,6 +169,61 @@ bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_
   return hidden_size % kMxfp4CutlassAlignment == 0 && inter_size % kMxfp4CutlassAlignment == 0;
 #endif
 }
+
+// Returns the per-rank expert count DeepGEMM would run, or 0 if the static shapes rule it out.
+int StaticFp4DeepGemmNumExperts(const OpKernelInfo& op_kernel_info) {
+#if !defined(HAS_SM90_OR_LATER)
+  ORT_UNUSED_PARAMETER(op_kernel_info);
+  return 0;
+#else
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  if (op_kernel_info.GetInputCount() <= 5) {
+    return 0;
+  }
+
+  const auto fc1_shape = op_kernel_info.GetKernelInfo().GetInputTypeInfo(2).GetTensorTypeAndShapeInfo().GetShape();
+  const auto fc2_shape = op_kernel_info.GetKernelInfo().GetInputTypeInfo(5).GetTensorTypeAndShapeInfo().GetShape();
+  if (fc1_shape.size() != 3 || fc2_shape.size() != 3) {
+    return 0;
+  }
+
+  const int64_t fc1_e = fc1_shape[0];
+  const int64_t fc1_k = fc1_shape[1];
+  const int64_t fc1_packed_n = fc1_shape[2];
+  const int64_t fc2_e = fc2_shape[0];
+  const int64_t fc2_k = fc2_shape[1];
+  const int64_t fc2_packed_n = fc2_shape[2];
+#else
+  const auto& input_defs = op_kernel_info.node().InputDefs();
+  if (input_defs.size() <= 5 || input_defs[2] == nullptr || input_defs[5] == nullptr) {
+    return 0;
+  }
+
+  const auto* fc1_shape = input_defs[2]->Shape();
+  const auto* fc2_shape = input_defs[5]->Shape();
+  int64_t fc1_e = 0;
+  int64_t fc1_k = 0;
+  int64_t fc1_packed_n = 0;
+  int64_t fc2_e = 0;
+  int64_t fc2_k = 0;
+  int64_t fc2_packed_n = 0;
+  if (fc1_shape == nullptr || fc2_shape == nullptr || fc1_shape->dim_size() != 3 || fc2_shape->dim_size() != 3 ||
+      !TryGetStaticDim(fc1_shape, 0, fc1_e) || !TryGetStaticDim(fc1_shape, 1, fc1_k) ||
+      !TryGetStaticDim(fc1_shape, 2, fc1_packed_n) || !TryGetStaticDim(fc2_shape, 0, fc2_e) ||
+      !TryGetStaticDim(fc2_shape, 1, fc2_k) || !TryGetStaticDim(fc2_shape, 2, fc2_packed_n)) {
+    return 0;
+  }
+#endif
+
+  const bool supported =
+      fc1_e == onnxruntime::llm::kernels::deep_gemm_sm90::kNumExpertsWorld8 && fc2_e == fc1_e &&
+      fc1_k == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize &&
+      fc1_packed_n * 2 == onnxruntime::llm::kernels::deep_gemm_sm90::kFc1OutputSize &&
+      fc2_k == onnxruntime::llm::kernels::deep_gemm_sm90::kInterSize &&
+      fc2_packed_n * 2 == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize;
+  return supported ? static_cast<int>(fc1_e) : 0;
+#endif
+}
 }  // namespace
 
 namespace onnxruntime {
@@ -164,6 +252,24 @@ REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16)
 
 QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoEBase(op_kernel_info, GetDeviceProp()) {
+  enable_kernel_debug_info_ =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>(kEnableQMoEKernelDebugInfo, 0) != 0;
+  const auto configured_row_tile_size =
+      op_kernel_info.GetConfigOptions().GetConfigEntry(kQMoERowTileSizeConfig);
+  const char* row_tile_size_source = kQMoERowTileSizeConfig;
+  if (configured_row_tile_size.has_value()) {
+    const auto& value = *configured_row_tile_size;
+    const auto parse_result = std::from_chars(value.data(), value.data() + value.size(), row_tile_size_);
+    ORT_ENFORCE(parse_result.ec == std::errc{} && parse_result.ptr == value.data() + value.size(),
+                kQMoERowTileSizeConfig, " must be an integer, got '", value, "'.");
+  } else {
+    row_tile_size_source = kQMoERowTileSize;
+    row_tile_size_ = onnxruntime::ParseEnvironmentVariableWithDefault<int64_t>(
+        kQMoERowTileSize, qmoe::kDisabledRowTileSize);
+  }
+  ORT_ENFORCE(row_tile_size_ == qmoe::kDisabledRowTileSize || qmoe::IsValidRowTileSize(row_tile_size_),
+              row_tile_size_source, " must be 0 (disabled) or an integer in [1, ",
+              std::numeric_limits<int>::max(), "], got ", row_tile_size_, ".");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 8 || expert_weight_bits_ == 4,
               "expert_weight_bits must be 4 or 8, but got ", expert_weight_bits_);
@@ -230,6 +336,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   bool is_fp16 = input_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 #endif
   is_fp16_ = is_fp16;
+
+  fp4_deep_gemm_num_experts_ = StaticFp4DeepGemmNumExperts(op_kernel_info);
+  enable_fp4_deep_gemm_ =
+      quant_type_ == "fp4" && !is_fp16_ && sm_ == 90 && GetDeviceProp().multiProcessorCount == 132 &&
+      GetDeviceProp().totalGlobalMem >= kMinH200GlobalMemoryBytes && k_ == 6 &&
+      activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
+      fp4_deep_gemm_num_experts_ > 0 &&
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_QMOE_FP4_DEEPGEMM", 0) == 1;
 
   if (quant_type_ == "fp4" || quant_type_ == "nvfp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8") {
     if (quant_type_ == "fp4") {
@@ -309,6 +423,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       // ORT_FP4_SM80_GEMM constructor-plumbed decision below).
       enable_fp4_gemv_autotune_ = Fp4GemvAutotuneEnabled();
       enable_fp4_gemv_autotune_log_ = Fp4GemvAutotuneLogEnabled();
+      fp4_gemv_skip_expand_ = !Fp4GemvSkipExpandDisabled();
 #else
       use_fp4_dequant_fallback_ = true;
 #endif
@@ -351,6 +466,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       }
       enable_fp4_gemv_autotune_ = Fp4GemvAutotuneEnabled();
       enable_fp4_gemv_autotune_log_ = Fp4GemvAutotuneLogEnabled();
+      fp4_gemv_skip_expand_ = !Fp4GemvSkipExpandDisabled();
 #endif
     } else if (quant_type_ == "wfp4afp8") {
       ORT_ENFORCE(expert_weight_bits_ == 4, "WFP4AFP8 (W4A8) quantization requires expert_weight_bits=4");
@@ -491,6 +607,12 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
               "', expert_weight_bits=", expert_weight_bits_,
               ", input_type=", (is_fp16 ? "float16" : "bfloat16"),
               ". Build configuration may be missing the corresponding kernel.");
+  if (enable_fp4_deep_gemm_) {
+    m_moe_runner->setUseFp4DeepGemm(true);
+    if (m_fp4_dense_fallback_runner_ != nullptr) {
+      m_fp4_dense_fallback_runner_->setUseFp4DeepGemm(true);
+    }
+  }
 }
 
 Status QMoE::ComputeInternal(OpKernelContext* context) const {
@@ -773,13 +895,27 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       // through the fused GEMV or the dense A16 fallback instead. (MXFP4 keeps its existing routing.)
       !(is_nvfp4 && fp4_prefill_min_tokens_ > 0 &&
         static_cast<int64_t>(moe_params.num_rows) < fp4_prefill_min_tokens_);
+#if defined(HAS_SM90_OR_LATER)
+  const bool use_fp4_deep_gemm =
+      enable_fp4_deep_gemm_ && moe_params.num_rows > 0 &&
+      moe_params.num_rows <= onnxruntime::llm::kernels::deep_gemm_sm90::kMaxTokensPerExpert &&
+      moe_params.num_experts == fp4_deep_gemm_num_experts_ &&
+      moe_params.hidden_size == onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize &&
+      moe_params.inter_size == onnxruntime::llm::kernels::deep_gemm_sm90::kInterSize &&
+      is_fused_swiglu && swiglu_fusion == 1 && !use_awq && fc1_experts_bias_optional == nullptr &&
+      fc2_experts_bias_optional == nullptr && fp4_deep_gemm_fc1_weights_ != nullptr &&
+      fp4_deep_gemm_fc2_weights_ != nullptr && fp4_deep_gemm_fc1_weight_scales_ != nullptr &&
+      fp4_deep_gemm_fc2_weight_scales_ != nullptr;
+#else
+  constexpr bool use_fp4_deep_gemm = false;
+#endif
   // SM80 FP4 grouped-GEMM prefill path. Active only when ORT_FP4_SM80_GEMM=1 and the
   // GEMV prepack produced the SM80 CUTLASS-interleaved e2m1 weights + activation-dtype group scales. Decode
   // shapes are still served by the fused GEMV (which returns early below); everything that
   // falls through to the runner here (prefill / GEMV-unsupported shapes) runs on the FP4
   // runner via the Ampere/SM80 DqMma grouped GEMM with QuantParams::GroupWise(32, ...).
   const bool fp4_sm80_prefill =
-      is_fp4 && enable_fp4_sm80_gemm_ &&
+      !use_fp4_deep_gemm && is_fp4 && enable_fp4_sm80_gemm_ &&
       gemv_fp4_fc1_weights_ != nullptr && gemv_fp4_fc2_weights_ != nullptr &&
       gemv_fp4_fc1_scales_ != nullptr && gemv_fp4_fc2_scales_ != nullptr;
   // Releasing the raw e2m1 initializers (fp4_weights_consumed_by_prepack) is only sound because
@@ -787,7 +923,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // built (e.g. the group scales never materialized because a global-scale input was missing),
   // the dequant fallback below would be selected and would dereference the released initializer.
   // Fail loudly rather than crash.
-  if (fp4_weights_consumed_by_prepack && !fp4_sm80_prefill) {
+  if (fp4_weights_consumed_by_prepack && !fp4_sm80_prefill && !use_fp4_deep_gemm) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "QMoE MXFP4: PrePack released the raw expert-weight initializers but the "
                            "SM80 grouped-GEMM buffers are incomplete (missing pre-packed weights or "
@@ -797,14 +933,67 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // the per-expert threshold. In every other configuration (native chosen, or native unavailable so
   // m_moe_runner is itself the dense A16 runner) we use m_moe_runner.
   onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface* active_runner =
-      (fp4_native_available && !route_native_fp4) ? m_fp4_dense_fallback_runner_.get() : m_moe_runner.get();
+      use_fp4_deep_gemm && m_fp4_dense_fallback_runner_ != nullptr
+          ? m_fp4_dense_fallback_runner_.get()
+          : ((fp4_native_available && !route_native_fp4) ? m_fp4_dense_fallback_runner_.get() : m_moe_runner.get());
+
+  // Decide the standalone FP4 GEMV route before sizing grouped-runner scratch. GEMV owns a
+  // different routing/workspace pipeline and remains deliberately untiled. Every other route
+  // reaches runMoe, whose input, router logits, top-k metadata, and output are all row-major and
+  // row-independent, so those pointers can be advanced by a row offset without changing expert
+  // routing or output placement.
+  const bool fp4_decode_regime =
+      use_fp4_dequant_fallback_ ||
+      ((enable_fp4_cutlass_gemm_ || enable_nvfp4_cutlass_gemm_) && fp4_prefill_min_tokens_ > 0 &&
+       moe_params.num_rows < fp4_prefill_min_tokens_);
+  const bool fc1_gemv_sm80_layout = gemv_fp4_fc1_reads_sm80_layout_;
+  const bool fc2_gemv_sm80_layout = gemv_fp4_fc2_reads_sm80_layout_;
+  const bool fp4_gemv_buffers_ready =
+      (enable_fp4_sm80_gemm_
+           ? ((fc1_gemv_sm80_layout ? gemv_fp4_fc1_weights_ != nullptr : gemv_fp4_fc1_weights_decode_ != nullptr) &&
+              (fc2_gemv_sm80_layout ? gemv_fp4_fc2_weights_ != nullptr : gemv_fp4_fc2_weights_decode_ != nullptr))
+           : (gemv_fp4_fc1_weights_ != nullptr && gemv_fp4_fc2_weights_ != nullptr)) &&
+      gemv_fp4_fc1_scales_ != nullptr && gemv_fp4_fc2_scales_ != nullptr;
+  bool use_fp4_gemv = false;
+  if (is_fp4_family && fp4_decode_regime && enable_fp4_gemv_ && is_fused_swiglu &&
+      fp4_gemv_buffers_ready) {
+    namespace gemv = onnxruntime::llm::kernels::moe_gemv;
+    const int64_t expanded = moe_params.num_rows * static_cast<int64_t>(k_);
+    const int64_t fc1_n = moe_params.inter_size * 2;
+    const int gemv_group_size = is_nvfp4 ? 16 : 32;
+    use_fp4_gemv =
+        moe_params.num_rows > 0 && moe_params.num_rows <= 256 && expanded > 0 &&
+        gemv::is_moe_gemv_fp4_supported(sm_, expanded, fc1_n, moe_params.hidden_size, gemv_group_size,
+                                        gemv::MoeGemvConfig::kDefault, fc1_gemv_sm80_layout) &&
+        gemv::is_moe_gemv_fp4_supported(sm_, expanded, moe_params.hidden_size, moe_params.inter_size,
+                                        gemv_group_size, gemv::MoeGemvConfig::kDefault,
+                                        fc2_gemv_sm80_layout);
+  }
+
+  const qmoe::RowTilePlan row_tile_plan =
+      qmoe::MakeRowTilePlan(
+          moe_params.num_rows, row_tile_size_,
+          row_tile_size_ != qmoe::kDisabledRowTileSize && !use_fp4_gemv);
 
   // Profile and capture the best tactics under the profiler mutex, then release the mutex so
   // that scratch allocation, weight dequantization, scale prepping, softmax, and other
   // CPU-bound work can proceed concurrently across QMoE inferences. The mutex is reacquired
   // around setTactic + runMoe because they mutate shared `m_moe_runner` state.
-  std::optional<onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::Config> config1;
-  std::optional<onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::Config> config2;
+  using MoeConfig = onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::Config;
+  struct RunnerTileConfig {
+    int64_t num_rows = 0;
+    std::optional<MoeConfig> config1;
+    std::optional<MoeConfig> config2;
+    size_t workspace_size = 0;
+  };
+  std::array<int64_t, 2> distinct_tile_rows{row_tile_plan.rows_per_tile, 0};
+  size_t distinct_tile_row_count = 1;
+  const int64_t final_tile_rows = row_tile_plan.RowsInTile(row_tile_plan.TileCount() - 1);
+  if (final_tile_rows != row_tile_plan.rows_per_tile) {
+    distinct_tile_rows[distinct_tile_row_count++] = final_tile_rows;
+  }
+  std::array<RunnerTileConfig, 2> runner_tile_configs{};
+  size_t runner_tile_config_count = 0;
   size_t workspace_size = 0;
   {
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
@@ -822,13 +1011,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     // than assuming a null stream is never capturing.
     const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(compute_stream);
 
-    // Use profiler with proper weight type for quantized weights
+    // Use profiler with proper weight type for quantized weights. A partial final tile can land
+    // in a different M bucket, so profile and retain a config for each distinct actual tile size.
     if (onnxruntime::llm::common::getEnvForceDeterministicMOE()) {
       auto tactics = active_runner->getTactics();
+      std::optional<MoeConfig> deterministic_config;
       if (!tactics.empty()) {
-        config1 = tactics[0];
-        config2 = tactics[0];
-        active_runner->setTactic(config1, config2);
+        deterministic_config = tactics[0];
+      }
+      for (size_t i = 0; i < distinct_tile_row_count; ++i) {
+        const int64_t tile_rows = distinct_tile_rows[i];
+        RunnerTileConfig tile_config{tile_rows, deterministic_config, deterministic_config, 0};
+        active_runner->setTactic(tile_config.config1, tile_config.config2);
+        tile_config.workspace_size = active_runner->getWorkspaceSize(
+            tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
+            activation_type_, parallelism_config, use_awq, swiglu_fusion);
+        workspace_size = std::max(workspace_size, tile_config.workspace_size);
+        runner_tile_configs[runner_tile_config_count++] = std::move(tile_config);
       }
     } else {
       AllocatorPtr allocator;
@@ -881,118 +1080,124 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
       // GEMM 1: N=fc1_out_size (doubled for gated), K=hidden_size
       MoeGemmId id1(static_cast<int>(fc1_out_size), static_cast<int>(moe_params.hidden_size), dtype, wtype, MoeGemmId::GemmType::Gemm1);
-      if (!stream_is_capturing) {
-        // profileTactics caches per (GemmId, M bucket); calling it every forward lets decode
-        // (small M) and prefill (large M) each profile and select their own best tile shape.
-        GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
-                      fc1_out_size, static_cast<int64_t>(moe_params.hidden_size));
-        mGemmProfiler.profileTactics(active_runner, dims, id1, compute_stream);
-      }
-      config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id1);
-
-      // GEMM 2
       MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, wtype, MoeGemmId::GemmType::Gemm2);
-      if (!stream_is_capturing) {
-        GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
-                      static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
-        mGemmProfiler.profileTactics(active_runner, dims, id2, compute_stream);
-      }
-      config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id2);
 
-      // Capture-safe fallback: if profiling was skipped (graph capture) and no tuned config was
-      // cached from a prior non-capturing run, use the runner's default tactic instead of leaving
-      // the config unset.
-      if (!config1 || !config2) {
-        auto tactics = active_runner->getTactics();
-        if (!tactics.empty()) {
-          if (!config1) {
-            config1 = tactics[0];
-          }
-          if (!config2) {
-            config2 = tactics[0];
+      for (size_t i = 0; i < distinct_tile_row_count; ++i) {
+        const int64_t tile_rows = distinct_tile_rows[i];
+        RunnerTileConfig tile_config;
+        tile_config.num_rows = tile_rows;
+        if (!stream_is_capturing) {
+          // profileTactics caches per (GemmId, M bucket). Use the tile's actual M so both the
+          // configured tile and a non-divisible final tile select tactics from their own bucket.
+          GemmDims dims1(tile_rows, tile_rows, fc1_out_size,
+                         static_cast<int64_t>(moe_params.hidden_size));
+          mGemmProfiler.profileTactics(active_runner, dims1, id1, compute_stream);
+          GemmDims dims2(tile_rows, tile_rows, static_cast<int64_t>(moe_params.hidden_size),
+                         static_cast<int64_t>(moe_params.inter_size));
+          mGemmProfiler.profileTactics(active_runner, dims2, id2, compute_stream);
+        }
+        tile_config.config1 = mGemmProfiler.getBestConfig(static_cast<int>(tile_rows), id1);
+        tile_config.config2 = mGemmProfiler.getBestConfig(static_cast<int>(tile_rows), id2);
+
+        // Capture-safe fallback: if profiling was skipped (graph capture) and no tuned config was
+        // cached from a prior non-capturing run, use the runner's default tactic instead of leaving
+        // the config unset.
+        if (!tile_config.config1 || !tile_config.config2) {
+          auto tactics = active_runner->getTactics();
+          if (!tactics.empty()) {
+            if (!tile_config.config1) {
+              tile_config.config1 = tactics[0];
+            }
+            if (!tile_config.config2) {
+              tile_config.config2 = tactics[0];
+            }
           }
         }
+
+        active_runner->setTactic(tile_config.config1, tile_config.config2);
+        tile_config.workspace_size = active_runner->getWorkspaceSize(
+            tile_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
+            activation_type_, parallelism_config, use_awq, swiglu_fusion);
+        workspace_size = std::max(workspace_size, tile_config.workspace_size);
+        runner_tile_configs[runner_tile_config_count++] = std::move(tile_config);
       }
-
-      active_runner->setTactic(config1, config2);
     }
-
-    workspace_size = active_runner->getWorkspaceSize(
-        moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
-        activation_type_, parallelism_config, use_awq);
   }
   // Lock released — concurrent QMoE inferences can now run prep work in parallel.
 
-  // Scratch buffer for workspace + expert_scales + expert_indices + permutation_map.
-  // Use checked arithmetic: these byte counts derive adjacent pointer offsets inside one allocation.
-  // expert_scales: num_rows * k * sizeof(float)
-  // expert_indices: num_rows * k * sizeof(int)
-  size_t expanded_rows = SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
-  size_t scales_bytes = expanded_rows * sizeof(float);
-  size_t indices_bytes = expanded_rows * sizeof(int);
-  size_t permutation_bytes = expanded_rows * sizeof(int);
-  size_t total_scratch_bytes = SafeInt<size_t>(workspace_size) + scales_bytes + indices_bytes + permutation_bytes;
+  // One allocation holds the maximum runner workspace reported for any actual tile plus tile-local
+  // routing metadata. Every tile completes its launches on the same stream before the next tile
+  // reuses these addresses.
+  const qmoe::ScratchLayout scratch_layout =
+      qmoe::MakeScratchLayout(workspace_size, row_tile_plan, k_);
+  const size_t total_scratch_bytes = scratch_layout.total_bytes;
 
   auto work_space = GetScratchBuffer<void>(total_scratch_bytes, GetComputeStream(context));
   char* workspace_ptr = reinterpret_cast<char*>(work_space.get());
   float* expert_scales = reinterpret_cast<float*>(workspace_ptr + workspace_size);
-  int* expert_indices = reinterpret_cast<int*>(workspace_ptr + workspace_size + scales_bytes);
-  int* unpermuted_row_to_permuted_row = reinterpret_cast<int*>(workspace_ptr + workspace_size + scales_bytes + indices_bytes);
+  int* expert_indices =
+      reinterpret_cast<int*>(workspace_ptr + workspace_size + scratch_layout.scales_bytes);
+  int* unpermuted_row_to_permuted_row =
+      reinterpret_cast<int*>(workspace_ptr + workspace_size + scratch_layout.scales_bytes +
+                             scratch_layout.indices_bytes);
 
   cudaStream_t stream = Stream(context);
 
-  // Perform Softmax + TopK
-  // Input router_probs is (num_rows, num_experts)
   bool is_fp16 = input->IsDataType<MLFloat16>();
   bool is_bf16 = input->IsDataType<BFloat16>();
+  auto route_tile = [&](int64_t row_offset, int64_t tile_rows) {
+    onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams fused_routing;
+    const size_t router_element_offset =
+        SafeInt<size_t>(row_offset) * SafeInt<size_t>(moe_params.num_experts);
+    const size_t router_byte_offset =
+        SafeInt<size_t>(router_element_offset) * router_probs->DataType()->Size();
+    const void* tile_router_probs =
+        reinterpret_cast<const char*>(router_probs->DataRaw()) + router_byte_offset;
 
-  // Optimization C: at decode the runner can fold softmax + top-k into the kernel that builds the
-  // expert permutation maps, saving a launch per MoE layer. Both are single-block kernels there, so
-  // the launch is most of the cost. The predicate below is the same one runMoe re-checks, so the two
-  // can never disagree about who computed the routing. Excluded for the FP4 family because its
-  // decode fast path below consumes expert_indices/expert_scales itself instead of calling runMoe.
-  onnxruntime::llm::kernels::cutlass_kernels::FusedRoutingParams fused_routing;
-  if (!is_fp4_family &&
-      onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
-          moe_params.num_rows, static_cast<int>(moe_params.num_experts),
-          static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size, static_cast<int>(k_),
-          parallelism_config.ep_size)) {
-    fused_routing.router_logits = router_probs->DataRaw();
-    fused_routing.token_selected_experts = expert_indices;
-    fused_routing.token_final_scales = expert_scales;
-    fused_routing.normalize_routing_weights = normalize_routing_weights_;
-  } else if (is_fp16) {
-    LaunchSoftmaxTopK(
-        reinterpret_cast<const half*>(router_probs->DataRaw()),
-        expert_scales,
-        expert_indices,
-        static_cast<int>(moe_params.num_rows),
-        static_cast<int>(moe_params.num_experts),
-        static_cast<int>(k_),
-        normalize_routing_weights_,
-        stream);
-  } else if (is_bf16) {
-    LaunchSoftmaxTopK(
-        reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
-        expert_scales,
-        expert_indices,
-        static_cast<int>(moe_params.num_rows),
-        static_cast<int>(moe_params.num_experts),
-        static_cast<int>(k_),
-        normalize_routing_weights_,
-        stream);
-  } else {
-    // Fallback for float
-    LaunchSoftmaxTopK(
-        reinterpret_cast<const float*>(router_probs->DataRaw()),
-        expert_scales,
-        expert_indices,
-        static_cast<int>(moe_params.num_rows),
-        static_cast<int>(moe_params.num_experts),
-        static_cast<int>(k_),
-        normalize_routing_weights_,
-        stream);
-  }
+    // Fused routing remains limited to an untiled one-row request; a one-row final tile
+    // continues using the same routing implementation as the preceding tiles.
+    if (!row_tile_plan.IsTiled() && !is_fp4_family &&
+        onnxruntime::llm::kernels::cutlass_kernels::isFusedMoeRoutingSupported(
+            tile_rows, static_cast<int>(moe_params.num_experts),
+            static_cast<int>(moe_params.num_experts) / parallelism_config.ep_size,
+            static_cast<int>(k_), parallelism_config.ep_size)) {
+      fused_routing.router_logits = tile_router_probs;
+      fused_routing.token_selected_experts = expert_indices;
+      fused_routing.token_final_scales = expert_scales;
+      fused_routing.normalize_routing_weights = normalize_routing_weights_;
+    } else if (is_fp16) {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const half*>(tile_router_probs),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(tile_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    } else if (is_bf16) {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const __nv_bfloat16*>(tile_router_probs),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(tile_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    } else {
+      LaunchSoftmaxTopK(
+          reinterpret_cast<const float*>(tile_router_probs),
+          expert_scales,
+          expert_indices,
+          static_cast<int>(tile_rows),
+          static_cast<int>(moe_params.num_experts),
+          static_cast<int>(k_),
+          normalize_routing_weights_,
+          stream);
+    }
+    return fused_routing;
+  };
 
   // Holders for packed tensors (if packing is needed for SwiGLU)
   IAllocatorUniquePtr<void> packed_fc1_scales_holder;
@@ -1365,22 +1570,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // block_size_ attribute is unset (-1) for fp4, so it is not part of the gate.
   // When native CUTLASS WFP4A16 is enabled, GEMV serves only the decode regime
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
-  const bool fp4_decode_regime =
-      use_fp4_dequant_fallback_ ||
-      ((enable_fp4_cutlass_gemm_ || enable_nvfp4_cutlass_gemm_) && fp4_prefill_min_tokens_ > 0 &&
-       moe_params.num_rows < fp4_prefill_min_tokens_);
-  // True when the decode GEMV reads the SM80 pair-interleaved prefill buffer directly (single
-  // weight copy) instead of a dedicated GEMV-native copy; see gemv_fp4_fc*_reads_sm80_layout_.
-  const bool fc1_gemv_sm80_layout = gemv_fp4_fc1_reads_sm80_layout_;
-  const bool fc2_gemv_sm80_layout = gemv_fp4_fc2_reads_sm80_layout_;
-  const bool fp4_gemv_buffers_ready =
-      (enable_fp4_sm80_gemm_
-           ? ((fc1_gemv_sm80_layout ? gemv_fp4_fc1_weights_ != nullptr : gemv_fp4_fc1_weights_decode_ != nullptr) &&
-              (fc2_gemv_sm80_layout ? gemv_fp4_fc2_weights_ != nullptr : gemv_fp4_fc2_weights_decode_ != nullptr))
-           : (gemv_fp4_fc1_weights_ != nullptr && gemv_fp4_fc2_weights_ != nullptr)) &&
-      gemv_fp4_fc1_scales_ != nullptr && gemv_fp4_fc2_scales_ != nullptr;
-  if (is_fp4_family && fp4_decode_regime && enable_fp4_gemv_ && is_fused_swiglu &&
-      fp4_gemv_buffers_ready) {
+  // The FP4 DeepGEMM path, when eligible, outranks the GEMV for the same shapes.
+  if (!use_fp4_deep_gemm && use_fp4_gemv) {
     namespace gemv = onnxruntime::llm::kernels::moe_gemv;
     namespace ck = onnxruntime::llm::kernels::cutlass_kernels;
     const int num_experts = static_cast<int>(moe_params.num_experts);
@@ -1391,202 +1582,218 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     const int64_t fc1_n = inter * 2;
     // MXFP4 uses block size 32 (e2m1 + e8m0); NVFP4 uses block size 16 (e2m1 + e4m3).
     const int gemv_group_size = is_nvfp4 ? 16 : 32;
-    const bool fc1_gemv_supported = gemv::is_moe_gemv_fp4_supported(sm_, expanded, fc1_n, hidden, gemv_group_size,
-                                                                    gemv::MoeGemvConfig::kDefault, fc1_gemv_sm80_layout);
-    const bool fc2_gemv_supported = gemv::is_moe_gemv_fp4_supported(sm_, expanded, hidden, inter, gemv_group_size,
-                                                                    gemv::MoeGemvConfig::kDefault, fc2_gemv_sm80_layout);
-    if (num_rows > 0 && num_rows <= 256 && expanded > 0 && fc1_gemv_supported && fc2_gemv_supported) {
-      // When the SM80 grouped-GEMM prefill repurposes gemv_fp4_fc*_weights_ for its pair-
-      // interleaved layout, the decode GEMV either un-permutes that same buffer in-register
-      // (fc*_gemv_sm80_layout, the single-copy default) or reads the dedicated GEMV-native copy
-      // in gemv_fp4_fc*_weights_decode_.
-      const uint8_t* gemv_fc1_weight = static_cast<const uint8_t*>(
-          ((enable_fp4_sm80_gemm_ && !fc1_gemv_sm80_layout) ? gemv_fp4_fc1_weights_decode_ : gemv_fp4_fc1_weights_)
-              .get());
-      const uint8_t* gemv_fc2_weight = static_cast<const uint8_t*>(
-          ((enable_fp4_sm80_gemm_ && !fc2_gemv_sm80_layout) ? gemv_fp4_fc2_weights_decode_ : gemv_fp4_fc2_weights_)
-              .get());
-      auto p_r2u_buf = GetScratchBuffer<int>(expanded, GetComputeStream(context));
-      auto p_exp_buf = GetScratchBuffer<int>(expanded, GetComputeStream(context));
-      auto p_efto_buf = GetScratchBuffer<int64_t>(num_experts + 1, GetComputeStream(context));
-      const size_t elt = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
-      auto p_act_buf = GetScratchBuffer<void>(SafeInt<size_t>(expanded) * hidden * elt, GetComputeStream(context));
-      auto p_fc1_buf = GetScratchBuffer<void>(SafeInt<size_t>(expanded) * inter * elt, GetComputeStream(context));
-      auto p_fc2_buf = GetScratchBuffer<void>(SafeInt<size_t>(expanded) * hidden * elt, GetComputeStream(context));
-      int* p_r2u = p_r2u_buf.get();
-      int* p_exp = p_exp_buf.get();
-      int64_t* p_efto = p_efto_buf.get();
+    // When the SM80 grouped-GEMM prefill repurposes gemv_fp4_fc*_weights_ for its pair-
+    // interleaved layout, the decode GEMV either un-permutes that same buffer in-register
+    // (fc*_gemv_sm80_layout, the single-copy default) or reads the dedicated GEMV-native copy
+    // in gemv_fp4_fc*_weights_decode_.
+    const uint8_t* gemv_fc1_weight = static_cast<const uint8_t*>(
+        ((enable_fp4_sm80_gemm_ && !fc1_gemv_sm80_layout) ? gemv_fp4_fc1_weights_decode_ : gemv_fp4_fc1_weights_)
+            .get());
+    const uint8_t* gemv_fc2_weight = static_cast<const uint8_t*>(
+        ((enable_fp4_sm80_gemm_ && !fc2_gemv_sm80_layout) ? gemv_fp4_fc2_weights_decode_ : gemv_fp4_fc2_weights_)
+            .get());
+    auto p_r2u_buf = GetScratchBuffer<int>(expanded, GetComputeStream(context));
+    auto p_exp_buf = GetScratchBuffer<int>(expanded, GetComputeStream(context));
+    auto p_efto_buf = GetScratchBuffer<int64_t>(num_experts + 1, GetComputeStream(context));
+    const size_t elt = is_fp16_ ? sizeof(half) : sizeof(__nv_bfloat16);
+    auto p_act_buf = GetScratchBuffer<void>(SafeInt<size_t>(expanded) * hidden * elt, GetComputeStream(context));
+    auto p_fc1_buf = GetScratchBuffer<void>(SafeInt<size_t>(expanded) * inter * elt, GetComputeStream(context));
+    auto p_fc2_buf = GetScratchBuffer<void>(SafeInt<size_t>(expanded) * hidden * elt, GetComputeStream(context));
+    int* p_r2u = p_r2u_buf.get();
+    int* p_exp = p_exp_buf.get();
+    int64_t* p_efto = p_efto_buf.get();
 
-      ck::ActivationParams act_params(activation_type_);
-      act_params.alpha = activation_alpha_;
-      act_params.beta = activation_beta_;
-      act_params.swiglu_fusion = swiglu_fusion;
-      act_params.limit = swiglu_limit_;
+    ck::ActivationParams act_params(activation_type_);
+    act_params.alpha = activation_alpha_;
+    act_params.beta = activation_beta_;
+    act_params.swiglu_fusion = swiglu_fusion;
+    act_params.limit = swiglu_limit_;
 
-      ck::fusedBuildExpertMapsSortFirstToken(
-          expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
-          num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
+    const auto fused_routing = route_tile(0, num_rows);
+    ORT_ENFORCE(fused_routing.router_logits == nullptr,
+                "QMoE FP4 GEMV does not support fused routing.");
+    ck::fusedBuildExpertMapsSortFirstToken(
+        expert_indices, p_r2u, unpermuted_row_to_permuted_row, p_exp, p_efto,
+        num_rows, num_experts, static_cast<int>(k_), 0, num_experts, stream);
 
-      const void* fc1_bias = fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr;
-      const void* fc2_bias = fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr;
+    const void* fc1_bias = fc1_experts_bias_optional ? fc1_experts_bias_optional->DataRaw() : nullptr;
+    const void* fc2_bias = fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr;
 
-      using MoeGemvConfig = gemv::MoeGemvConfig;
+    using MoeGemvConfig = gemv::MoeGemvConfig;
 
-      // Choose the fc1 (SwiGLU) and fc2 GEMV tiling configs. CtaN/Threads are pure tiling
-      // knobs (numerically bit-exact), so the only goal is picking the fastest. Reuse a
-      // cached per-shape result when available; otherwise profile on a non-captured (warmup)
-      // call and freeze the choice for CUDA-graph replay. During capture (or when autotune is
-      // off) fall back to the default tiling.
-      MoeGemvConfig fc1_config = MoeGemvConfig::kDefault;
-      MoeGemvConfig fc2_config = MoeGemvConfig::kDefault;
+    // Choose the fc1 (SwiGLU) and fc2 GEMV tiling configs. Every config computes the same
+    // dot products with the same accumulation dtype, so the only goal is picking the
+    // fastest; Threads does set the K partition, so the low bits of the output can move
+    // between configs (see MoeGemvConfig). Reuse a cached per-shape result when available;
+    // otherwise start from the shape-derived analytic default and, when autotune is on,
+    // profile on a non-captured (warmup) call and freeze the choice for CUDA-graph replay.
+    // During capture (or when autotune is off, which is the shipping default) the analytic
+    // default is what actually runs.
+    const int multi_processor_count = GetDeviceProp().multiProcessorCount;
+    MoeGemvConfig fc1_config =
+        gemv::Fp4MoeGemvDefaultConfig(expanded, fc1_n, hidden, multi_processor_count);
+    MoeGemvConfig fc2_config =
+        gemv::Fp4MoeGemvDefaultConfig(expanded, hidden, inter, multi_processor_count);
 
-      const int64_t row_bucket =
-          onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(expanded);
-      const Fp4GemvTuneKey tune_key{is_fp16_, row_bucket, hidden, inter, sm_};
-      bool have_tune = false;
-      {
-        std::lock_guard<std::mutex> lock(fp4_gemv_tune_cache_mutex_);
-        const auto cached_tune = fp4_gemv_tune_cache_.find(tune_key);
-        have_tune = cached_tune != fp4_gemv_tune_cache_.end();
-        if (have_tune) {
-          fc1_config = cached_tune->second.fc1_config;
-          fc2_config = cached_tune->second.fc2_config;
-        }
+    const int64_t row_bucket =
+        onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler::bucketM(expanded);
+    const Fp4GemvTuneKey tune_key{is_fp16_, row_bucket, hidden, inter, sm_};
+    bool have_tune = false;
+    {
+      std::lock_guard<std::mutex> lock(fp4_gemv_tune_cache_mutex_);
+      const auto cached_tune = fp4_gemv_tune_cache_.find(tune_key);
+      have_tune = cached_tune != fp4_gemv_tune_cache_.end();
+      if (have_tune) {
+        fc1_config = cached_tune->second.fc1_config;
+        fc2_config = cached_tune->second.fc2_config;
       }
+    }
 
-      cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
-      CUDA_CALL_THROW(cudaStreamIsCapturing(stream, &capture_status));
-      const bool is_capturing = capture_status != cudaStreamCaptureStatusNone;
-      const bool do_tune = enable_fp4_gemv_autotune_ && !have_tune && !is_capturing;
+    cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+    CUDA_CALL_THROW(cudaStreamIsCapturing(stream, &capture_status));
+    const bool is_capturing = capture_status != cudaStreamCaptureStatusNone;
+    const bool do_tune = enable_fp4_gemv_autotune_ && !have_tune && !is_capturing;
 
-      auto run_fused = [&](auto* t_ptr) {
-        using T = std::remove_pointer_t<decltype(t_ptr)>;
+    auto run_fused = [&](auto* t_ptr) {
+      using T = std::remove_pointer_t<decltype(t_ptr)>;
+      const bool skip_expand = fp4_gemv_skip_expand_;
+      if (!skip_expand) {
         ck::expandInputRowsKernelLauncher<T, T>(
             static_cast<const T*>(input->DataRaw()), static_cast<T*>(p_act_buf.get()),
             nullptr, nullptr, p_r2u, num_rows, hidden, static_cast<int>(k_), num_experts,
             quant_params, false, p_efto, nullptr, nullptr, nullptr, stream);
+      }
 
-        auto launch_fc1 = [&](MoeGemvConfig cfg) {
-          gemv::launch_moe_gemv_fp4_symmetric_interleaved_swiglu<T>(
-              static_cast<const T*>(p_act_buf.get()),
-              gemv_fc1_weight,
-              static_cast<const T*>(gemv_fp4_fc1_scales_.get()),
-              static_cast<const T*>(fc1_bias), static_cast<T*>(p_fc1_buf.get()),
-              p_efto, p_exp, num_experts, expanded, inter, hidden, gemv_group_size, sm_, act_params, cfg,
-              fc1_gemv_sm80_layout, stream);
+      auto launch_fc1 = [&](MoeGemvConfig cfg) {
+        gemv::launch_moe_gemv_fp4_symmetric_interleaved_swiglu<T>(
+            skip_expand ? static_cast<const T*>(input->DataRaw()) : static_cast<const T*>(p_act_buf.get()),
+            gemv_fc1_weight,
+            static_cast<const T*>(gemv_fp4_fc1_scales_.get()),
+            static_cast<const T*>(fc1_bias), static_cast<T*>(p_fc1_buf.get()),
+            p_efto, p_exp, num_experts, expanded, inter, hidden, gemv_group_size, sm_, act_params, cfg,
+            fc1_gemv_sm80_layout, skip_expand ? p_r2u : nullptr, num_rows, stream);
+      };
+      auto launch_fc2 = [&](MoeGemvConfig cfg) {
+        gemv::launch_moe_gemv_fp4_symmetric<T>(
+            static_cast<const T*>(p_fc1_buf.get()),
+            gemv_fc2_weight,
+            static_cast<const T*>(gemv_fp4_fc2_scales_.get()),
+            static_cast<const T*>(fc2_bias), static_cast<T*>(p_fc2_buf.get()),
+            p_efto, p_exp, num_experts, expanded, hidden, inter, gemv_group_size, sm_, cfg,
+            fc2_gemv_sm80_layout, stream);
+      };
+
+      if (do_tune) {
+        constexpr MoeGemvConfig kCandidates[] = {
+            MoeGemvConfig::kDefault, MoeGemvConfig::kCtaN16, MoeGemvConfig::kThreads64};
+        constexpr int kWarmup = 3;
+        constexpr int kIters = 20;
+
+        cudaEvent_t start_event = nullptr;
+        cudaEvent_t stop_event = nullptr;
+        CUDA_CALL_THROW(cudaEventCreate(&start_event));
+        std::unique_ptr<CUevent_st, decltype(&cudaEventDestroy)> start_event_guard(start_event, cudaEventDestroy);
+        CUDA_CALL_THROW(cudaEventCreate(&stop_event));
+        std::unique_ptr<CUevent_st, decltype(&cudaEventDestroy)> stop_event_guard(stop_event, cudaEventDestroy);
+
+        auto time_launch = [&](auto&& launch_fn) -> float {
+          for (int i = 0; i < kWarmup; ++i) {
+            launch_fn();
+          }
+          CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+          CUDA_CALL_THROW(cudaEventRecord(start_event, stream));
+          for (int i = 0; i < kIters; ++i) {
+            launch_fn();
+          }
+          CUDA_CALL_THROW(cudaEventRecord(stop_event, stream));
+          CUDA_CALL_THROW(cudaEventSynchronize(stop_event));
+          float elapsed_ms = 0.0f;
+          CUDA_CALL_THROW(cudaEventElapsedTime(&elapsed_ms, start_event, stop_event));
+          return elapsed_ms;
         };
-        auto launch_fc2 = [&](MoeGemvConfig cfg) {
-          gemv::launch_moe_gemv_fp4_symmetric<T>(
-              static_cast<const T*>(p_fc1_buf.get()),
-              gemv_fc2_weight,
-              static_cast<const T*>(gemv_fp4_fc2_scales_.get()),
-              static_cast<const T*>(fc2_bias), static_cast<T*>(p_fc2_buf.get()),
-              p_efto, p_exp, num_experts, expanded, hidden, inter, gemv_group_size, sm_, cfg,
-              fc2_gemv_sm80_layout, stream);
-        };
 
-        if (do_tune) {
-          constexpr MoeGemvConfig kCandidates[] = {
-              MoeGemvConfig::kDefault, MoeGemvConfig::kCtaN16, MoeGemvConfig::kThreads64};
-          constexpr int kWarmup = 3;
-          constexpr int kIters = 20;
-
-          cudaEvent_t start_event = nullptr;
-          cudaEvent_t stop_event = nullptr;
-          CUDA_CALL_THROW(cudaEventCreate(&start_event));
-          std::unique_ptr<CUevent_st, decltype(&cudaEventDestroy)> start_event_guard(start_event, cudaEventDestroy);
-          CUDA_CALL_THROW(cudaEventCreate(&stop_event));
-          std::unique_ptr<CUevent_st, decltype(&cudaEventDestroy)> stop_event_guard(stop_event, cudaEventDestroy);
-
-          auto time_launch = [&](auto&& launch_fn) -> float {
-            for (int i = 0; i < kWarmup; ++i) {
-              launch_fn();
-            }
-            CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-            CUDA_CALL_THROW(cudaEventRecord(start_event, stream));
-            for (int i = 0; i < kIters; ++i) {
-              launch_fn();
-            }
-            CUDA_CALL_THROW(cudaEventRecord(stop_event, stream));
-            CUDA_CALL_THROW(cudaEventSynchronize(stop_event));
-            float elapsed_ms = 0.0f;
-            CUDA_CALL_THROW(cudaEventElapsedTime(&elapsed_ms, start_event, stop_event));
-            return elapsed_ms;
-          };
-
-          // fc1 reads p_act_buf (populated by the expand above).
-          const bool log_tune = enable_fp4_gemv_autotune_log_;
-          float best_fc1 = std::numeric_limits<float>::max();
-          for (MoeGemvConfig cfg : kCandidates) {
-            if (!gemv::is_moe_gemv_fp4_supported(sm_, expanded, fc1_n, hidden, gemv_group_size, cfg,
-                                                 fc1_gemv_sm80_layout)) {
-              continue;
-            }
-            const float ms = time_launch([&] { launch_fc1(cfg); });
-            if (log_tune) {
-              LOGS_DEFAULT(WARNING) << "FP4 GEMV autotune candidate: fc1 expanded=" << expanded
-                                    << " n=" << fc1_n << " k=" << hidden << " cfg=" << QMoEGemvConfigName(cfg)
-                                    << " " << ms << "ms/" << kIters << "it";
-            }
-            if (ms < best_fc1) {
-              best_fc1 = ms;
-              fc1_config = cfg;
-            }
+        // fc1 reads the original input through p_r2u when skip-expand is enabled; otherwise
+        // it reads p_act_buf populated by the expand above.
+        const bool log_tune = enable_fp4_gemv_autotune_log_;
+        float best_fc1 = std::numeric_limits<float>::max();
+        for (MoeGemvConfig cfg : kCandidates) {
+          if (!gemv::is_moe_gemv_fp4_supported(sm_, expanded, fc1_n, hidden, gemv_group_size, cfg,
+                                               fc1_gemv_sm80_layout)) {
+            continue;
           }
-          // fc2 reads p_fc1_buf; populate it once with the chosen fc1 config before timing fc2.
-          launch_fc1(fc1_config);
-          float best_fc2 = std::numeric_limits<float>::max();
-          for (MoeGemvConfig cfg : kCandidates) {
-            if (!gemv::is_moe_gemv_fp4_supported(sm_, expanded, hidden, inter, gemv_group_size, cfg,
-                                                 fc2_gemv_sm80_layout)) {
-              continue;
-            }
-            const float ms = time_launch([&] { launch_fc2(cfg); });
-            if (log_tune) {
-              LOGS_DEFAULT(WARNING) << "FP4 GEMV autotune candidate: fc2 expanded=" << expanded
-                                    << " n=" << hidden << " k=" << inter << " cfg=" << QMoEGemvConfigName(cfg)
-                                    << " " << ms << "ms/" << kIters << "it";
-            }
-            if (ms < best_fc2) {
-              best_fc2 = ms;
-              fc2_config = cfg;
-            }
-          }
-
-          {
-            std::lock_guard<std::mutex> lock(fp4_gemv_tune_cache_mutex_);
-            fp4_gemv_tune_cache_.try_emplace(tune_key, Fp4GemvTuneResult{fc1_config, fc2_config});
-          }
+          const float ms = time_launch([&] { launch_fc1(cfg); });
           if (log_tune) {
-            LOGS_DEFAULT(WARNING) << "FP4 GEMV autotune: is_fp16=" << is_fp16_ << " expanded=" << expanded
-                                  << " hidden=" << hidden << " inter=" << inter << " fc1="
-                                  << QMoEGemvConfigName(fc1_config) << " (" << best_fc1 << "ms/" << kIters
-                                  << "it) fc2=" << QMoEGemvConfigName(fc2_config) << " (" << best_fc2 << "ms/"
-                                  << kIters << "it)";
+            LOGS_DEFAULT(WARNING) << "FP4 GEMV autotune candidate: fc1 expanded=" << expanded
+                                  << " n=" << fc1_n << " k=" << hidden << " cfg=" << QMoEGemvConfigName(cfg)
+                                  << " " << ms << "ms/" << kIters << "it";
+          }
+          if (ms < best_fc1) {
+            best_fc1 = ms;
+            fc1_config = cfg;
+          }
+        }
+        // fc2 reads p_fc1_buf; populate it once with the chosen fc1 config before timing fc2.
+        launch_fc1(fc1_config);
+        float best_fc2 = std::numeric_limits<float>::max();
+        for (MoeGemvConfig cfg : kCandidates) {
+          if (!gemv::is_moe_gemv_fp4_supported(sm_, expanded, hidden, inter, gemv_group_size, cfg,
+                                               fc2_gemv_sm80_layout)) {
+            continue;
+          }
+          const float ms = time_launch([&] { launch_fc2(cfg); });
+          if (log_tune) {
+            LOGS_DEFAULT(WARNING) << "FP4 GEMV autotune candidate: fc2 expanded=" << expanded
+                                  << " n=" << hidden << " k=" << inter << " cfg=" << QMoEGemvConfigName(cfg)
+                                  << " " << ms << "ms/" << kIters << "it";
+          }
+          if (ms < best_fc2) {
+            best_fc2 = ms;
+            fc2_config = cfg;
           }
         }
 
-        launch_fc1(fc1_config);
-        launch_fc2(fc2_config);
-        ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
-            static_cast<const T*>(p_fc2_buf.get()), static_cast<T*>(output->MutableDataRaw()),
-            nullptr, expert_scales, unpermuted_row_to_permuted_row, p_r2u, expert_indices,
-            p_efto, num_rows, hidden, static_cast<int64_t>(k_), num_experts,
-            parallelism_config, false, stream);
-      };
-
-      if (is_fp16_) {
-        run_fused(static_cast<half*>(nullptr));
-      } else {
-        run_fused(static_cast<__nv_bfloat16*>(nullptr));
+        {
+          std::lock_guard<std::mutex> lock(fp4_gemv_tune_cache_mutex_);
+          fp4_gemv_tune_cache_.try_emplace(tune_key, Fp4GemvTuneResult{fc1_config, fc2_config});
+        }
+        if (log_tune) {
+          LOGS_DEFAULT(WARNING) << "FP4 GEMV autotune: is_fp16=" << is_fp16_ << " expanded=" << expanded
+                                << " hidden=" << hidden << " inter=" << inter << " fc1="
+                                << QMoEGemvConfigName(fc1_config) << " (" << best_fc1 << "ms/" << kIters
+                                << "it) fc2=" << QMoEGemvConfigName(fc2_config) << " (" << best_fc2 << "ms/"
+                                << kIters << "it)";
+        }
       }
-      return Status::OK();
+
+      launch_fc1(fc1_config);
+      launch_fc2(fc2_config);
+      ck::finalizeMoeRoutingKernelLauncher<T, T, T>(
+          static_cast<const T*>(p_fc2_buf.get()), static_cast<T*>(output->MutableDataRaw()),
+          nullptr, expert_scales, unpermuted_row_to_permuted_row, p_r2u, expert_indices,
+          p_efto, num_rows, hidden, static_cast<int64_t>(k_), num_experts,
+          parallelism_config, false, stream);
+    };
+
+    if (is_fp16_) {
+      run_fused(static_cast<half*>(nullptr));
+    } else {
+      run_fused(static_cast<__nv_bfloat16*>(nullptr));
     }
+    if (enable_kernel_debug_info_) {
+      PrintQMoEKernelDebugInfo("fp4_gemv", moe_params.num_rows,
+                               moe_params.num_rows, moe_params.num_rows,
+                               expanded, expanded,
+                               workspace_size, total_scratch_bytes);
+    }
+    return Status::OK();
   }
 
   const void* fc1_weight_data = fc1_experts_weights ? fc1_experts_weights->DataRaw() : nullptr;
   const void* fc2_weight_data = fc2_experts_weights ? fc2_experts_weights->DataRaw() : nullptr;
-  if (fp4_sm80_prefill) {
+  if (use_fp4_deep_gemm) {
+    fc1_weight_data = fp4_deep_gemm_fc1_weights_.get();
+    fc2_weight_data = fp4_deep_gemm_fc2_weights_.get();
+  } else if (fp4_sm80_prefill) {
     // SM80 FP4 grouped GEMM: consume the e2m1 weights in the SM80 CUTLASS interleaved layout
     // that PrePack produced into the GEMV interleaved-layout buffers (same layout the INT4 SM80
     // grouped GEMM uses). The activation-dtype group scales are wired via quant_params above.
@@ -1625,7 +1832,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // When the native CUTLASS path is unavailable on the current SM (always for NVFP4), or when native
   // FP4 routes this call to the dense fallback for the large per-expert-M regime, dequantize the E2M1
   // weights to FP16/BF16 and run the dense A16 runner.
-  if (((is_fp4_family && !route_native_fp4) || (is_wfp4afp8 && use_wfp4afp8_dequant_fallback_)) && !fp4_sm80_prefill) {
+  if (!use_fp4_deep_gemm &&
+      ((is_fp4_family && !route_native_fp4) || (is_wfp4afp8 && use_wfp4afp8_dequant_fallback_)) &&
+      !fp4_sm80_prefill) {
     // The dequant kernel expects raw [E, n, k_blocks] block scales. When native FP4 is enabled
     // (this is the large per-expert-M fallback), packed_fp4_*_block_scales_ holds the TMA-swizzled
     // layout, so use the raw copy kept in gemv_fp4_*_block_raw_ instead. NVFP4 and the SM<90
@@ -1729,12 +1938,49 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     fc2_weight_data = dequant_fc2_weights.get();
   }
 
-  // Set tactic and run MoE. Must hold the mutex since setTactic mutates runner state.
-  {
+  onnxruntime::llm::kernels::cutlass_kernels::ActivationParams activation_params(activation_type_);
+  activation_params.alpha = activation_alpha_;
+  activation_params.beta = activation_beta_;
+  activation_params.swiglu_fusion = swiglu_fusion;
+  activation_params.limit = swiglu_limit_;
+
+  // Route and execute each row tile in order on the same stream. The tile-local top-k metadata and
+  // runner workspace are safe to reuse because the next tile's writes are ordered after all kernels
+  // from the previous runMoe call. Tactic mutation remains serialized across concurrent QMoE calls.
+  for (int64_t tile_index = 0; tile_index < row_tile_plan.TileCount(); ++tile_index) {
+    const int64_t row_offset = row_tile_plan.RowOffset(tile_index);
+    const int64_t tile_rows = row_tile_plan.RowsInTile(tile_index);
+    const RunnerTileConfig* tile_config = nullptr;
+    for (size_t i = 0; i < runner_tile_config_count; ++i) {
+      if (runner_tile_configs[i].num_rows == tile_rows) {
+        tile_config = &runner_tile_configs[i];
+        break;
+      }
+    }
+    ORT_ENFORCE(tile_config != nullptr,
+                "QMoE did not prepare a runner configuration for row tile size ", tile_rows, ".");
+
+    const auto fused_routing = route_tile(row_offset, tile_rows);
+    const size_t input_element_offset =
+        SafeInt<size_t>(row_offset) * SafeInt<size_t>(moe_params.hidden_size);
+    const size_t input_byte_offset =
+        SafeInt<size_t>(input_element_offset) * input->DataType()->Size();
+    const size_t output_byte_offset =
+        SafeInt<size_t>(input_element_offset) * output->DataType()->Size();
+    const void* tile_input =
+        reinterpret_cast<const char*>(input->DataRaw()) + input_byte_offset;
+    void* tile_output =
+        reinterpret_cast<char*>(output->MutableDataRaw()) + output_byte_offset;
+
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
-    active_runner->setTactic(config1, config2);
+    if (use_fp4_deep_gemm) {
+      active_runner->setFp4DeepGemmWeightScales(
+          static_cast<const float*>(fp4_deep_gemm_fc1_weight_scales_.get()),
+          static_cast<const float*>(fp4_deep_gemm_fc2_weight_scales_.get()));
+    }
+    active_runner->setTactic(tile_config->config1, tile_config->config2);
     active_runner->runMoe(
-        input->DataRaw(),
+        tile_input,
         nullptr,
         expert_indices,
         expert_scales,
@@ -1744,25 +1990,25 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         fc2_weight_data,
         fc2_experts_bias_optional ? fc2_experts_bias_optional->DataRaw() : nullptr,
         quant_params,
-        moe_params.num_rows,
+        tile_rows,
         moe_params.hidden_size,
         moe_params.inter_size,
         moe_params.num_experts,
         k_,
         workspace_ptr,
-        output->MutableDataRaw(),
+        tile_output,
         unpermuted_row_to_permuted_row,
         parallelism_config,
-        [&]() {
-          onnxruntime::llm::kernels::cutlass_kernels::ActivationParams params(activation_type_);
-          params.alpha = activation_alpha_;
-          params.beta = activation_beta_;
-          params.swiglu_fusion = swiglu_fusion;
-          params.limit = swiglu_limit_;
-          return params;
-        }(),
+        activation_params,
         fused_routing,
         stream);
+  }
+
+  if (enable_kernel_debug_info_) {
+    PrintQMoEKernelDebugInfo("grouped_moe", moe_params.num_rows,
+                             row_tile_plan.rows_per_tile, final_tile_rows,
+                             row_tile_plan.rows_per_tile, final_tile_rows,
+                             workspace_size, total_scratch_bytes);
   }
 
   return Status::OK();
@@ -1794,6 +2040,29 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 #define DUMP_PACK_TENSOR(name, packed_scales, scales) dump_tensor(name, packed_scales, scales)
 #else
 #define DUMP_PACK_TENSOR(name, packed_scales, scales)
+#endif
+
+#if defined(HAS_SM90_OR_LATER)
+  if (enable_fp4_deep_gemm_ && (input_idx == 2 || input_idx == 5 || input_idx == 3 || input_idx == 6)) {
+    const bool fc1 = input_idx == 2 || input_idx == 3;
+    const bool weight = input_idx == 2 || input_idx == 5;
+    const int64_t expected_k = fc1 ? onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize
+                                   : onnxruntime::llm::kernels::deep_gemm_sm90::kInterSize;
+    const int64_t expected_n = fc1 ? onnxruntime::llm::kernels::deep_gemm_sm90::kFc1OutputSize
+                                   : onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize;
+    const auto& shape = tensor.Shape();
+    ORT_ENFORCE(shape.NumDimensions() == 3 &&
+                    shape[0] == fp4_deep_gemm_num_experts_ &&
+                    shape[1] == (weight ? expected_k : expected_n) &&
+                    shape[2] == (weight ? expected_n / 2 : expected_k / 32),
+                "QMoE FP4 DeepGEMM received an unexpected ", fc1 ? "fc1" : "fc2", weight ? " weight" : " scale",
+                " shape: ", shape.ToString());
+    IAllocatorUniquePtr<void>& staged =
+        weight ? (fc1 ? fp4_deep_gemm_fc1_staged_weights_ : fp4_deep_gemm_fc2_staged_weights_)
+               : (fc1 ? fp4_deep_gemm_fc1_staged_block_scales_ : fp4_deep_gemm_fc2_staged_block_scales_);
+    bool staged_packed = false;
+    PrePackCopyToGpu(tensor, stream, alloc, staged, staged_packed);
+  }
 #endif
 
   if (input_idx == 2 && ((quant_type_ == "fp4" && !use_fp4_dequant_fallback_) ||
@@ -2018,6 +2287,14 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       PrePackCopyToGpu(tensor, stream, alloc, packed_fc1_act_scale_, is_packed);
     } else {
       PrePackCopyToGpu(tensor, stream, alloc, packed_fc2_act_scale_, is_packed);
+    }
+  }
+
+  if (enable_fp4_deep_gemm_) {
+    if (input_idx == 2 || input_idx == 3 || input_idx == 15) {
+      TryBuildFp4DeepGemmWeights(1, stream, alloc);
+    } else if (input_idx == 5 || input_idx == 6 || input_idx == 16) {
+      TryBuildFp4DeepGemmWeights(2, stream, alloc);
     }
   }
 
@@ -2456,6 +2733,65 @@ void QMoE::TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc
   if (release_fp4_raw_weights_ && raw_block == nullptr) {
     block.reset();
   }
+}
+
+void QMoE::TryBuildFp4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr alloc) {
+#if defined(HAS_SM90_OR_LATER)
+  if (!enable_fp4_deep_gemm_) {
+    return;
+  }
+
+  IAllocatorUniquePtr<void>& staged_weights =
+      fc == 1 ? fp4_deep_gemm_fc1_staged_weights_ : fp4_deep_gemm_fc2_staged_weights_;
+  IAllocatorUniquePtr<void>& staged_block_scales =
+      fc == 1 ? fp4_deep_gemm_fc1_staged_block_scales_ : fp4_deep_gemm_fc2_staged_block_scales_;
+  IAllocatorUniquePtr<void>& global_scale = fc == 1 ? packed_fc1_global_scale_ : packed_fc2_global_scale_;
+  IAllocatorUniquePtr<void>& output = fc == 1 ? fp4_deep_gemm_fc1_weights_ : fp4_deep_gemm_fc2_weights_;
+  IAllocatorUniquePtr<void>& output_scales =
+      fc == 1 ? fp4_deep_gemm_fc1_weight_scales_ : fp4_deep_gemm_fc2_weight_scales_;
+  if (output != nullptr || staged_weights == nullptr || staged_block_scales == nullptr || global_scale == nullptr) {
+    return;
+  }
+
+  const int num_experts = fp4_deep_gemm_num_experts_;
+  const int n = fc == 1 ? onnxruntime::llm::kernels::deep_gemm_sm90::kFc1OutputSize
+                        : onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize;
+  const int k = fc == 1 ? onnxruntime::llm::kernels::deep_gemm_sm90::kHiddenSize
+                        : onnxruntime::llm::kernels::deep_gemm_sm90::kInterSize;
+  const size_t weight_bytes = SafeInt<size_t>(num_experts) * SafeInt<size_t>(n) * SafeInt<size_t>(k);
+  const size_t scale_bytes =
+      onnxruntime::llm::kernels::deep_gemm_sm90::WeightScaleCount(num_experts, n, k) * sizeof(float);
+  output = IAllocator::MakeUniquePtr<void>(alloc, weight_bytes, true);
+  output_scales = IAllocator::MakeUniquePtr<void>(alloc, scale_bytes, true);
+
+  // The conversion is bit-exact only while every block's MXFP4 group exponents fit in e4m3's
+  // range. The kernel verifies every element and sets inexact_flag on any mismatch. The host
+  // check below is the safety boundary for using the converted weights: never retain them or
+  // silently continue on the DeepGEMM path when the flag is set.
+  auto inexact_flag = IAllocator::MakeUniquePtr<void>(alloc, sizeof(int), true);
+  CUDA_CALL_THROW(cudaMemsetAsync(inexact_flag.get(), 0, sizeof(int), stream));
+  LaunchQMoEQuantizeFp4WeightsToFp8(
+      static_cast<const uint8_t*>(staged_weights.get()),
+      static_cast<const uint8_t*>(staged_block_scales.get()),
+      static_cast<const float*>(global_scale.get()), static_cast<uint8_t*>(output.get()),
+      static_cast<float*>(output_scales.get()), static_cast<int*>(inexact_flag.get()),
+      num_experts, n, k, stream);
+  int inexact = 0;
+  CUDA_CALL_THROW(cudaMemcpyAsync(&inexact, inexact_flag.get(), sizeof(int), cudaMemcpyDeviceToHost, stream));
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  // Fail closed before releasing the staged MXFP4 inputs. ORT session creation then reports the
+  // unsupported conversion instead of allowing inference with non-bit-exact FP8 weights.
+  ORT_ENFORCE(inexact == 0,
+              "QMoE FP4 DeepGEMM: MXFP4 fc", fc,
+              " weights do not convert losslessly to FP8 e4m3 (a [128 N, 128 K] block spans more "
+              "exponents than e4m3 can hold). Set ORT_QMOE_FP4_DEEPGEMM=0.");
+  staged_weights.reset();
+  staged_block_scales.reset();
+#else
+  ORT_UNUSED_PARAMETER(fc);
+  ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(alloc);
+#endif
 }
 
 // ---------------------------------------------------------------------------

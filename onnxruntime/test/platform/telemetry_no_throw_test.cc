@@ -57,6 +57,15 @@ TEST(TelemetryNoThrowTest, DiagnosticExceptionDoesNotEscape) {
       }));
 }
 
+TEST(TelemetryNoThrowTest, BestEffortOperationReportsSuccess) {
+  EXPECT_TRUE(telemetry_internal::TryTelemetryOperationNoThrow([]() {}));
+}
+
+TEST(TelemetryNoThrowTest, BestEffortOperationContainsFailure) {
+  EXPECT_FALSE(telemetry_internal::TryTelemetryOperationNoThrow(
+      []() { throw std::runtime_error("best-effort failure"); }));
+}
+
 #endif  // ORT_NO_EXCEPTIONS
 
 }  // namespace onnxruntime::test

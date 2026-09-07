@@ -1683,10 +1683,12 @@ class TestCudaPluginEP(unittest.TestCase):
         feed = {"data": data, "indices": indices, "scales": scales}
 
         def expected(f):
-            # Gather rows [0, 2], then dequantize: float_val = uint8_val * scale
+            # Gather rows [0, 2], then dequantize. When zero_points is omitted, the default zero point
+            # for uint8 data is 2^(bits - 1), i.e. 128 for bits=8.
+            default_zero_point = np.float32(1 << (8 - 1))
             gathered_data = f["data"][f["indices"]]  # [2, 16]
             gathered_scales = f["scales"][f["indices"]]  # [2, 1]
-            return gathered_data.astype(np.float32) * gathered_scales
+            return (gathered_data.astype(np.float32) - default_zero_point) * gathered_scales
 
         result = _run_model_test(target_device, "GatherBlockQuantized", model, feed, expected, rtol=1e-2, atol=1e-2)
         self.assertEqual(result, TEST_PASS, "GatherBlockQuantized plugin op test failed")

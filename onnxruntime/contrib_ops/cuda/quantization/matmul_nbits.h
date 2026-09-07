@@ -8,11 +8,13 @@
 //
 #pragma once
 #include <atomic>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
+#include "core/framework/workspace_input_shape.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
@@ -80,13 +82,9 @@ inline bool ParseFpAIntBEnabled(const std::string& value) {
   return true;
 }
 
-// Effective SM architecture that the fpA_intB CUTLASS runner uses for workspace sizing AFTER
-// InitGemmProfiler's setArch() call (matmul_nbits.cc). This is the SINGLE source of the effective-arch
-// rule: MatMulNBits::FpAIntBPackingSmForKernel() delegates to this function, so Level 1 (the
-// EstimateMatMulNBitsWorkspace estimate) and Level 2 / the runtime are compiler-guaranteed to agree.
-// The runner targets native SM90 only when the device is SM90 AND the weights were prepacked for the
-// Hopper layout (weight_prepacked == 2); every other case runs the SM80-compat kernel, whose
-// workspace formula ignores sm.
+// Architecture selector for fpA_intB packing and workspace sizing. Native SM90 weights need the
+// Hopper layout and workspace formula; all non-Hopper kernels share the SM80 layout and workspace
+// formula, including compact runners targeting SM75 or SM89.
 inline int EffectiveFpAIntBWorkspaceSm(int device_sm, int64_t weight_prepacked) {
   return (device_sm == 90 && weight_prepacked == kMatMulNBitsWeightPrepackedSm90) ? 90 : 80;
 }
@@ -102,13 +100,16 @@ inline int EffectiveFpAIntBWorkspaceSm(int device_sm, int64_t weight_prepacked) 
 // prepacked weight (weight_prepacked != 0) forces the fpA_intB path on regardless of the option.
 bool CheckFpAIntBEligibility(int32_t input0_elem_type, int64_t N, int64_t K,
                              int64_t nbits, int64_t block_size,
-                             int64_t weight_prepacked, bool has_g_idx,
+                             int64_t weight_prepacked, bool has_zero_points, bool has_g_idx, bool has_bias,
                              int device_sm, int fpa_intb_option);
 
 // Level 1 partition-time workspace estimate for a MatMulNBits node, callable during GetCapability()
 // before any kernel instance exists. Returns nullopt when the node is not fpA_intB-eligible, when
 // the leading (M) dimension of input A is not statically known, or when the size formula overflows.
 std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop);
+// Uses an estimation-only input A shape, such as one propagated from maximum graph inputs.
+std::optional<size_t> EstimateMatMulNBitsWorkspace(
+    const Node& node, gsl::span<const int64_t> input_a_shape, const cudaDeviceProp& device_prop);
 #endif
 
 template <typename T>
@@ -119,6 +120,7 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
+    ORT_ENFORCE(block_size_ > 0, "block_size must be greater than zero");
 
     constexpr int kInputIndexScale = 2;
     constexpr int kInputIndexZeroPoints = 3;
@@ -146,6 +148,10 @@ class MatMulNBits final : public CudaKernel {
       is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
     }
 #endif
+
+    const Tensor* group_index_initializer = nullptr;
+    group_index_is_initializer_ = has_g_idx_ &&
+                                  info.TryGetConstantInput(kInputIndexGroupIndex, &group_index_initializer);
     sm_ = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
 
     force_chunked_ = ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
@@ -178,10 +184,9 @@ class MatMulNBits final : public CudaKernel {
       // constructor and the Level-1 EstimateMatMulNBitsWorkspace estimate can never disagree.
       const bool fpa_intb_eligible = CheckFpAIntBEligibility(
           onnxruntime::utils::ToTensorProtoElementType<T>(), N_, K_, nbits_, block_size_,
-          weight_prepacked_, has_g_idx_, sm_, fpa_intb_option);
-      // Note: a fused bias (input[5]) is fully supported by the fpA_intB GEMV, CUTLASS SM80/SM90
-      // GEMM (EpilogueOpBias), and the tactic profiler, so bias-bearing nodes (e.g. gpt-oss
-      // qkv_proj/o_proj) are eligible. Only g_idx/reorder remains unsupported by this path.
+          weight_prepacked_, has_zero_points_, has_g_idx_, has_bias_, sm_, fpa_intb_option);
+      // CheckFpAIntBEligibility applies the build-specific quantization and bias restrictions.
+      // g_idx/reorder is unsupported in both compact and full builds.
       if (fpa_intb_eligible) {
         // The CUTLASS GEMM and the GEMV decode kernel consume the same fpA_intB weight layout, so
         // enable GEMV whenever it is supported; a node cannot mix fpA_intB and legacy layouts.
@@ -192,7 +197,8 @@ class MatMulNBits final : public CudaKernel {
         } else if constexpr (std::is_same<T, BFloat16>::value) {
           cuda_kernel_type = (nbits_ == 8) ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
         }
-        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm_, cuda_kernel_type)) {
+        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(
+                sm_, FpAIntBPackingSmForKernel(), cuda_kernel_type)) {
           has_fpA_intB_gemv_ = true;
         }
 
@@ -212,9 +218,19 @@ class MatMulNBits final : public CudaKernel {
       }
 
       if (prepacked) {
+#if USE_COMPACT_FPA_INTB_GEMM
+        ORT_ENFORCE(has_fpA_intB_gemm_,
+                    "This compact fpA_intB build supports prepacked weights only for FP16 activations, "
+                    "INT4 or INT8 weights, block_size=32, scale-only quantization without zero points, bias, or g_idx, "
+                    "the SM80 weight layout (weight_prepacked=1), and compute capability 7.5 or later. Got bits=",
+                    nbits_, ", block_size=", block_size_, ", N=", N_, ", K=", K_,
+                    ", weight_prepacked=", weight_prepacked_, ", zero_points=", has_zero_points_,
+                    ", g_idx=", has_g_idx_, ", bias=", has_bias_, ", sm=", sm_);
+#else
         ORT_ENFORCE(has_fpA_intB_gemm_,
                     "weight_prepacked requires the fpA_intB path, but it is unsupported for this node "
                     "(check bits, block_size, N/K alignment, g_idx, and compute capability >= 7.5)");
+#endif
         ORT_ENFORCE(weight_prepacked_ == RequiredWeightPrepackedFormat(),
                     "weight_prepacked=", weight_prepacked_, " does not match the format required by the selected fpA_intB kernel: ",
                     RequiredWeightPrepackedFormat());
@@ -239,31 +255,29 @@ class MatMulNBits final : public CudaKernel {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
-#if USE_FPA_INTB_GEMM
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
 
+#if USE_FPA_INTB_GEMM
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
   // Level 2 (Phase-A memory roadmap, issue microsoft/onnxruntime#29775): instance-level workspace
-  // estimate, callable after CreateKernels(). Uses the same constructed runner state that
-  // ComputeInternal() uses, so it equals the real runtime request when the queried input-A shape
-  // equals the runtime input shape. Declared only for the in-tree hierarchy; the plugin build
-  // inherits the adapter OpKernel's default no-op. See DeclareWorkspaceRequirements in op_kernel.h.
+  // estimate, callable after CreateKernels(). It is exact when runtime selects the CUTLASS GEMM
+  // branch for the queried input-A shape. If runtime instead selects the CUDA GEMV tactic, which
+  // requests no workspace, the declaration is a safe upper bound. Declared only for the in-tree
+  // hierarchy; the plugin build inherits the adapter OpKernel's unbridged default no-op.
   Status DeclareWorkspaceRequirements(
-      gsl::span<const TensorShape> input_shapes,
+      gsl::span<const WorkspaceInputShape> input_shapes,
       /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const override;
 #endif
 
-  // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size the CUTLASS runner
-  // requested on the most recent ComputeInternal() call so a test can verify the Level-2 estimate
-  // against the real runtime request. This atomic is not correlated to a specific Run() when
+  // TEST INSTRUMENTATION ONLY - not a runtime API. Records the workspace size requested by the most
+  // recent ComputeInternal() call (zero when it requested none) so a test can verify the Level-2
+  // estimate against the real runtime request. This atomic is not correlated to a specific Run() when
   // concurrent Run()s share one kernel instance; it is only meant for this pilot's single-threaded
   // tests. Do not build anything on top of it.
   //
-  // STALENESS: the value is only updated on the fpA_intB CUTLASS GEMM branch of ComputeInternal().
-  // It is therefore only meaningful immediately after a call that took that branch; a subsequent
-  // call that takes the GEMV (cuda-kernel) path or the non-fpA_intB path leaves it holding the old
-  // value from the previous GEMM call. It is NOT reset between calls.
+  // Every ComputeInternal() invocation first stores zero. The CUTLASS GEMM branch replaces it with
+  // the requested byte count; all early-return and no-workspace paths therefore remain zero.
   size_t LastComputeWorkspaceBytes() const { return last_compute_workspace_bytes_.load(std::memory_order_relaxed); }
 #endif
 
@@ -288,6 +302,9 @@ class MatMulNBits final : public CudaKernel {
   bool column_wise_quant_blk_{true};
 
   bool has_g_idx_{false};
+  bool group_index_is_initializer_{false};
+  mutable std::mutex group_index_validation_mutex_;
+  mutable std::atomic<bool> is_group_index_validated_{false};
   bool has_bias_{false};
   bool has_zero_points_{false};
   bool is_zero_points_scale_same_type_{false};

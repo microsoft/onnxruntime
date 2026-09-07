@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param channels_last
 #param has_bias
 #param has_conv_state
 #param output_present_state
@@ -21,22 +22,50 @@ $MAIN {
   let channels = uniforms.channels;
   let input_length = uniforms.input_length;
   let kernel_size = uniforms.kernel_size;
-  let state_length = uniforms.state_length;  // = kernel_size - 1
+  let dilation = uniforms.dilation;
+  let state_length = uniforms.state_length;  // = (kernel_size - 1) * dilation
 
+  // Decompose global_idx so that adjacent invocations touch adjacent memory in the active layout.
+  // The full (batch, channel, position) index space is covered either way; only the order changes.
+#if channels_last
+  // Channels are the fastest-moving axis, so they must also be the fastest-moving invocation axis.
+  let channel_idx = global_idx % channels;
+  let bp_idx = global_idx / channels;
+  let pos = bp_idx % input_length;
+  let batch_idx = bp_idx / input_length;
+#else
   let pos = global_idx % input_length;
   let bc_idx = global_idx / input_length;
   let batch_idx = bc_idx / channels;
   let channel_idx = bc_idx % channels;
+#endif
+
+  // Both layouts are dense, so a strided (batch, position, channel) view covers them: the base is
+  // the (batch, channel) origin and successive positions are pos_stride elements apart.
+#if channels_last
+  // (batch_size, sequence_length, d_1, ..., d_n), channels = d_1 * ... * d_n
+  let input_base = batch_idx * channels * input_length + channel_idx;
+  let input_pos_stride = channels;
+  let state_base = batch_idx * channels * state_length + channel_idx;
+  let state_pos_stride = channels;
+#else
+  // (batch_size, channels, sequence_length)
+  let input_base = (batch_idx * channels + channel_idx) * input_length;
+  let input_pos_stride = 1u;
+  let state_base = (batch_idx * channels + channel_idx) * state_length;
+  let state_pos_stride = 1u;
+#endif
 
   // Perform depthwise causal convolution for this (batch, channel, pos).
-  // The convolution window looks back kernel_size-1 positions.
+  // The convolution window looks back state_length positions.
   // With conv_state providing the history before position 0, the
   // "virtual" input is: [conv_state[0..state_length-1], input[0..L-1]]
   //
   // For output position pos:
-  //   output[pos] = sum_{j=0}^{kernel_size-1} weight[j] * virtual_input[pos + j]
+  //   output[pos] = sum_{j=0}^{kernel_size-1} weight[j] * virtual_input[pos + j * dilation]
   // where virtual_input is state_length positions of conv_state
-  // followed by input_length positions of input.
+  // followed by input_length positions of input. At j = kernel_size-1 the tap lands on
+  // virtual_input[pos + state_length], i.e. the current position.
 
   var acc: input_element_t = 0.0;
 
@@ -45,27 +74,24 @@ $MAIN {
 
   for (var j: u32 = 0; j < kernel_size; j = j + 1) {
     // virtual_pos is the position in the concatenated [conv_state, input]
-    let virtual_pos = pos + j;
+    let virtual_pos = pos + j * dilation;
 
     var val: input_element_t = 0.0;
 
 #if has_conv_state
     if (virtual_pos < state_length) {
-      // Read from conv_state: (B, D, state_length)
-      let state_idx = (batch_idx * channels + channel_idx) * state_length + virtual_pos;
-      val = conv_state[state_idx];
+      // Read from conv_state
+      val = conv_state[state_base + virtual_pos * state_pos_stride];
     } else {
-      // Read from input: (B, D, L)
+      // Read from input
       let input_pos = virtual_pos - state_length;
-      let input_idx = (batch_idx * channels + channel_idx) * input_length + input_pos;
-      val = input[input_idx];
+      val = input[input_base + input_pos * input_pos_stride];
     }
 #else
     // No conv_state: pad with zeros for positions before the input
     if (virtual_pos >= state_length) {
       let input_pos = virtual_pos - state_length;
-      let input_idx = (batch_idx * channels + channel_idx) * input_length + input_pos;
-      val = input[input_idx];
+      val = input[input_base + input_pos * input_pos_stride];
     }
 #endif
 
@@ -81,12 +107,11 @@ $MAIN {
   acc = silu(acc);
 #endif
 
-  // Write output: (B, D, L)
-  let out_idx = (batch_idx * channels + channel_idx) * input_length + pos;
-  output[out_idx] = acc;
+  // Write output
+  output[input_base + pos * input_pos_stride] = acc;
 
 #if output_present_state
-  // Write present_state: the last (kernel_size - 1) elements from the
+  // Write present_state: the last state_length elements from the
   // virtual input [conv_state, input]. We only write present_state once
   // per (batch, channel), using the thread at pos == 0.
   if (pos == 0u) {
@@ -98,23 +123,19 @@ $MAIN {
 
 #if has_conv_state
       if (vp < state_length) {
-        let si = (batch_idx * channels + channel_idx) * state_length + vp;
-        state_val = conv_state[si];
+        state_val = conv_state[state_base + vp * state_pos_stride];
       } else {
         let ip = vp - state_length;
-        let ii = (batch_idx * channels + channel_idx) * input_length + ip;
-        state_val = input[ii];
+        state_val = input[input_base + ip * input_pos_stride];
       }
 #else
       if (vp >= state_length) {
         let ip = vp - state_length;
-        let ii = (batch_idx * channels + channel_idx) * input_length + ip;
-        state_val = input[ii];
+        state_val = input[input_base + ip * input_pos_stride];
       }
 #endif
 
-      let ps_idx = (batch_idx * channels + channel_idx) * state_length + s;
-      present_state[ps_idx] = state_val;
+      present_state[state_base + s * state_pos_stride] = state_val;
     }
   }
 #endif

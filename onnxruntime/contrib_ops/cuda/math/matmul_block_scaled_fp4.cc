@@ -181,9 +181,10 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
 
   // Decode fast path: for small M (autoregressive generation) this is a memory-bound GEMV.
   // A fused warp-per-column kernel reads the packed NVFP4 weight directly, avoiding both the
-  // [N, K] dequant scratch buffer and the cuBLAS GEMM (which is underutilized at M == 1).
-  constexpr int kGemvMaxM = 8;
-  if (m_i > 0 && m_i <= kGemvMaxM && block_size_ == 16 && (k_i % 32 == 0)) {
+  // [N, K] dequant scratch buffer and the cuBLAS GEMM (which is underutilized at M == 1). The
+  // bound covers a speculative step, which packs several tokens per request into one M.
+  const int gemv_max_m = MatMulBlockQuantizedFp4WeightGemvMaxM(k_i, GetDeviceProp());
+  if (m_i > 0 && m_i <= gemv_max_m && block_size_ == 16 && (k_i % 32 == 0)) {
     return LaunchMatMulBlockQuantizedFp4WeightGemv(
         Y->MutableDataRaw(),
         a->DataRaw(),
@@ -196,6 +197,7 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
         k_i,
         SafeInt<int>(block_size_),
         std::is_same<T, BFloat16>::value,
+        GetDeviceProp(),
         Stream(context));
   }
 
@@ -207,7 +209,7 @@ Status MatMulBlockQuantizedFp4Weight::ComputeImpl(OpKernelContext* context) cons
     const int64_t rounded_m = RoundUp(m_i, 128);
     const int64_t rounded_n = RoundUp(n_i, 128);
 
-    onnxruntime::Stream* stream = GetComputeStream(context);
+    auto* stream = GetComputeStream(context);
     auto a_packed = GetScratchBuffer<uint8_t>(SafeInt<size_t>(m_i) * SafeInt<size_t>(k_i / 2), stream);
     auto a_scale = GetScratchBuffer<uint8_t>(SafeInt<size_t>(rounded_m) * SafeInt<size_t>(k_scale_blocks), stream);
     IAllocatorUniquePtr<uint8_t> b_scale;

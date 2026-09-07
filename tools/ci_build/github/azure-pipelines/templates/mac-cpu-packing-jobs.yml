@@ -27,10 +27,7 @@ jobs:
    - ImageOverride -equals ACES_VM_SharedPool_Sequoia
   timeoutInMinutes: 300
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
-
+  - template: jobs/checkout-and-git-redirect.yml
   - template: use-xcode-version.yml
 
   - template: setup-build-tools.yml
@@ -39,11 +36,12 @@ jobs:
 
   - template: set-version-number-variables-step.yml
 
-  - script: |
-      set -e -x
+  - bash: |
+      set -euxo pipefail
       export ONNX_ML=1
       export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
-      python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+      python3 -m pip install -r "${BUILD_SOURCESDIRECTORY}/tools/ci_build/github/linux/docker/scripts/requirements.txt"
+    displayName: "PIP install docker script requirements"
 
   - script: |
       set -e -x

@@ -14,7 +14,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     11, 13,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
         .TypeConstraint("T2", {DataTypeImpl::GetTensorType<int32_t>(),
                                DataTypeImpl::GetTensorType<int64_t>()})
         .InputMemoryType(OrtMemTypeCPU, 1),
@@ -26,7 +26,7 @@ ONNX_OPERATOR_KERNEL_EX(
     14,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
         .TypeConstraint("T2", {DataTypeImpl::GetTensorType<int32_t>(),
                                DataTypeImpl::GetTensorType<int64_t>()})
         .InputMemoryType(OrtMemTypeCPU, 1),

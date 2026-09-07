@@ -2265,7 +2265,6 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
  */
 common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                                                 std::string& onnx_model_folder_path,
-                                                bool path_check,
                                                 const void* onnx_model_bytestream,
                                                 size_t onnx_model_bytestream_size,
                                                 const void* onnx_external_data_bytestream,
@@ -2286,7 +2285,7 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                              "Please use provide an ONNX bytestream to enable refitting the weightless engine.");
     } else {
       // Validate that the ONNX model path does not escape the model directory.
-      if (path_check && !onnx_model_filename.empty()) {
+      if (!onnx_model_filename.empty()) {
         ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(
             std::filesystem::path(onnx_model_folder_path), std::filesystem::path(onnx_model_filename)));
       }
@@ -3053,9 +3052,12 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
   if (weight_stripped_engine_refit_) {
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Refit engine from main ONNX file after engine build";
-    auto status = RefitEngine(model_path_,
-                              onnx_model_folder_path_,
-                              false /* path check for security */,
+    std::filesystem::path model_fs_path(model_path_);
+    std::string refit_folder = onnx_model_folder_path_.empty()
+                                   ? model_fs_path.parent_path().string()
+                                   : onnx_model_folder_path_;
+    auto status = RefitEngine(model_fs_path.filename().string(),
+                              refit_folder,
                               onnx_model_bytestream_,
                               onnx_model_bytestream_size_,
                               onnx_external_data_bytestream_,

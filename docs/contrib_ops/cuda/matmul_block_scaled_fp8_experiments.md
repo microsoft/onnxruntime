@@ -18,8 +18,9 @@ Related documentation:
 3. [Prefill Bottleneck - Weight Dequantization](#3-prefill-bottleneck---weight-dequantization)
 4. [Optimization - Vectorized Dequantization Kernel](#4-optimization---vectorized-dequantization-kernel)
 5. [Decode GEMV - Memory-Level Parallelism](#5-decode-gemv---memory-level-parallelism)
-6. [Benchmark Commands](#6-benchmark-commands)
-7. [Lessons](#7-lessons)
+6. [Decode GEMV - Tensor Cores](#6-decode-gemv---tensor-cores)
+7. [Benchmark Commands](#7-benchmark-commands)
+8. [Lessons](#8-lessons)
 
 ---
 
@@ -234,6 +235,11 @@ Below `N = 4096` the wider tiles leave too few warps to fill the GPU, and for
 `M > 1` the extra live registers (accumulators plus pre-issued loads) cost more
 than the added parallelism returns. Both measured slower, hence the guards.
 
+> Superseded for `M > 1` by section 6.4, which re-tunes `ColsPerWarp` / `Unroll`
+> for the speculative-decode tiles. Because `Unroll` changes the K chunk each
+> lane accumulates first, the `M > 1` dispatch there is not bit-identical to
+> `<RowsPerWarp, 1, 1>` (last-ulp only; the accumulation is still FP32).
+
 ### 5.4 Results (H200, `M = 1`, CUDA graph, us, includes 0.68 us node overhead)
 
 | Shape (N x K) | cuBLAS FP16 | GEMV before | GEMV after | vs before | vs cuBLAS |
@@ -253,7 +259,132 @@ preferred on speed alone.
 
 ---
 
-## 6. Benchmark Commands
+## 6. Decode GEMV - Tensor Cores
+
+Section 5 tuned memory-level parallelism at `M = 1`. At `M = 4` - the width of a
+speculative-decode / MTP verify forward - the kernel is limited by something
+else. With `RowsPerWarp = 4` a lane executes roughly 240 instructions per 32
+weight bytes, only 128 of which are the FMAs that do useful work, and effective
+bandwidth falls from about 2.35 TB/s at `M = 1` to about 1.25 TB/s at `M = 4`.
+More ILP cannot fix that; the dot products have to leave the FMA pipe.
+
+### 6.1 Design
+
+`MatMulBlockScaledFp8MmaGemvKernel` uses `mma.m16n8k16` with FP32 accumulation.
+The operand assignment is the key decision:
+
+| mma operand | fed from | why it fits |
+|---|---|---|
+| `A[16, 16]` row-major | weight `[16 output cols][16 k]` | `B` is `[N, K]` row-major |
+| `B[16, 8]` col-major | activation `[16 k][8 rows]` | `A` is `[M, K]` row-major |
+| `D[16, 8]` | `y[16 output cols][8 rows]` | |
+
+So the mma "M" extent is the output column count and the mma "N" extent is `M`.
+At `M = 4` half the mma N lanes are idle, which is irrelevant: the kernel is
+bound by weight traffic and instruction issue, and both improve about 10x per
+weight byte.
+
+The naive fragment load is badly coalesced - a lane needs bytes
+`{2t, 2t+1, 2t+8, 2t+9}` of a row, which spreads a warp across 16 rows x 16
+bytes and over-fetches every 32-byte sector 2x. The fix is to **permute the K
+axis**. K is a reduction axis, so any permutation applied to *both* operands
+leaves the result unchanged. Inside a 64-element K window the permutation used is
+
+```
+mma k-slot (of step j)  ->  actual k
+  2t,   2t+1                 16t + 4j,     16t + 4j + 1
+  2t+8, 2t+9                 16t + 4j + 2, 16t + 4j + 3
+```
+
+so lane `(g = lane >> 2, t = lane & 3)` loads one contiguous `uint4` of weight
+bytes `[16t, 16t + 16)` and the matching 32 activation bytes, four lanes cover 64
+contiguous bytes of one weight row, and that single `uint4` feeds all four mma
+steps.
+
+16 columns per warp gives about 8x fewer warps than the FMA kernel, which alone
+costs more in lost memory-level parallelism than the instruction saving is worth.
+`KSplit` warps per block therefore take a strided share of the K windows and are
+reduced through shared memory at the end. `KSplit = 8` for `N >= 8192` (the
+column count already fills the grid) and 16 otherwise.
+
+Preconditions: SM80+, `K % 64 == 0`, `K >= 256`, `block_size % 64 == 0`, `M <= 8`.
+Otherwise the FMA kernel runs unchanged. `ORT_FP8_GEMV_MMA=0` forces the FMA
+kernel for A/B testing in a single binary.
+
+### 6.2 Accuracy
+
+Not bit-identical to the FMA kernel (different summation order), but not less
+accurate either. E4M3 to FP16 is lossless, E4M3 to BF16 is lossless, FP16 x FP16
+products are exact in FP32, and the mma accumulates in FP32 exactly as the FMA
+path does. Scored against an FP64 CPU reference on the shapes below, the maximum
+error is *identical* for the two kernels (2-4e-4, i.e. pure FP16 output
+rounding).
+
+### 6.3 Results (H200, us, standalone, `fp8_gemv_m4_bench.cu`)
+
+| Shape (N x K) | M | cuBLAS FP16 | FMA kernel | mma kernel | vs FMA | vs cuBLAS |
+|---|---|---|---|---|---|---|
+| 8192 x 2048 | 1 | 11.0 | 6.3 | **5.1** | 1.23x | 2.16x |
+| 4096 x 2048 | 1 | 8.4 | 4.8 | **4.0** | 1.20x | 2.09x |
+| 2048 x 4096 | 1 | 9.0 | 5.1 | **4.2** | 1.21x | 2.13x |
+| 512 x 2048 | 1 | 6.7 | 3.3 | **3.1** | 1.06x | 2.12x |
+| 8192 x 2048 | 4 | 11.0 | 9.8 | **5.2** | 1.87x | 2.10x |
+| 4096 x 2048 | 4 | 8.5 | 6.9 | **4.1** | 1.69x | 2.09x |
+| 2048 x 4096 | 4 | 8.5 | 8.0 | **4.4** | 1.82x | 1.92x |
+| 512 x 2048 | 4 | 6.8 | 4.7 | **3.3** | 1.43x | 2.08x |
+| 8192 x 2048 | 8 | 10.9 | 17.5 | **5.7** | 3.09x | 1.93x |
+| 2048 x 4096 | 8 | 8.5 | 13.0 | **4.5** | 2.90x | 1.90x |
+
+The mma kernel is faster at every measured `M`, so it is preferred whenever its
+preconditions hold rather than only for `M > 1`. Note also that the FMA kernel
+crosses over and loses to cuBLAS at `M = 8`, while the mma kernel stays about 1.9x
+ahead.
+
+End to end on a 40-layer Qwen3.6-35B-A3B NVFP4 MTP decode (130 FP8 matmul nodes
+per step, `M = 4`), CUDA graphs on:
+
+| | FMA kernel | mma kernel |
+|---|---|---|
+| FP8 GEMV kernel time | 1.052 ms/step | **0.713 ms/step** |
+| total kernel time | 7.368 ms/step | **7.021 ms/step** |
+| wall | 9.80 ms/step | **9.54 ms/step** |
+
+No other kernel family moved. This optimization is kept.
+
+### 6.4 FMA fallback re-tune for `M > 1`
+
+The FMA kernel still runs when the tensor-core preconditions do not hold (pre-SM80,
+`K < 256`, `K % 64 != 0` or `block_size % 64 != 0`), so the `M > 1` tiles were
+re-tuned there as well. Widening `A` to FP32 is now hoisted out of the column loop
+(one widening per row instead of one per row/column pair), which makes `ColsPerWarp`
+profitable at `M > 1` for a second reason beyond memory-level parallelism:
+
+| Condition | Config |
+|---|---|
+| `2 <= M <= 2, N >= 8192` | `<2, 4, 1>` |
+| `2 <= M <= 2, N >= 2048` | `<2, 2, 1>` |
+| `2 <= M <= 2` otherwise | `<2, 1, 2>` |
+| `3 <= M <= 4, N >= 4096` | `<4, 4, 1>` |
+| `3 <= M <= 4, N >= 2048` | `<4, 2, 2>` |
+| `3 <= M <= 4` otherwise | `<4, 1, 2>` |
+| `M > 4` | `<8, 1, 1>` |
+
+Measured on H200 (us, `M = 4`, versus the previous `<R, 1, 1>` and cuBLAS FP16):
+
+| Shape (N x K) | cuBLAS | `<4, 1, 1>` | tuned |
+|---|---|---|---|
+| 8192 x 2048 | 10.9 | 13.7 | **9.7** (`<4, 4, 1>`) |
+| 4096 x 2048 | 8.3 | 8.1 | **6.9** (`<4, 4, 1>`) |
+| 2048 x 4096 | 8.3 | 9.0 | **7.9** (`<4, 2, 2>`) |
+| 512 x 2048 | 7.3 | 5.0 | **4.6** (`<4, 1, 2>`) |
+
+The hoisting itself is bit-identical (the per-lane `fmaf` sequence is unchanged),
+but a different `Unroll` changes which K chunk a lane accumulates first, so the
+re-tuned dispatch is a last-ulp change relative to `<RowsPerWarp, 1, 1>`.
+
+---
+
+## 7. Benchmark Commands
 
 The commands below use `ORT_REPO` and `ORT_BUILD` so they can be copied without
 editing developer-specific paths. Set them once:
@@ -307,7 +438,7 @@ CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
 
 ---
 
-## 7. Lessons
+## 8. Lessons
 
 - The prefill path is memory bound on weight dequantization, not on the GEMM;
   latency there scales with `N*K` and is independent of `M`.

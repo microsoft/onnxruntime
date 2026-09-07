@@ -12,7 +12,7 @@ import { DataType, tensorDataTypeStringToEnum } from '../wasm-common';
 import { getInstance } from '../wasm-factory';
 
 import { createView } from './tensor-view';
-import { TensorId, createTensorManager, convertDataToInt32 } from './webnn/tensor-manager';
+import { TensorId, createTensorManager } from './webnn/tensor-manager';
 import { configureLogger, LOG_DEBUG } from './log';
 
 /*
@@ -305,85 +305,6 @@ export class WebNNBackend {
         }} -> {tensorId: ${id}}`,
     );
     return id;
-  }
-
-  // Register a WebNN Constant operand from external data.
-  public registerMLConstant(
-    externalFilePath: string,
-    dataOffset: number,
-    dataLength: number,
-    builder: MLGraphBuilder,
-    desc: MLOperandDescriptor,
-    mountedFiles: Map<string, Uint8Array> | undefined,
-    shouldConvertInt64ToInt32 = false,
-  ): MLOperand {
-    // If available, "Module.MountedFiles" is a Map for all preloaded files.
-    if (!mountedFiles) {
-      throw new Error('External mounted files are not available.');
-    }
-
-    let filePath = externalFilePath;
-    if (externalFilePath.startsWith('./')) {
-      filePath = externalFilePath.substring(2);
-    }
-    const fileData = mountedFiles.get(filePath);
-    if (!fileData) {
-      throw new Error(`File with name ${filePath} not found in preloaded files.`);
-    }
-
-    if (dataOffset + dataLength > fileData.byteLength) {
-      throw new Error('Out of bounds: data offset and length exceed the external file data size.');
-    }
-
-    const buffer = fileData.slice(dataOffset, dataOffset + dataLength).buffer;
-    let bufferView: ArrayBufferView;
-    switch (desc.dataType) {
-      case 'float32':
-        bufferView = new Float32Array(buffer);
-        break;
-      case 'float16':
-        bufferView = typeof Float16Array !== 'undefined' ? new Float16Array(buffer) : new Uint16Array(buffer);
-        break;
-      case 'int32':
-        bufferView = new Int32Array(buffer);
-        break;
-      case 'uint32':
-        bufferView = new Uint32Array(buffer);
-        break;
-      case 'int64':
-        if (shouldConvertInt64ToInt32) {
-          // Int64 is not supported by current context, use int32 instead.
-          const int32Buffer = convertDataToInt32(new Uint8Array(buffer), 'int64');
-          bufferView = new Int32Array(int32Buffer.buffer);
-          desc.dataType = 'int32';
-        } else {
-          bufferView = new BigInt64Array(buffer);
-        }
-        break;
-      case 'uint64':
-        bufferView = new BigUint64Array(buffer);
-        break;
-      case 'int8':
-        bufferView = new Int8Array(buffer);
-        break;
-      case 'int4':
-      case 'uint4':
-      case 'uint8':
-        bufferView = new Uint8Array(buffer);
-        break;
-      default:
-        throw new Error(`Unsupported data type: ${desc.dataType} in creating WebNN Constant from external data.`);
-    }
-
-    LOG_DEBUG(
-      'verbose',
-      () =>
-        `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}} ${
-          shouldConvertInt64ToInt32 ? '(Note: it was int64 data type and registered to int32 as workaround)' : ''
-        }`,
-    );
-
-    return builder.constant(desc, bufferView);
   }
 
   public registerGraphInput(inputName: string): void {

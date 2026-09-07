@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <memory>
+#include <optional>
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/common.h"
@@ -390,141 +391,10 @@ Status VariadicElementwise::ComputeInternal(ComputeContext& context) const {
     OP_TYPE(const OpKernelInfo& info) : VariadicElementwise{info, #OP_TYPE, __VA_ARGS__} {} \
   };
 
-#define WEBGPU_BINARY_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS, TYPE) \
-  ONNX_OPERATOR_KERNEL_EX(                                         \
-      OP_TYPE,                                                     \
-      kOnnxDomain,                                                 \
-      VERSION,                                                     \
-      kWebGpuExecutionProvider,                                    \
-      KernelDefBuilder().TypeConstraint("T", TYPE),                \
-      KERNEL_CLASS);
-
-#define WEBGPU_BINARY_VERSIONED_KERNEL(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, TYPE) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                          \
-      OP_TYPE,                                                                                \
-      kOnnxDomain,                                                                            \
-      VERSION_FROM, VERSION_TO,                                                               \
-      kWebGpuExecutionProvider,                                                               \
-      KernelDefBuilder().TypeConstraint("T", TYPE),                                           \
-      KERNEL_CLASS);
-
-#define WEBGPU_BINARY_KERNEL_2(OP_TYPE, VERSION, KERNEL_CLASS, TYPE, TYPE1) \
-  ONNX_OPERATOR_KERNEL_EX(                                                  \
-      OP_TYPE,                                                              \
-      kOnnxDomain,                                                          \
-      VERSION,                                                              \
-      kWebGpuExecutionProvider,                                             \
-      KernelDefBuilder()                                                    \
-          .TypeConstraint("T", TYPE)                                        \
-          .TypeConstraint("T1", TYPE1),                                     \
-      KERNEL_CLASS);
-
-#define WEBGPU_BINARY_VERSIONED_KERNEL_2(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, TYPE, TYPE1) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                                   \
-      OP_TYPE,                                                                                         \
-      kOnnxDomain,                                                                                     \
-      VERSION_FROM, VERSION_TO,                                                                        \
-      kWebGpuExecutionProvider,                                                                        \
-      KernelDefBuilder()                                                                               \
-          .TypeConstraint("T", TYPE)                                                                   \
-          .TypeConstraint("T1", TYPE1),                                                                \
-      KERNEL_CLASS);
-
 WEBGPU_BINARY_IMPL(Add, "a + b")
-
-// NOTE: int64 arithmetic in the WebGPU shader operates on the low 32 bits only (i32 element type).
-// Values outside the int32 range [-2^31, 2^31-1] will produce incorrect results.
-// This matches the same limitation documented in Range/Sub and is acceptable for token-position workloads.
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateAddVersionedKernelInfo(bool enable_int64) {
-  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
-  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-    out = std::make_unique<Add>(info);
-    return Status::OK();
-  };
-  return {KernelDefBuilder()
-              .SetName("Add")
-              .SetDomain(kOnnxDomain)
-              .SinceVersion(StartVersion, EndVersion)
-              .Provider(kWebGpuExecutionProvider)
-              .TypeConstraint("T", type_constraints)
-              .Build(),
-          kernel_create_fn};
-}
-
-template <int SinceVersion>
-KernelCreateInfo CreateAddKernelInfo(bool enable_int64) {
-  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
-  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-    out = std::make_unique<Add>(info);
-    return Status::OK();
-  };
-  return {KernelDefBuilder()
-              .SetName("Add")
-              .SetDomain(kOnnxDomain)
-              .SinceVersion(SinceVersion)
-              .Provider(kWebGpuExecutionProvider)
-              .TypeConstraint("T", type_constraints)
-              .Build(),
-          kernel_create_fn};
-}
-
-template KernelCreateInfo CreateAddVersionedKernelInfo<7, 12>(bool);
-template KernelCreateInfo CreateAddVersionedKernelInfo<13, 13>(bool);
-template KernelCreateInfo CreateAddKernelInfo<14>(bool);
-
 WEBGPU_BINARY_IMPL(Div, "a / b")
-WEBGPU_BINARY_VERSIONED_KERNEL(Div, 7, 12, Div, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Div, 13, 13, Div, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Div, 14, Div, WebGpuSupportedNumberTypes())
-
 WEBGPU_BINARY_IMPL(Mul, "a * b")
-WEBGPU_BINARY_VERSIONED_KERNEL(Mul, 7, 12, Mul, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Mul, 13, 13, Mul, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Mul, 14, Mul, WebGpuSupportedNumberTypes())
-
 WEBGPU_BINARY_IMPL(Sub, "a - b")
-
-// NOTE: int64 arithmetic in the WebGPU shader operates on the low 32 bits only (i32 element type).
-// Values outside the int32 range [-2^31, 2^31-1] will produce incorrect results.
-// This matches the same limitation documented in Range and is acceptable for token-position workloads.
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64) {
-  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
-  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-    out = std::make_unique<Sub>(info);
-    return Status::OK();
-  };
-  return {KernelDefBuilder()
-              .SetName("Sub")
-              .SetDomain(kOnnxDomain)
-              .SinceVersion(StartVersion, EndVersion)
-              .Provider(kWebGpuExecutionProvider)
-              .TypeConstraint("T", type_constraints)
-              .Build(),
-          kernel_create_fn};
-}
-
-template <int SinceVersion>
-KernelCreateInfo CreateSubKernelInfo(bool enable_int64) {
-  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
-  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-    out = std::make_unique<Sub>(info);
-    return Status::OK();
-  };
-  return {KernelDefBuilder()
-              .SetName("Sub")
-              .SetDomain(kOnnxDomain)
-              .SinceVersion(SinceVersion)
-              .Provider(kWebGpuExecutionProvider)
-              .TypeConstraint("T", type_constraints)
-              .Build(),
-          kernel_create_fn};
-}
-
-template KernelCreateInfo CreateSubVersionedKernelInfo<7, 12>(bool);
-template KernelCreateInfo CreateSubVersionedKernelInfo<13, 13>(bool);
-template KernelCreateInfo CreateSubKernelInfo<14>(bool);
 
 // ONNX Max/Min (opset 12+) propagate NaN: if either operand is NaN the result is NaN.
 // The WGSL `max`/`min` builtins do not guarantee this, so wrap them so that a NaN operand is
@@ -562,14 +432,7 @@ static std::string GetMinImpl(int lhs_element_type, int /* rhs_element_type */) 
 }
 
 WEBGPU_VARIADIC_IMPL(Max, "max_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMaxImpl)
-WEBGPU_BINARY_VERSIONED_KERNEL(Max, 8, 11, Max, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Max, 12, 12, Max, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Max, 13, Max, WebGpuSupportedNumberTypes())
-
 WEBGPU_VARIADIC_IMPL(Min, "min_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMinImpl)
-WEBGPU_BINARY_VERSIONED_KERNEL(Min, 8, 11, Min, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Min, 12, 12, Min, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Min, 13, Min, WebGpuSupportedNumberTypes())
 
 std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   SS(s, 1024);
@@ -605,80 +468,97 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
 }
 
 WEBGPU_BINARY_IMPL(Pow, "pow_v(a, b)", GetPowImpl)
-WEBGPU_BINARY_VERSIONED_KERNEL(Pow, 7, 11, Pow, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL_2(Pow, 12, 12, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL_2(Pow, 13, 14, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL_2(Pow, 15, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
-
 WEBGPU_BINARY_IMPL(PRelu, "select(b * a, a, a >= vec4<input_a_element_t>(0))")
-WEBGPU_BINARY_VERSIONED_KERNEL(PRelu, 7, 8, PRelu, WebGpuSupportedFloatTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(PRelu, 9, 15, PRelu, WebGpuSupportedFloatTypes())
-WEBGPU_BINARY_KERNEL(PRelu, 16, PRelu, WebGpuSupportedFloatTypes())
-
 WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
-
-// NOTE: int64 comparison in the WebGPU shader uses i32 element type (low 32 bits only).
-// Values outside the int32 range will produce incorrect results.
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateEqualVersionedKernelInfo(bool enable_int64) {
-  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
-  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-    out = std::make_unique<Equal>(info);
-    return Status::OK();
-  };
-  return {KernelDefBuilder()
-              .SetName("Equal")
-              .SetDomain(kOnnxDomain)
-              .SinceVersion(StartVersion, EndVersion)
-              .Provider(kWebGpuExecutionProvider)
-              .TypeConstraint("T", type_constraints)
-              .Build(),
-          kernel_create_fn};
-}
-
-template <int SinceVersion>
-KernelCreateInfo CreateEqualKernelInfo(bool enable_int64) {
-  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
-  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-    out = std::make_unique<Equal>(info);
-    return Status::OK();
-  };
-  return {KernelDefBuilder()
-              .SetName("Equal")
-              .SetDomain(kOnnxDomain)
-              .SinceVersion(SinceVersion)
-              .Provider(kWebGpuExecutionProvider)
-              .TypeConstraint("T", type_constraints)
-              .Build(),
-          kernel_create_fn};
-}
-
-template KernelCreateInfo CreateEqualVersionedKernelInfo<7, 10>(bool);
-template KernelCreateInfo CreateEqualVersionedKernelInfo<11, 12>(bool);
-template KernelCreateInfo CreateEqualVersionedKernelInfo<13, 18>(bool);
-template KernelCreateInfo CreateEqualKernelInfo<19>(bool);
-
 WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b_element_t>(b))")
-WEBGPU_BINARY_VERSIONED_KERNEL(Greater, 7, 8, Greater, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Greater, 9, 12, Greater, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Greater, 13, Greater, WebGpuSupportedNumberTypes())
-
 WEBGPU_BINARY_IMPL(Less, "vec4<u32>(vec4<input_a_element_t>(a) < vec4<input_b_element_t>(b))")
-WEBGPU_BINARY_VERSIONED_KERNEL(Less, 7, 8, Less, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Less, 9, 12, Less, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Less, 13, Less, WebGpuSupportedNumberTypes())
-
 WEBGPU_BINARY_IMPL(GreaterOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) >= vec4<input_b_element_t>(b))")
-WEBGPU_BINARY_VERSIONED_KERNEL(GreaterOrEqual, 12, 15, GreaterOrEqual, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(GreaterOrEqual, 16, GreaterOrEqual, WebGpuSupportedNumberTypes())
-
 WEBGPU_BINARY_IMPL(LessOrEqual, "vec4<u32>(vec4<input_a_element_t>(a) <= vec4<input_b_element_t>(b))")
-WEBGPU_BINARY_VERSIONED_KERNEL(LessOrEqual, 12, 15, LessOrEqual, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(LessOrEqual, 16, LessOrEqual, WebGpuSupportedNumberTypes())
-
 // And operator only supports tensor(bool).
 WEBGPU_BINARY_IMPL(And, "(vec4<input_a_element_t>(a) & vec4<input_b_element_t>(b))")
-WEBGPU_BINARY_KERNEL(And, 7, And, DataTypeImpl::GetTensorType<bool>())
+
+namespace {
+// Generic kernel-create fn for any binary/variadic elementwise op class.
+template <typename OpKernelT>
+Status CreateBinaryOpKernel(FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
+  out = std::make_unique<OpKernelT>(info);
+  return Status::OK();
+}
+
+// A single opset version range for an op registration, inclusive on both ends: [begin, end].
+// A nullopt end means "since begin" (open-ended, no upper opset bound).
+struct VersionRange {
+  int begin;
+  std::optional<int> end;
+};
+
+// Registers every opset version range of one binary elementwise op. Passing a non-null
+// t1_types adds a "T1" type constraint (only Pow, from opset 12, has a second constraint).
+void RegisterBinaryOp(KernelRegistry& kernel_registry,
+                      const char* name,
+                      KernelCreatePtrFn kernel_create_fn,
+                      const std::vector<MLDataType>& type_constraints,
+                      std::initializer_list<VersionRange> ranges,
+                      const std::vector<MLDataType>* t1_type_constraints = nullptr) {
+  for (const auto& r : ranges) {
+    KernelDefBuilder builder;
+    builder.SetName(name)
+        .SetDomain(kOnnxDomain)
+        .Provider(kWebGpuExecutionProvider)
+        .TypeConstraint("T", type_constraints);
+    if (t1_type_constraints != nullptr) {
+      builder.TypeConstraint("T1", *t1_type_constraints);
+    }
+    if (r.end.has_value()) {
+      builder.SinceVersion(r.begin, *r.end);
+    } else {
+      builder.SinceVersion(r.begin);
+    }
+    ORT_THROW_IF_ERROR(kernel_registry.Register({builder.Build(), kernel_create_fn}));
+  }
+}
+}  // namespace
+
+// Registers the binary elementwise ops through a single path so int64 support (behind the
+// enableInt64 provider option) is applied and maintained consistently. int64 is currently enabled
+// for the arithmetic and comparison ops whose low-32-bit i32 shader semantics are meaningful and
+// implemented (Add, Sub, Mul, Div, Max, Min, Equal, Greater, Less, GreaterOrEqual, LessOrEqual).
+// Pow is a known gap (see the TODO below); PRelu/And have no int64 form.
+//
+// NOTE: int64 in the WebGPU shader operates on the low 32 bits only (i32 element type). Values
+// outside the int32 range [-2^31, 2^31-1] produce incorrect results. This is acceptable for the
+// token-position / index workloads that need it, and matches the prior per-op documentation.
+void RegisterBinaryElementwiseKernels(KernelRegistry& kernel_registry, bool enable_int64) {
+  // int64-capable ops share this constraint list (adds int64 only when enable_int64 is set).
+  const auto& int64_capable = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
+  const auto& number_types = WebGpuSupportedNumberTypes();
+  const auto& float_types = WebGpuSupportedFloatTypes();
+  static const std::vector<MLDataType> bool_type{DataTypeImpl::GetTensorType<bool>()};
+
+  // Arithmetic + comparison ops: int64 is meaningful, so gate it on enable_int64.
+  RegisterBinaryOp(kernel_registry, "Add", CreateBinaryOpKernel<Add>, int64_capable, {{7, 12}, {13, 13}, {14, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Sub", CreateBinaryOpKernel<Sub>, int64_capable, {{7, 12}, {13, 13}, {14, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Mul", CreateBinaryOpKernel<Mul>, int64_capable, {{7, 12}, {13, 13}, {14, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Div", CreateBinaryOpKernel<Div>, int64_capable, {{7, 12}, {13, 13}, {14, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Max", CreateBinaryOpKernel<Max>, int64_capable, {{8, 11}, {12, 12}, {13, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Min", CreateBinaryOpKernel<Min>, int64_capable, {{8, 11}, {12, 12}, {13, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Equal", CreateBinaryOpKernel<Equal>, int64_capable, {{7, 10}, {11, 12}, {13, 18}, {19, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Greater", CreateBinaryOpKernel<Greater>, int64_capable, {{7, 8}, {9, 12}, {13, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "Less", CreateBinaryOpKernel<Less>, int64_capable, {{7, 8}, {9, 12}, {13, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "GreaterOrEqual", CreateBinaryOpKernel<GreaterOrEqual>, int64_capable, {{12, 15}, {16, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "LessOrEqual", CreateBinaryOpKernel<LessOrEqual>, int64_capable, {{12, 15}, {16, std::nullopt}});
+
+  // TODO: the ONNX Pow schema allows int64 inputs, but the WebGPU Pow shader does not handle int64
+  // yet, so Pow stays on the non-int64 numeric constraints. Add schema-supported int64 Pow in a
+  // follow-up and move it up to the int64-capable group above.
+  // Pow gains a second "T1" (exponent) type constraint from opset 12.
+  RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{7, 11}});
+  RegisterBinaryOp(kernel_registry, "Pow", CreateBinaryOpKernel<Pow>, number_types, {{12, 12}, {13, 14}, {15, std::nullopt}}, &number_types);
+
+  // PRelu (float) and And (bool) have no int64 form, so they keep their existing type constraints.
+  RegisterBinaryOp(kernel_registry, "PRelu", CreateBinaryOpKernel<PRelu>, float_types, {{7, 8}, {9, 15}, {16, std::nullopt}});
+  RegisterBinaryOp(kernel_registry, "And", CreateBinaryOpKernel<And>, bool_type, {{7, std::nullopt}});
+}
 
 }  // namespace webgpu
 }  // namespace onnxruntime
