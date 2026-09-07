@@ -395,6 +395,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   const bool use_dynamic_flash_window = context.IsGraphCaptureEnabled() &&
                                         parameters.sequence_length_ == 1 &&
                                         local_window_size_ != -1;
+  const int flash_local_window_size = use_dynamic_flash_window ? local_window_size_ : -1;
   bool will_use_flash_attention = false;
   // For kv_empty layers (shared KV), sliding window is irrelevant — there's no new KV to window
   // over, the layer reuses another layer's already-computed KV cache. Flash attention is required
@@ -438,7 +439,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
                                  present_value, parameters, context, seqlen_k, cos_cache, sin_cache, head_sink,
-                                 total_seqlen_tensor, nullptr, nullptr, 0, 0, nullptr, local_window_size_);
+                                 total_seqlen_tensor, nullptr, nullptr, 0, 0, nullptr, flash_local_window_size);
     }
     // Fused: splitQKV + rotary QK
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
@@ -530,7 +531,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink,
-                               total_seqlen_tensor, nullptr, nullptr, 0, 0, nullptr, local_window_size_);
+                               total_seqlen_tensor, nullptr, nullptr, 0, 0, nullptr, flash_local_window_size);
   }
 
   // KV cache quantization compresses the KV cache; non-flash attention paths cannot interpret it.
