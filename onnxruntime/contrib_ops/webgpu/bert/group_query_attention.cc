@@ -390,11 +390,16 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   // Use a sliding window if the total sequence exceeds the window's length.
   bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
+  // During graph capture the logical sequence length lives on the GPU. Keep decode on
+  // flash attention and apply the local window dynamically from seqlens_k in the shader.
+  const bool use_dynamic_flash_window = context.IsGraphCaptureEnabled() &&
+                                        parameters.sequence_length_ == 1 &&
+                                        local_window_size_ != -1;
   bool will_use_flash_attention = false;
   // For kv_empty layers (shared KV), sliding window is irrelevant — there's no new KV to window
   // over, the layer reuses another layer's already-computed KV cache. Flash attention is required
   // for these layers, so we bypass the sliding window check to allow it.
-  if (!use_smooth_softmax_ && (!use_sliding_window || kv_empty)) {
+  if (!use_smooth_softmax_ && (!use_sliding_window || kv_empty || use_dynamic_flash_window)) {
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
@@ -433,7 +438,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
                                  present_value, parameters, context, seqlen_k, cos_cache, sin_cache, head_sink,
-                                 total_seqlen_tensor);
+                                 total_seqlen_tensor, nullptr, nullptr, 0, 0, nullptr, local_window_size_);
     }
     // Fused: splitQKV + rotary QK
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
@@ -525,7 +530,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink,
-                               total_seqlen_tensor);
+                               total_seqlen_tensor, nullptr, nullptr, 0, 0, nullptr, local_window_size_);
   }
 
   // KV cache quantization compresses the KV cache; non-flash attention paths cannot interpret it.

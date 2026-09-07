@@ -107,6 +107,24 @@ $MAIN {
   #else
   let total_sequence_length = global_total_sequence_length;
   #endif
+  let window_start = select(0u,
+                            total_sequence_length - uniforms.local_window_size,
+                            uniforms.local_window_size > 0u &&
+                                total_sequence_length > uniforms.local_window_size);
+  // Whole tiles outside the window must publish a zero softmax sum. Masking every
+  // element to the finite fp16 minimum would otherwise give the tile nonzero weight.
+  if (total_seq_offset >= total_sequence_length || total_seq_offset + tile_size <= window_start) {
+    if (local_idx == 0u) {
+      for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+        let q_idx_local = q_base + m;
+        let meta_offset = (batch_head_idx * uniforms.new_sequence_length + q_idx_local) *
+                          uniforms.num_present_sequence_length_tile +
+                          workgroup_idx % num_total_seq_length_tile;
+        metadata.setByOffset(meta_offset, metadata_value_t(-3.4028234663852886e+38f, 0.0f));
+      }
+    }
+    return;
+  }
 
 #if kv_cache_quantization
   let kv_head_offset = (batch_head_idx / uniforms.n_reps) * uniforms.present_sequence_length * COMPRESSED_HEAD_U32;
@@ -249,6 +267,11 @@ $MAIN {
         sum = f32(-3.4028234663852886e+38f);
       }
 #endif
+      let causal_sequence_length = past_sequence_length + q_idx + 1u;
+      if (uniforms.local_window_size > 0u &&
+          total_seq_offset + local_idx + uniforms.local_window_size < causal_sequence_length) {
+        sum = q_element_t(-65504.0f);
+      }
       tile_qk[m][local_idx] = sum;
     }
     workgroupBarrier();
