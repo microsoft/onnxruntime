@@ -2562,7 +2562,7 @@ static void RunMoECpuTest(const std::vector<float>& input, const std::vector<flo
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-#if !defined(__wasm__) && !defined(_WIN32)
+#if !defined(__wasm__) && !defined(_WIN32) && !defined(__ANDROID__)
 static std::vector<nlohmann::json> ParseMoeRoutingLogs(const std::string& logs) {
   constexpr std::string_view marker = "moe_routing ";
   std::vector<nlohmann::json> events;
