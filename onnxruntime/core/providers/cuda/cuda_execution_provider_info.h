@@ -84,6 +84,8 @@ struct CUDAExecutionProviderInfo {
 
   int sdpa_kernel{0};
 
+  // 0 disables the custom external-data loader and retains the framework's existing path.
+  // 1 uses the pinned-buffer loader with synchronous reads. 2..64 use that many parallel read tasks per block.
   size_t external_data_loader_reading_threads{4};
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);

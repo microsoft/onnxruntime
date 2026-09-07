@@ -26,8 +26,8 @@ import onnxruntime
 
 def reading_thread_count(value):
     count = int(value)
-    if not 1 <= count <= 64:
-        raise argparse.ArgumentTypeError("must be between 1 and 64")
+    if not 0 <= count <= 64:
+        raise argparse.ArgumentTypeError("must be between 0 and 64")
     return count
 
 
@@ -53,7 +53,7 @@ def main():
     parser.add_argument(
         "--reading-threads",
         type=reading_thread_count,
-        help="Override parallel reads per CUDA pinned staging buffer (runtime default: 4)",
+        help="Override parallel reads per CUDA pinned staging buffer; 0 disables the loader (runtime default: 4)",
     )
     parser.add_argument(
         "--evict-file-cache",
@@ -98,7 +98,7 @@ def main():
                 "device_id": args.device_id,
                 "evict_file_cache": args.evict_file_cache,
                 "model": os.path.abspath(args.model),
-                "reading_threads": args.reading_threads or 4,
+                "reading_threads": args.reading_threads if args.reading_threads is not None else 4,
                 "seconds": elapsed,
                 "threads": args.threads,
             },

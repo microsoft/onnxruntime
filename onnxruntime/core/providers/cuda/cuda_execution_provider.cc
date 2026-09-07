@@ -3431,6 +3431,10 @@ std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransf
 }
 
 std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExternalDataLoader() const {
+  if (info_.external_data_loader_reading_threads == 0) {
+    return nullptr;
+  }
+
   return std::make_unique<cuda::ExternalDataLoader>(
       info_.device_id, info_.external_data_loader_reading_threads);
 }

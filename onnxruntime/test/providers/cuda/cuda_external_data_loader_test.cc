@@ -90,6 +90,16 @@ TEST(CudaExternalDataLoaderTest, LoadsSynchronouslyWhenConfiguredWithOneReadingT
   VerifyLoad(kParallelReadThreshold, 1, 1);
 }
 
+TEST(CudaExternalDataLoaderTest, DisablesLoaderWhenConfiguredWithZeroReadingThreads) {
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.external_data_loader_reading_threads = 0;
+  auto execution_provider = CudaExecutionProviderWithOptions(&provider_options);
+  ASSERT_NE(execution_provider, nullptr);
+  EXPECT_EQ(execution_provider->GetExternalDataLoader(), nullptr);
+}
+
 TEST(CudaExternalDataLoaderTest, ReusesAlternatingBuffersAcrossRepeatedLoads) {
   VerifyLoad(2 * kStagingBufferSize + 1, 2);
 }

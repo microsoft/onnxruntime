@@ -140,10 +140,9 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                 ORT_RETURN_IF_ERROR(
                     ParseStringWithClassicLocale(value_str, info.external_data_loader_reading_threads));
                 ORT_RETURN_IF_NOT(
-                    info.external_data_loader_reading_threads > 0 &&
-                        info.external_data_loader_reading_threads <= kMaxReadingThreadCount,
+                    info.external_data_loader_reading_threads <= kMaxReadingThreadCount,
                     cuda::provider_option_names::kExternalDataLoaderReadingThreads,
-                    " must be between 1 and ", kMaxReadingThreadCount, ".");
+                    " must be between 0 and ", kMaxReadingThreadCount, ".");
                 return Status::OK();
               })
           .AddValueParser(
