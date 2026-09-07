@@ -2400,6 +2400,11 @@ struct OrtEp {
    * used to compile a given model. This string can later be used with ValidateCompiledModelCompatibilityInfo
    * to determine if a compiled model is compatible with the EP.
    *
+   * The format and contents of the string are defined by the EP and are opaque to ORT and applications. The EP should
+   * include enough information to determine whether the compiled model can run with a future EP configuration. This may
+   * include the devices used to compile the model, but applications are not expected to parse or otherwise recover that
+   * information from the string.
+   *
    * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
    *
    * \param[in] this_ptr The OrtEp instance.
@@ -2871,20 +2876,45 @@ struct OrtEpFactory {
    */
   ORT_API_T(const char*, GetVersion, _In_ const OrtEpFactory* this_ptr);
 
-  /** \brief Validate the compatibility of a compiled model with the execution provider factory for one or more devices.
+  /** \brief Validate a compiled model against an ordered execution provider device configuration.
    *
-   * Given a compatibility info string produced during model compilation, the EP factory should determine whether the
-   * compiled model is compatible with the EP factory when targeting the provided hardware devices. All devices provided
-   * must belong to the same execution provider instance that this factory creates.
+   * Given a compatibility info string produced during model compilation, the EP factory determines whether the compiled
+   * model can run when the EP is created with the provided hardware devices. The string is opaque to ORT and the caller;
+   * the caller is not expected to know which devices were used to compile the model.
    *
-   * The EP factory implementation should consider the set of devices (e.g., multi-adapter or multi-GPU scenarios) when
-   * evaluating compatibility and set `model_compatibility` accordingly.
+   * `devices` is the non-empty, ordered device configuration that the caller intends to use. The caller should pass the
+   * corresponding OrtEpDevice values, in the same order, to OrtApi::SessionOptionsAppendExecutionProvider_V2 if it
+   * subsequently creates a session for the compiled model. Device order may be significant.
+   *
+   * The implementation must interpret the configuration using the same device selection, fallback, and participation
+   * rules as OrtEpFactory::CreateEp:
+   *
+   * - If CreateEp would select one effective device and ignore the remaining entries, validate that effective device.
+   * - If CreateEp would treat the entries as alternative or fallback devices, determine whether it can select a
+   *   compatible execution plan. An unused device must not make the result less compatible.
+   * - If CreateEp would use multiple devices together, every device required by the effective execution plan must be
+   *   compatible with its assigned part of the compiled model.
+   *
+   * Do not unconditionally validate each device independently and return the worst result. The meaning of a multi-device
+   * configuration is EP-defined. For example, an artifact compiled for one device can be optimal for an ordered
+   * configuration in which that device is selected and later entries are ignored. Conversely, an artifact partitioned
+   * across two devices is unsupported if either required device is absent.
+   *
+   * A supported result must mean that creating the EP and loading the compiled model with the equivalent device
+   * configuration will not fail due to compiled-model incompatibility. OrtCompiledModelCompatibility_EP_NOT_APPLICABLE
+   * is an overall "no compatibility determination" result; it is not a required identity value for combining
+   * per-device results.
+   *
+   * \note This callback receives hardware devices but not the per-device EP metadata or session options passed to
+   * OrtEpFactory::CreateEp. An EP whose compatibility decision depends on configuration not represented by the hardware
+   * devices or compatibility string should avoid reporting a supported result unless it can make a reliable
+   * determination from the available information.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] devices Array of OrtHardwareDevice pointers that the EP would run on. All must map to this EP.
-   * \param[in] num_devices Number of entries in `devices`.
+   * \param[in] devices Ordered array of OrtHardwareDevice pointers for the intended EP configuration.
+   * \param[in] num_devices Number of entries in `devices`. Must be greater than zero.
    * \param[in] compatibility_info The compatibility information string produced when the model was compiled.
-   * \param[out] model_compatibility OrtCompiledModelCompatibility value describing the compatibility of the model with the EP.
+   * \param[out] model_compatibility Compatibility of the model with the intended EP device configuration.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

@@ -602,6 +602,42 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
   std::filesystem::remove_all(package_root, ec);
 }
 
+TEST(ModelPackageTest, ValidateCompiledModelCompatibilityInfo_UsesIntendedDeviceConfiguration) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const std::string ort_api_version = std::to_string(ORT_API_VERSION);
+  const std::string compatible_info =
+      "example_ep;version=0.1.0;ort_api_version=" + ort_api_version + ";hardware_architecture=arch1";
+  const std::string suboptimal_info =
+      "example_ep;version=0.1.0;ort_api_version=" + ort_api_version + ";hardware_architecture=arch2";
+  const std::string malformed_info = "example_ep;ort_api_version=" + ort_api_version;
+  const std::string foreign_info = "other_ep;version=0.1.0;ort_api_version=" + ort_api_version;
+
+  const std::vector<Ort::ConstEpDevice> intended_configuration{plugin_ep_device};
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(intended_configuration, compatible_info.c_str()),
+            OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL);
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(intended_configuration, suboptimal_info.c_str()),
+            OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION);
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(intended_configuration, malformed_info.c_str()),
+            OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(intended_configuration, ""),
+            OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(intended_configuration, foreign_info.c_str()),
+            OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
+
+  // The example EP's CreateEp implementation accepts exactly one device. Validation rejects the same invalid
+  // configuration instead of independently validating both entries and folding their compatibility results.
+  const OrtEpDevice* repeated_devices[] = {example_ep.get(), example_ep.get()};
+  OrtCompiledModelCompatibility compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  Ort::Status status{Ort::GetApi().GetModelCompatibilityForEpDevices(
+      repeated_devices, 2, compatible_info.c_str(), &compatibility)};
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("only supports selection for one device"));
+}
+
 TEST(ModelPackageTest, ParseVariantsFromPackageRoot) {
   const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_parse_from_package_root";
   BuildTwoVariantPackage(package_root,
