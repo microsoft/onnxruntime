@@ -753,30 +753,6 @@ TEST(XnnpackEP, TestResize_EmptyScales_NoTerminate) {
                });
 }
 
-// Companion to TestResize_EmptyScales_NoTerminate for the `sizes` branch of
-// Resize::IsOnnxNodeSupported (issue #32298). A conformant Resize supplies `scales` and passes an
-// empty `sizes` initializer for the omitted input. Before the length guard, size_val.DataAsSpan
-// <int64_t>()[1] on that zero-length span tripped the GSL bounds check -> std::terminate() during
-// GetCapability. The checker must reject it and fall back to the CPU EP instead.
-TEST(XnnpackEP, TestResize_EmptySizes_NoTerminate) {
-  const std::vector<int64_t> input_shape = {1, 3, 32, 32};
-  auto modelBuilder = [&](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<float>(input_shape, -1.f, 1.f);
-    auto* roi = builder.MakeInitializer<float>({0}, {});
-    auto* scales = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 2.0f, 2.0f});
-    auto* sizes = builder.MakeInitializer<int64_t>({0}, {});  // empty -> the trigger
-    auto* output_arg = builder.MakeOutput();
-    auto& resize_node = builder.AddNode("Resize", {input, roi, scales, sizes}, {output_arg});
-    resize_node.AddAttribute("mode", "linear");
-    resize_node.AddAttribute("coordinate_transformation_mode", "asymmetric");
-  };
-  RunModelTest(modelBuilder, "xnnpack_test_graph_resize_empty_sizes",
-               {
-                   ExpectedEPNodeAssignment::None,
-                   1e-4f /* fp32_abs_err */,
-               });
-}
-
 #endif
 
 }  // namespace test

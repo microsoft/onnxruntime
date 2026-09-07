@@ -100,9 +100,10 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     if (size_tensor) {
       const Initializer size_val(graph_viewer.GetGraph(), *size_tensor, node_unit.ModelPath());
       const auto sizes = size_val.DataAsSpan<int64_t>();
-      // As with `scales` above, `sizes` must be the rank-4 NCHW vector. Guard the length before
-      // indexing so a malformed/empty `sizes` initializer is rejected here instead of tripping the
-      // gsl::span bounds check and std::terminate()ing the process (issue #32298).
+      // As with `scales` above, `sizes` must be the rank-4 NCHW vector. ONNX requires
+      // len(sizes) == rank(X) so a valid model always satisfies this, but guard the length anyway:
+      // an out-of-range index here is an uncatchable std::terminate() rather than an error status
+      // (issue #32298). Defense in depth against a malformed model.
       if (sizes.size() != 4 || sizes[1] != x_shape->dim(1).dim_value()) {
         break;
       }
