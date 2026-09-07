@@ -12,16 +12,6 @@
 #include <filesystem>
 #include <regex>
 
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif  // WIN32_LEAN_AND_MEAN
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif  // NOMINMAX
-#include <windows.h>
-#endif  // _WIN32
-
 #include "core/framework/murmurhash3.h"
 #include "core/providers/cann/cann_common.h"
 #include "core/providers/cann/cann_inc.h"
@@ -138,37 +128,9 @@ bool FileExist(const std::string& file_name);
 void GenerateHashValue(const std::string string, HashValue& hash_value);
 bool is_dynamic_shape(const aclmdlIODims& dims);
 std::string MatchFile(const std::string& file_name);
+Status SaveFile(const std::string& file_name, const ge::ModelBufferData& model);
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
 bool GetRepeatInitFlag();
 void SetRepeatInitFlag(bool val);
-
-class InterprocessFileLock {
- public:
-  explicit InterprocessFileLock(const std::string& name, bool temp = false);
-
-  ~InterprocessFileLock();
-
-  InterprocessFileLock(const InterprocessFileLock&) = delete;
-  InterprocessFileLock& operator=(const InterprocessFileLock&) = delete;
-
-  InterprocessFileLock(InterprocessFileLock&&) = delete;
-  InterprocessFileLock& operator=(InterprocessFileLock&&) = delete;
-
-  void lock();
-
-  bool try_lock();
-
-  void unlock();
-
- private:
-  std::string filepath_;
-  bool is_locked_;
-
-#ifdef _WIN32
-  HANDLE handle_;
-#else
-  int fd_;
-#endif
-};
 }  // namespace cann
 }  // namespace onnxruntime
