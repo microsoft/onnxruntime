@@ -483,8 +483,8 @@ TEST_F(WebGpuConcurrentContextTest, SessionAllocatorAndRunConcurrently) {
   ASSERT_FALSE(sink.Failed()) << sink.FirstError();
 }
 
-// Case G: an environment shared allocator is one object used by all sessions. It creates external
-// buffers directly and must remain thread-safe without a BufferManager or recording timeline.
+// Case G: an environment shared allocator is one object used by all sessions. It uses the context
+// BufferManager with private command state and must remain thread-safe across callers.
 TEST_F(WebGpuConcurrentContextTest, SharedAllocatorMultiThreadCreateTensor) {
   constexpr int kThreads = 4;
   constexpr int kIters = 60;

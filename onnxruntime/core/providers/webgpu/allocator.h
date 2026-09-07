@@ -36,7 +36,13 @@ class GpuBufferAllocator : public IAllocator {
   virtual void Free(void* p) override;
   void GetStats(AllocatorStats* stats) override;
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  bool IsStreamAware() const override { return true; }
+  void* AllocOnStream(size_t size, Stream* stream) override;
+#endif
+
  private:
+  void* Allocate(size_t size, bool submit_zero_initialize);
   AllocatorStats stats_;
   std::function<const BufferManager&()> buffer_manager_getter_;
   std::function<CommandRecordingState&()> recording_getter_;
@@ -47,11 +53,12 @@ class GpuBufferAllocator : public IAllocator {
   bool initialize_to_zero_;
 };
 
-// Environment-level shared allocator. External tensors are not transient session workspace, so
-// they bypass the context BufferManager and do not participate in a session recording timeline.
+// Environment-level shared allocator. It uses the context BufferManager with private command state,
+// so it shares the buffer cache without participating in any Session command timeline.
 class ExternalGpuBufferAllocator : public IAllocator {
  public:
   explicit ExternalGpuBufferAllocator(std::shared_ptr<WebGpuContext> context);
+  ~ExternalGpuBufferAllocator() override;
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
@@ -59,7 +66,7 @@ class ExternalGpuBufferAllocator : public IAllocator {
 
  private:
   std::shared_ptr<WebGpuContext> context_;
-  std::mutex stats_mutex_;
+  std::unique_ptr<CommandRecordingState> command_state_;
   AllocatorStats stats_;
 };
 
@@ -84,6 +91,11 @@ AllocatorPtr CreateWebGpuAllocator(bool device_free,
                                    std::function<CommandRecordingState&()> recording_getter,
                                    bool is_read_only_allocator,
                                    std::function<bool()> should_submit_zero_initialize = {});
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+OrtAllocator* CreateWebGpuSessionAllocator(AllocatorPtr allocator);
+bool TryReleaseWebGpuSessionAllocator(OrtAllocator* allocator);
+#endif
 
 }  // namespace webgpu
 }  // namespace onnxruntime

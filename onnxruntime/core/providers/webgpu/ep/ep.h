@@ -48,6 +48,9 @@ class Ep : public onnxruntime::ep::adapter::Ep {
                                                      _In_ const OrtMemoryInfo* memory_info,
                                                      _Outptr_result_maybenull_ OrtAllocator** allocator) noexcept;
 
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(
+      OrtEp* this_ptr, const OrtMemoryDevice* memory_device, OrtSyncStreamImpl** stream) noexcept;
+
   static OrtStatus* ORT_API_CALL GetPreferredDataLayoutImpl(_In_ OrtEp* this_ptr,
                                                             _Out_ OrtEpDataLayout* preferred_data_layout) noexcept;
 

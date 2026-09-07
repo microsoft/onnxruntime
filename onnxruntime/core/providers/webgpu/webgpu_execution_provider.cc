@@ -60,7 +60,9 @@ class Memcpy final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    return Info().GetDataTransferManager().CopyTensor(*X, *Y);
+    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
+    DataTransfer transfer(ep.BufferManager(), ep.Recording());
+    return transfer.CopyTensor(*X, *Y);
   }
 };
 

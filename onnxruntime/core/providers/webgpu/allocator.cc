@@ -7,6 +7,7 @@
 #include "core/framework/session_state.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
@@ -31,6 +32,12 @@ GpuBufferAllocator::GpuBufferAllocator(
 }
 
 void* GpuBufferAllocator::Alloc(size_t size) {
+  auto& recording = recording_getter_();
+  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
+  return Allocate(size, should_submit_zero_initialize_ && should_submit_zero_initialize_());
+}
+
+void* GpuBufferAllocator::Allocate(size_t size, bool submit_zero_initialize) {
   if (size == 0) {
     return nullptr;
   }
@@ -42,10 +49,65 @@ void* GpuBufferAllocator::Alloc(size_t size) {
   wgpu::BufferUsage usage = mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
                                                 : wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
 
-  const bool submit_zero_initialize = should_submit_zero_initialize_ && should_submit_zero_initialize_();
   return buffer_manager_getter_().Create(recording, size, usage, initialize_to_zero_,
                                          submit_zero_initialize);
 }
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+void* GpuBufferAllocator::AllocOnStream(size_t size, Stream* stream) {
+  if (stream == nullptr) {
+    return Alloc(size);
+  }
+  ORT_ENFORCE(&GetWebGpuStreamCommandState(reinterpret_cast<OrtSyncStream*>(stream)) == &recording_getter_(),
+              "WebGPU allocator and stream belong to different Sessions.");
+  return Allocate(size, false);
+}
+
+namespace {
+
+struct WebGpuSessionAllocator final : OrtAllocator {
+  explicit WebGpuSessionAllocator(AllocatorPtr impl) : OrtAllocator{}, impl_{std::move(impl)} {
+    version = ORT_API_VERSION;
+    Alloc = AllocImpl;
+    Free = [](OrtAllocator* allocator, void* buffer) noexcept {
+      static_cast<WebGpuSessionAllocator*>(allocator)->impl_->Free(buffer);
+    };
+    Info = [](const OrtAllocator* allocator) noexcept -> const OrtMemoryInfo* {
+      return &static_cast<const WebGpuSessionAllocator*>(allocator)->impl_->Info();
+    };
+    if (impl_->IsStreamAware()) {
+      AllocOnStream = [](OrtAllocator* allocator, size_t size, OrtSyncStream* stream) noexcept -> void* {
+        ORT_TRY {
+          return static_cast<WebGpuSessionAllocator*>(allocator)->impl_->AllocOnStream(
+              size, reinterpret_cast<Stream*>(stream));
+        }
+        ORT_CATCH(...) { return nullptr; }
+      };
+    }
+  }
+
+  static void* ORT_API_CALL AllocImpl(OrtAllocator* allocator, size_t size) noexcept {
+    ORT_TRY { return static_cast<WebGpuSessionAllocator*>(allocator)->impl_->Alloc(size); }
+    ORT_CATCH(...) { return nullptr; }
+  }
+
+  AllocatorPtr impl_;
+};
+
+}  // namespace
+
+OrtAllocator* CreateWebGpuSessionAllocator(AllocatorPtr allocator) {
+  return new WebGpuSessionAllocator(std::move(allocator));
+}
+
+bool TryReleaseWebGpuSessionAllocator(OrtAllocator* allocator) {
+  if (allocator->Alloc != WebGpuSessionAllocator::AllocImpl) {
+    return false;
+  }
+  delete static_cast<WebGpuSessionAllocator*>(allocator);
+  return true;
+}
+#endif
 
 void GpuBufferAllocator::Free(void* p) {
   if (p != nullptr) {
@@ -67,24 +129,23 @@ ExternalGpuBufferAllocator::ExternalGpuBufferAllocator(std::shared_ptr<WebGpuCon
                                OrtAllocatorType::OrtDeviceAllocator,
                                WebGpuDevice,
                                OrtMemTypeDefault)),
-      context_{std::move(context)} {
+      context_{std::move(context)},
+      command_state_{std::make_unique<CommandRecordingState>()} {
 }
+
+ExternalGpuBufferAllocator::~ExternalGpuBufferAllocator() = default;
 
 void* ExternalGpuBufferAllocator::Alloc(size_t size) {
   if (size == 0) {
     return nullptr;
   }
 
-  wgpu::BufferDescriptor descriptor{};
-  descriptor.size = (size + 15) / 16 * 16;
-  descriptor.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
-                     wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
-  WGPUBuffer buffer = context_->Device().CreateBuffer(&descriptor).MoveToCHandle();
-  ORT_ENFORCE(buffer != nullptr, "Failed to create external WebGPU buffer: size=", size, ".");
-
-  std::lock_guard<std::mutex> lock{stats_mutex_};
+  std::lock_guard<std::recursive_mutex> lock{command_state_->mutex};
   ++stats_.num_allocs;
-  return buffer;
+  constexpr wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
+                                      wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
+  return context_->BufferManager().Create(*command_state_, size, usage,
+                                          true, true);
 }
 
 void ExternalGpuBufferAllocator::Free(void* p) {
@@ -92,13 +153,13 @@ void ExternalGpuBufferAllocator::Free(void* p) {
     return;
   }
 
-  wgpuBufferRelease(static_cast<WGPUBuffer>(p));
-  std::lock_guard<std::mutex> lock{stats_mutex_};
+  std::lock_guard<std::recursive_mutex> lock{command_state_->mutex};
+  context_->BufferManager().Release(*command_state_, static_cast<WGPUBuffer>(p));
   --stats_.num_allocs;
 }
 
 void ExternalGpuBufferAllocator::GetStats(AllocatorStats* stats) {
-  std::lock_guard<std::mutex> lock{stats_mutex_};
+  std::lock_guard<std::recursive_mutex> lock{command_state_->mutex};
   *stats = stats_;
 }
 

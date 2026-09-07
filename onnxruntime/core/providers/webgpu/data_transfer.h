@@ -10,10 +10,18 @@
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
+class WebGpuExecutionProvider;
 namespace webgpu {
 
 class BufferManager;
 struct CommandRecordingState;
+
+#if defined(ORT_USE_EP_API_ADAPTERS)
+OrtSyncStreamImpl* CreateWebGpuSyncStream(WebGpuExecutionProvider& ep);
+CommandRecordingState& GetWebGpuStreamCommandState(const OrtSyncStream* stream);
+common::Status CopyTensorOnWebGpuStream(const OrtSyncStream* stream, const void* src_data,
+                                      bool src_is_gpu, void* dst_data, bool dst_is_gpu, size_t bytes);
+#endif
 
 // Low-level data transfer implementation that operates on raw pointers.
 // Used by both DataTransfer (IDataTransfer subclass) and the C API data transfer wrapper.

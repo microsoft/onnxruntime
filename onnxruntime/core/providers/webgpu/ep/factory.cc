@@ -15,6 +15,7 @@
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/allocator.h"
+#include "core/providers/webgpu/data_transfer.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -215,7 +216,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
       [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
       false,
-      [webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); });
+      []() { return true; });
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // default device allocator
@@ -264,6 +265,9 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
 }
 
 void ORT_API_CALL Factory::ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* allocator) noexcept {
+  if (TryReleaseWebGpuSessionAllocator(allocator)) {
+    return;
+  }
   onnxruntime::ep::adapter::Allocator* ptr = static_cast<onnxruntime::ep::adapter::Allocator*>(allocator);
   delete ptr;
 }
@@ -278,7 +282,7 @@ OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
 }
 
 bool ORT_API_CALL Factory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
-  return false;  // Default: not stream aware
+  return true;
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateSyncStreamForDeviceImpl(

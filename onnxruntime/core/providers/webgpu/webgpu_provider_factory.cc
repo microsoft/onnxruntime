@@ -435,7 +435,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       OrtDataTransferImpl* this_ptr,
       const OrtValue** src_tensors,
       OrtValue** dst_tensors,
-      OrtSyncStream** /*streams*/,
+      OrtSyncStream** streams,
       size_t num_tensors) {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
 
@@ -477,9 +477,30 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       void* dst_data = dst_tensor.MutableDataRaw();
       bool dst_is_gpu = dst_tensor.Location().device.Type() == OrtDevice::GPU;
 #endif
+#if defined(ORT_USE_EP_API_ADAPTERS)
+      auto status = streams != nullptr && streams[idx] != nullptr
+                        ? CopyTensorOnWebGpuStream(streams[idx], src_data, src_is_gpu, dst_data, dst_is_gpu, size)
+                        : impl.data_transfer_->CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
+#else
+      ORT_UNUSED_PARAMETER(streams);
       auto status = impl.data_transfer_->CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
+#endif
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
+      }
+      if (src_is_gpu && dst_is_gpu && (streams == nullptr || streams[idx] == nullptr)) {
+        auto& context = WebGpuContextFactory::GetContext(impl.context_id_);
+        std::lock_guard<std::recursive_mutex> lock{impl.recording_.mutex};
+        ORT_THROW_IF_ERROR(context.Flush(context.BufferManager(), impl.recording_));
+        wgpu::QueueWorkDoneStatus completion = wgpu::QueueWorkDoneStatus::Error;
+        auto future = context.Device().GetQueue().OnSubmittedWorkDone(
+            wgpu::CallbackMode::WaitAnyOnly,
+            [](wgpu::QueueWorkDoneStatus result, wgpu::StringView, wgpu::QueueWorkDoneStatus* completion) noexcept {
+              *completion = result;
+            },
+            &completion);
+        ORT_THROW_IF_ERROR(context.Wait(future));
+        ORT_ENFORCE(completion == wgpu::QueueWorkDoneStatus::Success, "WebGPU copy completion failed.");
       }
     }
     return nullptr;
