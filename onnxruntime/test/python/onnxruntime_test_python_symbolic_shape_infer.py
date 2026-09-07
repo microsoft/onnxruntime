@@ -779,6 +779,35 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 
+    def test_reshape_allowzero_one_with_zero_and_inferred_dimension(self):
+        graph = helper.make_graph(
+            [helper.make_node("Reshape", ["input", "shape"], ["output"], allowzero=1)],
+            "Reshape_AllowZero_1_Zero_And_Inferred_Dimension",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, [2, 0, 3])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, [0, 6])],
+            [helper.make_tensor("shape", TensorProto.INT64, [2], [0, -1])],
+        )
+        model = helper.make_model(graph)
+        model.opset_import[0].version = 18
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT, [0, 6]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_reshape_allowzero_zero_with_copied_zero_and_inferred_dimension(self):
+        graph = helper.make_graph(
+            [helper.make_node("Reshape", ["input", "shape"], ["output"], allowzero=0)],
+            "Reshape_AllowZero_0_Copied_Zero_And_Inferred_Dimension",
+            [helper.make_tensor_value_info("input", TensorProto.FLOAT, [0, 2, 3])],
+            [helper.make_tensor_value_info("output", TensorProto.FLOAT, None)],
+            [helper.make_tensor("shape", TensorProto.INT64, [2], [0, -1])],
+        )
+        model = helper.make_model(graph)
+        model.opset_import[0].version = 18
+        with self.assertRaisesRegex(ValueError, "cannot be reshaped"):
+            SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
     def test_reshape_allowzero_chained_zero_element(self):
         # Regression for the chained-Reshape case reported in #28449.
         # Reshape([0,8,2] -> [4,2,-1]) -> mid (4, 2, 0) -> Reshape([0,0,4], allowzero=1)

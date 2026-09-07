@@ -1711,12 +1711,23 @@ class SymbolicShapeInference:
 
             assert new_sympy_shape.count(-1) < 2
             if -1 in new_sympy_shape:
-                # When allow_zero is True a literal 0 contributes 0 to non_deferred_size,
-                # which would make total // non_deferred_size raise ZeroDivisionError.
-                # Per ONNX spec, combining allowzero=1 with -1 is invalid; emit a
-                # symbolic dim rather than crash the inference pass.
                 if non_deferred_size == 0:
-                    new_sympy_shape[deferred_dim_idx] = self._new_symbolic_dim_from_output(node, 0, deferred_dim_idx)
+                    if not allow_zero or (is_literal(total) and total != 0):
+                        raise ValueError("The input tensor cannot be reshaped to the requested shape.")
+                    if total == 0:
+                        input_non_zero_size = sympy_reduce_product([d for d in input_sympy_shape if d != 0])
+                        requested_non_zero_size = sympy_reduce_product([d for d in new_sympy_shape if d not in (0, -1)])
+                        if (
+                            is_literal(input_non_zero_size)
+                            and is_literal(requested_non_zero_size)
+                            and input_non_zero_size % requested_non_zero_size != 0
+                        ):
+                            raise ValueError("The input tensor cannot be reshaped to the requested shape.")
+                        new_sympy_shape[deferred_dim_idx] = input_non_zero_size // requested_non_zero_size
+                    else:
+                        new_sympy_shape[deferred_dim_idx] = self._new_symbolic_dim_from_output(
+                            node, 0, deferred_dim_idx
+                        )
                 else:
                     new_dim = total // non_deferred_size
                     new_sympy_shape[deferred_dim_idx] = new_dim
