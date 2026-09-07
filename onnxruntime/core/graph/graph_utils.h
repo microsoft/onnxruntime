@@ -350,6 +350,12 @@ void ReplaceNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 */
 void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input);
 
+/** Set a non-variadic optional node input, materializing omitted slots up to target_input_idx.
+@remarks Existing empty slots retain their argument count. Newly materialized slots must correspond to omitted
+         optional inputs with argument count zero. There is no edge between an initializer or graph input and a Node.
+*/
+void SetOptionalNodeInput(Graph& graph, Node& target, size_t target_input_idx, NodeArg& new_input);
+
 /** Finalize the fusion of second_node into first_node.
     The output definitions and edges from the second_node are moved to first_node. second_node is deleted.
     e.g. Conv + Add fusion fuses the 'Add' into the Conv.

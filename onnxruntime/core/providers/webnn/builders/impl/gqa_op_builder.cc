@@ -579,6 +579,12 @@ bool GroupQueryAttentionOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_vi
   const auto& op_type = node.OpType();
   NodeAttrHelper helper(node);
 
+  const int64_t causal = helper.Get("causal", static_cast<int64_t>(1));
+  if (causal != 1) {
+    LOGS(logger, VERBOSE) << op_type << " only supports causal=1.";
+    return false;
+  }
+
   const int64_t do_rotary = helper.Get("do_rotary", static_cast<int64_t>(0));
 
   // When do_rotary is true, cos_cache and sin_cache must be provided

@@ -4942,6 +4942,7 @@ static constexpr OrtApi ort_api_1_to_30 = {
     &OrtApis::SessionOptionsSetWeightlessSourceModelBuffer,
     // End of Version 29 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    &OrtApis::KernelContext_GetPreallocatedOutput,
     &OrtApis::SetSeed,
 };
 

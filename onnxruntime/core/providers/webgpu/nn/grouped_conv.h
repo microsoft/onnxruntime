@@ -24,7 +24,8 @@ class GroupedConvProgram final : public Program<GroupedConvProgram> {
       {"strides", ProgramUniformVariableDataType::Uint32},
       {"pads", ProgramUniformVariableDataType::Uint32},
       {"output_channels_per_group", ProgramUniformVariableDataType::Uint32},
-      {"components", ProgramUniformVariableDataType::Uint32});
+      {"components", ProgramUniformVariableDataType::Uint32},
+      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
 
  private:
   const Activation& activation_;

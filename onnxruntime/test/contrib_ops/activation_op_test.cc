@@ -60,6 +60,22 @@ TEST_F(ActivationOpTest, Gelu) {
 }
 #endif
 
+TEST_F(ActivationOpTest, Gelu_half) {
+  const std::vector<MLFloat16>& X = input_values_fp16[0];
+  std::vector<MLFloat16> Y;
+  Y.reserve(X.size());
+  for (const MLFloat16& x_half : X) {
+    const float x = x_half.ToFloat();
+    Y.push_back(MLFloat16(x * 0.5f * (1.0f + std::erf(x * static_cast<float>(M_SQRT1_2)))));
+  }
+
+  OpTester tester("Gelu", 1, onnxruntime::kMSDomain);
+  const std::vector<int64_t> dims{1, 1, static_cast<int64_t>(X.size())};
+  tester.AddInput<MLFloat16>("X", dims, X);
+  tester.AddOutput<MLFloat16>("Y", dims, Y);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 #if defined(USE_DNNL)
 std::vector<BFloat16> expected_output_bfloat16(const std::vector<float>& input_data) {
   std::vector<float> output;

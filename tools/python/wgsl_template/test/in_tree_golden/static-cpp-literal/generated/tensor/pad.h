@@ -144,34 +144,41 @@ ss << "        in_coord = output_index - lower_pads;\n";
 ss << "    }\n";
 // 64 | 
 ss << "\n";
-// 65 |     input_index += select(u32(in_coord)
+// 65 | #if pad_mode == PAD_MODE_WRAP
+if (__param_pad_mode == 3) {
+// 66 |     in_coord = ((in_coord % data_shape) + data_shape) % data_shape;
+ss << "    in_coord = ((in_coord % data_shape) + data_shape) % data_shape;\n";
+// 67 | #endif
+}
+// 68 | 
+// 69 |     input_index += select(u32(in_coord)
 ss << "    input_index += select(u32(in_coord)\n";
-// 66 | #if output.rank > 1
+// 70 | #if output.rank > 1
 if (__var_output.Rank() > 1) {
-// 67 |         * getElementAt(uniforms.data_stride, dim, output.rank - 1)
+// 71 |         * getElementAt(uniforms.data_stride, dim, output.rank - 1)
 ss << "        * ";
 ss << GetElementAt("uniforms.data_stride", "dim", __var_output.Rank() - 1);
 ss << "\n";
-// 68 | #endif
+// 72 | #endif
 }
-// 69 |         , u32(in_coord), dim == output.rank - 1);
+// 73 |         , u32(in_coord), dim == output.rank - 1);
 ss << "        , u32(in_coord), dim == ";
 ss << __var_output.Rank();
 ss << " - 1);\n";
-// 70 |   }
+// 74 |   }
 ss << "  }\n";
-// 71 | 
+// 75 | 
 ss << "\n";
-// 72 |   output.setByOffset(global_idx, select(data[input_index], constant_value, use_pad_value));
+// 76 |   output.setByOffset(global_idx, select(data[input_index], constant_value, use_pad_value));
 ss << "  ";
 ss << __var_output.SetByOffset("global_idx", "select(data[input_index], constant_value, use_pad_value)");
 ss << ";\n";
-// 73 | #endif
+// 77 | #endif
 }
-// 74 | } // MAIN
+// 78 | } // MAIN
 MainFunctionEnd();
 ss << "\n";
-// 75 | 
+// 79 | 
 
 
   return Status::OK();

@@ -478,7 +478,12 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   // if (threadIdx.x == 0 && blockIdx.y == 1 && blockIdx.z == 0) { printf("params.knew_ptr = %p, seqlen_k_cache + seqlen_knew = %d\n", params.knew_ptr, binfo.seqlen_k_cache + (params.knew_ptr == nullptr ? 0 : params.seqlen_knew)); }
   if (m_block * kBlockM >= binfo.actual_seqlen_q) return;
 
-  const int n_blocks_per_split = ((params.seqlen_k + kBlockN - 1) / kBlockN + num_n_splits - 1) / num_n_splits;
+  // CUDA graph replay keeps the split count and workspace sizes fixed, but varlen sequence lengths
+  // remain live device values. Partition the live tiles so a loose replay upper bound does not
+  // concentrate all useful work in the first split. Fixed-length callers retain the original extent.
+  const int n_blocks_to_split =
+      cute::ceil_div(Is_even_MN ? params.seqlen_k : binfo.actual_seqlen_k, kBlockN);
+  const int n_blocks_per_split = cute::ceil_div(n_blocks_to_split, num_n_splits);
   const int n_block_min = !Is_local
                               ? n_split_idx * n_blocks_per_split
                               : std::max(n_split_idx * n_blocks_per_split, (m_block * kBlockM + binfo.actual_seqlen_k - binfo.actual_seqlen_q - params.window_size_left) / kBlockN);

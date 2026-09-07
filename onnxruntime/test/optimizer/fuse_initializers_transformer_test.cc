@@ -4,6 +4,7 @@
 #include <algorithm>  // needed for std::transform
 #include "gtest/gtest.h"
 #include "test/unittest_util/framework_test_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/asserts.h"
@@ -510,6 +511,37 @@ TEST(TransformerTest, FuseFp16InitializersWithGraphOutputs) {
   _graph_structure_at_initialized(session.GetGraph());
   ASSERT_STATUS_OK(session.Run(inputs, output_names, &outputs));
 }  // FuseFp16InitializersWithGraphOutputs
+
+TEST(TransformerTest, FuseInitializersSkipsOverridableInitializer) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("FuseInitializersSkipsOverridableInitializer", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 23}}, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  NodeArg* initializer = builder.MakeInitializer<MLFloat16>({1}, {MLFloat16(1.0f)});
+  NodeArg* cast_output = builder.MakeIntermediate<float>(std::vector<int64_t>{1});
+  builder.AddNode("Cast", {initializer}, {cast_output})
+      .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+  NodeArg* output = builder.MakeOutput<float>(std::vector<int64_t>{1});
+  builder.AddNode("Neg", {cast_output}, {output});
+
+  graph.SetInputs({initializer});
+  graph.SetOutputs({output});
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_TRUE(graph.IsInitializedTensor(initializer->Name()));
+  ASSERT_EQ(nullptr, graph_utils::GetConstantInitializer(graph, initializer->Name()));
+
+  FuseInitializersTransformer transformer("TransformerTest.FusedInitializers",
+                                          DataTypeImpl::GetTensorType<MLFloat16>(),
+                                          DataTypeImpl::GetTensorType<float>());
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, logger));
+
+  EXPECT_FALSE(modified);
+  EXPECT_EQ(1, CountOpsInGraph(graph)["Cast"]);
+  EXPECT_EQ(1, CountOpsInGraph(graph)["Neg"]);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

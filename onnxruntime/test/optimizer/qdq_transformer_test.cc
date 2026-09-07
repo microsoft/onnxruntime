@@ -11,10 +11,12 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/double_qdq_pairs_remover.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/qdq_transformer/weight_bias_quantization.h"
 #include "core/optimizer/qdq_transformer/where_dummy_dq.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
+#include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
@@ -282,6 +284,66 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
 }
 
 #if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__) || !defined(DISABLE_CONTRIB_OPS)
+
+static void RunQDQOmittedDQZeroPointTest(bool use_explicit_empty_input) {
+  auto build_test_case = [use_explicit_empty_input](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({1}, {1.0f});
+    auto* q_scale = builder.MakeScalarInitializer<float>(0.5f);
+    auto* q_zero_point = builder.MakeScalarInitializer<int8_t>(0);
+    auto* q_output = builder.MakeIntermediate();
+    builder.AddNode("QuantizeLinear", {input, q_scale, q_zero_point}, {q_output});
+
+    auto* dq_scale = builder.MakeScalarInitializer<float>(0.5f);
+    auto* output = builder.MakeOutput();
+    std::vector<NodeArg*> dq_inputs{q_output, dq_scale};
+    if (use_explicit_empty_input) {
+      dq_inputs.push_back(builder.MakeEmptyInput());
+    }
+    builder.AddNode("DequantizeLinear", dq_inputs, {output});
+  };
+
+  auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+  auto post_graph_checker = [](Graph& graph) {
+    const Node* q_node = nullptr;
+    const Node* dq_node = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "QuantizeLinear") {
+        q_node = &node;
+      } else if (node.OpType() == "DequantizeLinear") {
+        dq_node = &node;
+      }
+    }
+
+    ORT_RETURN_IF_NOT(q_node != nullptr && dq_node != nullptr, "Expected Q-DQ node pair");
+    ORT_RETURN_IF_NOT(q_node->InputDefs().size() == 3 && dq_node->InputDefs().size() == 3,
+                      "Expected materialized zero-point inputs");
+    ORT_RETURN_IF_NOT(q_node->InputDefs()[2] == dq_node->InputDefs()[2],
+                      "Expected shared converted zero point");
+
+    const ONNX_NAMESPACE::TensorProto* zero_point = nullptr;
+    ORT_RETURN_IF_NOT(graph.GetInitializedTensor(q_node->InputDefs()[2]->Name(), zero_point) &&
+                          zero_point->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                      "Expected generated uint8 zero point");
+    Initializer zero_point_initializer(graph, *zero_point, graph.ModelPath());
+    ORT_RETURN_IF_NOT(zero_point_initializer.size() == 1 &&
+                          *zero_point_initializer.data<uint8_t>() == 128,
+                      "Expected generated uint8 zero point value 128");
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<QDQS8ToU8Transformer>(false);
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, DefaultLoggingManager().DefaultLogger(),
+                                        std::move(transformer), TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
+TEST(QDQTransformerTests, QDQ_S8_to_U8_TruncatedDQZeroPoint) {
+  RunQDQOmittedDQZeroPointTest(false);
+}
+
+TEST(QDQTransformerTests, QDQ_S8_to_U8_ExplicitEmptyDQZeroPoint) {
+  RunQDQOmittedDQZeroPointTest(true);
+}
 
 TEST(QDQTransformerTests, DQ_S8_to_U8) {
   auto test_case = [](bool use_contrib_qdq) {

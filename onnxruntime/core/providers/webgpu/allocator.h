@@ -23,7 +23,9 @@ class GpuBufferAllocator : public IAllocator {
   // Calls buffer_manager_getter on every Alloc/Free to obtain the current
   // BufferManager. This allows the EP to route allocations to different
   // buffer managers (e.g., per-graph) without explicit refresh calls.
-  GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter, bool is_read_only_allocator);
+  GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter,
+                     bool is_read_only_allocator,
+                     std::function<bool()> should_submit_zero_initialize = {});
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
@@ -32,7 +34,11 @@ class GpuBufferAllocator : public IAllocator {
  private:
   AllocatorStats stats_;
   std::function<const BufferManager&()> buffer_manager_getter_;
+  std::function<bool()> should_submit_zero_initialize_;
   bool mapped_at_creation_;
+  // Cached writable buffers are cleared explicitly by BufferManager::Create. Fresh buffers rely on Dawn's
+  // "lazy_clear_resource_on_first_use" toggle, which is enabled by WebGpuContext.
+  bool initialize_to_zero_;
 };
 
 // No-op allocator used for the WebGPU device when the context has no Dawn device (a device-free /
@@ -53,7 +59,8 @@ class WebGpuNoOpAllocator : public IAllocator {
 // allocation ever happens.
 AllocatorPtr CreateWebGpuAllocator(bool device_free,
                                    std::function<const BufferManager&()> buffer_manager_getter,
-                                   bool is_read_only_allocator);
+                                   bool is_read_only_allocator,
+                                   std::function<bool()> should_submit_zero_initialize = {});
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -259,18 +259,18 @@ $MAIN {
 
             // Load 4 B tiles from shared memory (column-major, padded stride)
             var b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(&buf_b, b_base, true, SHMEM_STRIDE);
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(&buf_b, b_base, SHMEM_STRIDE);
             var b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(&buf_b, b_base + 16u * SHMEM_STRIDE, true, SHMEM_STRIDE);
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(&buf_b, b_base + 16u * SHMEM_STRIDE, SHMEM_STRIDE);
             var b2: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(&buf_b, b_base + 32u * SHMEM_STRIDE, true, SHMEM_STRIDE);
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(&buf_b, b_base + 32u * SHMEM_STRIDE, SHMEM_STRIDE);
             var b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>>(&buf_b, b_base + 48u * SHMEM_STRIDE, true, SHMEM_STRIDE);
+                subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(&buf_b, b_base + 48u * SHMEM_STRIDE, SHMEM_STRIDE);
 
             // A row 0: load from global prepacked memory
             var a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                    &input_a, sg_mat_offset_a0, false, kSgMatK);
+                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                    &input_a, sg_mat_offset_a0, kSgMatK);
             sg_mat_offset_a0 += kSgMatSizeLeft;
             c00 = subgroupMatrixMultiplyAccumulate(a0, b0, c00);
             c01 = subgroupMatrixMultiplyAccumulate(a0, b1, c01);
@@ -279,8 +279,8 @@ $MAIN {
 
             // A row 1
             var a1: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                    &input_a, sg_mat_offset_a1, false, kSgMatK);
+                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                    &input_a, sg_mat_offset_a1, kSgMatK);
             sg_mat_offset_a1 += kSgMatSizeLeft;
             c10 = subgroupMatrixMultiplyAccumulate(a1, b0, c10);
             c11 = subgroupMatrixMultiplyAccumulate(a1, b1, c11);
@@ -289,8 +289,8 @@ $MAIN {
 
             // A row 2
             var a2: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                    &input_a, sg_mat_offset_a2, false, kSgMatK);
+                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                    &input_a, sg_mat_offset_a2, kSgMatK);
             sg_mat_offset_a2 += kSgMatSizeLeft;
             c20 = subgroupMatrixMultiplyAccumulate(a2, b0, c20);
             c21 = subgroupMatrixMultiplyAccumulate(a2, b1, c21);
@@ -299,8 +299,8 @@ $MAIN {
 
             // A row 3
             var a3: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>>(
-                    &input_a, sg_mat_offset_a3, false, kSgMatK);
+                subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
+                    &input_a, sg_mat_offset_a3, kSgMatK);
             sg_mat_offset_a3 += kSgMatSizeLeft;
             c30 = subgroupMatrixMultiplyAccumulate(a3, b0, c30);
             c31 = subgroupMatrixMultiplyAccumulate(a3, b1, c31);
@@ -337,7 +337,7 @@ $MAIN {
     // subgroup (lockstep execution), and each subgroup uses its own non-overlapping stage_base.
 
     // Row 0
-    subgroupMatrixStore(&coopmat_stage, stage_base, c00, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c00, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + i / kSgMatN;
         let c = dc + i % kSgMatN;
@@ -347,7 +347,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c01, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c01, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
@@ -357,7 +357,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c02, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c02, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
@@ -367,7 +367,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c03, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c03, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
@@ -378,7 +378,7 @@ $MAIN {
     }
 
     // Row 1
-    subgroupMatrixStore(&coopmat_stage, stage_base, c10, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c10, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + i % kSgMatN;
@@ -388,7 +388,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c11, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c11, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
@@ -398,7 +398,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c12, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c12, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
@@ -408,7 +408,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c13, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c13, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 16u + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
@@ -419,7 +419,7 @@ $MAIN {
     }
 
     // Row 2
-    subgroupMatrixStore(&coopmat_stage, stage_base, c20, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c20, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + i % kSgMatN;
@@ -429,7 +429,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c21, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c21, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
@@ -439,7 +439,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c22, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c22, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
@@ -449,7 +449,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c23, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c23, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 32u + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
@@ -460,7 +460,7 @@ $MAIN {
     }
 
     // Row 3
-    subgroupMatrixStore(&coopmat_stage, stage_base, c30, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c30, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + i % kSgMatN;
@@ -470,7 +470,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c31, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c31, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + 16u + i % kSgMatN;
@@ -480,7 +480,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c32, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c32, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + 32u + i % kSgMatN;
@@ -490,7 +490,7 @@ $MAIN {
         }
     }
 
-    subgroupMatrixStore(&coopmat_stage, stage_base, c33, false, kSgMatN);
+    subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c33, kSgMatN);
     for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
         let r = dr + 48u + i / kSgMatN;
         let c = dc + 48u + i % kSgMatN;
@@ -504,25 +504,25 @@ $MAIN {
     if (tile_in_bounds) {
         // Fast path: entire 128x128 tile is in bounds - direct store to global
         let base = dr * stride + dc;
-        subgroupMatrixStore(&output, base, c00, false, stride);
-        subgroupMatrixStore(&output, base + 16u, c01, false, stride);
-        subgroupMatrixStore(&output, base + 32u, c02, false, stride);
-        subgroupMatrixStore(&output, base + 48u, c03, false, stride);
+        subgroupMatrixStore<row_major>(&output, base, c00, stride);
+        subgroupMatrixStore<row_major>(&output, base + 16u, c01, stride);
+        subgroupMatrixStore<row_major>(&output, base + 32u, c02, stride);
+        subgroupMatrixStore<row_major>(&output, base + 48u, c03, stride);
 
-        subgroupMatrixStore(&output, base + 16u * stride, c10, false, stride);
-        subgroupMatrixStore(&output, base + 16u * stride + 16u, c11, false, stride);
-        subgroupMatrixStore(&output, base + 16u * stride + 32u, c12, false, stride);
-        subgroupMatrixStore(&output, base + 16u * stride + 48u, c13, false, stride);
+        subgroupMatrixStore<row_major>(&output, base + 16u * stride, c10, stride);
+        subgroupMatrixStore<row_major>(&output, base + 16u * stride + 16u, c11, stride);
+        subgroupMatrixStore<row_major>(&output, base + 16u * stride + 32u, c12, stride);
+        subgroupMatrixStore<row_major>(&output, base + 16u * stride + 48u, c13, stride);
 
-        subgroupMatrixStore(&output, base + 32u * stride, c20, false, stride);
-        subgroupMatrixStore(&output, base + 32u * stride + 16u, c21, false, stride);
-        subgroupMatrixStore(&output, base + 32u * stride + 32u, c22, false, stride);
-        subgroupMatrixStore(&output, base + 32u * stride + 48u, c23, false, stride);
+        subgroupMatrixStore<row_major>(&output, base + 32u * stride, c20, stride);
+        subgroupMatrixStore<row_major>(&output, base + 32u * stride + 16u, c21, stride);
+        subgroupMatrixStore<row_major>(&output, base + 32u * stride + 32u, c22, stride);
+        subgroupMatrixStore<row_major>(&output, base + 32u * stride + 48u, c23, stride);
 
-        subgroupMatrixStore(&output, base + 48u * stride, c30, false, stride);
-        subgroupMatrixStore(&output, base + 48u * stride + 16u, c31, false, stride);
-        subgroupMatrixStore(&output, base + 48u * stride + 32u, c32, false, stride);
-        subgroupMatrixStore(&output, base + 48u * stride + 48u, c33, false, stride);
+        subgroupMatrixStore<row_major>(&output, base + 48u * stride, c30, stride);
+        subgroupMatrixStore<row_major>(&output, base + 48u * stride + 16u, c31, stride);
+        subgroupMatrixStore<row_major>(&output, base + 48u * stride + 32u, c32, stride);
+        subgroupMatrixStore<row_major>(&output, base + 48u * stride + 48u, c33, stride);
     } else {
         // Edge tile: store via coopmat_stage with bounds checking
         // No workgroupBarrier needed: subgroupMatrixStore and scalar reads are within the same
@@ -530,7 +530,7 @@ $MAIN {
         let stage_base = sg_idx * kSgMatM * kSgMatN;
 
         // Row 0
-        subgroupMatrixStore(&coopmat_stage, stage_base, c00, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c00, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + i / kSgMatN;
             let c = dc + i % kSgMatN;
@@ -539,7 +539,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c01, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c01, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + i / kSgMatN;
             let c = dc + 16u + i % kSgMatN;
@@ -548,7 +548,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c02, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c02, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + i / kSgMatN;
             let c = dc + 32u + i % kSgMatN;
@@ -557,7 +557,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c03, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c03, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + i / kSgMatN;
             let c = dc + 48u + i % kSgMatN;
@@ -567,7 +567,7 @@ $MAIN {
         }
 
         // Row 1
-        subgroupMatrixStore(&coopmat_stage, stage_base, c10, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c10, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 16u + i / kSgMatN;
             let c = dc + i % kSgMatN;
@@ -576,7 +576,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c11, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c11, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 16u + i / kSgMatN;
             let c = dc + 16u + i % kSgMatN;
@@ -585,7 +585,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c12, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c12, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 16u + i / kSgMatN;
             let c = dc + 32u + i % kSgMatN;
@@ -594,7 +594,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c13, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c13, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 16u + i / kSgMatN;
             let c = dc + 48u + i % kSgMatN;
@@ -604,7 +604,7 @@ $MAIN {
         }
 
         // Row 2
-        subgroupMatrixStore(&coopmat_stage, stage_base, c20, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c20, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 32u + i / kSgMatN;
             let c = dc + i % kSgMatN;
@@ -613,7 +613,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c21, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c21, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 32u + i / kSgMatN;
             let c = dc + 16u + i % kSgMatN;
@@ -622,7 +622,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c22, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c22, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 32u + i / kSgMatN;
             let c = dc + 32u + i % kSgMatN;
@@ -631,7 +631,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c23, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c23, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 32u + i / kSgMatN;
             let c = dc + 48u + i % kSgMatN;
@@ -641,7 +641,7 @@ $MAIN {
         }
 
         // Row 3
-        subgroupMatrixStore(&coopmat_stage, stage_base, c30, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c30, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 48u + i / kSgMatN;
             let c = dc + i % kSgMatN;
@@ -650,7 +650,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c31, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c31, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 48u + i / kSgMatN;
             let c = dc + 16u + i % kSgMatN;
@@ -659,7 +659,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c32, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c32, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 48u + i / kSgMatN;
             let c = dc + 32u + i % kSgMatN;
@@ -668,7 +668,7 @@ $MAIN {
             }
         }
 
-        subgroupMatrixStore(&coopmat_stage, stage_base, c33, false, kSgMatN);
+        subgroupMatrixStore<row_major>(&coopmat_stage, stage_base, c33, kSgMatN);
         for (var i: u32 = sg_tid; i < kSgMatM * kSgMatN; i += sg_size) {
             let r = dr + 48u + i / kSgMatN;
             let c = dc + 48u + i % kSgMatN;

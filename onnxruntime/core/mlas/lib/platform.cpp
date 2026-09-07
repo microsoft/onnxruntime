@@ -27,14 +27,18 @@ Abstract:
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
-#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
-#include <riscv_vector.h>
-#endif
-
 #include <cctype>
 #include <cstdlib>
 #include <mutex>
 #include <thread>
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV) && defined(__linux__)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+#ifndef COMPAT_HWCAP_ISA_V
+#define COMPAT_HWCAP_ISA_V (1UL << ('V' - 'A'))
+#endif
+#endif
 
 #if defined(MLAS_TARGET_POWER)
 #if defined(__linux__)
@@ -250,6 +254,47 @@ MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveTableLasx[16],
 };
 
 #endif
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+namespace {
+
+bool
+MlasStringEqualsIgnoreCase(
+    const char* value,
+    const char* expected
+    )
+{
+    while (*value != '\0' && *expected != '\0') {
+        const auto lhs = static_cast<unsigned char>(*value);
+        const auto rhs = static_cast<unsigned char>(*expected);
+        if (std::tolower(lhs) != std::tolower(rhs)) {
+            return false;
+        }
+        ++value;
+        ++expected;
+    }
+
+    return *value == '\0' && *expected == '\0';
+}
+
+bool
+MlasShouldForceScalarRiscv(
+    const char* value
+    )
+{
+    if (value == nullptr || value[0] == '\0') {
+        return false;
+    }
+
+    return MlasStringEqualsIgnoreCase(value, "1") ||
+           MlasStringEqualsIgnoreCase(value, "true") ||
+           MlasStringEqualsIgnoreCase(value, "on") ||
+           MlasStringEqualsIgnoreCase(value, "yes");
+}
+
+}  // namespace
+#endif
+
 MLAS_PLATFORM::MLAS_PLATFORM(
     void
     )
@@ -277,6 +322,12 @@ Return Value:
     this->CastF16ToF32Kernel = nullptr;
     this->CastF32ToF16Kernel = nullptr;
 
+    //
+    // Linear attention: portable baseline for every target. ISA-specific
+    // implementations override this in the target-specific blocks below.
+    //
+    this->LinearAttentionDispatch = &MlasLinearAttentionDispatchDefault;
+
 #if defined(MLAS_TARGET_RISCV64)
     this->GemmFloatKernel = nullptr;
     this->GemmU8S8Dispatch = &MlasGemmQuantDispatchDefault;
@@ -295,34 +346,41 @@ Return Value:
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
 
 #if defined(MLAS_USE_RVV)
-    this->GemmFloatKernel = MlasGemmFloatKernelRvv;
-    this->GemmU8S8Dispatch = &MlasGemmQuantDispatchRvv;
-    this->GemmU8U8Dispatch = &MlasGemmQuantDispatchRvv;
-    this->GemmS8S8Dispatch = &MlasGemmQuantDispatchRvv;
-    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchRvv;
-    this->ErfKernelRoutine = MlasErfKernelRvv;
-    this->LogisticKernelRoutine = MlasLogisticKernelRvv;
-    this->GeluErfKernelRoutine = MlasGeluErfKernelRvv;
-    this->SiluKernelRoutine = MlasSiluKernelRvv;
-    this->TanhKernelRoutine = MlasTanhKernelRvv;
-    this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
-    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
-    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
-    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
-    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
-    this->RopeDispatch = &MlasRopeDispatchRvv;
-    this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
-    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchRvv;
+    bool has_rvv = true;
+#if defined(__linux__)
+    has_rvv = (getauxval(AT_HWCAP) & COMPAT_HWCAP_ISA_V) != 0;
+#endif
+    if (MlasShouldForceScalarRiscv(std::getenv("ORT_MLAS_RISCV_FORCE_SCALAR"))) {
+        has_rvv = false;
+    }
+    if (has_rvv) {
+        this->GemmFloatKernel = MlasGemmFloatKernelRvv;
+        this->GemmU8S8Dispatch = &MlasGemmQuantDispatchRvv;
+        this->GemmU8U8Dispatch = &MlasGemmQuantDispatchRvv;
+        this->GemmS8S8Dispatch = &MlasGemmQuantDispatchRvv;
+        this->GemmS8U8Dispatch = &MlasGemmQuantDispatchRvv;
+        this->ErfKernelRoutine = MlasErfKernelRvv;
+        this->LogisticKernelRoutine = MlasLogisticKernelRvv;
+        this->GeluErfKernelRoutine = MlasGeluErfKernelRvv;
+        this->SiluKernelRoutine = MlasSiluKernelRvv;
+        this->TanhKernelRoutine = MlasTanhKernelRvv;
+        this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
+        this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
+        this->RopeDispatch = &MlasRopeDispatchRvv;
+        this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
+        this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchRvv;
 
 #if defined(MLAS_USE_RVV_ZVFH)
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
-        this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelRvv;
-        this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelRvv;
-    }
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+            this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelRvv;
+            this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelRvv;
+        }
 #endif
 
-    // NCHWc kernels require VLEN>=128 so that vfloat32m4_t holds 16 floats.
-    if (__riscv_vlenb() >= 16) {
+        // The V extension implies VLEN>=128, which holds the sixteen-float block.
         this->NchwcBlockSize = 16;
         this->ConvNchwFloatKernel = MlasConvNchwFloatKernelRvv;
         this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelRvv;
@@ -512,6 +570,7 @@ Return Value:
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
+                this->LayerNormF32Kernel = &MlasLayerNormKernelAvx2;
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -549,6 +608,7 @@ Return Value:
 
                 if (((Cpuid7[1] & 0x10000) != 0) && ((xcr0 & 0xE0) == 0xE0)) {
                     this->GeluErfKernelRoutine = MlasGeluErfKernelAvx512F;
+                    this->ErfKernelRoutine = MlasErfKernelAvx512F;
                     this->SiluKernelRoutine = MlasSiluKernelAvx512F;
                     this->GemmFloatKernel = MlasGemmFloatKernelAvx512F;
                     this->GemmDoubleKernel = MlasGemmDoubleKernelAvx512F;
@@ -562,6 +622,7 @@ Return Value:
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
                     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx512F;
+                    this->LinearAttentionDispatch = &MlasLinearAttentionDispatchAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
                     this->NchwcBlockSize = 16;
@@ -641,6 +702,23 @@ Return Value:
 
 #endif // MLAS_TARGET_AMD64
 
+#if defined(MLAS_TARGET_IX86)
+            //
+            // The LayerNorm kernel is the only AVX2/FMA3 kernel compiled for
+            // 32-bit x86, so keep its feature dispatch separate from AMD64.
+            //
+            unsigned Cpuid7[4];
+#if defined(_WIN32)
+            __cpuidex((int*)Cpuid7, 7, 0);
+#else
+            __cpuid_count(7, 0, Cpuid7[0], Cpuid7[1], Cpuid7[2], Cpuid7[3]);
+#endif
+
+            if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
+                this->LayerNormF32Kernel = &MlasLayerNormKernelAvx2;
+            }
+#endif  // MLAS_TARGET_IX86
+
         }
     }
 
@@ -660,6 +738,7 @@ Return Value:
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
     this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchNeon;
+    this->LinearAttentionDispatch = &MlasLinearAttentionDispatchNeon;
     this->KVQuantGemmFp16Supported_ = true;
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
@@ -738,6 +817,13 @@ Return Value:
         }
 #endif
     }
+
+    // QNBitGemm performs its own runtime feature selection.
+    this->MlasQNBitGemmIsSupportedOverride = ArmKleidiAI::MlasQNBitGemmIsSupported;
+    this->MlasQNBitGemmPackQuantBDataSizeOverride = ArmKleidiAI::MlasQNBitGemmPackQuantBDataSize;
+    this->MlasQNBitGemmPackQuantBDataOverride = ArmKleidiAI::MlasQNBitGemmPackQuantBData;
+    this->MlasQNBitGemmBatchWorkspaceSizeOverride = ArmKleidiAI::MlasQNBitGemmBatchWorkspaceSize;
+    this->MlasQNBitGemmBatchOverride = ArmKleidiAI::MlasQNBitGemmBatch;
 #endif
 
 #if defined(MLAS_USE_SVE)
@@ -751,6 +837,12 @@ Return Value:
         this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
+        //
+        // Overrides the NEON LinearAttention dispatch registered above. The SVE
+        // driver hands anything outside its envelope straight back to
+        // MlasLinearAttentionProcessHeadNeon, so this is never a regression.
+        //
+        this->LinearAttentionDispatch = &MlasLinearAttentionDispatchSve;
     }
     else{
         this->ErfKernelRoutine = MlasErfKernel;
@@ -797,12 +889,41 @@ Return Value:
     const bool HasI8MMInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM();
     if (HasI8MMInstructions) {
 #if defined(__linux__)
-
+        //
+        // Hand-written GAS assembly (aarch64/Qgemm{S8S8KernelSmmla,
+        // U8X8KernelUmmla}.S): GAS-only, because armasm64 cannot encode i8mm
+        // mnemonics -- and those kernels also use x18, the reserved platform
+        // register, as a matrix-C row pointer. Off Linux the SVE svmmla
+        // dispatches below cover S8S8, U8S8 and U8U8 from portable frozen
+        // machine code, so nothing is lost.
+        //
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmla;
 #endif
     }
+
+#if defined(MLAS_USE_SVE)
+    //
+    // Prefer the SVE i8mm (svmmla) signed int8 GEMM kernel when the processor
+    // supports SVE with the I8MM extension. It consumes the same packed panels
+    // as the NEON smmla kernel (identical RowSum/ColumnSum zero-point layout),
+    // so the signed-activation contract established below is preserved. The
+    // compute kernels are portable machine code, so this is not OS-gated.
+    //
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE_I8MM()) {
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmlaSve;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmlaSve;
+        //
+        // U8U8 uses the same U8X8 kernel type: MlasGemmQuantFixupZeroPointB
+        // and CopyPackB both key off BIsSigned, and unsigned B is the simpler
+        // case (no 0x80 bit-flip, no zero-point fixup) -- svmmla_u32 wants
+        // unsigned operands either way. The NEON ummla dispatch already serves
+        // both U8U8 and U8S8 from this kernel type on Linux.
+        //
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmlaSve;
+    }
+#endif
 
     this->ArmNeonIsQuantActivationsUnsigned = HasI8MMInstructions ? false : true;
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, HasI8MMInstructions);

@@ -4,6 +4,7 @@
 // Tests for the two fused linear-attention gate ops: LinearAttentionGate and GatedRMSNorm.
 // Both replace float32 elementwise chains that an exporter emits around the LinearAttention op,
 // so the references here are the same float32 formulas ORT's Softplus/Sigmoid/RMSNorm kernels use.
+// The tests run against every EP (CPU, CUDA, WebGPU) that has these ops registered.
 
 #include <cmath>
 #include <random>
@@ -20,6 +21,32 @@ namespace onnxruntime {
 namespace test {
 
 namespace {
+
+std::vector<std::unique_ptr<IExecutionProvider>> AvailableGatedOpExecutionProviders() {
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  if (auto cuda_ep = DefaultCudaExecutionProvider()) {
+    eps.push_back(std::move(cuda_ep));
+  }
+  if (auto webgpu_ep = DefaultWebGpuExecutionProvider()) {
+    eps.push_back(std::move(webgpu_ep));
+  }
+  return eps;
+}
+
+// BFloat16 is currently CUDA-only; other types run on every available EP.
+template <typename T>
+std::vector<std::unique_ptr<IExecutionProvider>> ExecutionProvidersForType() {
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    if (auto cuda_ep = DefaultCudaExecutionProvider()) {
+      eps.push_back(std::move(cuda_ep));
+    }
+    return eps;
+  } else {
+    return AvailableGatedOpExecutionProviders();
+  }
+}
 
 float SigmoidRef(float x) {
   return x > 0.0f ? 1.0f / (1.0f + std::exp(-x)) : 1.0f - 1.0f / (1.0f + std::exp(x));
@@ -53,9 +80,9 @@ std::vector<T> ToTensorType(const std::vector<float>& data) {
 template <typename T>
 void RunLinearAttentionGateTest(int batch_size, int seq_length, int num_heads, bool with_beta,
                                 float tolerance) {
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA EP not available";
+  auto execution_providers = ExecutionProvidersForType<T>();
+  if (execution_providers.empty()) {
+    GTEST_SKIP() << "No execution provider available for this type";
   }
 
   const size_t count = static_cast<size_t>(batch_size) * seq_length * num_heads;
@@ -75,31 +102,34 @@ void RunLinearAttentionGateTest(int batch_size, int seq_length, int num_heads, b
   const std::vector<int64_t> dims = {batch_size, seq_length, num_heads};
   const std::vector<int64_t> param_dims = {num_heads};
 
-  OpTester tester("LinearAttentionGate", 1, onnxruntime::kMSDomain);
-  tester.AddInput<T>("a", dims, ToTensorType<T>(a));
-  tester.AddInput<float>("dt_bias", param_dims, dt_bias);
-  tester.AddInput<float>("decay_scale", param_dims, decay_scale);
-  if (with_beta) {
-    tester.AddInput<T>("b", dims, ToTensorType<T>(b));
-  } else {
-    tester.AddOptionalInputEdge<T>();
-  }
-  tester.AddOutput<T>("decay", dims, ToTensorType<T>(expected_decay), false, tolerance, tolerance);
-  if (with_beta) {
-    tester.AddOutput<T>("beta", dims, ToTensorType<T>(expected_beta), false, tolerance, tolerance);
-  }
+  for (auto& ep : execution_providers) {
+    SCOPED_TRACE("EP: " + ep->Type());
+    OpTester tester("LinearAttentionGate", 1, onnxruntime::kMSDomain);
+    tester.AddInput<T>("a", dims, ToTensorType<T>(a));
+    tester.AddInput<float>("dt_bias", param_dims, dt_bias);
+    tester.AddInput<float>("decay_scale", param_dims, decay_scale);
+    if (with_beta) {
+      tester.AddInput<T>("b", dims, ToTensorType<T>(b));
+    } else {
+      tester.AddOptionalInputEdge<T>();
+    }
+    tester.AddOutput<T>("decay", dims, ToTensorType<T>(expected_decay), false, tolerance, tolerance);
+    if (with_beta) {
+      tester.AddOutput<T>("beta", dims, ToTensorType<T>(expected_beta), false, tolerance, tolerance);
+    }
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(cuda_ep));
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
 }
 
 template <typename T>
 void RunGatedRMSNormTest(int batch_size, int seq_length, int num_heads, int head_dim,
                          float epsilon, float tolerance) {
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA EP not available";
+  auto execution_providers = ExecutionProvidersForType<T>();
+  if (execution_providers.empty()) {
+    GTEST_SKIP() << "No execution provider available for this type";
   }
 
   const int hidden = num_heads * head_dim;
@@ -126,16 +156,19 @@ void RunGatedRMSNormTest(int batch_size, int seq_length, int num_heads, int head
   const std::vector<int64_t> dims = {batch_size, seq_length, hidden};
   const std::vector<int64_t> scale_dims = {head_dim};
 
-  OpTester tester("GatedRMSNorm", 1, onnxruntime::kMSDomain);
-  tester.AddAttribute<float>("epsilon", epsilon);
-  tester.AddInput<T>("X", dims, ToTensorType<T>(x));
-  tester.AddInput<T>("scale", scale_dims, ToTensorType<T>(scale));
-  tester.AddInput<T>("gate", dims, ToTensorType<T>(gate));
-  tester.AddOutput<T>("Y", dims, ToTensorType<T>(expected), false, tolerance, tolerance);
+  for (auto& ep : execution_providers) {
+    SCOPED_TRACE("EP: " + ep->Type());
+    OpTester tester("GatedRMSNorm", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<float>("epsilon", epsilon);
+    tester.AddInput<T>("X", dims, ToTensorType<T>(x));
+    tester.AddInput<T>("scale", scale_dims, ToTensorType<T>(scale));
+    tester.AddInput<T>("gate", dims, ToTensorType<T>(gate));
+    tester.AddOutput<T>("Y", dims, ToTensorType<T>(expected), false, tolerance, tolerance);
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(cuda_ep));
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
 }
 
 }  // namespace
@@ -174,10 +207,7 @@ TEST(ContribOpLinearAttentionGateTest, BFloat16_SpeculativeDecodeTile) {
 
 // Requesting beta without b must be rejected by shape inference, not at execution time.
 TEST(ContribOpLinearAttentionGateTest, BetaWithoutB_FailsShapeInference) {
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA EP not available";
-  }
+  auto execution_providers = AvailableGatedOpExecutionProviders();
 
   constexpr int kNumHeads = 8;
   const std::vector<int64_t> dims = {1, 2, kNumHeads};
@@ -185,19 +215,22 @@ TEST(ContribOpLinearAttentionGateTest, BetaWithoutB_FailsShapeInference) {
   const std::vector<float> values(static_cast<size_t>(2 * kNumHeads), 0.5f);
   const std::vector<float> params(kNumHeads, 0.5f);
 
-  OpTester tester("LinearAttentionGate", 1, onnxruntime::kMSDomain);
-  tester.AddInput<float>("a", dims, values);
-  tester.AddInput<float>("dt_bias", param_dims, params);
-  tester.AddInput<float>("decay_scale", param_dims, params);
-  tester.AddOptionalInputEdge<float>();
-  tester.AddOutput<float>("decay", dims, values);
-  tester.AddOutput<float>("beta", dims, values);
+  for (auto& ep : execution_providers) {
+    SCOPED_TRACE("EP: " + ep->Type());
+    OpTester tester("LinearAttentionGate", 1, onnxruntime::kMSDomain);
+    tester.AddInput<float>("a", dims, values);
+    tester.AddInput<float>("dt_bias", param_dims, params);
+    tester.AddInput<float>("decay_scale", param_dims, params);
+    tester.AddOptionalInputEdge<float>();
+    tester.AddOutput<float>("decay", dims, values);
+    tester.AddOutput<float>("beta", dims, values);
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(cuda_ep));
-  tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "The b input is required when the beta output is requested",
-             {}, nullptr, &execution_providers);
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectFailure,
+               "The b input is required when the beta output is requested",
+               {}, nullptr, &providers);
+  }
 }
 
 TEST(ContribOpGatedRMSNormTest, Float_PerHead) {

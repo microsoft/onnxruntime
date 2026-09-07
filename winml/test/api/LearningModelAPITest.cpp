@@ -5,6 +5,8 @@
 #include "LearningModelAPITest.h"
 #include "APITest.h"
 
+#include <limits>
+
 using namespace winrt;
 using namespace winml;
 using namespace wfc;
@@ -272,6 +274,16 @@ static void CheckLearningModelPixelRange() {
   }
 }
 
+static void RejectOversizedImageDimensions() {
+  WINML_EXPECT_THROW_SPECIFIC(
+    ProtobufHelpers::CreateModel(
+      TensorKind::Float, {1, 3, static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1, 1}, 1, true
+    ),
+    winrt::hresult_error,
+    [](const winrt::hresult_error& e) -> bool { return e.code() == E_INVALIDARG; }
+  );
+}
+
 static void CloseModelCheckEval() {
   LearningModel learningModel = nullptr;
   WINML_EXPECT_NO_THROW(APITest::LoadModel(L"model.onnx", learningModel));
@@ -330,6 +342,7 @@ const LearningModelApiTestsApi& getapi() {
     EnumerateOutputs,
     CloseModelCheckMetadata,
     CheckLearningModelPixelRange,
+    RejectOversizedImageDimensions,
     CloseModelCheckEval,
     CloseModelNoNewSessions,
     CheckMetadataCaseInsensitive,

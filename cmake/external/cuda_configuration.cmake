@@ -73,6 +73,23 @@ macro(setup_cuda_compiler)
   endif()
 endmacro()
 
+function(ort_patch_cuda_12_9_clusterlaunchcontrol_header src dst)
+  if(NOT EXISTS "${src}")
+    return()
+  endif()
+
+  file(READ "${src}" _content)
+  set(_orig "${_content}")
+  string(REPLACE "reinterpret_cast<long2*>" "reinterpret_cast<longlong2*>" _content "${_content}")
+  if(NOT _content STREQUAL _orig)
+    get_filename_component(_dst_dir "${dst}" DIRECTORY)
+    file(MAKE_DIRECTORY "${_dst_dir}")
+    file(WRITE "${dst}" "${_content}")
+  elseif(EXISTS "${dst}")
+    file(REMOVE "${dst}")
+  endif()
+endfunction()
+
 macro(setup_cuda_architectures)
   # cmake-format: off
   # Initialize and normalize CMAKE_CUDA_ARCHITECTURES before enabling CUDA.

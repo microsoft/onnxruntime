@@ -72,6 +72,9 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t M = W->Shape()[0];
   ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
 
+  ORT_RETURN_IF_NOT(B == nullptr || (B->Shape().NumDimensions() == 1 && B->Shape().Size() == M),
+                    "Conv : bias must be a 1D tensor of size output_channels (", M, ")");
+
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
 
@@ -254,6 +257,9 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   // If channels_last_ we should get the back dim for channels instead of [1]
   const int64_t C = channels_last_ ? X->Shape().GetDims().back() : X->Shape()[1];
   const int64_t M = W->Shape()[0];
+
+  ORT_RETURN_IF_NOT(B == nullptr || (B->Shape().NumDimensions() == 1 && B->Shape().Size() == M),
+                    "Conv : bias must be a 1D tensor of size output_channels (", M, ")");
 
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));

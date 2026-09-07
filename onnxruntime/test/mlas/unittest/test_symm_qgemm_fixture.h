@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "core/mlas/lib/mlasi.h"
 #include "test_symm_qgemm.h"
 
 //
@@ -93,16 +92,6 @@ class SymmQgemmS8SignedInputTest : public MlasTestFixture<MlasSymmQgemmTest<int8
   }
 
   void TestBody() override {
-    // The plain-NEON (non-dotprod) SymmQgemm kernel has a known int16
-    // accumulator overflow with extreme int8 operands (see
-    // https://github.com/microsoft/onnxruntime/issues/31573). Skip on hosts
-    // that would fall back to it instead of failing; drop this guard once
-    // that kernel is fixed.
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
-      GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host; "
-                   << "plain-NEON SymmQgemm has a known overflow bug (#31573)";
-    }
-
     static const int8_t a_values[] = {-128, -1, 0, 1, 127, -64, 64, -33};
     static const int8_t b_values[] = {-128, -1, 0, 1, 127, -100, 100, 42};
 

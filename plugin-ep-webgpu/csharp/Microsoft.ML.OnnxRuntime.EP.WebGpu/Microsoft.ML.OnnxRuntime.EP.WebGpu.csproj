@@ -63,6 +63,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="runtimes\linux-arm64\native\**"
+          Pack="true"
+          PackagePath="runtimes/linux-arm64/native/"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('runtimes\linux-arm64\native')" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="runtimes\osx-arm64\native\**"
           Pack="true"
           PackagePath="runtimes/osx-arm64/native/"
