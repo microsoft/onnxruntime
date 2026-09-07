@@ -1678,6 +1678,13 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
             new_seqlens_override=torch.tensor([2, 0], dtype=torch.int32),
             past_seqlens_override=torch.tensor([0, 0], dtype=torch.int32),
         )
+        parity_check_paged_attention(
+            ragged_config,
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([1, 2], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([0, 0], dtype=torch.int32),
+        )
 
     def _gptoss_config(self, sequence_length, *, local=True, use_head_sink=True):
         config = Config(

@@ -33,7 +33,8 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 
 - **Quantized KV cache** (`T_CACHE ∈ {int8, fp8e4m3fn}`). Deferred to Phase 3. WebGPU doesn't have an fp8 storage type at all; int8 is doable but not on the v1 critical path.
 - **LATENT / MLA layout.** Deferred to Phase 4. No customer need on WebGPU yet.
-- **QK-Norm and head-sink** (schema additions in #29912). Deferred to Phase 2.
+- **QK-Norm** (schema addition in #29912). Deferred to Phase 2. Head-sink support is implemented through the
+  generic FlashAttention fallback and the direct paged split-reduce decode path.
 - **Speculative-decoding `slot_mapping = -1` semantics.** Accepted-but-ignored in v1 (the input is validated, the sentinel branch is a one-line follow-up).
 
 ---
@@ -47,7 +48,7 @@ tabs, Electron desktop apps, native WebGPU on Windows/macOS via Dawn).
 | Schema baseline | Build v1 against the **merged expanded schema** (inputs 0-16). WebGPU v1 implements the pre-existing subset and rejects unsupported new inputs/attrs with explicit `NOT_IMPLEMENTED` errors. |
 | `slot_mapping` | v1 rejects any non-null `slot_mapping` input with `ORT_NOT_IMPLEMENTED`. GenAI does not emit this input today. Adding it (and the negative-slot skip-write semantics) is Phase 2 work. |
 | `softcap != 0` | v1 rejects with `ORT_NOT_IMPLEMENTED`. FlashAttention has no softcap today; adding it is a Phase 2 change. |
-| `local_window_size != -1` | v1 rejects with `ORT_NOT_IMPLEMENTED`. Sliding-window attention lands in Phase 2 (port from GQA). |
+| `local_window_size > 0` | Supported through gather-then-flash for correctness. Direct paged prefill and split-reduce decode do not yet apply the local-window mask, so those optimized paths remain disabled. |
 | `T = bfloat16` | v1 rejects (registers `MLFloat16` only). FA has no `bf16` path yet either; both add together in Phase 2 when Dawn's `bf16` support on target adapters stabilizes. |
 
 ---
