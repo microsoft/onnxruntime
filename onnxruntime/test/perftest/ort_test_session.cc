@@ -607,7 +607,17 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (provider_name_ == onnxruntime::kWebGpuExecutionProvider) {
 #ifdef USE_WEBGPU
-    session_options.AppendExecutionProvider("WebGPU", {});
+    // Use the short key form here: -i "enableGraphCapture|1". AppendExecutionProvider prefixes
+    // provider-option keys with "ep.webgpuexecutionprovider." itself, so a fully qualified key is
+    // double-prefixed and silently ignored. Session config entries (-C) do not reach the EP
+    // factory, which reads these at append time.
+#ifdef _MSC_VER
+    std::string option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    ParseSessionConfigs(option_string, provider_options);
+    session_options.AppendExecutionProvider("WebGPU", provider_options);
 #else
     ORT_THROW("WebGPU is not supported in this build\n");
 #endif

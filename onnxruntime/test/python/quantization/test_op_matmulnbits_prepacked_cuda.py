@@ -285,7 +285,7 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
         sess = ort.InferenceSession(model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
         return sess.run(None, {"A": a})[0]
 
-    def _make_int4_case(self, m=32, k=256, n=512, block_size=64):
+    def _make_int4_case(self, m=32, k=256, n=512, block_size=32):
         rng = np.random.default_rng(2024)
         a = rng.normal(0.0, 0.25, size=(m, k)).astype(np.float16)
         weight = rng.normal(0.0, 0.25, size=(k, n)).astype(np.float16)

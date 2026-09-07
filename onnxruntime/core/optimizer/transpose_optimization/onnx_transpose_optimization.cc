@@ -2786,6 +2786,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Softsign", simple_node_handler},
     {"ThresholdedRelu", simple_node_handler},
     {"Celu", simple_node_handler},
+    {"Elu", simple_node_handler},
     {"HardSwish", simple_node_handler},
 
     {"Sin", simple_node_handler},
