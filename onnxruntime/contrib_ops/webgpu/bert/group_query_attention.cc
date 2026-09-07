@@ -394,6 +394,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   // flash attention and apply the local window dynamically from seqlens_k in the shader.
   const bool use_dynamic_flash_window = context.IsGraphCaptureEnabled() &&
                                         parameters.sequence_length_ == 1 &&
+                                        !kv_empty &&
                                         local_window_size_ != -1;
   const int flash_local_window_size = use_dynamic_flash_window ? local_window_size_ : -1;
   bool will_use_flash_attention = false;
