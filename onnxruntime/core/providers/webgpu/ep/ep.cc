@@ -11,6 +11,7 @@
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/allocator.h"
+#include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
 #include "ep/get_capability_utils.h"
@@ -39,7 +40,7 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
   CreateAllocator = CreateAllocatorImpl;
-  CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+  Sync = SyncImpl;
   GetCompiledModelCompatibilityInfo = nullptr;  // Not a compiled EP
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
   IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
@@ -251,6 +252,9 @@ OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
                                   status.ErrorMessage().c_str());
   }
+  if (sync_stream) {
+    return SyncImpl(this_ptr);
+  }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
@@ -300,14 +304,10 @@ OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL Ep::GetGraphCaptureNodeAssignme
   return ep->EpImpl()->GetGraphCaptureNodeAssignmentPolicy();
 }
 
-OrtStatus* ORT_API_CALL Ep::CreateSyncStreamForDeviceImpl(
-    OrtEp* this_ptr, const OrtMemoryDevice* memory_device, OrtSyncStreamImpl** stream) noexcept {
+OrtStatus* ORT_API_CALL Ep::SyncImpl(OrtEp* this_ptr) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto& ep = *static_cast<WebGpuExecutionProvider*>(static_cast<Ep*>(this_ptr)->EpImpl());
-  ORT_ENFORCE(Api().ep.MemoryDevice_GetDeviceType(memory_device) == OrtMemoryInfoDeviceType_GPU &&
-            static_cast<int64_t>(Api().ep.MemoryDevice_GetDeviceId(memory_device)) == ep.GetDeviceId(),
-              "Unsupported memory device for WebGPU Session stream.");
-  *stream = CreateWebGpuSyncStream(ep);
+  ORT_THROW_IF_ERROR(FlushAndWait(WebGpuContextFactory::GetContext(ep.GetDeviceId()), ep.BufferManager(), ep.Recording()));
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
@@ -319,9 +319,9 @@ OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
   auto* ep = static_cast<Ep*>(this_ptr);
   Ort::ConstMemoryInfo ort_memory_info{memory_info};
   if (ort_memory_info.GetAllocatorType() == OrtReadOnlyAllocator) {
-    *allocator = CreateWebGpuSessionAllocator(ep->config_.initializer_allocator);
+    *allocator = new onnxruntime::ep::adapter::Allocator(memory_info, ep->config_.initializer_allocator);
   } else {
-    *allocator = CreateWebGpuSessionAllocator(ep->config_.device_allocator);
+    *allocator = new onnxruntime::ep::adapter::Allocator(memory_info, ep->config_.device_allocator);
   }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

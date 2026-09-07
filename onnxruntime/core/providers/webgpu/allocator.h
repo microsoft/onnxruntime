@@ -36,13 +36,7 @@ class GpuBufferAllocator : public IAllocator {
   virtual void Free(void* p) override;
   void GetStats(AllocatorStats* stats) override;
 
-#if defined(ORT_USE_EP_API_ADAPTERS)
-  bool IsStreamAware() const override { return true; }
-  void* AllocOnStream(size_t size, Stream* stream) override;
-#endif
-
  private:
-  void* Allocate(size_t size, bool submit_zero_initialize);
   AllocatorStats stats_;
   std::function<const BufferManager&()> buffer_manager_getter_;
   std::function<CommandRecordingState&()> recording_getter_;
@@ -53,8 +47,7 @@ class GpuBufferAllocator : public IAllocator {
   bool initialize_to_zero_;
 };
 
-// Environment-level shared allocator. It uses the context BufferManager with private command state,
-// so it shares the buffer cache without participating in any Session command timeline.
+// Environment-level allocator. Buffers are not cached and do not use Session command state.
 class ExternalGpuBufferAllocator : public IAllocator {
  public:
   explicit ExternalGpuBufferAllocator(std::shared_ptr<WebGpuContext> context);
@@ -66,7 +59,7 @@ class ExternalGpuBufferAllocator : public IAllocator {
 
  private:
   std::shared_ptr<WebGpuContext> context_;
-  std::unique_ptr<CommandRecordingState> command_state_;
+  std::mutex mutex_;
   AllocatorStats stats_;
 };
 
@@ -91,11 +84,6 @@ AllocatorPtr CreateWebGpuAllocator(bool device_free,
                                    std::function<CommandRecordingState&()> recording_getter,
                                    bool is_read_only_allocator,
                                    std::function<bool()> should_submit_zero_initialize = {});
-
-#if defined(ORT_USE_EP_API_ADAPTERS)
-OrtAllocator* CreateWebGpuSessionAllocator(AllocatorPtr allocator);
-bool TryReleaseWebGpuSessionAllocator(OrtAllocator* allocator);
-#endif
 
 }  // namespace webgpu
 }  // namespace onnxruntime

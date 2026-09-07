@@ -166,6 +166,14 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
     const OrtLogger* logger,
     OrtEp** ep) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto* factory = static_cast<Factory*>(this_ptr);
+  const auto thread_id = std::this_thread::get_id();
+  {
+    std::lock_guard<std::mutex> lock{factory->creation_mutex_};
+    ORT_ENFORCE(factory->env_transfer_created_, "Create the WebGPU environment data transfer before creating Sessions.");
+    ORT_ENFORCE(!factory->pending_eps_.contains(thread_id),
+                "A WebGPU EP on this thread is still awaiting its Session data transfer.");
+  }
   if (num_devices != 1) {
     return Api().ort.CreateStatus(ORT_INVALID_ARGUMENT,
                                   "WebGPU EP factory currently only supports one device at a time.");
@@ -205,7 +213,6 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(config_options);
   auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
   static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
-  auto factory = static_cast<Factory*>(this_ptr);
   const int context_id = webgpu_ep->GetDeviceId();
   auto* webgpu_ep_ptr = static_cast<WebGpuExecutionProvider*>(webgpu_ep.get());
   // A device-free context (compile-only session) gets a no-op allocator: a real GpuBufferAllocator
@@ -216,7 +223,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
       [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
       false,
-      []() { return true; });
+        []() { return true; });
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // default device allocator
@@ -228,12 +235,27 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
           [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
           true),  // initializer device allocator
   };
-  *ep = new Ep(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
+  auto created_ep = std::make_unique<Ep>(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
+  {
+    std::lock_guard<std::mutex> lock{factory->creation_mutex_};
+    ORT_ENFORCE(factory->pending_eps_.try_emplace(thread_id, created_ep.get()).second,
+                "A WebGPU EP on this thread is still awaiting its Session data transfer.");
+  }
+  *ep = created_ep.release();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 
-void ORT_API_CALL Factory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
+void ORT_API_CALL Factory::ReleaseEpImpl(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
+  auto* factory = static_cast<Factory*>(this_ptr);
+  {
+    std::lock_guard<std::mutex> lock{factory->creation_mutex_};
+    auto pending_ep = std::find_if(factory->pending_eps_.begin(), factory->pending_eps_.end(),
+                                   [ep](const auto& entry) { return entry.second == ep; });
+    if (pending_ep != factory->pending_eps_.end()) {
+      factory->pending_eps_.erase(pending_ep);
+    }
+  }
   delete static_cast<Ep*>(ep);
 }
 
@@ -265,36 +287,33 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
 }
 
 void ORT_API_CALL Factory::ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtAllocator* allocator) noexcept {
-  if (TryReleaseWebGpuSessionAllocator(allocator)) {
-    return;
-  }
   onnxruntime::ep::adapter::Allocator* ptr = static_cast<onnxruntime::ep::adapter::Allocator*>(allocator);
   delete ptr;
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
-    OrtEpFactory* /*this_ptr*/,
+    OrtEpFactory* this_ptr,
     OrtDataTransferImpl** data_transfer) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  *data_transfer = OrtWebGpuCreateDataTransfer();  // TODO(fs-eire): pass context id if needed
+  auto* factory = static_cast<Factory*>(this_ptr);
+  std::lock_guard<std::mutex> lock{factory->creation_mutex_};
+  if (!factory->env_transfer_created_) {
+    *data_transfer = OrtWebGpuCreateDataTransfer();
+    factory->env_transfer_created_ = true;
+  } else {
+    auto pending_ep = factory->pending_eps_.find(std::this_thread::get_id());
+    ORT_ENFORCE(pending_ep != factory->pending_eps_.end(),
+                "Create the WebGPU Session data transfer on the same thread that created its EP.");
+    auto* ep = static_cast<WebGpuExecutionProvider*>(pending_ep->second->EpImpl());
+    *data_transfer = OrtWebGpuCreateDataTransfer(ep->GetDeviceId(), ep);
+    factory->pending_eps_.erase(pending_ep);
+  }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 bool ORT_API_CALL Factory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
-  return true;
-}
-
-OrtStatus* ORT_API_CALL Factory::CreateSyncStreamForDeviceImpl(
-    OrtEpFactory* /*this_ptr*/,
-    const OrtMemoryDevice* /*memory_device*/,
-    const OrtKeyValuePairs* /*stream_options*/,
-    OrtSyncStreamImpl** stream) noexcept {
-  EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  *stream = nullptr;
-  return Api().ort.CreateStatus(ORT_NOT_IMPLEMENTED,
-                                "CreateSyncStreamForDevice is not implemented for this EP factory.");
-  EXCEPTION_TO_RETURNED_STATUS_END
+  return false;
 }
 
 }  // namespace ep

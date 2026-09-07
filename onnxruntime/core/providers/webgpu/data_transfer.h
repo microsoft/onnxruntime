@@ -3,25 +3,19 @@
 
 #pragma once
 
-#include <mutex>
-
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
-class WebGpuExecutionProvider;
 namespace webgpu {
 
 class BufferManager;
+class WebGpuContext;
 struct CommandRecordingState;
 
-#if defined(ORT_USE_EP_API_ADAPTERS)
-OrtSyncStreamImpl* CreateWebGpuSyncStream(WebGpuExecutionProvider& ep);
-CommandRecordingState& GetWebGpuStreamCommandState(const OrtSyncStream* stream);
-common::Status CopyTensorOnWebGpuStream(const OrtSyncStream* stream, const void* src_data,
-                                      bool src_is_gpu, void* dst_data, bool dst_is_gpu, size_t bytes);
-#endif
+common::Status FlushAndWait(WebGpuContext& context, const BufferManager& buffer_manager,
+                            CommandRecordingState& recording);
 
 // Low-level data transfer implementation that operates on raw pointers.
 // Used by both DataTransfer (IDataTransfer subclass) and the C API data transfer wrapper.
@@ -37,7 +31,6 @@ class DataTransferImpl {
                             size_t bytes) const;
 
  private:
-  mutable std::mutex mutex_;
   const BufferManager& buffer_manager_;
   CommandRecordingState& recording_;
 };

@@ -14,14 +14,13 @@ struct OrtDataTransferImpl;
 
 namespace onnxruntime {
 struct ConfigOptions;
+class WebGpuExecutionProvider;
 
 struct WebGpuProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const ConfigOptions& config_options);
 };
 
-// C API to create data transfer for WebGPU EP with lazy initialization
-// Context will be determined from tensors during the first CopyTensors call
-// Caller takes ownership of the returned OrtDataTransferImpl*
-OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id = 0);
+// Caller owns the transfer. A null EP selects independent, synchronous environment copies.
+OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id = 0, WebGpuExecutionProvider* ep = nullptr);
 
 }  // namespace onnxruntime

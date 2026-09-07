@@ -4,9 +4,12 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <type_traits>
 
+#include "core/common/inlined_containers.h"
 #include "ep.h"
 
 namespace onnxruntime {
@@ -71,13 +74,10 @@ class Factory : public OrtEpFactory {
 
   static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* this_ptr) noexcept;
 
-  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(
-      OrtEpFactory* this_ptr,
-      const OrtMemoryDevice* memory_device,
-      const OrtKeyValuePairs* stream_options,
-      OrtSyncStreamImpl** stream) noexcept;
-
   const Config config_;
+  std::mutex creation_mutex_;
+  bool env_transfer_created_ = false;
+  InlinedHashMap<std::thread::id, Ep*> pending_eps_;
 
   Ort::MemoryInfo default_memory_info_;
   Ort::MemoryInfo readonly_memory_info_;  // used for initializers
