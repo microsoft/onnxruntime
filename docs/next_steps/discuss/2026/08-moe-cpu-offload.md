@@ -1,6 +1,7 @@
 # Adaptive CUDA expert offloading for Qwen 3.6 MoE
 
-**Status:** Discussion  
+**Status:** Discussion
+
 **Date:** 2026-08
 
 ## Objective
