@@ -1022,9 +1022,13 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
 // not written one.
 //
 // The shapes below pick the dispatch:
-//   M = 1                  -> matmul_nbits.wgsl.template
-//   M = 8,  block_size 32  -> matmul_nbits_wide_tile.wgsl.template
-//   accuracy_level 4       -> dp4a_matmul*.wgsl.template (where the adapter supports it)
+//   M = 1                   -> matmul_nbits.wgsl.template
+//   M = 8,  block_size 32   -> matmul_nbits_wide_tile.wgsl.template
+//   accuracy_level 4, M = 8 -> dp4a_matmul.wgsl.template (where the adapter supports it)
+// CanApplyDP4AMatrixMatMulNBits also needs subgroups, a non-Apple vendor and M >= 4
+// (kMinMForTileOptimization) for an fp16 output, so the M = 2 case below only reaches
+// dp4a_matmul_small_m on an fp32-output or Qualcomm adapter; elsewhere it lands on the generic
+// kernel and is one more shape for it rather than dp4a coverage.
 // With the option on and an adapter that has subgroup matrices, the subgroup-matrix path declines
 // itself (its cooperative-matrix result type is f16 and cannot honour the request) and the dispatch
 // falls through to one of the kernels above; that fallback is exercised here too.
@@ -1033,8 +1037,6 @@ TEST(MatMulNBits, Float16_LargeK_AccumulatorOverflow) {
 // rather than through a MatMulNBits node; they are covered by the option-enabled cases in
 // matmul_nbits_mlp_fusion_test.cc and matmul_nbits_qkv_fusion_test.cc.
 TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
-  constexpr float abs_error = 0.055f;
-
   struct Case {
     int64_t M;
     int64_t N;
@@ -1049,10 +1051,23 @@ TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
       {8, 128, 1024, 32, 0, false},  // wide tile, prefill shape
       {8, 128, 1024, 32, 0, true},   // wide tile, with bias
       {8, 128, 4096, 32, 4, false},  // dp4a where available, otherwise wide tile
-      {2, 128, 4096, 32, 4, false},  // dp4a small-M where available
+      {2, 128, 4096, 32, 4, false},  // dp4a small-M only on fp32-output/Qualcomm, generic otherwise
   };
 
   for (const auto& c : cases) {
+    // The accuracy_level 4 cases need a looser bound, and not because of the accumulator. The dp4a
+    // kernels quantize A to int8 before the dot product and the CPU reference does not, so at
+    // K = 4096 it is that quantization which sets the error floor: on the D3D12 lanes the spread
+    // against the reference reaches ~0.08 with the option off and ~0.08 with it on, which is the
+    // point, since an accumulator effect would not be symmetric like that. Upstream
+    // Float16_Large already allows 0.1 at this K for the easier accuracy_level 0 case. How closely
+    // the dp4a path tracks the reference is Float16_4b_Accuracy4's job; what these two cases are
+    // here for is to catch a variant that fails to compile or a cache hint that cannot tell the two
+    // apart, and that does not depend on the tolerance.
+    const bool is_dp4a_shape = (c.accuracy_level == 4);
+    const float abs_error = is_dp4a_shape ? 0.15f : 0.055f;
+    const float rel_error = is_dp4a_shape ? 0.03f : 0.02f;
+
     for (const char* acc_f32 : {webgpu::options::kEnableMatmulFp32Accumulation_OFF,
                                 webgpu::options::kEnableMatmulFp32Accumulation_ON}) {
       SCOPED_TRACE(std::string{"enableMatmulFp32Accumulation:"} + acc_f32);
@@ -1066,7 +1081,7 @@ TEST(MatMulNBits, Float16_AccumulatorPrecisionOption_AllPaths) {
       opts.has_zero_point = false;
       opts.has_bias = c.has_bias;
       opts.output_abs_error = abs_error;
-      opts.output_rel_error = 0.02f;
+      opts.output_rel_error = rel_error;
 
       ConfigOptions config_options{};
       ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableMatmulFp32Accumulation, acc_f32)

@@ -617,6 +617,16 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionDoesNotFuseSkipWebGpuPatter
 // comparison as MatMulNBitsMlpFusionMatchesUnfusedSimplifiedWebGpuResults with the option on for both
 // the baseline and the fused session: it fails if the f32 variant of the shader does not compile, if
 // the template parameter is not propagated, or if the cache hint cannot separate the two variants.
+//
+// The tolerance is looser than the option-off version of this test, and turning the option on is the
+// reason. The fused kernel downcasts once, at the final store: with acc_element_t = f32 the gate and
+// up sums, the biases, the SiLU and the gate * up product all stay in f32. The unfused baseline
+// cannot follow it there whatever the option says, because it materializes gate_out, up_out, the
+// Sigmoid output and the SiLU Mul output as f16 tensors, so it rounds four times where the fused
+// kernel rounds once, with the nonlinearity sitting in the middle spreading the difference. On the
+// D3D12 lanes that comes out as a ~1.2% relative gap on the largest outputs (4.10156 unfused against
+// 4.15234 fused) where the option-off run agrees to 1e-3. The QKV version of this test keeps
+// 2e-3/5e-3 because that fusion is three matmuls with no activation between them.
 TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSimplifiedWebGpuResultsWithFp32Accumulation) {
   auto make_ep = []() {
     ConfigOptions config_options{};
@@ -639,8 +649,8 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSimplifiedWeb
       TransformerLevel::Level1,
       TransformerLevel::Level2,
       21,
-      1e-3,
-      1e-3,
+      2e-2,
+      2e-2,
       std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
       make_ep);
 }
