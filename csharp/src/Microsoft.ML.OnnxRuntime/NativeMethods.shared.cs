@@ -482,6 +482,8 @@ namespace Microsoft.ML.OnnxRuntime
         // v1.25 APIs
         public IntPtr RunOptionsEnableProfiling;
         public IntPtr RunOptionsDisableProfiling;
+        public IntPtr KernelInfoGetAttributeArray_string;
+        public IntPtr SetPerSessionThreadPoolCallbacks;
         // v1.27 APIs
         public IntPtr GetMemPatternEnabled;
         public IntPtr GetSessionExecutionMode;
