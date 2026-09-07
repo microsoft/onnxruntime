@@ -1456,6 +1456,82 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
   ExpectExecutionStepTypeContains(GetState(), 1, 3, "WaitOnEPStep", "3rd step: WaitOnEPStep for node 2, for ActivateNotificationStep in stream 0");
   ExpectExecutionStepTypeContains(GetState(), 1, 4, "LaunchKernelStep", "4th step: LaunchKernelStep for node 3");
 }
+
+// Regression test for a bug where a "must alias" (Squeeze/Reshape/Unsqueeze-style) reuse chain that
+// spans multiple logic streams (e.g. CPU followed by CUDA) failed to resolve to its true root
+// (kAllocate) buffer. ComputeReusePlan() resets its scratch `Buffer()` map to identity at the start of
+// every logic stream's iteration, so Reuse() must chase AllocPlan().reused_buffer (which persists across
+// streams) to find the root, rather than Buffer() (which does not). Stopping one hop short lands on a
+// non-canonical (still kReuse) value, which GenerateDeallocationPlan() then silently drops (it only
+// recognizes kAllocate/kAllocatedExternally origins), causing the chain's true final consumer to never
+// be registered against the root buffer and letting it be released while still logically in use.
+TEST_F(PlannerTest, AliasChainAcrossStreamsResolvesToRootBuffer) {
+  // Use "Identity" (single input/output, no required attributes) rather than an op like Squeeze/Unsqueeze
+  // so that Graph::Resolve()'s ONNX schema validation succeeds without extra attributes.
+  std::unique_ptr<::onnxruntime::KernelDef> cpuAliasKernel =
+      KernelDefBuilder().SetName("Identity").Provider(kCpuExecutionProvider).SinceVersion(1, 12).Alias(0, 0).Build();
+  std::unique_ptr<::onnxruntime::KernelDef> cudaAliasKernel =
+      KernelDefBuilder().SetName("Identity").Provider(kCudaExecutionProvider).SinceVersion(1, 12).Alias(0, 0).Build();
+
+  std::string Graph_input("Graph_input"), X("X"), Y("Y"), Z("Z"), W("W");
+  std::string node1("node1"), node2("node2"), node3("node3"), node4("node4");
+  std::vector<onnxruntime::NodeArg*> input1{Arg(Graph_input)}, output1{Arg(X)};
+  std::vector<onnxruntime::NodeArg*> input2{Arg(X)}, output2{Arg(Y)};
+  std::vector<onnxruntime::NodeArg*> input3{Arg(Y)}, output3{Arg(Z)};
+  std::vector<onnxruntime::NodeArg*> input4{Arg(Z)}, output4{Arg(W)};
+
+  // node1 (CPU): allocates the root buffer X.
+  AddNode(*GetStdKernel(), node1, input1, output1);
+  // node2 (CPU, Alias(0,0)): Y must-reuse X. node1/node2 are both on logic stream 0.
+  AddNode(*cpuAliasKernel, node2, input2, output2);
+  // node3 (CUDA, Alias(0,0)): Z must-reuse Y. This decision is made while processing logic stream 1,
+  // i.e. after the per-stream Buffer() reset, so it must chase AllocPlan().reused_buffer, not Buffer().
+  AddNode(*cudaAliasKernel, node3, input3, output3);
+  // node4 (CPU): the true final consumer of the whole alias chain (root buffer X).
+  AddNode(*GetStdKernel(), node4, input4, output4);
+
+  CUDAExecutionProviderInfo epi;
+  onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
+  auto epFactory = ep.CreateExecutionProviderFactory(epi);
+  std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
+  ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
+
+  CreatePlan({}, false);
+
+  ASSERT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2u) << "2 logic streams (CPU, CUDA)";
+
+  int x_idx, y_idx, z_idx;
+  ASSERT_TRUE(GetState().GetOrtValueNameIdxMap().GetIdx(X, x_idx).IsOK());
+  ASSERT_TRUE(GetState().GetOrtValueNameIdxMap().GetIdx(Y, y_idx).IsOK());
+  ASSERT_TRUE(GetState().GetOrtValueNameIdxMap().GetIdx(Z, z_idx).IsOK());
+
+  const SequentialExecutionPlan* plan = GetState().GetExecutionPlan();
+  EXPECT_EQ(plan->allocation_plan[x_idx].alloc_kind, AllocKind::kAllocate);
+  EXPECT_EQ(plan->allocation_plan[y_idx].alloc_kind, AllocKind::kReuse);
+  EXPECT_EQ(plan->allocation_plan[z_idx].alloc_kind, AllocKind::kReuse);
+  // The key regression check: Z's reuse chain must resolve all the way to the root (X), not stop one hop
+  // short at Y (which is itself only a kReuse value, not the canonical buffer owner).
+  EXPECT_EQ(plan->allocation_plan[z_idx].reused_buffer, x_idx)
+      << "Alias chain crossing logic streams did not resolve to the true root buffer";
+
+  // Confirm the deallocation plan correctly accounts for ALL THREE real consumers of X's buffer
+  // (node2 directly, node3 via Y, and node4 via the full chain through Z) -- not just that some
+  // release action for X exists. node2 consumes X directly, so a release action for X exists even
+  // under the pre-fix bug; checking only for existence would not catch the regression. The bug causes
+  // node4 (the chain's true last consumer, reached only via Z->Y->X) to be silently dropped, which
+  // this checks by asserting the release action's ref_count reflects all 3 consumers (since node3 runs
+  // on a different logic stream than node2/node4, GenerateDeallocationPlan() cannot statically resolve
+  // a single last consumer and instead tracks all consumers via ref_count).
+  int ref_count_for_x = -1;
+  for (const auto& release_action : plan->release_actions) {
+    if (release_action.value_index == static_cast<size_t>(x_idx)) {
+      ref_count_for_x = static_cast<int>(release_action.ref_count);
+    }
+  }
+  EXPECT_EQ(ref_count_for_x, 3) << "Buffer X's release action should account for all 3 real consumers "
+                                   "(node2, node3, and node4); a lower count means the alias chain's "
+                                   "final consumer (node4) was silently dropped";
+}
 #endif
 
 #if !defined(__wasm__) && defined(ORT_ENABLE_STREAM)
