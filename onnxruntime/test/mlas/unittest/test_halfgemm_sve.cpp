@@ -55,8 +55,11 @@ Abstract:
 // i.e. A is stored K-major with row stride lda, D is the row-major CountY x
 // CountX NoTrans panel the compute kernels consume.
 //
-extern "C++" void MLASCALL
-MlasHgemmTransposeA_sve(_mlas_fp16_* D, const _mlas_fp16_* A, size_t lda, size_t CountY, size_t CountX);
+// The kernels are extern "C" so the intrinsics reference and the frozen
+// machine code in aarch64/halfgemm_sve_asm.S are interchangeable; take the
+// declaration from the header both implementations agree on rather than
+// restating it here.
+#include "core/mlas/lib/sve/halfgemm_sve.h"
 
 static bool SveAvailable() {
   return MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve();
