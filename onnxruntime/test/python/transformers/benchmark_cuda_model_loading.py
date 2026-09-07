@@ -90,6 +90,8 @@ def main():
         ],
     )
     elapsed = time.perf_counter() - start
+    if "CUDAExecutionProvider" not in session.get_providers():
+        raise RuntimeError("CUDAExecutionProvider was requested but is not active")
 
     print(
         json.dumps(

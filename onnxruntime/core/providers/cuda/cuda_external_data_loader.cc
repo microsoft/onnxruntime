@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <bit>
 #include <future>
+#include <vector>
 
 #include "core/providers/cuda/cuda_common.h"
 
@@ -69,6 +70,37 @@ void SwapByteOrderInplace(void* buffer, size_t length, size_t element_size) {
   for (size_t offset = 0; offset < length; offset += element_size) {
     std::reverse(bytes + offset, bytes + offset + element_size);
   }
+}
+
+common::Status LoadWithPageableBuffer(const Env& env, const std::filesystem::path& path,
+                                      FileOffsetType data_offset, size_t length, Tensor& tensor,
+                                      size_t configured_reader_count) {
+  std::vector<uint8_t> buffer(std::min(kBufferSize, length));
+  auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
+
+  for (size_t offset = 0; offset < length;) {
+    const size_t chunk_size = std::min(buffer.size(), length - offset);
+    ORT_RETURN_IF_ERROR(
+        ReadChunk(env, path, data_offset + offset, chunk_size, buffer.data(), configured_reader_count));
+
+    if (tensor.IsDataType<bool>()) {
+      std::transform(buffer.begin(), buffer.begin() + chunk_size, buffer.begin(),
+                     [](uint8_t value) { return value != 0; });
+    }
+
+    if constexpr (std::endian::native != std::endian::little) {
+      const size_t element_size = tensor.DataType()->Size();
+      if (element_size > 1) {
+        SwapByteOrderInplace(buffer.data(), chunk_size, element_size);
+      }
+    }
+
+    CUDA_RETURN_IF_ERROR(
+        cudaMemcpy(destination + offset, buffer.data(), chunk_size, cudaMemcpyHostToDevice));
+    offset += chunk_size;
+  }
+
+  return Status::OK();
 }
 
 }  // namespace
@@ -159,7 +191,10 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   std::lock_guard<std::mutex> lock(mutex_);
   CudaDeviceGuard device_guard;
   ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
-  ORT_RETURN_IF_ERROR(EnsureResources());
+  const auto resource_status = EnsureResources();
+  if (!resource_status.IsOK()) {
+    return LoadWithPageableBuffer(env, data_file_path, data_offset, length, tensor, reading_thread_count_);
+  }
 
   auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
   std::array<bool, 2> stream_used{};
