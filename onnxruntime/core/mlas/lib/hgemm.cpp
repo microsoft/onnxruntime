@@ -49,37 +49,17 @@ using MLAS_HGEMM_FP16 = MLAS_FP16;
 //
 #if defined(MLAS_USE_SVE)
 
-extern "C++" size_t MLASCALL
-MlasHgemmKernelZero_sve(
-    const _mlas_fp16_* A, const _mlas_fp16_* B, _mlas_fp16_* C,
-    size_t CountK, size_t CountM, size_t CountN,
-    size_t lda, size_t ldc, float alpha);
+//
+// The SVE compute kernels. Two interchangeable implementations satisfy these
+// symbols: the intrinsics reference in sve/halfgemm_kernel_sve.cpp and the
+// frozen machine code in aarch64/halfgemm_sve_asm.S (see
+// onnxruntime_SVE_HGEMM_ASM in onnxruntime_mlas.cmake).
+//
+#include "sve/halfgemm_sve.h"
+#include "sve/halfgemv_sve.h"
 
-extern "C++" size_t MLASCALL
-MlasHgemmKernelAdd_sve(
-    const _mlas_fp16_* A, const _mlas_fp16_* B, _mlas_fp16_* C,
-    size_t CountK, size_t CountM, size_t CountN,
-    size_t lda, size_t ldc, float alpha);
-
-extern "C++" void MLASCALL
-MlasHgemmCopyPackB_sve(
-    _mlas_fp16_* D, const _mlas_fp16_* B,
-    size_t ldb, size_t CountX, size_t CountY);
-
-extern "C++" void MLASCALL
-MlasHgemmTransposePackB_sve(
-    _mlas_fp16_* D, const _mlas_fp16_* B,
-    size_t ldb, size_t CountY, size_t CountX);
-
-extern "C++" void MLASCALL
-MlasHgemmTransposeA_sve(
-    _mlas_fp16_* D, const _mlas_fp16_* A,
-    size_t lda, size_t CountY, size_t CountX);
-
-extern "C++" void MLASCALL
-MlasHgemvFloat16Kernel_sve(
-    const _mlas_fp16_* A, const _mlas_fp16_* B, _mlas_fp16_* C,
-    size_t CountK, size_t CountN, size_t ldb, bool ZeroMode);
+static_assert(PACKED_B_BLOCK_WIDTH_FP16 == MLAS_HGEMM_STRIDEN_THREAD_ALIGN,
+              "packed-B block width must match the driver's N thread alignment");
 
 #endif // MLAS_USE_SVE
 
@@ -95,7 +75,7 @@ MlasHgemvFloat16Kernel_sve(
 //
 #ifndef PACKED_B_BLOCK_WIDTH_FP16
 #define PACKED_B_BLOCK_WIDTH_FP16           MLAS_HGEMM_STRIDEN_THREAD_ALIGN
-#endif
+#endif  // set by sve/halfgemm_sve.h when MLAS_USE_SVE
 
 
 // ============================================================================
@@ -343,6 +323,59 @@ MlasHgemmOperation(
         }
 #endif
         // fall through to general path if gemv unavailable
+    }
+
+    //
+    // --- N == 1 matrix-vector fast path ---
+    //
+    // The general path packs B into PACKED_B_BLOCK_WIDTH_FP16 (32) wide
+    // blocks, so a K x 1 operand pays for a whole block: measured on
+    // Graviton3, N = 1 through N = 16 all cost the same (~404 us at
+    // M = K = 1023), i.e. 21x the per-column rate reached at N >= 32. Skip the
+    // pack entirely for a single column.
+    //
+    // B must be contiguous: it is when TransB (B is 1 x K), and when NoTrans
+    // with ldb == 1. SVE has no 16-bit gather, so a strided B stays on the
+    // general path.
+    //
+    //
+    // --- M == 1 with TransB: the same matrix-vector kernel, operands swapped ---
+    //
+    // With TransB, B is N x K row-major, so C[n] = dot(B[n, :], A) -- a
+    // matrix-vector product with B as the matrix and A as the length-K vector.
+    // MlasHgemvNKernel_sve already computes exactly that, so pass B where it
+    // expects A (row stride ldb) and A where it expects the vector. Without
+    // this the row-vector case falls into the packed path, which was measured
+    // up to 1.9x slower than SGEMM at small N and K.
+    //
+    if (M == 1 && TransA == CblasNoTrans && TransB == CblasTrans &&
+        (beta == 0.0f || beta == 1.0f)) {
+#if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+            MlasHgemvNKernel_sve(
+                reinterpret_cast<const _mlas_fp16_*>(B),   // matrix: N x K, row stride ldb
+                reinterpret_cast<const _mlas_fp16_*>(A),   // vector: length K, contiguous
+                reinterpret_cast<_mlas_fp16_*>(C),
+                N, K, ldb, 1, alpha, (beta == 0.0f));
+            return;
+        }
+#endif
+    }
+
+    if (N == 1 && TransA == CblasNoTrans && (beta == 0.0f || beta == 1.0f)) {
+        const bool b_contiguous = (TransB == CblasTrans) || (ldb == 1);
+#if defined(MLAS_USE_SVE)
+        if (b_contiguous && MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()) {
+            MlasHgemvNKernel_sve(
+                reinterpret_cast<const _mlas_fp16_*>(A),
+                reinterpret_cast<const _mlas_fp16_*>(B),
+                reinterpret_cast<_mlas_fp16_*>(C),
+                M, K, lda, ldc, alpha, (beta == 0.0f));
+            return;
+        }
+#else
+        MLAS_UNREFERENCED_PARAMETER(b_contiguous);
+#endif
     }
 
     // --- general path: stride blocking + pack + kernel loop ---
