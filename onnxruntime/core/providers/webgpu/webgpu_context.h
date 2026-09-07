@@ -135,6 +135,14 @@ struct WebGpuContextConfig {
 #endif  // !NDEBUG
   };
   bool validation_mode_explicitly_set{false};
+  bool enable_robustness{
+#ifndef NDEBUG
+      true  // for debug builds, enable robust buffer access by default
+#else
+      false  // for release builds, disable robust buffer access for performance by default
+#endif
+  };
+  bool enable_robustness_explicitly_set{false};
   bool preserve_device{false};
   // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
   // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
@@ -210,14 +218,13 @@ class WebGpuContext final {
  public:
   Status Wait(wgpu::Future f);
 
+  const wgpu::Instance& Instance() const { return instance_; }
   const wgpu::Device& Device() const { return device_; }
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
   bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
-#if !defined(__wasm__)
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
-#endif
 
   const wgpu::CommandEncoder& GetCommandEncoder() {
     if (!current_command_encoder_) {
@@ -389,14 +396,13 @@ class WebGpuContext final {
 
   webgpu::ValidationMode validation_mode_;
   bool validation_mode_explicitly_set_;
+  bool enable_robustness_ = false;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;
   wgpu::Limits device_limits_;
   std::unordered_set<wgpu::FeatureName> device_features_;
-#if !defined(__wasm__)
   wgpu::AdapterPropertiesSubgroupMatrixConfigs subgroup_matrix_configs_;
-#endif
 
   wgpu::CommandEncoder current_command_encoder_;
   wgpu::ComputePassEncoder current_compute_pass_encoder_;

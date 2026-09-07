@@ -36,6 +36,11 @@ parameters:
   type: boolean
   default: true
 
+- name: build_linux_aarch64
+  displayName: 'Build Linux AArch64'
+  type: boolean
+  default: true
+
 - name: build_macos_arm64
   displayName: 'Build macOS ARM64'
   type: boolean
@@ -119,6 +124,7 @@ extends:
             build_windows_x64: ${{ parameters.build_windows_x64 }}
             build_windows_arm64: ${{ parameters.build_windows_arm64 }}
             build_linux_x64: ${{ parameters.build_linux_x64 }}
+            build_linux_aarch64: ${{ parameters.build_linux_aarch64 }}
             build_macos_arm64: ${{ parameters.build_macos_arm64 }}
             package_version: ${{ parameters.package_version }}
             version_file: ${{ variables.epVersionFile }}

@@ -137,8 +137,7 @@ Status Tile::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateTileVersionedKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateTileVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
 
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -150,7 +149,7 @@ KernelCreateInfo CreateTileVersionedKernelInfo(bool enable_int64) {
       KernelDefBuilder()
           .SetName("Tile")
           .SetDomain(kOnnxDomain)
-          .SinceVersion(StartVersion, EndVersion)
+          .SinceVersion(start_version, end_version)
           .Provider(kWebGpuExecutionProvider)
           .TypeConstraint("T", type_constraints)
           .InputMemoryType(OrtMemTypeCPU, 1)
@@ -158,8 +157,7 @@ KernelCreateInfo CreateTileVersionedKernelInfo(bool enable_int64) {
       kernel_create_fn};
 }
 
-template <int SinceVersion>
-KernelCreateInfo CreateTileKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateTileKernelInfo(int since_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/false);
 
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -171,17 +169,13 @@ KernelCreateInfo CreateTileKernelInfo(bool enable_int64) {
       KernelDefBuilder()
           .SetName("Tile")
           .SetDomain(kOnnxDomain)
-          .SinceVersion(SinceVersion)
+          .SinceVersion(since_version)
           .Provider(kWebGpuExecutionProvider)
           .TypeConstraint("T", type_constraints)
           .InputMemoryType(OrtMemTypeCPU, 1)
           .Build(),
       kernel_create_fn};
 }
-
-// Explicit template instantiations
-template KernelCreateInfo CreateTileVersionedKernelInfo<6, 12>(bool);
-template KernelCreateInfo CreateTileKernelInfo<13>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

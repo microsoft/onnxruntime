@@ -47,6 +47,7 @@ steps:
       Set-Content -Force -Path $npmrcPath -Value @"
       registry=https://aiinfra.pkgs.visualstudio.com/_packaging/${env:artifact_feed}/npm/registry/
       always-auth=true
+      replace-registry-host=npmjs
       "@
 
       Write-Host "Generated npmrc contents:"
@@ -162,7 +163,8 @@ steps:
         Set-Content $m2SettingsXmlPath
 
 
-      # gradle - inject 1ES feed repo into all projects/buildscripts. Auth using creds from maven settings.xml.
+      # gradle - inject 1ES feed repo into plugin management, all projects, and buildscripts.
+      # Auth using creds from maven settings.xml.
       # nb: see HACK note above.
       $gradleInitDir = if ($env:GRADLE_HOME_DIR) { $env:GRADLE_HOME_DIR } else { "~/.gradle" }
       if (!(Test-Path -Path "${gradleInitDir}/init.d")) {
@@ -180,6 +182,22 @@ steps:
         for (x in mavenSettingsServers()) {
           if (x."id".text() == "${env:central_maven_feed_name}") {
             return [username: x.username.text(), password: x.password.text()]
+          }
+        }
+      }
+
+      settingsEvaluated { settings ->
+        settings.pluginManagement {
+          repositories {
+            clear()
+            maven {
+              name "1ES Feed"
+              url uri("https://aiinfra.pkgs.visualstudio.com/_packaging/${env:central_maven_feed_name}/maven/v1")
+              credentials(PasswordCredentials) {
+                username oneEsFeedCredentials().username
+                password oneEsFeedCredentials().password
+              }
+            }
           }
         }
       }
@@ -219,9 +237,9 @@ steps:
     targetType: 'inline'
     script: |
       # NuGet appears to fail if any of the pkg sources are unreachable.
-      # Replace the NuGet.config w/ one that only has the internal feed.
+      # Replace NuGet configs w/ one that only has the internal feed.
       # HACK: We'd rather splice the structure, not override the file.
-      Set-Content -Path "NuGet.config" -Value @"
+      $nugetConfig = @"
       <?xml version="1.0" encoding="utf-8"?>
       <configuration>
         <solution>
@@ -236,3 +254,11 @@ steps:
         </disabledPackageSources>
       </configuration>
       "@
+
+      Set-Content -Path "NuGet.config" -Value $nugetConfig
+
+      # C# builds explicitly pass this config file to dotnet/msbuild restore.
+      $csharpNugetConfigPath = "csharp/NuGet.CSharp.config"
+      if (Test-Path $csharpNugetConfigPath) {
+        Set-Content -Path $csharpNugetConfigPath -Value $nugetConfig
+      }

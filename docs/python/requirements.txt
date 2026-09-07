@@ -16,7 +16,7 @@ numpy<2.0.0
 packaging
 protobuf>=4.25.8
 sympy
-onnx
+onnx >= 1.21.0
 sphinx_exec_code
 sphinx_tabs
 furo

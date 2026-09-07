@@ -44,7 +44,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
   int64_t valid_condition_length = compress_input_length < condition_length ? compress_input_length : condition_length;
 
   // Figure out output shape
-  for (int i = 0; i < valid_condition_length; ++i) {
+  for (int64_t i = 0; i < valid_condition_length; ++i) {
     if (condition_data[i]) {
       ++positive_condition_count;
     }
@@ -73,8 +73,8 @@ Status Compress::Compute(OpKernelContext* ctx) const {
   if (has_axis_) {
     int64_t axes_left_stride = 1;
     int64_t axes_right_stride = 1;
-    for (int i = 0; i < axis; ++i) {
-      axes_left_stride *= input_dimensions[i];
+    for (int64_t i = 0; i < axis; ++i) {
+      axes_left_stride *= input_dimensions[onnxruntime::narrow<size_t>(i)];
     }
 
     for (auto i = static_cast<size_t>(axis + 1); i < rank; ++i) {
@@ -88,13 +88,13 @@ Status Compress::Compute(OpKernelContext* ctx) const {
     if (!IAllocator::CalcMemSizeForArray(static_cast<size_t>(axes_right_stride), element_bytes,
                                          &axes_right_stride_bytes))
       return Status(ONNXRUNTIME, FAIL, "size overflow");
-    for (int i = 0; i < axes_left_stride; ++i) {
-      for (int j = 0; j < valid_condition_length; ++j) {
+    for (int64_t i = 0; i < axes_left_stride; ++i) {
+      for (int64_t j = 0; j < valid_condition_length; ++j) {
         if (!condition_data[j]) {
           continue;
         }
         if (is_string_type) {
-          for (int idxItem = 0; idxItem < axes_right_stride; ++idxItem) {
+          for (int64_t idxItem = 0; idxItem < axes_right_stride; ++idxItem) {
             reinterpret_cast<std::string*>(output_data)[output_index + idxItem] =
                 reinterpret_cast<const std::string*>(input_data)[i * axes_included_right_stride + j * axes_right_stride + idxItem];
           }
@@ -106,7 +106,7 @@ Status Compress::Compute(OpKernelContext* ctx) const {
       }
     }
   } else {
-    for (int i = 0; i < valid_condition_length; ++i) {
+    for (int64_t i = 0; i < valid_condition_length; ++i) {
       if (!condition_data[i]) {
         continue;
       }

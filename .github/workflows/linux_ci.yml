@@ -64,6 +64,7 @@ jobs:
       docker_image_repo: onnxruntimecpubuildpythonx64
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget --enable_transformers_tool_test --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
+      run_go_tests: true
       job_identifier: build-linux-x64-release
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

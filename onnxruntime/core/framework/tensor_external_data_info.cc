@@ -29,6 +29,7 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
                                 std::unique_ptr<ExternalDataInfo>& external_data_info_result) {
   auto external_data_info = std::make_unique<ExternalDataInfo>();
   PrepackedInfos prepacked_infos;
+  bool has_location = false;
 
   const int input_size = input.size();
 
@@ -39,7 +40,11 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
     if (!stringmap.has_value())
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Need a value for the external data info");
 
-    if (stringmap.key() == "location" && !stringmap.value().empty()) {
+    if (stringmap.key() == "location") {
+      ORT_RETURN_IF(has_location,
+                    "model format error! TensorProto external data has duplicate 'location' entries");
+      has_location = true;
+      ORT_RETURN_IF(stringmap.value().empty(), "model format error! External data location cannot be empty");
       external_data_info->rel_path_ = ToWideString(stringmap.value());
     } else if (stringmap.key() == "offset" && !stringmap.value().empty()) {
       ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(stringmap.value(), external_data_info->offset_));

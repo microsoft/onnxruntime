@@ -1238,7 +1238,6 @@ static constexpr OrtEpApi ort_ep_api = {
 
     &OrtExecutionProviderApi::CreateHardwareDevice,
     &OrtExecutionProviderApi::ReleaseHardwareDevice,
-
     &OrtExecutionProviderApi::CreateKernelRegistry,
     &OrtExecutionProviderApi::ReleaseKernelRegistry,
     &OrtExecutionProviderApi::KernelRegistry_AddKernel,
@@ -1288,7 +1287,6 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetAllowedTypes,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetInputIndices,
     &OrtExecutionProviderApi::OpSchemaTypeConstraint_GetOutputIndices,
-
     &OrtExecutionProviderApi::CreateProfilingEvent,
     &OrtExecutionProviderApi::ReleaseProfilingEvent,
     &OrtExecutionProviderApi::ProfilingEvent_GetCategory,
@@ -1300,6 +1298,7 @@ static constexpr OrtEpApi ort_ep_api = {
     // End of Version 25 - DO NOT MODIFY ABOVE
 
     &OrtExecutionProviderApi::SessionOptionsGetWeightlessSourceModelBuffer,
+    // End of Version 29 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -1311,6 +1310,12 @@ static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
 static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(void*) == 72,
               "Size of version 25 API cannot change");
+static_assert(offsetof(OrtEpApi, SessionOptionsGetWeightlessSourceModelBuffer) / sizeof(void*) == 73,
+              "Size of version 29 API cannot change");
+
+// So that nobody forgets to finish an API version, this check will serve as a reminder:
+static_assert(std::string_view(ORT_VERSION) == "1.30.0",
+              "ORT_Version change detected, please follow below steps to ensure OrtEpApi is updated properly");
 
 }  // namespace OrtExecutionProviderApi
 

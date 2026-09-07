@@ -61,3 +61,23 @@ Abstract:
     #define KAI_ASM_END
 
 #endif
+
+#if defined(__ARM_FEATURE_BTI_DEFAULT) && __ARM_FEATURE_BTI_DEFAULT == 1
+    #define KAI_ASM_BTI_C KAI_ASM_INST(0xd503245f)
+
+    #if defined(__ELF__)
+        .pushsection .note.gnu.property, "a"
+        .p2align 3
+        .long 4
+        .long 0x10
+        .long 0x5
+        .asciz "GNU"
+        .long 0xc0000000
+        .long 4
+        .long 1
+        .long 0
+        .popsection
+    #endif
+#else
+    #define KAI_ASM_BTI_C
+#endif

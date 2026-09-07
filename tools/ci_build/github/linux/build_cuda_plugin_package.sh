@@ -9,8 +9,9 @@ DOCKER_IMAGE="onnxruntimecuda128pluginbuild"
 PYTHON_EXE="/opt/python/cp312-cp312/bin/python3.12"
 CUDA_VERSION="12.8"
 CMAKE_CUDA_ARCHS="86"
+arch="x64"
 
-while getopts "i:c:p:v:a:" parameter_Option
+while getopts "i:c:p:v:a:h:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
@@ -18,10 +19,18 @@ c) BUILD_CONFIG=${OPTARG};;
 p) PYTHON_EXE=${OPTARG};;
 v) CUDA_VERSION=${OPTARG};;
 a) CMAKE_CUDA_ARCHS=${OPTARG};;
-*) echo "Usage: $0 -i <docker_image> [-c <build_config>] [-p <python_exe_path>] [-v <cuda_version>] [-a <cuda_archs>]"
+h) arch=${OPTARG};;
+*) echo "Usage: $0 -i <docker_image> [-c <build_config>] [-p <python_exe_path>] [-v <cuda_version>] [-a <cuda_archs>] [-h <arch>]"
    exit 1;;
 esac
 done
+
+# Update parallel to the minimum of the number of processors and 8 for aarch64 to avoid OOM errors during build.
+if [ "$arch" = "aarch64" ]; then
+    PARALLEL=$(( $(nproc) < 8 ? $(nproc) : $(nproc) - 2 ))
+else
+    PARALLEL=""
+fi
 
 PYTHON_BIN_DIR=$(dirname "${PYTHON_EXE}")
 
@@ -54,7 +63,7 @@ docker run --rm \
         --build_dir /build \
         --config ${BUILD_CONFIG} \
         --skip_submodule_sync \
-        --parallel \
+        --parallel ${PARALLEL} \
         --nvcc_threads 1 \
         --flash_nvcc_threads 1 \
         --use_binskim_compliant_compile_flags \

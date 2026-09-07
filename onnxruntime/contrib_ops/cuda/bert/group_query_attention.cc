@@ -101,13 +101,17 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   num_heads_ = static_cast<int>(num_heads);
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_past_bsnh_ = false;
-  is_unidirectional_ = true;
+  const int64_t causal = info.GetAttrOrDefault<int64_t>("causal", 1);
+  ORT_ENFORCE(causal == 0 || causal == 1, "causal must be 0 or 1.");
+  is_unidirectional_ = causal == 1;
   const int64_t local_window_size_attr = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
   // Validate before narrowing to int so an out-of-range attribute cannot wrap to a valid-looking
   // small window (e.g. 2^32 + 128) and silently run a different window than the model specifies.
   ORT_ENFORCE(local_window_size_attr == -1 || (local_window_size_attr > 0 && local_window_size_attr <= std::numeric_limits<int>::max()),
               "local_window_size must be -1 or greater than 0 (and not exceed INT_MAX).");
   local_window_size_ = static_cast<int>(local_window_size_attr);
+  ORT_ENFORCE(is_unidirectional_ || local_window_size_ == -1,
+              "GroupQueryAttention (CUDA): local_window_size must be -1 when causal is 0.");
   sliding_window_cache_ = info.GetAttrOrDefault<int64_t>("sliding_window_cache", 0) == 1;
   ORT_ENFORCE(!sliding_window_cache_ || local_window_size_ > 0,
               "GroupQueryAttention (CUDA): sliding_window_cache=1 requires local_window_size > 0.");
@@ -518,6 +522,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
   // The XQA kernel has no attention_bias input.
   if (enable_xqa_ &&
+      parameters.is_unidirectional &&
       !has_attention_bias &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
@@ -649,11 +654,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   }
 
   // === cuDNN SDPA eligibility (preferred on SM>=90, Hopper/Blackwell) ===
-  // Constrained to the well-supported causal path: non-quantized FP16/BF16 KV cache, no softcap,
-  // no smooth-softmax / head sink, and no sliding window. Rotary and packed QKV are handled by
-  // PrepareQKV before the kernel runs; cuDNN handles grouped-query attention natively.
+  // Constrained to non-quantized FP16/BF16 KV cache, no softcap, no smooth-softmax / head sink,
+  // and no sliding window. Rotary and packed QKV are handled by PrepareQKV before the kernel runs;
+  // cuDNN handles grouped-query attention natively. Keep this path bias-free because an arbitrary
+  // attention bias cannot be composed with cuDNN's fused bottom-right causal mask.
   bool use_cudnn_sdpa = !data.use_xqa &&
-                        !has_attention_bias &&  // GQA's cuDNN path is bottom-right causal, which cuDNN doesn't compose with a bias
+                        !has_attention_bias &&
                         !is_inputs_quantized &&
                         std::is_same<T, U>::value &&
                         parameters.softcap == 0.0f &&
@@ -671,7 +677,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                               parameters.head_size,
                                                               parameters.sequence_length,          // seq_len_q
                                                               parameters.seqlen_present_kv_cache,  // seq_len_kv (capacity)
-                                                              /*is_causal=*/true);
+                                                              parameters.is_unidirectional);
   data.use_cudnn_sdpa = use_cudnn_sdpa;
 
 #if USE_FLASH_ATTENTION
@@ -804,6 +810,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     // Bias-carrying nodes take the unfused fallback below instead.
     bool use_memory_efficient_attention =
         !disable_memory_efficient_attention_ &&
+        !is_inputs_quantized &&
         !has_attention_bias &&
         has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.head_size);
     data.use_memory_efficient_attention = use_memory_efficient_attention;

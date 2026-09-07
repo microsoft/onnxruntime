@@ -8,8 +8,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateReshapeVersionedKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateReshapeVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
   // Reshape is a pure copy/view op. Enabling int64 and uint8 are safe because element values
   // are never interpreted or used in shader arithmetic.
   std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, true);
@@ -24,7 +23,7 @@ KernelCreateInfo CreateReshapeVersionedKernelInfo(bool enable_int64) {
       KernelDefBuilder()
           .SetName("Reshape")
           .SetDomain(kOnnxDomain)
-          .SinceVersion(StartVersion, EndVersion)
+          .SinceVersion(start_version, end_version)
           .Provider(kWebGpuExecutionProvider)
           .TypeConstraint("T", std::move(type_constraints))
           .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
@@ -34,8 +33,7 @@ KernelCreateInfo CreateReshapeVersionedKernelInfo(bool enable_int64) {
       kernel_create_fn};
 }
 
-template <int SinceVersion>
-KernelCreateInfo CreateReshapeKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateReshapeKernelInfo(int since_version, bool enable_int64) {
   // Reshape is a pure copy/view op. Enabling int64 and uint8 are safe because element values
   // are never interpreted or used in shader arithmetic.
   std::vector<MLDataType> type_constraints = GetOpTypeConstraints(enable_int64, true);
@@ -50,7 +48,7 @@ KernelCreateInfo CreateReshapeKernelInfo(bool enable_int64) {
       KernelDefBuilder()
           .SetName("Reshape")
           .SetDomain(kOnnxDomain)
-          .SinceVersion(SinceVersion)
+          .SinceVersion(since_version)
           .Provider(kWebGpuExecutionProvider)
           .TypeConstraint("T", std::move(type_constraints))
           .TypeConstraint("shape", DataTypeImpl::GetTensorType<int64_t>())
@@ -59,15 +57,6 @@ KernelCreateInfo CreateReshapeKernelInfo(bool enable_int64) {
           .Build(),
       kernel_create_fn};
 }
-
-// Explicit template instantiations
-template KernelCreateInfo CreateReshapeVersionedKernelInfo<5, 12>(bool);
-template KernelCreateInfo CreateReshapeVersionedKernelInfo<13, 13>(bool);
-template KernelCreateInfo CreateReshapeVersionedKernelInfo<14, 18>(bool);
-template KernelCreateInfo CreateReshapeVersionedKernelInfo<19, 20>(bool);
-template KernelCreateInfo CreateReshapeVersionedKernelInfo<21, 22>(bool);
-template KernelCreateInfo CreateReshapeVersionedKernelInfo<23, 24>(bool);
-template KernelCreateInfo CreateReshapeKernelInfo<25>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

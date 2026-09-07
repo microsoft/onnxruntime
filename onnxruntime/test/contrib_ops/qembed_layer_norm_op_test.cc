@@ -14,7 +14,12 @@ namespace {
 
 template <typename WeightT>
 static void RunTest(const embedlayernorm::OpData& data,
-                    float accuracy_threshold = 0.25f) {
+                    float accuracy_threshold = 0.25f,
+                    uint8_t segment_inputs_mask = 0x0F) {
+  constexpr uint8_t kSegmentIds = 1 << 0;
+  constexpr uint8_t kSegmentEmbedding = 1 << 1;
+  constexpr uint8_t kSegmentEmbeddingScale = 1 << 2;
+  constexpr uint8_t kSegmentEmbeddingZeroPoint = 1 << 3;
   ASSERT_TRUE(data.word_embedding_data.size() % data.hidden_size == 0);
   ASSERT_TRUE(data.position_embedding_data.size() % data.hidden_size == 0);
   ASSERT_TRUE(data.segment_embedding_data.size() % data.hidden_size == 0);
@@ -64,7 +69,7 @@ static void RunTest(const embedlayernorm::OpData& data,
 
   // Operator inputs passed in at int32_t:
   tester.AddInput<int32_t>("input_ids", input_ids_dims, data.input_ids_data);
-  if (data.has_segment) {
+  if (data.has_segment && (segment_inputs_mask & kSegmentIds) != 0) {
     tester.AddInput<int32_t>("segment_ids", segment_ids_dims, data.segment_ids_data);
   } else {
     tester.AddOptionalInputEdge<int32_t>();
@@ -79,7 +84,7 @@ static void RunTest(const embedlayernorm::OpData& data,
                            position_embedding_dims,
                            position_embedding_data_quant,
                            /*is_initializer=*/true);
-  if (data.has_segment) {
+  if (data.has_segment && (segment_inputs_mask & kSegmentEmbedding) != 0) {
     tester.AddInput<WeightT>("segment_embedding_data",
                              segment_embedding_dims,
                              segment_embedding_data_quant,
@@ -111,7 +116,7 @@ static void RunTest(const embedlayernorm::OpData& data,
                          /*dims=*/{},
                          {position_embedding_params.scale},
                          /*is_initializer=*/true);
-  if (data.has_segment) {
+  if (data.has_segment && (segment_inputs_mask & kSegmentEmbeddingScale) != 0) {
     tester.AddInput<float>("segment_embedding_scale",
                            /*dims=*/{},
                            {segment_embedding_params.scale},
@@ -137,7 +142,7 @@ static void RunTest(const embedlayernorm::OpData& data,
                            /*dims=*/{},
                            {position_embedding_params.zero_point},
                            /*is_initializer=*/true);
-  if (data.has_segment) {
+  if (data.has_segment && (segment_inputs_mask & kSegmentEmbeddingZeroPoint) != 0) {
     tester.AddInput<WeightT>("segment_embedding_zero_point",
                              /*dims=*/{},
                              {segment_embedding_params.zero_point},
@@ -165,7 +170,12 @@ static void RunTest(const embedlayernorm::OpData& data,
   // Attributes:
   tester.AddAttribute("epsilon", embedlayernorm::kEpsilon);
 
-  tester.Run();
+  if (segment_inputs_mask == 0 || segment_inputs_mask == 0x0F) {
+    tester.Run();
+  } else {
+    tester.Run(OpTester::ExpectResult::kExpectFailure,
+               "must either all be provided or all be omitted");
+  }
 }
 
 }  // namespace
@@ -173,6 +183,15 @@ static void RunTest(const embedlayernorm::OpData& data,
 TEST(QEmbedLayerNormTest, EmbedLayerNormBatch1) {
   RunTest<int8_t>(embedlayernorm::EmbedLayerNormBatch1());
   RunTest<uint8_t>(embedlayernorm::EmbedLayerNormBatch1());
+}
+
+TEST(QEmbedLayerNormTest, PartialSegmentInputsRejected) {
+  const auto data = embedlayernorm::EmbedLayerNormBatch1();
+  ASSERT_TRUE(data.has_segment);
+
+  for (uint8_t segment_inputs_mask = 1; segment_inputs_mask < 0x0F; ++segment_inputs_mask) {
+    RunTest<int8_t>(data, 0.25f, segment_inputs_mask);
+  }
 }
 
 TEST(QEmbedLayerNormTest, EmbedLayerNormBatch1_Float16) {
