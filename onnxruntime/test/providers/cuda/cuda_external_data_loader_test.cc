@@ -10,6 +10,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/tensor.h"
 #include "core/providers/cuda/cuda_provider_options.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "cuda_runtime.h"
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
@@ -98,6 +99,26 @@ TEST(CudaExternalDataLoaderTest, DisablesLoaderWhenConfiguredWithZeroReadingThre
   auto execution_provider = CudaExecutionProviderWithOptions(&provider_options);
   ASSERT_NE(execution_provider, nullptr);
   EXPECT_EQ(execution_provider->GetExternalDataLoader(), nullptr);
+}
+
+TEST(CudaExternalDataLoaderTest, RejectsTooManyReadingThreadsFromStructOptions) {
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.external_data_loader_reading_threads =
+      OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount;
+  Ort::SessionOptions valid_session_options;
+  EXPECT_NO_THROW(valid_session_options.AppendExecutionProvider_CUDA_V2(provider_options));
+
+  provider_options.external_data_loader_reading_threads =
+      OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount + 1;
+  Ort::SessionOptions invalid_session_options;
+  try {
+    invalid_session_options.AppendExecutionProvider_CUDA_V2(provider_options);
+    FAIL() << "Expected an invalid external_data_loader_reading_threads value to be rejected.";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_THAT(ex.what(), testing::HasSubstr("external_data_loader_reading_threads"));
+  }
+
+  EXPECT_EQ(CudaExecutionProviderWithOptions(&provider_options), nullptr);
 }
 
 TEST(CudaExternalDataLoaderTest, ReusesAlternatingBuffersAcrossRepeatedLoads) {

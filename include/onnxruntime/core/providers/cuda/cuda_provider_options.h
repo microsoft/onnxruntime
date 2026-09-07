@@ -17,6 +17,8 @@
 /// User can only get the instance of OrtCUDAProviderOptionsV2 via CreateCUDAProviderOptions.
 /// </summary>
 struct OrtCUDAProviderOptionsV2 {
+  static constexpr size_t kMaxExternalDataLoaderReadingThreadCount = 64;
+
   int device_id = 0;                                                                                           // cuda device id.
   int has_user_compute_stream = 0;                                                                             // indicator of user specified CUDA compute stream.
   void* user_compute_stream = nullptr;                                                                         // user specified CUDA compute stream.

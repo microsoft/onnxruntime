@@ -136,13 +136,14 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddValueParser(
               cuda::provider_option_names::kExternalDataLoaderReadingThreads,
               [&info](const std::string& value_str) -> Status {
-                constexpr size_t kMaxReadingThreadCount = 64;
                 ORT_RETURN_IF_ERROR(
                     ParseStringWithClassicLocale(value_str, info.external_data_loader_reading_threads));
                 ORT_RETURN_IF_NOT(
-                    info.external_data_loader_reading_threads <= kMaxReadingThreadCount,
+                    info.external_data_loader_reading_threads <=
+                        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount,
                     cuda::provider_option_names::kExternalDataLoaderReadingThreads,
-                    " must be between 0 and ", kMaxReadingThreadCount, ".");
+                    " must be between 0 and ",
+                    OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount, ".");
                 return Status::OK();
               })
           .AddValueParser(

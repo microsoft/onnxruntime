@@ -102,6 +102,7 @@ common::Status LoadWithPageableBuffer(const Env& env, const std::filesystem::pat
 
     CUDA_RETURN_IF_ERROR(
         cudaMemcpy(destination + offset, buffer.data(), chunk_size, cudaMemcpyHostToDevice));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
     offset += chunk_size;
   }
 
@@ -222,7 +223,12 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
     const size_t chunk_size = std::min(kBufferSize, length - offset);
 
     if (stream_used[buffer_index]) {
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(streams_[buffer_index]));
+      const auto sync_status = CUDA_CALL(cudaStreamSynchronize(streams_[buffer_index]));
+      stream_used[buffer_index] = false;
+      if (!sync_status.IsOK()) {
+        ORT_IGNORE_RETURN_VALUE(synchronize_streams());
+        return sync_status;
+      }
     }
 
     const auto read_status =

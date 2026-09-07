@@ -204,6 +204,13 @@ struct CUDA_Provider : Provider {
   void* GetInfo() override { return &g_info; }
 
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* void_params) override {
+    auto params = reinterpret_cast<const OrtCUDAProviderOptionsV2*>(void_params);
+    ORT_ENFORCE(
+        params->external_data_loader_reading_threads <=
+            OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount,
+        "external_data_loader_reading_threads must be between 0 and ",
+        OrtCUDAProviderOptionsV2::kMaxExternalDataLoaderReadingThreadCount, ".");
+
     // Calling a function like ::cudaDeviceSynchronize will cause CUDA to ensure there is binary code for the current GPU architecture
     // Ideally this will be already part of the binary, but if not, CUDA will JIT it during this call. This can take a very long time
     // (minutes even), so we want to detect when this happens and let the user know why so they can report it properly or even fix it.
@@ -222,8 +229,6 @@ struct CUDA_Provider : Provider {
         LOGS_DEFAULT(WARNING) << "CUDA took " << duration.count() << " seconds to start, please see this issue for how to fix it: https://github.com/microsoft/onnxruntime/issues/10746";
       }
     }
-
-    auto params = reinterpret_cast<const OrtCUDAProviderOptionsV2*>(void_params);
 
     CUDAExecutionProviderInfo info{};
     info.device_id = gsl::narrow<OrtDevice::DeviceId>(params->device_id);
