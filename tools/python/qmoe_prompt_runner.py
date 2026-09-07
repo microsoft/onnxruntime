@@ -152,11 +152,7 @@ def main():
     args = parse_args()
     if args.max_new_tokens <= 0:
         raise ValueError("--max-new-tokens must be positive.")
-    prompts = (
-        load_prompts(args.prompts_file)
-        if args.prompts_file
-        else args.prompts
-    )
+    prompts = load_prompts(args.prompts_file) if args.prompts_file else args.prompts
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     with redirect_native_stderr(args.routing_log):

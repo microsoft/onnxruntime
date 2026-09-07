@@ -16,9 +16,7 @@ PLOTTED_LAYER_INDICES = (0, 5, 10, 15, 20, 25, 30, 35, 39)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Compute expert selection distributions from an ORT QMoE routing log."
-    )
+    parser = argparse.ArgumentParser(description="Compute expert selection distributions from an ORT QMoE routing log.")
     parser.add_argument("log", type=Path, help="Log containing 'moe_routing' JSON records.")
     parser.add_argument(
         "--benchmark-json",
@@ -57,14 +55,10 @@ def resolve_model_path(log_path, model_path):
     candidates = [
         directory / "model.onnx"
         for directory in model_root.iterdir()
-        if directory.is_dir()
-        and log_path.stem.startswith(directory.name)
-        and (directory / "model.onnx").is_file()
+        if directory.is_dir() and log_path.stem.startswith(directory.name) and (directory / "model.onnx").is_file()
     ]
     if not candidates:
-        raise FileNotFoundError(
-            "Could not auto-detect model.onnx; specify it with --model."
-        )
+        raise FileNotFoundError("Could not auto-detect model.onnx; specify it with --model.")
     return max(candidates, key=lambda path: len(path.parent.name))
 
 
@@ -86,9 +80,7 @@ def iter_routing_events(log_path):
             if marker_position < 0:
                 continue
             if prompt_index is None:
-                raise ValueError(
-                    f"Routing event at line {line_number} precedes the first prompt marker."
-                )
+                raise ValueError(f"Routing event at line {line_number} precedes the first prompt marker.")
 
             payload = line[marker_position + len(ROUTING_MARKER) :].strip()
             try:
@@ -99,9 +91,7 @@ def iter_routing_events(log_path):
             expert_ids = event["expert_ids"]
             expected = event["num_rows"] * event["top_k"]
             if len(expert_ids) != expected:
-                raise ValueError(
-                    f"Line {line_number}: expected {expected} expert IDs, got {len(expert_ids)}."
-                )
+                raise ValueError(f"Line {line_number}: expected {expected} expert IDs, got {len(expert_ids)}.")
 
             yield prompt_index, event
 
@@ -127,10 +117,7 @@ def read_distributions(log_path, num_experts):
     if event_count == 0:
         raise ValueError(f"No '{ROUTING_MARKER.strip()}' records found in {log_path}.")
     if max_expert_id >= num_experts:
-        raise ValueError(
-            f"Trace contains expert ID {max_expert_id}, but the model has "
-            f"{num_experts} experts."
-        )
+        raise ValueError(f"Trace contains expert ID {max_expert_id}, but the model has {num_experts} experts.")
 
     return by_prompt_qmoe, by_qmoe, global_counts, event_count
 
@@ -145,14 +132,10 @@ def distribution_rows(counts, num_experts):
 def write_prompt_qmoe_csv(path, distributions, prompt_labels, num_experts):
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
-        writer.writerow(
-            ["prompt_index", "prompt", "qmoe", "expert_id", "count", "selection_share"]
-        )
+        writer.writerow(["prompt_index", "prompt", "qmoe", "expert_id", "count", "selection_share"])
         keys = sorted(distributions, key=lambda key: (key[0], layer_sort_key(key[1])))
         for prompt_index, node_name in keys:
-            for expert_id, count, share in distribution_rows(
-                distributions[(prompt_index, node_name)], num_experts
-            ):
+            for expert_id, count, share in distribution_rows(distributions[(prompt_index, node_name)], num_experts):
                 writer.writerow(
                     [
                         prompt_index,
@@ -170,9 +153,7 @@ def write_qmoe_csv(path, distributions, num_experts):
         writer = csv.writer(stream)
         writer.writerow(["qmoe", "expert_id", "count", "selection_share"])
         for node_name in sorted(distributions, key=layer_sort_key):
-            for expert_id, count, share in distribution_rows(
-                distributions[node_name], num_experts
-            ):
+            for expert_id, count, share in distribution_rows(distributions[node_name], num_experts):
                 writer.writerow([node_name, expert_id, count, share])
 
 
@@ -181,9 +162,7 @@ def write_qmoe_pivot_csv(path, distributions, num_experts):
         writer = csv.writer(stream)
         writer.writerow(["qmoe", *range(num_experts)])
         for node_name in sorted(distributions, key=layer_sort_key):
-            writer.writerow(
-                [node_name, *(distributions[node_name][expert_id] for expert_id in range(num_experts))]
-            )
+            writer.writerow([node_name, *(distributions[node_name][expert_id] for expert_id in range(num_experts))])
 
 
 def rank_experts_by_frequency(distributions, num_experts):
@@ -197,10 +176,7 @@ def rank_experts_by_frequency(distributions, num_experts):
 
 
 def expert_rank_positions(expert_ids, ranked_expert_ids):
-    rank_by_expert_id = {
-        expert_id: rank
-        for rank, expert_id in enumerate(ranked_expert_ids)
-    }
+    rank_by_expert_id = {expert_id: rank for rank, expert_id in enumerate(ranked_expert_ids)}
     return [rank_by_expert_id[expert_id] for expert_id in expert_ids]
 
 
@@ -210,10 +186,7 @@ def inference_expert_ids(event):
 
 
 def expert_rank_threshold_counts(positions, num_experts):
-    return [
-        sum(position >= threshold for position in positions)
-        for threshold in range(num_experts)
-    ]
+    return [sum(position >= threshold for position in positions) for threshold in range(num_experts)]
 
 
 def write_qmoe_ranked_experts_csv(path, rankings):
@@ -224,9 +197,7 @@ def write_qmoe_ranked_experts_csv(path, rankings):
             writer.writerow([node_name, json.dumps(rankings[node_name], separators=(",", ":"))])
 
 
-def write_inference_expert_ranks_csv(
-    path, log_path, rankings, prompt_labels, num_experts
-):
+def write_inference_expert_ranks_csv(path, log_path, rankings, prompt_labels, num_experts):
     inference_indexes = Counter()
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.writer(stream)
@@ -241,10 +212,7 @@ def write_inference_expert_ranks_csv(
                 "selected_expert_ids",
                 "expert_rank_positions_0_based",
                 "max_expert_rank_position",
-                *(
-                    f"experts_rank_ge_{threshold}"
-                    for threshold in range(num_experts)
-                ),
+                *(f"experts_rank_ge_{threshold}" for threshold in range(num_experts)),
             ]
         )
         for prompt_index, event in iter_routing_events(log_path):
@@ -278,9 +246,7 @@ def aggregate_rank_thresholds_by_qmoe(log_path, rankings, num_experts):
         expert_ids = inference_expert_ids(event)
         positions = expert_rank_positions(expert_ids, rankings[node_name])
         inference_counts[node_name] += 1
-        for index, count in enumerate(
-            expert_rank_threshold_counts(positions, num_experts)
-        ):
+        for index, count in enumerate(expert_rank_threshold_counts(positions, num_experts)):
             threshold_totals[node_name][index] += count
     return inference_counts, threshold_totals
 
@@ -288,26 +254,19 @@ def aggregate_rank_thresholds_by_qmoe(log_path, rankings, num_experts):
 def load_qmoe_model_metadata(model_path):
     model = onnx.load(model_path, load_external_data=False)
     initializers = {initializer.name: initializer for initializer in model.graph.initializer}
-    qmoe_nodes = {
-        node.name: node for node in model.graph.node if node.op_type == "QMoE"
-    }
+    qmoe_nodes = {node.name: node for node in model.graph.node if node.op_type == "QMoE"}
     expert_counts = {
         initializer.dims[0]
         for node in qmoe_nodes.values()
         for input_name in node.input
-        if (initializer := initializers.get(input_name)) is not None
-        and initializer.dims
+        if (initializer := initializers.get(input_name)) is not None and initializer.dims
     }
     if len(expert_counts) != 1:
-        raise ValueError(
-            f"Expected one QMoE expert count in the model, got {sorted(expert_counts)}."
-        )
+        raise ValueError(f"Expected one QMoE expert count in the model, got {sorted(expert_counts)}.")
     return initializers, qmoe_nodes, expert_counts.pop()
 
 
-def calculate_qmoe_expert_bytes(
-    initializers, qmoe_nodes, node_names, num_experts
-):
+def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_names, num_experts):
     expert_bytes = {}
     for node_name in node_names:
         node = qmoe_nodes.get(node_name)
@@ -321,18 +280,12 @@ def calculate_qmoe_expert_bytes(
                 continue
             if initializer.dims[0] != num_experts:
                 continue
-            external_data = {
-                entry.key: entry.value for entry in initializer.external_data
-            }
+            external_data = {entry.key: entry.value for entry in initializer.external_data}
             if "length" not in external_data:
-                raise ValueError(
-                    f"Initializer size is not available in external data: {input_name}"
-                )
+                raise ValueError(f"Initializer size is not available in external data: {input_name}")
             tensor_bytes = int(external_data["length"])
             if tensor_bytes % num_experts:
-                raise ValueError(
-                    f"Initializer size is not divisible by {num_experts}: {input_name}"
-                )
+                raise ValueError(f"Initializer size is not divisible by {num_experts}: {input_name}")
             total_bytes += tensor_bytes // num_experts
         if total_bytes == 0:
             raise ValueError(f"No expert initializers found for QMoE node: {node_name}")
@@ -340,14 +293,9 @@ def calculate_qmoe_expert_bytes(
     return expert_bytes
 
 
-def write_qmoe_rank_threshold_totals_csv(
-    path, inference_counts, threshold_totals, expert_bytes, num_experts
-):
+def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_totals, expert_bytes, num_experts):
     total_inferences = sum(inference_counts.values())
-    column_totals = [
-        sum(counts[threshold] for counts in threshold_totals.values())
-        for threshold in range(num_experts)
-    ]
+    column_totals = [sum(counts[threshold] for counts in threshold_totals.values()) for threshold in range(num_experts)]
     total_values = [total_inferences, *column_totals]
     maximum = max(total_values)
 
@@ -388,10 +336,7 @@ def write_qmoe_rank_threshold_totals_csv(
             [
                 "QMOE_EXPERT_BYTES_COMPLEMENT",
                 0,
-                *(
-                    maximum_expert_bytes - rank * bytes_per_rank
-                    for rank in range(num_experts)
-                ),
+                *(maximum_expert_bytes - rank * bytes_per_rank for rank in range(num_experts)),
             ]
         )
         writer.writerow(
@@ -399,8 +344,7 @@ def write_qmoe_rank_threshold_totals_csv(
                 "QMOE_EXPERT_BYTES_COMPLEMENT_NORMALIZED",
                 0.0,
                 *(
-                    (maximum_expert_bytes - rank * bytes_per_rank)
-                    / maximum_expert_bytes
+                    (maximum_expert_bytes - rank * bytes_per_rank) / maximum_expert_bytes
                     if maximum_expert_bytes
                     else 0.0
                     for rank in range(num_experts)
@@ -410,23 +354,16 @@ def write_qmoe_rank_threshold_totals_csv(
     return (
         [value / maximum for value in column_totals],
         [
-            (maximum_expert_bytes - rank * bytes_per_rank)
-            / maximum_expert_bytes
-            if maximum_expert_bytes
-            else 0.0
+            (maximum_expert_bytes - rank * bytes_per_rank) / maximum_expert_bytes if maximum_expert_bytes else 0.0
             for rank in range(num_experts)
         ],
     )
 
 
-def write_normalized_comparison_plot(
-    path, total_normalized, expert_bytes_complement_normalized
-):
+def write_normalized_comparison_plot(path, total_normalized, expert_bytes_complement_normalized):
     ranks = range(len(total_normalized))
     figure, axes = plt.subplots(figsize=(10, 6))
-    total_line = axes.plot(
-        ranks, total_normalized, label="TOTAL_NORMALIZED", linewidth=2
-    )[0]
+    total_line = axes.plot(ranks, total_normalized, label="TOTAL_NORMALIZED", linewidth=2)[0]
     bytes_line = axes.plot(
         ranks,
         expert_bytes_complement_normalized,
@@ -503,59 +440,37 @@ def write_global_csv(path, counts, num_experts):
 def main():
     args = parse_args()
     benchmark_json = args.benchmark_json or args.log.with_suffix(".json")
-    output_prefix = args.output_prefix or args.log.with_name(
-        f"{args.log.stem}-expert-distribution"
-    )
+    output_prefix = args.output_prefix or args.log.with_name(f"{args.log.stem}-expert-distribution")
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
 
     prompt_labels = load_prompt_labels(benchmark_json)
     model_path = resolve_model_path(args.log, args.model)
     initializers, qmoe_nodes, num_experts = load_qmoe_model_metadata(model_path)
-    by_prompt_qmoe, by_qmoe, global_counts, event_count = read_distributions(
-        args.log, num_experts
-    )
-    expert_bytes = calculate_qmoe_expert_bytes(
-        initializers, qmoe_nodes, by_qmoe.keys(), num_experts
-    )
+    by_prompt_qmoe, by_qmoe, global_counts, event_count = read_distributions(args.log, num_experts)
+    expert_bytes = calculate_qmoe_expert_bytes(initializers, qmoe_nodes, by_qmoe.keys(), num_experts)
 
     prompt_qmoe_path = Path(f"{output_prefix}-by-prompt-qmoe.csv")
     qmoe_path = Path(f"{output_prefix}-by-qmoe.csv")
     qmoe_pivot_path = Path(f"{output_prefix}-by-qmoe-pivot.csv")
     qmoe_ranked_path = Path(f"{output_prefix}-by-qmoe-ranked-experts.csv")
-    inference_ranks_path = Path(
-        f"{output_prefix}-by-inference-qmoe-expert-ranks.csv"
-    )
-    qmoe_rank_thresholds_path = Path(
-        f"{output_prefix}-by-qmoe-rank-threshold-totals.csv"
-    )
-    normalized_plot_path = Path(
-        f"{output_prefix}-normalized-total-vs-expert-bytes.png"
-    )
-    selected_layers_plot_path = Path(
-        f"{output_prefix}-selected-layers-expert-ranks.png"
-    )
+    inference_ranks_path = Path(f"{output_prefix}-by-inference-qmoe-expert-ranks.csv")
+    qmoe_rank_thresholds_path = Path(f"{output_prefix}-by-qmoe-rank-threshold-totals.csv")
+    normalized_plot_path = Path(f"{output_prefix}-normalized-total-vs-expert-bytes.png")
+    selected_layers_plot_path = Path(f"{output_prefix}-selected-layers-expert-ranks.png")
     global_path = Path(f"{output_prefix}-global.csv")
     rankings = rank_experts_by_frequency(by_qmoe, num_experts)
-    write_prompt_qmoe_csv(
-        prompt_qmoe_path, by_prompt_qmoe, prompt_labels, num_experts
-    )
+    write_prompt_qmoe_csv(prompt_qmoe_path, by_prompt_qmoe, prompt_labels, num_experts)
     write_qmoe_csv(qmoe_path, by_qmoe, num_experts)
     write_qmoe_pivot_csv(qmoe_pivot_path, by_qmoe, num_experts)
     write_qmoe_ranked_experts_csv(qmoe_ranked_path, rankings)
-    write_inference_expert_ranks_csv(
-        inference_ranks_path, args.log, rankings, prompt_labels, num_experts
-    )
-    inference_counts, threshold_totals = aggregate_rank_thresholds_by_qmoe(
-        args.log, rankings, num_experts
-    )
-    total_normalized, expert_bytes_complement_normalized = (
-        write_qmoe_rank_threshold_totals_csv(
-            qmoe_rank_thresholds_path,
-            inference_counts,
-            threshold_totals,
-            expert_bytes,
-            num_experts,
-        )
+    write_inference_expert_ranks_csv(inference_ranks_path, args.log, rankings, prompt_labels, num_experts)
+    inference_counts, threshold_totals = aggregate_rank_thresholds_by_qmoe(args.log, rankings, num_experts)
+    total_normalized, expert_bytes_complement_normalized = write_qmoe_rank_threshold_totals_csv(
+        qmoe_rank_thresholds_path,
+        inference_counts,
+        threshold_totals,
+        expert_bytes,
+        num_experts,
     )
     write_normalized_comparison_plot(
         normalized_plot_path,
