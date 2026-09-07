@@ -245,6 +245,7 @@ struct CUDA_Provider : Provider {
     info.use_ep_level_unified_stream = params->use_ep_level_unified_stream != 0;
     info.use_tf32 = params->use_tf32 != 0;
     info.sdpa_kernel = params->sdpa_kernel;
+    info.external_data_loader_reading_threads = params->external_data_loader_reading_threads;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -280,6 +281,8 @@ struct CUDA_Provider : Provider {
     cuda_options.use_tf32 = internal_options.use_tf32;
     cuda_options.sdpa_kernel = internal_options.sdpa_kernel;
     cuda_options.fuse_conv_bias = internal_options.fuse_conv_bias;
+    cuda_options.external_data_loader_reading_threads =
+        internal_options.external_data_loader_reading_threads;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

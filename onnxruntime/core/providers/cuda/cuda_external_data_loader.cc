@@ -46,6 +46,11 @@ common::Status ReadChunk(const Env& env, const std::filesystem::path& path,
                          FileOffsetType offset, size_t length, void* buffer,
                          size_t configured_reader_count) {
   const size_t reader_count = length >= kParallelReadThreshold ? configured_reader_count : 1;
+  if (reader_count == 1) {
+    return env.ReadFileIntoBuffer(path.native().c_str(), offset, length,
+                                  gsl::span<char>{static_cast<char*>(buffer), length});
+  }
+
   std::vector<std::future<common::Status>> reads;
   reads.reserve(reader_count);
 

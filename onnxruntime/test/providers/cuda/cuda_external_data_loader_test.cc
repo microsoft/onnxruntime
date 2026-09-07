@@ -9,6 +9,7 @@
 #include "asserts.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/tensor.h"
+#include "core/providers/cuda/cuda_provider_options.h"
 #include "cuda_runtime.h"
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
@@ -44,11 +45,15 @@ void CreateExternalDataFile(size_t length, PathString& path) {
   EXPECT_EQ(0, fclose(file));
 }
 
-void VerifyLoad(size_t length, size_t load_count = 1) {
+void VerifyLoad(size_t length, size_t load_count = 1, size_t reading_thread_count = 4) {
   PathString path;
   CreateExternalDataFile(length, path);
   ScopedFileDeleter file_deleter{path};
-  auto execution_provider = DefaultCudaExecutionProvider();
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.external_data_loader_reading_threads = reading_thread_count;
+  auto execution_provider = CudaExecutionProviderWithOptions(&provider_options);
   ASSERT_NE(execution_provider, nullptr);
   auto loader = execution_provider->GetExternalDataLoader();
   ASSERT_NE(loader, nullptr);
@@ -79,6 +84,10 @@ TEST(CudaExternalDataLoaderTest, LoadsBelowParallelReadThreshold) {
 
 TEST(CudaExternalDataLoaderTest, LoadsAtParallelReadThreshold) {
   VerifyLoad(kParallelReadThreshold);
+}
+
+TEST(CudaExternalDataLoaderTest, LoadsSynchronouslyWhenConfiguredWithOneReadingThread) {
+  VerifyLoad(kParallelReadThreshold, 1, 1);
 }
 
 TEST(CudaExternalDataLoaderTest, ReusesAlternatingBuffersAcrossRepeatedLoads) {

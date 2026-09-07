@@ -38,6 +38,7 @@ constexpr const char* kUseEPLevelUnifiedStream = "use_ep_level_unified_stream";
 constexpr const char* kUseTF32 = "use_tf32";
 constexpr const char* kFuseConvBias = "fuse_conv_bias";
 constexpr const char* kSdpaKernel = "sdpa_kernel";
+constexpr const char* kExternalDataLoaderReadingThreads = "external_data_loader_reading_threads";
 
 }  // namespace provider_option_names
 }  // namespace cuda
@@ -133,6 +134,19 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kSdpaKernel, info.sdpa_kernel)
           .AddAssignmentToReference(cuda::provider_option_names::kFuseConvBias, info.fuse_conv_bias)
           .AddValueParser(
+              cuda::provider_option_names::kExternalDataLoaderReadingThreads,
+              [&info](const std::string& value_str) -> Status {
+                constexpr size_t kMaxReadingThreadCount = 64;
+                ORT_RETURN_IF_ERROR(
+                    ParseStringWithClassicLocale(value_str, info.external_data_loader_reading_threads));
+                ORT_RETURN_IF_NOT(
+                    info.external_data_loader_reading_threads > 0 &&
+                        info.external_data_loader_reading_threads <= kMaxReadingThreadCount,
+                    cuda::provider_option_names::kExternalDataLoaderReadingThreads,
+                    " must be between 1 and ", kMaxReadingThreadCount, ".");
+                return Status::OK();
+              })
+          .AddValueParser(
               cuda::provider_option_names::kTunableOpEnable,
               [&info](const std::string& value_str) -> Status {
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.enable));
@@ -187,6 +201,8 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kUseTF32, MakeStringWithClassicLocale(info.use_tf32)},
       {cuda::provider_option_names::kSdpaKernel, MakeStringWithClassicLocale(info.sdpa_kernel)},
       {cuda::provider_option_names::kFuseConvBias, MakeStringWithClassicLocale(info.fuse_conv_bias)},
+      {cuda::provider_option_names::kExternalDataLoaderReadingThreads,
+       MakeStringWithClassicLocale(info.external_data_loader_reading_threads)},
   };
 
   return options;
@@ -212,6 +228,8 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
       {cuda::provider_option_names::kUseTF32, MakeStringWithClassicLocale(info.use_tf32)},
       {cuda::provider_option_names::kFuseConvBias, MakeStringWithClassicLocale(info.fuse_conv_bias)},
       {cuda::provider_option_names::kSdpaKernel, MakeStringWithClassicLocale(info.sdpa_kernel)},
+      {cuda::provider_option_names::kExternalDataLoaderReadingThreads,
+       MakeStringWithClassicLocale(info.external_data_loader_reading_threads)},
   };
 
   return options;

@@ -74,18 +74,16 @@ def main():
     options = onnxruntime.SessionOptions()
     options.intra_op_num_threads = args.threads
     options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+    cuda_provider_options = {"device_id": args.device_id}
     if args.reading_threads is not None:
-        options.add_session_config_entry(
-            "session.cuda.external_data_loader_reading_threads",
-            str(args.reading_threads),
-        )
+        cuda_provider_options["external_data_loader_reading_threads"] = args.reading_threads
 
     start = time.perf_counter()
     session = onnxruntime.InferenceSession(
         args.model,
         sess_options=options,
         providers=[
-            ("CUDAExecutionProvider", {"device_id": args.device_id}),
+            ("CUDAExecutionProvider", cuda_provider_options),
             "CPUExecutionProvider",
         ],
     )
