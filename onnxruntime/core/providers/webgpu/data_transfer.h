@@ -17,9 +17,6 @@ struct CommandRecordingState;
 common::Status FlushAndWait(WebGpuContext& context, const BufferManager& buffer_manager,
                             CommandRecordingState& recording);
 
-common::Status CopyTensorWithLocalEncoder(WebGpuContext& context, const void* src_data,
-                                          bool src_is_gpu, void* dst_data, bool dst_is_gpu, size_t bytes);
-
 // Low-level data transfer implementation that operates on raw pointers.
 // Used by both DataTransfer (IDataTransfer subclass) and the C API data transfer wrapper.
 class DataTransferImpl {

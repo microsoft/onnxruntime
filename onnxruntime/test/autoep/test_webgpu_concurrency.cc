@@ -323,6 +323,36 @@ TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsCreateConcurrently) {
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
+TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsCreateAndRunConcurrently) {
+  std::array<std::unique_ptr<Ort::Session>, kThreads> run_sessions;
+  for (auto& session : run_sessions) {
+    session = CreateSession();
+  }
+
+  FirstError error;
+  std::barrier iteration_start{2 * kThreads};
+  const auto work = [&](int thread_id) {
+    try {
+      for (int iteration = 0; iteration < kIterations; ++iteration) {
+        iteration_start.arrive_and_wait();
+        const float value = static_cast<float>(thread_id * kIterations + iteration + 1);
+        if (thread_id < kThreads) {
+          auto session = CreateSession();
+          RunWithCpuInputAndOutput(*session, value);
+        } else {
+          RunWithCpuInputAndOutput(*run_sessions[thread_id - kThreads], value);
+        }
+      }
+    } catch (...) {
+      iteration_start.arrive_and_drop();
+      throw;
+    }
+  };
+  RunWorkers(error, work, 2 * kThreads);
+
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
 TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsRunConcurrently) {
   std::array<std::unique_ptr<Ort::Session>, kThreads> sessions;
   for (auto& session : sessions) {
@@ -511,7 +541,7 @@ TEST_F(PluginEpWebGpuConcurrency, SessionAllocatorsCreateAndCopyConcurrently) {
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
-TEST_F(PluginEpWebGpuConcurrency, SharedAllocatorCreatesAndCopiesConcurrently) {
+TEST_F(PluginEpWebGpuConcurrency, DISABLED_SharedAllocatorCreatesAndCopiesConcurrently) {
   auto allocator = CreateSharedAllocator();
   ASSERT_NE(allocator, nullptr);
 
@@ -595,7 +625,7 @@ TEST_F(PluginEpWebGpuConcurrency, SharedGpuCopyCompletesBeforeSessionRun) {
   }
 }
 
-TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsAndEnvironmentCopiesRunConcurrently) {
+TEST_F(PluginEpWebGpuConcurrency, DISABLED_DifferentSessionsAndEnvironmentCopiesRunConcurrently) {
   std::array<std::unique_ptr<Ort::Session>, kThreads> run_sessions;
   for (auto& session : run_sessions) {
     session = CreateSession();
@@ -618,10 +648,14 @@ TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsAndEnvironmentCopiesRunConcur
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
-TEST_F(PluginEpWebGpuConcurrency, MixedSessionAndEnvironmentOperationsConcurrently12Threads) {
+// Next-phase target: shared Env allocator operations and copies concurrent with Session creation and Run.
+// Keep disabled until shared-allocator concurrency is supported.
+TEST_F(PluginEpWebGpuConcurrency, DISABLED_MixedSessionAndEnvironmentOperationsConcurrently12Threads) {
   RunMixedSessionOperations(false);
 }
 
+// Next-phase target: also exercise a Session's allocator concurrently with that same Session's Run.
+// Keep disabled until both Session and shared-allocator concurrency are supported.
 TEST_F(PluginEpWebGpuConcurrency, DISABLED_MixedSessionAndAllocatorOperationsConcurrently16Threads) {
   RunMixedSessionOperations(true);
 }

@@ -5,7 +5,6 @@
 
 #include <functional>
 #include <memory>
-#include <mutex>
 
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
@@ -47,21 +46,8 @@ class GpuBufferAllocator : public IAllocator {
   bool initialize_to_zero_;
 };
 
-// Environment-level allocator. Buffers are not cached and do not use Session command state.
-class ExternalGpuBufferAllocator : public IAllocator {
- public:
-  explicit ExternalGpuBufferAllocator(std::shared_ptr<WebGpuContext> context);
-  ~ExternalGpuBufferAllocator() override;
-
-  void* Alloc(size_t size) override;
-  void Free(void* p) override;
-  void GetStats(AllocatorStats* stats) override;
-
- private:
-  std::shared_ptr<WebGpuContext> context_;
-  std::mutex mutex_;
-  AllocatorStats stats_;
-};
+// Environment-level cached allocator with private recording; callers serialize its operations.
+AllocatorPtr CreateSharedWebGpuAllocator(std::shared_ptr<WebGpuContext> context);
 
 // No-op allocator used for the WebGPU device when the context has no Dawn device (a device-free /
 // "virtual device" context). A real GpuBufferAllocator cannot be constructed without a device (its ctor

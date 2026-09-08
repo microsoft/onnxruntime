@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/common/safeint.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
@@ -9,13 +10,13 @@ namespace webgpu {
 
 namespace {
 
-constexpr size_t NormalizeBufferSize(size_t size) {
-  return (size + 15) / 16 * 16;
+size_t NormalizeBufferSize(size_t size) {
+  return (SafeInt<size_t>(size) + 15) / 16 * 16;
 }
 
 // WebGPU requires that the copy size in CopyBufferToBuffer must be a multiple of 4 bytes.
-constexpr size_t NormalizeCopySize(size_t size) {
-  return (size + 3) / 4 * 4;
+size_t NormalizeCopySize(size_t size) {
+  return (SafeInt<size_t>(size) + 3) / 4 * 4;
 }
 
 void EnforceBufferUnmapped(WebGpuContext& context, WGPUBuffer buffer) {
@@ -497,8 +498,10 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
 
 void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const {
   // If the buffer is mapped, we can directly write to it.
-  void* mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);  // ensure the buffer is mapped
-  if (mapped_data) {
+  void* mapped_data = nullptr;
+  if (wgpuBufferGetMapState(dst) == WGPUBufferMapState_Mapped) {
+    mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);
+    ORT_ENFORCE(mapped_data, "Failed to access mapped WebGPU upload buffer.");
     memcpy(mapped_data, src, size);
     wgpuBufferUnmap(dst);
     return;
@@ -514,12 +517,9 @@ void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuff
 
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
   mapped_data = staging_buffer.GetMappedRange();
+  ORT_ENFORCE(mapped_data, "Failed to map WebGPU copy staging buffer.");
   memcpy(mapped_data, src, size);
-  // NOTE: When copy_size != size (due to 4-byte alignment requirement of CopyBufferToBuffer),
-  // the trailing bytes [size, copy_size) in the staging buffer contain uninitialized data.
-  // This dirty data gets copied into the destination buffer and may cause problems.
-  // A possible solution is to use CopyBufferToBuffer for the aligned portion and a compute
-  // shader to write the non-aligned remainder.
+  memset(static_cast<uint8_t*>(mapped_data) + size, 0, copy_size - size);
   staging_buffer.Unmap();
 
   auto& command_encoder = context_.GetCommandEncoder(recording);
@@ -617,7 +617,7 @@ void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, v
   ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
 
   EnforceBufferUnmapped(context_, src);
-  auto buffer_size = NormalizeBufferSize(size);
+  auto buffer_size = NormalizeCopySize(size);
 
   wgpu::BufferDescriptor desc{};
   desc.size = buffer_size;

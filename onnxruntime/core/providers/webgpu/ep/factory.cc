@@ -276,15 +276,15 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                   "Unsupported memory info for shared allocator.");
   }
 
-  // Env allocations can run alongside Session execution. Direct buffer allocation avoids
-  // accessing Session command recording or cached-buffer clear state.
+  // Reuse the cached allocator with independent recording and immediate clear submission.
+  // The Env allocator retains the device context but does not access any Session's recording.
   *allocator = new onnxruntime::ep::adapter::Allocator(
       memory_info,
       [](const OrtMemoryInfo&) -> AllocatorPtr {
         auto context = std::shared_ptr<WebGpuContext>(
             &WebGpuContextFactory::DefaultContext(),
             [](WebGpuContext*) { WebGpuContextFactory::ReleaseContext(0); });
-        return std::make_shared<webgpu::ExternalGpuBufferAllocator>(std::move(context));
+        return webgpu::CreateSharedWebGpuAllocator(std::move(context));
       });
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
@@ -302,7 +302,7 @@ OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
   auto* factory = static_cast<Factory*>(this_ptr);
   std::lock_guard<std::mutex> lock{factory->creation_mutex_};
   // ORT currently creates the Env transfer first for each factory. This ordering is not an
-  // EP API guarantee; the Env transfer uses local encoders and is not bound to a Session.
+  // EP API guarantee; the Env transfer uses local recording and is not bound to a Session.
   if (!factory->env_transfer_created_) {
     *data_transfer = OrtWebGpuCreateDataTransfer();
     factory->env_transfer_created_ = true;

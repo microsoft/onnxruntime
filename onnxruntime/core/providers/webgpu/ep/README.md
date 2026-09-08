@@ -36,14 +36,17 @@ Entries are removed on successful binding or EP release, even if release uses an
 The factory lock only protects bookkeeping, not EP construction or Session execution.
 Revisit these assumptions if ORT's factory calling sequence changes.
 
-Environment allocators create and release Dawn buffers directly, without using the shared
-buffer cache or Session recording state. Environment transfers also bypass `BufferManager`
-and `CommandRecordingState`: each copy uses a local Dawn encoder and staging buffer as needed,
-submits directly to the device queue, and completes before returning. Downloads wait for
-`MapAsync`; uploads and device copies wait for submitted queue work. Mapped upload targets
-are written and unmapped directly. The shared context is retained only for device lifetime,
-device access, and the platform wait helper, not command recording or cache refresh.
-Environment allocation and copies on independent tensors may run concurrently with Session inference.
+Environment and Session operations reuse `GpuBufferAllocator`, `DataTransferImpl`, and the
+context-level `BufferManager`. The Env allocator retains the context and its own recording;
+cached-buffer clears are always submitted before Alloc returns. Env copies use local recording
+for each CopyTensors call, while Session copies use the owning EP's recording. Both paths
+submit and wait before returning from CopyTensors. There is no separate external allocator or
+local-encoder copy implementation. Sharing implementation and caches does not share Session
+encoders or graph capture state.
+
+Env APIs remain available for sequential use. Applications must serialize operations on the
+shared Env allocator, including Alloc, Free, GetStats, and tensor destruction. Env concurrency
+is outside this revision's validation scope; no Env recording mutex is introduced.
 
 Session allocators still reuse cached buffers. `IsRunActive()` controls clear submission:
 outside Run, cached-buffer clears are submitted before Alloc returns; during Run, clears are
@@ -52,7 +55,9 @@ Session allocator operations do not overlap Run. Applications must serialize all
 GetStats, tensor destruction, Session-bound copies, graph capture/replay, and graph release for
 the same Session with its execution. Sharing a recording or Session allocator across threads
 without this serialization is unsupported. Tensor data and lifetimes also remain the caller's
-responsibility. Different Sessions and independent Env operations may still run concurrently.
+responsibility. The concurrency target is creating/initializing Sessions while other Sessions
+run, along with independent Session creation and execution. Env operations are not part of
+the concurrency acceptance gate.
 
 The plugin does not register synchronization streams or support stream overrides. Session
 data transfers are synchronous and use their owning Session recording. Ordinary Run and graph
@@ -62,36 +67,42 @@ replay still submit pending commands, but do not add a queue-completion wait at 
 GPU completion. Subsequent work on the same queue is ordered by submission; an explicit
 output download waits for CPU-readable results. No ORT stream support is needed for this routing.
 
-AutoEP tests cover CPU I/O, graph-internal CPU/GPU copies, serial and concurrent Session creation,
-execution on other threads after creation, concurrent Sessions with environment copies, and
-Run-external cached-buffer clearing. Environment copy tests include batched zero-sized and
-non-four-byte-aligned tensors with host-side output bounds checks. Graph capture/replay is
-covered for independent Sessions with fixed GPU I/O. Concurrent profiling, graph capture combined with same-Session allocator/Run
-interleaving, and cross-device transfers remain outside the tested contract.
-Performance must be measured separately.
+The current validation is limited to `DifferentSessionsCreateAndRunConcurrently`. Other tests
+are retained for future validation; results obtained before implementation sharing do not
+establish their behavior for this revision. Concurrent profiling, same-Session allocator/Run
+interleaving, and cross-device transfers remain unsupported. Performance must be measured separately.
 
 ### Concurrency test gates
 
-Both mixed-load tests use four threads per operation group, a common start barrier, and
-ten iterations per worker. Run and copy workers verify the returned tensor data.
+The current gate uses four creation workers and four existing-Session Run workers. A barrier
+aligns each of twenty iterations. Creation workers create, initialize, verify, and destroy
+their own Session; Run workers execute independent pre-created Sessions. All runs use CPU
+inputs and outputs with CPU fallback disabled and verify the model's results. No worker uses
+an external allocator or Env copy concurrently with another worker.
 
 | Gate | Test in `PluginEpWebGpuConcurrency` | Concurrent operations |
 | --- | --- | --- |
-| Required baseline, 12 threads | `MixedSessionAndEnvironmentOperationsConcurrently12Threads` | Session creation/destruction, existing Session inference, environment allocation/copies |
+| Current gate, 8 threads | `DifferentSessionsCreateAndRunConcurrently` | New Session creation/initialization and first Run alongside existing Session inference |
+| Future Env concurrency target, 12 threads | `DISABLED_MixedSessionAndEnvironmentOperationsConcurrently12Threads` | Session creation/destruction, existing Session inference, environment allocation/copies |
 | Advanced target, 16 threads | `DISABLED_MixedSessionAndAllocatorOperationsConcurrently16Threads` | The baseline plus allocator operations on the same Sessions that are running inference |
 
-The 12-thread gate runs by default. The 16-thread test retains the unsupported allocator/Run
-interleaving as a future acceptance target and is disabled by default, not removed or serialized.
-It can race or fail with lock-free recording and must not be used to claim current support.
-Earlier passes with a recording mutex and immediate clear submission do not apply to this implementation.
-Enable it explicitly only when developing that future support, with Google Test's `--gtest_also_run_disabled_tests` and
+The 12/16-thread tests are retained as disabled future targets, not removed or serialized.
+The next phase targets shared Env allocator operations concurrent with Session Run (12 threads),
+then adds same-Session allocator/Run concurrency (16 threads). Enable each gate only when its
+corresponding concurrency support is implemented and validated.
+Their concurrent shared-allocator operations can race and must not be used to claim current
+support. Earlier results do not apply to this implementation. Enable the advanced target only
+when developing that future support, with Google Test's `--gtest_also_run_disabled_tests` and
 `--gtest_filter=PluginEpWebGpuConcurrency.DISABLED_MixedSessionAndAllocatorOperationsConcurrently16Threads`.
 A passing baseline does not establish support for the advanced target.
 
 The built-in `WebGpuConcurrentContextTest.DISABLED_SessionAllocatorAndRunConcurrently` and
 `WebGpuConcurrentContextTest.DISABLED_SharedDataTransferMultiThreadCopy` likewise retain
-unsupported same-recording interleavings as disabled targets. Independent Session and
-independent recording tests remain enabled.
+unsupported same-recording interleavings as disabled targets. Concurrent shared Env allocator
+tests are also disabled, including `DISABLED_SharedAllocatorMultiThreadCreateTensor`,
+`DISABLED_SharedAllocatorCreatesAndCopiesConcurrently`, and
+`DISABLED_DifferentSessionsAndEnvironmentCopiesRunConcurrently`. Independent Session and
+independent recording tests remain enabled, but are not all rerun for this revision.
 
 `DifferentSessionsGraphCaptureAndReplayConcurrently` enables graph capture for four Sessions
 using `mul_1.onnx`, each with independent, fixed-address GPU inputs and outputs and the default
@@ -100,6 +111,7 @@ Each worker updates its input and verifies its output for twenty runs. Per-Sessi
 callbacks require at least nineteen entries into ORT's graph replay fast path, so numerical
 correctness alone cannot hide a fallback to ordinary execution. This test runs by default and
 does not enable profiling or overlap external allocator operations with the same Session's Run.
+It is retained but is not included in this revision's create/Run-only validation.
 
 ### Missing parts
 

@@ -4,7 +4,6 @@
 #include <memory>
 #include <utility>
 
-#include "core/common/safeint.h"
 #include "core/framework/session_state.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/buffer_manager.h"
@@ -59,45 +58,13 @@ void GpuBufferAllocator::GetStats(AllocatorStats* stats) {
   *stats = stats_;
 }
 
-ExternalGpuBufferAllocator::ExternalGpuBufferAllocator(std::shared_ptr<WebGpuContext> context)
-    : IAllocator(OrtMemoryInfo(WEBGPU_BUFFER,
-                               OrtAllocatorType::OrtDeviceAllocator,
-                               WebGpuDevice,
-                               OrtMemTypeDefault)),
-      context_{std::move(context)} {
-}
-
-ExternalGpuBufferAllocator::~ExternalGpuBufferAllocator() = default;
-
-void* ExternalGpuBufferAllocator::Alloc(size_t size) {
-  if (size == 0) {
-    return nullptr;
-  }
-
-  std::lock_guard<std::mutex> lock{mutex_};
-  wgpu::BufferDescriptor descriptor{};
-  descriptor.size = (SafeInt<size_t>(size) + 15) / 16 * 16;
-  descriptor.usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
-                     wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Indirect;
-  auto buffer = context_->Device().CreateBuffer(&descriptor);
-  ORT_ENFORCE(buffer, "Failed to create external WebGPU buffer: size=", size, ".");
-  ++stats_.num_allocs;
-  return buffer.MoveToCHandle();
-}
-
-void ExternalGpuBufferAllocator::Free(void* p) {
-  if (p == nullptr) {
-    return;
-  }
-
-  std::lock_guard<std::mutex> lock{mutex_};
-  wgpuBufferRelease(static_cast<WGPUBuffer>(p));
-  --stats_.num_allocs;
-}
-
-void ExternalGpuBufferAllocator::GetStats(AllocatorStats* stats) {
-  std::lock_guard<std::mutex> lock{mutex_};
-  *stats = stats_;
+AllocatorPtr CreateSharedWebGpuAllocator(std::shared_ptr<WebGpuContext> context) {
+  auto recording = std::make_shared<CommandRecordingState>();
+  return std::make_shared<GpuBufferAllocator>(
+      [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
+      [recording = std::move(recording)]() -> CommandRecordingState& { return *recording; },
+      false,
+      []() { return true; });
 }
 
 WebGpuNoOpAllocator::WebGpuNoOpAllocator(bool is_read_only_allocator)
