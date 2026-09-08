@@ -89,6 +89,16 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (nullable NSArray<NSString*>*)outputNamesWithError:(NSError**)error;
 
+/**
+ * Ends profiling and returns the filename of the file the profiling data was written to.
+ *
+ * Profiling is turned on through `-[ORTSessionOptions enableProfilingWithFilePrefix:error:]`.
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return The profiling file name, an empty string if profiling was not enabled or nil if an error occurs.
+ */
+- (nullable NSString*)endProfilingWithError:(NSError**)error;
+
 @end
 
 /**
@@ -256,6 +266,28 @@ NS_ASSUME_NONNULL_BEGIN
  * @return Whether the ONNX Runtime Extensions custom ops were successfully registered.
  */
 - (BOOL)enableOrtExtensionsCustomOpsWithError:(NSError**)error;
+
+/**
+ * Enables profiling in sessions using this ORTSessionOptions object.
+ *
+ * The profiling results will be written into a profile file named `[filePrefix]_[timestamp].json`.
+ * Directories included in the prefix must exist.
+ * Prefix may be an absolute path or relative to current working directory.
+ *
+ * @param filePrefix The prefix for the path of the profile file.
+ * @param error Optional error information set if an error occurs.
+ * @return Whether profiling was successfully enabled.
+ */
+- (BOOL)enableProfilingWithFilePrefix:(NSString*)filePrefix
+                                error:(NSError**)error;
+
+/**
+ * Disables profiling in sessions using this ORTSessionOptions object.
+ *
+ * @param error Optional error information set if an error occurs.
+ * @return Whether profiling was successfully disabled.
+ */
+- (BOOL)disableProfilingWithError:(NSError**)error;
 
 @end
 
