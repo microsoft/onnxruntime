@@ -37,6 +37,33 @@ TEST(GatherFpQuantizedOpTest, BasicPerRowScale) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+TEST(GatherFpQuantizedOpTest, GlobalPerTensorScale) {
+  // data: [4, 4] FP8 E4M3FN. scales has shape [1, 1]: a single global scale for the whole table,
+  // broadcast along both gather_axis (0) and quantize_axis (1). This mirrors a FP8-quantized
+  // embedding table that uses one scalar `weight_scale` shared by every row (e.g. HF's
+  // FP8Embedding: `rows.to(weight_scale.dtype) * weight_scale`, where `weight_scale` has shape (1,)).
+  std::vector<Float8E4M3FN> data = {
+      Float8E4M3FN(1.0f), Float8E4M3FN(2.0f), Float8E4M3FN(4.0f), Float8E4M3FN(8.0f),
+      Float8E4M3FN(-1.0f), Float8E4M3FN(-2.0f), Float8E4M3FN(-4.0f), Float8E4M3FN(-8.0f),
+      Float8E4M3FN(1.0f), Float8E4M3FN(1.0f), Float8E4M3FN(1.0f), Float8E4M3FN(1.0f),
+      Float8E4M3FN(2.0f), Float8E4M3FN(2.0f), Float8E4M3FN(2.0f), Float8E4M3FN(2.0f)};
+  std::vector<float> scales = {0.5f};  // shape [1, 1], one value for the entire tensor
+  std::vector<int64_t> indices = {1, 3};
+  std::vector<float> expected = {
+      -0.5f, -1.0f, -2.0f, -4.0f,
+      1.0f, 1.0f, 1.0f, 1.0f};
+
+  OpTester test("GatherFpQuantized", 1, kMSDomain);
+  test.AddAttribute<int64_t>("gather_axis", 0);
+  test.AddAttribute<int64_t>("quantize_axis", 1);
+  test.AddAttribute<int64_t>("block_size", 0);
+  test.AddInput<Float8E4M3FN>("data", {4, 4}, data);
+  test.AddInput<int64_t>("indices", {2}, indices);
+  test.AddInput<float>("scales", {1, 1}, scales);
+  test.AddOutput<float>("output", {2, 4}, expected);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 TEST(GatherFpQuantizedOpTest, SubRowBlockScale) {
   // data: [1, 4] FP8 E4M3FN, block_size = 2 -> 2 blocks of 2 elements each along quantize_axis = 1.
   std::vector<Float8E4M3FN> data = {

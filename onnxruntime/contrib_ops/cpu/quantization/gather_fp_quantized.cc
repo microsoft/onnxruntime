@@ -74,11 +74,26 @@ Status GatherFpQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* context, 
 
   const int64_t quantize_axis_dim = data_shape[narrow<size_t>(p.quantize_axis)];
   const int64_t effective_block_size = block_size_ == 0 ? quantize_axis_dim : block_size_;
-  for (size_t i = 0; i < data_shape.NumDimensions(); ++i) {
-    ORT_RETURN_IF_NOT(i == static_cast<size_t>(p.quantize_axis)
+  const size_t rank = data_shape.NumDimensions();
+  p.data_strides.assign(rank, 1);
+  p.scale_strides.assign(rank, 1);
+  p.scale_broadcast_axis.assign(rank, false);
+  for (size_t i = 0; i < rank; ++i) {
+    bool dims_match = i == static_cast<size_t>(p.quantize_axis)
                           ? (data_shape[i] + effective_block_size - 1) / effective_block_size == scales_shape[i]
-                          : data_shape[i] == scales_shape[i],
-                      "data and scales do not match shapes.");
+                          : data_shape[i] == scales_shape[i];
+    // On axes other than quantize_axis, a scales dimension of 1 broadcasts along that axis (e.g. a
+    // single scale shared by every row, including a single global per-tensor scale).
+    bool broadcastable = i != static_cast<size_t>(p.quantize_axis) && scales_shape[i] == 1;
+    ORT_RETURN_IF_NOT(dims_match || broadcastable, "data and scales do not match shapes.");
+    p.scale_broadcast_axis[i] = broadcastable && !dims_match;
+  }
+  // Compute row-major strides from the trailing axis inward.
+  for (size_t i = rank; i-- > 0;) {
+    if (i + 1 < rank) {
+      p.data_strides[i] = p.data_strides[i + 1] * data_shape[i + 1];
+      p.scale_strides[i] = p.scale_strides[i + 1] * scales_shape[i + 1];
+    }
   }
 
   return Status::OK();
@@ -94,13 +109,14 @@ Status GatherFpQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
                                                           int64_t gather_N,
                                                           int64_t gather_axis_dim,
                                                           int64_t gather_block,
-                                                          int64_t quantize_axis_dim,
-                                                          int64_t quantize_N,
+                                                          int64_t quantize_axis,
                                                           int64_t effective_block_size,
+                                                          const std::vector<int64_t>& data_strides,
+                                                          const std::vector<int64_t>& scale_strides,
+                                                          const std::vector<bool>& scale_broadcast_axis,
                                                           concurrency::ThreadPool* tp) const {
   auto data_full_block = gather_axis_dim * gather_block;
-  auto quantize_full_block = quantize_axis_dim * quantize_N;
-  auto scale_full_block = (quantize_axis_dim + effective_block_size - 1) / effective_block_size * quantize_N;
+  const int64_t rank = static_cast<int64_t>(data_strides.size());
 
   auto lambda = [&](int64_t gather_MN_idx) {
     int64_t gather_M_idx = gather_MN_idx / gather_N;
@@ -120,10 +136,19 @@ Status GatherFpQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
     for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
       const float data_val = DequantizedElem(data_ptr, data_idx);
 
-      int64_t x = data_idx / quantize_full_block;
-      int64_t y = data_idx % quantize_full_block / quantize_N;
-      int64_t z = data_idx % quantize_N;
-      int64_t scale_idx = x * scale_full_block + y / effective_block_size * quantize_N + z;
+      // Decompose the flat data index into per-axis indices (data_strides are the data tensor's
+      // row-major strides), then map each axis to its contribution to the scales index: block-index
+      // division at quantize_axis, 0 for a broadcast axis, otherwise the axis index unchanged.
+      int64_t remaining = data_idx;
+      int64_t scale_idx = 0;
+      for (int64_t axis = 0; axis < rank; ++axis) {
+        int64_t axis_idx = remaining / data_strides[axis];
+        remaining -= axis_idx * data_strides[axis];
+        int64_t contribution = axis == quantize_axis
+                                   ? axis_idx / effective_block_size
+                                   : (scale_broadcast_axis[axis] ? 0 : axis_idx);
+        scale_idx += contribution * scale_strides[axis];
+      }
       const float scale_val = static_cast<float>(scales_ptr[scale_idx]);
 
       output_ptr[output_idx] = static_cast<T2>(data_val * scale_val);
@@ -160,7 +185,6 @@ Status GatherFpQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   const int64_t gather_N = p.indices_tensor->Shape().Size();
 
   const int64_t quantize_axis_dim = data_shape[narrow<size_t>(p.quantize_axis)];
-  const int64_t quantize_N = data_shape.SizeFromDimension(SafeInt<size_t>(p.quantize_axis) + 1);
   const int64_t effective_block_size = block_size_ == 0 ? quantize_axis_dim : block_size_;
 
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
@@ -173,22 +197,25 @@ Status GatherFpQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
     auto* output_ptr = p.output_tensor->template MutableData<float>();
 
     return CopyDataAndDequantize<float>(data_ptr, indices_ptr, scales_ptr, output_ptr, gather_M, gather_N,
-                                        gather_axis_dim, gather_block, quantize_axis_dim, quantize_N,
-                                        effective_block_size, tp);
+                                        gather_axis_dim, gather_block, p.quantize_axis,
+                                        effective_block_size, p.data_strides, p.scale_strides,
+                                        p.scale_broadcast_axis, tp);
   } else if (dequantized_type == ONNX_NAMESPACE::TensorProto::FLOAT16) {
     const auto* scales_ptr = p.scales_tensor->template Data<MLFloat16>();
     auto* output_ptr = p.output_tensor->template MutableData<MLFloat16>();
 
     return CopyDataAndDequantize<MLFloat16>(data_ptr, indices_ptr, scales_ptr, output_ptr, gather_M, gather_N,
-                                            gather_axis_dim, gather_block, quantize_axis_dim, quantize_N,
-                                            effective_block_size, tp);
+                                            gather_axis_dim, gather_block, p.quantize_axis,
+                                            effective_block_size, p.data_strides, p.scale_strides,
+                                            p.scale_broadcast_axis, tp);
   } else if (dequantized_type == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
     const auto* scales_ptr = p.scales_tensor->template Data<BFloat16>();
     auto* output_ptr = p.output_tensor->template MutableData<BFloat16>();
 
     return CopyDataAndDequantize<BFloat16>(data_ptr, indices_ptr, scales_ptr, output_ptr, gather_M, gather_N,
-                                           gather_axis_dim, gather_block, quantize_axis_dim, quantize_N,
-                                           effective_block_size, tp);
+                                           gather_axis_dim, gather_block, p.quantize_axis,
+                                           effective_block_size, p.data_strides, p.scale_strides,
+                                           p.scale_broadcast_axis, tp);
   } else {
     ORT_THROW("Unsupported dequantized type: ", dequantized_type);
   }
