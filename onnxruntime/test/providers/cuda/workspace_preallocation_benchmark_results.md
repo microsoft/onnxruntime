@@ -7,11 +7,10 @@ run-scoped static workspace preallocation for CUDA `MatMulNBits`. The preallocat
 path declares each kernel's workspace and includes its lifetime in ORT's activation
 memory pattern.
 
-The results use two workload profiles. The **prefill-only** profile isolates a
-long prompt and the fpA-intB CUTLASS workspace. The **generation** profile runs
-the same long prefill followed by 128 chained batch-1 decode steps and covers
-both fpA-intB CUTLASS workspace and legacy dequantize-plus-cuBLAS workspace.
-Each model has one table containing every measured configuration.
+The current RTX 5090 results use a generation workload with a 1,024-token
+prefill followed by 128 chained batch-1 decode steps. It covers both fpA-intB
+CUTLASS workspace and legacy dequantize-plus-cuBLAS workspace. The older T1000
+prefill-only results are retained separately as historical data.
 
 ## Methodology
 
@@ -21,24 +20,23 @@ Each model has one table containing every measured configuration.
 - CUDA arena extension strategy: `kSameAsRequested`
 - Baseline and preallocated configurations: separate fresh processes
 
-| Setting | Prefill-only profile | Generation profile |
-|---|---|---|
-| Input | RTX 5090: batch 1, 1,024 BOS tokens; T1000: batch 1, 64 BOS tokens | Batch 1, 1,024-token prefill followed by 128 deterministic decode tokens |
-| Initial KV cache | One zero-filled token per layer | Empty |
-| Cache progression | None; every iteration reuses the same feeds | Each decode step's present KV outputs become the next step's past KV inputs |
-| Output | Logits for all prefill tokens | Full logits and present KV outputs for prefill and every decode step |
-| Dispatch comparison | fpA-intB only (`ep.cuda.fpa_intb_gemm=1`) | fpA-intB (`=1`) and legacy (`=0`) |
-| Warmup | 5 runs | 2 complete scenarios |
-| Memory measurement | 3 runs | 1 complete scenario |
-| Timed measurement | 30 runs | 10 complete scenarios |
-| Reported latency | Prefill iteration average, P50, and P90 | End-to-end scenario, prefill phase, and per-token decode distributions |
+| Setting | RTX 5090 generation profile |
+|---|---|
+| Input | Batch 1, 1,024-token prefill followed by 128 deterministic decode tokens |
+| Initial KV cache | Empty |
+| Cache progression | Each decode step's present KV outputs become the next step's past KV inputs |
+| Output | Full logits and present KV outputs for prefill and every decode step |
+| Dispatch comparison | fpA-intB (`ep.cuda.fpa_intb_gemm=1`) and legacy (`=0`) |
+| Warmup | 2 complete scenarios |
+| Memory measurement | 1 complete scenario |
+| Timed measurement | 10 complete scenarios |
+| Reported latency | End-to-end scenario, prefill phase, and per-token decode distributions |
 
-Each complete generation warmup traverses every decode-cache length. Although one
-test invocation can report end-to-end, prefill, and decode timing for a generation
-scenario, each workload and preallocation configuration remains a separate
-process for memory measurement. Running prefill-only and generation workloads in
-the same process would allow the first workload's arena regions and cached memory
-patterns to affect the second workload's measured high-water mark.
+Each complete warmup traverses every decode-cache length. One test invocation
+reports end-to-end, prefill, and decode timing for a generation scenario. Each
+dispatch and preallocation configuration remains a separate fresh process so
+arena regions and cached memory patterns from another configuration cannot
+affect its measured high-water mark.
 
 | GPU | Compute capability | CUDA toolkit | Driver |
 |---|---:|---:|---:|
@@ -95,35 +93,10 @@ Model:
 - 28 decoder layers
 - 2 key/value heads
 - 141 CUDA `MatMulNBits` nodes
-- 113 nodes declared nonzero workspace in the prefill-only profile
 - 141 nodes declared workspace in each generation profile
 
 | Metric | Baseline | Preallocated | Difference |
 |---|---:|---:|---:|
-| **Prefill-only, fpA-intB path** | | | |
-| Planned workspace nodes | 0 | 113 | +113 |
-| Largest workspace | 0 B | 4,254,208 B | +4,254,208 B |
-| Serialized ONNX graph | 197,130 B | 197,130 B | 0 B |
-| Serialized external tensor data | 1,343,683,584 B (1,281.44 MiB) | 1,343,683,584 B (1,281.44 MiB) | 0 B |
-| Post-initialization arena total | 2,211,970,304 B (2,109.50 MiB) | 2,211,970,304 B (2,109.50 MiB) | 0 B |
-| Post-initialization direct reserved bytes | 868,257,792 B (828.04 MiB) | 868,257,792 B (828.04 MiB) | 0 B |
-| Post-initialization BFC region capacity | 1,343,712,512 B (1,281.46 MiB) | 1,343,712,512 B (1,281.46 MiB) | 0 B |
-| Post-initialization arena slack | 868,257,792 B (828.04 MiB) | 868,257,792 B (828.04 MiB) | 0 B |
-| Shrink reclaimed after warmup | 1,179,422,720 B (1,124.79 MiB) | 1,179,422,720 B (1,124.79 MiB) | 0 B |
-| Measured arena reservation | 426,148,096 B | 422,144,768 B | **-4,003,328 B** |
-| Final arena slack | 426,148,096 B | 422,144,768 B | **-4,003,328 B** |
-| Internal fragmentation | 248 B | 248 B | 0 B |
-| Internal fragmentation ratio | 0.0000185% | 0.0000185% | 0 pp |
-| Arena allocation calls | 13,936 | 9,755 | **-30.0%** |
-| WDDM initialization peak | 2,798 MiB | 2,798 MiB | **0 MiB** |
-| WDDM post-initialization usage | 2,700 MiB | 2,700 MiB | **0 MiB** |
-| WDDM pre-inference usage | 1,838 MiB | 1,838 MiB | **0 MiB** |
-| WDDM inference peak | 2,260 MiB | 2,254 MiB | **-6 MiB** |
-| WDDM inference increase | 422 MiB | 416 MiB | **-6 MiB** |
-| Average latency | 110.82 ms | 92.48 ms | **-16.5%** |
-| P50 latency | 108.49 ms | 91.29 ms | **-15.8%** |
-| P90 latency | 121.77 ms | 97.79 ms | **-19.7%** |
-| Initialization | 57.70 s | 76.86 s | +33.2% |
 | **Generation, fpA-intB path** | | | |
 | Planned workspace nodes | 0 | 141 | +141 |
 | Largest workspace | 0 B | 6,291,456 B (6.00 MiB) | +6,291,456 B |
@@ -177,23 +150,8 @@ Model:
 | Decode P99 per token | 28.88 ms | 30.88 ms | +6.9% |
 | Initialization | 1.80 s | 1.68 s | -6.7% |
 
-In the prefill-only workload, workspace preallocation reduced the controlled
-CUDA arena reservation by 4,003,328 bytes (approximately 3.82 MiB). This is
-close to the largest declared workspace of 4,254,208 bytes (approximately
-4.06 MiB), indicating that most workspace storage overlapped non-live activation
-memory. It also eliminated 4,181 allocator calls and reduced the WDDM inference
-peak by 6 MiB.
-
-The 1,281.44 MiB serialized external-data file closely matches the 1,281.46 MiB
-BFC region capacity created during initialization. After prepacking and
-initialization cleanup, 828.04 MiB of that capacity was unused and was later
-released by `Shrink()`. The separate 828.04 MiB of live direct reserves remained
-allocated; these are primarily persistent prepacked buffers. Internal
-fragmentation was only 248 bytes, so the large post-initialization slack reflects
-free BFC capacity rather than live-allocation padding.
-
-In the generation workload, fpA-intB preallocation did not reduce the memory
-high-water mark. Legacy preallocation reduced measured arena reservation by
+fpA-intB preallocation did not reduce the memory high-water mark. Legacy
+preallocation reduced measured arena reservation by
 94,322,688 bytes (89.95 MiB) and WDDM inference peak by 86 MiB, close to its
 96 MiB largest declared workspace. The generation latency changes were small and
 mixed, so the legacy memory reduction is the primary result.
@@ -206,35 +164,10 @@ Model:
 - 28 decoder layers
 - 4 key/value heads
 - 141 CUDA `MatMulNBits` nodes
-- 113 nodes declared nonzero workspace in the prefill-only profile
 - 141 nodes declared workspace in each generation profile
 
 | Metric | Baseline | Preallocated | Difference |
 |---|---:|---:|---:|
-| **Prefill-only, fpA-intB path** | | | |
-| Planned workspace nodes | 0 | 113 | +113 |
-| Largest workspace | 0 B | 4,257,792 B | +4,257,792 B |
-| Serialized ONNX graph | 198,083 B | 198,083 B | 0 B |
-| Serialized external tensor data | 5,076,085,760 B (4,840.93 MiB) | 5,076,085,760 B (4,840.93 MiB) | 0 B |
-| Post-initialization arena total | 9,053,150,464 B (8,633.76 MiB) | 9,053,150,464 B (8,633.76 MiB) | 0 B |
-| Post-initialization direct reserved bytes | 3,977,035,776 B (3,792.80 MiB) | 3,977,035,776 B (3,792.80 MiB) | 0 B |
-| Post-initialization BFC region capacity | 5,076,114,688 B (4,840.96 MiB) | 5,076,114,688 B (4,840.96 MiB) | 0 B |
-| Post-initialization arena slack | 3,977,035,776 B (3,792.80 MiB) | 3,977,035,776 B (3,792.80 MiB) | 0 B |
-| Shrink reclaimed after warmup | 4,288,462,848 B (4,089.80 MiB) | 4,288,462,848 B (4,089.80 MiB) | 0 B |
-| Measured arena reservation | 542,319,360 B | 542,849,792 B | **+530,432 B** |
-| Final arena slack | 542,319,360 B | 542,849,792 B | **+530,432 B** |
-| Internal fragmentation | 248 B | 248 B | 0 B |
-| Internal fragmentation ratio | 0.00000489% | 0.00000489% | 0 pp |
-| Arena allocation calls | 13,936 | 9,755 | **-30.0%** |
-| WDDM initialization peak | 9,902 MiB | 9,902 MiB | **0 MiB** |
-| WDDM post-initialization usage | 9,676 MiB | 9,676 MiB | **0 MiB** |
-| WDDM pre-inference usage | 5,604 MiB | 5,604 MiB | **0 MiB** |
-| WDDM inference peak | 6,132 MiB | 6,132 MiB | **0 MiB** |
-| WDDM inference increase | 528 MiB | 528 MiB | **0 MiB** |
-| Average latency | 261.47 ms | 259.04 ms | -0.9% |
-| P50 latency | 260.47 ms | 258.10 ms | -0.9% |
-| P90 latency | 264.95 ms | 267.16 ms | +0.8% |
-| Initialization | 111.91 s | 142.11 s | +27.0% |
 | **Generation, fpA-intB path** | | | |
 | Planned workspace nodes | 0 | 141 | +141 |
 | Largest workspace | 0 B | 33,030,144 B (31.50 MiB) | +33,030,144 B |
@@ -288,183 +221,22 @@ Model:
 | Decode P99 per token | 41.13 ms | 39.92 ms | -3.0% |
 | Initialization | 4.16 s | 3.75 s | -9.8% |
 
-In the prefill-only workload, workspace preallocation did not reduce the
-controlled CUDA arena reservation. It added 530,432 bytes (approximately
-518 KiB), despite a largest declared workspace of approximately 4.06 MiB, while
-eliminating 4,181 allocator calls. The process-scoped WDDM inference peak was
-unchanged, and the paired latency measurements were effectively unchanged.
-
-The 4,840.93 MiB serialized external-data file closely matches the 4,840.96 MiB
-BFC region capacity created during initialization. The separate 3,792.80 MiB of
-direct reserves primarily represents persistent prepacked buffers. After
-warmup, `Shrink()` reclaimed 4,089.80 MiB of completely free BFC regions.
-Internal fragmentation was only 248 bytes.
-
-In the generation workload, fpA-intB preallocation again did not reduce memory.
-Legacy preallocation reduced measured arena reservation by 335,429,376 bytes
+fpA-intB preallocation did not reduce memory. Legacy preallocation reduced
+measured arena reservation by 335,429,376 bytes
 (319.89 MiB) and WDDM inference peak by 314 MiB. The arena change exceeds the
 224 MiB largest individual workspace because memory-pattern placement also
 changed BFC region packing and the allocation high-water mark. The generation
 latency differences remain single-pair observations; the legacy memory reduction
 is the primary result.
 
-### Qwen 3.5 2B Text
-
-Model:
-`qwen3.5-2b-text-cuda-gpu:1`
-
-- 24 decoder layers: 18 linear-attention and 6 full-attention layers
-- 2 key/value heads and head size 256 for full-attention layers
-- 187 CUDA `MatMulNBits` nodes
-- 151 nodes declared nonzero workspace for the tested shape
-- Weights embedded in the single `model.onnx` file
-
-| Metric | Baseline | Preallocated | Difference |
-|---|---:|---:|---:|
-| Planned workspace nodes | 0 | 151 | +151 |
-| Largest workspace | 0 B | 6,952,960 B | +6,952,960 B |
-| Serialized ONNX model | 1,397,119,352 B (1,332.40 MiB) | 1,397,119,352 B (1,332.40 MiB) | 0 B |
-| Serialized external tensor data | 0 B | 0 B | 0 B |
-| Post-initialization arena total | 3,248,802,560 B (3,098.30 MiB) | 3,248,802,560 B (3,098.30 MiB) | 0 B |
-| Post-initialization direct reserved bytes | 1,343,619,072 B (1,281.38 MiB) | 1,343,619,072 B (1,281.38 MiB) | 0 B |
-| Post-initialization BFC region capacity | 1,905,183,488 B (1,816.92 MiB) | 1,905,183,488 B (1,816.92 MiB) | 0 B |
-| Post-initialization arena slack | 1,280,049,152 B (1,220.75 MiB) | 1,280,049,152 B (1,220.75 MiB) | 0 B |
-| Shrink reclaimed after warmup | 1,788,608,512 B (1,705.75 MiB) | 1,788,608,512 B (1,705.75 MiB) | 0 B |
-| Measured arena reservation | 708,753,664 B | 701,974,528 B | **-6,779,136 B** |
-| Final arena slack | 708,753,664 B | 701,974,528 B | **-6,779,136 B** |
-| Internal fragmentation | 8,116 B | 8,116 B | 0 B |
-| Internal fragmentation ratio | 0.0004122% | 0.0004122% | 0 pp |
-| Arena allocation calls | 13,945 | 8,358 | **-40.1%** |
-| WDDM initialization peak | 3,848 MiB | 3,848 MiB | **0 MiB** |
-| WDDM post-initialization usage | 3,426 MiB | 3,426 MiB | **0 MiB** |
-| WDDM pre-inference usage | 2,294 MiB | 2,294 MiB | **0 MiB** |
-| WDDM inference peak | 2,952 MiB | 2,944 MiB | **-8 MiB** |
-| WDDM inference increase | 658 MiB | 650 MiB | **-8 MiB** |
-| Average latency | 222.61 ms | 230.20 ms | +3.4% |
-| P50 latency | 221.23 ms | 229.95 ms | +3.9% |
-| P90 latency | 227.51 ms | 234.87 ms | +3.2% |
-| Initialization | 100.47 s | 89.50 s | **-10.9%** |
-
-Workspace preallocation reduced the controlled CUDA arena reservation by
-6,779,136 bytes (approximately 6.47 MiB), close to the largest declared
-workspace of 6,952,960 bytes (approximately 6.63 MiB). It eliminated 5,587
-allocator calls and reduced the WDDM inference peak by 8 MiB.
-
-The model's 1,332.40 MiB serialized ONNX file embeds its weights. Initialization
-created 1,816.92 MiB of BFC region capacity and 1,281.38 MiB of persistent direct
-reserves. After warmup, `Shrink()` reclaimed 1,705.75 MiB of completely free BFC
-regions. Internal fragmentation was 8,116 bytes. The paired latency run was 3.4%
-slower with preallocation; as with the other single paired measurements, this
-does not establish a stable latency effect.
-
-### Qwen 3 8B
-
-Model:
-`qwen3-8b-cuda-gpu:2`
-
-- 36 decoder layers
-- 8 key/value heads
-- 253 CUDA `MatMulNBits` nodes
-- 253 nodes declared nonzero workspace for the tested shape
-
-| Metric | Baseline | Preallocated | Difference |
-|---|---:|---:|---:|
-| Planned workspace nodes | 0 | 253 | +253 |
-| Largest workspace | 0 B | 4,254,208 B | +4,254,208 B |
-| Serialized ONNX graph | 485,603 B | 485,603 B | 0 B |
-| Serialized external tensor data | 5,937,758,208 B (5,662.69 MiB) | 5,937,758,208 B (5,662.69 MiB) | 0 B |
-| Post-initialization arena total | 11,305,310,464 B (10,781.58 MiB) | 11,305,310,464 B (10,781.58 MiB) | 0 B |
-| Post-initialization direct reserved bytes | 5,367,709,696 B (5,119.05 MiB) | 5,367,709,696 B (5,119.05 MiB) | 0 B |
-| Post-initialization BFC region capacity | 5,937,600,768 B (5,662.54 MiB) | 5,937,600,768 B (5,662.54 MiB) | 0 B |
-| Post-initialization arena slack | 5,289,545,728 B (5,044.50 MiB) | 5,289,545,728 B (5,044.50 MiB) | 0 B |
-| Shrink reclaimed after warmup | 5,289,545,728 B (5,044.50 MiB) | 5,289,545,728 B (5,044.50 MiB) | 0 B |
-| Measured arena reservation | 638,632,448 B | 638,833,664 B | **+201,216 B** |
-| Final arena slack | 638,632,448 B | 638,833,664 B | **+201,216 B** |
-| Internal fragmentation | 248 B | 248 B | 0 B |
-| Internal fragmentation ratio | 0.00000412% | 0.00000412% | 0 pp |
-| Arena allocation calls | 21,573 | 12,212 | **-43.4%** |
-| WDDM initialization peak | 11,690 MiB | 11,690 MiB | **0 MiB** |
-| WDDM post-initialization usage | 11,116 MiB | 11,116 MiB | **0 MiB** |
-| WDDM pre-inference usage | 6,176 MiB | 6,176 MiB | **0 MiB** |
-| WDDM inference peak | 6,792 MiB | 6,792 MiB | **0 MiB** |
-| WDDM inference increase | 616 MiB | 616 MiB | **0 MiB** |
-| Average latency | 287.63 ms | 283.46 ms | **-1.5%** |
-| P50 latency | 288.04 ms | 283.76 ms | **-1.5%** |
-| P90 latency | 294.03 ms | 287.30 ms | **-2.3%** |
-| Initialization | 123.02 s | 146.40 s | +19.0% |
-
-Workspace preallocation did not reduce the controlled CUDA arena reservation for
-this model and shape. It added 201,216 bytes (approximately 197 KiB), while
-eliminating 9,361 allocator calls. The process-scoped WDDM inference peak was
-unchanged. The 30-run latency distributions had no multi-second outliers and
-were slightly faster with preallocation, although a single paired run does not
-establish a stable latency effect.
-
-The 5,662.69 MiB serialized external-data file closely matches the 5,662.54 MiB
-BFC region capacity created during initialization. The separate 5,119.05 MiB of
-direct reserves primarily represents persistent prepacked buffers. After
-warmup, `Shrink()` reclaimed 5,044.50 MiB of completely free BFC regions.
-Internal fragmentation was only 248 bytes.
-
-### Hy-MT2 1.8B
-
-Model:
-`Hy-MT2-1.8B-ONNX/Q4_KQuant_tie/cuda`
-
-- 32 decoder layers
-- 4 key/value heads
-- 225 CUDA `MatMulNBits` nodes
-- 224 nodes declared nonzero workspace for the tested shape
-
-| Metric | Baseline | Preallocated | Difference |
-|---|---:|---:|---:|
-| Planned workspace nodes | 0 | 224 | +224 |
-| Largest workspace | 0 B | 172,032 B | +172,032 B |
-| Serialized ONNX graph | 522,204 B | 522,204 B | 0 B |
-| Serialized external tensor data | 1,102,761,792 B (1,051.68 MiB) | 1,102,761,792 B (1,051.68 MiB) | 0 B |
-| Post-initialization arena total | 2,191,218,944 B (2,089.71 MiB) | 2,191,218,944 B (2,089.71 MiB) | 0 B |
-| Post-initialization direct reserved bytes | 964,689,920 B (920.00 MiB) | 964,689,920 B (920.00 MiB) | 0 B |
-| Post-initialization BFC region capacity | 1,226,529,024 B (1,169.71 MiB) | 1,226,529,024 B (1,169.71 MiB) | 0 B |
-| Post-initialization arena slack | 892,338,176 B (851.00 MiB) | 892,338,176 B (851.00 MiB) | 0 B |
-| Shrink reclaimed after warmup | 1,445,957,632 B (1,378.97 MiB) | 1,445,957,632 B (1,378.97 MiB) | 0 B |
-| Measured arena reservation | 536,984,064 B | 537,099,264 B | **+115,200 B** |
-| Final arena slack | 536,984,064 B | 537,099,264 B | **+115,200 B** |
-| Internal fragmentation | 440 B | 440 B | 0 B |
-| Internal fragmentation ratio | 0.0000339% | 0.0000339% | 0 pp |
-| Arena allocation calls | 19,191 | 10,903 | **-43.2%** |
-| WDDM initialization peak | 2,406 MiB | 2,406 MiB | **0 MiB** |
-| WDDM post-initialization usage | 2,406 MiB | 2,406 MiB | **0 MiB** |
-| WDDM pre-inference usage | 1,658 MiB | 1,658 MiB | **0 MiB** |
-| WDDM inference peak | 2,170 MiB | 2,170 MiB | **0 MiB** |
-| WDDM inference increase | 512 MiB | 512 MiB | **0 MiB** |
-| Average latency | 105.52 ms | 115.92 ms | +9.9% |
-| P50 latency | 101.12 ms | 118.30 ms | +17.0% |
-| P90 latency | 116.17 ms | 127.86 ms | +10.1% |
-| Initialization | 6.87 s | 8.09 s | +17.8% |
-
-Workspace preallocation did not reduce the controlled CUDA arena reservation for
-this shape. It added 115,200 bytes, while eliminating 8,288 allocator calls. The
-1,051.68 MiB serialized external-data file is context for the 1,169.71 MiB BFC
-region capacity created during initialization. After initialization, 851.00 MiB
-of that capacity was unused; after warmup, `Shrink()` reclaimed 1,378.97 MiB of
-completely free BFC regions. The separate 920.00 MiB of direct reserves remained
-allocated and primarily represents persistent prepacked buffers. Internal
-fragmentation was only 440 bytes. WDDM process peaks were identical between
-configurations.
-
 ### RTX 5090 summary
 
 | Model | Workload and path | WDDM inference-peak change | Arena reservation change | Allocation-call change | Average-latency change |
 |---|---|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | Prefill-only, fpA-intB | **-6 MiB** | **-4,003,328 B** | **-30.0%** | **-16.5%** |
 | Qwen 2.5 1.5B | Generation, fpA-intB | +10 MiB | +1,097,984 B | +0.5% | -1.2% |
 | Qwen 2.5 1.5B | Generation, legacy | **-86 MiB** | **-94,322,688 B** | -0.4% | -0.5% |
-| Qwen 2.5 7B | Prefill-only, fpA-intB | **0 MiB** | +530,432 B | **-30.0%** | -0.9% |
 | Qwen 2.5 7B | Generation, fpA-intB | +6 MiB | +2,212,096 B | -0.7% | +0.9% |
 | Qwen 2.5 7B | Generation, legacy | **-314 MiB** | **-335,429,376 B** | -0.4% | -1.4% |
-| Qwen 3.5 2B Text | Prefill-only, fpA-intB | **-8 MiB** | **-6,779,136 B** | **-40.1%** | +3.4% |
-| Qwen 3 8B | Prefill-only, fpA-intB | **0 MiB** | +201,216 B | **-43.4%** | **-1.5%** |
-| Hy-MT2 1.8B | Prefill-only, fpA-intB | **0 MiB** | +115,200 B | **-43.2%** | +9.9% |
 
 The generation workloads show the strongest memory benefit when fpA-intB is
 disabled and preallocation covers the legacy dequantized-weight workspace. The
@@ -474,11 +246,13 @@ for either model because the growing KV cache and workspace-free decode steps
 dominated the complete scenario. Latency moved in different directions across
 the single paired runs.
 
-## NVIDIA T1000
+## Historical NVIDIA T1000 prefill-only results
 
-The T1000 runs predate the initialization-breakdown instrumentation. Their
-serialized-size, direct-reserve, arena-slack, and fragmentation metrics were not
-recorded, so the original results are preserved below without inferred values.
+The T1000 runs predate both the initialization-breakdown instrumentation and
+legacy workspace declaration. Their serialized-size, direct-reserve,
+arena-slack, and fragmentation metrics were not recorded, so the original
+results are preserved below without inferred values and must not be compared to
+the current RTX 5090 planned-node counts.
 
 ### Qwen 2.5 1.5B
 
