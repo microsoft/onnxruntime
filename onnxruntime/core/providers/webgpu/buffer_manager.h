@@ -100,13 +100,15 @@ class BufferManager {
   void Download(CommandRecordingState& recording, WGPUBuffer src, void* dst, size_t size) const;
   void RefreshPendingBuffers(CommandRecordingState& recording) const;
 
-  std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers(wgpu::BufferUsage usage);
-  void AbsorbCachedBuffers(wgpu::BufferUsage usage,
-                           std::vector<std::pair<size_t, WGPUBuffer>>&& buffers);
+  // Direct access to the underlying cache managers. Used by SessionBufferPool to
+  // donate/seed buffers across per-graph BufferManager lifetimes.
+  IBufferCacheManager& StorageCache() { return *storage_cache_; }
+  IBufferCacheManager& UniformCache() { return *uniform_cache_; }
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
   IBufferCacheManager& GetCacheManager(WGPUBuffer buffer) const;
+
   WebGpuContext& context_;
   mutable std::mutex mutex_;
   std::unique_ptr<IBufferCacheManager> storage_cache_;

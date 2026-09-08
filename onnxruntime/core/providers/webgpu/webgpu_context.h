@@ -292,8 +292,16 @@ class WebGpuContext final {
 
   Status Flush(const webgpu::BufferManager& buffer_mgr, CommandRecordingState& recording);
 
-  // Context-level managers are shared by sessions and synchronize their buffer caches internally.
+  /**
+   * Get the buffer manager.
+   */
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
+
+  /**
+   * Get the initializer buffer manager.
+   *
+   * This buffer manager is used for read-only buffers (e.g. initializers).
+   */
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
   inline webgpu::ValidationMode ValidationMode() const {

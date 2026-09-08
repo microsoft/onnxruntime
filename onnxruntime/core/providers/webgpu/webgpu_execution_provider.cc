@@ -60,9 +60,7 @@ class Memcpy final : public OpKernel {
   Status Compute(OpKernelContext* ctx) const override {
     const auto* X = ctx->Input<Tensor>(0);
     Tensor* Y = ctx->Output(0, X->Shape());
-    const auto& ep = *static_cast<const WebGpuExecutionProvider*>(Info().GetExecutionProvider());
-    DataTransfer transfer(ep.BufferManager(), ep.Recording());
-    return transfer.CopyTensor(*X, *Y);
+    return Info().GetDataTransferManager().CopyTensor(*X, *Y);
   }
 };
 
@@ -609,7 +607,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       recording_{std::make_unique<webgpu::CommandRecordingState>()},
       prepack_allocator_{CreateWebGpuAllocator(
           /*device_free=*/!context.HasDevice(),
-          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
+          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); }, false)} {
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
@@ -633,7 +631,7 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
       // allocator for initializers
       CreateWebGpuAllocator(
           device_free,
-          [this]() -> const webgpu::BufferManager& { return InitializerBufferManager(); },
+          [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); },
           [this]() -> webgpu::CommandRecordingState& { return Recording(); }, true),
       // default allocator
       CreateWebGpuAllocator(
@@ -875,6 +873,8 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  run_active_.store(false);
+
   // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
   // CaptureEnd() detaches their external storage.
   Status flush_status = context_.Flush(BufferManager(), *recording_);
@@ -892,7 +892,6 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     if (context_.ValidationMode() >= ValidationMode::Basic) {
       static_cast<void>(context_.PopErrorScope());
     }
-    run_active_.store(false);
     return flush_status;
   }
 
@@ -922,7 +921,6 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
 
   // Reset buffer manager routing after run completes
   graph_buffer_mgr_active_ = false;
-  run_active_.store(false);
 
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     return context_.PopErrorScope();
@@ -992,10 +990,6 @@ webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
     }
   }
   return context_.BufferManager();
-}
-
-webgpu::BufferManager& WebGpuExecutionProvider::InitializerBufferManager() const {
-  return context_.InitializerBufferManager();
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureAllowed() const {

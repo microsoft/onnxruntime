@@ -112,7 +112,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
   webgpu::BufferManager& BufferManager() const;
-  webgpu::BufferManager& InitializerBufferManager() const;
   webgpu::CommandRecordingState& Recording() const { return *recording_; }
   AllocatorPtr PrepackAllocator() const { return prepack_allocator_; }
   std::span<const std::string> GetForceCpuNodeNames() const { return force_cpu_node_names_; }

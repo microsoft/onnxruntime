@@ -433,16 +433,12 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       OrtDataTransferImpl* this_ptr,
       const OrtValue** src_tensors,
       OrtValue** dst_tensors,
-      OrtSyncStream** streams,
+      OrtSyncStream** /*streams*/,
       size_t num_tensors) {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
 
     if (num_tensors == 0) {
       return nullptr;
-    }
-
-    for (size_t idx = 0; idx < num_tensors; ++idx) {
-      ORT_ENFORCE(streams == nullptr || streams[idx] == nullptr, "WebGPU data transfers do not support stream overrides.");
     }
 
     std::call_once(impl.context_init_, [&impl]() {
@@ -486,7 +482,16 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }
     }
-    ORT_THROW_IF_ERROR(FlushAndWait(*impl.context_, buffer_manager, recording));
+    ORT_THROW_IF_ERROR(impl.context_->Flush(buffer_manager, recording));
+    wgpu::QueueWorkDoneStatus completion = wgpu::QueueWorkDoneStatus::Error;
+    auto future = impl.context_->Device().GetQueue().OnSubmittedWorkDone(
+        wgpu::CallbackMode::WaitAnyOnly,
+        [](wgpu::QueueWorkDoneStatus status, wgpu::StringView, wgpu::QueueWorkDoneStatus* result) noexcept {
+          *result = status;
+        },
+        &completion);
+    ORT_THROW_IF_ERROR(impl.context_->Wait(future));
+    ORT_ENFORCE(completion == wgpu::QueueWorkDoneStatus::Success, "WebGPU queue completion failed.");
     return nullptr;
   }
 

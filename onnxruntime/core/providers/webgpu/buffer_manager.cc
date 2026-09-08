@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/buffer_manager.h"
-#include "core/common/safeint.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
 namespace onnxruntime {
@@ -10,13 +9,13 @@ namespace webgpu {
 
 namespace {
 
-size_t NormalizeBufferSize(size_t size) {
-  return (SafeInt<size_t>(size) + 15) / 16 * 16;
+constexpr size_t NormalizeBufferSize(size_t size) {
+  return (size + 15) / 16 * 16;
 }
 
 // WebGPU requires that the copy size in CopyBufferToBuffer must be a multiple of 4 bytes.
-size_t NormalizeCopySize(size_t size) {
-  return (SafeInt<size_t>(size) + 3) / 4 * 4;
+constexpr size_t NormalizeCopySize(size_t size) {
+  return (size + 3) / 4 * 4;
 }
 
 void EnforceBufferUnmapped(WebGpuContext& context, WGPUBuffer buffer) {
@@ -498,10 +497,8 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
 
 void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuffer dst, size_t size) const {
   // If the buffer is mapped, we can directly write to it.
-  void* mapped_data = nullptr;
-  if (wgpuBufferGetMapState(dst) == WGPUBufferMapState_Mapped) {
-    mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);
-    ORT_ENFORCE(mapped_data, "Failed to access mapped WebGPU upload buffer.");
+  void* mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);  // ensure the buffer is mapped
+  if (mapped_data) {
     memcpy(mapped_data, src, size);
     wgpuBufferUnmap(dst);
     return;
@@ -517,11 +514,15 @@ void BufferManager::Upload(CommandRecordingState& recording, void* src, WGPUBuff
 
   auto staging_buffer = context_.Device().CreateBuffer(&desc);
   mapped_data = staging_buffer.GetMappedRange();
-  ORT_ENFORCE(mapped_data, "Failed to map WebGPU copy staging buffer.");
   memcpy(mapped_data, src, size);
-  memset(static_cast<uint8_t*>(mapped_data) + size, 0, copy_size - size);
+  // NOTE: When copy_size != size (due to 4-byte alignment requirement of CopyBufferToBuffer),
+  // the trailing bytes [size, copy_size) in the staging buffer contain uninitialized data.
+  // This dirty data gets copied into the destination buffer and may cause problems.
+  // A possible solution is to use CopyBufferToBuffer for the aligned portion and a compute
+  // shader to write the non-aligned remainder.
   staging_buffer.Unmap();
 
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
   auto& command_encoder = context_.GetCommandEncoder(recording);
   context_.EndComputePass(recording);
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, copy_size);
@@ -540,6 +541,7 @@ void BufferManager::MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGP
               "Source and destination buffers must have enough space for the copy operation. src_size=",
               src_size, ", dst_size=", dst_size, ", copy_size=", copy_size, ".");
 
+  ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
   auto& command_encoder = context_.GetCommandEncoder(recording);
   context_.EndComputePass(recording);
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, copy_size);
@@ -584,10 +586,7 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
 
   ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
 
-  {
-    std::lock_guard<std::mutex> lock{mutex_};
-    GetCacheManager(usage).RegisterBuffer(buffer, size);
-  }
+  GetCacheManager(usage).RegisterBuffer(buffer, size);
   return buffer;
 }
 
@@ -617,7 +616,7 @@ void BufferManager::Download(CommandRecordingState& recording, WGPUBuffer src, v
   ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
 
   EnforceBufferUnmapped(context_, src);
-  auto buffer_size = NormalizeCopySize(size);
+  auto buffer_size = NormalizeBufferSize(size);
 
   wgpu::BufferDescriptor desc{};
   desc.size = buffer_size;
@@ -670,18 +669,6 @@ void BufferManager::RefreshPendingBuffers(CommandRecordingState& recording) cons
   uniform_cache_->OnRefresh(recording.graph_capture_state);
   query_resolve_cache_->OnRefresh(recording.graph_capture_state);
   default_cache_->OnRefresh(recording.graph_capture_state);
-}
-
-std::vector<std::pair<size_t, WGPUBuffer>> BufferManager::ExtractCachedBuffers(wgpu::BufferUsage usage) {
-  std::lock_guard<std::mutex> lock{mutex_};
-  return GetCacheManager(usage).ExtractCachedBuffers();
-}
-
-void BufferManager::AbsorbCachedBuffers(
-    wgpu::BufferUsage usage,
-    std::vector<std::pair<size_t, WGPUBuffer>>&& buffers) {
-  std::lock_guard<std::mutex> lock{mutex_};
-  GetCacheManager(usage).AbsorbCachedBuffers(std::move(buffers));
 }
 
 IBufferCacheManager& BufferManager::GetCacheManager(wgpu::BufferUsage usage) const {

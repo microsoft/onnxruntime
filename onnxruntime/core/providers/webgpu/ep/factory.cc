@@ -15,7 +15,6 @@
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/allocator.h"
-#include "core/providers/webgpu/data_transfer.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -231,8 +230,8 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
       device_alloc,                     // default device allocator
       webgpu::CreateWebGpuAllocator(
           device_free,
-          [webgpu_ep_ptr]() -> const webgpu::BufferManager& {
-            return webgpu_ep_ptr->InitializerBufferManager();
+          [context_id]() -> const webgpu::BufferManager& {
+            return WebGpuContextFactory::GetContext(context_id).InitializerBufferManager();
           },
           [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
           true),  // initializer device allocator

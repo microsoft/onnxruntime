@@ -250,6 +250,8 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                                                config.buffer_cache_config.uniform.mode,
                                                config.buffer_cache_config.query_resolve.mode,
                                                config.buffer_cache_config.default_entry.mode);
+
+    // create initializer buffer manager.
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                            BufferCacheMode::LazyRelease,
                                                            BufferCacheMode::LazyRelease,
@@ -1148,6 +1150,7 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
   ORT_THROW_IF_ERROR(Flush(buffer_manager, recording));
+
   recording.external_captured_commands = captured_commands;
 
   // Make sure the external vector is empty before we start capturing
@@ -1167,6 +1170,7 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
   const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
     auto& command = captured_commands[i];
+
     // Restore profiling info when profiling is enabled. All commands are expected
     // to have profiling data in this mode to keep pending_kernels_ consistent
     // with num_pending_dispatches_.

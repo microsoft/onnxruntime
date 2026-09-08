@@ -11,11 +11,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 class BufferManager;
-class WebGpuContext;
 struct CommandRecordingState;
-
-common::Status FlushAndWait(WebGpuContext& context, const BufferManager& buffer_manager,
-                            CommandRecordingState& recording);
 
 // Low-level data transfer implementation that operates on raw pointers.
 // Used by both DataTransfer (IDataTransfer subclass) and the C API data transfer wrapper.
