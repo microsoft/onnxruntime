@@ -5312,7 +5312,7 @@ This version of the operator has been available since version 1 of the 'com.micr
         When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
         When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
         When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
-      
+  
         The GeGLU (GELU-Gated Linear Unit) activation function is like SwiGLU but uses a GELU gate instead of Swish:
            g = xW + b
            l = xV + c
