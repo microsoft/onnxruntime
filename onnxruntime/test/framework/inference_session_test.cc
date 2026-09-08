@@ -1013,6 +1013,38 @@ TEST(InferenceSessionTests, MoeExpertStatisticsDoesNotRequireSessionProfiling) {
   ASSERT_STATUS_OK(session.Initialize());
 }
 
+class CudaPluginTestExecutionProvider final : public IExecutionProvider {
+ public:
+  CudaPluginTestExecutionProvider() : IExecutionProvider{kCudaExecutionProvider} {}
+
+  std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
+      const GraphViewer&,
+      const IKernelLookup&,
+      const GraphOptimizerRegistry&,
+      IResourceAccountant*) const override {
+    return {};
+  }
+
+  const OrtEp* GetOrtEp() const override {
+    return reinterpret_cast<const OrtEp*>(this);
+  }
+};
+
+TEST(InferenceSessionTests, MoeExpertStatisticsRejectsCudaPluginExecutionProvider) {
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+
+  InferenceSession session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+      std::make_unique<CudaPluginTestExecutionProvider>()));
+  ASSERT_STATUS_OK(session.Load(MODEL_URI));
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("not supported by the CUDA plugin execution provider"));
+}
+
 TEST(InferenceSessionTests, MoeExpertStatisticsRequiresStrictBoolean) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(

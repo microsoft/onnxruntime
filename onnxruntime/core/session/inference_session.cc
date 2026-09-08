@@ -2431,6 +2431,12 @@ common::Status InferenceSession::Initialize() {
     const bool enable_moe_expert_statistics = enable_moe_statistics == "1";
     if (enable_moe_expert_statistics) {
       for (const auto& execution_provider : execution_providers_) {
+        if (execution_provider->Type() == kCudaExecutionProvider &&
+            execution_provider->GetOrtEp() != nullptr) {
+          return ORT_MAKE_STATUS(
+              ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
+              "=1 is not supported by the CUDA plugin execution provider.");
+        }
         if (execution_provider->IsGraphCaptureEnabled()) {
           return ORT_MAKE_STATUS(
               ONNXRUNTIME, INVALID_ARGUMENT, kOrtSessionOptionsConfigEnableMoeExpertStatistics,
