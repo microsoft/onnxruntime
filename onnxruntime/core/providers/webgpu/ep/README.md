@@ -67,10 +67,16 @@ replay still submit pending commands, but do not add a queue-completion wait at 
 GPU completion. Subsequent work on the same queue is ordered by submission; an explicit
 output download waits for CPU-readable results. No ORT stream support is needed for this routing.
 
-The current validation is limited to `DifferentSessionsCreateAndRunConcurrently`. Other tests
-are retained for future validation; results obtained before implementation sharing do not
-establish their behavior for this revision. Concurrent profiling, same-Session allocator/Run
-interleaving, and cross-device transfers remain unsupported. Performance must be measured separately.
+All 14 enabled `PluginEpWebGpuConcurrency` tests passed locally on Windows x64 with D3D12,
+both individually and together in one process. The four disabled future targets were also
+explicitly run: one reported a validation failure and three terminated abnormally. They remain
+unsupported and disabled. Concurrent profiling, same-Session allocator/Run interleaving, and
+cross-device transfers remain unsupported. Performance must be measured separately.
+
+`CpuPartitionBetweenGpuKernels` forces `Neg(WebGPU) -> Neg(CPU) -> Neg(WebGPU)` with graph
+optimizations disabled. It asserts EP placement for the input and both outputs and checks
+CPU intermediate and GPU final values across twenty runs with changing inputs. This covers
+in-Run GPU/CPU copy ordering, not concurrent allocator operations.
 
 ### Concurrency test gates
 
@@ -101,8 +107,8 @@ The built-in `WebGpuConcurrentContextTest.DISABLED_SessionAllocatorAndRunConcurr
 unsupported same-recording interleavings as disabled targets. Concurrent shared Env allocator
 tests are also disabled, including `DISABLED_SharedAllocatorMultiThreadCreateTensor`,
 `DISABLED_SharedAllocatorCreatesAndCopiesConcurrently`, and
-`DISABLED_DifferentSessionsAndEnvironmentCopiesRunConcurrently`. Independent Session and
-independent recording tests remain enabled, but are not all rerun for this revision.
+`DISABLED_DifferentSessionsAndEnvironmentCopiesRunConcurrently`. The built-in independent Session
+and independent recording tests remain enabled but were not rerun in this validation.
 
 `DifferentSessionsGraphCaptureAndReplayConcurrently` enables graph capture for four Sessions
 using `mul_1.onnx`, each with independent, fixed-address GPU inputs and outputs and the default
@@ -111,7 +117,6 @@ Each worker updates its input and verifies its output for twenty runs. Per-Sessi
 callbacks require at least nineteen entries into ORT's graph replay fast path, so numerical
 correctness alone cannot hide a fallback to ordinary execution. This test runs by default and
 does not enable profiling or overlap external allocator operations with the same Session's Run.
-It is retained but is not included in this revision's create/Run-only validation.
 
 ### Missing parts
 

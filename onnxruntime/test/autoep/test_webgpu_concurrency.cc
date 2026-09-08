@@ -466,6 +466,9 @@ TEST_F(PluginEpWebGpuConcurrency, CpuPartitionBetweenGpuKernels) {
     node->add_input(values[index]);
     node->add_output(values[index + 1]);
   }
+  auto* cpu_output_info = graph->add_output();
+  cpu_output_info->CopyFrom(graph->output(0));
+  cpu_output_info->set_name("cpu_value");
   const auto model_bytes = model.SerializeAsString();
   Ort::SessionOptions options;
   options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
@@ -475,22 +478,30 @@ TEST_F(PluginEpWebGpuConcurrency, CpuPartitionBetweenGpuKernels) {
   const auto input_devices = session.GetEpDeviceForInputs();
   const auto output_devices = session.GetEpDeviceForOutputs();
   ASSERT_EQ(input_devices.size(), 1u);
-  ASSERT_EQ(output_devices.size(), 1u);
+  ASSERT_EQ(output_devices.size(), 2u);
   ASSERT_NE(input_devices.front(), nullptr);
   ASSERT_NE(output_devices.front(), nullptr);
-  EXPECT_STREQ(input_devices.front().EpName(), kWebGpuExecutionProvider);
-  EXPECT_STREQ(output_devices.front().EpName(), kWebGpuExecutionProvider);
+  ASSERT_STREQ(input_devices.front().EpName(), kWebGpuExecutionProvider);
+  ASSERT_STREQ(output_devices.front().EpName(), kWebGpuExecutionProvider);
+  ASSERT_NE(output_devices[1], nullptr);
+  ASSERT_STREQ(output_devices[1].EpName(), kCpuExecutionProvider);
   const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   const std::array<const char*, 1> inputs{"X"};
-  const std::array<const char*, 1> outputs{"Y"};
+  const std::array<const char*, 2> outputs{"Y", "cpu_value"};
   for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
     std::array<float, kElements> data{};
-    data.fill(static_cast<float>(iteration + 1));
+    for (size_t index = 0; index < data.size(); ++index) {
+      data[index] = static_cast<float>((iteration + 1) * (index + 1));
+    }
     auto input = Ort::Value::CreateTensor<float>(cpu_memory, data.data(), data.size(), kShape.data(), kShape.size());
     auto result = session.Run(Ort::RunOptions{nullptr}, inputs.data(), &input, 1, outputs.data(), outputs.size());
+    ASSERT_EQ(result.size(), 2u);
     const auto* actual = result.front().GetTensorData<float>();
+    const auto* cpu_actual = result[1].GetTensorData<float>();
     for (size_t index = 0; index < data.size(); ++index) {
-      EXPECT_EQ(actual[index], -data[index]);
+      EXPECT_EQ(cpu_actual[index], data[index]) << "CPU intermediate at index " << index;
+      EXPECT_EQ(actual[index], -data[index]) << "GPU output at index " << index;
     }
   }
 }
