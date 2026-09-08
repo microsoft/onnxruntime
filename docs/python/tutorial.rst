@@ -84,12 +84,24 @@ for this machine learning model.
     onx = convert_sklearn(clr, initial_types=initial_type)
     with open("logreg_iris.onnx", "wb") as f:
         f.write(onx.SerializeToString())
+
+    # Force GetPciBusId errors to be piped to null. When generating the logs
+    # This is because we get some output during initialization in the Sphinx generator
+    import os
+    _stderr_fd = os.dup(2)
+    _devnull = open(os.devnull, "w")
+    os.dup2(_devnull.fileno(), 2)
     # hide: stop
 
     import numpy
     import onnxruntime as rt
 
-    rt.set_default_logger_severity(3)
+    # hide: start
+    os.dup2(_stderr_fd, 2)
+    os.close(_stderr_fd)
+    _devnull.close()
+    # hide: stop
+
     sess = rt.InferenceSession("logreg_iris.onnx", providers=["CPUExecutionProvider"])
     input_name = sess.get_inputs()[0].name
     pred_onx = sess.run(None, {input_name: X_test.astype(numpy.float32)})[0]
@@ -116,12 +128,24 @@ by specifying its name into a list.
     onx = convert_sklearn(clr, initial_types=initial_type)
     with open("logreg_iris.onnx", "wb") as f:
         f.write(onx.SerializeToString())
+
+    # Force GetPciBusId errors to be piped to null. When generating the logs
+    # This is because we get some output during initialization in the Sphinx generator
+    import os
+    _stderr_fd = os.dup(2)
+    _devnull = open(os.devnull, "w")
+    os.dup2(_devnull.fileno(), 2)
     # hide: stop
 
     import numpy
     import onnxruntime as rt
 
-    rt.set_default_logger_severity(3)
+    # hide: start
+    os.dup2(_stderr_fd, 2)
+    os.close(_stderr_fd)
+    _devnull.close()
+    # hide: stop
+
     sess = rt.InferenceSession("logreg_iris.onnx", providers=["CPUExecutionProvider"])
     input_name = sess.get_inputs()[0].name
     label_name = sess.get_outputs()[0].name
