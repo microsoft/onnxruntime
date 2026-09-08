@@ -2,6 +2,7 @@
 import argparse
 import csv
 import json
+import math
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -10,7 +11,7 @@ import matplotlib.pyplot as plt
 import onnx
 
 ROUTING_MARKER = "moe_routing "
-PROMPT_PROGRESS = re.compile(r"(\d+)/(\d+)")
+PROMPT_PROGRESS = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_start$")
 LAYER_NUMBER = re.compile(r"/layers\.(\d+)/")
 QMOE_EXPERT_WEIGHT_INPUT_INDICES = (2, 5)
 MAX_PLOTTED_LAYERS = 9
@@ -284,9 +285,7 @@ def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_names, num_expert
             if initializer.dims[0] != num_experts:
                 continue
             external_data = {entry.key: entry.value for entry in initializer.external_data}
-            if "length" not in external_data:
-                raise ValueError(f"Initializer size is not available in external data: {input_name}")
-            tensor_bytes = int(external_data["length"])
+            tensor_bytes = int(external_data.get("length", 0)) or initializer_byte_count(initializer)
             if tensor_bytes % num_experts:
                 raise ValueError(f"Initializer size is not divisible by {num_experts}: {input_name}")
             total_bytes += tensor_bytes // num_experts
@@ -294,6 +293,18 @@ def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_names, num_expert
             raise ValueError(f"No expert initializers found for QMoE node: {node_name}")
         expert_bytes[node_name] = total_bytes
     return expert_bytes
+
+
+def initializer_byte_count(initializer):
+    packed_types = {
+        onnx.TensorProto.INT4,
+        onnx.TensorProto.UINT4,
+        onnx.TensorProto.FLOAT4E2M1,
+    }
+    element_count = math.prod(initializer.dims)
+    if initializer.data_type in packed_types:
+        return (element_count + 1) // 2
+    return element_count * onnx.helper.tensor_dtype_to_np_dtype(initializer.data_type).itemsize
 
 
 def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_totals, expert_bytes, num_experts):

@@ -2614,7 +2614,7 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(bool enable_moe_statisti
   tester.SetOutputTolerance(0.05f);
 
   SessionOptions session_options;
-  session_options.session_log_severity_level = static_cast<int>(logging::Severity::kINFO);
+  session_options.session_log_severity_level = static_cast<int>(logging::Severity::kWARNING);
   if (enable_moe_statistics) {
     EXPECT_STATUS_OK(session_options.config_options.AddConfigEntry(
         kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
@@ -2622,6 +2622,7 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(bool enable_moe_statisti
 
   RunOptions run_options;
   run_options.run_tag = "{routing \"request\"}";
+  run_options.run_log_severity_level = static_cast<int>(logging::Severity::kINFO);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   testing::internal::CaptureStderr();
@@ -2807,6 +2808,8 @@ TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       "ep.cuda.qmoe_row_tile_size", "1"));
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsDisableCPUEPFallback, "1"));
   RunOptions run_options;
   run_options.run_tag = "qmoe tiled request";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;

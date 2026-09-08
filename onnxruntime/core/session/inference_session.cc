@@ -3477,7 +3477,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
 
 #if !defined(ORT_MINIMAL_BUILD)
       if (retval.IsOK() && collect_moe_statistics) {
-        run_instrumentation_context.emplace(run_options.run_tag, *session_logger_);
+        run_instrumentation_context.emplace(run_options.run_tag, run_logger);
       }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

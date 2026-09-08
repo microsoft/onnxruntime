@@ -470,7 +470,12 @@ Status IfImpl::Execute(const FeedsFetchesManager& ffm) {
                                   ExecutionMode::ORT_SEQUENTIAL, context_.GetTerminateFlag(),
                                   context_.Logger(), context_.GetComputeStream(),
                                   /*sync_subgraph_fetches*/ false,
-                                  context_.GetRunProfiler());
+                                  context_.GetRunProfiler()
+#if !defined(ORT_MINIMAL_BUILD)
+                                      ,
+                                  context_.GetRunInstrumentationContext()
+#endif
+  );
 
   ORT_RETURN_IF_ERROR(status);
 

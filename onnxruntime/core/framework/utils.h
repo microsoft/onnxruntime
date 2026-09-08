@@ -136,7 +136,13 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                is complete. this is mainly used when the parent kernel depends on the CPU value of the
                                subgraph fetches, i.e. the loop condition*/
                                bool sync_subgraph_fetches = false,
-                               profiling::Profiler* run_profiler = nullptr);
+                               profiling::Profiler* run_profiler = nullptr
+#if !defined(ORT_MINIMAL_BUILD)
+                               ,
+                               const RunInstrumentationContext* run_instrumentation_context = nullptr);
+#else
+);
+#endif
 
 bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
