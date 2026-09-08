@@ -58,13 +58,16 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
 
   Tensor* output = ctx->Output(0, input->Shape());
 
-  // Optional output for the sum of skip, input and bias tensors (It is also the input of Layer Normalization).
-  Tensor* sum_output = ctx->Output(3, input->Shape());
-
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
+  ORT_RETURN_IF_NOT(input_dims_size == 2 || input_dims_size == 3,
+                    "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
 
-  int hidden_size = onnxruntime::narrow<int>(input_dims[input_dims_size - 1]);
+  const int64_t hidden_size_i64 = input_dims.back();
+  ORT_RETURN_IF_NOT(hidden_size_i64 > 0 && hidden_size_i64 <= std::numeric_limits<int>::max(),
+                    "hidden_size must be positive and no greater than ", std::numeric_limits<int>::max(),
+                    ". Got ", hidden_size_i64, ".");
+  const int hidden_size = static_cast<int>(hidden_size_i64);
 
   ORT_RETURN_IF_ERROR(onnxruntime::contrib::skip_layer_norm_helper::CheckInputs<Tensor>(input,
                                                                                         skip,
@@ -73,6 +76,13 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
                                                                                         bias,
                                                                                         hidden_size,
                                                                                         input_dims_size));
+
+  TensorShapeVector stat_dims(input_dims);
+  stat_dims.back() = 1;
+  const TensorShape stat_shape(stat_dims);
+  Tensor* mean = ctx->Output(1, stat_shape);
+  Tensor* inv_std_var = ctx->Output(2, stat_shape);
+  Tensor* sum_output = ctx->Output(3, input->Shape());
 
   int row_count = onnxruntime::narrow<int>(input->Shape().SizeToDimension(input_dims_size - 1));
   if (row_count == 0) {
@@ -97,6 +107,8 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
         Stream(ctx),
         reinterpret_cast<nv_bfloat16*>(output->MutableData<T>()),
         sum_output != nullptr ? reinterpret_cast<nv_bfloat16*>(sum_output->MutableData<T>()) : nullptr,
+        mean != nullptr ? mean->MutableData<float>() : nullptr,
+        inv_std_var != nullptr ? inv_std_var->MutableData<float>() : nullptr,
         reinterpret_cast<const nv_bfloat16*>(input->Data<T>()),
         reinterpret_cast<const nv_bfloat16*>(skip->Data<T>()),
         (bias != nullptr) ? reinterpret_cast<const nv_bfloat16*>(bias->Data<T>()) : nullptr,
@@ -111,6 +123,8 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
         Stream(ctx),
         reinterpret_cast<CudaT*>(output->MutableData<T>()),
         sum_output != nullptr ? reinterpret_cast<CudaT*>(sum_output->MutableData<T>()) : nullptr,
+        mean != nullptr ? mean->MutableData<float>() : nullptr,
+        inv_std_var != nullptr ? inv_std_var->MutableData<float>() : nullptr,
         reinterpret_cast<const CudaT*>(input->Data<T>()),
         reinterpret_cast<const CudaT*>(skip->Data<T>()),
         (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,

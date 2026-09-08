@@ -384,42 +384,72 @@ cudnnHandle_t handle = cuda_ep->GetCudnnHandle();
 Not the same function pointer (different signatures — one has a kernel instance, one doesn't). But the **core computation logic can be a shared static helper** called from both:
 
 ```cpp
-// Shared static helper (no instance needed):
-static size_t ComputeAttentionWorkspace(int batch, int seq, int heads,
-                                         int head_size, int num_SMs) {
-    auto [num_splits, slse_size, o_size] = flash::get_num_splits_and_buffer_sizes(
-        batch, seq, seq, heads, head_size, num_SMs);
-    return flash::get_softmax_lse_size(seq, batch, heads) + slse_size + o_size;
+// Illustrative BSHD Attention formula: one float accumulation value per element.
+// A real kernel substitutes its exact formula but keeps this checked-arithmetic pattern.
+static std::optional<size_t> ComputeIllustrativeBshdAttentionWorkspace(
+    int64_t batch, int64_t sequence, int64_t heads, int64_t head_size) {
+  const int64_t dimensions[] = {batch, sequence, heads, head_size};
+  // A zero extent fixes this product at zero even if another extent is unknown.
+  for (const int64_t dimension : dimensions) {
+    if (dimension == 0) {
+      return 0;
+    }
+  }
+
+  for (const int64_t dimension : dimensions) {
+    if (dimension < 0) {
+      return std::nullopt;
+    }
+  }
+  try {
+    // size_t matches the allocator contract; SafeInt rejects values above the platform's SIZE_MAX.
+    SafeInt<size_t> bytes{sizeof(float)};
+    for (const int64_t dimension : dimensions) {
+      bytes *= SafeInt<size_t>(dimension);
+    }
+    return static_cast<size_t>(bytes);
+  } catch (const OnnxRuntimeException&) {
+    return std::nullopt;
+  }
 }
 
-// Estimation function (no kernel instance — called during GetCapability):
-OrtStatus* EstimateAttentionWorkspace(const OrtEpApi* api, const OrtNode* node,
-                                       const OrtEp* ep, size_t* out) {
-    const int64_t* shape; size_t rank;
-    api->Node_GetInputShape(node, 0, &shape, &rank);
-    int64_t num_heads;
-    api->Node_GetAttributeInt(node, "num_heads", &num_heads);
-
-    // EP-specific: cast to concrete type to access device properties
-    auto* cuda_ep = static_cast<const CudaEp*>(ep);
-    int num_SMs = cuda_ep->GetDeviceProp().multiProcessorCount;
-
-    *out = ComputeAttentionWorkspace(shape[0], shape[1], num_heads, shape[3], num_SMs);
-    return nullptr;
+// Level 1's graph parser extracts the illustrative BSHD input shape.
+static std::optional<size_t> EstimateAttentionWorkspace(
+    gsl::span<const int64_t> input_shape) {
+  if (input_shape.size() != 4) {
+    return std::nullopt;
+  }
+  return ComputeIllustrativeBshdAttentionWorkspace(
+      input_shape[0], input_shape[1], input_shape[2], input_shape[3]);
 }
 
-// DeclareWorkspaceRequirements (has kernel instance — called during FinalizeSessionState):
-Status Attention::DeclareWorkspaceRequirements(span<const TensorShape> shapes,
-                                               InlinedVector<WorkspaceRequirement>& reqs) {
-    int num_SMs = GetDeviceProp().multiProcessorCount;
-    size_t total = ComputeAttentionWorkspace(
-        shapes[0][0], shapes[0][1], num_heads_, head_size_, num_SMs);
-    reqs.push_back({total, kSlotFlashWorkspace});
+// Level 2 (has kernel instance; called during FinalizeSessionState):
+Status Attention::DeclareWorkspaceRequirements(
+    gsl::span<const WorkspaceInputShape> input_shapes,
+    InlinedVector<WorkspaceRequirement>& reqs) const {
+  reqs.clear();
+  const TensorShape* input_shape = GetWorkspaceInputShape(input_shapes, 0).GetShape();
+  if (input_shape == nullptr || input_shape->NumDimensions() != 4) {
+    // Missing/unusable metadata is not a session-initialization error. Schema validation is
+    // separate; retain the runtime allocation fallback.
     return Status::OK();
+  }
+
+  const auto total = ComputeIllustrativeBshdAttentionWorkspace(
+      (*input_shape)[0], (*input_shape)[1], (*input_shape)[2], (*input_shape)[3]);
+  if (!total.has_value()) {
+    return Status::OK();  // Valid partial/large shape: retain runtime allocation fallback.
+  }
+  if (*total != 0) {
+    reqs.push_back({*total, kSlotFlashWorkspace, /*alignment_bytes=*/0});
+  }
+  return Status::OK();
 }
 ```
 
-Both call the same `ComputeAttentionWorkspace()` — producing **identical results**. The estimation function gets device properties from the EP; the kernel method gets them from its stored EP reference. Same data, same computation, same answer.
+Both wrappers call the same checked helper and therefore produce identical results. Production helpers
+may also take already-extracted device properties, but every product, sum, conversion, and rounding
+operation must remain inside checked arithmetic.
 
 **For cuDNN-based ops**, the estimation function can also be precise — it calls `build_plans()` using the EP's handle and the node's shapes/attributes. Level 2 re-check serves as a diagnostic safety net — if the post-fusion total exceeds the budget, a warning is logged indicating that the Level 1 estimate was too optimistic (e.g., cuDNN returning different workspace sizes due to driver version differences or fusion changing the algorithm selection).
 
@@ -718,12 +748,15 @@ For most LLM models (which are repetitive transformer blocks with minimal fusion
 **When static shapes are unavailable:**
 
 If the model has dynamic shapes and no usable shape hint, the estimation function cannot compute workspace. In this case:
-- The estimation function returns a failure status or a sentinel value indicating "unknown."
+- Level 1 returns no estimate, and Level 2 returns `Status::OK()` with an empty requirements list.
+  Valid but unestimable metadata is never fatal to session initialization.
 - `ComputeNodeCostForBudget()` falls back to the 1.5x heuristic multiplier on base cost.
 - The user may need to **tune the memory budget by trial and error** — setting a conservative budget and adjusting based on observed OOM or under-utilization. This is analogous to llama.cpp's `-ngl` flag: the user picks a layer count and adjusts based on whether it fits.
 - `session.max_shape_override` can provide input-shape hints (for example, maximum batch and sequence length). ORT propagates them through a disposable shadow graph for Level 1 and Level 2 estimation without changing runtime input constraints. As noted above, propagated shapes are estimates rather than proven upper bounds.
 
-**Plugin C ABI for Level 1:**
+**Proposed plugin C ABI for Level 1 (deferred):**
+
+This PR does not add or wire the following C ABI; it is a future design sketch.
 
 ```c
 // Workspace estimation function type (no kernel instance needed):
@@ -860,94 +893,29 @@ ep_api->KernelRegistry_AddKernelV2(registry, conv_kernel_def, CreateConvKernel,
 
 #### Implementation: `DeclareWorkspaceRequirements` (Level 2 — after kernel creation)
 
-**In-tree path:**
-
-Straightforward — add a virtual method to `OpKernel`:
+**Current in-tree path:**
 
 ```cpp
 // In include/onnxruntime/core/framework/op_kernel.h:
 [[nodiscard]] virtual Status DeclareWorkspaceRequirements(
-    gsl::span<const TensorShape> input_shapes,
+    gsl::span<const WorkspaceInputShape> input_shapes,
     InlinedVector<WorkspaceRequirement>& requirements) const {
+  requirements.clear();
   return Status::OK();  // Default: no workspace declared
 }
 ```
 
-In-tree kernels override this just like they override `PrePack()`. Called during `FinalizeSessionState()` after kernel instances exist.
+In-tree kernels override this method like `PrePack()`, and `FinalizeSessionState()` calls it after
+kernel instances are created. The authoritative positional three-state input contract and lockstep
+signature-replacement decision are specified once under
+[Phase A](#phase-a-workspace-pre-declaration-declareworkspacerequirements).
 
-**Plugin (shared source) path:**
-
-The `CudaKernelAdapter<T>` already bridges virtual calls to the underlying kernel class. The adapter forwards `DeclareWorkspaceRequirements` to the underlying kernel's implementation:
-
-```cpp
-// In cuda_kernel_adapter.h — adapter already forwards PrePack similarly:
-Status DeclareWorkspaceRequirements(
-    gsl::span<const TensorShape> input_shapes,
-    InlinedVector<WorkspaceRequirement>& requirements) const override {
-  // The underlying kernel class (compiled in the plugin DLL) implements this directly.
-  // CudaKernelAdapter<T> inherits from T, so T::DeclareWorkspaceRequirements is accessible.
-  return T::DeclareWorkspaceRequirements(input_shapes, requirements);
-}
-```
-
-Since plugin shared-source kernels ARE the same C++ class (just compiled in a different DLL), they implement `DeclareWorkspaceRequirements` as a regular virtual override — no ABI translation needed.
-
-**Pure ABI path (third-party EP):**
-
-Add an optional function pointer to `OrtKernelImpl`:
-
-```c
-// In onnxruntime_ep_c_api.h, extend OrtKernelImpl:
-struct OrtKernelImpl {
-  // ... existing fields (Compute, Release, PrePackWeight, ...) ...
-
-  // NEW — optional workspace declaration (ORT >= 1.XX):
-  ORT_API2_STATUS(DeclareWorkspaceRequirements,
-      _In_ OrtKernelImpl* this_ptr,
-      _In_ const int64_t* const* input_shapes,  // array of shape arrays
-      _In_ const size_t* input_ranks,            // rank of each input
-      _In_ size_t num_inputs,
-      _Out_ OrtWorkspaceRequirement** requirements,  // allocated by kernel
-      _Out_ size_t* num_requirements);
-};
-```
-
-The `PluginEpOpKernel` adapter (in `ep_kernel_registration.cc`) bridges this to the virtual call:
-
-```cpp
-// In PluginEpOpKernel:
-Status DeclareWorkspaceRequirements(
-    gsl::span<const TensorShape> input_shapes,
-    InlinedVector<WorkspaceRequirement>& requirements) const override {
-  // Version guard (same pattern as PrePack):
-  if (kernel_impl_->ort_version_supported < XX ||
-      kernel_impl_->DeclareWorkspaceRequirements == nullptr) {
-    return Status::OK();  // No declaration — fall back to arena
-  }
-
-  // Convert TensorShape spans to C arrays
-  InlinedVector<const int64_t*> shape_ptrs;
-  InlinedVector<size_t> ranks;
-  for (const auto& shape : input_shapes) {
-    shape_ptrs.push_back(shape.GetDims().data());
-    ranks.push_back(shape.NumDimensions());
-  }
-
-  OrtWorkspaceRequirement* reqs = nullptr;
-  size_t num_reqs = 0;
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(
-      kernel_impl_->DeclareWorkspaceRequirements(
-          kernel_impl_, shape_ptrs.data(), ranks.data(),
-          shape_ptrs.size(), &reqs, &num_reqs)));
-
-  // Convert C results to C++ vector
-  for (size_t i = 0; i < num_reqs; ++i) {
-    requirements.push_back({reqs[i].size_bytes, reqs[i].slot_id});
-  }
-  // Free C allocation (kernel used OrtAllocator or static buffer)
-  return Status::OK();
-}
-```
+**Plugin and pure-C ABI paths are deferred.** The adapter `OpKernel` header mirrors the in-tree
+signature and default no-op only so shared kernel source continues to compile in the plugin build.
+There is no `CudaKernelAdapter` forwarding implementation, no `OrtKernelImpl` function pointer, and
+no host-side bridge for this virtual. In particular, the plugin host does not invoke
+`DeclareWorkspaceRequirements`; plugin-compiled kernels currently keep the adapter default no-op and
+continue allocating workspace dynamically.
 
 #### Summary: Where Each Piece Lives
 
@@ -955,8 +923,8 @@ Status DeclareWorkspaceRequirements(
 |-----------|---------|----------------------|----------|
 | **Workspace estimation func** | Static member on kernel class; stored in `KernelCreateInfo::workspace_estimate_func` | Same static function, registered via `KernelRegistry_AddKernelV2` | C function pointer, registered via `KernelRegistry_AddKernelV2` |
 | **Who calls estimation** | EP's `GetCapability()` loop via `ComputeNodeCostForBudget()` helper | Host bridge via same `ComputeNodeCostForBudget()` helper | Host bridge (same) |
-| **DeclareWorkspaceRequirements** | Virtual override on `OpKernel` | Virtual override (same C++ class in plugin DLL) | `OrtKernelImpl::DeclareWorkspaceRequirements` function pointer → `PluginEpOpKernel` adapter |
-| **Who calls DeclareWorkspace** | `FinalizeSessionState()` | `FinalizeSessionState()` (same) | `FinalizeSessionState()` via adapter |
+| **DeclareWorkspaceRequirements** | Virtual override on core `OpKernel` | Adapter default no-op only; forwarding deferred | Not present; C-ABI design deferred |
+| **Who calls DeclareWorkspace** | In-tree `FinalizeSessionState()` | Nobody across the plugin boundary | Nobody |
 | **Device property access** | `static_cast<CUDAExecutionProvider*>(ep)->GetDeviceProp()` | `static_cast<const CudaEp*>(ep)->GetDeviceProp()` | `static_cast<const MyEp*>(ep)->GetDeviceProps()` |
 | **cuDNN handle access** | `static_cast<CUDAExecutionProvider*>(ep)->PerThreadDefaultCudnnHandle()` | `static_cast<const CudaEp*>(ep)->GetCudnnHandle()` | N/A (EP-specific) |
 
@@ -967,7 +935,9 @@ The **estimation function** signature differs between in-tree and plugin paths:
 - **In-tree:** `static size_t EstimateWorkspace(const IExecutionProvider* ep, const Node& node)` — C++ types, direct EP access
 - **Plugin/ABI:** `OrtStatus* EstimateWorkspace(const OrtEpApi*, const OrtNode*, const OrtEp*, size_t*)` — C ABI, opaque types
 
-But both compute the same result. For shared-source kernels (compiled both in-tree and as plugin), a single static helper function (e.g., `ComputeAttentionWorkspace()`) is called from both wrappers — ensuring the estimate is identical regardless of build configuration.
+But both compute the same result. For shared-source kernels, both wrappers call one checked,
+graph-type-free math helper, ensuring identical estimates without carrying in-tree graph types across
+the plugin boundary.
 
 **Implementation-confirmed boundary (issue #29775 Phase-A pilot, PR #29811, MatMulNBits):** the split above
 is sharper than "same function, different signature" — it is two functions with different reusability.
@@ -999,295 +969,144 @@ struct WorkspaceRequirement {
 
 // Optional override on OpKernel (called during FinalizeSessionState):
 virtual Status DeclareWorkspaceRequirements(
-    gsl::span<const TensorShape> input_shapes,
+    gsl::span<const WorkspaceInputShape> input_shapes,
     InlinedVector<WorkspaceRequirement>& requirements) const {
+  requirements.clear();
   return Status::OK();  // Default: no declaration (fall back to arena)
 }
 ```
 
-**`alignment_bytes` (added in PR #29811):** reserved for a future shared-arena packer that co-locates
-multiple kernels' declared slots and needs per-slot alignment metadata. Unused by any kernel today — the
-CUDA allocator's default ≥256-byte alignment already satisfies every current kernel's needs (each gets
-its own `GetScratchBuffer` call, or — like GQA's unfused path — hand-rolls sub-offsets assuming the
-outer buffer is already ≥256-byte aligned). A plain `size_t` with a `0` sentinel is used rather than
-`std::optional<size_t>` because this struct is meant to be usable across a plugin-DLL boundary
-eventually, and `std::optional`'s layout is not guaranteed stable across compilers/STL versions the way
-a scalar with a sentinel value is.
+`WorkspaceInputShape` is positional and presence-aware:
 
-**Shape source wiring:** framework callers now resolve shapes from two sources:
+- `Missing` means the optional input was omitted.
+- `PresentWithShape` includes scalars, zero extents, and partial shapes. Every unknown dimension is
+  represented by `-1`. Negative proto dimensions also normalize to `-1`; multiple `-1` dimensions
+  are independent unknowns and do not imply symbolic equality.
+- `PresentWithoutShape` means the input exists but rank/dimension metadata is unavailable.
 
-- Fully concrete shapes already present on the executable graph are used directly.
+The span aligns with `Node::InputDefs()` and `OpKernelContext::Input(i)`; implicit inputs are excluded.
+Callers preserve internal and trailing optional-input holes, and kernels may ignore missing/shapeless
+inputs that are unrelated to their workspace formula.
+
+The former `gsl::span<const TensorShape>` pilot signature was removed rather than retained as an
+overload. This direct C++ signature replacement is intentional and requires a lockstep rebuild of the
+core and in-tree providers. The virtual is unreleased; stable binary compatibility is provided by the
+C API, which was not changed for this pilot.
+
+`WorkspaceInputShape` deliberately carries no shape-provenance field in Phase A. Consumers cannot
+distinguish executable-graph shapes from values propagated from `session.max_shape_override`.
+Before Phase B uses declarations for allocation, the planner design must decide whether provenance
+is required and define the corresponding runtime bound check and allocation fallback. This PR does
+not add speculative provenance state.
+
+An empty Level-2 requirements list currently means that no requirement can be declared and the
+kernel retains its dynamic allocation fallback. Zero-sized requirements are also omitted. A future
+planner must define the semantics of an explicit, proven-zero slot before the interface gains a zero
+marker; this PR intentionally adds neither a marker nor new provenance state.
+
+**`alignment_bytes` (added in PR #29811):** `0` requests the allocator's default alignment. Any
+nonzero value is a binding alignment requirement on the returned slot buffer (or operator-owned root)
+that a planner must honor. The stacked PA/PMHA declaration uses an explicit 256-byte root alignment;
+this ensures that its relatively aligned internal subregions are also absolutely aligned. A plain
+`size_t` with a `0` sentinel is used rather than `std::optional<size_t>` because this POD is meant to
+be usable across a plugin-DLL boundary eventually, and `std::optional`'s layout is not guaranteed
+stable across compilers/STL versions the way a scalar with a sentinel value is.
+
+**Shape source wiring:** framework callers resolve presence-aware entries from two shape sources:
+
+- Rank/dimension metadata already present on the executable graph is retained, including partial
+  shapes with `-1` unknown dimensions.
 - For dynamic models, `session.max_shape_override` is applied to a disposable shadow graph. Normal ORT
   shape inference propagates those input hints to intermediate values without changing executable-graph
-  metadata or runtime input validation.
+  metadata or runtime input validation. These propagated values are estimates, not proven upper
+  bounds, because operator shape transformations are not necessarily monotonic.
 
 Level 1 consumes the current shadow result during `GetCapability()`. It reuses that result for the second
 capability pass when layout transformation reports no modification and rebuilds it after known graph
 mutations. Level 2 creates a final result after partitioning because EP fusion and transformation can
 change NodeArgs, generated schemas, and subgraph identities. Reusing a pre-mutation result across those
 stages would be incorrect; deeper caching requires a reliable graph-mutation generation rather than
-assuming equal topology. Nodes whose inputs remain unresolved use the existing estimation/allocation
-fallback.
+assuming equal topology. The resolver still calls kernels with `Missing` or `PresentWithoutShape`
+entries; each kernel decides whether the inputs needed by its formula are estimable. Returning no
+requirements preserves the existing dynamic allocation fallback.
 
-A kernel can declare multiple workspace slots (e.g., attention needs separate Q transpose buffer, output buffer, seqlens buffer). The `slot_id` is defined by the kernel author and is stable across calls — it identifies *which* buffer within that kernel's logic.
+This Phase-A pilot only gathers declarations. Plugin C-ABI forwarding, workspace offset
+planning/allocation, and integration with resource accounting remain deferred; no declaration changes
+partition budgets or replaces the runtime scratch-allocation path yet. Phase-B planner/accounting
+integration remains in the scope of #32071.
 
-**Key constraint:** Multiple nodes may use the same kernel class. Each node instance gets its own set of workspace slots. The unique key for retrieval is `(NodeIndex, slot_id)` — the framework supplies `NodeIndex`, the kernel supplies `slot_id`.
+A kernel can declare multiple workspace slots. The `slot_id` is defined by the kernel author and is
+stable across calls; `(NodeIndex, slot_id)` identifies one internal buffer for one kernel instance.
+The interface capability and the current planner capability are intentionally distinct.
 
-**Memory reuse via liveness-based offset planning:**
+##### Current Phase-B strategy in #32071
 
-Workspace buffers are live only during their kernel's execution step. This means workspaces from non-overlapping steps can share the same physical memory — exactly the same liveness analysis already used for activation tensors. The offset planner assigns overlapping offsets to workspaces whose liveness intervals don't intersect:
+#32071 integrates opted-in workspace with ORT's existing activation `MemoryPattern`; it does not
+introduce a separate `WorkspacePattern` or allocate a persistent execution buffer during
+`FinalizeSessionState()`:
 
-```
-Step 0: Node A workspace (slots 0,1) → offsets [0, 4096]
-Step 1: Node B workspace (slot 0)    → offset [0]  ← reuses Node A's memory
-Step 2: Node C workspace (slots 0,1) → offsets [0, 8192]  ← reuses again
-```
+1. Level 1 contributes an operator workspace reservation to partition resource accounting.
+2. After kernel creation and prepacking, Level 2 is compared with that reservation and registers
+   usable requirements in the sequential execution plan.
+3. Each registered `(NodeIndex, slot_id)` receives a negative synthetic pattern ID, disjoint from
+   graph `OrtValue` indices.
+4. On the first run for a feed-shape memory-pattern key, the execution frame traces the synthetic
+   workspace allocation/free lifetime. The kernel still receives no planned pointer and falls back to
+   `GetScratchBuffer()`.
+5. ORT caches one pattern containing both activation and workspace blocks. On later runs with a
+   compatible feed-shape key, the execution frame allocates the normal per-run pattern backing buffer
+   and returns `backing_buffer + workspace_offset`. The planned offset and returned pointer must
+   satisfy the requirement's binding `alignment_bytes` value, or the allocator's default alignment
+   when that value is zero.
+6. If the pattern is unavailable or the runtime request exceeds the declared capacity,
+   `GetPreallocatedWorkspace(slot_id, requested_bytes)` returns no pointer and the kernel retains its
+   dynamic `GetScratchBuffer()` fallback.
 
-Peak workspace memory = max over all steps of (sum of workspace slots for that step), not the sum of all workspaces across all nodes.
+This reduces allocator traffic and lets workspace reuse memory occupied by non-overlapping
+activations after the warm-up run. It does not protect the first run from OOM, guarantee that the
+per-run backing-buffer allocation succeeds, or provide initialize-time persistent allocation.
 
-**Concurrency model (multiple concurrent `Run()` calls):**
+**Current one-slot limitation:** `WorkspaceRequirement` and
+`DeclareWorkspaceRequirements()` retain generic multi-slot support, but #32071 opts in only kernels
+that both explicitly override `SupportsPreallocatedWorkspace()` and declare exactly one slot. A
+declaration alone is not planner opt-in. This is sufficient for the current MatMulNBits pilot and both
+packed-attention operators. PackedAttention can expose one 256-byte-aligned, operator-owned root with
+two internal regions:
 
-The existing memory pattern system already handles this correctly:
-- The **pattern** (offset/size map) is computed once during `Initialize()` and cached in `SessionState` — shared, read-only.
-- The **actual buffer** is allocated per-`Run()` by each `ExecutionFrame` using the pattern as a blueprint.
-- Each concurrent `Run()` gets its own `ExecutionFrame` with its own workspace buffer — no sharing, no synchronization needed.
-
-Workspace pre-allocation follows the same model:
-- `DeclareWorkspaceRequirements()` is called during `FinalizeSessionState()` → produces a workspace offset plan (shared, immutable).
-- Each `Run()` allocates a workspace buffer of `peak_workspace_size` bytes and uses offsets from the plan.
-- Concurrent runs each get their own buffer — safe without locks.
-
-**Note on CUDA:** In practice, concurrent `Run()` on the same CUDA session is uncommon (users don't typically do this). But the design should remain thread-safe by following the same per-run buffer pattern.
-
-**Single-thread pre-allocation mode (eliminating runtime OOM):**
-
-Even with workspace planning, the per-`Run()` buffer allocation can still OOM if device memory is fragmented or consumed by other processes since `Initialize()`. For constrained environments, this is the last remaining point of failure.
-
-Most constrained-environment users run **single-threaded inference** — one `Run()` at a time. ORT already has a concurrent-run counter (`InferenceSession::current_num_runs_`). If the session is configured to disallow concurrency, the execution buffer (which includes workspace slots) can be **allocated once at initialization and reused for every `Run()` call**.
-
-**Proposed** (not currently implemented): a session option such as `session.pre_allocate_execution_buffers = "1"` would enable this behavior.
-
-When enabled:
-1. After `FinalizeSessionState()` computes the memory pattern (including workspace offsets from `DeclareWorkspaceRequirements`), allocate the peak buffer once: `IAllocator::Alloc(peak_size)` per EP.
-2. Store the pre-allocated buffer pointer on `SessionState`.
-3. Each `Run()` reuses the same buffer — no allocation, no OOM possible.
-4. Enforce `max_concurrent_runs = 1`: if a second `Run()` arrives, fail fast.
-
-```cpp
-if (pre_allocate_mode_ && current_num_runs_.fetch_add(1) > 0) {
-    current_num_runs_.fetch_sub(1);
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-        "Concurrent Run() not allowed with pre-allocated execution buffers.");
-}
+```text
+[0, aligned projection end): projection region and alignment padding
+[aligned projection end, root end): selected Attention backend workspace
 ```
 
-**What this guarantees:** If `Initialize()` succeeds, `Run()` cannot OOM — all device memory (weights + intermediates + workspace) is already resident. The budget at partition time accounts for all three: `budget ≥ weights_on_device + peak_execution_buffer`.
+PMHA, whose Q/K/V inputs are already projected, naturally exposes one attention root. PA/PMHA root
+retrieval and slicing and the `SupportsPreallocatedWorkspace()` opt-in must land atomically. Until
+then, PA retains its two dynamic projection and Attention allocations, PMHA retains its one dynamic
+Attention allocation, and Level 1 and Level 2 agree on each operator's single-root declaration. This
+does not require multi-slot planner support.
 
-**What already exists:** `MemoryPattern` computation is done, `MemoryPatternGroup::GetPeakAllocSize()` gives peak size, `current_num_runs_` counter exists, per-EP allocators exist. The `ExecutionFrame` already uses offset-based placement into a contiguous block — the change is to not free/reallocate that block between calls.
-
-**Scope:** Single-threaded only. For concurrent inference, multiple buffers are needed (defeating the guarantee).
-
-**Interaction with dynamic shapes:** `pre_allocate_execution_buffers` is fundamentally a **static-shape-only** feature. With dynamic shapes, `ExecutionFrame` must allocate buffers on every `Run()` because activation tensor sizes are unknown until the input arrives — there is no way to pre-compute a total buffer size at `Initialize()` time. Even if some kernels' workspace slots are shape-independent, the activation portion (which typically dominates) still requires per-`Run()` allocation, so the OOM-elimination guarantee cannot hold.
-
-Furthermore, the arena allocator already handles repeated allocations efficiently (same-size blocks are recycled without syscalls), so pre-allocating just the workspace portion while leaving activations dynamic would add complexity for negligible gain.
-
-**Summary:** For dynamic-shape models, the value of `DeclareWorkspaceRequirements` is in **budget estimation** (Level 1/Level 2, using worst-case or max-batch sizes to decide how many nodes fit on the device), not in runtime pre-allocation.
-
-**Planning flow (during FinalizeSessionState):**
-
-1. For each kernel in the execution plan (when shapes are static), call `DeclareWorkspaceRequirements()` with the inferred input shapes.
-2. Record `{NodeIndex, slot_id} → size_bytes` in the execution plan.
-3. Run liveness analysis: workspace for node N is live only during step N's execution.
-4. Compute offsets (same algorithm as activation patterns) → yields `peak_workspace_size` and per-slot offsets.
-5. Store workspace pattern as a **separate `WorkspacePattern`** in `SessionState`.
-
-**Why workspace buffers are separate from `MemoryPattern` (activations):**
-
-Although the offset planning algorithm is the same (liveness → assign offsets → compute peak), workspace buffers differ in allocation and retrieval:
-
-| Aspect | MemoryPattern (activations) | WorkspacePattern |
-|--------|---------------------------|------------------|
-| **Addressing** | `MLValueIndex` — framework-assigned, part of graph IR | `(NodeIndex, slot_id)` — kernel-defined, opaque to framework |
-| **Who queries** | Framework automatically when creating output `OrtValue`s | Kernel explicitly via `GetPreallocatedWorkspace(slot_id)` |
-| **Lifetime** | Multi-step — output lives until its last consumer executes | Single-step — live only during the owning kernel's step |
-| **What's returned** | An `OrtValue` (typed tensor with shape metadata) | Raw `void*` — kernel interprets the bytes internally |
-| **Graph visibility** | Framework manages these as edges between nodes | Invisible to graph — internal scratch memory |
-| **Size determination** | Inferred from output shape × element_size | Declared by kernel (may be unrelated to any tensor shape) |
-
-Concretely, this means:
-- `WorkspacePattern` is a new class (not reusing `MemoryPatternGroup`) with its own lookup: `GetOffset(NodeIndex, slot_id) → {offset, size}`.
-- The workspace buffer is allocated separately from the activation buffer. They could share physical memory (workspace is always single-step, so it never overlaps with itself across steps), but keeping them separate simplifies accounting and makes budget tracking unambiguous: `peak_total = peak_activations + peak_workspace`.
-- In pre-allocation mode, both buffers are allocated once at init. In normal mode, both are allocated per-`Run()` from the arena. But they remain distinct allocations with distinct query paths.
-
-**Per-Run retrieval (during Compute):**
-
-Each `ExecutionFrame` allocates a workspace buffer of `peak_workspace_size` via the EP's allocator and provides offset-based access through a dedicated query interface (not the existing OrtValue/MLValue machinery):
-
-**Alternative A: Transparent fallback in GetScratchBuffer**
-
-Modify `GetScratchBuffer<T>(slot_id, size, stream)` to check for a pre-planned buffer first:
-
-```cpp
-template <typename T>
-IAllocatorUniquePtr<T> GetScratchBuffer(int slot_id, size_t count_or_bytes, Stream* stream) const {
-  // Check if workspace was pre-planned for this node + slot
-  void* preallocated = context_.GetPreallocatedWorkspace(slot_id);
-  if (preallocated) {
-    // Return non-owning pointer (buffer lifetime managed by the frame)
-    return IAllocatorUniquePtr<T>(static_cast<T*>(preallocated), [](T*){});
-  }
-  // Fall back to arena (dynamic shapes, or DeclareWorkspaceRequirements not implemented)
-  return IAllocator::MakeUniquePtr<T>(allocator_, count_or_bytes, false, stream);
-}
-```
-
-Pro: Minimal kernel code changes — just add `slot_id` parameter. Con: Overloads `GetScratchBuffer` semantics; non-owning vs owning pointer distinction is subtle.
-
-**Alternative B: Separate retrieval path**
-
-Keep `GetScratchBuffer()` unchanged for arena allocation. Add a new method:
-
-```cpp
-// In OpKernelContext:
-void* GetPreallocatedWorkspace(int slot_id) const;
-// Returns nullptr if not pre-planned → kernel must call GetScratchBuffer() instead
-
-// Kernel usage:
-void* ws = context->GetPreallocatedWorkspace(0);
-if (!ws) {
-  scratch_buffer_ = GetScratchBuffer<void>(workspace_size, stream);
-  ws = scratch_buffer_.get();
-}
-```
-
-Pro: Clear separation, no ambiguity about ownership. Con: Kernels need explicit fallback logic (but this is a one-time pattern per kernel).
-
-**Compatibility with dynamic shapes:** Both alternatives are opt-in. If `DeclareWorkspaceRequirements()` is not overridden or returns empty (dynamic shapes), everything falls back to `GetScratchBuffer()` → arena, exactly as today. Same kernel binary works for both static and dynamic models.
-
-**Incremental adoption:** Start with the highest-impact ops (attention, convolution, GEMM) which account for the majority of workspace. Less common ops continue using the arena with a reduced safety multiplier in `IResourceAccountant`.
-
-**Buffer strategy:** Workspace offsets can share the activation buffer (liveness doesn't overlap — workspace is live only during its step, activations may span steps). Alternatively, a separate workspace buffer is simpler initially and easier to account for in memory limits.
+**Future stronger mode:** allocating and retaining the complete execution buffer during session
+initialization would be a separate feature. Such a mode would need trustworthy static or bounded
+shapes, runtime bound enforcement, a concurrency policy, and no dynamic-allocation fallback before it
+could claim that a successful `Initialize()` prevents allocation-time OOM during `Run()`. #32071 does
+not provide that guarantee.
 
 ##### EP Plugin C ABI Surface for Workspace Pre-declaration
 
-In the plugin architecture, `DeclareWorkspaceRequirements` crosses the C ABI boundary. This section defines the concrete API additions.
+The issue #29775 Phase-A pilot does **not** add this surface. Plugin/C-ABI forwarding remains deferred:
 
-**Declaration side — new optional function pointer on `OrtKernelImpl`:**
+- The adapter `OpKernel` declaration mirrors the in-tree C++ signature and default no-op so
+  plugin-compiled shared source builds, but the host does not bridge or invoke that virtual.
+- `OrtKernelImpl` and `OrtEpApi` have no workspace-declaration/retrieval additions from this pilot.
+- Plugin kernels therefore continue to use the existing dynamic scratch-allocation path.
 
-```c
-// Added to OrtKernelImpl (optional, like PrePackWeight):
-ORT_API2_STATUS(DeclareWorkspaceRequirements,
-    _In_ OrtKernelImpl* this_ptr,
-    _In_reads_(num_inputs) const int64_t* const* input_shapes,   // shape per input
-    _In_reads_(num_inputs) const size_t* input_shape_ranks,      // rank per input
-    _In_ size_t num_inputs,
-    _Out_writes_all_(max_slots) OrtWorkspaceSlot* slots,         // pre-allocated by ORT
-    _In_ size_t max_slots,                                        // capacity (e.g., 8)
-    _Out_ size_t* num_slots);                                     // actual count filled
+A future C-ABI design must preserve the Phase-A positional input-shape contract rather than collapsing
+omitted inputs, rank-0 tensors, and absent shape metadata into ambiguous shape/rank arrays. It must
+also define ownership/lifetime for returned slot descriptors, retrieval fallback behavior, and
+versioning before any host bridge is implemented.
 
-// Slot descriptor (C struct, no inheritance):
-typedef struct OrtWorkspaceSlot {
-  int slot_id;          // Kernel-defined, stable identifier (0, 1, 2, ...)
-  size_t size_bytes;    // Required size for this slot
-} OrtWorkspaceSlot;
-```
-
-If `DeclareWorkspaceRequirements` is NULL on the `OrtKernelImpl`, ORT skips the kernel during workspace planning (falls back to arena at runtime).
-
-**Retrieval side — new function in `OrtEpApi`:**
-
-```c
-// Added to OrtEpApi (called by plugin kernels during Compute):
-ORT_API2_STATUS(KernelContext_GetPreallocatedWorkspace,
-    _In_ const OrtKernelContext* context,
-    _In_ int slot_id,
-    _Outptr_result_maybenull_ void** buffer);   // NULL if not pre-planned
-```
-
-Returns a pointer into the pre-allocated workspace buffer at the offset computed during planning. Returns NULL if no workspace was pre-planned for this kernel+slot (dynamic shapes, or kernel didn't declare). The pointer is valid for the duration of the `Compute()` call.
-
-**Slot ID provisioning — how kernels define unique slot_ids:**
-
-Slot IDs are **kernel-author-defined constants**, not dynamically allocated. Each kernel class defines its slots as an enum or set of constants in its implementation:
-
-```cpp
-// Example: CUDA Attention kernel (inside the plugin DLL)
-namespace cuda {
-class AttentionKernel : public OrtKernelImplBase {
-  // Slot IDs are private constants — stable across versions, used as array indices
-  static constexpr size_t kSlotQTranspose = 0;
-  static constexpr size_t kSlotKTranspose = 1;
-  static constexpr size_t kSlotVTranspose = 2;
-  static constexpr size_t kSlotSoftmaxWorkspace = 3;
-  static constexpr size_t kNumSlots = 4;
-
-  OrtStatus* DeclareWorkspaceRequirements(...) override {
-    slots[kSlotQTranspose] = {kSlotQTranspose, batch * heads * seq * head_dim * sizeof(half)};
-    slots[kSlotKTranspose] = {kSlotKTranspose, batch * heads * seq * head_dim * sizeof(half)};
-    slots[kSlotVTranspose] = {kSlotVTranspose, batch * heads * seq * head_dim * sizeof(half)};
-    slots[kSlotSoftmaxWorkspace] = {kSlotSoftmaxWorkspace, cudnn_workspace_size};
-    *num_slots = kNumSlots;
-    return nullptr;
-  }
-
-  OrtStatus* Compute(OrtKernelContext* ctx) override {
-    void* q_buf = nullptr;
-    // Uses pre-planned workspace if available, falls back to arena otherwise
-    api_->KernelContext_GetScratchBuffer(ctx, kSlotQTranspose, q_transpose_size, &q_buf);
-    // ... use q_buf ...
-  }
-};
-}  // namespace cuda
-```
-
-**Key design properties:**
-
-| Property | Design Choice | Rationale |
-|----------|--------------|-----------|
-| Slot ID scope | Per kernel *instance* (node) | Same kernel class on different nodes gets separate buffers; ORT disambiguates via `(NodeIndex, slot_id)` |
-| Slot ID assignment | Static constants in kernel code | No registry, no runtime allocation, no cross-kernel coordination needed |
-| Slot ID range | `[0, max_slots)` — small integers | Simple array indexing in the offset plan; `max_slots` = 8 is generous for any single kernel |
-| Uniqueness guarantee | Kernel author's responsibility | Same convention as `input_index` in `PrePackWeight` — the kernel knows its own buffer layout |
-| Stability across versions | Expected (like enum values) | Slot IDs are internal to the kernel; not exposed to users or other kernels |
-
-**Where state lives:**
-
-| State | Location | Lifetime |
-|-------|----------|----------|
-| Slot definitions (id + size) | Returned by `DeclareWorkspaceRequirements` → stored in `ExecutionPlan` | Session lifetime (computed once at `Initialize()`) |
-| Offset map `{(NodeIndex, slot_id) → offset}` | `SessionState::workspace_pattern_` (new field, analogous to `mem_patterns_`) | Session lifetime (shared, read-only) |
-| Peak workspace size per EP/device | `SessionState::workspace_pattern_` | Session lifetime |
-| Actual workspace buffer | `ExecutionFrame` (allocated per-`Run()` via `Reserve()`) | Single `Run()` invocation |
-
-**No global slot registry needed.** Unlike input indices which are defined by the ONNX op schema, slot IDs are entirely internal to the kernel implementation. Two different kernel classes can both use `slot_id=0` without conflict — the framework always qualifies with `NodeIndex`. This means:
-- No coordination between kernel authors
-- No registration step during plugin initialization
-- No versioning concerns (IDs never cross the plugin boundary as semantic values)
-
-##### Cost of a Real Plugin-Side Override (Deferred)
-
-The issue #29775 Phase-A pilot (PR #29811, MatMulNBits) deliberately implemented Level 1 and Level 2
-**only** for the in-tree CUDA EP, and left the plugin-side path unimplemented — the C ABI surface above
-describes the *design*, not something that pilot built or exercised. This was an explicit scope decision
-made when the pilot's design doc (issue #29810) was written, for these reasons, which remain the
-concrete cost of picking this up next:
-
-1. **DLL-boundary verification.** The shared math helper (e.g. `ComputeFpAIntBGemmWorkspaceSize`) needs
-   to actually be confirmed to link and execute correctly when called from the plugin DLL — the struct
-   crossing the ABI boundary compiling is not the same as the helper function being callable/linked
-   there.
-2. **A second build configuration's worth of test infrastructure.** The plugin EP is a separate CMake
-   build configuration from the in-tree CUDA EP; verifying Level 1/2 for a plugin kernel means building
-   and testing under that configuration too, which this pilot's test infra does not cover.
-3. **Wiring the plugin EP's own, separate memory-budget consumer.** `ep_plugin_provider_interfaces.cc`
-   (around line 356) has its own existing budget loop, independent of the in-tree `IResourceAccountant`
-   path, currently using a flat 1.5x safety multiplier. Having Level 1/2 estimates available does not by
-   itself make the plugin EP use them — that loop needs to be updated to consume the estimates, which is
-   a separate piece of work from declaring the estimates.
-
-None of the above is started. A kernel author picking up plugin-side workspace estimation should expect
-to do all three, not just implement the `DeclareWorkspaceRequirements` override on the plugin kernel
-class.
+That future work also requires DLL-boundary validation of shared pure-math helpers, a separate plugin
+build/test configuration, and explicit host-side forwarding. None of those pieces is implemented by
+the pilot, and the presence of the adapter default must not be interpreted as host support.
 
 #### Phase B: Eliminate Arena for Static-Shape Models
 

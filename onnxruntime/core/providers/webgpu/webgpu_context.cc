@@ -507,9 +507,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
                 "Only one of SetIndirectDispatchTensor and SetDispatchGroupSize should be called for program", program.Name());
   }
 
-  bool is_1d_dispatch = (y == 1 && z == 1);
-
-  auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments, is_1d_dispatch);
+  auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments);
 
   LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
   // The program cache prevents duplicate builds across encoded windows.

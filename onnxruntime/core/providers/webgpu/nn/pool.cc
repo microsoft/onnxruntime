@@ -95,7 +95,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     var_decl_code = SS_GET(var_decl_ss);
 
     sampling_code = "      value = max(value, x_val);\n";
-    if (are_small_output_big_kernel_) {
+    if (use_parallel_reduction_) {
       downsampling_code = "  sum_or_max_shared[local_idx] = value;\n";
     }
   } else {
@@ -118,7 +118,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
                         : "    if (!is_pad) {\n      count++;\n    }\n";
 
     SS(downsampling_ss, kStringInitialSize);
-    if (are_small_output_big_kernel_) {
+    if (use_parallel_reduction_) {
       downsampling_ss << "  sum_or_max_shared[local_idx] = value;\n"
                       << "  count_shared[local_idx] = count;\n";
     } else {
@@ -165,7 +165,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string pad_break_code = overflow_check_code.empty() ? "        break;\n" : "";
 
   std::string sum_or_max_shared;
-  if (are_small_output_big_kernel_) {
+  if (use_parallel_reduction_) {
     shader.AdditionalImplementation()
         << "var<workgroup> sum_or_max_shared : array<" << (is_float16_ ? "f16" : "f32") << ",workgroup_size_x >;\n"
         << (!is_max_pool_ ? "var<workgroup> count_shared : array<u32, workgroup_size_x>;\n" : "");
@@ -192,10 +192,10 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
               << "  }\n";
     sum_or_max_shared = SS_GET(shared_ss);
   }
-  std::string kernel_loop_decl_code = are_small_output_big_kernel_ ? "  for (var i: u32 = local_idx; i < uniforms.kernel_size; i += workgroup_size_x) {\n" : "  for (var i: u32 = 0; i < uniforms.kernel_size; i++) {\n";
+  std::string kernel_loop_decl_code = use_parallel_reduction_ ? "  for (var i: u32 = local_idx; i < uniforms.kernel_size; i += workgroup_size_x) {\n" : "  for (var i: u32 = 0; i < uniforms.kernel_size; i++) {\n";
 
   SS(output_ss, kStringInitialSize);
-  if (are_small_output_big_kernel_) {
+  if (use_parallel_reduction_) {
     output_ss << "  if (local_idx == 0) {\n"
               << "    value = sum_or_max_shared[0];\n";
     if (!is_max_pool_) {
@@ -212,8 +212,8 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string output_code = SS_GET(output_ss);
 
   auto& body = shader.MainFunctionBody();
-  body << (are_small_output_big_kernel_ ? "" : shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"))
-       << "  let y_indices = " << output.OffsetToIndices((are_small_output_big_kernel_ ? "workgroup_idx" : "global_idx")) << ";\n"
+  body << (use_parallel_reduction_ ? "" : shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"))
+       << "  let y_indices = " << output.OffsetToIndices((use_parallel_reduction_ ? "workgroup_idx" : "global_idx")) << ";\n"
        << "  var x_indices = y_indices;\n"
        << "  var k_indices: array<u32, " << kernel_rank << ">;\n"
        << var_decl_code
@@ -259,6 +259,13 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   return Status::OK();
 }
+
+// Threads a parallel-reduction workgroup uses to co-operate on one output element's kernel window.
+constexpr uint32_t kParallelReductionWorkgroupSize = 128;
+
+// Below this many workgroups a dispatch leaves compute units idle. WebGPU reports no compute-unit
+// count, so this is a fixed value chosen to sit under discrete GPUs and over integrated ones.
+constexpr uint32_t kMinDispatchGroupsToFillDevice = 64;
 
 template <typename PoolType, bool is_nhwc>
 Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
@@ -327,10 +334,16 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   const auto strides_u32 = NarrowToU32(strides);
   const auto dilations_u32 = NarrowToU32(dilations);
 
-  bool are_small_output_big_kernel = output_size <= 128 && kernel_size >= 128;
-  PoolProgram program{is_max_pool, is_nhwc, kernel_shape, is_float16, count_include_pad, are_small_output_big_kernel};
+  const uint32_t serial_dispatch_groups = static_cast<uint32_t>((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  // The serial path gives each output element one thread that loops the whole window, so its
+  // parallelism is output_size alone. The parallel path spends a workgroup per output element and
+  // reduces the window across its threads. Select on whether the serial path fills the device, not
+  // on output size: a small output with a large window holds plenty of work either way.
+  const bool use_parallel_reduction =
+      serial_dispatch_groups < kMinDispatchGroupsToFillDevice && kernel_size >= kParallelReductionWorkgroupSize;
+  PoolProgram program{is_max_pool, is_nhwc, kernel_shape, is_float16, count_include_pad, use_parallel_reduction};
 
-  program.CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad, are_small_output_big_kernel)
+  program.CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad, use_parallel_reduction)
       .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({{Y}})
       .AddUniformVariables({output_size, kernel_size,
@@ -339,11 +352,11 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
                             gsl::span<const uint32_t>(strides_u32.data(), strides_u32.size()),
                             gsl::span<const uint32_t>(dilations_u32.data(), dilations_u32.size())});
 
-  if (are_small_output_big_kernel) {
-    program.SetWorkgroupSize(128)
+  if (use_parallel_reduction) {
+    program.SetWorkgroupSize(kParallelReductionWorkgroupSize)
         .SetDispatchGroupSize(output_size);
   } else {
-    program.SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+    program.SetDispatchGroupSize(serial_dispatch_groups);
   }
 
   return context.RunProgram(program);
