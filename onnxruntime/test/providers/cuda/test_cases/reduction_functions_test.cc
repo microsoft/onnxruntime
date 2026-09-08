@@ -13,7 +13,7 @@
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/common/optional.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
-#include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/providers/cuda/reduction/reduction_scan_utils.h"
 #include "test/common/random_generator.h"
 #include "test/util/include/asserts.h"
 // To avoid conflict of LogRuntimeError, we direct include the cc file directly.
@@ -212,6 +212,20 @@ void TestReduceColumnsToColumnRepeated(int m, int n, int iterations, float relat
   }
 }
 }  // namespace
+
+TEST(ReductionFunctionsTest, ScanIndexArithmeticAtIntMax) {
+  constexpr int limit = std::numeric_limits<int>::max();
+  constexpr int step = 262144;
+
+  EXPECT_TRUE(reduction_scan_delta_is_valid(step - 1, step));
+  EXPECT_FALSE(reduction_scan_delta_is_valid(step, step));
+
+  int position = limit - step - 1;
+  EXPECT_TRUE(advance_reduction_scan(limit, step, position));
+  EXPECT_EQ(position, limit - 1);
+  EXPECT_FALSE(advance_reduction_scan(limit, step, position));
+  EXPECT_EQ(position, limit - 1);
+}
 
 TEST(ReductionFunctionsTest, ReduceRowToScalar) {
   TestReduceRowToScalarApis(3);

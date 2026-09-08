@@ -316,6 +316,49 @@ TEST_F(WebGpuPluginSharedAllocatorTest, DeviceTensorDataRoundTripsWithSharedAndS
   }
 }
 
+// BufferManager::MemCpy rejects a self-copy with ORT_ENFORCE, which throws rather than returning a
+// Status. CopyTensorsImpl is a noexcept C ABI callback, so before the throw was converted to an
+// OrtStatus this ended the process instead of reporting the misuse.
+TEST_F(WebGpuPluginSharedAllocatorTest, DeviceTensorSelfCopyIsReportedInsteadOfTerminating) {
+  constexpr std::array<int64_t, 1> shape{8};
+  std::array<float, 8> input_data{1.0f, -2.0f, 3.5f, 4.0f, -5.25f, 6.0f, 7.75f, -8.0f};
+  auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  for (const auto& ep_device : EpDevices()) {
+    auto device_memory_info = ep_device.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+    ASSERT_NE(device_memory_info, nullptr);
+    SCOPED_TRACE(::testing::Message() << "device " << device_memory_info.GetDeviceId());
+
+    Ort::KeyValuePairs allocator_options;
+    auto shared_allocator = Env().CreateSharedAllocator(
+        ep_device, OrtDeviceMemoryType_DEFAULT, OrtDeviceAllocator, allocator_options);
+    ASSERT_NE(shared_allocator, nullptr);
+
+    Ort::SessionOptions session_options;
+    Ort::KeyValuePairs ep_options;
+    session_options.AppendExecutionProvider_V2(Env(), {ep_device}, ep_options);
+    Ort::Session session(Env(), ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+    auto device_tensor = Ort::Value::CreateTensor<float>(shared_allocator, shape.data(), shape.size());
+
+    // Source and destination resolve to the same WGPUBuffer, which MemCpy refuses.
+    Ort::Status self_copy = Env().CopyTensor(device_tensor, device_tensor, nullptr);
+    ASSERT_FALSE(self_copy.IsOK());
+    EXPECT_THAT(self_copy.GetErrorMessage(), ::testing::HasSubstr("must be different"));
+
+    // The misuse was reported, not fatal: the same tensor still round trips.
+    std::array<float, 8> output_data{};
+    auto cpu_input = Ort::Value::CreateTensor<float>(
+        cpu_memory_info, input_data.data(), input_data.size(), shape.data(), shape.size());
+    auto cpu_output = Ort::Value::CreateTensor<float>(
+        cpu_memory_info, output_data.data(), output_data.size(), shape.data(), shape.size());
+
+    ASSERT_ORTSTATUS_OK(Env().CopyTensor(cpu_input, device_tensor, nullptr));
+    ASSERT_ORTSTATUS_OK(Env().CopyTensor(device_tensor, cpu_output, nullptr));
+    EXPECT_EQ(output_data, input_data);
+  }
+}
+
 // Manual Task Manager test. This intentionally reserves substantial GPU memory and runs for an extended period.
 // Enable explicitly with --gtest_also_run_disabled_tests and this test's full name.
 TEST_F(WebGpuPluginSharedAllocatorTest, DISABLED_ManualPerDeviceMemoryAndComputeLoad) {

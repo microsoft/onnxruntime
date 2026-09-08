@@ -305,7 +305,12 @@ Status BeamSearchWhisper<T>::Execute(const FeedsFetchesManager& encoder_feeds_fe
       cross_qk_layer_head_pair_count = parameters->num_layers * parameters->num_heads;
       const auto* input_tensor_cross_qk_layer_head = this->context_.template Input<Tensor>(parameters->cross_qk_layer_head_input_id);
       ORT_ENFORCE(input_tensor_cross_qk_layer_head != nullptr, "Must specify input cross_qk_layer_head");
-      cross_qk_layer_head_pair_count = input_tensor_cross_qk_layer_head->Shape()[0];
+      const auto& cross_qk_layer_head_dims = input_tensor_cross_qk_layer_head->Shape().GetDims();
+      ORT_ENFORCE(cross_qk_layer_head_dims.size() == 2 && cross_qk_layer_head_dims[1] == 2,
+                  "input cross_qk_layer_head must have shape [layer_head_pair_count, 2]");
+      const int64_t pair_count = cross_qk_layer_head_dims[0];
+      parameters->ValidateWhisperCrossQKPairCount(pair_count);
+      cross_qk_layer_head_pair_count = pair_count;
       cross_qk_layer_head_pairs = input_tensor_cross_qk_layer_head->template Data<int32_t>();  // it is on GPU
 
       size_t decoder_input_first_cross_key = static_cast<size_t>(decoder_subgraph_.GetFirstPastInputIndex()) + (2 * decoder_subgraph_.num_layers);

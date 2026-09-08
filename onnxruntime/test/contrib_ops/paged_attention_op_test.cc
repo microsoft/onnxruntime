@@ -65,6 +65,7 @@ struct EndToEndCase {
 
 struct IoBindingCase {
   int batch_size = 1;
+  int token_count = 0;  // 0 means one token per batch entry
   int num_heads = 1;
   int kv_num_heads = 1;
   int head_size = 8;
@@ -76,10 +77,12 @@ struct IoBindingCase {
   bool int8_cache = false;
   bool fp8_cache = false;
   bool bf16_query = false;
+  bool per_channel_scales = false;
   bool enable_cuda_graph = false;
   bool irregular_layout = false;
   bool discriminating_attention = false;
   std::vector<std::vector<int32_t>> replay_past_seqlens;
+  std::vector<int32_t> cumulative_seqlens_q;
   std::vector<int32_t> block_table;
   std::vector<int32_t> attention_metadata;
   std::string expected_error;
@@ -276,7 +279,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                       bool omit_cache_outputs = false,
                       const IoBindingCase& c = IoBindingCase{}) {
   const int batch_size = c.batch_size;
-  const int token_count = batch_size;
+  const int token_count = c.token_count > 0 ? c.token_count : batch_size;
   const int num_heads = c.num_heads;
   const int kv_num_heads = c.kv_num_heads;
   const int head_size = c.head_size;
@@ -289,8 +292,18 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   const int cache_elems = num_blocks * block_size * kv_num_heads * head_size;
   constexpr float cache_scale = 0.01f;
   const bool quantized_cache = c.int8_cache || c.fp8_cache;
+  const int scale_elements = kv_num_heads * head_size;
+  std::vector<float> k_scale_data(c.per_channel_scales ? scale_elements : 1, cache_scale);
+  std::vector<float> v_scale_data(c.per_channel_scales ? scale_elements : 1, cache_scale);
+  if (c.per_channel_scales) {
+    for (int i = 0; i < scale_elements; ++i) {
+      k_scale_data[i] = cache_scale * (1 + i % 2);
+      v_scale_data[i] = cache_scale * (2 - i % 2);
+    }
+  }
 
   ASSERT_FALSE(c.int8_cache && c.fp8_cache);
+  ASSERT_FALSE(c.per_channel_scales && !quantized_cache);
 #if defined(DISABLE_FLOAT8_TYPES)
   ASSERT_FALSE(c.fp8_cache);
 #endif
@@ -307,6 +320,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_EQ(num_heads % kv_num_heads, 0);
   ASSERT_TRUE(c.block_table.empty() ||
               c.block_table.size() == static_cast<size_t>(batch_size * max_num_blocks_per_seq));
+  ASSERT_TRUE(c.cumulative_seqlens_q.empty() ||
+              (c.cumulative_seqlens_q.size() == static_cast<size_t>(batch_size + 1) &&
+               c.cumulative_seqlens_q.front() == 0 && c.cumulative_seqlens_q.back() == token_count));
   for (int32_t block_id : c.block_table) {
     ASSERT_GE(block_id, 0);
     ASSERT_LT(block_id, num_blocks);
@@ -370,10 +386,19 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   NodeArg* k_scale_arg = &empty_optional_arg;
   NodeArg* v_scale_arg = &empty_optional_arg;
   if (quantized_cache) {
-    k_scale_arg = &graph.GetOrCreateNodeArg(
-        "k_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1}));
-    v_scale_arg = &graph.GetOrCreateNodeArg(
-        "v_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1}));
+    if (c.per_channel_scales) {
+      k_scale_arg = &graph.GetOrCreateNodeArg(
+          "k_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                     {kv_num_heads, 1, head_size}));
+      v_scale_arg = &graph.GetOrCreateNodeArg(
+          "v_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                     {kv_num_heads, 1, head_size}));
+    } else {
+      k_scale_arg = &graph.GetOrCreateNodeArg(
+          "k_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1}));
+      v_scale_arg = &graph.GetOrCreateNodeArg(
+          "v_scale", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1}));
+    }
   }
   std::vector<NodeArg*> input_defs = {&query_arg, &key_arg, &value_arg, &key_cache_arg, &value_cache_arg,
                                       &cumulative_sequence_length_arg, &past_seqlens_arg, &block_table_arg,
@@ -408,8 +433,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       {"do_rotary", utils::MakeAttribute("do_rotary", int64_t{0})},
   };
   if (quantized_cache) {
-    attrs.emplace("k_quant_type", utils::MakeAttribute("k_quant_type", std::string{"PER_TENSOR"}));
-    attrs.emplace("v_quant_type", utils::MakeAttribute("v_quant_type", std::string{"PER_TENSOR"}));
+    const std::string quant_type = c.per_channel_scales ? "PER_CHANNEL" : "PER_TENSOR";
+    attrs.emplace("k_quant_type", utils::MakeAttribute("k_quant_type", quant_type));
+    attrs.emplace("v_quant_type", utils::MakeAttribute("v_quant_type", quant_type));
   }
   auto& node = graph.AddNode("paged_attention", "PagedAttention", "IOBinding cache test",
                              input_defs, output_defs, &attrs, onnxruntime::kMSDomain);
@@ -470,9 +496,17 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   std::vector<MLFloat16> query_data(token_count * hidden_size, MLFloat16(0.02f));
   std::vector<MLFloat16> key_data(token_count * kv_hidden_size, MLFloat16(0.03f));
   std::vector<MLFloat16> value_data(token_count * kv_hidden_size);
-  for (int b = 0; b < batch_size; ++b) {
-    const MLFloat16 value(0.04f + 0.02f * b);
-    std::fill_n(value_data.begin() + b * kv_hidden_size, kv_hidden_size, value);
+  std::vector<int32_t> cumulative_sequence_length_data = c.cumulative_seqlens_q;
+  if (cumulative_sequence_length_data.empty()) {
+    cumulative_sequence_length_data.resize(batch_size + 1);
+    std::iota(cumulative_sequence_length_data.begin(), cumulative_sequence_length_data.end(), 0);
+  }
+  for (int token = 0; token < token_count; ++token) {
+    const auto upper = std::upper_bound(cumulative_sequence_length_data.begin(),
+                                        cumulative_sequence_length_data.end(), token);
+    const int batch = static_cast<int>(upper - cumulative_sequence_length_data.begin()) - 1;
+    const MLFloat16 value(0.04f + 0.02f * batch);
+    std::fill_n(value_data.begin() + token * kv_hidden_size, kv_hidden_size, value);
   }
   std::vector<MLFloat16> key_cache_data(cache_elems, MLFloat16(0.01f));
   std::vector<MLFloat16> value_cache_data(cache_elems, MLFloat16(0.02f));
@@ -484,10 +518,15 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     const float value_step = quantized_cache ? cache_scale : 0.004f;
     const float cache_key_step = quantized_cache ? cache_scale : 0.001f;
     const float cache_value_step = quantized_cache ? cache_scale : 0.003f;
-    for (int b = 0; b < batch_size; ++b) {
+    for (int token = 0; token < token_count; ++token) {
+      const auto upper = std::upper_bound(cumulative_sequence_length_data.begin(),
+                                          cumulative_sequence_length_data.end(), token);
+      const int b = static_cast<int>(upper - cumulative_sequence_length_data.begin()) - 1;
+      const int local_token = token - cumulative_sequence_length_data[b];
+      const int position = past_seqlen + local_token;
       for (int q_head = 0; q_head < num_heads; ++q_head) {
         for (int dim = 0; dim < head_size; ++dim) {
-          const int index = (b * num_heads + q_head) * head_size + dim;
+          const int index = (token * num_heads + q_head) * head_size + dim;
           query_data[index] = c.discriminating_attention
                                   ? MLFloat16(0.5f * walsh_sign(q_head % 8, dim))
                                   : MLFloat16(
@@ -497,14 +536,14 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       }
       for (int kv_head = 0; kv_head < kv_num_heads; ++kv_head) {
         for (int dim = 0; dim < head_size; ++dim) {
-          const int index = (b * kv_num_heads + kv_head) * head_size + dim;
+          const int index = (token * kv_num_heads + kv_head) * head_size + dim;
           key_data[index] = c.discriminating_attention
-                                ? MLFloat16(0.48f * walsh_sign(past_seqlen % 8, dim))
+                                ? MLFloat16(0.48f * walsh_sign(position % 8, dim))
                                 : MLFloat16(
                                       key_step *
                                       static_cast<float>((b * 7 + kv_head * 5 + dim) % 13 - 6));
           value_data[index] = c.discriminating_attention
-                                  ? MLFloat16(0.08f + 0.04f * static_cast<float>(past_seqlen % 8) +
+                                  ? MLFloat16(0.08f + 0.04f * static_cast<float>(position % 8) +
                                               0.04f * static_cast<float>(dim % 2))
                                   : MLFloat16(
                                         value_step *
@@ -582,16 +621,21 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
 #endif
   std::vector<BFloat16> key_cache_bf16;
   std::vector<BFloat16> value_cache_bf16;
+  const bool native_bf16_cache = c.bf16_query && !quantized_cache;
   OrtValue key_cache_value;
   OrtValue value_cache_value;
   if (c.int8_cache) {
     key_cache_int8.reserve(key_cache_data.size());
     value_cache_int8.reserve(value_cache_data.size());
-    for (const auto value : key_cache_data) {
-      key_cache_int8.push_back(static_cast<int8_t>(std::round(value.ToFloat() / cache_scale)));
+    for (size_t i = 0; i < key_cache_data.size(); ++i) {
+      const size_t scale_index = c.per_channel_scales ? i % scale_elements : 0;
+      key_cache_int8.push_back(
+          static_cast<int8_t>(std::round(key_cache_data[i].ToFloat() / k_scale_data[scale_index])));
     }
-    for (const auto value : value_cache_data) {
-      value_cache_int8.push_back(static_cast<int8_t>(std::round(value.ToFloat() / cache_scale)));
+    for (size_t i = 0; i < value_cache_data.size(); ++i) {
+      const size_t scale_index = c.per_channel_scales ? i % scale_elements : 0;
+      value_cache_int8.push_back(
+          static_cast<int8_t>(std::round(value_cache_data[i].ToFloat() / v_scale_data[scale_index])));
     }
     key_cache_value = make_gpu(key_cache_int8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
     value_cache_value = make_gpu(value_cache_int8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
@@ -599,12 +643,18 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   } else if (c.fp8_cache) {
     key_cache_fp8.reserve(key_cache_data.size());
     value_cache_fp8.reserve(value_cache_data.size());
-    for (const auto value : key_cache_data) key_cache_fp8.emplace_back(value.ToFloat() / cache_scale);
-    for (const auto value : value_cache_data) value_cache_fp8.emplace_back(value.ToFloat() / cache_scale);
+    for (size_t i = 0; i < key_cache_data.size(); ++i) {
+      const size_t scale_index = c.per_channel_scales ? i % scale_elements : 0;
+      key_cache_fp8.emplace_back(key_cache_data[i].ToFloat() / k_scale_data[scale_index]);
+    }
+    for (size_t i = 0; i < value_cache_data.size(); ++i) {
+      const size_t scale_index = c.per_channel_scales ? i % scale_elements : 0;
+      value_cache_fp8.emplace_back(value_cache_data[i].ToFloat() / v_scale_data[scale_index]);
+    }
     key_cache_value = make_gpu(key_cache_fp8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
     value_cache_value = make_gpu(value_cache_fp8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
 #endif
-  } else if (c.bf16_query) {
+  } else if (native_bf16_cache) {
     key_cache_bf16.reserve(key_cache_data.size());
     value_cache_bf16.reserve(value_cache_data.size());
     for (const auto value : key_cache_data) key_cache_bf16.emplace_back(value.ToFloat());
@@ -615,8 +665,6 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     key_cache_value = make_gpu(key_cache_data, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
     value_cache_value = make_gpu(value_cache_data, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
   }
-  std::vector<int32_t> cumulative_sequence_length_data(batch_size + 1);
-  std::iota(cumulative_sequence_length_data.begin(), cumulative_sequence_length_data.end(), 0);
   auto cumulative_sequence_length_value =
       make_gpu(cumulative_sequence_length_data, TensorShape({batch_size + 1}));
   std::vector<int32_t> past_seqlens_data =
@@ -640,7 +688,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     key_cache_out_value = make_gpu(key_cache_fp8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
     value_cache_out_value = make_gpu(value_cache_fp8, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
 #endif
-  } else if (c.bf16_query) {
+  } else if (native_bf16_cache) {
     key_cache_out_value = make_gpu(key_cache_bf16, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
     value_cache_out_value = make_gpu(value_cache_bf16, TensorShape({num_blocks, block_size, kv_num_heads, head_size}));
   } else {
@@ -650,8 +698,11 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   OrtValue k_scale_value;
   OrtValue v_scale_value;
   if (quantized_cache) {
-    k_scale_value = make_gpu(std::vector<float>{cache_scale}, TensorShape({1}));
-    v_scale_value = make_gpu(std::vector<float>{cache_scale}, TensorShape({1}));
+    const TensorShape scale_shape = c.per_channel_scales
+                                        ? TensorShape({kv_num_heads, 1, head_size})
+                                        : TensorShape({1});
+    k_scale_value = make_gpu(k_scale_data, scale_shape);
+    v_scale_value = make_gpu(v_scale_data, scale_shape);
   }
 
   std::unique_ptr<IOBinding> io_binding;
@@ -710,63 +761,85 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
                       TensorShape({token_count, hidden_size}), cpu_alloc);
     ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
     for (int b = 0; b < batch_size; ++b) {
-      const int new_slot = past_seqlens_data[b];
-      const int new_block_id =
-          block_table_data[b * max_num_blocks_per_seq + new_slot / block_size];
-      for (int kv_head = 0; kv_head < kv_num_heads; ++kv_head) {
-        for (int dim = 0; dim < head_size; ++dim) {
-          const int cache_index = CacheIndex(new_block_id, new_slot % block_size, kv_head, dim,
-                                             block_size, kv_num_heads, head_size);
-          const int input_index = (b * kv_num_heads + kv_head) * head_size + dim;
-          key_cache_data[cache_index] = key_data[input_index];
-          value_cache_data[cache_index] = value_data[input_index];
+      for (int token = cumulative_sequence_length_data[b];
+           token < cumulative_sequence_length_data[b + 1]; ++token) {
+        const int local_token = token - cumulative_sequence_length_data[b];
+        const int new_slot = past_seqlens_data[b] + local_token;
+        const int new_block_id =
+            block_table_data[b * max_num_blocks_per_seq + new_slot / block_size];
+        for (int kv_head = 0; kv_head < kv_num_heads; ++kv_head) {
+          for (int dim = 0; dim < head_size; ++dim) {
+            const int cache_index = CacheIndex(new_block_id, new_slot % block_size, kv_head, dim,
+                                               block_size, kv_num_heads, head_size);
+            const int input_index = (token * kv_num_heads + kv_head) * head_size + dim;
+            if (native_bf16_cache) {
+              key_cache_bf16[cache_index] = key_data_bf16[input_index];
+              value_cache_bf16[cache_index] = value_data_bf16[input_index];
+            } else {
+              key_cache_data[cache_index] = key_data[input_index];
+              value_cache_data[cache_index] = value_data[input_index];
+            }
+          }
         }
       }
+    }
 
+    for (int b = 0; b < batch_size; ++b) {
       const int gqa_factor = num_heads / kv_num_heads;
-      for (int q_head = 0; q_head < num_heads; ++q_head) {
-        const int kv_head = q_head / gqa_factor;
-        std::vector<float> scores(new_slot + 1);
-        float max_score = -std::numeric_limits<float>::infinity();
-        for (int slot = 0; slot <= new_slot; ++slot) {
-          const int block_id =
-              block_table_data[b * max_num_blocks_per_seq + slot / block_size];
-          float dot = 0.0f;
-          for (int dim = 0; dim < head_size; ++dim) {
-            const int query_index = (b * num_heads + q_head) * head_size + dim;
-            const int cache_index = CacheIndex(block_id, slot % block_size, kv_head, dim,
-                                               block_size, kv_num_heads, head_size);
-            dot += query_data[query_index].ToFloat() * key_cache_data[cache_index].ToFloat();
-          }
-          scores[slot] = dot * scale;
-          max_score = std::max(max_score, scores[slot]);
-        }
-        float denominator = 0.0f;
-        for (float& score : scores) {
-          score = std::exp(score - max_score);
-          denominator += score;
-        }
-        for (int dim = 0; dim < head_size; ++dim) {
-          float numerator = 0.0f;
+      for (int token = cumulative_sequence_length_data[b];
+           token < cumulative_sequence_length_data[b + 1]; ++token) {
+        const int local_token = token - cumulative_sequence_length_data[b];
+        const int new_slot = past_seqlens_data[b] + local_token;
+        for (int q_head = 0; q_head < num_heads; ++q_head) {
+          const int kv_head = q_head / gqa_factor;
+          std::vector<float> scores(new_slot + 1);
+          float max_score = -std::numeric_limits<float>::infinity();
           for (int slot = 0; slot <= new_slot; ++slot) {
             const int block_id =
                 block_table_data[b * max_num_blocks_per_seq + slot / block_size];
-            const int cache_index = CacheIndex(block_id, slot % block_size, kv_head, dim,
-                                               block_size, kv_num_heads, head_size);
-            numerator += scores[slot] * value_cache_data[cache_index].ToFloat();
+            float dot = 0.0f;
+            for (int dim = 0; dim < head_size; ++dim) {
+              const int query_index = (token * num_heads + q_head) * head_size + dim;
+              const int cache_index = CacheIndex(block_id, slot % block_size, kv_head, dim,
+                                                 block_size, kv_num_heads, head_size);
+              const float query_element = c.bf16_query ? query_data_bf16[query_index].ToFloat()
+                                                       : query_data[query_index].ToFloat();
+              const float key_element = native_bf16_cache ? key_cache_bf16[cache_index].ToFloat()
+                                                          : key_cache_data[cache_index].ToFloat();
+              dot += query_element * key_element;
+            }
+            scores[slot] = dot * scale;
+            max_score = std::max(max_score, scores[slot]);
           }
-          const int output_index = (b * num_heads + q_head) * head_size + dim;
-          const float actual_output = c.bf16_query
-                                          ? cpu_output.Data<BFloat16>()[output_index].ToFloat()
-                                          : cpu_output.Data<MLFloat16>()[output_index].ToFloat();
-          const float expected_output = numerator / denominator;
-          if (c.discriminating_attention) {
-            EXPECT_GT(std::abs(expected_output), 2e-2f)
-                << "The H256 fixture must reject an all-zero attention output.";
+          float denominator = 0.0f;
+          for (float& score : scores) {
+            score = std::exp(score - max_score);
+            denominator += score;
           }
-          EXPECT_NEAR(actual_output, expected_output, 2e-3f)
-              << "run=" << run_index << ", batch=" << b
-              << ", q_head=" << q_head << ", dim=" << dim;
+          for (int dim = 0; dim < head_size; ++dim) {
+            float numerator = 0.0f;
+            for (int slot = 0; slot <= new_slot; ++slot) {
+              const int block_id =
+                  block_table_data[b * max_num_blocks_per_seq + slot / block_size];
+              const int cache_index = CacheIndex(block_id, slot % block_size, kv_head, dim,
+                                                 block_size, kv_num_heads, head_size);
+              const float value_element = native_bf16_cache ? value_cache_bf16[cache_index].ToFloat()
+                                                            : value_cache_data[cache_index].ToFloat();
+              numerator += scores[slot] * value_element;
+            }
+            const int output_index = (token * num_heads + q_head) * head_size + dim;
+            const float actual_output = c.bf16_query
+                                            ? cpu_output.Data<BFloat16>()[output_index].ToFloat()
+                                            : cpu_output.Data<MLFloat16>()[output_index].ToFloat();
+            const float expected_output = numerator / denominator;
+            if (c.discriminating_attention) {
+              EXPECT_GT(std::abs(expected_output), 2e-2f)
+                  << "The H256 fixture must reject an all-zero attention output.";
+            }
+            EXPECT_NEAR(actual_output, expected_output, 2e-3f)
+                << "run=" << run_index << ", batch=" << b << ", token=" << token
+                << ", q_head=" << q_head << ", dim=" << dim;
+          }
         }
       }
     }
@@ -784,13 +857,15 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
     cache_data_type = DataTypeImpl::GetType<Float8E4M3FN>();
   }
 #endif
-  auto read_cache_value = [&](const Tensor& tensor, size_t offset) {
+  auto read_cache_value = [&](const Tensor& tensor, size_t offset, const std::vector<float>& scale_data) {
     if (c.int8_cache) {
-      return tensor.Data<int8_t>()[offset] * cache_scale;
+      const size_t scale_index = c.per_channel_scales ? offset % scale_elements : 0;
+      return tensor.Data<int8_t>()[offset] * scale_data[scale_index];
     }
 #if !defined(DISABLE_FLOAT8_TYPES)
     if (c.fp8_cache) {
-      return tensor.Data<Float8E4M3FN>()[offset].ToFloat() * cache_scale;
+      const size_t scale_index = c.per_channel_scales ? offset % scale_elements : 0;
+      return tensor.Data<Float8E4M3FN>()[offset].ToFloat() * scale_data[scale_index];
     }
 #endif
     return c.bf16_query ? tensor.Data<BFloat16>()[offset].ToFloat()
@@ -809,8 +884,9 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
       const size_t cache_update_offset =
           static_cast<size_t>(CacheIndex(block_id, past_seqlen % block_size, 0, 0,
                                          block_size, kv_num_heads, head_size));
-      EXPECT_NEAR(read_cache_value(cpu_key_cache, cache_update_offset), 0.03f, 1e-3f);
-      EXPECT_NEAR(read_cache_value(cpu_value_cache, cache_update_offset), 0.04f + 0.02f * b, 1e-3f);
+      EXPECT_NEAR(read_cache_value(cpu_key_cache, cache_update_offset, k_scale_data), 0.03f, 1e-3f);
+      EXPECT_NEAR(read_cache_value(cpu_value_cache, cache_update_offset, v_scale_data),
+                  0.04f + 0.02f * b, 1e-3f);
     }
     ASSERT_EQ(outputs.size(), 1u);
     return;
@@ -840,21 +916,24 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[1].Get<Tensor>(), cpu_key_cache_out));
   ORT_THROW_IF_ERROR(execution_provider_ptr->GetDataTransfer()->CopyTensor(outputs[2].Get<Tensor>(), cpu_value_cache_out));
   for (int b = 0; b < batch_size; ++b) {
-    const int last_past_seqlen = past_seqlens_data[b];
-    const int block_id =
-        block_table_data[b * max_num_blocks_per_seq + last_past_seqlen / block_size];
-    for (int kv_head = 0; kv_head < kv_num_heads; ++kv_head) {
-      for (int dim = 0; dim < head_size; ++dim) {
-        const size_t cache_update_offset =
-            static_cast<size_t>(CacheIndex(block_id, last_past_seqlen % block_size, kv_head, dim,
-                                           block_size, kv_num_heads, head_size));
-        const size_t input_offset = static_cast<size_t>((b * kv_num_heads + kv_head) * head_size + dim);
-        EXPECT_NEAR(read_cache_value(cpu_key_cache_out, cache_update_offset),
-                    key_data[input_offset].ToFloat(), 1e-3f)
-            << "batch=" << b << ", kv_head=" << kv_head << ", dim=" << dim;
-        EXPECT_NEAR(read_cache_value(cpu_value_cache_out, cache_update_offset),
-                    value_data[input_offset].ToFloat(), 1e-3f)
-            << "batch=" << b << ", kv_head=" << kv_head << ", dim=" << dim;
+    for (int token = cumulative_sequence_length_data[b];
+         token < cumulative_sequence_length_data[b + 1]; ++token) {
+      const int local_token = token - cumulative_sequence_length_data[b];
+      const int slot = past_seqlens_data[b] + local_token;
+      const int block_id = block_table_data[b * max_num_blocks_per_seq + slot / block_size];
+      for (int kv_head = 0; kv_head < kv_num_heads; ++kv_head) {
+        for (int dim = 0; dim < head_size; ++dim) {
+          const size_t cache_update_offset = static_cast<size_t>(
+              CacheIndex(block_id, slot % block_size, kv_head, dim, block_size, kv_num_heads, head_size));
+          const size_t input_offset =
+              static_cast<size_t>((token * kv_num_heads + kv_head) * head_size + dim);
+          EXPECT_NEAR(read_cache_value(cpu_key_cache_out, cache_update_offset, k_scale_data),
+                      key_data[input_offset].ToFloat(), 1e-3f)
+              << "batch=" << b << ", token=" << token << ", kv_head=" << kv_head << ", dim=" << dim;
+          EXPECT_NEAR(read_cache_value(cpu_value_cache_out, cache_update_offset, v_scale_data),
+                      value_data[input_offset].ToFloat(), 1e-3f)
+              << "batch=" << b << ", token=" << token << ", kv_head=" << kv_head << ", dim=" << dim;
+        }
       }
     }
   }
@@ -1015,6 +1094,57 @@ bool IsNativeFp16HeadSize256Group6XqaRunnable() {
   return debug_output.find("SdpaKernel=XQA") != std::string::npos;
 }
 
+// The speculative specialization asks for more shared memory than the single-token XQA kernel, so
+// it can legitimately fall back on a device where plain XQA runs. Only the dtype flags pick the
+// specialization, so a minimal two-token probe answers for every case built on that dtype.
+bool IsSpecDecHeadSize256Group6XqaRunnable(bool bf16_query, bool int8_cache, bool fp8_cache) {
+  IoBindingCase c;
+  c.token_count = 2;
+  c.cumulative_seqlens_q = {0, 2};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.past_seqlen = 122;
+  c.bf16_query = bf16_query;
+  c.int8_cache = int8_cache;
+  c.fp8_cache = fp8_cache;
+  c.attention_metadata = {2, 124, 124};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  return debug_output.find("SdpaKernel=XQA") != std::string::npos;
+}
+
+TEST(PagedAttention, Cuda_NativeXqaRequiresOptIn) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"},
+          {"ORT_ENABLE_XQA_NATIVE_KV", "0"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  IoBindingCase c;
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.num_blocks = 2;
+  c.max_num_blocks_per_seq = 1;
+  c.past_seqlen = 122;
+  c.attention_metadata = {1, 128, 128};
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  EXPECT_EQ(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+}
+
 TEST(PagedAttention, Cuda_XqaNativeFp16CacheHeadSize256Group6) {
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{
@@ -1022,7 +1152,8 @@ TEST(PagedAttention, Cuda_XqaNativeFp16CacheHeadSize256Group6) {
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
           {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
-          {"ORT_ENABLE_XQA", "1"}}};
+          {"ORT_ENABLE_XQA", "1"},
+          {"ORT_ENABLE_XQA_NATIVE_KV", "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
@@ -1076,7 +1207,8 @@ TEST(PagedAttention, Cuda_XqaNativeFp16CacheSplitReduction) {
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
           {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
-          {"ORT_ENABLE_XQA", "1"}}};
+          {"ORT_ENABLE_XQA", "1"},
+          {"ORT_ENABLE_XQA_NATIVE_KV", "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
@@ -1110,7 +1242,8 @@ TEST(PagedAttention, Cuda_XqaNativeFp16CacheFallsBackWithoutMetadata) {
           {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
-          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA_NATIVE_KV", "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
@@ -1138,29 +1271,216 @@ TEST(PagedAttention, Cuda_XqaNativeFp16CacheMultiTokenBoundFallsBack) {
           {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
           {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
           {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
-          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA_NATIVE_KV", "1"}}};
 
   if (DefaultCudaExecutionProvider() == nullptr) {
     GTEST_SKIP() << "CUDA EP not available.";
   }
   IoBindingCase c;
   c.batch_size = 2;
+  c.token_count = 9;
+  c.cumulative_seqlens_q = {0, 9, 9};
   c.num_heads = 6;
   c.kv_num_heads = 1;
   c.head_size = 256;
   c.num_blocks = 32;
   c.max_num_blocks_per_seq = 8;
-  c.past_seqlen = 2047;
-  c.attention_metadata = {2, 2048, 2048};
+  c.past_seqlen = 2039;
+  c.attention_metadata = {9, 2048, 2048};
 
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
   const std::string debug_output = testing::internal::GetCapturedStdout();
   EXPECT_EQ(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
   EXPECT_TRUE(debug_output.find("SdpaKernel=FLASH_ATTENTION") != std::string::npos ||
+              debug_output.find("SdpaKernel=EFFICIENT_ATTENTION") != std::string::npos ||
               debug_output.find("SdpaKernel=DECODER_ATTENTION") != std::string::npos)
       << debug_output;
 }
+
+TEST(PagedAttention, Cuda_XqaSpecDecNativeFp16CacheHeadSize256Group6) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"},
+          {"ORT_ENABLE_XQA_NATIVE_KV", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 8;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 0, 0, 0, 0, 0, 0, 0, 7};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.num_blocks = 8;
+  c.past_seqlen = 249;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.attention_metadata = {7, 256, 256};
+
+  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(false, false, false);
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (native FP16) is not runnable in this "
+                    "build/device configuration; output parity was still checked.";
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_XqaSpecDecNativeBf16CacheHeadSize256Group6) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"},
+          {"ORT_ENABLE_XQA_NATIVE_KV", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 7};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.past_seqlen = 249;
+  c.bf16_query = true;
+  c.enable_cuda_graph = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.replay_past_seqlens = {{122}, {249}, {122}};
+  c.attention_metadata = {7, 256, 256};
+
+  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(true, false, false);
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    // XQA promotion is speculative for a native cache, so a failed probe has to restore paged
+    // Flash rather than leave a BF16 step on the portable scalar paged-decode fallback.
+    EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (native BF16) is not runnable in this "
+                    "build/device configuration; output parity and the Flash fallback were still checked.";
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
+TEST(PagedAttention, Cuda_XqaSpecDecInt8CacheHeadSize256Group6) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Speculative XQA requires compute capability 8.0 or later.";
+  }
+
+  IoBindingCase c;
+  c.batch_size = 8;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 0, 0, 0, 0, 0, 0, 0, 7};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.num_blocks = 8;
+  c.past_seqlen = 249;
+  c.int8_cache = true;
+  c.per_channel_scales = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.attention_metadata = {7, 256, 256};
+
+  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(false, true, false);
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (INT8 cache) is not runnable in this "
+                    "build/device configuration; output parity was still checked.";
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+
+#if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
+TEST(PagedAttention, Cuda_XqaSpecDecFp8CacheHeadSize256Group6) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 890) {
+    GTEST_SKIP() << "FP8 speculative XQA requires compute capability 8.9 or later.";
+  }
+
+  IoBindingCase c;
+  c.token_count = 7;
+  c.cumulative_seqlens_q = {0, 7};
+  c.num_heads = 6;
+  c.kv_num_heads = 1;
+  c.head_size = 256;
+  c.past_seqlen = 122;
+  c.fp8_cache = true;
+  c.irregular_layout = true;
+  c.discriminating_attention = true;
+  c.attention_metadata = {7, 129, 129};
+
+  const bool xqa_runnable = IsSpecDecHeadSize256Group6XqaRunnable(false, false, true);
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (!xqa_runnable) {
+    GTEST_SKIP() << "Speculative paged XQA H256/group6 (FP8 cache) is not runnable in this "
+                    "build/device configuration; output parity was still checked.";
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+  EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
+}
+#endif
 
 TEST(PagedAttention, Cuda_AttentionMetadataValidation) {
   if (DefaultCudaExecutionProvider() == nullptr) {

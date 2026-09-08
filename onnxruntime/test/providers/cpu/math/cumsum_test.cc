@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/webgpu_provider_options.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -22,6 +22,49 @@ void RunEmptyAxisFailureTest(std::vector<std::unique_ptr<IExecutionProvider>> ex
   test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &execution_providers);
+}
+
+void RunCudaInt64Test(int64_t outer, int64_t width, int64_t inner) {
+  const int64_t element_count = outer * width * inner;
+  std::vector<int64_t> input(element_count);
+  for (int64_t i = 0; i < element_count; ++i) {
+    input[i] = i % 7 - 3;
+  }
+
+  for (const bool exclusive : {false, true}) {
+    for (const bool reverse : {false, true}) {
+      std::vector<int64_t> expected(element_count);
+      for (int64_t outer_index = 0; outer_index < outer; ++outer_index) {
+        for (int64_t inner_index = 0; inner_index < inner; ++inner_index) {
+          int64_t total = 0;
+          for (int64_t i = 0; i < width; ++i) {
+            const int64_t axis_index = reverse ? width - 1 - i : i;
+            const int64_t index = (outer_index * width + axis_index) * inner + inner_index;
+            if (exclusive) {
+              expected[index] = total;
+            }
+            total += input[index];
+            if (!exclusive) {
+              expected[index] = total;
+            }
+          }
+        }
+      }
+
+      OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
+      test.AddAttribute<int64_t>("exclusive", exclusive);
+      test.AddAttribute<int64_t>("reverse", reverse);
+      test.AddInput<int64_t>("x", {outer, width, inner}, input);
+      test.AddInput<int64_t>("axis", {}, {1});
+      test.AddOutput<int64_t>("y", {outer, width, inner}, expected);
+
+      SessionOptions session_options;
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+      test.Config(session_options)
+          .ConfigEp(DefaultCudaExecutionProvider())
+          .RunWithConfig();
+    }
+  }
 }
 
 }  // namespace
@@ -283,6 +326,24 @@ TEST(CumSumTest, _1DTestInt64) {
   test.AddOutput<int64_t>("y", {5}, {1, 3, 6, 10, 15});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+
+TEST(CumSumTest, CudaInt64BlockScanMultiTile) {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  RunCudaInt64Test(1, 1000, 1);
+  RunCudaInt64Test(2, 513, 3);
+}
+
+TEST(CumSumTest, CudaInt64GenericKernelWidthTwo) {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  RunCudaInt64Test(1, 2, 1);
+}
+
 TEST(CumSumTest, _1DTestdouble) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<double>("x", {5}, {1., 2., 3., 4., 5.});
