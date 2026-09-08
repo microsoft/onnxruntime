@@ -7,15 +7,8 @@
 #include <fstream>
 #include <initializer_list>
 #include <iostream>
-#if !defined(ORT_MINIMAL_BUILD)
-#include <sstream>
-#include <string_view>
-#endif
 #include <tuple>
 
-#if !defined(ORT_MINIMAL_BUILD)
-#include "core/common/json_utils.h"
-#endif
 #include "core/common/profiler_common.h"
 #include "core/common/logging/logging.h"
 #include <mutex>
@@ -23,16 +16,6 @@
 namespace onnxruntime {
 
 namespace profiling {
-
-#if !defined(ORT_MINIMAL_BUILD)
-// Serializes a profiler argument as a JSON string. The profile writer recognizes
-// the leading quote and preserves the serialized value.
-inline std::string MakeStringEventArg(std::string_view value) {
-  std::ostringstream stream;
-  common::WriteJsonString(stream, value);
-  return stream.str();
-}
-#endif
 
 // uncomment the macro below, or use -DENABLE_STATIC_PROFILER_INSTANCE for debugging
 // note that static profiler instance only works with single session

@@ -913,7 +913,7 @@ TEST(InferenceSessionTests, CheckRunLogger) {
 // TODO(hasesh): Investigate why this test fails on Windows CUDA builds
 #if (!defined(__wasm__) && !defined(_WIN32))
 
-TEST(InferenceSessionTests, ProfilerEscapesJsonAndPreservesRawArrays) {
+TEST(InferenceSessionTests, ProfilerEscapesJsonAndPreservesStringArguments) {
   const std::string profile_file = "profiler_json_escaping_test.json";
   auto cleanup = gsl::finally([&profile_file]() { std::remove(profile_file.c_str()); });
 
@@ -922,7 +922,7 @@ TEST(InferenceSessionTests, ProfilerEscapesJsonAndPreservesRawArrays) {
   profiler.StartProfiling(profile_file);
   InlinedHashMap<std::string, std::string> args;
   args["key\"\n"] = "value\"\n";
-  args["forced_string"] = profiling::MakeStringEventArg("[request]");
+  args["quoted_string"] = "\"quoted\"";
   args["raw_array"] = "[1,2]";
   args["json_null"] = "null";
   const TimePoint start_time = profiler.Start();
@@ -935,12 +935,12 @@ TEST(InferenceSessionTests, ProfilerEscapesJsonAndPreservesRawArrays) {
   ASSERT_EQ(profile_json.size(), 1U);
   EXPECT_EQ(profile_json[0]["name"], "event\"\n");
   EXPECT_EQ(profile_json[0]["args"]["key\"\n"], "value\"\n");
-  EXPECT_EQ(profile_json[0]["args"]["forced_string"], "[request]");
+  EXPECT_EQ(profile_json[0]["args"]["quoted_string"], "\"quoted\"");
   EXPECT_EQ(profile_json[0]["args"]["raw_array"], nlohmann::json({1, 2}));
-  EXPECT_TRUE(profile_json[0]["args"]["json_null"].is_null());
+  EXPECT_EQ(profile_json[0]["args"]["json_null"], "null");
 }
 
-TEST(InferenceSessionTests, ProfilerQuotedStringIsPreservedForCustomLogger) {
+TEST(InferenceSessionTests, ProfilerStringIsPreservedForCustomLogger) {
   auto capturing_sink = std::make_unique<ProfileEventCapturingSink>();
   auto* capturing_sink_ptr = capturing_sink.get();
   logging::LoggingManager logging_manager(
@@ -952,12 +952,12 @@ TEST(InferenceSessionTests, ProfilerQuotedStringIsPreservedForCustomLogger) {
   profiler.Initialize(logger.get());
   profiler.StartProfiling(logger.get());
   InlinedHashMap<std::string, std::string> args;
-  args["request_id"] = profiling::MakeStringEventArg("{request}");
+  args["request_id"] = "{request}";
   profiler.EndTimeAndRecordEvent(profiling::SESSION_EVENT, "event", profiler.Start(), std::move(args));
   profiler.EndProfiling();
 
   ASSERT_TRUE(capturing_sink_ptr->Event().has_value());
-  EXPECT_EQ(capturing_sink_ptr->Event()->args.at("request_id"), "\"{request}\"");
+  EXPECT_EQ(capturing_sink_ptr->Event()->args.at("request_id"), "{request}");
 }
 
 TEST(InferenceSessionTests, ProfilerOverflowIsMachineReadable) {

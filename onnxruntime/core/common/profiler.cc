@@ -248,10 +248,8 @@ std::string Profiler::EndProfiling() {
       common::WriteJsonString(profile_stream_, event_arg.first);
       profile_stream_ << " : ";
       if (!event_arg.second.empty() &&
-          (event_arg.second[0] == '{' || event_arg.second[0] == '[' || event_arg.second[0] == '"')) {
+          (event_arg.second[0] == '{' || event_arg.second[0] == '[')) {
         profile_stream_ << event_arg.second;
-      } else if (event_arg.second == "null") {
-        profile_stream_ << "null";
       } else {
         common::WriteJsonString(profile_stream_, event_arg.second);
       }

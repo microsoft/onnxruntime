@@ -12,7 +12,8 @@ import onnx
 ROUTING_MARKER = "moe_routing "
 PROMPT_PROGRESS = re.compile(r"(\d+)/(\d+)")
 LAYER_NUMBER = re.compile(r"/layers\.(\d+)/")
-PLOTTED_LAYER_INDICES = (0, 5, 10, 15, 20, 25, 30, 35, 39)
+QMOE_EXPERT_WEIGHT_INPUT_INDICES = (2, 5)
+MAX_PLOTTED_LAYERS = 9
 
 
 def parse_args():
@@ -258,7 +259,9 @@ def load_qmoe_model_metadata(model_path):
     expert_counts = {
         initializer.dims[0]
         for node in qmoe_nodes.values()
-        for input_name in node.input
+        for input_index in QMOE_EXPERT_WEIGHT_INPUT_INDICES
+        if input_index < len(node.input)
+        for input_name in (node.input[input_index],)
         if (initializer := initializers.get(input_name)) is not None and initializer.dims
     }
     if len(expert_counts) != 1:
@@ -331,12 +334,12 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
                 *(rank * bytes_per_rank for rank in range(num_experts)),
             ]
         )
-        maximum_expert_bytes = (num_experts - 1) * bytes_per_rank
+        maximum_expert_bytes = num_experts * bytes_per_rank
         writer.writerow(
             [
                 "QMOE_EXPERT_BYTES_COMPLEMENT",
                 0,
-                *(maximum_expert_bytes - rank * bytes_per_rank for rank in range(num_experts)),
+                *((num_experts - rank) * bytes_per_rank for rank in range(num_experts)),
             ]
         )
         writer.writerow(
@@ -344,9 +347,7 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
                 "QMOE_EXPERT_BYTES_COMPLEMENT_NORMALIZED",
                 0.0,
                 *(
-                    (maximum_expert_bytes - rank * bytes_per_rank) / maximum_expert_bytes
-                    if maximum_expert_bytes
-                    else 0.0
+                    ((num_experts - rank) * bytes_per_rank) / maximum_expert_bytes if maximum_expert_bytes else 0.0
                     for rank in range(num_experts)
                 ),
             ]
@@ -354,7 +355,7 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
     return (
         [value / maximum for value in column_totals],
         [
-            (maximum_expert_bytes - rank * bytes_per_rank) / maximum_expert_bytes if maximum_expert_bytes else 0.0
+            ((num_experts - rank) * bytes_per_rank) / maximum_expert_bytes if maximum_expert_bytes else 0.0
             for rank in range(num_experts)
         ],
     )
@@ -370,7 +371,7 @@ def write_normalized_comparison_plot(path, total_normalized, expert_bytes_comple
         label="QMOE_EXPERT_BYTES_COMPLEMENT_NORMALIZED",
         linewidth=2,
     )[0]
-    for rank in (64, 128, 192):
+    for rank in (rank for rank in (64, 128, 192) if rank < len(total_normalized)):
         for values, line, offset in (
             (total_normalized, total_line, (8, 10)),
             (expert_bytes_complement_normalized, bytes_line, (8, -18)),
@@ -397,25 +398,24 @@ def write_normalized_comparison_plot(path, total_normalized, expert_bytes_comple
 
 
 def write_selected_layers_rank_plot(path, threshold_totals):
-    nodes_by_layer = {}
-    for node_name in threshold_totals:
-        match = LAYER_NUMBER.search(node_name)
-        if match:
-            nodes_by_layer[int(match.group(1))] = node_name
-
-    missing = set(PLOTTED_LAYER_INDICES) - nodes_by_layer.keys()
-    if missing:
-        raise ValueError(f"QMoE layers missing from routing log: {sorted(missing)}")
+    node_names = sorted(threshold_totals, key=layer_sort_key)
+    if len(node_names) > MAX_PLOTTED_LAYERS:
+        node_names = [
+            node_names[round(index * (len(node_names) - 1) / (MAX_PLOTTED_LAYERS - 1))]
+            for index in range(MAX_PLOTTED_LAYERS)
+        ]
 
     figure, axes = plt.subplots(figsize=(10, 6))
-    for layer_index in PLOTTED_LAYER_INDICES:
-        values = threshold_totals[nodes_by_layer[layer_index]]
+    for node_name in node_names:
+        values = threshold_totals[node_name]
         maximum = max(values)
         normalized = [value / maximum for value in values]
+        match = LAYER_NUMBER.search(node_name)
+        label = f"Layer {match.group(1)}" if match else node_name
         axes.plot(
             range(len(values)),
             normalized,
-            label=f"Layer {layer_index}",
+            label=label,
             linewidth=1.8,
         )
 
