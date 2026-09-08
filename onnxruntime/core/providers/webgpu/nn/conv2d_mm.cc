@@ -183,13 +183,13 @@ constexpr int64_t kDefaultConv2dMMElementsPerThreadY = 4;
 static_assert(kDefaultConv2dMMWorkgroupSizeY * kDefaultConv2dMMElementsPerThreadY == kConv2dMMTileAOuter,
               "The default Conv2dMM workgroup must cover exactly kConv2dMMTileAOuter rows of A.");
 
-// Conv2dMM asks for 8 subgroups where MatMul asks for 4. This is the configuration the
-// numbers in the PR description were measured with: on NVIDIA it derives a 32-thread y
-// dimension, which is what the ResNet-50, YOLO26n and EfficientNet-B0 runs used. Dropping it
-// to 4 for symmetry with MatMul would derive 16 instead and discard that measurement, so the
-// asymmetry is deliberate. Neither count is a WebGPU capability, which is why the rule stays
-// vendor-gated.
-constexpr uint32_t kNvidiaSubgroupsPerWorkgroup = 8;
+// One subgroup per NVIDIA warp scheduler, matching MatMul. NVIDIA SMs have 4 warp schedulers
+// (GP100 is the exception, with 2), so 4 subgroups is the smallest workgroup that gives each
+// scheduler a warp. An A/B on a TITAN V found 8 subgroups indistinguishable from 4 on
+// ResNet-50, YOLO26n and EfficientNet-B0 (all within 0.3%, per-round p50 ranges overlapping),
+// so the higher count was not buying anything. This count is an NVIDIA hardware fact rather
+// than a WebGPU capability, which is why the rule stays vendor-gated.
+constexpr uint32_t kNvidiaSubgroupsPerWorkgroup = 4;
 
 // Chooses the Conv2dMM workgroup y dimension and the matching elements-per-thread.
 // Returns {workgroup_size_y, elements_per_thread_y}.

@@ -25,10 +25,10 @@ constexpr uint32_t kTileAOuter = 32;
 constexpr uint32_t kWorkgroupSizeX = 8;
 constexpr uint32_t kDefaultWorkgroupSizeY = 8;
 
-// MatMul targets one subgroup per NVIDIA warp scheduler; Conv2dMM asks for twice that to hide
-// its wider inner tile.
-constexpr uint32_t kMatMulSubgroups = 4;
-constexpr uint32_t kConv2dMMSubgroups = 8;
+// What both MatMul and Conv2dMM request: one subgroup per NVIDIA warp scheduler.
+constexpr uint32_t kNvidiaSubgroups = 4;
+// A larger count, to exercise the rule and its clamps away from the value the kernels use.
+constexpr uint32_t kHigherSubgroups = 8;
 
 std::pair<uint32_t, int64_t> Select(const PackedTileCaps& caps, uint32_t subgroups_per_workgroup) {
   return SelectSubgroupAlignedTileConfigY(caps, kWorkgroupSizeX, subgroups_per_workgroup,
@@ -37,17 +37,19 @@ std::pair<uint32_t, int64_t> Select(const PackedTileCaps& caps, uint32_t subgrou
 
 }  // namespace
 
-// 32 lanes x 4 warp schedulers = 128 invocations, and 128 / 8 = 16 threads in y.
-TEST(SubgroupAlignedTileConfigTest, NvidiaMatMulDerivesSixteenThreadsInY) {
-  const auto [workgroup_size_y, elements_per_thread_y] = Select(kNvidiaCaps, kMatMulSubgroups);
+// 32 lanes x 4 warp schedulers = 128 invocations, and 128 / 8 = 16 threads in y. Both MatMul
+// and Conv2dMM derive this.
+TEST(SubgroupAlignedTileConfigTest, NvidiaDerivesSixteenThreadsInY) {
+  const auto [workgroup_size_y, elements_per_thread_y] = Select(kNvidiaCaps, kNvidiaSubgroups);
 
   EXPECT_EQ(workgroup_size_y, 16u);
   EXPECT_EQ(elements_per_thread_y, 2);
 }
 
-// 32 lanes x 8 subgroups = 256 invocations, and 256 / 8 = 32 threads in y.
-TEST(SubgroupAlignedTileConfigTest, NvidiaConv2dMMDerivesThirtyTwoThreadsInY) {
-  const auto [workgroup_size_y, elements_per_thread_y] = Select(kNvidiaCaps, kConv2dMMSubgroups);
+// The derived width scales with the requested subgroup count: 32 lanes x 8 = 256 invocations,
+// and 256 / 8 = 32 threads in y.
+TEST(SubgroupAlignedTileConfigTest, HigherSubgroupCountDerivesAWiderWorkgroup) {
+  const auto [workgroup_size_y, elements_per_thread_y] = Select(kNvidiaCaps, kHigherSubgroups);
 
   EXPECT_EQ(workgroup_size_y, 32u);
   EXPECT_EQ(elements_per_thread_y, 1);
@@ -59,19 +61,19 @@ TEST(SubgroupAlignedTileConfigTest, UnreportedSubgroupSizeKeepsTheDefault) {
   PackedTileCaps caps = kNvidiaCaps;
   caps.subgroup_size = 0;
 
-  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kMatMulSubgroups);
+  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kNvidiaSubgroups);
 
   EXPECT_EQ(workgroup_size_y, kDefaultWorkgroupSizeY);
   EXPECT_EQ(elements_per_thread_y, 4);
 }
 
 // A device capped at the WebGPU spec floor still admits 256 / 8 = 32 threads in y.
-TEST(SubgroupAlignedTileConfigTest, SpecFloorLimitsStillAdmitTheConvConfig) {
+TEST(SubgroupAlignedTileConfigTest, SpecFloorLimitsStillAdmitTheWiderWorkgroup) {
   PackedTileCaps caps = kNvidiaCaps;
   caps.max_workgroup_size_y = 256;
   caps.max_invocations_per_workgroup = 256;
 
-  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kConv2dMMSubgroups);
+  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kHigherSubgroups);
 
   EXPECT_EQ(workgroup_size_y, 32u);
   EXPECT_EQ(elements_per_thread_y, 1);
@@ -82,7 +84,7 @@ TEST(SubgroupAlignedTileConfigTest, WorkgroupSizeYLimitClampsAndKeepsTheTile) {
   PackedTileCaps caps = kNvidiaCaps;
   caps.max_workgroup_size_y = 16;
 
-  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kConv2dMMSubgroups);
+  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kHigherSubgroups);
 
   EXPECT_EQ(workgroup_size_y, 16u);
   EXPECT_EQ(elements_per_thread_y, 2);
@@ -93,7 +95,7 @@ TEST(SubgroupAlignedTileConfigTest, InvocationLimitClampsAndKeepsTheTile) {
   PackedTileCaps caps = kNvidiaCaps;
   caps.max_invocations_per_workgroup = 128;
 
-  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kConv2dMMSubgroups);
+  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kHigherSubgroups);
 
   EXPECT_EQ(workgroup_size_y, 16u);
   EXPECT_EQ(elements_per_thread_y, 2);
@@ -105,7 +107,7 @@ TEST(SubgroupAlignedTileConfigTest, ClampBreakingTheTileFallsBackToTheDefault) {
   PackedTileCaps caps = kNvidiaCaps;
   caps.max_workgroup_size_y = 12;
 
-  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kConv2dMMSubgroups);
+  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kHigherSubgroups);
 
   EXPECT_EQ(workgroup_size_y, kDefaultWorkgroupSizeY);
   EXPECT_EQ(elements_per_thread_y, 4);
@@ -116,7 +118,7 @@ TEST(SubgroupAlignedTileConfigTest, SubgroupNotDividingWorkgroupXFallsBackToTheD
   PackedTileCaps caps = kNvidiaCaps;
   caps.subgroup_size = 10;  // 10 * 4 = 40 invocations, and 40 % 8 != 0
 
-  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kMatMulSubgroups);
+  const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, kNvidiaSubgroups);
 
   EXPECT_EQ(workgroup_size_y, kDefaultWorkgroupSizeY);
   EXPECT_EQ(elements_per_thread_y, 4);
@@ -128,7 +130,7 @@ TEST(SubgroupAlignedTileConfigTest, TileIsCoveredExactlyForEveryCapability) {
   for (const uint32_t subgroup_size : {0u, 4u, 8u, 10u, 16u, 32u, 64u, 128u}) {
     for (const uint32_t max_y : {8u, 12u, 16u, 32u, 256u, 1024u}) {
       for (const uint32_t max_invocations : {8u, 64u, 128u, 256u, 1024u}) {
-        for (const uint32_t subgroups : {kMatMulSubgroups, kConv2dMMSubgroups}) {
+        for (const uint32_t subgroups : {kNvidiaSubgroups, kHigherSubgroups}) {
           const PackedTileCaps caps{subgroup_size, max_y, max_invocations, true};
           const auto [workgroup_size_y, elements_per_thread_y] = Select(caps, subgroups);
 
