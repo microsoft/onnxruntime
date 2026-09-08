@@ -1694,9 +1694,12 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(
           ONNXRUNTIME, FAIL,
           "'", kOrtSessionOptionsGqaValueLayout, "' was set to '", kGqaValueLayoutBNHS, "' but ",
-          gqa_nodes.in_subgraphs, " GroupQueryAttention node(s) are inside a subgraph (a Loop body or BeamSearch "
+          gqa_nodes.in_subgraphs,
+          " GroupQueryAttention node(s) are inside a subgraph (a Loop body or BeamSearch "
           "decoder), which this option cannot reach. Their Value cache boundary would stay BNSH while the "
-          "application supplied BNHS. Use '", kGqaValueLayoutBNSH, "', or a model whose GroupQueryAttention "
+          "application supplied BNHS. Use '",
+          kGqaValueLayoutBNSH,
+          "', or a model whose GroupQueryAttention "
           "nodes are in the main graph."));
     }
 
@@ -2463,16 +2466,33 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 
   // Detected before partitioning, while the GQA nodes are still there to anchor on. A model converted
   // to ORT format after the transform was applied carries the Transposes and the BNHS boundary shapes.
-  const GqaValueLayoutBoundaries converted_gqa_value_boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+  //
+  // Only looked for when something will act on the answer. In a minimal build the producer/consumer
+  // maps are compiled out and the lookups fall back to walking the nodes
+  // (gqa_value_layout_boundaries.cc), so scanning unconditionally would cost every ORT format load
+  // O(GQA nodes x graph nodes) even though nothing reads the result unless the option was set.
+  GqaValueLayoutBoundaries converted_gqa_value_boundaries;
+#if !defined(ORT_MINIMAL_BUILD)
+  // The diagnostic at the end of this function wants them whether or not the option was set, so that
+  // a BNHS-converted model loaded without it is still reported. The maps exist here, so this is a
+  // single pass plus hash probes.
+  converted_gqa_value_boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+#else
+  // No diagnostic in a minimal build, and BNSH is only enforced for an explicit request, so an unset
+  // option has no consumer.
+  if (gqa_value_layout_explicitly_set) {
+    converted_gqa_value_boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+  }
+#endif
 
   // An explicit BNSH request is a claim about the boundary and has to hold here too, or an
   // application trusting the option would bind BNSH buffers against a BNHS boundary. An absent option
   // makes no claim: loading a converted model without setting anything is the documented way to use
   // BNHS with ORT format, so it stays allowed.
   //
-  // Unguarded on build flavour deliberately. gqa_value_layout_boundaries.cc is in the minimal source
-  // lists precisely so this check exists there, which is where it matters most: a minimal build serves
-  // ORT format models only, so this is the sole path on which the claim can be checked at all.
+  // The check itself is unguarded on build flavour deliberately. gqa_value_layout_boundaries.cc is in
+  // the minimal source lists precisely so it exists there, which is where it matters most: a minimal
+  // build serves ORT format models only, so this is the sole path on which the claim can be checked.
   if (gqa_value_layout_explicitly_set && !converted_gqa_value_boundaries.Empty()) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL,

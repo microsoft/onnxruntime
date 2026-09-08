@@ -34,8 +34,11 @@ bool IsGroupQueryAttention(const Node& node) {
 // minimal source list so the ORT format path can enforce an explicit BNSH request there. Fall back to
 // walking the nodes when the maps are unavailable.
 //
-// The scan is linear per lookup rather than a hash probe, which is why the caller only asks for
-// boundaries when the application actually set the layout option -- see PartitionOrtFormatModel().
+// The fallback is linear per lookup rather than a hash probe, so a full boundary scan costs
+// O(GQA nodes x graph nodes). It is only reached in a minimal build, and there PartitionOrtFormatModel()
+// asks for boundaries only when the application actually set the layout option. A full build has the
+// maps and can afford to ask on every load, which is what keeps the unfused-Transpose diagnostic
+// working for a converted model loaded without the option.
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 const Node* ProducerOf(const Graph& graph, const std::string& arg_name) {

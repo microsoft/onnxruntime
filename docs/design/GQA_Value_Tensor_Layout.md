@@ -505,6 +505,16 @@ declaration.
 Keep that split in mind when maintaining the minimal build: adding a dependency on the transformer
 header from code that compiles in a minimal build will not link, whereas the boundaries header will.
 
+One consequence is worth knowing before touching the detection. `Graph::GetProducerNode()` and
+`GetConsumerNodes()`, and the maps behind them, are themselves compiled out of a **base** minimal
+build, so `gqa_value_layout_boundaries.cc` reaches them through local `ProducerOf` / `ConsumersOf`
+helpers that fall back to walking the nodes. That fallback is linear per lookup, making a full
+boundary scan O(GQA nodes × graph nodes). `PartitionOrtFormatModel` therefore only asks for boundaries
+in a minimal build when the application actually set the option — nothing else consumes the result
+there, since the diagnostic is full-build only and BNSH is enforced only for an explicit request. A
+full build has the maps and scans on every ORT format load, which is what keeps the diagnostic working
+for a converted model loaded *without* the option.
+
 ### Fallback cost
 
 When the transposes are not fused, each generated token costs two full transposing copies of the

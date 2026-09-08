@@ -319,7 +319,7 @@ ONNX_NAMESPACE::TypeProto MakeTensorType(int32_t elem_type, const std::vector<in
 // the Loop. This is the shape a decoder with an in-graph generation loop takes, and the case the
 // transformer cannot reach: it walks the main graph only, so it finds no GQA node here at all.
 Status BuildSubgraphOnlyGqaModel(const logging::Logger& logger, std::string& model_bytes,
-                                bool add_main_graph_gqa = false) {
+                                 bool add_main_graph_gqa = false) {
   const std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 21}, {kMSDomain, 1}};
 
   const auto cache_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
