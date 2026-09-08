@@ -37,7 +37,11 @@ Status LaunchLinearAttentionKernel(
     bool needs_beta,
     bool beta_per_head,
     bool needs_retrieval,
+    int decode_seq_threshold,
+    int row_split,
+    int multiprocessor_count,
     int max_threads_per_block,
+    size_t max_shared_memory_per_block,
     // Axis-0 extent W of past_state / present_state (>= 1). The window axis leads the batch axis
     // so that a slot is one contiguous [B, H_kv, d_k, d_v] block. Right-aligned: token t writes
     // slot t + W - seq_len and slots with a negative index are skipped, so slot W-1 always holds

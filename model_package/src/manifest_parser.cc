@@ -4,12 +4,14 @@
 #include "manifest_parser.h"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstring>
 #include <fstream>
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 
 #include "path_resolver.h"
@@ -55,7 +57,7 @@ constexpr const char* kDeviceKey = "device";
 constexpr const char* kCompatibilityStringKey = "compatibility_string";
 constexpr const char* kExecutorInfoKey = "executor_info";
 
-static const std::set<std::string> kManifestKnownKeys = {
+constexpr std::array<std::string_view, 8> kManifestKnownKeys = {
     kSchemaVersionKey,
     kPackageNameKey,
     kPackageVersionKey,
@@ -66,13 +68,13 @@ static const std::set<std::string> kManifestKnownKeys = {
     kAdditionalMetadataKey,
 };
 
-static const std::set<std::string> kComponentKnownKeys = {
+constexpr std::array<std::string_view, 3> kComponentKnownKeys = {
     kComponentNameKey,
     kVariantsKey,
     kAdditionalMetadataKey,
 };
 
-static const std::set<std::string> kVariantKnownKeys = {
+constexpr std::array<std::string_view, 6> kVariantKnownKeys = {
     kVariantDirectoryKey,
     kEpKey,
     kDeviceKey,
@@ -112,13 +114,14 @@ ModelPackageStatus* ExpectObject(const ordered_json& j, const std::string& where
   return nullptr;
 }
 
+template <size_t N>
 ModelPackageStatus* CheckUnknownFields(const ordered_json& obj,
-                                       const std::set<std::string>& known,
+                                       const std::array<std::string_view, N>& known,
                                        const std::string& where,
                                        bool strict) {
   if (!strict) return nullptr;
   for (auto it = obj.begin(); it != obj.end(); ++it) {
-    if (known.find(it.key()) == known.end()) {
+    if (std::find(known.begin(), known.end(), std::string_view{it.key()}) == known.end()) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         where + ": unknown field '" + it.key() + "'.");
     }

@@ -4,6 +4,8 @@
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
 
+#include <algorithm>
+
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
@@ -71,6 +73,22 @@ inline bool has_memory_efficient_attention(int32_t sm, bool is_half, bool is_bf1
          (qk_head_size & 7) == 0 &&
          (v_head_size & 7) == 0 &&
          qk_head_size <= kEfficientAttentionMaxHeadSize && v_head_size <= kEfficientAttentionMaxHeadSize;
+}
+
+inline bool has_memory_efficient_attention_for_head_size_bounds(
+    int32_t sm, bool is_half, bool is_bf16,
+    int qk_head_size_bound, int v_head_size_bound) {
+  const int qk_search_limit = std::min(qk_head_size_bound, kEfficientAttentionMaxHeadSize);
+  const int v_search_limit = std::min(v_head_size_bound, kEfficientAttentionMaxHeadSize);
+  for (int qk_head_size = 8; qk_head_size <= qk_search_limit; qk_head_size += 8) {
+    for (int v_head_size = 8; v_head_size <= v_search_limit; v_head_size += 8) {
+      if (has_memory_efficient_attention(sm, is_half, is_bf16, qk_head_size, v_head_size)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 void run_memory_efficient_attention_sm80(const MemoryEfficientAttentionParams& params);

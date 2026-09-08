@@ -6,6 +6,7 @@
 #include "contrib_ops/cpu/bert/linear_attention_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
+#include "core/platform/env_var_utils.h"
 
 #include <limits>
 
@@ -28,6 +29,7 @@ using namespace onnxruntime::cuda;  // CudaKernel, Stream, GetDeviceProp, ToCuda
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : CudaKernel(info) {
@@ -53,6 +55,10 @@ LinearAttention<T>::LinearAttention(const OpKernelInfo& info) : CudaKernel(info)
   // per token costs d_k*d_v per token per layer -- ~88 GB for a 2.8k prefill on a 30-layer model.
   // A window caps both the allocation and the write traffic; 0 keeps the plain 4D single state.
   ORT_THROW_IF_ERROR(linear_attention_helper::ParseStateWindow(info, state_window_));
+
+  decode_seq_threshold_ =
+      ParseEnvironmentVariableWithDefault<int>("ORT_LINEAR_ATTENTION_COL_SEQ_THRESHOLD", 16);
+  row_split_ = ParseEnvironmentVariableWithDefault<int>("ORT_LINEAR_ATTENTION_ROW_SPLIT", 8);
 }
 
 template <typename T>
@@ -78,6 +84,8 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
                     "query dimensions are too large for the CUDA kernel");
   const int batch_size = static_cast<int>(batch_size_64);
   const int seq_len = static_cast<int>(seq_len_64);
+
+  ORT_RETURN_IF_NOT(seq_len > 0, "sequence length must be positive, got ", seq_len);
 
   ORT_RETURN_IF_NOT(key_tensor != nullptr && value_tensor != nullptr, "key and value inputs are required");
 
@@ -193,6 +201,16 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
         Stream(context)));
   } else {
     initial_state_data = past_state_tensor->Data<T>();
+
+    // present_state is a freshly allocated output that never aliases past_state, so the slots the
+    // kernel skips would otherwise be uninitialized device memory. Zero them instead.
+    if (state_window_ > 0 && state_slots > seq_len) {
+      const size_t leading_bytes = static_cast<size_t>(state_slots - seq_len) *
+                                   (present_state_tensor->SizeInBytes() / static_cast<size_t>(state_slots));
+      if (leading_bytes > 0) {
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(present_state_data, 0, leading_bytes, Stream(context)));
+      }
+    }
   }
 
   typedef typename OrtToCudaType<T>::type CudaT;
@@ -220,7 +238,11 @@ Status LinearAttention<T>::ComputeInternal(OpKernelContext* context) const {
       needs_beta,
       beta_per_head,
       needs_retrieval,
+      decode_seq_threshold_,
+      row_split_,
+      GetDeviceProp().multiProcessorCount,
       GetDeviceProp().maxThreadsPerBlock,
+      GetDeviceProp().sharedMemPerBlockOptin,
       state_slots);
 }
 

@@ -1,0 +1,32 @@
+version: "2"
+
+run:
+  modules-download-mode: readonly
+  timeout: 10m
+
+linters:
+  enable:
+    - gocritic
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - ineffassign
+    - gosec
+  settings:
+    gocritic:
+      enabled-checks:
+        - evalOrder
+      disabled-checks:
+        - ifElseChain
+        - dupSubExpr
+    gosec:
+      excludes:
+        # CGO pointer passing is intentional in this binding library.
+        - G103
+  exclusions:
+    rules:
+      - linters:
+          - errcheck
+          - gosec
+        path: _test\.go

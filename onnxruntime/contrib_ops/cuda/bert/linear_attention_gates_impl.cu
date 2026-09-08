@@ -9,7 +9,7 @@
 // intermediates in registers collapses each chain into a single launch and, under CUDA graphs,
 // also returns the per-node replay overhead of the nodes that disappear.
 
-#include <cub/cub.cuh>
+#include "core/providers/cuda/cu_inc/cub.cuh"
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>

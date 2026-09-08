@@ -3,8 +3,10 @@
 
 #include "core/platform/posix/telemetry.h"
 #include "core/platform/posix/device_id.h"
+#include "core/platform/posix/telemetry_context.h"
 #include "core/platform/posix/telemetry_no_throw.h"
 #include "core/platform/posix/telemetry_sampling.h"
+#include "core/platform/posix/telemetry_sha256.h"
 #include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_guid.h"
 #include "core/platform/telemetry_redaction.h"
@@ -37,10 +39,8 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
-#include <iomanip>
 #include <limits>
 #include <random>
-#include <sstream>
 #include <string_view>
 #include <utility>
 
@@ -83,6 +83,7 @@ std::atomic<::Microsoft::Applications::Events::ILogger*> PosixTelemetry::logger_
 std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelemetry::config_;
 std::atomic<bool> PosixTelemetry::enabled_{true};
 std::atomic<bool> PosixTelemetry::telemetry_disabled_{false};
+std::atomic<bool> PosixTelemetry::network_context_suppressed_{false};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
 
@@ -268,24 +269,10 @@ class EventBuilder {
   EventProperties Build() { return std::move(props_); }
 };
 
-// Hash a device ID with a stable, platform-independent algorithm (FNV-1a 64-bit) and format as
-// fixed-width hex, so the same device maps to the same product-specific id across runs and platforms.
-// std::hash is implementation-defined (and may be process-salted), so it is unsuitable here.
-// Ensures raw device identifiers are never sent over the wire.
+// All Microsoft AI developer tools read the same UUID and derive the same upload identifier.
+// The raw UUID is never transmitted.
 [[maybe_unused]] static std::string HashDeviceId(const std::string& id) {
-  static constexpr std::string_view kDeviceIdHashSalt = "onnxruntime:";
-  uint64_t hash = 14695981039346656037ULL;  // FNV-1a offset basis
-  for (unsigned char c : kDeviceIdHashSalt) {
-    hash ^= static_cast<uint64_t>(c);
-    hash *= 1099511628211ULL;
-  }
-  for (unsigned char c : id) {
-    hash ^= static_cast<uint64_t>(c);
-    hash *= 1099511628211ULL;  // FNV-1a prime
-  }
-  std::ostringstream oss;
-  oss << std::hex << std::setfill('0') << std::setw(16) << hash;
-  return oss.str();
+  return telemetry_internal::Sha256::HashStringHex(id);
 }
 
 namespace {
@@ -325,6 +312,32 @@ const std::string& GetAppSessionGuid() {
   static const std::string guid = GenerateGuidV4();
   return guid;
 }
+
+#if defined(ORT_TELEMETRY_USES_STATIC_CURL)
+std::string GetCertificateAuthorityBundlePath() {
+  if (const char* ssl_cert_file = std::getenv("SSL_CERT_FILE");
+      ssl_cert_file != nullptr && access(ssl_cert_file, R_OK) == 0) {
+    return ssl_cert_file;
+  }
+
+  constexpr const char* kCertificateAuthorityBundlePaths[] = {
+      "/etc/ssl/certs/ca-certificates.crt",
+      "/etc/pki/tls/certs/ca-bundle.crt",
+      "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",
+      "/etc/ssl/ca-bundle.pem",
+      "/etc/pki/tls/cacert.pem",
+      "/etc/ssl/cert.pem",
+      "/var/lib/ca-certificates/ca-bundle.pem",
+  };
+  for (const char* path : kCertificateAuthorityBundlePaths) {
+    if (access(path, R_OK) == 0) {
+      return path;
+    }
+  }
+
+  return {};
+}
+#endif
 
 template <typename Operation>
 void RunTelemetryOperation(const char* operation_name, Operation&& operation) noexcept {
@@ -399,7 +412,26 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
   if (logger == nullptr) {
     return;
   }
+  const bool is_process_info = props.GetName() == "ProcessInfo";
+  if (!is_process_info &&
+      !network_context_suppressed_.load(std::memory_order_acquire)) {
+    const bool suppressed = telemetry_internal::TryTelemetryOperationNoThrow([&]() {
+      telemetry_internal::SuppressNetworkContext(*logger->GetSemanticContext());
+    });
+    if (suppressed) {
+      network_context_suppressed_.store(true, std::memory_order_release);
+    }
+  }
   logger->LogEvent(std::move(props));
+  if (is_process_info) {
+    // ProcessInfo captures PAL network context. Clearing it afterward is best effort.
+    const bool suppressed = telemetry_internal::TryTelemetryOperationNoThrow([&]() {
+      telemetry_internal::SuppressNetworkContext(*logger->GetSemanticContext());
+    });
+    if (suppressed) {
+      network_context_suppressed_.store(true, std::memory_order_release);
+    }
+  }
 }
 
 void PosixTelemetry::Initialize() {
@@ -431,6 +463,13 @@ void PosixTelemetry::Initialize() {
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
+#if defined(ORT_TELEMETRY_USES_STATIC_CURL)
+  if (std::string ca_bundle = GetCertificateAuthorityBundlePath(); !ca_bundle.empty()) {
+    config[CFG_MAP_HTTP][CFG_STR_HTTP_SSL_CAINFO] = ca_bundle;
+  } else {
+    ORT_TELEMETRY_WARN("No readable CA bundle was found; telemetry HTTPS uploads will be unavailable");
+  }
+#endif
   // Do not block process teardown to upload; persisted events are sent on the next run. 0 keeps
   // Shutdown non-blocking and avoids adding exit latency to host apps.
   config[CFG_INT_MAX_TEARDOWN_TIME] = 0;
@@ -473,6 +512,18 @@ void PosixTelemetry::Initialize() {
     return;
   }
 
+  (void)telemetry_internal::TryTelemetryOperationNoThrow([&]() {
+    telemetry_internal::SuppressUnneededCommonContext(*logger->GetSemanticContext());
+  });
+  bool network_context_suppressed = false;
+  if (process_info_logged_.load(std::memory_order_acquire)) {
+    // ProcessInfo is once per process; a reinitialized logger no longer needs network context.
+    network_context_suppressed = telemetry_internal::TryTelemetryOperationNoThrow([&]() {
+      telemetry_internal::SuppressNetworkContext(*logger->GetSemanticContext());
+    });
+  }
+  network_context_suppressed_.store(network_context_suppressed, std::memory_order_release);
+
   // Use BEST_EFFORT transmit profile to minimize battery and network impact.
   // Events are batched and uploaded at a lower cadence.
   pending_log_manager.Get()->SetTransmitProfile(TransmitProfile_BestEffort);
@@ -491,10 +542,8 @@ void PosixTelemetry::Initialize() {
   }
 #endif
 
-  // 1DS supplies host application, OS, and device context. Add only ORT library identity and
-  // process-wide correlation context.
+  // Add only ORT version and process-wide correlation context.
   logger->SetContext("AppSessionGuid", GetAppSessionGuid());
-  logger->SetContext("LibraryName", "ONNXRuntime");
   logger->SetContext("LibraryVersion", ORT_VERSION);
 
   // Caller-framework label from the build-time ORT_CALLER_FRAMEWORK option; only stamped when a
@@ -609,44 +658,6 @@ std::string PosixTelemetry::GetOsDescription() const {
 
 #else
   return "Unknown";
-#endif
-}
-
-// Get the name of the current process
-std::string PosixTelemetry::GetProcessName() const {
-#if defined(__APPLE__) || defined(__FreeBSD__)
-  const char* name = getprogname();
-  return name ? name : "";
-
-#elif defined(__linux__) || defined(__ANDROID__)
-  // /proc/self/cmdline holds the full null-separated argv; argv[0]'s basename is the executable
-  // name and is not truncated (unlike /proc/self/comm, which caps the name at 15 characters).
-  {
-    std::ifstream cmdline("/proc/self/cmdline", std::ios::binary);
-    if (cmdline.is_open()) {
-      std::string arg0;
-      std::getline(cmdline, arg0, '\0');
-      if (!arg0.empty()) {
-        const size_t slash = arg0.find_last_of('/');
-        return slash == std::string::npos ? arg0 : arg0.substr(slash + 1);
-      }
-    }
-  }
-  // Fallback to /proc/self/comm (process name, capped at 15 characters).
-  {
-    std::ifstream comm("/proc/self/comm");
-    if (comm.is_open()) {
-      std::string name;
-      std::getline(comm, name);
-      while (!name.empty() && (name.back() == '\n' || name.back() == '\r'))
-        name.pop_back();
-      return name;
-    }
-  }
-  return "";
-
-#else
-  return "";
 #endif
 }
 
@@ -798,7 +809,6 @@ void PosixTelemetry::LogProcessInfo() const {
                        .AddString("DeviceInfo.Status", DeviceId::Instance().GetStatusString())
 #endif
                        .AddString("osDescription", GetOsDescription())
-                       .AddString("processName", GetProcessName())
                        .AddString("architecture", GetArchitecture())
                        .AddString("cpuModel", GetCpuModel())
                        .AddString("deviceClass", GetDeviceClass())
@@ -1066,27 +1076,6 @@ void PosixTelemetry::LogAutoEpSelection(
                      .AddString("selectionPolicy", selection_policy)
                      .AddStringList("requestedExecutionProviderIds", requested_execution_provider_ids)
                      .AddStringList("availableExecutionProviderIds", available_execution_provider_ids)
-                     .Build();
-
-    LogEventAsync(std::move(event));
-  });
-}
-
-void PosixTelemetry::LogProviderOptions(
-    const std::string& provider_id,
-    const std::string& provider_options_string,
-    bool captureState) const {
-  RunTelemetryOperation("LogProviderOptions", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-
-    std::string event_name = captureState ? "ProviderOptions_CaptureState" : "ProviderOptions";
-    const std::string scrubbed_provider_options = ScrubStringForTelemetry(provider_options_string);
-
-    auto event = EventBuilder(std::move(event_name), EventPriority::NORMAL)
-                     .AddString("providerId", provider_id)
-                     .AddString("providerOptions", scrubbed_provider_options)
                      .Build();
 
     LogEventAsync(std::move(event));

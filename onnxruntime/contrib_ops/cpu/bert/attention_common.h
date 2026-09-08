@@ -168,6 +168,11 @@ inline KVCacheDataType StringToKVCacheDataType(std::string s) {
 constexpr bool LAYOUT_BSNH = false;
 constexpr bool LAYOUT_BNSH = true;
 
+// Upper bound on the `state_window` attribute of LinearAttention and CausalConvWithState. The
+// window only has to cover the tokens a multi-token predictor can propose, and the state tensors
+// grow linearly with it, so cap it rather than let a model request an unbounded allocation.
+constexpr int64_t kMaxStateWindow = 8;
+
 namespace sparse_attention {
 // Environment variable to enable or disable sparse attention v1 kernel. Default is 0 (enabled).
 constexpr const char* kDisableSparseAttentionV1 = "ORT_DISABLE_SPARSE_ATTENTION_V1";

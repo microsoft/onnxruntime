@@ -39,4 +39,9 @@ struct OrtSessionOptions {
   //      with GetProviderOptionPrefix returning 'ep.myep.'
   // CUDAExecutionProvider uses the stable short prefix 'ep.cuda.'.
   static std::string GetProviderOptionPrefix(const char* provider_name);
+
+  // Weightless source model buffer for EPContext sessions.
+  // Set via SessionOptionsSetWeightlessSourceModelBuffer.
+  const void* weightless_source_model_data = nullptr;
+  size_t weightless_source_model_data_size = 0;
 };

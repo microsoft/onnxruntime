@@ -185,8 +185,7 @@ Status Where::ComputeInternal(ComputeContext& context) const {
   return context.RunProgram(program);
 }
 
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateWhereVersionedKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateWhereVersionedKernelInfo(int start_version, int end_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/true);
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Where>(info);
@@ -195,15 +194,14 @@ KernelCreateInfo CreateWhereVersionedKernelInfo(bool enable_int64) {
   return {KernelDefBuilder()
               .SetName("Where")
               .SetDomain(kOnnxDomain)
-              .SinceVersion(StartVersion, EndVersion)
+              .SinceVersion(start_version, end_version)
               .Provider(kWebGpuExecutionProvider)
               .TypeConstraint("T", type_constraints)
               .Build(),
           kernel_create_fn};
 }
 
-template <int SinceVersion>
-KernelCreateInfo CreateWhereKernelInfo(bool enable_int64) {
+KernelCreateInfo CreateWhereKernelInfo(int since_version, bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, /*enable_bool=*/true);
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Where>(info);
@@ -212,15 +210,12 @@ KernelCreateInfo CreateWhereKernelInfo(bool enable_int64) {
   return {KernelDefBuilder()
               .SetName("Where")
               .SetDomain(kOnnxDomain)
-              .SinceVersion(SinceVersion)
+              .SinceVersion(since_version)
               .Provider(kWebGpuExecutionProvider)
               .TypeConstraint("T", type_constraints)
               .Build(),
           kernel_create_fn};
 }
-
-template KernelCreateInfo CreateWhereVersionedKernelInfo<9, 15>(bool);
-template KernelCreateInfo CreateWhereKernelInfo<16>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

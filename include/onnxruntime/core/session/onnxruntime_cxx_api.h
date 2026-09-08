@@ -1477,8 +1477,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   ///
   /// The function attempts to load the adapter from the specified file
   /// \param adapter_path The path to the Lora adapter
-  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
-  ///        be copied to device if required by the model at inference time.
+  /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapter(const std::basic_string<ORTCHAR_T>& adapter_path,
                                        OrtAllocator* allocator);
 
@@ -1487,8 +1488,9 @@ struct LoraAdapter : detail::Base<OrtLoraAdapter> {
   /// The function attempts to load the adapter from the specified byte array.
   /// \param bytes The byte array containing file LoraAdapter format
   /// \param num_bytes The number of bytes in the byte array
-  /// \param allocator optional pointer to a device allocator. If nullptr, the data stays on CPU. It would still
-  ///        be copied to device if required by the model at inference time.
+  /// \param allocator optional pointer to a non-CPU device allocator. If nullptr, or if a data transfer implementation
+  ///        is unavailable during adapter creation, the data stays on CPU and is copied to the device at inference time
+  ///        if required by the model.
   static LoraAdapter CreateLoraAdapterFromArray(const void* bytes, size_t num_bytes,
                                                 OrtAllocator* allocator);
 };
@@ -1775,7 +1777,8 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ModelCompilationOptions& SetGraphOptimizationLevel(GraphOptimizationLevel graph_optimization_level);  ///< Wraps OrtApi::ModelCompilationOptions_SetGraphOptimizationLevel
 
-  ModelCompilationOptions& SetInputModel(const OrtModel* model);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
+  ModelCompilationOptions& SetInputModel(const OrtModel* model);       ///< Wraps OrtCompileApi::ModelCompilationOptions_SetInputModel
+  ModelCompilationOptions& SetWeightlessEnabled(bool use_weightless);  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetWeightlessEnabled
 };
 
 /** \brief Compiles an input model to generate a model with EPContext nodes that execute EP-specific kernels. Wraps OrtApi::CompileModels.
@@ -3028,6 +3031,7 @@ struct KernelContext {
   // which can be compared to nullptr.
   UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
   UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
+  UnownedValue GetPreallocatedOutput(size_t index) const;
   void* GetGPUComputeStream() const;
   OrtSyncStream* GetSyncStream() const;
   Logger GetLogger() const;

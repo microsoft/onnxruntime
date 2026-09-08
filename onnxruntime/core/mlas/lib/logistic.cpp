@@ -21,27 +21,13 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "elementwise_constants.h"
 
 //
 // Bundles the floating point constants for use by kernels written in assembly.
 //
 
-MLAS_INTERNAL_DATA const struct {
-    float LowerRange;
-    float UpperRange;
-    float alpha_9;
-    float alpha_7;
-    float alpha_5;
-    float alpha_3;
-    float alpha_1;
-    float beta_10;
-    float beta_8;
-    float beta_6;
-    float beta_4;
-    float beta_2;
-    float beta_0;
-    float one_half;
-} MlasLogisticConstants = {
+MLAS_INTERNAL_DATA const MLAS_LOGISTIC_CONSTANTS MlasLogisticConstants = {
     -18.0f,
     18.0f,
     4.37031012579801e-11f,

@@ -27,8 +27,7 @@ stages:
         echo $(Build.Reason)
       displayName: 'Print triggering sourceBranch Name in resources'
 
-    - checkout: self
-      submodules: false
+    - template: jobs/checkout-and-git-redirect.yml
 
     - template: setup-feeds-and-python-steps.yml
 

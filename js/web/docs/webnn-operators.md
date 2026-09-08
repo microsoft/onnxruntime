@@ -107,6 +107,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | SimplifiedLayerNormalization | ai.onnx(1+) | pow, reduceMean, add, sqrt, div, mul | |
 | Sigmoid | ai.onnx(7-12, 13+) | sigmoid | |
 | Sign | ai.onnx(9-12, 13+) | sign | |
+| SkipLayerNormalization | com.microsoft(1+) | add, layerNormalization | |
 | SkipSimplifiedLayerNormalization | com.microsoft(1+) | pow, reduceMean, add, sqrt, div, mul | |
 | Softplus | ai.onnx(7+) | softplus | |
 | Softsign | ai.onnx(7+) | softsign | |

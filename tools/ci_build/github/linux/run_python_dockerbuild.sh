@@ -2,7 +2,7 @@
 set -e -x
 BUILD_CONFIG="Release"
 
-while getopts "i:d:x:c:p:" parameter_Option
+while getopts "i:d:x:c:p:a:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
@@ -10,7 +10,8 @@ d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
 p) PYTHON_EXES=${OPTARG};;
-*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-p <python_exe_path>]"
+a) CUDA_ARCHS=${OPTARG};;
+*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-p <python_exe_path>] [-a <cuda_archs>]"
    exit 1;;
 esac
 done
@@ -21,6 +22,10 @@ DOCKER_SCRIPT_OPTIONS=("-d" "${DEVICE}" "-c" "${BUILD_CONFIG}")
 
 if [ "${PYTHON_EXES}" != "" ] ; then
     DOCKER_SCRIPT_OPTIONS+=("-p" "${PYTHON_EXES}")
+fi
+
+if [ "${CUDA_ARCHS:-}" != "" ] ; then
+    DOCKER_SCRIPT_OPTIONS+=("-a" "${CUDA_ARCHS}")
 fi
 
 if [ "${BUILD_EXTR_PAR}" != "" ] ; then
