@@ -108,6 +108,24 @@ const Node* TraceBackToValueLayoutTranspose(const Graph& graph, const NodeArg* a
   return nullptr;
 }
 
+const NodeArg* TraceBoundaryForwardThroughDeviceCopies(const Graph& graph, const NodeArg* arg, int copy_hops) {
+  if (arg == nullptr || copy_hops > kMaxDeviceCopyHops) {
+    return nullptr;
+  }
+  if (graph.IsOutput(arg)) {
+    return arg;
+  }
+  for (const Node* consumer : ConsumersOf(graph, arg->Name())) {
+    if (consumer != nullptr && IsDeviceCopy(*consumer) && !consumer->OutputDefs().empty()) {
+      const NodeArg* boundary = TraceBoundaryForwardThroughDeviceCopies(graph, consumer->OutputDefs()[0], copy_hops + 1);
+      if (boundary != nullptr) {
+        return boundary;
+      }
+    }
+  }
+  return nullptr;
+}
+
 bool FindConvertedPresentValueBoundaryAfterCopies(const Graph& graph, const NodeArg* arg,
                                                   int copy_hops, std::string& boundary_name) {
   if (arg == nullptr || copy_hops > kMaxDeviceCopyHops) {
@@ -195,24 +213,7 @@ const NodeArg* TraceGqaBoundaryBackThroughDeviceCopies(const Graph& graph, const
 }
 
 const NodeArg* TraceGqaBoundaryForwardThroughDeviceCopies(const Graph& graph, const NodeArg* arg) {
-  for (int hops = 0; arg != nullptr && hops <= kMaxDeviceCopyHops; ++hops) {
-    if (graph.IsOutput(arg)) {
-      return arg;
-    }
-
-    const NodeArg* next = nullptr;
-    for (const Node* consumer : ConsumersOf(graph, arg->Name())) {
-      if (consumer != nullptr && IsDeviceCopy(*consumer) && !consumer->OutputDefs().empty()) {
-        next = consumer->OutputDefs()[0];
-        break;
-      }
-    }
-    if (next == nullptr) {
-      return nullptr;
-    }
-    arg = next;
-  }
-  return nullptr;
+  return TraceBoundaryForwardThroughDeviceCopies(graph, arg, 0);
 }
 
 const Node* FindValueLayoutTransposeAfterGraphInput(const Graph& graph, const std::string& boundary_name) {

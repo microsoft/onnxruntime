@@ -136,14 +136,6 @@ Status ClassifyPresentValue(const Graph& graph, const Node& node, OperandStatus&
     return Status::OK();
   }
 
-  // Shared with the ORT format path. Note this deliberately returns false for an operand that is
-  // itself a graph output, even when something downstream transposes it onward: that operand is an
-  // application-visible BNSH boundary in its own right and still needs converting.
-  if (FindConvertedPresentValueBoundary(graph, node, boundary_name)) {
-    status = OperandStatus::kConverted;
-    return Status::OK();
-  }
-
   const NodeArg* arg = node.OutputDefs()[kPresentValueOutputIndex];
   if (graph.IsOutput(arg)) {
     status = OperandStatus::kConvertible;
@@ -163,6 +155,11 @@ Status ClassifyPresentValue(const Graph& graph, const Node& node, OperandStatus&
                 kOrtSessionOptionsGqaValueLayout,
                 "' option cannot convert. Apply the layout to the original model rather than to one already saved "
                 "with device copies in place.");
+
+  if (FindConvertedPresentValueBoundary(graph, node, boundary_name)) {
+    status = OperandStatus::kConverted;
+    return Status::OK();
+  }
 
   status = OperandStatus::kOutOfScope;
   return Status::OK();

@@ -1403,6 +1403,44 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsAnUnconvertedBoundaryBehindADeviceC
       "through a device copy node");
 }
 
+TEST_F(GqaValueLayoutTransformerTest, RejectsConvertedValueWithAnUnconvertedCopyOutput) {
+  for (bool exported_copy_first : {false, true}) {
+    SCOPED_TRACE(exported_copy_first);
+    std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 21}, {kMSDomain, 1}};
+    Model model("MixedValueBoundaries", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder builder(graph);
+    BuildOptions opts;
+    opts.already_transformed = true;
+    BuildGqaModel(builder, opts);
+
+    const Node* gqa = FindGqa(graph);
+    ASSERT_NE(gqa, nullptr);
+    NodeArg* present_value = graph.GetNode(gqa->Index())->MutableOutputDefs()[2];
+    const std::vector<int64_t> shape{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
+    NodeArg* exposed_bnsh = builder.MakeOutput<MLFloat16>(shape);
+    NodeArg* internal_copy = builder.MakeIntermediate<MLFloat16>(shape);
+    NodeArg* internal_output = builder.MakeOutput<MLFloat16>(shape);
+    for (bool exported : {exported_copy_first, !exported_copy_first}) {
+      builder.AddNode("MemcpyToHost", {present_value}, {exported ? exposed_bnsh : internal_copy});
+    }
+    builder.AddNode("Neg", {internal_copy}, {internal_output});
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    EXPECT_EQ(TraceGqaBoundaryForwardThroughDeviceCopies(graph, present_value), exposed_bnsh);
+    std::string converted_boundary;
+    EXPECT_TRUE(FindConvertedPresentValueBoundary(graph, *gqa, converted_boundary));
+    bool modified = false;
+    GqaValueLayoutTransformer transformer;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(transformer.Apply(graph, modified, *logger_),
+                                        "through a device copy node");
+    EXPECT_FALSE(modified);
+    ASSERT_STATUS_OK(ExpectShape(exposed_bnsh, shape, "unconverted output"));
+  }
+}
+
 // The end-to-end version of DetectsConversionThroughDeviceCopyNodes: instead of building the copy
 // nodes by hand, save an optimized model through a real non-CPU EP so MemcpyTransformer inserts them
 // itself, then reload it. Graph inputs and outputs count as non-provider references, so a device
@@ -2119,6 +2157,79 @@ TEST_F(GqaValueLayoutTransformerTest, BnhsWithAliasedCacheBufferMatchesSeparateB
   ASSERT_STATUS_OK(TransposeLastTwoDims(reference_fetches[present_value_index], reference_present_as_bnsh));
   ASSERT_STATUS_OK(ExpectCacheRegionEqual(reference_present_as_bnsh, cache_as_bnsh, kPastSeq + kSeq,
                                           "aliased cache buffer"));
+}
+
+TEST_F(GqaValueLayoutTransformerTest, BnhsWithBothCachesAliasedMatchesBnshAcrossDecodeStepsOnCpu) {
+  RuntimeGqaModel model;
+  ASSERT_STATUS_OK(BuildRuntimeGqaModel(*logger_, model));
+  ONNX_NAMESPACE::ModelProto proto;
+  ASSERT_TRUE(proto.ParseFromString(model.bytes));
+  ASSERT_EQ(proto.graph().node_size(), 1);
+  const auto& gqa = proto.graph().node(0);
+  const std::string past_key_name = gqa.input(3);
+  const std::string present_key_name = gqa.output(1);
+  const size_t key_index = IndexOfOutput(model, present_key_name);
+  const size_t value_index = IndexOfOutput(model, model.present_value_name);
+  const size_t attention_index = IndexOfOutput(model, model.attention_output_name);
+  ASSERT_LT(key_index, model.output_names.size());
+  ASSERT_LT(value_index, model.output_names.size());
+  ASSERT_LT(attention_index, model.output_names.size());
+
+  InferenceSessionWrapper reference{MakeSessionOptions(kGqaValueLayoutBNSH), GetEnvironment()};
+  InferenceSessionWrapper aliased{MakeSessionOptions(kGqaValueLayoutBNHS), GetEnvironment()};
+  for (auto* session : {&reference, &aliased}) {
+    ASSERT_STATUS_OK(session->Load(model.bytes.data(), static_cast<int>(model.bytes.size())));
+    ASSERT_STATUS_OK(session->Initialize());
+  }
+  ASSERT_STATUS_OK(ExpectBnhsBoundary(aliased.GetMutableGraph()));
+
+  NameMLValMap reference_feeds = model.bnsh_feeds;
+  OrtValue key_cache = CloneTensor(model.bnsh_feeds.at(past_key_name));
+  OrtValue value_cache;
+  ASSERT_STATUS_OK(TransposeLastTwoDims(model.bnsh_feeds.at(model.past_value_name), value_cache));
+
+  for (int32_t step = 0; step < 2; ++step) {
+    SCOPED_TRACE(step);
+    const int32_t total_sequence_length = static_cast<int32_t>(kPastSeq + kSeq) + step;
+    OrtValue seqlens_k;
+    OrtValue total_seq_len;
+    CreateMLValue<int32_t>(CpuAllocator(), {kBatch}, {total_sequence_length - 1}, &seqlens_k);
+    CreateMLValue<int32_t>(CpuAllocator(), {1}, {total_sequence_length}, &total_seq_len);
+    reference_feeds[gqa.input(5)] = seqlens_k;
+    reference_feeds[gqa.input(6)] = total_seq_len;
+
+    std::vector<OrtValue> reference_outputs;
+    ASSERT_STATUS_OK(reference.Run(RunOptions{}, reference_feeds, model.output_names, &reference_outputs));
+
+    std::unique_ptr<IOBinding> binding;
+    ASSERT_STATUS_OK(aliased.NewIOBinding(&binding));
+    for (const auto& [name, value] : reference_feeds) {
+      const OrtValue& input = name == past_key_name ? key_cache : name == model.past_value_name ? value_cache
+                                                                                                : value;
+      ASSERT_STATUS_OK(binding->BindInput(name, input));
+    }
+    for (const auto& name : model.output_names) {
+      if (name == present_key_name) {
+        ASSERT_STATUS_OK(binding->BindOutput(name, key_cache));
+      } else if (name == model.present_value_name) {
+        ASSERT_STATUS_OK(binding->BindOutput(name, value_cache));
+      } else {
+        ASSERT_STATUS_OK(binding->BindOutput(name));
+      }
+    }
+    ASSERT_STATUS_OK(aliased.Run(RunOptions{}, *binding));
+    ASSERT_STATUS_OK(ExpectNonDegenerate(reference_outputs[attention_index], "attention output"));
+    ASSERT_STATUS_OK(ExpectTensorsEqual(reference_outputs[attention_index], binding->GetOutputs()[attention_index],
+                                        "attention output"));
+    ASSERT_STATUS_OK(ExpectCacheRegionEqual(reference_outputs[key_index], key_cache, total_sequence_length,
+                                            "aliased Key cache"));
+    OrtValue value_as_bnsh;
+    ASSERT_STATUS_OK(TransposeLastTwoDims(value_cache, value_as_bnsh));
+    ASSERT_STATUS_OK(ExpectCacheRegionEqual(reference_outputs[value_index], value_as_bnsh, total_sequence_length,
+                                            "aliased Value cache"));
+    reference_feeds[past_key_name] = reference_outputs[key_index];
+    reference_feeds[model.past_value_name] = reference_outputs[value_index];
+  }
 }
 
 // The ORT format load path does not run TransformGraph, so the option cannot be honored there.

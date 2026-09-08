@@ -258,6 +258,11 @@ one. Both orderings matter:
   `kOutOfScope`, dropping the boundary from the 4.2 diagnostic and logging a misleading out-of-scope
   warning for an operand that is in fact converted.
 
+Before accepting an already-converted present Value, classification also checks every copy-only
+path to a graph output. A converted BNHS output does not make a second BNSH output reached through
+`MemcpyToHost` safe: that mixed topology is rejected. The forward copy traversal searches all branches,
+so an internal copy consumer cannot hide another branch that exposes an unconverted cache.
+
 The past side needs neither guard: a NodeArg has exactly one producer, and an operand with a producer
 cannot also be a graph input.
 
@@ -533,6 +538,19 @@ shared past/present path — it reads a full BNSH cache and writes a fresh one. 
 those intermediates, roughly two cache-sized tensors live at a time per converted node, not a
 doubling of the application's own KV-cache.
 
+The application may alias both cache pairs: one buffer for `past_key`/`present_key`, and another for
+`past_value`/`present_value`. The Value transposes make only the operator's Value operands separate;
+the Key operands remain shared. CPU GQA therefore tracks Key and Value sharing independently in both
+floating-point and quantized paths. Otherwise a combined sharing flag would cause the nonshared
+Key path to clear the aliased past Key cache before reading it.
+
+CUDA GQA retains its shared/nonshared preprocessing paths. When only one cache pair aliases, it first
+copies that past cache into stream-aware scratch and then uses nonshared preprocessing. This adds one
+cache-sized device copy and scratch allocation per step on the mixed-sharing fallback path, without a
+host synchronization. Both-shared and both-separate execution are unchanged. CUDA sliding-window
+caches still require both operator cache pairs to share buffers; this fallback does not relax that
+restriction.
+
 ## 5. ORT-format path
 
 `PartitionOrtFormatModel` does not go through `TransformGraph`, so `.ort` models receive no
@@ -716,9 +734,13 @@ are asserted from a captured session log, not merely assumed.
   intermediates, so comparing the two would compare two different kernel implementations. Chained
   with `BnhsMatchesBnshOnCpu`, this still covers the full claim.
 
-Note the CPU kernel's shared-buffer path was observed to produce different `present_value` contents
-than its non-shared path for the same inputs (a zero where the caller's buffer held data). That is
-pre-existing behavior on the BNSH path, unrelated to this change, and was not investigated here.
+- `BnhsWithBothCachesAliasedMatchesBnshAcrossDecodeStepsOnCpu` compares a BNHS session with both
+  cache pairs aliased against a BNSH separate-buffer reference over two consecutive decode steps.
+  It checks attention and both caches over their valid regions, detecting loss of past Key data as
+  well as incorrect Value conversion. Unused cache capacity is not part of the comparison.
+- CUDA provider tests exercise all four Key/Value sharing combinations with nonzero past data on
+  FlashAttention and unfused paths, and verify that mixed sharing remains rejected for sliding-window
+  caches.
 
 **6.3** `onnxruntime/test/autoep/` — the new metadata key round-trips from the example plugin EP
 through `EpDevice_EpMetadata`.

@@ -639,6 +639,10 @@ static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep
 // each direction per step. The application may still bind one buffer to both past_value and
 // present_value; what it loses is the GQA kernel's in-place update of that buffer, because the
 // kernel now reads and writes ORT-allocated BNSH intermediates instead.
+// Key buffers may remain aliased. CPU handles each cache's aliasing independently; CUDA stages the
+// aliased cache when only one pair is shared, adding a cache-sized copy and scratch allocation.
+// CUDA sliding-window caches still require both operator cache pairs to be shared, so they cannot
+// use this unfused conversion.
 //
 // Query an EP's preference via the "gqa_preferred_value_layout" OrtEpDevice metadata key
 // (kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout in onnxruntime_ep_device_ep_metadata_keys.h).
