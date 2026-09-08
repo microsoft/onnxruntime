@@ -307,8 +307,10 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 
 **Buffers:** Dense Attention uses the `GetAttentionWorkspaceSize()` helper. MultiHeadAttention can additionally
 allocate lean-attention synchronization, Flash split/LSE/output-accumulator, and sequence-length buffers.
-PackedAttention has separate projection and Attention allocations; PackedMultiHeadAttention has no projection
-allocation. See the roadmap for the packed recipe and layout contract.
+PackedAttention currently makes separate dynamic projection and Attention allocations; PackedMultiHeadAttention has
+no projection allocation. Their planning declaration is one 256-byte-aligned operator-owned root. PA places the
+projection region first and the Attention region at a 256-byte-aligned offset; PMHA's root is only its Attention
+region. See the roadmap for the packed recipe and layout contract.
 
 **Size model:** Depends on operator inputs and the selected Attention algorithm:
 
@@ -329,8 +331,20 @@ routes without bias. See the roadmap for the precise layout and eligibility boun
 cache state, and device properties including SM version and `multiProcessorCount`.
 
 **Static determinability:** 🔀 — Runtime-exact when sizing receives the backend selected by the CUDA kernel. For AOT,
-use the maximum workspace across feasible backend recipes when exact selection is not provable, or report estimation
-as unavailable when a required contract is missing. See the linked roadmap for the exact/safe-bound/unavailable model.
+enumerate every backend reachable at a positive runtime geometry within the supplied bounds, evaluate each checked
+recipe at the original componentwise maximum geometry, and take the maximum workspace. PA head sizes derived from the
+immutable `qkv_hidden_sizes` attribute remain exact; PA without that attribute and PMHA use bounded head reachability
+because `WorkspaceInputShape` does not preserve provenance. If a reachable route's checked recipe is invalid at the
+maximum geometry, estimation is unavailable rather than silently omitting that route. See the linked roadmap for the
+exact/safe-bound/unavailable model.
+
+PA and PMHA have Level-1 CUDA EP estimates (currently log-only) and Level-2 declarations. Each nonzero estimate emits
+exactly one slot-0 root with explicit 256-byte alignment; PA's root includes projection-to-Attention alignment padding.
+This design has no multi-slot planner dependency. Runtime still uses the existing dynamic allocation topology. Future
+#32071 integration must atomically add `SupportsPreallocatedWorkspace()`, retrieve the root, and slice PA's projection
+and Attention regions. Declaration alone is not planner opt-in. The current Level-2 boundary represents both
+unavailable and explicit-zero results with no requirements; because `WorkspaceInputShape` has no shape provenance,
+the PA/PMHA adapter treats zero-shaped hints as unavailable.
 
 ---
 

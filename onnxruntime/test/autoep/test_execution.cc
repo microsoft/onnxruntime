@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <string_view>
@@ -377,6 +379,41 @@ void RunMulModelWithPluginEpUsingIOBinding(const Ort::SessionOptions& session_op
   EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
 }
 
+enum class PreallocatedOutputBinding { kRunFetches,
+                                       kIoBinding };
+
+// Runs mul_1.onnx with a caller-allocated output buffer, supplied either directly to Run() or via
+// IoBinding. Both paths must land the result in `output_data` itself, not a copy.
+void RunMulModelWithPluginEpUsingPreallocatedOutput(const Ort::SessionOptions& session_options,
+                                                    PreallocatedOutputBinding binding) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const auto output_memory_info = session.GetEpDeviceForOutputs().at(0).GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input0_data(6, 2.0f);
+  std::vector<float> output_data(6, -1.0f);
+  Ort::Value input = Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size());
+  Ort::Value output = Ort::Value::CreateTensor<float>(
+      output_memory_info, output_data.data(), output_data.size(), shape.data(), shape.size());
+
+  if (binding == PreallocatedOutputBinding::kRunFetches) {
+    const char* input_names[] = {"X"};
+    const char* output_names[] = {"Y"};
+    session.Run(Ort::RunOptions{nullptr}, input_names, &input, 1, output_names, &output, 1);
+  } else {
+    Ort::IoBinding io_binding(session);
+    io_binding.BindInput("X", input);
+    io_binding.BindOutput("Y", output);
+    session.Run(Ort::RunOptions{nullptr}, io_binding);
+  }
+
+  // The EP wrote through the caller's buffer rather than into an ORT-allocated one.
+  EXPECT_EQ(output.GetTensorMutableData<float>(), output_data.data());
+  EXPECT_THAT(output_data, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
+}
+
 // Builds a minimal ONNX model bytes with a single FP16 HardSigmoid node.
 // Graph: X[1,4 float16] -> HardSigmoid -> Y[1,4 float16]
 // HardSigmoid is used because it has NO MLFloat16 CPU kernel on any build config,
@@ -489,6 +526,62 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
   RunMulModelWithPluginEp(session_options);
+}
+
+// Registers the example EP, appends it to session options, and loads its test hooks.
+static void SetUpPreallocatedOutputTest(RegisteredEpDeviceUniquePtr& example_ep,
+                                        Ort::SessionOptions& session_options,
+                                        Utils::LoadExampleEpHooksPtr& example_ep_hooks) {
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  ASSERT_NO_FATAL_FAILURE(Utils::LoadExampleEpHooks(Utils::example_ep_info, example_ep_hooks));
+  ASSERT_NE(example_ep_hooks->reset_preallocated_output_query, nullptr);
+  ASSERT_NE(example_ep_hooks->get_preallocated_output_query_result, nullptr);
+  ASSERT_NE(example_ep_hooks->get_preallocated_output_bad_index_rejected, nullptr);
+  example_ep_hooks->reset_preallocated_output_query();
+}
+
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_Run) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Ort::SessionOptions session_options;
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
+
+  ASSERT_NO_FATAL_FAILURE(
+      RunMulModelWithPluginEpUsingPreallocatedOutput(session_options, PreallocatedOutputBinding::kRunFetches));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 1);
+  // Out-of-range output index rejected without disturbing the out parameter.
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_bad_index_rejected(), 1);
+}
+
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_IoBinding) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Ort::SessionOptions session_options;
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
+
+  ASSERT_NO_FATAL_FAILURE(
+      RunMulModelWithPluginEpUsingPreallocatedOutput(session_options, PreallocatedOutputBinding::kIoBinding));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 1);
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_bad_index_rejected(), 1);
+}
+
+TEST(OrtEpLibrary, PluginEp_KernelContextPreallocatedOutput_NotPreallocated) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  Ort::SessionOptions session_options;
+  Utils::LoadExampleEpHooksPtr example_ep_hooks;
+  ASSERT_NO_FATAL_FAILURE(SetUpPreallocatedOutputTest(example_ep, session_options, example_ep_hooks));
+
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEp(session_options));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 0);
+
+  example_ep_hooks->reset_preallocated_output_query();
+  ASSERT_NO_FATAL_FAILURE(RunMulModelWithPluginEpUsingIOBinding(session_options));
+  ASSERT_EQ(example_ep_hooks->get_preallocated_output_query_result(), 0);
 }
 
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
@@ -1942,6 +2035,26 @@ TEST(OrtEpLibrary, PluginEp_Sync) {
   RunMulModelWithPluginEpUsingIOBinding(session_options);
 
   ASSERT_EQ(example_ep_hooks->get_sync_count(), 1) << "Expected Sync to be called once during inference";
+}
+
+TEST(OrtApi, KernelContextGetPreallocatedOutputContract) {
+  const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+  ASSERT_NE(api->KernelContext_GetPreallocatedOutput, nullptr);
+
+  auto expect_rejected = [&](OrtStatus* status) {
+    ASSERT_NE(status, nullptr);
+    const OrtErrorCode code = api->GetErrorCode(status);
+    EXPECT_TRUE(code == ORT_INVALID_ARGUMENT) << code;
+    api->ReleaseStatus(status);
+  };
+
+  // Null arguments are rejected, and a failed call leaves the out parameter untouched.
+  OrtValue* const sentinel_value = reinterpret_cast<OrtValue*>(static_cast<uintptr_t>(1));
+  OrtValue* sentinel = sentinel_value;
+  expect_rejected(api->KernelContext_GetPreallocatedOutput(nullptr, 0, &sentinel));
+  EXPECT_EQ(sentinel, sentinel_value);
+
+  expect_rejected(api->KernelContext_GetPreallocatedOutput(nullptr, 0, nullptr));
 }
 }  // namespace test
 }  // namespace onnxruntime

@@ -174,7 +174,8 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
           NOT _src MATCHES "/fpA_intB_gemv/dispatcher_fp16_int(4|8)\\.cu$")))
         list(APPEND _llm_excluded_srcs "${_src}")
       # SM90-specific fpA_intB launchers (guarded by #ifndef EXCLUDE_SM_90)
-      elseif(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$")
+      elseif(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$" OR
+         _src MATCHES "/moe_gemm/deep_gemm_sm90\\.cu$")
         list(APPEND _llm_sm90_srcs "${_src}")
       elseif(onnxruntime_USE_FP4_QMOE AND
              _src MATCHES "/moe_gemm/(moe_gemm_kernels_(bf16|fp16|fp4)_fp4|moe_kernels)\\.cu$")
