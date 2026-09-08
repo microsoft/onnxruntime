@@ -152,8 +152,6 @@ enum class EventPriority {
   CRITICAL = EventLatency_RealTime  // ProcessInfo, SessionCreation
 };
 
-constexpr std::string_view kDeviceCensusLibraryName = "ort";
-
 // Helper class to build events with common properties
 class EventBuilder {
  private:
@@ -396,13 +394,6 @@ bool PrepareProcessEvent(EventBuilder& event) {
 
   event.SetPopsample(telemetry_internal::kProcessEventSampleRatePercent);
   return true;
-}
-
-int64_t GetUtcDay() {
-  const auto hours_since_epoch = std::chrono::duration_cast<std::chrono::hours>(
-                                     std::chrono::system_clock::now().time_since_epoch())
-                                     .count();
-  return hours_since_epoch / 24;
 }
 
 int32_t GetProcessorCount() {
@@ -964,37 +955,15 @@ void PosixTelemetry::LogProcessInfo() const {
       return;
     }
 
-    auto& device_id = DeviceId::Instance();
-    const DeviceIdStatus device_id_status = device_id.GetStatus();
 #if !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    if (device_id_status == DeviceIdStatus::Failed) {
+    if (DeviceId::Instance().GetStatus() == DeviceIdStatus::Failed) {
       ORT_TELEMETRY_WARN("Failed to persist telemetry device ID; using an in-memory identifier");
     }
 #endif
 
-    if (device_id_status != DeviceIdStatus::Failed) {
-      const std::string device_id_status_string = device_id.GetStatusString();
-      device_id.RecordCensusActivity(
-          GetUtcDay(), ORT_VERSION,
-          [&](int64_t census_day,
-              const std::vector<std::string>& versions) {
-            auto event = EventBuilder("DeviceCensus", EventPriority::CRITICAL)
-                             .AddInt64("censusSchemaVersion",
-                                       telemetry_internal::kDeviceCensusSchemaVersion)
-                             .AddInt64("censusDay", census_day)
-                             .AddString("libraryName", kDeviceCensusLibraryName)
-                             .AddStringList("libraryVersions", versions)
-                             .AddString("deviceIdStatus", device_id_status_string)
-                             .Build();
-            LogEventAsync(std::move(event));
-          });
-    }
-
+    // ProcessInfo is the unsampled process-level baseline; all other event families use their
+    // configured client-side sampling gates.
     auto builder = EventBuilder("ProcessInfo", EventPriority::CRITICAL);
-    if (!PrepareProcessEvent(builder)) {
-      return;
-    }
-
     builder.AddString("runtimeVersion", ORT_VERSION)
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
         .AddString("DeviceInfo.Status", "Mobile")
