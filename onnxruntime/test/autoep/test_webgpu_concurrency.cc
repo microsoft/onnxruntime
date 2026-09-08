@@ -582,7 +582,7 @@ TEST_F(PluginEpWebGpuConcurrency, SharedGpuCopyCompletesBeforeSessionRun) {
     std::array<float, kElements> input_data{};
     input_data.fill(value);
     auto input = Ort::Value::CreateTensor<float>(cpu_memory, input_data.data(), input_data.size(),
-                                                kShape.data(), kShape.size());
+                                                 kShape.data(), kShape.size());
     auto source = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
     auto destination = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
     ThrowOnError(ort_env->CopyTensor(input, source, nullptr));

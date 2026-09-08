@@ -109,9 +109,9 @@ struct CapturedCommandInfo {
 };
 
 // State for one session's command recording timeline. WebGpuContext is shared across sessions,
-// but Dawn command encoders and deferred dispatch windows must not be.
+// but Dawn command encoders and deferred dispatch windows must not be. Callers must serialize
+// access to a session's recording, including external allocation, copy, and graph replay operations.
 struct CommandRecordingState {
-  std::recursive_mutex mutex;
   wgpu::CommandEncoder command_encoder;
   wgpu::ComputePassEncoder compute_pass_encoder;
   uint32_t num_pending_dispatches = 0;

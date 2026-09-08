@@ -9,7 +9,6 @@
 #include "core/framework/kernel_registry.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
-#include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
 #include "ep/get_capability_utils.h"
@@ -38,6 +37,7 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
   CreateAllocator = CreateAllocatorImpl;
+  CreateSyncStreamForDevice = nullptr;          // Not stream aware
   GetCompiledModelCompatibilityInfo = nullptr;  // Not a compiled EP
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
   IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;

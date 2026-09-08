@@ -37,7 +37,6 @@ void* GpuBufferAllocator::Alloc(size_t size) {
   }
 
   auto& recording = recording_getter_();
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   stats_.num_allocs++;
 
   wgpu::BufferUsage usage = mapped_at_creation_ ? wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapWrite
@@ -51,15 +50,12 @@ void* GpuBufferAllocator::Alloc(size_t size) {
 void GpuBufferAllocator::Free(void* p) {
   if (p != nullptr) {
     auto& recording = recording_getter_();
-    std::lock_guard<std::recursive_mutex> lock{recording.mutex};
     buffer_manager_getter_().Release(recording, static_cast<WGPUBuffer>(p));
     stats_.num_allocs--;
   }
 }
 
 void GpuBufferAllocator::GetStats(AllocatorStats* stats) {
-  auto& recording = recording_getter_();
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   *stats = stats_;
 }
 

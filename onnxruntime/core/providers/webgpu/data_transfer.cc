@@ -34,7 +34,6 @@ common::Status WaitForQueue(WebGpuContext& context) {
 
 common::Status FlushAndWait(WebGpuContext& context, const BufferManager& buffer_manager,
                             CommandRecordingState& recording) {
-  std::lock_guard<std::recursive_mutex> lock{recording.mutex};
   ORT_RETURN_IF_ERROR(context.Flush(buffer_manager, recording));
   return WaitForQueue(context);
 }
@@ -121,7 +120,6 @@ common::Status DataTransferImpl::CopyTensor(void const* src_data,
                                             bool dst_is_gpu,
                                             size_t bytes) const {
   auto& command_state = recording_;
-  std::lock_guard<std::recursive_mutex> recording_lock{command_state.mutex};
   if (bytes > 0) {
     if (dst_is_gpu) {
       if (src_is_gpu) {

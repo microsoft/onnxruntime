@@ -74,6 +74,12 @@ class Factory : public OrtEpFactory {
 
   static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* this_ptr) noexcept;
 
+    static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(
+            OrtEpFactory* this_ptr,
+            const OrtMemoryDevice* memory_device,
+            const OrtKeyValuePairs* stream_options,
+            OrtSyncStreamImpl** stream) noexcept;
+
   const Config config_;
   std::mutex creation_mutex_;
   bool env_transfer_created_ = false;

@@ -19,7 +19,9 @@ To ensure both static library and dynamic library builds work, we need to make a
 ### Session and environment isolation
 
 Different Sessions may run concurrently. Each Session owns its command recording state;
-kernels and its data transfer use that same state without stream-based routing.
+kernels and its data transfer use that same state without stream-based routing or a recording mutex.
+Access to one Session's recording must be serialized by the caller. Ordinary same-Session Run
+calls remain serialized by ORT, but that does not cover external allocation, copies, or graph replay.
 The context-level buffer and pipeline caches remain shared and synchronized. Buffers used by
 unsubmitted commands remain associated with their recording until submission.
 
@@ -43,14 +45,14 @@ are written and unmapped directly. The shared context is retained only for devic
 device access, and the platform wait helper, not command recording or cache refresh.
 Environment allocation and copies on independent tensors may run concurrently with Session inference.
 
-Session allocators still reuse cached buffers. The plugin's Session device allocator submits
-cached-buffer clears before allocation returns, including during `Run`. This orders the clears
-before subsequent environment copies, but also flushes pending Session commands and reduces
-batching. This immediate-submit policy is experimental; performance has not been measured and
-graph capture coverage is limited to the scenario below. Applications should continue to serialize external
-Session allocator operations (`Alloc`, `Free`, and tensor destruction) with that Session's `Run`
-until the advanced contract is established. Tensor data and lifetimes must be synchronized by
-the caller regardless of allocator locking.
+Session allocators still reuse cached buffers. `IsRunActive()` controls clear submission:
+outside Run, cached-buffer clears are submitted before Alloc returns; during Run, clears are
+deferred in the Session recording to preserve batching. This is valid only when external
+Session allocator operations do not overlap Run. Applications must serialize allocation, Free,
+GetStats, tensor destruction, Session-bound copies, graph capture/replay, and graph release for
+the same Session with its execution. Sharing a recording or Session allocator across threads
+without this serialization is unsupported. Tensor data and lifetimes also remain the caller's
+responsibility. Different Sessions and independent Env operations may still run concurrently.
 
 The plugin does not register synchronization streams or support stream overrides. Session
 data transfers are synchronous and use their owning Session recording. Ordinary Run and graph
@@ -78,11 +80,18 @@ ten iterations per worker. Run and copy workers verify the returned tensor data.
 | Required baseline, 12 threads | `MixedSessionAndEnvironmentOperationsConcurrently12Threads` | Session creation/destruction, existing Session inference, environment allocation/copies |
 | Advanced target, 16 threads | `DISABLED_MixedSessionAndAllocatorOperationsConcurrently16Threads` | The baseline plus allocator operations on the same Sessions that are running inference |
 
-The 12-thread gate runs by default. The 16-thread test retains the experimental allocator/Run
-interleaving as an advanced acceptance target and is disabled by default, not removed or
-serialized. Enable it explicitly with Google Test's `--gtest_also_run_disabled_tests` and
+The 12-thread gate runs by default. The 16-thread test retains the unsupported allocator/Run
+interleaving as a future acceptance target and is disabled by default, not removed or serialized.
+It can race or fail with lock-free recording and must not be used to claim current support.
+Earlier passes with a recording mutex and immediate clear submission do not apply to this implementation.
+Enable it explicitly only when developing that future support, with Google Test's `--gtest_also_run_disabled_tests` and
 `--gtest_filter=PluginEpWebGpuConcurrency.DISABLED_MixedSessionAndAllocatorOperationsConcurrently16Threads`.
 A passing baseline does not establish support for the advanced target.
+
+The built-in `WebGpuConcurrentContextTest.DISABLED_SessionAllocatorAndRunConcurrently` and
+`WebGpuConcurrentContextTest.DISABLED_SharedDataTransferMultiThreadCopy` likewise retain
+unsupported same-recording interleavings as disabled targets. Independent Session and
+independent recording tests remain enabled.
 
 `DifferentSessionsGraphCaptureAndReplayConcurrently` enables graph capture for four Sessions
 using `mul_1.onnx`, each with independent, fixed-address GPU inputs and outputs and the default
