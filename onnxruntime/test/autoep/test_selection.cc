@@ -3,13 +3,11 @@
 
 #include <array>
 #include <filesystem>
-#include <initializer_list>
-#include <string_view>
 // #include <absl/base/config.h>
 #include <gmock/gmock.h>
+#include <gsl/gsl>
 #include <gtest/gtest.h>
 
-#include "core/framework/provider_options.h"
 #include "core/graph/constants.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_key_value_pairs.h"
@@ -18,13 +16,15 @@
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
-#if defined(USE_COREML) && defined(__APPLE__)
-#include <gsl/gsl>
-
+#if defined(USE_COREML)
 #include "core/common/inlined_containers.h"
+#endif
+
+#if defined(USE_COREML) && defined(__APPLE__)
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/session/plugin_ep/ep_factory_coreml.h"
+#include "core/session/plugin_ep/ep_factory_internal.h"
 #endif
 
 #include "test_allocator.h"
@@ -359,51 +359,29 @@ CoreMLDevices GetCoreMLEpDevices() {
   return found;
 }
 
-// Finds the first CoreML OrtEpDevice returned by GetEpDevices, or nullptr if none is advertised.
-const OrtEpDevice* GetFirstCoreMLEpDevice() {
-  const OrtApi* c_api = &Ort::GetApi();
-  const OrtEpDevice* const* ep_devices = nullptr;
-  size_t num_devices = 0;
-
-  Ort::ThrowOnError(c_api->GetEpDevices(*ort_env, &ep_devices, &num_devices));
-
-  for (size_t i = 0; i < num_devices; ++i) {
-    if (strcmp(c_api->EpDevice_EpName(ep_devices[i]), kCoreMLExecutionProvider) == 0) {
-      return ep_devices[i];
-    }
-  }
-
-  return nullptr;
-}
-
 // Returns whether this machine has an NPU that the CoreML EP factory may advertise at the runtime Core ML version.
 bool CoreMLCanClaimNpu(const HardwareDeviceTypes& hardware) {
-  return hardware.has_npu &&
-         CoreMLEpFactory::CanClaimDeviceType(OrtHardwareDeviceType_NPU, coreml::util::CoreMLVersion());
+  return hardware.has_npu && coreml::util::CoreMLVersion() >= MINIMUM_COREML_VERSION_FOR_NEURAL_ENGINE_SELECTION;
 }
 
 // Returns whether this machine has a GPU that the CoreML EP factory may advertise at the runtime Core ML version.
 bool CoreMLCanClaimGpu(const HardwareDeviceTypes& hardware) {
-  return hardware.has_gpu &&
-         CoreMLEpFactory::CanClaimDeviceType(OrtHardwareDeviceType_GPU, coreml::util::CoreMLVersion());
+  return hardware.has_gpu && coreml::util::CoreMLVersion() >= MINIMUM_COREML_VERSION;
 }
 
-// GetErrorCode can be called only on a failed Ort::Status. An OK status contains a null OrtStatus*. Verify failure
-// first so the helper stops before GetErrorCode if the call unexpectedly succeeds.
-// SCOPED_TRACE includes 'selection' in failure messages, making it clear which input failed.
-void ExpectInvalidArgument(const Ort::Status& status, std::string_view selection) {
-  SCOPED_TRACE(selection);
-  ASSERT_FALSE(status.IsOK()) << "Expected ORT_INVALID_ARGUMENT, but the call succeeded.";
-  EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
-}
-
-// Verifies that a session for mul_1.onnx assigns its input to the CoreML EP and produces the expected output.
-void AssertMul1SessionRunsOnCoreML(Ort::Session& session) {
+// Verifies that a session for mul_1.onnx assigns its input to the CoreML EP. Used as the session checker for
+// RunBasicTest, which runs the inference itself afterwards.
+void AssertMul1InputAssignedToCoreML(Ort::Session& session) {
   const OrtApi* c_api = &Ort::GetApi();
   const OrtEpDevice* input_ep_device = nullptr;
   ASSERT_ORTSTATUS_OK(c_api->SessionGetEpDeviceForInputs(session, &input_ep_device, 1));
   ASSERT_NE(input_ep_device, nullptr);
   ASSERT_STREQ(c_api->EpDevice_EpName(input_ep_device), kCoreMLExecutionProvider);
+}
+
+// Verifies the input assignment and runs the inference. Used by the tests that create the session themselves.
+void AssertMul1SessionRunsOnCoreML(Ort::Session& session) {
+  ASSERT_NO_FATAL_FAILURE(AssertMul1InputAssignedToCoreML(session));
 
   std::vector<Input<float>> inputs(1);
   auto& input = inputs.back();
@@ -473,89 +451,85 @@ TEST(AutoEpSelection, CoreMLEP) {
   // The V2 path also checks the input assignment directly. CoreMLEPPreferNpu and CoreMLEPPreferGpu perform the
   // same assignment check for policy-based selection.
   RunBasicTest(kCoreMLExecutionProvider, std::nullopt, Ort::KeyValuePairs{}, /*select_devices*/ nullptr,
-               /*test_auto_select*/ true, AssertMul1SessionRunsOnCoreML, /*disable_cpu_ep_fallback*/ true);
+               /*test_auto_select*/ true, AssertMul1InputAssignedToCoreML, /*disable_cpu_ep_fallback*/ true);
 }
 
-// Select the CoreML NPU and GPU in a single AppendExecutionProvider_V2 call without specifying MLComputeUnits.
-// The factory must derive MLComputeUnits=ALL from the selected devices, and session creation must succeed.
-TEST(AutoEpSelection, CoreMLEPMultipleDevices) {
-  const HardwareDeviceTypes hardware = GetHardwareDeviceTypes();
-  if (!CoreMLCanClaimNpu(hardware) || !CoreMLCanClaimGpu(hardware)) {
-    GTEST_SKIP() << "Need both an NPU and a GPU that the CoreML EP can advertise on this machine.";
-  }
+// Tests explicit device selection through AppendExecutionProvider_V2. Each test case selects one or more CoreML
+// devices, optionally provides MLComputeUnits in ep_options, and verifies that the session assigns the graph to
+// CoreML and runs successfully. Test cases are skipped individually only when a required device is unavailable.
+// Test cases with MLComputeUnits verify that the caller may narrow accelerator use within the selected devices:
+// for an NPU-and-GPU selection, CPUAndGPU enables only the GPU accelerator and CPUAndNeuralEngine enables only
+// the NPU. CPUOnly disables all selected accelerators while the graph remains assigned to CoreML.
+TEST(AutoEpSelection, CoreMLEPExplicitDeviceSelection) {
+  enum class Selection { kNpuAndGpu,
+                         kGpuOnly,
+                         kNpuOnly,
+                         kEveryAdvertisedDevice };
 
-  const CoreMLDevices coreml_devices = GetCoreMLEpDevices();
-  ASSERT_NE(coreml_devices.npu, nullptr) << "CoreML EP did not claim the NPU hardware device.";
-  ASSERT_NE(coreml_devices.gpu, nullptr) << "CoreML EP did not claim the GPU hardware device.";
-
-  const auto select_devices = [&](std::vector<const OrtEpDevice*>& devices) {
-    devices = {coreml_devices.npu, coreml_devices.gpu};
+  struct TestCase {
+    const char* description;
+    Selection selection;
+    const char* compute_units;  // nullptr: MLComputeUnits omitted
   };
 
-  // MLComputeUnits is intentionally omitted. If ALL were supplied explicitly, the factory would validate it instead
-  // of deriving it from the selected NPU and GPU. The separate CoreMLEPDefaultComputeUnits test checks this
-  // derivation directly. This test verifies the same behavior during session creation.
-  // CoreMLEPNarrowingComputeUnitsOverride covers the same multi-device V2 path with non-empty ep_options.
-  // select_devices applies only to the AppendExecutionProvider_V2 path. The "test.ep_to_select" path passes only the
-  // first CoreML device to the factory. That would test only one device, which CoreMLEP already covers, rather than
-  // a selection containing both the NPU and GPU. Run only the V2 path, verify its input assignment directly, and
-  // disable ORT CPU fallback so CoreML must execute the entire graph.
-  RunBasicTest(kCoreMLExecutionProvider, std::nullopt, Ort::KeyValuePairs{}, select_devices,
-               /*test_auto_select*/ false, AssertMul1SessionRunsOnCoreML, /*disable_cpu_ep_fallback*/ true);
-}
+  const TestCase test_cases[] = {
+      {"NPU and GPU, MLComputeUnits omitted", Selection::kNpuAndGpu, nullptr},
+      {"NPU and GPU, CPUAndGPU", Selection::kNpuAndGpu, "CPUAndGPU"},
+      {"NPU and GPU, CPUAndNeuralEngine", Selection::kNpuAndGpu, "CPUAndNeuralEngine"},
+      {"GPU only, MLComputeUnits omitted", Selection::kGpuOnly, nullptr},
+      {"NPU only, MLComputeUnits omitted", Selection::kNpuOnly, nullptr},
+      {"every advertised device, CPUOnly", Selection::kEveryAdvertisedDevice, "CPUOnly"},
+  };
 
-// Verifies that AppendExecutionProvider_V2 passes both selected devices to the factory. CPUAndGPU is accepted only
-// when the GPU is present in the factory's device list, and CPUAndNeuralEngine only when the NPU is present.
-// Both sessions must be created successfully, so the test fails if either device is missing.
-TEST(AutoEpSelection, CoreMLEPMultipleDevicesBothReachTheFactory) {
   const HardwareDeviceTypes hardware = GetHardwareDeviceTypes();
-  if (!CoreMLCanClaimNpu(hardware) || !CoreMLCanClaimGpu(hardware)) {
-    GTEST_SKIP() << "Need both an NPU and a GPU that the CoreML EP can advertise on this machine.";
+  const bool can_claim_npu = CoreMLCanClaimNpu(hardware);
+  const bool can_claim_gpu = CoreMLCanClaimGpu(hardware);
+  if (!can_claim_npu && !can_claim_gpu) {
+    GTEST_SKIP() << "No hardware device that the CoreML EP factory can advertise on this machine.";
   }
 
   const CoreMLDevices coreml_devices = GetCoreMLEpDevices();
-  ASSERT_NE(coreml_devices.npu, nullptr) << "CoreML EP did not advertise the NPU hardware device.";
-  ASSERT_NE(coreml_devices.gpu, nullptr) << "CoreML EP did not advertise the GPU hardware device.";
+  if (can_claim_npu) {
+    ASSERT_NE(coreml_devices.npu, nullptr) << "CoreML EP did not claim the NPU hardware device.";
+  }
+  if (can_claim_gpu) {
+    ASSERT_NE(coreml_devices.gpu, nullptr) << "CoreML EP did not claim the GPU hardware device.";
+  }
 
-  std::vector<Ort::ConstEpDevice> ep_devices;
-  ep_devices.emplace_back(coreml_devices.npu);
-  ep_devices.emplace_back(coreml_devices.gpu);
+  for (const TestCase& test_case : test_cases) {
+    SCOPED_TRACE(test_case.description);
 
-  for (const char* compute_units : {kCoremlProviderOption_MLComputeUnits_CPUAndGPU,
-                                    kCoremlProviderOption_MLComputeUnits_CPUAndNeuralEngine}) {
-    SCOPED_TRACE(compute_units);
+    const bool wants_npu = test_case.selection == Selection::kNpuAndGpu ||
+                           test_case.selection == Selection::kNpuOnly ||
+                           (test_case.selection == Selection::kEveryAdvertisedDevice && can_claim_npu);
+    const bool wants_gpu = test_case.selection == Selection::kNpuAndGpu ||
+                           test_case.selection == Selection::kGpuOnly ||
+                           (test_case.selection == Selection::kEveryAdvertisedDevice && can_claim_gpu);
+    if ((wants_npu && !can_claim_npu) || (wants_gpu && !can_claim_gpu)) {
+      continue;
+    }
+
+    std::vector<const OrtEpDevice*> devices;
+    if (wants_npu) {
+      devices.push_back(coreml_devices.npu);
+    }
+    if (wants_gpu) {
+      devices.push_back(coreml_devices.gpu);
+    }
 
     Ort::KeyValuePairs ep_options;
-    ep_options.Add(kCoremlProviderOption_MLComputeUnits, compute_units);
+    if (test_case.compute_units != nullptr) {
+      ep_options.Add(kCoremlProviderOption_MLComputeUnits, test_case.compute_units);
+    }
 
-    Ort::SessionOptions session_options;
-    session_options.AppendExecutionProvider_V2(*ort_env, ep_devices, ep_options);
-
-    // AppendExecutionProvider_V2 adds both devices and the current MLComputeUnits value to session_options.
-    // Session creation must succeed because MLComputeUnits enables an accelerator included in the selection.
-    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
-    ASSERT_NO_FATAL_FAILURE(AssertMul1SessionRunsOnCoreML(session));
+    // Run only the AppendExecutionProvider_V2 path because it passes the test case's full device selection to the
+    // factory. The "test.ep_to_select" path would pass only the first CoreML device. Verify the input assignment and
+    // disable ORT CPU fallback so CoreML must execute the entire graph.
+    RunBasicTest(
+        kCoreMLExecutionProvider, std::nullopt, ep_options,
+        [&devices](std::vector<const OrtEpDevice*>& selected) { selected = devices; },
+        /*test_auto_select*/ false, AssertMul1InputAssignedToCoreML, /*disable_cpu_ep_fallback*/ true);
   }
-}
-
-// Select only the CoreML GPU device explicitly via AppendExecutionProvider_V2 (the CPUAndGPU default path).
-TEST(AutoEpSelection, CoreMLEPExplicitGpu) {
-  if (!CoreMLCanClaimGpu(GetHardwareDeviceTypes())) {
-    GTEST_SKIP() << "No GPU hardware device that the CoreML EP factory can advertise on this machine.";
-  }
-
-  const CoreMLDevices coreml_devices = GetCoreMLEpDevices();
-  ASSERT_NE(coreml_devices.gpu, nullptr) << "CoreML EP did not claim the GPU hardware device.";
-
-  const auto select_devices = [&](std::vector<const OrtEpDevice*>& devices) {
-    devices = {coreml_devices.gpu};
-  };
-
-  // select_devices affects only the AppendExecutionProvider_V2 path. The "test.ep_to_select" path selects
-  // only the first CoreML device, so it cannot guarantee a GPU-only selection. Verify that the session uses
-  // CoreML, and disable ORT CPU fallback to prevent a false pass.
-  RunBasicTest(kCoreMLExecutionProvider, std::nullopt, Ort::KeyValuePairs{}, select_devices,
-               /*test_auto_select*/ false, AssertMul1SessionRunsOnCoreML, /*disable_cpu_ep_fallback*/ true);
 }
 
 // PREFER_NPU must select the CoreML EP for the Apple Neural Engine instead of falling back to the ORT CPU EP.
@@ -626,145 +600,103 @@ TEST(AutoEpSelection, CoreMLEPPreferGpu) {
   }
 }
 
-// A session created through the legacy AppendExecutionProvider API has no selected OrtEpDevice.
-// SessionGetEpDeviceForInputs therefore matches the assigned EP name against the OrtEpDevices returned by
-// GetEpDevices and reports the first match. Before CoreML was exposed through OrtEpFactory, GetEpDevices returned
-// no CoreML OrtEpDevices, so this lookup found no match and the API reported nullptr. With the factory registered,
-// the lookup reports the first advertised CoreML device, which may be an NPU or a GPU.
-// Because the lookup matches only the EP name, the reported device does not reflect the session's MLComputeUnits.
-// A CPUOnly session therefore reports the first advertised CoreML device. With the current factory, that device is
-// an NPU or a GPU. Advertising a CPU device would not resolve this mismatch because the lookup would still return
-// the first CoreML device in GetEpDevices, regardless of MLComputeUnits. This test captures the current behavior,
-// not a final API contract. It remains undecided which device, if any, a legacy CoreML session should report.
-TEST(AutoEpSelection, CoreMLLegacySessionReportsFirstAdvertisedEpDevice) {
-  const OrtEpDevice* first_coreml_device = GetFirstCoreMLEpDevice();
-  if (first_coreml_device == nullptr) {
-    GTEST_SKIP() << "CoreML EP advertised no OrtEpDevice on this machine, so the lookup has nothing to report.";
-  }
-
-  Ort::SessionOptions session_options;
-  session_options.AppendExecutionProvider(
-      kCoreMLExecutionProvider,
-      {{kCoremlProviderOption_MLComputeUnits, kCoremlProviderOption_MLComputeUnits_CPUOnly}});
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
-
-  const OrtApi* c_api = &Ort::GetApi();
-  const OrtEpDevice* input_ep_device = nullptr;
-  ASSERT_ORTSTATUS_OK(c_api->SessionGetEpDeviceForInputs(session, &input_ep_device, 1));
-
-  ASSERT_NE(input_ep_device, nullptr) << "Expected the legacy CoreML session to report an OrtEpDevice.";
-  EXPECT_STREQ(c_api->EpDevice_EpName(input_ep_device), kCoreMLExecutionProvider);
-  EXPECT_EQ(input_ep_device, first_coreml_device)
-      << "The legacy session has no selected OrtEpDevice, so the current name-based lookup should report the first "
-         "advertised CoreML device.";
-
-  // SessionGetEpDeviceForOutputs performs its own device lookup, so check it separately from
-  // SessionGetEpDeviceForInputs.
-  const OrtEpDevice* output_ep_device = nullptr;
-  ASSERT_ORTSTATUS_OK(c_api->SessionGetEpDeviceForOutputs(session, &output_ep_device, 1));
-
-  ASSERT_NE(output_ep_device, nullptr)
-      << "Expected SessionGetEpDeviceForOutputs to report an OrtEpDevice for the legacy CoreML session.";
-  EXPECT_STREQ(c_api->EpDevice_EpName(output_ep_device), kCoreMLExecutionProvider);
-  EXPECT_EQ(output_ep_device, first_coreml_device)
-      << "SessionGetEpDeviceForOutputs must report the same first advertised CoreML device as "
-         "SessionGetEpDeviceForInputs.";
-}
-
-// Verifies how the factory sets MLComputeUnits when the caller does not specify it: CPUAndNeuralEngine for NPU,
-// CPUAndGPU for GPU, and ALL for NPU plus GPU. Also verifies that a compatible user-provided value is preserved.
-// The test uses synthetic hardware devices, so it also runs on Apple systems where discovery reports no NPU or
-// GPU, such as Intel Macs.
-TEST(AutoEpSelection, CoreMLEPDefaultComputeUnits) {
-  OrtHardwareDevice npu{};
-  npu.type = OrtHardwareDeviceType_NPU;
-  OrtHardwareDevice gpu{};
-  gpu.type = OrtHardwareDeviceType_GPU;
-
-  const auto default_compute_units = [](std::initializer_list<const OrtHardwareDevice*> devices) -> std::string {
-    ProviderOptions options;
-    Ort::Status status{CoreMLEpFactory::ValidateDeviceSelectionAndResolveMLComputeUnits(
-        devices.begin(), devices.size(), options)};
-    if (!status.IsOK()) {
-      ADD_FAILURE() << status.GetErrorMessage();
-      return {};
-    }
-
-    const auto it = options.find(kCoremlProviderOption_MLComputeUnits);
-    if (it == options.end()) {
-      ADD_FAILURE() << "MLComputeUnits was not set.";
-      return {};
-    }
-
-    return it->second;
-  };
-
-  EXPECT_EQ(default_compute_units({&npu}), "CPUAndNeuralEngine");
-  EXPECT_EQ(default_compute_units({&gpu}), "CPUAndGPU");
-  EXPECT_EQ(default_compute_units({&npu, &gpu}), "ALL");
-
-  // A compatible user-provided MLComputeUnits value is preserved.
-  ProviderOptions user_options{{kCoremlProviderOption_MLComputeUnits, "CPUOnly"}};
-  const OrtHardwareDevice* npu_only[] = {&npu};
-  Ort::Status status{
-      CoreMLEpFactory::ValidateDeviceSelectionAndResolveMLComputeUnits(npu_only, 1, user_options)};
-  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
-  EXPECT_EQ(user_options[kCoremlProviderOption_MLComputeUnits], "CPUOnly");
-}
-
-// Verifies that MLComputeUnits reaches the factory through SessionOptions. With PREFER_NPU,
-// MLComputeUnits=CPUAndGPU must be rejected because the policy did not select the GPU.
-TEST(AutoEpSelection, CoreMLEPPreferNpuConflictingComputeUnits) {
-  if (!CoreMLCanClaimNpu(GetHardwareDeviceTypes())) {
-    GTEST_SKIP() << "No NPU hardware device, or this Core ML version cannot advertise it.";
-  }
-  ASSERT_NE(GetCoreMLEpDevices().npu, nullptr) << "CoreML EP did not claim the NPU hardware device.";
-
-  Ort::SessionOptions session_options;
-  session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);
-
-  const std::string option_key =
-      OrtSessionOptions::GetProviderOptionPrefix(kCoreMLExecutionProvider) + kCoremlProviderOption_MLComputeUnits;
-  session_options.AddConfigEntry(option_key.c_str(), "CPUAndGPU");
-
-  try {
-    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
-    FAIL() << "Session creation should have failed: MLComputeUnits=CPUAndGPU conflicts with the NPU selection.";
-  } catch (const Ort::Exception& ex) {
-    EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
-    EXPECT_THAT(ex.what(), ::testing::HasSubstr("was not selected"));
-  }
-}
-
-// Verifies that AppendExecutionProvider_V2 passes ep_options to factory validation. With an explicit GPU-only
-// selection, MLComputeUnits=CPUAndNeuralEngine must be rejected because the NPU was not selected.
-TEST(AutoEpSelection, CoreMLEPExplicitGpuConflictingComputeUnits) {
-  if (!CoreMLCanClaimGpu(GetHardwareDeviceTypes())) {
-    GTEST_SKIP() << "No GPU hardware device that the CoreML EP factory can advertise on this machine.";
+// MLComputeUnits must not enable an accelerator outside the selected devices. The policy path uses PREFER_NPU to
+// select only the NPU, then tests CPUAndGPU and ALL. The AppendExecutionProvider_V2 path selects only the GPU, then
+// tests CPUAndNeuralEngine and ALL. Each value must be rejected because it enables an unselected accelerator.
+TEST(AutoEpSelection, CoreMLEPConflictingComputeUnitsRejected) {
+  const HardwareDeviceTypes hardware = GetHardwareDeviceTypes();
+  const bool can_claim_npu = CoreMLCanClaimNpu(hardware);
+  const bool can_claim_gpu = CoreMLCanClaimGpu(hardware);
+  if (!can_claim_npu && !can_claim_gpu) {
+    GTEST_SKIP() << "No hardware device that the CoreML EP factory can advertise on this machine.";
   }
 
   const CoreMLDevices coreml_devices = GetCoreMLEpDevices();
-  ASSERT_NE(coreml_devices.gpu, nullptr) << "CoreML EP did not claim the GPU hardware device.";
 
-  Ort::SessionOptions session_options;
-  Ort::KeyValuePairs ep_options;
-  ep_options.Add(kCoremlProviderOption_MLComputeUnits, "CPUAndNeuralEngine");
-  std::vector<Ort::ConstEpDevice> ep_devices{Ort::ConstEpDevice{coreml_devices.gpu}};
-  session_options.AppendExecutionProvider_V2(*ort_env, ep_devices, ep_options);
+  const auto expect_rejected = [](Ort::SessionOptions& session_options, const char* explanation,
+                                  bool check_error_code) {
+    try {
+      Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+      FAIL() << "Expected session creation to fail: " << explanation;
+    } catch (const Ort::Exception& ex) {
+      if (check_error_code) {
+        EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      }
+      EXPECT_THAT(ex.what(), ::testing::HasSubstr("was not selected"));
+    }
+  };
 
-  try {
-    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
-    FAIL() << "Session creation should have failed: MLComputeUnits=CPUAndNeuralEngine conflicts with the GPU "
-              "selection.";
-  } catch (const Ort::Exception& ex) {
-    // Verify the diagnostic message independently of the V2 error-code handling.
-    // CoreMLEPPreferNpuConflictingComputeUnits verifies ORT_INVALID_ARGUMENT through the policy path.
-    EXPECT_THAT(ex.what(), ::testing::HasSubstr("was not selected"));
+  if (can_claim_npu) {
+    ASSERT_NE(coreml_devices.npu, nullptr) << "CoreML EP did not claim the NPU hardware device.";
+
+    for (const char* compute_units : {"CPUAndGPU", "ALL"}) {
+      SCOPED_TRACE(compute_units);
+      Ort::SessionOptions session_options;
+      session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);
+      const std::string option_key =
+          OrtSessionOptions::GetProviderOptionPrefix(kCoreMLExecutionProvider) + kCoremlProviderOption_MLComputeUnits;
+      session_options.AddConfigEntry(option_key.c_str(), compute_units);
+      expect_rejected(session_options, "the value enables the GPU, which PREFER_NPU did not select.",
+                      /*check_error_code*/ true);
+    }
+  }
+
+  if (can_claim_gpu) {
+    ASSERT_NE(coreml_devices.gpu, nullptr) << "CoreML EP did not claim the GPU hardware device.";
+
+    for (const char* compute_units : {"CPUAndNeuralEngine", "ALL"}) {
+      SCOPED_TRACE(compute_units);
+      Ort::KeyValuePairs ep_options;
+      ep_options.Add(kCoremlProviderOption_MLComputeUnits, compute_units);
+      std::vector<Ort::ConstEpDevice> ep_devices{Ort::ConstEpDevice{coreml_devices.gpu}};
+      Ort::SessionOptions session_options;
+      session_options.AppendExecutionProvider_V2(*ort_env, ep_devices, ep_options);
+      // The V2 registration path currently reports the factory's ORT_INVALID_ARGUMENT as ORT_FAIL, so only the
+      // diagnostic message is verified here. The policy path above verifies ORT_INVALID_ARGUMENT.
+      expect_rejected(session_options, "the value enables the NPU, but only the GPU was selected.",
+                      /*check_error_code*/ false);
+    }
   }
 }
 
-// Verifies that an unknown MLComputeUnits value reaches CoreMLOptions and is rejected during provider creation.
-// CoreMLEPComputeUnitsOverrideValidation separately verifies that the factory passes the value through.
+// The factory must reject selecting the same device type twice. AppendExecutionProvider_V2 validation
+// checks only that all selected devices use the same EP and factory, so the duplicate reaches the factory-specific
+// validation.
+TEST(AutoEpSelection, CoreMLEPDuplicateDeviceSelectionRejected) {
+  const HardwareDeviceTypes hardware = GetHardwareDeviceTypes();
+  if (!CoreMLCanClaimNpu(hardware) && !CoreMLCanClaimGpu(hardware)) {
+    GTEST_SKIP() << "No hardware device that the CoreML EP factory can advertise on this machine.";
+  }
+
+  const CoreMLDevices coreml_devices = GetCoreMLEpDevices();
+  ASSERT_TRUE(coreml_devices.npu != nullptr || coreml_devices.gpu != nullptr)
+      << "CoreML EP did not advertise any supported NPU or GPU device.";
+
+  // The factory checks for duplicate NPU and GPU selections separately, so test each available device type.
+  for (const OrtEpDevice* device : {coreml_devices.npu, coreml_devices.gpu}) {
+    if (device == nullptr) {
+      continue;
+    }
+    SCOPED_TRACE(testing::Message() << "device type "
+                                    << Ort::GetApi().HardwareDevice_Type(Ort::GetApi().EpDevice_Device(device)));
+
+    std::vector<Ort::ConstEpDevice> ep_devices{Ort::ConstEpDevice{device}, Ort::ConstEpDevice{device}};
+    Ort::SessionOptions session_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, ep_devices, Ort::KeyValuePairs{});
+
+    try {
+      Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+      FAIL() << "Expected session creation to fail: the same CoreML device was selected twice.";
+    } catch (const Ort::Exception& ex) {
+      // The V2 registration path currently reports the factory's ORT_INVALID_ARGUMENT as ORT_FAIL, so this test
+      // verifies only the diagnostic message.
+      EXPECT_THAT(ex.what(), ::testing::HasSubstr("At most one device of each type can be selected"));
+    }
+  }
+}
+
+// Verifies that an unknown MLComputeUnits value is not rejected by the factory but reaches CoreMLOptions, which
+// rejects it during provider creation, so session creation fails with the CoreMLOptions diagnostic.
 TEST(AutoEpSelection, CoreMLEPUnknownComputeUnitsRejectedByProvider) {
   const CoreMLDevices coreml_devices = GetCoreMLEpDevices();
   const OrtEpDevice* device = coreml_devices.npu != nullptr ? coreml_devices.npu : coreml_devices.gpu;
@@ -781,320 +713,146 @@ TEST(AutoEpSelection, CoreMLEPUnknownComputeUnitsRejectedByProvider) {
 
   try {
     Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
-    FAIL() << "Session creation should have failed: MLComputeUnits=NotAComputeUnitsValue is not a valid value.";
+    FAIL() << "Expected session creation to fail: MLComputeUnits=NotAComputeUnitsValue is not a valid value.";
   } catch (const Ort::Exception& ex) {
     EXPECT_THAT(ex.what(), ::testing::HasSubstr("Invalid value for option"));
     EXPECT_THAT(ex.what(), ::testing::HasSubstr("NotAComputeUnitsValue"));
   }
 }
 
-// Verifies that MLComputeUnits=CPUOnly can narrow an accelerator selection. The session must be created and run
-// successfully, and the graph must remain assigned to the CoreML EP. CoreML may enable only accelerators represented
-// by the selected OrtEpDevices. This does not prevent Core ML from using its internal CPU path.
-// MLComputeUnits=CPUOnly also does not reassign the graph to the ORT CPU EP.
-TEST(AutoEpSelection, CoreMLEPNarrowingComputeUnitsOverride) {
-  const HardwareDeviceTypes hardware = GetHardwareDeviceTypes();
-  const bool can_claim_npu = CoreMLCanClaimNpu(hardware);
-  const bool can_claim_gpu = CoreMLCanClaimGpu(hardware);
-  if (!can_claim_npu && !can_claim_gpu) {
-    GTEST_SKIP() << "No hardware device that the CoreML EP factory can advertise on this machine.";
-  }
+// The two tests below call CoreMLEpFactory through its EpFactoryInternal wrapper using synthetic hardware devices.
+// Device advertising depends only on the device type and runtime Core ML version, so the tests require no physical
+// accelerator and can run on Intel Macs that meet the version requirement. Any published OrtEpDevice instances are
+// released through the EP API.
+namespace {
 
-  const CoreMLDevices coreml_devices = GetCoreMLEpDevices();
-  std::vector<Ort::ConstEpDevice> ep_devices;
-  if (can_claim_npu) {
-    ASSERT_NE(coreml_devices.npu, nullptr) << "CoreML EP did not claim the NPU hardware device.";
-    ep_devices.emplace_back(coreml_devices.npu);
-  }
-  if (can_claim_gpu) {
-    ASSERT_NE(coreml_devices.gpu, nullptr) << "CoreML EP did not claim the GPU hardware device.";
-    ep_devices.emplace_back(coreml_devices.gpu);
-  }
-
-  Ort::KeyValuePairs ep_options;
-  ep_options.Add(kCoremlProviderOption_MLComputeUnits, "CPUOnly");
-
-  Ort::SessionOptions session_options;
-  session_options.AppendExecutionProvider_V2(*ort_env, ep_devices, ep_options);
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
-
-  ASSERT_NO_FATAL_FAILURE(AssertMul1SessionRunsOnCoreML(session));
+// Creates a synthetic hardware device of the given type. The device's vendor does not affect whether the factory
+// advertises the device. The Apple values below match those reported by device discovery.
+OrtHardwareDevice MakeSyntheticHardwareDevice(OrtHardwareDeviceType type) {
+  OrtHardwareDevice device{};
+  device.type = type;
+  device.vendor_id = 0x106B;  // Apple's PCI vendor ID
+  device.vendor = "Apple";
+  return device;
 }
 
-// Verifies that a user-provided MLComputeUnits value is compatible with the selected accelerators. The value
-// may disable selected accelerators, as CPUOnly does, but it must not enable an accelerator that was not selected.
-TEST(AutoEpSelection, CoreMLEPComputeUnitsOverrideValidation) {
-  OrtHardwareDevice npu{};
-  npu.type = OrtHardwareDeviceType_NPU;
-  OrtHardwareDevice gpu{};
-  gpu.type = OrtHardwareDeviceType_GPU;
+// Number of calls to the injected GetVersion callback.
+int g_injected_version_calls = 0;
 
-  const auto validate = [](std::initializer_list<const OrtHardwareDevice*> devices,
-                           std::string_view compute_units) {
-    ProviderOptions options{{kCoremlProviderOption_MLComputeUnits, std::string{compute_units}}};
-    return Ort::Status{CoreMLEpFactory::ValidateDeviceSelectionAndResolveMLComputeUnits(
-        devices.begin(), devices.size(), options)};
-  };
+}  // namespace
 
-  // Values that enable only selected accelerators, or disable them with CPUOnly, are allowed.
-  EXPECT_TRUE(validate({&npu}, "CPUAndNeuralEngine").IsOK());
-  EXPECT_TRUE(validate({&npu}, "CPUOnly").IsOK());
-  EXPECT_TRUE(validate({&gpu}, "CPUAndGPU").IsOK());
-  EXPECT_TRUE(validate({&gpu}, "CPUOnly").IsOK());
-  EXPECT_TRUE(validate({&npu, &gpu}, "ALL").IsOK());
-  EXPECT_TRUE(validate({&npu, &gpu}, "CPUAndNeuralEngine").IsOK());
-  EXPECT_TRUE(validate({&npu, &gpu}, "CPUAndGPU").IsOK());
-  EXPECT_TRUE(validate({&npu, &gpu}, "CPUOnly").IsOK());
-
-  // Values that enable an unselected accelerator are rejected.
-  ExpectInvalidArgument(validate({&npu}, "CPUAndGPU"), "NPU selected, CPUAndGPU requested");
-  ExpectInvalidArgument(validate({&npu}, "ALL"), "NPU selected, ALL requested");
-  ExpectInvalidArgument(validate({&gpu}, "CPUAndNeuralEngine"), "GPU selected, CPUAndNeuralEngine requested");
-  ExpectInvalidArgument(validate({&gpu}, "ALL"), "GPU selected, ALL requested");
-
-  // This factory helper checks only whether MLComputeUnits is compatible with the selected devices.
-  // Unknown values are left for CoreMLOptions to reject during provider creation.
-  EXPECT_TRUE(validate({&npu}, "NotAComputeUnitsValue").IsOK());
-}
-
-// Tests which device selections the factory accepts or rejects.
-// Valid selections contain one NPU, one GPU, or one NPU plus one GPU.
-// Empty lists, CPU devices, duplicate device types, a null device entry, and a null device-list pointer with a
-// nonzero device count must return ORT_INVALID_ARGUMENT.
-TEST(AutoEpSelection, CoreMLEPDeviceValidation) {
-  OrtHardwareDevice npu{};
-  npu.type = OrtHardwareDeviceType_NPU;
-  OrtHardwareDevice gpu{};
-  gpu.type = OrtHardwareDeviceType_GPU;
-  OrtHardwareDevice cpu{};
-  cpu.type = OrtHardwareDeviceType_CPU;
-
-  const auto validate = [](std::initializer_list<const OrtHardwareDevice*> devices) {
-    ProviderOptions options;
-    return Ort::Status{CoreMLEpFactory::ValidateDeviceSelectionAndResolveMLComputeUnits(
-        devices.begin(), devices.size(), options)};
-  };
-
-  // The valid selections, for contrast.
-  EXPECT_TRUE(validate({&npu}).IsOK());
-  EXPECT_TRUE(validate({&gpu}).IsOK());
-  EXPECT_TRUE(validate({&npu, &gpu}).IsOK());
-
-  ExpectInvalidArgument(validate({}), "no devices");
-  ExpectInvalidArgument(validate({&cpu}), "CPU only: the factory never claims the CPU device");
-  ExpectInvalidArgument(validate({&cpu, &gpu}), "GPU mixed with an unsupported device");
-  ExpectInvalidArgument(validate({&npu, &npu}), "duplicate NPU");
-  ExpectInvalidArgument(validate({&gpu, &gpu}), "duplicate GPU");
-
-  ExpectInvalidArgument(validate({nullptr}), "null device");
-  ProviderOptions options;
-  const Ort::Status null_device_list_status{
-      CoreMLEpFactory::ValidateDeviceSelectionAndResolveMLComputeUnits(nullptr, 1, options)};
-  ExpectInvalidArgument(null_device_list_status, "null device list");
-}
-
-// Verifies CanClaimDeviceType independently of the host hardware and runtime Core ML version.
-// This test covers the Core ML 5 minimum, the Core ML 6 NPU requirement, and the version-independent CPU exclusion.
-TEST(AutoEpSelection, CoreMLEPClaimabilityByVersion) {
-  const auto can_claim = [](OrtHardwareDeviceType type, int32_t coreml_version) {
-    return CoreMLEpFactory::CanClaimDeviceType(type, coreml_version);
-  };
-
-  // Below the EP's Core ML 5 minimum (provider creation would fail) nothing is advertised.
-  EXPECT_FALSE(can_claim(OrtHardwareDeviceType_NPU, 4));
-  EXPECT_FALSE(can_claim(OrtHardwareDeviceType_GPU, 4));
-
-  // Core ML 5: the GPU is advertised, the NPU is not (CPUAndNeuralEngine requires Core ML 6).
-  EXPECT_FALSE(can_claim(OrtHardwareDeviceType_NPU, 5));
-  EXPECT_TRUE(can_claim(OrtHardwareDeviceType_GPU, 5));
-
-  // Core ML 6+: both.
-  EXPECT_TRUE(can_claim(OrtHardwareDeviceType_NPU, 6));
-  EXPECT_TRUE(can_claim(OrtHardwareDeviceType_GPU, 6));
-  EXPECT_TRUE(can_claim(OrtHardwareDeviceType_NPU, 7));
-  EXPECT_TRUE(can_claim(OrtHardwareDeviceType_GPU, 7));
-
-  // The CPU device is never claimed regardless of version (left to the CPU EP).
-  EXPECT_FALSE(can_claim(OrtHardwareDeviceType_CPU, 4));
-  EXPECT_FALSE(can_claim(OrtHardwareDeviceType_CPU, 8));
-}
-
-// Tests SelectDevicesToClaim with synthetic hardware devices instead of relying on host discovery. Covers CPU
-// filtering, input order, duplicate devices of the same type, the max_ep_devices limit, and version checks
-// independently of the Core ML version installed on the host.
-TEST(AutoEpSelection, CoreMLEPSelectDevicesToClaim) {
-  OrtHardwareDevice npu0{};
-  npu0.type = OrtHardwareDeviceType_NPU;
-  OrtHardwareDevice npu1{};
-  npu1.type = OrtHardwareDeviceType_NPU;
-  OrtHardwareDevice gpu0{};
-  gpu0.type = OrtHardwareDeviceType_GPU;
-  OrtHardwareDevice gpu1{};
-  gpu1.type = OrtHardwareDeviceType_GPU;
-  OrtHardwareDevice cpu{};
-  cpu.type = OrtHardwareDeviceType_CPU;
-
-  constexpr int32_t coreml6 = 6;
-  const auto select = [](std::initializer_list<const OrtHardwareDevice*> devices, int32_t coreml_version,
-                         size_t max_ep_devices = 8) {
-    return CoreMLEpFactory::SelectDevicesToClaim(gsl::make_span(devices.begin(), devices.size()), coreml_version,
-                                                 max_ep_devices);
-  };
-
-  // CPU + NPU + GPU -> the CPU is filtered out. The NPU and GPU remain in input order.
-  {
-    const auto selected = select({&cpu, &npu0, &gpu0}, coreml6);
-    ASSERT_EQ(selected.size(), 2u);
-    EXPECT_EQ(selected[0], &npu0);
-    EXPECT_EQ(selected[1], &gpu0);
+// Verifies that GetSupportedDevices preserves input order, advertises at most one NPU and one GPU, ignores
+// duplicate devices of either type, and excludes CPU devices.
+// It publishes no more than max_ep_devices devices and leaves the remaining output entries unchanged.
+// Every successful call writes the output count, including zero when no devices are advertised.
+TEST(AutoEpSelection, CoreMLEPGetSupportedDevicesEnumeration) {
+  if (coreml::util::CoreMLVersion() < MINIMUM_COREML_VERSION_FOR_NEURAL_ENGINE_SELECTION) {
+    GTEST_SKIP() << "This test requires Core ML 6 or later because it expects the factory to advertise an NPU.";
   }
 
-  // Repeat the NPU+GPU selection with the GPU first. Together with the NPU-first case above, this verifies that
-  // selection preserves input order instead of sorting by device type.
-  {
-    const auto selected = select({&cpu, &gpu0, &npu0}, coreml6);
-    ASSERT_EQ(selected.size(), 2u);
-    EXPECT_EQ(selected[0], &gpu0);
-    EXPECT_EQ(selected[1], &npu0);
-  }
+  EpFactoryInternal factory{std::make_unique<CoreMLEpFactory>()};
+  OrtEpFactory* c_factory = &factory;
+  ASSERT_NE(c_factory->GetSupportedDevices, nullptr);
 
-  // Duplicate devices of a type: only the first of each type is advertised.
-  {
-    const auto selected = select({&gpu0, &gpu1}, coreml6);
-    ASSERT_EQ(selected.size(), 1u);
-    EXPECT_EQ(selected[0], &gpu0);
-  }
-  {
-    const auto selected = select({&npu0, &npu1, &gpu0, &gpu1}, coreml6);
-    ASSERT_EQ(selected.size(), 2u);
-    EXPECT_EQ(selected[0], &npu0);
-    EXPECT_EQ(selected[1], &gpu0);
-  }
+  const OrtHardwareDevice gpu = MakeSyntheticHardwareDevice(OrtHardwareDeviceType_GPU);
+  const OrtHardwareDevice npu = MakeSyntheticHardwareDevice(OrtHardwareDeviceType_NPU);
+  const OrtHardwareDevice second_gpu = MakeSyntheticHardwareDevice(OrtHardwareDeviceType_GPU);
+  const OrtHardwareDevice second_npu = MakeSyntheticHardwareDevice(OrtHardwareDeviceType_NPU);
+  const OrtHardwareDevice cpu = MakeSyntheticHardwareDevice(OrtHardwareDeviceType_CPU);
 
-  // max_ep_devices limits the number of selected devices.
-  {
-    const auto selected = select({&npu0, &gpu0}, coreml6, /*max_ep_devices*/ 1);
-    ASSERT_EQ(selected.size(), 1u);
-    EXPECT_EQ(selected[0], &npu0);
-  }
+  constexpr size_t kOutputCapacity = 5;
+  OrtEpDevice untouched_marker{};
 
-  // Verify that selection applies the CanClaimDeviceType version checks.
-  {
-    const auto selected = select({&npu0, &gpu0}, /*coreml_version*/ 5);
-    ASSERT_EQ(selected.size(), 1u);
-    EXPECT_EQ(selected[0], &gpu0);
-  }
-  EXPECT_TRUE(select({&npu0, &gpu0}, /*coreml_version*/ 4).empty());
-}
+  // Calls GetSupportedDevices on the given hardware devices with max_ep_devices as the output capacity. Returns the
+  // hardware device behind each published OrtEpDevice in publication order and releases the instances. Output
+  // entries beyond the published count must keep their marker value.
+  const auto published_hardware = [&](gsl::span<const OrtHardwareDevice* const> hardware, size_t max_ep_devices) {
+    std::array<OrtEpDevice*, kOutputCapacity> ep_devices{};
+    ep_devices.fill(&untouched_marker);
+    size_t num_ep_devices = 42;  // a successful call must overwrite this
+    Ort::Status status{c_factory->GetSupportedDevices(c_factory, hardware.data(), hardware.size(),
+                                                      ep_devices.data(), max_ep_devices, &num_ep_devices)};
 
-// Tests CreateAndPublishEpDevices with injected create and release callbacks. On failure, all previously
-// created devices must be released and the output parameters must remain unchanged. On success, all device
-// pointers must be published without releasing any devices. The dummy OrtEpDevice objects are never dereferenced.
-// Their addresses identify which devices are published or released.
-TEST(AutoEpSelection, CoreMLEPCreateAndPublishEpDevices) {
-  OrtHardwareDevice npu{};
-  npu.type = OrtHardwareDeviceType_NPU;
-  OrtHardwareDevice gpu{};
-  gpu.type = OrtHardwareDeviceType_GPU;
-  const std::array<const OrtHardwareDevice*, 2> selected{&npu, &gpu};
+    InlinedVector<const OrtHardwareDevice*, 2> result;
+    EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
+    EXPECT_LE(num_ep_devices, max_ep_devices);
+    if (!status.IsOK() || num_ep_devices > max_ep_devices) {
+      return result;
+    }
 
-  OrtEpDevice dummy_device0{};
-  OrtEpDevice dummy_device1{};
-
-  InlinedVector<OrtEpDevice*, 2> released;
-  const auto release = [&released](OrtEpDevice* ep_device) { released.push_back(ep_device); };
-
-  // Initialize the caller-owned output array with distinct non-null pointers. Failure cases verify that these values
-  // remain unchanged. Initializing the array with nullptr would not distinguish "left untouched" from
-  // "cleared to nullptr".
-  OrtEpDevice sentinel0{};
-  OrtEpDevice sentinel1{};
-  const std::array<OrtEpDevice*, 2> untouched{&sentinel0, &sentinel1};
-
-  // The second device creation fails. The first device must be released, and the output parameters must remain
-  // unchanged.
-  {
-    size_t create_calls = 0;
-    const auto create_second_fails = [&](const OrtHardwareDevice&, OrtEpDevice** ep_device) -> OrtStatus* {
-      if (create_calls++ == 0) {
-        *ep_device = &dummy_device0;
-        return nullptr;
+    for (size_t i = 0; i < ep_devices.size(); ++i) {
+      if (i >= num_ep_devices) {
+        EXPECT_EQ(ep_devices[i], &untouched_marker) << "Entry " << i << " lies beyond the published count.";
+        continue;
       }
 
-      return Ort::GetApi().CreateStatus(ORT_FAIL, "injected creation failure");
-    };
+      EXPECT_NE(ep_devices[i], &untouched_marker) << "Published entry " << i << " was not written.";
+      EXPECT_NE(ep_devices[i], nullptr) << "Published entry " << i << " is null.";
+      if (ep_devices[i] == nullptr || ep_devices[i] == &untouched_marker) {
+        continue;
+      }
 
-    std::array<OrtEpDevice*, 2> ep_devices = untouched;
-    size_t num_ep_devices = 42;  // Initial value that must remain unchanged on failure.
+      result.push_back(Ort::GetApi().EpDevice_Device(ep_devices[i]));
+      Ort::GetEpApi().ReleaseEpDevice(ep_devices[i]);
+    }
 
-    Ort::Status status{CoreMLEpFactory::CreateAndPublishEpDevices(gsl::make_span(selected), create_second_fails,
-                                                                  release, ep_devices.data(), &num_ep_devices)};
-    ASSERT_FALSE(status.IsOK());
-    EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("injected creation failure"));
-    EXPECT_THAT(released, ::testing::ElementsAre(&dummy_device0));
-    EXPECT_THAT(ep_devices, ::testing::ElementsAreArray(untouched));
-    EXPECT_EQ(num_ep_devices, size_t{42});
-  }
+    return result;
+  };
 
-  // The first device creation fails. No devices need to be released, and the output parameters must remain unchanged.
-  {
-    released.clear();
-    const auto create_first_fails = [](const OrtHardwareDevice&, OrtEpDevice**) -> OrtStatus* {
-      return Ort::GetApi().CreateStatus(ORT_FAIL, "injected creation failure");
-    };
+  // Only the first GPU and NPU are advertised, in that order.
+  const std::array<const OrtHardwareDevice*, 5> gpu_first{&gpu, &npu, &second_gpu, &second_npu, &cpu};
+  EXPECT_THAT(published_hardware(gpu_first, kOutputCapacity), ::testing::ElementsAre(&gpu, &npu));
 
-    std::array<OrtEpDevice*, 2> ep_devices = untouched;
-    size_t num_ep_devices = 42;  // Initial value that must remain unchanged on failure.
+  // Skip the leading CPU device and preserve the NPU-before-GPU order.
+  const std::array<const OrtHardwareDevice*, 3> cpu_first{&cpu, &npu, &gpu};
+  EXPECT_THAT(published_hardware(cpu_first, kOutputCapacity), ::testing::ElementsAre(&npu, &gpu));
 
-    Ort::Status status{CoreMLEpFactory::CreateAndPublishEpDevices(gsl::make_span(selected), create_first_fails,
-                                                                  release, ep_devices.data(), &num_ep_devices)};
-    ASSERT_FALSE(status.IsOK());
-    EXPECT_TRUE(released.empty());
-    EXPECT_THAT(ep_devices, ::testing::ElementsAreArray(untouched));
-    EXPECT_EQ(num_ep_devices, size_t{42});
-  }
+  // The output capacity limits the total number of published devices. A capacity of 1 keeps only the first
+  // supported device. A capacity of 0 produces no devices.
+  EXPECT_THAT(published_hardware(gpu_first, 1), ::testing::ElementsAre(&gpu));
+  EXPECT_THAT(published_hardware(gpu_first, 0), ::testing::IsEmpty());
 
-  // Success: both devices are published, nothing is released.
-  {
-    released.clear();
-    size_t create_calls = 0;
-    const auto create_ok = [&](const OrtHardwareDevice&, OrtEpDevice** ep_device) -> OrtStatus* {
-      *ep_device = (create_calls++ == 0) ? &dummy_device0 : &dummy_device1;
-      return nullptr;
-    };
-
-    std::array<OrtEpDevice*, 2> ep_devices{nullptr, nullptr};
-    size_t num_ep_devices = 0;
-
-    Ort::Status status{CoreMLEpFactory::CreateAndPublishEpDevices(gsl::make_span(selected), create_ok, release,
-                                                                  ep_devices.data(), &num_ep_devices)};
-    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
-    EXPECT_EQ(num_ep_devices, size_t{2});
-    EXPECT_EQ(ep_devices[0], &dummy_device0);
-    EXPECT_EQ(ep_devices[1], &dummy_device1);
-    EXPECT_TRUE(released.empty());
-  }
-
-  // No devices selected: a successful call still sets the output count to zero, as required by GetSupportedDevices.
-  {
-    released.clear();
-    const auto create_never_called = [](const OrtHardwareDevice&, OrtEpDevice**) -> OrtStatus* {
-      ADD_FAILURE() << "create_ep_device must not be called when nothing was selected.";
-      return Ort::GetApi().CreateStatus(ORT_FAIL, "unexpected call");
-    };
-
-    std::array<OrtEpDevice*, 2> ep_devices = untouched;
-    size_t num_ep_devices = 42;
-
-    Ort::Status status{CoreMLEpFactory::CreateAndPublishEpDevices(gsl::span<const OrtHardwareDevice* const>{},
-                                                                  create_never_called, release, ep_devices.data(),
-                                                                  &num_ep_devices)};
-    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
-    EXPECT_EQ(num_ep_devices, size_t{0});
-    EXPECT_THAT(ep_devices, ::testing::ElementsAreArray(untouched));
-    EXPECT_TRUE(released.empty());
-  }
+  // When the input contains only a CPU device, no devices are published and the output count is set to zero.
+  const std::array<const OrtHardwareDevice*, 1> cpu_only{&cpu};
+  EXPECT_THAT(published_hardware(cpu_only, kOutputCapacity), ::testing::IsEmpty());
 }
+
+// If the second OrtEpDevice creation fails, GetSupportedDevices must return an error, release the first device,
+// and leave the output array and count unchanged, following ORT's C API convention for failed calls.
+// The test replaces the GetVersion callback on EpFactoryInternal with one that returns a valid version on the
+// first call and an invalid version on the second. CreateEpDevice validates each version, causing the second
+// creation to fail.
+TEST(AutoEpSelection, CoreMLEPGetSupportedDevicesRollsBackOnCreateFailure) {
+  if (coreml::util::CoreMLVersion() < MINIMUM_COREML_VERSION_FOR_NEURAL_ENGINE_SELECTION) {
+    GTEST_SKIP() << "This test requires Core ML 6 or later so the factory can advertise both an NPU and a GPU.";
+  }
+
+  EpFactoryInternal factory{std::make_unique<CoreMLEpFactory>()};
+  OrtEpFactory* c_factory = &factory;
+  g_injected_version_calls = 0;
+  c_factory->GetVersion = [](const OrtEpFactory*) noexcept -> const char* {
+    // A valid version for the first device and an invalid one for the second, so the second CreateEpDevice fails.
+    return ++g_injected_version_calls == 1 ? "1.0.0" : "not a version";
+  };
+
+  const OrtHardwareDevice npu = MakeSyntheticHardwareDevice(OrtHardwareDeviceType_NPU);
+  const OrtHardwareDevice gpu = MakeSyntheticHardwareDevice(OrtHardwareDeviceType_GPU);
+  const std::array<const OrtHardwareDevice*, 2> hardware{&npu, &gpu};
+
+  OrtEpDevice untouched_marker{};
+  std::array<OrtEpDevice*, 2> ep_devices{&untouched_marker, &untouched_marker};
+  size_t num_ep_devices = 42;
+  Ort::Status status{c_factory->GetSupportedDevices(c_factory, hardware.data(), hardware.size(), ep_devices.data(),
+                                                    ep_devices.size(), &num_ep_devices)};
+
+  ASSERT_FALSE(status.IsOK())
+      << "GetSupportedDevices succeeded although the second CreateEpDevice was made to fail.";
+  EXPECT_EQ(g_injected_version_calls, 2)
+      << "GetVersion must be called for both device creation attempts.";
+  EXPECT_THAT(ep_devices, ::testing::Each(&untouched_marker));
+  EXPECT_EQ(num_ep_devices, size_t{42});
+}
+
 #endif  // defined(USE_COREML) && defined(__APPLE__)
 
 #if defined(USE_COREML) && !defined(__APPLE__)
@@ -1112,7 +870,7 @@ TEST(AutoEpSelection, CoreMLEPIsNotRegisteredOnNonApplePlatforms) {
   ASSERT_ORTSTATUS_OK(c_api->GetNumHardwareDevices(*ort_env, &num_devices));
   ASSERT_GT(num_devices, 0u) << "Expected device discovery to report at least the CPU device.";
 
-  std::vector<const OrtHardwareDevice*> devices(num_devices);
+  InlinedVector<const OrtHardwareDevice*> devices(num_devices);
   ASSERT_ORTSTATUS_OK(c_api->GetHardwareDevices(*ort_env, devices.data(), num_devices));
 
   OrtDeviceEpIncompatibilityDetails* details = nullptr;
