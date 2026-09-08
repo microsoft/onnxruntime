@@ -7,13 +7,17 @@ run-scoped static workspace preallocation for CUDA `MatMulNBits`. The preallocat
 path declares each kernel's workspace and includes its lifetime in ORT's activation
 memory pattern.
 
-These results cover **prefill only**, not token-by-token decode. Each run processes
-a prefill chunk with a one-token KV cache, which selects the fpA-intB GEMM path
-whose CUTLASS workspace is targeted by this feature. The RTX 5090 runs use 1,024
-new tokens to represent a long-prompt prefill workload. The preserved T1000 runs
-used 64 new tokens. Ordinary batch-1 decode processes one new token and typically
-selects the workspace-free GEMV path, so the latency changes reported here should
-not be interpreted as decode improvements.
+Most results below cover **prefill only**. Each of those runs processes a prefill
+chunk with a one-token KV cache, which selects the fpA-intB GEMM path and its
+CUTLASS workspace. The RTX 5090 prefill-only runs use 1,024 new tokens to
+represent a long-prompt workload. The preserved T1000 runs used 64 new tokens.
+
+The RTX 5090 section also includes a Qwen 2.5 1.5B generation scenario with a
+1,024-token prefill followed by 128 chained batch-1 decode steps. It compares
+preallocation for both the fpA-intB CUTLASS workspace and the legacy
+dequantize-plus-cuBLAS workspace. Ordinary batch-1 decode typically selects a
+workspace-free GEMV path, so the generation scenario reports prefill and decode
+latency separately.
 
 ## Methodology
 
@@ -37,6 +41,24 @@ not be interpreted as decode improvements.
 Warmup, memory-measurement, and timed iterations all reuse the same feeds. Present
 key/value outputs are not fed into the next iteration, so the benchmark does not
 simulate a growing KV cache or an autoregressive generation loop.
+
+The generation scenario uses a separate methodology:
+
+- Workload: one 1,024-token prefill followed by 128 chained decode steps
+- Initial past key/value cache: empty
+- Decode cache: each step's present key/value outputs become the next step's past
+  key/value inputs
+- Decode input IDs: deterministic and identical across configurations
+- Warmup scenarios: 2
+- Memory-measurement scenarios: 1
+- Timed scenarios: 10
+- Each scenario resets to the same initial empty cache
+- Baseline and preallocated configurations ran in separate fresh processes
+- fpA-intB comparison: `ep.cuda.fpa_intb_gemm=1`
+- Legacy comparison: `ep.cuda.fpa_intb_gemm=0`
+
+The generation timings include full logits and present key/value outputs. Each
+complete warmup traverses every decode-cache length before measurement.
 
 | GPU | Compute capability | CUDA toolkit | Driver |
 |---|---:|---:|---:|
@@ -346,6 +368,73 @@ Hy-MT2 did not produce net reservation reductions for the tested shape. All five
 models substantially reduced allocator calls. Latency moved in different
 directions across the single paired runs.
 
+### Qwen 2.5 1.5B generation scenario
+
+Model:
+`qwen2.5-1.5b-instruct-cuda-gpu:4`
+
+Each scenario performs one 1,024-token prefill followed by 128 autoregressive
+decode steps. The fpA-intB configurations exercise CUTLASS workspace during
+prefill and normally use fpA-intB GEMV during decode. Disabling fpA-intB forces
+prefill through dequantize-plus-cuBLAS workspace, while decode normally uses the
+legacy fused Q4 path.
+
+#### fpA-intB path
+
+| Metric | Baseline | Preallocated | Difference |
+|---|---:|---:|---:|
+| Planned workspace nodes | 0 | 141 | +141 |
+| Largest workspace | 0 B | 6,291,456 B (6.00 MiB) | +6,291,456 B |
+| Measured arena reservation | 420,757,760 B (401.27 MiB) | 421,855,744 B (402.31 MiB) | +1,097,984 B (+0.3%) |
+| Arena allocation calls | 431,834 | 433,854 | +0.5% |
+| WDDM inference peak | 2,260 MiB | 2,270 MiB | +10 MiB |
+| WDDM inference increase | 404 MiB | 414 MiB | +10 MiB |
+| End-to-end average | 2,544.43 ms | 2,513.70 ms | -1.2% |
+| End-to-end P50 | 2,434.93 ms | 2,424.55 ms | -0.4% |
+| End-to-end P90 | 2,760.08 ms | 2,651.59 ms | -3.9% |
+| Prefill average | 87.14 ms | 84.83 ms | -2.7% |
+| Decode average per token | 19.20 ms | 18.98 ms | -1.2% |
+| Decode P90 per token | 23.19 ms | 21.84 ms | -5.8% |
+| Decode P99 per token | 30.20 ms | 29.26 ms | -3.1% |
+| Initialization | 57.87 s | 67.75 s | +17.1% |
+
+The 6 MiB fpA-intB workspace did not reduce memory for this complete generation
+scenario. The measured arena reservation increased by approximately 1.05 MiB,
+and the WDDM inference peak increased by 10 MiB. The 128 decode steps use
+workspace-free fpA-intB GEMV in the normal dispatch, so their growing cache and
+output allocations dominate the scenario's memory high-water mark.
+
+#### Legacy path
+
+| Metric | Baseline | Preallocated | Difference |
+|---|---:|---:|---:|
+| Planned workspace nodes | 0 | 141 | +141 |
+| Largest workspace | 0 B | 100,663,296 B (96.00 MiB) | +100,663,296 B |
+| Measured arena reservation | 545,014,016 B (519.77 MiB) | 450,691,328 B (429.81 MiB) | **-94,322,688 B (-17.3%)** |
+| Arena allocation calls | 431,378 | 429,686 | -0.4% |
+| WDDM inference peak | 2,298 MiB | 2,212 MiB | **-86 MiB** |
+| WDDM inference increase | 526 MiB | 440 MiB | **-86 MiB** |
+| End-to-end average | 2,465.07 ms | 2,453.29 ms | -0.5% |
+| End-to-end P50 | 2,407.36 ms | 2,449.66 ms | +1.8% |
+| End-to-end P90 | 2,568.17 ms | 2,526.84 ms | -1.6% |
+| Prefill average | 87.09 ms | 88.27 ms | +1.4% |
+| Decode average per token | 18.58 ms | 18.48 ms | -0.5% |
+| Decode P90 per token | 21.11 ms | 20.93 ms | -0.8% |
+| Decode P99 per token | 28.88 ms | 30.88 ms | +6.9% |
+| Initialization | 1.80 s | 1.68 s | -6.7% |
+
+Legacy workspace preallocation reduced the measured arena reservation by
+94,322,688 bytes (approximately 89.95 MiB) and the process-scoped WDDM inference
+peak by 86 MiB. The reduction is close to the 96 MiB largest declared workspace,
+showing that the dequantized-weight buffer substantially overlapped activation
+storage instead of requiring a separate allocation.
+
+These are single paired measurements on a laptop GPU; fpA-intB ran
+baseline-first, while legacy ran preallocated-first. The end-to-end, prefill, and
+decode latency differences are small and move in mixed directions across
+percentiles, so they do not establish a stable latency effect. The legacy memory
+reduction is the main result from this generation scenario.
+
 ## NVIDIA T1000
 
 The T1000 runs predate the initialization-breakdown instrumentation. Their
@@ -438,14 +527,12 @@ implementation families:
 | fpA-intB CUDA GEMV | None | No current benefit |
 | fpA-intB CUTLASS GEMM | CUTLASS runner workspace | **Yes** |
 | Fused small-M CUDA kernels | None allocated from the device allocator | No current benefit |
-| Full dequantize plus cuBLAS GEMM | Full dequantized weight matrix | Not currently; potential candidate |
-| Chunked dequantize plus cuBLAS GEMM | One dequantized weight chunk | Not currently; potential candidate |
+| Full dequantize plus cuBLAS GEMM | Full dequantized weight matrix | **Yes** |
+| Chunked dequantize plus cuBLAS GEMM | One dequantized weight chunk | **Yes** |
 
-Therefore, one of the five runtime implementation families currently consumes
-planned workspace. Three families have per-run allocator-backed temporary
-storage and could benefit conceptually: fpA-intB CUTLASS GEMM, full dequantize
-plus cuBLAS GEMM, and chunked dequantize plus cuBLAS GEMM. Only the CUTLASS
-workspace is currently declared and acquired through the preallocation API.
+Therefore, three of the five runtime implementation families currently consume
+planned workspace: fpA-intB CUTLASS GEMM, full dequantize plus cuBLAS GEMM, and
+chunked dequantize plus cuBLAS GEMM. The two GEMV families remain workspace-free.
 
 The fpA-intB path profiles tactics and selects between two execution families:
 
@@ -472,8 +559,9 @@ If neither optimized family applies, CUDA dequantizes the quantized weight into
 a temporary floating-point buffer and invokes cuBLAS GEMM. The normal fallback
 materializes the full `[N, K_padded]` matrix. The chunked fallback reduces peak
 scratch by dequantizing and multiplying one range of `N` rows at a time. Both
-currently allocate their scratch dynamically with `GetScratchBuffer()` and do
-not declare workspace requirements.
+declare the required scratch size and first request their buffer from the
+preallocated workspace. When no planned workspace is available, they fall back
+to a dynamic scratch allocation.
 
 Initialization-time weight prepacking is separate from these runtime
 implementations. Its persistent packed weights and temporary conversion or

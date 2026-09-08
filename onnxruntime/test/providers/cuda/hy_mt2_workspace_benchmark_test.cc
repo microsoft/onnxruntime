@@ -53,6 +53,7 @@ constexpr int kDefaultWarmupRuns = 5;
 constexpr int kDefaultMemoryMeasurementRuns = 3;
 constexpr int kDefaultMeasuredRuns = 30;
 constexpr int64_t kDefaultPastSequenceLength = 0;
+constexpr int64_t kDefaultDecodeTokens = 0;
 constexpr int kMinFpAIntBSm = 75;
 
 enum class CacheLayout {
@@ -396,11 +397,14 @@ const ModelProfile& GetModelProfile() {
 
 std::string BuildMaxShapeOverride(const ModelProfile& profile,
                                   int64_t sequence_length,
-                                  int64_t past_sequence_length) {
-  const int64_t max_past_sequence_length = std::max<int64_t>(past_sequence_length, 1);
+                                  int64_t past_sequence_length,
+                                  int64_t decode_tokens) {
+  const int64_t max_past_sequence_length =
+      std::max<int64_t>(past_sequence_length + sequence_length + decode_tokens - 1, 1);
   std::ostringstream shapes;
   shapes << "input_ids:[1," << sequence_length << "]"
-         << ";attention_mask:[1," << max_past_sequence_length + sequence_length << "]";
+         << ";attention_mask:[1,"
+         << past_sequence_length + sequence_length + decode_tokens << "]";
   if (profile.cache_layout == CacheLayout::Qwen35Hybrid) {
     shapes << ";position_ids:[1," << sequence_length << "]";
   }
@@ -472,6 +476,8 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
       "ORT_WORKSPACE_BENCHMARK_SEQUENCE_LENGTH", kDefaultSequenceLength);
   const int64_t past_sequence_length = ParseEnvironmentVariableWithDefault<int64_t>(
       "ORT_WORKSPACE_BENCHMARK_PAST_SEQUENCE_LENGTH", kDefaultPastSequenceLength);
+  const int64_t decode_tokens = ParseEnvironmentVariableWithDefault<int64_t>(
+      "ORT_WORKSPACE_BENCHMARK_DECODE_TOKENS", kDefaultDecodeTokens);
   const int warmup_runs = ParseEnvironmentVariableWithDefault<int>(
       "ORT_WORKSPACE_BENCHMARK_WARMUP_RUNS", kDefaultWarmupRuns);
   const int memory_measurement_runs = ParseEnvironmentVariableWithDefault<int>(
@@ -484,6 +490,9 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
          "ORT_WORKSPACE_BENCHMARK_DISABLE_PREPACKING=1.";
   ASSERT_GT(sequence_length, 0);
   ASSERT_GE(past_sequence_length, 0);
+  ASSERT_GE(decode_tokens, 0);
+  ASSERT_TRUE(decode_tokens == 0 || profile.cache_layout == CacheLayout::Transformer)
+      << "Prefill-plus-decode benchmarking currently supports transformer KV caches only.";
   ASSERT_GT(warmup_runs, 0);
   ASSERT_GT(memory_measurement_runs, 0);
   ASSERT_GT(measured_runs, 0);
@@ -492,7 +501,9 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   session_options.session_logid = "ModelWorkspacePreallocationBenchmark";
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsMaxShapeOverride,
-      BuildMaxShapeOverride(profile, sequence_length, past_sequence_length).c_str()));
+      BuildMaxShapeOverride(
+          profile, sequence_length, past_sequence_length, decode_tokens)
+          .c_str()));
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsCudaFpAIntBGemm, enable_fpa_intb.c_str()));
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
@@ -645,17 +656,108 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
     output_names.emplace_back("present." + std::to_string(layer) + ".key");
     output_names.emplace_back("present." + std::to_string(layer) + ".value");
   }
-  std::vector<OrtValue> fetches;
-  for (int i = 0; i < warmup_runs; ++i) {
-    fetches.clear();
-    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
-  }
-  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
 
-  ASSERT_EQ(fetches.size(), output_names.size());
-  ASSERT_EQ(fetches.front().Get<Tensor>().Shape(),
-            TensorShape({1, sequence_length, profile.vocab_size}));
-  fetches.clear();
+  struct ScenarioTiming {
+    double prefill_ms{};
+    std::vector<double> decode_ms;
+  };
+
+  const auto run_scenario = [&](ScenarioTiming* timing) -> Status {
+    NameMLValMap scenario_feeds = feeds;
+    std::vector<OrtValue> scenario_fetches;
+
+    const auto run_step = [&](double* elapsed_ms) -> Status {
+      cudaError_t cuda_status = cudaDeviceSynchronize();
+      ORT_RETURN_IF_NOT(
+          cuda_status == cudaSuccess,
+          "cudaDeviceSynchronize failed before inference: ",
+          cudaGetErrorString(cuda_status));
+      const auto start = Clock::now();
+      ORT_RETURN_IF_ERROR(session.Run(scenario_feeds, output_names, &scenario_fetches));
+      cuda_status = cudaDeviceSynchronize();
+      ORT_RETURN_IF_NOT(
+          cuda_status == cudaSuccess,
+          "cudaDeviceSynchronize failed after inference: ",
+          cudaGetErrorString(cuda_status));
+      const auto end = Clock::now();
+      if (elapsed_ms != nullptr) {
+        *elapsed_ms =
+            std::chrono::duration<double, std::milli>(end - start).count();
+      }
+      return Status::OK();
+    };
+
+    ORT_RETURN_IF_ERROR(run_step(timing == nullptr ? nullptr : &timing->prefill_ms));
+    ORT_RETURN_IF_NOT(
+        scenario_fetches.size() == output_names.size(),
+        "Expected ", output_names.size(), " prefill outputs, got ",
+        scenario_fetches.size(), ".");
+    ORT_RETURN_IF_NOT(
+        scenario_fetches.front().Get<Tensor>().Shape() ==
+            TensorShape({1, sequence_length, profile.vocab_size}),
+        "Unexpected prefill logits shape: ",
+        scenario_fetches.front().Get<Tensor>().Shape().ToString());
+
+    if (timing != nullptr) {
+      timing->decode_ms.clear();
+      timing->decode_ms.reserve(static_cast<size_t>(decode_tokens));
+    }
+
+    for (int64_t decode_index = 0; decode_index < decode_tokens; ++decode_index) {
+      for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
+        const size_t key_index = static_cast<size_t>(1 + 2 * layer);
+        const size_t value_index = key_index + 1;
+        scenario_feeds.insert_or_assign(
+            "past_key_values." + std::to_string(layer) + ".key",
+            std::move(scenario_fetches[key_index]));
+        scenario_feeds.insert_or_assign(
+            "past_key_values." + std::to_string(layer) + ".value",
+            std::move(scenario_fetches[value_index]));
+      }
+      scenario_fetches.clear();
+
+      int64_t next_token_id =
+          (profile.bos_token_id + decode_index + 1) % profile.vocab_size;
+      OrtValue decode_input_ids;
+      CreateMLValue<int64_t>(
+          std::array<int64_t, 2>{1, 1},
+          &next_token_id, OrtMemoryInfo(), &decode_input_ids);
+      scenario_feeds.insert_or_assign("input_ids", std::move(decode_input_ids));
+
+      const int64_t decode_past_length =
+          past_sequence_length + sequence_length + decode_index;
+      std::vector<int64_t> decode_attention_mask(
+          static_cast<size_t>(decode_past_length + 1), 1);
+      OrtValue decode_attention_mask_value;
+      CreateMLValue<int64_t>(
+          std::array<int64_t, 2>{1, decode_past_length + 1},
+          decode_attention_mask.data(), OrtMemoryInfo(),
+          &decode_attention_mask_value);
+      scenario_feeds.insert_or_assign(
+          "attention_mask", std::move(decode_attention_mask_value));
+
+      double decode_ms = 0.0;
+      ORT_RETURN_IF_ERROR(run_step(timing == nullptr ? nullptr : &decode_ms));
+      ORT_RETURN_IF_NOT(
+          scenario_fetches.size() == output_names.size(),
+          "Expected ", output_names.size(), " decode outputs, got ",
+          scenario_fetches.size(), ".");
+      ORT_RETURN_IF_NOT(
+          scenario_fetches.front().Get<Tensor>().Shape() ==
+              TensorShape({1, 1, profile.vocab_size}),
+          "Unexpected decode logits shape: ",
+          scenario_fetches.front().Get<Tensor>().Shape().ToString());
+      if (timing != nullptr) {
+        timing->decode_ms.push_back(decode_ms);
+      }
+    }
+
+    return Status::OK();
+  };
+
+  for (int i = 0; i < warmup_runs; ++i) {
+    ASSERT_STATUS_OK(run_scenario(nullptr));
+  }
 
   AllocatorStats post_warmup_stats;
   cuda_allocator->GetStats(&post_warmup_stats);
@@ -684,10 +786,8 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   CudaMemorySampler inference_memory_sampler(0);
   WddmMemorySampler inference_wddm_sampler(dxgi_adapter);
   for (int i = 0; i < memory_measurement_runs; ++i) {
-    fetches.clear();
-    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+    ASSERT_STATUS_OK(run_scenario(nullptr));
   }
-  ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
   inference_memory_sampler.Stop();
   inference_wddm_sampler.Stop();
   ASSERT_EQ(inference_memory_sampler.Error(), cudaSuccess);
@@ -704,30 +804,42 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
       after_memory_measurement.total_allocated_bytes -
       before_memory_measurement.total_allocated_bytes;
 
-  std::vector<double> latencies_ms;
-  latencies_ms.reserve(static_cast<size_t>(measured_runs));
+  std::vector<double> scenario_latencies_ms;
+  std::vector<double> prefill_latencies_ms;
+  std::vector<double> decode_latencies_ms;
+  scenario_latencies_ms.reserve(static_cast<size_t>(measured_runs));
+  prefill_latencies_ms.reserve(static_cast<size_t>(measured_runs));
+  decode_latencies_ms.reserve(
+      static_cast<size_t>(measured_runs) * static_cast<size_t>(decode_tokens));
   for (int i = 0; i < measured_runs; ++i) {
-    fetches.clear();
-    ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
-    const auto start = Clock::now();
-    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
-    ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
-    const auto end = Clock::now();
-    latencies_ms.push_back(
-        std::chrono::duration<double, std::milli>(end - start).count());
+    ScenarioTiming timing;
+    ASSERT_STATUS_OK(run_scenario(&timing));
+    const double decode_total_ms =
+        std::accumulate(timing.decode_ms.begin(), timing.decode_ms.end(), 0.0);
+    prefill_latencies_ms.push_back(timing.prefill_ms);
+    scenario_latencies_ms.push_back(timing.prefill_ms + decode_total_ms);
+    decode_latencies_ms.insert(
+        decode_latencies_ms.end(), timing.decode_ms.begin(), timing.decode_ms.end());
   }
 
-  ASSERT_FALSE(latencies_ms.empty());
-  std::sort(latencies_ms.begin(), latencies_ms.end());
-  const auto percentile = [&latencies_ms](double fraction) {
+  ASSERT_FALSE(scenario_latencies_ms.empty());
+  std::sort(scenario_latencies_ms.begin(), scenario_latencies_ms.end());
+  std::sort(prefill_latencies_ms.begin(), prefill_latencies_ms.end());
+  std::sort(decode_latencies_ms.begin(), decode_latencies_ms.end());
+  const auto percentile = [](const std::vector<double>& samples, double fraction) {
     const size_t index = static_cast<size_t>(
-                             std::ceil(fraction * static_cast<double>(latencies_ms.size()))) -
+                             std::ceil(fraction * static_cast<double>(samples.size()))) -
                          1;
-    return latencies_ms[std::min(index, latencies_ms.size() - 1)];
+    return samples[std::min(index, samples.size() - 1)];
   };
-  const double average_ms =
-      std::accumulate(latencies_ms.begin(), latencies_ms.end(), 0.0) /
-      static_cast<double>(latencies_ms.size());
+  const auto average = [](const std::vector<double>& samples) {
+    return std::accumulate(samples.begin(), samples.end(), 0.0) /
+           static_cast<double>(samples.size());
+  };
+  const double average_ms = average(scenario_latencies_ms);
+  const double prefill_average_ms = average(prefill_latencies_ms);
+  const double decode_average_ms =
+      decode_latencies_ms.empty() ? 0.0 : average(decode_latencies_ms);
   const double initialize_ms =
       std::chrono::duration<double, std::milli>(initialize_end - initialize_start).count();
 
@@ -771,6 +883,7 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             << " fpa_intb_gemm=" << enable_fpa_intb
             << " sequence_length=" << sequence_length
             << " past_sequence_length=" << past_sequence_length
+            << " decode_tokens=" << decode_tokens
             << " warmup_runs=" << warmup_runs
             << " memory_measurement_runs=" << memory_measurement_runs
             << " measured_runs=" << measured_runs
@@ -780,11 +893,23 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             << " serialized_external_data_bytes=" << serialized_external_data_bytes
             << " initialize_ms=" << initialize_ms
             << " average_ms=" << average_ms
-            << " p50_ms=" << percentile(0.50)
-            << " p90_ms=" << percentile(0.90)
-            << " p99_ms=" << percentile(0.99)
-            << " min_ms=" << latencies_ms.front()
-            << " max_ms=" << latencies_ms.back()
+            << " p50_ms=" << percentile(scenario_latencies_ms, 0.50)
+            << " p90_ms=" << percentile(scenario_latencies_ms, 0.90)
+            << " p99_ms=" << percentile(scenario_latencies_ms, 0.99)
+            << " min_ms=" << scenario_latencies_ms.front()
+            << " max_ms=" << scenario_latencies_ms.back()
+            << " prefill_average_ms=" << prefill_average_ms
+            << " prefill_p50_ms=" << percentile(prefill_latencies_ms, 0.50)
+            << " prefill_p90_ms=" << percentile(prefill_latencies_ms, 0.90)
+            << " decode_average_ms=" << decode_average_ms;
+  if (!decode_latencies_ms.empty()) {
+    std::cout << " decode_p50_ms=" << percentile(decode_latencies_ms, 0.50)
+              << " decode_p90_ms=" << percentile(decode_latencies_ms, 0.90)
+              << " decode_p99_ms=" << percentile(decode_latencies_ms, 0.99)
+              << " decode_min_ms=" << decode_latencies_ms.front()
+              << " decode_max_ms=" << decode_latencies_ms.back();
+  }
+  std::cout
             << " baseline_device_used_mib=" << to_mib(*baseline_used_bytes)
             << " initialization_peak_device_used_mib="
             << to_mib(initialization_peak_bytes)
