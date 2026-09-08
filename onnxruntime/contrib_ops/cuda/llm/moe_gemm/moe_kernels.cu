@@ -66,7 +66,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_activation_kernels.cuh"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_utils.cuh"
-#if defined(HAS_SM90_OR_LATER)
+#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
 #include "contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.h"
 #endif
 
@@ -2213,7 +2213,7 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   size_t smoothed_act_size = use_awq ? std::max(permuted_elems, interbuf_elems) * sizeof(T) * 2
                                      : 0;  // Extra workspace required by AWQ for smoothing activations
   size_t dsv4_deep_gemm_workspace_size = 0;
-#if defined(HAS_SM90_OR_LATER)
+#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
   if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, __nv_bfloat16> &&
                 std::is_same_v<OutputType, __nv_bfloat16> && std::is_same_v<InputType, __nv_bfloat16>) {
     if (use_dsv4_deep_gemm_ && num_rows > 0 && num_rows <= deep_gemm_sm90::kMaxTokensPerExpert &&
@@ -2945,7 +2945,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
 
     sync_check_cuda_error(stream);
 
-#if defined(HAS_SM90_OR_LATER)
+#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
     if constexpr (std::is_same_v<T, __nv_bfloat16> && std::is_same_v<WeightType, __nv_bfloat16> &&
                   std::is_same_v<OutputType, __nv_bfloat16> && std::is_same_v<InputType, __nv_bfloat16>) {
       const bool use_dsv4_deep_gemm =

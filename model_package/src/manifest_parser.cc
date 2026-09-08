@@ -84,8 +84,9 @@ static const std::set<std::string> kVariantKnownKeys = {
 ModelPackageStatus* ReadFileToString(const fs::path& path, std::string* out) {
   std::ifstream f(path, std::ios::binary);
   if (!f) {
+    const std::error_code error_code(errno, std::generic_category());
     return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                      "Cannot open file: '" + path.string() + "': " + std::strerror(errno));
+                      "Cannot open file: '" + path.string() + "': " + error_code.message());
   }
   std::ostringstream buf;
   buf << f.rdbuf();

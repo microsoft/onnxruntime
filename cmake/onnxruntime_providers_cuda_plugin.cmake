@@ -250,9 +250,10 @@ endif()
 
 include(cudnn_frontend)
 include(cutlass)
-if(ORT_HAS_SM90_OR_LATER AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+if(ORT_HAS_SM90_OR_LATER AND NOT WIN32 AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
   include(deep_gemm)
   target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE ${deep_gemm_SOURCE_DIR}/deep_gemm/include)
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE USE_DEEP_GEMM)
 endif()
 
 # TMA compile definitions — mirror config_cuda_provider_shared_module in onnxruntime_providers_cuda.cmake
