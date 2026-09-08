@@ -2040,6 +2040,6 @@ if(onnxruntime_BUILD_UNIT_TESTS)
 endif()
 
 # Include precompiled header configuration for providers
-if(TARGET onnxruntime_providers)
+if(TARGET ${onnxruntime_providers_target})
   include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_providers_pch.cmake")
 endif()
