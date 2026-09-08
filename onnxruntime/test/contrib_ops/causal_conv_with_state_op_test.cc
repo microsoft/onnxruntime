@@ -1416,29 +1416,36 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SchemaResolution) {
   EXPECT_EQ(schema->outputs()[2].GetTypes().count(bfloat16_type), 1u);
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 namespace {
 
-// Returns a CUDA EP with the VarlenCausalConvWithState kernel registered, or nullptr. Unlike the
-// dense op (also servable from WebGPU/CPU via GetEpsWithCausalConvWithState), Varlen* ops are
-// CUDA-only, so tests skip outright instead of falling back to another EP.
-std::unique_ptr<IExecutionProvider> TryGetCudaEpWithVarlenCausalConvWithState() {
-  auto ep = DefaultCudaExecutionProvider();
-  if (!ep) {
-    return nullptr;
-  }
-  auto kernel_registry = ep->GetKernelRegistry();
-  if (kernel_registry) {
+// Returns a locally available EP with the VarlenCausalConvWithState kernel registered, or nullptr.
+// CUDA is preferred when present; otherwise the WebGPU EP is used. Both share the same tests.
+std::unique_ptr<IExecutionProvider> TryGetEpWithVarlenCausalConvWithState() {
+  auto has_kernel = [](const IExecutionProvider& ep) {
+    auto kernel_registry = ep.GetKernelRegistry();
+    if (!kernel_registry) {
+      return false;
+    }
     const KernelCreateInfo* info = nullptr;
     KernelRegistry::TypeConstraintMap type_constraints;
     auto status = kernel_registry->TryFindKernel(
-        ep->Type(), "VarlenCausalConvWithState", kMSDomain, 1,
+        ep.Type(), "VarlenCausalConvWithState", kMSDomain, 1,
         type_constraints, DefaultLoggingManager().DefaultLogger(), &info);
-    if (!status.IsOK()) {
-      return nullptr;
-    }
+    return status.IsOK();
+  };
+
+#ifdef USE_CUDA
+  if (auto ep = DefaultCudaExecutionProvider(); ep && has_kernel(*ep)) {
+    return ep;
   }
-  return ep;
+#endif
+#ifdef USE_WEBGPU
+  if (auto ep = DefaultWebGpuExecutionProvider(); ep && has_kernel(*ep)) {
+    return ep;
+  }
+#endif
+  return nullptr;
 }
 
 // Transpose a single request's (channels, length) reference block to the token-major
@@ -1490,9 +1497,14 @@ struct VarlenCausalConvCase {
 };
 
 void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
-  auto ep = TryGetCudaEpWithVarlenCausalConvWithState();
+  auto ep = TryGetEpWithVarlenCausalConvWithState();
   if (!ep) {
     GTEST_SKIP() << "VarlenCausalConvWithState kernel not registered";
+    return;
+  }
+  // WGSL has no bfloat16 type, so the WebGPU kernel is float/float16 only.
+  if (c.use_bf16 && ep->Type() == kWebGpuExecutionProvider) {
+    GTEST_SKIP() << "WebGPU EP does not support bfloat16";
     return;
   }
 
@@ -1983,7 +1995,7 @@ TEST(ContribOpVarlenCausalConvWithStateTest, MultiCallStateCarry) {
   std::vector<float>* states[2] = {&state0, &state1};
 
   for (int call = 0; call < 2; call++) {
-    auto ep = TryGetCudaEpWithVarlenCausalConvWithState();
+    auto ep = TryGetEpWithVarlenCausalConvWithState();
     if (!ep) {
       GTEST_SKIP() << "VarlenCausalConvWithState kernel not registered";
       return;
@@ -2373,7 +2385,7 @@ TEST(ContribOpVarlenCausalConvWithStateTest, StateUpdateCapacityIsBounded) {
   tester.AddOutput<float>("state_update", {1, 9, 1}, std::vector<float>(9, 0.0f));
   tester.Run(OpTester::ExpectResult::kExpectFailure, "state_update_capacity must be in [0, 8]");
 }
-#endif  // USE_CUDA
+#endif  // USE_CUDA || USE_WEBGPU
 
 }  // namespace test
 }  // namespace onnxruntime
