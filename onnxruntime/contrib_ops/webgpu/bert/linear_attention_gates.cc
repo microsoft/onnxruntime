@@ -161,15 +161,25 @@ Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  for (var i = local_idx; i < uniforms.norm_size; i += workgroup_size_x) {\n"
       << "    let z = f32(" << gate.GetByOffset("base + i") << ");\n"
       << "    let normalized = f32(" << input.GetByOffset("base + i") << ") * inv_rms * f32("
-      << scale.GetByOffset("i") << ");\n"
-      << "    " << output.SetByOffset("base + i", "output_element_t(normalized * (z * stable_sigmoid(z)))") << "\n"
-      << "  }\n";
+      << scale.GetByOffset("i") << ");\n";
+  if (use_sigmoid_activation_) {
+    shader.MainFunctionBody()
+        << "    " << output.SetByOffset("base + i", "output_element_t(normalized * stable_sigmoid(z))") << "\n";
+  } else {
+    shader.MainFunctionBody()
+        << "    " << output.SetByOffset("base + i", "output_element_t(normalized * (z * stable_sigmoid(z)))") << "\n";
+  }
+  shader.MainFunctionBody() << "  }\n";
 
   return Status::OK();
 }
 
 GatedRMSNorm::GatedRMSNorm(const OpKernelInfo& info) : WebGpuKernel(info) {
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
+  const std::string activation = info.GetAttrOrDefault<std::string>("activation", "silu");
+  ORT_ENFORCE(activation == "silu" || activation == "sigmoid",
+              "GatedRMSNorm: activation must be 'silu' or 'sigmoid', got '", activation, "'");
+  use_sigmoid_activation_ = activation == "sigmoid";
 }
 
 Status GatedRMSNorm::ComputeInternal(ComputeContext& context) const {
@@ -199,10 +209,11 @@ Status GatedRMSNorm::ComputeInternal(ComputeContext& context) const {
                                   : norm_size <= 128 ? 128
                                                      : 256;
 
-  GatedRMSNormProgram program{};
-  program.AddInputs({{input, ProgramTensorMetadataDependency::Type},
-                     {scale, ProgramTensorMetadataDependency::Type},
-                     {gate, ProgramTensorMetadataDependency::Type}})
+  GatedRMSNormProgram program{use_sigmoid_activation_};
+  program.CacheHint(use_sigmoid_activation_)
+      .AddInputs({{input, ProgramTensorMetadataDependency::Type},
+                  {scale, ProgramTensorMetadataDependency::Type},
+                  {gate, ProgramTensorMetadataDependency::Type}})
       .AddOutput({output, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(num_rows))
       .SetWorkgroupSize(workgroup_size)

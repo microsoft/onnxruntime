@@ -17,6 +17,9 @@ Status LaunchNGramHashMappingKernel(
     const T* multipliers,
     const T* vocab_sizes,
     const T* past_ids,
+    const T* head_offsets,
+    const T* eos_token_id,
+    const int32_t* segment_ids,
     T* output,
     T* present_ids,
     int64_t batch_size,
@@ -24,8 +27,7 @@ Status LaunchNGramHashMappingKernel(
     int64_t max_ngram_size,
     int64_t n_head_per_ngram,
     T pad_id,
-    bool has_eos_token_id,
-    T eos_token_id);
+    bool reset_on_eos);
 
 }  // namespace cuda
 }  // namespace contrib
