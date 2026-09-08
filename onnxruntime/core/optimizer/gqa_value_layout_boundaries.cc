@@ -91,6 +91,51 @@ bool IsDeviceCopy(const Node& node) {
 // chains them still resolves, while staying bounded against a malformed graph.
 constexpr int kMaxDeviceCopyHops = 4;
 
+const Node* TraceBackToValueLayoutTranspose(const Graph& graph, const NodeArg* arg) {
+  for (int hops = 0; arg != nullptr && hops <= kMaxDeviceCopyHops; ++hops) {
+    const Node* producer = ProducerOf(graph, arg->Name());
+    if (producer == nullptr) {
+      return nullptr;
+    }
+    if (IsGqaValueLayoutTranspose(*producer)) {
+      return producer;
+    }
+    if (!IsDeviceCopy(*producer) || producer->InputDefs().empty()) {
+      return nullptr;
+    }
+    arg = producer->InputDefs()[0];
+  }
+  return nullptr;
+}
+
+bool FindConvertedPresentValueBoundaryAfterCopies(const Graph& graph, const NodeArg* arg,
+                                                  int copy_hops, std::string& boundary_name) {
+  if (arg == nullptr || copy_hops > kMaxDeviceCopyHops) {
+    return false;
+  }
+
+  for (const Node* consumer : ConsumersOf(graph, arg->Name())) {
+    if (consumer == nullptr || consumer->OutputDefs().empty()) {
+      continue;
+    }
+    if (IsGqaValueLayoutTranspose(*consumer)) {
+      const NodeArg* boundary = TraceGqaBoundaryForwardThroughDeviceCopies(graph, consumer->OutputDefs()[0]);
+      if (boundary != nullptr) {
+        boundary_name = boundary->Name();
+        return true;
+      }
+      continue;
+    }
+    if (IsDeviceCopy(*consumer) &&
+        FindConvertedPresentValueBoundaryAfterCopies(graph, consumer->OutputDefs()[0],
+                                                     copy_hops + 1, boundary_name)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 }  // namespace
 
 bool IsGqaValueLayoutTranspose(const Node& node) {
@@ -223,13 +268,13 @@ bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::s
   // and must be recognized. That is the mirror of ClassifyPastValue() refusing to convert an
   // initializer-backed boundary itself: swapping a declared shape cannot transpose baked-in data, but
   // data that arrived BNHS needs no transposing.
-  const Node* producer = ProducerOf(graph, node.InputDefs()[kPastValueInputIndex]->Name());
-  if (producer == nullptr || !IsGqaValueLayoutTranspose(*producer) || producer->InputDefs().empty()) {
+  const Node* transpose = TraceBackToValueLayoutTranspose(graph, node.InputDefs()[kPastValueInputIndex]);
+  if (transpose == nullptr || transpose->InputDefs().empty()) {
     return false;
   }
 
   // Not necessarily adjacent to the boundary: trace back through any device copies.
-  const NodeArg* boundary = TraceGqaBoundaryBackThroughDeviceCopies(graph, producer->InputDefs()[0]);
+  const NodeArg* boundary = TraceGqaBoundaryBackThroughDeviceCopies(graph, transpose->InputDefs()[0]);
   if (boundary == nullptr) {
     return false;
   }
@@ -254,21 +299,9 @@ bool FindConvertedPresentValueBoundary(const Graph& graph, const Node& node, std
   }
 
   // Search the consumers rather than requiring a single one: the BNSH result may legitimately feed
-  // other internal BNSH readers, and those must not hide the conversion.
-  for (const Node* consumer : ConsumersOf(graph, arg->Name())) {
-    if (consumer == nullptr || !IsGqaValueLayoutTranspose(*consumer) || consumer->OutputDefs().empty()) {
-      continue;
-    }
-
-    // Not necessarily adjacent to the boundary: trace forward through any device copies.
-    const NodeArg* boundary = TraceGqaBoundaryForwardThroughDeviceCopies(graph, consumer->OutputDefs()[0]);
-    if (boundary != nullptr) {
-      boundary_name = boundary->Name();  // the graph output, not the GQA operand
-      return true;
-    }
-  }
-
-  return false;
+  // other internal BNSH readers, and those must not hide the conversion. Device copies may appear on
+  // either side of the Transpose when it and GQA are assigned to different providers.
+  return FindConvertedPresentValueBoundaryAfterCopies(graph, arg, 0, boundary_name);
 }
 
 namespace {

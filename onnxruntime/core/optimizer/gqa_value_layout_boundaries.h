@@ -60,11 +60,13 @@ const Node* FindValueLayoutTransposeAfterGraphInput(const Graph& graph, const st
 const Node* FindValueLayoutTransposeBeforeGraphOutput(const Graph& graph, const std::string& boundary_name);
 
 // If this node's past_value already arrives through a value-layout Transpose from a graph input,
-// returns true and sets boundary_name to that graph input.
+// possibly with device copies on either side of the Transpose, returns true and sets boundary_name
+// to that graph input.
 bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name);
 
 // If this node's present_value already leaves through a value-layout Transpose to a graph output,
-// returns true and sets boundary_name to that graph output.
+// possibly with device copies on either side of the Transpose, returns true and sets boundary_name
+// to that graph output.
 bool FindConvertedPresentValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name);
 
 /**
