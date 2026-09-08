@@ -1,14 +1,13 @@
-
+#param bit_width
 #param has_attention_bias
 #param has_head_sink
-#param is_fp16
 #param is_qualcomm
 #param is_unidirectional
 #param prefer_subgroupshuffle
 #param q_BNSH
 #param qkv_head_size
 #param qkv_num_heads
-#param turbo_quant
+#param kv_cache_quantization
 #param compressed_head_size_u32
 #param use_seqlen_k
 #param use_seqlens_q
@@ -18,17 +17,20 @@
 const head_size : u32 = qkv_head_size;
 const num_heads : u32 = qkv_num_heads;
 
-#if turbo_quant
+#if kv_cache_quantization
+#if bit_width == 4
 #include "bert/turbo_quant_common.wgsl.template"
-#include "bert/turbo_quant_dequant.wgsl.template"
+#endif
+#include "bert/kv_cache_quantization_dequant.wgsl.template"
 const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
 
 // Dequantize 4 consecutive elements from a TQ-packed KV cache into a vec4.
-fn tq_dequant_vec4(kv_cache: ptr<storage, array<u32>, read>, base: u32, elem_base: u32, scale: f32) -> q_value_t {
-  let word_idx = elem_base >> 3u;
+fn kv_cache_dequant_vec4(
+    kv_cache: ptr<storage, array<u32>, read>, base: u32, elem_base: u32, scale: f32) -> q_value_t {
+  let word_idx = elem_base / KV_CACHE_QUANT_ELEMENTS_PER_WORD;
   let packed = (*kv_cache)[base + 1u + word_idx];
-  let shift = (elem_base & 4u) << 2u;
-  return tq_unpack_nibbles(packed >> shift) * q_element_t(scale);
+  let shift = (elem_base % KV_CACHE_QUANT_ELEMENTS_PER_WORD) * KV_CACHE_QUANT_BITS;
+  return kv_cache_quant_dequant_vec4(packed >> shift, scale);
 }
 #endif
 
@@ -44,11 +46,8 @@ fn get_total_sequence_length(batch_idx: u32) -> u32 {
 }
 #endif
 
-#if is_fp16
-const min_value = q_element_t(-65504.0);
-#else
-const min_value = q_element_t(-3.4028234663852886e+38f);
-#endif
+alias qk_precision = f32;
+const qk_min_value = qk_precision(-3.4028234663852886e+38f);
 
 const max_k_step : u32 = max_k_step_param;
 const vec_factor : u32 = 4u;
@@ -57,7 +56,7 @@ const head_size_vec : u32 = head_size / vec_factor;
 // K and V tiles in shared memory.
 var<workgroup> k_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
 var<workgroup> v_tile : array<array<q_value_t, head_size_vec>, max_k_step>;
-#if turbo_quant
+#if kv_cache_quantization && bit_width == 4
 var<workgroup> tq_lut : array<f32, 16>;
 #endif
 
@@ -83,11 +82,11 @@ fn loadq(batch_idx : u32, q_idx_global : u32, head_idx : u32, alpha : q_element_
 
 #if use_shm_path
 
-var<private> qk_scores : array<q_element_t, max_k_step>;
+var<private> qk_scores : array<qk_precision, max_k_step>;
 
 fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, total_seq : u32) {
-#if turbo_quant
-  // TurboQuant: KV cache is u32-packed (scale + 4-bit indices). Dequantize on load.
+#if kv_cache_quantization
+  // Quantized KV cache: unpack and apply the per-vector scale on load.
   // Parallelize across slots; each lane dequantizes one full row (head_size_vec vec4s).
   let kv_head_idx = batch_head_idx / uniforms.n_reps;
   for (var slot : u32 = local_idx; slot < max_k_step; slot += workgroup_size_x) {
@@ -96,7 +95,7 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, total_seq : u32) 
       let base = kv_head_idx * uniforms.present_sequence_length * COMPRESSED_HEAD_U32 + seq_idx * COMPRESSED_HEAD_U32;
       let scale = bitcast<f32>(present_key[base]);
       for (var v : u32 = 0u; v < head_size_vec; v++) {
-        k_tile[slot][v] = tq_dequant_vec4(&present_key, base, v * 4u, scale);
+        k_tile[slot][v] = kv_cache_dequant_vec4(&present_key, base, v * 4u, scale);
       }
     } else {
       for (var v : u32 = 0u; v < head_size_vec; v++) {
@@ -115,8 +114,8 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, total_seq : u32) 
 }
 
 fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, total_seq : u32) {
-#if turbo_quant
-  // TurboQuant: KV cache is u32-packed (scale + 4-bit indices). Dequantize on load.
+#if kv_cache_quantization
+  // Quantized KV cache: unpack and apply the per-vector scale on load.
   let kv_head_idx = batch_head_idx / uniforms.n_reps;
   for (var slot : u32 = local_idx; slot < max_k_step; slot += workgroup_size_x) {
     let seq_idx = v_start + slot;
@@ -124,7 +123,7 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, total_seq : u32) 
       let base = kv_head_idx * uniforms.present_sequence_length * COMPRESSED_HEAD_U32 + seq_idx * COMPRESSED_HEAD_U32;
       let scale = bitcast<f32>(present_value[base]);
       for (var v : u32 = 0u; v < head_size_vec; v++) {
-        v_tile[slot][v] = tq_dequant_vec4(&present_value, base, v * 4u, scale);
+        v_tile[slot][v] = kv_cache_dequant_vec4(&present_value, base, v * 4u, scale);
       }
     } else {
       for (var v : u32 = 0u; v < head_size_vec; v++) {
@@ -152,9 +151,9 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
 }
 
  #if has_attention_bias
-fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> q_element_t {
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> qk_precision {
   if (k_idx_global >= total_seq) {
-    return q_element_t(0);
+    return qk_precision(0);
   }
   let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
   let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);
@@ -164,7 +163,7 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
   let stride_total_seq = uniforms.attn_bias_dim3;
   let offset_base = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * stride_total_seq +
                     bias_head_idx * uniforms.new_sequence_length * stride_total_seq + q_idx_global * stride_total_seq;
-  return q_element_t(attention_bias[min(offset_base + k_idx_global, offset_base + stride_total_seq - 1u)]);
+  return qk_precision(attention_bias[min(offset_base + k_idx_global, offset_base + stride_total_seq - 1u)]);
 }
  #endif
 
@@ -173,8 +172,8 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
 // for qk_1, qk_2 .. qk_(sg_size). So we cap it at max_k_step (16).
 
 fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32, total_seq : u32) {
-#if turbo_quant
-  // TurboQuant: KV cache is u32-packed (scale + 4-bit indices). Dequantize on load.
+#if kv_cache_quantization
+  // Quantized KV cache: unpack and apply the per-vector scale on load.
   let kv_head_idx = batch_head_idx / uniforms.n_reps;
   for (var slot : u32 = local_idx; slot < k_step; slot += workgroup_size_x) {
     let seq_idx = k_start + slot;
@@ -182,7 +181,7 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32, tot
       let base = kv_head_idx * uniforms.present_sequence_length * COMPRESSED_HEAD_U32 + seq_idx * COMPRESSED_HEAD_U32;
       let scale = bitcast<f32>(present_key[base]);
       for (var v : u32 = 0u; v < head_size_vec; v++) {
-        k_tile[slot][v] = tq_dequant_vec4(&present_key, base, v * 4u, scale);
+        k_tile[slot][v] = kv_cache_dequant_vec4(&present_key, base, v * 4u, scale);
       }
     } else {
       for (var v : u32 = 0u; v < head_size_vec; v++) {
@@ -203,8 +202,8 @@ fn loadk(k_start : u32, batch_head_idx : u32, local_idx : u32, k_step : u32, tot
 }
 
 fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32, total_seq : u32) {
-#if turbo_quant
-  // TurboQuant: KV cache is u32-packed (scale + 4-bit indices). Dequantize on load.
+#if kv_cache_quantization
+  // Quantized KV cache: unpack and apply the per-vector scale on load.
   let kv_head_idx = batch_head_idx / uniforms.n_reps;
   for (var slot : u32 = local_idx; slot < v_step; slot += workgroup_size_x) {
     let seq_idx = v_start + slot;
@@ -212,7 +211,7 @@ fn loadv(v_start : u32, batch_head_idx : u32, local_idx : u32, v_step : u32, tot
       let base = kv_head_idx * uniforms.present_sequence_length * COMPRESSED_HEAD_U32 + seq_idx * COMPRESSED_HEAD_U32;
       let scale = bitcast<f32>(present_value[base]);
       for (var v : u32 = 0u; v < head_size_vec; v++) {
-        v_tile[slot][v] = tq_dequant_vec4(&present_value, base, v * 4u, scale);
+        v_tile[slot][v] = kv_cache_dequant_vec4(&present_value, base, v * 4u, scale);
       }
     } else {
       for (var v : u32 = 0u; v < head_size_vec; v++) {
@@ -259,10 +258,10 @@ fn writeo(batch_idx : u32, o_idx_global : u32, head_idx : u32) {
  #endif
 
  #if has_attention_bias
-fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> vec4<q_element_t> {
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> vec4<qk_precision> {
   // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
   if (k_idx_global >= total_seq) {
-    return vec4<q_element_t>(0);
+    return vec4<qk_precision>(0);
   }
   // Handle broadcasting: if dimension size is 1, use index 0
   let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
@@ -275,23 +274,23 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
                     bias_head_idx * uniforms.new_sequence_length * stride_total_seq + q_idx_global * stride_total_seq;
   let offset = offset_base + k_idx_global;
   let offset_max = offset_base + stride_total_seq - 1u;
-  let c1 = q_element_t(attention_bias[min(offset, offset_max)]);
-  let c2 = q_element_t(attention_bias[min(offset + 1, offset_max)]);
-  let c3 = q_element_t(attention_bias[min(offset + 2, offset_max)]);
-  let c4 = q_element_t(attention_bias[min(offset + 3, offset_max)]);
-  return vec4<q_element_t>(c1, c2, c3, c4);
+  let c1 = qk_precision(attention_bias[min(offset, offset_max)]);
+  let c2 = qk_precision(attention_bias[min(offset + 1, offset_max)]);
+  let c3 = qk_precision(attention_bias[min(offset + 2, offset_max)]);
+  let c4 = qk_precision(attention_bias[min(offset + 3, offset_max)]);
+  return vec4<qk_precision>(c1, c2, c3, c4);
 }
  #else
-fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> vec4<q_element_t> {
-  return vec4<q_element_t>(0);
+fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, head_idx : u32, total_seq : u32) -> vec4<qk_precision> {
+  return vec4<qk_precision>(0);
 }
  #endif
 
-fn fetchKTile(k_idx: u32, vec_idx: u32, k_val: q_value_t) -> q_value_t {
+fn fetchKTile(k_idx: u32, vec_idx: u32, k_val: q_value_t) -> vec4<qk_precision> {
  #if prefer_subgroupshuffle
-    return subgroupShuffle(k_val, k_idx);
+    return vec4<qk_precision>(subgroupShuffle(k_val, k_idx));
  #else
-    return k_tile[k_idx][vec_idx];
+    return vec4<qk_precision>(k_tile[k_idx][vec_idx]);
  #endif
 }
 
@@ -314,8 +313,8 @@ $MAIN {
     return;
   }
 
-#if turbo_quant
-  // Load centroid LUT into shared memory once. The workgroupBarrier before loadk/loadv synchronizes.
+#if kv_cache_quantization && bit_width == 4
+  // Q4 centroid lookup uses the established workgroup LUT.
   if (local_idx < 16u) {
     tq_lut[local_idx] = TQ_CENTROIDS[local_idx];
   }
@@ -330,11 +329,11 @@ $MAIN {
 
 #if has_head_sink
   let sink_value = q_element_t(head_sink[head_idx]);
-  var previous_max : q_element_t = sink_value;
-  var previous_denom : q_element_t = 1;
+  var previous_max : qk_precision = qk_precision(sink_value);
+  var previous_denom : qk_precision = 1;
 #else
-  var previous_max : q_element_t = min_value;
-  var previous_denom : q_element_t = 0;
+  var previous_max : qk_precision = qk_min_value;
+  var previous_denom : qk_precision = 0;
 #endif
   let total_sequence_length = get_total_sequence_length(batch_idx);
 
@@ -371,46 +370,46 @@ $MAIN {
     workgroupBarrier();
 
     for (var k = 0u; k < max_k_step; k++) {
-      var score = q_element_t(0);
+      var score = qk_precision(0);
       for (var i = 0u; i < head_size_vec; i++) {
-        score += dot(q_tile[i], k_tile[k][i]);
+        score += dot(vec4<qk_precision>(q_tile[i]), vec4<qk_precision>(k_tile[k][i]));
       }
  #if has_attention_bias
       score += loadAttentionBias(batch_idx, q_idx_global, k_start + k, head_idx, total_sequence_length);
  #endif
-      qk_scores[k] = select(min_value, score, k_start + k < seq_causal_length);
+      qk_scores[k] = select(qk_min_value, score, k_start + k < seq_causal_length);
     }
 
-    var local_max = min_value;
+    var local_max = qk_min_value;
     for (var k = 0u; k < max_k_step; k++) {
       local_max = max(local_max, qk_scores[k]);
     }
     let new_max = max(previous_max, local_max);
 
-    var sum = q_element_t(0);
+    var sum = qk_precision(0);
     for (var k = 0u; k < max_k_step; k++) {
-      let exp_val = q_element_t(exp(f32(qk_scores[k]) - f32(new_max)));
+      let exp_val = qk_precision(exp(qk_precision(qk_scores[k]) - qk_precision(new_max)));
       qk_scores[k] = exp_val;
       sum += exp_val;
     }
 
-    let dleft = previous_denom * q_element_t(exp(f32(previous_max) - f32(new_max)));
+    let dleft = previous_denom * qk_precision(exp(qk_precision(previous_max) - qk_precision(new_max)));
     var d = dleft + sum;
-    d = select(d, q_element_t(0.0000001), d == 0);
+    d = select(d, qk_precision(0.0000001), d == 0);
 
     for (var k = 0u; k < max_k_step; k++) {
       qk_scores[k] = qk_scores[k] / d;
     }
     previous_max = new_max;
     previous_denom = d;
-    let o_ratio = dleft / d;
+    let o_ratio = q_element_t(dleft / d);
 
     for (var i : u32 = 0; i < head_size_vec; i++) {
       var acc = q_value_t(0);
       for (var k = 0u; k < max_k_step; k++) {
-        acc += v_tile[k][i] * qk_scores[k];
+        acc += v_tile[k][i] * q_element_t(qk_scores[k]);
       }
-      o_tile[i] = o_tile[i] * o_ratio + acc;
+      o_tile[i] = o_tile[i] * q_element_t(o_ratio) + acc;
     }
   }
 
@@ -429,10 +428,10 @@ $MAIN {
     workgroupBarrier();
 
     // Compute QKt
-    var qk_1 : vec4<q_element_t>;
-    var qk_2 : vec4<q_element_t>;
-    var qk_3 : vec4<q_element_t>;
-    var qk_4 : vec4<q_element_t>;
+    var qk_1 : vec4<qk_precision>;
+    var qk_2 : vec4<qk_precision>;
+    var qk_3 : vec4<qk_precision>;
+    var qk_4 : vec4<qk_precision>;
     if (sg_size > 8) {
       for (var i : u32 = 0u; i < head_size_vec; i++) {
  #if prefer_subgroupshuffle
@@ -447,7 +446,7 @@ $MAIN {
  #else
         var k_local = q_value_t(0);
  #endif
-        var q_own = q_tile[i];
+        let q_own = vec4<qk_precision>(q_tile[i]);
         qk_1[0] += dot(q_own, fetchKTile(0, i, k_local));
         qk_1[1] += dot(q_own, fetchKTile(1, i, k_local));
         qk_1[2] += dot(q_own, fetchKTile(2, i, k_local));
@@ -472,7 +471,7 @@ $MAIN {
  #else
         var k_local = q_value_t(0);
  #endif
-        var q_own = q_tile[i];
+        let q_own = vec4<qk_precision>(q_tile[i]);
         qk_1[0] += dot(q_own, fetchKTile(0, i, k_local));
         qk_1[1] += dot(q_own, fetchKTile(1, i, k_local));
         qk_1[2] += dot(q_own, fetchKTile(2, i, k_local));
@@ -484,30 +483,33 @@ $MAIN {
       }
     }
     qk_1 = qk_1 + loadAttentionBias(batch_idx, q_idx_global, k_start, head_idx, total_sequence_length);
-    qk_2 = qk_2 + loadAttentionBias(batch_idx, q_idx_global, k_start + 4, head_idx, total_sequence_length);
+    qk_2 = qk_2 + loadAttentionBias(
+        batch_idx, q_idx_global, k_start + 4, head_idx, total_sequence_length);
     if (sg_size > 8) {
-      qk_3 = qk_3 + loadAttentionBias(batch_idx, q_idx_global, k_start + 8, head_idx, total_sequence_length);
-      qk_4 = qk_4 + loadAttentionBias(batch_idx, q_idx_global, k_start + 12, head_idx, total_sequence_length);
+      qk_3 = qk_3 + loadAttentionBias(
+          batch_idx, q_idx_global, k_start + 8, head_idx, total_sequence_length);
+      qk_4 = qk_4 + loadAttentionBias(
+          batch_idx, q_idx_global, k_start + 12, head_idx, total_sequence_length);
     }
 
     // Neuter qk values where K is out of bounds.
-    qk_1[0] = select(min_value, qk_1[0], k_start + 0 < seq_causal_length);
-    qk_1[1] = select(min_value, qk_1[1], k_start + 1 < seq_causal_length);
-    qk_1[2] = select(min_value, qk_1[2], k_start + 2 < seq_causal_length);
-    qk_1[3] = select(min_value, qk_1[3], k_start + 3 < seq_causal_length);
-    qk_2[0] = select(min_value, qk_2[0], k_start + 4 < seq_causal_length);
-    qk_2[1] = select(min_value, qk_2[1], k_start + 5 < seq_causal_length);
-    qk_2[2] = select(min_value, qk_2[2], k_start + 6 < seq_causal_length);
-    qk_2[3] = select(min_value, qk_2[3], k_start + 7 < seq_causal_length);
+    qk_1[0] = select(qk_min_value, qk_1[0], k_start + 0 < seq_causal_length);
+    qk_1[1] = select(qk_min_value, qk_1[1], k_start + 1 < seq_causal_length);
+    qk_1[2] = select(qk_min_value, qk_1[2], k_start + 2 < seq_causal_length);
+    qk_1[3] = select(qk_min_value, qk_1[3], k_start + 3 < seq_causal_length);
+    qk_2[0] = select(qk_min_value, qk_2[0], k_start + 4 < seq_causal_length);
+    qk_2[1] = select(qk_min_value, qk_2[1], k_start + 5 < seq_causal_length);
+    qk_2[2] = select(qk_min_value, qk_2[2], k_start + 6 < seq_causal_length);
+    qk_2[3] = select(qk_min_value, qk_2[3], k_start + 7 < seq_causal_length);
     if (sg_size > 8) {
-      qk_3[0] = select(min_value, qk_3[0], k_start + 8 < seq_causal_length);
-      qk_3[1] = select(min_value, qk_3[1], k_start + 9 < seq_causal_length);
-      qk_3[2] = select(min_value, qk_3[2], k_start + 10 < seq_causal_length);
-      qk_3[3] = select(min_value, qk_3[3], k_start + 11 < seq_causal_length);
-      qk_4[0] = select(min_value, qk_4[0], k_start + 12 < seq_causal_length);
-      qk_4[1] = select(min_value, qk_4[1], k_start + 13 < seq_causal_length);
-      qk_4[2] = select(min_value, qk_4[2], k_start + 14 < seq_causal_length);
-      qk_4[3] = select(min_value, qk_4[3], k_start + 15 < seq_causal_length);
+      qk_3[0] = select(qk_min_value, qk_3[0], k_start + 8 < seq_causal_length);
+      qk_3[1] = select(qk_min_value, qk_3[1], k_start + 9 < seq_causal_length);
+      qk_3[2] = select(qk_min_value, qk_3[2], k_start + 10 < seq_causal_length);
+      qk_3[3] = select(qk_min_value, qk_3[3], k_start + 11 < seq_causal_length);
+      qk_4[0] = select(qk_min_value, qk_4[0], k_start + 12 < seq_causal_length);
+      qk_4[1] = select(qk_min_value, qk_4[1], k_start + 13 < seq_causal_length);
+      qk_4[2] = select(qk_min_value, qk_4[2], k_start + 14 < seq_causal_length);
+      qk_4[3] = select(qk_min_value, qk_4[3], k_start + 15 < seq_causal_length);
     }
 
     var local_max_temp = max(qk_1, qk_2);
@@ -517,19 +519,19 @@ $MAIN {
     }
     let local_max = max(max(local_max_temp.x, local_max_temp.y), max(local_max_temp.z, local_max_temp.w));
     let new_max = max(previous_max, local_max);
-    qk_1 = q_value_t(exp(vec4<f32>(qk_1) - f32(new_max)));
-    qk_2 = q_value_t(exp(vec4<f32>(qk_2) - f32(new_max)));
+    qk_1 = exp(qk_1 - vec4<qk_precision>(new_max));
+    qk_2 = exp(qk_2 - vec4<qk_precision>(new_max));
     if (sg_size > 8) {
-      qk_3 = q_value_t(exp(vec4<f32>(qk_3) - f32(new_max)));
-      qk_4 = q_value_t(exp(vec4<f32>(qk_4) - f32(new_max)));
+      qk_3 = exp(qk_3 - vec4<qk_precision>(new_max));
+      qk_4 = exp(qk_4 - vec4<qk_precision>(new_max));
     }
     let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
 
     // Compute lhs term of update di prime and the compute di prime.
-    let dleft = previous_denom * q_element_t(exp(f32(previous_max) - f32(new_max)));
+    let dleft = previous_denom * exp(previous_max - new_max);
     var d = dleft + sum;
-    d = select(d, q_element_t(0.0000001), d == 0);
+    d = select(d, qk_precision(0.0000001), d == 0);
     qk_1 = qk_1 / d;
     qk_2 = qk_2 / d;
     if (sg_size > 8) {
@@ -538,7 +540,11 @@ $MAIN {
     }
     previous_max = new_max;
     previous_denom = d;
-    let o_ratio = dleft / d;
+    let o_ratio = q_element_t(dleft / d);
+    let qk_1_value = q_value_t(qk_1);
+    let qk_2_value = q_value_t(qk_2);
+    let qk_3_value = q_value_t(qk_3);
+    let qk_4_value = q_value_t(qk_4);
 
  #if is_qualcomm
     if (sg_size > 8) {
@@ -547,67 +553,67 @@ $MAIN {
         if (sg_id < max_k_step) {
           val = v_tile[sg_id][i];
         }
-        var sum = subgroupShuffle(val, 0) * qk_1[0];
-        sum += subgroupShuffle(val, 1) * qk_1[1];
-        sum += subgroupShuffle(val, 2) * qk_1[2];
-        sum += subgroupShuffle(val, 3) * qk_1[3];
-        sum += subgroupShuffle(val, 4) * qk_2[0];
-        sum += subgroupShuffle(val, 5) * qk_2[1];
-        sum += subgroupShuffle(val, 6) * qk_2[2];
-        sum += subgroupShuffle(val, 7) * qk_2[3];
-        sum += subgroupShuffle(val, 8) * qk_3[0];
-        sum += subgroupShuffle(val, 9) * qk_3[1];
-        sum += subgroupShuffle(val, 10) * qk_3[2];
-        sum += subgroupShuffle(val, 11) * qk_3[3];
-        sum += subgroupShuffle(val, 12) * qk_4[0];
-        sum += subgroupShuffle(val, 13) * qk_4[1];
-        sum += subgroupShuffle(val, 14) * qk_4[2];
-        sum += subgroupShuffle(val, 15) * qk_4[3];
+        var sum = subgroupShuffle(val, 0) * qk_1_value[0];
+        sum += subgroupShuffle(val, 1) * qk_1_value[1];
+        sum += subgroupShuffle(val, 2) * qk_1_value[2];
+        sum += subgroupShuffle(val, 3) * qk_1_value[3];
+        sum += subgroupShuffle(val, 4) * qk_2_value[0];
+        sum += subgroupShuffle(val, 5) * qk_2_value[1];
+        sum += subgroupShuffle(val, 6) * qk_2_value[2];
+        sum += subgroupShuffle(val, 7) * qk_2_value[3];
+        sum += subgroupShuffle(val, 8) * qk_3_value[0];
+        sum += subgroupShuffle(val, 9) * qk_3_value[1];
+        sum += subgroupShuffle(val, 10) * qk_3_value[2];
+        sum += subgroupShuffle(val, 11) * qk_3_value[3];
+        sum += subgroupShuffle(val, 12) * qk_4_value[0];
+        sum += subgroupShuffle(val, 13) * qk_4_value[1];
+        sum += subgroupShuffle(val, 14) * qk_4_value[2];
+        sum += subgroupShuffle(val, 15) * qk_4_value[3];
         o_tile[i] = o_tile[i] * o_ratio + sum;
 
         if (sg_id < max_k_step) {
           val = v_tile[sg_id][half_head_size_vec + i];
         }
-        sum = subgroupShuffle(val, 0) * qk_1[0];
-        sum += subgroupShuffle(val, 1) * qk_1[1];
-        sum += subgroupShuffle(val, 2) * qk_1[2];
-        sum += subgroupShuffle(val, 3) * qk_1[3];
-        sum += subgroupShuffle(val, 4) * qk_2[0];
-        sum += subgroupShuffle(val, 5) * qk_2[1];
-        sum += subgroupShuffle(val, 6) * qk_2[2];
-        sum += subgroupShuffle(val, 7) * qk_2[3];
-        sum += subgroupShuffle(val, 8) * qk_3[0];
-        sum += subgroupShuffle(val, 9) * qk_3[1];
-        sum += subgroupShuffle(val, 10) * qk_3[2];
-        sum += subgroupShuffle(val, 11) * qk_3[3];
-        sum += subgroupShuffle(val, 12) * qk_4[0];
-        sum += subgroupShuffle(val, 13) * qk_4[1];
-        sum += subgroupShuffle(val, 14) * qk_4[2];
-        sum += subgroupShuffle(val, 15) * qk_4[3];
+        sum = subgroupShuffle(val, 0) * qk_1_value[0];
+        sum += subgroupShuffle(val, 1) * qk_1_value[1];
+        sum += subgroupShuffle(val, 2) * qk_1_value[2];
+        sum += subgroupShuffle(val, 3) * qk_1_value[3];
+        sum += subgroupShuffle(val, 4) * qk_2_value[0];
+        sum += subgroupShuffle(val, 5) * qk_2_value[1];
+        sum += subgroupShuffle(val, 6) * qk_2_value[2];
+        sum += subgroupShuffle(val, 7) * qk_2_value[3];
+        sum += subgroupShuffle(val, 8) * qk_3_value[0];
+        sum += subgroupShuffle(val, 9) * qk_3_value[1];
+        sum += subgroupShuffle(val, 10) * qk_3_value[2];
+        sum += subgroupShuffle(val, 11) * qk_3_value[3];
+        sum += subgroupShuffle(val, 12) * qk_4_value[0];
+        sum += subgroupShuffle(val, 13) * qk_4_value[1];
+        sum += subgroupShuffle(val, 14) * qk_4_value[2];
+        sum += subgroupShuffle(val, 15) * qk_4_value[3];
         o_tile_r[local_idx][i] = o_tile_r[local_idx][i] * o_ratio + sum;
       }
     } else {
       for (var i : u32 = 0; i < half_head_size_vec; i++) {
         var val = v_tile[capped_sg_id][i];
-        var sum = subgroupShuffle(val, 0) * qk_1[0];
-        sum += subgroupShuffle(val, 1) * qk_1[1];
-        sum += subgroupShuffle(val, 2) * qk_1[2];
-        sum += subgroupShuffle(val, 3) * qk_1[3];
-        sum += subgroupShuffle(val, 4) * qk_2[0];
-        sum += subgroupShuffle(val, 5) * qk_2[1];
-        sum += subgroupShuffle(val, 6) * qk_2[2];
-        sum += subgroupShuffle(val, 7) * qk_2[3];
+        var sum = subgroupShuffle(val, 0) * qk_1_value[0];
+        sum += subgroupShuffle(val, 1) * qk_1_value[1];
+        sum += subgroupShuffle(val, 2) * qk_1_value[2];
+        sum += subgroupShuffle(val, 3) * qk_1_value[3];
+        sum += subgroupShuffle(val, 4) * qk_2_value[0];
+        sum += subgroupShuffle(val, 5) * qk_2_value[1];
+        sum += subgroupShuffle(val, 6) * qk_2_value[2];
+        sum += subgroupShuffle(val, 7) * qk_2_value[3];
         o_tile[i] = o_tile[i] * o_ratio + sum;
 
         val = v_tile[capped_sg_id][half_head_size_vec + i];
-        sum = subgroupShuffle(val, 0) * qk_1[0];
-        sum += subgroupShuffle(val, 1) * qk_1[1];
-        sum += subgroupShuffle(val, 2) * qk_1[2];
-        sum += subgroupShuffle(val, 3) * qk_1[3];
-        sum += subgroupShuffle(val, 4) * qk_2[0];
-        sum += subgroupShuffle(val, 5) * qk_2[1];
-        sum += subgroupShuffle(val, 6) * qk_2[2];
-        sum += subgroupShuffle(val, 7) * qk_2[3];
+        sum = subgroupShuffle(val, 0) * qk_1_value[0];
+        sum += subgroupShuffle(val, 1) * qk_1_value[1];
+        sum += subgroupShuffle(val, 2) * qk_1_value[2];
+        sum += subgroupShuffle(val, 3) * qk_1_value[3];
+        sum += subgroupShuffle(val, 4) * qk_2_value[0];
+        sum += subgroupShuffle(val, 5) * qk_2_value[1];
+        sum += subgroupShuffle(val, 6) * qk_2_value[2];
+        sum += subgroupShuffle(val, 7) * qk_2_value[3];
         o_tile_r[local_idx][i] = o_tile_r[local_idx][i] * o_ratio + sum;
       }
     }
@@ -624,22 +630,22 @@ $MAIN {
   #else
         var val = q_value_t(0);
   #endif
-        var sum = fetchVTile(0, i, val) * qk_1[0];
-        sum += fetchVTile(1, i, val) * qk_1[1];
-        sum += fetchVTile(2, i, val) * qk_1[2];
-        sum += fetchVTile(3, i, val) * qk_1[3];
-        sum += fetchVTile(4, i, val) * qk_2[0];
-        sum += fetchVTile(5, i, val) * qk_2[1];
-        sum += fetchVTile(6, i, val) * qk_2[2];
-        sum += fetchVTile(7, i, val) * qk_2[3];
-        sum += fetchVTile(8, i, val) * qk_3[0];
-        sum += fetchVTile(9, i, val) * qk_3[1];
-        sum += fetchVTile(10, i, val) * qk_3[2];
-        sum += fetchVTile(11, i, val) * qk_3[3];
-        sum += fetchVTile(12, i, val) * qk_4[0];
-        sum += fetchVTile(13, i, val) * qk_4[1];
-        sum += fetchVTile(14, i, val) * qk_4[2];
-        sum += fetchVTile(15, i, val) * qk_4[3];
+        var sum = fetchVTile(0, i, val) * qk_1_value[0];
+        sum += fetchVTile(1, i, val) * qk_1_value[1];
+        sum += fetchVTile(2, i, val) * qk_1_value[2];
+        sum += fetchVTile(3, i, val) * qk_1_value[3];
+        sum += fetchVTile(4, i, val) * qk_2_value[0];
+        sum += fetchVTile(5, i, val) * qk_2_value[1];
+        sum += fetchVTile(6, i, val) * qk_2_value[2];
+        sum += fetchVTile(7, i, val) * qk_2_value[3];
+        sum += fetchVTile(8, i, val) * qk_3_value[0];
+        sum += fetchVTile(9, i, val) * qk_3_value[1];
+        sum += fetchVTile(10, i, val) * qk_3_value[2];
+        sum += fetchVTile(11, i, val) * qk_3_value[3];
+        sum += fetchVTile(12, i, val) * qk_4_value[0];
+        sum += fetchVTile(13, i, val) * qk_4_value[1];
+        sum += fetchVTile(14, i, val) * qk_4_value[2];
+        sum += fetchVTile(15, i, val) * qk_4_value[3];
         o_tile[i] = o_tile[i] * o_ratio + sum;
       }
     } else {
@@ -649,14 +655,14 @@ $MAIN {
   #else
         var val = q_value_t(0);
   #endif
-        var sum = fetchVTile(0, i, val) * qk_1[0];
-        sum += fetchVTile(1, i, val) * qk_1[1];
-        sum += fetchVTile(2, i, val) * qk_1[2];
-        sum += fetchVTile(3, i, val) * qk_1[3];
-        sum += fetchVTile(4, i, val) * qk_2[0];
-        sum += fetchVTile(5, i, val) * qk_2[1];
-        sum += fetchVTile(6, i, val) * qk_2[2];
-        sum += fetchVTile(7, i, val) * qk_2[3];
+        var sum = fetchVTile(0, i, val) * qk_1_value[0];
+        sum += fetchVTile(1, i, val) * qk_1_value[1];
+        sum += fetchVTile(2, i, val) * qk_1_value[2];
+        sum += fetchVTile(3, i, val) * qk_1_value[3];
+        sum += fetchVTile(4, i, val) * qk_2_value[0];
+        sum += fetchVTile(5, i, val) * qk_2_value[1];
+        sum += fetchVTile(6, i, val) * qk_2_value[2];
+        sum += fetchVTile(7, i, val) * qk_2_value[3];
         o_tile[i] = o_tile[i] * o_ratio + sum;
       }
     }
