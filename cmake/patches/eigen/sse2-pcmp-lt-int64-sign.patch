@@ -1,0 +1,28 @@
+Fix SSE2 pcmp_lt<Packet2l> comparing low 32-bit halves as signed
+
+Backport of upstream Eigen commit 8cef20fd ("Core: Fix SSE2
+pcmp_lt<Packet2l> comparing low halves as signed", libeigen/eigen!2831),
+adapted to the 5.0.1 release which predates the SIGN_MASK_I32 macro.
+
+Without SSE4.2 the 64-bit compare is emulated from two 32-bit compares,
+but the low half was compared signed. This misorders positive int64
+values whose low word has bit 31 set (e.g. 2147483649), producing wrong
+Clip and Sign results. Biasing only the low lanes by 2^31 makes one
+signed 32-bit compare serve as an unsigned compare for the low half. The
+0x80000000 lane mask matches the idiom already used elsewhere in this
+file (e.g. pabs).
+
+--- a/Eigen/src/Core/arch/SSE/PacketMath.h
++++ b/Eigen/src/Core/arch/SSE/PacketMath.h
+@@ -947,7 +947,10 @@ EIGEN_STRONG_INLINE Packet2l pcmp_lt(const Packet2l& a, const Packet2l& b) {
+ #else
+   Packet4i eq = pcmp_eq<Packet4i>(Packet4i(a), Packet4i(b));
+   Packet2l hi_eq = Packet2l(_mm_shuffle_epi32(eq, (shuffle_mask<1, 1, 3, 3>::mask)));
+-  Packet4i lt = pcmp_lt<Packet4i>(Packet4i(a), Packet4i(b));
++  // The low halves carry magnitude only and must be ordered as unsigned, while the high halves carry
++  // the sign. Biasing just the low lanes by 2^31 makes one signed 32-bit compare serve both.
++  const Packet4i kLowSignFlip = _mm_setr_epi32(0x80000000, 0x0, 0x80000000, 0x0);
++  Packet4i lt = pcmp_lt<Packet4i>(pxor(Packet4i(a), kLowSignFlip), pxor(Packet4i(b), kLowSignFlip));
+   Packet2l hi_lt = Packet2l(_mm_shuffle_epi32(lt, (shuffle_mask<1, 1, 3, 3>::mask)));
+   Packet2l lo_lt = Packet2l(_mm_shuffle_epi32(lt, (shuffle_mask<0, 0, 2, 2>::mask)));
+   // return hi(a) < hi(b) || (hi(a) == hi(b) && lo(a) < lo(b))
