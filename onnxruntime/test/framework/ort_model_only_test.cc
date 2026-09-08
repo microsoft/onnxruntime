@@ -91,13 +91,19 @@ Status LoadOrtModel(const std::vector<uint8_t>& buffer, std::unique_ptr<Model>& 
   const auto* session = fbs::GetInferenceSession(buffer.data());
   ORT_RETURN_IF(session == nullptr || session->model() == nullptr, "Invalid ORT test model buffer.");
   OrtFormatLoadOptions load_options;
-  return Model::LoadFromOrtFormat(*session->model(), nullptr, load_options,
+  return Model::LoadFromOrtFormat(*session->model(),
+#if !defined(ORT_MINIMAL_BUILD)
+                                  nullptr,
+#endif
+                                  load_options,
                                   DefaultLoggingManager().DefaultLogger(), model);
 }
 
 std::vector<uint8_t> BuildOrtModelWithEdgeSlots(int32_t src_arg_index, int32_t dst_arg_index,
                                                 bool input_edge = true, bool mismatched_args = false,
-                                                bool include_reciprocal_edge = false) {
+                                                bool include_reciprocal_edge = false,
+                                                bool control_only = false,
+                                                bool include_reverse_control_edge = false) {
   return BuildOrtModelBuffer([&](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
         fbs::CreateValueInfoDirect(builder, "input", "", CreateFloatTensorTypeInfo(builder, 1)),
@@ -108,7 +114,8 @@ std::vector<uint8_t> BuildOrtModelWithEdgeSlots(int32_t src_arg_index, int32_t d
     std::vector<flatbuffers::Offset<flatbuffers::String>> source_inputs{builder.CreateSharedString("input")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> source_outputs{builder.CreateSharedString("x")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> destination_inputs{
-        builder.CreateSharedString(mismatched_args ? "z" : "x")};
+        builder.CreateSharedString(mismatched_args ? "z" : control_only ? "input"
+                                                                        : "x")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> destination_outputs{builder.CreateSharedString("y")};
     std::vector<int32_t> empty_arg_counts;
     std::vector<int32_t> source_arg_counts{1};
@@ -128,6 +135,10 @@ std::vector<uint8_t> BuildOrtModelWithEdgeSlots(int32_t src_arg_index, int32_t d
     if (include_reciprocal_edge) {
       node_edges.push_back(input_edge ? fbs::CreateNodeEdgeDirect(builder, 0, nullptr, &output_edges)
                                       : fbs::CreateNodeEdgeDirect(builder, 1, &input_edges));
+    }
+    if (include_reverse_control_edge) {
+      std::vector<fbs::EdgeEnd> reverse_input_edges{fbs::EdgeEnd(1, INT_MAX, INT_MAX)};
+      node_edges.push_back(fbs::CreateNodeEdgeDirect(builder, 0, &reverse_input_edges));
     }
     std::vector<flatbuffers::Offset<flatbuffers::String>> graph_inputs{builder.CreateSharedString("input")};
     std::vector<flatbuffers::Offset<flatbuffers::String>> graph_outputs{builder.CreateSharedString("y")};
@@ -359,21 +370,55 @@ TEST(OrtModelTest, LoadsOneSidedAndReciprocalEdgeRecordsCanonically) {
 }
 
 TEST(OrtModelTest, LoadsOneSidedAndReciprocalControlEdgesCanonically) {
-  for (const bool input_edge : {true, false}) {
-    for (const bool include_reciprocal_edge : {false, true}) {
-      std::unique_ptr<Model> model;
-      ASSERT_STATUS_OK(LoadOrtModel(
-          BuildOrtModelWithEdgeSlots(INT_MAX, INT_MAX, input_edge, false, include_reciprocal_edge), model));
-      const auto* source = model->MainGraph().GetNode(0);
-      const auto* destination = model->MainGraph().GetNode(1);
-      ASSERT_NE(source, nullptr);
-      ASSERT_NE(destination, nullptr);
-      EXPECT_EQ(source->GetOutputEdgesCount(), 1);
-      EXPECT_EQ(destination->GetInputEdgesCount(), 1);
-      EXPECT_EQ(destination->ControlInputs(), std::set<std::string>{"source"});
+  for (const bool control_only : {false, true}) {
+    for (const bool input_edge : {true, false}) {
+      for (const bool include_reciprocal_edge : {false, true}) {
+        std::unique_ptr<Model> model;
+        ASSERT_STATUS_OK(LoadOrtModel(
+            BuildOrtModelWithEdgeSlots(
+                INT_MAX, INT_MAX, input_edge, false, include_reciprocal_edge, control_only),
+            model));
+        auto& graph = model->MainGraph();
+#if !defined(ORT_MINIMAL_BUILD)
+        graph.SetGraphResolveNeeded();
+        ASSERT_STATUS_OK(graph.Resolve());
+#endif
+        const auto* source = graph.GetNode(0);
+        const auto* destination = graph.GetNode(1);
+        ASSERT_NE(source, nullptr);
+        ASSERT_NE(destination, nullptr);
+        EXPECT_EQ(source->GetOutputEdgesCount(), 1);
+        EXPECT_EQ(destination->GetInputEdgesCount(), 1);
+        EXPECT_EQ(destination->ControlInputs(), std::set<std::string>{"source"});
+      }
     }
   }
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(OrtModelTest, RejectsControlEdgeCycle) {
+  std::unique_ptr<Model> model;
+  const auto status = LoadOrtModel(
+      BuildOrtModelWithEdgeSlots(INT_MAX, INT_MAX, true, false, false, true, true), model);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("cycle"));
+}
+#endif
+
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(OrtModelTest, RemovedControlEdgeIsNotRestored) {
+  std::unique_ptr<Model> model;
+  ASSERT_STATUS_OK(LoadOrtModel(BuildOrtModelWithEdgeSlots(INT_MAX, INT_MAX, true, false, false, true), model));
+  auto& graph = model->MainGraph();
+  graph.RemoveEdge(0, 1, INT_MAX, INT_MAX);
+  graph.SetGraphResolveNeeded();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const auto* destination = graph.GetNode(1);
+  ASSERT_NE(destination, nullptr);
+  EXPECT_TRUE(destination->ControlInputs().empty());
+}
+#endif
 
 TEST(OrtModelTest, RejectsAsymmetricControlEdgeSlots) {
   for (const bool input_edge : {true, false}) {
