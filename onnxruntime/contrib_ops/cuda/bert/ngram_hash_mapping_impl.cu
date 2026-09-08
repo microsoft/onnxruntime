@@ -41,6 +41,8 @@ __global__ void NGramHashMappingKernel(
     int64_t max_ngram_size,
     int64_t n_head_per_ngram,
     T pad_id,
+    bool has_eos_token_id,
+    T eos_token_id,
     bool stage_tables) {
   const int64_t num_heads = (max_ngram_size - 1) * n_head_per_ngram;
   const int64_t state_length = max_ngram_size - 1;
@@ -74,11 +76,21 @@ __global__ void NGramHashMappingKernel(
 
     for (int64_t n = 2; n <= max_ngram_size; ++n) {
       T mix = 0;
+      // Once an eos_token_id is seen at or after some shift, every larger shift in this same n-gram
+      // window has crossed a segment boundary and must be masked to pad_id too, since the range of
+      // positions it spans only grows with k. Shift 0 (the current token) is never masked.
+      bool saw_eos = false;
       for (int64_t k = 0; k < n; ++k) {
         const int64_t source_t = t - k;
-        const T token = source_t >= 0
-                            ? input_ids[input_base + source_t]
-                            : HistoryId<T>(past_ids, b, state_length + source_t, state_length, pad_id);
+        T token = source_t >= 0
+                      ? input_ids[input_base + source_t]
+                      : HistoryId<T>(past_ids, b, state_length + source_t, state_length, pad_id);
+        if (k > 0 && has_eos_token_id) {
+          saw_eos = saw_eos || token == eos_token_id;
+          if (saw_eos) {
+            token = pad_id;
+          }
+        }
         const T product = engram_helper::WrappedMultiply<T>(token, multiplier_table[k]);
         mix = k == 0 ? product : static_cast<T>(mix ^ product);
       }
@@ -144,7 +156,9 @@ Status LaunchNGramHashMappingKernel(
     int64_t sequence_length,
     int64_t max_ngram_size,
     int64_t n_head_per_ngram,
-    T pad_id) {
+    T pad_id,
+    bool has_eos_token_id,
+    T eos_token_id) {
   const int64_t state_length = max_ngram_size - 1;
 
   // The hash kernel reads past_ids and the present kernel writes present_ids, so when the caller
@@ -161,7 +175,7 @@ Status LaunchNGramHashMappingKernel(
     const size_t shared_bytes = stage_tables ? table_bytes : 0;
     NGramHashMappingKernel<T><<<engram_helper::GridSize(total), engram_helper::kThreads, shared_bytes, stream>>>(
         input_ids, multipliers, vocab_sizes, past_ids, output, total, sequence_length, max_ngram_size,
-        n_head_per_ngram, pad_id, stage_tables);
+        n_head_per_ngram, pad_id, has_eos_token_id, eos_token_id, stage_tables);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
 
@@ -179,7 +193,7 @@ Status LaunchNGramHashMappingKernel(
 #define INSTANTIATE_NGRAM_HASH_MAPPING(T)                                                      \
   template Status LaunchNGramHashMappingKernel<T>(cudaStream_t, const T*, const T*, const T*,  \
                                                   const T*, T*, T*, int64_t, int64_t, int64_t, \
-                                                  int64_t, T);
+                                                  int64_t, T, bool, T);
 
 INSTANTIATE_NGRAM_HASH_MAPPING(int32_t)
 INSTANTIATE_NGRAM_HASH_MAPPING(int64_t)

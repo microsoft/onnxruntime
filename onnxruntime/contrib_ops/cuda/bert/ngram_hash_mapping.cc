@@ -44,6 +44,15 @@ NGramHashMapping<T>::NGramHashMapping(const OpKernelInfo& info) : CudaKernel(inf
                   pad_id <= static_cast<int64_t>(std::numeric_limits<T>::max()),
               "pad_id is out of range for the input id type");
   pad_id_ = static_cast<T>(pad_id);
+
+  int64_t eos_token_id = 0;
+  has_eos_token_id_ = info.GetAttr<int64_t>("eos_token_id", &eos_token_id).IsOK();
+  if (has_eos_token_id_) {
+    ORT_ENFORCE(eos_token_id >= static_cast<int64_t>(std::numeric_limits<T>::min()) &&
+                    eos_token_id <= static_cast<int64_t>(std::numeric_limits<T>::max()),
+                "eos_token_id is out of range for the input id type");
+    eos_token_id_ = static_cast<T>(eos_token_id);
+  }
 }
 
 template <typename T>
@@ -84,7 +93,9 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
       sequence_length,
       max_ngram_size_,
       n_head_per_ngram_,
-      pad_id_);
+      pad_id_,
+      has_eos_token_id_,
+      eos_token_id_);
 }
 
 template class NGramHashMapping<int32_t>;

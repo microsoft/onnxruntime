@@ -23,7 +23,9 @@ Status LaunchNGramHashMappingKernel(
     int64_t sequence_length,
     int64_t max_ngram_size,
     int64_t n_head_per_ngram,
-    T pad_id);
+    T pad_id,
+    bool has_eos_token_id,
+    T eos_token_id);
 
 }  // namespace cuda
 }  // namespace contrib

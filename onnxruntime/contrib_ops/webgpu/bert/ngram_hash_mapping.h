@@ -15,17 +15,19 @@ using onnxruntime::webgpu::ComputeContext;
 
 class NGramHashMappingProgram final : public Program<NGramHashMappingProgram> {
  public:
-  explicit NGramHashMappingProgram(bool has_past_ids)
-      : Program{"NGramHashMapping"}, has_past_ids_(has_past_ids) {}
+  explicit NGramHashMappingProgram(bool has_past_ids, bool has_eos_token_id)
+      : Program{"NGramHashMapping"}, has_past_ids_(has_past_ids), has_eos_token_id_(has_eos_token_id) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"max_ngram_size", ProgramUniformVariableDataType::Uint32},
                                           {"n_head_per_ngram", ProgramUniformVariableDataType::Uint32},
-                                          {"pad_id", ProgramUniformVariableDataType::Int32});
+                                          {"pad_id", ProgramUniformVariableDataType::Int32},
+                                          {"eos_token_id", ProgramUniformVariableDataType::Int32});
 
  private:
   bool has_past_ids_;
+  bool has_eos_token_id_;
 };
 
 // Emits the right-aligned trailing window of (past_ids ++ input_ids) so the next call can continue
@@ -63,6 +65,8 @@ class NGramHashMapping final : public WebGpuKernel {
   int64_t max_ngram_size_;
   int64_t n_head_per_ngram_;
   int64_t pad_id_;
+  bool has_eos_token_id_ = false;
+  int64_t eos_token_id_ = 0;
 };
 
 }  // namespace webgpu

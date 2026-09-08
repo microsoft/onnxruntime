@@ -46,6 +46,15 @@ NGramHashMapping<T>::NGramHashMapping(const OpKernelInfo& info) : OpKernel(info)
                   pad_id <= static_cast<int64_t>(std::numeric_limits<T>::max()),
               "pad_id is out of range for the input id type");
   pad_id_ = static_cast<T>(pad_id);
+
+  int64_t eos_token_id = 0;
+  has_eos_token_id_ = info.GetAttr<int64_t>("eos_token_id", &eos_token_id).IsOK();
+  if (has_eos_token_id_) {
+    ORT_ENFORCE(eos_token_id >= static_cast<int64_t>(std::numeric_limits<T>::min()) &&
+                    eos_token_id <= static_cast<int64_t>(std::numeric_limits<T>::max()),
+                "eos_token_id is out of range for the input id type");
+    eos_token_id_ = static_cast<T>(eos_token_id);
+  }
 }
 
 // Reads the id at right-aligned history slot `slot` of past_ids. Slots outside the provided history
@@ -114,10 +123,21 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
 
             for (int64_t n = 2; n <= max_ngram_size_; ++n) {
               T mix = 0;
+              // Once an eos_token_id is seen at or after some shift, every larger shift in this same
+              // n-gram window has crossed a segment boundary and must be masked to pad_id too, since
+              // the range of positions it spans only grows with k. Shift 0 (the current token) is
+              // never masked; it is not part of any preceding-position history.
+              bool saw_eos = false;
               for (int64_t k = 0; k < n; ++k) {
                 const int64_t source_t = t - k;
-                const T token = source_t >= 0 ? input_data[input_base + source_t]
-                                              : HistoryId(past_data, b, state_length + source_t, state_length);
+                T token = source_t >= 0 ? input_data[input_base + source_t]
+                                        : HistoryId(past_data, b, state_length + source_t, state_length);
+                if (k > 0 && has_eos_token_id_) {
+                  saw_eos = saw_eos || token == eos_token_id_;
+                  if (saw_eos) {
+                    token = pad_id_;
+                  }
+                }
                 const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
                 mix = k == 0 ? product : static_cast<T>(mix ^ product);
               }

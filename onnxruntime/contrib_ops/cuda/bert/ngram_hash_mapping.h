@@ -20,6 +20,8 @@ class NGramHashMapping final : public onnxruntime::cuda::CudaKernel {
   int64_t max_ngram_size_;
   int64_t n_head_per_ngram_;
   T pad_id_;
+  bool has_eos_token_id_ = false;
+  T eos_token_id_{};
 };
 
 }  // namespace cuda

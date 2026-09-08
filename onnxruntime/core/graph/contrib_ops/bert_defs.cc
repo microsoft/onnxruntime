@@ -2610,6 +2610,15 @@ hash ids. When past_ids is omitted the missing history is pad_id, which matches 
 past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
 only when the whole operator call is unconditionally committed; a caller that may select a prefix or
 roll back must preserve past_ids.
+
+The optional eos_token_id attribute resets the n-gram context at sequence/segment boundaries. When
+set, a causal shift is only taken from a preceding position if no position from there up to (but not
+including) the current one equals eos_token_id; otherwise pad_id is substituted, the same as if that
+position were before the start of the whole sequence. This matches packing multiple sequences (for
+example multi-turn chat turns) into one row without letting n-grams span an eos_token_id boundary.
+When eos_token_id is omitted no such reset is applied, matching the pre-existing behavior. Callers
+that want an eos boundary to also behave like the very start of a sequence should set pad_id equal to
+eos_token_id.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2625,6 +2634,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("pad_id",
               "Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.",
               AttributeProto::INT)
+        .Attr("eos_token_id",
+              "Optional compressed tokenizer id that resets the n-gram context at segment boundaries. "
+              "When set, a causal shift crossing a position equal to eos_token_id uses pad_id instead of "
+              "the real preceding id. When omitted no such reset is applied.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input_ids",
                "Compressed tokenizer ids with shape (batch_size, sequence_length).",

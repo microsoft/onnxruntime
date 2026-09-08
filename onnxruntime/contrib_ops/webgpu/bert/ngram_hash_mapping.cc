@@ -46,7 +46,14 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  let state_length = uniforms.max_ngram_size - 1u;\n"
       << "  let past_base = b * state_length;\n"
       << "  for (var n = 2u; n <= uniforms.max_ngram_size; n++) {\n"
-      << "    var mix = 0i;\n"
+      << "    var mix = 0i;\n";
+  if (has_eos_token_id_) {
+    // Once an eos_token_id is seen at or after some shift, every larger shift in this same n-gram
+    // window has crossed a segment boundary and must be masked to pad_id too, since the range of
+    // positions it spans only grows with k. Shift 0 (the current token) is never masked.
+    shader.MainFunctionBody() << "    var saw_eos = false;\n";
+  }
+  shader.MainFunctionBody()
       << "    for (var k = 0u; k < n; k++) {\n"
       << "      var token = uniforms.pad_id;\n"
       << "      if (t >= k) {\n"
@@ -58,6 +65,13 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody()
         << "      if (t < k) {\n"
         << "        token = " << past_ids->GetByOffset("past_base + state_length + t - k") << ";\n"
+        << "      }\n";
+  }
+  if (has_eos_token_id_) {
+    shader.MainFunctionBody()
+        << "      if (k > 0u) {\n"
+        << "        saw_eos = saw_eos || (token == uniforms.eos_token_id);\n"
+        << "        if (saw_eos) { token = uniforms.pad_id; }\n"
         << "      }\n";
   }
   shader.MainFunctionBody()
@@ -143,6 +157,15 @@ NGramHashMapping::NGramHashMapping(const OpKernelInfo& info) : WebGpuKernel(info
   ORT_ENFORCE(n_head_per_ngram_ >= 1, "n_head_per_ngram must be positive");
   ORT_ENFORCE(pad_id_ >= std::numeric_limits<int32_t>::min() && pad_id_ <= std::numeric_limits<int32_t>::max(),
               "WebGPU NGramHashMapping only supports int32 ids");
+
+  int64_t eos_token_id = 0;
+  has_eos_token_id_ = info.GetAttr<int64_t>("eos_token_id", &eos_token_id).IsOK();
+  if (has_eos_token_id_) {
+    ORT_ENFORCE(eos_token_id >= std::numeric_limits<int32_t>::min() &&
+                    eos_token_id <= std::numeric_limits<int32_t>::max(),
+                "WebGPU NGramHashMapping only supports int32 ids");
+    eos_token_id_ = eos_token_id;
+  }
 }
 
 Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
@@ -174,8 +197,8 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
   // aliases the two the hash program must be queued first.
   const int64_t total = input_shape.Size();
   if (total > 0) {
-    NGramHashMappingProgram program{has_past_ids};
-    program.CacheHint(has_past_ids)
+    NGramHashMappingProgram program{has_past_ids, has_eos_token_id_};
+    program.CacheHint(has_past_ids, has_eos_token_id_)
         .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
                     {multipliers, ProgramTensorMetadataDependency::None},
                     {vocab_sizes, ProgramTensorMetadataDependency::None}});
@@ -188,7 +211,8 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
                               {onnxruntime::narrow<uint32_t>(sequence_length)},
                               {onnxruntime::narrow<uint32_t>(max_ngram_size_)},
                               {onnxruntime::narrow<uint32_t>(n_head_per_ngram_)},
-                              {onnxruntime::narrow<int32_t>(pad_id_)}});
+                              {onnxruntime::narrow<int32_t>(pad_id_)},
+                              {onnxruntime::narrow<int32_t>(eos_token_id_)}});
     ORT_RETURN_IF_ERROR(context.RunProgram(program));
   }
 
