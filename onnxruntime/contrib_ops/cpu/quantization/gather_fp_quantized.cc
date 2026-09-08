@@ -5,6 +5,7 @@
 
 #include "contrib_ops/cpu/quantization/gather_fp_quantized.h"
 
+#include <algorithm>
 #include <unordered_map>
 
 #include "core/common/common.h"
@@ -73,15 +74,25 @@ Status GatherFpQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* context, 
                     "data and scales must have the same rank.");
 
   const int64_t quantize_axis_dim = data_shape[narrow<size_t>(p.quantize_axis)];
-  const int64_t effective_block_size = block_size_ == 0 ? quantize_axis_dim : block_size_;
+  // A block_size of 0 means a single block spanning the whole quantize_axis. When that axis is
+  // empty (dim == 0) there are no blocks and effective_block_size would otherwise divide by zero
+  // below; using 1 is safe since it is never divided into when quantize_axis_dim == 0 (dims_match's
+  // ceil-division below also special-cases it to avoid 0 / 0).
+  const int64_t effective_block_size = block_size_ != 0 ? block_size_ : std::max<int64_t>(quantize_axis_dim, 1);
   const size_t rank = data_shape.NumDimensions();
   p.data_strides.assign(rank, 1);
   p.scale_strides.assign(rank, 1);
   p.scale_broadcast_axis.assign(rank, false);
   for (size_t i = 0; i < rank; ++i) {
-    bool dims_match = i == static_cast<size_t>(p.quantize_axis)
-                          ? (data_shape[i] + effective_block_size - 1) / effective_block_size == scales_shape[i]
-                          : data_shape[i] == scales_shape[i];
+    bool dims_match;
+    if (i == static_cast<size_t>(p.quantize_axis)) {
+      const int64_t num_blocks = quantize_axis_dim == 0
+                                     ? 0
+                                     : (quantize_axis_dim + effective_block_size - 1) / effective_block_size;
+      dims_match = num_blocks == scales_shape[i];
+    } else {
+      dims_match = data_shape[i] == scales_shape[i];
+    }
     // On axes other than quantize_axis, a scales dimension of 1 broadcasts along that axis (e.g. a
     // single scale shared by every row, including a single global per-tensor scale).
     bool broadcastable = i != static_cast<size_t>(p.quantize_axis) && scales_shape[i] == 1;
@@ -185,7 +196,10 @@ Status GatherFpQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   const int64_t gather_N = p.indices_tensor->Shape().Size();
 
   const int64_t quantize_axis_dim = data_shape[narrow<size_t>(p.quantize_axis)];
-  const int64_t effective_block_size = block_size_ == 0 ? quantize_axis_dim : block_size_;
+  // See PrepareForCompute: block_size_ == 0 means a single block spanning quantize_axis; guard
+  // against dividing by zero when that axis is empty (the loop below never actually indexes into
+  // it in that case, since gather_M or gather_block would then also be 0).
+  const int64_t effective_block_size = block_size_ != 0 ? block_size_ : std::max<int64_t>(quantize_axis_dim, 1);
 
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
   const auto* data_ptr = p.data_tensor->template Data<T1>();

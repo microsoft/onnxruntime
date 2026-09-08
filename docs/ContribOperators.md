@@ -4387,8 +4387,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>eos_token_id</tt> : int</dt>
-<dd>Optional compressed tokenizer id that resets the n-gram context at segment boundaries. When set, a causal shift crossing a position equal to eos_token_id uses pad_id instead of the real preceding id. When omitted no such reset is applied.</dd>
 <dt><tt>max_ngram_size</tt> : int (required)</dt>
 <dd>Maximum n-gram order. Must be at least 2.</dd>
 <dt><tt>n_head_per_ngram</tt> : int (required)</dt>

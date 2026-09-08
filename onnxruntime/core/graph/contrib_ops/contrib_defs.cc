@@ -4354,7 +4354,7 @@ com.microsoft.GatherBlockQuantized, with these differences:
             "and not smaller than 16.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
-      .Input(0, "data", "Tensor of rank r >= 1, FP8 or FP4 quantized, block-wise scaled.", "T1")
+      .Input(0, "data", "Tensor of rank r > 1, FP8 or FP4 quantized, block-wise scaled.", "T1")
       .Input(1,
              "indices",
              "Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] "
@@ -4395,8 +4395,8 @@ com.microsoft.GatherBlockQuantized, with these differences:
         if (quantize_axis < -r || quantize_axis >= r) {
           fail_shape_inference("quantize_axis must be in [-r, r-1]");
         }
-        if (block_size < 0) {
-          fail_shape_inference("block_size must be non-negative");
+        if (block_size < 0 || (block_size != 0 && (block_size < 16 || (block_size & (block_size - 1)) != 0))) {
+          fail_shape_inference("block_size must be 0, or a power of 2 and not smaller than 16");
         }
 
         gather_axis = (gather_axis + r) % r;

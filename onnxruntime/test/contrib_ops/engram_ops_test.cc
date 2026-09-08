@@ -302,13 +302,14 @@ std::vector<T> NGramHashMappingReference(const std::vector<T>& ids,
   const int64_t num_heads = state_length * kHeadsPerNGram;
   std::vector<T> output(static_cast<size_t>(sequence_length * num_heads));
 
+  const T missing_history_value = eos_token_id.has_value() ? static_cast<T>(*eos_token_id) : static_cast<T>(pad_id);
   auto id_at = [&](int64_t t) -> T {
     if (t >= 0) {
       return ids[static_cast<size_t>(t)];
     }
     const int64_t slot = state_length + t;
     if (history.empty() || slot < 0) {
-      return static_cast<T>(pad_id);
+      return missing_history_value;
     }
     return history[static_cast<size_t>(slot)];
   };
@@ -317,14 +318,15 @@ std::vector<T> NGramHashMappingReference(const std::vector<T>& ids,
     for (int64_t n = 2; n <= kMaxNGramSize; ++n) {
       T mix = 0;
       // Once an eos_token_id is seen at or after some shift, every larger shift in this same n-gram
-      // window has crossed a segment boundary and must be masked to pad_id too, mirroring the kernel.
+      // window has crossed a segment boundary and must be masked to the missing-history value too,
+      // mirroring the kernel's boundary reset (which substitutes eos_value, not pad_id).
       bool saw_eos = false;
       for (int64_t k = 0; k < n; ++k) {
         T token = id_at(t - k);
         if (k > 0 && eos_token_id.has_value()) {
           saw_eos = saw_eos || token == static_cast<T>(*eos_token_id);
           if (saw_eos) {
-            token = static_cast<T>(pad_id);
+            token = missing_history_value;
           }
         }
         // Multiplication wraps on overflow, matching the kernel's unsigned arithmetic.
