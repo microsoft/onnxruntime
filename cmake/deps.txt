@@ -55,6 +55,7 @@ re2;https://github.com/google/re2/archive/refs/tags/2024-07-02.zip;646e1728269cd
 safeint;https://github.com/dcleblanc/SafeInt/archive/refs/tags/3.0.28.zip;23f252040ff6cb9f1fd18575b32fa8fb5928daac
 tensorboard;https://github.com/tensorflow/tensorboard/archive/373eb09e4c5d2b3cc2493f0949dc4be6b6a45e81.zip;67b833913605a4f3f499894ab11528a702c2b381
 cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v4.7.0.zip;51d4f1ba4b9977b94606e23bbc307463a6741383
+deep_gemm;https://github.com/deepseek-ai/DeepGEMM/archive/559d79fb6994a58b8a15b4b93bf13ccc16edf247.tar.gz;76a0076386991cac8e5d32c3e7e74d9bb8102115
 extensions;https://github.com/microsoft/onnxruntime-extensions/archive/c24b7bab0c12f53da76d0c31b03b9f0f8ec8f3b4.zip;239063aee4946a9af147b473a4c3da78ba7413b4
 directx_headers;https://github.com/microsoft/DirectX-Headers/archive/refs/tags/v1.613.1.zip;47653509a3371eabb156360f42faf582f314bf2e
 cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.27.0.zip;1e4c9a464d3437e388ab0163f3be068dba783c08

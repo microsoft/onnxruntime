@@ -88,6 +88,17 @@
     LLM_SM90_SOURCES onnxruntime_cuda_llm_sm90_srcs
     LLM_FP4_SOURCES onnxruntime_cuda_llm_fp4_srcs
   )
+  if(MSVC OR UNIX)
+    foreach(_src IN LISTS onnxruntime_cuda_llm_sm90_srcs)
+      if(_src MATCHES "/moe_gemm/deep_gemm_sm90\\.cu$")
+        if(MSVC)
+          set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-Xcompiler=/wd4068")
+        else()
+          set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-Xcompiler=-Wno-unknown-pragmas")
+        endif()
+      endif()
+    endforeach()
+  endif()
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS AND NOT onnxruntime_CUDA_MINIMAL)
@@ -382,6 +393,10 @@
 
     include(cutlass)
     target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
+    if(ORT_HAS_SM90_OR_LATER AND NOT onnxruntime_CUDA_MINIMAL AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      include(deep_gemm)
+      target_include_directories(${target} PRIVATE ${deep_gemm_SOURCE_DIR}/deep_gemm/include)
+    endif()
     target_link_libraries(${target} PRIVATE Eigen3::Eigen)
     target_include_directories(${target} PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
 

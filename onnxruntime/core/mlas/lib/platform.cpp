@@ -837,6 +837,12 @@ Return Value:
         this->ComputeSumExpF32Kernel = MlasSveComputeSumExpF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasSveComputeLogSoftmaxOutputF32Kernel;
         this->ComputeSoftmaxOutputF32Kernel = MlasSveComputeSoftmaxOutputF32Kernel;
+        //
+        // Overrides the NEON LinearAttention dispatch registered above. The SVE
+        // driver hands anything outside its envelope straight back to
+        // MlasLinearAttentionProcessHeadNeon, so this is never a regression.
+        //
+        this->LinearAttentionDispatch = &MlasLinearAttentionDispatchSve;
     }
     else{
         this->ErfKernelRoutine = MlasErfKernel;
