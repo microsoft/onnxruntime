@@ -324,13 +324,18 @@ export declare namespace InferenceSession {
     defaultBufferCacheMode?: 'disabled' | 'lazyRelease' | 'simple' | 'bucket';
 
     /**
-     * Accumulate the dot products in f32 instead of in the output element type. Weights and
-     * activations are unaffected, so global memory traffic is identical either way.
+     * Accumulate the dot products in f32 instead of in the output element type. The input and
+     * weight tensors keep their own type, so global memory traffic is identical either way.
      *
      * When this is false the accumulator follows the output element type. Partial sums along K
      * can exceed the f16 maximum (65504) on backends that round strictly at every step, which
      * saturates the accumulator to Inf; setting this avoids that at the cost of registers and
      * workgroup memory.
+     *
+     * The fused kernels carry the wider type into their epilogue: the fused MLP applies the bias,
+     * the SiLU and the gate/up product to the f32 accumulators and rounds once at the final store
+     * rather than after every step, so with the option on its output can differ from the same
+     * graph run unfused by more than the accumulation change alone.
      *
      * This currently applies to MatMulNBits and its fused variants. Coverage of the unquantized
      * MatMul family is planned as follow-up work under the same option.

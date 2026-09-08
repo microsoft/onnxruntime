@@ -929,8 +929,9 @@ TEST(MatMulNBits, Float32_Large) {
 // M selects the dispatch, and the two that the option reaches from a MatMulNBits node are both covered:
 //   M = 1  -> matmul_nbits.wgsl.template. K is split over tile_size_k_vec lanes and carried in
 //             inter_results, so a lane walks K/tile_size_k_vec = 256 elements and peaks at
-//             128 * 8 * 112 = 114688. The block-local `sum` stays in output_element_t by design and
-//             peaks at 32 * 896 = 28672, well inside range, so this isolates the cross-K accumulator.
+//             128 * 8 * 112 = 114688. The block-local `sum` follows the same accumulator type, but
+//             it spans at most 32 products and peaks at 32 * 896 = 28672, inside the f16 range in
+//             either mode, so what this case actually isolates is the cross-K accumulator.
 //   M = 8  -> matmul_nbits_wide_tile.wgsl.template. No cross-lane split of K here: results[m] carries
 //             the whole prefix and peaks at 4096 * 8 * 112 = 3670016, which is still exact in f32
 //             (under 2^24) and far outside f16.

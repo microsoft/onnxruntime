@@ -19,9 +19,13 @@ constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
 constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvCacheQuantizationBits";
 // Accumulate the dot products of the MatMulNBits kernels in f32 instead of in the output element
-// type. Weights and activations are unaffected: only the register/workgroup accumulators change,
-// so global memory traffic is identical either way. Enabling it avoids saturating the f16 maximum
-// (65504) when partial sums along K grow large, at the cost of registers and shared memory.
+// type. The input and weight tensors keep their own type, so global memory traffic is identical
+// either way. Enabling it avoids saturating the f16 maximum (65504) when partial sums along K grow
+// large, at the cost of registers and shared memory.
+// It is not only the accumulator registers: in the fused variants the epilogue that consumes them
+// runs in the same precision. The fused MLP keeps the bias add, the SiLU and the gate/up product in
+// f32 and rounds once at the final store instead of after every step, which is why its test
+// tolerance against the unfused reference is looser with the option on than with it off.
 // Today this covers MatMulNBits and its fused variants; the unquantized MatMul family is planned
 // as follow-up work under the same option.
 constexpr const char* kEnableMatmulFp32Accumulation = "ep.webgpuexecutionprovider.enableMatmulFp32Accumulation";
