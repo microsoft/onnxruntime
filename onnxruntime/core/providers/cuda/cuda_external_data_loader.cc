@@ -8,9 +8,10 @@
 
 #include <algorithm>
 #include <bit>
+#include <exception>
 #include <future>
-#include <vector>
 
+#include "core/common/inlined_containers.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -51,23 +52,34 @@ common::Status ReadChunk(const Env& env, const std::filesystem::path& path,
                                   gsl::span<char>{static_cast<char*>(buffer), length});
   }
 
-  std::vector<std::future<common::Status>> reads;
-  reads.reserve(reader_count);
+  common::Status status = Status::OK();
+  ORT_TRY {
+    InlinedVector<std::future<common::Status>> reads;
+    reads.reserve(reader_count);
 
-  for (size_t reader = 0; reader < reader_count; ++reader) {
-    const size_t begin = length * reader / reader_count;
-    const size_t end = length * (reader + 1) / reader_count;
-    reads.emplace_back(std::async(std::launch::async, [&env, &path, offset, begin, end, buffer]() {
-      return env.ReadFileIntoBuffer(path.native().c_str(), offset + begin, end - begin,
-                                    gsl::span<char>{static_cast<char*>(buffer) + begin, end - begin});
-    }));
+    for (size_t reader = 0; reader < reader_count; ++reader) {
+      const size_t begin = length * reader / reader_count;
+      const size_t end = length * (reader + 1) / reader_count;
+      reads.emplace_back(std::async(std::launch::async, [&env, &path, offset, begin, end, buffer]() {
+        return env.ReadFileIntoBuffer(path.native().c_str(), offset + begin, end - begin,
+                                      gsl::span<char>{static_cast<char*>(buffer) + begin, end - begin});
+      }));
+    }
+
+    for (auto& read : reads) {
+      ORT_RETURN_IF_ERROR(read.get());
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to read external data: ", ex.what());
+    });
+  }
+  ORT_CATCH(...) {
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to read external data: unknown exception");
   }
 
-  for (auto& read : reads) {
-    ORT_RETURN_IF_ERROR(read.get());
-  }
-
-  return Status::OK();
+  return status;
 }
 
 void SwapByteOrderInplace(void* buffer, size_t length, size_t element_size) {
@@ -80,7 +92,7 @@ void SwapByteOrderInplace(void* buffer, size_t length, size_t element_size) {
 common::Status LoadWithPageableBuffer(const Env& env, const std::filesystem::path& path,
                                       FileOffsetType data_offset, size_t length, Tensor& tensor,
                                       size_t configured_reader_count) {
-  std::vector<uint8_t> buffer(std::min(kBufferSize, length));
+  InlinedVector<uint8_t> buffer(std::min(kBufferSize, length));
   auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
 
   for (size_t offset = 0; offset < length;) {
