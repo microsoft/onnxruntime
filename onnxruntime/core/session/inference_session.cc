@@ -9,6 +9,9 @@
 #include <list>
 #include <string>
 #include <unordered_map>
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#include <unordered_set>
+#endif
 #include <thread>
 #include <queue>
 #include <iomanip>
@@ -1056,6 +1059,9 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     if (!st.IsOK()) {
       return st;
     }
+#if !defined(ORT_MINIMAL_BUILD) && defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+    ORT_RETURN_IF_ERROR_SESSIONID_(StartExternalDataPreload());
+#endif
   }
 
   p_exec_provider->SetLogger(session_logger_);
@@ -1175,14 +1181,28 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
     model_ = p_tmp_model;
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+    status = StartExternalDataPreload();
+    ORT_RETURN_IF_ERROR_SESSIONID_(status);
+    bool post_load_processing_succeeded = false;
+    auto abort_external_data_preload = gsl::finally([&]() {
+      if (!post_load_processing_succeeded) {
+        external_data_loader_mgr_.AbortLoad();
+      }
+    });
+#endif
     status = DoPostLoadProcessing(*model_);
     ORT_RETURN_IF_ERROR_SESSIONID_(status);
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+    post_load_processing_succeeded = true;
+#endif
 
     // all steps complete, mark the model as loaded.
     is_model_loaded_ = true;
 
     telemetry_.event_name_ = event_name;
   }
+
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = Status(common::ONNXRUNTIME, common::FAIL, "Exception during loading: " + std::string(ex.what()));
@@ -1202,6 +1222,47 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
   return status;
 }
+
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+common::Status InferenceSession::StartExternalDataPreload() {
+  if (external_data_preload_started_ || model_ == nullptr ||
+      !external_data_loader_mgr_.HasPreloader()) {
+    return Status::OK();
+  }
+
+  std::unordered_set<std::string> excluded_initializer_names;
+  size_t excluded_initializer_count = session_options_.initializers_to_share_map.size();
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
+  excluded_initializer_count += session_options_.external_initializers.size();
+#endif
+  excluded_initializer_names.reserve(excluded_initializer_count);
+  for (const auto& [name, initializer] : session_options_.initializers_to_share_map) {
+    ORT_UNUSED_PARAMETER(initializer);
+    excluded_initializer_names.insert(name);
+  }
+
+  std::unordered_set<PathString> excluded_external_data_files;
+#if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
+  for (const auto& [name, initializer] : session_options_.external_initializers) {
+    ORT_UNUSED_PARAMETER(initializer);
+    excluded_initializer_names.insert(name);
+  }
+
+  excluded_external_data_files.reserve(session_options_.external_initializer_files_mmap.size());
+  for (const auto& [file_name, file] : session_options_.external_initializer_files_mmap) {
+    ORT_UNUSED_PARAMETER(file);
+    excluded_external_data_files.insert(file_name);
+  }
+#endif
+
+  ORT_RETURN_IF_ERROR(external_data_loader_mgr_.PreloadExternalData(
+      Env::Default(), model_location_, model_->MainGraph(), excluded_initializer_names,
+      excluded_external_data_files,
+      [this]() { return session_options_.IsLoadCancellationFlagSet(); }));
+  external_data_preload_started_ = true;
+  return Status::OK();
+}
+#endif
 
 common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
   model_location_ = model_uri;

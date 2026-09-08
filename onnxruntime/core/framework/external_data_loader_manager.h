@@ -7,7 +7,18 @@
 #include "core/common/common.h"
 #include "core/framework/external_data_loader.h"
 
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+#include <string>
+#include <unordered_set>
+
+#include "core/common/path_string.h"
+#endif
+
 namespace onnxruntime {
+
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+class Graph;
+#endif
 
 // The external data loader manager manages all registered external data loaders to allow custom
 // external data loading implemented by execution providers.
@@ -18,6 +29,25 @@ class ExternalDataLoaderManager {
   common::Status RegisterExternalDataLoader(std::unique_ptr<IExternalDataLoader> external_data_loader);
 
   const IExternalDataLoader* GetExternalDataLoader(const OrtMemoryInfo& target_memory_info) const;
+
+#if defined(_WIN32) && defined(ENABLE_WEBGPU_DIRECT_STORAGE)
+  const IExternalDataLoader* GetExternalDataLoader(
+      const OrtMemoryInfo& target_memory_info, int32_t tensor_data_type) const;
+  const IExternalDataLoader* GetTensorCreator(
+      const OrtDevice& target_device, int32_t tensor_data_type) const;
+  bool HasPreloader() const;
+
+  common::Status PreloadExternalData(
+      const Env& env,
+      const std::filesystem::path& model_path,
+      const Graph& graph,
+      const std::unordered_set<std::string>& excluded_initializer_names,
+      const std::unordered_set<PathString>& excluded_external_data_files,
+      const std::function<bool()>& is_cancelled) const;
+  common::Status BeginLoad() const;
+  common::Status FinalizeLoad(const std::function<bool()>& is_cancelled) const;
+  void AbortLoad() const noexcept;
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExternalDataLoaderManager);

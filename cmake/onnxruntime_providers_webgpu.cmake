@@ -7,6 +7,73 @@
 
   add_compile_definitions(USE_WEBGPU=1)
 
+  if(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
+    if(NOT WIN32 OR NOT MSVC OR NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+      message(FATAL_ERROR "WebGPU DirectStorage requires native Windows MSVC and the Dawn D3D12 backend.")
+    endif()
+    if(onnxruntime_USE_EXTERNAL_DAWN OR onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
+      message(FATAL_ERROR "WebGPU DirectStorage requires the in-tree statically linked Dawn build.")
+    endif()
+    if(onnxruntime_USE_EP_API_ADAPTERS)
+      message(FATAL_ERROR "WebGPU DirectStorage is not supported with EP API adapter/plugin builds.")
+    endif()
+
+    set(_directstorage_native_root "${onnxruntime_DIRECT_STORAGE_ROOT}")
+    if(NOT _directstorage_native_root)
+      set(_directstorage_package_dir "${CMAKE_BINARY_DIR}/directstorage/Microsoft.Direct3D.DirectStorage.1.3.0")
+      set(_directstorage_nupkg "${CMAKE_BINARY_DIR}/directstorage/Microsoft.Direct3D.DirectStorage.1.3.0.nupkg")
+      set(_directstorage_native_root "${_directstorage_package_dir}/native")
+      if(NOT EXISTS "${_directstorage_native_root}/include/dstorage.h")
+        file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/directstorage")
+        file(DOWNLOAD
+          "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.DirectStorage/1.3.0"
+          "${_directstorage_nupkg}"
+          EXPECTED_HASH "SHA256=8ab6c1082537565388b79050d94fdd7f5f437cd0f1d909e7b19f786042b97177"
+          TLS_VERIFY ON
+          STATUS _directstorage_download_status)
+        list(GET _directstorage_download_status 0 _directstorage_download_code)
+        if(NOT _directstorage_download_code EQUAL 0)
+          list(GET _directstorage_download_status 1 _directstorage_download_message)
+          message(FATAL_ERROR "Failed to download DirectStorage NuGet package: ${_directstorage_download_message}")
+        endif()
+        file(MAKE_DIRECTORY "${_directstorage_package_dir}")
+        file(ARCHIVE_EXTRACT INPUT "${_directstorage_nupkg}" DESTINATION "${_directstorage_package_dir}")
+      endif()
+    endif()
+
+    set(_directstorage_target_arch "${CMAKE_GENERATOR_PLATFORM}")
+    if(NOT _directstorage_target_arch)
+      set(_directstorage_target_arch "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}")
+    endif()
+    if(NOT _directstorage_target_arch)
+      set(_directstorage_target_arch "${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+    string(TOUPPER "${_directstorage_target_arch}" _directstorage_target_arch)
+    if(_directstorage_target_arch MATCHES "^(ARM64|AARCH64)$")
+      set(_directstorage_arch "ARM64")
+    elseif(_directstorage_target_arch MATCHES "^(WIN32|X86|I[3-6]86)$")
+      set(_directstorage_arch "x86")
+    elseif(_directstorage_target_arch MATCHES "^(X64|AMD64|X86_64|ARM64EC)$")
+      set(_directstorage_arch "x64")
+    else()
+      message(FATAL_ERROR "Unsupported DirectStorage target architecture: ${_directstorage_target_arch}")
+    endif()
+
+    set(_directstorage_include_dir "${_directstorage_native_root}/include")
+    set(_directstorage_library "${_directstorage_native_root}/lib/${_directstorage_arch}/dstorage.lib")
+    set(_directstorage_runtime "${_directstorage_native_root}/bin/${_directstorage_arch}/dstorage.dll")
+    set(_directstorage_core_runtime "${_directstorage_native_root}/bin/${_directstorage_arch}/dstoragecore.dll")
+    foreach(_directstorage_file IN ITEMS
+        "${_directstorage_include_dir}/dstorage.h"
+        "${_directstorage_library}"
+        "${_directstorage_runtime}"
+        "${_directstorage_core_runtime}")
+      if(NOT EXISTS "${_directstorage_file}")
+        message(FATAL_ERROR "DirectStorage dependency not found: ${_directstorage_file}")
+      endif()
+    endforeach()
+  endif()
+
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
   endif()
@@ -139,6 +206,18 @@
 
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES CXX_STANDARD_REQUIRED ON)
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")
+
+  if(onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE)
+    target_include_directories(onnxruntime_providers_webgpu PRIVATE "${_directstorage_include_dir}")
+    target_link_libraries(onnxruntime_providers_webgpu PRIVATE "${_directstorage_library}")
+    add_custom_command(TARGET onnxruntime_providers_webgpu POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${_directstorage_runtime}" "$<TARGET_FILE_DIR:onnxruntime_providers_webgpu>/dstorage.dll"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${_directstorage_core_runtime}" "$<TARGET_FILE_DIR:onnxruntime_providers_webgpu>/dstoragecore.dll")
+    install(FILES "${_directstorage_runtime}" "${_directstorage_core_runtime}"
+      DESTINATION "${CMAKE_INSTALL_BINDIR}")
+  endif()
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # target "emdawnwebgpu_c" is created by Dawn, including "-fno-exceptions" in its compile options by default.

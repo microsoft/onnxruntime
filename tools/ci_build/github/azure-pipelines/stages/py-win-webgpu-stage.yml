@@ -16,6 +16,10 @@ parameters:
   type: string
   default: ''
 
+- name: RUN_DIRECT_STORAGE_TESTS
+  type: boolean
+  default: false
+
 - name: cmake_build_type
   type: string
   displayName: 'Linux packages cmake build type. Linux Only.'
@@ -89,7 +93,17 @@ stages:
             $(TelemetryOption)
             ${{ parameters.BUILD_PY_PARAMETERS }}
             ${{ parameters.EP_BUILD_FLAGS }}
+            --cmake_extra_defines onnxruntime_ENABLE_WEBGPU_DIRECT_STORAGE=ON
           workingDirectory: '$(Build.BinariesDirectory)'
+
+      - ${{ if eq(parameters.RUN_DIRECT_STORAGE_TESTS, true) }}:
+        - powershell: |
+            $testBinary = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_provider_test.exe"
+            & $testBinary "--gtest_filter=WebGpuContextTest.*DirectStorage*:WebGpuContextTest.*WeightLoadAcceleration*"
+            if ($LASTEXITCODE -ne 0) {
+              throw "DirectStorage WebGPU tests failed with exit code $LASTEXITCODE."
+            }
+          displayName: 'Run WebGPU DirectStorage tests'
 
       - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
         - template: ../templates/publish-symbolrequestprod-api.yml
