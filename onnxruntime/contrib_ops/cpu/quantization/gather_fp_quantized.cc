@@ -153,12 +153,13 @@ Status GatherFpQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       int64_t remaining = data_idx;
       int64_t scale_idx = 0;
       for (int64_t axis = 0; axis < rank; ++axis) {
-        int64_t axis_idx = remaining / data_strides[axis];
-        remaining -= axis_idx * data_strides[axis];
+        const size_t axis_u = narrow<size_t>(axis);
+        int64_t axis_idx = remaining / data_strides[axis_u];
+        remaining -= axis_idx * data_strides[axis_u];
         int64_t contribution = axis == quantize_axis
                                    ? axis_idx / effective_block_size
-                                   : (scale_broadcast_axis[axis] ? 0 : axis_idx);
-        scale_idx += contribution * scale_strides[axis];
+                                   : (scale_broadcast_axis[axis_u] ? 0 : axis_idx);
+        scale_idx += contribution * scale_strides[axis_u];
       }
       const float scale_val = static_cast<float>(scales_ptr[scale_idx]);
 

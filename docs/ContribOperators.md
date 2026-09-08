@@ -2547,7 +2547,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>data</tt> : T1</dt>
-<dd>Tensor of rank r >= 1, FP8 or FP4 quantized, block-wise scaled.</dd>
+<dd>Tensor of rank r > 1, FP8 or FP4 quantized, block-wise scaled.</dd>
 <dt><tt>indices</tt> : Tind</dt>
 <dd>Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] along axis of size s. It is an error if any of the index values are out of bounds.</dd>
 <dt><tt>scales</tt> : T2</dt>
@@ -2564,9 +2564,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(float4e2m1), tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz)</dt>
+<dt><tt>T1</tt> : tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz), tensor(float4e2m1)</dt>
 <dd>Constrain quantized data to FP8 or FP4 types.</dd>
-<dt><tt>T2</tt> : tensor(bfloat16), tensor(float), tensor(float16)</dt>
+<dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain dequantized types.</dd>
 <dt><tt>Tind</tt> : tensor(int32), tensor(int64)</dt>
 <dd>Constrain indices to integer types.</dd>
