@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include "core/common/inlined_containers.h"
+#include "core/framework/endian_utils.h"
 #include "core/common/path_utils.h"
 #include "core/common/span_utils.h"
 #include "core/flatbuffers/ort_format_version.h"
@@ -2021,8 +2022,12 @@ TEST_F(GraphTest, ShapeInferenceWithFileBackedExternalData) {
   {
     std::ofstream external_data_file{external_data_path, std::ios::binary};
     ASSERT_TRUE(external_data_file.is_open());
+    // External data payloads are little-endian; serialize explicitly so the
+    // fixture is valid on big-endian hosts too.
     const int64_t axis = 1;
-    external_data_file.write(reinterpret_cast<const char*>(&axis), sizeof(axis));
+    unsigned char axis_bytes[sizeof(axis)];
+    ASSERT_STATUS_OK(onnxruntime::utils::WriteLittleEndian(gsl::make_span(&axis, 1), gsl::make_span(axis_bytes)));
+    external_data_file.write(reinterpret_cast<const char*>(axis_bytes), sizeof(axis_bytes));
     ASSERT_TRUE(external_data_file.good());
   }
 

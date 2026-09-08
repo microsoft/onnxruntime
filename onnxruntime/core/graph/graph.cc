@@ -2771,7 +2771,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
         auto temp_tensor_proto = std::make_unique<TensorProto>(*initializer);
         temp_tensor_proto->clear_external_data();
         temp_tensor_proto->clear_data_location();
-utils::SetRawDataInTensorProto(*temp_tensor_proto, raw_data.data(), raw_data.size());
+        utils::SetRawDataInTensorProto(*temp_tensor_proto, raw_data.data(), raw_data.size());
         temp_tensor_protos_.push_back(std::move(temp_tensor_proto));
         return temp_tensor_protos_.back().get();
       }
