@@ -359,12 +359,14 @@ TEST_F(CudaPluginUserStreamGraphTest, GraphAnnotationIdSwitchingWithUserStream) 
   cudaStream_t user_stream = nullptr;
   ASSERT_EQ(cudaSuccess, cudaStreamCreate(&user_stream));
 
-  Ort::SessionOptions so = CreateUserStreamGraphSessionOptions(user_stream);
-  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+  {
+    Ort::SessionOptions so = CreateUserStreamGraphSessionOptions(user_stream);
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
 
-  // Alternate between annotation ids "1" and "2". With min_num_runs_before_cuda_graph_capture == 2,
-  // 8 iterations let each id accumulate warmup runs, capture, and then replay on the user stream.
-  RunAndVerifyOnStream(session, user_stream, /*iterations=*/8, /*graph_ids=*/{"1", "2"});
+    // Alternate between annotation ids "1" and "2". With min_num_runs_before_cuda_graph_capture == 2,
+    // 8 iterations let each id accumulate warmup runs, capture, and then replay on the user stream.
+    RunAndVerifyOnStream(session, user_stream, /*iterations=*/8, /*graph_ids=*/{"1", "2"});
+  }
 
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
 }
