@@ -423,9 +423,9 @@ void RunNGramHashMappingEosResetTest() {
   // Pins both references: they agree up through the eos position (t=0, t=1) and diverge once a
   // window reaches back across it (t=2, t=3).
   ASSERT_EQ(without_eos, (std::vector<T>{84, 84, 98, 96,
-                                        5, 3, 29, 25,
-                                        7, 5, 95, 95,
-                                        3, 3, 9, 7}));
+                                         5, 3, 29, 25,
+                                         7, 5, 95, 95,
+                                         3, 3, 9, 7}));
   ASSERT_EQ(with_eos, (std::vector<T>{84, 84, 98, 96,
                                       5, 3, 29, 25,
                                       66, 66, 5, 1,
