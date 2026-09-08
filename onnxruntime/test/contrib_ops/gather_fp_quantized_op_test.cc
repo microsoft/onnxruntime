@@ -13,6 +13,7 @@ namespace test {
 // GatherFpQuantized gathers rows from an FP8 or FP4 block-scaled constant table (no zero point, since
 // FP8/FP4 quantization is symmetric) and dequantizes them: output[...] = float(data[...]) * scales[block(...)].
 
+#if !defined(DISABLE_FLOAT8_TYPES)
 TEST(GatherFpQuantizedOpTest, BasicPerRowScale) {
   // data: [4, 4] FP8 E4M3FN. block_size = 0 -> one scale per row (quantize_axis = 1, the whole row).
   std::vector<Float8E4M3FN> data = {
@@ -65,21 +66,33 @@ TEST(GatherFpQuantizedOpTest, GlobalPerTensorScale) {
 }
 
 TEST(GatherFpQuantizedOpTest, SubRowBlockScale) {
-  // data: [1, 4] FP8 E4M3FN, block_size = 2 -> 2 blocks of 2 elements each along quantize_axis = 1.
-  std::vector<Float8E4M3FN> data = {
-      Float8E4M3FN(1.0f), Float8E4M3FN(2.0f), Float8E4M3FN(4.0f), Float8E4M3FN(8.0f)};
-  std::vector<float> scales = {1.0f, 0.5f};  // shape [1, 2]
+  // data: [1, 32] FP8 E4M3FN, block_size = 16 -> 2 blocks of 16 elements each along quantize_axis = 1.
+  // (block_size must be 0 or a power of 2 >= 16, per the operator contract.)
+  std::vector<Float8E4M3FN> data(32);
+  for (int i = 0; i < 16; ++i) {
+    data[static_cast<size_t>(i)] = Float8E4M3FN(1.0f);
+  }
+  for (int i = 16; i < 32; ++i) {
+    data[static_cast<size_t>(i)] = Float8E4M3FN(4.0f);
+  }
+  std::vector<float> scales = {1.0f, 0.5f};  // shape [1, 2]: one scale per 16-element block
   std::vector<int64_t> indices = {0};
-  std::vector<float> expected = {1.0f, 2.0f, 2.0f, 4.0f};
+  std::vector<float> expected(32);
+  for (int i = 0; i < 16; ++i) {
+    expected[static_cast<size_t>(i)] = 1.0f;  // block 0: 1.0 * 1.0
+  }
+  for (int i = 16; i < 32; ++i) {
+    expected[static_cast<size_t>(i)] = 2.0f;  // block 1: 4.0 * 0.5
+  }
 
   OpTester test("GatherFpQuantized", 1, kMSDomain);
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
-  test.AddAttribute<int64_t>("block_size", 2);
-  test.AddInput<Float8E4M3FN>("data", {1, 4}, data);
+  test.AddAttribute<int64_t>("block_size", 16);
+  test.AddInput<Float8E4M3FN>("data", {1, 32}, data);
   test.AddInput<int64_t>("indices", {1}, indices);
   test.AddInput<float>("scales", {1, 2}, scales);
-  test.AddOutput<float>("output", {1, 4}, expected);
+  test.AddOutput<float>("output", {1, 32}, expected);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
@@ -119,6 +132,7 @@ TEST(GatherFpQuantizedOpTest, InvalidBlockSizeThrows) {
   test.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
   test.Run(OpTester::ExpectResult::kExpectFailure, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
 
 #if !defined(DISABLE_FLOAT4_TYPES)
 TEST(GatherFpQuantizedOpTest, Fp4BasicPerRowScale) {
