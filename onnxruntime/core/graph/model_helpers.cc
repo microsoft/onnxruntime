@@ -93,8 +93,8 @@ void CollectLocalFunctionCalls(
             CollectLocalFunctionCalls(attr.g().node(), model_local_functions, seen_calls, called_functions);
           }
         }
-        for (const auto& graph : attr.graphs()) {
-          CollectLocalFunctionCalls(graph.node(), model_local_functions, seen_calls, called_functions);
+        for (const auto& attribute_graph : attr.graphs()) {
+          CollectLocalFunctionCalls(attribute_graph.node(), model_local_functions, seen_calls, called_functions);
         }
       }
     }
