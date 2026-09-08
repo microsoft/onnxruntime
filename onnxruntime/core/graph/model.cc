@@ -80,6 +80,11 @@ void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retain
 
 static constexpr int DEFAULT_PROTOBUF_BLOCK_SIZE = 4 * 1024 * 1024;
 
+static ModelProto ValidateAndCopyModelProto(const ModelProto& model_proto) {
+  ORT_THROW_IF_ERROR(ValidateModelSubgraphDepth(model_proto));
+  return model_proto;
+}
+
 Model::Model(const std::string& graph_name,
              bool is_onnx_domain_only,
              const ModelMetaData& model_metadata,
@@ -128,6 +133,10 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(version);
   }
 
+  for (const auto& func : model_local_functions) {
+    ORT_THROW_IF_ERROR(ValidateFunctionSubgraphDepth(func));
+  }
+
   model_local_functions_.reserve(model_local_functions.size());
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
@@ -167,7 +176,7 @@ Model::Model(const std::string& graph_name,
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger,
              const ModelOptions& options)
-    : Model(ModelProto(model_proto), model_path, local_registries, logger, options) {
+    : Model(ValidateAndCopyModelProto(model_proto), model_path, local_registries, logger, options) {
 }
 
 Model::Model(ModelProto&& model_proto, const PathString& model_path,

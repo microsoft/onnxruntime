@@ -3903,5 +3903,14 @@ TEST_F(GraphTest, ExcessiveSubgraphDepthRejected) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
+TEST_F(GraphTest, ExcessiveSubgraphDepthRejectedFromLvalueProto) {
+  const auto model_proto = CreateNestedSubgraphModel(kMaxModelSubgraphDepth + 1);
+  std::shared_ptr<Model> model;
+  const auto status = Model::Load(model_proto, model, nullptr, *logger_);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
 }  // namespace test
 }  // namespace onnxruntime

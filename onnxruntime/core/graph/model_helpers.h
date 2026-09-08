@@ -26,6 +26,7 @@ using LocalFunctionCallGraph = InlinedHashMap<std::string_view, InlinedVector<st
 constexpr size_t kMaxModelSubgraphDepth = 32;
 
 Status ValidateModelSubgraphDepth(const ONNX_NAMESPACE::ModelProto& model_proto);
+Status ValidateFunctionSubgraphDepth(const ONNX_NAMESPACE::FunctionProto& function_proto);
 
 /// Build a call graph adjacency list from model local functions.
 /// String views in the returned graph point into the keys of @p model_local_functions.
