@@ -20,16 +20,15 @@ void OrtInstanceData::InitOrt(Napi::Env env, int log_level, Napi::Function tenso
   auto data = env.GetInstanceData<OrtInstanceData>();
   ORT_NAPI_THROW_ERROR_IF(data == nullptr, env, "OrtInstanceData not created.");
 
-  if (data->ort_initialized) {
+  data->ortTensorConstructor = Napi::Persistent(tensorConstructor);
+
+  if (data->cleanup_hook_registered) {
     return;
   }
 
-  data->ortTensorConstructor = Napi::Persistent(tensorConstructor);
-
-  // Initialize ORT singleton and register cleanup hook for this env.
-  // The first call from each env creates or retains the OrtObjects.
+  // Retain the ORT singleton and register one cleanup hook for this env.
   OrtSingletonData::InitOrtObjects(env, log_level, is_main_thread);
-  data->ort_initialized = true;
+  data->cleanup_hook_registered = true;
 }
 
 const Napi::FunctionReference& OrtInstanceData::TensorConstructor(Napi::Env env) {
