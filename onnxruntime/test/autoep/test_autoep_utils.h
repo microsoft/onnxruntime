@@ -4,7 +4,10 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -47,6 +50,23 @@ struct Utils {
   static void LoadExampleEpHooks(const Utils::ExamplePluginInfo& ep_info,
                                  LoadExampleEpHooksPtr& example_ep_hooks);
 };
+
+// Runs the mul_1.onnx inference test with ep_name selected in two ways:
+// - automatically through "test.ep_to_select", when test_auto_select is true.
+// - explicitly through SessionOptionsAppendExecutionProvider_V2.
+// Both paths pass provider_options to the EP: as prefixed session options on the auto-selection path and as
+// ep_options on the V2 path. The V2 path uses the devices chosen by select_devices, or the first OrtEpDevice
+// advertised for ep_name when no selector is provided. If library_path is provided, the helper registers the
+// plugin EP library before creating the session.
+// v2_session_checker runs after the V2 session is created and before inference.
+// disable_cpu_ep_fallback applies to both paths. It requires the selected EP to handle the entire graph, preventing
+// a false pass caused by unsupported nodes falling back to the ORT CPU EP.
+void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::path> library_path,
+                  const Ort::KeyValuePairs& provider_options = Ort::KeyValuePairs{},
+                  const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices = nullptr,
+                  bool test_auto_select = true,
+                  const std::function<void(Ort::Session&)>& v2_session_checker = nullptr,
+                  bool disable_cpu_ep_fallback = false);
 
 }  // namespace test
 }  // namespace onnxruntime
