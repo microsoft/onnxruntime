@@ -43,6 +43,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GatedRMSNorm">com.microsoft.GatedRMSNorm</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
+  * <a href="#com.microsoft.GatherFpQuantized">com.microsoft.GatherFpQuantized</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
   * <a href="#com.microsoft.GemmFastGelu">com.microsoft.GemmFastGelu</a>
@@ -2498,6 +2499,70 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>T1</tt> : tensor(int4), tensor(uint4), tensor(uint8)</dt>
 <dd>Constrain quantized types.</dd>
 <dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain dequantized types.</dd>
+<dt><tt>Tind</tt> : tensor(int32), tensor(int64)</dt>
+<dd>Constrain indices to integer types.</dd>
+</dl>
+
+
+### <a name="com.microsoft.GatherFpQuantized"></a><a name="com.microsoft.gatherfpquantized">**com.microsoft.GatherFpQuantized**</a>
+
+  GatherFpQuantized is a Gather over a low-precision floating point (FP8 or FP4) quantized table with a
+  per-block float scale factor, and no zero point (FP8/FP4 quantization is symmetric). It is similar to
+  Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) and to
+  com.microsoft.GatherBlockQuantized, with these differences:
+    1. Input `data` is a constant of an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz)
+       or an FP4 type (float4e2m1), rather than an integer block-quantized type. There is no `zero_points`
+       input: FP8/FP4 quantization is symmetric.
+    2. `data` is block-wise scaled along attribute `quantize_axis` with block size specified by attribute
+       `block_size`. `block_size` must be 0 (meaning the entire `quantize_axis` dimension forms a single
+       block, i.e. one scale per row) or a power of 2 and not smaller than 16.
+    3. Input `data`'s scale is specified by input `scales`, a constant tensor of the same rank as `data`
+       with one scale value per quantization block.
+    4. During op execution, `data` and `indices` are first used to gather rows exactly as in Gather. Each
+       gathered FP8/FP4 element is then converted to its floating point value and multiplied by the scale of
+       the block it belongs to, i.e. `output[...] = float(data[...]) * scales[block_index(...)]`.
+    5. The `output` and `scales` have the same type.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>block_size</tt> : int</dt>
+<dd>(Optional) block size used for the scale granularity along quantize_axis. Must be 0 (the whole quantize_axis dimension is a single block, i.e. one scale per row) or a power of 2 and not smaller than 16.</dd>
+<dt><tt>gather_axis</tt> : int</dt>
+<dd>(Optional) Which axis to gather on. Negative value means counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).</dd>
+<dt><tt>quantize_axis</tt> : int</dt>
+<dd>(Optional) Which axis to block-wise scale. Negative value means counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>data</tt> : T1</dt>
+<dd>Tensor of rank r >= 1, FP8 or FP4 quantized, block-wise scaled.</dd>
+<dt><tt>indices</tt> : Tind</dt>
+<dd>Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] along axis of size s. It is an error if any of the index values are out of bounds.</dd>
+<dt><tt>scales</tt> : T2</dt>
+<dd>Per-block scale, same rank as data.</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T2</dt>
+<dd>Dequantized output tensor of rank q + (r - 1).</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float4e2m1), tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz)</dt>
+<dd>Constrain quantized data to FP8 or FP4 types.</dd>
+<dt><tt>T2</tt> : tensor(bfloat16), tensor(float), tensor(float16)</dt>
 <dd>Constrain dequantized types.</dd>
 <dt><tt>Tind</tt> : tensor(int32), tensor(int64)</dt>
 <dd>Constrain indices to integer types.</dd>
