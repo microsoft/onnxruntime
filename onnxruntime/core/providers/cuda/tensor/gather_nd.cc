@@ -4,6 +4,7 @@
 #include "core/providers/cuda/tensor/gather_nd.h"
 #include "core/providers/cuda/tensor/gather_nd_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/common/safeint.h"
 
 #include <algorithm>
 
@@ -58,11 +59,14 @@ Status GatherNDBase::PrepareCompute(
   const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims);
 
   // Validate num_batches != 0 and num_slices divisibility to prevent division by zero
-  ORT_RETURN_IF_NOT(num_batches != 0,
-                    "Batch dimension cannot be zero");
-  ORT_RETURN_IF_NOT(num_slices % num_batches == 0,
-                    "Number of slices must be divisible by number of batches. ",
-                    "num_slices = ", num_slices, ", num_batches = ", num_batches);
+  if (num_batches == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Batch dimension cannot be zero");
+  }
+  if (num_slices % num_batches != 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Number of slices must be divisible by number of batches. ",
+                           "num_slices = ", num_slices, ", num_batches = ", num_batches);
+  }
   const auto num_slices_per_batch = num_slices / num_batches;
 
   const TIndex* indices_data = indices_tensor->Data<TIndex>();
@@ -81,8 +85,10 @@ Status GatherNDBase::PrepareCompute(
         const int64_t index = static_cast<int64_t>(indices_data[slice_base + dim_idx]);
         const auto upper_limit = input_shape[batch_dims + static_cast<int64_t>(dim_idx)];
         const auto lower_limit = -upper_limit;
-        ORT_RETURN_IF_NOT(index >= lower_limit && index < upper_limit,
-                          "invalid index found, index = ", index);
+        if (index < lower_limit || index >= upper_limit) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "invalid index found, index = ", index);
+        }
       }
     }
   } else if (indices_tensor->Location().device.Type() == OrtDevice::GPU) {
@@ -108,10 +114,12 @@ Status GatherNDBase::PrepareCompute(
   }
 
   if (indices_tensor->Location().device.Type() == OrtDevice::CPU) {
-    indices_device_buffer = GetScratchBuffer<TIndex>(indices_tensor->Shape().Size(), alloc_stream);
+    const size_t indices_element_count = SafeInt<size_t>(indices_tensor->Shape().Size());
+    const size_t indices_size_in_bytes = SafeInt<size_t>(indices_element_count) * sizeof(TIndex);
+    indices_device_buffer = GetScratchBuffer<TIndex>(indices_element_count, alloc_stream);
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(indices_device_buffer.get(),
                                          indices_data,
-                                         indices_tensor->Shape().Size() * sizeof(TIndex),
+                                         indices_size_in_bytes,
                                          cudaMemcpyHostToDevice,
                                          cuda_stream));
     indices_data = indices_device_buffer.get();
