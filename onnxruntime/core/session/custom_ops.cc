@@ -195,6 +195,23 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
   });
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context,
+                    _In_ size_t output_index, _Outptr_result_maybenull_ OrtValue** output) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    if (context == nullptr || output == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "context and output must not be null");
+    }
+
+    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context);
+    if (output_index >= static_cast<size_t>(ctx->OutputCount())) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "output_index is out of range");
+    }
+
+    *output = reinterpret_cast<OrtValue*>(ctx->GetPreallocatedOutputMLValue(onnxruntime::narrow<int>(output_index)));
+    return nullptr;
+  });
+};
+
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context,
                     _Outptr_ void** out) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {

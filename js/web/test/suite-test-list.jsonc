@@ -1350,6 +1350,7 @@
       "conv-transpose.jsonc",
       "conv1d.jsonc",
       "conv3dncdhw.jsonc",
+      "conv3dncdhw_f16.jsonc",
       "cos.jsonc",
       "dft.jsonc",
       "div.jsonc",
