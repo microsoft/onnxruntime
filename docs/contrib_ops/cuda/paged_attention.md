@@ -393,8 +393,8 @@ which must now be sized by `batch_size * max_kv_len_bound` so that the allocatio
 > Two narrow cases still take the readback, and only when the caller supplied **no** metadata at all:
 > a gather backend (MEA, or FlashAttention on a quantized cache), because with no bound the
 > capacity-based staging allocation would be a large over-allocation for a short prefill; and
-> quantized-cache XQA, whose one-output-row-per-batch-index layout needs *proof* of exactly one token
-> per sequence rather than the shape heuristic. Native FP16-cache XQA requires metadata and stays on
+> single-token quantized-cache XQA, whose one-output-row-per-batch-index layout needs *proof* of
+> exactly one token per sequence rather than the shape heuristic. Native FP16-cache XQA requires metadata and stays on
 > asynchronous Flash when it is absent and Flash is eligible; otherwise it uses the portable paged
 > decoder. Neither readback case can occur on a capturable step — a captured step is
 > decode-shaped over a paged cache, so no gather runs, and a producer that captures must supply
@@ -761,10 +761,12 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > `PagedAttention<T, T_CACHE>` registered for `{MLFloat16, BFloat16} × {int8_t, Float8E4M3FN}` in
 > addition to the unquantized pairs. Deviations from the text above:
 >
-> - **Both §8.5 read paths are implemented.** Multi-token steps use `GatherAndExpandPagedKVCache`
->   to dequantize while gathering, and the Flash varlen path uses the gathered grouped layout.
->   Single-token decode reads and dequantizes the cache in place through XQA when eligible or
->   `PagedDecodeSplitKV` otherwise.
+> - **Both §8.5 read paths are implemented.** Multi-token steps normally use
+>   `GatherAndExpandPagedKVCache` to dequantize while gathering, and the Flash varlen path uses the
+>   gathered grouped layout. A metadata-bounded speculative step of 2–8 query tokens uses paged XQA
+>   directly for matching native FP16/BF16 query and cache types, or FP16 query/output with an
+>   INT8/FP8 cache, when `head_size = 256` and `group_size = 6`. Single-token decode reads and
+>   dequantizes the cache in place through XQA when eligible or `PagedDecodeSplitKV` otherwise.
 > - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
@@ -779,13 +781,18 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 
 > **Paged decode kernels.** Quantized decode uses XQA directly on the paged cache when the query has
 > one token per sequence, `head_size ∈ {64, 128, 256}`, `group_size ∈ {4, 6, 8, 16, 32}`, no softcap,
-> and a block size divisible by 128. A native FP16-cache specialization additionally covers
-> `head_size = 256, group_size = 6`, the Qwen3.8 full-attention geometry, when
-> `attention_metadata` proves one-token-per-sequence decode without a host readback. The CUDA image
-> selected at runtime must contain compatible XQA device code generated for SM80 or newer; INT8 and
-> native FP16 XQA require an SM80-or-newer GPU and FP8 XQA requires SM89 or SM90+. Setting
-> `ORT_ENABLE_XQA=0` disables XQA. When Flash is eligible, the operator restores paged Flash
-> Attention for native FP16 cache when a ragged step is not one-token-per-sequence, the selected
+> and a block size divisible by 128. Separate speculative XQA specializations cover matching native
+> FP16/BF16 query and cache types, and FP16 query/output with an INT8/FP8 cache, when
+> `attention_metadata` bounds the longest query to 2–8 tokens, `head_size = 256`, and
+> `group_size = 6`; these kernels write packed token-major output and support ragged batches. A
+> native FP16-cache specialization additionally covers `head_size = 256, group_size = 6`, the
+> Qwen3.8 full-attention geometry, when `attention_metadata` proves one-token-per-sequence decode
+> without a host readback. The CUDA image selected at runtime must contain compatible XQA device code
+> generated for SM80 or newer; INT8 and native FP16/BF16 XQA require an SM80-or-newer GPU and FP8 XQA
+> requires SM89 or SM90+. Quantized-cache XQA is enabled by default. Native FP16/BF16-cache XQA is
+> disabled by default because it has not shown a consistent advantage over FlashAttention; set
+> `ORT_ENABLE_XQA_NATIVE_KV=1` to opt in. Setting `ORT_ENABLE_XQA=0` disables all XQA. When Flash is eligible, the operator restores paged Flash
+> Attention for a native FP16/BF16 cache when a ragged step is not one-token-per-sequence, the selected
 > image has no compatible XQA kernel, or its dynamic shared-memory requirement exceeds the device
 > limit. Other quantized configurations use `PagedDecodeSplitKV` and `PagedDecodeReduce` from
 > `paged_attention_impl.cu`.
@@ -808,7 +815,7 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   `t ∈ [kv_len - local_window_size, kv_len)`, matching Flash's `window_size_left = local_window_size - 1`.
 > - **Backend gating.** The kernel is selected by the static shape test of §4.7
 >   (`token_count <= batch_size`) when the cache is quantized, FlashAttention is unavailable, or
->   the metadata-proven native FP16 H256/group-6 XQA specialization is eligible. Other unquantized
+>   the opted-in, metadata-proven native FP16 H256/group-6 XQA specialization is eligible. Other unquantized
 >   FlashAttention-eligible shapes keep using FlashAttention. `sdpa_kernel = 512`
 >   (`AttentionBackend::DECODER_ATTENTION`) forces the portable paged-decode path, which is how that
 >   unquantized fallback is tested.
@@ -816,6 +823,16 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   in-sequence position from `cumulative_seqlens_q` on device, and masks against
 >   `past_seqlens[b] + q_index + 1`, so the kernel is correct for arbitrary ragged input (including
 >   full prefill) and a wrong heuristic only costs speed. That is what removes the D→H sync.
+> - **Multi-token XQA gating.** The speculative H256/group-6 XQA specialization is gated on the
+>   `attention_metadata` query bound being in `[2, 8]`, *not* on `token_count <= batch_size`: a
+>   zero-heavy ragged step can satisfy the aggregate test while still carrying a multi-token
+>   sequence, and a step with more tokens than sequences is equally valid. Nothing about the gate is
+>   specific to speculative verification -- any short multi-token query shape (a prefill chunk tail,
+>   for instance) takes the same path, with the packed lower-triangular mask supplying bottom-right
+>   causality. Query bounds of 1 keep the single-token kernel and bounds above 8 fall back to the
+>   ragged backends. Local windows and attention sinks are supported on this path: rows are
+>   flattened `(query token, query head)` pairs, so the window is derived from each row's own query
+>   position and the sink from its own head.
 > - Split-KV: `ComputePagedDecodeSplits` splits the KV range across up to 32 CTAs only when
 >   `token_count * num_heads` would leave the device under-occupied. `max_kv_len` may be an upper
 >   bound. FlashAttention keeps the replay-wide split count and workspaces fixed while partitioning
@@ -1293,14 +1310,18 @@ as GQA does, so that `ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1` works uniformly 
 > cache is quantized, FlashAttention is ineligible, or the native FP16 H256/group-6 XQA
 > specialization is metadata-proven eligible. Priority 0 (MLA) is still unimplemented.
 >
-> The gate is the static shape test of §4.7 (`token_count <= batch_size`), so no device-resident
-> length reaches the host and the D→H sync is gone. The XQA fast path inside this backend keeps a
-> stricter gate — it needs `token_count == batch_size` *and* `max_query_len == 1` because its output
-> layout is one row per batch index rather than per query token. Quantized-cache XQA may obtain the
-> latter from `attention_metadata` or, failing that, from the readback. Native FP16-cache XQA
-> requires metadata and otherwise remains on Flash when eligible or uses the portable paged
-> decoder. `ORT_DISABLE_DECODER_ATTENTION=1` disables both paged XQA and the portable paged-decode
-> backend.
+> The usual gate is the static shape test of §4.7 (`token_count <= batch_size`), so no
+> device-resident length reaches the host and the D→H sync is gone. The single-token XQA fast path
+> inside this backend keeps a stricter gate — it needs `token_count == batch_size` *and*
+> `max_query_len == 1` because its output layout is one row per batch index rather than per query
+> token. Quantized-cache XQA may obtain the latter from `attention_metadata` or, failing that, from
+> the readback. A separate token-major speculative XQA path uses replay-safe metadata bounds instead
+> of an aggregate token-count heuristic: it admits `max_query_len` 2–8 when the H256/group-6
+> specialization is eligible for matching native FP16/BF16 query and cache types or FP16 query with
+> an INT8/FP8 cache, including batches with inactive zero-query requests. Native-cache XQA requires
+> metadata and otherwise remains on Flash when eligible or uses the portable paged decoder. The
+> single-token native specialization remains FP16-only. `ORT_DISABLE_DECODER_ATTENTION=1` disables
+> both paged XQA and the portable paged-decode backend.
 >
 > XQA uses fixed 128-token pages. When PagedAttention's `block_size` is 128, its native
 > `block_table` is already in XQA page units and is passed directly to the kernel: no page-table
