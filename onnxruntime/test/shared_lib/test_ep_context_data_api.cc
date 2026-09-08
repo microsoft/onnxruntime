@@ -237,17 +237,12 @@ TEST(EpContextDataApiTest, ReadFuncCanBeCleared) {
 
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(EpContextDataApiTest, WriteFuncCanBeSetOnModelCompilationOptions) {
-  const auto& ort_api = Ort::GetApi();
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpContextDataWriteFuncCanBeSetOnModelCompilationOptions"};
   Ort::SessionOptions session_options;
   Ort::ModelCompilationOptions compilation_options{env, session_options};
 
-  auto* set_write_func =
-      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_FnOrThrow(
-          &ort_api);
-
   EpContextWriteCallbackState callback_state{};
-  ASSERT_ORTSTATUS_OK(set_write_func(compilation_options, EpContextWriteCallback, &callback_state));
+  ASSERT_NO_THROW(compilation_options.SetEpContextDataWriteFunc(EpContextWriteCallback, &callback_state));
 
   const std::vector<char> payload{'b', 'i', 'n', 'a', 'r', 'y'};
   ASSERT_ORTSTATUS_OK(EpContextWriteCallback(&callback_state, "engine.bin", payload.data(), payload.size()));
@@ -258,32 +253,22 @@ TEST(EpContextDataApiTest, WriteFuncCanBeSetOnModelCompilationOptions) {
 }
 
 TEST(EpContextDataApiTest, WriteFuncCanBeCleared) {
-  const auto& ort_api = Ort::GetApi();
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpContextDataWriteFuncCanBeCleared"};
   Ort::SessionOptions session_options;
   Ort::ModelCompilationOptions compilation_options{env, session_options};
 
-  auto* set_write_func =
-      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_FnOrThrow(
-          &ort_api);
-
   EpContextWriteCallbackState callback_state{};
-  ASSERT_ORTSTATUS_OK(set_write_func(compilation_options, EpContextWriteCallback, &callback_state));
+  ASSERT_NO_THROW(compilation_options.SetEpContextDataWriteFunc(EpContextWriteCallback, &callback_state));
 
   // A null write_func clears the previously set callback (symmetric with the read setter) and must be accepted
   // rather than rejected with ORT_INVALID_ARGUMENT.
-  ASSERT_ORTSTATUS_OK(set_write_func(compilation_options, nullptr, &callback_state));
+  ASSERT_NO_THROW(compilation_options.SetEpContextDataWriteFunc(nullptr, &callback_state));
 }
 
 TEST(EpContextDataApiTest, WriteFuncCanBeUsedWithEpContextBinaryInformation) {
-  const auto& ort_api = Ort::GetApi();
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpContextDataWriteFuncCanBeUsedWithEpContextBinaryInformation"};
   Ort::SessionOptions session_options;
   Ort::ModelCompilationOptions compilation_options{env, session_options};
-
-  auto* set_write_func =
-      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_FnOrThrow(
-          &ort_api);
 
   // The EPContext write callback and the EPContext binary information may be configured together; neither call
   // rejects the other.
@@ -291,7 +276,7 @@ TEST(EpContextDataApiTest, WriteFuncCanBeUsedWithEpContextBinaryInformation) {
                                                                     ORT_TSTR("compiled_model.onnx")));
 
   EpContextWriteCallbackState callback_state{};
-  ASSERT_ORTSTATUS_OK(set_write_func(compilation_options, EpContextWriteCallback, &callback_state));
+  ASSERT_NO_THROW(compilation_options.SetEpContextDataWriteFunc(EpContextWriteCallback, &callback_state));
 
   const std::vector<char> payload{'c', 't', 'x'};
   ASSERT_ORTSTATUS_OK(EpContextWriteCallback(&callback_state, "logical_context.bin", payload.data(), payload.size()));

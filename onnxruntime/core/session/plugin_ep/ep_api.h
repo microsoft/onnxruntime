@@ -184,4 +184,10 @@ ORT_API_STATUS_IMPL(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const Ort
                     _Outptr_result_maybenull_ const void** source_model_data,
                     _Out_ size_t* source_model_data_length);
 
+// EP Context config
+ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptions* session_options,
+                    _Outptr_ OrtEpContextConfig** config);
+ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config);
+ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
+                    _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
 }  // namespace OrtExecutionProviderApi

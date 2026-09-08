@@ -4359,7 +4359,15 @@ Status Graph::InjectExternalInitializedTensors(const InlinedHashMap<std::string,
 }
 
 Status Graph::InjectExternalInitializersFromFilesInMemory(
-    const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files) {
+    const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files,
+    bool use_buffers_directly) {
+  for (auto& node : Nodes()) {
+    for (auto& subgraph : node.MutableSubgraphs()) {
+      ORT_RETURN_IF_ERROR(
+          subgraph->InjectExternalInitializersFromFilesInMemory(external_initializer_files, use_buffers_directly));
+    }
+  }
+
   for (const auto& [tensor_name, tensor_proto] : name_to_initial_tensor_) {
     if (utils::HasExternalDataInFile(*tensor_proto)) {
       std::unique_ptr<ExternalDataInfo> external_data_info;
@@ -4393,6 +4401,32 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       char* user_provided_tensor_buffer = user_provided_file_buffer + file_offset;
 
       const auto& old_initializer = *(tensor_proto);
+      const DataTypeImpl* const type =
+          DataTypeImpl::TensorTypeFromONNXEnum(old_initializer.data_type())->GetElementType();
+      TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
+      size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(
+          static_cast<ONNX_NAMESPACE::TensorProto_DataType>(old_initializer.data_type()));
+      element_size = std::max<size_t>(element_size, 1);
+
+      // Large, naturally aligned numeric tensors can directly alias the caller-owned buffer on little-endian hosts.
+      // Other tensors fall through to the copying (and, when necessary, endian-converting) path below.
+      if constexpr (endian::native == endian::little) {
+        const bool is_naturally_aligned =
+            reinterpret_cast<uintptr_t>(user_provided_tensor_buffer) % element_size == 0;
+        if (use_buffers_directly && !utils::HasString(old_initializer) &&
+            tensor_byte_size > utils::kSmallTensorExternalDataThreshold && is_naturally_aligned) {
+          Tensor tensor{type, tensor_shape, user_provided_tensor_buffer,
+                        OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)};
+          constexpr const bool use_tensor_buffer_true = true;
+          auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_true);
+          OrtValue ort_value;
+          Tensor::InitOrtValue(std::move(tensor), ort_value);
+          ORT_RETURN_IF_ERROR(
+              ReplaceInitializedTensorImpl(std::move(new_tensor_proto), std::move(ort_value), true));
+          continue;
+        }
+      }
+
       auto& mutable_initializers = *(graph_proto_->mutable_initializer());
       // use cheaper pointer comparison to find old entry
       auto existing_entry = std::find(mutable_initializers.pointer_begin(), mutable_initializers.pointer_end(),
@@ -4402,20 +4436,11 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       ORT_ENFORCE(existing_entry != mutable_initializers.pointer_end(),
                   "graph_proto_ is not in sync with name_to_initial_tensor_");
       (**existing_entry).clear_data_location();
-      const DataTypeImpl* const type =
-          DataTypeImpl::TensorTypeFromONNXEnum(old_initializer.data_type())->GetElementType();
-      TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
 
       // Convert data from little endian before assigning it to tensor.
       // It would have been better to byteswap it right after loading from file,
       // but at that moment information about tensor element size was not available.
       if constexpr (endian::native != endian::little) {
-        size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(
-            static_cast<ONNX_NAMESPACE::TensorProto_DataType>(old_initializer.data_type()));
-
-        // If element size is unknown, set it to 1 to disable byteswapping
-        if (element_size < 1) element_size = 1;
-
         auto allocator = CPUAllocator::DefaultInstance();
 
         auto deleter = [allocator](uint8_t* ptr) { allocator->Free(ptr); };
@@ -5235,11 +5260,13 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
       std::vector<uint8_t> raw_data;
       ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
       size_t tensor_bytes_size = raw_data.size();
+      ORT_RETURN_IF_NOT(tensor_bytes_size <= static_cast<size_t>(std::numeric_limits<int64_t>::max()),
+                        "External initializer length exceeds the ONNX signed 64-bit limit: ", initializer.name());
+      const size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(
+          static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer.data_type()));
 
       // Convert it data to little endian before saving to file
       if constexpr (endian::native != endian::little) {
-        size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer.data_type()));
-
         if (element_size > 1) {
           onnxruntime::utils::SwapByteOrderInplace(
               element_size,
@@ -5265,12 +5292,19 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
         continue;
       }
 
-      // update external_offset for alignment (if enabled)
-      // need to do padding before write actual tensor data as we do offset alignment at the begin of
-      // large tensors (offset need to be page aligned) like below:
+      // Naturally align each tensor so a loader can directly use a suitably aligned external buffer. Large tensors
+      // may require additional caller-configured alignment for mmap or allocation-granularity requirements.
+      // Padding is written before the tensor so its recorded offset points to the aligned start of its data:
       // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
-      // |<---smaller tensor---->|<---padding--->|<------------------large tensor----------------------------->|
-      if (model_saving_options.align_offset && static_cast<int64_t>(tensor_bytes_size) >
+      // |<---previous data---->|<---padding--->|<----------------tensor data---------------->|
+      if (element_size > 1) {
+        ORT_RETURN_IF_NOT(ExternalDataInfo::AlignAndPad(external_stream, SafeInt<int64_t>(element_size),
+                                                        external_offset),
+                          "Failed writing natural alignment padding for external data to: ",
+                          model_external_file_path);
+      }
+
+      if (model_saving_options.align_offset && static_cast<int64_t>(tensor_bytes_size) >=
                                                    model_saving_options.align_threshold) {
         ORT_RETURN_IF_NOT(ExternalDataInfo::AlignAndPad(external_stream, model_saving_options.on_disk_alignment,
                                                         external_offset),
@@ -5370,6 +5404,20 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
   }
 
   return result;
+}
+
+Status Graph::ToGraphProtoWithExternalInitializers(
+    const std::filesystem::path& external_file_path,
+    const ModelSavingOptions& model_saving_options,
+    std::ostream& external_stream,
+    ONNX_NAMESPACE::GraphProto& graph_proto) const {
+  ORT_RETURN_IF_NOT(external_file_path.is_relative(), "External initializer file name must be relative");
+  graph_proto.Clear();
+  ToGraphProtoInternal(graph_proto);
+  int64_t external_offset = 0;
+  return AddExternalInitializersToGraphProtoImpl(ModelPath(), external_file_path, external_file_path,
+                                                 model_saving_options, graph_proto, external_stream,
+                                                 external_offset);
 }
 
 Status Graph::ToGraphProtoWithCustomInitializerHandlingImpl(

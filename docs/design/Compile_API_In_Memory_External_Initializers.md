@@ -45,10 +45,9 @@ Add the corresponding C++ wrapper and an `ExternalInitializerBufferHolder` alter
 The external-initializer file destination (`ModelCompilationOptions_SetOutputModelExternalInitializersFile`) and the
 buffer destination (`ModelCompilationOptions_SetOutputModelExternalInitializersBuffer`) are mutually exclusive: the
 caller provides one or the other, never both. Because both map to the single `initializers_location` variant, the
-last setter called wins and silently replaces any prior external-initializer destination. Document this and, in
-`ModelCompilationOptions::Check`, reject a buffer destination combined with a file-based output model path (a
-buffer-backed external file is only meaningful when the output model is itself written to a buffer or a write
-callback).
+last setter called wins and silently replaces any prior external-initializer destination. The output model destination
+is independent: it may be a file, buffer, or write callback. For file output, the caller is responsible for persisting
+or otherwise supplying the returned initializer buffer under the logical filename recorded in the model.
 
 Add `ModelCompilationOptions_SetOutputModelExternalInitializersAlignment`, which accepts a power-of-two alignment and a
 minimum initializer size at which to apply it. It affects both file and buffer output; an alignment of zero disables
@@ -76,13 +75,10 @@ conversion, subgraph handling, and prepacked-weight handling.
 
 Use a two-pass implementation:
 
-1. Compute each externalized initializer's offset and the total buffer size with checked arithmetic, applying the same
-   alignment padding that the write pass will. Prepacked-blob sizes are not known from the `TensorProto` alone, so add
-   a size-query path that mirrors the offset/padding math in `ExternalDataInfo::WritePrepackedToFileAndAddToProto`
-   (sum of `PrepackedWeightsForGraph` `buffer_sizes_` plus `AlignAndPad` padding for blobs above the alignment
-   threshold) without writing. Factor that math out so the query and write passes cannot diverge.
-2. Allocate the exact size once, write each initializer to its assigned span, and emit its logical filename, offset,
-   and length into the `TensorProto`.
+1. Run the existing external-initializer serializer against a counting stream. This computes offsets and the total
+  size with exactly the same traversal, alignment, endian conversion, and prepacked-blob handling as the write pass.
+2. Allocate the exact size once and run the serializer again against a fixed-size stream over that allocation. Emit
+  the logical filename, offset, and length into each externalized `TensorProto`.
 
 Write externalized initializers in load-ready tensor storage and align each tensor's offset to its natural alignment;
 the writer controls the layout, so this alignment is guaranteed for ORT-produced buffers. Additionally apply the
@@ -136,22 +132,20 @@ EP creates the `EPContext` node itself (plugin EPs through `OrtModelEditorApi::C
 callback (`OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc` retrieved via `OrtEpContextConfig`) is
 opt-in, so ORT cannot force an arbitrary EP to route through it.
 
-Add a dedicated `CreateEpContextNode` function that takes the cache-context bytes as a pointer and a
-`size_t` length, rather than through a string attribute, and reject the generic `CreateNode` for the `EPContext`
-op type in the `com.microsoft` domain. Honor the caller's embed choice; ORT does not override it. When embedding, the
-2 GB protobuf limit applies to the embedded bytes: calling with a size at or above 2 GB while embedding is an error and
-ORT returns a failure rather than silently switching to non-embedded output.
-When not embedding, ORT owns making the write consistent: if an EPContext write callback is configured
-it routes the bytes through it, otherwise it writes them to a file alongside a file output model, and stores only the
-logical name in the attribute.
-Migrate the in-tree EPs that build `EPContext` nodes directly onto the same internal path
-so their data flows through the same ORT-controlled write.
+Promote the WRITE callback transport to the stable API. The compile API accepts an `OrtWriteNamedBufferFunc`; plugin
+EPs snapshot it from session options through an owned `OrtEpContextConfig` and retrieve the callback through
+`OrtEpApi`. Add `OrtEpContextDataSupportFlags_WRITE` and `OrtEp::GetEpContextDataSupport` so ORT rejects a configured
+WRITE callback before `Compile()` when a plugin EP cannot honor it. READ callback support remains experimental.
+
+`CreateEpContextNode` is intentionally deferred. EPs continue to create their own EPContext nodes and decide how to
+encode `ep_cache_context`. This change provides stable callback transport and capability negotiation only; it does not
+centralize node creation or alter the generic `CreateNode` behavior.
 
 ## Validation
 
-Reject an empty or absolute logical filename, null allocator or output pointers, invalid thresholds, a non-power-of-two
-alignment, a misaligned base allocation, and offset or size overflow. Validate that generated offsets and lengths fit
-the ONNX signed 64-bit external-data fields.
+Reject an empty or absolute logical filename, null allocator or output pointers, a non-power-of-two alignment, and
+offset or size overflow. Validate that generated offsets and lengths fit the ONNX signed 64-bit external-data fields.
+A misaligned supplied buffer is valid; direct-use loading copies only slices that do not meet natural alignment.
 
 ## Tests
 
@@ -164,15 +158,12 @@ the ONNX signed 64-bit external-data fields.
   natural and configured offset alignment, and misaligned direct buffers that fall back to per-initializer copies while
   neighboring aligned initializers still borrow.
 - Verify logical filename metadata, offsets, lengths, output ownership, and direct-buffer lifetime requirements.
-- Verify that the file and buffer external-initializer destinations are mutually exclusive (last setter wins) and that a
-  buffer destination combined with a file output-model path is rejected.
+- Verify that the file and buffer external-initializer destinations are mutually exclusive (last setter wins), and
+  that a buffer destination works with file, buffer, and callback output-model destinations.
 - Verify invalid arguments, allocation failure, checked-arithmetic failure, and unchanged outputs on failure.
 - Exercise aggregate external-data sizes beyond 2 GB with a counting or sparse test sink so routine CI does not require
   a 2 GB allocation.
-- Compile a model with a compiling EP that produces non-embedded EPContext data through `CreateEpContextNode`, and
-  verify the bytes are routed through the configured EPContext write callback while the `ep_cache_context` attribute
-  holds only the logical name.
-- Verify the generic `CreateNode` rejects the `EPContext` op type, and that the caller's embed choice is honored (data
-  embedded when requested, routed through the write callback when not).
-- Verify that `CreateEpContextNode` with an embedded payload at or above 2 GB returns an error rather than falling back
-  to non-embedded output.
+- Compile with the example plugin EP and verify that its non-embedded EPContext data reaches the configured stable
+  WRITE callback.
+- Verify callback snapshot and clearing behavior, and reject a configured WRITE callback when a plugin EP does not
+  advertise `OrtEpContextDataSupportFlags_WRITE`.

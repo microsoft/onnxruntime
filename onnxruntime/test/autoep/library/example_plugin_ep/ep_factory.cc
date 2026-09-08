@@ -258,12 +258,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   config.ep_context_output_model_path = std::move(ep_context_output_model_path);
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
 
-  // The EpContextConfig wrapper extracts the EPContext callbacks from the session options and owns the handle. It
-  // throws if the experimental functions are unavailable or extraction fails; EXCEPTION_TO_RETURNED_STATUS_END
-  // converts that (and any other exception thrown in this function) into an OrtStatus.
+  // The EpContextConfig wrapper extracts the EPContext callbacks from the session options and owns the handle.
   auto dummy_ep = std::make_unique<ExampleEp>(
       *factory, factory->ep_name_, config, *logger,
-      Ort::Experimental::EpContextConfig{Ort::ConstSessionOptions{session_options}});
+      Ort::EpContextConfig{Ort::ConstSessionOptions{session_options}});
   *ep = dummy_ep.release();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END

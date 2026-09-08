@@ -1311,6 +1311,21 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalI
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalInitializersBuffer(
+    const ORTCHAR_T* logical_file_name, size_t initializer_size_threshold, OrtAllocator* allocator,
+    void** output_buffer_ptr, size_t* output_buffer_size_ptr) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelExternalInitializersBuffer(
+      this->p_, logical_file_name, initializer_size_threshold, allocator, output_buffer_ptr, output_buffer_size_ptr));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelExternalInitializersAlignment(
+    size_t alignment, size_t minimum_size) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelExternalInitializersAlignment(
+      this->p_, alignment, minimum_size));
+  return *this;
+}
+
 inline ModelCompilationOptions&
 ModelCompilationOptions::SetOutputModelGetInitializerLocationFunc(
     OrtGetInitializerLocationFunc get_initializer_location_func, void* state) {
@@ -1332,6 +1347,12 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelBuffer(
 inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelWriteFunc(OrtWriteBufferFunc write_func,
                                                                                  void* state) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelWriteFunc(this->p_, write_func, state));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextDataWriteFunc(
+    OrtWriteNamedBufferFunc write_func, void* state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextDataWriteFunc(this->p_, write_func, state));
   return *this;
 }
 
@@ -1363,6 +1384,17 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const Ort
 inline ModelCompilationOptions& ModelCompilationOptions::SetWeightlessEnabled(bool use_weightless) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetWeightlessEnabled(this->p_, use_weightless));
   return *this;
+}
+
+inline EpContextConfig::EpContextConfig(const SessionOptions& session_options)
+    : EpContextConfig{session_options.GetConst()} {}
+
+inline EpContextConfig::EpContextConfig(ConstSessionOptions session_options) {
+  ThrowOnError(GetEpApi().SessionOptionsGetEpContextConfig(session_options, &this->p_));
+}
+
+inline void EpContextConfig::GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const {
+  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataWriteFunc(this->p_, &write_func, &state));
 }
 
 namespace detail {

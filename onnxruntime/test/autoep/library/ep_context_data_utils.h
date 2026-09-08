@@ -710,13 +710,8 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* write_state = nullptr;
   if (ep_context_config != nullptr) {
-    auto get_write_func =
-        Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn(&api);
-    if (get_write_func == nullptr) {
-      return api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                              "OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc is not available");
-    }
-    RETURN_IF_ERROR(get_write_func(ep_context_config, &write_func, &write_state));
+    RETURN_IF_ERROR(api.GetEpApi()->EpContextConfigGetEpContextDataWriteFunc(
+        ep_context_config, &write_func, &write_state));
   }
   return WriteEpContextDataWithFileFallback(api, write_func, write_state, file_name, fallback_file_name, graph, buffer,
                                             buffer_size);

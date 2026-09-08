@@ -2473,8 +2473,12 @@ common::Status InferenceSession::Initialize() {
     }
 
     if (!session_options_.external_initializer_files_mmap.empty()) {
+      const bool use_buffers_directly = session_options_.config_options.GetConfigOrDefault(
+                                            kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "0") ==
+                                        "1";
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap));
+          graph.InjectExternalInitializersFromFilesInMemory(session_options_.external_initializer_files_mmap,
+                                                            use_buffers_directly));
       InlinedHashMap<std::basic_string<ORTCHAR_T>, std::pair<char*, size_t>>{}.swap(
           session_options_.external_initializer_files_mmap);
     }

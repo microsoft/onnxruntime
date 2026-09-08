@@ -210,6 +210,20 @@ class Model {
                                                                   const std::filesystem::path& file_path,
                                                                   const ModelSavingOptions& model_saving_options) const;
 
+  /** Serializes this model while writing externalized initializer data to a caller-provided stream.
+  @param external_file_name Non-empty relative logical file name recorded in each externalized initializer's
+  TensorProto. This name does not identify the physical stream destination.
+  @param model_saving_options Initializer size threshold and external-data alignment settings.
+  @param external_stream Open caller-owned output stream that receives the external initializer bytes. The caller
+  retains ownership.
+  @param model_proto Output parameter set to the serialized ModelProto.
+  @returns A status indicating success or an error writing to the stream.
+  */
+  common::Status ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
+                                                      const ModelSavingOptions& model_saving_options,
+                                                      std::ostream& external_stream,
+                                                      ONNX_NAMESPACE::ModelProto& model_proto) const;
+
   /// <summary>
   /// Serialize the Model to a onnx::ModelProto. Caller provides a function that determines where each initializer
   /// is stored (i.e., either in an external file or within the model).
