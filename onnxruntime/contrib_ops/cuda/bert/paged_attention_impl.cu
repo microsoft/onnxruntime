@@ -377,7 +377,7 @@ __global__ void SanitizeBlockTable(int* __restrict__ sanitized_block_table, cons
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= total_entries) return;
   const int block_id = block_table[i];
-  sanitized_block_table[i] = block_id >= num_blocks ? 0 : block_id;
+  sanitized_block_table[i] = (block_id < 0 || block_id >= num_blocks) ? -1 : block_id;
 }
 
 Status LaunchSanitizeBlockTable(int* sanitized_block_table, const int* block_table, const int num_blocks,
