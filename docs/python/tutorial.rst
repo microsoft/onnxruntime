@@ -89,6 +89,7 @@ for this machine learning model.
     import numpy
     import onnxruntime as rt
 
+    rt.set_default_logger_severity(3)
     sess = rt.InferenceSession("logreg_iris.onnx", providers=["CPUExecutionProvider"])
     input_name = sess.get_inputs()[0].name
     pred_onx = sess.run(None, {input_name: X_test.astype(numpy.float32)})[0]
@@ -120,6 +121,7 @@ by specifying its name into a list.
     import numpy
     import onnxruntime as rt
 
+    rt.set_default_logger_severity(3)
     sess = rt.InferenceSession("logreg_iris.onnx", providers=["CPUExecutionProvider"])
     input_name = sess.get_inputs()[0].name
     label_name = sess.get_outputs()[0].name
