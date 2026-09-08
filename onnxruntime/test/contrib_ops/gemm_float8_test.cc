@@ -6,6 +6,11 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
+#if defined(USE_CUDA)
+// CUDA_VERSION comes from cuda.h and controls registration of the tests below.
+#include <cuda.h>
+#endif
+
 namespace onnxruntime {
 namespace test {
 
