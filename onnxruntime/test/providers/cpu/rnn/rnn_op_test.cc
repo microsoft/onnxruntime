@@ -18,7 +18,7 @@ TEST(RNNTest, RuntimeScalarInputRejected) {
   test.AddInput<float>("X", {}, {1.0f});
   test.AddInput<float>("W", {1, 1, 1}, {1.0f});
   test.AddInput<float>("R", {1, 1, 1}, {1.0f});
-  test.AddOptionalOutputEdge<float>();
+  test.AddOutput<float>("Y", {1, 1, 1, 1}, {0.0f});
   test.AddOptionalOutputEdge<float>();
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
