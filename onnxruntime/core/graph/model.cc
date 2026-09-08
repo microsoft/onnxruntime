@@ -301,6 +301,10 @@ const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetMod
   return model_local_function_templates_maps_;
 }
 
+Status Model::ValidateLocalFunctionCallDepth(const Graph& graph) const {
+  return ValidateModelLocalFunctionCallDepth(model_local_functions_, graph);
+}
+
 Version Model::IrVersion() const {
   if (utils::HasIrVersion(model_proto_)) {
     return model_proto_.ir_version();
