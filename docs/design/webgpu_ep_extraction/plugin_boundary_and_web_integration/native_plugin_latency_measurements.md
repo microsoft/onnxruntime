@@ -206,5 +206,116 @@ GenAI runs the model.
 
 ## Results
 
-Pending — the matched build pair is still building. Record with the results: the adapter used, the commit SHA, both
-build command lines, the `CMakeCache.txt` delta, and the raw per-round minimums rather than only the medians.
+Measured on the RTX 5060 Ti, on an otherwise idle machine. The two `build.py` configures differ by exactly one
+generator flag, `-Donnxruntime_USE_EP_API_ADAPTERS=ON` on the plugin arm.
+
+### Checks performed before measuring
+
+| check | result |
+| --- | --- |
+| Normalized `CMakeCache.txt` diff | **2 lines, one key**: `onnxruntime_USE_EP_API_ADAPTERS` `OFF` vs `ON` |
+| `/O2` / `/Ob2` / `/DNDEBUG` in `build.ninja` | 4184 built-in, 4183 plugin — off-by-one is WebGPU built in-tree |
+| Binaries current with the tree | every commit since `873f221786` is doc-only, so the code under test is HEAD's |
+
+### The plugin arm really is going through the plugin
+
+A latency number is meaningless if the "plugin" arm quietly fell back to something else, so this was established by
+making the alternatives fail rather than by reading the code:
+
+| invocation on the plugin build | outcome |
+| --- | --- |
+| `-e webgpu` (built-in path) | fails: "WebGPU execution provider is not supported in this build" |
+| `--plugin_eps BogusEpName` | fails: "[Plugin EP]: No matching EP devices found." (`common_utils.cc:171`) |
+| `--plugin_eps WebGpuExecutionProvider` | runs |
+
+The first line is the important one: WebGPU is genuinely absent from this build's `onnxruntime.dll`, so a run that
+succeeds can only have come from `onnxruntime_providers_webgpu.dll`. The second confirms the EP-name lookup is real
+and not silently permissive.
+
+### Control: the two binaries are equivalent when no plugin is involved
+
+Matching build flags still do not prove the two executables perform alike. Running both on the **CPU EP**, where
+neither arm loads a plugin, isolates the plugin boundary from any residual build difference.
+
+Run with default threading this control was actively misleading — `bench_compute` came out **24% faster** on the
+plugin executable (4.61 ms vs 3.50 ms), which is not a real effect in any direction and simply shows how noisy the
+multi-threaded CPU EP is here. Repeating it single-threaded (`-x 1 -y 1`, 10 rounds) removes the thread-pool
+variance:
+
+| `bench_compute`, CPU EP, single-threaded | min | median | max |
+| --- | --- | --- | --- |
+| built-in build | 20.011 ms | 20.285 ms | 20.734 ms |
+| plugin build | 20.023 ms | 20.499 ms | 20.848 ms |
+
+Ratio of minima **1.001**, medians within 1%. The two executables are performance-equivalent absent a plugin, so the
+WebGPU differences below are attributable to the plugin boundary rather than to the builds.
+
+### WebGPU A/B
+
+8 interleaved rounds; `-r 30` for the bench models, `-r 20` for Qwen. "median" is the median of the per-round
+minimums, matching the wasm procedure; "best" is the single fastest round, which is the most noise-resistant
+statistic available.
+
+| model | nodes | built-in median | plugin median | delta | ratio | best-of ratio | rounds plugin slower |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `bench_compute` | 16 | 1.662 ms | 1.917 ms | +0.255 ms | 1.153 | 1.054 | 8/8 |
+| `bench_dispatch` | 300 | 5.118 ms | 5.562 ms | +0.444 ms | 1.087 | 1.084 | 8/8 |
+| Qwen decode | 1043 | 34.95 ms | 36.95 ms | +1.99 ms | 1.057 | 1.092 | 6/8 |
+| Qwen prefill | 1043 | 47.66 ms | 49.57 ms | +1.92 ms | 1.040 | 1.064 | 6/8 |
+
+**The plugin EP is consistently slower.** Raw per-round minimums, in milliseconds, in round order:
+
+| model | arm | per-round minimums |
+| --- | --- | --- |
+| `bench_compute` | built-in | 1.653, 1.626, 1.686, 1.661, 1.895, 1.877, 1.662, 1.614 |
+| `bench_compute` | plugin | 1.700, 1.862, 2.055, 1.702, 1.971, 2.189, 1.701, 2.345 |
+| `bench_dispatch` | built-in | 5.170, 5.131, 5.105, 5.158, 5.112, 5.124, 5.111, 5.104 |
+| `bench_dispatch` | plugin | 5.577, 5.544, 5.623, 5.584, 5.543, 5.546, 6.091, 5.533 |
+| Qwen decode | built-in | 31.34, 34.90, 40.56, 36.13, 35.01, 38.00, 30.57, 34.63 |
+| Qwen decode | plugin | 35.32, 40.86, 43.65, 34.24, 36.33, 33.40, 39.88, 37.56 |
+| Qwen prefill | built-in | 43.05, 49.42, 44.24, 50.92, 47.75, 47.56, 46.17, 48.23 |
+| Qwen prefill | plugin | 49.99, 49.56, 50.59, 52.32, 48.80, 45.80, 49.58, 45.89 |
+
+### How much of this is signal
+
+The four rows are not equally trustworthy, and the medians alone hide that:
+
+- **`bench_dispatch` is the reliable result.** The built-in arm spans 5.104–5.170 ms — a 66 µs range — and the
+  per-round delta is +0.41 to +0.52 ms in seven of eight rounds (the eighth, +0.98 ms, is a visible outlier). An
+  effect of +0.43 ms against that spread is unambiguous.
+- **`bench_compute` is noisier than its median suggests.** Per-round deltas range from +0.039 to +0.731 ms. The
+  plugin arm's slow rounds inflate the median to 1.153; the best-of ratio of 1.054 is the more defensible figure.
+- **Both Qwen rows are noise-dominated.** Per-round deltas swing from −4.6 to +9.3 ms, and the sign flips in 2 of 8
+  rounds. The direction agrees with the microbenchmarks on both the median and the best-of statistic, but these
+  numbers should be read as "consistent with a few percent" and not as a measurement of it.
+
+### Mechanism
+
+Fitting the two microbenchmarks' best-of deltas as a fixed per-`Run` cost plus a per-node cost gives roughly
+**67 µs per `Run` + 1.2 µs per node**. That is a two-point fit and should be treated as an order-of-magnitude model
+only, but it does predict outside its fitting range: for Qwen's 1043 nodes it gives ≈1.3 ms, against an observed
+median delta of ≈1.9–2.0 ms — the right magnitude, and under-predicting by about 1.5x. Per-node dispatch cost is
+therefore a plausible dominant term, which is what the shape of the boundary would predict: each kernel dispatch
+crosses the `OrtEp` C API adapter into a separate DLL instead of making an in-module C++ virtual call.
+
+Compared with the wasm static-plugin A/B, which found ≈4.8 µs/node
+([work log](static_plugin_ep_work_log.md#measured-cost-of-the-plugin-path-on-the-web-build)), the native
+shared-library boundary costs roughly **1.2–1.5 µs/node**, some 3–4x less per node.
+
+### Assessment against the criterion
+
+A per-node cost means the overhead is a function of graph size, not a fixed tax, so no single percentage
+characterizes it. On the real-model cases it lands at **4–6%**, and it grows as models get more numerous, smaller
+kernels. Whether that is "within an accepted tolerance" is a judgement call that has not yet been made — the
+tolerance has never been quantified, and it should be, since these results show the answer is not "zero overhead".
+
+Two caveats on scope:
+
+- Only steady-state `Min Latency` was compared. Session-creation cost, where the plugin must additionally discover
+  and load the DLL, was not measured and is likely worse in relative terms.
+- Both arms ran with default WebGPU options. `genai_config.json` uses `enableGraphCapture: "0"` and
+  `validationMode: "basic"`; graph capture in particular could change the per-dispatch picture substantially, and is
+  worth a follow-up since it targets exactly the cost identified here.
+
+Reproduce with `run_native_ab.ps1` (parses `Min Latency`, ignores the exit code); raw rows land in
+`native_ab_raw.csv`.
