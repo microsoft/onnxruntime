@@ -530,9 +530,20 @@ insertion. Silently ignoring the option there is not safe: with dynamic or coinc
 cache dimensions the application's BNHS buffers pass input validation and the model computes on
 transposed data, producing wrong results with no error.
 
-`PartitionOrtFormatModel` therefore **rejects** the option outright, with `ORT_INVALID_ARGUMENT`. An
-ORT format model that had the transform applied at conversion time already carries the BNHS boundary
-shapes in the model itself and must be loaded without setting the option.
+`PartitionOrtFormatModel` therefore refuses **`"BNHS"`**, with `ORT_INVALID_ARGUMENT`. It does not
+refuse the option as such: an explicit `"BNSH"` is accepted, because on this path that is a claim ORT
+can still check. So the contract here is
+
+| Option on an ORT format model | Outcome |
+|---|---|
+| `"BNHS"` | `ORT_INVALID_ARGUMENT` — the transform cannot be applied on this path |
+| `"BNSH"`, model carries BNHS boundaries | `ORT_FAIL` — the claim contradicts the model |
+| `"BNSH"`, model does not | accepted |
+| unset | accepted, whatever the model carries |
+
+An ORT format model that had the transform applied at conversion time already carries the BNHS
+boundary shapes, so it must be loaded with the option unset — which is also the only way to use BNHS
+on this path.
 
 The value is validated *before* that restriction is applied, by the shared `GetGqaValueLayout()`
 helper. Rejecting any non-BNSH value first would report a typo like `"NHWC"` as an ORT format
@@ -652,8 +663,10 @@ model into an `InferenceSessionWrapper`:
 - No transposes are inserted for the default `"BNSH"` value.
 - An invalid value fails session initialization with `ORT_INVALID_ARGUMENT` (code asserted, not just
   the message).
-- An ORT format model fails session initialization with `ORT_INVALID_ARGUMENT` when the option is set, and loads normally when it
-  is not.
+- An ORT format model fails session initialization with `ORT_INVALID_ARGUMENT` for `"BNHS"`, and loads
+  normally for an explicit `"BNSH"` and with the option unset. A separate test covers the remaining
+  combination: explicit `"BNSH"` against a model that already carries BNHS boundaries fails with
+  `ORT_FAIL`. See the table in section 5.
 
 `RejectsAModelWhoseGqaLivesOnlyInASubgraph` covers the subgraph case end to end: a model whose KV
 boundary is on the main graph while the only GroupQueryAttention sits inside a `Loop` body, carried in

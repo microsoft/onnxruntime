@@ -563,9 +563,11 @@ InlinedVector<std::string> ReportUnfusedGqaValueLayoutTransposes(const Graph& gr
     const std::string& ep = transpose->GetExecutionProviderType();
     LOGS(logger, WARNING) << "The Value-layout Transpose for the " << operand << " boundary '" << boundary_name
                           << "' survived partitioning and is assigned to EP '" << (ep.empty() ? "<unassigned>" : ep)
-                          << "', so it will execute: expect a full copy of the BNHS Value cache per step, and no "
-                          << "in-place update of the bound buffer because the operator reads and writes BNSH "
-                          << "intermediates. Use an EP that fuses Transpose -> GroupQueryAttention -> Transpose (one "
+                          << "', so it will execute: expect a full copy of the BNHS Value cache per step. Binding one "
+                          << "buffer to both past_value and present_value still works -- the trailing Transpose "
+                          << "writes back into it -- but the operator no longer updates it in place, because its own "
+                          << "operands are ORT-allocated BNSH intermediates. Use an EP that fuses "
+                          << "Transpose -> GroupQueryAttention -> Transpose (one "
                           << "reporting '" << kGqaValueLayoutBNHS << "' for '"
                           << kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout
                           << "'), or a model whose Value cache boundary is BNSH. Note the boundary layout is a "

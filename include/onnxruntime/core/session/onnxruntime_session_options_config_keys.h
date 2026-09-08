@@ -661,7 +661,12 @@ static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep
 // - a node already has the layout applied to only one of past_value / present_value;
 // - the Value cache is 4-bit quantized (two values are packed per byte along head_size);
 // - a Value cache tensor is not rank 4;
+// - a Value cache tensor reaches the boundary through a device copy node, which the conversion cannot
+//   be inserted across;
+// - a GroupQueryAttention node is inside a subgraph (a Loop body or BeamSearch decoder), where the
+//   operator and its boundary are in different graphs and cannot be converted together;
 // - the model is in ORT format, which does not run the graph transform that applies this option.
+//   Note only "BNHS" is refused there; an explicit "BNSH" is still accepted and still checked.
 //
 // This option takes effect at all graph optimization levels, including ORT_DISABLE_ALL, because it
 // changes the layout the session expects at its inputs and outputs rather than optimizing the graph.
