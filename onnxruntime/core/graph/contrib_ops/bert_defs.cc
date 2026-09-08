@@ -2693,7 +2693,8 @@ Optional inputs add Qwen4-Exp-style n-gram embedding support:
 - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
   boundaries. Missing history is also filled with eos_token_id.
 - segment_ids, when provided, additionally resets causal history when adjacent tokens within one
-  packed request have different segment ids.
+  packed request have different segment ids. Thread present_segment_ids into past_segment_ids on
+  subsequent calls to preserve boundaries across chunked prefill and decode calls.
 - head_offsets, when provided, adds a fixed per-output-head offset after the modulo.
 )DOC";
 
@@ -2763,6 +2764,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "history at segment boundaries within each packed request.",
                "tensor(int32)",
                OpSchema::Optional)
+        .Input(8,
+               "past_segment_ids",
+               "Optional segment ids corresponding to past_ids, with shape "
+               "(batch_size, max_ngram_size - 1). Thread present_segment_ids from the previous call "
+               "into this input to preserve segment boundaries across calls.",
+               "S",
+               OpSchema::Optional)
         .Output(0,
                 "hash_ids",
                 "Token-major packed hash ids with shape (total_tokens, "
@@ -2775,12 +2783,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "call.",
                 "M",
                 OpSchema::Optional)
+        .Output(2,
+                "present_segment_ids",
+                "Trailing max_ngram_size - 1 segment ids corresponding to present_ids, with shape "
+                "(batch_size, max_ngram_size - 1). Feed this back as past_segment_ids on the next call.",
+                "S",
+                OpSchema::Optional)
         .TypeConstraint("M",
                         {"tensor(int32)", "tensor(int64)"},
                         "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
         .TypeConstraint("S",
                         {"tensor(int32)"},
-                        "Constrain cumulative_sequence_length to a device int32 tensor.")
+                        "Constrain cumulative_sequence_length and segment ids to device int32 tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (ctx.getNumOutputs() > 1) {
@@ -2839,6 +2853,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               }
               present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
               updateOutputShape(ctx, 1, present_shape);
+              if (ctx.getNumOutputs() > 2) {
+                updateOutputShape(ctx, 2, present_shape);
+              }
             }
           }
         }));

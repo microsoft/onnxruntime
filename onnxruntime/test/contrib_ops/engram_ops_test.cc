@@ -624,7 +624,8 @@ std::vector<T> VarlenNGramHashMappingQwenReference(
     const std::vector<T>& multipliers,
     const std::vector<T>& vocab_sizes,
     const std::vector<T>& head_offsets,
-    T eos_token_id) {
+    T eos_token_id,
+    const std::vector<std::vector<int32_t>>& past_segment_ids = {}) {
   constexpr int64_t state_length = kMaxNGramSize - 1;
   std::vector<T> output;
 
@@ -635,6 +636,17 @@ std::vector<T> VarlenNGramHashMappingQwenReference(
     for (int64_t i = 0; i < state_length; ++i) {
       if (combined[static_cast<size_t>(i)] == eos_token_id) {
         last_reset = i;
+      }
+    }
+    if (!past_segment_ids.empty()) {
+      for (int64_t i = 1; i < state_length; ++i) {
+        if (past_segment_ids[b][static_cast<size_t>(i)] !=
+            past_segment_ids[b][static_cast<size_t>(i - 1)]) {
+          last_reset = std::max(last_reset, i - 1);
+        }
+      }
+      if (segment_ids[b][0] != past_segment_ids[b][static_cast<size_t>(state_length - 1)]) {
+        last_reset = state_length - 1;
       }
     }
 
@@ -747,6 +759,49 @@ void RunVarlenNGramHashMappingEosPaddingTest() {
   test.AddOutput<T>("hash_ids", {1, 4}, expected_hash);
   test.AddOutput<T>("present_ids", {1, 2}, {eos_token_id, 4});
   test.Run();
+}
+
+template <typename T>
+void RunVarlenNGramHashMappingSegmentStateTest() {
+  constexpr T eos_token_id = 9;
+  constexpr int64_t state_length = kMaxNGramSize - 1;
+  constexpr int64_t num_heads = state_length * kHeadsPerNGram;
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> head_offsets{1000, 2000, 3000, 4000};
+
+  const auto run_case = [&](const std::vector<int32_t>& past_segments,
+                            const std::vector<int32_t>& expected_present_segments) {
+    const std::vector<std::vector<T>> sequences{{6}};
+    const std::vector<std::vector<T>> histories{{4, 5}};
+    const std::vector<std::vector<int32_t>> segments{{1}};
+    const std::vector<std::vector<int32_t>> history_segments{past_segments};
+    const std::vector<T> expected_hash = VarlenNGramHashMappingQwenReference(
+        sequences, histories, segments, multipliers, vocab_sizes, head_offsets, eos_token_id, history_segments);
+
+    OpTester test("VarlenNGramHashMapping", 1, kMSDomain);
+    test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+    test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+    test.AddAttribute<int64_t>("pad_id", kPadId);
+    test.AddAttribute<int64_t>("reset_on_eos", 1);
+    test.AddInput<T>("input_ids", {1}, sequences[0]);
+    test.AddInput<T>("multipliers", {3}, multipliers);
+    test.AddInput<T>("vocab_sizes", {num_heads}, vocab_sizes);
+    test.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+    test.AddInput<T>("past_ids", {1, state_length}, histories[0]);
+    test.AddInput<T>("head_offsets", {num_heads}, head_offsets);
+    test.AddInput<T>("eos_token_id", {}, {eos_token_id});
+    test.AddInput<int32_t>("segment_ids", {1}, segments[0]);
+    test.AddInput<int32_t>("past_segment_ids", {1, state_length}, past_segments);
+    test.AddOutput<T>("hash_ids", {1, num_heads}, expected_hash);
+    test.AddOutput<T>("present_ids", {1, state_length}, {5, 6});
+    test.AddOutput<int32_t>("present_segment_ids", {1, state_length}, expected_present_segments);
+    test.Run();
+  };
+
+  // A boundary may occur either exactly between calls or within the cached trailing window.
+  run_case({0, 0}, {0, 1});
+  run_case({0, 1}, {1, 1});
 }
 
 // present_ids for a single request: the right-aligned trailing window of (history ++ ids), padded
@@ -1230,6 +1285,14 @@ TEST(EngramOpsTest, VarlenNGramHashMappingQwenInt64) {
 
 TEST(EngramOpsTest, VarlenNGramHashMappingQwenInt32) {
   RunVarlenNGramHashMappingQwenTest<int32_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingSegmentStateInt64) {
+  RunVarlenNGramHashMappingSegmentStateTest<int64_t>();
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingSegmentStateInt32) {
+  RunVarlenNGramHashMappingSegmentStateTest<int32_t>();
 }
 
 TEST(EngramOpsTest, VarlenNGramHashMappingEosPaddingInt64) {

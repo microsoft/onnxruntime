@@ -58,6 +58,7 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* head_offsets = context->Input<Tensor>(5);
   const Tensor* eos_token_id = context->Input<Tensor>(6);
   const Tensor* segment_ids = context->Input<Tensor>(7);
+  const Tensor* past_segment_ids = context->Input<Tensor>(8);
 
   ORT_RETURN_IF_NOT(input_ids != nullptr, "input_ids is required");
   ORT_RETURN_IF_NOT(cu_seqlens != nullptr, "cumulative_sequence_length input is required");
@@ -100,9 +101,17 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
     ORT_RETURN_IF_NOT(segment_ids->Shape() == TensorShape({total_tokens}),
                       "segment_ids must have shape (total_tokens)");
   }
+  if (past_segment_ids != nullptr) {
+    ORT_RETURN_IF_NOT(segment_ids != nullptr, "past_segment_ids requires segment_ids");
+    ORT_RETURN_IF_NOT(past_segment_ids->Shape() == TensorShape({batch_size, state_length}),
+                      "past_segment_ids must have shape (batch_size, max_ngram_size - 1)");
+  }
 
   Tensor* output = context->Output(0, TensorShape({total_tokens, num_heads}));
   Tensor* present_ids = context->Output(1, TensorShape({batch_size, state_length}));
+  Tensor* present_segment_ids = context->Output(2, TensorShape({batch_size, state_length}));
+  ORT_RETURN_IF_NOT(present_segment_ids == nullptr || segment_ids != nullptr,
+                    "present_segment_ids requires segment_ids");
 
   // Device-resident scratch flag: cumulative_sequence_length's values cannot be validated
   // host-side, so LaunchVarlenNGramHashMappingKernel computes global monotonicity into this flag
@@ -120,8 +129,10 @@ Status VarlenNGramHashMapping<T>::ComputeInternal(OpKernelContext* context) cons
       head_offsets == nullptr ? nullptr : head_offsets->Data<T>(),
       eos_token_id == nullptr ? nullptr : eos_token_id->Data<T>(),
       segment_ids == nullptr ? nullptr : segment_ids->Data<int32_t>(),
+      past_segment_ids == nullptr ? nullptr : past_segment_ids->Data<int32_t>(),
       output->MutableData<T>(),
       present_ids == nullptr ? nullptr : present_ids->MutableData<T>(),
+      present_segment_ids == nullptr ? nullptr : present_segment_ids->MutableData<int32_t>(),
       batch_size,
       total_tokens,
       max_ngram_size_,

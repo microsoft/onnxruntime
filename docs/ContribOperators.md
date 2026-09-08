@@ -7433,7 +7433,8 @@ This version of the operator has been available since version 1 of the 'com.micr
   - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
     boundaries. Missing history is also filled with eos_token_id.
   - segment_ids, when provided, additionally resets causal history when adjacent tokens within one
-    packed request have different segment ids.
+    packed request have different segment ids. Thread present_segment_ids into past_segment_ids on
+    subsequent calls to preserve boundaries across chunked prefill and decode calls.
   - head_offsets, when provided, adds a fixed per-output-head offset after the modulo.
 
 #### Version
@@ -7453,7 +7454,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>When non-zero and eos_token_id is provided, reset causal n-gram history at EOS boundaries. Default is 0.</dd>
 </dl>
 
-#### Inputs (4 - 8)
+#### Inputs (4 - 9)
 
 <dl>
 <dt><tt>input_ids</tt> : M</dt>
@@ -7472,15 +7473,19 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Optional scalar end-of-sequence token id. When provided it replaces pad_id for missing history and enables reset_on_eos.</dd>
 <dt><tt>segment_ids</tt> (optional) : tensor(int32)</dt>
 <dd>Optional token-major segment ids with shape (total_tokens), used to reset causal history at segment boundaries within each packed request.</dd>
+<dt><tt>past_segment_ids</tt> (optional) : S</dt>
+<dd>Optional segment ids corresponding to past_ids, with shape (batch_size, max_ngram_size - 1). Thread present_segment_ids from the previous call into this input to preserve segment boundaries across calls.</dd>
 </dl>
 
-#### Outputs (1 - 2)
+#### Outputs (1 - 3)
 
 <dl>
 <dt><tt>hash_ids</tt> : M</dt>
 <dd>Token-major packed hash ids with shape (total_tokens, (max_ngram_size - 1) * n_head_per_ngram).</dd>
 <dt><tt>present_ids</tt> (optional) : M</dt>
 <dd>Trailing max_ngram_size - 1 ids of past_ids followed by each request's own tokens, with shape (batch_size, max_ngram_size - 1). Feed this back as past_ids on the next call.</dd>
+<dt><tt>present_segment_ids</tt> (optional) : S</dt>
+<dd>Trailing max_ngram_size - 1 segment ids corresponding to present_ids, with shape (batch_size, max_ngram_size - 1). Feed this back as past_segment_ids on the next call.</dd>
 </dl>
 
 #### Type Constraints

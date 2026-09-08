@@ -70,6 +70,7 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   const Tensor* head_offsets = context->Input<Tensor>(5);
   const Tensor* eos_token_id = context->Input<Tensor>(6);
   const Tensor* segment_ids = context->Input<Tensor>(7);
+  const Tensor* past_segment_ids = context->Input<Tensor>(8);
 
   ORT_RETURN_IF_NOT(input_ids->Shape().NumDimensions() == 1, "input_ids must have rank 1 (total_tokens)");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
@@ -108,6 +109,11 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(segment_ids->Shape() == TensorShape({total_tokens}),
                       "segment_ids must have shape (total_tokens)");
   }
+  if (past_segment_ids != nullptr) {
+    ORT_RETURN_IF_NOT(segment_ids != nullptr, "past_segment_ids requires segment_ids");
+    ORT_RETURN_IF_NOT(past_segment_ids->Shape() == TensorShape({batch_size, state_length}),
+                      "past_segment_ids must have shape (batch_size, max_ngram_size - 1)");
+  }
 
   const int32_t* cu_data = cu_seqlens->Data<int32_t>();
   ORT_RETURN_IF_NOT(cu_data[0] == 0, "cumulative_sequence_length[0] must be 0");
@@ -121,6 +127,9 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, TensorShape({total_tokens, num_heads}));
   Tensor* present_ids = context->Output(1, TensorShape({batch_size, state_length}));
+  Tensor* present_segment_ids = context->Output(2, TensorShape({batch_size, state_length}));
+  ORT_RETURN_IF_NOT(present_segment_ids == nullptr || segment_ids != nullptr,
+                    "present_segment_ids requires segment_ids");
 
   const T* input_data = input_ids->Data<T>();
   const T* multiplier_data = multipliers->Data<T>();
@@ -128,6 +137,8 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   const T* past_data = past_ids == nullptr ? nullptr : past_ids->Data<T>();
   const T* offset_data = head_offsets == nullptr ? nullptr : head_offsets->Data<T>();
   const int32_t* segment_data = segment_ids == nullptr ? nullptr : segment_ids->Data<int32_t>();
+  const int32_t* past_segment_data =
+      past_segment_ids == nullptr ? nullptr : past_segment_ids->Data<int32_t>();
   const bool has_eos = eos_token_id != nullptr;
   const T eos_value = has_eos ? eos_token_id->Data<T>()[0] : pad_id_;
   const bool do_reset = reset_on_eos_ && has_eos;
@@ -142,6 +153,8 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   }
 
   T* present_data = present_ids == nullptr ? nullptr : present_ids->MutableData<T>();
+  int32_t* present_segment_data =
+      present_segment_ids == nullptr ? nullptr : present_segment_ids->MutableData<int32_t>();
   T* output_data = total_tokens == 0 ? nullptr : output->MutableData<T>();
 
   ThreadPool::TryParallelFor(
@@ -160,6 +173,17 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
               if (HistoryId(past_data, b, i, state_length, eos_value) == eos_value) {
                 last_reset = i;
               }
+            }
+          }
+          if (segment_data != nullptr && past_segment_data != nullptr) {
+            for (int64_t i = 1; i < state_length; ++i) {
+              if (past_segment_data[b * state_length + i] !=
+                  past_segment_data[b * state_length + i - 1]) {
+                last_reset = std::max(last_reset, i - 1);
+              }
+            }
+            if (segment_data[start] != past_segment_data[(b + 1) * state_length - 1]) {
+              last_reset = std::max(last_reset, state_length - 1);
             }
           }
           for (int64_t t = 0; t < local_length; ++t) {
@@ -208,6 +232,17 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
               present_data[b * state_length + j] =
                   source_t >= 0 ? input_data[start + source_t]
                                 : HistoryId(past_data, b, state_length + source_t, state_length, eos_value);
+            }
+          }
+          if (present_segment_data != nullptr) {
+            for (int64_t j = 0; j < state_length; ++j) {
+              const int64_t source_t = local_length - state_length + j;
+              present_segment_data[b * state_length + j] =
+                  source_t >= 0
+                      ? segment_data[start + source_t]
+                      : (past_segment_data != nullptr
+                             ? past_segment_data[b * state_length + state_length + source_t]
+                             : segment_data[start]);
             }
           }
         }
