@@ -180,7 +180,9 @@ void LinearAttentionArgs(benchmark::internal::Benchmark* b) {
     for (int t : {1, 128, 1024, 4096}) {
       b->Args({1, t, 16, 16, 16, 128, 128, rule});
     }
+    b->Args({1, 1024, 32, 16, 16, 128, 128, rule});  // GQA group 2
     b->Args({1, 1024, 32, 8, 8, 128, 128, rule});    // standard GQA, 4 q heads per kv head
+    b->Args({1, 1024, 64, 8, 8, 128, 128, rule});    // GQA group 8 -- tightest register case
     b->Args({1, 1024, 16, 32, 16, 128, 128, rule});  // inverse GQA (Qwen3.5 9B style)
     b->Args({8, 512, 16, 16, 16, 128, 128, rule});   // batched prefill: multi-thread partition
     b->Args({1, 4096, 1, 1, 1, 128, 128, rule});     // B*Hkv == 1: inline fast path
