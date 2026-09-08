@@ -2504,10 +2504,14 @@ This version of the operator has been available since version 1 of the 'com.micr
        `block_size`. `block_size` must be 0 (meaning the entire `quantize_axis` dimension forms a single
        block, i.e. one scale per row) or a power of 2 and not smaller than 16.
     3. Input `data`'s scale is specified by input `scales`, a constant tensor of the same rank as `data`
-       with one scale value per quantization block.
+       with one scale value per quantization block. On any axis other than `quantize_axis`, the
+       corresponding `scales` dimension must either equal `data`'s dimension, or be 1, in which case the
+       scale is broadcast along that axis (e.g. a single scale shared by every row, as with a per-tensor
+       scale applied to an entire embedding table).
     4. During op execution, `data` and `indices` are first used to gather rows exactly as in Gather. Each
        gathered FP8/FP4 element is then converted to its floating point value and multiplied by the scale of
-       the block it belongs to, i.e. `output[...] = float(data[...]) * scales[block_index(...)]`.
+       the block it belongs to, i.e. `output[...] = float(data[...]) * scales[block_index(...)]`, with
+       broadcast axes of `scales` always contributing index 0.
     5. The `output` and `scales` have the same type.
 
 #### Version
@@ -2533,7 +2537,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>indices</tt> : Tind</dt>
 <dd>Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] along axis of size s. It is an error if any of the index values are out of bounds.</dd>
 <dt><tt>scales</tt> : T2</dt>
-<dd>Per-block scale, same rank as data.</dd>
+<dd>Per-block scale, same rank as data. On axes other than quantize_axis, a dimension of 1 broadcasts the scale along that axis (e.g. a single per-tensor scale for the whole table).</dd>
 </dl>
 
 #### Outputs

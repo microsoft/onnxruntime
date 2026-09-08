@@ -5,6 +5,8 @@
 
 #if !defined(DISABLE_FLOAT8_TYPES) || !defined(DISABLE_FLOAT4_TYPES)
 
+#include <vector>
+
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
@@ -16,6 +18,9 @@ namespace contrib {
 // table and dequantizes them on the fly. Unlike GatherBlockQuantized (integer block quantization with an
 // optional zero point), the quantized type here is always an FP8 or FP4 floating point type and there is
 // no zero point: FP8/FP4 quantization is symmetric, so dequantization is simply `float(data) * scale`.
+// On any axis other than quantize_axis, `scales` may have dimension 1 to broadcast a single scale along
+// that axis (e.g. one scale shared by every row), including the degenerate case where `scales` holds a
+// single global per-tensor scale (as used by, e.g., a FP8-quantized embedding table with one scalar scale).
 template <typename T1, typename Tind>
 class GatherFpQuantized : public OpKernel {
  public:
@@ -46,6 +51,15 @@ class GatherFpQuantized : public OpKernel {
     Tensor* output_tensor;
     int64_t gather_axis;
     int64_t quantize_axis;
+    // Row-major strides of `data`, used to decompose a flat data index into per-axis indices.
+    std::vector<int64_t> data_strides;
+    // Row-major strides of `scales`. For a broadcast axis (scales dim == 1, data dim > 1) the
+    // corresponding per-axis index contribution is always 0, regardless of this stride.
+    std::vector<int64_t> scale_strides;
+    // Per-axis flag (indexed like data/scales axes), true when that axis is broadcast in `scales`
+    // (i.e. scales dim == 1 while data dim != 1). Unused/ignored at quantize_axis, which is always
+    // handled via block-index division instead.
+    std::vector<bool> scale_broadcast_axis;
   };
 
   Status PrepareForCompute(OpKernelContext* context, Prepare& args) const;
@@ -59,9 +73,11 @@ class GatherFpQuantized : public OpKernel {
                                int64_t gather_N,
                                int64_t gather_axis_dim,
                                int64_t gather_block,
-                               int64_t quantize_axis_dim,
-                               int64_t quantize_N,
+                               int64_t quantize_axis,
                                int64_t effective_block_size,
+                               const std::vector<int64_t>& data_strides,
+                               const std::vector<int64_t>& scale_strides,
+                               const std::vector<bool>& scale_broadcast_axis,
                                concurrency::ThreadPool* tp) const;
 
  private:
