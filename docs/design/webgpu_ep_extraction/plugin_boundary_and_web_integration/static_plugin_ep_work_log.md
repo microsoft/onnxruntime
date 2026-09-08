@@ -32,7 +32,8 @@ The implementation is complete and committed. CI coverage was added for the new 
 | Operator-level validation on a real GPU | **Done — no behavioural difference**, see [Testing](#testing) |
 | Linux/GCC build (`--use_webgpu static_plugin`) | **Green in CI** (run `33030694040`) after the `array-bounds` fix — see [GCC](#gcc-and-warnings-as-errors) |
 | Minimal build | Not yet exercised — see [Open items](#open-items) |
-| Emscripten / ORT Web | **Builds and links**, plugin registration verified in the binary — see [ORT Web](#emscripten-and-ort-web). Not yet run in a browser |
+| Emscripten / ORT Web | **Builds, links, and runs in a browser** on a real GPU; registration verified in the binary *and* at runtime — see [ORT Web](#emscripten-and-ort-web) |
+| Latency | **Measured on both plugin shapes** — ~4.8 us/node (wasm), ~1.2 us/node (native); the accepted tolerance is still unquantified, see [Open items](#open-items) |
 | PR | Draft [#32395](https://github.com/microsoft/onnxruntime/pull/32395); self-review feedback addressed — see [PR review feedback](#pr-review-feedback) |
 
 ## Branch
@@ -637,6 +638,36 @@ no-op. The evidence is strong for the web build, where the patched `GPUQueue.sub
 instrument for the claimed harm. It is weaker for native, where only timing was compared and submits were
 never counted.
 
+## Native shared-library plugin measurements
+
+The latency criterion covers two shapes of plugin, and the wasm numbers above only settle the static one. The
+native `--use_webgpu shared_lib` A/B against a built-in baseline is written up separately in
+[native_plugin_latency_measurements.md](native_plugin_latency_measurements.md), with the harness in
+`run_native_ab.ps1`. Summary: the plugin is slower by ~8% on `bench_dispatch` and 4-6% on Qwen3.5-0.8B, fitting
+roughly **67 us per `Run` plus 1.2 us per node** — about 3-4x cheaper per node than the wasm boundary's 4.8 us.
+
+Three things from that exercise are worth recording here, because each cost real time and none was visible from
+reading code:
+
+- **The first run measured the wrong GPU.** A driver failure had left the RTX 5060 Ti in PnP error state, so
+  every WebGPU run silently landed on a Quadro P620, which lacks `shader-f16` and could not run the int4 Qwen
+  model at all. Nothing in ORT's output names the adapter, and there is no adapter-selection knob, so on a
+  multi-GPU box the adapter has to be confirmed externally with `nvidia-smi` during a run.
+- **One arm was accidentally built unoptimized.** An interrupted CMake configure left `CMAKE_CXX_FLAGS_RELEASE`
+  empty; a later `build.py --update` reused the damaged cache instead of regenerating it, and the build
+  succeeded with no error. Counting `/O2` in the generated `build.ninja` catches this; the cache alone does not
+  make it obvious. Had it gone unnoticed it would have produced a large bogus result favouring the plugin.
+- **A CPU-EP control was needed to attribute the delta.** Matching build flags do not prove two executables
+  perform alike. Running both binaries on the CPU EP, where no plugin is loaded, gave a ratio of minima of
+  1.001 — which is what licenses reading the WebGPU delta as plugin-boundary cost. Run with default threading
+  that same control was misleading, showing the plugin executable 24% *faster*; it only became usable
+  single-threaded.
+
+The relationship to the wasm result is the interesting part: both boundaries charge per kernel node, and the
+native one charges less. That is consistent with the wasm cost being dominated by something inside the
+`static_plugin` wasm's per-kernel C++ path rather than by the plugin indirection itself, which is what the
+three-way `mismatch` run above already suggested.
+
 ## PR review feedback
 
 Draft PR [#32395](https://github.com/microsoft/onnxruntime/pull/32395) collected eleven inline self-review
@@ -811,6 +842,16 @@ RTX 5060 Ti machine, `onnxruntime_test_all --gtest_filter=InferenceSessionTests.
    environment construction options. That resolution is upstreamable on its own once the trailing link is
    dropped; **decision: deferred until this branch lands**, at which point the link becomes valid and the whole
    set can go across together.
+
+8. **Decide the latency tolerance.** The native half of the latency criterion is now measured — see
+   [Native shared-library plugin measurements](#native-shared-library-plugin-measurements). Both plugin shapes
+   cost per kernel node rather than a fixed amount, so no single percentage characterizes the overhead: it is
+   ~4-6% on real models and grows with node count. The criterion says latency must stay "within an accepted
+   tolerance", but that tolerance has never been quantified, and these results show the answer is not "zero".
+   Two gaps remain in the native numbers: session-creation cost was not compared (the plugin arm must also
+   discover and load the DLL, so it is likely worse in relative terms), and both arms ran with default WebGPU
+   options — graph capture in particular targets exactly the per-dispatch cost identified, and is worth a
+   follow-up.
 
 ## Environment notes
 
