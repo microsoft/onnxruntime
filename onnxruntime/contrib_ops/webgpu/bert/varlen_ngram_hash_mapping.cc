@@ -10,7 +10,6 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 #include <limits>
-
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
@@ -99,10 +98,6 @@ Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) c
   const ShaderVariableHelper* past_ids = nullptr;
   if (has_past_ids_) {
     past_ids = &shader.AddInput("past_ids", ShaderUsage::UseUniform);
-  }
-  const ShaderVariableHelper* head_offsets = nullptr;
-  if (has_head_offsets_) {
-    head_offsets = &shader.AddInput("head_offsets", ShaderUsage::UseUniform);
   }
   const ShaderVariableHelper* eos_token_id = nullptr;
   if (has_eos_token_id_) {
@@ -219,15 +214,31 @@ Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "      var result = 0i;\n"
       << "      if (mod_value > 0i) {\n"
       << "        result = positive_mod(mix, mod_value);\n";
-  if (has_head_offsets_) {
-    shader.MainFunctionBody()
-        << "        result = result + " << head_offsets->GetByOffset("out_h") << ";\n";
-  }
   shader.MainFunctionBody()
       << "      }\n"
       << "      " << output.SetByOffset("(u32(start) + t) * num_heads + out_h", "result") << "\n"
       << "    }\n"
       << "  }\n";
+  return Status::OK();
+}
+
+Status VarlenNGramAddHeadOffsetsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& hash_ids = shader.AddInput("hash_ids", ShaderUsage::UseUniform);
+  const auto& head_offsets = shader.AddInput("head_offsets", ShaderUsage::UseUniform);
+  const auto& vocab_sizes = shader.AddInput("vocab_sizes", ShaderUsage::UseUniform);
+  const auto& is_valid = shader.AddInput("is_valid", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+
+  shader.MainFunctionBody()
+      << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_count")
+      << "  if (" << is_valid.GetByOffset("0u") << " == 0u) { return; }\n"
+      << "  let head = global_idx % uniforms.num_heads;\n"
+      << "  var result = " << hash_ids.GetByOffset("global_idx") << ";\n"
+      << "  if (" << vocab_sizes.GetByOffset("head") << " > 0i) {\n"
+      << "    result = result + " << head_offsets.GetByOffset("head") << ";\n"
+      << "  }\n"
+      << "  " << output.SetByOffset("global_idx", "result")
+      << "\n";
   return Status::OK();
 }
 
@@ -515,10 +526,17 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+  Tensor base_hash_ids;
+  Tensor* hash_output = output;
+  if (has_head_offsets) {
+    base_hash_ids = context.CreateGPUTensor(output->DataType(), output->Shape());
+    hash_output = &base_hash_ids;
+  }
+
   VarlenNGramHashMappingProgram program{
-      has_past_ids, has_head_offsets, has_eos_token_id, has_segment_ids, has_past_segment_ids, reset_on_eos_};
+      has_past_ids, has_eos_token_id, has_segment_ids, has_past_segment_ids, reset_on_eos_};
   program.CacheHint(
-             has_past_ids, has_head_offsets, has_eos_token_id, has_segment_ids, has_past_segment_ids, reset_on_eos_)
+             has_past_ids, has_eos_token_id, has_segment_ids, has_past_segment_ids, reset_on_eos_)
       .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
                   {multipliers, ProgramTensorMetadataDependency::None},
                   {vocab_sizes, ProgramTensorMetadataDependency::None},
@@ -526,9 +544,6 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
                   {&is_valid, ProgramTensorMetadataDependency::None}});
   if (has_past_ids) {
     program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
-  }
-  if (has_head_offsets) {
-    program.AddInput({head_offsets, ProgramTensorMetadataDependency::None});
   }
   if (has_eos_token_id) {
     program.AddInput({eos_token_id, ProgramTensorMetadataDependency::None});
@@ -539,7 +554,7 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
   if (has_past_segment_ids) {
     program.AddInput({past_segment_ids, ProgramTensorMetadataDependency::None});
   }
-  program.AddOutput({output, ProgramTensorMetadataDependency::None})
+  program.AddOutput({hash_output, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch_size))
       .SetWorkgroupSize(WORKGROUP_SIZE)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(batch_size)},
@@ -547,7 +562,22 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
                             {onnxruntime::narrow<uint32_t>(max_ngram_size_)},
                             {onnxruntime::narrow<uint32_t>(n_head_per_ngram_)},
                             {onnxruntime::narrow<int32_t>(pad_id_)}});
-  return context.RunProgram(program);
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+
+  if (has_head_offsets) {
+    VarlenNGramAddHeadOffsetsProgram add_offsets_program{};
+    add_offsets_program.AddInputs({{hash_output, ProgramTensorMetadataDependency::None},
+                                   {head_offsets, ProgramTensorMetadataDependency::None},
+                                   {vocab_sizes, ProgramTensorMetadataDependency::None},
+                                   {&is_valid, ProgramTensorMetadataDependency::None}})
+        .AddOutput({output, ProgramTensorMetadataDependency::None})
+        .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(output_count) + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(output_count)},
+                              {onnxruntime::narrow<uint32_t>(num_heads)}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(add_offsets_program));
+  }
+
+  return Status::OK();
 }
 
 }  // namespace webgpu

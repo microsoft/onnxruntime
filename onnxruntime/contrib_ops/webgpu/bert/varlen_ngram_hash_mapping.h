@@ -59,11 +59,10 @@ class VarlenNGramFillDefaultProgram final : public Program<VarlenNGramFillDefaul
 // across into an adjacent packed request.
 class VarlenNGramHashMappingProgram final : public Program<VarlenNGramHashMappingProgram> {
  public:
-  VarlenNGramHashMappingProgram(bool has_past_ids, bool has_head_offsets, bool has_eos_token_id,
-                                bool has_segment_ids, bool has_past_segment_ids, bool reset_on_eos)
+  VarlenNGramHashMappingProgram(bool has_past_ids, bool has_eos_token_id, bool has_segment_ids,
+                                bool has_past_segment_ids, bool reset_on_eos)
       : Program{"VarlenNGramHashMapping"},
         has_past_ids_(has_past_ids),
-        has_head_offsets_(has_head_offsets),
         has_eos_token_id_(has_eos_token_id),
         has_segment_ids_(has_segment_ids),
         has_past_segment_ids_(has_past_segment_ids),
@@ -77,11 +76,18 @@ class VarlenNGramHashMappingProgram final : public Program<VarlenNGramHashMappin
 
  private:
   bool has_past_ids_;
-  bool has_head_offsets_;
   bool has_eos_token_id_;
   bool has_segment_ids_;
   bool has_past_segment_ids_;
   bool reset_on_eos_;
+};
+
+class VarlenNGramAddHeadOffsetsProgram final : public Program<VarlenNGramAddHeadOffsetsProgram> {
+ public:
+  VarlenNGramAddHeadOffsetsProgram() : Program{"VarlenNGramAddHeadOffsets"} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"output_count", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 };
 
 // Emits the right-aligned trailing window of (past_ids ++ this request's tokens) per packed

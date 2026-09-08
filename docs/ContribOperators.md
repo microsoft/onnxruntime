@@ -7427,9 +7427,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   sequence use pad_id, or eos_token_id when provided. Running NGramHashMapping once per sequence and running this op once over those
   sequences packed together (optionally split into packed chunks with present_ids threaded into
   past_ids) produce identical hash ids.
-
+  
   Optional inputs add Qwen4-Exp-style n-gram embedding support:
-
+  
   - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
     boundaries. Missing history is also filled with eos_token_id.
   - segment_ids, when provided, additionally resets causal history when adjacent tokens within one
@@ -7450,7 +7450,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of hash heads emitted for each n-gram order.</dd>
 <dt><tt>pad_id</tt> : int (required)</dt>
 <dd>Compressed tokenizer id used to pad causal shifts before the beginning of a request's sequence.</dd>
-<dt><tt>reset_on_eos</tt> : int (default is 0)</dt>
+<dt><tt>reset_on_eos</tt> : int</dt>
 <dd>When non-zero and eos_token_id is provided, reset causal n-gram history at EOS boundaries. Default is 0.</dd>
 </dl>
 
@@ -7494,7 +7494,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>M</tt> : tensor(int32), tensor(int64)</dt>
 <dd>Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.</dd>
 <dt><tt>S</tt> : tensor(int32)</dt>
-<dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>
+<dd>Constrain cumulative_sequence_length and segment ids to device int32 tensors.</dd>
 </dl>
 
 
@@ -7780,3 +7780,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+
