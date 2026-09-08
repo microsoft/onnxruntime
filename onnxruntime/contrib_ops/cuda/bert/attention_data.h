@@ -311,6 +311,17 @@ struct PagedAttentionData {
   // use_paged_decode when set.
   bool use_xqa_decode = false;
   bool use_xqa_spec_dec = false;
+  // cuDNN paged SDPA decode kernel. Opt-in on H100+ for one-token-per-sequence decode when the
+  // cache is unquantized and none of the fused options (softcap / head sink / sliding window /
+  // bias) are requested. Takes precedence over use_flash_attention when set.
+  bool use_cudnn_paged = false;
+
+  // cuDNN paged SDPA path: temp-space allocator, cuDNN handle (stored as void* to avoid pulling the
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner) and per-batch KV length
+  // scratch (int32, [batch_size]) filled from past_seqlens on device before dispatch.
+  AllocatorPtr allocator = nullptr;
+  void* cudnn_handle = nullptr;
+  int* cudnn_seqlens_kv = nullptr;
 };
 
 }  // namespace cuda

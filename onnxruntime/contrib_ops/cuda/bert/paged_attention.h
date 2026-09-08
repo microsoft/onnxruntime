@@ -54,6 +54,12 @@ class PagedAttention final : public CudaKernel {
   bool enable_xqa_;
   // Native FP16/BF16 cache specializations are opt-in because FlashAttention is competitive.
   bool enable_native_xqa_;
+  // cuDNN paged SDPA (decode-only tier). Mirrors GroupQueryAttention: the standard sdpa_kernel bit
+  // and ORT_ENABLE_CUDNN_FLASH_ATTENTION opt users in explicitly, and sm>=90 gets it automatically
+  // via AllowCudnnFlashAttentionAuto(). ORT_ENABLE_CUDNN_FLASH_ATTENTION=0 is the shared kill switch
+  // for every cuDNN attention path in the CUDA EP.
+  bool enable_cudnn_paged_;
+  bool auto_enable_cudnn_paged_;
   // -1 = not yet resolved, 0 = the kernel needs more shared memory than this device allows,
   // 1 = it fits. Resolved once per node because it only depends on head_size / group size.
   mutable std::atomic<int> xqa_shared_memory_ok_{-1};

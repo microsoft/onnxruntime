@@ -12,6 +12,7 @@
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_paged_loader.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
@@ -366,6 +367,26 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
   constexpr int kThreads = 256;
   GetCumulativeSeqlensKV<kThreads><<<1, kThreads, 0, stream>>>(cumulative_seqlens_kv, cumulative_seqlens_q,
                                                                past_seqlens, batch_size);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// Fills seqlens_kv[i] = past_seqlens[i] + 1 for one-token-per-sequence decode. The cuDNN paged
+// SDPA graph takes a per-batch KV padding-mask tensor of that shape; ORT's cumulative_seqlens_kv
+// is a prefix sum that would need a second differencing pass, and the decode path already knows
+// each sequence contributes exactly one query token, so past_seqlens + 1 is exact.
+__global__ void GetSeqlensKVDecode(int32_t* seqlens_kv, const int32_t* past_seqlens,
+                                   const int batch_size) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < batch_size) {
+    seqlens_kv[i] = past_seqlens[i] + 1;
+  }
+}
+
+Status LaunchGetSeqlensKVDecode(int32_t* seqlens_kv, const int32_t* past_seqlens,
+                                const int batch_size, cudaStream_t stream) {
+  constexpr int kThreads = 128;
+  const int blocks = (batch_size + kThreads - 1) / kThreads;
+  GetSeqlensKVDecode<<<blocks, kThreads, 0, stream>>>(seqlens_kv, past_seqlens, batch_size);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -1677,6 +1698,60 @@ Status PagedXqaDecodeAttention(
   return Status::OK();
 }
 
+// cuDNN paged SDPA decode kernel. Opt-in on H100+ for one-token-per-sequence decode when the cache
+// is unquantized and none of the fused options are requested. Runs the shared rotary / QK-Norm /
+// ReshapeAndCache prologue (so cache and Q are up to date), derives per-batch KV lengths for the
+// padding mask, then hands off to the cudnn-frontend graph in cudnn_flash_attention.cc.
+template <typename T, typename TCACHE>
+Status CudnnPagedAttention(
+    const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data,
+    float scale) {
+  auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
+  const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+
+  T* query = nullptr;
+  // Apply rotary / QK-Norm to Q, unpack packed_qkv Q into workspace, insert K/V into the paged
+  // cache. Every case cuDNN paged serves has token_count == batch_size and max_query_len == 1, so
+  // the packed decode Q layout (one token per sequence) survives the prologue verbatim.
+  ORT_RETURN_IF_ERROR((PrepareQueryAndCache<T, TCACHE>(stream, parameters, data,
+                                                       max_threads_per_block, &query)));
+
+  // Per-batch KV lengths for the padding-mask input. Decode-only path: length = past + 1.
+  ORT_RETURN_IF_ERROR(LaunchGetSeqlensKVDecode(
+      data.cudnn_seqlens_kv, data.past_seqlens, parameters.batch_size, stream));
+
+  cudnnHandle_t cudnn_handle = static_cast<cudnnHandle_t>(data.cudnn_handle);
+  onnxruntime::cudnn_sdpa::run_paged(
+      /*output=*/reinterpret_cast<void*>(data.output),
+      /*q=*/reinterpret_cast<void*>(query),
+      /*k_cache=*/reinterpret_cast<void*>(data.key_cache),
+      /*v_cache=*/reinterpret_cast<void*>(data.value_cache),
+      /*block_table=*/const_cast<int*>(data.block_table),
+      /*mask_sequence_lengths_kv=*/data.cudnn_seqlens_kv,
+      parameters.batch_size,
+      parameters.num_heads,
+      parameters.kv_num_heads,
+      parameters.head_size,
+      parameters.head_size,  // head_size_v == head_size in every SEPARATE-mode configuration
+      /*max_sequence_length_kv=*/data.max_kv_len,
+      parameters.num_blocks,
+      parameters.block_size,
+      parameters.max_num_blocks_per_seq,
+      scale,
+      std::is_same<T, BFloat16>::value,
+      cudnn_handle,
+      ort_stream,
+      data.allocator);
+
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("cudnn paged sdpa output", data.output, parameters.token_count, parameters.num_heads,
+              parameters.head_size);
+  return Status::OK();
+}
+
 #if USE_FLASH_ATTENTION
 template <typename T, typename TCACHE>
 Status FlashAttention(
@@ -1868,6 +1943,10 @@ Status QkvToContext(
 
   if (data.use_xqa_decode) {
     return PagedXqaDecodeAttention(device_prop, stream, parameters, data, scale);
+  }
+
+  if (data.use_cudnn_paged) {
+    return CudnnPagedAttention(device_prop, ort_stream, parameters, data, scale);
   }
 
   if (data.use_paged_decode) {

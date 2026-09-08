@@ -15,6 +15,7 @@
 #include "contrib_ops/cpu/bert/paged_attention_helper.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_paged_loader.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 
@@ -147,6 +148,10 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   enable_xqa_ = sizeof(T) == 2 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
   enable_native_xqa_ =
       enable_xqa_ && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_NATIVE_KV", 0) != 0);
+  // cuDNN paged SDPA follows the same opt-in / auto-on pattern as GroupQueryAttention's cuDNN tier.
+  constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
+  enable_cudnn_paged_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
+  auto_enable_cudnn_paged_ = kIsFp16OrBf16 && kernel_options_->AllowCudnnFlashAttentionAuto();
 }
 
 template <typename T, typename TCACHE>
@@ -475,13 +480,47 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value) || native_spec_xqa_eligible) &&
       parameters.head_size == 256 && group_size == 6 &&
       max_query_len_bound > 1 && max_query_len_bound <= 8;
+
+  // cuDNN paged SDPA (decode-only, unquantized cache). Preferred over FlashAttention when eligible;
+  // XQA still wins its target case (fp16, group_size 6, head_size 256, native page size). The
+  // eligibility is intentionally metadata-gated so the selection never triggers a new D->H readback
+  // -- max_query_len_bound == 1 with has_metadata_bounds is the same signal XQA uses. The
+  // xqa_spec_dec_candidate path is orthogonal because it requires max_query_len_bound > 1.
+  // Enablement mirrors GroupQueryAttention's cuDNN tier: explicit opt-in via the sdpa_kernel bit /
+  // ORT_ENABLE_CUDNN_FLASH_ATTENTION=1, plus auto-on for sm>=90. The env var set to 0 kills every
+  // cuDNN attention path uniformly.
+  const bool cudnn_paged_enabled =
+      enable_cudnn_paged_ || (auto_enable_cudnn_paged_ && device_prop.major >= 9);
+  const bool cudnn_paged_eligible =
+      cudnn_paged_enabled &&
+      has_metadata_bounds &&
+      max_query_len_bound == 1 &&
+      parameters.token_count == parameters.batch_size &&
+      !use_latent_attention &&
+      !kIsQuantizedCache &&
+      parameters.is_causal &&
+      parameters.softcap == 0.0f &&
+      parameters.local_window_size <= 0 &&
+      !parameters.use_smooth_softmax &&
+      onnxruntime::cudnn_sdpa::is_stable() &&
+      onnxruntime::cudnn_sdpa::is_supported_paged(
+          device_prop,
+          parameters.num_heads, parameters.kv_num_heads,
+          parameters.head_size, parameters.head_size,
+          /*sequence_length_q=*/1,
+          /*max_sequence_length_kv=*/max_kv_len_bound,
+          parameters.block_size);
+  const bool use_cudnn_paged = cudnn_paged_eligible && !fp16_xqa_eligible;
+
   // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
   // both hard-code a bottom-right causal mask.
   bool use_paged_decode =
+      !use_cudnn_paged &&
       decode_eligible && parameters.is_causal &&
       ((decode_shaped && (kIsQuantizedCache || fp16_xqa_eligible || !flash_eligible)) || xqa_spec_dec_candidate);
-  bool use_flash_attention = flash_eligible && !use_paged_decode;
-  const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode && parameters.is_causal;
+  bool use_flash_attention = flash_eligible && !use_paged_decode && !use_cudnn_paged;
+  const bool use_memory_efficient_attention =
+      mea_eligible && !use_paged_decode && !use_cudnn_paged && parameters.is_causal;
 
   if (!parameters.is_causal && !use_flash_attention) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -604,19 +643,23 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // Native-cache XQA promotion is speculative until the one-token-per-sequence and shared-memory
   // checks pass. Restore Flash for ragged decode steps and unsupported devices instead of leaving
   // them on the portable scalar paged-decode fallback. This is safe without dense KV staging
-  // because the native FP16/BF16 cache is already a Flash-supported dtype.
-  if (!use_xqa_decode && (fp16_xqa_eligible || native_spec_xqa_eligible) && !kIsQuantizedCache &&
-      flash_eligible) {
+  // because the native FP16/BF16 cache is already a Flash-supported dtype. Skip when cuDNN paged
+  // already won this step; the two selections would otherwise coexist for the corner case where
+  // native XQA is opted in on a bf16 cache with head_size=256 / group_size=6 and max_query_len=1
+  // (native_spec_xqa_eligible is a shape gate and stays true regardless of query length).
+  if (!use_xqa_decode && !use_cudnn_paged && (fp16_xqa_eligible || native_spec_xqa_eligible) &&
+      !kIsQuantizedCache && flash_eligible) {
     use_paged_decode = false;
     use_flash_attention = true;
   }
   DUMP_STRING("Backend = ", use_latent_attention  ? "latent"
                             : use_xqa_decode      ? "paged decode (XQA)"
+                            : use_cudnn_paged     ? "cuDNN paged SDPA"
                             : use_paged_decode    ? "paged decode"
                             : use_flash_attention ? "flash attention"
                                                   : "memory efficient attention");
 
-  if (!use_latent_attention && !use_paged_decode && !use_flash_attention && !use_memory_efficient_attention) {
+  if (!use_latent_attention && !use_paged_decode && !use_flash_attention && !use_memory_efficient_attention && !use_cudnn_paged) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "PagedAttention requires FlashAttention (sm>=80, fp16/bf16, block_size a multiple of ",
                            flash_min_block_size, " for head_size ", parameters.head_size,
@@ -761,6 +804,14 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
 #endif
 
+  // cuDNN paged SDPA needs a small [batch_size] int32 buffer holding per-sequence KV lengths,
+  // filled on device by LaunchGetSeqlensKVDecode right before dispatch.
+  IAllocatorUniquePtr<void> cudnn_seqlens_kv_buffer;
+  if (use_cudnn_paged) {
+    cudnn_seqlens_kv_buffer = GetScratchBuffer<void>(
+        sizeof(int) * static_cast<size_t>(parameters.batch_size), GetComputeStream(context));
+  }
+
   // Print debug info
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;
@@ -769,6 +820,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     debug_info.use_decoder_attention = use_paged_decode && !use_xqa_decode;
+    debug_info.use_cudnn_flash_attention = use_cudnn_paged;
     if (use_flash_attention) {
       debug_info.num_splits = std::max(1, flash_num_splits);
     } else if (use_paged_decode && !use_xqa_decode) {
@@ -812,6 +864,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   data.use_paged_decode = use_paged_decode;
   data.use_xqa_decode = use_xqa_decode;
   data.use_xqa_spec_dec = use_xqa_spec_dec;
+  data.use_cudnn_paged = use_cudnn_paged;
   if (softmax_lse_buffer != nullptr) {
     // FlashAttention always writes fp32 log-sum-exp, independent of T.
     data.softmax_lse = reinterpret_cast<float*>(softmax_lse_buffer.get());
@@ -849,6 +902,12 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
   if (use_memory_efficient_attention && fmha_buffer != nullptr) {
     data.fmha_buffer = reinterpret_cast<CudaT*>(fmha_buffer.get());
+  }
+
+  if (use_cudnn_paged) {
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.allocator));
+    data.cudnn_handle = static_cast<void*>(GetCudnnHandle(context));
+    data.cudnn_seqlens_kv = reinterpret_cast<int*>(cudnn_seqlens_kv_buffer.get());
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
