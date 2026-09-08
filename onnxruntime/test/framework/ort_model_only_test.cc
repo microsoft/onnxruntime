@@ -401,7 +401,7 @@ TEST(OrtModelTest, RejectsControlEdgeCycle) {
   const auto status = LoadOrtModel(
       BuildOrtModelWithEdgeSlots(INT_MAX, INT_MAX, true, false, false, true, true), model);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("cycle"));
+  EXPECT_EQ(status.ErrorMessage(), "This is an invalid model. Error: the graph is not acyclic.");
 }
 #endif
 
