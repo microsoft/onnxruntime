@@ -848,6 +848,12 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   // shared_ort_allocators_.
   if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
       it != shared_ort_allocators_.end()) {
+    if (!replace_existing) {
+      LOGS_DEFAULT(INFO) << "A shared allocator is already registered for " << memory_info
+                         << ". Skipping EP allocator creation.";
+      return Status::OK();
+    }
+
     shared_ort_allocators_.erase(it);
   }
 
@@ -856,6 +862,8 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   if (auto it = FindExistingAllocator(shared_allocators_, memory_info, /*match_name*/ false);
       it != shared_allocators_.end()) {
     if (!replace_existing) {
+      LOGS_DEFAULT(INFO) << "A shared allocator is already registered for " << memory_info
+                         << ". Skipping EP allocator creation.";
       return Status::OK();
     }
 

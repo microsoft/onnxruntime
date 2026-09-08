@@ -269,7 +269,7 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_INTERNAL_PROVIDER_LIBRARIES}
   ${onnxruntime_winml}
   onnxruntime_optimizer
-  onnxruntime_providers
+  ${onnxruntime_providers_target}
   onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph

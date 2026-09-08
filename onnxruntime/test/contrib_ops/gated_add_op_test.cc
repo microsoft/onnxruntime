@@ -16,6 +16,20 @@ namespace test {
 
 namespace {
 
+// Collects every EP that has a GatedAdd kernel available in this build, so the fused-op tests
+// exercise all of them.
+std::vector<std::unique_ptr<IExecutionProvider>> AvailableGatedOpExecutionProviders() {
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCpuExecutionProvider());
+  if (auto cuda_ep = DefaultCudaExecutionProvider()) {
+    eps.push_back(std::move(cuda_ep));
+  }
+  if (auto webgpu_ep = DefaultWebGpuExecutionProvider()) {
+    eps.push_back(std::move(webgpu_ep));
+  }
+  return eps;
+}
+
 template <typename T>
 float RoundToType(float value) {
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -38,13 +52,22 @@ std::vector<T> ToTensorType(const std::vector<float>& data) {
   }
 }
 
+// BFloat16 is currently CUDA-only; other types run on every available EP.
+template <typename T>
+std::vector<std::unique_ptr<IExecutionProvider>> ExecutionProvidersForType() {
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    if (auto cuda_ep = DefaultCudaExecutionProvider()) {
+      eps.push_back(std::move(cuda_ep));
+    }
+    return eps;
+  } else {
+    return AvailableGatedOpExecutionProviders();
+  }
+}
+
 template <typename T>
 void RunGatedAddTest(const std::vector<int64_t>& input_dims) {
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA EP not available";
-  }
-
   ASSERT_FALSE(input_dims.empty());
   int64_t rows = 1;
   for (size_t axis = 0; axis + 1 < input_dims.size(); ++axis) {
@@ -72,18 +95,29 @@ void RunGatedAddTest(const std::vector<int64_t>& input_dims) {
 
   std::vector<int64_t> gate_dims = input_dims;
   gate_dims.back() = 1;
-  OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
-  tester.AddInput<T>("X", input_dims, ToTensorType<T>(x));
-  tester.AddInput<T>("Y", input_dims, ToTensorType<T>(y));
-  tester.AddInput<T>("gate", gate_dims, ToTensorType<T>(gate));
-  tester.AddOutput<T>("output", input_dims, ToTensorType<T>(expected));
-  if constexpr (!std::is_same_v<T, float>) {
-    tester.SetOutputTolerance(0.0f, 0.0f);
+
+  auto execution_providers = ExecutionProvidersForType<T>();
+  if (execution_providers.empty()) {
+    GTEST_SKIP() << "No execution provider available for this type";
   }
 
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(cuda_ep));
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  for (auto& ep : execution_providers) {
+    SCOPED_TRACE("EP: " + ep->Type());
+    OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
+    tester.AddInput<T>("X", input_dims, ToTensorType<T>(x));
+    tester.AddInput<T>("Y", input_dims, ToTensorType<T>(y));
+    tester.AddInput<T>("gate", gate_dims, ToTensorType<T>(gate));
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      // Allows valid WebGPU FP16 rounding differences near cancellation.
+      tester.AddOutput<T>("output", input_dims, ToTensorType<T>(expected), false, 0.001f, 0.01f);
+    } else {
+      tester.AddOutput<T>("output", input_dims, ToTensorType<T>(expected));
+    }
+
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
 }
 
 }  // namespace
@@ -101,21 +135,20 @@ TEST(ContribOpGatedAddTest, EmptyOuterDimension) {
 }
 
 TEST(ContribOpGatedAddTest, ZeroHiddenDimension) {
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA EP not available";
+  auto execution_providers = AvailableGatedOpExecutionProviders();
+  for (auto& ep : execution_providers) {
+    SCOPED_TRACE("EP: " + ep->Type());
+    OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
+    tester.AddInput<float>("X", {2, 3, 0}, {});
+    tester.AddInput<float>("Y", {2, 3, 0}, {});
+    tester.AddInput<float>("gate", {2, 3, 1}, std::vector<float>(6));
+    tester.AddOutput<float>("output", {2, 3, 0}, {});
+
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "X last dimension must be positive",
+               {}, nullptr, &providers);
   }
-
-  OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
-  tester.AddInput<float>("X", {2, 3, 0}, {});
-  tester.AddInput<float>("Y", {2, 3, 0}, {});
-  tester.AddInput<float>("gate", {2, 3, 1}, std::vector<float>(6));
-  tester.AddOutput<float>("output", {2, 3, 0}, {});
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(cuda_ep));
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "X last dimension must be positive",
-             {}, nullptr, &execution_providers);
 }
 
 TEST(ContribOpGatedAddTest, Float16) {
@@ -130,21 +163,20 @@ TEST(ContribOpGatedAddTest, BFloat16) {
 }
 
 TEST(ContribOpGatedAddTest, MismatchedYShape) {
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA EP not available";
+  auto execution_providers = AvailableGatedOpExecutionProviders();
+  for (auto& ep : execution_providers) {
+    SCOPED_TRACE("EP: " + ep->Type());
+    OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
+    tester.AddInput<float>("X", {1, 2, 3}, std::vector<float>(6));
+    tester.AddInput<float>("Y", {1, 2, 4}, std::vector<float>(8));
+    tester.AddInput<float>("gate", {1, 2, 1}, std::vector<float>(2));
+    tester.AddOutput<float>("output", {1, 2, 3}, std::vector<float>(6));
+
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "Y must have the same shape as X",
+               {}, nullptr, &providers);
   }
-
-  OpTester tester("GatedAdd", 1, onnxruntime::kMSDomain);
-  tester.AddInput<float>("X", {1, 2, 3}, std::vector<float>(6));
-  tester.AddInput<float>("Y", {1, 2, 4}, std::vector<float>(8));
-  tester.AddInput<float>("gate", {1, 2, 1}, std::vector<float>(2));
-  tester.AddOutput<float>("output", {1, 2, 3}, std::vector<float>(6));
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(std::move(cuda_ep));
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "Y must have the same shape as X",
-             {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

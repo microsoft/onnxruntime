@@ -8,6 +8,7 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 |--------|---------|
 | ✅ | Fully determinable from shapes + attributes + device properties |
 | ✅* | Determinable via cuDNN/cuBLAS API call (needs handle, available on EP) |
+| 🔀 | Runtime-exact; AOT exact only when backend selection is provable |
 | ⚠️ | Requires profiling/tactic selection (deterministic but costly at planning time) |
 
 ---
@@ -299,18 +300,51 @@ This document catalogs all CUDA kernels in ONNX Runtime that allocate temporary/
 
 ### 18. Attention / MultiHeadAttention (Contrib)
 
-**File:** `bert/attention.cc`, `bert/multihead_attention.cc`
+**File:** `bert/attention.cc`, `bert/multihead_attention.cc`, `bert/packed_attention.cc`,
+`bert/packed_multihead_attention.cc`
 
-**Buffers:** Uses `GetAttentionWorkspaceSize()` helper function.
+**Roadmap:** [CUDA Attention workspace estimation](attention_workspace_estimation.md)
 
-**Size formula:** Depends on attention algorithm (Flash, MemoryEfficient, FusedRunner, Default):
-- Flash: `qkv_size` (Q+K+V projection)
-- MemoryEfficient: `qkv_size + output_accum (float)`
-- Default (unfused): `qkv_size + 2 * attention_scratch_size`
+**Buffers:** Dense Attention uses the `GetAttentionWorkspaceSize()` helper. MultiHeadAttention can additionally
+allocate lean-attention synchronization, Flash split/LSE/output-accumulator, and sequence-length buffers.
+PackedAttention currently makes separate dynamic projection and Attention allocations; PackedMultiHeadAttention has
+no projection allocation. Their planning declaration is one 256-byte-aligned operator-owned root. PA places the
+projection region first and the Attention region at a 256-byte-aligned offset; PMHA's root is only its Attention
+region. See the roadmap for the packed recipe and layout contract.
 
-**What's needed:** B, S_q, S_kv, num_heads, head_size, dtype, which attention algorithm is selected.
+**Size model:** Depends on operator inputs and the selected Attention algorithm:
 
-**Static determinability:** ✅ — Algorithm selection depends on shapes + SM version (available from device_prop).
+- Dense Attention/MHA: the main helper covers backend-dependent Q/K/V materialization and Attention scratch.
+  MHA computes lean synchronization, Flash split/LSE/output-accumulator, and sequence-length allocations separately.
+- PackedAttention/PMHA Flash: optional planar Q/K/V materialization plus
+  `sizeof(float) * B * S * num_heads` for softmax LSE.
+- PackedAttention/PMHA TensorRT fused: optional interleaved `[T, N, 3, H]` QKV materialization and no backend scratch.
+- PackedAttention/PMHA MemoryEfficient: optional planar Q/K/V materialization plus an optional
+  `sizeof(float) * B * S * num_heads * v_head_size` accumulator.
+- PackedAttention/PMHA unfused: `B * S` planar Q/K/V capacity plus two individually aligned
+  `element_size * B * num_heads * S * S` scratch regions.
+
+PA always materializes Q/K/V after its projection allocation. PMHA can use direct input views for eligible fused
+routes without bias. See the roadmap for the precise layout and eligibility boundaries.
+
+**What's needed:** B, S_q, S_kv, num_heads, head_size, dtype, selected Attention algorithm, optional-input presence,
+cache state, and device properties including SM version and `multiProcessorCount`.
+
+**Static determinability:** 🔀 — Runtime-exact when sizing receives the backend selected by the CUDA kernel. For AOT,
+enumerate every backend reachable at a positive runtime geometry within the supplied bounds, evaluate each checked
+recipe at the original componentwise maximum geometry, and take the maximum workspace. PA head sizes derived from the
+immutable `qkv_hidden_sizes` attribute remain exact; PA without that attribute and PMHA use bounded head reachability
+because `WorkspaceInputShape` does not preserve provenance. If a reachable route's checked recipe is invalid at the
+maximum geometry, estimation is unavailable rather than silently omitting that route. See the linked roadmap for the
+exact/safe-bound/unavailable model.
+
+PA and PMHA have Level-1 CUDA EP estimates (currently log-only) and Level-2 declarations. Each nonzero estimate emits
+exactly one slot-0 root with explicit 256-byte alignment; PA's root includes projection-to-Attention alignment padding.
+This design has no multi-slot planner dependency. Runtime still uses the existing dynamic allocation topology. Future
+#32071 integration must atomically add `SupportsPreallocatedWorkspace()`, retrieve the root, and slice PA's projection
+and Attention regions. Declaration alone is not planner opt-in. The current Level-2 boundary represents both
+unavailable and explicit-zero results with no requirements; because `WorkspaceInputShape` has no shape provenance,
+the PA/PMHA adapter treats zero-shaped hints as unavailable.
 
 ---
 
@@ -403,8 +437,9 @@ GEMM); see that entry. Not re-verified independently of MatMulNBits's call sites
 
 | Category | # Kernels | Estimation feasibility | Notes |
 |----------|-----------|----------------------|-------|
-| **Shapes only** | 12 | ✅ Exact, trivial | BatchNorm, InstanceNorm, Dropout, TopK, MatMulInteger, IntegerGemm, Compress, GatherND, NonZero, Upsample, Inverse, Generation |
-| **Shapes + device properties** | 3 | ✅ Exact | Attention (SM count), DeformConv (totalGlobalMem), Contrib Attention (SM version) |
+| **Shapes only** | 13 | ✅ Exact, trivial | BatchNorm, InstanceNorm, Dropout, TopK, MatMulInteger, IntegerGemm, Compress, GatherND, NonZero, Upsample, NonMaxSuppression, Inverse, Generation |
+| **Shapes + device properties** | 2 | ✅ Exact | Attention (SM count), DeformConv (totalGlobalMem) |
+| **Shapes + backend feasibility** | 1 | 🔀 Runtime-exact, AOT conditional | Contrib Attention |
 | **Shapes + cuDNN/cuBLAS handle** | 4 | ✅* Exact via API query | Conv, ConvTranspose, Reduction, RNN |
 | **Shapes + closed-form GEMM formula** | 2 | ✅ Exact (confirmed PR #29811) | MatMulNBits, fpA_intB_GEMM |
 | **Shapes + tactic profiling** | 1 | ⚠️† Upper bound only | MOE |
@@ -414,9 +449,12 @@ do not assume it shares their exact-formula property.
 
 ### Key takeaways
 
-1. **~84% of kernels** (21/25) can produce **exact** workspace estimates at `GetCapability()` time using only shapes + attributes + device properties (+ cuDNN handle for API queries, or a closed-form GEMM formula for the fpA_intB pair).
+1. **~91% of kernels** (21/23) can produce **exact** workspace estimates at `GetCapability()` time using only shapes + attributes + device properties (+ cuDNN handle for API queries, or a closed-form GEMM formula for the fpA_intB pair).
 
-2. **~4% of kernels** (1/25, MOE) require tactic profiling (CUTLASS/CUB autotuning). For this kernel, options are:
+2. **~4% of kernels** (1/23, Contrib Attention) are runtime-exact but AOT-conditional. AOT estimation must prove the
+   backend or use the maximum across feasible backend recipes.
+
+3. **~4% of kernels** (1/23, MOE) require tactic profiling (CUTLASS/CUB autotuning). For this kernel, options are:
    - Use worst-case workspace across all tactics (safe upper bound)
    - Run tactic selection eagerly at estimation time (expensive but exact)
    - Accept a safety multiplier for this one kernel
@@ -424,12 +462,14 @@ do not assume it shares their exact-formula property.
    MatMulNBits and fpA_intB_GEMM were previously grouped here too; see entries #20/#21 above for why
    PR #29811 moved them to the closed-form-exact row instead.
 
-3. **The cuDNN handle requirement** affects only 4 kernel types (Conv, ConvTranspose, Reduction, RNN). All are standard cuDNN API queries that are fast and deterministic given the handle + tensor descriptors.
+4. **The cuDNN handle requirement** affects only 4 kernel types (Conv, ConvTranspose, Reduction, RNN). All are standard cuDNN API queries that are fast and deterministic given the handle + tensor descriptors.
 
-4. **No kernel requires actual GPU execution** to determine workspace size — even tactic-based kernels select tactics via CPU-side profiling/heuristics, not by running GPU code.
+5. **Most kernels do not require actual GPU execution** to determine workspace size. MOE exact tactic selection may
+   require GPU-side profiling; use a safe upper bound when that profiling is not appropriate during planning.
 
-5. **Largest workspace consumers** in practice:
-   - **Attention** (Flash): dominates in LLM workloads. Exact estimation possible.
+6. **Largest workspace consumers** in practice:
+   - **Attention**: dominates in LLM workloads. Runtime sizing can be exact; AOT estimation is conditional on backend
+     feasibility and may require a safe upper bound.
    - **Conv** (cuDNN): dominates in vision workloads. Exact via `build_plans()`.
    - **MOE**: significant in MoE models. Upper bound via worst-case tactic.
 
@@ -437,7 +477,7 @@ do not assume it shares their exact-formula property.
 
 | Access needed | How accessed | Kernels that require it |
 |---------------|-------------|------------------------|
-| `Node_GetInputShape()` | OrtEpApi (generic) | All 25 kernels |
+| `Node_GetInputShape()` | OrtEpApi (generic) | All 23 kernels |
 | `Node_GetAttributeInt/Ints()` | OrtEpApi (generic) | Conv, Attention, RNN, MOE |
 | `device_prop.multiProcessorCount` | Cast `OrtEp*` to concrete EP type | Attention, DeformConv, MatMulNBits, fpA_intB |
 | `device_prop.totalGlobalMem` | Cast `OrtEp*` to concrete EP type | DeformConv |

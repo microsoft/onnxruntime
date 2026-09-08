@@ -213,7 +213,8 @@ def parse_args():
         "other optimizations to be applied at runtime if possible. This is useful when using a "
         "compiling EP like NNAPI or CoreML that may run an unknown (at model conversion time) "
         "number of nodes. The saved optimizations can further optimize nodes not assigned to the "
-        "compiling EP at runtime.",
+        "compiling EP at runtime. Replay must be enabled with the "
+        "'session.enable_saved_runtime_optimizations' session option and should only be enabled for trusted models.",
     )
 
     parser.add_argument(
@@ -307,6 +308,12 @@ def convert_onnx_models_to_ort(
         print(
             f"Converting models with optimization style '{optimization_style.name}' and level '{optimization_level_str}'"
         )
+        if optimization_style == OptimizationStyle.Runtime:
+            print(
+                "WARNING: Saved runtime optimizations are replayed only when "
+                "'session.enable_saved_runtime_optimizations' is set to '1'. "
+                "Enable this option only for trusted models."
+            )
 
         converted_models = _convert(
             model_path_or_dir=model_path_or_dir,

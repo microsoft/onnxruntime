@@ -3,8 +3,6 @@
 
 #pragma once
 
-#if !defined(__wasm__)
-
 #include <memory>
 
 #include "core/providers/webgpu/math/gemm.h"
@@ -62,5 +60,3 @@ class SubgroupMatrixGemmProgram final : public Program<SubgroupMatrixGemmProgram
 
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)

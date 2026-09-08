@@ -42,6 +42,19 @@
          {
              LOG_ERROR("Unable to allocate memory to pack EventProperties");
 
+--- a/lib/pal/posix/sysinfo_sources.cpp
++++ b/lib/pal/posix/sysinfo_sources.cpp
+@@ -114,7 +114,8 @@
+ {
+     std::array<char, 128> buffer;
+     std::string result;
+-    std::shared_ptr<FILE> pipe(popen(cmd, "r"), pclose);
++    auto close_pipe = [](FILE* file) { pclose(file); };
++    std::unique_ptr<FILE, decltype(close_pipe)> pipe(popen(cmd, "r"), close_pipe);
+     if (!pipe)
+     {
+         // throw std::runtime_error("popen() failed!");
+
 --- a/lib/CMakeLists.txt
 +++ b/lib/CMakeLists.txt
 @@ -7,7 +7,7 @@

@@ -1465,7 +1465,8 @@ Status PagedDecodeAttention(
 //     [num_blocks, block_size, kv_num_heads, head_size] -- and XQA's PAGED_KV_CACHE_LAYOUT == 1
 //     page is exactly [tokens_per_page, kv_num_heads, head_size], block b is bit-for-bit the
 //     concatenation of pages [b * pages_per_block, (b + 1) * pages_per_block). ExpandBlockTable-
-//     ToPages rewrites the block table accordingly; it costs O(batch * max_num_blocks_per_seq).
+//     ToPages rewrites blocks larger than 128 tokens accordingly. A 128-token block table is
+//     already in XQA page units and passes through without scratch allocation or expansion.
 //  2. Per-channel scales. XQA only accepts a scalar dequantization scale per cache. A PER_CHANNEL
 //     scale is folded out exactly the same way GroupQueryAttention does it (see the derivation
 //     next to LaunchScaleHeadsByChannelScale in group_query_attention_qdq.cuh): k_scale into Q
@@ -1519,6 +1520,48 @@ __global__ void PagedConvertHeadSinkToFloatKernel(float* __restrict__ dst, const
   }
 }
 
+// Lower-triangular packed mask for the speculative XQA kernel: row = query token (global, packed
+// token-major), bit p of word w = "may attend to draft token w*32+p".
+__global__ void PagedXqaSpecDecCausalMaskKernel(uint32_t* __restrict__ mask,
+                                                const int* __restrict__ cumulative_seqlens_q,
+                                                const int batch_size,
+                                                const int token_count,
+                                                const int words_per_row) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= token_count * words_per_row) {
+    return;
+  }
+
+  const int token_id = i / words_per_row;
+  const int word = i - token_id * words_per_row;
+  int lo = 0;
+  int hi = batch_size;
+  while (lo < hi) {
+    const int mid = lo + (hi - lo) / 2;
+    if (token_id < cumulative_seqlens_q[mid + 1]) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
+  }
+
+  const int local_row = token_id - cumulative_seqlens_q[lo];
+  const int allowed_bits = local_row + 1 - word * 32;
+  // Do NOT write this as `clamped == 32`. ptxas (CUDA 13.0.48) folds min/max into VIMNMX.RELU and
+  // then reuses that instruction's clamp predicate for an equality test against the clamp bound
+  // with inverted polarity, so `max(0, min(32, x)) == 32` is true for every x. That silently made
+  // every mask word all-ones, i.e. no intra-block causal mask at all.
+  uint32_t value;
+  if (allowed_bits >= 32) {
+    value = ~uint32_t{0};
+  } else if (allowed_bits <= 0) {
+    value = 0u;
+  } else {
+    value = (uint32_t{1} << allowed_bits) - 1u;
+  }
+  mask[i] = value;
+}
+
 template <typename T, typename TCACHE>
 Status PagedXqaDecodeAttention(
     const cudaDeviceProp& device_prop,
@@ -1537,17 +1580,21 @@ Status PagedXqaDecodeAttention(
 
   const int pages_per_block = parameters.block_size / onnxruntime::contrib::cuda::kXqaTokensPerPage;
   const int max_pages_per_seq = parameters.max_num_blocks_per_seq * pages_per_block;
-  {
+  const int* page_table = data.block_table;
+  if (pages_per_block > 1) {
+    ORT_RETURN_IF_NOT(data.xqa_page_table_scratch, "XQA page-table scratch was not allocated.");
     const int total_pages = batch_size * max_pages_per_seq;
     const int blocks = (total_pages + max_threads_per_block - 1) / max_threads_per_block;
     ExpandBlockTableToPages<<<blocks, max_threads_per_block, 0, stream>>>(
-        data.block_table, data.xqa_page_table, parameters.max_num_blocks_per_seq, pages_per_block, total_pages);
+        data.block_table, data.xqa_page_table_scratch,
+        parameters.max_num_blocks_per_seq, pages_per_block, total_pages);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    page_table = data.xqa_page_table_scratch;
   }
 
   const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
   const bool v_per_channel = parameters.v_quant_type == KVQuantizationType::PER_CHANNEL;
-  const int64_t q_elements = static_cast<int64_t>(batch_size) * num_heads * head_size;
+  const int64_t q_elements = static_cast<int64_t>(parameters.token_count) * num_heads * head_size;
 
   if (k_per_channel) {
     // Q may point straight at the (const) graph input when there is no packed-QKV / rotary
@@ -1574,22 +1621,47 @@ Status PagedXqaDecodeAttention(
 #else
       false;
 #endif
-  const XqaQuantType kv_quant_type = kIsFp8Cache ? XqaQuantType::kFp8 : XqaQuantType::kInt8;
-  ORT_RETURN_IF_ERROR(LaunchXQAPagedKernel(
-      device_prop, stream,
-      reinterpret_cast<const void*>(query),
-      reinterpret_cast<const void*>(data.key_cache),
-      reinterpret_cast<const void*>(data.value_cache),
-      reinterpret_cast<void*>(data.output),
-      data.xqa_page_table,
-      batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
-      scale, parameters.local_window_size, data.past_seqlens, attention_sinks,
-      // A PER_CHANNEL scale has already been folded into Q / will be applied to the output, so the
-      // kernel must use a scale of 1 (which it does when the pointer is null).
-      k_per_channel ? nullptr : data.k_scale,
-      v_per_channel ? nullptr : data.v_scale,
-      kv_quant_type, std::is_same<T, BFloat16>::value,
-      data.xqa_workspace, data.xqa_workspace_size));
+  constexpr bool kIsInt8Cache = std::is_same<TCACHE, int8_t>::value;
+  const XqaQuantType kv_quant_type =
+      kIsFp8Cache ? XqaQuantType::kFp8 : (kIsInt8Cache ? XqaQuantType::kInt8 : XqaQuantType::kNone);
+  // A PER_CHANNEL scale has already been folded into Q / will be applied to the output, so XQA
+  // receives a null scalar scale (which means one).
+  const float* xqa_k_scale = k_per_channel ? nullptr : data.k_scale;
+  const float* xqa_v_scale = v_per_channel ? nullptr : data.v_scale;
+  if (data.use_xqa_spec_dec) {
+    ORT_RETURN_IF_NOT(data.xqa_spec_dec_mask, "Speculative XQA mask scratch was not allocated.");
+    const int words_per_row = (data.max_query_len + 31) / 32;
+    const int mask_words = parameters.token_count * words_per_row;
+    const int blocks = (mask_words + max_threads_per_block - 1) / max_threads_per_block;
+    PagedXqaSpecDecCausalMaskKernel<<<blocks, max_threads_per_block, 0, stream>>>(
+        data.xqa_spec_dec_mask, data.cumulative_seqlens_q, batch_size,
+        parameters.token_count, words_per_row);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+    ORT_RETURN_IF_ERROR(LaunchXQAPagedSpecDecKernel(
+        device_prop, stream,
+        reinterpret_cast<const void*>(query),
+        reinterpret_cast<const void*>(data.key_cache),
+        reinterpret_cast<const void*>(data.value_cache),
+        reinterpret_cast<void*>(data.output), page_table,
+        batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
+        scale, parameters.local_window_size, data.past_seqlens,
+        data.max_query_len, data.cumulative_seqlens_q, data.xqa_spec_dec_mask,
+        attention_sinks, xqa_k_scale, xqa_v_scale, kv_quant_type,
+        std::is_same<T, BFloat16>::value,
+        data.xqa_workspace, data.xqa_workspace_size));
+  } else {
+    ORT_RETURN_IF_ERROR(LaunchXQAPagedKernel(
+        device_prop, stream,
+        reinterpret_cast<const void*>(query),
+        reinterpret_cast<const void*>(data.key_cache),
+        reinterpret_cast<const void*>(data.value_cache),
+        reinterpret_cast<void*>(data.output), page_table,
+        batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
+        scale, parameters.local_window_size, data.past_seqlens, attention_sinks,
+        xqa_k_scale, xqa_v_scale, kv_quant_type, std::is_same<T, BFloat16>::value,
+        data.xqa_workspace, data.xqa_workspace_size));
+  }
 
   if (v_per_channel) {
     const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);
@@ -1651,9 +1723,7 @@ Status FlashAttention(
   if constexpr (IsQuantizedCache<TCACHE>::value) {
     // FlashAttention cannot read a quantized page, so dequantize the live context into a dense
     // packed-varlen [total_kv_tokens, kv_num_heads, head_size] buffer (no GQA expansion — Flash
-    // does the grouping itself) and use the non-paged varlen entry point. That path leaves
-    // params.num_splits at 0 exactly like the paged one, so the fp32 [num_heads, token_count]
-    // softmax_lse layout the head-sink epilogue relies on is unchanged.
+    // does the grouping itself) and use the non-paged varlen entry point.
     ORT_RETURN_IF_ERROR((LaunchGatherAndExpandPagedKVCache<T, TCACHE>(
         data.key_cache, data.value_cache, data.gathered_key, data.gathered_value,
         data.k_scale, data.v_scale, k_per_channel, v_per_channel,
@@ -1664,24 +1734,23 @@ Status FlashAttention(
         device_prop, stream, q, reinterpret_cast<void*>(data.gathered_key),
         reinterpret_cast<void*>(data.gathered_value), output, cumulative_seqlens_q, cumulative_seqlens_kv,
         /*seqused_k*/ nullptr, /*block_table*/ nullptr, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
-        max_query_len, data.max_kv_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16,
-        local_window_size - 1));
+        max_query_len, data.max_kv_len, token_count, scale, softcap, parameters.is_causal, is_bf16,
+        local_window_size - 1, /*max_num_blocks_per_seq*/ 0, /*page_block_size*/ 1,
+        data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
   } else {
     void* key_cache = reinterpret_cast<void*>(data.key_cache);
     void* value_cache = reinterpret_cast<void*>(data.value_cache);
-    const int max_seq_len = max_num_blocks_per_seq * block_size;
     ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
         device_prop, stream, q, key_cache, value_cache, output, cumulative_seqlens_q, cumulative_seqlens_kv,
         /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
-        max_query_len, max_seq_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size - 1,
-        max_num_blocks_per_seq, block_size));
+        max_query_len, data.max_kv_len, token_count, scale, softcap, parameters.is_causal, is_bf16,
+        local_window_size - 1,
+        max_num_blocks_per_seq, block_size,
+        data.flash_num_splits, data.flash_softmax_lse_accum, data.flash_out_accum));
   }
 
   if (parameters.use_smooth_softmax) {
-    // Rescale by the softmax denominator that the sink logit adds. mha_varlen_fwd leaves
-    // params.num_splits at 0, so the split-combine kernel never runs and softmax_lse carries the
-    // unpadded [num_heads, token_count] fp32 layout this epilogue expects. If varlen ever enables
-    // num_splits > 1, both the layout and this epilogue must be revisited.
+    // Sink-bearing steps remain unsplit until the split-combine LSE layout is qualified.
     ORT_RETURN_IF_ERROR(LaunchApplyHeadSink<T>(data.output, data.softmax_lse, data.head_sink, token_count,
                                                num_heads, head_size, stream, max_threads_per_block));
   }

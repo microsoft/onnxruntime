@@ -49,7 +49,8 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    # Update the pool with your team's 1ES hosted pool.
+    settings:
+      networkIsolationPolicy: CFSClean,CFSClean2,CFSClean3,DefaultDeny
     sdl:
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-VS2022-Latest
@@ -96,6 +97,7 @@ extends:
         pool: 'onnxruntime-Win-CPU-VS2022-Latest'
         variables:
           runCodesignValidationInjection: false
+          skipComponentGovernanceDetection: true
         timeoutInMinutes: 10
         steps:
     #    This pipeline is triggered by the Nuget - Packaging - CUDA13 pipeline.

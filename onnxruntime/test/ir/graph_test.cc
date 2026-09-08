@@ -2912,6 +2912,47 @@ TEST_F(GraphTest, ShapeInferenceWithInMemoryExternalData) {
   ASSERT_EQ(split_node_ptr->OutputDefs().size(), 16u);
 }
 
+TEST_F(GraphTest, RejectsUnregisteredInMemoryInitializer) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("source");
+
+  auto* initializer = graph_proto->add_initializer();
+  initializer->set_name("malformed_initializer");
+  initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  initializer->add_dims(1);
+  ExternalDataInfo::SetExternalLocationToProto(
+      utils::kTensorProtoNativeEndianMemoryAddressTag, 1, sizeof(std::string), *initializer);
+
+  auto* node = graph_proto->add_node();
+  node->set_op_type("Identity");
+  node->add_input(initializer->name());
+  node->add_output("output");
+  auto* output = graph_proto->add_output();
+  output->set_name("output");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  output_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  std::shared_ptr<Model> source_model;
+  ORT_TRY {
+    const auto status = Model::Load(std::move(model_proto), source_model, nullptr, *logger_);
+    EXPECT_FALSE(status.IsOK());
+    if (!status.IsOK()) {
+      EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(std::string(ex.what()), ::testing::HasSubstr("in-memory address marker"));
+    });
+  }
+}
+
 // Test for shape inference with in-memory external data using InferenceSession
 // This test more accurately reproduces the issue by going through the full session initialization
 // which includes graph optimizations that trigger the in-memory externalization
@@ -3315,6 +3356,10 @@ TEST_F(GraphTest, CustomInitializerHandlingAfterConvertToOrtValues) {
                                                                     output_model_proto));
 
   const auto& output_graph = output_model_proto.graph();
+
+  ASSERT_EQ(output_graph.input_size(), 1);
+  ASSERT_EQ(output_graph.output_size(), 1);
+  ASSERT_EQ(output_graph.node_size(), 2);
 
   // Verify: no initializer in the output should have _ORT_MEM_ADDR_ markers,
   // and there should be no duplicates.

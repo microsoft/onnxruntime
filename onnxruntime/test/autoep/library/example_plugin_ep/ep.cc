@@ -6,6 +6,7 @@
 #include <array>
 #include <atomic>
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -17,6 +18,7 @@
 #include "../ep_context_data_utils.h"
 #include "ep_factory.h"
 #include "ep_stream_support.h"
+#include "ep_test_hooks.h"
 
 extern std::atomic<uint64_t> g_sync_count;
 
@@ -95,8 +97,37 @@ OrtStatus* MulKernel::Compute(OrtKernelContext* kernel_ctx) {
       throw Ort::Exception("Expected 1 output for MulKernel", ORT_INVALID_ARGUMENT);
     }
 
-    auto output = kernel_context.GetOutput(0, shape0);
-    float* output_data = output.GetTensorMutableData<float>();
+    // Prefer writing straight into an already-allocated output, avoiding an allocation. The query does not
+    // validate the buffer against this run's computed shape, so validate element type and shape before touching it.
+    // Do not write to an incompatible preallocated output. This example reports an error rather than calling
+    // GetOutput() on a mismatch. GetOutput() would not replace it; ORT can reject the already-allocated output slot
+    // with a shape-mismatch error.
+    OrtValue* preallocated_output = nullptr;
+    RETURN_IF_ERROR(ort_api.KernelContext_GetPreallocatedOutput(kernel_ctx, 0, &preallocated_output));
+    RecordPreallocatedOutputQueryResult(preallocated_output != nullptr ? 1 : 0);
+
+    // An out-of-range index must fail without touching the out parameter. Recorded rather than
+    // enforced here so the assertion lives with the tests.
+    {
+      OrtValue* const sentinel_value = reinterpret_cast<OrtValue*>(static_cast<uintptr_t>(1));
+      OrtValue* sentinel = sentinel_value;
+      OrtStatus* status = ort_api.KernelContext_GetPreallocatedOutput(kernel_ctx, num_outputs, &sentinel);
+      RecordPreallocatedOutputBadIndexRejected(status != nullptr && sentinel == sentinel_value ? 1 : 0);
+      ort_api.ReleaseStatus(status);
+    }
+
+    float* output_data = nullptr;
+    if (preallocated_output != nullptr) {
+      Ort::UnownedValue output_value{preallocated_output};
+      auto type_and_shape = output_value.GetTensorTypeAndShapeInfo();
+      if (type_and_shape.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+          type_and_shape.GetShape() != shape0) {
+        throw Ort::Exception("Unexpected output type or shape for preallocated output of MulKernel", ORT_INVALID_ARGUMENT);
+      }
+      output_data = output_value.GetTensorMutableData<float>();
+    } else {
+      output_data = kernel_context.GetOutput(0, shape0).GetTensorMutableData<float>();
+    }
 
     for (size_t i = 0; i < input0.size(); ++i) {
       output_data[i] = input0[i] * input1[i];

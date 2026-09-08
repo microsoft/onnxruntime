@@ -98,6 +98,31 @@ TEST(ImageScalerContribOpTest, ImageScalerTest) {
   test.Run();
 }
 
+TEST(ImageScalerContribOpTest, ImageScalerEmptyBias) {
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  constexpr int64_t N = 1, C = 2, H = 2, W = 2;
+  std::vector<float> X = {
+      1.0f, 3.0f,
+      3.0f, 5.0f,
+
+      3.0f, 5.0f,
+      7.0f, 9.0f};
+
+  // A present-but-empty bias supplies no value for any channel and must be rejected rather than
+  // indexing an empty vector.
+  OpTester test("ImageScaler");
+  test.AddAttribute("scale", 2.0f);
+  test.AddAttribute("bias", std::vector<float>{});
+  test.AddInput<float>("input", {N, C, H, W}, X);
+  test.AddOutput<float>("output", {N, C, H, W}, std::vector<float>(N * C * H * W, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Bias size (0) does not match the number of channels (2)",
+           {kTensorrtExecutionProvider});
+}
+
 void MeanVarianceNormalizationAcrossChannels(bool across_channels, bool normalize_variance) {
   constexpr int64_t N = 2, C = 2, H = 2, W = 3;
   constexpr int64_t one = 1;
