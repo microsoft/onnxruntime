@@ -826,6 +826,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
           std::vector<NodeArg*>& node_args,
           bool check_parent_graph = false) -> Status {
     ORT_RETURN_IF(nullptr == fbs_node_arg_names, "fbs_node_arg_names cannot be null");
+    ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_node_arg_names, "node argument name"));
     node_args.reserve(fbs_node_arg_names->size());
     for (const auto* node_arg_name : *fbs_node_arg_names) {
       ORT_RETURN_IF(nullptr == node_arg_name, "node_arg_name cannot be null");
@@ -853,6 +854,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
   // attributes
   auto fbs_attributes = fbs_node.attributes();
   if (fbs_attributes) {
+    ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_attributes, "attribute"));
     for (const auto* fbs_attr : *fbs_attributes) {
       ORT_RETURN_IF(nullptr == fbs_attr, "fbs_attr cannot be null");
       AttributeProto attr_proto;
@@ -6972,6 +6974,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   auto add_node_args = [&](const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>* fbs_node_args,
                            std::vector<const NodeArg*>& node_args) -> Status {
     if (fbs_node_args != nullptr) {
+      ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_node_args, "graph node argument name"));
       node_args.reserve(fbs_node_args->size());
       for (const auto* fbs_node_arg_name : *fbs_node_args) {
         ORT_RETURN_IF(nullptr == fbs_node_arg_name, "NodeArg Name is missing. Invalid ORT format model.");

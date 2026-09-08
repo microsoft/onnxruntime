@@ -196,6 +196,7 @@ static Status LoadTensorDimensionOrtFormat(const fbs::Dimension& fbs_dim,
 static Status LoadTensorShapeOrtFormat(const fbs::Shape& fbs_shape, TensorShapeProto& shape_proto) {
   auto fbs_dims = fbs_shape.dim();
   if (fbs_dims) {
+    ORT_RETURN_IF_ERROR(ValidateRequiredTableOffsets(fbs_dims, "dimension"));
     auto dims = shape_proto.mutable_dim();
     dims->Reserve(fbs_dims->size());
     for (const auto fbs_dim : *fbs_dims) {

@@ -517,6 +517,7 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
     case AttributeProto_AttributeType_STRINGS: {
       auto fbs_strings = fbs_attr.strings();
       ORT_RETURN_IF(nullptr == fbs_strings, "Null strings attribute. Invalid ORT format model.");
+      ORT_RETURN_IF_ERROR(ValidateRequiredTableOffsets(fbs_strings, "string attribute"));
       auto* strings = attr_proto.mutable_strings();
       strings->Reserve(fbs_strings->size());
       for (const auto* fbs_str : *fbs_strings) {
@@ -527,6 +528,7 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
     case AttributeProto_AttributeType_TENSORS: {
       auto fbs_tensors = fbs_attr.tensors();
       ORT_RETURN_IF(nullptr == fbs_tensors, "Null tensors attribute. Invalid ORT format model.");
+      ORT_RETURN_IF_ERROR(ValidateRequiredTableOffsets(fbs_tensors, "tensor attribute"));
       auto* tensors = attr_proto.mutable_tensors();
       tensors->Reserve(fbs_tensors->size());
       for (const auto* fbs_tensor : *fbs_tensors) {

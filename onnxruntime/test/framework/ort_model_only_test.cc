@@ -194,6 +194,69 @@ TEST(OrtModelTest, RejectsNullMetadataPropertyTableEntry) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Null metadata property entry"));
 }
 
+TEST(OrtModelTest, RejectsNullNodeAttributeTableEntry) {
+  auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
+    std::vector<int32_t> empty_arg_counts;
+    std::vector<flatbuffers::Offset<fbs::Attribute>> attributes{
+        fbs::CreateAttributeDirect(builder, "axis", "", fbs::AttributeType::INT, 0.0f, 0)};
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{
+        fbs::CreateNodeDirect(builder, "n", "", "", 1, 0, "Identity",
+                              fbs::NodeType::Primitive, nullptr,
+                              &empty_args, &empty_args, &attributes,
+                              &empty_arg_counts, &empty_args)};
+    return fbs::CreateGraphDirect(builder, nullptr, nullptr, &nodes, 1);
+  });
+
+  const auto* fbs_session = fbs::GetInferenceSession(buffer.data());
+  ASSERT_NE(fbs_session, nullptr);
+  ASSERT_NE(fbs_session->model(), nullptr);
+  ASSERT_NE(fbs_session->model()->graph(), nullptr);
+  const auto* fbs_nodes = fbs_session->model()->graph()->nodes();
+  ASSERT_NE(fbs_nodes, nullptr);
+  const auto* fbs_node = fbs_nodes->Get(0);
+  ASSERT_NE(fbs_node, nullptr);
+  const auto* fbs_attributes = fbs_node->attributes();
+  ASSERT_NE(fbs_attributes, nullptr);
+  auto* raw_offsets = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(fbs_attributes->Data()));
+  std::fill_n(raw_offsets, sizeof(flatbuffers::uoffset_t), 0);
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Null attribute entry"));
+}
+
+TEST(OrtModelTest, RejectsNullDimensionTableEntry) {
+  auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "X", "", CreateFloatTensorTypeInfo(builder, 1))};
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args);
+  });
+
+  const auto* fbs_session = fbs::GetInferenceSession(buffer.data());
+  ASSERT_NE(fbs_session, nullptr);
+  ASSERT_NE(fbs_session->model(), nullptr);
+  ASSERT_NE(fbs_session->model()->graph(), nullptr);
+  const auto* fbs_node_args = fbs_session->model()->graph()->node_args();
+  ASSERT_NE(fbs_node_args, nullptr);
+  const auto* fbs_node_arg = fbs_node_args->Get(0);
+  ASSERT_NE(fbs_node_arg, nullptr);
+  const auto* fbs_type = fbs_node_arg->type();
+  ASSERT_NE(fbs_type, nullptr);
+  const auto* fbs_tensor_type = fbs_type->value_as_tensor_type();
+  ASSERT_NE(fbs_tensor_type, nullptr);
+  const auto* fbs_shape = fbs_tensor_type->shape();
+  ASSERT_NE(fbs_shape, nullptr);
+  const auto* fbs_dims = fbs_shape->dim();
+  ASSERT_NE(fbs_dims, nullptr);
+  auto* raw_offsets = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(fbs_dims->Data()));
+  std::fill_n(raw_offsets, sizeof(flatbuffers::uoffset_t), 0);
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Null dimension entry"));
+}
+
 TEST(OrtModelTest, RejectsDanglingNodeEdge) {
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
