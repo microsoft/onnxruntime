@@ -67,10 +67,10 @@ Status VarlenCausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader
 }
 
 Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const {
-  const Tensor* input = context.Input(0);         // (total_tokens, channels)
-  const Tensor* weight = context.Input(1);        // (channels, 1, kernel_size)
-  const Tensor* cu_seqlens = context.Input(2);    // (batch_size + 1) int32
-  const Tensor* bias = context.Input(3);          // optional (channels,)
+  const Tensor* input = context.Input(0);          // (total_tokens, channels)
+  const Tensor* weight = context.Input(1);         // (channels, 1, kernel_size)
+  const Tensor* cu_seqlens = context.Input(2);     // (batch_size + 1) int32
+  const Tensor* bias = context.Input(3);           // optional (channels,)
   const Tensor* initial_state = context.Input(4);  // required (batch_size, channels, (K-1)*dilation)
   const Tensor* capture_count = context.Input(5);  // optional (batch_size) int32
 
