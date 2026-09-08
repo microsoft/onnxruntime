@@ -1,12 +1,9 @@
-autopep8
 matplotlib
 scikit-learn
 skl2onnx
-sphinx>=6.0.0
+sphinx>=6.0.0 # Versions less than 6.0 contain security vulnerabilities.
 sphinx-gallery
-sphinxcontrib.imagesvg
 sphinxcontrib.googleanalytics
-sphinx_rtd_theme
 furo
 pandas
 pydot
@@ -18,4 +15,3 @@ sympy
 onnx >= 1.21.0
 sphinx_exec_code
 sphinx_tabs
-furo
