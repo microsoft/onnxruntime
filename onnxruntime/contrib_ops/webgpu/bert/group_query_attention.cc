@@ -424,7 +424,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     if (will_use_flash_attention && parameters.past_present_share_buffer_) {
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
       // query points to packed QKV, K and V are nullptr since they're not needed
-      return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
+      return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, nullptr,
+                                 output, past_key, present_key, past_value,
                                  present_value, parameters, context, seqlen_k, cos_cache, sin_cache, head_sink,
                                  total_seqlen_tensor);
     }
@@ -516,7 +517,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   }
 
   if (will_use_flash_attention) {
-    return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
+    return ApplyFlashAttention(query, key, value, attention_bias, nullptr,
+                               output, past_key, present_key, past_value,
                                present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink,
                                total_seqlen_tensor);
   }

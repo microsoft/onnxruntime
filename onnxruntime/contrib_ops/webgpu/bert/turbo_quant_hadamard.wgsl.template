@@ -13,6 +13,7 @@
 // Output layout per head: [norm_u32, packed_indices_0, packed_indices_1, ..., packed_indices_(HEAD_SIZE/8 - 1)]
 
 #param has_past
+#param has_qkv_bias
 #param kv_BNSH
 #param past_present_share_buffer
 #param use_seqlen_k
@@ -118,6 +119,11 @@ $MAIN {
     } else {
       val = value.getByOffset(src_base + i);
     }
+#if has_qkv_bias
+    let bias_offset = select(uniforms.key_bias_offset, uniforms.value_bias_offset, is_value) +
+                      head * HEAD_SIZE_VEC + i;
+    val += qkv_bias[bias_offset];
+#endif
 #if components == 4
     hadamard_buffer[i * 4u + 0u] = f32(val[0]);
     hadamard_buffer[i * 4u + 1u] = f32(val[1]);
