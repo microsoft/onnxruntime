@@ -570,9 +570,16 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                           {}, mul_node, nullptr, kOnnxDomain);
 
     // Get constant "epsilon" from "Add2" node if available. Else, default value will be used.
-    double epsilon = 0.0;
-    if (TryGetScalarInitializerAsDouble(graph, *add2_node.MutableInputDefs()[1], epsilon)) {
-      layer_norm_node.AddAttribute("epsilon", static_cast<float>(epsilon));
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, add2_node.MutableInputDefs()[1]->Name());
+    if (tensor_proto != nullptr &&
+        tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
+      // epsilon must be a scalar/1-element tensor; fall back to default otherwise.
+      if (initializer.size() == 1) {
+        layer_norm_node.AddAttribute("epsilon", initializer.data<float>()[0]);
+      } else {
+        layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
+      }
     } else {
       layer_norm_node.AddAttribute("epsilon", DEFAULT_LAYERNORM_EPSILON);
     }

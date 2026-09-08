@@ -6,7 +6,7 @@
 #include <memory>
 
 #include "core/providers/webgpu/math/matmul.h"
-#include "core/providers/webgpu/math/subgroup_matrix_tiling.h"
+#include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
 
 namespace onnxruntime {
 namespace webgpu {

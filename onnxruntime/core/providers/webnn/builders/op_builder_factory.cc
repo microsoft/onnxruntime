@@ -185,7 +185,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateNormalizationOpBuilder("BatchNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
-    CreateNormalizationOpBuilder("SkipLayerNormalization", op_registrations);
     CreateNormalizationOpBuilder("SimplifiedLayerNormalization", op_registrations);
     CreateNormalizationOpBuilder("SkipSimplifiedLayerNormalization", op_registrations);
   }

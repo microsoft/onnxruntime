@@ -1,3 +1,0 @@
-LIBRARY onnxruntime_cpuinfo_dlopen_test_library
-EXPORTS
-  OrtGetCpuinfoAllocationForTesting

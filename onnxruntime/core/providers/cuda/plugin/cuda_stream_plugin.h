@@ -68,10 +68,6 @@ class CudaSyncStream : public OrtSyncStreamImpl {
 
   OrtStatus* CleanupDeferredCPUBuffers() noexcept;
 
-  /// Drain the stream via OnSessionRunEnd with the stream's own device selected.
-  /// Returns false if the stream could not be drained.
-  bool DrainOnOwningDevice() noexcept;
-
   CudaEpFactory& factory_;
   int device_id_;
   bool enable_cudnn_ = true;
@@ -85,14 +81,12 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   // Only registered streams should be unregistered in the destructor to avoid
   // unnecessarily bumping the TLS generation counter.
   bool registered_ = false;
-  bool initialized_ = false;
 
   // CPU buffers whose deallocation is deferred to OnSessionRunEnd.
   // Pinned memory must remain valid until all async device operations that
   // reference it have completed, so we synchronize the stream first.
   mutable std::mutex deferred_cpu_buffers_mutex_;
   std::vector<void*> deferred_cpu_buffers_;
-  bool stream_synchronized_and_chunks_reset_ = false;
 };
 
 /// CUDA event-based notification for stream synchronization.

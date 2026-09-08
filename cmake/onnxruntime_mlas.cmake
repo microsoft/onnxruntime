@@ -187,12 +187,9 @@ function(setup_mlas_source_for_windows)
           ${MLAS_SRC_DIR}/sve/qgemm_mmla_sve.h
           ${MLAS_SRC_DIR}/sve/qgemm_kernel_smmla_sve.cpp
           ${MLAS_SRC_DIR}/sve/qgemm_kernel_ummla_sve.cpp
-          ${MLAS_SRC_DIR}/sve/linear_attention_sve.h
-          ${MLAS_SRC_DIR}/sve/linear_attention_kernel_sve.cpp
         )
         list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/elementwise_sve_asm.S)
         list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/qgemm_mmla_sve_asm.S)
-        list(APPEND mlas_platform_preprocess_srcs ${MLAS_SRC_DIR}/aarch64/linear_attention_sve_asm.S)
         list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
       endif()
@@ -250,8 +247,6 @@ function(setup_mlas_source_for_windows)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
-    set_source_files_properties(${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
-
     set(mlas_platform_srcs_avx512
       ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
@@ -267,7 +262,6 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/dgemm.cpp
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
-      ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
@@ -346,11 +340,9 @@ function(setup_mlas_source_for_windows)
       )
     endif()
   else()
-    set_source_files_properties(${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
-      ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/i386/SgemmKernelSse2.asm
       ${MLAS_SRC_DIR}/i386/SgemmKernelAvx.asm
     )
@@ -623,21 +615,6 @@ else()
             list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp)
             set_source_files_properties(${MLAS_SRC_DIR}/sve/qgemm_mmla_sve_impl.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+i8mm -fno-stack-protector ${ORT_SVE_ABI_FLAGS} ")
           endif()
-          # SVE LinearAttention: the driver is plain C++ (no SVE compiler
-          # support required); the compute kernel comes from either the
-          # generated KleidiAI-style machine code (portable, production
-          # default) or the SVE intrinsics reference TU (the regeneration
-          # source for aarch64/linear_attention_sve_asm.S).
-          option(onnxruntime_SVE_LINEAR_ATTENTION_ASM
-                 "Build the portable machine-code SVE LinearAttention kernel instead of the intrinsics reference" ON)
-          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/linear_attention_sve.h)
-          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/linear_attention_kernel_sve.cpp)
-          if (onnxruntime_SVE_LINEAR_ATTENTION_ASM)
-            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/aarch64/linear_attention_sve_asm.S)
-          else()
-            list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/linear_attention_sve_impl.cpp)
-            set_source_files_properties(${MLAS_SRC_DIR}/sve/linear_attention_sve_impl.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve -fno-stack-protector -fno-jump-tables -fstack-clash-protection --param=stack-clash-protection-guard-size=12 ${ORT_SVE_ABI_FLAGS} ")
-          endif()
           list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
         endif()
 
@@ -724,15 +701,6 @@ else()
         endif()
     endif()
     if(POWER AND MLAS_SOURCE_IS_NOT_SET)
-        check_cxx_source_compiles("
-          #ifndef __VSX__
-          #error VSX is not supported
-          #endif
-          int main() { return 0; }"
-          MLAS_HAS_VSX
-        )
-    endif()
-    if(POWER AND MLAS_HAS_VSX AND MLAS_SOURCE_IS_NOT_SET)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/power/SgemmKernelPower.cpp
           ${MLAS_SRC_DIR}/dgemm.cpp
@@ -829,15 +797,9 @@ else()
         )
         set_source_files_properties(${mlas_platform_srcs_avx} PROPERTIES COMPILE_FLAGS "-mavx")
 
-        set(mlas_platform_srcs_avx2
-          ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
-        )
-        set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
-
         set(mlas_platform_srcs
           ${mlas_platform_srcs_sse2}
           ${mlas_platform_srcs_avx}
-          ${mlas_platform_srcs_avx2}
         )
 
         # In r23, NDK remove __x86.get_pc_thunk.* from libatomic. Add our own
@@ -922,7 +884,6 @@ else()
           ${MLAS_SRC_DIR}/qkv_quant_kernel.h
           ${MLAS_SRC_DIR}/qkv_quant_common.h
           ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
-          ${MLAS_SRC_DIR}/layernorm_kernel_avx2.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2

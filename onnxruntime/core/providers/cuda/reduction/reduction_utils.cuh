@@ -3,7 +3,6 @@
 
 #pragma once
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "core/providers/cuda/reduction/reduction_scan_utils.h"
 
 namespace onnxruntime {
 namespace cuda {

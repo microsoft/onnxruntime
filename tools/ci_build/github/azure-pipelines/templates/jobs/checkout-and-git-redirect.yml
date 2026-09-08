@@ -4,12 +4,6 @@ parameters:
   default: false
 
 steps:
-- checkout: self
-  clean: true
-  fetchDepth: 1
-  persistCredentials: ${{ ne(parameters.submodules, 'false') }}
-  submodules: false
-
 - pwsh: |
     git config --global --add url."https://PAT:${env:TOKEN}@aiinfra.visualstudio.com/Lotus-Dependencies/_git/".insteadOf "https://chromium.googlesource.com/chromium/src/third_party/"
     git config --global --add url."https://github.com/".insteadOf "https://chromium.googlesource.com/external/github.com/"
@@ -17,7 +11,6 @@ steps:
   env:
     TOKEN: $(System.AccessToken)
 
-- ${{ if ne(parameters.submodules, 'false') }}:
-  - pwsh: |
-      git submodule update --init --recursive
-    displayName: Update submodules
+- checkout: self
+  clean: true
+  submodules: ${{ parameters.submodules }}

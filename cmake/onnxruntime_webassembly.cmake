@@ -116,7 +116,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_graph
       onnxruntime_mlas
       onnxruntime_optimizer
-      ${onnxruntime_providers_target}
+      onnxruntime_providers
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
       ${PROVIDERS_WEBNN}
@@ -189,7 +189,7 @@ else()
     onnxruntime_graph
     onnxruntime_mlas
     onnxruntime_optimizer
-    ${onnxruntime_providers_target}
+    onnxruntime_providers
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}

@@ -23,7 +23,10 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
     return data_transfer_impl_.get();
   }
 
-  OrtStatus* ResetArenaChunksUsingStream(const OrtSyncStreamImpl* stream_impl);
+  // Get the shared arena allocator if created.
+  ArenaAllocator* GetArenaAllocator() const {
+    return arena_allocator_.get();
+  }
 
   // Get the EP version string.
   const std::string& GetEpVersionString() const {

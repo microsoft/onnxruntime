@@ -14,14 +14,14 @@ namespace webgpu {
 class PoolProgram final : public Program<PoolProgram> {
  public:
   PoolProgram(bool is_max_pool, bool is_nhwc, const TensorShapeVector& kernel_shape, bool is_float16,
-              bool count_include_pad, bool use_parallel_reduction)
+              bool count_include_pad, bool are_small_output_big_kernel)
       : Program{"Pool"},
         is_max_pool_{is_max_pool},
         is_nhwc_{is_nhwc},
         kernel_shape_{kernel_shape},
         is_float16_{is_float16},
         count_include_pad_{count_include_pad},
-        use_parallel_reduction_{use_parallel_reduction} {}
+        are_small_output_big_kernel_{are_small_output_big_kernel} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -40,7 +40,7 @@ class PoolProgram final : public Program<PoolProgram> {
   const TensorShapeVector kernel_shape_;
   const bool is_float16_;
   const bool count_include_pad_;
-  const bool use_parallel_reduction_;
+  const bool are_small_output_big_kernel_;
 };
 
 template <typename PoolType, bool is_nhwc>
