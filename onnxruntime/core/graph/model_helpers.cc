@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "core/graph/function_utils.h"
+#include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
@@ -60,6 +61,43 @@ void CollectLocalFunctionCalls(
     const auto* graph = pending_graphs.back();
     pending_graphs.pop_back();
     process_nodes(graph->node());
+  }
+}
+
+void CollectLocalFunctionCalls(
+    const Graph& main_graph,
+    const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+    InlinedHashSet<std::string_view>& seen_calls,
+    InlinedVector<std::string_view>& called_functions) {
+  InlinedVector<const Graph*> pending_graphs{&main_graph};
+
+  while (!pending_graphs.empty()) {
+    const auto* graph = pending_graphs.back();
+    pending_graphs.pop_back();
+    for (const auto& node : graph->Nodes()) {
+      const auto function_id = function_utils::GetFunctionIdentifier(
+          node.Domain(), node.OpType(), node.Overload());
+      auto function_it = model_local_functions.find(function_id);
+      if (function_it != model_local_functions.end()) {
+        std::string_view key_view = function_it->first;
+        if (seen_calls.insert(key_view).second) {
+          called_functions.push_back(key_view);
+        }
+      }
+
+      for (const auto& [attr_name, attr] : node.GetAttributes()) {
+        if (attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH || attr.has_g()) {
+          if (const auto* subgraph = node.GetGraphAttribute(attr_name); subgraph != nullptr) {
+            pending_graphs.push_back(subgraph);
+          } else if (attr.has_g()) {
+            CollectLocalFunctionCalls(attr.g().node(), model_local_functions, seen_calls, called_functions);
+          }
+        }
+        for (const auto& graph : attr.graphs()) {
+          CollectLocalFunctionCalls(graph.node(), model_local_functions, seen_calls, called_functions);
+        }
+      }
+    }
   }
 }
 
@@ -252,12 +290,16 @@ Status ValidateModelLocalFunctionAcyclic(
 
 Status ValidateModelLocalFunctionCallDepth(
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    const ONNX_NAMESPACE::GraphProto& main_graph) {
+    const Graph& main_graph) {
+  if (model_local_functions.empty()) {
+    return Status::OK();
+  }
+
   LocalFunctionCallGraph call_graph;
   ORT_RETURN_IF_ERROR(BuildLocalFunctionCallGraph(model_local_functions, call_graph));
   InlinedHashSet<std::string_view> seen_calls;
   InlinedVector<std::string_view> root_calls;
-  CollectLocalFunctionCalls(main_graph.node(), model_local_functions, seen_calls, root_calls);
+  CollectLocalFunctionCalls(main_graph, model_local_functions, seen_calls, root_calls);
   return ValidateCallGraphDepth(call_graph, root_calls);
 }
 

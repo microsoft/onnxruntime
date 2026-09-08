@@ -301,8 +301,8 @@ const NodeHashMap<std::string, std::unique_ptr<FunctionTemplate>>& Model::GetMod
   return model_local_function_templates_maps_;
 }
 
-Status Model::ValidateLocalFunctionCallDepth(const ONNX_NAMESPACE::GraphProto& graph_proto) const {
-  return ValidateModelLocalFunctionCallDepth(model_local_functions_, graph_proto);
+Status Model::ValidateLocalFunctionCallDepth(const Graph& graph) const {
+  return ValidateModelLocalFunctionCallDepth(model_local_functions_, graph);
 }
 
 Version Model::IrVersion() const {

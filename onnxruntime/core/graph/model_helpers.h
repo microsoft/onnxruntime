@@ -16,10 +16,11 @@
 
 namespace ONNX_NAMESPACE {
 class FunctionProto;
-class GraphProto;
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
+
+class Graph;
 
 /// Adjacency list representation of a local function call graph.
 /// Keys and values are string_views into stable storage (e.g. map keys that outlive this structure).
@@ -48,7 +49,7 @@ Status ValidateModelLocalFunctionAcyclic(
 /// Enforce the local function depth limit for calls reachable from @p main_graph.
 Status ValidateModelLocalFunctionCallDepth(
     const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    const ONNX_NAMESPACE::GraphProto& main_graph);
+    const Graph& main_graph);
 
 }  // namespace onnxruntime
 

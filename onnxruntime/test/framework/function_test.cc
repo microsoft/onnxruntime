@@ -695,6 +695,45 @@ TEST(FunctionTest, FailedLocalFunctionDepthValidationPreservesGraphProtoSyncFlag
   EXPECT_TRUE(graph.GraphProtoSyncNeeded());
 }
 
+TEST(FunctionTest, ExcessiveLocalFunctionDepthInGraphsAttributeReturnsStatus) {
+  auto model_proto = CreateLocalFunctionChainModel(onnxruntime::kMaxModelLocalFunctionCallDepth + 1);
+  auto* root_node = model_proto.mutable_graph()->mutable_node(0);
+  root_node->set_domain(onnxruntime::kOnnxDomain);
+  root_node->set_op_type("Identity");
+  auto* graphs_attr = root_node->add_attribute();
+  graphs_attr->set_name("graphs");
+  graphs_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPHS);
+  auto* function_call = graphs_attr->add_graphs()->add_node();
+  function_call->set_domain("local");
+  function_call->set_op_type("function_0");
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(std::move(model_proto), nullptr, logger);
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
+TEST(FunctionTest, ExcessiveLocalFunctionDepthInUntypedGraphAttributeReturnsStatus) {
+  auto model_proto = CreateLocalFunctionChainModel(onnxruntime::kMaxModelLocalFunctionCallDepth + 1);
+  auto* root_node = model_proto.mutable_graph()->mutable_node(0);
+  root_node->set_domain(onnxruntime::kOnnxDomain);
+  root_node->set_op_type("Identity");
+  auto* graph_attr = root_node->add_attribute();
+  graph_attr->set_name("graph");
+  auto* function_call = graph_attr->mutable_g()->add_node();
+  function_call->set_domain("local");
+  function_call->set_op_type("function_0");
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(std::move(model_proto), nullptr, logger);
+  const auto status = model.MainGraph().Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
+}
+
 // --- Model-level integration tests ---
 
 TEST(FunctionTest, RejectsLongerCycle) {
