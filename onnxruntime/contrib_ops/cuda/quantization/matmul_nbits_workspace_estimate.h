@@ -35,6 +35,11 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+// Product of all input-A dimensions except the final K dimension. A known zero takes precedence
+// over unknown/negative dimensions and potential overflow elsewhere in the leading dimensions.
+// This graph-type-free helper is shared by the Level-1 shape wrappers and Level-2 TensorShape path.
+std::optional<int64_t> ComputeMatMulNBitsLeadingDimProduct(gsl::span<const int64_t> input_a_shape);
+
 std::optional<size_t> EstimateMatMulNBitsWorkspace(const Node& node, const cudaDeviceProp& device_prop);
 // Uses an estimation-only input A shape, such as one propagated from maximum graph inputs.
 std::optional<size_t> EstimateMatMulNBitsWorkspace(

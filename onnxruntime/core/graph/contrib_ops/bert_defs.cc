@@ -2571,7 +2571,210 @@ The ndim attribute generalizes the op to 1D, 2D, or 3D spatial dimensions. Causa
 enforced on the last spatial dimension only.
 
 The optional activation attribute supports fused SiLU/Swish activation.
+
+The dilation attribute spaces the kernel taps along the causal axis: output position t reads
+input positions t - (k_1 - 1 - j) * dilation for tap j. The receptive field therefore spans
+(k_1 - 1) * dilation positions before the current one, and the carry state grows to match:
+past_state and present_state hold (k_1 - 1) * dilation positions instead of k_1 - 1. Dilation 1
+(the default) is the undilated case and keeps the original state length, so models exported
+before the attribute existed are unaffected.
+
+The channels_last attribute selects a sequence-major layout for the activations and the carry
+state, so a model that already produces channels-last activations does not have to transpose into
+and out of the channels-first layout. With channels_last = 1 and ndim = 1, input and output are
+(batch_size, sequence_length, d_1, ..., d_n) and the state tensors are
+(batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. Any number of trailing
+channel axes is accepted, so an activation that keeps hyper-connections and hidden size as separate
+axes needs no reshape either. weight and bias keep their channels-first (channels, 1, k_1) and
+(channels) shapes because they have no sequence axis. The computed values are identical to the
+channels-first layout; only the memory layout differs.
 )DOC";
+
+constexpr const char* NGramHashMapping_ver1_doc = R"DOC(
+Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
+
+For n in [2, max_ngram_size], the op creates causal shifts of input_ids, padding positions before the
+sequence with pad_id, and computes
+mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
+For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
+The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
+heads for n=2 first, then n=3, and so on.
+
+An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op causal
+across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
+those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
+(batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
+Positions before the start of the whole sequence use pad_id. Running the op once over a full sequence
+and running it over consecutive chunks while threading present_ids into past_ids produce identical
+hash ids. When past_ids is omitted the missing history is pad_id, which matches a fresh sequence.
+past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
+only when the whole operator call is unconditionally committed; a caller that may select a prefix or
+roll back must preserve past_ids.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    NGramHashMapping, 1,
+    OpSchema()
+        .SetDoc(NGramHashMapping_ver1_doc)
+        .Attr("max_ngram_size",
+              "Maximum n-gram order. Must be at least 2.",
+              AttributeProto::INT)
+        .Attr("n_head_per_ngram",
+              "Number of hash heads emitted for each n-gram order.",
+              AttributeProto::INT)
+        .Attr("pad_id",
+              "Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.",
+              AttributeProto::INT)
+        .Input(0,
+               "input_ids",
+               "Compressed tokenizer ids with shape (batch_size, sequence_length).",
+               "M")
+        .Input(1,
+               "multipliers",
+               "Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any "
+               "value is accepted.",
+               "M")
+        .Input(2,
+               "vocab_sizes",
+               "Per-output-head vocabulary sizes, conventionally prime, with shape "
+               "((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. "
+               "The CPU implementation rejects a non-positive entry; GPU implementations guard the "
+               "modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.",
+               "M")
+        .Input(3,
+               "past_ids",
+               "Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede "
+               "this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last "
+               "slot is the most recent id. If omitted the history is pad_id.",
+               "M",
+               OpSchema::Optional)
+        .Output(0,
+                "hash_ids",
+                "Hash ids with shape (batch_size, sequence_length, "
+                "(max_ngram_size - 1) * n_head_per_ngram).",
+                "M")
+        .Output(1,
+                "present_ids",
+                "Trailing max_ngram_size - 1 ids of past_ids followed by input_ids, with shape "
+                "(batch_size, max_ngram_size - 1). Feed this back as past_ids on the next call.",
+                "M",
+                OpSchema::Optional)
+        .TypeConstraint("M",
+                        {"tensor(int32)", "tensor(int64)"},
+                        "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
+
+          const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
+          const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
+          if (max_ngram_size < 2) {
+            fail_shape_inference("NGramHashMapping: max_ngram_size must be at least 2");
+          }
+          if (n_head_per_ngram < 1) {
+            fail_shape_inference("NGramHashMapping: n_head_per_ngram must be positive");
+          }
+
+          if (hasInputShape(ctx, 0)) {
+            const auto& input_shape = getInputShape(ctx, 0);
+            if (input_shape.dim_size() != 2) {
+              fail_shape_inference("NGramHashMapping: input_ids must have rank 2");
+            }
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = input_shape.dim(0);
+            *output_shape.add_dim() = input_shape.dim(1);
+            output_shape.add_dim()->set_dim_value((max_ngram_size - 1) * n_head_per_ngram);
+            updateOutputShape(ctx, 0, output_shape);
+
+            if (ctx.getNumOutputs() > 1) {
+              TensorShapeProto present_shape;
+              *present_shape.add_dim() = input_shape.dim(0);
+              present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
+              updateOutputShape(ctx, 1, present_shape);
+            }
+          }
+        }));
+
+constexpr const char* EngramGate_ver1_doc = R"DOC(
+Fuses the Engram gate.
+
+The op consumes already projected keys in (batch_size, sequence_length, hc_mult, hidden_size) layout,
+the hidden-state queries in the same layout, an already projected value in
+(batch_size, sequence_length, hidden_size) layout that is shared by every hyper-connection, and the two
+RMSNorm scales. The key and value projections stay outside the op so they can run on the execution
+provider's tuned MatMul (weight prepacking, tensor cores, quantized weights) and so the value
+projection is computed once per token instead of once per hyper-connection.
+
+It computes the Engram gate:
+
+gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
+dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
+
+The output is gate * value, broadcast across the hyper-connections. The final Engram residual
+value + short_conv(value) is then expressed with RMSNorm, CausalConvWithState and Add.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    EngramGate, 1,
+    OpSchema()
+        .SetDoc(EngramGate_ver1_doc)
+        .Attr("epsilon",
+              "Epsilon used by both RMS normalization steps. Default is 1e-5.",
+              AttributeProto::FLOAT,
+              1.0e-5f)
+        .Input(0,
+               "key",
+               "Projected Engram keys with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+               "T")
+        .Input(1,
+               "query",
+               "Hidden-state queries with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+               "T")
+        .Input(2,
+               "value",
+               "Projected Engram value shared by every hyper-connection, with shape "
+               "(batch_size, sequence_length, hidden_size).",
+               "T")
+        .Input(3,
+               "key_norm_scale",
+               "RMSNorm scale for keys with shape (hc_mult, hidden_size).",
+               "T")
+        .Input(4,
+               "query_norm_scale",
+               "RMSNorm scale for queries with shape (hc_mult, hidden_size).",
+               "T")
+        .Output(0,
+                "output",
+                "Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+          if (hasInputShape(ctx, 0)) {
+            const auto& key_shape = getInputShape(ctx, 0);
+            if (key_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: key must have rank 4");
+            }
+            propagateShapeFromInputToOutput(ctx, 0, 0);
+          }
+          if (hasInputShape(ctx, 1)) {
+            const auto& query_shape = getInputShape(ctx, 1);
+            if (query_shape.dim_size() != 4) {
+              fail_shape_inference("EngramGate: query must have rank 4");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& value_shape = getInputShape(ctx, 2);
+            if (value_shape.dim_size() != 3) {
+              fail_shape_inference("EngramGate: value must have rank 3");
+            }
+          }
+        }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     CausalConvWithState, 1,
@@ -2586,15 +2789,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Spatial dimensionality: 1, 2, or 3. Default is 1.",
               AttributeProto::INT,
               static_cast<int64_t>(1))
+        .Attr("dilation",
+              "Spacing between kernel taps along the causal (last spatial) axis. The receptive "
+              "field spans (k_1 - 1) * dilation positions before the current one, and past_state / "
+              "present_state hold that many positions. Must be >= 1. Default is 1 (undilated).",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
+        .Attr("channels_last",
+              "When 1, input, output, past_state and present_state use a sequence-major, "
+              "channels-last layout: input and output are "
+              "(batch_size, sequence_length, d_1, ..., d_n) and the state tensors are "
+              "(batch_size, state_length, d_1, ..., d_n), where channels = d_1 * ... * d_n. "
+              "weight and bias keep their channels-first shapes. Requires ndim = 1. "
+              "Default is 0 (channels-first).",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Attr("state_window",
               "Number of trailing per-position carry states held by past_state and present_state. "
               "When 0 (default) the state tensors have no window axis and hold only the state after "
-              "the last position, i.e. the backward-compatible (batch_size, channels, k_1 - 1). "
+              "the last position, i.e. the backward-compatible (batch_size, channels, state_length) "
+              "where state_length = (k_1 - 1) * dilation. "
               "When W > 0 both gain a LEADING axis of extent W, right-aligned: slot j is the state "
               "after position (seq_len - W + j), so slot W-1 is always the state after the last "
               "position (identical to the W = 0 tensor) and is the slot past_state is read from. "
               "The window axis leads the batch axis so that each slot is one contiguous "
-              "(batch_size, channels, k_1 - 1) block. Slots below max(0, W - seq_len) hold no "
+              "(batch_size, channels, state_length) block. Slots below max(0, W - seq_len) hold no "
               "position from this call and are filled with zeros. A window lets a speculative "
               "decoder roll the state back to an accepted prefix without replaying the forward. "
               "Valid range is [0, 8].",
@@ -2602,8 +2821,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               static_cast<int64_t>(0))
         .Input(0,
                "input",
-               "Input tensor with shape (batch_size, channels, ...). Channels-first layout. "
-               "Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W).",
+               "Input tensor with shape (batch_size, channels, ...) in the default channels-first "
+               "layout. Spatial dims: 1D: (L,); 2D: (H, W); 3D: (D, H, W). When channels_last = 1 "
+               "the shape is (batch_size, sequence_length, d_1, ..., d_n) instead.",
                "T")
         .Input(1,
                "weight",
@@ -2617,9 +2837,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(3,
                "past_state",
-               "Carry state from previous step. For ndim=1: (batch_size, channels, k_1 - 1), or "
-               "(W, batch_size, channels, k_1 - 1) when state_window = W > 0, in which case only "
-               "slot W-1 is read. If not provided, padding is zero.",
+               "Carry state from previous step. For ndim=1: (batch_size, channels, state_length), "
+               "or (W, batch_size, channels, state_length) when state_window = W > 0, in which case "
+               "only slot W-1 is read, where state_length = (k_1 - 1) * dilation. When "
+               "channels_last = 1 each slot is (batch_size, state_length, d_1, ..., d_n) instead. "
+               "If not provided, padding is zero.",
                "T",
                OpSchema::Optional)
         .Output(0,
@@ -2628,10 +2850,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_state",
-                "Updated carry state. For ndim=1: (batch_size, channels, k_1 - 1), or "
-                "(W, batch_size, channels, k_1 - 1) when state_window = W > 0. Slot W-1 contains "
-                "the last (k-1) values from the virtual input along the causal axis; slot j contains "
-                "the same for the prefix ending at position (seq_len - W + j).",
+                "Updated carry state. For ndim=1: (batch_size, channels, state_length), or "
+                "(W, batch_size, channels, state_length) when state_window = W > 0, and "
+                "(batch_size, state_length, d_1, ..., d_n) per slot when channels_last = 1. Slot "
+                "W-1 contains the last state_length values from the virtual input along the causal "
+                "axis; slot j contains the same for the prefix ending at position "
+                "(seq_len - W + j).",
                 "T")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
@@ -2644,6 +2868,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (state_window < 0 || state_window > kMaxStateWindow) {
             fail_shape_inference("CausalConvWithState: state_window must be in [0, ", kMaxStateWindow,
                                  "], got ", state_window);
+          }
+
+          const int64_t dilation = getAttribute(ctx, "dilation", 1);
+          if (dilation < 1) {
+            fail_shape_inference("CausalConvWithState: dilation must be >= 1, got ", dilation);
+          }
+
+          const int64_t channels_last = getAttribute(ctx, "channels_last", 0);
+          if (channels_last != 0 && channels_last != 1) {
+            fail_shape_inference("CausalConvWithState: channels_last must be 0 or 1, got ",
+                                 channels_last);
+          }
+          if (channels_last == 1 && getAttribute(ctx, "ndim", 1) != 1) {
+            fail_shape_inference("CausalConvWithState: channels_last requires ndim = 1");
           }
 
           // Output 0: same shape as input (batch_size, channels, ...)
@@ -2663,6 +2901,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               fail_shape_inference("CausalConvWithState: weight must have rank >= 2");
             }
             int64_t ndim = getAttribute(ctx, "ndim", 1);
+            // (kernel_size - 1) * dilation, or an unset dim when kernel_size is symbolic.
+            const int last_kernel_dim = weight_shape.dim_size() - 1;
+            TensorShapeProto::Dimension state_length;
+            if (weight_shape.dim(last_kernel_dim).has_dim_value()) {
+              state_length.set_dim_value((weight_shape.dim(last_kernel_dim).dim_value() - 1) *
+                                         dilation);
+            }
+
+            if (channels_last == 1) {
+              // (batch_size, state_length, d_1, ..., d_n), optionally led by the window axis.
+              // The trailing channel axes are copied verbatim from the input, so a caller that
+              // keeps hyper-connections and hidden size separate gets the same split back.
+              TensorShapeProto cl_state_shape;
+              if (state_window > 0) {
+                cl_state_shape.add_dim()->set_dim_value(state_window);
+              }
+              *cl_state_shape.add_dim() = input_shape.dim(0);
+              *cl_state_shape.add_dim() = state_length;
+              for (int i = 2; i < input_shape.dim_size(); ++i) {
+                *cl_state_shape.add_dim() = input_shape.dim(i);
+              }
+              updateOutputShape(ctx, 1, cl_state_shape);
+              return;
+            }
+
             // state_window = W > 0 prepends a window axis, holding the carry state after each of
             // the last W positions (slot W-1 == the W = 0 tensor). The window axis leads the batch
             // axis so a slot is one contiguous (batch_size, channels, ...) block. W = 0 keeps the
@@ -2677,13 +2940,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             for (int64_t i = 0; i < ndim - 1; ++i) {
               *state_shape.add_dim() = input_shape.dim(static_cast<int>(2 + i));
             }
-            // Causal (last) spatial dim: kernel_size - 1
-            int last_kernel_dim = weight_shape.dim_size() - 1;
-            if (weight_shape.dim(last_kernel_dim).has_dim_value()) {
-              state_shape.add_dim()->set_dim_value(weight_shape.dim(last_kernel_dim).dim_value() - 1);
-            } else {
-              state_shape.add_dim();  // unknown
-            }
+            // Causal (last) spatial dim: (kernel_size - 1) * dilation
+            *state_shape.add_dim() = state_length;
             updateOutputShape(ctx, 1, state_shape);
           }
         }));
@@ -2698,7 +2956,8 @@ device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
 at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
 (channels). The convolution never reads across a sequence boundary.
 
-initial_state is required and has shape (batch_size, channels, kernel_size - 1). It contains
+initial_state is required and has shape (batch_size, channels, state_length), where
+state_length = (kernel_size - 1) * dilation. It contains
 the committed raw activation samples immediately preceding this call. final_state has the same
 shape and type and is fully written with the state after each sequence's final token. State
 uses the activation type because it stores raw samples, not accumulated convolution values.
@@ -2720,6 +2979,14 @@ Malformed offsets cause affected work to return without those accesses; outputs 
 This device-side containment is not a synchronous validation or rejection mechanism.
 
 The optional activation attribute supports none, SiLU, and Swish.
+
+The dilation attribute spaces the kernel taps along the sequence axis: local token t of a request
+reads that request's local positions t - (kernel_size - 1 - j) * dilation for tap j, and positions
+before the request's first token come from the carry state. The carry state therefore holds
+state_length = (kernel_size - 1) * dilation positions per request instead of kernel_size - 1.
+Dilation 1 (the default) is the undilated case and keeps the original state length, so models
+exported before the attribute existed are unaffected. input and output are already token-major
+(sequence-major, channels-last), so this op needs no separate layout attribute.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2731,6 +2998,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Default is 'none'.",
               AttributeProto::STRING,
               std::string("none"))
+        .Attr("dilation",
+              "Spacing between kernel taps along the sequence axis. The receptive field spans "
+              "(kernel_size - 1) * dilation positions before the current token, and "
+              "initial_state / final_state hold that many positions per request. "
+              "Must be >= 1. Default is 1 (undilated).",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Attr("state_update_capacity",
               "Static number of compact contiguous-prefix transition values to expose per request. "
               "Valid range is [0, 8]. capture_count is required exactly when this is positive.",
@@ -2759,7 +3033,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(4,
                "initial_state",
                "Required committed carry state with shape "
-               "(batch_size, channels, kernel_size - 1).",
+               "(batch_size, channels, (kernel_size - 1) * dilation).",
                "T")
         .Input(5,
                "capture_count",
@@ -2775,7 +3049,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(1,
                 "final_state",
                 "Fully written state after each sequence's final token, with shape "
-                "(batch_size, channels, kernel_size - 1).",
+                "(batch_size, channels, (kernel_size - 1) * dilation).",
                 "T")
         .Output(2,
                 "state_update",
@@ -2799,6 +3073,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (state_update_capacity < 0 || state_update_capacity > kMaxStateWindow) {
             fail_shape_inference("VarlenCausalConvWithState: state_update_capacity must be in [0, ",
                                  kMaxStateWindow, "], got ", state_update_capacity);
+          }
+
+          const int64_t dilation = getAttribute(ctx, "dilation", 1);
+          if (dilation < 1) {
+            fail_shape_inference("VarlenCausalConvWithState: dilation must be >= 1, got ", dilation);
           }
 
           // Output 0: same shape as input (total_tokens, channels)
@@ -2854,9 +3133,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
             *state_shape.add_dim() = input_shape.dim(1);  // channels
             if (weight_shape.dim(2).has_dim_value()) {
-              state_shape.add_dim()->set_dim_value(weight_shape.dim(2).dim_value() - 1);
+              state_shape.add_dim()->set_dim_value((weight_shape.dim(2).dim_value() - 1) * dilation);
             } else {
-              state_shape.add_dim();  // unknown kernel_size - 1
+              state_shape.add_dim();  // unknown (kernel_size - 1) * dilation
             }
             updateOutputShape(ctx, 1, state_shape);
 
