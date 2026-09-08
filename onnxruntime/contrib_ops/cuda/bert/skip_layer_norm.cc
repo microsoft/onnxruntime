@@ -60,8 +60,14 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
 
   const auto& input_dims = input->Shape().GetDims();
   size_t input_dims_size = input_dims.size();
+  ORT_RETURN_IF_NOT(input_dims_size == 2 || input_dims_size == 3,
+                    "input is expected to have 3 or 2 dimensions, got ", input_dims_size);
 
-  int hidden_size = onnxruntime::narrow<int>(input_dims[input_dims_size - 1]);
+  const int64_t hidden_size_i64 = input_dims.back();
+  ORT_RETURN_IF_NOT(hidden_size_i64 > 0 && hidden_size_i64 <= std::numeric_limits<int>::max(),
+                    "hidden_size must be positive and no greater than ", std::numeric_limits<int>::max(),
+                    ". Got ", hidden_size_i64, ".");
+  const int hidden_size = static_cast<int>(hidden_size_i64);
 
   ORT_RETURN_IF_ERROR(onnxruntime::contrib::skip_layer_norm_helper::CheckInputs<Tensor>(input,
                                                                                         skip,

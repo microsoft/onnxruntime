@@ -170,24 +170,20 @@ __global__ void SkipLayerNormKernel(
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
 
-    T val = input[idx];
+    float val = static_cast<float>(input[idx]) + static_cast<float>(skip[idx % skip_size]);
     if (has_bias) {
-      val += bias[i];
+      val += static_cast<float>(bias[i]);
     }
-    val += skip[idx % skip_size];
 
-    const float val_f = static_cast<float>(val);
     if constexpr (Simplified) {
-      thread_mean_square += val_f * val_f / ld;
+      thread_mean_square += val * val / ld;
     } else {
-      WelfordUpdate(val_f, thread_stats);
+      WelfordUpdate(val, thread_stats);
     }
 
     if (sum_output != nullptr) {
-      sum_output[idx] = val;
+      sum_output[idx] = static_cast<T>(val);
     }
-
-    output[idx] = val;
   }
 
   if constexpr (Simplified) {
@@ -195,8 +191,12 @@ __global__ void SkipLayerNormKernel(
         ComputeRmsNormInvStd<TPB>(thread_mean_square, epsilon, mean_output, inv_std_output);
     for (int i = threadIdx.x; i < ld; i += TPB) {
       const int idx = offset + i;
+      float val = static_cast<float>(input[idx]) + static_cast<float>(skip[idx % skip_size]);
+      if (has_bias) {
+        val += static_cast<float>(bias[i]);
+      }
       output[idx] = static_cast<T>(
-          static_cast<float>(gamma[i]) * static_cast<float>(output[idx]) * inv_std);
+          static_cast<float>(gamma[i]) * val * inv_std);
     }
   } else {
     float mean;
@@ -204,9 +204,13 @@ __global__ void SkipLayerNormKernel(
     ComputeLayerNormStats<TPB>(thread_stats, epsilon, mean_output, inv_std_output, mean, inv_std);
     for (int i = threadIdx.x; i < ld; i += TPB) {
       const int idx = offset + i;
+      float val = static_cast<float>(input[idx]) + static_cast<float>(skip[idx % skip_size]);
+      if (has_bias) {
+        val += static_cast<float>(bias[i]);
+      }
       const float beta_value = beta == nullptr ? 0.0f : static_cast<float>(beta[i]);
       output[idx] = static_cast<T>(
-          static_cast<float>(gamma[i]) * (static_cast<float>(output[idx]) - mean) * inv_std + beta_value);
+          static_cast<float>(gamma[i]) * (val - mean) * inv_std + beta_value);
     }
   }
 }
@@ -221,6 +225,7 @@ __global__ void SkipLayerNormKernelSmall(
 
   using VecT = aligned_vector<T, ILP>;
   T sum_v[ILP];
+  float sum_f[ILP];
 
   WelfordData thread_stats{0.0f, 0.0f, 0};
   float thread_mean_square = 0.0f;
@@ -245,16 +250,17 @@ __global__ void SkipLayerNormKernelSmall(
 
 #pragma unroll
     for (int i = 0; i < ILP; i++) {
+      float val = static_cast<float>(sum_v[i]) + static_cast<float>(skip_v[i]);
       if (has_bias) {
-        sum_v[i] += bias_v[i];
+        val += static_cast<float>(bias_v[i]);
       }
-      sum_v[i] += skip_v[i];
+      sum_f[i] = val;
+      sum_v[i] = static_cast<T>(val);
 
-      const float val_f = static_cast<float>(sum_v[i]);
       if constexpr (Simplified) {
-        thread_mean_square += val_f * val_f / ld;
+        thread_mean_square += val * val / ld;
       } else {
-        WelfordUpdate(val_f, thread_stats);
+        WelfordUpdate(val, thread_stats);
       }
     }
 
@@ -272,7 +278,7 @@ __global__ void SkipLayerNormKernelSmall(
       for (int i = 0; i < ILP; ++i) {
         output_v[i] = static_cast<T>(
             static_cast<float>(gamma[threadIdx.x * ILP + i]) *
-            static_cast<float>(sum_v[i]) * inv_std);
+            sum_f[i] * inv_std);
       }
       *reinterpret_cast<VecT*>(&output[idx]) = *reinterpret_cast<VecT*>(&output_v);
     }
@@ -287,7 +293,7 @@ __global__ void SkipLayerNormKernelSmall(
         const int column = threadIdx.x * ILP + i;
         const float beta_value = beta == nullptr ? 0.0f : static_cast<float>(beta[column]);
         output_v[i] = static_cast<T>(
-            static_cast<float>(gamma[column]) * (static_cast<float>(sum_v[i]) - mean) * inv_std + beta_value);
+            static_cast<float>(gamma[column]) * (sum_f[i] - mean) * inv_std + beta_value);
       }
       *reinterpret_cast<VecT*>(&output[idx]) = *reinterpret_cast<VecT*>(&output_v);
     }

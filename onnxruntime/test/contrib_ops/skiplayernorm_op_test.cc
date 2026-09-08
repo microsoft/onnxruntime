@@ -53,10 +53,10 @@ void RunCudaStatisticsCase(bool simplified) {
   const std::vector<int64_t> input_dims{2, hidden_size};
   const std::vector<int64_t> stat_dims{2, 1};
   const std::vector<float> input_values{
-      1.0f, -2.0f, 3.0f, -4.0f, 5.0f, -6.0f, 7.0f, -8.0f,
+      256.0f, 256.0f, 256.0f, 256.0f, 256.0f, 256.0f, 256.0f, 256.0f,
       0.5f, 1.5f, -2.5f, 3.5f, -4.5f, 5.5f, -6.5f, 7.5f};
   const std::vector<float> skip_values{
-      0.25f, -0.5f, 0.75f, -1.0f, 1.25f, -1.5f, 1.75f, -2.0f,
+      -256.0f, -256.0f, -256.0f, -256.0f, -256.0f, -256.0f, -256.0f, -256.0f,
       -0.25f, 0.5f, -0.75f, 1.0f, -1.25f, 1.5f, -1.75f, 2.0f};
   const std::vector<float> gamma_values{0.5f, -1.0f, 1.5f, -2.0f, 0.75f, 1.25f, -0.5f, 2.0f};
   const std::vector<float> beta_values{0.1f, -0.2f, 0.3f, -0.4f, 0.5f, -0.6f, 0.7f, -0.8f};
@@ -69,6 +69,7 @@ void RunCudaStatisticsCase(bool simplified) {
   const auto bias = ConvertToTensorType<T>(bias_values);
 
   std::vector<T> sum(input.size());
+  std::vector<float> sum_float(input.size());
   std::vector<T> expected_output(input.size());
   std::vector<float> expected_mean(2);
   std::vector<float> expected_inv_std(2);
@@ -77,10 +78,10 @@ void RunCudaStatisticsCase(bool simplified) {
     double mean_square = 0.0;
     for (int64_t column = 0; column < hidden_size; ++column) {
       const size_t index = static_cast<size_t>(row * hidden_size + column);
-      T value = ConvertToTensorType<T>(ConvertToFloat(input[index]) + ConvertToFloat(bias[column]));
-      value = ConvertToTensorType<T>(ConvertToFloat(value) + ConvertToFloat(skip[index]));
-      sum[index] = value;
-      const double value_float = ConvertToFloat(value);
+      const float value_float =
+          ConvertToFloat(input[index]) + ConvertToFloat(skip[index]) + ConvertToFloat(bias[column]);
+      sum_float[index] = value_float;
+      sum[index] = ConvertToTensorType<T>(value_float);
       mean += value_float;
       mean_square += value_float * value_float;
     }
@@ -91,7 +92,7 @@ void RunCudaStatisticsCase(bool simplified) {
     if (!simplified) {
       for (int64_t column = 0; column < hidden_size; ++column) {
         const double deviation =
-            ConvertToFloat(sum[static_cast<size_t>(row * hidden_size + column)]) - mean;
+            sum_float[static_cast<size_t>(row * hidden_size + column)] - mean;
         variance += deviation * deviation;
       }
       variance /= hidden_size;
@@ -103,7 +104,7 @@ void RunCudaStatisticsCase(bool simplified) {
     expected_inv_std[static_cast<size_t>(row)] = inv_std;
     for (int64_t column = 0; column < hidden_size; ++column) {
       const size_t index = static_cast<size_t>(row * hidden_size + column);
-      const float centered = ConvertToFloat(sum[index]) -
+      const float centered = sum_float[index] -
                              (simplified ? 0.0f : expected_mean[static_cast<size_t>(row)]);
       const float normalized = ConvertToFloat(gamma[column]) * centered * inv_std +
                                (simplified ? 0.0f : ConvertToFloat(beta[column]));
@@ -591,6 +592,23 @@ TEST(SkipLayerNormTest, CudaOptionalStatisticsAbsent) {
   test.AddOutput<float>("output", input_dims, expected_output);
   test.SetOutputAbsErr("output", 2e-5f);
   test.ConfigEp(std::move(cuda_ep)).RunWithConfig();
+}
+
+TEST(SkipLayerNormTest, CudaRejectsZeroHiddenSize) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  OpTester test("SkipLayerNormalization", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("input", {1, 0}, {});
+  test.AddInput<float>("skip", {1, 0}, {});
+  test.AddInput<float>("gamma", {0}, {});
+  test.AddInput<float>("beta", {0}, {});
+  test.AddOutput<float>("output", {1, 0}, {});
+  test.ConfigEp(std::move(cuda_ep))
+      .Config(OpTester::ExpectResult::kExpectFailure, "hidden_size must be positive")
+      .RunWithConfig();
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormNullInput) {
