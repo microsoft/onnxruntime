@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import * as path from 'path';
+import { isMainThread } from 'worker_threads';
 const ort = require(path.join(__dirname, '../../'));
 import * as process from 'process';
 
@@ -10,9 +11,20 @@ const modelData =
 const shouldProcessExit = process.argv.includes('--process-exit');
 const shouldThrowException = process.argv.includes('--throw-exception');
 const shouldRelease = process.argv.includes('--release');
+const shouldInitializeOrtTwice = process.argv.includes('--initialize-twice');
 
 async function main() {
   try {
+    if (shouldInitializeOrtTwice) {
+      const binding = require(
+        path.join(__dirname, `../../bin/napi-v6/${process.platform}/${process.arch}/onnxruntime_binding.node`),
+      );
+      binding.initOrtOnce(2, function Tensor() {}, isMainThread);
+      binding.initOrtOnce(2, function Tensor() {}, isMainThread);
+      console.log('SUCCESS: ORT initialized twice');
+      return;
+    }
+
     const modelBuffer = Buffer.from(modelData, 'base64');
     const session = await ort.InferenceSession.create(modelBuffer);
 

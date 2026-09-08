@@ -83,4 +83,10 @@ describe('Standalone Process Tests', () => {
     assertSuccess(result);
     assert.ok(result.stdout.includes('Session NOT released'));
   });
+
+  it('should allow repeated native ORT initialization', async () => {
+    const result = await runTest(['--initialize-twice']);
+    assert.strictEqual(result.code, 0, result.stderr);
+    assert.ok(result.stdout.includes('SUCCESS: ORT initialized twice'));
+  });
 });
