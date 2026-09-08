@@ -73,8 +73,8 @@ const createLayerNormProgramInfo = (
   if (bias) {
     inputDependencies.push('type');
   }
-  const hasMeanDataOutput = outputCount > 1;
-  const hasInvStdOutput = outputCount > 2;
+  const hasMeanDataOutput = !simplified && outputCount > 1;
+  const hasInvStdOutput = outputCount > (simplified ? 1 : 2);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const dataType = tensorTypeToWsglStorageType(inputs[0].dataType);
