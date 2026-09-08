@@ -310,6 +310,7 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # NullObjects.hpp / LogManagerProvider.hpp). Re-add the SDK include dirs as SYSTEM to exempt them.
     if(DEFINED cpp_client_telemetry_SOURCE_DIR)
       target_include_directories(onnxruntime_common SYSTEM PRIVATE
+        ${cpp_client_telemetry_SOURCE_DIR}/lib/include
         ${cpp_client_telemetry_SOURCE_DIR}/lib/include/public
         ${cpp_client_telemetry_SOURCE_DIR}/lib/include/mat
         ${cpp_client_telemetry_SOURCE_DIR}/lib
