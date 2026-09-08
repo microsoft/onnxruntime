@@ -55,7 +55,7 @@ jobs:
         run: |
           cd tools/doc
           chmod +x *
-          ./builddoc.sh /usr/bin ../.. ../../build
+          ./builddoc.sh "$(dirname "$(command -v python3)")" ../.. ../../build
       - name: Log source commit
         run: git rev-parse --short HEAD > build/docs/html/source-version.txt
       - name: Move Python docs into site
