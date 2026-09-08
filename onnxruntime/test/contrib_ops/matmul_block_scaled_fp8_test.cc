@@ -121,7 +121,13 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreKSplitSelection) {
 TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreForcedKSplit32) {
   constexpr const char* kChildProcessVariable = "ORT_FP8_GEMV_KSPLIT_TEST_CHILD";
   const bool is_child_process = !Env::Default().GetEnvironmentVar(kChildProcessVariable).empty();
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_FP8_GEMV_MMA", "1"},
+      {"ORT_FP8_GEMV_MAX_M", "32"},
       {"ORT_FP8_GEMV_KSPLIT", "32"},
       {"ORT_FP8_GEMV_MATCH_N", "17"},
       {"ORT_FP8_GEMV_MATCH_K", "2112"},
@@ -133,10 +139,6 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreForcedKSplit32) {
         "\" --gtest_filter=MatMulBlockQuantizedFp8WeightOpTest.GemvTensorCoreForcedKSplit32 --gtest_color=no";
     ASSERT_EQ(std::system(command.c_str()), 0);
     return;
-  }
-
-  if (!HasCudaEnvironment(800)) {
-    GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
   }
 
   constexpr int64_t m = 8;
