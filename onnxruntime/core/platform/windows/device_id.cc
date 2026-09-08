@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <utility>
@@ -191,6 +190,24 @@ bool WriteDeviceIdRegistryValue(const std::string& value) {
   return status == ERROR_SUCCESS;
 }
 
+std::string GetEnvironmentValue(const char* name) {
+  constexpr DWORD kMaxEnvironmentValueSize = 32767;
+  std::string value(kMaxEnvironmentValueSize, '\0');
+  const DWORD length =
+      ::GetEnvironmentVariableA(name, value.data(), kMaxEnvironmentValueSize);
+  if (length == 0 || length >= kMaxEnvironmentValueSize) {
+    return {};
+  }
+
+  value.resize(length);
+  return value;
+}
+
+std::filesystem::path GetAbsoluteEnvironmentPath(const char* name) {
+  std::filesystem::path path(GetEnvironmentValue(name));
+  return path.is_absolute() ? path : std::filesystem::path{};
+}
+
 }  // namespace
 
 DeviceId& DeviceId::Instance() {
@@ -230,17 +247,28 @@ bool DeviceId::IsValidGUID(const std::string& value) {
 }
 
 std::string DeviceId::GetStorageDirectory() {
-  char* local_app_data = nullptr;
-  size_t length = 0;
-  if (_dupenv_s(&local_app_data, &length, "LOCALAPPDATA") != 0 ||
-      local_app_data == nullptr || length <= 1) {
-    std::free(local_app_data);
-    return {};
+  for (const char* variable : {"LOCALAPPDATA", "APPDATA"}) {
+    const std::filesystem::path app_data = GetAbsoluteEnvironmentPath(variable);
+    if (!app_data.empty()) {
+      return (app_data / kDeviceIdDir).string();
+    }
   }
-  const std::filesystem::path path =
-      std::filesystem::path(local_app_data) / "Microsoft" / "DeveloperTools" / ".onnxruntime";
-  std::free(local_app_data);
-  return path.string();
+
+  std::filesystem::path home = GetAbsoluteEnvironmentPath("HOME");
+  if (home.empty()) {
+    home = GetAbsoluteEnvironmentPath("USERPROFILE");
+  }
+  if (home.empty()) {
+    const std::string home_drive = GetEnvironmentValue("HOMEDRIVE");
+    const std::string home_path = GetEnvironmentValue("HOMEPATH");
+    const std::filesystem::path combined_home(home_drive + home_path);
+    if (combined_home.is_absolute()) {
+      home = combined_home;
+    }
+  }
+  return home.empty()
+             ? std::string{}
+             : (home / "AppData" / "Local" / kDeviceIdDir).string();
 }
 
 std::string DeviceId::EnsureStorageDirectory() {
