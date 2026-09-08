@@ -1337,4 +1337,23 @@ TEST(ThreadPoolTest, CostBasedSplitDecisionIsAThreshold) {
                              "ORT_PARALLEL_COST_SCALE is not doing anything";
 }
 
+// Pins ORT_DEFAULT_PARALLEL_COST_SCALE=8 and verifies it causes a different
+// split decision than scale=1 at a known boundary.
+//
+// With n=65537 and compute_cycles=1.0 on a 4-thread pool:
+//   scale=1 : n * cost =     65,537 < Eigen kStartupCycles (100,000) → serial
+//   scale=8 : n * cost * 8 = 524,296 > kStartupCycles               → split
+//
+// If this fails, ORT_DEFAULT_PARALLEL_COST_SCALE was reverted to 1 or the
+// scale is not reaching the split decision in ParallelFor.
+TEST(ThreadPoolTest, CostScaleDefaultSplitsAtKnownBoundary) {
+  constexpr std::ptrdiff_t n = 65537;
+  auto tp = MakePool(4);
+  std::vector<float> actual;
+  const auto blocks = RunElementwise(tp.get(), n, onnxruntime::TensorOpCost{0.0, 0.0, 1.0}, actual);
+  EXPECT_GT(blocks.size(), 1u)
+      << "n=" << n << " compute_cycles=1.0 must split at ORT_DEFAULT_PARALLEL_COST_SCALE=8 "
+         "(would stay serial at scale=1); constant was reverted or scale is being bypassed";
+}
+
 }  // namespace onnxruntime

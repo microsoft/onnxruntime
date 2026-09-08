@@ -165,9 +165,12 @@ void ExpectFloatOutputsMatch(const OrtValue& actual, const OrtValue& expected,
       continue;
     }
     ++mismatches;
-    // Both values are finite and O(1) for these graphs; guard the divide anyway.
+    // The reference graphs produce finite values; any non-finite actual value is a failure.
     const double denominator = std::max(std::abs(static_cast<double>(e)), 1e-30);
-    const double relative_diff = std::abs(static_cast<double>(a) - static_cast<double>(e)) / denominator;
+    const double relative_diff =
+        std::isfinite(a)
+            ? std::abs(static_cast<double>(a) - static_cast<double>(e)) / denominator
+            : relative_tolerance + 1.0;
     if (relative_diff > worst_relative_diff) {
       worst_relative_diff = relative_diff;
       worst_index = i;

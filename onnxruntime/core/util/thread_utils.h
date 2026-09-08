@@ -38,7 +38,7 @@ struct OrtThreadPoolParams {
   int spin_duration_us = onnxruntime::concurrency::kSpinDurationDefault;
 
   // Maximum exponential-backoff cap for the thread pool spin loop.
-  //   1 (default) = no backoff, one SpinPause() per iteration (original behavior).
+  //   1           = no backoff, one SpinPause() per iteration (original behavior).
   //   >= 2        = enable exponential backoff: each iteration emits 1, 2, 4, ...
   //                 SpinPause() calls, capped at this value. The iteration count
   //                 is scaled internally so the wall-clock spin window still
