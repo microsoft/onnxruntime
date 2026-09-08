@@ -1012,7 +1012,7 @@ class InferenceSession {
   uint32_t session_id_;                             // the current session's id
 
   struct Telemetry {
-    Telemetry() : time_sent_last_() {}
+    Telemetry() : time_sent_last_(std::chrono::high_resolution_clock::now()) {}
     uint32_t total_runs_since_last_ = 0;                              // the total number of Run() calls since the last report
     long long total_run_duration_since_last_ = 0;                     // the total duration (us) of Run() calls since the last report
     std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
@@ -1024,10 +1024,7 @@ class InferenceSession {
     constexpr static int64_t kRuntimePerfMaxInterval = 1000 * 1000 * 60 * 10;  // 10 minutes in (us)
     int64_t runtime_perf_interval_ = kRuntimePerfInitialInterval;
 
-    // Per-(EP, hardware device) tuple captured once at session Initialize() time,
-    // after graph partitioning. Used to emit "EpDeviceUsage" events on the same
-    // cadence as RuntimePerf so downstream consumers can attribute inference usage
-    // to specific EP + device combinations without joining back to SessionCreation.
+    // Per-(EP, hardware device) inventory captured after graph partitioning.
     struct EpDeviceInfo {
       std::string ep_type;               // e.g. "QNNExecutionProvider"
       std::string hardware_device_type;  // "CPU", "GPU", "NPU", "FPGA", or "UNKNOWN"

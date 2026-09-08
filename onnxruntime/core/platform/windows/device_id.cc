@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/platform/device_census.h"
 #include "core/platform/telemetry_guid.h"
 
 namespace onnxruntime {
@@ -20,6 +21,7 @@ namespace {
 
 constexpr char kDeviceIdRegistryKey[] = "SOFTWARE\\Microsoft\\DeveloperTools\\.onnxruntime";
 constexpr char kDeviceIdRegistryValue[] = "deviceid";
+constexpr char kDeviceCensusRegistryValue[] = "devicecensus.state";
 constexpr size_t kMaxDeviceIdSize = 256;
 
 enum class RegistryReadResult {
@@ -54,7 +56,7 @@ class ScopedWinHandle {
 
 class ScopedDeviceIdMutex {
  public:
-  ScopedDeviceIdMutex() {
+  explicit ScopedDeviceIdMutex(const wchar_t* purpose = L"OnnxRuntime.DeviceId") {
     HANDLE token{};
     if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token)) {
       return;
@@ -87,7 +89,8 @@ class ScopedDeviceIdMutex {
 
     std::array<wchar_t, 96> mutex_name{};
     _snwprintf_s(mutex_name.data(), mutex_name.size(), _TRUNCATE,
-                 L"Global\\Microsoft.DeveloperTools.OnnxRuntime.DeviceId.%016llx",
+                 L"Global\\Microsoft.DeveloperTools.%ls.%016llx",
+                 purpose,
                  static_cast<unsigned long long>(sid_hash));
     handle_ = ::CreateMutexW(nullptr, FALSE, mutex_name.data());
     if (handle_ == nullptr) {
@@ -190,6 +193,57 @@ bool WriteDeviceIdRegistryValue(const std::string& value) {
   return status == ERROR_SUCCESS;
 }
 
+RegistryRead ReadCensusRegistryValue() {
+  HKEY key{};
+  const LSTATUS open_status =
+      ::RegOpenKeyExA(HKEY_CURRENT_USER, kDeviceIdRegistryKey, 0,
+                      KEY_READ | KEY_WOW64_64KEY, &key);
+  if (open_status == ERROR_FILE_NOT_FOUND) {
+    return {RegistryReadResult::Missing, {}};
+  }
+  if (open_status != ERROR_SUCCESS) {
+    return {RegistryReadResult::Failed, {}};
+  }
+
+  std::array<char, telemetry_internal::kMaxDeviceCensusStateSize + 1> buffer{};
+  DWORD type = 0;
+  DWORD size = static_cast<DWORD>(buffer.size());
+  const LSTATUS query_status = ::RegQueryValueExA(
+      key, kDeviceCensusRegistryValue, nullptr, &type,
+      reinterpret_cast<LPBYTE>(buffer.data()), &size);
+  ::RegCloseKey(key);
+
+  if (query_status == ERROR_FILE_NOT_FOUND) {
+    return {RegistryReadResult::Missing, {}};
+  }
+  if (query_status != ERROR_SUCCESS) {
+    return {RegistryReadResult::Failed, {}};
+  }
+  if (type != REG_SZ || size == 0 || size > buffer.size()) {
+    return {RegistryReadResult::Invalid, {}};
+  }
+
+  buffer.back() = '\0';
+  return {RegistryReadResult::Valid, std::string(buffer.data())};
+}
+
+bool WriteCensusRegistryValue(std::string_view state) {
+  HKEY key{};
+  if (::RegCreateKeyExA(HKEY_CURRENT_USER, kDeviceIdRegistryKey, 0, nullptr,
+                        REG_OPTION_NON_VOLATILE, KEY_WRITE | KEY_WOW64_64KEY,
+                        nullptr, &key, nullptr) != ERROR_SUCCESS) {
+    return false;
+  }
+
+  const std::string state_string{state};
+  const LSTATUS status = ::RegSetValueExA(
+      key, kDeviceCensusRegistryValue, 0, REG_SZ,
+      reinterpret_cast<const BYTE*>(state_string.c_str()),
+      static_cast<DWORD>(state_string.size() + 1));
+  ::RegCloseKey(key);
+  return status == ERROR_SUCCESS;
+}
+
 std::string GetEnvironmentValue(const char* name) {
   constexpr DWORD kMaxEnvironmentValueSize = 32767;
   std::string value(kMaxEnvironmentValueSize, '\0');
@@ -240,6 +294,52 @@ std::string DeviceId::GetStatusString() {
     default:
       return "Unknown";
   }
+}
+
+bool DeviceId::RecordCensusActivity(
+    int64_t utc_day,
+    std::string_view library_version,
+    bool emit_current_day,
+    const std::function<void(
+        int64_t, const std::vector<std::string>&)>& emit_completed_day) {
+  if (utc_day < 0 ||
+      !telemetry_internal::IsValidDeviceCensusVersion(library_version) ||
+      !emit_completed_day) {
+    return false;
+  }
+
+  std::string device_id;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    InitializeInternal();
+    if (status_ == DeviceIdStatus::Failed) {
+      return false;
+    }
+    device_id = device_id_;
+  }
+
+  ScopedDeviceIdMutex census_lock(L"OnnxRuntime.DeviceCensus");
+  if (!census_lock) {
+    return false;
+  }
+
+  const RegistryRead existing = ReadCensusRegistryValue();
+  if (existing.result == RegistryReadResult::Failed) {
+    return false;
+  }
+
+  std::optional<telemetry_internal::DeviceCensusState> state;
+  if (existing.result == RegistryReadResult::Valid) {
+    state = telemetry_internal::ParseDeviceCensusState(existing.value);
+  }
+
+  return telemetry_internal::UpdateDeviceCensusState(
+      std::move(state), device_id, utc_day, library_version, emit_current_day,
+      [](const telemetry_internal::DeviceCensusState& updated_state) {
+        return WriteCensusRegistryValue(
+            telemetry_internal::SerializeDeviceCensusState(updated_state));
+      },
+      emit_completed_day);
 }
 
 bool DeviceId::IsValidGUID(const std::string& value) {

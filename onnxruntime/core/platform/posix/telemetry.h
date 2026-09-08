@@ -105,9 +105,11 @@ class PosixTelemetry : public Telemetry {
                           const std::vector<std::string>& available_execution_provider_ids) const override;
 
   void LogModelLoadStart(uint32_t session_id) const override;
-  void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const override;
+  void LogModelLoadEndWithDuration(uint32_t session_id, const common::Status& status,
+                                   int64_t duration_us) const override;
 
-  void LogSessionCreationEnd(uint32_t session_id, const common::Status& status) const override;
+  void LogSessionCreationEndWithDuration(uint32_t session_id, const common::Status& status,
+                                         int64_t duration_us) const override;
 
   void LogEpDeviceUsage(uint32_t session_id,
                         const std::string& ep_type,
@@ -121,9 +123,20 @@ class PosixTelemetry : public Telemetry {
                         uint32_t total_runs_since_last,
                         int64_t total_run_duration_since_last) const override;
 
+  void LogEpDeviceInventory(uint32_t session_id,
+                            const std::string& ep_type,
+                            const std::string& hardware_device_type,
+                            uint32_t hardware_vendor_id,
+                            uint32_t hardware_device_id,
+                            const std::string& hardware_vendor,
+                            const std::string& ep_vendor,
+                            const std::string& ep_version,
+                            int assigned_node_count) const override;
+
   void LogRegisterEpLibraryStart(const std::string& registration_name) const override;
-  void LogRegisterEpLibraryEnd(const std::string& registration_name,
-                               const common::Status& status) const override;
+  void LogRegisterEpLibraryEndWithDuration(const std::string& registration_name,
+                                           const common::Status& status,
+                                           int64_t duration_us) const override;
   void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
                                        const std::string& lib_path) const override;
 
@@ -146,9 +159,7 @@ class PosixTelemetry : public Telemetry {
 
   // Safe async event logging.
   void LogEventAsync(::Microsoft::Applications::Events::EventProperties&& props) const;
-
-  // Log system resource metrics
-  void LogSystemMetrics(uint32_t session_id) const;
+  void RecordCensusActivity(bool emit_current_day) const;
 
   // All shared telemetry state below is static: PosixTelemetry is a process-wide singleton whose
   // lifetime is gated by global_register_count_ (the first instance initializes the SDK, the last
@@ -174,6 +185,9 @@ class PosixTelemetry : public Telemetry {
 
   // Process info tracking
   static std::atomic<bool> process_info_logged_;
+  static std::atomic<int64_t> census_utc_day_;
+  static std::atomic<bool> census_emit_current_day_pending_;
+  static std::mutex census_mutex_;
 
   // Global registration count for singleton behavior
   static std::atomic<uint32_t> global_register_count_;

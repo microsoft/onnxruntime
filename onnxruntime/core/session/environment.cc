@@ -564,55 +564,60 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
                                                      std::unique_ptr<EpLibrary> ep_library,
                                                      const std::vector<EpFactoryInternal*>& internal_factories) {
   const Env& env = Env::Default();
+  const TimePoint tp = std::chrono::high_resolution_clock::now();
   env.GetTelemetryProvider().LogRegisterEpLibraryStart(registration_name);
 
   if (ep_libraries_.count(registration_name) > 0) {
     auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
-    env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status);
+    env.GetTelemetryProvider().LogRegisterEpLibraryEndWithDuration(
+        registration_name, status, TimeDiffMicroSeconds(tp));
     return status;
   }
 
   auto status = Status::OK();
 
   ORT_TRY {
-    // create the EpInfo which loads the library if required
-    std::unique_ptr<EpInfo> ep_info = nullptr;
-    ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
+    status = [&]() -> Status {
+      // create the EpInfo which loads the library if required
+      std::unique_ptr<EpInfo> ep_info = nullptr;
+      ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
 
-    // add the pointers to the OrtEpDevice instances to our global list
-    execution_devices_.reserve(execution_devices_.size() + ep_info->execution_devices.size());
-    for (const auto& ed : ep_info->execution_devices) {
-      execution_devices_.push_back(ed.get());
+      // add the pointers to the OrtEpDevice instances to our global list
+      execution_devices_.reserve(execution_devices_.size() + ep_info->execution_devices.size());
+      for (const auto& ed : ep_info->execution_devices) {
+        execution_devices_.push_back(ed.get());
 
-      // add shared allocators so they're available without an inference session being required.
-      // we don't replace an existing allocator as we just need one to exist for the OrtMemoryInfo and we don't want
-      // to blow away any custom allocators previously added by the user.
-      if (ed->device_memory_info != nullptr) {
-        ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->device_memory_info, OrtDeviceAllocator, nullptr,
-                                                      nullptr, /*replace_existing*/ false));
+        // add shared allocators so they're available without an inference session being required.
+        // we don't replace an existing allocator as we just need one to exist for the OrtMemoryInfo and we don't want
+        // to blow away any custom allocators previously added by the user.
+        if (ed->device_memory_info != nullptr) {
+          ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->device_memory_info, OrtDeviceAllocator, nullptr,
+                                                        nullptr, /*replace_existing*/ false));
+        }
+
+        if (ed->host_accessible_memory_info != nullptr) {
+          ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->host_accessible_memory_info, OrtDeviceAllocator,
+                                                        nullptr, nullptr, /*replace_existing*/ false));
+        }
       }
 
-      if (ed->host_accessible_memory_info != nullptr) {
-        ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->host_accessible_memory_info, OrtDeviceAllocator,
-                                                      nullptr, nullptr, /*replace_existing*/ false));
+      for (auto* factory : ep_info->factories) {
+        std::unique_ptr<plugin_ep::DataTransfer> data_transfer;
+        ORT_RETURN_IF_ERROR(CreateDataTransferForFactory(*factory, data_transfer));
+
+        if (data_transfer) {
+          ep_info->data_transfers.push_back(data_transfer.get());  // store so we can unregister in the unload
+          ORT_RETURN_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::move(data_transfer)));
+        }
       }
-    }
 
-    for (auto* factory : ep_info->factories) {
-      std::unique_ptr<plugin_ep::DataTransfer> data_transfer;
-      ORT_RETURN_IF_ERROR(CreateDataTransferForFactory(*factory, data_transfer));
-
-      if (data_transfer) {
-        ep_info->data_transfers.push_back(data_transfer.get());  // store so we can unregister in the unload
-        ORT_RETURN_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::move(data_transfer)));
+      for (const auto& internal_factory : internal_factories) {
+        internal_ep_factories_.insert(internal_factory);
       }
-    }
 
-    for (const auto& internal_factory : internal_factories) {
-      internal_ep_factories_.insert(internal_factory);
-    }
-
-    ep_libraries_[registration_name] = std::move(ep_info);
+      ep_libraries_[registration_name] = std::move(ep_info);
+      return Status::OK();
+    }();
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -621,7 +626,8 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     });
   }
 
-  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status);
+  env.GetTelemetryProvider().LogRegisterEpLibraryEndWithDuration(
+      registration_name, status, TimeDiffMicroSeconds(tp));
   return status;
 }
 
