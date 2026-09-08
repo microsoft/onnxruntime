@@ -456,11 +456,6 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       }
     });
 
-    CommandRecordingState environment_recording;
-    auto& recording = impl.ep_ ? impl.ep_->Recording() : environment_recording;
-    auto& buffer_manager = impl.ep_ ? impl.ep_->BufferManager() : impl.context_->BufferManager();
-    DataTransferImpl transfer(buffer_manager, recording);
-
     for (size_t idx = 0; idx < num_tensors; ++idx) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
       Ort::ConstValue src_value{src_tensors[idx]};
@@ -481,12 +476,17 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       void* dst_data = dst_tensor.MutableDataRaw();
       bool dst_is_gpu = dst_tensor.Location().device.Type() == OrtDevice::GPU;
 #endif
-      auto status = transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
+      auto status = impl.ep_
+                        ? DataTransferImpl(impl.ep_->BufferManager(), impl.ep_->Recording())
+                              .CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size)
+                        : CopyTensorWithLocalEncoder(*impl.context_, src_data, src_is_gpu, dst_data, dst_is_gpu, size);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }
     }
-    ORT_THROW_IF_ERROR(FlushAndWait(*impl.context_, buffer_manager, recording));
+    if (impl.ep_) {
+      ORT_THROW_IF_ERROR(FlushAndWait(*impl.context_, impl.ep_->BufferManager(), impl.ep_->Recording()));
+    }
     return nullptr;
   }
 

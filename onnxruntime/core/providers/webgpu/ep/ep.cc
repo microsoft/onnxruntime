@@ -9,9 +9,7 @@
 #include "core/framework/kernel_registry.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
-#include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/allocator.h"
-#include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
 #include "ep/get_capability_utils.h"
@@ -40,7 +38,6 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
   CreateAllocator = CreateAllocatorImpl;
-  Sync = SyncImpl;
   GetCompiledModelCompatibilityInfo = nullptr;  // Not a compiled EP
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
   IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
@@ -252,9 +249,6 @@ OrtStatus* ORT_API_CALL Ep::OnRunEndImpl(_In_ OrtEp* this_ptr,
     return Api().ort.CreateStatus(static_cast<OrtErrorCode>(status.Code()),
                                   status.ErrorMessage().c_str());
   }
-  if (sync_stream) {
-    return SyncImpl(this_ptr);
-  }
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
@@ -302,14 +296,6 @@ OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL Ep::GetGraphCaptureNodeAssignme
     _In_ const OrtEp* this_ptr) noexcept {
   auto* ep = static_cast<const Ep*>(this_ptr);
   return ep->EpImpl()->GetGraphCaptureNodeAssignmentPolicy();
-}
-
-OrtStatus* ORT_API_CALL Ep::SyncImpl(OrtEp* this_ptr) noexcept {
-  EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  auto& ep = *static_cast<WebGpuExecutionProvider*>(static_cast<Ep*>(this_ptr)->EpImpl());
-  ORT_THROW_IF_ERROR(FlushAndWait(WebGpuContextFactory::GetContext(ep.GetDeviceId()), ep.BufferManager(), ep.Recording()));
-  return nullptr;
-  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,

@@ -526,6 +526,51 @@ TEST_F(PluginEpWebGpuConcurrency, SharedAllocatorCreatesAndCopiesConcurrently) {
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
+TEST_F(PluginEpWebGpuConcurrency, EnvironmentCopiesBatchedEmptyAndUnalignedTensors) {
+  constexpr std::array<int64_t, 7> byte_counts{0, 1, 3, 4, 5, 16, 17};
+  constexpr size_t kCapacity = 20;
+  constexpr uint8_t kSentinel = 0xcc;
+  auto allocator = CreateSharedAllocator();
+  ASSERT_NE(allocator, nullptr);
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::array<std::array<uint8_t, kCapacity>, byte_counts.size()> input_data{};
+  std::array<std::array<uint8_t, kCapacity>, byte_counts.size()> output_data{};
+  std::vector<Ort::Value> cpu_inputs;
+  std::vector<Ort::Value> gpu_inputs;
+  std::vector<Ort::Value> gpu_outputs;
+  std::vector<Ort::Value> cpu_outputs;
+  cpu_inputs.reserve(byte_counts.size());
+  gpu_inputs.reserve(byte_counts.size());
+  gpu_outputs.reserve(byte_counts.size());
+  cpu_outputs.reserve(byte_counts.size());
+  for (size_t tensor_index = 0; tensor_index < byte_counts.size(); ++tensor_index) {
+    const auto byte_count = static_cast<size_t>(byte_counts[tensor_index]);
+    for (size_t byte_index = 0; byte_index < kCapacity; ++byte_index) {
+      input_data[tensor_index][byte_index] = static_cast<uint8_t>(tensor_index * kCapacity + byte_index + 1);
+    }
+    output_data[tensor_index].fill(kSentinel);
+    cpu_inputs.push_back(Ort::Value::CreateTensor<uint8_t>(
+        cpu_memory, input_data[tensor_index].data(), byte_count, &byte_counts[tensor_index], 1));
+    gpu_inputs.push_back(Ort::Value::CreateTensor<uint8_t>(allocator, &byte_counts[tensor_index], 1));
+    gpu_outputs.push_back(Ort::Value::CreateTensor<uint8_t>(allocator, &byte_counts[tensor_index], 1));
+    cpu_outputs.push_back(Ort::Value::CreateTensor<uint8_t>(
+        cpu_memory, output_data[tensor_index].data(), byte_count, &byte_counts[tensor_index], 1));
+  }
+
+  ThrowOnError(ort_env->CopyTensors(cpu_inputs, gpu_inputs, nullptr));
+  ThrowOnError(ort_env->CopyTensors(gpu_inputs, gpu_outputs, nullptr));
+  ThrowOnError(ort_env->CopyTensors(gpu_outputs, cpu_outputs, nullptr));
+  for (size_t tensor_index = 0; tensor_index < byte_counts.size(); ++tensor_index) {
+    SCOPED_TRACE("byte count " + std::to_string(byte_counts[tensor_index]));
+    for (size_t byte_index = 0; byte_index < kCapacity; ++byte_index) {
+      const auto expected = byte_index < static_cast<size_t>(byte_counts[tensor_index])
+                                ? input_data[tensor_index][byte_index]
+                                : kSentinel;
+      EXPECT_EQ(output_data[tensor_index][byte_index], expected) << "byte " << byte_index;
+    }
+  }
+}
+
 TEST_F(PluginEpWebGpuConcurrency, SharedGpuCopyCompletesBeforeSessionRun) {
   auto session = CreateSession();
   auto allocator = CreateSharedAllocator();

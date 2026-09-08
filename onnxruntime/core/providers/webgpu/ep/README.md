@@ -35,9 +35,13 @@ The factory lock only protects bookkeeping, not EP construction or Session execu
 Revisit these assumptions if ORT's factory calling sequence changes.
 
 Environment allocators create and release Dawn buffers directly, without using the shared
-buffer cache or Session recording state. Each environment `CopyTensors` call uses local
-recording state and completes its copies before returning. Environment allocation and copies
-on independent tensors may run concurrently with Session inference.
+buffer cache or Session recording state. Environment transfers also bypass `BufferManager`
+and `CommandRecordingState`: each copy uses a local Dawn encoder and staging buffer as needed,
+submits directly to the device queue, and completes before returning. Downloads wait for
+`MapAsync`; uploads and device copies wait for submitted queue work. Mapped upload targets
+are written and unmapped directly. The shared context is retained only for device lifetime,
+device access, and the platform wait helper, not command recording or cache refresh.
+Environment allocation and copies on independent tensors may run concurrently with Session inference.
 
 Session allocators still reuse cached buffers. The plugin's Session device allocator submits
 cached-buffer clears before allocation returns, including during `Run`. This orders the clears
@@ -49,13 +53,18 @@ until the advanced contract is established. Tensor data and lifetimes must be sy
 the caller regardless of allocator locking.
 
 The plugin does not register synchronization streams or support stream overrides. Session
-data transfers are synchronous; `OrtEp::Sync` and the default run-end synchronization submit
-and wait for Session work. No ORT stream support is needed for this routing.
+data transfers are synchronous and use their owning Session recording. Ordinary Run and graph
+replay still submit pending commands, but do not add a queue-completion wait at run end.
+`OrtEp::Sync` is not implemented, restoring the earlier WebGPU behavior: I/O Binding's
+`SynchronizeInputs` and `SynchronizeOutputs` use the default no-op Sync and do not guarantee
+GPU completion. Subsequent work on the same queue is ordered by submission; an explicit
+output download waits for CPU-readable results. No ORT stream support is needed for this routing.
 
 AutoEP tests cover CPU I/O, graph-internal CPU/GPU copies, serial and concurrent Session creation,
 execution on other threads after creation, concurrent Sessions with environment copies, and
-Run-external cached-buffer clearing. Graph capture/replay is covered for independent Sessions
-with fixed GPU I/O. Concurrent profiling, graph capture combined with same-Session allocator/Run
+Run-external cached-buffer clearing. Environment copy tests include batched zero-sized and
+non-four-byte-aligned tensors with host-side output bounds checks. Graph capture/replay is
+covered for independent Sessions with fixed GPU I/O. Concurrent profiling, graph capture combined with same-Session allocator/Run
 interleaving, and cross-device transfers remain outside the tested contract.
 Performance must be measured separately.
 
