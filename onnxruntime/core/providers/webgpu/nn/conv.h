@@ -8,6 +8,7 @@
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 
 namespace onnxruntime {
@@ -32,6 +33,7 @@ class Conv : public WebGpuKernel {
  protected:
   ConvAttributes conv_attrs_;
   Activation activation_;
+  mutable MatMulOptImplCache matmul_compute_cache_;
   std::unique_ptr<Tensor> transposed_kernel_;  // should only have value when `is_initializer` AND `is_4D` AND `is_NHWC`
 };
 
