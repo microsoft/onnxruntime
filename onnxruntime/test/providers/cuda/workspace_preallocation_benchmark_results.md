@@ -435,6 +435,68 @@ decode latency differences are small and move in mixed directions across
 percentiles, so they do not establish a stable latency effect. The legacy memory
 reduction is the main result from this generation scenario.
 
+### Qwen 2.5 7B generation scenario
+
+Model:
+`qwen2.5-7b-instruct-cuda-gpu:4`
+
+This scenario uses the same 1,024-token prefill, 128 chained decode steps, and
+measurement counts as the Qwen 2.5 1.5B generation scenario.
+
+#### fpA-intB path
+
+| Metric | Baseline | Preallocated | Difference |
+|---|---:|---:|---:|
+| Planned workspace nodes | 0 | 141 | +141 |
+| Largest workspace | 0 B | 33,030,144 B (31.50 MiB) | +33,030,144 B |
+| Measured arena reservation | 565,723,392 B (539.52 MiB) | 567,935,488 B (541.63 MiB) | +2,212,096 B (+0.4%) |
+| Arena allocation calls | 433,498 | 430,270 | -0.7% |
+| WDDM inference peak | 6,142 MiB | 6,148 MiB | +6 MiB |
+| WDDM inference increase | 544 MiB | 550 MiB | +6 MiB |
+| End-to-end average | 4,428.60 ms | 4,466.76 ms | +0.9% |
+| End-to-end P50 | 4,421.69 ms | 4,445.41 ms | +0.5% |
+| End-to-end P90 | 4,458.47 ms | 4,506.49 ms | +1.1% |
+| Prefill average | 250.44 ms | 251.37 ms | +0.4% |
+| Decode average per token | 32.64 ms | 32.93 ms | +0.9% |
+| Decode P90 per token | 34.49 ms | 35.01 ms | +1.5% |
+| Decode P99 per token | 37.33 ms | 37.56 ms | +0.6% |
+| Initialization | 107.39 s | 116.42 s | +8.4% |
+
+As with the 1.5B model, fpA-intB workspace preallocation did not reduce the
+complete generation scenario's memory high-water mark. The arena reservation
+increased by approximately 2.11 MiB and the WDDM inference peak increased by
+6 MiB, despite a 31.5 MiB largest declared workspace.
+
+#### Legacy path
+
+| Metric | Baseline | Preallocated | Difference |
+|---|---:|---:|---:|
+| Planned workspace nodes | 0 | 141 | +141 |
+| Largest workspace | 0 B | 234,881,024 B (224.00 MiB) | +234,881,024 B |
+| Measured arena reservation | 1,006,125,312 B (959.52 MiB) | 670,695,936 B (639.63 MiB) | **-335,429,376 B (-33.3%)** |
+| Arena allocation calls | 431,378 | 429,686 | -0.4% |
+| WDDM inference peak | 6,520 MiB | 6,206 MiB | **-314 MiB** |
+| WDDM inference increase | 964 MiB | 650 MiB | **-314 MiB** |
+| End-to-end average | 4,620.63 ms | 4,555.02 ms | -1.4% |
+| End-to-end P50 | 4,604.12 ms | 4,548.14 ms | -1.2% |
+| End-to-end P90 | 4,683.44 ms | 4,606.32 ms | -1.6% |
+| Prefill average | 276.13 ms | 274.15 ms | -0.7% |
+| Decode average per token | 33.94 ms | 33.44 ms | -1.5% |
+| Decode P90 per token | 36.66 ms | 35.78 ms | -2.4% |
+| Decode P99 per token | 41.13 ms | 39.92 ms | -3.0% |
+| Initialization | 4.16 s | 3.75 s | -9.8% |
+
+Legacy workspace preallocation reduced the measured arena reservation by
+335,429,376 bytes (approximately 319.89 MiB) and the process-scoped WDDM
+inference peak by 314 MiB. This reduction is larger than the 224 MiB largest
+individual workspace because placing workspaces in the activation memory pattern
+also changed BFC region packing and the scenario's allocation high-water mark.
+
+The legacy latency measurements were 1-3% faster across the reported averages
+and percentiles, while the fpA-intB measurements were approximately 1% slower.
+These remain single paired measurements and do not establish a stable latency
+effect. The substantial legacy memory reduction is the primary result.
+
 ## NVIDIA T1000
 
 The T1000 runs predate the initialization-breakdown instrumentation. Their
