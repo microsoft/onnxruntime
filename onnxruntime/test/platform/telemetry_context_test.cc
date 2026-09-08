@@ -34,6 +34,23 @@ TEST(TelemetryContextTest, SuppressesUnneededCommonContext) {
   for (const char* field : telemetry_internal::kSuppressedCommonContextFields) {
     EXPECT_EQ(context.Fields().at(field), "");
   }
+  EXPECT_EQ(context.Fields().count("AppInfo.Id"), 0);
+  EXPECT_EQ(context.Fields().count("AppInfo.Name"), 0);
+}
+
+TEST(TelemetryContextTest, SetsApplicationNameFromProcessName) {
+  RecordingSemanticContext context;
+  telemetry_internal::SetApplicationNameFromProcessName(context, "onnxruntime_test_all");
+
+  ASSERT_EQ(context.Fields().size(), 1);
+  EXPECT_EQ(context.Fields().at("AppInfo.Name"), "onnxruntime_test_all");
+}
+
+TEST(TelemetryContextTest, PreservesSdkApplicationNameFallbackWhenProcessNameIsUnavailable) {
+  RecordingSemanticContext context;
+  telemetry_internal::SetApplicationNameFromProcessName(context, "");
+
+  EXPECT_TRUE(context.Fields().empty());
 }
 
 TEST(TelemetryContextTest, SuppressesNetworkContextAfterProcessInfo) {

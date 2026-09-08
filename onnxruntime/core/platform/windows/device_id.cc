@@ -8,12 +8,14 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "core/platform/device_census.h"
 #include "core/platform/telemetry_guid.h"
 
 namespace onnxruntime {
@@ -21,6 +23,7 @@ namespace {
 
 constexpr char kDeviceIdRegistryKey[] = "SOFTWARE\\Microsoft\\DeveloperTools\\.onnxruntime";
 constexpr char kDeviceIdRegistryValue[] = "deviceid";
+constexpr char kDeviceCensusRegistryValue[] = "devicecensus.state";
 constexpr size_t kMaxDeviceIdSize = 256;
 
 enum class RegistryReadResult {
@@ -55,7 +58,7 @@ class ScopedWinHandle {
 
 class ScopedDeviceIdMutex {
  public:
-  ScopedDeviceIdMutex() {
+  explicit ScopedDeviceIdMutex(const wchar_t* purpose = L"OnnxRuntime.DeviceId") {
     HANDLE token{};
     if (!::OpenProcessToken(::GetCurrentProcess(), TOKEN_QUERY, &token)) {
       return;
@@ -88,7 +91,8 @@ class ScopedDeviceIdMutex {
 
     std::array<wchar_t, 96> mutex_name{};
     _snwprintf_s(mutex_name.data(), mutex_name.size(), _TRUNCATE,
-                 L"Global\\Microsoft.DeveloperTools.OnnxRuntime.DeviceId.%016llx",
+                 L"Global\\Microsoft.DeveloperTools.%ls.%016llx",
+                 purpose,
                  static_cast<unsigned long long>(sid_hash));
     handle_ = ::CreateMutexW(nullptr, FALSE, mutex_name.data());
     if (handle_ == nullptr) {
@@ -191,6 +195,75 @@ bool WriteDeviceIdRegistryValue(const std::string& value) {
   return status == ERROR_SUCCESS;
 }
 
+RegistryRead ReadCensusRegistryValue() {
+  HKEY key{};
+  const LSTATUS open_status =
+      ::RegOpenKeyExA(HKEY_CURRENT_USER, kDeviceIdRegistryKey, 0,
+                      KEY_READ | KEY_WOW64_64KEY, &key);
+  if (open_status == ERROR_FILE_NOT_FOUND) {
+    return {RegistryReadResult::Missing, {}};
+  }
+  if (open_status != ERROR_SUCCESS) {
+    return {RegistryReadResult::Failed, {}};
+  }
+
+  std::array<char, telemetry_internal::kMaxDeviceCensusStateSize + 1> buffer{};
+  DWORD type = 0;
+  DWORD size = static_cast<DWORD>(buffer.size());
+  const LSTATUS query_status = ::RegQueryValueExA(
+      key, kDeviceCensusRegistryValue, nullptr, &type,
+      reinterpret_cast<LPBYTE>(buffer.data()), &size);
+  ::RegCloseKey(key);
+
+  if (query_status == ERROR_FILE_NOT_FOUND) {
+    return {RegistryReadResult::Missing, {}};
+  }
+  if (query_status != ERROR_SUCCESS) {
+    return {RegistryReadResult::Failed, {}};
+  }
+  if (type != REG_SZ || size == 0 || size > buffer.size()) {
+    return {RegistryReadResult::Invalid, {}};
+  }
+
+  buffer.back() = '\0';
+  return {RegistryReadResult::Valid, std::string(buffer.data())};
+}
+
+bool WriteCensusRegistryValue(std::string_view state) {
+  HKEY key{};
+  if (::RegCreateKeyExA(HKEY_CURRENT_USER, kDeviceIdRegistryKey, 0, nullptr,
+                        REG_OPTION_NON_VOLATILE, KEY_WRITE | KEY_WOW64_64KEY,
+                        nullptr, &key, nullptr) != ERROR_SUCCESS) {
+    return false;
+  }
+
+  const std::string state_string{state};
+  const LSTATUS status = ::RegSetValueExA(
+      key, kDeviceCensusRegistryValue, 0, REG_SZ,
+      reinterpret_cast<const BYTE*>(state_string.c_str()),
+      static_cast<DWORD>(state_string.size() + 1));
+  ::RegCloseKey(key);
+  return status == ERROR_SUCCESS;
+}
+
+std::string GetEnvironmentValue(const char* name) {
+  char* value = nullptr;
+  size_t length = 0;
+  if (_dupenv_s(&value, &length, name) != 0 || value == nullptr || length <= 1) {
+    std::free(value);
+    return {};
+  }
+
+  std::string result(value);
+  std::free(value);
+  return result;
+}
+
+std::filesystem::path GetAbsoluteEnvironmentPath(const char* name) {
+  std::filesystem::path path(GetEnvironmentValue(name));
+  return path.is_absolute() ? path : std::filesystem::path{};
+}
+
 }  // namespace
 
 DeviceId& DeviceId::Instance() {
@@ -225,22 +298,104 @@ std::string DeviceId::GetStatusString() {
   }
 }
 
+bool DeviceId::RecordCensusActivity(
+    int64_t utc_day,
+    std::string_view library_version,
+    const std::function<void(
+        int64_t, const std::vector<std::string>&)>& emit_completed_day) {
+  if (utc_day < 0 ||
+      !telemetry_internal::IsValidDeviceCensusVersion(library_version) ||
+      !emit_completed_day) {
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    InitializeInternal();
+    if (status_ == DeviceIdStatus::Failed) {
+      return false;
+    }
+  }
+
+  ScopedDeviceIdMutex census_lock(L"DeviceCensus");
+  if (!census_lock) {
+    return false;
+  }
+
+  const RegistryRead existing = ReadCensusRegistryValue();
+  if (existing.result == RegistryReadResult::Failed) {
+    return false;
+  }
+
+  std::optional<telemetry_internal::DeviceCensusState> state;
+  if (existing.result == RegistryReadResult::Valid) {
+    state = telemetry_internal::ParseDeviceCensusState(existing.value);
+  }
+
+  if (!state) {
+    telemetry_internal::DeviceCensusState new_state{
+        telemetry_internal::kDeviceCensusSchemaVersion, utc_day, {}};
+    telemetry_internal::AddDeviceCensusVersion(
+        new_state, std::string(library_version));
+    return WriteCensusRegistryValue(
+        telemetry_internal::SerializeDeviceCensusState(new_state));
+  }
+
+  if (state->schema_version !=
+      telemetry_internal::kDeviceCensusSchemaVersion) {
+    return false;
+  }
+
+  if (state->utc_day > utc_day) {
+    return false;
+  }
+
+  if (state->utc_day == utc_day) {
+    if (!telemetry_internal::AddDeviceCensusVersion(
+            *state, std::string(library_version))) {
+      return false;
+    }
+    return WriteCensusRegistryValue(
+        telemetry_internal::SerializeDeviceCensusState(*state));
+  }
+
+  emit_completed_day(state->utc_day, state->versions);
+
+  telemetry_internal::DeviceCensusState new_state{
+      telemetry_internal::kDeviceCensusSchemaVersion, utc_day, {}};
+  telemetry_internal::AddDeviceCensusVersion(
+      new_state, std::string(library_version));
+  return WriteCensusRegistryValue(
+      telemetry_internal::SerializeDeviceCensusState(new_state));
+}
+
 bool DeviceId::IsValidGUID(const std::string& value) {
   return IsValidGuid(value);
 }
 
 std::string DeviceId::GetStorageDirectory() {
-  char* local_app_data = nullptr;
-  size_t length = 0;
-  if (_dupenv_s(&local_app_data, &length, "LOCALAPPDATA") != 0 ||
-      local_app_data == nullptr || length <= 1) {
-    std::free(local_app_data);
-    return {};
+  for (const char* variable : {"LOCALAPPDATA", "APPDATA"}) {
+    const std::filesystem::path app_data = GetAbsoluteEnvironmentPath(variable);
+    if (!app_data.empty()) {
+      return (app_data / kDeviceIdDir).string();
+    }
   }
-  const std::filesystem::path path =
-      std::filesystem::path(local_app_data) / "Microsoft" / "DeveloperTools" / ".onnxruntime";
-  std::free(local_app_data);
-  return path.string();
+
+  std::filesystem::path home = GetAbsoluteEnvironmentPath("HOME");
+  if (home.empty()) {
+    home = GetAbsoluteEnvironmentPath("USERPROFILE");
+  }
+  if (home.empty()) {
+    const std::string home_drive = GetEnvironmentValue("HOMEDRIVE");
+    const std::string home_path = GetEnvironmentValue("HOMEPATH");
+    const std::filesystem::path combined_home(home_drive + home_path);
+    if (combined_home.is_absolute()) {
+      home = combined_home;
+    }
+  }
+  return home.empty()
+             ? std::string{}
+             : (home / "AppData" / "Local" / kDeviceIdDir).string();
 }
 
 std::string DeviceId::EnsureStorageDirectory() {
