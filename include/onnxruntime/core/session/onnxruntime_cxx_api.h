@@ -208,6 +208,14 @@ std::string GetBuildInfoString();
 /// <returns>vector of strings</returns>
 std::vector<std::string> GetAvailableProviders();
 
+/** rief Set the global random seed used by ONNX Runtime random operators.
+ *
+ * Wraps OrtApi::SetSeed.
+ *
+ * \param[in] seed The random seed value to use.
+ */
+void SetSeed(const int64_t seed);
+
 /// <summary>
 /// This returns a reference to the ORT C Model Editor API. Used if building or augmenting a model at runtime.
 /// </summary>
