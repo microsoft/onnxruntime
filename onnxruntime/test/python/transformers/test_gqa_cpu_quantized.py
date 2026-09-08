@@ -9,8 +9,7 @@ import math
 import unittest
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, load_model_from_string
 
 from onnxruntime import InferenceSession, SessionOptions
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail
@@ -2508,7 +2507,7 @@ class TestMixedPrecisionGroupQueryAttention(unittest.TestCase):
     def test_bad_cache_format_version_rejected(self):
         model = create_mixed_precision_gqa_graph(1, 8, 8, 8, 0, 4, 2, 2, 128, 64, sink=2, recent=2)
         # Patch cache_format_version to an unsupported value.
-        m = onnx.load_model_from_string(model)
+        m = load_model_from_string(model)
         for attr in m.graph.node[0].attribute:
             if attr.name == "cache_format_version":
                 attr.i = 2

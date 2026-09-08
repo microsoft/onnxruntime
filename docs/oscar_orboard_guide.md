@@ -1,17 +1,21 @@
 # Enabling OSCAR 2-bit KV cache
 
-The OSCAR 2-bit KV cache is an in-place extension of `com.microsoft.GroupQueryAttention` (GQA).
-It applies to **any** ONNX model whose attention is exported as GQA nodes with the KV cache exposed
-as graph I/O. Converting a model is: (1) an **offline preparation** step that builds the spectral
-rotations and rewrites the graph, then (2) two session-config entries at inference (plus rolling an
-extra KV window if you use mixed precision). CPU EP, `float` and `float16` compute.
+The OSCAR 2-bit KV cache is exposed as its own CPU operator,
+**`com.microsoft.MixedPrecisionGroupQueryAttention`** (MixedPrecisionGQA) — a specialization of
+`com.microsoft.GroupQueryAttention` (GQA) in which INT2 per-group (PER_GROUP) asymmetric
+quantization is *inherent* to the op (there is no bit-width or quantization-mode selector). It applies
+to **any** ONNX model whose attention is exported as GQA nodes with the KV cache exposed as graph I/O.
+Converting a model is: (1) an **offline preparation** step that builds the spectral rotations and
+rewrites the graph — **swapping each GQA node for a `MixedPrecisionGroupQueryAttention` node** — then
+(2) running on the CPU EP. Window sizes and cache layout are baked into the node as attributes, so **no
+session-config entries are required**. CPU EP, `float` and `float16` compute.
 
 Notation used below: `L` = number of GQA layers, `H_kv` = KV heads, `H_q` = query heads,
 `D` = `head_size`, `G` = `kv_quant_group_size`.
 
 ## Step 0 — start from a GQA export
 
-OSCAR patches **`GroupQueryAttention`** nodes, so the model must be exported with GQA (not
+MixedPrecisionGQA replaces **`GroupQueryAttention`** nodes, so the model must be exported with GQA (not
 `MultiHeadAttention`) and expose the cache as `past_key_values.N.key/value` → `present.N.key/value`.
 Any exporter that produces `com.microsoft.GroupQueryAttention` works (e.g. the ONNX Runtime GenAI
 model builder). If you only have an fp16 MHA export, re-export/convert to an fp16 **GQA** graph first.
@@ -56,7 +60,9 @@ also chosen at this stage (typical `0.90–0.97`; `1.0` = no clipping).
 
 For every GQA node in the graph:
 
-1. add the PER_GROUP 2-bit **attributes** (Step 2);
+1. **replace** the `com.microsoft.GroupQueryAttention` node with a
+   `com.microsoft.MixedPrecisionGroupQueryAttention` node, carrying over the shared attributes
+   (`num_heads`, `kv_num_heads`, `scale`, `do_rotary`, …) and adding the 2-bit attributes (Step 2);
 2. **retype** the four KV tensors `past/present .key/.value` from `FLOAT[B, H_kv, S, D]` to
    `UINT8[B, H_kv, S, packed_head_size]` (Step 3);
 3. *(optional, mixed precision)* add the high-precision window I/O and wire it into node inputs
@@ -70,16 +76,21 @@ the new model as usual.
 
 ## Step 2 — node attributes
 
+Set on the `MixedPrecisionGroupQueryAttention` node (in addition to the shared GQA attributes such as
+`num_heads`, `kv_num_heads`, `scale`, `do_rotary`, `local_window_size`, …):
+
 | Attribute | Value | Notes |
 |---|---|---|
-| `k_quant_type` / `v_quant_type` | `"PER_GROUP"` | selects the asymmetric per-group codec |
-| `kv_cache_bit_width` | `2` | |
 | `kv_quant_group_size` | `G`, e.g. `32`/`64` | must divide `D`; `0` = whole head is one group |
-| `k_quant_rho` / `v_quant_rho` | e.g. `0.96` / `0.92` | outlier-clip percentile `(0,1]`; `1.0` = no clip |
-| `kv_quant_metadata_fp16` | `0` / `1` | inline scale/zero as fp32 (default) or fp16 |
+| `k_quant_rho` / `v_quant_rho` | e.g. `0.96` / `0.92` | outlier-clip percentile `(0,1]`; `1.0` (default) = no clip |
+| `metadata_type` | `"fp32"` (default) / `"fp16"` | storage type for the inline per-group scale/zero-point metadata |
+| `sink_size` | e.g. `64` | leading tokens kept in high precision; `0` (default) = none |
+| `recent_size` | e.g. `256` | trailing tokens kept in high precision; `0` (default) = none |
+| `cache_format_version` | `1` | pins the packed 2-bit row layout; only version `1` is supported |
 
-Scales/zero-points are computed at append time and stored **inline** in the cache, so
-`k_scale`/`v_scale` inputs are unused.
+INT2 / PER_GROUP quantization is inherent to the op — there is **no** `k_quant_type`/`v_quant_type`,
+`kv_cache_bit_width`, or bit-width selector. Scales/zero-points are computed at append time and stored
+**inline** in the cache, so the reserved `k_scale`/`v_scale` inputs are unused.
 
 ## Step 3 — packed KV layout
 
@@ -87,29 +98,25 @@ Scales/zero-points are computed at append time and stored **inline** in the cach
 
 ```
 packed_head_size = D/4 + num_groups * 2 * meta_bytes
-num_groups = D / G ,  meta_bytes = 4 (fp32 metadata) | 2 (fp16 metadata)
+num_groups = D / G ,  meta_bytes = 4 (metadata_type="fp32") | 2 (metadata_type="fp16")
 ```
 
-Worked example (`D=128`, `G=64` → `num_groups=2`): `128/4 + 2·2·4 = 48 B` (fp32 metadata), or `40 B`
-with `kv_quant_metadata_fp16=1` (≈2.5 bits/element). Initialize the empty past as
+Worked example (`D=128`, `G=64` → `num_groups=2`): `128/4 + 2·2·4 = 48 B` (`metadata_type="fp32"`), or
+`40 B` with `metadata_type="fp16"` (≈2.5 bits/element). Initialize the empty past as
 `UINT8[B, H_kv, 0, packed_head_size]`.
 
-## Step 4 — mixed precision: I/O and how to drive it in the session
+## Step 4 — mixed precision: window attributes and I/O
 
-Keeps the first *sink* and last *recent* tokens unquantized; only the middle history is 2-bit.
+Keeps the first `sink_size` and last `recent_size` tokens unquantized; only the middle history is
+2-bit. The window sizes are **node attributes** (`sink_size` / `recent_size`, Step 2), so the cache
+partition is self-contained and shape inference does not depend on session configuration — there are
+**no** `gqa.kv_quant.*` session-config entries. If both are `0` the hp path is inert.
 
 **Graph I/O (added in Step 1b):**
 
-- **Inputs 16/17**: `past_hp_key` / `past_hp_value`, shape `(B, H_kv, sink+recent, D)`, **same dtype
-  as `query`** (fp32 or fp16 — independent of the uint8 2-bit cache).
+- **Inputs 16/17**: `past_hp_key` / `past_hp_value`, shape `(B, H_kv, sink_size+recent_size, D)`,
+  **same dtype as `query`** (fp32 or fp16 — independent of the uint8 2-bit cache).
 - **Outputs 4/5**: `present_hp_key` / `present_hp_value`.
-
-**Session-config** (window sizes; if unset, the hp path is inert):
-
-```python
-so.add_session_config_entry("gqa.kv_quant.sink", "64")
-so.add_session_config_entry("gqa.kv_quant.recent", "256")
-```
 
 **Driving it in the decode loop** — treat the hp tensors as a *second* KV cache: seed each layer
 with an empty hp past, then feed each step's `present_hp` back as the next `past_hp`. The kernel
@@ -131,8 +138,8 @@ for i in range(L):
     feeds[f"past_hp_key_values.{i}.value"] = out[f"present_hp.{i}.value"]
 ```
 
-For pure 2-bit (no mixed precision), omit all `*_hp_*` tensors and just roll the uint8
-`present`→`past`.
+For pure 2-bit (no mixed precision), leave `sink_size`/`recent_size` at `0`, omit all `*_hp_*`
+tensors, and just roll the uint8 `present`→`past`.
 
 ## Step 5 — spectral rotations (optional)
 
