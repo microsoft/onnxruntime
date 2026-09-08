@@ -4302,6 +4302,124 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         }
       });
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+  static const char* GatherQuantized_ver1_doc = R"DOC(
+GatherQuantized is a Gather over a low-precision floating point (FP8) quantized table with a per-block
+float scale factor, and no zero point (FP8 quantization is symmetric). It is similar to Gather
+(https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) and to
+com.microsoft.GatherBlockQuantized, with these differences:
+  1. Input `data` is a constant of an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz),
+     rather than an integer block-quantized type. There is no `zero_points` input: FP8 quantization is symmetric.
+  2. `data` is block-wise scaled along attribute `quantize_axis` with block size specified by attribute
+     `block_size`. `block_size` must be 0 (meaning the entire `quantize_axis` dimension forms a single
+     block, i.e. one scale per row) or a power of 2 and not smaller than 16.
+  3. Input `data`'s scale is specified by input `scales`, a constant tensor of the same rank as `data`
+     with one scale value per quantization block.
+  4. During op execution, `data` and `indices` are first used to gather rows exactly as in Gather. Each
+     gathered FP8 element is then converted to its floating point value and multiplied by the scale of
+     the block it belongs to, i.e. `output[...] = float(data[...]) * scales[block_index(...)]`.
+  5. The `output` and `scales` have the same type.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherQuantized)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(GatherQuantized_ver1_doc)
+      .Attr("gather_axis",
+            "(Optional) Which axis to gather on. Negative value means "
+            "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("quantize_axis",
+            "(Optional) Which axis to block-wise scale. Negative value means "
+            "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+            AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("block_size",
+            "(Optional) block size used for the scale granularity along quantize_axis. Must be 0 (the "
+            "whole quantize_axis dimension is a single block, i.e. one scale per row) or a power of 2 "
+            "and not smaller than 16.",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
+      .Input(0, "data", "Tensor of rank r >= 1, FP8 quantized, block-wise scaled.", "T1")
+      .Input(1,
+             "indices",
+             "Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] "
+             "along axis of size s. It is an error if any of the index values are out of bounds.",
+             "Tind")
+      .Input(2, "scales", "Per-block scale, same rank as data.", "T2")
+      .Output(0, "output", "Dequantized output tensor of rank q + (r - 1).", "T2")
+      .TypeConstraint("T1",
+                      {"tensor(float8e4m3fn)", "tensor(float8e4m3fnuz)", "tensor(float8e5m2)", "tensor(float8e5m2fnuz)"},
+                      "Constrain quantized data to FP8 types.")
+      .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain dequantized types.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 2, 0);
+
+        // The first 3 inputs must have shape.
+        if (!hasNInputShapes(ctx, 3)) {
+          return;
+        }
+        const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
+        const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        const TensorShapeProto& scales_shape = ctx.getInputType(2)->tensor_type().shape();
+
+        int r = data_shape.dim_size();
+        if (r <= 1) {
+          fail_shape_inference("data tensor must have rank > 1");
+        }
+
+        int gather_axis = static_cast<int>(getAttribute(ctx, "gather_axis", 0));
+        int quantize_axis = static_cast<int>(getAttribute(ctx, "quantize_axis", 1));
+        auto block_size = getAttribute(ctx, "block_size", 0);
+
+        if (gather_axis < -r || gather_axis >= r) {
+          fail_shape_inference("gather_axis must be in [-r, r-1]");
+        }
+        if (quantize_axis < -r || quantize_axis >= r) {
+          fail_shape_inference("quantize_axis must be in [-r, r-1]");
+        }
+        if (block_size < 0) {
+          fail_shape_inference("block_size must be non-negative");
+        }
+
+        gather_axis = (gather_axis + r) % r;
+        quantize_axis = (quantize_axis + r) % r;
+
+        if (scales_shape.dim_size() != r) {
+          fail_shape_inference("scales must have the same rank as data");
+        }
+
+        for (int i = 0; i < r; ++i) {
+          if (data_shape.dim(i).has_dim_value() && scales_shape.dim(i).has_dim_value()) {
+            if (i == quantize_axis) {
+              int64_t effective_block_size = block_size == 0 ? data_shape.dim(i).dim_value() : block_size;
+              if (effective_block_size > 0 &&
+                  (data_shape.dim(i).dim_value() + effective_block_size - 1) / effective_block_size !=
+                      scales_shape.dim(i).dim_value()) {
+                fail_shape_inference("data shape and scales shape do not match");
+              }
+            } else if (data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()) {
+              fail_shape_inference("data shape and scales shape do not match");
+            }
+          }
+        }
+
+        int q = indices_shape.dim_size();
+        auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        output_shape->clear_dim();
+        for (int i = 0; i < gather_axis; ++i) {
+          *output_shape->add_dim() = data_shape.dim(i);
+        }
+        for (int i = 0; i < q; ++i) {
+          *output_shape->add_dim() = indices_shape.dim(i);
+        }
+        for (int i = gather_axis + 1; i < r; ++i) {
+          *output_shape->add_dim() = data_shape.dim(i);
+        }
+      });
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
 #ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
       .SetDomain(kPytorchAtenDomain)
