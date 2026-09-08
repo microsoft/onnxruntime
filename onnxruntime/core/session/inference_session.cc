@@ -1680,23 +1680,28 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     GqaValueLayoutTransformer gqa_value_layout_transformer{&converted_gqa_value_boundaries};
     ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(gqa_value_layout_transformer, *session_logger_, graph));
 
-    // Requesting BNHS and converting nothing used to pass unremarked. Recursing to find where the GQA
-    // nodes actually are separates the harmless case from the one that silently leaves an
-    // application-visible boundary in the wrong layout, so the message can say which happened.
-    if (converted_gqa_value_boundaries.Empty()) {
-      const GqaNodeCounts gqa_nodes = CountGqaNodes(graph);
+    // A GroupQueryAttention inside a subgraph cannot be converted: its Value cache boundary may be
+    // carried in and out of the main graph, so the operator and the boundary live in different graphs
+    // and there is nothing to rewire from here. A warning does not preserve the option contract --
+    // the application would bind BNHS buffers to a boundary that is still BNSH, which passes input
+    // validation whenever the trailing dimensions are dynamic or equal -- so this fails.
+    //
+    // Checked whatever else happened, not only when nothing converted: a model with a convertible
+    // main-graph cache *and* a subgraph one would otherwise slip through on the strength of the part
+    // that did convert.
+    const GqaNodeCounts gqa_nodes = CountGqaNodes(graph);
+    if (gqa_nodes.in_subgraphs != 0) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "'", kOrtSessionOptionsGqaValueLayout, "' was set to '", kGqaValueLayoutBNHS, "' but ",
+          gqa_nodes.in_subgraphs, " GroupQueryAttention node(s) are inside a subgraph (a Loop body or BeamSearch "
+          "decoder), which this option cannot reach. Their Value cache boundary would stay BNSH while the "
+          "application supplied BNHS. Use '", kGqaValueLayoutBNSH, "', or a model whose GroupQueryAttention "
+          "nodes are in the main graph."));
+    }
 
-      if (gqa_nodes.in_subgraphs != 0) {
-        // The dangerous one: the operator is real but out of reach. Its Value cache boundary may well
-        // be on the main graph, carried in and out of the subgraph, so the application binds BNHS
-        // buffers to a boundary this option never converted. Not an error, because the transformer
-        // cannot rewire across the graph boundary, but it must not look like success.
-        LOGS(*session_logger_, WARNING)
-            << "'" << kOrtSessionOptionsGqaValueLayout << "' was set to '" << kGqaValueLayoutBNHS
-            << "' but no Value cache boundary was converted: all " << gqa_nodes.in_subgraphs
-            << " GroupQueryAttention node(s) are inside a subgraph (a Loop body or BeamSearch decoder), which "
-               "this option does not reach. Value cache buffers bound to this session are still BNSH.";
-      } else if (gqa_nodes.in_main_graph != 0) {
+    if (converted_gqa_value_boundaries.Empty()) {
+      if (gqa_nodes.in_main_graph != 0) {
         // GQA is present and reachable, so the per-node warnings from the transformer already said
         // why each operand was left alone. Summarize rather than repeat.
         LOGS(*session_logger_, WARNING)

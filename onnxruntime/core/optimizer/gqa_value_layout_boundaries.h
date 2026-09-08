@@ -52,6 +52,13 @@ bool IsGqaNonInitializerGraphInput(const Graph& graph, const NodeArg* arg);
 const NodeArg* TraceGqaBoundaryBackThroughDeviceCopies(const Graph& graph, const NodeArg* arg);
 const NodeArg* TraceGqaBoundaryForwardThroughDeviceCopies(const Graph& graph, const NodeArg* arg);
 
+// From an application boundary, walks past any device copies and returns the value-layout Transpose on
+// the other side, or nullptr if there is none. The inverse direction of the Trace* helpers above, for
+// the post-partition diagnostic: it starts from a recorded boundary name and asks whether the
+// Transpose is still there, which the same MemcpyFromHost / MemcpyToHost nodes would otherwise hide.
+const Node* FindValueLayoutTransposeAfterGraphInput(const Graph& graph, const std::string& boundary_name);
+const Node* FindValueLayoutTransposeBeforeGraphOutput(const Graph& graph, const std::string& boundary_name);
+
 // If this node's past_value already arrives through a value-layout Transpose from a graph input,
 // returns true and sets boundary_name to that graph input.
 bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name);

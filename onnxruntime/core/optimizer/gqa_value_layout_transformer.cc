@@ -575,23 +575,17 @@ InlinedVector<std::string> ReportUnfusedGqaValueLayoutTransposes(const Graph& gr
     unfused.push_back(boundary_name);
   };
 
+  // Both lookups go through the shared boundary helpers, which search past other readers of a BNHS
+  // boundary and through any device copies. Doing it by hand here was wrong twice over: requiring
+  // sole consumership suppressed the warning while the Transpose still ran, and assuming the
+  // Transpose sits directly on the boundary missed it entirely for a model saved from a non-CPU
+  // session, where MemcpyFromHost / MemcpyToHost sit in between.
   for (const auto& boundary_name : boundaries.past_value_inputs) {
-    // The graph input feeds the Transpose, so look at what consumes it. Search the consumers rather
-    // than requiring a single one: a BNHS boundary may legitimately have other BNHS readers, and
-    // demanding sole consumership here would suppress the warning while the Transpose still runs.
-    const Node* transpose = nullptr;
-    for (const Node* consumer : graph.GetConsumerNodes(boundary_name)) {
-      if (consumer != nullptr && IsGqaValueLayoutTranspose(*consumer)) {
-        transpose = consumer;
-        break;
-      }
-    }
-    report(boundary_name, transpose, "past_value");
+    report(boundary_name, FindValueLayoutTransposeAfterGraphInput(graph, boundary_name), "past_value");
   }
 
   for (const auto& boundary_name : boundaries.present_value_outputs) {
-    // The Transpose produces the graph output.
-    report(boundary_name, graph.GetProducerNode(boundary_name), "present_value");
+    report(boundary_name, FindValueLayoutTransposeBeforeGraphOutput(graph, boundary_name), "present_value");
   }
 
   return unfused;

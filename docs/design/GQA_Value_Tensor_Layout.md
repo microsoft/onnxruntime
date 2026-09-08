@@ -1,7 +1,7 @@
 # BNHS Value layout for GroupQueryAttention
 
 Status: partially implemented (see [Sequencing](#8-sequencing))
-Last updated: 2026-09-07
+Last updated: 2026-09-08
 
 ## Motivation
 
@@ -450,6 +450,14 @@ in place — both full-cache copies still execute, but there is no GQA node left
 old implementation reported nothing. Conversely, when the EP fuses the whole sequence, the boundary
 connects straight to the fused node and nothing is reported, which is correct.
 
+**A subgraph GroupQueryAttention fails a BNHS request.** `CountGqaNodes()` recurses, so a GQA inside a
+`Loop` body or `BeamSearch` decoder is detected -- and rejected. Its Value cache boundary may be
+carried in and out of the main graph, so the operator and the boundary are in different graphs and
+there is nothing to rewire; a warning would leave the application binding BNHS buffers to a BNSH
+boundary, which passes input validation whenever the trailing dimensions are dynamic or equal. The
+check runs regardless of whether other, main-graph boundaries converted: gating it on "nothing
+converted" let a mixed model through on the strength of the part that worked.
+
 **An explicit BNSH request is enforced; an absent option is not.** The distinction is between a claim
 and the absence of one, and `GetGqaValueLayout()` reports which it was rather than collapsing both to
 the default:
@@ -660,14 +668,14 @@ Anyone changing that behaviour should have to update this test deliberately.
 The warning does, however, say *which* case occurred. `CountGqaNodes()` recurses, so converting nothing
 is reported three ways rather than one:
 
-| Situation | Message |
+| Situation | Outcome |
 |---|---|
-| GQA only in subgraphs | names the count and says the option does not reach them; buffers are still BNSH |
-| GQA in the main graph, none in scope | points at the per-node warnings already logged |
-| No GQA at all | says the option has no effect |
+| GQA only in subgraphs | **initialization fails** (4.1) |
+| GQA in the main graph, none in scope | warning, pointing at the per-node warnings already logged |
+| No GQA at all | warning, saying the option has no effect |
 
-Only the first leaves an application-visible boundary in the wrong layout, so collapsing them into one
-"nothing was converted" message would bury the case that matters in the two that do not. The messages
+Separating them matters because only the first leaves an application-visible boundary in the wrong
+layout; a single "nothing was converted" message would bury it in two harmless cases. The two warnings
 are asserted from a captured session log, not merely assumed.
 
 **6.2** End-to-end numerical parity on the CPU EP, in the same test file:

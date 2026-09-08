@@ -318,7 +318,8 @@ ONNX_NAMESPACE::TypeProto MakeTensorType(int32_t elem_type, const std::vector<in
 // application binds -- past_value in, present_value out -- is on the main graph, carried in and out of
 // the Loop. This is the shape a decoder with an in-graph generation loop takes, and the case the
 // transformer cannot reach: it walks the main graph only, so it finds no GQA node here at all.
-Status BuildSubgraphOnlyGqaModel(const logging::Logger& logger, std::string& model_bytes) {
+Status BuildSubgraphOnlyGqaModel(const logging::Logger& logger, std::string& model_bytes,
+                                bool add_main_graph_gqa = false) {
   const std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 21}, {kMSDomain, 1}};
 
   const auto cache_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
@@ -393,9 +394,36 @@ Status BuildSubgraphOnlyGqaModel(const logging::Logger& logger, std::string& mod
   Node& loop = graph.AddNode("loop", "Loop", "", {&trip_count, &cond, &past_value}, {&present_value});
   loop.AddAttribute("body", body_proto);
 
-  graph.SetInputs({&query, &key, &value, &past_key, &past_value, &seqlens_k, &total_seq_len,
-                   &trip_count, &cond});
-  graph.SetOutputs({&present_value});
+  std::vector<const NodeArg*> graph_inputs{&query, &key, &value, &past_key, &past_value, &seqlens_k,
+                                           &total_seq_len, &trip_count, &cond};
+  std::vector<const NodeArg*> graph_outputs{&present_value};
+
+  if (add_main_graph_gqa) {
+    // A second, convertible cache entirely in the main graph, so the model is mixed: one boundary this
+    // option can honour and one it cannot.
+    auto& main_past_value = graph.GetOrCreateNodeArg("main_past_value", &cache_type);
+    auto& main_present_value = graph.GetOrCreateNodeArg("main_present_value", &cache_type);
+    auto& main_past_key = graph.GetOrCreateNodeArg("main_past_key", &cache_type);
+    auto& main_attention_out = graph.GetOrCreateNodeArg("main_attention_out", &query_type);
+    auto& main_present_key = graph.GetOrCreateNodeArg("main_present_key", &cache_type);
+
+    Node& main_gqa = graph.AddNode("main_gqa", "GroupQueryAttention", "",
+                                   {&query, &key, &value, &main_past_key, &main_past_value, &seqlens_k,
+                                    &total_seq_len},
+                                   {&main_attention_out, &main_present_key, &main_present_value},
+                                   nullptr, kMSDomain);
+    main_gqa.AddAttribute("num_heads", static_cast<int64_t>(kNumHeads));
+    main_gqa.AddAttribute("kv_num_heads", static_cast<int64_t>(kKvNumHeads));
+
+    graph_inputs.push_back(&main_past_key);
+    graph_inputs.push_back(&main_past_value);
+    graph_outputs.push_back(&main_attention_out);
+    graph_outputs.push_back(&main_present_key);
+    graph_outputs.push_back(&main_present_value);
+  }
+
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
   ORT_RETURN_IF_ERROR(graph.Resolve());
 
   ORT_RETURN_IF_NOT(model.ToProto().SerializeToString(&model_bytes), "Failed to serialize the test model.");
@@ -1253,6 +1281,16 @@ TEST_F(GqaValueLayoutTransformerTest, DetectsConversionThroughDeviceCopyNodes) {
   const GqaValueLayoutBoundaries boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
   EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
   EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
+
+  // The post-partition diagnostic has to see through the copies too. Detection and reporting each do
+  // their own walk from the boundary, in opposite directions, so fixing one does not fix the other:
+  // the Transposes here are unfused and really will execute, and must be reported as such.
+  EXPECT_NE(FindValueLayoutTransposeAfterGraphInput(graph, boundaries.past_value_inputs[0]), nullptr);
+  EXPECT_NE(FindValueLayoutTransposeBeforeGraphOutput(graph, boundaries.present_value_outputs[0]), nullptr);
+
+  const auto unfused = ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_);
+  EXPECT_THAT(unfused, ::testing::UnorderedElementsAre(boundaries.past_value_inputs[0],
+                                                       boundaries.present_value_outputs[0]));
 }
 
 // The mirror of DetectsConversionThroughDeviceCopyNodes: an *unconverted* boundary behind a device
@@ -1575,67 +1613,68 @@ TEST_F(GqaValueLayoutTransformerTest, SucceedsWhenThereIsNoMainGraphGqaToConvert
 }
 
 // The subgraph-only case: the KV boundary is on the main graph, but the GroupQueryAttention that
-// consumes it lives inside a Loop body. The transformer walks the main graph only, so it converts
-// nothing and the session comes up with the boundary still BNSH -- while the application, having
-// asked for BNHS, will bind BNHS buffers to it.
-//
-// Asserted as the current behaviour rather than a fix. ORT cannot reach into the subgraph to convert
-// this safely (the boundary and the operator are in different graphs), and from the main graph it
-// looks identical to a model with no GQA at all, so it warns instead of failing. This test exists so
-// that limitation is pinned down and any change to it is deliberate.
-TEST_F(GqaValueLayoutTransformerTest, DoesNotConvertWhenGqaLivesOnlyInASubgraph) {
+// consumes it lives inside a Loop body, carried in and out as loop state. The operator and the
+// boundary are in different graphs, so there is nothing this transformer can rewire -- and a warning
+// would not preserve the option contract, because the application would bind BNHS buffers to a
+// boundary that is still BNSH, which passes input validation whenever the trailing dimensions are
+// dynamic or equal. So it fails initialization.
+TEST_F(GqaValueLayoutTransformerTest, RejectsAModelWhoseGqaLivesOnlyInASubgraph) {
   std::string model_bytes;
   ASSERT_STATUS_OK(BuildSubgraphOnlyGqaModel(*logger_, model_bytes));
+
+  // The fixture must really put GQA out of reach, otherwise it proves nothing.
+  {
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::LoadFromBytes(static_cast<int>(model_bytes.size()), model_bytes.data(), model,
+                                          nullptr, *logger_));
+    const GqaNodeCounts counts = CountGqaNodes(model->MainGraph());
+    ASSERT_EQ(counts.in_main_graph, 0u) << "GQA must not be in the main graph";
+    ASSERT_EQ(counts.in_subgraphs, 1u) << "the Loop body must contain the GQA node";
+  }
 
   SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
   InferenceSessionWrapper session{session_options, GetEnvironment()};
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
-  ASSERT_STATUS_OK(session.Initialize());
 
-  const Graph& graph = session.GetGraph();
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("are inside a subgraph"));
 
-  // The fixture must really put GQA out of reach, otherwise it proves nothing.
-  ASSERT_EQ(FindGqa(graph), nullptr) << "GQA must not be in the main graph";
-  const Node* loop = nullptr;
-  for (const auto& node : graph.Nodes()) {
-    if (node.OpType() == "Loop") {
-      loop = &node;
-    }
-  }
-  ASSERT_NE(loop, nullptr);
-  const auto subgraphs = loop->GetSubgraphs();
-  ASSERT_EQ(subgraphs.size(), 1u);
-  ASSERT_NE(FindGqa(*subgraphs[0]), nullptr) << "the Loop body must contain the GQA node";
-
-  // Nothing converted, on either graph, and the main-graph boundary is still BNSH. CountOpsInGraph()
-  // recurses, so the expected GQA count is the one in the Loop body and the Transpose count covers
-  // both graphs at once.
-  ASSERT_STATUS_OK(ExpectNoTransposes(graph, /*expected_gqa=*/1));
-  EXPECT_TRUE(FindConvertedGqaValueLayoutBoundaries(graph).Empty());
-  EXPECT_TRUE(FindConvertedGqaValueLayoutBoundaries(*subgraphs[0]).Empty());
-
-  const std::vector<int64_t> bnsh{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
-  ASSERT_STATUS_OK(ExpectShape(graph.GetNodeArg("past_value"), bnsh, "past_value graph input"));
-  ASSERT_STATUS_OK(ExpectShape(graph.GetNodeArg("present_value"), bnsh, "present_value graph output"));
+  // BNSH loads the same model unchanged, since nothing was ever converted.
+  SessionOptions bnsh_options = MakeSessionOptions(kGqaValueLayoutBNSH);
+  InferenceSessionWrapper bnsh_session{bnsh_options, GetEnvironment()};
+  ASSERT_STATUS_OK(bnsh_session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(bnsh_session.Initialize());
+  ASSERT_STATUS_OK(ExpectNoTransposes(bnsh_session.GetGraph(), /*expected_gqa=*/1));
 }
 
-// Converting nothing is reported differently depending on why, because the three reasons carry very
-// different consequences: a subgraph-only GQA leaves an application-visible boundary in the wrong
-// layout, whereas a model with no GQA at all is simply unaffected. Asserting the text, not just that
-// something was logged, since the whole point is that the message identifies which case occurred.
-TEST_F(GqaValueLayoutTransformerTest, ExplainsWhyNothingWasConvertedForASubgraphOnlyModel) {
+// A subgraph GQA must be caught even when a main-graph cache did convert. Gating the check on
+// "nothing converted" let a mixed model through on the strength of the part that worked.
+TEST_F(GqaValueLayoutTransformerTest, RejectsASubgraphGqaEvenWhenAMainGraphCacheConverts) {
   std::string model_bytes;
-  ASSERT_STATUS_OK(BuildSubgraphOnlyGqaModel(*logger_, model_bytes));
+  ASSERT_STATUS_OK(BuildSubgraphOnlyGqaModel(*logger_, model_bytes, /*add_main_graph_gqa=*/true));
 
-  std::string log;
-  ASSERT_STATUS_OK(RunSessionCapturingLog(model_bytes, kGqaValueLayoutBNHS, log));
+  {
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::LoadFromBytes(static_cast<int>(model_bytes.size()), model_bytes.data(), model,
+                                          nullptr, *logger_));
+    const GqaNodeCounts counts = CountGqaNodes(model->MainGraph());
+    ASSERT_EQ(counts.in_main_graph, 1u) << "fixture needs a convertible main-graph GQA";
+    ASSERT_EQ(counts.in_subgraphs, 1u) << "fixture needs an unreachable subgraph GQA";
+  }
 
-  EXPECT_THAT(log, ::testing::HasSubstr("are inside a subgraph"));
-  EXPECT_THAT(log, ::testing::HasSubstr("still BNSH"));
-  // Must not be mistaken for the benign case.
-  EXPECT_THAT(log, ::testing::Not(::testing::HasSubstr("contains no GroupQueryAttention node")));
+  SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("are inside a subgraph"));
 }
 
+// Converting nothing is still reported for the two cases that are not errors, and the message says
+// which occurred. Asserting the text, not just that something was logged, since the point is that it
+// identifies the case. The subgraph case fails initialization instead, covered above.
 TEST_F(GqaValueLayoutTransformerTest, ExplainsWhyNothingWasConvertedForAModelWithNoGqa) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 21;

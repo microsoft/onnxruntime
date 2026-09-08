@@ -28,6 +28,53 @@ bool IsGroupQueryAttention(const Node& node) {
   return node.OpType() == "GroupQueryAttention" && node.Domain() == kMSDomain;
 }
 
+// Graph::GetProducerNode() / GetConsumerNodes() and the maps behind them are compiled out of a base
+// minimal build (include/onnxruntime/core/graph/graph.h, the
+// !ORT_MINIMAL_BUILD || ORT_EXTENDED_MINIMAL_BUILD block), and this translation unit is in the base
+// minimal source list so the ORT format path can enforce an explicit BNSH request there. Fall back to
+// walking the nodes when the maps are unavailable.
+//
+// The scan is linear per lookup rather than a hash probe, which is why the caller only asks for
+// boundaries when the application actually set the layout option -- see PartitionOrtFormatModel().
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+const Node* ProducerOf(const Graph& graph, const std::string& arg_name) {
+  return graph.GetProducerNode(arg_name);
+}
+
+InlinedVector<const Node*> ConsumersOf(const Graph& graph, const std::string& arg_name) {
+  const auto consumers = graph.GetConsumerNodes(arg_name);
+  return InlinedVector<const Node*>(consumers.begin(), consumers.end());
+}
+
+#else
+
+const Node* ProducerOf(const Graph& graph, const std::string& arg_name) {
+  for (const auto& node : graph.Nodes()) {
+    for (const auto* def : node.OutputDefs()) {
+      if (def != nullptr && def->Exists() && def->Name() == arg_name) {
+        return &node;
+      }
+    }
+  }
+  return nullptr;
+}
+
+InlinedVector<const Node*> ConsumersOf(const Graph& graph, const std::string& arg_name) {
+  InlinedVector<const Node*> consumers;
+  for (const auto& node : graph.Nodes()) {
+    for (const auto* def : node.InputDefs()) {
+      if (def != nullptr && def->Exists() && def->Name() == arg_name) {
+        consumers.push_back(&node);
+        break;
+      }
+    }
+  }
+  return consumers;
+}
+
+#endif
+
 // A device copy inserted by MemcpyTransformer. Those run inside TransformGraph, before the optimized
 // model is serialized, so a model saved from a non-CPU session can have one spliced between a graph
 // boundary and the provider-side nodes: graph input -> MemcpyFromHost -> Transpose -> GQA, or
@@ -90,7 +137,7 @@ const NodeArg* TraceGqaBoundaryBackThroughDeviceCopies(const Graph& graph, const
       return arg;
     }
 
-    const Node* producer = graph.GetProducerNode(arg->Name());
+    const Node* producer = ProducerOf(graph, arg->Name());
     if (producer == nullptr || !IsDeviceCopy(*producer) || producer->InputDefs().empty()) {
       return nullptr;
     }
@@ -106,7 +153,7 @@ const NodeArg* TraceGqaBoundaryForwardThroughDeviceCopies(const Graph& graph, co
     }
 
     const NodeArg* next = nullptr;
-    for (const Node* consumer : graph.GetConsumerNodes(arg->Name())) {
+    for (const Node* consumer : ConsumersOf(graph, arg->Name())) {
       if (consumer != nullptr && IsDeviceCopy(*consumer) && !consumer->OutputDefs().empty()) {
         next = consumer->OutputDefs()[0];
         break;
@@ -116,6 +163,48 @@ const NodeArg* TraceGqaBoundaryForwardThroughDeviceCopies(const Graph& graph, co
       return nullptr;
     }
     arg = next;
+  }
+  return nullptr;
+}
+
+const Node* FindValueLayoutTransposeAfterGraphInput(const Graph& graph, const std::string& boundary_name) {
+  std::string current = boundary_name;
+  for (int hops = 0; hops <= kMaxDeviceCopyHops; ++hops) {
+    const NodeArg* copy_output = nullptr;
+    for (const Node* consumer : ConsumersOf(graph, current)) {
+      if (consumer == nullptr) {
+        continue;
+      }
+      if (IsGqaValueLayoutTranspose(*consumer)) {
+        return consumer;
+      }
+      if (IsDeviceCopy(*consumer) && !consumer->OutputDefs().empty()) {
+        copy_output = consumer->OutputDefs()[0];
+      }
+    }
+
+    if (copy_output == nullptr) {
+      return nullptr;
+    }
+    current = copy_output->Name();
+  }
+  return nullptr;
+}
+
+const Node* FindValueLayoutTransposeBeforeGraphOutput(const Graph& graph, const std::string& boundary_name) {
+  std::string current = boundary_name;
+  for (int hops = 0; hops <= kMaxDeviceCopyHops; ++hops) {
+    const Node* producer = ProducerOf(graph, current);
+    if (producer == nullptr) {
+      return nullptr;
+    }
+    if (IsGqaValueLayoutTranspose(*producer)) {
+      return producer;
+    }
+    if (!IsDeviceCopy(*producer) || producer->InputDefs().empty()) {
+      return nullptr;
+    }
+    current = producer->InputDefs()[0]->Name();
   }
   return nullptr;
 }
@@ -131,7 +220,7 @@ bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::s
   // and must be recognized. That is the mirror of ClassifyPastValue() refusing to convert an
   // initializer-backed boundary itself: swapping a declared shape cannot transpose baked-in data, but
   // data that arrived BNHS needs no transposing.
-  const Node* producer = graph.GetProducerNode(node.InputDefs()[kPastValueInputIndex]->Name());
+  const Node* producer = ProducerOf(graph, node.InputDefs()[kPastValueInputIndex]->Name());
   if (producer == nullptr || !IsGqaValueLayoutTranspose(*producer) || producer->InputDefs().empty()) {
     return false;
   }
@@ -163,7 +252,7 @@ bool FindConvertedPresentValueBoundary(const Graph& graph, const Node& node, std
 
   // Search the consumers rather than requiring a single one: the BNSH result may legitimately feed
   // other internal BNSH readers, and those must not hide the conversion.
-  for (const Node* consumer : graph.GetConsumerNodes(arg->Name())) {
+  for (const Node* consumer : ConsumersOf(graph, arg->Name())) {
     if (consumer == nullptr || !IsGqaValueLayoutTranspose(*consumer) || consumer->OutputDefs().empty()) {
       continue;
     }
