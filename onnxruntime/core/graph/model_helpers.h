@@ -9,6 +9,8 @@
 #include <string_view>
 #include <unordered_map>
 
+#include <gsl/gsl>
+
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 

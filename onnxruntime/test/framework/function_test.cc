@@ -670,6 +670,31 @@ TEST(FunctionTest, LoadFromBytes_ExcessiveLocalFunctionDepthReturnsStatus) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("exceeds the maximum supported depth"));
 }
 
+TEST(FunctionTest, LocalFunctionDepthValidationPreservesGraphProtoSyncFlag) {
+  auto model_proto = CreateLocalFunctionChainModel(1);
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, logger));
+
+  auto& graph = model->MainGraph();
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  ASSERT_STATUS_OK(graph.Resolve());
+  EXPECT_TRUE(graph.GraphProtoSyncNeeded());
+}
+
+TEST(FunctionTest, FailedLocalFunctionDepthValidationPreservesGraphProtoSyncFlag) {
+  auto model_proto = CreateLocalFunctionChainModel(onnxruntime::kMaxModelLocalFunctionCallDepth + 1);
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model(std::move(model_proto), nullptr, logger);
+
+  auto& graph = model.MainGraph();
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  const auto status = graph.Resolve();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::NOT_IMPLEMENTED);
+  EXPECT_TRUE(graph.GraphProtoSyncNeeded());
+}
+
 // --- Model-level integration tests ---
 
 TEST(FunctionTest, RejectsLongerCycle) {

@@ -3808,7 +3808,10 @@ Status Graph::Resolve(const ResolveOptions& options) {
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  ORT_RETURN_IF_ERROR(owning_model_.ValidateLocalFunctionCallDepth(ToGraphProto()));
+  const bool graph_proto_sync_needed = GraphProtoSyncNeeded();
+  const auto depth_status = owning_model_.ValidateLocalFunctionCallDepth(ToGraphProto());
+  GraphProtoSyncNeeded(graph_proto_sync_needed);
+  ORT_RETURN_IF_ERROR(depth_status);
 #endif
 
   // init all graph/subgraphs. non-recursive so call via ForThisAndAllSubgraphs.
