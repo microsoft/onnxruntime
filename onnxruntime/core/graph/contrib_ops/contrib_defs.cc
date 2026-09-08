@@ -4302,29 +4302,40 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         }
       });
 
-#if !defined(DISABLE_FLOAT8_TYPES)
-  static const char* GatherQuantized_ver1_doc = R"DOC(
-GatherQuantized is a Gather over a low-precision floating point (FP8) quantized table with a per-block
-float scale factor, and no zero point (FP8 quantization is symmetric). It is similar to Gather
-(https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) and to
+#if !defined(DISABLE_FLOAT8_TYPES) || !defined(DISABLE_FLOAT4_TYPES)
+  static const char* GatherFpQuantized_ver1_doc = R"DOC(
+GatherFpQuantized is a Gather over a low-precision floating point (FP8 or FP4) quantized table with a
+per-block float scale factor, and no zero point (FP8/FP4 quantization is symmetric). It is similar to
+Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) and to
 com.microsoft.GatherBlockQuantized, with these differences:
-  1. Input `data` is a constant of an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz),
-     rather than an integer block-quantized type. There is no `zero_points` input: FP8 quantization is symmetric.
+  1. Input `data` is a constant of an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz)
+     or an FP4 type (float4e2m1), rather than an integer block-quantized type. There is no `zero_points`
+     input: FP8/FP4 quantization is symmetric.
   2. `data` is block-wise scaled along attribute `quantize_axis` with block size specified by attribute
      `block_size`. `block_size` must be 0 (meaning the entire `quantize_axis` dimension forms a single
      block, i.e. one scale per row) or a power of 2 and not smaller than 16.
   3. Input `data`'s scale is specified by input `scales`, a constant tensor of the same rank as `data`
      with one scale value per quantization block.
   4. During op execution, `data` and `indices` are first used to gather rows exactly as in Gather. Each
-     gathered FP8 element is then converted to its floating point value and multiplied by the scale of
+     gathered FP8/FP4 element is then converted to its floating point value and multiplied by the scale of
      the block it belongs to, i.e. `output[...] = float(data[...]) * scales[block_index(...)]`.
   5. The `output` and `scales` have the same type.
 )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherQuantized)
+  std::vector<std::string> gather_fp_quantized_T1_types;
+#if !defined(DISABLE_FLOAT8_TYPES)
+  gather_fp_quantized_T1_types.insert(
+      gather_fp_quantized_T1_types.end(),
+      {"tensor(float8e4m3fn)", "tensor(float8e4m3fnuz)", "tensor(float8e5m2)", "tensor(float8e5m2fnuz)"});
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+#if !defined(DISABLE_FLOAT4_TYPES)
+  gather_fp_quantized_T1_types.push_back("tensor(float4e2m1)");
+#endif  // !defined(DISABLE_FLOAT4_TYPES)
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherFpQuantized)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(GatherQuantized_ver1_doc)
+      .SetDoc(GatherFpQuantized_ver1_doc)
       .Attr("gather_axis",
             "(Optional) Which axis to gather on. Negative value means "
             "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
@@ -4339,7 +4350,7 @@ com.microsoft.GatherBlockQuantized, with these differences:
             "and not smaller than 16.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
-      .Input(0, "data", "Tensor of rank r >= 1, FP8 quantized, block-wise scaled.", "T1")
+      .Input(0, "data", "Tensor of rank r >= 1, FP8 or FP4 quantized, block-wise scaled.", "T1")
       .Input(1,
              "indices",
              "Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] "
@@ -4347,9 +4358,7 @@ com.microsoft.GatherBlockQuantized, with these differences:
              "Tind")
       .Input(2, "scales", "Per-block scale, same rank as data.", "T2")
       .Output(0, "output", "Dequantized output tensor of rank q + (r - 1).", "T2")
-      .TypeConstraint("T1",
-                      {"tensor(float8e4m3fn)", "tensor(float8e4m3fnuz)", "tensor(float8e5m2)", "tensor(float8e5m2fnuz)"},
-                      "Constrain quantized data to FP8 types.")
+      .TypeConstraint("T1", gather_fp_quantized_T1_types, "Constrain quantized data to FP8 or FP4 types.")
       .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain dequantized types.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -4418,7 +4427,7 @@ com.microsoft.GatherBlockQuantized, with these differences:
           *output_shape->add_dim() = data_shape.dim(i);
         }
       });
-#endif  // !defined(DISABLE_FLOAT8_TYPES)
+#endif  // !defined(DISABLE_FLOAT8_TYPES) || !defined(DISABLE_FLOAT4_TYPES)
 
 #ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)

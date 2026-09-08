@@ -3,7 +3,7 @@
 
 #pragma once
 
-#if !defined(DISABLE_FLOAT8_TYPES)
+#if !defined(DISABLE_FLOAT8_TYPES) || !defined(DISABLE_FLOAT4_TYPES)
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
@@ -12,14 +12,14 @@
 namespace onnxruntime {
 namespace contrib {
 
-// GatherQuantized: gathers rows from a block-scaled FP8 constant table and dequantizes them on the fly.
-// Unlike GatherBlockQuantized (integer block quantization with an optional zero point), the quantized
-// type here is always an FP8 type and there is no zero point: FP8 quantization is symmetric, so
-// dequantization is simply `float(data) * scale`.
+// GatherFpQuantized: gathers rows from a block-scaled low-precision floating point (FP8 or FP4) constant
+// table and dequantizes them on the fly. Unlike GatherBlockQuantized (integer block quantization with an
+// optional zero point), the quantized type here is always an FP8 or FP4 floating point type and there is
+// no zero point: FP8/FP4 quantization is symmetric, so dequantization is simply `float(data) * scale`.
 template <typename T1, typename Tind>
-class GatherQuantized : public OpKernel {
+class GatherFpQuantized : public OpKernel {
  public:
-  explicit GatherQuantized(const OpKernelInfo& info) : OpKernel(info) {
+  explicit GatherFpQuantized(const OpKernelInfo& info) : OpKernel(info) {
     if (!info.GetAttr<int64_t>("gather_axis", &gather_axis_).IsOK()) {
       gather_axis_ = 0;
     }
@@ -73,4 +73,4 @@ class GatherQuantized : public OpKernel {
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif  // !defined(DISABLE_FLOAT8_TYPES)
+#endif  // !defined(DISABLE_FLOAT8_TYPES) || !defined(DISABLE_FLOAT4_TYPES)

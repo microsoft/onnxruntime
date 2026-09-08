@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(DISABLE_FLOAT8_TYPES)
+#if !defined(DISABLE_FLOAT8_TYPES) || !defined(DISABLE_FLOAT4_TYPES)
 
-#include "contrib_ops/cpu/quantization/gather_quantized.h"
+#include "contrib_ops/cpu/quantization/gather_fp_quantized.h"
 
 #include <unordered_map>
 
@@ -16,8 +16,27 @@
 namespace onnxruntime {
 namespace contrib {
 
+namespace {
+// Reads the logical element at `idx` from a quantized data buffer and returns it as a float.
+// FP8 types store one element per byte, so this is the default. FP4 (Float4E2M1x2) packs two
+// logical elements per byte; the tensor's shape is still the logical shape (as with the existing
+// Int4x2/UInt4x2 sub-byte types), so the physical byte and the sub-element within it must be
+// derived from the logical index.
+template <typename T1>
+inline float DequantizedElem(const T1* data_ptr, int64_t idx) {
+  return data_ptr[idx].ToFloat();
+}
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+inline float DequantizedElem<Float4E2M1x2>(const Float4E2M1x2* data_ptr, int64_t idx) {
+  return data_ptr[idx >> 1].GetElem(narrow<size_t>(idx & 1));
+}
+#endif  // !defined(DISABLE_FLOAT4_TYPES)
+}  // namespace
+
 template <typename T1, typename Tind>
-Status GatherQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
+Status GatherFpQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
   p.data_tensor = context->Input<Tensor>(0);
   p.indices_tensor = context->Input<Tensor>(1);
   p.scales_tensor = context->Input<Tensor>(2);
@@ -67,18 +86,18 @@ Status GatherQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* context, Pr
 
 template <typename T1, typename Tind>
 template <typename T2>
-Status GatherQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
-                                                        const Tind* indices_ptr,
-                                                        const T2* scales_ptr,
-                                                        T2* output_ptr,
-                                                        int64_t gather_M,
-                                                        int64_t gather_N,
-                                                        int64_t gather_axis_dim,
-                                                        int64_t gather_block,
-                                                        int64_t quantize_axis_dim,
-                                                        int64_t quantize_N,
-                                                        int64_t effective_block_size,
-                                                        concurrency::ThreadPool* tp) const {
+Status GatherFpQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
+                                                          const Tind* indices_ptr,
+                                                          const T2* scales_ptr,
+                                                          T2* output_ptr,
+                                                          int64_t gather_M,
+                                                          int64_t gather_N,
+                                                          int64_t gather_axis_dim,
+                                                          int64_t gather_block,
+                                                          int64_t quantize_axis_dim,
+                                                          int64_t quantize_N,
+                                                          int64_t effective_block_size,
+                                                          concurrency::ThreadPool* tp) const {
   auto data_full_block = gather_axis_dim * gather_block;
   auto quantize_full_block = quantize_axis_dim * quantize_N;
   auto scale_full_block = (quantize_axis_dim + effective_block_size - 1) / effective_block_size * quantize_N;
@@ -99,7 +118,7 @@ Status GatherQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
     int64_t output_idx = output_idx_base;
     int64_t data_idx = data_idx_base;
     for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
-      const float data_val = data_ptr[data_idx].ToFloat();
+      const float data_val = DequantizedElem(data_ptr, data_idx);
 
       int64_t x = data_idx / quantize_full_block;
       int64_t y = data_idx % quantize_full_block / quantize_N;
@@ -127,7 +146,7 @@ Status GatherQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
 }
 
 template <typename T1, typename Tind>
-Status GatherQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
+Status GatherFpQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
   const auto& data_shape = p.data_tensor->Shape();
@@ -175,30 +194,37 @@ Status GatherQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   }
 }
 
-#define REGISTER_GATHERQUANTIZED(T1, Tind)                                                                        \
-  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                                                              \
-      GatherQuantized,                                                                                            \
-      kMSDomain, 1,                                                                                               \
-      T1, Tind,                                                                                                   \
-      kCpuExecutionProvider,                                                                                      \
-      KernelDefBuilder()                                                                                          \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                                \
-          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),                                            \
-                                 DataTypeImpl::GetTensorType<MLFloat16>(),                                         \
-                                 DataTypeImpl::GetTensorType<BFloat16>()})                                        \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()),                                           \
-      GatherQuantized<T1, Tind>);
+#define REGISTER_GATHERFPQUANTIZED(T1, Tind)                               \
+  ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(                                       \
+      GatherFpQuantized,                                                   \
+      kMSDomain, 1,                                                        \
+      T1, Tind,                                                            \
+      kCpuExecutionProvider,                                               \
+      KernelDefBuilder()                                                   \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())         \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),     \
+                                 DataTypeImpl::GetTensorType<MLFloat16>(), \
+                                 DataTypeImpl::GetTensorType<BFloat16>()}) \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()),    \
+      GatherFpQuantized<T1, Tind>);
 
-REGISTER_GATHERQUANTIZED(Float8E4M3FN, int32_t);
-REGISTER_GATHERQUANTIZED(Float8E4M3FN, int64_t);
-REGISTER_GATHERQUANTIZED(Float8E4M3FNUZ, int32_t);
-REGISTER_GATHERQUANTIZED(Float8E4M3FNUZ, int64_t);
-REGISTER_GATHERQUANTIZED(Float8E5M2, int32_t);
-REGISTER_GATHERQUANTIZED(Float8E5M2, int64_t);
-REGISTER_GATHERQUANTIZED(Float8E5M2FNUZ, int32_t);
-REGISTER_GATHERQUANTIZED(Float8E5M2FNUZ, int64_t);
+#if !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_GATHERFPQUANTIZED(Float8E4M3FN, int32_t);
+REGISTER_GATHERFPQUANTIZED(Float8E4M3FN, int64_t);
+REGISTER_GATHERFPQUANTIZED(Float8E4M3FNUZ, int32_t);
+REGISTER_GATHERFPQUANTIZED(Float8E4M3FNUZ, int64_t);
+REGISTER_GATHERFPQUANTIZED(Float8E5M2, int32_t);
+REGISTER_GATHERFPQUANTIZED(Float8E5M2, int64_t);
+REGISTER_GATHERFPQUANTIZED(Float8E5M2FNUZ, int32_t);
+REGISTER_GATHERFPQUANTIZED(Float8E5M2FNUZ, int64_t);
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+REGISTER_GATHERFPQUANTIZED(Float4E2M1x2, int32_t);
+REGISTER_GATHERFPQUANTIZED(Float4E2M1x2, int64_t);
+#endif  // !defined(DISABLE_FLOAT4_TYPES)
 
 }  // namespace contrib
 }  // namespace onnxruntime
 
-#endif  // !defined(DISABLE_FLOAT8_TYPES)
+#endif  // !defined(DISABLE_FLOAT8_TYPES) || !defined(DISABLE_FLOAT4_TYPES)
