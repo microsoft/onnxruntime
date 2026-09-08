@@ -347,7 +347,7 @@ skipping would make the option self-inconsistent, so `ClassifyNode` returns an e
   graph's registry, which prefers a registered custom schema, so querying the global one could
   disagree with what `Resolve()` will actually do — and disagreeing in the permissive direction means
   mutating the graph and then failing, which is what validate-before-transform exists to prevent. Without it the graph is mutated and then fails `Graph::Resolve()` with
-  `Type 'tensor(bfloat16)' ... is invalid` -- opaque, and after the mutation, which would break the
+  `Type 'tensor(bfloat16)' ... is invalid` — opaque, and after the mutation, which would break the
   "converted or untouched" guarantee in 3.6.
 
 **Check order matters.** `ValidateCacheFormat` (the 4-bit check) runs *after* operand classification,
@@ -451,7 +451,7 @@ old implementation reported nothing. Conversely, when the EP fuses the whole seq
 connects straight to the fused node and nothing is reported, which is correct.
 
 **A subgraph GroupQueryAttention fails a BNHS request.** `CountGqaNodes()` recurses, so a GQA inside a
-`Loop` body or `BeamSearch` decoder is detected -- and rejected. Its Value cache boundary may be
+`Loop` body or `BeamSearch` decoder is detected — and rejected. Its Value cache boundary may be
 carried in and out of the main graph, so the operator and the boundary are in different graphs and
 there is nothing to rewire; a warning would leave the application binding BNHS buffers to a BNSH
 boundary, which passes input validation whenever the trailing dimensions are dynamic or equal. The
@@ -491,7 +491,7 @@ reference to `GqaValueLayoutTransformer` and `ReportUnfusedGqaValueLayoutTranspo
 `TransformGraph`, which is itself inside a `#if !defined(ORT_MINIMAL_BUILD)` block, and
 `adjust_global_compile_flags.cmake` defines `ORT_MINIMAL_BUILD` for extended minimal builds as well.
 That guard opens well above `TransformGraph` and closes well below it, with no intervening `#else`, so
-the whole function -- including both GQA blocks -- is excluded. The declaration in
+the whole function — including both GQA blocks — is excluded. The declaration in
 `inference_session.h` is inside the same guard, which it has to be for the two to agree at all.
 A minimal build reaches the ORT format path instead, which is handled in section 5.
 
@@ -601,7 +601,7 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
   still rejected. The second case is what pins down the check order in 3.5; verified to fail when
   `ValidateCacheFormat` runs after the layout-state switch.
 - The post-partition diagnostic (4.2) reports both boundaries when the Transposes survive with no GQA
-  node present -- the compiling-EP case -- and reports nothing when they were fused away. The fixture
+  node present — the compiling-EP case — and reports nothing when they were fused away. The fixture
   asserts it contains no GQA node, so it cannot silently stop covering the regression.
 - The diagnostic still reports a boundary that has other consumers besides the Transpose; the fixture
   asserts two consumers, and the test fails against a sole-consumer lookup.
@@ -624,13 +624,13 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
   the saved graph really is non-adjacent, and reloads it with explicit BNSH. It is skipped where no
   such EP is built, so a CPU-only developer build relies on the hand-built fixture above and this
   case is covered only in GPU CI legs.
-- Requesting BNHS for a model with no main-graph GQA succeeds and converts nothing. ORT warns rather
-  than failing, because from the main graph this is indistinguishable from a subgraph-only GQA.
-- The subgraph-only case has its own fixture (see above), so both halves of that ambiguity are
-  covered rather than just the benign one.
-- The three "nothing was converted" messages are asserted against a `CapturingSink` attached to the
-  session, including that a successful conversion says none of them, and `CountGqaNodes()` is
-  exercised directly on a main-graph and a subgraph-only model.
+- An unconverted boundary sitting behind a device copy is rejected, which is the conversion-side
+  mirror of the detection case above.
+- Requesting BNHS for a model with no GQA at all succeeds, converts nothing, and warns that the
+  option had no effect.
+- The two warning messages are asserted against a `CapturingSink` attached to the session, including
+  that a successful conversion emits neither, and `CountGqaNodes()` is exercised directly on a
+  main-graph and a subgraph-only model.
 - An ORT format model carrying BNHS boundaries is rejected when BNSH is explicitly requested and loads
   when the option is unset. The fixture round-trips a converted model through ORT format serialization
   rather than checking in a binary fixture, so it stays honest if the format changes.
@@ -655,18 +655,18 @@ model into an `InferenceSessionWrapper`:
 - An ORT format model fails session initialization with `ORT_INVALID_ARGUMENT` when the option is set, and loads normally when it
   is not.
 
-`DoesNotConvertWhenGqaLivesOnlyInASubgraph` covers the subgraph case end to end: a model whose KV
-boundary is on the main graph while the only GroupQueryAttention sits inside a `Loop` body, which is
-the shape a decoder with an in-graph generation loop takes. The fixture asserts GQA really is absent
-from the main graph and present in the body, so it cannot quietly stop testing what it claims.
+`RejectsAModelWhoseGqaLivesOnlyInASubgraph` covers the subgraph case end to end: a model whose KV
+boundary is on the main graph while the only GroupQueryAttention sits inside a `Loop` body, carried in
+and out as loop state, which is the shape a decoder with an in-graph generation loop takes. The fixture
+asserts via `CountGqaNodes()` that GQA really is absent from the main graph and present in the body, so
+it cannot quietly stop testing what it claims, and that BNSH still loads the same model unchanged.
 
-It pins down the **limitation**, not a fix. The boundary and the operator are in different graphs, so
-there is nothing this transformer can safely rewire from the main graph. The session comes up with the
-boundary still BNSH after the caller asked for BNHS, and the warning from 4.1 is the only signal.
-Anyone changing that behaviour should have to update this test deliberately.
+`RejectsASubgraphGqaEvenWhenAMainGraphCacheConverts` is the mixed case: one convertible main-graph
+cache and one unreachable subgraph GQA. It exists because gating the subgraph check on "nothing
+converted" let such a model through on the strength of the part that worked.
 
-The warning does, however, say *which* case occurred. `CountGqaNodes()` recurses, so converting nothing
-is reported three ways rather than one:
+`CountGqaNodes()` recurses, which is what lets converting nothing be reported three different ways
+instead of one:
 
 | Situation | Outcome |
 |---|---|
@@ -727,17 +727,32 @@ aliased buffer bound to both `past_value` and `present_value` matches the CPU BN
 
 ## Open items
 
-1. **4-bit packed V cache under BNHS.** Currently planned as a hard error (3.5). To support it we
+1. **A subgraph GQA is rejected even when its cache never reaches the application.** The check in 4.1
+   is deliberately blunt: any GroupQueryAttention below the main graph fails a BNHS request. A cache
+   created and consumed entirely inside a `Loop` body puts nothing at risk, but distinguishing it
+   requires tracing the operand out through the `Loop` carried-dependency mapping to see whether it
+   surfaces as a main-graph boundary. Erroring is the conservative reading of the option contract;
+   if that shape turns out to be common, the tracing is the fix, and it would also open the door to
+   converting such a boundary rather than refusing it.
+2. **A conversion becomes structurally invisible once an EP fuses it.** Detection is structural --
+   it looks for the `Transpose` pair — so after a provider absorbs them there is nothing left to
+   find. That is correct for the diagnostic (nothing executes, nothing to report), but it means an
+   explicit BNSH request could not be checked against a model serialized *after* fusion. The
+   documented save path is unaffected, because writing an optimized model partitions with
+   `kAssignOnly` and so does not fuse (4.2); EPContext models take a different route and have not
+   been examined. A durable marker in model metadata would close it, at the cost of a second source
+   of truth that can disagree with the graph.
+3. **4-bit packed V cache under BNHS.** Currently planned as a hard error (3.5). To support it we
    must define whether the packing axis follows `head_size` or becomes the (now-minor) `seq` axis,
    and the declared shape has to encode that choice. Worth deciding before PR 2 lands, since it
    turns a validation rule into a code path.
-2. **Heterogeneous sessions.** The session key is session-wide. If one EP fuses and another does
+4. **Heterogeneous sessions.** The session key is session-wide. If one EP fuses and another does
    not, the non-fusing EP's layers hit the 4.2 warning path with no per-node escape. Acceptable
    initially; a per-EP override key would be the escape hatch if this becomes real.
-3. **Shared boundaries.** The guards in 3.6 decline to transform a boundary with more than one user.
+5. **Shared boundaries.** The guards in 3.6 decline to transform a boundary with more than one user.
    Supporting them means transforming each boundary once and rewiring every BNSH user, which matters
    only for models that share one Value cache across GQA nodes.
-4. **Fusion pattern contract.** The EP compiler's match criteria should be written down explicitly —
+6. **Fusion pattern contract.** The EP compiler's match criteria should be written down explicitly —
    in particular whether it tolerates non-adjacent Transposes, and whether it requires `perm` to be
    literally `[0,1,3,2]` versus any last-two-dimension swap. The 4.1 placement guarantees adjacency
    today, but pinning the contract protects against future transformer churn.
