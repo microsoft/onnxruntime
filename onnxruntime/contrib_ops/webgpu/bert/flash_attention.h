@@ -100,39 +100,9 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool q_BNSH,
                         bool use_seqlen_k = false,
                         bool has_head_sink = false,
-                        bool turbo_quant = false,
+                        uint32_t kv_cache_quantization_bits = 0,
                         int compressed_head_size_u32 = 0,
-                        bool use_seqlens_q = false)
-      : Program{kernel_name},
-        has_attention_bias_(has_attention_bias),
-        is_qualcomm_(is_qualcomm),
-        is_fp16_(is_fp16),
-        qkv_head_size_(qkv_head_size),
-        qkv_num_heads_(qkv_num_heads),
-        is_unidirectional_(is_unidirectional),
-        is_nvidia_(is_nvidia),
-        use_shm_path_(is_apple || is_nvidia || !has_subgroups),
-        q_BNSH_(q_BNSH),
-        use_seqlen_k_(use_seqlen_k),
-        has_head_sink_(has_head_sink),
-        turbo_quant_(turbo_quant),
-        compressed_head_size_u32_(compressed_head_size_u32),
-        use_seqlens_q_(use_seqlens_q) {
-    if (use_shm_path_) {
-      // Use shared-memory loop-based path with dynamic max_k_step.
-      // Compute max_k_step from workgroup shared memory budget: k_tile + v_tile = 2 * element_size * head_size * max_k_step
-      const int element_size = is_fp16 ? 2 : 4;
-      constexpr int kMinWorkgroupStorageBudgetBytes = 16384;
-      int max_k_from_shm = kMinWorkgroupStorageBudgetBytes / (2 * element_size * qkv_head_size);
-      if (max_k_from_shm >= 32) {
-        max_k_step_ = 32;
-      } else {
-        max_k_step_ = 16;
-      }
-    } else {
-      max_k_step_ = 16;
-    }
-  }
+                        bool use_seqlens_q = false);
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -152,7 +122,6 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
  private:
   bool has_attention_bias_;
   bool is_qualcomm_;
-  bool is_fp16_;
   int qkv_head_size_;
   int qkv_num_heads_;
   bool is_unidirectional_;
@@ -162,7 +131,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool use_seqlen_k_;
   bool has_head_sink_;
   int max_k_step_;
-  bool turbo_quant_;
+  bool kv_cache_quantization_;
+  uint32_t kv_cache_quantization_bits_;
   int compressed_head_size_u32_;
   // Per-batch new-Q-length path (LEFT-aligned Q). When set, the shader reads
   // seqlens_q[b] and computes past_sequence_length_b = total_kv_b - q_len_b.
@@ -238,9 +208,10 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                  bool is_unidirectional = false,
                                  uint32_t m_tile = 1,
                                  bool use_seqlen_k = false,
-                                 bool turbo_quant = false, int compressed_head_size_u32 = 0,
+                                 uint32_t kv_cache_quantization_bits = 0,
+                                 int compressed_head_size_u32 = 0,
                                  bool use_seqlens_q = false)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k), turbo_quant_(turbo_quant), compressed_head_size_u32_(compressed_head_size_u32), use_seqlens_q_(use_seqlens_q) {
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k), kv_cache_quantization_(kv_cache_quantization_bits != 0), kv_cache_quantization_bits_(kv_cache_quantization_bits), compressed_head_size_u32_(compressed_head_size_u32), use_seqlens_q_(use_seqlens_q) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -267,7 +238,8 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
   bool is_unidirectional_;
   uint32_t m_tile_;
   bool use_seqlen_k_;
-  bool turbo_quant_;
+  bool kv_cache_quantization_;
+  uint32_t kv_cache_quantization_bits_;
   int compressed_head_size_u32_;
   // See FlashAttentionProgram::use_seqlens_q_ for semantics.
   bool use_seqlens_q_;
@@ -306,9 +278,10 @@ class FlashAttentionPagedDecodeQKVProgram final : public Program<FlashAttentionP
                                       bool is_unidirectional = false,
                                       uint32_t m_tile = 1,
                                       bool use_seqlen_k = false,
-                                      bool turbo_quant = false, int compressed_head_size_u32 = 0,
+                                      uint32_t kv_cache_quantization_bits = 0,
+                                      int compressed_head_size_u32 = 0,
                                       bool use_seqlens_q = false)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k), turbo_quant_(turbo_quant), compressed_head_size_u32_(compressed_head_size_u32), use_seqlens_q_(use_seqlens_q) {
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k), kv_cache_quantization_(kv_cache_quantization_bits != 0), kv_cache_quantization_bits_(kv_cache_quantization_bits), compressed_head_size_u32_(compressed_head_size_u32), use_seqlens_q_(use_seqlens_q) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -338,7 +311,8 @@ class FlashAttentionPagedDecodeQKVProgram final : public Program<FlashAttentionP
   bool is_unidirectional_;
   uint32_t m_tile_;
   bool use_seqlen_k_;
-  bool turbo_quant_;
+  bool kv_cache_quantization_;
+  uint32_t kv_cache_quantization_bits_;
   int compressed_head_size_u32_;
   bool use_seqlens_q_;
 };
