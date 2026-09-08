@@ -33,7 +33,7 @@ The implementation is complete and committed. CI coverage was added for the new 
 | Linux/GCC build (`--use_webgpu static_plugin`) | **Green in CI** (run `33030694040`) after the `array-bounds` fix — see [GCC](#gcc-and-warnings-as-errors) |
 | Minimal build | Not yet exercised — see [Open items](#open-items) |
 | Emscripten / ORT Web | **Builds, links, and runs in a browser** on a real GPU; registration verified in the binary *and* at runtime — see [ORT Web](#emscripten-and-ort-web) |
-| Latency | **Measured on both plugin shapes** — ~4.8 us/node (wasm), ~1.2 us/node (native); the accepted tolerance is still unquantified, see [Open items](#open-items) |
+| Latency | **Measured and root-caused** — ~4.8 us/node (wasm), ~1.2 us/node (native); the native cost is redundant per-kernel tensor-wrapper construction in the EP API adapter, not boundary-crossing cost, so it looks reducible — see [Open items](#open-items) |
 | PR | Draft [#32395](https://github.com/microsoft/onnxruntime/pull/32395); self-review feedback addressed — see [PR review feedback](#pr-review-feedback) |
 
 ## Branch
@@ -668,6 +668,32 @@ native one charges less. That is consistent with the wasm cost being dominated b
 `static_plugin` wasm's per-kernel C++ path rather than by the plugin indirection itself, which is what the
 three-way `mismatch` run above already suggested.
 
+### Root cause of the native per-node cost
+
+1.2 us/node is ~4,400 cycles, which is far more than a cross-DLL indirect call can account for, so both arms were
+CPU-profiled to find out what it is actually spent on. The write-up is in
+[native_plugin_latency_measurements.md](native_plugin_latency_measurements.md#where-the-per-node-cost-goes-cpu-profile).
+Outcome: the overhead is **not** boundary-crossing cost. It is redundant per-kernel work that the built-in path does
+not do — `ep::adapter::CreateTensorFromApiValue` rebuilds an `onnxruntime::Tensor` (nine C API round trips, an
+allocator-name `std::string`, a `TensorShape` allocation) for every input and output of every node on every `Run`,
+because the adapter's `OpKernelContext` is constructed fresh per `Compute()` and caches nothing beyond it. The
+adapter symbols are absent from the built-in profile entirely, `Tensor`/`TensorShape` work doubles, and the total
+extra CPU (+0.53 ms/rep) accounts for the entire extra wall latency (+0.42 ms/rep).
+
+Three method notes, since each cost time:
+
+- **ORT's own `-p` profiler cannot do this A/B.** The built-in arm emits 15,300 `Api` category events and the plugin
+  arm emits zero, so under `-p` the built-in arm measures *slower* and the result inverts. That asymmetry is also a
+  finding in its own right: the plugin path silently loses the WebGPU EP's `Api` profiling events, an observability
+  regression worth fixing independently of latency.
+- **ETW/xperf symbolization does not work on this machine.** Traces collect fine but every frame renders as
+  `***unknown***` for every module, with symcache generated and with or without the Microsoft symbol server. Do not
+  spend time on it.
+- **What worked was a purpose-built sampling profiler** (`D:\test\prof\sampler.cpp`, outside the repo): sample every
+  thread's instruction pointer at ~1 kHz, symbolize with dbghelp against local PDBs after exit. Needs no elevation.
+  The binaries were relinked with `/DEBUG` only — `LINK_FLAGS` already set `/OPT:REF,ICF,LBR` explicitly, so no
+  codegen changed and the A/B ratio was re-verified afterwards.
+
 ## PR review feedback
 
 Draft PR [#32395](https://github.com/microsoft/onnxruntime/pull/32395) collected eleven inline self-review
@@ -843,15 +869,20 @@ RTX 5060 Ti machine, `onnxruntime_test_all --gtest_filter=InferenceSessionTests.
    dropped; **decision: deferred until this branch lands**, at which point the link becomes valid and the whole
    set can go across together.
 
-8. **Decide the latency tolerance.** The native half of the latency criterion is now measured — see
-   [Native shared-library plugin measurements](#native-shared-library-plugin-measurements). Both plugin shapes
-   cost per kernel node rather than a fixed amount, so no single percentage characterizes the overhead: it is
-   ~4-6% on real models and grows with node count. The criterion says latency must stay "within an accepted
-   tolerance", but that tolerance has never been quantified, and these results show the answer is not "zero".
-   Two gaps remain in the native numbers: session-creation cost was not compared (the plugin arm must also
-   discover and load the DLL, so it is likely worse in relative terms), and both arms ran with default WebGPU
-   options — graph capture in particular targets exactly the per-dispatch cost identified, and is worth a
-   follow-up.
+8. **Decide the latency tolerance — but reduce the cost first.** The native half of the latency criterion is now
+   measured and root-caused — see
+   [Native shared-library plugin measurements](#native-shared-library-plugin-measurements). Profiling showed the
+   overhead is redundant per-kernel tensor-wrapper construction in the EP API adapter, not intrinsic
+   boundary-crossing cost, so it looks reducible: caching the `Tensor` wrapper across `Compute()` calls, and
+   avoiding the allocator-name `std::string` and the `TensorShape` allocation on the per-node path, are the obvious
+   candidates. Negotiating a tolerance around a fixable defect would be the wrong order. Two gaps also remain in the
+   native numbers: session-creation cost was not compared (the plugin arm must also discover and load the DLL, so it
+   is likely worse in relative terms), and both arms ran with default WebGPU options — graph capture in particular
+   targets exactly the per-dispatch cost identified, and is worth a follow-up.
+
+9. **Restore `Api` profiling events on the plugin path.** The built-in WebGPU EP emits 15,300 `Api` category events
+   under `-p`; the plugin path emits none. This is an observability regression independent of latency, and it makes
+   ORT's own profiler unusable for comparing the two paths.
 
 ## Environment notes
 

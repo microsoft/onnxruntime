@@ -319,3 +319,125 @@ Two caveats on scope:
 
 Reproduce with `run_native_ab.ps1` (parses `Min Latency`, ignores the exit code); raw rows land in
 `native_ab_raw.csv`.
+
+## Where the per-node cost goes (CPU profile)
+
+The 1.2 µs/node figure above is far too large to be call-transport cost — a cross-DLL indirect call through the C API
+is tens of cycles, while 1.2 µs at 3.696 GHz is ≈4,400 cycles. That gap motivated profiling the two arms to find out
+what the cycles are actually spent on. The answer is that they are spent on **per-kernel marshalling work that the
+built-in path does not do at all**, not on crossing the boundary.
+
+### Method
+
+Both arms were relinked with `/DEBUG` to produce PDBs. This was a link-only change: `LINK_FLAGS` already carried an
+explicit `/OPT:REF,ICF,LBR`, so adding `/DEBUG` does not fall back to the `/OPT:NOREF,NOICF` debug defaults, and no
+source file was recompiled. Binary sizes were unchanged and the A/B ratio was re-measured at 1.087 afterwards, so the
+profiled binaries are the same ones the latency numbers came from.
+
+Two profilers were tried and rejected before settling on a third:
+
+- **ORT's own `-p` profiler cannot be used for this comparison.** Instrumentation is asymmetric — the built-in arm
+  emits 15,300 `Api` category events and the plugin arm emits **zero**, so under `-p` the built-in arm measures
+  *slower* (0.772 s vs 0.644 s over 50 runs), reversing the true result. It also inflates per-node time from ~17 µs
+  to ~46 µs by forcing per-node synchronisation. One result did survive: **per-op median kernel time is identical on
+  both arms (29.0 µs for Add/Mul/Sub)**, establishing early that GPU-side work is unchanged and the cost is host-side.
+  That the plugin path silently loses the WebGPU EP's `Api` profiling events is itself an observability regression.
+- **ETW/xperf resolved no symbols.** Traces collected fine (355k+ stack samples), but every frame rendered as
+  `***unknown***` — zero `Module!Func` tokens in the entire report — despite symcache files being generated for all
+  three PDBs, and with or without the Microsoft symbol server on the path.
+- **A purpose-built sampling profiler** (`sampler.cpp`) was used instead: it launches the target, samples every thread's
+  instruction pointer at ~1 kHz, and symbolizes leaf addresses with dbghelp against the local PDBs. Needs no
+  elevation, and symbolizes ORT frames reliably.
+
+Runs were 6000 reps of `bench_dispatch` (300 nodes), discarding the first 3 s, with the two arms pooled over two
+repetitions. Sampling did not destroy the effect being studied: the latency ratio under the profiler was 1.083,
+1.081 and 1.083 across three runs, against 1.087 unsampled.
+
+### Result
+
+Samples are counted only when a thread is actually running (leaf address not in a wait stub). One sample corresponds
+to roughly one sampler loop period, ~1.0–1.2 ms of thread time, so **absolute µs below are approximate to about
+±20%; the relative comparisons are not affected.**
+
+| Scope | built-in | plugin | delta | ratio |
+| --- | ---: | ---: | ---: | ---: |
+| All modules, running samples/rep | 3.388 | 3.922 | +0.534 | 1.158 |
+| `onnxruntime.dll` + `onnxruntime_providers_webgpu.dll` only | 1.175 | 1.441 | +0.267 | 1.227 |
+
+Per-module numbers are meaningless on their own here, because the WebGPU code simply *moves* out of `onnxruntime.dll`
+into `onnxruntime_providers_webgpu.dll`; only the combined ORT-side total is comparable.
+
+The two totals cross-check the latency result. The extra CPU of +0.534 samples/rep is ≈0.53–0.64 ms/rep against a
+measured extra wall latency of 0.42 ms/rep, and the ORT-side share alone (+0.267 samples/rep ≈ 0.9–1.1 µs/node) is
+close to the 1.2 µs/node from the latency fit. **The overhead is host-side CPU work, and most of it is ORT-side.**
+
+Attributing the +0.534 samples/rep by what the code is doing:
+
+| Category | built-in | plugin | delta | share of delta |
+| --- | ---: | ---: | ---: | ---: |
+| other (mostly GPU driver, see below) | 1.752 | 1.952 | +0.199 | 37.3% |
+| alloc/free | 0.573 | 0.669 | +0.096 | 17.9% |
+| `Tensor`/`TensorShape` construction | 0.083 | 0.165 | +0.082 | 15.3% |
+| EP API adapter | 0.002 | 0.074 | +0.072 | 13.4% |
+| dawn (refcounting, error checks) | 0.495 | 0.549 | +0.054 | 10.1% |
+| webgpu kernel bodies | 0.173 | 0.208 | +0.034 | 6.4% |
+| ort framework | 0.128 | 0.118 | −0.011 | −2.0% |
+
+The `ep-adapter` and `Tensor`/`TensorShape` rows are the reproducible core: they were +0.060/+0.063 and +0.030/+0.032
+in the two individual runs, i.e. stable, and the adapter work is *new* — it is ~0.002 in the built-in arm, meaning it
+does not exist there. The `dawn`, `webgpu-kernel` and `alloc/free` rows moved noticeably between the two runs and
+should be read as directional only.
+
+These symbols appear in the plugin arm and are absent from the built-in arm:
+
+| Symbol | plugin samples/rep |
+| --- | ---: |
+| `onnxruntime::TensorShape::TensorShape` | 0.020 |
+| `onnxruntime::webgpu::ComputeContext::Input<onnxruntime::Tensor>` | 0.016 |
+| `onnxruntime::ep::adapter::CreateTensorFromApiValue` | 0.013 |
+| `Ort::GetApi` | 0.013 |
+| `onnxruntime::TensorShape::Allocate` | 0.013 |
+| `onnxruntime::PluginEpOpKernel::Compute` | 0.008 |
+| `onnxruntime::Tensor::operator=` | 0.007 |
+| `onnxruntime::ep::adapter::KernelImpl::ComputeImpl` | 0.006 |
+| `OrtApis::IsTensor` | 0.006 |
+| `OrtApis::GetTensorElementTypeAndShapeDataReference` | 0.005 |
+| `onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum` | 0.004 |
+
+### Mechanism
+
+The profile points at `ep::adapter::CreateTensorFromApiValue`
+([`include/onnxruntime/ep/adapter/tensor_helper.h`](../../../../include/onnxruntime/ep/adapter/tensor_helper.h)),
+which rebuilds an `onnxruntime::Tensor` from an `OrtValue` on every access. Each call makes roughly nine C API round
+trips (`IsTensor`, `GetTensorElementTypeAndShapeDataReference`, `GetTensorMemoryInfo`, then `GetAllocatorName`,
+`GetAllocatorType`, `GetDeviceType`, `GetMemoryType`, `GetVendorId`, `GetDeviceId`), allocates a `std::string` for
+the allocator name, constructs a `TensorShape` (a heap allocation once the rank exceeds the inline capacity), looks
+up `DataTypeImpl::TensorTypeFromONNXEnum`, and constructs a `Tensor`.
+
+The adapter `OpKernelContext` ([`op_kernel.h`](../../../../include/onnxruntime/ep/adapter/op_kernel.h)) is built
+fresh per `Compute()` call and `resize()`s an input and an output `std::vector<Tensor>`. Its tensor cache lives only
+for the duration of that one call, so the work above repeats for every input and every output of every node on every
+`Run`. The built-in path does none of this: it receives `const Tensor*` directly from the executor.
+
+That is the answer to the original question. The overhead is **not** the cost of crossing the DLL boundary; it is
+redundant per-kernel wrapper construction and its allocation traffic, which is why it is ~4,400 cycles rather than
+the tens of cycles an indirect cross-module call would cost.
+
+### Caveats
+
+- Part of the delta is plausibly *consequence* rather than cause. The `other` bucket is dominated by GPU driver
+  modules (`nvwgf2umx.dll` +0.085, `win32u.dll` +0.017, `D3D12Core.dll` +0.014), and driver threads that poll will
+  accumulate samples in proportion to wall time — which the plugin arm has more of. The unambiguous causal signal is
+  the adapter and tensor-construction work, which is absent from the built-in arm entirely.
+- Driver and `ntdll` frames symbolize to the nearest export (no PDBs available), so names such as
+  `RtlCreateUnicodeString+0x118f` identify a region, not the actual function. Module attribution is still sound.
+- Suspend/resume sampling perturbs both arms, but equally; the preserved latency ratio is the check on this.
+- This is a flat (leaf-address) profile, so it attributes self time only and does not give call trees.
+
+### Implication for the tolerance question
+
+Open item 8 in the work log asks what tolerance is acceptable. These results argue against negotiating one yet: the
+dominant identified cost is redundant work in the adapter, not an intrinsic property of the plugin boundary, so it
+looks reducible — for example by caching the `Tensor` wrapper across `Compute()` calls, or by avoiding the
+allocator-name string and shape allocation on the per-node path. The tolerance question is better asked after that
+is attempted.
