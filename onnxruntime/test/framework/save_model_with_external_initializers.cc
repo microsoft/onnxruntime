@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <fstream>
+#include <map>
+
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/path_string.h"
@@ -127,6 +130,154 @@ TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffset) {
       ORT_TSTR("model_with_orig_ext_data.onnx.data"),
       ORT_TSTR("testdata/model_with_new_external_initializers.onnx"),
       ORT_TSTR("model_with_new_external_initializers.bin"), model_saving_options));
+}
+
+
+namespace {
+
+// Builds a model whose If branches own their initializers. The optimized-model
+// saving path used to emit each of those twice: Node::ToProto had already placed
+// them in the subgraph proto and the recursion added them again.
+void AddSubgraphInitializer(GraphProto& graph, const std::string& name, int64_t rows, int64_t cols) {
+  TensorProto* tensor = graph.add_initializer();
+  tensor->set_name(name);
+  tensor->set_data_type(TensorProto_DataType_FLOAT);
+  tensor->add_dims(rows);
+  tensor->add_dims(cols);
+  tensor->set_raw_data(std::string(static_cast<size_t>(rows * cols * sizeof(float)), '\1'));
+}
+
+void MakeIfBranch(GraphProto& graph, const std::string& graph_name, const std::string& weight_name,
+                  const std::string& output_name, int64_t rows, int64_t cols) {
+  graph.set_name(graph_name);
+  AddSubgraphInitializer(graph, weight_name, rows, cols);
+
+  NodeProto* node = graph.add_node();
+  node->set_op_type("MatMul");
+  node->add_input("x");
+  node->add_input(weight_name);
+  node->add_output(output_name);
+
+  ValueInfoProto* output = graph.add_output();
+  output->set_name(output_name);
+  auto* tensor_type = output->mutable_type()->mutable_tensor_type();
+  tensor_type->set_elem_type(TensorProto_DataType_FLOAT);
+  tensor_type->mutable_shape()->add_dim()->set_dim_param("N");
+  tensor_type->mutable_shape()->add_dim()->set_dim_value(cols);
+}
+
+ModelProto MakeModelWithSubgraphInitializers(int64_t rows, int64_t cols) {
+  ModelProto model;
+  model.set_ir_version(8);
+  OperatorSetIdProto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  GraphProto* graph = model.mutable_graph();
+  graph->set_name("main");
+
+  ValueInfoProto* x = graph->add_input();
+  x->set_name("x");
+  auto* x_type = x->mutable_type()->mutable_tensor_type();
+  x_type->set_elem_type(TensorProto_DataType_FLOAT);
+  x_type->mutable_shape()->add_dim()->set_dim_param("N");
+  x_type->mutable_shape()->add_dim()->set_dim_value(rows);
+
+  ValueInfoProto* cond = graph->add_input();
+  cond->set_name("cond");
+  cond->mutable_type()->mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  cond->mutable_type()->mutable_tensor_type()->mutable_shape();
+
+  NodeProto* if_node = graph->add_node();
+  if_node->set_op_type("If");
+  if_node->add_input("cond");
+  if_node->add_output("y");
+
+  AttributeProto* then_attr = if_node->add_attribute();
+  then_attr->set_name("then_branch");
+  then_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  MakeIfBranch(*then_attr->mutable_g(), "then", "Wa", "then_out", rows, cols);
+
+  AttributeProto* else_attr = if_node->add_attribute();
+  else_attr->set_name("else_branch");
+  else_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  MakeIfBranch(*else_attr->mutable_g(), "else", "Wb", "else_out", rows, cols);
+
+  ValueInfoProto* y = graph->add_output();
+  y->set_name("y");
+  auto* y_type = y->mutable_type()->mutable_tensor_type();
+  y_type->set_elem_type(TensorProto_DataType_FLOAT);
+  y_type->mutable_shape()->add_dim()->set_dim_param("N");
+  y_type->mutable_shape()->add_dim()->set_dim_value(cols);
+  return model;
+}
+
+void CountSubgraphInitializers(const GraphProto& graph, std::map<std::string, int>& counts, int depth) {
+  if (depth > 0) {
+    for (const auto& tensor : graph.initializer()) {
+      counts[tensor.name()]++;
+    }
+  }
+  for (const auto& node : graph.node()) {
+    for (const auto& attribute : node.attribute()) {
+      if (attribute.has_g()) {
+        CountSubgraphInitializers(attribute.g(), counts, depth + 1);
+      }
+      for (const auto& subgraph : attribute.graphs()) {
+        CountSubgraphInitializers(subgraph, counts, depth + 1);
+      }
+    }
+  }
+}
+
+// Saves a model whose subgraphs own initializers and checks that each of them is
+// declared exactly once, and that the saved model can be loaded back.
+void SaveAndCheckSubgraphInitializers(int64_t rows, int64_t cols, size_t size_threshold) {
+  auto logger = DefaultLoggingManager().CreateLogger("SaveWithExternalInitializers");
+
+  const auto output_onnx = std::filesystem::temp_directory_path() / "subgraph_initializers.onnx";
+  const std::filesystem::path output_external{"subgraph_initializers.onnx.data"};
+  std::filesystem::remove(output_onnx);
+  std::filesystem::remove(output_onnx.parent_path() / output_external);
+
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(MakeModelWithSubgraphInitializers(rows, cols), model, nullptr, *logger));
+
+  ModelSavingOptions saving_options{size_threshold};
+  saving_options.align_offset = true;
+  ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(*model, output_onnx, output_external, saving_options));
+
+  ModelProto saved;
+  {
+    std::ifstream saved_stream(output_onnx, std::ios::binary);
+    ASSERT_TRUE(saved_stream.is_open());
+    ASSERT_TRUE(saved.ParseFromIstream(&saved_stream));
+  }
+
+  std::map<std::string, int> counts;
+  CountSubgraphInitializers(saved.graph(), counts, 0);
+  ASSERT_EQ(counts.size(), static_cast<size_t>(2));
+  for (const auto& [name, count] : counts) {
+    EXPECT_EQ(count, 1) << "subgraph initializer '" << name << "' was written " << count << " times";
+  }
+
+  std::shared_ptr<Model> reloaded;
+  ASSERT_STATUS_OK(Model::Load(output_onnx.native(), reloaded, nullptr, *logger));
+
+  std::filesystem::remove(output_onnx);
+  std::filesystem::remove(output_onnx.parent_path() / output_external);
+}
+
+}  // namespace
+
+// Subgraph initializers small enough to stay embedded in the .onnx file.
+TEST(SaveWithExternalInitializers, SubgraphInitializersBelowThresholdNotDuplicated) {
+  SaveAndCheckSubgraphInitializers(/*rows*/ 8, /*cols*/ 8, /*size_threshold*/ 1024);
+}
+
+// Subgraph initializers large enough to be written to the external data file.
+TEST(SaveWithExternalInitializers, SubgraphInitializersAboveThresholdNotDuplicated) {
+  SaveAndCheckSubgraphInitializers(/*rows*/ 512, /*cols*/ 512, /*size_threshold*/ 1024);
 }
 
 }  // namespace test
