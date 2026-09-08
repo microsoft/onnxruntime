@@ -86,6 +86,7 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
   ORT_RETURN_IF(weight_shape.NumDimensions() != 3,
                 "weight must be rank 3 (channels, 1, kernel_size)");
 
+  const int64_t total_tokens = input_shape[0];
   const int64_t channels = input_shape[1];
   const int64_t kernel_size = weight_shape[2];
   const int64_t pad = (kernel_size - 1) * dilation_;
@@ -103,6 +104,8 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
   ORT_RETURN_IF(cu_seqlens_shape.NumDimensions() != 1 || cu_seqlens_shape[0] < 2,
                 "cumulative_sequence_length must be rank 1 with at least 2 elements");
   const int64_t batch_size = cu_seqlens_shape[0] - 1;
+  ORT_RETURN_IF(total_tokens < batch_size,
+                "total_tokens must be at least batch_size because every sequence must contain a token");
   ORT_RETURN_IF(batch_size > std::numeric_limits<uint32_t>::max(),
                 "batch size is too large for WebGPU");
 
