@@ -1,7 +1,7 @@
 # BNHS Value layout for GroupQueryAttention
 
 Status: partially implemented (see [Sequencing](#8-sequencing))
-Last updated: 2026-09-03
+Last updated: 2026-09-07
 
 ## Motivation
 
@@ -610,11 +610,19 @@ in minimal builds (see 4.3) and is deferred until a consumer needs it.
 - An invalid option value on an ORT format model reports the bad value, not the format restriction.
 - Detection traces through device copies, and an unconverted boundary behind one is rejected. The
   fixture asserts the Transpose is not adjacent to the boundary, and the detection test fails against
-  the adjacency assumption. The copies are built directly, since no non-CPU EP is available in the
-  unit tests.
-- Requesting BNHS for a model with no main-graph GQA succeeds and converts nothing, which is also
-  what a subgraph-only GQA looks like from the main graph. ORT warns rather than failing, because it
-  cannot tell the two apart without recursing.
+  the adjacency assumption.
+- `RejectsADeviceOptimizedBnhsModelWhenBnshIsRequested` is the end-to-end version: it saves an
+  optimized model through a real non-CPU EP so `MemcpyTransformer` inserts the copies itself, checks
+  the saved graph really is non-adjacent, and reloads it with explicit BNSH. It is skipped where no
+  such EP is built, so a CPU-only developer build relies on the hand-built fixture above and this
+  case is covered only in GPU CI legs.
+- Requesting BNHS for a model with no main-graph GQA succeeds and converts nothing. ORT warns rather
+  than failing, because from the main graph this is indistinguishable from a subgraph-only GQA.
+- The subgraph-only case has its own fixture (see above), so both halves of that ambiguity are
+  covered rather than just the benign one.
+- The three "nothing was converted" messages are asserted against a `CapturingSink` attached to the
+  session, including that a successful conversion says none of them, and `CountGqaNodes()` is
+  exercised directly on a main-graph and a subgraph-only model.
 - An ORT format model carrying BNHS boundaries is rejected when BNSH is explicitly requested and loads
   when the option is unset. The fixture round-trips a converted model through ORT format serialization
   rather than checking in a binary fixture, so it stays honest if the format changes.
@@ -639,9 +647,28 @@ model into an `InferenceSessionWrapper`:
 - An ORT format model fails session initialization with `ORT_INVALID_ARGUMENT` when the option is set, and loads normally when it
   is not.
 
-Subgraphs are not covered by a test. `ApplyImpl` returns immediately for `graph_level != 0` and never
-calls `Recurse`, so a subgraph node is unreachable by construction; a test would exercise the
-transformer base class rather than this transformer.
+`DoesNotConvertWhenGqaLivesOnlyInASubgraph` covers the subgraph case end to end: a model whose KV
+boundary is on the main graph while the only GroupQueryAttention sits inside a `Loop` body, which is
+the shape a decoder with an in-graph generation loop takes. The fixture asserts GQA really is absent
+from the main graph and present in the body, so it cannot quietly stop testing what it claims.
+
+It pins down the **limitation**, not a fix. The boundary and the operator are in different graphs, so
+there is nothing this transformer can safely rewire from the main graph. The session comes up with the
+boundary still BNSH after the caller asked for BNHS, and the warning from 4.1 is the only signal.
+Anyone changing that behaviour should have to update this test deliberately.
+
+The warning does, however, say *which* case occurred. `CountGqaNodes()` recurses, so converting nothing
+is reported three ways rather than one:
+
+| Situation | Message |
+|---|---|
+| GQA only in subgraphs | names the count and says the option does not reach them; buffers are still BNSH |
+| GQA in the main graph, none in scope | points at the per-node warnings already logged |
+| No GQA at all | says the option has no effect |
+
+Only the first leaves an application-visible boundary in the wrong layout, so collapsing them into one
+"nothing was converted" message would bury the case that matters in the two that do not. The messages
+are asserted from a captured session log, not merely assumed.
 
 **6.2** End-to-end numerical parity on the CPU EP, in the same test file:
 

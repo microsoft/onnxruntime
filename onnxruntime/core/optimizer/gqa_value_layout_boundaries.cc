@@ -179,6 +179,38 @@ bool FindConvertedPresentValueBoundary(const Graph& graph, const Node& node, std
   return false;
 }
 
+namespace {
+// Counts GQA nodes at any depth below `graph`, not including `graph` itself.
+size_t CountGqaNodesInSubgraphs(const Graph& graph) {
+  size_t count = 0;
+  for (const auto& node : graph.Nodes()) {
+    for (const Graph* subgraph : node.GetSubgraphs()) {
+      if (subgraph == nullptr) {
+        continue;
+      }
+      for (const auto& subgraph_node : subgraph->Nodes()) {
+        if (IsGroupQueryAttention(subgraph_node)) {
+          ++count;
+        }
+      }
+      count += CountGqaNodesInSubgraphs(*subgraph);
+    }
+  }
+  return count;
+}
+}  // namespace
+
+GqaNodeCounts CountGqaNodes(const Graph& graph) {
+  GqaNodeCounts counts;
+  for (const auto& node : graph.Nodes()) {
+    if (IsGroupQueryAttention(node)) {
+      ++counts.in_main_graph;
+    }
+  }
+  counts.in_subgraphs = CountGqaNodesInSubgraphs(graph);
+  return counts;
+}
+
 GqaValueLayoutBoundaries FindConvertedGqaValueLayoutBoundaries(const Graph& graph) {
   GqaValueLayoutBoundaries boundaries;
 

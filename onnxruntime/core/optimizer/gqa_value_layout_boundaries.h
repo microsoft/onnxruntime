@@ -61,6 +61,23 @@ bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::s
 bool FindConvertedPresentValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name);
 
 /**
+Where a graph's com.microsoft.GroupQueryAttention nodes sit relative to the main graph.
+
+Used to explain why a BNHS request converted nothing. From the main graph alone, a model with no GQA
+at all and one whose GQA lives inside a Loop body or BeamSearch decoder look identical -- both simply
+have nothing to convert -- but only the second leaves the application binding BNHS buffers to a
+boundary that is still BNSH, so the two deserve different messages.
+*/
+struct GqaNodeCounts {
+  size_t in_main_graph = 0;
+  size_t in_subgraphs = 0;  // at any depth
+
+  bool Any() const { return in_main_graph != 0 || in_subgraphs != 0; }
+};
+
+GqaNodeCounts CountGqaNodes(const Graph& graph);
+
+/**
 Finds every application boundary of a graph that already carries the BNHS conversion.
 
 Lives in its own translation unit, compiled in every build flavour including minimal, because the ORT
