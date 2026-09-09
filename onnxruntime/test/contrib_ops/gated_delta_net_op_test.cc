@@ -424,6 +424,7 @@ TEST(GatedDeltaNetWebGpuTest, RaggedWithoutInitialState) {
   options.gate_activation = "qwen";
   options.beta_activation = "sigmoid";
   options.qk_l2_norm = 1;
+  options.scale = 0.37f;
   RunTypedCase<float>(g, options, inputs, 3e-4f, 3e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
@@ -872,8 +873,8 @@ TEST(GatedDeltaNetTest, TwoCallContinuationMatchesSingleRun) {
   RunCase(g2, Options{}, in2, 3e-2f, 3e-2f);
 }
 
-void RunAliasedStateIoBindingCase(int total_tokens) {
-  auto ep = DefaultCudaExecutionProvider();
+void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionProvider> ep,
+                                  const char* execution_provider_type) {
   ASSERT_NE(ep, nullptr);
 
   Geometry geometry{total_tokens, 1, 1, 2, kDim, kDim};
@@ -933,7 +934,7 @@ void RunAliasedStateIoBindingCase(int total_tokens) {
   std::vector<NodeArg*> node_outputs = {&output_arg, &final_state_arg};
   auto& node = graph.AddNode("gdn", "GatedDeltaNet", "aliased recurrent state",
                              node_inputs, node_outputs, nullptr, kMSDomain);
-  node.SetExecutionProviderType(kCudaExecutionProvider);
+  node.SetExecutionProviderType(execution_provider_type);
   ASSERT_STATUS_OK(graph.Resolve());
 
   std::string serialized;
@@ -1023,8 +1024,16 @@ void RunAliasedStateIoBindingCase(int total_tokens) {
 
 TEST(GatedDeltaNetTest, AliasedStateIoBindingRecurrentAndChunked) {
   if (NeedSkipGatedDeltaNetTest()) return;
-  RunAliasedStateIoBindingCase(/*total_tokens=*/4);
-  RunAliasedStateIoBindingCase(/*total_tokens=*/64);
+  RunAliasedStateIoBindingCase(/*total_tokens=*/4, DefaultCudaExecutionProvider(), kCudaExecutionProvider);
+  RunAliasedStateIoBindingCase(/*total_tokens=*/64, DefaultCudaExecutionProvider(), kCudaExecutionProvider);
+}
+
+TEST(GatedDeltaNetWebGpuTest, AliasedStateIoBinding) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  RunAliasedStateIoBindingCase(/*total_tokens=*/4, std::move(webgpu_ep), kWebGpuExecutionProvider);
 }
 
 // Device-supplied offsets must not be able to steer an out-of-bounds access.
