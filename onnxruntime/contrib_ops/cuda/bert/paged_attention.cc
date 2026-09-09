@@ -47,6 +47,10 @@ REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16, BFloat16)
 REGISTER_KERNEL_TYPED(MLFloat16, int8_t)
 REGISTER_KERNEL_TYPED(BFloat16, int8_t)
+#ifdef USE_INT4_KV_CACHE
+REGISTER_KERNEL_TYPED(MLFloat16, uint8_t)
+REGISTER_KERNEL_TYPED(BFloat16, uint8_t)
+#endif
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
 REGISTER_KERNEL_TYPED(MLFloat16, Float8E4M3FN)
 REGISTER_KERNEL_TYPED(BFloat16, Float8E4M3FN)
@@ -55,7 +59,7 @@ REGISTER_KERNEL_TYPED(BFloat16, Float8E4M3FN)
 // True when TCACHE stores quantized values that need a scale on read/write.
 template <typename TCACHE>
 constexpr bool IsQuantizedCacheType() {
-  if constexpr (std::is_same<TCACHE, int8_t>::value) {
+  if constexpr (std::is_same<TCACHE, int8_t>::value || std::is_same<TCACHE, uint8_t>::value) {
     return true;
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
   } else if constexpr (std::is_same<TCACHE, Float8E4M3FN>::value) {
@@ -82,7 +86,9 @@ constexpr bool IsFp8CacheType() {
 // v_cache_dtype attribute can be checked against it.
 template <typename TCACHE>
 constexpr KVCacheDataType CacheStorageDataType() {
-  if constexpr (std::is_same<TCACHE, int8_t>::value) {
+  if constexpr (std::is_same<TCACHE, uint8_t>::value) {
+    return KVCacheDataType::INT4;
+  } else if constexpr (std::is_same<TCACHE, int8_t>::value) {
     return KVCacheDataType::INT8;
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
   } else if constexpr (std::is_same<TCACHE, Float8E4M3FN>::value) {
@@ -119,10 +125,9 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
               "qk_norm_epsilon must be a positive finite number");
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
-  // Empty (the default) means the cache tensor's own element type is the logical type, which covers
-  // every format this operator stores today. A non-empty value names a sub-byte logical type packed
-  // into a uint8 cache, which no build supports yet and is rejected during validation. The string is
-  // parsed once here; everything downstream compares the enum.
+  // Empty means the cache tensor's element type is also its logical type. Packed uint8 caches
+  // instead require an explicit int4 logical type. Other sub-byte formats remain unsupported. The
+  // string is parsed once here; everything downstream compares the enum.
   k_cache_dtype_ = StringToKVCacheDataType(info.GetAttrOrDefault<std::string>("k_cache_dtype", ""));
   v_cache_dtype_ = StringToKVCacheDataType(info.GetAttrOrDefault<std::string>("v_cache_dtype", ""));
 
@@ -253,7 +258,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   key_cache_out_shape[0] = static_cast<int64_t>(parameters.num_blocks);
   key_cache_out_shape[1] = static_cast<int64_t>(parameters.block_size);
   key_cache_out_shape[2] = static_cast<int64_t>(parameters.kv_num_heads);
-  key_cache_out_shape[3] = static_cast<int64_t>(parameters.head_size);
+  key_cache_out_shape[3] = key_cache->Shape()[3];
   Tensor* key_cache_out = context->Output(1, key_cache_out_shape);
 
   // LATENT has a single physical cache, so there is no value_cache_out to produce.
@@ -263,7 +268,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     value_cache_out_shape[0] = static_cast<int64_t>(parameters.num_blocks);
     value_cache_out_shape[1] = static_cast<int64_t>(parameters.block_size);
     value_cache_out_shape[2] = static_cast<int64_t>(parameters.kv_num_heads);
-    value_cache_out_shape[3] = static_cast<int64_t>(parameters.head_size);
+    value_cache_out_shape[3] = value_cache->Shape()[3];
     value_cache_out = context->Output(2, value_cache_out_shape);
   }
 
@@ -457,13 +462,25 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const auto is_supported_quant_type = [](KVQuantizationType t) {
     return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
   };
-  const bool quantized_xqa_eligible =
-      enable_xqa_ && kIsQuantizedCache && device_prop.major >= 8 && parameters.softcap == 0.0f &&
-      (parameters.head_size == 64 || parameters.head_size == 128 || parameters.head_size == 256) &&
-      (group_size == 4 || group_size == 6 || group_size == 8 || group_size == 16 || group_size == 32) &&
+#ifdef USE_INT4_KV_CACHE
+  // INT4 XQA folds the PER_CHANNEL scale into Q and applies it to the output, so the kernel itself
+  // runs at unit scale.
+  const bool int4_xqa_eligible =
+      enable_xqa_ && std::is_same_v<TCACHE, uint8_t> && std::is_same_v<T, MLFloat16> &&
+      device_prop.major >= 8 && parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0 &&
-      is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
-      (!is_fp8_cache || device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9));
+      k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
+#else
+  constexpr bool int4_xqa_eligible = false;
+#endif
+  const bool quantized_xqa_eligible =
+      int4_xqa_eligible || (enable_xqa_ && kIsQuantizedCache && !std::is_same_v<TCACHE, uint8_t> &&
+                            device_prop.major >= 8 && parameters.softcap == 0.0f &&
+                            (parameters.head_size == 64 || parameters.head_size == 128 || parameters.head_size == 256) &&
+                            (group_size == 4 || group_size == 6 || group_size == 8 || group_size == 16 || group_size == 32) &&
+                            (parameters.block_size % kXqaTokensPerPage) == 0 &&
+                            is_supported_quant_type(k_quant_type_) && is_supported_quant_type(v_quant_type_) &&
+                            (!is_fp8_cache || device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));
   // Speculative verification steps (2..8 new tokens per sequence) run on the paged XQA kernel with
   // a packed lower-triangular mask built by PagedXqaSpecDecCausalMaskKernel. The gate is the
   // metadata query bound, not the aggregate token count: a zero-heavy ragged step can have
@@ -475,11 +492,15 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value) || native_spec_xqa_eligible) &&
       parameters.head_size == 256 && group_size == 6 &&
       max_query_len_bound > 1 && max_query_len_bound <= 8;
+  const bool portable_spec_dec_candidate =
+      has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&
+      std::is_same_v<TCACHE, uint8_t>;
   // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
   // both hard-code a bottom-right causal mask.
   bool use_paged_decode =
       decode_eligible && parameters.is_causal &&
-      ((decode_shaped && (kIsQuantizedCache || fp16_xqa_eligible || !flash_eligible)) || xqa_spec_dec_candidate);
+      ((decode_shaped && (kIsQuantizedCache || fp16_xqa_eligible || !flash_eligible)) ||
+       xqa_spec_dec_candidate || portable_spec_dec_candidate);
   bool use_flash_attention = flash_eligible && !use_paged_decode;
   const bool use_memory_efficient_attention = mea_eligible && !use_paged_decode && parameters.is_causal;
 
@@ -509,8 +530,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     xqa_candidate = kIsQuantizedCache ? quantized_xqa_eligible : fp16_xqa_eligible;
   }
   const XqaQuantType xqa_kv_quant_type =
-      !kIsQuantizedCache ? XqaQuantType::kNone
-                         : (IsFp8CacheType<TCACHE>() ? XqaQuantType::kFp8 : XqaQuantType::kInt8);
+      std::is_same_v<TCACHE, uint8_t> ? XqaQuantType::kInt4
+      : !kIsQuantizedCache            ? XqaQuantType::kNone
+                                      : (IsFp8CacheType<TCACHE>() ? XqaQuantType::kFp8 : XqaQuantType::kInt8);
 
   // Obtaining the exact lengths from the device means copying the two cumulative arrays back and
   // blocking the host until they land, which drains everything already queued on the compute
@@ -727,7 +749,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                     device_prop, parameters.batch_size, parameters.num_heads,
                                     parameters.kv_num_heads, parameters.head_size,
                                     xqa_max_pages_per_seq * kXqaTokensPerPage,
-                                    xqa_kv_quant_type, std::is_same<T, BFloat16>::value);
+                                    int4_xqa_eligible ? XqaQuantType::kNone : xqa_kv_quant_type,
+                                    std::is_same<T, BFloat16>::value);
     xqa_workspace_buffer = GetScratchBuffer<void>(xqa_workspace_bytes, GetComputeStream(context));
     if (xqa_page_table_expanded) {
       xqa_page_table_buffer = GetScratchBuffer<void>(

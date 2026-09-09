@@ -13,6 +13,7 @@
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
+#include "contrib_ops/cuda/bert/group_query_attention_qdq.cuh"
 #include "contrib_ops/cuda/bert/xqa/xqa_paged_loader.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_impl.h"
@@ -42,13 +43,16 @@ template <typename TCACHE>
 struct IsQuantizedCache : std::false_type {};
 template <>
 struct IsQuantizedCache<int8_t> : std::true_type {};
+#ifdef USE_INT4_KV_CACHE
+template <>
+struct IsQuantizedCache<uint8_t> : std::true_type {};
+#endif
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
 template <>
 struct IsQuantizedCache<Float8E4M3FN> : std::true_type {};
 #endif
 
-// PER_CHANNEL scales are indexed by (kv_head * head_size + channel); PER_TENSOR uses scale[0].
-// `channel_index` is that flattened kv-hidden offset.
+// PER_CHANNEL uses the flattened kv-hidden channel_index; PER_TENSOR uses scale[0].
 __device__ __forceinline__ float GetCacheScale(const float* __restrict__ scale, const int channel_index,
                                                const bool per_channel) {
   if (scale == nullptr) {
@@ -84,6 +88,16 @@ __device__ __forceinline__ T DequantizeFromCache(const TCACHE value, const float
 #endif
   } else {
     return static_cast<T>(value);
+  }
+}
+
+template <typename TCACHE>
+__device__ __forceinline__ float ReadPagedCache(const TCACHE* cache, int64_t logical_index) {
+  if constexpr (std::is_same_v<TCACHE, uint8_t>) {
+    const uint8_t packed = cache[logical_index / 2];
+    return static_cast<float>(((packed >> ((logical_index & 1) * 4)) & 15) + kInt4Min);
+  } else {
+    return DequantizeFromCache<float, TCACHE>(cache[logical_index], 1.0f);
   }
 }
 
@@ -481,6 +495,57 @@ Status LaunchReshapeAndCacheImpl(const T* key, const T* value, TCACHE* key_cache
   return CUDA_CALL(cudaGetLastError());
 }
 
+template <typename T, typename TCACHE, typename SlotResolver>
+__global__ void ReshapeAndCacheHeads(const T* input, TCACHE* cache, const float* static_scale,
+                                    bool per_channel, SlotResolver resolver, int head_size, int kv_num_heads,
+                                    int input_stride, int64_t num_slots) {
+  const int token = blockIdx.x;
+  const int head = blockIdx.y;
+  const int channel = threadIdx.x;
+  const int slot = resolver(token);
+  if (slot < 0 || slot >= num_slots) return;
+  // Staging buffer for the INT4 nibble pack below.
+  extern __shared__ float shared_values[];
+  float value = channel < head_size
+                    ? static_cast<float>(input[static_cast<int64_t>(token) * input_stride + head * head_size + channel])
+                    : 0.0f;
+  const int64_t scale_index = static_cast<int64_t>(slot) * kv_num_heads + head;
+  const float scale = channel < head_size ? GetCacheScale(static_scale, head * head_size + channel, per_channel) : 1.0f;
+  if constexpr (std::is_same_v<TCACHE, uint8_t>) {
+    const float scaled = scale == 0.0f ? 0.0f : value / scale;
+    const float clamped = fminf(static_cast<float>(kInt4Max), fmaxf(static_cast<float>(kInt4Min), scaled));
+    shared_values[channel] = static_cast<float>(__float2int_rn(clamped) - kInt4Min);
+    __syncthreads();
+    if (channel < (head_size + 1) / 2) {
+      const int low = static_cast<int>(shared_values[2 * channel]);
+      const int high = 2 * channel + 1 < head_size ? static_cast<int>(shared_values[2 * channel + 1]) : -kInt4Min;
+      cache[scale_index * ((head_size + 1) / 2) + channel] = static_cast<uint8_t>(low | (high << 4));
+    }
+  } else if (channel < head_size) {
+    cache[scale_index * head_size + channel] = QuantizeToCache<float, TCACHE>(value, scale);
+  }
+}
+
+template <typename T, typename TCACHE, typename SlotResolver>
+Status LaunchCacheHeads(const T* key, const T* value, PagedAttentionData<T, TCACHE>& data,
+                        const PagedAttentionParameters& parameters, SlotResolver resolver,
+                        int key_stride, int value_stride, cudaStream_t stream) {
+  int threads = 1;
+  while (threads < parameters.head_size) threads <<= 1;
+  const dim3 grid(parameters.token_count, parameters.kv_num_heads);
+  const int64_t num_slots = static_cast<int64_t>(parameters.num_blocks) * parameters.block_size;
+  ReshapeAndCacheHeads<<<grid, threads, threads * sizeof(float), stream>>>(
+      key, data.key_cache, data.k_scale, parameters.k_quant_type == KVQuantizationType::PER_CHANNEL, resolver,
+      parameters.head_size, parameters.kv_num_heads, key_stride, num_slots);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  if (data.value_cache != nullptr) {
+    ReshapeAndCacheHeads<<<grid, threads, threads * sizeof(float), stream>>>(
+        value, data.value_cache, data.v_scale, parameters.v_quant_type == KVQuantizationType::PER_CHANNEL, resolver,
+        parameters.head_size, parameters.kv_num_heads, value_stride, num_slots);
+  }
+  return CUDA_CALL(cudaGetLastError());
+}
+
 template <typename T, typename TCACHE>
 Status LaunchReshapeAndCache(const T* key, const T* value, TCACHE* key_cache, TCACHE* value_cache,
                              const float* k_scale, const float* v_scale, const bool k_per_channel,
@@ -630,10 +695,10 @@ __global__ void GatherAndExpandPagedKVCache(const TCACHE* __restrict__ key_cache
                               kv_head_id * head_size +
                               h;
 
-    gathered_key[tid] =
-        DequantizeFromCache<T, TCACHE>(key_cache[paged_idx], GetCacheScale(k_scale, channel_index, k_per_channel));
-    gathered_value[tid] =
-        DequantizeFromCache<T, TCACHE>(value_cache[paged_idx], GetCacheScale(v_scale, channel_index, v_per_channel));
+    gathered_key[tid] = static_cast<T>(ReadPagedCache(key_cache, paged_idx) *
+                                       GetCacheScale(k_scale, channel_index, k_per_channel));
+    gathered_value[tid] = static_cast<T>(ReadPagedCache(value_cache, paged_idx) *
+                                         GetCacheScale(v_scale, channel_index, v_per_channel));
   }
 }
 
@@ -840,11 +905,11 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
                                : -1;
       float dot = 0.0f;
       if (block_id >= 0) {
-        const TCACHE* k_ptr = key_cache +
-                              (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
-                              head_offset_in_page;
+        const int64_t key_offset =
+            (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
+            head_offset_in_page;
         for (int c = lane_id; c < head_size; c += 32) {
-          dot += q_sh[c] * CacheToFloat<TCACHE>(k_ptr[c]);
+          dot += q_sh[c] * ReadPagedCache(key_cache, key_offset + c);
         }
       }
 #pragma unroll
@@ -914,10 +979,10 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
             continue;
           }
           const int pos = tile_begin + t;
-          const TCACHE* v_ptr = value_cache +
-                                (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
-                                head_offset_in_page;
-          acc += logits_sh[t] * CacheToFloat<TCACHE>(v_ptr[c]);
+          const int64_t value_offset =
+              (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+              head_offset_in_page;
+          acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
         }
         acc_sh[c] = acc;
       }
@@ -931,10 +996,10 @@ __global__ void PagedDecodeSplitKV(const T* __restrict__ query,
           continue;
         }
         const int pos = tile_begin + t;
-        const TCACHE* v_ptr = value_cache +
-                              (static_cast<int64_t>(block_id) * block_size + (pos % block_size)) * token_stride_in_page +
-                              head_offset_in_page;
-        acc += logits_sh[t] * CacheToFloat<TCACHE>(v_ptr[c]);
+        const int64_t value_offset =
+            (static_cast<int64_t>(block_id) * block_size + pos % block_size) * token_stride_in_page +
+            head_offset_in_page;
+        acc += logits_sh[t] * ReadPagedCache(value_cache, value_offset + c);
       }
       acc_sh[tid] = acc;
     }
@@ -1381,11 +1446,22 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
   const int value_stride = parameters.is_packed_qkv ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
   const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
   const bool v_per_channel = parameters.v_quant_type == KVQuantizationType::PER_CHANNEL;
-  ORT_RETURN_IF_ERROR((LaunchReshapeAndCache<T, TCACHE>(
+  if constexpr (std::is_same_v<TCACHE, uint8_t>) {
+    if (data.slot_mapping != nullptr) {
+      ORT_RETURN_IF_ERROR(LaunchCacheHeads(key, value, data, parameters, ExplicitSlotResolver{data.slot_mapping},
+                                           key_stride, value_stride, stream));
+    } else {
+      DerivedSlotResolver resolver{data.block_table, past_seqlens, cumulative_seqlens_q, batch_size,
+                                    parameters.max_num_blocks_per_seq, parameters.block_size};
+      ORT_RETURN_IF_ERROR(LaunchCacheHeads(key, value, data, parameters, resolver, key_stride, value_stride, stream));
+    }
+  } else {
+    ORT_RETURN_IF_ERROR((LaunchReshapeAndCache<T, TCACHE>(
       key, value, data.key_cache, data.value_cache, data.k_scale, data.v_scale, k_per_channel, v_per_channel,
       const_cast<int*>(data.block_table), past_seqlens, cumulative_seqlens_q, data.slot_mapping, batch_size,
       parameters.max_num_blocks_per_seq, token_count, kv_hidden_size, parameters.block_size,
       parameters.num_blocks, key_stride, value_stride, stream, max_threads_per_block)));
+  }
 
   *query_out = query;
   return Status::OK();
@@ -1622,8 +1698,11 @@ Status PagedXqaDecodeAttention(
       false;
 #endif
   constexpr bool kIsInt8Cache = std::is_same<TCACHE, int8_t>::value;
+  constexpr bool kIsInt4Cache = std::is_same_v<TCACHE, uint8_t>;
   const XqaQuantType kv_quant_type =
-      kIsFp8Cache ? XqaQuantType::kFp8 : (kIsInt8Cache ? XqaQuantType::kInt8 : XqaQuantType::kNone);
+      kIsInt4Cache  ? XqaQuantType::kInt4
+      : kIsFp8Cache ? XqaQuantType::kFp8
+                    : (kIsInt8Cache ? XqaQuantType::kInt8 : XqaQuantType::kNone);
   // A PER_CHANNEL scale has already been folded into Q / will be applied to the output, so XQA
   // receives a null scalar scale (which means one).
   const float* xqa_k_scale = k_per_channel ? nullptr : data.k_scale;
@@ -1902,6 +1981,10 @@ INSTANTIATE_PAGED_ATTENTION(half, half)
 INSTANTIATE_PAGED_ATTENTION(BFloat16, BFloat16)
 INSTANTIATE_PAGED_ATTENTION(half, int8_t)
 INSTANTIATE_PAGED_ATTENTION(BFloat16, int8_t)
+#ifdef USE_INT4_KV_CACHE
+INSTANTIATE_PAGED_ATTENTION(half, uint8_t)
+INSTANTIATE_PAGED_ATTENTION(BFloat16, uint8_t)
+#endif
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
 INSTANTIATE_PAGED_ATTENTION(half, Float8E4M3FN)
 INSTANTIATE_PAGED_ATTENTION(BFloat16, Float8E4M3FN)

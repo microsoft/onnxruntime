@@ -1787,6 +1787,10 @@ CUBIN_EXPORT __global__
       smem.warpRowSum[warpIdx.y][warpIdx.x].storeFromReg<false>(warp, regRowSum);
       unused(xBar.produced.arrive());
     }
+#if defined(XQA_PAGED_INT4)
+    ldgsts::waitGroup<0>();
+    __syncthreads();
+#endif
   } else {
     assert(warpIdx.z == 1);
 #if CTA_ROW_MAX_BACKWARD_METHOD == 3
@@ -2211,6 +2215,10 @@ CUBIN_EXPORT __global__
     }
     const GemmOutRegTile outTile = toFp16(acc);
 
+  #if defined(XQA_PAGED_INT4)
+    ldgsts::waitGroup<0>();
+    __syncwarp();
+  #endif
     auto mergeAndSaveOutTile = [&](const GemmOutRegTile& tile, bool reorder) {
       if constexpr (gemm1NbWarpGrps == 1) {
         // swizzle in shared memory and write output global memory
@@ -2301,6 +2309,9 @@ CUBIN_EXPORT __global__
 
       // merge if we are the last CTA.
       const bool isLastCta = mbsmem.isLastCta;
+    #if defined(XQA_PAGED_INT4)
+      __syncthreads();
+    #endif
       if (isLastCta) {
         MultiBlockSMem::MBBuf& mbbuf = mbsmem.storage[warpIdx.y];
         SMemWarpRowMax& smemRowMax = reinterpret_cast<SMemWarpRowMax&>(smem);
@@ -2315,6 +2326,9 @@ CUBIN_EXPORT __global__
         // rescale and accumulate
         auto getTileBuf = [&](auto& buffers, uint32_t d) -> decltype(buffers[0][0][0])& { return buffers[warpGrpIdx][warpIdxInGrp][d]; };
         auto loadBufAsync = [&](uint32_t n) {
+#if defined(XQA_PAGED_INT4)
+          __syncwarp();
+#endif
           const uint32_t d = n / gemm1NbWarpGrps % nbTileBuffers;
           SharedMem::XSmemBuffer& dstTile = getTileBuf(mbbuf.tiles, d);
           SMemWarpRowMax& dstRowSum = getTileBuf(mbbuf.tileRowSums, d);
@@ -2339,6 +2353,9 @@ CUBIN_EXPORT __global__
           }
           ldgsts::commitGroup();
           ldgsts::waitGroup<1>();
+#if defined(XQA_PAGED_INT4)
+          __syncwarp();
+#endif
           const uint32_t d = n / gemm1NbWarpGrps % nbTileBuffers;
           WarpAcc tile = toWarpAcc(loadGemmOutTile(warp, mbbuf.tiles[warpGrpIdx][warpIdxInGrp][d]));
           const ThrdRegRowMax tileRowMax = getTileBuf(mbbuf.tileRowMax, d).loadToReg<false>(warp);
