@@ -917,10 +917,35 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
     return std::accumulate(samples.begin(), samples.end(), 0.0) /
            static_cast<double>(samples.size());
   };
+  const auto trimmed_average = [](const std::vector<double>& samples) {
+    const size_t trim_count = samples.size() / 10;
+    const size_t retained_count = samples.size() - 2 * trim_count;
+    return std::accumulate(
+               samples.begin() + static_cast<ptrdiff_t>(trim_count),
+               samples.end() - static_cast<ptrdiff_t>(trim_count), 0.0) /
+           static_cast<double>(retained_count);
+  };
+  const auto stall_count = [](const std::vector<double>& samples, double median) {
+    const double threshold = 3.0 * median;
+    return static_cast<size_t>(std::count_if(
+        samples.begin(), samples.end(),
+        [threshold](double sample) { return sample > threshold; }));
+  };
+  const auto rate_percent = [](size_t count, size_t total) {
+    return 100.0 * static_cast<double>(count) / static_cast<double>(total);
+  };
+  const double scenario_p50_ms = percentile(scenario_latencies_ms, 0.50);
+  const double prefill_p50_ms = percentile(prefill_latencies_ms, 0.50);
+  const size_t scenario_stalls = stall_count(scenario_latencies_ms, scenario_p50_ms);
+  const size_t prefill_stalls = stall_count(prefill_latencies_ms, prefill_p50_ms);
   const double average_ms = average(scenario_latencies_ms);
+  const double trimmed_average_ms = trimmed_average(scenario_latencies_ms);
   const double prefill_average_ms = average(prefill_latencies_ms);
+  const double prefill_trimmed_average_ms = trimmed_average(prefill_latencies_ms);
   const double decode_average_ms =
       decode_latencies_ms.empty() ? 0.0 : average(decode_latencies_ms);
+  const double decode_trimmed_average_ms =
+      decode_latencies_ms.empty() ? 0.0 : trimmed_average(decode_latencies_ms);
   const double initialize_ms =
       std::chrono::duration<double, std::milli>(initialize_end - initialize_start).count();
 
@@ -975,21 +1000,38 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             << " serialized_external_data_bytes=" << serialized_external_data_bytes
             << " initialize_ms=" << initialize_ms
             << " average_ms=" << average_ms
-            << " p50_ms=" << percentile(scenario_latencies_ms, 0.50)
+            << " trimmed_average_ms=" << trimmed_average_ms
+            << " p50_ms=" << scenario_p50_ms
             << " p90_ms=" << percentile(scenario_latencies_ms, 0.90)
             << " p99_ms=" << percentile(scenario_latencies_ms, 0.99)
             << " min_ms=" << scenario_latencies_ms.front()
             << " max_ms=" << scenario_latencies_ms.back()
+            << " stall_threshold_ms=" << 3.0 * scenario_p50_ms
+            << " stall_count=" << scenario_stalls
+            << " stall_rate_pct="
+            << rate_percent(scenario_stalls, scenario_latencies_ms.size())
             << " prefill_average_ms=" << prefill_average_ms
-            << " prefill_p50_ms=" << percentile(prefill_latencies_ms, 0.50)
+            << " prefill_trimmed_average_ms=" << prefill_trimmed_average_ms
+            << " prefill_p50_ms=" << prefill_p50_ms
             << " prefill_p90_ms=" << percentile(prefill_latencies_ms, 0.90)
+            << " prefill_stall_threshold_ms=" << 3.0 * prefill_p50_ms
+            << " prefill_stall_count=" << prefill_stalls
+            << " prefill_stall_rate_pct="
+            << rate_percent(prefill_stalls, prefill_latencies_ms.size())
             << " decode_average_ms=" << decode_average_ms;
   if (!decode_latencies_ms.empty()) {
-    std::cout << " decode_p50_ms=" << percentile(decode_latencies_ms, 0.50)
+    const double decode_p50_ms = percentile(decode_latencies_ms, 0.50);
+    const size_t decode_stalls = stall_count(decode_latencies_ms, decode_p50_ms);
+    std::cout << " decode_trimmed_average_ms=" << decode_trimmed_average_ms
+              << " decode_p50_ms=" << decode_p50_ms
               << " decode_p90_ms=" << percentile(decode_latencies_ms, 0.90)
               << " decode_p99_ms=" << percentile(decode_latencies_ms, 0.99)
               << " decode_min_ms=" << decode_latencies_ms.front()
-              << " decode_max_ms=" << decode_latencies_ms.back();
+              << " decode_max_ms=" << decode_latencies_ms.back()
+              << " decode_stall_threshold_ms=" << 3.0 * decode_p50_ms
+              << " decode_stall_count=" << decode_stalls
+              << " decode_stall_rate_pct="
+              << rate_percent(decode_stalls, decode_latencies_ms.size());
   }
   std::cout
             << " baseline_device_used_mib=" << to_mib(*baseline_used_bytes)
