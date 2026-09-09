@@ -211,6 +211,8 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   ORT_RETURN_IF_ERROR(device_guard.SetDevice(device_id_));
   const auto resource_status = EnsureResources();
   if (!resource_status.IsOK()) {
+    // TODO: Remember setup failures during initialization and report the first CUDA error
+    // so later initializers do not repeatedly retry unavailable pinned buffers or streams.
     return LoadWithPageableBuffer(env, data_file_path, data_offset, length, tensor, reading_thread_count_);
   }
 
