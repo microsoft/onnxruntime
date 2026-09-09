@@ -1,20 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef _WIN32
-#include <sdkddkver.h>
-// FileRenameInfoEx requires the Windows 10 RS1 declarations in this test translation unit.
-#if NTDDI_VERSION < NTDDI_WIN10_RS1
-#undef NTDDI_VERSION
-#define NTDDI_VERSION NTDDI_WIN10_RS1
-#endif
-#endif
-
 #include "core/platform/env.h"
 
 #include <filesystem>
 #include <fstream>
 #include <array>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -238,8 +230,10 @@ TEST_F(RandomAccessFileTest, PathReplacementDoesNotChangeTheOpenFile) {
   rename_info->RootDirectory = nullptr;
   rename_info->FileNameLength = gsl::narrow<DWORD>(name_bytes);
   std::memcpy(rename_info->FileName, target_path.c_str(), name_bytes);
+  // Some SDK headers omit FileRenameInfoEx. Its documented FILE_INFO_BY_HANDLE_CLASS value is 22.
+  constexpr auto kFileRenameInfoEx = static_cast<FILE_INFO_BY_HANDLE_CLASS>(22);
   const BOOL renamed =
-      SetFileInformationByHandle(replacement_handle, FileRenameInfoEx, rename_info, rename_info_size);
+      SetFileInformationByHandle(replacement_handle, kFileRenameInfoEx, rename_info, rename_info_size);
   const DWORD rename_error = GetLastError();
   ASSERT_NE(renamed, FALSE) << rename_error;
 #else
@@ -294,7 +288,14 @@ TEST_F(RandomAccessFileTest, RejectsFifosWithoutWaitingForAWriter) {
   ScopedFileDeleter fifo_deleter;
   ASSERT_NO_FATAL_FAILURE(WriteRandomAccessTestFile({}, fifo_path, fifo_deleter));
   ASSERT_EQ(std::remove(fifo_path.c_str()), 0);
-  ASSERT_EQ(mkfifo(fifo_path.c_str(), 0600), 0);
+  const int create_result = mkfifo(fifo_path.c_str(), 0600);
+  const int create_error = errno;
+#ifdef __ANDROID__
+  if (create_result != 0 && (create_error == EACCES || create_error == EPERM)) {
+    GTEST_SKIP() << "Android SELinux policy denies FIFO creation: " << std::strerror(create_error);
+  }
+#endif
+  ASSERT_EQ(create_result, 0) << std::strerror(create_error);
   std::unique_ptr<RandomAccessFile> fifo;
   EXPECT_FALSE(Env::Default().OpenRandomAccessFile(fifo_path.c_str(), fifo).IsOK());
   EXPECT_EQ(fifo, nullptr);
