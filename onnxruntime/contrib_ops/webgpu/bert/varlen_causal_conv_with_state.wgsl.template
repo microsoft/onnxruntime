@@ -3,6 +3,7 @@
 
 #param has_bias
 #param has_state
+#param state_in_final_state
 #param has_state_update
 #param use_silu
 
@@ -54,7 +55,11 @@ $MAIN {
       var val: f32 = 0.0;
 #if has_state
       if (lp < 0) {
+#if state_in_final_state
+  val = f32(final_state[state_base + u32(lp + i32(pad))]);
+#else
         val = f32(initial_state[state_base + u32(lp + i32(pad))]);
+#endif
       } else {
         val = f32(input[(start + u32(lp)) * channels + c]);
       }
@@ -76,7 +81,11 @@ $MAIN {
     let lp = i32(local_length) - i32(pad) + i32(s);
     var val: f32 = 0.0;
     if (lp < 0) {
+    #if state_in_final_state
+      val = f32(final_state[state_base + u32(lp + i32(pad))]);
+    #else
       val = f32(initial_state[state_base + u32(lp + i32(pad))]);
+    #endif
     } else {
       val = f32(input[(start + u32(lp)) * channels + c]);
     }

@@ -22,6 +22,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
+      .MayInplace(4, 1)
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
     VarlenCausalConvWithState);
@@ -44,7 +45,7 @@ Status VarlenCausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-  if (has_state_) {
+  if (has_state_ && !state_in_final_state_) {
     shader.AddInput("initial_state", ShaderUsage::UseUniform);
   }
   if (has_capture_count_) {
@@ -62,6 +63,7 @@ Status VarlenCausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader
   return WGSL_TEMPLATE_APPLY(shader, "bert/varlen_causal_conv_with_state.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_state, has_state_),
+                             WGSL_TEMPLATE_PARAMETER(state_in_final_state, state_in_final_state_),
                              WGSL_TEMPLATE_PARAMETER(has_state_update, has_state_update_ && has_capture_count_),
                              WGSL_TEMPLATE_PARAMETER(use_silu, use_silu_));
 }
@@ -140,12 +142,14 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
 
   const bool has_bias = (bias != nullptr);
   const bool has_state = (pad > 0);
+  const bool state_in_final_state = has_state && initial_state->DataRaw() == final_state->DataRaw();
   const bool has_capture_count = (capacity > 0);
   const bool has_state_update = (state_update != nullptr);
 
-  VarlenCausalConvWithStateProgram program{has_bias, has_state, has_state_update, has_capture_count,
+  VarlenCausalConvWithStateProgram program{has_bias, has_state, state_in_final_state,
+                                           has_state_update, has_capture_count,
                                            activation_ == CausalConvActivation::Silu};
-  program.CacheHint(has_bias, has_state, has_state_update, has_capture_count,
+  program.CacheHint(has_bias, has_state, state_in_final_state, has_state_update, has_capture_count,
                     static_cast<int>(kernel_size), dilation_,
                     activation_ == CausalConvActivation::Silu);
 
@@ -157,7 +161,7 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
   if (has_bias) {
     program.AddInput({bias, ProgramTensorMetadataDependency::None});
   }
-  if (has_state) {
+  if (has_state && !state_in_final_state) {
     program.AddInput({initial_state, ProgramTensorMetadataDependency::None});
   }
   if (has_capture_count) {

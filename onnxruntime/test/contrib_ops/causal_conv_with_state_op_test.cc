@@ -2056,9 +2056,9 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     int kernel_size,
     const std::vector<float>& expected_output,
     const std::vector<float>& expected_state) {
-  auto ep = DefaultCudaExecutionProvider();
+  auto ep = TryGetEpWithVarlenCausalConvWithState();
   if (!ep) {
-    GTEST_SKIP() << "CUDA execution provider not available";
+    GTEST_SKIP() << "VarlenCausalConvWithState execution provider not available";
     return;
   }
   const int pad = kernel_size - 1;
@@ -2099,7 +2099,7 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
   std::vector<NodeArg*> outputs = {&output_arg, &final_arg};
   auto& node = graph.AddNode("varlen", "VarlenCausalConvWithState", "alias continuation",
                              inputs, outputs, nullptr, kMSDomain);
-  node.SetExecutionProviderType(kCudaExecutionProvider);
+  node.SetExecutionProviderType(ep->Type());
   ASSERT_STATUS_OK(graph.Resolve());
 
   std::string serialized;

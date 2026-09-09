@@ -21,11 +21,12 @@ using onnxruntime::webgpu::ComputeContext;
 // request boundaries and per-channel carry state stay isolated.
 class VarlenCausalConvWithStateProgram final : public Program<VarlenCausalConvWithStateProgram> {
  public:
-  VarlenCausalConvWithStateProgram(bool has_bias, bool has_state, bool has_state_update,
-                                   bool has_capture_count, bool use_silu)
+  VarlenCausalConvWithStateProgram(bool has_bias, bool has_state, bool state_in_final_state,
+                                   bool has_state_update, bool has_capture_count, bool use_silu)
       : Program{"VarlenCausalConvWithState"},
         has_bias_(has_bias),
         has_state_(has_state),
+        state_in_final_state_(state_in_final_state),
         has_state_update_(has_state_update),
         has_capture_count_(has_capture_count),
         use_silu_(use_silu) {}
@@ -45,6 +46,7 @@ class VarlenCausalConvWithStateProgram final : public Program<VarlenCausalConvWi
  private:
   bool has_bias_;
   bool has_state_;
+  bool state_in_final_state_;
   bool has_state_update_;
   bool has_capture_count_;
   bool use_silu_;
