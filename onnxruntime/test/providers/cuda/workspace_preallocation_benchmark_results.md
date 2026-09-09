@@ -35,6 +35,7 @@ retained separately as historical data.
 | Memory measurement | 1 complete scenario |
 | Timed measurement | 10 complete scenarios |
 | Reported latency | End-to-end scenario, prefill phase, and per-token decode distributions |
+| Qwen 2.5 1.5B latency rerun | Two additional fresh-process pairs per path in baseline, preallocated, preallocated, baseline (ABBA) order |
 
 The tested Qwen packages declare `past_present_share_buffer: true`. Before each
 complete scenario, the benchmark zeroes the fixed-capacity cache and resets the
@@ -110,6 +111,10 @@ Model:
 - 141 CUDA `MatMulNBits` nodes
 - 141 nodes declared workspace in each generation profile
 
+The detailed table records the original measurement pair. Because its latency
+was noisy, the paired ABBA rerun below is the source of truth for latency
+repeatability. Memory measurements were identical across reruns.
+
 | Metric | Baseline | Preallocated | Difference |
 |---|---:|---:|---:|
 | **Generation, fpA-intB path** | | | |
@@ -169,11 +174,22 @@ fpA-intB preallocation did not reduce the memory high-water mark. Legacy
 preallocation reduced measured arena reservation by
 71,532,544 bytes (68.22 MiB) and WDDM inference peak by 70 MiB.
 
-The 1.5B latency results are not repeatable. An opposite-order rerun made the
-fpA-intB baseline faster than preallocation, while the legacy baseline again
-contained multi-second stalls. These stalls were absent from the preallocated
-runs, but the data is insufficient to attribute them to workspace allocation.
-The memory deltas were identical across the rerun and are the primary result.
+The additional ABBA rerun produced the following fresh-process pairs:
+
+| Path and pair | Baseline average | Preallocated average | Average change | P50 change | Prefill change | Decode change |
+|---|---:|---:|---:|---:|---:|---:|
+| fpA-intB pair 1 | 1,541.08 ms | 1,356.01 ms | -12.0% | -4.3% | -14.1% | -11.8% |
+| fpA-intB pair 2 | 1,086.78 ms | 928.53 ms | -14.6% | -12.6% | -8.4% | -15.1% |
+| Legacy pair 1 | 804.63 ms | 834.20 ms | +3.7% | +3.3% | -2.0% | +4.4% |
+| Legacy pair 2 | 835.13 ms | 827.24 ms | -0.9% | -2.3% | +2.1% | -1.3% |
+
+The ABBA batch consistently favored fpA-intB preallocation, but absolute
+fresh-process latency still varied substantially. An earlier opposite-order
+pair favored the baseline, so the data does not yet support a reliable
+fpA-intB latency claim. The legacy ABBA pairs straddled zero and did not
+reproduce the earlier multi-second baseline stalls; under stable conditions,
+legacy latency was effectively unchanged. The repeatable 1.5B result remains
+the legacy memory reduction.
 
 ### Qwen 2.5 7B
 
@@ -251,8 +267,8 @@ was effectively unchanged.
 
 | Model | Workload and path | WDDM inference-peak change | Arena reservation change | Allocation-call change | Average-latency change |
 |---|---|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | Shared-KV generation, fpA-intB | 0 MiB | +295,168 B | -1.1% | Not repeatable |
-| Qwen 2.5 1.5B | Shared-KV generation, legacy | **-70 MiB** | **-71,532,544 B** | -1.1% | Not repeatable |
+| Qwen 2.5 1.5B | Shared-KV generation, fpA-intB | 0 MiB | +295,168 B | -1.1% | ABBA: -12.0%, -14.6%; historical pair conflicts |
+| Qwen 2.5 1.5B | Shared-KV generation, legacy | **-70 MiB** | **-71,532,544 B** | -1.1% | ABBA: +3.7%, -0.9%; effectively unchanged |
 | Qwen 2.5 7B | Shared-KV generation, fpA-intB | -2 MiB | 0 B | **-25.1%** | +3.9% |
 | Qwen 2.5 7B | Shared-KV generation, legacy | **-258 MiB** | **-267,222,784 B** | -1.1% | -0.7% |
 
