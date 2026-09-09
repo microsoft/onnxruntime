@@ -110,6 +110,24 @@ Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
 
 }  // namespace
 
+TEST(CudaPluginDeviceDiscoveryTest, ReturnsDeviceWhenCudaRuntimeFindsGpu) {
+  int device_count = 0;
+  cudaError_t err = cudaGetDeviceCount(&device_count);
+  if (err != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "No CUDA device available.";
+  }
+
+  Ort::Env env;
+  ScopedCudaPluginRegistration registration(env, "CudaPluginDeviceDiscoveryTest");
+  if (!registration.IsAvailable()) {
+    GTEST_SKIP() << "CUDA plugin EP library not found.";
+  }
+
+  auto cuda_device = FindCudaPluginDevice(env);
+  ASSERT_TRUE(cuda_device) << "CUDA runtime found " << device_count
+                           << " device(s), but GetEpDevices() did not return the CUDA plugin EP.";
+}
+
 class CudaPluginArenaTest : public ::testing::Test {
  protected:
   void SetUp() override {
