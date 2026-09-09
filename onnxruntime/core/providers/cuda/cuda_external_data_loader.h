@@ -4,6 +4,7 @@
 #pragma once
 
 #include <array>
+#include <memory>
 #include <mutex>
 
 #include "core/framework/external_data_loader.h"
@@ -11,6 +12,8 @@
 
 namespace onnxruntime {
 namespace cuda {
+
+class ExternalDataLoaderThreadPool;
 
 class ExternalDataLoader final : public IExternalDataLoader {
  public:
@@ -34,6 +37,7 @@ class ExternalDataLoader final : public IExternalDataLoader {
   mutable std::array<void*, 2> buffers_{};
   mutable std::array<cudaStream_t, 2> streams_{};
   const size_t reading_thread_count_;
+  mutable std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool_;
 };
 
 }  // namespace cuda

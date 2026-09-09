@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "asserts.h"
@@ -15,6 +17,7 @@
 #include "core/framework/tensor.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/providers/cuda/cuda_provider_options.h"
+#include "core/providers/cuda/cuda_external_data_loader_thread_pool.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -87,6 +90,74 @@ void VerifyLoad(size_t length, size_t load_count = 1, size_t reading_thread_coun
 }
 
 }  // namespace
+
+TEST(CudaExternalDataLoaderThreadPoolTest, ReusesWorkersAcrossReads) {
+  constexpr size_t kReaderCount = 4;
+  cuda::ExternalDataLoaderThreadPool pool(kReaderCount);
+  std::array<std::thread::id, kReaderCount> original_threads;
+  ASSERT_STATUS_OK(pool.Run([&](size_t reader) {
+    original_threads[reader] = std::this_thread::get_id();
+    return Status::OK();
+  }));
+
+  for (size_t reader = 0; reader < kReaderCount; ++reader) {
+    EXPECT_NE(original_threads[reader], std::this_thread::get_id());
+    for (size_t other = 0; other < reader; ++other) {
+      EXPECT_NE(original_threads[reader], original_threads[other]);
+    }
+  }
+  for (size_t batch = 0; batch < 10; ++batch) {
+    std::array<std::thread::id, kReaderCount> threads;
+    std::array<size_t, kReaderCount> read_counts;
+    ASSERT_STATUS_OK(pool.Run([&](size_t reader) {
+      // Thread IDs may be recycled, but thread-local state must survive between batches.
+      thread_local size_t read_count = 0;
+      threads[reader] = std::this_thread::get_id();
+      read_counts[reader] = ++read_count;
+      return Status::OK();
+    }));
+    EXPECT_EQ(threads, original_threads);
+    for (const auto read_count : read_counts) {
+      EXPECT_EQ(read_count, batch + 1);
+    }
+  }
+}
+
+TEST(CudaExternalDataLoaderThreadPoolTest, DrainsFailedReadsAndRemainsUsable) {
+  cuda::ExternalDataLoaderThreadPool pool(4);
+  std::array<size_t, 4> completed{};
+  const auto status = pool.Run([&](size_t reader) {
+    ++completed[reader];
+    return reader == 1 ? ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "read failed") : Status::OK();
+  });
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(status.ErrorMessage(), "read failed");
+  EXPECT_EQ(completed, (std::array<size_t, 4>{1, 1, 1, 1}));
+
+  ASSERT_STATUS_OK(pool.Run([&](size_t reader) {
+    ++completed[reader];
+    return Status::OK();
+  }));
+  EXPECT_EQ(completed, (std::array<size_t, 4>{2, 2, 2, 2}));
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(CudaExternalDataLoaderThreadPoolTest, DrainsThrowingReadsAndRemainsUsable) {
+  cuda::ExternalDataLoaderThreadPool pool(4);
+  std::array<size_t, 4> completed{};
+  const auto status = pool.Run([&](size_t reader) {
+    ++completed[reader];
+    if (reader == 1) {
+      ORT_THROW("reader exception");
+    }
+    return Status::OK();
+  });
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("reader exception"));
+  EXPECT_EQ(completed, (std::array<size_t, 4>{1, 1, 1, 1}));
+  ASSERT_STATUS_OK(pool.Run([](size_t) { return Status::OK(); }));
+}
+#endif
 
 TEST(CudaExternalDataLoaderTest, LoadsBelowParallelReadThreshold) {
   VerifyLoad(kParallelReadThreshold - 1);
