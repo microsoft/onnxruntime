@@ -248,7 +248,7 @@ std::vector<float> RoundToTensorType(const std::vector<float>& data) {
 template <typename T>
 void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, float out_tol,
                   float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
-                  bool use_webgpu = false) {
+                  bool use_webgpu = false, bool omit_final_state = false) {
   Inputs in = in_raw;
   in.q = RoundToTensorType<T>(in_raw.q);
   in.k = RoundToTensorType<T>(in_raw.k);
@@ -314,8 +314,12 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
 
   test.AddOutput<T>("output", shaped({out_heads, g.dv}), ToTensorType<T>(ref_out),
                     false, out_tol, out_tol);
-  test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
-                        state_tol);
+  if (omit_final_state) {
+    test.AddOptionalOutputEdge<float>();
+  } else {
+    test.AddOutput<float>("final_state", {g.batch, g.hv, g.dv, g.dk}, ref_state, false, state_tol,
+                          state_tol);
+  }
   if (o.state_update_capacity > 0) {
     const int64_t width = static_cast<int64_t>(o.state_update_capacity) *
                           (g.hv + g.hq * g.dk + g.hv * g.dv);
@@ -435,6 +439,16 @@ TEST(GatedDeltaNetWebGpuTest, RejectsCompactStateUpdates) {
   options.state_update_capacity = 1;
   RunTypedCase<float>(g, options, inputs, 1e-4f, 1e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, FinalStateIsOptional) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{2, 1, 1, 1, 4, 3};
+  RunTypedCase<float>(g, Options{}, MakeInputs(g, 229), 1e-4f, 1e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/true);
 }
 
 // ---------------------------------------------------------------------------

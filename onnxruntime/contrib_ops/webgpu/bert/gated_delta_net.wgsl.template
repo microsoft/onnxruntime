@@ -5,6 +5,7 @@
 #param has_cu_seqlens
 #param has_initial_state
 #param initial_state_in_final_state
+#param output_final_state
 #param qwen_gate
 #param sigmoid_beta
 #param qk_l2_norm
@@ -120,8 +121,10 @@ $MAIN {
     state += key_value * delta;
     workgroupBarrier();
   }
+#if output_final_state
   if (key_index < uniforms.head_size_qk) {
     final_state[((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
                 uniforms.head_size_qk + key_index] = state;
   }
+#endif
 }
