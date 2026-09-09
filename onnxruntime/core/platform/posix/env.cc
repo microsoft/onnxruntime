@@ -110,7 +110,7 @@ common::Status ReportSystemError(const char* operation_name, const std::string& 
   return common::Status(common::SYSTEM, err_no, oss.str());
 }
 
-common::Status GetFileLengthFromDescriptor(int fd, size_t& file_size) {
+common::Status GetFileLength(int fd, size_t& file_size) {
   if (fd < 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
   }
@@ -136,7 +136,7 @@ class PosixRandomAccessFile final : public RandomAccessFile {
       : descriptor_(std::move(descriptor)), path_(std::move(path)) {}
 
   common::Status GetLength(size_t& length) const override {
-    return GetFileLengthFromDescriptor(descriptor_.Get(), length);
+    return GetFileLength(descriptor_.Get(), length);
   }
 
   common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const override {
@@ -437,7 +437,7 @@ class PosixEnv : public Env {
   }
 
   common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override {
-    return GetFileLengthFromDescriptor(fd, file_size);
+    return onnxruntime::GetFileLength(fd, file_size);
   }
 
   common::Status OpenRandomAccessFile(const ORTCHAR_T* file_path,
