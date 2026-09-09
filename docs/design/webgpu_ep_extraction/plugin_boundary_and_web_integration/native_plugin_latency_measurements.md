@@ -324,8 +324,9 @@ Reproduce with `run_native_ab.ps1` (parses `Min Latency`, ignores the exit code)
 
 The 1.2 µs/node figure above is far too large to be call-transport cost — a cross-DLL indirect call through the C API
 is tens of cycles, while 1.2 µs at 3.696 GHz is ≈4,400 cycles. That gap motivated profiling the two arms to find out
-what the cycles are actually spent on. The answer is that they are spent on **per-kernel marshalling work that the
-built-in path does not do at all**, not on crossing the boundary.
+what the cycles are actually spent on. The answer is that they are spent **host-side, not on crossing the boundary**.
+Part of that host-side work is per-kernel marshalling that the built-in path does not do at all — but only a minority
+part; see [Follow-up: testing the adapter hypothesis](#follow-up-testing-the-adapter-hypothesis).
 
 ### Method
 
@@ -419,9 +420,15 @@ fresh per `Compute()` call and `resize()`s an input and an output `std::vector<T
 for the duration of that one call, so the work above repeats for every input and every output of every node on every
 `Run`. The built-in path does none of this: it receives `const Tensor*` directly from the executor.
 
-That is the answer to the original question. The overhead is **not** the cost of crossing the DLL boundary; it is
-redundant per-kernel wrapper construction and its allocation traffic, which is why it is ~4,400 cycles rather than
-the tens of cycles an indirect cross-module call would cost.
+The overhead is **not** the cost of crossing the DLL boundary: it is host-side work, which is why it is ~4,400
+cycles rather than the tens of cycles an indirect cross-module call would cost. Redundant per-kernel wrapper
+construction and its allocation traffic are a real and *new* part of that work.
+
+> **Read [Follow-up: testing the adapter hypothesis](#follow-up-testing-the-adapter-hypothesis) before acting on
+> this section.** An attempt to remove part of this adapter work produced **no measurable latency improvement**. The
+> attribution table above is not contradicted by that result — it already assigns the adapter only 13.4% of the
+> delta — but the wording of this section originally implied the adapter was the dominant cost, which the table does
+> not support.
 
 ### Caveats
 
@@ -436,8 +443,115 @@ the tens of cycles an indirect cross-module call would cost.
 
 ### Implication for the tolerance question
 
-Open item 8 in the work log asks what tolerance is acceptable. These results argue against negotiating one yet: the
-dominant identified cost is redundant work in the adapter, not an intrinsic property of the plugin boundary, so it
-looks reducible — for example by caching the `Tensor` wrapper across `Compute()` calls, or by avoiding the
-allocator-name string and shape allocation on the per-node path. The tolerance question is better asked after that
-is attempted.
+Open item 8 in the work log asks what tolerance is acceptable. The first reading of these results was that the
+dominant cost is redundant adapter work and therefore looks reducible, so the tolerance question should wait.
+
+**That reading did not survive being tested.** The adapter is a minority cost by this profile's own attribution
+(13.4% of the delta, or 28.7% if the `Tensor`/`TensorShape` row is counted as adapter-caused), and an attempt to
+remove part of it changed nothing measurable. See the next section.
+
+
+## Follow-up: testing the adapter hypothesis
+
+The section above concluded that the per-node overhead is redundant adapter work. That hypothesis was then tested
+directly by removing a measurable part of that work and re-running the same A/B. **It produced no measurable latency
+improvement.** This section records the experiment, because the negative result is what stops the next person from
+repeating it.
+
+### The change that was tried
+
+`CreateTensorFromApiValue` rebuilds an `OrtMemoryInfo` on every tensor access, costing six C API round trips
+(`GetAllocatorName`, `GetAllocatorType`, `GetDeviceType`, `GetMemoryType`, `GetVendorId`, `GetDeviceId`) plus a
+`std::string` copy. Every input and output of a node normally lives on the same device, so almost all of these
+reconstructions are identical.
+
+The change memoized them in the adapter `OpKernelContext`, keyed on the `const OrtMemoryInfo*` returned by
+`GetTensorMemoryInfo`, and also removed a duplicated `GetMemoryType()` call. The cache must be scoped to a single
+`Compute()` call: `OrtApis::GetTensorMemoryInfo` returns `&tensor.Location()`, a pointer *into the tensor*, so the
+pointer identifies an allocator only while that tensor is alive. A session-lifetime cache would silently return
+wrong memory info once an address was recycled.
+
+### The change worked, mechanically
+
+Verified with the same sampling profiler, 30,000 reps of `bench_dispatch`, shares normalized against total samples
+(the sampler's tick rate differs between runs, so raw per-rep counts are not comparable across runs):
+
+| Quantity | before | after | change |
+| --- | ---: | ---: | ---: |
+| `OrtApis::GetTensorMemoryInfo` | — | — | −78% |
+| `OrtApis::MemoryInfoGetDeviceType` | — | — | −73% |
+| memory-info line, share of `CreateTensorFromApiValue` | 43.3% | 29.4% | −57% of total |
+| `CreateTensorFromApiValue` self time | 8.93e-5 | 5.70e-5 | −36% |
+| `KernelImpl::ComputeImpl` self time (control) | 8.53e-5 | 8.91e-5 | unchanged |
+
+### It made no measurable difference to latency
+
+All `bench_dispatch` runs, same session, same machine state, built-in arm untouched as a control:
+
+| run | harness | built-in | plugin | delta | ratio |
+| --- | --- | ---: | ---: | ---: | ---: |
+| baseline | dedicated, 12 rounds | 5.1656 | 5.6205 | +0.4549 | 1.0881 |
+| baseline | dedicated, 16 rounds | 5.1253 | 5.5671 | +0.4418 | **1.0862** |
+| baseline | 4-model, 8 rounds | 5.1912 | 5.6805 | +0.4893 | 1.094 |
+| with cache | dedicated, 12 rounds | 5.1147 | 5.5543 | +0.4397 | **1.0860** |
+| with cache | 4-model, 8 rounds | 5.1710 | 5.5353 | +0.3643 | 1.070 |
+
+The like-for-like pair — the two dedicated runs, same day, same harness — is **1.0862 against 1.0860, a dead heat**.
+The one encouraging number (1.070) came from the 4-model harness, whose own baseline was simultaneously its worst
+reading (1.094); the spread of that row across runs (delta 0.364–0.489 ms) is larger than the effect being looked for.
+
+Across all four models, with a same-session baseline:
+
+| model | baseline delta / ratio | with cache delta / ratio |
+| --- | --- | --- |
+| `bench_compute` | +0.0515 / 1.029 | +0.0439 / 1.027 |
+| `bench_dispatch` | +0.4893 / 1.094 | +0.3643 / 1.070 |
+| Qwen decode | +1.5917 / 1.050 | +2.1669 / 1.068 |
+| Qwen prefill | +0.3782 / 1.009 | +0.5557 / 1.013 |
+
+Two rows improved and two got worse. Both Qwen rows are noise-dominated, as established earlier in this document, so
+the mixed signs are expected and carry no information.
+
+Note that the earlier committed table cannot be used as the baseline here: a GPU driver update moved the built-in
+control itself (Qwen decode 34.95 → 31.79 ms, prefill 47.66 → 43.03 ms). **Any future A/B on this branch must
+re-measure its own baseline in the same session rather than comparing against numbers recorded in this document.**
+
+### Why: the addressable budget is small
+
+Converting sampler counts to time on the critical thread explains the null result. One sample is one tick of one
+thread, so a symbol's time per rep is `samples / sampled_wall_ms * rep_ms`. The sampler samples *every* thread each
+tick — around 25 threads here, most of them parked in wait stubs — so normalizing by total samples or by rep count
+rather than by sampled wall time overstates or understates a symbol by the thread count. Adapter and C API code runs
+on the single inference thread, so for those symbols this conversion is directly comparable to latency.
+
+| Scope | `ep::adapter::*` | `OrtApis::*` + `Ort::GetApi` | sum |
+| --- | ---: | ---: | ---: |
+| built-in (control) | 0.0 | 9.2 | 9.2 µs/rep |
+| plugin, before the change | 26.7 | 41.2 | 67.9 µs/rep |
+| plugin, after the change | 29.3 | 34.9 | 64.1 µs/rep |
+
+So the entire adapter plus C API layer costs about **59 µs/rep more than built-in, against a total gap of ~455
+µs/rep — roughly 13%.** That is the same 13.4% the attribution table in the previous section already reported. Even
+perfect elimination of all adapter and C API cost cannot close more than about one eighth of the deficit, and the
+change actually made addressed only part of that eighth. An effect of that size is below this setup's noise floor,
+so the experiment does not prove the change is worthless — it bounds it at under roughly 5% of the gap.
+
+The change was reverted rather than kept: it adds a cache class and a non-obvious lifetime rule for no demonstrated
+benefit.
+
+### What this leaves
+
+The adapter is a real, new, and reducible cost, but it is a minority one. The remaining ~85% of the gap is
+elsewhere. The plugin-minus-built-in profile points at `dawn` refcounting, `std::string`, `TensorShape`, and
+`ComputeContext::Input` all being heavier in the plugin build — a pattern consistent with **lost cross-module
+inlining** once the WebGPU code moves into its own DLL, which no amount of adapter tuning can recover. Candidates
+worth testing before revisiting the adapter:
+
+- link-time code generation / whole-program optimization on the plugin DLL, to test the lost-inlining theory;
+- graph capture (`enableGraphCapture`), which targets per-dispatch cost directly and has never been measured here;
+- confirming whether the GPU-driver share of the delta (`nvwgf2umx.dll` +0.085 samples/rep) is genuine extra work or
+  a wall-time-proportional polling artifact — i.e. consequence rather than cause.
+
+A caveat that applies to all of the above: this is still a flat, leaf-address profile. It measures self time and
+cannot prove that a `malloc` or `dawn` sample was reached *from* any particular caller. More samples improve
+precision, not attribution. Settling that would need stack walking, which has not been implemented.
