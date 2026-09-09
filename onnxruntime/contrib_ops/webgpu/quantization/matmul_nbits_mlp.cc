@@ -45,9 +45,7 @@ std::string EmitGateActivationExpr(MlpActivationKind kind, std::string_view gate
   switch (kind) {
     case MlpActivationKind::Silu:
       // SiLU(x) = x * sigmoid(x)
-      // Built with MakeString rather than a std::string concatenation chain: GCC 14 at -O3 reports a false
-      // positive -Warray-bounds through the inlined basic_string move constructor when this translation unit
-      // is compiled with the EP adapter headers in the precompiled header.
+      // MakeString avoids a GCC 14 -Warray-bounds false positive from std::string concatenation here.
       return MakeString(gate_var, " * (one / (one + exp(-", gate_var, ")))");
   }
   ORT_THROW("MatMulNBitsMlp: unhandled MlpActivationKind ", static_cast<uint32_t>(kind));

@@ -156,8 +156,7 @@ class Environment {
    *
    * This must be called after the OrtEnv singleton that owns this Environment has been published, because a
    * statically linked plugin EP uses the public ORT API, and any OrtEnv API it calls must be able to find the
-   * instance. It must also be called while the OrtEnv creation mutex is held and before any other thread can reach
-   * this Environment, because it intentionally does not take mutex_.
+   * instance.
    *
    * The passkey parameter limits the set of possible callers to OrtEnv.
    */

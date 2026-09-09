@@ -48,9 +48,6 @@
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
       onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
-    # Prefix the plugin EP entry points so that multiple statically linked plugin EPs can coexist in one binary.
-    # ORT core declares the prefixed names in onnxruntime/core/session/plugin_ep/ep_static_plugins.cc.
-    #
     # ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT tells the shared plugin EP headers that OrtGetApiBase() is available
     # in-process, so the C++ API must not be built with ORT_API_MANUAL_INIT (the rest of the binary is not).
     target_compile_definitions(onnxruntime_providers_webgpu PRIVATE

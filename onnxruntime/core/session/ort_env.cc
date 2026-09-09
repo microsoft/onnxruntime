@@ -100,9 +100,7 @@ OrtEnvPtr OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionIn
 #if !defined(ORT_MINIMAL_BUILD)
     // Register statically linked plugin EPs *after* p_instance_ is published. They use the public ORT API, so any
     // OrtEnv API they call while enumerating their devices must be able to find the instance. m_ is recursive so
-    // that such a call from this thread doesn't self-deadlock. The passkey argument documents that OrtEnv is the
-    // only caller able to satisfy those requirements. See
-    // docs/design/webgpu_ep_extraction/plugin_boundary_and_web_integration/static_plugin_ep_registration_design.md
+    // that such a call from this thread doesn't self-deadlock.
     status = p_instance_->GetEnvironment().CreateAndRegisterStaticPluginEps(
         Environment::StaticPluginEpRegistrationToken{});
 
