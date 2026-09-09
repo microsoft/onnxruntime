@@ -70,10 +70,11 @@ constexpr const char* kPreserveDevice_ON = "1";
 constexpr const char* kPreserveDevice_OFF = "0";
 
 // kKvCacheQuantizationBits value is the number of quantization bits as a string.
-// "0" disables quantization; "4" enables 4-bit KV cache quantization.
-// (Future: "8" for 8-bit.)
+// "0" disables quantization, "4" selects TurboQuant centroid indices, and "8" selects
+// symmetric block quantization with offset-binary storage.
 constexpr const char* kKvCacheQuantizationBits_OFF = "0";
 constexpr const char* kKvCacheQuantizationBits_4Bit = "4";
+constexpr const char* kKvCacheQuantizationBits_8Bit = "8";
 
 constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";

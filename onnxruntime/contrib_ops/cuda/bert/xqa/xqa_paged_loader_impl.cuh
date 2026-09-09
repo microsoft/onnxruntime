@@ -13,8 +13,17 @@
 //   XQA_PAGED_QUERY_T     query element type (half / __nv_bfloat16)
 //   XQA_PAGED_FAMILY      token used to make the per-TU namespaces unique (e.g. fp16_int8)
 //   XQA_PAGED_LAUNCH_FN   name of the exported dispatcher for this (query, cache) pair
+//   XQA_PAGED_SPEC_DEC    1 for multi-token speculative decoding, 0 otherwise
 
 #pragma once
+#ifndef XQA_PAGED_SPEC_DEC
+#define XQA_PAGED_SPEC_DEC 0
+#endif
+#if XQA_PAGED_SPEC_DEC
+#define SPEC_DEC 1
+#define IS_SPEC_DEC_TREE 0
+#endif
+
 #include "xqa_paged_loader.h"
 #include <cassert>
 
@@ -90,7 +99,11 @@ namespace HEAD_DIM_NAMESPACE {
 
 #define NAMESPACE_NAME XQA_PAGED_NS(grp6_)
 #define GRP_SIZE 6
+#if XQA_PAGED_SPEC_DEC
+#define M_TILESIZE 32
+#else
 #define M_TILESIZE 8
+#endif
 #include "xqa_paged_impl_gen.cuh"
 #undef NAMESPACE_NAME
 #undef GRP_SIZE
@@ -126,7 +139,15 @@ namespace HEAD_DIM_NAMESPACE {
   return XQA_PAGED_NS(grp)::Launch<XQA_PAGED_QUERY_T>(                                               \
       device_prop, stream, query, key_cache, value_cache, output, page_table, batch_size, num_heads, \
       kv_num_heads, head_size, max_pages_per_seq, scale, local_window_size, past_seq_lens,           \
-      attention_sinks, k_cache_scale, v_cache_scale, workspace, workspace_size)
+      XQA_PAGED_SPEC_DEC_ARGS                                                                        \
+          attention_sinks,                                                                           \
+      k_cache_scale, v_cache_scale, workspace, workspace_size)
+
+#if XQA_PAGED_SPEC_DEC
+#define XQA_PAGED_SPEC_DEC_ARGS max_query_len, cumulative_seqlens_q, spec_dec_mask,
+#else
+#define XQA_PAGED_SPEC_DEC_ARGS
+#endif
 
 Status XQA_PAGED_LAUNCH_FN(
     const cudaDeviceProp& device_prop,
@@ -144,6 +165,11 @@ Status XQA_PAGED_LAUNCH_FN(
     const float scale,
     const int local_window_size,
     const int* past_seq_lens,
+#if XQA_PAGED_SPEC_DEC
+    const int max_query_len,
+    const int* cumulative_seqlens_q,
+    const uint32_t* spec_dec_mask,
+#endif
     const float* attention_sinks,
     const float* k_cache_scale,
     const float* v_cache_scale,
@@ -176,6 +202,18 @@ Status XQA_PAGED_LAUNCH_FN(
   }
 }
 
+#if XQA_PAGED_SPEC_DEC
+size_t XQA_PAGED_CAT(XQA_PAGED_LAUNCH_FN, _, WorkspaceSize)(
+    const cudaDeviceProp& device_prop,
+    const int batch_size,
+    const int kv_num_heads,
+    const int max_pages_per_seq,
+    const int max_query_len) {
+  return XQA_PAGED_NS(grp6_)::GetWorkspaceSize(
+      device_prop, batch_size, kv_num_heads, max_pages_per_seq, max_query_len);
+}
+#endif
+
 // Shared-memory requirement of the instantiation that would actually run, so the caller can fall
 // back when it exceeds the device's per-block opt-in limit. See xqa_impl_gen.cuh::GetSmemSize.
 size_t XQA_PAGED_CAT(XQA_PAGED_LAUNCH_FN, _, SmemSize)(const int num_heads, const int kv_num_heads) {
@@ -201,6 +239,7 @@ size_t XQA_PAGED_CAT(XQA_PAGED_LAUNCH_FN, _, SmemSize)(const int num_heads, cons
 }
 
 #undef XQA_PAGED_DISPATCH
+#undef XQA_PAGED_SPEC_DEC_ARGS
 
 }  // namespace HEAD_DIM_NAMESPACE
 }  // namespace cuda
