@@ -1989,9 +1989,8 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       const bool use_interleave = onnxruntime::llm::kernels::moe_gemv::Fp4MoeGemvUseInterleaved();
       PrePackRepackFP4Weights(tensor, stream, alloc, gemv_fp4_fc1_weights_, gemv_packed, use_interleave);
     }
-    if (quant_type_ == "nvfp4" && enable_fp4_gemv_) {
-      is_packed = false;
-    }
+    // All native FP4 modes still need the raw tensor for input validation and fallback.
+    is_packed = false;
   } else if (input_idx == 5 && ((quant_type_ == "fp4" && !use_fp4_dequant_fallback_) ||
                                 (quant_type_ == "nvfp4" && !use_fp4_dequant_fallback_) ||
                                 (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_))) {
@@ -2001,9 +2000,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       const bool use_interleave = onnxruntime::llm::kernels::moe_gemv::Fp4MoeGemvUseInterleaved();
       PrePackRepackFP4Weights(tensor, stream, alloc, gemv_fp4_fc2_weights_, gemv_packed, use_interleave);
     }
-    if (quant_type_ == "nvfp4" && enable_fp4_gemv_) {
-      is_packed = false;
-    }
+    is_packed = false;
   } else if (input_idx == 2 && quant_type_ == "fp4" && enable_fp4_gemv_) {
     // Fused FP4 GEMV: lay out fc1 weights as [E, 2*inter, hidden/2] row-major.
     // MXFP4 keeps the raw initializer unless release_fp4_raw_weights_ is set. When the SM80 grouped-GEMM
