@@ -2972,7 +2972,7 @@ min(state_update_capacity, sequence_length[b]))) contain the original local inpu
 These values represent the append component of each shift-left-and-append state transition.
 All remaining slots are zero. capture_count is forbidden when state_update_capacity is zero.
 
-For memory-safety containment, each CUDA work item validates cumulative_sequence_length[0] == 0,
+For memory-safety containment, each GPU work item validates cumulative_sequence_length[0] == 0,
 cumulative_sequence_length[batch_size] == total_tokens, and its local range
 0 <= start < end <= total_tokens before accessing input, state, or output.
 Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
