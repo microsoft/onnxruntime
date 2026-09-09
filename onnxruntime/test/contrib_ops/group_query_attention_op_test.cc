@@ -29,7 +29,6 @@
 #include "test/unittest_util/framework_test_utils.h"
 #endif
 #ifdef USE_WEBGPU
-#include "contrib_ops/webgpu/bert/kv_cache_quantization.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
 
