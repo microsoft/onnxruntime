@@ -96,20 +96,28 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if (use_shared_) {
     shader.AdditionalImplementation() << "var<workgroup> tile : array<array<output_value_t, tile_size + 1>, tile_size>;\n";
+    // The tile is tile_size square but the workgroup is only tile_rows deep, so each thread
+    // carries tile_size/tile_rows rows of it. That keeps every global access tile_size
+    // elements wide - which is what makes it coalesce - without needing a workgroup of
+    // tile_size^2 threads, which measured slower than the narrower tile it replaced.
     shader.MainFunctionBody() << "  let stride = (uniforms.output_shape[1] - 1) / tile_size + 1;\n"
                                  "  let workgroup_id_x = workgroup_idx % stride;\n"
                                  "  let workgroup_id_y = workgroup_idx / stride;\n"
                                  "  let input_col = workgroup_id_y * tile_size + local_id.x;\n"
-                                 "  let input_row = workgroup_id_x * tile_size + local_id.y;\n"
-                                 "  if (input_row < uniforms.a_shape[0] && input_col < uniforms.a_shape[1]) {\n"
-                              << "    tile[local_id.y][local_id.x] = " << input.GetByIndices("a_indices_t(input_row, input_col)") << ";\n"
-                              << "  }\n"
+                                 "  for (var j: u32 = 0u; j < tile_size; j += tile_rows) {\n"
+                                 "    let input_row = workgroup_id_x * tile_size + local_id.y + j;\n"
+                                 "    if (input_row < uniforms.a_shape[0] && input_col < uniforms.a_shape[1]) {\n"
+                              << "      tile[local_id.y + j][local_id.x] = " << input.GetByIndices("a_indices_t(input_row, input_col)") << ";\n"
+                              << "    }\n"
+                                 "  }\n"
                                  "  workgroupBarrier();\n"
                                  "  let output_col = workgroup_id_x * tile_size + local_id.x;\n"
-                                 "  let output_row = workgroup_id_y * tile_size + local_id.y;\n"
-                                 "  if (output_row < uniforms.output_shape[0] && output_col < uniforms.output_shape[1]) {\n"
-                              << "    " << output.SetByIndices("output_indices_t(output_row, output_col)", "tile[local_id.x][local_id.y]") << "\n"
-                              << "  }";
+                                 "  for (var j: u32 = 0u; j < tile_size; j += tile_rows) {\n"
+                                 "    let output_row = workgroup_id_y * tile_size + local_id.y + j;\n"
+                                 "    if (output_row < uniforms.output_shape[0] && output_col < uniforms.output_shape[1]) {\n"
+                              << "      " << output.SetByIndices("output_indices_t(output_row, output_col)", "tile[local_id.x][local_id.y + j]") << "\n"
+                              << "    }\n"
+                                 "  }";
   } else {
     shader.AdditionalImplementation() << "fn perm(i: output_indices_t)->a_indices_t {\n"
                                          "  var a: a_indices_t;\n";
@@ -199,17 +207,31 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
     output_shape = TensorShape({new_input_shape[1], new_input_shape[0]});
   }
 
-  uint32_t output_size = onnxruntime::narrow<uint32_t>(input_shape.Size());
+  // A permutation that leaves the innermost dimension innermost moves whole runs of it, so a
+  // thread can carry four elements: the shader's index arithmetic is unchanged, it just counts
+  // groups of four in the dimension the permutation does not touch. This is the untiled path,
+  // which is otherwise one 2-byte copy per thread.
+  int components = 1;
+  if (!use_shared && rank > 1 && permutations[rank - 1] == static_cast<size_t>(rank - 1) &&
+      input_dims[rank - 1] % 4 == 0 &&
+      (input.IsDataType<MLFloat16>() || input.IsDataType<float>())) {
+    components = 4;
+    new_input_shape = ReduceShapeByComponents(new_input_shape, components);
+    output_shape = ReduceShapeByComponents(output_shape, components);
+  }
+
+  uint32_t output_size = onnxruntime::narrow<uint32_t>(input_shape.Size()) / components;
+
   TransposeProgram program{permutations, use_shared};
 
   program
-      .CacheHint(absl::StrJoin(permutations, "-"))
-      .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
-      .AddOutputs({{&output, ProgramTensorMetadataDependency::None, output_shape, 1}})
+      .CacheHint(absl::StrJoin(permutations, "-"), components)
+      .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, components}})
+      .AddOutputs({{&output, ProgramTensorMetadataDependency::None, output_shape, components}})
       .AddUniformVariables({{output_size}});
 
   if (use_shared) {
-    program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
+    program.SetWorkgroupSize(TILE_SIZE, TILE_ROWS, 1);
     program.SetDispatchGroupSize(static_cast<uint32_t>((output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
                                  static_cast<uint32_t>(((output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)));
   } else {
