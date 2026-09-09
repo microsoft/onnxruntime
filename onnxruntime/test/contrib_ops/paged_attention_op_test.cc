@@ -1498,7 +1498,7 @@ TEST(PagedAttention, Cuda_XqaSpecDecFp8CacheHeadSize256Group6) {
 // A block_table entry outside [0, num_blocks) must be treated as unmapped,
 // the same as an explicit -1, rather than read out of bounds of the paged
 // cache. Regression test for the read-path bound check: block_table[0]
-// covers the historical KV (slots 0..3); block_table[1] is the write target
+// covers the historical KV (slots 0..15); block_table[1] is the write target
 // for the new token and stays valid in both runs. Each run's own reference
 // model (patched above to skip unmapped slots) proves the kernel excludes
 // them from the softmax instead of dereferencing them.
@@ -1517,6 +1517,96 @@ TEST(PagedAttention, Cuda_OutOfRangeBlockTableTreatedAsUnmapped) {
     c.allow_out_of_range_block_table = true;
     RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
   }
+}
+
+// Same regression as Cuda_OutOfRangeBlockTableTreatedAsUnmapped, but pinned to the
+// FlashAttention-paged backend (head_size = 64, block_size = 256 satisfies
+// flash_min_block_size), which reads block_table directly rather than through the
+// in-kernel range check the paged-decode kernel uses.
+TEST(PagedAttention, Cuda_OutOfRangeBlockTableFlashEligible) {
+#if defined(USE_FLASH_ATTENTION)
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Flash Attention requires compute capability 8.0 or later.";
+  }
+
+  for (int32_t sentinel : {-1, 99}) {
+    IoBindingCase c;
+    c.head_size = 64;
+    c.block_size = 256;
+    c.num_blocks = 3;
+    c.max_num_blocks_per_seq = 2;
+    c.past_seqlen = 256;
+    c.block_table = {sentinel, 1};
+    c.allow_out_of_range_block_table = true;
+
+    testing::internal::CaptureStdout();
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+    const std::string debug_output = testing::internal::GetCapturedStdout();
+    EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
+  }
+#else
+  GTEST_SKIP() << "FlashAttention is not built in.";
+#endif
+}
+
+// Same regression, pinned to the native-cache XQA backend with pages_per_block == 1
+// (block_size == kXqaTokensPerPage), the other backend the sanitize-copy design is meant to
+// protect. Skips if this build/device cannot dispatch XQA for this shape.
+TEST(PagedAttention, Cuda_OutOfRangeBlockTableXqaEligible) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"},
+          {"ORT_ENABLE_XQA_NATIVE_KV", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "XQA requires compute capability 8.0 or later.";
+  }
+
+  auto make_case = [](int32_t sentinel) {
+    IoBindingCase c;
+    c.num_heads = 6;
+    c.kv_num_heads = 1;
+    c.head_size = 256;
+    c.block_size = 128;  // pages_per_block == 1 (kXqaTokensPerPage == 128).
+    c.num_blocks = 3;
+    c.max_num_blocks_per_seq = 2;
+    c.past_seqlen = 128;
+    c.block_table = {sentinel, 1};
+    c.allow_out_of_range_block_table = true;
+    c.attention_metadata = {1, 256};
+    return c;
+  };
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, make_case(-1));
+  const std::string baseline_debug_output = testing::internal::GetCapturedStdout();
+  if (baseline_debug_output.find("SdpaKernel=XQA") == std::string::npos) {
+    GTEST_SKIP() << "Paged XQA H256/group6 (pages_per_block=1) is not runnable in this "
+                    "build/device configuration.\n"
+                 << baseline_debug_output;
+  }
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, make_case(99));
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
 }
 
 TEST(PagedAttention, Cuda_AttentionMetadataValidation) {
