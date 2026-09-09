@@ -67,7 +67,9 @@ inline Fp4MmaConfig PickFp4MmaConfig(int m, int n, int k, int sm_count,
 // reduction buffer past the 48 KB static limit.
 inline Fp4MmaConfig PickFp4MmaGroupedConfig(int m, int n, int k, int sm_count,
                                             int compute_capability_major, int compute_capability_minor) {
-  if (compute_capability_major == 8 && compute_capability_minor == 9) {
+  // Automatic grouping is enabled only on Hopper, where it has demonstrated a benefit.
+  // Other architectures retain the original tiling unless grouping is explicitly overridden.
+  if (compute_capability_major != 9 || compute_capability_minor != 0) {
     return PickFp4MmaConfig(m, n, k, sm_count, compute_capability_major, compute_capability_minor);
   }
 

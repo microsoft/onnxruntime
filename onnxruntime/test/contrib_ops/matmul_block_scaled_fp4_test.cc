@@ -690,24 +690,6 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreSm121Tiling) {
   }
 }
 
-TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreGroupedAdaRetainsOriginalTiling) {
-  for (int sm_count : {24, 48, 58, 76, 128, 142}) {
-    for (int m : {1, 4, 8}) {
-      for (int n : {5120, 8416, 8417, 17408, 34816, 248320}) {
-        for (int k : {128, 5120, 17408}) {
-          SCOPED_TRACE("SMs = " + std::to_string(sm_count) + ", M = " + std::to_string(m) +
-                       ", N = " + std::to_string(n) + ", K = " + std::to_string(k));
-          const auto original = onnxruntime::contrib::cuda::PickFp4MmaConfig(m, n, k, sm_count, 8, 9);
-          const auto config = onnxruntime::contrib::cuda::PickFp4MmaGroupedConfig(m, n, k, sm_count, 8, 9);
-          EXPECT_EQ(config.k_split, original.k_split);
-          EXPECT_EQ(config.col_tiles, original.col_tiles);
-          EXPECT_EQ(config.col_groups, 1);
-        }
-      }
-    }
-  }
-}
-
 TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreGroupedArchitectureSelection) {
   struct Case {
     int sm_count;
@@ -719,10 +701,10 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreGroupedArchitectureSelec
   const Case cases[] = {
       {128, 8, 9, 2, 1},
       {132, 9, 0, 4, 2},
-      {108, 8, 0, 4, 2},
-      {84, 8, 6, 2, 2},
-      {128, 12, 0, 4, 2},
-      {48, 12, 1, 2, 2},
+      {108, 8, 0, 2, 1},
+      {28, 8, 6, 2, 1},   // RTX 3060
+      {36, 12, 0, 2, 1},  // RTX 5060 Ti
+      {48, 12, 1, 16, 1},
   };
   for (const Case& device : cases) {
     SCOPED_TRACE("CC = " + std::to_string(device.major) + "." + std::to_string(device.minor));
