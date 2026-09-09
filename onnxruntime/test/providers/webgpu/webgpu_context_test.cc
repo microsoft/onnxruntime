@@ -707,7 +707,22 @@ TEST(WebGpuContextTest, CompileOnlyContextDoesNotCreateDevice) {
   auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
 
   ASSERT_NE(ep, nullptr);
-  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(0).Device().Get(), nullptr);
+  EXPECT_EQ(ep->GetDeviceId(), webgpu::kDeviceFreeDefaultContextId);
+  EXPECT_EQ(webgpu::WebGpuContextFactory::GetContext(ep->GetDeviceId()).Device().Get(), nullptr);
+}
+
+TEST(WebGpuContextTest, CompileOnlyAndRunnableDefaultContextsAreIsolated) {
+  ConfigOptions compile_only_options;
+  ORT_THROW_IF_ERROR(compile_only_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+  auto compile_only_ep = WebGpuProviderFactoryCreator::Create(compile_only_options)->CreateProvider();
+  ASSERT_NE(compile_only_ep, nullptr);
+
+  ConfigOptions runnable_options;
+  auto runnable_ep = WebGpuProviderFactoryCreator::Create(runnable_options)->CreateProvider();
+  ASSERT_NE(runnable_ep, nullptr);
+
+  EXPECT_TRUE(webgpu::WebGpuContextFactory::GetContext(compile_only_ep->GetDeviceId()).IsDeviceFree());
+  EXPECT_FALSE(webgpu::WebGpuContextFactory::GetContext(runnable_ep->GetDeviceId()).IsDeviceFree());
 }
 
 TEST(WebGpuContextTest, EnableRobustnessIsIndependentFromValidationMode) {
