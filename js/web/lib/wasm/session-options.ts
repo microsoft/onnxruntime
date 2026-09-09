@@ -117,10 +117,8 @@ const setExecutionProviders = async (
   for (const ep of executionProviders) {
     let epName = typeof ep === 'string' ? ep : ep.name;
     const epOptions: Array<[number, number]> = [];
-    // True when the EP is selected as a plugin EP (by OrtEpDevice) rather than by ORT's built-in EP name table.
-    // The built-in name table has no WebGPU entry in an ORT_USE_EP_API_ADAPTERS build, which is what the wasm
-    // binary paired with this bundle is built as (see BUILD_DEFS.DISABLE_WEBGPU below).
-    let selectAsPluginEp = false;
+    // True when the EP is selected by OrtEpDevice rather than by ORT's built-in EP name table.
+    let selectByEpDevice = false;
 
     // check EP name
     switch (epName) {
@@ -141,10 +139,11 @@ const setExecutionProviders = async (
         break;
       case 'webgpu':
         if (!BUILD_DEFS.DISABLE_WEBGPU) {
-          // The plugin EP is registered under its canonical name (OrtEpFactory::GetName), not the short 'WebGPU'
-          // alias that ORT's built-in EP name table used.
+          // Select by OrtEpDevice, under the EP's canonical name (OrtEpFactory::GetName) rather than the short
+          // 'WebGPU' alias of the built-in EP name table. This is independent of how the paired wasm binary
+          // builds the WebGPU EP: the built-in EP and the plugin EP both register an OrtEpDevice under this name.
           epName = 'WebGpuExecutionProvider';
-          selectAsPluginEp = true;
+          selectByEpDevice = true;
           let customDevice: GPUDevice | undefined;
 
           if (typeof ep !== 'string') {
@@ -243,7 +242,7 @@ const setExecutionProviders = async (
     }
 
     let appendErrorCode: number;
-    if (selectAsPluginEp) {
+    if (selectByEpDevice) {
       const epDevicesByEpName = getEpDevicesByEpName();
       const epDevices = epDevicesByEpName.get(epName);
       if (!epDevices) {
@@ -254,7 +253,8 @@ const setExecutionProviders = async (
       // Select a single OrtEpDevice, even though more than one may match the EP name.
       //
       // Necessary: the WebGPU EP backs a session with one Dawn device, so its factory rejects any device
-      // count other than 1 (see Factory::CreateEpImpl in core/providers/webgpu/ep/factory.cc).
+      // count other than 1 (see WebGpuEpFactory::CreateIExecutionProvider for the built-in EP and
+      // Factory::CreateEpImpl in core/providers/webgpu/ep/factory.cc for the plugin EP).
       //
       // Safe to take the first: the factory reads nothing from the device except whether it is virtual, and
       // Emscripten device discovery reports a single GPU entry derived from navigator.gpu, so there is at
