@@ -14,10 +14,10 @@
 
 #include "kai/ukernels/dwconv/pack/kai_rhs_dwconv_pack_x32p1vlx1b_x32_x32_sme.h"
 
-const KaiF32DepthwiseConvKernel& dwconv = GetKleidiAIDepthwiseConvUKernel();
-
 namespace ArmKleidiAI {
 namespace {
+
+const KaiF32DepthwiseConvKernel& dwconv = GetKleidiAIDepthwiseConvUKernel();
 
 struct DwconvTlsBuffers {
     std::vector<float> feature_map_nhwc;
@@ -25,6 +25,22 @@ struct DwconvTlsBuffers {
     std::vector<std::byte> weights_packed;
     std::vector<float> nhwc_out;
     std::vector<float> bias_fallback;
+
+    void ReleaseLargeBuffers() {
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(feature_map_nhwc);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(weights_hwcn);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(weights_packed);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(nhwc_out);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(bias_fallback);
+    }
+};
+
+struct ScopedKaiDwconvTlsCleanup {
+    DwconvTlsBuffers& buffers;
+
+    ~ScopedKaiDwconvTlsCleanup() {
+        buffers.ReleaseLargeBuffers();
+    }
 };
 
 thread_local DwconvTlsBuffers g_dwconv_tls;
@@ -139,7 +155,7 @@ DepthwiseConvKleidiAISupported(const MLAS_CONV_PARAMETERS* Parameters) {
         return false;
     }
 
-    if (Parameters->Dimensions != 2) {
+    if (Parameters->Dimensions != 2 || Parameters->GroupCount == 0) {
         return false;
     }
 
@@ -219,7 +235,7 @@ DepthwiseConvKleidiAI(size_t batches,
         return false;
     }
 
-    if (batches != 1 || channels == 0) {
+    if (batches != 1 || channels == 0 || filter_height != 3 || filter_width != 3) {
         return false;
     }
 
@@ -244,6 +260,7 @@ DepthwiseConvKleidiAI(size_t batches,
     }
 
     auto& tls = g_dwconv_tls;
+    ScopedKaiDwconvTlsCleanup cleanup{tls};
 
     const float* feature_map_nhwc = feature_map;
     if (!channels_last) {

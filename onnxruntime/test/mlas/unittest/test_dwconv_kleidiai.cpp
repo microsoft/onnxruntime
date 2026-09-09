@@ -302,4 +302,31 @@ TEST(MlasKleidiDepthwiseTest, MlasConvChannelsLast) {
   RunMlasConvChannelsLastCase(/*channels=*/32, /*in_height=*/8, /*in_width=*/8, /*padding=*/1);
 }
 
+TEST(MlasKleidiDepthwiseTest, RejectsNon3x3Filters) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
+    GTEST_SKIP() << "DepthwiseConvKleidiAI requires ARM64 SME2. Skipping test.";
+  }
+
+  constexpr size_t batches = 1;
+  constexpr size_t in_height = 8;
+  constexpr size_t in_width = 8;
+  constexpr size_t channels = 32;
+
+  std::vector<float> input(batches * in_height * in_width * channels);
+  std::vector<float> weights(channels * 3 * 3);
+  std::vector<float> bias(channels);
+  std::vector<float> output(batches * in_height * in_width * channels);
+
+  EXPECT_FALSE(ArmKleidiAI::DepthwiseConvKleidiAI(
+      batches, in_height, in_width, channels, /*filter_height=*/2, /*filter_width=*/3,
+      /*pad_top=*/0, /*pad_left=*/0, /*pad_bottom=*/0, /*pad_right=*/0, /*channels_last=*/true,
+      input.data(), weights.data(), bias.data(), output.data(),
+      -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
+  EXPECT_FALSE(ArmKleidiAI::DepthwiseConvKleidiAI(
+      batches, in_height, in_width, channels, /*filter_height=*/3, /*filter_width=*/2,
+      /*pad_top=*/0, /*pad_left=*/0, /*pad_bottom=*/0, /*pad_right=*/0, /*channels_last=*/true,
+      input.data(), weights.data(), bias.data(), output.data(),
+      -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
+}
+
 #endif  // defined(USE_KLEIDIAI) && !defined(_MSC_VER)
