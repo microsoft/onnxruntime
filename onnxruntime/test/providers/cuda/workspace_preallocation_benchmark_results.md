@@ -34,8 +34,8 @@ retained separately as historical data.
 | Warmup | 2 complete scenarios |
 | Memory measurement | 1 complete scenario |
 | Timed measurement | 10 complete scenarios |
-| Reported latency | End-to-end scenario, prefill phase, and per-token decode distributions |
-| Qwen 2.5 1.5B latency rerun | Two additional fresh-process pairs per path in baseline, preallocated, preallocated, baseline (ABBA) order |
+| Reported latency | End-to-end scenario, prefill phase, and per-token decode distributions, including 10% trimmed means and stall rates |
+| Qwen 2.5 1.5B robust rerun | Six fresh-process pairs per path in three ABBA/BAAB blocks |
 
 The tested Qwen packages declare `past_present_share_buffer: true`. Before each
 complete scenario, the benchmark zeroes the fixed-capacity cache and resets the
@@ -48,6 +48,19 @@ One test invocation reports end-to-end, prefill, and decode timing for a
 generation scenario. Each dispatch and preallocation configuration remains a
 separate fresh process so arena regions and cached memory patterns from another
 configuration cannot affect its measured high-water mark.
+
+For robust latency analysis, the benchmark additionally reports:
+
+- A **10% trimmed mean**, calculated after sorting samples and removing the
+  lowest and highest 10%. With 10 complete scenarios, this removes one scenario
+  from each end. Decode trimming operates on all 1,280 token samples.
+- A **stall** is a sample greater than three times the median for that process.
+  The benchmark reports the threshold, count, and rate separately for complete
+  scenarios, prefill, and decode.
+- Paired latency changes use adjacent scratch/preallocated processes within
+  three order-balanced blocks: ABBA, BAAB, and ABBA. The median paired change
+  summarizes the six comparisons, while the range exposes process-level
+  instability that trimming cannot remove.
 
 | GPU | Compute capability | CUDA toolkit | Driver |
 |---|---:|---:|---:|
@@ -112,7 +125,7 @@ Model:
 - 141 nodes declared workspace in each generation profile
 
 The detailed table records the original measurement pair. Because its latency
-was noisy, the paired ABBA rerun below is the source of truth for latency
+was noisy, the six-pair robust rerun below is the source of truth for latency
 repeatability. Memory measurements were identical across reruns.
 
 | Metric | Baseline | Preallocated | Difference |
@@ -174,22 +187,33 @@ fpA-intB preallocation did not reduce the memory high-water mark. Legacy
 preallocation reduced measured arena reservation by
 71,532,544 bytes (68.22 MiB) and WDDM inference peak by 70 MiB.
 
-The additional ABBA rerun produced the following fresh-process pairs:
+The robust rerun produced six paired comparisons per path:
 
-| Path and pair | Baseline average | Preallocated average | Average change | P50 change | Prefill change | Decode change |
+| Path and pair | Scratch trimmed mean | Preallocated trimmed mean | Trimmed-mean change | P50 change | Decode trimmed-mean change | Decode stalls, scratch / preallocated |
 |---|---:|---:|---:|---:|---:|---:|
-| fpA-intB pair 1 | 1,541.08 ms | 1,356.01 ms | -12.0% | -4.3% | -14.1% | -11.8% |
-| fpA-intB pair 2 | 1,086.78 ms | 928.53 ms | -14.6% | -12.6% | -8.4% | -15.1% |
-| Legacy pair 1 | 804.63 ms | 834.20 ms | +3.7% | +3.3% | -2.0% | +4.4% |
-| Legacy pair 2 | 835.13 ms | 827.24 ms | -0.9% | -2.3% | +2.1% | -1.3% |
+| fpA-intB 1 | 1,794.56 ms | 875.34 ms | -51.2% | -43.9% | -49.9% | 38 / 1 |
+| fpA-intB 2 | 1,406.24 ms | 863.73 ms | -38.6% | -34.1% | -40.2% | 0 / 0 |
+| fpA-intB 3 | 955.23 ms | 1,691.96 ms | +77.1% | +66.0% | +84.9% | 3 / 28 |
+| fpA-intB 4 | 1,689.19 ms | 1,231.72 ms | -27.1% | -36.5% | -30.8% | 12 / 2 |
+| fpA-intB 5 | 1,281.24 ms | 1,149.27 ms | -10.3% | -14.2% | -10.5% | 1 / 1 |
+| fpA-intB 6 | 1,952.18 ms | 1,933.20 ms | -1.0% | -5.4% | -7.2% | 1 / 21 |
+| **fpA-intB median paired change** | | | **-18.7%** | **-24.1%** | **-20.6%** | |
+| Legacy 1 | 835.54 ms | 842.66 ms | +0.9% | -1.0% | +1.3% | 1 / 1 |
+| Legacy 2 | 854.80 ms | 852.44 ms | -0.3% | +0.5% | -1.0% | 0 / 0 |
+| Legacy 3 | 850.09 ms | 845.93 ms | -0.5% | -2.5% | -0.6% | 0 / 0 |
+| Legacy 4 | 824.26 ms | 839.01 ms | +1.8% | +1.0% | +1.1% | 0 / 0 |
+| Legacy 5 | 839.47 ms | 854.10 ms | +1.7% | +0.9% | +1.7% | 0 / 0 |
+| Legacy 6 | 834.65 ms | 857.20 ms | +2.7% | +3.5% | +2.5% | 0 / 0 |
+| **Legacy median paired change** | | | **+1.3%** | **+0.7%** | **+1.2%** | |
 
-The ABBA batch consistently favored fpA-intB preallocation, but absolute
-fresh-process latency still varied substantially. An earlier opposite-order
-pair favored the baseline, so the data does not yet support a reliable
-fpA-intB latency claim. The legacy ABBA pairs straddled zero and did not
-reproduce the earlier multi-second baseline stalls; under stable conditions,
-legacy latency was effectively unchanged. The repeatable 1.5B result remains
-the legacy memory reduction.
+Legacy is repeatable: all six trimmed-mean changes are between -0.5% and
++2.7%, so preallocation has effectively no latency effect. fpA-intB remains
+non-repeatable even after trimming: paired changes range from -51.2% to +77.1%.
+Whole processes enter different performance modes, and an earlier dispatch
+trace confirmed that fresh-process tactic profiling can select different
+numbers of `M=1` GEMV and CUTLASS nodes. A median paired speedup is shown for
+completeness but is not treated as a reliable preallocation effect. The
+repeatable 1.5B result remains the legacy memory reduction.
 
 ### Qwen 2.5 7B
 
@@ -267,8 +291,8 @@ was effectively unchanged.
 
 | Model | Workload and path | WDDM inference-peak change | Arena reservation change | Allocation-call change | Average-latency change |
 |---|---|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | Shared-KV generation, fpA-intB | 0 MiB | +295,168 B | -1.1% | ABBA: -12.0%, -14.6%; historical pair conflicts |
-| Qwen 2.5 1.5B | Shared-KV generation, legacy | **-70 MiB** | **-71,532,544 B** | -1.1% | ABBA: +3.7%, -0.9%; effectively unchanged |
+| Qwen 2.5 1.5B | Shared-KV generation, fpA-intB | 0 MiB | +295,168 B | -1.1% | Six-pair range: -51.2% to +77.1%; not repeatable |
+| Qwen 2.5 1.5B | Shared-KV generation, legacy | **-70 MiB** | **-71,532,544 B** | -1.1% | Six-pair median: +1.3%; effectively unchanged |
 | Qwen 2.5 7B | Shared-KV generation, fpA-intB | -2 MiB | 0 B | **-25.1%** | +3.9% |
 | Qwen 2.5 7B | Shared-KV generation, legacy | **-258 MiB** | **-267,222,784 B** | -1.1% | -0.7% |
 
@@ -381,7 +405,39 @@ implementation families:
 
 Therefore, three of the five runtime implementation families currently consume
 planned workspace: fpA-intB CUTLASS GEMM, full dequantize plus cuBLAS GEMM, and
-chunked dequantize plus cuBLAS GEMM. The two GEMV families remain workspace-free.
+chunked dequantize plus cuBLAS GEMM. The other two families remain
+workspace-free.
+
+### Qwen 2.5 1.5B traced dispatch
+
+An environment-gated diagnostic build traced every `MatMulNBits` invocation for
+one 1,024-token prefill and one decode token. Scratch and preallocated processes
+selected exactly the same implementations in this trace.
+
+With fpA-intB enabled:
+
+| Phase | Actual implementation | Nodes | Allocator-backed workspace |
+|---|---|---:|---|
+| Prefill (`M=1024`) | fpA-intB CUTLASS GEMM | 113 | **Yes: CUTLASS runner workspace** |
+| Prefill (`M=1024`) | Legacy full dequantize + cuBLAS | 28 | **Yes: full dequantized weight matrix** |
+| Decode (`M=1`) | fpA-intB CUDA GEMV | 113 | No |
+| Decode (`M=1`) | Legacy fused 4-bit kernel + separate bias | 28 | No |
+
+With fpA-intB disabled:
+
+| Phase | Actual implementation | Nodes | Allocator-backed workspace |
+|---|---|---:|---|
+| Prefill (`M=1024`) | Full dequantize + cuBLAS | 140 | **Yes: full dequantized weight matrix** |
+| Prefill (`M=1024`) | Chunked dequantize + cuBLAS | 1 | **Yes: one dequantized weight chunk** |
+| Decode (`M=1`) | Fused 4-bit single-row kernel | 113 | No |
+| Decode (`M=1`) | Fused 4-bit single-row kernel + separate bias | 28 | No |
+
+The fpA-intB decode counts are an autotuned outcome, not a fixed model
+property. Another fresh process selected CUDA GEMV for 84 fpA-eligible nodes
+and CUTLASS GEMM for 29 nodes at `M=1`; those 29 nodes did request workspace.
+Workspace mode itself does not select tactics, but scratch and preallocated
+processes must use identical tactic distributions before their latency can
+isolate the effect of workspace allocation.
 
 The fpA-intB path profiles tactics and selects between two execution families:
 
