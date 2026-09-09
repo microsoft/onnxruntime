@@ -321,6 +321,66 @@ def generate_vcpkg_install_options(build_dir, args):
     return vcpkg_install_options
 
 
+def _get_vctools_install_dir(args):
+    vctools_dir = os.environ.get("VCToolsInstallDir")  # noqa: SIM112
+    if vctools_dir:
+        return Path(vctools_dir)
+
+    vswhere_candidates = []
+    program_files_x86 = os.environ.get("ProgramFiles(x86)")  # noqa: SIM112
+    if program_files_x86:
+        vswhere_candidates.append(Path(program_files_x86) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe")
+    if vswhere_path := shutil.which("vswhere.exe"):
+        vswhere_candidates.append(Path(vswhere_path))
+
+    installation_paths = []
+    for vswhere_path in vswhere_candidates:
+        if not vswhere_path.is_file():
+            continue
+        try:
+            result = subprocess.run(
+                [
+                    str(vswhere_path),
+                    "-products",
+                    "*",
+                    "-property",
+                    "installationPath",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            continue
+        if result.returncode == 0 and result.stdout.strip():
+            installation_paths = [Path(path) for path in result.stdout.splitlines() if path.strip()]
+            break
+
+    for installation_path in installation_paths:
+        msvc_root = installation_path / "VC" / "Tools" / "MSVC"
+        if args.msvc_toolset:
+            matching_toolsets = sorted(
+                (path for path in msvc_root.glob(f"{args.msvc_toolset}*") if path.is_dir()),
+                key=lambda path: version_to_tuple(path.name),
+                reverse=True,
+            )
+            if matching_toolsets:
+                return matching_toolsets[0]
+            continue
+
+        default_version_file = installation_path / "VC" / "Auxiliary" / "Build" / "Microsoft.VCToolsVersion.default.txt"
+        try:
+            default_version = default_version_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if default_version:
+            vctools_dir = msvc_root / default_version
+            if vctools_dir.is_dir():
+                return vctools_dir
+
+    return None
+
+
 def get_msvc_spectre_lib_dir(args):
     """Return the directory that holds the MSVC Spectre-mitigated CRT/STL static libraries for the
     target architecture, or None if it cannot be located.
@@ -329,10 +389,11 @@ def get_msvc_spectre_lib_dir(args):
     CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that get linked into the
     binaries also need to be the Spectre-mitigated variants, otherwise BinSkim BA2024
     (EnableSpectreMitigations) still fails. Those variants ship in the "C++ Spectre-mitigated libs"
-    Visual Studio component under %VCToolsInstallDir%\\lib\\spectre\\<arch>.
+    Visual Studio component under %VCToolsInstallDir%\\lib\\spectre\\<arch>. When the build is not
+    running in a Visual Studio Developer Command Prompt, locate the selected toolset with vswhere.
     """
-    vctools_dir = os.environ.get("VCToolsInstallDir")  # noqa: SIM112
-    if not vctools_dir:
+    vctools_dir = _get_vctools_install_dir(args)
+    if vctools_dir is None:
         return None
     if args.arm:
         arch = "arm"
@@ -346,12 +407,12 @@ def get_msvc_spectre_lib_dir(args):
         # Default to the target architecture selected by vcvarsall.bat (x86, x64, arm, arm64),
         # falling back to x64 which is what the official Windows release packages use.
         arch = os.environ.get("VSCMD_ARG_TGT_ARCH", "x64")
-    spectre_dir = Path(vctools_dir) / "lib" / "spectre" / arch
+    spectre_dir = vctools_dir / "lib" / "spectre" / arch
     if spectre_dir.is_dir():
         return str(spectre_dir)
     # Some toolsets do not ship a dedicated arm64ec folder; those reuse the arm64 Spectre libraries.
     if args.arm64ec:
-        fallback = Path(vctools_dir) / "lib" / "spectre" / "arm64"
+        fallback = vctools_dir / "lib" / "spectre" / "arm64"
         if fallback.is_dir():
             return str(fallback)
     return None
