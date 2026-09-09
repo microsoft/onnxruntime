@@ -1,6 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _WIN32
+#include <sdkddkver.h>
+// FileRenameInfoEx requires the Windows 10 RS1 declarations in this test translation unit.
+#if NTDDI_VERSION < NTDDI_WIN10_RS1
+#undef NTDDI_VERSION
+#define NTDDI_VERSION NTDDI_WIN10_RS1
+#endif
+#endif
+
 #include "core/platform/env.h"
 
 #include <filesystem>
@@ -13,6 +22,7 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+#include <winioctl.h>
 #else
 #include <sys/stat.h>
 #endif
@@ -289,12 +299,27 @@ TEST_F(RandomAccessFileTest, RejectsFifosWithoutWaitingForAWriter) {
   EXPECT_FALSE(Env::Default().OpenRandomAccessFile(fifo_path.c_str(), fifo).IsOK());
   EXPECT_EQ(fifo, nullptr);
 }
+#endif
 
+#ifndef __wasm__
 TEST_F(RandomAccessFileTest, ReadsSparseFileBeyondFourGiB) {
   if (sizeof(FileOffsetType) < 8 || sizeof(size_t) < 8) {
     GTEST_SKIP() << "Requires 64-bit file offsets and sizes.";
   }
   constexpr int64_t kOffset = (int64_t{1} << 32) + 123;
+  file_.reset();
+#ifdef _WIN32
+  {
+    const HANDLE sparse_handle = CreateFile2(path_.c_str(), GENERIC_WRITE, 0, OPEN_EXISTING, nullptr);
+    ASSERT_NE(sparse_handle, INVALID_HANDLE_VALUE) << GetLastError();
+    auto close_sparse = gsl::finally([&] { CloseHandle(sparse_handle); });
+    DWORD bytes_returned = 0;
+    const BOOL marked_sparse =
+        DeviceIoControl(sparse_handle, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &bytes_returned, nullptr);
+    const DWORD sparse_error = GetLastError();
+    ASSERT_NE(marked_sparse, FALSE) << sparse_error;
+  }
+#endif
   {
     std::fstream writer(path_, std::ios::binary | std::ios::in | std::ios::out);
     ASSERT_TRUE(writer.is_open());
@@ -303,6 +328,7 @@ TEST_F(RandomAccessFileTest, ReadsSparseFileBeyondFourGiB) {
     writer.close();
     ASSERT_FALSE(writer.fail());
   }
+  ASSERT_STATUS_OK(Env::Default().OpenRandomAccessFile(path_.c_str(), file_));
   size_t length = 0;
   ASSERT_STATUS_OK(file_->GetLength(length));
   EXPECT_EQ(length, static_cast<size_t>(kOffset + 1));
