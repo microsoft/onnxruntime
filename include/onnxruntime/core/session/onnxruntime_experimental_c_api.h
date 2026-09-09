@@ -46,32 +46,6 @@ ORT_RUNTIME_CLASS(ModelPackageOptions);
 ORT_RUNTIME_CLASS(ModelPackageContext);
 ORT_RUNTIME_CLASS(ModelPackageComponentContext);
 
-/** \brief Function called to read named binary data.
- *
- * This callback is currently used for EPContext binary data, but its contract is intentionally generic so future APIs
- * can reuse it for other named data payloads. The application reads, processes (e.g., decrypts, decompresses,
- * downloads), and returns the requested data. ORT provides an allocator so the application can allocate the output
- * buffer directly. The callback is called synchronously by the component that receives it. ORT does not serialize
- * invocations made by different EP instances or worker threads.
- *
- * \param[in] state Opaque pointer holding the user's state. ORT does not own or manage this pointer. The application
- *                  must keep it valid for the duration required by the API that accepted the callback and must provide
- *                  any synchronization required if it can be used concurrently.
- * \param[in] name The file name or logical data identifier to read as a null-terminated UTF-8 string.
- * \param[in] allocator ORT-provided allocator. The application must use this to allocate the output buffer.
- * \param[out] buffer Set by the implementation to the allocated buffer containing the output data.
- * \param[out] data_size Set by the implementation to the size of the output data in bytes.
- *
- * \return OrtStatus* Read status. Return nullptr on success.
- *                    On failure, use CreateStatus to provide error info with an appropriate OrtErrorCode
- *                    (e.g., ORT_FAIL); ORT propagates the returned code. ORT will release the OrtStatus* if not null.
- */
-typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
-                                                         _In_ const char* name,
-                                                         _In_ OrtAllocator* allocator,
-                                                         _Outptr_ void** buffer,
-                                                         _Out_ size_t* data_size);
-
 //
 // C function pointer typedefs and name constants
 //

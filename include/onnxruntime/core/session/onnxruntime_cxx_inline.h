@@ -1393,6 +1393,10 @@ inline EpContextConfig::EpContextConfig(ConstSessionOptions session_options) {
   ThrowOnError(GetEpApi().SessionOptionsGetEpContextConfig(session_options, &this->p_));
 }
 
+inline void EpContextConfig::GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const {
+  ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataReadFunc(this->p_, &read_func, &state));
+}
+
 inline void EpContextConfig::GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const {
   ThrowOnError(GetEpApi().EpContextConfigGetEpContextDataWriteFunc(this->p_, &write_func, &state));
 }

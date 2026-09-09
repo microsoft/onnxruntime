@@ -2120,6 +2120,18 @@ struct OrtEpApi {
    */
   ORT_CLASS_RELEASE(EpContextConfig);
 
+  /** \brief Get the EPContext data read callback and application state.
+   *
+   * If no callback is configured, both outputs are set to NULL.
+   * \param[in] config EPContext configuration handle.
+   * \param[out] read_func Configured callback, or NULL.
+   * \param[out] state Configured application state, or NULL.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state);
+
   /** \brief Get the EPContext data write callback and application state.
    *
    * If no callback is configured, both outputs are set to NULL.

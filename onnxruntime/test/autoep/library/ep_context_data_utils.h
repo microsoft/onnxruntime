@@ -27,7 +27,6 @@
 #endif
 
 #include "plugin_ep_utils.h"
-#include "onnxruntime_experimental_cxx_api.h"
 
 /**
  * \file
@@ -641,13 +640,8 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, const OrtEpContextConfig*
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
   if (ep_context_config != nullptr) {
-    auto get_read_func =
-        Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&api);
-    if (get_read_func == nullptr) {
-      return api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                              "OrtEpApi_EpContextConfig_GetEpContextDataReadFunc is not available");
-    }
-    RETURN_IF_ERROR(get_read_func(ep_context_config, &read_func, &read_state));
+    RETURN_IF_ERROR(api.GetEpApi()->EpContextConfigGetEpContextDataReadFunc(
+        ep_context_config, &read_func, &read_state));
   }
   return ReadEpContextData(api, read_func, read_state, file_name, graph, out, allocator);
 }

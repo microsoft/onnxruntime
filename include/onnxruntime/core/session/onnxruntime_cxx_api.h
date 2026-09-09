@@ -1749,6 +1749,7 @@ struct EpContextConfig : detail::Base<OrtEpContextConfig> {
   explicit EpContextConfig(std::nullptr_t) noexcept {}
   explicit EpContextConfig(const SessionOptions& session_options);
   explicit EpContextConfig(ConstSessionOptions session_options);
+  void GetReadFunc(OrtReadNamedBufferFunc& read_func, void*& state) const;
   void GetWriteFunc(OrtWriteNamedBufferFunc& write_func, void*& state) const;
 };
 

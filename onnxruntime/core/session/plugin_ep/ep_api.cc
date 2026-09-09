@@ -95,6 +95,9 @@ ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptio
     ep_context_config->write_state = write_config->state;
   }
 
+  ep_context_config->read_func = session_options->value.ep_context_data_read_func;
+  ep_context_config->read_state = session_options->value.ep_context_data_read_state;
+
   *config = ep_context_config.release();
   return nullptr;
   API_IMPL_END
@@ -102,6 +105,18 @@ ORT_API_STATUS_IMPL(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptio
 
 ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config) {
   delete config;
+}
+
+ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
+                    _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+  ORT_API_RETURN_IF(read_func == nullptr, ORT_INVALID_ARGUMENT, "Output read_func is NULL");
+  ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
+  *read_func = config->read_func;
+  *state = config->read_func != nullptr ? config->read_state : nullptr;
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
@@ -1336,6 +1351,7 @@ static constexpr OrtEpApi ort_ep_api = {
 
     &OrtExecutionProviderApi::SessionOptionsGetEpContextConfig,
     &OrtExecutionProviderApi::ReleaseEpContextConfig,
+    &OrtExecutionProviderApi::EpContextConfigGetEpContextDataReadFunc,
     &OrtExecutionProviderApi::EpContextConfigGetEpContextDataWriteFunc,
 };
 

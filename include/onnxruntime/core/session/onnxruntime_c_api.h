@@ -605,6 +605,25 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
                                                           _In_ const void* buffer,
                                                           _In_ size_t buffer_num_bytes);
 
+/** \brief Function called to read named binary data.
+ *
+ * The callback must allocate the returned buffer with `allocator`. The consumer frees it with the same allocator.
+ * ORT does not serialize calls made by different EP instances or worker threads.
+ *
+ * \param[in] state Application-owned state that remains valid while the callback may be invoked.
+ * \param[in] name Null-terminated UTF-8 logical data identifier.
+ * \param[in] allocator Allocator that must be used for the returned buffer.
+ * \param[out] buffer Allocated buffer containing the data.
+ * \param[out] data_size Number of bytes in `buffer`.
+ * \return nullptr on success, or an OrtStatus* describing the failure.
+ * \since Version 1.30.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
+                                                         _In_ const char* name,
+                                                         _In_ OrtAllocator* allocator,
+                                                         _Outptr_ void** buffer,
+                                                         _Out_ size_t* data_size);
+
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
  * generating a model.
