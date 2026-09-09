@@ -190,7 +190,7 @@ restrictions.
   for RoPE position indices, decoupling absolute sequence positions from cache buffer indices.
 - **Multi-token staging:** Because the capacity equals the window, a step of `S > 1` tokens can need
   more entries than the cache holds (its earliest queries still read keys its last ones evict). Such
-  a step runs against an internal staging buffer of `min(T - S, C) + S` entries and only the
+  a step runs against an internal staging buffer with capacity `C + S` entries and only the
   surviving tail is written back, so any `S >= 1` is accepted.
 - **Present shape:** When using windowed cache with `past_present_share_buffer`, the `present_key`
   and `present_value` shapes remain bounded by `kv_cache_capacity` in the sequence dimension,
