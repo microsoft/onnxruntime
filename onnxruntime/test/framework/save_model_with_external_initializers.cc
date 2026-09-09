@@ -132,7 +132,6 @@ TEST(SaveWithExternalInitializers, ModelWithOriginalExternalDataAlignOffset) {
       ORT_TSTR("model_with_new_external_initializers.bin"), model_saving_options));
 }
 
-
 namespace {
 
 // Builds a model whose If branches own their initializers. The optimized-model
