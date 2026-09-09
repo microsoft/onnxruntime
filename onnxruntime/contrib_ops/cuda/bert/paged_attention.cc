@@ -510,7 +510,43 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
           /*sequence_length_q=*/1,
           /*max_sequence_length_kv=*/max_kv_len_bound,
           parameters.block_size);
-  const bool use_cudnn_paged = cudnn_paged_eligible && !fp16_xqa_eligible;
+  bool use_cudnn_paged = cudnn_paged_eligible && !fp16_xqa_eligible;
+
+  // One-shot cuDNN paged build probe. is_supported_paged only checks static shapes; the planner
+  // may still reject the compiled graph, and we cannot fall back once dispatch has committed. Try
+  // the build ahead of dispatch (mirroring the XQA shared-memory probe below), cache the outcome
+  // for the node, and if it failed, clear use_cudnn_paged so the cascade drops to FlashAttention /
+  // MemoryEfficientAttention instead of throwing. isCapturing() guards the build itself: cuDNN
+  // graph compilation is not capturable, so during graph capture we treat the probe as unresolved
+  // (leaving the atomic at -1) and skip cuDNN paged for this run only. A well-formed producer runs
+  // at least one warm-up Compute before capture, which resolves the probe.
+  if (use_cudnn_paged) {
+    int probe = cudnn_paged_build_ok_.load(std::memory_order_relaxed);
+    if (probe < 0) {
+      if (!onnxruntime::llm::common::isCapturing(cuda_stream)) {
+        const float probe_scale = parameters.scale == 0.0f
+                                      ? 1.f / std::sqrt(static_cast<float>(parameters.head_size))
+                                      : parameters.scale;
+        const bool ok = onnxruntime::cudnn_sdpa::try_build_paged_graph(
+            parameters.batch_size,
+            parameters.num_heads, parameters.kv_num_heads,
+            parameters.head_size, parameters.head_size,
+            parameters.num_blocks,
+            parameters.block_size,
+            parameters.max_num_blocks_per_seq,
+            probe_scale,
+            std::is_same<T, BFloat16>::value,
+            GetCudnnHandle(context));
+        probe = ok ? 1 : 0;
+        cudnn_paged_build_ok_.store(probe, std::memory_order_relaxed);
+      } else {
+        probe = 0;
+      }
+    }
+    if (probe == 0) {
+      use_cudnn_paged = false;
+    }
+  }
 
   // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
   // both hard-code a bottom-right causal mask.
@@ -905,7 +941,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   }
 
   if (use_cudnn_paged) {
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.allocator));
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.cudnn_allocator));
     data.cudnn_handle = static_cast<void*>(GetCudnnHandle(context));
     data.cudnn_seqlens_kv = reinterpret_cast<int*>(cudnn_seqlens_kv_buffer.get());
   }

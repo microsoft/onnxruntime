@@ -262,10 +262,6 @@
     target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>")
     # suppress cudafe "variable was set but never used" (#550-D) from flatbuffers/adapter headers
     target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=550>")
-    # cutlass/subbyte_reference.h uses __nv_atomic_load_n with a memory-order argument, which nvcc
-    # warns is sm_70+ only (#20303-D). The arch list still targets sm_60 for now, and -Werror
-    # all-warnings promotes this to a hard error; suppress it here.
-    target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=20303>")
 
     # Since CUDA 12.8, compiling diagnostics become stricter
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)

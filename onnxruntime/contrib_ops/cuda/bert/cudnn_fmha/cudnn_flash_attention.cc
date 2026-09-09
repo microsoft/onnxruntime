@@ -2,10 +2,12 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
+#include <cstring>
 #include <memory>
 #include <vector>
 #include <unordered_map>
 #include <cudnn.h>
+#include "core/common/safeint.h"
 
 #if CUDNN_MAJOR < 9
 namespace onnxruntime::cudnn_sdpa {
@@ -64,7 +66,22 @@ bool is_supported_paged(const cudaDeviceProp& /*dprops*/,
   return false;
 }
 
-void run_paged(
+bool try_build_paged_graph(
+    int /*batch_size*/,
+    int /*num_heads_q*/,
+    int /*num_heads_kv*/,
+    int /*head_size_qk*/,
+    int /*head_size_v*/,
+    int /*cache_num_blocks*/,
+    int /*block_size*/,
+    int /*max_num_blocks_per_seq*/,
+    float /*scale*/,
+    bool /*is_bf16*/,
+    cudnnHandle_t /*handle*/) {
+  return false;
+}
+
+bool run_paged(
     void* /*output*/,
     void* /*q*/,
     void* /*k_cache*/,
@@ -76,7 +93,6 @@ void run_paged(
     int /*num_heads_kv*/,
     int /*head_size_qk*/,
     int /*head_size_v*/,
-    int /*max_sequence_length_kv*/,
     int /*cache_num_blocks*/,
     int /*block_size*/,
     int /*max_num_blocks_per_seq*/,
@@ -85,7 +101,7 @@ void run_paged(
     cudnnHandle_t /*handle*/,
     Stream* /*stream*/,
     AllocatorPtr /*allocator*/) {
-  ORT_THROW("OnnxRuntime was not compiled with cuDNN Flash Attention.");
+  return false;
 }
 
 }  // namespace onnxruntime::cudnn_sdpa
@@ -96,6 +112,7 @@ void run_paged(
 #include "core/providers/cuda/shared_inc/cudnn_fe_call.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 
 namespace onnxruntime::cudnn_sdpa {
 
@@ -536,8 +553,13 @@ bool is_supported_paged(const cudaDeviceProp& dprops,
     return false;
   }
 
-  // Same static shape checks as the dense path, plus the paged-specific ones.
-  if (dprops.major < 8 ||
+  // cuDNN's paged SDPA planner is validated on Hopper+ (sm>=90). Refuse sm_8x uniformly rather
+  // than relying on the planner to decline a shape we would then have no way to fall back from
+  // (build_paged_graph returns nullptr on planner rejection, but the PagedAttention cascade
+  // decides FA/MEA vs. cuDNN before Compute begins). Auto-enable in paged_attention.cc already
+  // requires major>=9; this keeps the explicit-opt-in path aligned so
+  // ORT_ENABLE_CUDNN_FLASH_ATTENTION=1 on sm_8x also skips the paged tier.
+  if (dprops.major < 9 ||
       (head_size_qk % 8 != 0) || (head_size_qk > 256) ||
       (head_size_v % 8 != 0) || (head_size_v > 256) ||
       (num_heads_kv == 0) || (num_heads_q % num_heads_kv != 0)) {
@@ -716,27 +738,17 @@ std::shared_ptr<fe::graph::Graph> build_paged_graph(PagedGraphParams& params) {
 
   // Diagnostic split: validate() catches shape/dtype errors before the heuristic planner runs,
   // so a validate-side failure vs build-side failure tells us whether the graph description is
-  // malformed or the planner just has no kernel for this (arch, shape).
-  auto validate_status = mha_graph->validate();
-  int active_device = -1;
-  cudaGetDevice(&active_device);
-  cudaDeviceProp active_props{};
-  if (active_device >= 0) {
-    cudaGetDeviceProperties(&active_props, active_device);
-  }
-  if (!validate_status.is_good()) {
-    ORT_THROW("cuDNN paged SDPA graph->validate() failed. cudnn=", cudnnGetVersion(),
-              " active_cuda_device=", active_device,
-              " name=\"", active_props.name, "\" sm=", active_props.major, ".", active_props.minor,
-              " err=", validate_status.get_message(),
-              " graph=", *mha_graph);
+  // malformed or the planner just has no kernel for this (arch, shape). Both are recoverable at
+  // this layer: return nullptr and let the caller (try_build_paged_graph / run_paged) surface a
+  // false result. PagedAttention's cascade probes on first Compute and falls back to
+  // FlashAttention / MemoryEfficientAttention for the node when the probe is negative -- a
+  // planner rejection here never kills user inference.
+  if (!mha_graph->validate().is_good()) {
+    return nullptr;
   }
 
   if (!mha_graph->build(params.handle, {fe::HeurMode_t::A}).is_good()) {
-    ORT_THROW("cuDNN paged SDPA graph->build() failed. cudnn=", cudnnGetVersion(),
-              " active_cuda_device=", active_device,
-              " name=\"", active_props.name, "\" sm=", active_props.major, ".", active_props.minor,
-              " graph=", *mha_graph);
+    return nullptr;
   }
 
   return mha_graph;
@@ -747,28 +759,23 @@ thread_local std::unordered_map<PagedGraphParams,
                                 BytesHash<PagedGraphParams> >
     paged_mha_graph_cache;
 
-void run_paged(
-    void* output,
-    void* q,
-    void* k_cache,
-    void* v_cache,
-    int* block_table,
-    int* mask_sequence_lengths_kv,
-    int batch_size,
-    int num_heads_q,
-    int num_heads_kv,
-    int head_size_qk,
-    int head_size_v,
-    int max_sequence_length_kv,
-    int cache_num_blocks,
-    int block_size,
-    int max_num_blocks_per_seq,
-    float scale,
-    bool is_bf16,
-    cudnnHandle_t handle,
-    Stream* stream,
-    AllocatorPtr allocator) {
-  PagedGraphParams params;
+// Fill a PagedGraphParams for both the probe and the run. Byte-zeros first so BytesHash covers
+// the padding bytes deterministically; without this, the padding bytes are indeterminate and
+// BytesHash misses on every call, which would silently rebuild the graph every decode step and
+// erase the graph-cache benefit.
+static void FillPagedGraphParams(PagedGraphParams& params,
+                                 int batch_size,
+                                 int num_heads_q,
+                                 int num_heads_kv,
+                                 int head_size_qk,
+                                 int head_size_v,
+                                 int cache_num_blocks,
+                                 int block_size,
+                                 int max_num_blocks_per_seq,
+                                 float scale,
+                                 bool is_bf16,
+                                 cudnnHandle_t handle) {
+  std::memset(&params, 0, sizeof(params));
   params.batch_size = batch_size;
   params.num_heads_q = num_heads_q;
   params.num_heads_kv = num_heads_kv;
@@ -782,25 +789,91 @@ void run_paged(
   // makes the invariant hold and coarsens the graph cache key so decode iterations within the
   // same page reuse the same compiled graph. max_seq_len_kv is a REPLAY-WIDE UPPER BOUND -- the
   // per-sequence lengths in seq_kv still bound actual attention range, so coarsening upward is
-  // always semantically safe.
-  const int aligned_max_seq_len_kv =
-      (block_size > 0 && max_num_blocks_per_seq > 0) ? max_num_blocks_per_seq * block_size
-                                                     : max_sequence_length_kv;
-  params.max_seq_len_kv = aligned_max_seq_len_kv;
+  // always semantically safe. Both operands are user-controlled shape attributes, so promote to
+  // SafeInt<int> before narrowing: an overflowing product would silently wrap to a small value
+  // and mis-key the graph cache.
+  params.max_seq_len_kv = SafeInt<int>(max_num_blocks_per_seq) * block_size;
   params.cache_num_blocks = cache_num_blocks;
   params.block_size = block_size;
   params.max_num_blocks_per_seq = max_num_blocks_per_seq;
   params.scale = scale;
   params.is_bf16 = is_bf16;
   params.handle = handle;
+}
+
+bool try_build_paged_graph(
+    int batch_size,
+    int num_heads_q,
+    int num_heads_kv,
+    int head_size_qk,
+    int head_size_v,
+    int cache_num_blocks,
+    int block_size,
+    int max_num_blocks_per_seq,
+    float scale,
+    bool is_bf16,
+    cudnnHandle_t handle) {
+  PagedGraphParams params;
+  FillPagedGraphParams(params, batch_size, num_heads_q, num_heads_kv, head_size_qk, head_size_v,
+                       cache_num_blocks, block_size, max_num_blocks_per_seq,
+                       scale, is_bf16, handle);
+
+  auto it = paged_mha_graph_cache.find(params);
+  if (it != paged_mha_graph_cache.end()) {
+    return it->second != nullptr;
+  }
+  auto mha_graph = build_paged_graph(params);
+  if (mha_graph == nullptr) {
+    return false;
+  }
+  paged_mha_graph_cache.emplace(params, mha_graph);
+  return true;
+}
+
+bool run_paged(
+    void* output,
+    void* q,
+    void* k_cache,
+    void* v_cache,
+    int* block_table,
+    int* mask_sequence_lengths_kv,
+    int batch_size,
+    int num_heads_q,
+    int num_heads_kv,
+    int head_size_qk,
+    int head_size_v,
+    int cache_num_blocks,
+    int block_size,
+    int max_num_blocks_per_seq,
+    float scale,
+    bool is_bf16,
+    cudnnHandle_t handle,
+    Stream* stream,
+    AllocatorPtr allocator) {
+  PagedGraphParams params;
+  FillPagedGraphParams(params, batch_size, num_heads_q, num_heads_kv, head_size_qk, head_size_v,
+                       cache_num_blocks, block_size, max_num_blocks_per_seq,
+                       scale, is_bf16, handle);
 
   std::shared_ptr<fe::graph::Graph> mha_graph;
   auto it = paged_mha_graph_cache.find(params);
   if (it != paged_mha_graph_cache.end()) {
     mha_graph = it->second;
   } else {
+    // Cache miss. cuDNN graph build is not capturable, and PagedAttention's cascade issues a
+    // probe (try_build_paged_graph) on the first non-capturing Compute for this node so a
+    // captured graph should never see a miss here. If it happens anyway, return false rather
+    // than attempting build during capture; the caller propagates a Status without leaving
+    // partial state.
+    cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+    if (onnxruntime::llm::common::isCapturing(cuda_stream)) {
+      return false;
+    }
     mha_graph = build_paged_graph(params);
-    paged_mha_graph_cache[params] = mha_graph;
+    if (mha_graph == nullptr) {
+      return false;
+    }
+    paged_mha_graph_cache.emplace(params, mha_graph);
   }
 
   // cuDNN requires a seq_len_q buffer alongside seq_len_kv when padding_mask is on. Decode is
@@ -827,6 +900,7 @@ void run_paged(
   IAllocatorUniquePtr<void> buffer =
       IAllocator::MakeUniquePtr<void>(allocator, bytes, false, stream);
   CUDNN_FE_CALL_THROW(mha_graph->execute(handle, variant_pack, buffer.get()));
+  return true;
 }
 
 }  // namespace onnxruntime::cudnn_sdpa

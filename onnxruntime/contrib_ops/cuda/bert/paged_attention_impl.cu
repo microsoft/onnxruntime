@@ -370,23 +370,29 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Fills seqlens_kv[i] = past_seqlens[i] + 1 for one-token-per-sequence decode. The cuDNN paged
-// SDPA graph takes a per-batch KV padding-mask tensor of that shape; ORT's cumulative_seqlens_kv
-// is a prefix sum that would need a second differencing pass, and the decode path already knows
-// each sequence contributes exactly one query token, so past_seqlens + 1 is exact.
-__global__ void GetSeqlensKVDecode(int32_t* seqlens_kv, const int32_t* past_seqlens,
-                                   const int batch_size) {
+// Fills seqlens_kv[i] = past_seqlens[i] + (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i])
+// for the cuDNN paged SDPA graph's per-batch KV padding-mask input. Deriving the query count from
+// cumulative_seqlens_q rather than hard-coding +1 avoids baking the "decode-only" invariant into
+// the kernel: on every currently reachable call the difference is 1 (the cuDNN paged tier is
+// gated to max_query_len_bound == 1), and any future extension to multi-token steps stays
+// numerically correct here without a second edit.
+__global__ void GetSeqlensKV(int32_t* seqlens_kv, const int32_t* past_seqlens,
+                             const int32_t* cumulative_seqlens_q,
+                             const int batch_size) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i < batch_size) {
-    seqlens_kv[i] = past_seqlens[i] + 1;
+    const int q_len = cumulative_seqlens_q[i + 1] - cumulative_seqlens_q[i];
+    seqlens_kv[i] = past_seqlens[i] + q_len;
   }
 }
 
-Status LaunchGetSeqlensKVDecode(int32_t* seqlens_kv, const int32_t* past_seqlens,
-                                const int batch_size, cudaStream_t stream) {
+Status LaunchGetSeqlensKV(int32_t* seqlens_kv, const int32_t* past_seqlens,
+                          const int32_t* cumulative_seqlens_q,
+                          const int batch_size, cudaStream_t stream) {
   constexpr int kThreads = 128;
   const int blocks = (batch_size + kThreads - 1) / kThreads;
-  GetSeqlensKVDecode<<<blocks, kThreads, 0, stream>>>(seqlens_kv, past_seqlens, batch_size);
+  GetSeqlensKV<<<blocks, kThreads, 0, stream>>>(seqlens_kv, past_seqlens, cumulative_seqlens_q,
+                                                batch_size);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -1719,12 +1725,14 @@ Status CudnnPagedAttention(
   ORT_RETURN_IF_ERROR((PrepareQueryAndCache<T, TCACHE>(stream, parameters, data,
                                                        max_threads_per_block, &query)));
 
-  // Per-batch KV lengths for the padding-mask input. Decode-only path: length = past + 1.
-  ORT_RETURN_IF_ERROR(LaunchGetSeqlensKVDecode(
-      data.cudnn_seqlens_kv, data.past_seqlens, parameters.batch_size, stream));
+  // Per-batch KV lengths for the padding-mask input. Derived from cumulative_seqlens_q so this
+  // stays correct if the cuDNN paged tier is ever relaxed beyond decode-only.
+  ORT_RETURN_IF_ERROR(LaunchGetSeqlensKV(
+      data.cudnn_seqlens_kv, data.past_seqlens, data.cumulative_seqlens_q,
+      parameters.batch_size, stream));
 
   cudnnHandle_t cudnn_handle = static_cast<cudnnHandle_t>(data.cudnn_handle);
-  onnxruntime::cudnn_sdpa::run_paged(
+  const bool ok = onnxruntime::cudnn_sdpa::run_paged(
       /*output=*/reinterpret_cast<void*>(data.output),
       /*q=*/reinterpret_cast<void*>(query),
       /*k_cache=*/reinterpret_cast<void*>(data.key_cache),
@@ -1736,7 +1744,6 @@ Status CudnnPagedAttention(
       parameters.kv_num_heads,
       parameters.head_size,
       parameters.head_size,  // head_size_v == head_size in every SEPARATE-mode configuration
-      /*max_sequence_length_kv=*/data.max_kv_len,
       parameters.num_blocks,
       parameters.block_size,
       parameters.max_num_blocks_per_seq,
@@ -1744,7 +1751,19 @@ Status CudnnPagedAttention(
       std::is_same<T, BFloat16>::value,
       cudnn_handle,
       ort_stream,
-      data.allocator);
+      data.cudnn_allocator);
+  if (!ok) {
+    // The cuDNN paged graph was not available at dispatch time. PagedAttention runs a
+    // try_build_paged_graph probe before selecting this backend, so a false here means either the
+    // node's first Compute was under CUDA graph capture (probe deferred, cache miss disallowed) or
+    // the shape signature has genuinely changed since the probe. Either way, surface a clear
+    // Status rather than silently mis-executing.
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "PagedAttention: cuDNN paged SDPA graph unavailable at dispatch "
+                           "(build failed or attempted during CUDA graph capture). Run at least "
+                           "one Compute step outside capture to warm the graph cache, or set "
+                           "ORT_ENABLE_CUDNN_FLASH_ATTENTION=0 to disable this backend.");
+  }
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("cudnn paged sdpa output", data.output, parameters.token_count, parameters.num_heads,

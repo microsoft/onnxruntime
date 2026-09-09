@@ -58,6 +58,10 @@ void run(
 //     position, which the padding mask bounds), so this entry point never asks for it.
 //   * mask_sequence_lengths_kv is required: [batch_size] int32 device buffer of per-sequence KV
 //     lengths.
+// Shape gate only; is_supported_paged does not probe the cuDNN planner. The paged planner is
+// validated on H100+ (sm>=90), so this shape gate refuses sm_8x uniformly -- callers that opt in
+// on sm_8x fall through to another PagedAttention backend rather than reaching a graph->build()
+// planner-rejection path with no in-op fallback.
 bool is_supported_paged(const cudaDeviceProp& dprops,
                         int num_heads_q,
                         int num_heads_kv,
@@ -67,7 +71,34 @@ bool is_supported_paged(const cudaDeviceProp& dprops,
                         int max_sequence_length_kv,  // upper bound for graph build
                         int block_size);
 
-void run_paged(
+// One-time build probe. Returns true iff a cuDNN paged graph for these shape/type parameters
+// exists in the thread-local cache OR was just built successfully. On planner rejection it returns
+// false without throwing, so the PagedAttention cascade can memoize the outcome and fall back to
+// FlashAttention / MemoryEfficientAttention for this node. Must not be called from a capturing
+// stream: cuDNN graph build is not capturable.
+//
+// The graph is compiled at max_seq_len_kv == max_num_blocks_per_seq * block_size (the natural
+// page-table capacity) because cuDNN 9.12's planner rejects any smaller value; per-sequence
+// lengths in mask_sequence_lengths_kv still bound actual attention range, so this coarsening is
+// semantically safe.
+bool try_build_paged_graph(
+    int batch_size,
+    int num_heads_q,
+    int num_heads_kv,
+    int head_size_qk,
+    int head_size_v,
+    int cache_num_blocks,
+    int block_size,
+    int max_num_blocks_per_seq,
+    float scale,
+    bool is_bf16,
+    cudnnHandle_t handle);
+
+// Executes the paged SDPA. Returns true on success, false if the cuDNN graph is unavailable
+// (planner rejection cached from a prior try_build_paged_graph, cache miss on a capturing stream,
+// or a build attempted here that the planner rejected). On false the output is not written, so the
+// caller can propagate a Status without leaving partial state.
+bool run_paged(
     void* output,                   // [batch_size, num_heads_q, 1, head_size_v]
     void* q,                        // [batch_size, num_heads_q, 1, head_size_qk]
     void* k_cache,                  // [cache_num_blocks, block_size, num_heads_kv, head_size_qk]
@@ -79,8 +110,7 @@ void run_paged(
     int num_heads_kv,
     int head_size_qk,
     int head_size_v,
-    int max_sequence_length_kv,  // graph build bound; must satisfy real kv_len[i] <= this
-    int cache_num_blocks,        // leading dimension of the block pool
+    int cache_num_blocks,  // leading dimension of the block pool
     int block_size,
     int max_num_blocks_per_seq,  // stride of block_table's leading dim
     float scale,
