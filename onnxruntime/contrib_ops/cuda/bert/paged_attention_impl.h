@@ -34,8 +34,10 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
 
 // Bound-checks every block_table entry against num_blocks, replacing any out-of-range entry with -1
 // (the existing unmapped-block sentinel). Every attention backend reads block_table only through the
-// sanitized copy this produces, so a single check here protects all of them, including the native
-// FlashAttention and XQA paths that index it directly.
+// sanitized copy this produces. That is enough for the backends that already branch on
+// block_id < 0, but not for native FlashAttention (flash_fwd_kernel.h indexes block_table with an
+// unchecked negative offset) or the XQA paged path, where -1 is a legal in-range value and still
+// reaches the cache unguarded.
 Status LaunchSanitizeBlockTable(int* sanitized_block_table, const int* block_table, const int num_blocks,
                                 const int batch_size, const int max_num_blocks_per_seq, cudaStream_t stream);
 

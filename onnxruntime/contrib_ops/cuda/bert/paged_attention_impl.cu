@@ -373,9 +373,11 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
 // into range before any read path indexes the paged cache with them; negative entries (the
 // existing "unmapped block" sentinel) are left as-is.
 __global__ void SanitizeBlockTable(int* __restrict__ sanitized_block_table, const int* __restrict__ block_table,
-                                    const int num_blocks, const int total_entries) {
+                                   const int num_blocks, const int total_entries) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= total_entries) return;
+  if (i >= total_entries) {
+    return;
+  }
   const int block_id = block_table[i];
   sanitized_block_table[i] = (block_id < 0 || block_id >= num_blocks) ? -1 : block_id;
 }
@@ -383,6 +385,9 @@ __global__ void SanitizeBlockTable(int* __restrict__ sanitized_block_table, cons
 Status LaunchSanitizeBlockTable(int* sanitized_block_table, const int* block_table, const int num_blocks,
                                 const int batch_size, const int max_num_blocks_per_seq, cudaStream_t stream) {
   const int total_entries = batch_size * max_num_blocks_per_seq;
+  if (total_entries == 0) {
+    return Status::OK();
+  }
   constexpr int kThreads = 256;
   const int blocks = (total_entries + kThreads - 1) / kThreads;
   SanitizeBlockTable<<<blocks, kThreads, 0, stream>>>(sanitized_block_table, block_table, num_blocks, total_entries);
