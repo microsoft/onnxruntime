@@ -33,3 +33,141 @@ const Napi::FunctionReference& OrtInstanceData::TensorConstructor(Napi::Env env)
 
   return data->ortTensorConstructor;
 }
+
+std::mutex& OrtInstanceData::DeviceMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+namespace {
+std::mutex& PendingReleaseMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::vector<std::shared_ptr<void>>& PendingReleases() {
+  static std::vector<std::shared_ptr<void>> pending;
+  return pending;
+}
+
+// Set while this thread is running queued destructors with DeviceMutex() held. ReleaseDeviceObject()
+// consults it because try_lock on a mutex the calling thread already owns is undefined behaviour
+// rather than a failed acquisition, so a destructor that releases another device object must queue.
+thread_local bool draining_device_releases = false;
+}  // namespace
+
+void OrtInstanceData::DrainDeviceReleasesLocked() {
+  struct DrainingFlag {
+    DrainingFlag() { draining_device_releases = true; }
+    ~DrainingFlag() { draining_device_releases = false; }
+  } draining_flag;
+
+  // A destructor running here can queue more (a session release drops the device values it pinned),
+  // and with the flag set it cannot drain them itself, so keep going until nothing is left.
+  for (;;) {
+    std::vector<std::shared_ptr<void>> pending;
+    {
+      std::lock_guard<std::mutex> lock(PendingReleaseMutex());
+      pending.swap(PendingReleases());
+    }
+    if (pending.empty()) {
+      return;
+    }
+    // Destructors run here, with DeviceMutex() held by the caller.
+    pending.clear();
+  }
+}
+
+void OrtInstanceData::TryDrainDeviceReleases() {
+  // The drain running further up this thread's stack picks up anything queued meanwhile.
+  if (draining_device_releases) {
+    return;
+  }
+  for (;;) {
+    {
+      std::unique_lock<std::mutex> device_lock(DeviceMutex(), std::try_to_lock);
+      // Whoever holds the lock drains on the way out (see DeviceLock), so nothing is stranded.
+      if (!device_lock.owns_lock()) {
+        return;
+      }
+      DrainDeviceReleasesLocked();
+    }
+    // Anything queued while this thread held the lock saw its own try_lock fail against it, so it
+    // is this thread's to destroy: go round again rather than leave it for a run that may never come.
+    std::lock_guard<std::mutex> lock(PendingReleaseMutex());
+    if (PendingReleases().empty()) {
+      return;
+    }
+  }
+}
+
+void OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<void> object) {
+  if (object == nullptr) {
+    return;
+  }
+
+  // Everything is destroyed from the queue, never inline: a destructor that releases another device
+  // object would otherwise re-enter and try_lock a mutex this thread already owns.
+  {
+    std::lock_guard<std::mutex> lock(PendingReleaseMutex());
+    PendingReleases().push_back(std::move(object));
+  }
+  TryDrainDeviceReleases();
+}
+
+bool OrtInstanceData::ExternalArrayBuffersRefused(Napi::Env env) {
+  auto data = env.GetInstanceData<OrtInstanceData>();
+  return data != nullptr && data->externalArrayBuffersRefused;
+}
+
+void OrtInstanceData::MarkExternalArrayBuffersRefused(Napi::Env env) {
+  auto data = env.GetInstanceData<OrtInstanceData>();
+  if (data != nullptr) {
+    data->externalArrayBuffersRefused = true;
+  }
+}
+
+namespace {
+bool RegionsOverlap(const OrtInstanceData::OutputBufferRegion& a, const OrtInstanceData::OutputBufferRegion& b) {
+  if (a.wholeResource || b.wholeResource) {
+    return true;
+  }
+  // A zero-length region writes nothing, so it cannot conflict with anything.
+  if (a.byteLength == 0 || b.byteLength == 0) {
+    return false;
+  }
+  return a.byteOffset < b.byteOffset + b.byteLength && b.byteOffset < a.byteOffset + a.byteLength;
+}
+}  // namespace
+
+OrtInstanceData::OutputBufferLease OrtInstanceData::AcquireOutputBufferLease(Napi::Object resource,
+                                                                             size_t byteOffset, size_t byteLength,
+                                                                             bool wholeResource) {
+  auto data = resource.Env().GetInstanceData<OrtInstanceData>();
+  ORT_NAPI_THROW_ERROR_IF(data == nullptr, resource.Env(), "OrtInstanceData not created.");
+
+  auto lease = std::make_shared<OutputBufferRegion>(
+      OutputBufferRegion{Napi::Persistent(resource), byteOffset, byteLength, wholeResource});
+
+  for (const auto& held : data->outputBufferLeases) {
+    ORT_NAPI_THROW_ERROR_IF(held->resource.Value().StrictEquals(resource) && RegionsOverlap(*lease, *held),
+                            resource.Env(), "Preallocated output buffer is already in use.");
+  }
+
+  data->outputBufferLeases.push_back(lease);
+  return lease;
+}
+
+void OrtInstanceData::ReleaseOutputBufferLease(Napi::Env env, const OutputBufferLease& lease) {
+  auto data = env.GetInstanceData<OrtInstanceData>();
+  if (data == nullptr) {
+    return;
+  }
+
+  for (auto it = data->outputBufferLeases.begin(); it != data->outputBufferLeases.end(); ++it) {
+    if (*it == lease) {
+      data->outputBufferLeases.erase(it);
+      return;
+    }
+  }
+}

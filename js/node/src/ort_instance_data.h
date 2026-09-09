@@ -3,7 +3,10 @@
 
 #pragma once
 
+#include <memory>
+#include <mutex>
 #include <napi.h>
+#include <vector>
 #include "onnxruntime_cxx_api.h"
 
 /**
@@ -23,10 +26,84 @@ struct OrtInstanceData {
   // Get the Tensor constructor reference for the Napi::Env
   static const Napi::FunctionReference& TensorConstructor(Napi::Env env);
 
+  // A region of a preallocated output resource that a run is going to write.
+  struct OutputBufferRegion {
+    Napi::ObjectReference resource;
+    size_t byteOffset{0};
+    size_t byteLength{0};
+    // The lease covers the whole resource. Used for a gpu-buffer External, which has no addressable
+    // sub-range; distinct from a zero-length region, which writes nothing and conflicts with nothing.
+    bool wholeResource{false};
+  };
+  // Serializes every operation that touches execution provider device state: binding inputs and
+  // outputs, running with an IoBinding, and releasing device-backed OrtValues. Providers that
+  // declare ConcurrentRunSupported() false are not safe for concurrent use, and ORT's own guard
+  // covers only graph execution; WebGPU sessions sharing a device id also share one WebGpuContext
+  // and command encoder, so the lock has to span sessions rather than sit on one of them.
+  static std::mutex& DeviceMutex();
+
+  // Destroy a device-backed object under DeviceMutex(). Safe to call from the Javascript thread:
+  // blocking there would stall the event loop for the length of another session's inference, so if
+  // the lock is busy the object is queued and destroyed by whoever holds the lock next.
+  static void ReleaseDeviceObject(std::shared_ptr<void> object);
+  // Destroy everything queued by ReleaseDeviceObject() if the lock happens to be free.
+  static void TryDrainDeviceReleases();
+  // Destroy everything queued by ReleaseDeviceObject(). The caller must already hold DeviceMutex().
+  static void DrainDeviceReleasesLocked();
+
+  // Every blocking acquisition of DeviceMutex() goes through this. An object queued while the lock is
+  // busy relies on the holder to destroy it, and one queued in the window between the holder's last
+  // drain and its unlock found the lock busy too, so releasing the lock is followed by one more drain
+  // of whatever arrived. (TryDrainDeviceReleases() takes the lock non-blocking and loops instead.)
+  class DeviceLock {
+   public:
+    DeviceLock() = default;
+    explicit DeviceLock(std::mutex& mutex) : lock_(mutex) {}
+    DeviceLock(DeviceLock&& other) noexcept = default;
+    DeviceLock& operator=(DeviceLock&& other) noexcept {
+      if (this != &other) {
+        Release();
+        lock_ = std::move(other.lock_);
+      }
+      return *this;
+    }
+    DeviceLock(const DeviceLock&) = delete;
+    DeviceLock& operator=(const DeviceLock&) = delete;
+    ~DeviceLock() { Release(); }
+
+    bool owns_lock() const { return lock_.owns_lock(); }
+
+   private:
+    void Release() {
+      if (lock_.owns_lock()) {
+        lock_.unlock();
+        TryDrainDeviceReleases();
+      }
+    }
+    std::unique_lock<std::mutex> lock_;
+  };
+
+  // Whether a previous attempt to hand Javascript an external ArrayBuffer was refused. Electron's
+  // V8 Memory Cage and V8-sandbox builds reject them for the lifetime of the process, so the answer
+  // is cached rather than re-probed for every model output.
+  static bool ExternalArrayBuffersRefused(Napi::Env env);
+  static void MarkExternalArrayBuffersRefused(Napi::Env env);
+
+  using OutputBufferLease = std::shared_ptr<OutputBufferRegion>;
+
+  // Acquire a lease for the region of a preallocated output resource that a run will write.
+  // Overlapping regions of the same resource cannot be leased twice at once; disjoint regions can.
+  static OutputBufferLease AcquireOutputBufferLease(Napi::Object resource, size_t byteOffset, size_t byteLength,
+                                                    bool wholeResource);
+  // Release a previously acquired preallocated output resource lease.
+  static void ReleaseOutputBufferLease(Napi::Env env, const OutputBufferLease& lease);
+
  private:
   OrtInstanceData();
 
   // per env persistent constructors
   Napi::FunctionReference wrappedSessionConstructor;
   Napi::FunctionReference ortTensorConstructor;
+  std::vector<OutputBufferLease> outputBufferLeases;
+  bool externalArrayBuffersRefused{false};
 };

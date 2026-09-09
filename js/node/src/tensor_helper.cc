@@ -3,11 +3,14 @@
 
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <sstream>
+#include <string>
 #include <unordered_map>
 
 #include "common.h"
 #include "ort_instance_data.h"
+#include "ort_singleton_data.h"
 #include "tensor_helper.h"
 #include "inference_session_wrap.h"
 
@@ -121,7 +124,10 @@ const std::unordered_map<std::string, ONNXTensorElementDataType> DATA_TYPE_NAME_
 };
 
 // currently only support tensor
-Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info, OrtMemoryInfo* webgpu_memory_info) {
+Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* cpu_memory_info,
+                               OrtAllocator* cpu_allocator, OrtMemoryInfo* webgpu_memory_info,
+                               NapiValueUsage usage, std::vector<OrtValueOwner>* value_owners,
+                               NapiTensorConversion* conversion) {
   ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), env, "Tensor must be an object.");
 
   // check 'dims'
@@ -161,7 +167,13 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
   auto tensorTypeString = tensorTypeValue.As<Napi::String>().Utf8Value();
 
   if (tensorTypeString == "string") {
+    ORT_NAPI_THROW_TYPEERROR_IF(usage == NapiValueUsage::kPreallocatedOutput, env,
+                                "Preallocated string output tensors are not supported.");
+
     auto tensorDataValue = tensorObject.Get("data");
+    if (conversion != nullptr) {
+      conversion->data = tensorDataValue;
+    }
 
     ORT_NAPI_THROW_TYPEERROR_IF(tensorLocation != DATA_LOCATION_CPU, env, "Tensor.location must be 'cpu' for string tensors.");
     ORT_NAPI_THROW_TYPEERROR_IF(!tensorDataValue.IsArray(), env, "Tensor.data must be an array for string tensors.");
@@ -217,20 +229,86 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
                                   elemType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ? " or Float16Array" : "",
                                   ") for ", tensorTypeString, " tensors, but got typed array (", typedArrayType, ").");
 
-      char* buffer = reinterpret_cast<char*>(tensorDataTypedArray.ArrayBuffer().Data());
+      auto tensorDataArrayBuffer = tensorDataTypedArray.ArrayBuffer();
+      if (conversion != nullptr) {
+        conversion->data = tensorDataValue;
+        conversion->dataArrayBuffer = tensorDataArrayBuffer;
+        conversion->dataByteOffset = tensorDataTypedArray.ByteOffset();
+        conversion->dataByteLength = tensorDataTypedArray.ByteLength();
+      }
+
+      char* buffer = reinterpret_cast<char*>(tensorDataArrayBuffer.Data());
       size_t bufferByteOffset = tensorDataTypedArray.ByteOffset();
       size_t bufferByteLength = tensorDataTypedArray.ByteLength();
-      return Ort::Value::CreateTensor(cpu_memory_info, buffer + bufferByteOffset, bufferByteLength,
-                                      dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
+      // Wrapping the JS buffer validates that it is large enough for 'dims'. The wrapper itself is
+      // never handed to ORT: the buffer may be detached, resized or rewritten from JS while an
+      // asynchronous run is in flight.
+      auto sourceValue = Ort::Value::CreateTensor(cpu_memory_info, buffer + bufferByteOffset, bufferByteLength,
+                                                  dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
+
+      if (usage == NapiValueUsage::kPreallocatedOutput) {
+        // Hand the declared type and shape back so that the result can be validated against them
+        // before it is copied into the caller's buffer. ORT performs those checks itself for a
+        // preallocated fetch (InferenceSession::ValidateInputsOutputs and
+        // IExecutionFrame::GetOrCreateNodeOutputMLValue) but skips them entirely for an
+        // unallocated one, so they have to happen here instead.
+        if (conversion != nullptr) {
+          conversion->declared.elementType = elemType;
+          conversion->declared.dims = dims;
+        }
+
+        // Return an empty OrtValue so that ORT allocates the output itself. Handing ORT a
+        // preallocated fetch is not safe: it is free to replace the fetch instead of filling it
+        // (see utils::BatchOrCopyMLValue, which assigns over the target when the producing device
+        // already satisfies it), which would leave our tensor unwritten and silently copy
+        // uninitialized memory back to the caller. The caller copies ORT's own output into the JS
+        // buffer once the run completes.
+        return Ort::Value{nullptr};
+      }
+
+      // The copy comes from the session's own CPU allocator rather than the process-wide default
+      // one, so it follows the session's enableCpuMemArena setting. With the arena on, repeated
+      // runs of the same shapes reuse memory that is already mapped, which for large inputs makes
+      // this copy several times cheaper than faulting in fresh pages every run.
+      auto copiedValue = Ort::Value::CreateTensor(cpu_allocator, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
+      const size_t tensorByteLength = sourceValue.GetTensorSizeInBytes();
+      if (tensorByteLength > 0) {
+        memcpy(copiedValue.GetTensorMutableRawData(), sourceValue.GetTensorRawData(), tensorByteLength);
+      }
+      return copiedValue;
     } else {
       ORT_NAPI_THROW_TYPEERROR_IF(tensorLocation != DATA_LOCATION_GPU_BUFFER, env, "Tensor.location must be 'gpu-buffer' for IO binding.");
 
       auto gpuBufferValue = tensorObject.Get("gpuBuffer");
-      // nodejs: tensor.gpuBuffer is no longer a GPUBuffer in nodejs. we assume it is an external object (bind the OrtValue pointer).
+      // nodejs: tensor.gpuBuffer is no longer a GPUBuffer in nodejs. It is an External holding the OrtValue owner.
       ORT_NAPI_THROW_TYPEERROR_IF(!gpuBufferValue.IsExternal(), env, "Tensor.gpuBuffer must be an external object.");
-      Ort::Value dataValue(gpuBufferValue.As<Napi::External<OrtValue>>().Data());
-      void* gpuBuffer = dataValue.GetTensorMutableRawData();
-      dataValue.release();
+      if (conversion != nullptr) {
+        conversion->gpuBuffer = gpuBufferValue;
+      }
+      auto* valueOwner = gpuBufferValue.As<Napi::External<OrtValueOwner>>().Data();
+      ORT_NAPI_THROW_ERROR_IF(valueOwner == nullptr || !*valueOwner, env, "Tensor.gpuBuffer has been disposed.");
+      // A non-owning view: the External keeps ownership.
+      Ort::UnownedValue owned{valueOwner->get()};
+      void* gpuBuffer = owned.GetTensorMutableRawData();
+      if (value_owners != nullptr) {
+        value_owners->push_back(*valueOwner);
+      }
+
+      // The OrtValue behind the External is authoritative for type, shape and allocation size.
+      // Tensor.type and Tensor.dims are ordinary mutable Javascript properties, so a caller can
+      // declare a larger shape over a smaller device allocation; check the declaration against the
+      // owned value before handing ORT a view over it, which for a preallocated output would
+      // otherwise be an out-of-bounds device write.
+      auto ownedInfo = owned.GetTensorTypeAndShapeInfo();
+      ORT_NAPI_THROW_TYPEERROR_IF(ownedInfo.GetElementType() != elemType, env,
+                                  "Tensor.type does not match the type of the GPU buffer it wraps.");
+      ORT_NAPI_THROW_ERROR_IF(ownedInfo.GetShape() != dims, env,
+                              "Tensor.dims does not match the shape of the GPU buffer it wraps.");
+
+      if (conversion != nullptr) {
+        conversion->declared.elementType = elemType;
+        conversion->declared.dims = dims;
+      }
 
       size_t dataByteLength = DATA_TYPE_ELEMENT_SIZE_MAP[elemType] * elementSize;
       return Ort::Value::CreateTensor(webgpu_memory_info, gpuBuffer, dataByteLength, dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
@@ -238,7 +316,86 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
   }
 }
 
-Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
+namespace {
+std::string DescribeElementType(ONNXTensorElementDataType type) {
+  const auto index = static_cast<size_t>(type);
+  if (index < ONNX_TENSOR_ELEMENT_DATA_TYPE_COUNT && DATA_TYPE_ID_TO_NAME_MAP[index] != nullptr) {
+    return DATA_TYPE_ID_TO_NAME_MAP[index];
+  }
+  return "element type " + std::to_string(index);
+}
+
+std::string DescribeShape(const std::vector<int64_t>& dims) {
+  std::string description = "[";
+  for (size_t i = 0; i < dims.size(); ++i) {
+    if (i > 0) {
+      description += ",";
+    }
+    description += std::to_string(dims[i]);
+  }
+  return description + "]";
+}
+}  // namespace
+
+void ValidateOrtValueMatchesDeclared(Napi::Env env, const Ort::Value& value,
+                                     const PreallocatedOutputInfo& expected) {
+  // ORT allocated this output itself and so never saw the type and shape the caller declared.
+  // Reject a mismatch rather than reinterpreting the model's bytes as the declared type or
+  // leaving part of the caller's buffer holding data from a previous run.
+  auto typeAndShapeInfo = value.GetTensorTypeAndShapeInfo();
+  const auto elementType = typeAndShapeInfo.GetElementType();
+  ORT_NAPI_THROW_TYPEERROR_IF(elementType != expected.elementType, env,
+                              "Preallocated output tensor has type ", DescribeElementType(expected.elementType),
+                              ", but the model produced ", DescribeElementType(elementType), ".");
+
+  const auto shape = typeAndShapeInfo.GetShape();
+  ORT_NAPI_THROW_ERROR_IF(shape != expected.dims, env, "Preallocated output tensor has shape ",
+                          DescribeShape(expected.dims), ", but the model produced ", DescribeShape(shape), ".");
+}
+
+void ValidateOrtValueForNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination,
+                                       const PreallocatedOutputInfo& expected) {
+  ValidateOrtValueMatchesDeclared(env, value, expected);
+
+  ORT_NAPI_THROW_TYPEERROR_IF(!destination.IsTypedArray(), env,
+                              "Preallocated output Tensor.data must remain a typed array.");
+
+  auto typedArray = destination.As<Napi::TypedArray>();
+  const size_t sourceByteLength = value.GetTensorSizeInBytes();
+  ORT_NAPI_THROW_ERROR_IF(typedArray.ByteLength() < sourceByteLength, env,
+                          "Preallocated output tensor buffer was detached or is too small.");
+  if (sourceByteLength == 0) {
+    return;
+  }
+
+  auto arrayBuffer = typedArray.ArrayBuffer();
+  const size_t byteOffset = typedArray.ByteOffset();
+  const size_t arrayBufferByteLength = arrayBuffer.ByteLength();
+  ORT_NAPI_THROW_ERROR_IF(byteOffset > arrayBufferByteLength ||
+                              sourceByteLength > arrayBufferByteLength - byteOffset,
+                          env, "Preallocated output tensor buffer was detached or is too small.");
+  auto* data = static_cast<char*>(arrayBuffer.Data());
+  ORT_NAPI_THROW_ERROR_IF(data == nullptr, env, "Preallocated output tensor buffer was detached.");
+}
+
+void CopyOrtValueToNapiTypedArray(Napi::Env env, const Ort::Value& value, Napi::Value destination) {
+  // Precondition: ValidateOrtValueForNapiTypedArray() has already accepted this pair. Callers with
+  // several preallocated outputs must validate all of them before copying any, so that a rejection
+  // cannot leave some caller buffers already overwritten.
+  const size_t sourceByteLength = value.GetTensorSizeInBytes();
+  if (sourceByteLength == 0) {
+    return;
+  }
+
+  auto typedArray = destination.As<Napi::TypedArray>();
+  auto* data = static_cast<char*>(typedArray.ArrayBuffer().Data());
+  // Unreachable while the precondition holds, but a dead pointer here would be a silent memcpy into
+  // freed memory rather than an exception.
+  ORT_NAPI_THROW_ERROR_IF(data == nullptr, env, "Preallocated output tensor buffer was detached.");
+  memcpy(data + typedArray.ByteOffset(), value.GetTensorRawData(), sourceByteLength);
+}
+
+Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value, std::shared_ptr<Ort::Session> session) {
   Napi::EscapableHandleScope scope(env);
 
   auto typeInfo = value.GetTypeInfo();
@@ -260,9 +417,13 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
   if (dimsCount > 0) {
     dimsVector = tensorTypeAndShapeInfo.GetShape();
   }
+  // Define the elements rather than assigning them: assignment consults Array.prototype, where an
+  // inherited setter would swallow the value and leave the returned Tensor with the wrong shape.
   auto dims = Napi::Array::New(env, dimsCount);
   for (uint32_t i = 0; i < dimsCount; i++) {
-    dims[i] = dimsVector[i];
+    dims.DefineProperty(Napi::PropertyDescriptor::Value(
+        std::to_string(i), Napi::Number::New(env, static_cast<double>(dimsVector[i])),
+        static_cast<napi_property_attributes>(napi_writable | napi_enumerable | napi_configurable)));
   }
 
   // location
@@ -305,29 +466,95 @@ Napi::Value OrtValueToNapiValue(Napi::Env env, Ort::Value&& value) {
                                                .Value()
                                                .Get("fromGpuBuffer")
                                                .As<Napi::Function>();
-      OrtValue* underlyingOrtValue = value.release();
+      // Capturing 'session' keeps the execution provider that owns this buffer alive for exactly as
+      // long as the value is: the capture outlives the release below and is dropped right after it.
+      auto releaseOrtValue = [session](OrtValue* value) mutable {
+        OrtSingletonData::ReleaseValue(value);
+        OrtSingletonData::DropSession(std::move(session));
+      };
+      // Build the shared owner out of the unique_ptr rather than from its raw pointer: if allocating
+      // the control block throws, ownership stays with the unique_ptr instead of the deleter running
+      // once for the failed shared_ptr and again while unwinding.
+      auto underlyingOrtValue = std::unique_ptr<OrtValue, decltype(releaseOrtValue)>(value.release(), releaseOrtValue);
+      // Until the External below takes it over, anything here that throws -- a setter planted on
+      // Object.prototype, a failed allocation -- would run the deleter on this thread while another
+      // session may hold the device. Unwinding therefore hands the owner to the release queue instead.
+      struct PendingOwner {
+        std::unique_ptr<OrtValueOwner> owner;
+        ~PendingOwner() {
+          if (owner != nullptr) {
+            OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<OrtValueOwner>(owner.release()));
+          }
+        }
+      } valueOwner{std::make_unique<OrtValueOwner>(std::move(underlyingOrtValue))};
 
+      auto dispose = Napi::Function::New(env, [](const Napi::CallbackInfo& info) {
+        auto tensor = info.This().As<Napi::Object>();
+        auto gpuBuffer = tensor.Get("gpuBuffer");
+        if (gpuBuffer.IsExternal()) {
+          auto* valueOwner = gpuBuffer.As<Napi::External<OrtValueOwner>>().Data();
+          if (valueOwner != nullptr) {
+            // Returning a device buffer to the provider is device work, so it has to happen under
+            // the device lock -- but never by blocking this thread, which would stall the event
+            // loop for the length of an in-flight inference.
+            OrtInstanceData::ReleaseDeviceObject(std::make_shared<OrtValueOwner>(std::move(*valueOwner)));
+            valueOwner->reset();
+          }
+        }
+      });
+      auto download = Napi::Function::New(
+          env, [](const Napi::CallbackInfo& info) { NAPI_THROW("not implemented"); }, "download");
+
+      // Defined rather than assigned, so a setter installed on Object.prototype cannot intercept them.
+      const auto attributes = static_cast<napi_property_attributes>(napi_writable | napi_enumerable | napi_configurable);
       auto options = Napi::Object::New(env);
-      options.Set("dataType", type);
-      options.Set("dims", dims);
-      options.Set("dispose", Napi::Function::New(
-                                 env, [](const Napi::CallbackInfo& info) {
-                                   Ort::GetApi().ReleaseValue(reinterpret_cast<OrtValue*>(info.Data()));
-                                   return info.Env().Undefined();
-                                 },
-                                 "dispose", underlyingOrtValue));
-      options.Set("download", Napi::Function::New(
-                                  env, [](const Napi::CallbackInfo& info) {
-                                    NAPI_THROW("not implemented");
-                                  },
-                                  "download", underlyingOrtValue));
+      options.DefineProperties({
+          Napi::PropertyDescriptor::Value("dataType", type, attributes),
+          Napi::PropertyDescriptor::Value("dims", dims, attributes),
+          Napi::PropertyDescriptor::Value("dispose", dispose, attributes),
+          Napi::PropertyDescriptor::Value("download", download, attributes),
+      });
 
-      return scope.Escape(tensorFromGpuBuffer.Call({Napi::External<OrtValue>::New(env, underlyingOrtValue), options}));
+      auto external = Napi::External<OrtValueOwner>::New(env, valueOwner.owner.get(), [](Napi::Env, OrtValueOwner* value) {
+        // Collected rather than disposed: the same device work, and the same reason not to block.
+        OrtInstanceData::ReleaseDeviceObject(std::shared_ptr<OrtValueOwner>(value));
+      });
+      valueOwner.owner.release();
+      return scope.Escape(tensorFromGpuBuffer.Call({external, options}));
     } else {
-      // TODO: optimize memory
-      auto arrayBuffer = Napi::ArrayBuffer::New(env, size * DATA_TYPE_ELEMENT_SIZE_MAP[elemType]);
-      if (size > 0) {
-        memcpy(arrayBuffer.Data(), value.GetTensorRawData(), size * DATA_TYPE_ELEMENT_SIZE_MAP[elemType]);
+      const size_t byteLength = value.GetTensorSizeInBytes();
+      Napi::ArrayBuffer arrayBuffer;
+      // Hand the OrtValue's memory straight to Javascript so the output is not copied. Electron's
+      // V8 Memory Cage rejects external ArrayBuffers, as does any build with the V8 sandbox
+      // enabled, so attempt the allocation and fall back to a copy rather than testing for a
+      // particular runtime by name. A refusal is cached per environment: it cannot change for the
+      // life of the process, and re-probing would cost a failed call per output.
+      bool usingExternalBuffer = false;
+      if (byteLength > 0 && !OrtInstanceData::ExternalArrayBuffersRefused(env)) {
+        napi_value externalArrayBuffer = nullptr;
+        const napi_status status = napi_create_external_arraybuffer(
+            env, value.GetTensorMutableRawData(), byteLength,
+            [](napi_env, void*, void* hint) { OrtSingletonData::ReleaseValue(static_cast<OrtValue*>(hint)); },
+            static_cast<OrtValue*>(value), &externalArrayBuffer);
+        if (status == napi_ok) {
+          // Ownership of the OrtValue moves to the ArrayBuffer: the finalizer above releases it, so
+          // the buffer stays valid for as long as Javascript can reach it rather than dying with the
+          // vector this value was returned in.
+          value.release();
+          arrayBuffer = Napi::ArrayBuffer(env, externalArrayBuffer);
+          usingExternalBuffer = true;
+        } else if (status == napi_no_external_buffers_allowed) {
+          // Only this status means the runtime will never accept them. Caching any other failure
+          // would downgrade every later output to a copy over something transient.
+          OrtInstanceData::MarkExternalArrayBuffersRefused(env);
+        }
+      }
+
+      if (!usingExternalBuffer) {
+        arrayBuffer = Napi::ArrayBuffer::New(env, byteLength);
+        if (byteLength > 0) {
+          memcpy(arrayBuffer.Data(), value.GetTensorRawData(), byteLength);
+        }
       }
       napi_value typedArrayData;
       napi_status status =

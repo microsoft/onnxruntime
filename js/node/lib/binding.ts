@@ -18,7 +18,7 @@ type ReturnType = {
 type RunOptions = InferenceSession.RunOptions;
 
 /**
- * Binding exports a simple synchronized inference session object wrap.
+ * Binding exports an asynchronous inference session object wrap.
  */
 export declare namespace Binding {
   export interface ValueMetadata {
@@ -35,7 +35,7 @@ export declare namespace Binding {
     readonly inputMetadata: ValueMetadata[];
     readonly outputMetadata: ValueMetadata[];
 
-    run(feeds: FeedsType, fetches: FetchesType, options: RunOptions): ReturnType;
+    run(feeds: FeedsType, fetches: FetchesType, options: RunOptions): Promise<ReturnType>;
 
     endProfiling(): void;
 

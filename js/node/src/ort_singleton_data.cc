@@ -13,8 +13,7 @@ std::atomic<int> ref_count{0};
 }  // namespace
 
 OrtSingletonData::OrtObjects::OrtObjects(int log_level)
-    : env{OrtLoggingLevel(log_level), "onnxruntime-node"},
-      default_run_options{} {
+    : env{OrtLoggingLevel(log_level), "onnxruntime-node"} {
 }
 
 void OrtSingletonData::InitOrtObjects(napi_env env, int log_level,
@@ -46,4 +45,31 @@ void OrtSingletonData::CleanupHook(void* arg) {
 
 OrtSingletonData::OrtObjects* OrtSingletonData::GetOrtObjects() {
   return ort_objects.load(std::memory_order_acquire);
+}
+
+// Both helpers check and release under the lock CleanupHook() deletes under. A release running on
+// a pool thread, or queued behind the device lock, could otherwise see the singleton alive and call
+// into ORT while the hook is tearing it down on the Javascript thread. Nothing released here calls
+// back into these helpers, so holding the (non-recursive) lock across the release is safe.
+void OrtSingletonData::ReleaseValue(OrtValue* value) {
+  if (value == nullptr) {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(ort_singleton_mutex);
+  if (GetOrtObjects() != nullptr) {
+    Ort::GetApi().ReleaseValue(value);
+  }
+}
+
+void OrtSingletonData::DropSession(std::shared_ptr<Ort::Session>&& session) {
+  if (session == nullptr) {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(ort_singleton_mutex);
+  if (GetOrtObjects() == nullptr) {
+    // Leak the reference: dropping the last one would release the session into an unloaded library.
+    new std::shared_ptr<Ort::Session>(std::move(session));
+    return;
+  }
+  session.reset();
 }
