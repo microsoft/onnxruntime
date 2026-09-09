@@ -172,22 +172,23 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
   const_cast<SessionState&>(this->encoder_session_state_).IncrementGraphExecutionCounter();
 #endif
-  ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(this->encoder_session_state_,
-                                             encoder_feeds_fetches_manager,
-                                             encoder_feeds,
-                                             encoder_fetches,
-                                             {},
-                                             ExecutionMode::ORT_SEQUENTIAL,
-                                             this->context_.GetTerminateFlag(),
-                                             this->context_.Logger(),
-                                             this->ort_stream_,
-                                             /*sync_subgraph_fetches*/ false,
-                                             this->context_.GetRunProfiler()
+  status = utils::ExecuteSubgraph(this->encoder_session_state_,
+                                  encoder_feeds_fetches_manager,
+                                  encoder_feeds,
+                                  encoder_fetches,
+                                  {},
+                                  ExecutionMode::ORT_SEQUENTIAL,
+                                  this->context_.GetTerminateFlag(),
+                                  this->context_.Logger(),
+                                  this->ort_stream_,
+                                  /*sync_subgraph_fetches*/ false,
+                                  this->context_.GetRunProfiler()
 #if !defined(ORT_MINIMAL_BUILD)
-                                                 ,
-                                             this->context_.GetRunInstrumentationContext()
+                                      ,
+                                  this->context_.GetRunInstrumentationContext()
 #endif
-                                                 ));
+  );
+  ORT_RETURN_IF_ERROR(status);
 
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();

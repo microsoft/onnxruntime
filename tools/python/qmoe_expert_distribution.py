@@ -7,10 +7,10 @@ import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import onnx
 
 ROUTING_MARKER = "moe_routing "
+ROUTING_TRUNCATED_MARKER = "moe_routing_truncated "
 PROMPT_PROGRESS = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_start$")
 LAYER_NUMBER = re.compile(r"/layers\.(\d+)/")
 QMOE_EXPERT_WEIGHT_INPUT_INDICES = (2, 5)
@@ -74,6 +74,9 @@ def iter_routing_events(log_path):
 
     with log_path.open(encoding="utf-8", errors="replace") as stream:
         for line_number, line in enumerate(stream, start=1):
+            if ROUTING_TRUNCATED_MARKER in line:
+                raise ValueError(f"Incomplete routing trace at line {line_number}: {line.strip()}")
+
             progress = PROMPT_PROGRESS.search(line)
             if progress:
                 prompt_index = int(progress.group(1))
@@ -373,6 +376,8 @@ def write_qmoe_rank_threshold_totals_csv(path, inference_counts, threshold_total
 
 
 def write_normalized_comparison_plot(path, total_normalized, expert_bytes_complement_normalized):
+    import matplotlib.pyplot as plt  # noqa: PLC0415 - Only plotting requires matplotlib.
+
     ranks = range(len(total_normalized))
     figure, axes = plt.subplots(figsize=(10, 6))
     total_line = axes.plot(ranks, total_normalized, label="TOTAL_NORMALIZED", linewidth=2)[0]
@@ -409,6 +414,8 @@ def write_normalized_comparison_plot(path, total_normalized, expert_bytes_comple
 
 
 def write_selected_layers_rank_plot(path, threshold_totals):
+    import matplotlib.pyplot as plt  # noqa: PLC0415 - Only plotting requires matplotlib.
+
     node_names = sorted(threshold_totals, key=layer_sort_key)
     if len(node_names) > MAX_PLOTTED_LAYERS:
         node_names = [

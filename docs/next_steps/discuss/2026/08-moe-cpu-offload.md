@@ -208,6 +208,9 @@ chat template by default; `--raw-prompts` disables that behavior.
 `tools/python/qmoe_expert_distribution.py` validates and streams the routing records, computes prompt, layer, and global
 expert distributions, ranks experts by frequency, maps every selected top-k expert to its zero-based frequency rank,
 generates threshold aggregates, derives expert bytes from the ONNX external initializers, and writes the result plots.
+Logs containing a `moe_routing_truncated` warning are rejected before generating analysis artifacts, since missing
+routing decisions would bias placement estimates. Matplotlib is required for plotting, but not for importing the
+analysis helpers.
 
 ```bash
 python tools/python/qmoe_expert_distribution.py qmoe-routing.log --benchmark-json qmoe-prompt-results.json --model /path/to/model/model.onnx --output-prefix qmoe-routing-analysis

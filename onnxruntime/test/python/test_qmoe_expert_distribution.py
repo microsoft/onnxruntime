@@ -3,6 +3,7 @@
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,10 +15,45 @@ _TOOLS_PYTHON = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "
 if _TOOLS_PYTHON not in sys.path:
     sys.path.insert(0, _TOOLS_PYTHON)
 
-from qmoe_expert_distribution import calculate_qmoe_expert_bytes, iter_routing_events  # noqa: E402
+from qmoe_expert_distribution import (  # noqa: E402
+    calculate_qmoe_expert_bytes,
+    iter_routing_events,
+    read_distributions,
+)
 
 
 class TestQMoEExpertDistribution(unittest.TestCase):
+    def test_analysis_import_does_not_load_matplotlib(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.path.insert(0, sys.argv[1]); "
+                "import qmoe_expert_distribution; assert 'matplotlib' not in sys.modules",
+                _TOOLS_PYTHON,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_truncated_routing_trace_is_rejected(self):
+        event = {"node_name": "/layers.0/qmoe", "expert_ids": [1], "num_rows": 1, "top_k": 1}
+        warning = (
+            '[W:onnxruntime:, op_kernel_context_internal.h:114] moe_routing_truncated {"dropped_records":1,'
+            '"dropped_routing_elements":2,"max_records_per_run":10000,"max_routing_elements_per_run":1000000}'
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "routing.log"
+            for warning_index in range(3):
+                with self.subTest(warning_index=warning_index):
+                    lines = ["[qmoe_prompt_runner] 1/1 prompt_start", f"moe_routing {json.dumps(event)}"]
+                    lines.insert(warning_index, warning)
+                    log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, f"Incomplete routing trace at line {warning_index + 1}"):
+                        read_distributions(log_path, num_experts=2)
+
     def test_prompt_marker_ignores_unrelated_fraction(self):
         event = {
             "node_name": "/layers.0/qmoe",

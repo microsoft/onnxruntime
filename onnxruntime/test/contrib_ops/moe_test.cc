@@ -2742,6 +2742,11 @@ TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  if (execution_provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE routing statistics are not supported by the CUDA plugin execution provider.";
+  }
 
   OpTester tester("MoE", 1, onnxruntime::kMSDomain);
   ConfigureCudaMoeRoutingTester(tester);
@@ -2753,7 +2758,7 @@ TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
   RunOptions run_options;
   run_options.run_tag = "cuda request";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.push_back(std::move(execution_provider));
   testing::internal::CaptureStderr();
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
   const auto routing_events = ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
@@ -2769,6 +2774,11 @@ TEST(MoETest, MoECudaRoutingLogHasDecisionSchema) {
 TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  if (execution_provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE routing statistics are not supported by the CUDA plugin execution provider.";
   }
 
   constexpr int num_rows = 3;
@@ -2813,7 +2823,7 @@ TEST(MoETest, QMoECudaTiledRoutingLogCapturesEveryTile) {
   RunOptions run_options;
   run_options.run_tag = "qmoe tiled request";
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
+  execution_providers.push_back(std::move(execution_provider));
   testing::internal::CaptureStderr();
   tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
   const auto routing_events = ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
@@ -2831,6 +2841,13 @@ TEST(MoETest, MoeStatisticsRejectsCudaGraphCapture) {
   if (!HasCudaEnvironment(700)) {
     GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
   }
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.enable_cuda_graph = 1;
+  auto execution_provider = CudaExecutionProviderWithOptions(&provider_options);
+  ASSERT_NE(execution_provider, nullptr);
+  if (execution_provider->GetOrtEp() != nullptr) {
+    GTEST_SKIP() << "MoE routing statistics are rejected for CUDA plugins before checking graph capture.";
+  }
 
   OpTester tester("MoE", 1, onnxruntime::kMSDomain);
   ConfigureCudaMoeRoutingTester(tester);
@@ -2838,12 +2855,32 @@ TEST(MoETest, MoeStatisticsRejectsCudaGraphCapture) {
   SessionOptions session_options;
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
-  OrtCUDAProviderOptionsV2 provider_options{};
-  provider_options.enable_cuda_graph = 1;
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(CudaExecutionProviderWithOptions(&provider_options));
+  execution_providers.push_back(std::move(execution_provider));
   tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
              "is not supported when graph capture is enabled", {}, nullptr, &execution_providers);
+}
+
+TEST(MoETest, MoeStatisticsRejectsCudaPlugin) {
+  if (!HasCudaEnvironment(700)) {
+    GTEST_SKIP() << "CUDA device with compute capability 7.0 or newer is required.";
+  }
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  if (execution_provider->GetOrtEp() == nullptr) {
+    GTEST_SKIP() << "This test requires the CUDA plugin execution provider.";
+  }
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsConfigEnableMoeExpertStatistics, "1"));
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  ConfigureCudaMoeRoutingTester(tester);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+             "is not supported by the CUDA plugin execution provider", {}, nullptr, &execution_providers);
 }
 #endif
 #endif
