@@ -15,7 +15,7 @@ namespace webgpu {
 // output and the input-channel loop collapses. Everything is indexed in whole channel vectors,
 // which is what makes this form worth separating - the general path below must index x one scalar
 // channel at a time.
-std::string CalculateResultDepthwiseVec(const ShaderVariableHelper& x, const ShaderVariableHelper& w) {
+static std::string CalculateResultDepthwiseVec(const ShaderVariableHelper& x, const ShaderVariableHelper& w) {
   std::stringstream ss;
   // Offsets are stepped rather than rebuilt: only the width index changes inside the inner loop,
   // and it moves by one channel vector, so a tap costs one multiply-add instead of the full
