@@ -95,4 +95,7 @@ diagnostic. The rest of the transformer is full-build only.
 */
 GqaValueLayoutBoundaries FindConvertedGqaValueLayoutBoundaries(const Graph& graph);
 
+// Uses the same boundary rules without collecting names. Minimal builds also avoid allocating consumers.
+bool HasConvertedGqaValueLayoutBoundaries(const Graph& graph);
+
 }  // namespace onnxruntime

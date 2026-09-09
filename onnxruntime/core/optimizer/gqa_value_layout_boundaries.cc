@@ -25,7 +25,7 @@ bool HasOperand(const ConstPointerContainer<std::vector<NodeArg*>>& defs, size_t
 }
 
 bool IsGroupQueryAttention(const Node& node) {
-  return node.OpType() == "GroupQueryAttention" && node.Domain() == kMSDomain;
+  return node.OpType().compare("GroupQueryAttention") == 0 && node.Domain().compare(kMSDomain) == 0;
 }
 
 // Graph::GetProducerNode() / GetConsumerNodes() and the maps behind them are compiled out of a base
@@ -45,38 +45,51 @@ const Node* ProducerOf(const Graph& graph, const std::string& arg_name) {
   return graph.GetProducerNode(arg_name);
 }
 
-InlinedVector<const Node*> ConsumersOf(const Graph& graph, const std::string& arg_name) {
-  const auto consumers = graph.GetConsumerNodes(arg_name);
-  return InlinedVector<const Node*>(consumers.begin(), consumers.end());
-}
-
 #else
 
 const Node* ProducerOf(const Graph& graph, const std::string& arg_name) {
-  for (const auto& node : graph.Nodes()) {
-    for (const auto* def : node.OutputDefs()) {
+  for (int index = 0; index < graph.MaxNodeIndex(); ++index) {
+    const Node* node = graph.GetNode(static_cast<NodeIndex>(index));
+    if (node == nullptr) {
+      continue;
+    }
+    for (const auto* def : node->OutputDefs()) {
       if (def != nullptr && def->Exists() && def->Name() == arg_name) {
-        return &node;
+        return node;
       }
     }
   }
   return nullptr;
 }
 
-InlinedVector<const Node*> ConsumersOf(const Graph& graph, const std::string& arg_name) {
-  InlinedVector<const Node*> consumers;
-  for (const auto& node : graph.Nodes()) {
-    for (const auto* def : node.InputDefs()) {
+#endif
+
+template <typename Result, typename Visitor>
+const Result* FindConsumer(const Graph& graph, const std::string& arg_name, Visitor&& visit) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  for (const Node* consumer : graph.GetConsumerNodes(arg_name)) {
+    if (const Result* result = visit(consumer)) {
+      return result;
+    }
+  }
+#else
+  for (int index = 0; index < graph.MaxNodeIndex(); ++index) {
+    const Node* node = graph.GetNode(static_cast<NodeIndex>(index));
+    if (node == nullptr) {
+      continue;
+    }
+    for (const auto* def : node->InputDefs()) {
       if (def != nullptr && def->Exists() && def->Name() == arg_name) {
-        consumers.push_back(&node);
+        if (const Result* result = visit(node)) {
+          return result;
+        }
         break;
       }
     }
   }
-  return consumers;
-}
-
 #endif
+  return nullptr;
+}
 
 // A device copy inserted by MemcpyTransformer. Those run inside TransformGraph, before the optimized
 // model is serialized, so a model saved from a non-CPU session can have one spliced between a graph
@@ -84,7 +97,7 @@ InlinedVector<const Node*> ConsumersOf(const Graph& graph, const std::string& ar
 // GQA -> Transpose -> MemcpyToHost -> graph output. The op type is not schema-backed and carries no
 // meaningful domain, so match on the name alone.
 bool IsDeviceCopy(const Node& node) {
-  return node.OpType() == "MemcpyFromHost" || node.OpType() == "MemcpyToHost";
+  return node.OpType().compare("MemcpyFromHost") == 0 || node.OpType().compare("MemcpyToHost") == 0;
 }
 
 // MemcpyTransformer inserts at most one copy per boundary, but walk a few hops so a future pass that
@@ -108,74 +121,51 @@ const Node* TraceBackToValueLayoutTranspose(const Graph& graph, const NodeArg* a
   return nullptr;
 }
 
-const NodeArg* TraceBoundaryForwardThroughDeviceCopies(const Graph& graph, const NodeArg* arg, int copy_hops) {
+const NodeArg* TraceBoundaryForwardThroughDeviceCopies(const Graph& graph, const NodeArg* arg, int copy_hops,
+                                                       bool needs_transpose = false) {
   if (arg == nullptr || copy_hops > kMaxDeviceCopyHops) {
     return nullptr;
   }
-  if (graph.IsOutput(arg)) {
+  if (!needs_transpose && graph.IsOutput(arg)) {
     return arg;
   }
-  for (const Node* consumer : ConsumersOf(graph, arg->Name())) {
-    if (consumer != nullptr && IsDeviceCopy(*consumer) && !consumer->OutputDefs().empty()) {
-      const NodeArg* boundary = TraceBoundaryForwardThroughDeviceCopies(graph, consumer->OutputDefs()[0], copy_hops + 1);
-      if (boundary != nullptr) {
-        return boundary;
-      }
-    }
-  }
-  return nullptr;
-}
-
-bool FindConvertedPresentValueBoundaryAfterCopies(const Graph& graph, const NodeArg* arg,
-                                                  int copy_hops, std::string& boundary_name) {
-  if (arg == nullptr || copy_hops > kMaxDeviceCopyHops) {
-    return false;
-  }
-
-  for (const Node* consumer : ConsumersOf(graph, arg->Name())) {
+  return FindConsumer<NodeArg>(graph, arg->Name(), [&](const Node* consumer) -> const NodeArg* {
     if (consumer == nullptr || consumer->OutputDefs().empty()) {
-      continue;
+      return nullptr;
     }
-    if (IsGqaValueLayoutTranspose(*consumer)) {
-      const NodeArg* boundary = TraceGqaBoundaryForwardThroughDeviceCopies(graph, consumer->OutputDefs()[0]);
-      if (boundary != nullptr) {
-        boundary_name = boundary->Name();
-        return true;
-      }
-      continue;
+    if (needs_transpose && IsGqaValueLayoutTranspose(*consumer)) {
+      return TraceBoundaryForwardThroughDeviceCopies(graph, consumer->OutputDefs()[0], 0);
     }
-    if (IsDeviceCopy(*consumer) &&
-        FindConvertedPresentValueBoundaryAfterCopies(graph, consumer->OutputDefs()[0],
-                                                     copy_hops + 1, boundary_name)) {
-      return true;
+    if (IsDeviceCopy(*consumer)) {
+      return TraceBoundaryForwardThroughDeviceCopies(graph, consumer->OutputDefs()[0], copy_hops + 1, needs_transpose);
     }
-  }
-
-  return false;
+    return nullptr;
+  });
 }
 
 }  // namespace
 
 bool IsGqaValueLayoutTranspose(const Node& node) {
-  if (node.OpType() != "Transpose" || node.Domain() != kOnnxDomain) {
+  if (node.OpType().compare("Transpose") != 0 || node.Domain().compare(kOnnxDomain) != 0) {
     return false;
   }
 
   // Read the attribute directly rather than through graph_utils, so this stays usable from the
   // minimal build without pulling the optimizer helpers in with it.
-  const auto& attributes = node.GetAttributes();
-  const auto perm = attributes.find("perm");
-  if (perm == attributes.end() || static_cast<size_t>(perm->second.ints_size()) != kValueLayoutPerm.size()) {
-    return false;
-  }
-
-  for (size_t i = 0; i < kValueLayoutPerm.size(); ++i) {
-    if (perm->second.ints(static_cast<int>(i)) != kValueLayoutPerm[i]) {
-      return false;
+  for (const auto& [name, attribute] : node.GetAttributes()) {
+    if (name.compare("perm") == 0) {
+      if (static_cast<size_t>(attribute.ints_size()) != kValueLayoutPerm.size()) {
+        return false;
+      }
+      for (size_t index = 0; index < kValueLayoutPerm.size(); ++index) {
+        if (attribute.ints(static_cast<int>(index)) != kValueLayoutPerm[index]) {
+          return false;
+        }
+      }
+      return true;
     }
   }
-
-  return true;
+  return false;
 }
 
 namespace {
@@ -220,9 +210,9 @@ const Node* FindValueLayoutTransposeAfterGraphInput(const Graph& graph, const st
   std::string current = boundary_name;
   for (int hops = 0; hops <= kMaxDeviceCopyHops; ++hops) {
     const NodeArg* copy_output = nullptr;
-    for (const Node* consumer : ConsumersOf(graph, current)) {
+    const Node* transpose = FindConsumer<Node>(graph, current, [&](const Node* consumer) -> const Node* {
       if (consumer == nullptr) {
-        continue;
+        return nullptr;
       }
       if (IsGqaValueLayoutTranspose(*consumer)) {
         return consumer;
@@ -230,6 +220,10 @@ const Node* FindValueLayoutTransposeAfterGraphInput(const Graph& graph, const st
       if (IsDeviceCopy(*consumer) && !consumer->OutputDefs().empty()) {
         copy_output = consumer->OutputDefs()[0];
       }
+      return nullptr;
+    });
+    if (transpose != nullptr) {
+      return transpose;
     }
 
     if (copy_output == nullptr) {
@@ -258,10 +252,10 @@ const Node* FindValueLayoutTransposeBeforeGraphOutput(const Graph& graph, const 
   return nullptr;
 }
 
-bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name) {
-  boundary_name.clear();
+namespace {
+const NodeArg* ConvertedPastValueBoundary(const Graph& graph, const Node& node) {
   if (!HasOperand(node.InputDefs(), kPastValueInputIndex)) {
-    return false;
+    return nullptr;
   }
 
   // Declared graph inputs, including overridable initializers. A boundary that was converted offline
@@ -271,23 +265,16 @@ bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::s
   // data that arrived BNHS needs no transposing.
   const Node* transpose = TraceBackToValueLayoutTranspose(graph, node.InputDefs()[kPastValueInputIndex]);
   if (transpose == nullptr || transpose->InputDefs().empty()) {
-    return false;
+    return nullptr;
   }
 
   // Not necessarily adjacent to the boundary: trace back through any device copies.
-  const NodeArg* boundary = TraceGqaBoundaryBackThroughDeviceCopies(graph, transpose->InputDefs()[0]);
-  if (boundary == nullptr) {
-    return false;
-  }
-
-  boundary_name = boundary->Name();  // the graph input, not the GQA operand
-  return true;
+  return TraceGqaBoundaryBackThroughDeviceCopies(graph, transpose->InputDefs()[0]);
 }
 
-bool FindConvertedPresentValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name) {
-  boundary_name.clear();
+const NodeArg* ConvertedPresentValueBoundary(const Graph& graph, const Node& node) {
   if (!HasOperand(node.OutputDefs(), kPresentValueOutputIndex)) {
-    return false;
+    return nullptr;
   }
 
   const NodeArg* arg = node.OutputDefs()[kPresentValueOutputIndex];
@@ -296,13 +283,32 @@ bool FindConvertedPresentValueBoundary(const Graph& graph, const Node& node, std
   // right, not the internal intermediate of a converted node, even if something downstream also
   // transposes it to a second graph output.
   if (graph.IsOutput(arg)) {
-    return false;
+    return nullptr;
   }
 
   // Search the consumers rather than requiring a single one: the BNSH result may legitimately feed
   // other internal BNSH readers, and those must not hide the conversion. Device copies may appear on
   // either side of the Transpose when it and GQA are assigned to different providers.
-  return FindConvertedPresentValueBoundaryAfterCopies(graph, arg, 0, boundary_name);
+  return TraceBoundaryForwardThroughDeviceCopies(graph, arg, 0, true);
+}
+}  // namespace
+
+bool FindConvertedPastValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name) {
+  boundary_name.clear();
+  const NodeArg* boundary = ConvertedPastValueBoundary(graph, node);
+  if (boundary != nullptr) {
+    boundary_name = boundary->Name();
+  }
+  return boundary != nullptr;
+}
+
+bool FindConvertedPresentValueBoundary(const Graph& graph, const Node& node, std::string& boundary_name) {
+  boundary_name.clear();
+  const NodeArg* boundary = ConvertedPresentValueBoundary(graph, node);
+  if (boundary != nullptr) {
+    boundary_name = boundary->Name();
+  }
+  return boundary != nullptr;
 }
 
 namespace {
@@ -335,6 +341,22 @@ GqaNodeCounts CountGqaNodes(const Graph& graph) {
   }
   counts.in_subgraphs = CountGqaNodesInSubgraphs(graph);
   return counts;
+}
+
+bool HasConvertedGqaValueLayoutBoundaries(const Graph& graph) {
+  for (int index = 0; index < graph.MaxNodeIndex(); ++index) {
+    const Node* node = graph.GetNode(static_cast<NodeIndex>(index));
+    if (node == nullptr || !IsGroupQueryAttention(*node)) {
+      continue;
+    }
+
+    if (ConvertedPastValueBoundary(graph, *node) != nullptr ||
+        ConvertedPresentValueBoundary(graph, *node) != nullptr) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 GqaValueLayoutBoundaries FindConvertedGqaValueLayoutBoundaries(const Graph& graph) {

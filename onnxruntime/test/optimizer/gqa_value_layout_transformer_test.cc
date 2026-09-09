@@ -762,6 +762,7 @@ size_t IndexOfOutput(const RuntimeGqaModel& model, const std::string& name) {
 Status RunSessionCapturingLog(const std::string& model_bytes, const char* value_layout, std::string& log) {
   SessionOptions session_options;
   session_options.session_logid = "GqaValueLayoutLogCapture";
+  session_options.use_per_session_threads = false;
   if (value_layout != nullptr) {
     ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(kOrtSessionOptionsGqaValueLayout, value_layout));
   }
@@ -772,8 +773,11 @@ Status RunSessionCapturingLog(const std::string& model_bytes, const char* value_
       std::unique_ptr<logging::ISink>(capturing_sink), logging::Severity::kWARNING, false,
       logging::LoggingManager::InstanceType::Temporal);
 
+  OrtThreadingOptions threading_options;
+  threading_options.intra_op_thread_pool_params.thread_pool_size = 1;
+  threading_options.inter_op_thread_pool_params.thread_pool_size = 1;
   std::unique_ptr<Environment> env;
-  ORT_RETURN_IF_ERROR(Environment::Create(std::move(logging_manager), env));
+  ORT_RETURN_IF_ERROR(Environment::Create(std::move(logging_manager), env, &threading_options, true));
 
   InferenceSession session{session_options, *env};
   ORT_RETURN_IF_ERROR(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
@@ -799,6 +803,103 @@ SessionOptions MakeSessionOptions(const char* value_layout) {
 }  // namespace
 
 class GqaValueLayoutTransformerTest : public GraphTransformationTests {};
+
+TEST_F(GqaValueLayoutTransformerTest, BooleanBoundaryDetectionMatchesCollector) {
+  const std::vector<std::pair<BuildOptions, bool>> cases{
+      {BuildOptions{}, false},
+      {BuildOptions{.no_past_kv = true, .no_present_value = true}, false},
+      {BuildOptions{.partially_transformed = true}, true},
+      {BuildOptions{.already_transformed = true}, true},
+      {BuildOptions{.no_past_kv = true, .already_transformed = true}, true},
+      {BuildOptions{.no_present_value = true, .already_transformed = true}, true},
+      {BuildOptions{.no_past_kv = true, .no_present_value = true, .already_transformed = true}, false},
+      {BuildOptions{.already_transformed = true, .device_copies_at_boundaries = true}, true},
+      {BuildOptions{.no_past_kv = true, .already_transformed = true, .device_copies_at_boundaries = true}, true},
+      {BuildOptions{.device_copies_without_conversion = true}, false},
+      {BuildOptions{.no_past_kv = true, .already_transformed = true, .extra_internal_present_consumer = true}, true},
+      {BuildOptions{.present_value_also_transposed_to_output = true}, false},
+  };
+
+  for (size_t index = 0; index < cases.size(); ++index) {
+    SCOPED_TRACE(index);
+    Model model("GqaBooleanBoundaries", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, *logger_);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    BuildGqaModel(helper, cases[index].first);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    const bool has_boundaries = HasConvertedGqaValueLayoutBoundaries(graph);
+    EXPECT_EQ(has_boundaries, cases[index].second);
+    EXPECT_EQ(has_boundaries, !FindConvertedGqaValueLayoutBoundaries(graph).Empty());
+  }
+}
+
+TEST_F(GqaValueLayoutTransformerTest, BooleanBoundaryDetectionSearchesCopyBranchesWithinHopLimit) {
+  for (int before_hops : {0, 4, 5}) {
+    for (int after_hops : {0, 4, 5}) {
+      for (bool dead_branches_first : {false, true}) {
+        SCOPED_TRACE(MakeString(before_hops, ",", after_hops, ",", dead_branches_first));
+        Model model("GqaBooleanCopyBranches", false, ModelMetaData(), PathString(),
+                    IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, *logger_);
+        Graph& graph = model.MainGraph();
+        ModelTestBuilder helper(graph);
+        BuildGqaModel(helper, BuildOptions{.no_past_kv = true, .already_transformed = true});
+
+        Node* transpose = nullptr;
+        for (auto& node : graph.Nodes()) {
+          if (IsGqaValueLayoutTranspose(node)) {
+            transpose = &node;
+            break;
+          }
+        }
+        ASSERT_NE(transpose, nullptr);
+        NodeArg* source = transpose->MutableInputDefs()[0];
+        const auto add_dead_branches = [&]() {
+          for (int branch = 0; branch < 9; ++branch) {
+            auto* copied = helper.MakeIntermediate<MLFloat16>(std::nullopt);
+            helper.AddNode("MemcpyToHost", {source}, {copied});
+            auto* output = helper.MakeOutput<MLFloat16>(std::nullopt);
+            helper.AddNode("Identity", {copied}, {output});
+          }
+        };
+        if (dead_branches_first) {
+          add_dead_branches();
+        }
+        NodeArg* current = source;
+        for (int hop = 0; hop < before_hops; ++hop) {
+          auto* copied = helper.MakeIntermediate<MLFloat16>(std::nullopt);
+          helper.AddNode("MemcpyToHost", {current}, {copied});
+          current = copied;
+        }
+        transpose->MutableInputDefs()[0] = current;
+
+        NodeArg* boundary = transpose->MutableOutputDefs()[0];
+        for (int hop = 0; hop < after_hops; ++hop) {
+          auto* copied = helper.MakeIntermediate<MLFloat16>(std::nullopt);
+          if (hop == 0) {
+            transpose->MutableOutputDefs()[0] = copied;
+          } else {
+            helper.AddNode("MemcpyFromHost", {current}, {copied});
+          }
+          current = copied;
+        }
+        if (after_hops != 0) {
+          helper.AddNode("MemcpyFromHost", {current}, {boundary});
+        }
+        if (!dead_branches_first) {
+          add_dead_branches();
+        }
+        helper.SetGraphOutputs();
+        ASSERT_STATUS_OK(graph.Resolve());
+        const bool expected = before_hops <= 4 && after_hops <= 4;
+        EXPECT_EQ(HasConvertedGqaValueLayoutBoundaries(graph), expected);
+        EXPECT_EQ(!FindConvertedGqaValueLayoutBoundaries(graph).Empty(), expected);
+      }
+    }
+  }
+}
 
 TEST_F(GqaValueLayoutTransformerTest, InsertsTransposesAndSwapsBoundaryShapes) {
   auto build = [](ModelTestBuilder& builder) { BuildGqaModel(builder, BuildOptions{}); };
@@ -1252,6 +1353,7 @@ TEST_F(GqaValueLayoutTransformerTest, DetectsConversionWhenTheBnhsBoundaryIsAnOv
 
   // Detected despite being initializer-backed, so an explicit BNSH request would be caught.
   const GqaValueLayoutBoundaries boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+  EXPECT_EQ(HasConvertedGqaValueLayoutBoundaries(graph), !boundaries.Empty());
   EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
   EXPECT_EQ(boundaries.past_value_inputs.empty() ? std::string{} : boundaries.past_value_inputs[0], boundary);
 
