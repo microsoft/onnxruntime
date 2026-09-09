@@ -1221,9 +1221,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
           kv_cache_quantization_bits, is_qualcomm, dense_prefill_workgroup_size,
           context.DeviceLimits().maxComputeWorkgroupStorageSize);
   const bool use_split_reduce =
-          !has_local_window &&
-          (parameters.sequence_length_ < 32 ||
-           (!use_paged_kv_cache && !dense_prefill_fits_workgroup_storage));
+      !has_local_window &&
+      (parameters.sequence_length_ < 32 ||
+       (!use_paged_kv_cache && !dense_prefill_fits_workgroup_storage));
 
   if (!use_split_reduce) {
     // Ask the shared helper whether the fused paged-prefill shader can run on
@@ -1349,7 +1349,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
           .SetWorkgroupSize(prefill_tile_size)
           .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_,
                      parameters.is_unidirectional_, is_qualcomm, is_nvidia, is_apple,
-               has_subgroups, q_BNSH, use_seqlen_k, has_head_sink, has_local_window,
+                     has_subgroups, q_BNSH, use_seqlen_k, has_head_sink, has_local_window,
                      kv_cache_quantization_bits,
                      compressed_head_size_u32, program.max_k_step(), use_seqlens_q)
           .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
