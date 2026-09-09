@@ -485,12 +485,13 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetDoesNotDuplicateOfflinePrepackedGp
       BuildMatMulNBitsModelBytes(nullptr, kWeightPrepackedSm80);
 
   ScopedEnvironmentVariables scoped_env(
-      EnvVarMap{{"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"1"}}});
+      EnvVarMap{{"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"256"}}});
 
-  // The 500 KiB budget is above initializer + output + scale destination +
-  // runtime workspace + tactic-profiler scratch, but below that value plus a
-  // duplicate packed-weight destination. CUDA must accept the node because
-  // PrePack_B reuses the already GPU-resident offline-prepacked initializer.
+  // Profile the static M=256 bucket up front so lazy-profile scratch does not
+  // affect this threshold. The 500 KiB budget is above initializer + output +
+  // scale destination + runtime workspace, but below that value plus a duplicate
+  // packed-weight destination. CUDA must accept the node because PrePack_B reuses
+  // the already GPU-resident offline-prepacked initializer.
   SessionOptions so;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
       kOrtSessionOptionsResourceCudaPartitioningSettings, "500,"));
@@ -560,9 +561,8 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
                     "cannot hold. Skipping.";
   }
 
-  // Enable the fpA_intB path via the ENV var (not the session config) so that BOTH Level 1 - which
-  // can only read the env var (see the Major-2 known limitation in EstimateMatMulNBitsMemory) -
-  // and the kernel constructor observe it enabled, keeping the two eligibility decisions in sync.
+  // Enable the fpA_intB path via the environment so the direct Level-1 estimate and
+  // the kernel constructor observe the same eligibility setting.
   ScopedEnvironmentVariables scoped_env(EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}}});
 
   // Keep M dynamic so the same session and kernel instance can execute both the ordinary and
@@ -613,7 +613,9 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
            /*profile_m=*/std::string_view{"256"},
            /*input_shape_is_upper_bound=*/true});
   ASSERT_TRUE(static_shape_with_bound_option.has_value());
-  EXPECT_EQ(static_shape_with_bound_option->runtime_transient_bytes, size_t{0});
+  // The initial profile set is {1, 256}; an upper bound of M=256 must reserve
+  // lazy-profile scratch for the largest missing rounded bucket, M=128.
+  EXPECT_EQ(static_shape_with_bound_option->runtime_transient_bytes, size_t{492928});
   ASSERT_TRUE(level1->runtime_workspace_bytes.has_value())
       << "Level-1 runtime workspace was not estimable for a static input shape.";
   const size_t level1_runtime_workspace = *level1->runtime_workspace_bytes;

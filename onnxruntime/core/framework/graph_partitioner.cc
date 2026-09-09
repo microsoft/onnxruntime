@@ -6,6 +6,7 @@
 #include <cassert>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/common/inlined_containers.h"
@@ -453,32 +454,88 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
                              "GetCapabilities was canceled by user request");
     }
 
-    // Collect pass-2 node indices and track new nodes for NHWC domain validation.
-    InlinedHashSet<NodeIndex> pass2_node_indices;
-    InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
-    for (const auto& capability : capabilities) {
-      for (auto node_index : capability->sub_graph->nodes) {
-        pass2_node_indices.insert(node_index);
-        if (node_index >= first_new_node) {
-          new_nodes_in_capabilities.insert(node_index);
+    auto collect_pass2_nodes = [&]() {
+      std::pair<InlinedHashSet<NodeIndex>, InlinedHashSet<NodeIndex>> result;
+      auto& [pass2_nodes, new_nodes] = result;
+      for (const auto& capability : capabilities) {
+        for (auto node_index : capability->sub_graph->nodes) {
+          pass2_nodes.insert(node_index);
+          if (node_index >= first_new_node) {
+            new_nodes.insert(node_index);
+          }
         }
       }
-    }
+      return result;
+    };
 
-    // Clear pass-1 temporary assignments for nodes NOT re-claimed in pass 2.
-    // Nodes present in both passes keep their EP tag for correct downstream assignment.
+    auto [pass2_node_indices, new_nodes_in_capabilities] = collect_pass2_nodes();
+
+    // Roll back provisional costs for pass-1 nodes not reclaimed in pass 2.
+    // Keep their tags until final capability admission is complete.
+    bool removed_provisional_cost = false;
+    InlinedHashSet<NodeIndex> rolled_back_pass1_costs;
     for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
       if (pass2_node_indices.count(node_index) == 0) {
-        auto* node = graph.GetNode(node_index);
-        if (node != nullptr && node->GetExecutionProviderType() == ep_type) {
-          node->SetExecutionProviderType("");
+        if (params.resource_accountant != nullptr) {
+          const auto cost_it = pass1_node_costs.find(node_index);
+          if (cost_it != pass1_node_costs.end()) {
+            params.resource_accountant->RemoveConsumedAmount(cost_it->second);
+            removed_provisional_cost = true;
+            rolled_back_pass1_costs.insert(node_index);
+          }
         }
       }
     }
 
-    // Finalize the provisional pass-1 reservations. Remove costs for nodes dropped in pass 2;
-    // survivor costs remain reserved and therefore are not added again. New nodes introduced for
-    // pass 2 carry their own costs and are accounted normally when their partitions are placed.
+    // A dropped pass-1 node may have consumed enough provisional budget to reject a pass-2-only
+    // candidate. Removing its cost after GetCapability is too late because rejected candidates are
+    // not reconsidered. If budget admission stopped, retry after rollback so only actual pass-1
+    // survivors reserve budget.
+    if (removed_provisional_cost && params.resource_accountant->IsStopIssued()) {
+      capabilities.clear();
+
+      std::unique_ptr<IndexedSubGraph> retry_sub_graph_holder;
+      std::unique_ptr<GraphViewer> retry_graph_viewer;
+      ORT_RETURN_IF_ERROR(create_graph_viewer(retry_sub_graph_holder, retry_graph_viewer));
+      params.resource_accountant->ResetForNewPass();
+      capabilities = get_capabilities(current_ep, *retry_graph_viewer, kernel_lookup,
+                                      params.resource_accountant, graph_optimizer_registry);
+      reset_assignment_unclaimed_nodes();
+
+      if (params.check_load_cancellation_fn()) {
+        ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                               "GetCapabilities was canceled by user request");
+      }
+
+      std::tie(pass2_node_indices, new_nodes_in_capabilities) = collect_pass2_nodes();
+    }
+
+    // Clear temporary assignments that were not reclaimed by the final capability set.
+    // Keep all pass-1 tags through a retry so the repeated call retains second-pass semantics
+    // even if every pass-1 node was dropped by the first capability result.
+    for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+      if (pass2_node_indices.count(node_index) != 0) continue;
+
+      auto* node = graph.GetNode(node_index);
+      if (node != nullptr && node->GetExecutionProviderType() == ep_type) {
+        node->SetExecutionProviderType("");
+      }
+
+      if (params.resource_accountant != nullptr) {
+        if (!rolled_back_pass1_costs.contains(node_index)) {
+          const auto cost_it = pass1_node_costs.find(node_index);
+          if (cost_it != pass1_node_costs.end()) {
+            params.resource_accountant->RemoveConsumedAmount(cost_it->second);
+            rolled_back_pass1_costs.insert(node_index);
+          }
+        }
+      }
+    }
+
+    // Finalize the provisional pass-1 reservations. Survivor costs remain reserved and therefore
+    // are not added again. New nodes introduced for pass 2 carry their own costs and are accounted
+    // normally when their partitions are placed.
     //
     // Only the consumed total and captured workspace estimate are adjusted here. Per-node
     // initializer tracking from CommitResourcesForNode is intentionally not replayed. The
@@ -495,10 +552,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
           continue;
         }
 
-        if (pass2_node_indices.count(node_index) == 0) {
-          params.resource_accountant->RemoveConsumedAmount(cost_it->second);
-          continue;
-        }
+        if (pass2_node_indices.count(node_index) == 0) continue;
         const auto* node = graph.GetNode(node_index);
         if (node == nullptr || node->GetExecutionProviderType() != ep_type) {
           params.resource_accountant->RemoveConsumedAmount(cost_it->second);

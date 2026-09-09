@@ -468,12 +468,11 @@ TEST(InternalTestingEP, NhwcSecondPassDropFallsBackFromCpuKernelNode) {
 // Validates that the resource accountant is updated correctly across the NHWC two-pass
 // partitioning flow: a node tentatively claimed on the first pass but dropped on the
 // second pass must NOT consume budget (no phantom), while a node that survives must be
-// committed exactly once (no double-count). A pass-2-only node must be evaluated against
-// the provisional cost of pass-1 survivors, so independently fitting passes cannot exceed
-// the combined budget.
-TEST(InternalTestingEP, NhwcTwoPassAccountingReservesSurvivorsDuringPass2Admission) {
+// committed exactly once (no double-count). A dropped pass-1 node must be rolled back before
+// final admission so it cannot block a pass-2-only node that fits with the actual survivors.
+TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRollback) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
-  Model model("NhwcTwoPassAccountingReservesSurvivorsDuringPass2Admission",
+  Model model("NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRollback",
               false,
               ModelMetaData(),
               PathString(),
@@ -555,10 +554,9 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingReservesSurvivorsDuringPass2Admissi
   ASSERT_GT(expected_conv_cost, 0u);
   ASSERT_GT(expected_relu_cost, 0u);
   ASSERT_GT(expected_log_softmax_cost, 0u);
-  constexpr size_t kBudgetBytes = 1000 * 1024;
-  ASSERT_LT(expected_conv_cost + expected_log_softmax_cost, kBudgetBytes);
-  ASSERT_LT(expected_relu_cost, kBudgetBytes);
-  ASSERT_GT(expected_conv_cost + expected_relu_cost, kBudgetBytes);
+  constexpr size_t kBudgetBytes = 1075 * 1024;
+  ASSERT_LT(expected_conv_cost + expected_relu_cost, kBudgetBytes);
+  ASSERT_GT(expected_conv_cost + expected_log_softmax_cost + expected_relu_cost, kBudgetBytes);
 
   // Drive partitioning directly with the accounting-aware NHWC EP. The accountant is
   // created internally by GraphPartitioner from the config option below (keyed to
@@ -575,11 +573,10 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingReservesSurvivorsDuringPass2Admissi
 
   SessionOptions sess_options;
   ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsResourceCudaPartitioningSettings, "1000,"));
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1075,"));
 
-  // Capture the accountant's consumed amount when the survivor partition is assigned.
-  // on_partition_assignment_fn runs after GetCapabilityForEP completes (and therefore
-  // after the deferred commit), but before PlaceNode adds any further cost.
+  // The assignment callback runs before the current capability's cost is committed.
+  // Capture the already-committed survivor state when the pass-2-only Relu is assigned.
   std::optional<size_t> observed_consumed;
   std::optional<size_t> observed_workspace;
   std::optional<size_t> observed_persistent_prepack;
@@ -594,16 +591,16 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingReservesSurvivorsDuringPass2Admissi
             const Node* assigned_node = assignment_graph.GetNode(node_index);
             if (assigned_node != nullptr && assigned_node->OpType() == "Relu") {
               pass2_only_relu_assigned = true;
+              observed_consumed = get_size(ep_raw->observed_accountant()->GetConsumedAmount());
+              observed_workspace = ep_raw->observed_accountant()->GetCommittedWorkspaceEstimate();
+              observed_persistent_prepack =
+                  ep_raw->observed_accountant()->GetCommittedPersistentPrepackEstimate();
+              observed_temporary_prepack =
+                  ep_raw->observed_accountant()->GetCommittedTemporaryPrepackEstimate();
+              observed_source_counts =
+                  ep_raw->observed_accountant()->GetWorkspaceEstimateSourceCounts();
             }
           }
-          observed_consumed = get_size(ep_raw->observed_accountant()->GetConsumedAmount());
-          observed_workspace = ep_raw->observed_accountant()->GetCommittedWorkspaceEstimate();
-          observed_persistent_prepack =
-              ep_raw->observed_accountant()->GetCommittedPersistentPrepackEstimate();
-          observed_temporary_prepack =
-              ep_raw->observed_accountant()->GetCommittedTemporaryPrepackEstimate();
-          observed_source_counts =
-              ep_raw->observed_accountant()->GetWorkspaceEstimateSourceCounts();
         }
       };
 
@@ -629,15 +626,13 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingReservesSurvivorsDuringPass2Admissi
                             debug_graph_fn));
 
   ASSERT_TRUE(observed_consumed.has_value())
-      << "Expected the surviving Conv partition to be assigned to the EP.";
-  // Conv survived: committed exactly once.
+      << "Expected the pass-2-only Relu partition to be assigned to the EP.";
   EXPECT_EQ(*observed_consumed, expected_conv_cost)
-      << "Survivor Conv should be committed exactly once.";
-  // LogSoftmax was dropped on the second pass: its cost must not leak (no phantom budget).
+      << "The Conv survivor should be reserved exactly once before Relu admission.";
   EXPECT_NE(*observed_consumed, expected_conv_cost + expected_log_softmax_cost)
       << "Dropped LogSoftmax must not consume budget.";
-  EXPECT_FALSE(pass2_only_relu_assigned)
-      << "Pass-2-only Relu must be rejected because its cost plus the Conv survivor exceeds the budget.";
+  EXPECT_TRUE(pass2_only_relu_assigned)
+      << "Dropped LogSoftmax must not block the pass-2-only Relu that fits with the Conv survivor.";
   ASSERT_TRUE(observed_workspace.has_value());
   ASSERT_TRUE(observed_persistent_prepack.has_value());
   ASSERT_TRUE(observed_temporary_prepack.has_value());
