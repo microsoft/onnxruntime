@@ -1350,8 +1350,9 @@ Status GetGqaValueLayout(const ConfigOptions& config_options, std::string& layou
 
   if (layout != kGqaValueLayoutBNSH && layout != kGqaValueLayoutBNHS) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Invalid value for session option 'session.gqa_value_layout': '", layout,
-                           "'. Expected 'BNSH' or 'BNHS'.");
+                           "Invalid value for session option '", kOrtSessionOptionsGqaValueLayout,
+                           "': '", layout, "'. Expected '", kGqaValueLayoutBNSH, "' or '", kGqaValueLayoutBNHS,
+                           "'.");
   }
 
   return Status::OK();
@@ -2461,8 +2462,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                         gqa_value_layout_explicitly_set));
   if (gqa_value_layout != kGqaValueLayoutBNSH) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Session option 'session.gqa_value_layout' is not supported for ORT format models. "
-                           "Apply the Value layout transform when "
+                           "Session option '", kOrtSessionOptionsGqaValueLayout,
+                           "' is not supported for ORT format models. Apply the Value layout transform when "
                            "converting the model to ORT format and load it without setting this option, or load the "
                            "ONNX model instead.");
   }
@@ -2483,8 +2484,8 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL,
         "This ORT format model already carries the BNHS GroupQueryAttention Value layout. "
-        "It cannot be loaded with 'session.gqa_value_layout' set to 'BNSH', because the application "
-        "would bind BNSH buffers to a BNHS boundary. "
+        "It cannot be loaded with '", kOrtSessionOptionsGqaValueLayout, "' set to '", kGqaValueLayoutBNSH,
+        "', because the application would bind BNSH buffers to a BNHS boundary. "
         "Leave the option unset and bind BNHS buffers, or load a model whose Value cache boundary is BNSH.");
   }
 #endif
