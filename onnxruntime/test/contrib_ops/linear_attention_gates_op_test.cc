@@ -50,7 +50,11 @@ std::vector<std::unique_ptr<IExecutionProvider>> ExecutionProvidersForType() {
 }
 
 float SigmoidRef(float x) {
-  return x > 0.0f ? 1.0f / (1.0f + std::exp(-x)) : 1.0f - 1.0f / (1.0f + std::exp(x));
+  if (x > 0.0f) {
+    return 1.0f / (1.0f + std::exp(-x));
+  }
+  const float e = std::exp(x);
+  return e / (1.0f + e);
 }
 
 float SoftplusRef(float x) {
@@ -274,8 +278,34 @@ TEST(ContribOpGatedRMSNormTest, Float_Sigmoid_QwenLikeGeometry) {
 }
 
 TEST(ContribOpGatedRMSNormTest, Float_Sigmoid_StableSaturation) {
-  RunGatedRMSNormTest<float>(1, 2, 4, 128, 1e-6f, 1e-4f, GatedRMSNormActivation::kSigmoid, "sigmoid",
-                             -80.0f, 80.0f, 24);
+  auto execution_providers = ExecutionProvidersForType<float>();
+  if (execution_providers.empty()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+
+  const std::vector<int64_t> dims = {1, 1, 1};
+  const std::vector<int64_t> scale_dims = {1};
+  constexpr float kGate = -20.0f;
+  const std::vector<float> x = {1.0f};
+  const std::vector<float> gate = {kGate};
+  const std::vector<float> scale = {1.0f};
+  const float expected_value = SigmoidRef(kGate);
+  ASSERT_GT(expected_value, 0.0f);
+
+  for (auto& ep : execution_providers) {
+    SCOPED_TRACE("EP: " + ep->Type());
+    OpTester tester("GatedRMSNorm", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<float>("epsilon", 0.0f);
+    tester.AddAttribute<std::string>("activation", "sigmoid");
+    tester.AddInput<float>("X", dims, x);
+    tester.AddInput<float>("scale", scale_dims, scale);
+    tester.AddInput<float>("gate", dims, gate);
+    tester.AddOutput<float>("Y", dims, {expected_value}, false, 1e-12f, 1e-12f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
 }
 
 TEST(ContribOpGatedRMSNormTest, Float16_PerHead) {

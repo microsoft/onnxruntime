@@ -29,7 +29,11 @@ namespace {
 // Matches OP_Sigmoid in core/providers/cuda/activation/activations_impl.cu: the branch keeps the
 // exponent argument non-positive so large-magnitude inputs cannot overflow.
 __device__ __forceinline__ float SigmoidFloat(float x) {
-  return x > 0.0f ? 1.0f / (1.0f + expf(-x)) : 1.0f - 1.0f / (1.0f + expf(x));
+  if (x > 0.0f) {
+    return 1.0f / (1.0f + expf(-x));
+  }
+  const float e = expf(x);
+  return e / (1.0f + e);
 }
 
 // Matches OP_Softplus in the same file.

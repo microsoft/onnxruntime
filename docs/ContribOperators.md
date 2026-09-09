@@ -2325,12 +2325,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
   
-    Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
+    Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate)
+  
+  where `gate_activation` is one of:
+  - `silu` or `swish`: `z * sigmoid(z)`
+  - `sigmoid`: `sigmoid(z)` (used by Qwen3.8-Flash-Next / qwen4_exp output gating)
   
   The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
   length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
   per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
-  All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
+  All arithmetic including gate activation is done in float32 regardless of the tensor type, matching
   the reference implementation, so this replaces the exported
   SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
   single launch.
@@ -2344,6 +2348,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon added to the mean of squares before the reciprocal square root.</dd>
+<dt><tt>activation</tt> : string (default is `'silu'`)</dt>
+<dd>Fused gate activation. One of: 'silu', 'swish', 'sigmoid'. 'swish' is an alias of 'silu'.</dd>
 </dl>
 
 #### Inputs
@@ -7682,5 +7688,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 
