@@ -176,6 +176,8 @@ def create_nvfp4_moe_onnx_graph(
     fc2_global_scale,  # [E] float32
     block_size=NVFP4_BLOCK_SIZE,
     use_swiglu=False,
+    fc1_bias=None,
+    fc2_bias=None,
 ):
     """Build ONNX model with QMoE operator in NVFP4 mode."""
     inputs = [
@@ -183,10 +185,10 @@ def create_nvfp4_moe_onnx_graph(
         "router_probs",  # 1
         "fc1_weights",  # 2: uint8 packed FP4
         "fc1_scales",  # 3: Float8E4M3FN NVFP4 block scales
-        "",  # 4: fc1_bias
+        "fc1_bias" if fc1_bias is not None else "",  # 4
         "fc2_weights",  # 5: uint8 packed FP4
         "fc2_scales",  # 6: Float8E4M3FN NVFP4 block scales
-        "",  # 7: fc2_bias
+        "fc2_bias" if fc2_bias is not None else "",  # 7
         "",  # 8:  fc3_weights
         "",  # 9:  fc3_scales
         "",  # 10: fc3_bias
@@ -238,6 +240,11 @@ def create_nvfp4_moe_onnx_graph(
     for name, tensor in [("fc1_global_scale", fc1_global_scale), ("fc2_global_scale", fc2_global_scale)]:
         vals = tensor.cpu().float().flatten().tolist()
         initializers.append(helper.make_tensor(name, TensorProto.FLOAT, list(tensor.shape), vals, raw=False))
+
+    for name, tensor in [("fc1_bias", fc1_bias), ("fc2_bias", fc2_bias)]:
+        if tensor is not None:
+            vals = tensor.cpu().float().flatten().tolist()
+            initializers.append(helper.make_tensor(name, onnx_dtype, list(tensor.shape), vals, raw=False))
 
     graph_inputs = [
         helper.make_tensor_value_info("input", onnx_dtype, [num_tokens, hidden_size]),
@@ -314,6 +321,7 @@ class TestQMoENVFP4(unittest.TestCase):
         input_scale=1.0,
         atol_override=None,
         router_logits_override=None,
+        use_bias=False,
     ):
         self._skip_if_no_fp4()
 
@@ -355,6 +363,9 @@ class TestQMoENVFP4(unittest.TestCase):
         fc1_deq_all = torch.stack(fc1_deq, dim=0)  # [E, N, K]
         fc2_deq_all = torch.stack(fc2_deq, dim=0)  # [E, N, K]
 
+        fc1_bias = torch.randn(num_experts, fc1_n, device=device, dtype=torch_dtype) * 0.5 if use_bias else None
+        fc2_bias = torch.randn(num_experts, fc2_n, device=device, dtype=torch_dtype) * 0.5 if use_bias else None
+
         onnx_model = create_nvfp4_moe_onnx_graph(
             num_tokens=num_tokens,
             hidden_size=hidden_size,
@@ -370,6 +381,8 @@ class TestQMoENVFP4(unittest.TestCase):
             fc2_global_scale=fc2_global_scale,
             block_size=block_size,
             use_swiglu=use_swiglu,
+            fc1_bias=fc1_bias,
+            fc2_bias=fc2_bias,
         )
 
         opts = onnxruntime.SessionOptions()
@@ -432,6 +445,8 @@ class TestQMoENVFP4(unittest.TestCase):
             top_k,
             use_swiglu,
             torch_dtype,
+            fc1_bias,
+            fc2_bias,
         )
 
         max_diff = (ort_output.float() - ref_output.float()).abs().max().item()
@@ -529,7 +544,18 @@ class TestQMoENVFP4(unittest.TestCase):
         self._assert_invalid_nvfp4_model(hidden_size=64, inter_size=72)
 
     @staticmethod
-    def _compute_reference(input_tensor, router_logits, fc1_deq, fc2_deq, num_experts, top_k, use_swiglu, torch_dtype):
+    def _compute_reference(
+        input_tensor,
+        router_logits,
+        fc1_deq,
+        fc2_deq,
+        num_experts,
+        top_k,
+        use_swiglu,
+        torch_dtype,
+        fc1_bias=None,
+        fc2_bias=None,
+    ):
         """Reference MoE forward pass using dequantized weights."""
         num_tokens = input_tensor.shape[0]
         hidden_size = input_tensor.shape[1]
@@ -553,8 +579,12 @@ class TestQMoENVFP4(unittest.TestCase):
             w2 = fc2_deq[e].float()
 
             h = tokens @ w1.T
+            if fc1_bias is not None:
+                h = h + fc1_bias[e].float()
             h = swiglu_ref(h) if use_swiglu else F.silu(h)
             h = h @ w2.T
+            if fc2_bias is not None:
+                h = h + fc2_bias[e].float()
             h = h * routing_weights[top_x, idx, None]
 
             output.index_add_(0, top_x, h)
@@ -691,10 +721,32 @@ class TestQMoENVFP4(unittest.TestCase):
             gemv_mode="1",
         )
 
-    def test_nvfp4_fp16_gemv_route_debug(self):
+    @parameterized.expand([("fp16", TensorProto.FLOAT16), ("bf16", TensorProto.BFLOAT16)])
+    def test_nvfp4_gemv_decode_swiglu_bias(self, _name, onnx_dtype):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=4,
+            top_k=2,
+            num_tokens=2,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+            gemv_mode="1",
+            use_bias=True,
+        )
+
+    @parameterized.expand(
+        [
+            ("test_nvfp4_fp16_gemv_decode_swiglu",),
+            ("test_nvfp4_fp16_gemv_qwen_flash_decode_shape",),
+            ("test_nvfp4_gemv_decode_swiglu_bias_0_fp16",),
+            ("test_nvfp4_gemv_decode_swiglu_bias_1_bf16",),
+        ]
+    )
+    def test_nvfp4_gemv_route_debug(self, test_name):
         # Run in a fresh process because QMoE reads the debug and GEMV env switches when the
-        # session constructs the kernel. The route line proves this shape did not merely pass
-        # through the numerically equivalent raw dequant fallback.
+        # session constructs the kernel. Each case must use GEMV, including Qwen's top_k=10
+        # prologue and both bias-enabled raw-kernel instantiations.
         self._skip_if_no_fp4()
         env = dict(os.environ)
         env["ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO"] = "1"
@@ -705,7 +757,7 @@ class TestQMoENVFP4(unittest.TestCase):
                 "-m",
                 "unittest",
                 "-v",
-                f"{os.path.splitext(os.path.basename(__file__))[0]}.TestQMoENVFP4.test_nvfp4_fp16_gemv_decode_swiglu",
+                f"{os.path.splitext(os.path.basename(__file__))[0]}.TestQMoENVFP4.{test_name}",
             ],
             cwd=os.path.dirname(os.path.abspath(__file__)),
             env=env,
