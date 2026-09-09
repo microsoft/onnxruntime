@@ -82,14 +82,14 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (update_rule_ == GatedDeltaNetUpdateRule::Delta) update_rule = 2;
   if (update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) update_rule = 3;
   return WGSL_TEMPLATE_APPLY(shader, "bert/gated_delta_net.wgsl.template",
-                             WGSL_TEMPLATE_PARAMETER(update_rule, update_rule),
                              WGSL_TEMPLATE_PARAMETER(has_cu_seqlens, has_cu_seqlens_),
                              WGSL_TEMPLATE_PARAMETER(has_initial_state, has_initial_state_),
                              WGSL_TEMPLATE_PARAMETER(initial_state_in_final_state, initial_state_in_final_state_),
                              WGSL_TEMPLATE_PARAMETER(output_final_state, output_final_state_),
+                             WGSL_TEMPLATE_PARAMETER(qk_l2_norm, qk_l2_norm_),
                              WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
                              WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
-                             WGSL_TEMPLATE_PARAMETER(qk_l2_norm, qk_l2_norm_));
+                             WGSL_TEMPLATE_PARAMETER(update_rule, update_rule));
 }
 
 Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
