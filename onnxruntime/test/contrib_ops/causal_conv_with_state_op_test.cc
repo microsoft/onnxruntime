@@ -1071,6 +1071,7 @@ TEST(CausalConvWithStateTest, DilationBelowOneIsRejected) {
 
 TEST(CausalConvWithStateTest, DilationAboveIntMaxIsRejected) {
   OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddShapeToTensorData(false);
   test.AddAttribute<std::string>("activation", "none");
   test.AddAttribute<int64_t>("dilation", static_cast<int64_t>(std::numeric_limits<int>::max()) + 1);
   test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
