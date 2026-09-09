@@ -189,13 +189,27 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       modified_input_output_shapes[1] = grouped_kernel->Shape();
     }
     auto output_channels_per_group = output_channels / conv_attrs_.group;
-    auto components = static_cast<int>(is_channels_last && output_channels_per_group >= 4 ? GetMaxComponents(output_channels) : 1);
+    // A depthwise NHWC conv - one output channel per group, and as many groups as input channels -
+    // has a 1:1 channel correspondence, so it can be vectorized across channels even though each
+    // group is only one channel wide. The general grouped path's `>= 4` test leaves it scalar,
+    // reading every kernel tap one channel at a time.
+    const bool is_depthwise_vec = is_channels_last && output_channels_per_group == 1 &&
+                                  conv_attrs_.group == input_channels && GetMaxComponents(output_channels) > 1;
+    auto components = static_cast<int>(is_channels_last && (output_channels_per_group >= 4 || is_depthwise_vec)
+                                           ? GetMaxComponents(output_channels)
+                                           : 1);
     auto output_size = output_shape.Size() / components;
-    GroupedConvProgram program(activation_, has_bias, is_channels_last);
+    GroupedConvProgram program(activation_, has_bias, is_channels_last, is_depthwise_vec);
     auto reduced_kernel_shape = ReduceShapeByComponents(modified_input_output_shapes[1], components);
     auto reduced_output_shape = ReduceShapeByComponents(modified_input_output_shapes[has_bias ? 3 : 2], components);
-    program.CacheHint(activation_.CacheKey(), std::to_string(components), std::to_string(is_channels_last))
-        .AddInput({inputs[0], ProgramTensorMetadataDependency::TypeAndRank, modified_input_output_shapes[0], 1})
+    // Only the depthwise form reads x in whole channel vectors; the general path still needs scalar
+    // channel indexing because its input channels do not line up with output vectors.
+    auto x_components = is_depthwise_vec ? components : 1;
+    auto reduced_x_shape = is_depthwise_vec ? ReduceShapeByComponents(modified_input_output_shapes[0], components)
+                                            : modified_input_output_shapes[0];
+    program.CacheHint(activation_.CacheKey(), std::to_string(components), std::to_string(is_channels_last),
+                      std::to_string(is_depthwise_vec))
+        .AddInput({inputs[0], ProgramTensorMetadataDependency::TypeAndRank, reduced_x_shape, x_components})
         .AddInput({inputs[1], ProgramTensorMetadataDependency::TypeAndRank, reduced_kernel_shape, components})
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
         .AddUniformVariables({{static_cast<uint32_t>(output_size)}, {dilations}, {strides}, {updated_pads}, {static_cast<uint32_t>(output_channels_per_group)}, {static_cast<uint32_t>(components)}})
