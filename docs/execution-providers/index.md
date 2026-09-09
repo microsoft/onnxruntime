@@ -30,6 +30,7 @@ ONNX Runtime supports many different execution providers today. Some of the EPs 
 |[XNNPACK](../execution-providers/Xnnpack-ExecutionProvider.md)|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[CoreML](../execution-providers/CoreML-ExecutionProvider.md) (*preview*)||
 |[AMD ROCm](../execution-providers/ROCm-ExecutionProvider.md)(*deprecated*)|[Qualcomm QNN](../execution-providers/QNN-ExecutionProvider.md)|[XNNPACK](../execution-providers/Xnnpack-ExecutionProvider.md)||
 ||[WebGPU](../execution-providers/WebGPU-ExecutionProvider.md)|||
+|||[WebNN](../execution-providers/WebNN-ExecutionProvider.md) (*preview*)|
 
 ## Add an Execution Provider
 
@@ -85,5 +86,4 @@ sess.set_providers(['CPUExecutionProvider'])
 cpu_detection = sess.run(...)
 
 ```
-
 
