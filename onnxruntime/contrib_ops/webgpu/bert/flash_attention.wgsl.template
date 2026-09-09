@@ -326,7 +326,8 @@ $MAIN {
 #endif
 
   // Load Q
-  let q_idx_global = (workgroup_idx % uniforms.num_seq_tile) * workgroup_size_x + local_idx;
+  let query_tile_start = (workgroup_idx % uniforms.num_seq_tile) * workgroup_size_x;
+  let q_idx_global = query_tile_start + local_idx;
   let valid_q = q_idx_global < uniforms.new_sequence_length;
   if (valid_q) {
     loadq(batch_idx, q_idx_global, head_idx, q_element_t(uniforms.alpha));
@@ -367,16 +368,23 @@ $MAIN {
 #endif
 
 #if has_local_window
-  let local_window_start = select(seq_causal_length - uniforms.local_window_size,
-                                  0u,
-                                  seq_causal_length <= uniforms.local_window_size);
+#if is_unidirectional
+  let first_query_causal_length = past_sequence_length + query_tile_start + 1u;
 #else
+  let first_query_causal_length = total_sequence_length;
+#endif
+  let first_query_window_start = first_query_causal_length -
+                                 min(first_query_causal_length, uniforms.local_window_size);
+  let local_window_start = seq_causal_length - min(seq_causal_length, uniforms.local_window_size);
+#else
+  let first_query_window_start = 0u;
   let local_window_start = 0u;
 #endif
 
 #if use_shm_path
 
-  for (var k_start = 0u; k_start < loop_bound; k_start += max_k_step) {
+  let aligned_window_start = (first_query_window_start / max_k_step) * max_k_step;
+  for (var k_start = aligned_window_start; k_start < loop_bound; k_start += max_k_step) {
     workgroupBarrier();
     loadk(k_start, batch_head_idx, local_idx, total_sequence_length);
     loadv(k_start, batch_head_idx, local_idx, total_sequence_length);
@@ -390,8 +398,8 @@ $MAIN {
  #if has_attention_bias
       score += loadAttentionBias(batch_idx, q_idx_global, k_start + k, head_idx, total_sequence_length);
  #endif
-  qk_scores[k] = select(qk_min_value, score,
-                is_key_visible(k_start + k, local_window_start, seq_causal_length));
+   qk_scores[k] = select(qk_min_value, score,
+             is_key_visible(k_start + k, local_window_start, seq_causal_length));
     }
 
     var local_max = qk_min_value;
@@ -435,7 +443,8 @@ $MAIN {
   let capped_sg_id = min(sg_id, max_k_step - 1u);
   let capped_sg_size = min(sg_size, max_k_step);
 
-  for (var k_start = 0u; k_start < loop_bound; k_start += capped_sg_size) {
+  let aligned_window_start = (first_query_window_start / capped_sg_size) * capped_sg_size;
+  for (var k_start = aligned_window_start; k_start < loop_bound; k_start += capped_sg_size) {
     workgroupBarrier();
     loadk(k_start, batch_head_idx, local_idx, capped_sg_size, total_sequence_length);
     loadv(k_start, batch_head_idx, local_idx, capped_sg_size, total_sequence_length);
