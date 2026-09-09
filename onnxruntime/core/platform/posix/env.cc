@@ -450,7 +450,8 @@ class PosixEnv : public Env {
 #ifdef O_CLOEXEC
     flags |= O_CLOEXEC;
 #endif
-    ScopedFileDescriptor descriptor{static_cast<int>(TempFailureRetry(open, file_path, flags))};
+    // Android's fortified open is overloaded; resolve the call inside a lambda.
+    ScopedFileDescriptor descriptor{static_cast<int>(TempFailureRetry([&] { return open(file_path, flags); }))};
     if (!descriptor.IsValid()) {
       return ReportSystemError("open", file_path);
     }
