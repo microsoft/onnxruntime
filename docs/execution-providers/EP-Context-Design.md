@@ -52,10 +52,10 @@ Attributes table below:<br/>
 |Session option             |Description                                                                                               |
 |---------------------------|----------------------------------------------------------------------------------------------------------|
 |ep.context_enable          |Used **only for EP context model generation**.<br/>**1**: Enables ONNX Runtime to **dump the context cache model**.<br/>**0 (default)**: **Disables** context model dumping.|
-|ep.context_file_path       |Specifies the **file path** for the **dumped model**.<br/>**Default:** `original_file_name_ctx.onnx` for **context model generation**.<br/>For **model inference**:<br/>If the user loads the model from a **memory buffer** and the **EP context binary** is located outside the ONNX model, this option must be set.<br/>ONNX Runtime EP uses this path to **determine the folder location**, combining it with `ep_cache_context` (which points to the **context binary path**) to construct the **absolute path** to the context binary file.|
+|ep.context_file_path       |Specifies the **file path** for the **dumped model**.<br/>**Default:** `original_file_name_ctx.onnx` for **context model generation**.<br/>For **model inference**, the EP uses this path to determine the EPContext model folder and combines it with the relative path in `ep_cache_context` to locate an external EP context binary.<br/>To resolve an external EP context binary, this option must be set when the model path is unavailable, such as when loading from a memory buffer. For EPContext workflows, setting this option is also recommended whenever `session.model_external_initializers_file_folder_path` is used.|
 |ep.context_embed_mode      |Used **only for context model generation**.<br/>**1**: Dumps the **EP context content directly into the ONNX model**, stored inside the `ep_cache_context` node attribute.<br/>**0 (default)**: Dumps the **EP context content into a separate file** and stores the **file name** in the ONNX model.<br/>The **file path** is tracked in the `ep_cache_context` node attribute.|
 |ep.context_node_name_prefix|Used **only for context model generation**.<br/>Specifies the **prefix for the `EPContext` node name** (also used as the `partition_name` attribute and internal graph name).<br/>Ensures **uniqueness across nodes** when multiple `EPContext` nodes are combined into a **single model**, preventing naming conflicts.<br/>The EP can also apply this prefix to the **`ep_graph` name** inside the converted EP context binary.|
-|session.model_external_initializers_file_folder_path|This is not specific to the **EPContext** design. Generally, for models with external data, when loading the model from a **memory buffer**, the session loses track of the model's name and path, making it unable to locate the external data file. Use this configuration to specify the **folder path** for the external data files.<br/>All external data files should be placed within the **same folder**.|
+|session.model_external_initializers_file_folder_path|This is not specific to the **EPContext** design. It specifies the folder used to resolve a model's external initializer data for models loaded from either a **file path** or a **memory buffer**. When set, this folder overrides the model's directory as the external-initializer lookup base.<br/>All external initializer files should be placed within the **same folder**.<br/>An external EP context binary is distinct from external initializer data. For EPContext workflows, also specify `ep.context_file_path` so the EPContext model location remains explicit.|
 |ep.context_model_external_initializers_file_name|Used **only for context model generation**.<br/>This configuration is used when some nodes are partitioned on the **CPU EP** and those nodes have **external initializers**. When generating the **EP context model**, the new model **should not rely on the old external data file** used by the source ONNX model.<br/>Use this setting when **dumping the EP context model** with an external initializers file.<br/>If specified, all initializers will be placed inside the **external data file**.<br/>Otherwise, all initializers will be embedded inside the **generated ONNX file**.<br/>By default, this option is **not set**, meaning all initializers will be included within the ONNX file.|
 
 ## EP Context Cache Model Generation Workflow
@@ -95,6 +95,7 @@ virtual const InlinedVector<const Node*> GetEpContextNodes() const {
   - If `ep.context_file_path` is not provided, ONNX Runtime generates the output model file name by replacing `.onnx` in the original input model file name with `_ctx.onnx`.
   - If `ep.context_file_path` is specified, ONNX Runtime uses the provided file path. The EP should also use this path to determine the folder location for dumping the compiled EP context binary file when `ep.context_embed_mode = 0`.
   - **Note:** `ep.context_file_path` is required when loading the model from a **memory buffer**, as ONNX Runtime cannot retrieve the original model file path in this scenario.
+  - **Recommendation:** If `session.model_external_initializers_file_folder_path` is set, also set `ep.context_file_path`. The external-initializer option changes the model path used internally, while `ep.context_file_path` keeps the EPContext output location explicit.
 
 - **ep.context_embed_mode**
   - `1`: Embeds the EP context content directly into the ONNX model.
@@ -204,9 +205,12 @@ ONNX Runtime EPs that support loading models with `EPContext` nodes should follo
   - ONNX Runtime retrieves the relative path of the context binary file from the `ep_cache_context` attribute of the `EPContext` node.
   - **For models loaded from a file path:**
     - The EP should determine the folder path of the input model file and combine it with the relative path to construct the full path to the context binary file.
+    - `session.model_external_initializers_file_folder_path` overrides the model directory used internally. If it is set, also set `ep.context_file_path` to the EPContext ONNX model path. This is required when the external initializer folder differs from the EPContext model folder.
   - **For models loaded from a memory buffer:**
     - Since the EP cannot derive the model's folder path, the user must specify the session option `ep.context_file_path`.
     - The EP uses `ep.context_file_path` to determine the folder path and combines it with the relative path to construct the full path to the context binary file.
+
+When `embed_mode = 1`, the EP context content is embedded in the ONNX model and no external EP context binary path is required.
 
 - **Support for Multiple Primary `EPContext` Nodes (`main_context = 1`)**
   - The EP should support multiple primary `EPContext` nodes without any limitations.
@@ -239,6 +243,16 @@ Create the session from model file path. If there is external EP context binary 
     session1.run(...);
 ```
 
+If the EPContext model also resolves external initializers from another folder, set both paths explicitly:
+
+```
+    so.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath, "./external_data_folder/");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./model_folder/model1_ctx.onnx");
+```
+
+The first option locates ONNX external initializer data. The second preserves the EPContext model folder used to locate
+the external EP context binary referenced by `ep_cache_context`.
+
 **Create inference session from pre-compiled EPContext model in memory buffer:**<br/>
 Creating a session from a memory buffer of the model causes the session to lose track of the model's name and path. To resolve this, you must set: `ep.context_file_path`.
 - The session uses this path to identify the folder location.
@@ -251,7 +265,7 @@ Creating a session from a memory buffer of the model causes the session to lose 
     Ort::SessionOptions so;
 
     // Specify the EPContext model file path using option ep.context_file_path
-    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./model_path/model_ctx.onnx");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "./model_folder/model_ctx.onnx");
 
     // Add EP, take QNN for example
     so.AppendExecutionProvider("QNN", provider_options);
