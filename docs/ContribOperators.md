@@ -2180,6 +2180,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GatedDeltaNet"></a><a name="com.microsoft.gateddeltanet">**com.microsoft.GatedDeltaNet**</a>
 
   Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
+  Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
+  with scalar decay, but rejects `state_update_capacity > 0`.
   
   Layout. Query, key and value are token-major, so head counts are derived from the shapes
   rather than from attributes:

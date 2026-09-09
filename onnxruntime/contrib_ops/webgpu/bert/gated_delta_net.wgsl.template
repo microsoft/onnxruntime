@@ -40,7 +40,7 @@ $MAIN {
   let value_head = (workgroup / uniforms.head_size_v) % uniforms.num_heads_v;
   let batch = workgroup / (uniforms.head_size_v * uniforms.num_heads_v);
   let key_index = local_idx;
-  let query_head = value_head * uniforms.num_heads_q / uniforms.num_heads_v;
+  let query_head = value_head / (uniforms.num_heads_v / uniforms.num_heads_q);
   var state = 0.0;
   if (key_index < uniforms.head_size_qk) {
     let state_offset = (((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *

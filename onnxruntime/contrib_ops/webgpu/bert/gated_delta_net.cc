@@ -183,9 +183,10 @@ Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
                       "beta must have shape [...tokens, num_heads_v]");
   }
   if (qwen_gate_) {
-    ORT_RETURN_IF_NOT(a_log != nullptr && dt_bias != nullptr && a_log->Shape().Size() == hv &&
-                          dt_bias->Shape().Size() == hv,
-                      "gate_activation=qwen requires a_log and dt_bias with num_heads_v elements");
+    ORT_RETURN_IF_NOT(a_log != nullptr && dt_bias != nullptr &&
+                          a_log->Shape().NumDimensions() == 1 && a_log->Shape()[0] == hv &&
+                          dt_bias->Shape().NumDimensions() == 1 && dt_bias->Shape()[0] == hv,
+                      "gate_activation=qwen requires a_log and dt_bias with shape [num_heads_v]");
   } else {
     ORT_RETURN_IF_NOT(a_log == nullptr && dt_bias == nullptr, "a_log and dt_bias require gate_activation=qwen");
   }
