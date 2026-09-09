@@ -96,7 +96,10 @@ void WebGpuContext::StartInitialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, config]() {
     device_free_ = config.compile_only;
     auto initialize = [this, config]() {
-      initialize_thread_id_ = std::this_thread::get_id();
+      {
+        std::lock_guard<std::mutex> lock{initialize_mutex_};
+        initialize_thread_id_ = std::this_thread::get_id();
+      }
       ORT_TRY {
         Initialize(config);
       }
@@ -154,8 +157,11 @@ void WebGpuContext::WaitForStartInitializeComplete() const {
 }
 
 void WebGpuContext::WaitForInitializeComplete() const {
-  if (initialize_thread_id_ == std::this_thread::get_id()) {
-    return;
+  {
+    std::lock_guard<std::mutex> lock{initialize_mutex_};
+    if (initialize_thread_id_ == std::this_thread::get_id()) {
+      return;
+    }
   }
   const_cast<WebGpuContext*>(this)->ContinueInitialize();
   if (initialize_future_.valid()) {
@@ -1531,10 +1537,10 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
   }
 
-  if (context_id == 0) {
-    // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
+  if (context_id == 0 || context_id == kDeviceFreeDefaultContextId) {
+    // The runnable and device-free default contexts share the default instance but use separate cache entries.
     ORT_ENFORCE(instance == nullptr && device == nullptr,
-                "WebGPU EP default context (contextId=0) must not have custom WebGPU instance or device.");
+                "WebGPU EP default contexts must not have custom WebGPU instance or device.");
 
     instance = default_instance_;
   } else {
