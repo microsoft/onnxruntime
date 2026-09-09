@@ -22,7 +22,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
-      .MayInplace(4, 1)
+        .MayInplace(4, 1)
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
     VarlenCausalConvWithState);
@@ -63,8 +63,8 @@ Status VarlenCausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader
   return WGSL_TEMPLATE_APPLY(shader, "bert/varlen_causal_conv_with_state.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_state, has_state_),
-                             WGSL_TEMPLATE_PARAMETER(state_in_final_state, state_in_final_state_),
                              WGSL_TEMPLATE_PARAMETER(has_state_update, has_state_update_ && has_capture_count_),
+                             WGSL_TEMPLATE_PARAMETER(state_in_final_state, state_in_final_state_),
                              WGSL_TEMPLATE_PARAMETER(use_silu, use_silu_));
 }
 
