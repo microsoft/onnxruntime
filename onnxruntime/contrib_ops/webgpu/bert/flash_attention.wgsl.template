@@ -1,6 +1,7 @@
 #param bit_width
 #param has_attention_bias
 #param has_head_sink
+#param has_local_window
 #param is_qualcomm
 #param is_unidirectional
 #param prefer_subgroupshuffle
@@ -45,6 +46,10 @@ fn get_total_sequence_length(batch_idx: u32) -> u32 {
   return uniforms.total_sequence_length;
 }
 #endif
+
+fn is_key_visible(k_idx: u32, local_window_start: u32, causal_end: u32) -> bool {
+  return k_idx >= local_window_start && k_idx < causal_end;
+}
 
 alias qk_precision = f32;
 const qk_min_value = qk_precision(-3.4028234663852886e+38f);
@@ -321,7 +326,8 @@ $MAIN {
 #endif
 
   // Load Q
-  let q_idx_global = (workgroup_idx % uniforms.num_seq_tile) * workgroup_size_x + local_idx;
+  let query_tile_start = (workgroup_idx % uniforms.num_seq_tile) * workgroup_size_x;
+  let q_idx_global = query_tile_start + local_idx;
   let valid_q = q_idx_global < uniforms.new_sequence_length;
   if (valid_q) {
     loadq(batch_idx, q_idx_global, head_idx, q_element_t(uniforms.alpha));
@@ -361,9 +367,24 @@ $MAIN {
   let seq_causal_length = total_sequence_length;
 #endif
 
+#if has_local_window
+#if is_unidirectional
+  let first_query_causal_length = past_sequence_length + query_tile_start + 1u;
+#else
+  let first_query_causal_length = total_sequence_length;
+#endif
+  let first_query_window_start = first_query_causal_length -
+                                 min(first_query_causal_length, uniforms.local_window_size);
+  let local_window_start = seq_causal_length - min(seq_causal_length, uniforms.local_window_size);
+#else
+  let first_query_window_start = 0u;
+  let local_window_start = 0u;
+#endif
+
 #if use_shm_path
 
-  for (var k_start = 0u; k_start < loop_bound; k_start += max_k_step) {
+  let aligned_window_start = (first_query_window_start / max_k_step) * max_k_step;
+  for (var k_start = aligned_window_start; k_start < loop_bound; k_start += max_k_step) {
     workgroupBarrier();
     loadk(k_start, batch_head_idx, local_idx, total_sequence_length);
     loadv(k_start, batch_head_idx, local_idx, total_sequence_length);
@@ -377,7 +398,8 @@ $MAIN {
  #if has_attention_bias
       score += loadAttentionBias(batch_idx, q_idx_global, k_start + k, head_idx, total_sequence_length);
  #endif
-      qk_scores[k] = select(qk_min_value, score, k_start + k < seq_causal_length);
+   qk_scores[k] = select(qk_min_value, score,
+             is_key_visible(k_start + k, local_window_start, seq_causal_length));
     }
 
     var local_max = qk_min_value;
@@ -421,7 +443,8 @@ $MAIN {
   let capped_sg_id = min(sg_id, max_k_step - 1u);
   let capped_sg_size = min(sg_size, max_k_step);
 
-  for (var k_start = 0u; k_start < loop_bound; k_start += capped_sg_size) {
+  let aligned_window_start = (first_query_window_start / capped_sg_size) * capped_sg_size;
+  for (var k_start = aligned_window_start; k_start < loop_bound; k_start += capped_sg_size) {
     workgroupBarrier();
     loadk(k_start, batch_head_idx, local_idx, capped_sg_size, total_sequence_length);
     loadv(k_start, batch_head_idx, local_idx, capped_sg_size, total_sequence_length);
@@ -493,23 +516,23 @@ $MAIN {
     }
 
     // Neuter qk values where K is out of bounds.
-    qk_1[0] = select(qk_min_value, qk_1[0], k_start + 0 < seq_causal_length);
-    qk_1[1] = select(qk_min_value, qk_1[1], k_start + 1 < seq_causal_length);
-    qk_1[2] = select(qk_min_value, qk_1[2], k_start + 2 < seq_causal_length);
-    qk_1[3] = select(qk_min_value, qk_1[3], k_start + 3 < seq_causal_length);
-    qk_2[0] = select(qk_min_value, qk_2[0], k_start + 4 < seq_causal_length);
-    qk_2[1] = select(qk_min_value, qk_2[1], k_start + 5 < seq_causal_length);
-    qk_2[2] = select(qk_min_value, qk_2[2], k_start + 6 < seq_causal_length);
-    qk_2[3] = select(qk_min_value, qk_2[3], k_start + 7 < seq_causal_length);
+    qk_1[0] = select(qk_min_value, qk_1[0], is_key_visible(k_start + 0, local_window_start, seq_causal_length));
+    qk_1[1] = select(qk_min_value, qk_1[1], is_key_visible(k_start + 1, local_window_start, seq_causal_length));
+    qk_1[2] = select(qk_min_value, qk_1[2], is_key_visible(k_start + 2, local_window_start, seq_causal_length));
+    qk_1[3] = select(qk_min_value, qk_1[3], is_key_visible(k_start + 3, local_window_start, seq_causal_length));
+    qk_2[0] = select(qk_min_value, qk_2[0], is_key_visible(k_start + 4, local_window_start, seq_causal_length));
+    qk_2[1] = select(qk_min_value, qk_2[1], is_key_visible(k_start + 5, local_window_start, seq_causal_length));
+    qk_2[2] = select(qk_min_value, qk_2[2], is_key_visible(k_start + 6, local_window_start, seq_causal_length));
+    qk_2[3] = select(qk_min_value, qk_2[3], is_key_visible(k_start + 7, local_window_start, seq_causal_length));
     if (sg_size > 8) {
-      qk_3[0] = select(qk_min_value, qk_3[0], k_start + 8 < seq_causal_length);
-      qk_3[1] = select(qk_min_value, qk_3[1], k_start + 9 < seq_causal_length);
-      qk_3[2] = select(qk_min_value, qk_3[2], k_start + 10 < seq_causal_length);
-      qk_3[3] = select(qk_min_value, qk_3[3], k_start + 11 < seq_causal_length);
-      qk_4[0] = select(qk_min_value, qk_4[0], k_start + 12 < seq_causal_length);
-      qk_4[1] = select(qk_min_value, qk_4[1], k_start + 13 < seq_causal_length);
-      qk_4[2] = select(qk_min_value, qk_4[2], k_start + 14 < seq_causal_length);
-      qk_4[3] = select(qk_min_value, qk_4[3], k_start + 15 < seq_causal_length);
+      qk_3[0] = select(qk_min_value, qk_3[0], is_key_visible(k_start + 8, local_window_start, seq_causal_length));
+      qk_3[1] = select(qk_min_value, qk_3[1], is_key_visible(k_start + 9, local_window_start, seq_causal_length));
+      qk_3[2] = select(qk_min_value, qk_3[2], is_key_visible(k_start + 10, local_window_start, seq_causal_length));
+      qk_3[3] = select(qk_min_value, qk_3[3], is_key_visible(k_start + 11, local_window_start, seq_causal_length));
+      qk_4[0] = select(qk_min_value, qk_4[0], is_key_visible(k_start + 12, local_window_start, seq_causal_length));
+      qk_4[1] = select(qk_min_value, qk_4[1], is_key_visible(k_start + 13, local_window_start, seq_causal_length));
+      qk_4[2] = select(qk_min_value, qk_4[2], is_key_visible(k_start + 14, local_window_start, seq_causal_length));
+      qk_4[3] = select(qk_min_value, qk_4[3], is_key_visible(k_start + 15, local_window_start, seq_causal_length));
     }
 
     var local_max_temp = max(qk_1, qk_2);
