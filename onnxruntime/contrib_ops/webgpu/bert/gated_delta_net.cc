@@ -102,6 +102,8 @@ Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
   const auto* initial_state = context.Input(6);
   const auto* a_log = context.Input(7);
   const auto* dt_bias = context.Input(8);
+  const auto* capture_count = context.Input(9);
+  const auto* state_update_active = context.Input(10);
 
   const bool needs_decay = update_rule_ == GatedDeltaNetUpdateRule::Gated ||
                            update_rule_ == GatedDeltaNetUpdateRule::GatedDelta;
@@ -114,6 +116,8 @@ Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
   }
   ORT_RETURN_IF_NOT(needs_decay == (decay != nullptr), "decay input presence must match update_rule");
   ORT_RETURN_IF_NOT(needs_beta == (beta != nullptr), "beta input presence must match update_rule");
+  ORT_RETURN_IF_NOT(capture_count == nullptr && state_update_active == nullptr,
+                    "capture_count and state_update_active require state_update_capacity > 0");
 
   const auto& q_shape = query->Shape();
   const auto& k_shape = key->Shape();
