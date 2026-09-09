@@ -24,12 +24,19 @@ from qmoe_expert_distribution import (  # noqa: E402
 
 class TestQMoEExpertDistribution(unittest.TestCase):
     def test_analysis_import_does_not_load_matplotlib(self):
+        script = "\n".join(
+            [
+                "import sys",
+                "sys.path.insert(0, sys.argv[1])",
+                "import qmoe_expert_distribution",
+                "assert 'matplotlib' not in sys.modules",
+            ]
+        )
         result = subprocess.run(
             [
                 sys.executable,
                 "-c",
-                "import sys; sys.path.insert(0, sys.argv[1]); "
-                "import qmoe_expert_distribution; assert 'matplotlib' not in sys.modules",
+                script,
                 _TOOLS_PYTHON,
             ],
             capture_output=True,
