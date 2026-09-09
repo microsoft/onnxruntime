@@ -775,7 +775,7 @@ TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQBiasWithPrecomputedKv) {
 }
 
 #ifdef USE_WEBGPU
-TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQkvBiasWithTurboQuant) {
+static void RunWebGpuFlashAttentionQkvBiasWithQuantizedKvCache(const char* quantization_bits) {
   constexpr int sequence_length = 32;
   constexpr int head_size = 128;
   constexpr float high_key_probability = 0.8044297f;  // sigmoid(16 / sqrt(128))
@@ -812,13 +812,23 @@ TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQkvBiasWithTurboQuant) {
 
   ConfigOptions config_options;
   ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kKvCacheQuantizationBits,
-                                                   webgpu::options::kKvCacheQuantizationBits_4Bit));
+                                                   quantization_bits));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
   if (execution_providers.back() == nullptr) {
     GTEST_SKIP() << "WebGPU execution provider is unavailable.";
   }
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQkvBiasWithTurboQuant) {
+  RunWebGpuFlashAttentionQkvBiasWithQuantizedKvCache(
+      webgpu::options::kKvCacheQuantizationBits_4Bit);
+}
+
+TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQkvBiasWithBlockQuantInt8) {
+  RunWebGpuFlashAttentionQkvBiasWithQuantizedKvCache(
+      webgpu::options::kKvCacheQuantizationBits_8Bit);
 }
 #endif
 
