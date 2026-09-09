@@ -7,17 +7,22 @@
 #include <fstream>
 #include <array>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 #include <thread>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <Windows.h>
+#else
 #include <sys/stat.h>
 #endif
 
+#include <gsl/gsl>
 #include "gtest/gtest.h"
 
 #include "core/common/path_string.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/safeint.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/file_util.h"
 
@@ -120,25 +125,31 @@ TEST_F(RandomAccessFileTest, ConcurrentReadsDoNotShareAFilePosition) {
   std::array<Status, kReaderCount> statuses;
   std::array<bool, kReaderCount> matched;
   matched.fill(true);
-  InlinedVector<std::jthread> readers;
-  readers.reserve(kReaderCount);
-  for (size_t reader = 0; reader < kReaderCount; ++reader) {
-    readers.emplace_back([&, reader] {
-      std::string output(4096, '\0');
-      for (size_t iteration = 0; iteration < 100; ++iteration) {
-        const auto offset = (reader * 1009 + iteration * 3277) % (contents_.size() - output.size());
-        statuses[reader] = file_->Read(static_cast<FileOffsetType>(offset), gsl::span<char>(output));
-        if (!statuses[reader].IsOK()) {
-          return;
-        }
-        if (output != contents_.substr(offset, output.size())) {
-          matched[reader] = false;
-          return;
-        }
+  {
+    InlinedVector<std::thread> readers;
+    readers.reserve(kReaderCount);
+    auto join_readers = gsl::finally([&] {
+      for (auto& reader : readers) {
+        reader.join();
       }
     });
+    for (size_t reader = 0; reader < kReaderCount; ++reader) {
+      readers.emplace_back([&, reader] {
+        std::string output(4096, '\0');
+        for (size_t iteration = 0; iteration < 100; ++iteration) {
+          const auto offset = (reader * 1009 + iteration * 3277) % (contents_.size() - output.size());
+          statuses[reader] = file_->Read(static_cast<FileOffsetType>(offset), gsl::span<char>(output));
+          if (!statuses[reader].IsOK()) {
+            return;
+          }
+          if (output != contents_.substr(offset, output.size())) {
+            matched[reader] = false;
+            return;
+          }
+        }
+      });
+    }
   }
-  readers.clear();
   for (size_t reader = 0; reader < kReaderCount; ++reader) {
     ASSERT_STATUS_OK(statuses[reader]);
     EXPECT_TRUE(matched[reader]) << "Reader " << reader;
@@ -199,9 +210,33 @@ TEST_F(RandomAccessFileTest, PathReplacementDoesNotChangeTheOpenFile) {
   PathString replacement_path;
   ScopedFileDeleter replacement_deleter;
   ASSERT_NO_FATAL_FAILURE(WriteRandomAccessTestFile(replacement_contents, replacement_path, replacement_deleter));
+#ifdef _WIN32
+  // Ordinary Windows rename cannot replace an open destination, even with delete sharing.
+  const HANDLE replacement_handle =
+      CreateFile2(replacement_path.c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                  OPEN_EXISTING, nullptr);
+  ASSERT_NE(replacement_handle, INVALID_HANDLE_VALUE) << GetLastError();
+  auto close_replacement = gsl::finally([&] { CloseHandle(replacement_handle); });
+
+  const auto target_path = std::filesystem::absolute(path_).native();
+  const size_t name_bytes = SafeInt<size_t>(target_path.size()) * sizeof(wchar_t);
+  const size_t rename_info_bytes = SafeInt<size_t>(sizeof(FILE_RENAME_INFO)) + name_bytes;
+  const auto rename_info_size = gsl::narrow<DWORD>(rename_info_bytes);
+  auto rename_buffer = std::make_unique<char[]>(rename_info_size);
+  auto* rename_info = reinterpret_cast<FILE_RENAME_INFO*>(rename_buffer.get());
+  rename_info->Flags = FILE_RENAME_FLAG_REPLACE_IF_EXISTS | FILE_RENAME_FLAG_POSIX_SEMANTICS;
+  rename_info->RootDirectory = nullptr;
+  rename_info->FileNameLength = gsl::narrow<DWORD>(name_bytes);
+  std::memcpy(rename_info->FileName, target_path.c_str(), name_bytes);
+  const BOOL renamed =
+      SetFileInformationByHandle(replacement_handle, FileRenameInfoEx, rename_info, rename_info_size);
+  const DWORD rename_error = GetLastError();
+  ASSERT_NE(renamed, FALSE) << rename_error;
+#else
   std::error_code error;
   std::filesystem::rename(replacement_path, path_, error);
   ASSERT_FALSE(error) << error.message();
+#endif
 
   size_t length = 0;
   ASSERT_STATUS_OK(file_->GetLength(length));
