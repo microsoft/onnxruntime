@@ -434,8 +434,8 @@ class TestPagedAttentionInt4(unittest.TestCase):
     def test_cache_write_follows_norm_and_partial_rope(self):
         for interleaved in (False, True):
             with self.subTest(interleaved=interleaved):
-                model, feeds, _ = make_case(width=64, lengths=(5,), past=(0,), int4=False)
-                reference_model, reference_feeds, _ = make_case(width=64, lengths=(5,), past=(0,), int4=False)
+                model, feeds, _ = make_case(width=64, lengths=(5,), past=(0,))
+                reference_model, reference_feeds, _ = make_case(width=64, lengths=(5,), past=(0,))
                 width, rotary_width = 64, 32
                 positions = np.arange(5, dtype=np.float32)
                 angles = positions[:, None] * np.linspace(0.01, 0.4, rotary_width // 2, dtype=np.float32)
@@ -468,7 +468,10 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 actual = run_case(model, feeds)[0]
                 reference = run_case(reference_model, reference_feeds)[0]
                 for name in reference:
-                    np.testing.assert_allclose(actual[name], reference[name], atol=8e-4, rtol=5e-3)
+                    if name == "output":
+                        np.testing.assert_allclose(actual[name], reference[name], atol=8e-4, rtol=5e-3)
+                    else:
+                        np.testing.assert_array_equal(actual[name], reference[name])
 
     def test_optional_cache_outputs(self):
         for output_count in (1, 3):

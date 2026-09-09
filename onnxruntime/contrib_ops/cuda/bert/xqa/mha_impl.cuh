@@ -2215,10 +2215,10 @@ CUBIN_EXPORT __global__
     }
     const GemmOutRegTile outTile = toFp16(acc);
 
-  #if defined(XQA_PAGED_INT4)
+#if defined(XQA_PAGED_INT4)
     ldgsts::waitGroup<0>();
     __syncwarp();
-  #endif
+#endif
     auto mergeAndSaveOutTile = [&](const GemmOutRegTile& tile, bool reorder) {
       if constexpr (gemm1NbWarpGrps == 1) {
         // swizzle in shared memory and write output global memory
@@ -2309,9 +2309,9 @@ CUBIN_EXPORT __global__
 
       // merge if we are the last CTA.
       const bool isLastCta = mbsmem.isLastCta;
-    #if defined(XQA_PAGED_INT4)
+#if defined(XQA_PAGED_INT4)
       __syncthreads();
-    #endif
+#endif
       if (isLastCta) {
         MultiBlockSMem::MBBuf& mbbuf = mbsmem.storage[warpIdx.y];
         SMemWarpRowMax& smemRowMax = reinterpret_cast<SMemWarpRowMax&>(smem);

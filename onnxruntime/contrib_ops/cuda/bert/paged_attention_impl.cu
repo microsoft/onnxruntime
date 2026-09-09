@@ -497,8 +497,8 @@ Status LaunchReshapeAndCacheImpl(const T* key, const T* value, TCACHE* key_cache
 
 template <typename T, typename TCACHE, typename SlotResolver>
 __global__ void ReshapeAndCacheHeads(const T* input, TCACHE* cache, const float* static_scale,
-                                    bool per_channel, SlotResolver resolver, int head_size, int kv_num_heads,
-                                    int input_stride, int64_t num_slots) {
+                                     bool per_channel, SlotResolver resolver, int head_size, int kv_num_heads,
+                                     int input_stride, int64_t num_slots) {
   const int token = blockIdx.x;
   const int head = blockIdx.y;
   const int channel = threadIdx.x;
@@ -1452,15 +1452,15 @@ Status PrepareQueryAndCache(cudaStream_t stream, contrib::PagedAttentionParamete
                                            key_stride, value_stride, stream));
     } else {
       DerivedSlotResolver resolver{data.block_table, past_seqlens, cumulative_seqlens_q, batch_size,
-                                    parameters.max_num_blocks_per_seq, parameters.block_size};
+                                   parameters.max_num_blocks_per_seq, parameters.block_size};
       ORT_RETURN_IF_ERROR(LaunchCacheHeads(key, value, data, parameters, resolver, key_stride, value_stride, stream));
     }
   } else {
     ORT_RETURN_IF_ERROR((LaunchReshapeAndCache<T, TCACHE>(
-      key, value, data.key_cache, data.value_cache, data.k_scale, data.v_scale, k_per_channel, v_per_channel,
-      const_cast<int*>(data.block_table), past_seqlens, cumulative_seqlens_q, data.slot_mapping, batch_size,
-      parameters.max_num_blocks_per_seq, token_count, kv_hidden_size, parameters.block_size,
-      parameters.num_blocks, key_stride, value_stride, stream, max_threads_per_block)));
+        key, value, data.key_cache, data.value_cache, data.k_scale, data.v_scale, k_per_channel, v_per_channel,
+        const_cast<int*>(data.block_table), past_seqlens, cumulative_seqlens_q, data.slot_mapping, batch_size,
+        parameters.max_num_blocks_per_seq, token_count, kv_hidden_size, parameters.block_size,
+        parameters.num_blocks, key_stride, value_stride, stream, max_threads_per_block)));
   }
 
   *query_out = query;
