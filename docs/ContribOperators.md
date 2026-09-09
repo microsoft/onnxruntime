@@ -2181,7 +2181,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
   Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
-  with scalar decay, but rejects `state_update_capacity > 0`.
+  with scalar decay and `head_size_qk <= 256`, but rejects `state_update_capacity > 0`.
   
   Layout. Query, key and value are token-major, so head counts are derived from the shapes
   rather than from attributes:
@@ -7684,5 +7684,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 

@@ -301,15 +301,17 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   if (o.gate_activation == "qwen") {
     test.AddInput<float>("a_log", {g.hv}, in.a_log);
     test.AddInput<float>("dt_bias", {g.hv}, in.dt_bias);
-  } else if (o.state_update_capacity > 0) {
+  } else {
     test.AddOptionalInputEdge<float>();
     test.AddOptionalInputEdge<float>();
   }
   if (o.state_update_capacity > 0) {
     test.AddInput<int32_t>("capture_count", {g.batch}, in.capture_count);
-    if (!in.state_update_active.empty()) {
-      test.AddInput<int32_t>("state_update_active", {1}, in.state_update_active);
-    }
+  } else if (!in.state_update_active.empty()) {
+    test.AddOptionalInputEdge<int32_t>();
+  }
+  if (!in.state_update_active.empty()) {
+    test.AddInput<int32_t>("state_update_active", {1}, in.state_update_active);
   }
 
   test.AddOutput<T>("output", shaped({out_heads, g.dv}), ToTensorType<T>(ref_out),
@@ -429,6 +431,21 @@ TEST(GatedDeltaNetWebGpuTest, RaggedWithoutInitialState) {
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
 
+TEST(GatedDeltaNetWebGpuTest, RaggedQwenWithInitialState) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{7, 3, 1, 3, 8, 4};
+  Inputs inputs = MakeInputs(g, 225);
+  inputs.cu_seqlens = {0, 1, 5, 7};
+  Options options;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  RunTypedCase<float>(g, options, inputs, 3e-4f, 3e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
 TEST(GatedDeltaNetWebGpuTest, RejectsCompactStateUpdates) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
@@ -439,6 +456,17 @@ TEST(GatedDeltaNetWebGpuTest, RejectsCompactStateUpdates) {
   Options options;
   options.state_update_capacity = 1;
   RunTypedCase<float>(g, options, inputs, 1e-4f, 1e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, IgnoresStateUpdateActiveWithoutCapture) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{2, 1, 1, 1, 4, 3};
+  Inputs inputs = MakeInputs(g, 228);
+  inputs.state_update_active = {0};
+  RunTypedCase<float>(g, Options{}, inputs, 1e-4f, 1e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
 

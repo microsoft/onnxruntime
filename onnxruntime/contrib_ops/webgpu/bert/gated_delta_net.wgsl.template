@@ -9,6 +9,7 @@
 #param qwen_gate
 #param sigmoid_beta
 #param qk_l2_norm
+#param use_packed_params
 
 var<workgroup> retrieved: array<f32, workgroup_size_x>;
 var<workgroup> pre_output: array<f32, workgroup_size_x>;
@@ -36,6 +37,9 @@ fn gdn_sigmoid(x: f32) -> f32 {
 
 $MAIN {
   let workgroup = workgroup_idx;
+  if (workgroup >= uniforms.batch_size * uniforms.num_heads_v * uniforms.head_size_v) {
+    return;
+  }
   let value_index = workgroup % uniforms.head_size_v;
   let value_head = (workgroup / uniforms.head_size_v) % uniforms.num_heads_v;
   let batch = workgroup / (uniforms.head_size_v * uniforms.num_heads_v);
@@ -82,9 +86,13 @@ $MAIN {
     query_value *= inverseSqrt(query_norm[0] + 1e-12);
 #endif
 #if update_rule == 1 || update_rule == 3
+#if use_packed_params
+    var gate = parameters[(token * uniforms.num_heads_v + value_head) * 2u];
+#else
     var gate = decay[token * uniforms.num_heads_v + value_head];
 #if qwen_gate
     gate = -exp(a_log[value_head]) * gdn_softplus(gate + dt_bias[value_head]);
+#endif
 #endif
     state *= exp(gate);
 #endif
@@ -103,9 +111,13 @@ $MAIN {
     if (key_index == 0u) {
       var beta_value = 1.0;
 #if update_rule == 2 || update_rule == 3
+#if use_packed_params
+      beta_value = parameters[(token * uniforms.num_heads_v + value_head) * 2u + 1u];
+#else
       beta_value = beta[token * uniforms.num_heads_v + value_head];
 #if sigmoid_beta
       beta_value = gdn_sigmoid(beta_value);
+#endif
 #endif
 #endif
       var retrieved_value = 0.0;
