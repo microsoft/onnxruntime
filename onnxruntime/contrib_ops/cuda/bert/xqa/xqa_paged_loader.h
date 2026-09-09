@@ -25,12 +25,13 @@ constexpr int kXqaTokensPerPage = 128;
 
 // Paged-KV XQA decode launcher. Unlike LaunchXQAKernel (contiguous per-request cache) this reads
 // K and V from a shared block pool addressed through a page table.
-// kInt4 uses packed UINT8 heads and FP16 per-token/head scales, passed through the scale pointers.
-// It supports FP16 query/output, head_size 256, and group_size 6 only. Other quantized types use
+// kInt4 uses packed UINT8 heads with static FP32 PER_CHANNEL scales folded into Q and the output
+// by the caller; both scale pointers must be null. It supports FP16 query/output, head_size 256,
+// and group_size 6 only. Other quantized types use
 // FP32 per-tensor scales. The INT4 shared-memory and scratch layouts match native FP16 XQA.
 //
 // Preconditions: one query token per sequence, head_size in {64, 128, 256}, group_size in
-// {4, 6, 8, 16, 32}, supported FP16/INT8/FP8 cache, block_size % kXqaTokensPerPage == 0.
+// {4, 6, 8, 16, 32}, supported FP16/INT8/FP8/INT4 cache, block_size % kXqaTokensPerPage == 0.
 // PagedAttention currently routes native FP16 cache only for head_size=256 and group_size=6.
 Status LaunchXQAPagedKernel(
     const cudaDeviceProp& device_prop,
@@ -58,7 +59,7 @@ Status LaunchXQAPagedKernel(
 
 // Multi-token speculative-verification launcher. The implementation is deliberately limited to
 // the DFlash2 target geometry: FP16/BF16 query/output, H256, group size 6, and matching native or
-// INT8/FP8 paged KV, or packed INT4 with the FP16 token-scale contract above.
+// INT8/FP8 paged KV, or packed INT4 with FP16 query/output and the PER_CHANNEL scale folding above.
 Status LaunchXQAPagedSpecDecKernel(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,

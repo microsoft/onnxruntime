@@ -1,6 +1,7 @@
 import os
 import pathlib
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -8,10 +9,18 @@ from unittest.mock import patch
 import ml_dtypes
 import numpy as np
 import onnx
-from onnx import helper
+import torch
 
 import onnxruntime as ort
 from onnxruntime.capi import _pybind_state
+
+helper = onnx.helper
+
+
+def has_sm80_cuda():
+    return bool(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER")) or (
+        torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8
+    )
 
 
 def int4_kernel_available():
@@ -249,6 +258,8 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
             )
             if result.returncode:
                 raise RuntimeError(result.stdout + result.stderr)
+            if os.getenv("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO") == "1":
+                print(result.stdout, end="")
             results = []
             for step in range(steps):
                 outputs = {}
@@ -320,6 +331,73 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
     return results
 
 
+def run_with_kernel(model, feeds, expected_kernel, **kwargs):
+    sys.stdout.flush()
+    saved_fd = os.dup(1)
+    try:
+        with tempfile.TemporaryFile() as captured:
+            os.dup2(captured.fileno(), 1)
+            try:
+                with patch.dict(os.environ, {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1"}):
+                    results = run_case(model, feeds, **kwargs)
+            finally:
+                try:
+                    sys.stdout.flush()
+                finally:
+                    os.dup2(saved_fd, 1)
+            captured.seek(0)
+            debug_output = captured.read().decode(errors="replace")
+    finally:
+        os.close(saved_fd)
+    dispatches = [line for line in debug_output.splitlines() if "Operator=PagedAttention" in line]
+    assert dispatches, f"Missing PagedAttention dispatch telemetry: {debug_output}"
+    assert all(f"SdpaKernel={expected_kernel}" in line for line in dispatches), debug_output
+    return results
+
+
+class TestPagedAttentionInt4Helpers(unittest.TestCase):
+    def test_dispatch_capture_accepts_xqa(self):
+        result = [object()]
+
+        def run(*args, **kwargs):
+            self.assertEqual(os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"], "1")
+            os.write(1, b"Operator=PagedAttention SdpaKernel=XQA\n")
+            return result
+
+        with patch(__name__ + ".run_case", side_effect=run):
+            self.assertIs(run_with_kernel(None, None, "XQA"), result)
+
+    def test_dispatch_capture_rejects_fallback_and_missing_telemetry(self):
+        for telemetry in (
+            b"Operator=PagedAttention SdpaKernel=DECODER_ATTENTION\n",
+            b"",
+            b"Operator=PagedAttention SdpaKernel=XQA\nOperator=PagedAttention SdpaKernel=DECODER_ATTENTION\n",
+        ):
+            with (
+                self.subTest(telemetry=telemetry),
+                patch(
+                    __name__ + ".run_case",
+                    side_effect=lambda *args, telemetry=telemetry, **kwargs: os.write(1, telemetry),
+                ),
+                self.assertRaises(AssertionError),
+            ):
+                run_with_kernel(None, None, "XQA")
+
+    def test_dispatch_capture_restores_stdout_on_error(self):
+        original_stdout = os.fstat(1)
+        with patch.dict(os.environ, {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "0"}):
+            with (
+                patch(__name__ + ".run_case", side_effect=RuntimeError("kernel failure")),
+                self.assertRaisesRegex(RuntimeError, "kernel failure"),
+            ):
+                run_with_kernel(None, None, "XQA")
+            self.assertEqual(os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"], "0")
+        restored_stdout = os.fstat(1)
+        self.assertEqual(
+            (restored_stdout.st_dev, restored_stdout.st_ino), (original_stdout.st_dev, original_stdout.st_ino)
+        )
+
+
 @unittest.skipUnless(int4_kernel_available(), "Requires CUDA PagedAttention built with USE_INT4_KV_CACHE")
 class TestPagedAttentionInt4(unittest.TestCase):
     def setUp(self):
@@ -327,9 +405,11 @@ class TestPagedAttentionInt4(unittest.TestCase):
         self.environment.start()
         self.addCleanup(self.environment.stop)
 
-    def check_case(self, **kwargs):
+    def check_case(self, expected_kernel=None, **kwargs):
         model, feeds, expected = make_case(**kwargs)
-        actual = run_case(model, feeds)[0]
+        actual = (
+            run_case(model, feeds) if expected_kernel is None else run_with_kernel(model, feeds, expected_kernel)
+        )[0]
         for name, reference in expected.items():
             if name == "output":
                 tolerance = 6e-3 if str(reference.dtype) == "bfloat16" else 8e-4
@@ -372,12 +452,14 @@ class TestPagedAttentionInt4(unittest.TestCase):
             else:
                 np.testing.assert_array_equal(actual[name], reference)
 
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_int4_xqa_decode(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
             for block_size in (128, 256):
                 for window in (-1, 129):
                     with self.subTest(block_size=block_size, window=window):
                         self.check_case(
+                            expected_kernel="XQA",
                             width=256,
                             heads=24,
                             kv_heads=4,
@@ -390,14 +472,24 @@ class TestPagedAttentionInt4(unittest.TestCase):
     def test_int4_xqa_unsupported_scales_fall_back(self):
         # INT4 XQA only covers PER_CHANNEL scales, so PER_TENSOR must take the portable kernel.
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
-            self.check_case(width=256, heads=24, kv_heads=4, past=(513, 138), block_size=256, quant_type="PER_TENSOR")
+            self.check_case(
+                expected_kernel="DECODER_ATTENTION",
+                width=256,
+                heads=24,
+                kv_heads=4,
+                past=(513, 138),
+                block_size=256,
+                quant_type="PER_TENSOR",
+            )
 
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_int4_xqa_speculative_decode(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
             for lengths in ((2, 1), (8, 3), (0, 8)):
                 for window in (-1, 129):
                     with self.subTest(lengths=lengths, window=window):
                         self.check_case(
+                            expected_kernel="XQA",
                             width=256,
                             heads=24,
                             kv_heads=4,
@@ -408,18 +500,49 @@ class TestPagedAttentionInt4(unittest.TestCase):
                             sink=True,
                         )
 
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_int4_xqa_cuda_graph_replay(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
             model, feeds, _ = make_case(
                 width=256, heads=24, kv_heads=4, block_size=256, lengths=(8, 3), past=(513, 138)
             )
             changed = {"key": feeds["key"] * np.float16(3), "value": feeds["value"] * np.float16(0.25)}
-            actual = run_case(model, feeds, steps=3, updates={1: changed}, cuda_graph=True)
-            reference = run_case(model, {**feeds, **changed})[0]
+            actual = run_with_kernel(model, feeds, "XQA", steps=3, updates={1: changed}, cuda_graph=True)
+            reference = run_with_kernel(model, {**feeds, **changed}, "XQA")[0]
             self.assertFalse(np.array_equal(actual[0]["value_cache_out"], actual[1]["value_cache_out"]))
             for name in reference:
                 np.testing.assert_array_equal(actual[1][name], actual[2][name])
                 np.testing.assert_allclose(actual[1][name], reference[name], atol=8e-4, rtol=5e-3)
+
+    @unittest.skipUnless(has_sm80_cuda(), "Large-batch fallback requires an SM80 or newer GPU")
+    def test_int4_speculative_decode_exceeds_grid_y_limit(self):
+        batch_size = 8192
+        model, feeds, expected = make_case(
+            width=64, lengths=(8,), past=(0,), heads=1, kv_heads=1, quant_type="PER_TENSOR"
+        )
+        num_blocks, block_size = feeds["key_cache"].shape[:2]
+        for name in ("query", "key", "value", "key_cache", "value_cache"):
+            values = feeds[name]
+            replace_input(model, feeds, name, np.tile(values, (batch_size, *([1] * (values.ndim - 1)))))
+        replace_input(model, feeds, "past_seqlens", np.zeros(batch_size, dtype=np.int32))
+        replace_input(model, feeds, "cumulative_sequence_length", np.arange(batch_size + 1, dtype=np.int32) * 8)
+        block_offsets = np.arange(batch_size, dtype=np.int32)[:, None] * num_blocks
+        replace_input(model, feeds, "block_table", feeds["block_table"] + block_offsets)
+        replace_input(model, feeds, "slot_mapping", (feeds["slot_mapping"] + block_offsets * block_size).reshape(-1))
+        for output in model.graph.output:
+            reference = expected[output.name]
+            reference = np.tile(reference, (batch_size, *([1] * (reference.ndim - 1))))
+            expected[output.name] = reference
+            output.CopyFrom(
+                helper.make_tensor_value_info(
+                    output.name, helper.np_dtype_to_tensor_dtype(reference.dtype), reference.shape
+                )
+            )
+        self.assertEqual(feeds["query"].shape[0], 65536)
+        actual = run_case(model, feeds)[0]
+        np.testing.assert_allclose(actual["output"], expected["output"], atol=8e-4, rtol=5e-3)
+        for name in ("key_cache_out", "value_cache_out"):
+            np.testing.assert_array_equal(actual[name], expected[name])
 
     def test_int4_cuda_graph_replay(self):
         model, feeds, _ = make_case(width=128)
@@ -574,6 +697,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
             np.testing.assert_array_equal(actual[name], values)
         np.testing.assert_array_equal(actual["output"], np.tile(signed, 4).reshape(1, -1).astype(np.float16))
 
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_int4_per_channel_xqa_matches_portable(self):
         # A PER_CHANNEL scale is folded into Q and the output, so XQA has to agree with the
         # portable kernel. lengths (2, 1) also covers the speculative INT4 kernel.
@@ -583,9 +707,9 @@ class TestPagedAttentionInt4(unittest.TestCase):
                     width=256, heads=24, kv_heads=4, past=(513, 138), block_size=256, lengths=lengths
                 )
                 with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
-                    portable = run_case(model, feeds)[0]
+                    portable = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
                 with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
-                    accelerated = run_case(model, feeds)[0]
+                    accelerated = run_with_kernel(model, feeds, "XQA")[0]
                 np.testing.assert_allclose(
                     accelerated["output"].astype(np.float32),
                     portable["output"].astype(np.float32),
@@ -594,6 +718,35 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 )
                 for name in ("key_cache_out", "value_cache_out"):
                     np.testing.assert_array_equal(accelerated[name], portable[name])
+
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
+    def test_int4_xqa_large_per_channel_k_scale_matches_portable(self):
+        # XQA folds the K scale into the query and stores it as FP16, while the portable kernel
+        # keeps that product in FP32. The folded query must therefore stay within the FP16 range;
+        # this pins the largest scale that does, over channels holding both zero and nonzero codes.
+        heads, kv_heads, width = 24, 4, 256
+        model, feeds, _ = make_case(width=width, heads=heads, kv_heads=kv_heads, past=(513, 138), block_size=256)
+        zero_channels = width // 2
+        for side in ("key", "value"):
+            feeds[f"{side}_cache"][..., : zero_channels // 2] = 0x88  # two zero codes per byte
+
+        query = np.abs(feeds["query"].reshape(-1, heads, width).astype(np.float32))
+        k_scale = np.full((kv_heads, 1, width), 0.1, dtype=np.float32)
+        for kv_head in range(kv_heads):
+            group = query[:, kv_head * (heads // kv_heads) : (kv_head + 1) * (heads // kv_heads), :zero_channels]
+            k_scale[kv_head, 0, :zero_channels] = 30000.0 / np.maximum(group.max(axis=(0, 1)), 1e-3)
+        replace_input(model, feeds, "k_scale", k_scale)
+        folded = query[:, :, :zero_channels] * k_scale[:, 0, :zero_channels].repeat(heads // kv_heads, axis=0)
+        self.assertLess(folded.max(), np.finfo(np.float16).max)
+
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
+            portable = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+            accelerated = run_with_kernel(model, feeds, "XQA")[0]
+        self.assertTrue(np.isfinite(accelerated["output"].astype(np.float32)).all())
+        np.testing.assert_allclose(
+            accelerated["output"].astype(np.float32), portable["output"].astype(np.float32), atol=8e-4, rtol=5e-3
+        )
 
     def test_int4_scale_extremes(self):
         for magnitude in (2.0**-24, 1e10):

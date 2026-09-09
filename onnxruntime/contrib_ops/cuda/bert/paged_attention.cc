@@ -354,6 +354,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const bool decode_eligible =
       !use_latent_attention &&
       !disable_paged_decode_ &&
+      parameters.token_count <= device_prop.maxGridSize[1] &&
       GetPagedDecodeSharedMemoryBytes(parameters.head_size) <= static_cast<size_t>(device_prop.sharedMemPerBlock);
 
   size_t cumulative_seqlens_kv_bytes = sizeof(int) * (parameters.batch_size + 1);
