@@ -2948,7 +2948,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
 constexpr const char* VarlenCausalConvWithState_ver1_doc = R"DOC(
 Stateful causal depthwise convolution over a packed, token-major batch of variable-length
-sequences (CUDA only).
+sequences (CUDA and WebGPU).
 
 input and output have shape (total_tokens, channels). cumulative_sequence_length is a
 device-resident int32 tensor of shape (batch_size + 1); sequence i occupies

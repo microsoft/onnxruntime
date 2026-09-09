@@ -91,7 +91,6 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
   const int64_t total_tokens = input_shape[0];
   const int64_t channels = input_shape[1];
   const int64_t kernel_size = weight_shape[2];
-  const int64_t pad = (kernel_size - 1) * dilation_;
 
   ORT_RETURN_IF(total_tokens < 0 || total_tokens > std::numeric_limits<int32_t>::max(),
                 "total_tokens is too large for WebGPU");
@@ -101,6 +100,9 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
                 "kernel_size is invalid for WebGPU");
   ORT_RETURN_IF(weight_shape[0] != channels, "weight first dim must match input channels");
   ORT_RETURN_IF(weight_shape[1] != 1, "weight second dim must be 1 for depthwise convolution");
+  const int64_t pad = (kernel_size - 1) * dilation_;
+  ORT_RETURN_IF(pad > std::numeric_limits<int32_t>::max(),
+                "pad is too large for WebGPU");
 
   const auto& cu_seqlens_shape = cu_seqlens->Shape();
   ORT_RETURN_IF(cu_seqlens_shape.NumDimensions() != 1 || cu_seqlens_shape[0] < 2,
