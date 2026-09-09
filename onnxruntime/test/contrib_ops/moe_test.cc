@@ -1498,15 +1498,25 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
 #if defined(USE_WEBGPU)
 // Packed QMoE does not need cumulative sequence lengths: every token is routed and evaluated
 // independently. This fixture represents three requests of lengths [2, 1, 2] concatenated into a
-// single 2D token-major input. Expert-specific FC2 biases make the selected expert visible in each
-// output row, so the test also catches token reordering or accidental interaction between requests.
+// single 2D token-major input. Distinct token values and nonzero weights make each output depend on
+// the corresponding hidden-state row, while expert-specific biases expose the selected expert.
 TEST(MoETest, QMoETest_WebGPU_PackedRaggedBatch) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
   constexpr int num_rows = 5;
   constexpr int num_experts = 2;
   constexpr int hidden_size = 64;
   constexpr int inter_size = 64;
 
-  std::vector<float> input(num_rows * hidden_size, 0.25f);
+  const std::array<float, num_rows> token_values = {0.05f, 0.1f, -0.05f, 0.2f, -0.1f};
+  std::vector<float> input;
+  input.reserve(num_rows * hidden_size);
+  for (float token_value : token_values) {
+    input.insert(input.end(), hidden_size, token_value);
+  }
   const std::vector<float> router_probs = {
       10.0f,
       0.0f,
@@ -1520,9 +1530,9 @@ TEST(MoETest, QMoETest_WebGPU_PackedRaggedBatch) {
       10.0f,
   };
 
-  // 0x88 encodes two zero-valued INT4 weights. FC2 bias is therefore the expert output.
-  std::vector<uint8_t> fc1_experts_weights(num_experts * 2 * inter_size * hidden_size / 2, 0x88);
-  std::vector<uint8_t> fc2_experts_weights(num_experts * hidden_size * inter_size / 2, 0x88);
+  // 0x99 encodes two INT4 values one above the default zero point, so both projections are nonzero.
+  std::vector<uint8_t> fc1_experts_weights(num_experts * 2 * inter_size * hidden_size / 2, 0x99);
+  std::vector<uint8_t> fc2_experts_weights(num_experts * hidden_size * inter_size / 2, 0x99);
   std::vector<float> fc1_scales(num_experts * 2 * inter_size, 0.01f);
   std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);
   std::vector<float> fc2_bias(hidden_size, 1.0f);
@@ -1530,8 +1540,12 @@ TEST(MoETest, QMoETest_WebGPU_PackedRaggedBatch) {
 
   std::vector<float> expected_output;
   expected_output.reserve(num_rows * hidden_size);
-  for (float expert_value : {1.0f, 2.0f, 2.0f, 1.0f, 2.0f}) {
-    expected_output.insert(expected_output.end(), hidden_size, expert_value);
+  const std::array<float, num_rows> expert_biases = {1.0f, 2.0f, 2.0f, 1.0f, 2.0f};
+  for (int row = 0; row < num_rows; ++row) {
+    const float projection = hidden_size * token_values[row] * 0.01f;
+    const float swiglu = projection / (1.0f + std::exp(-projection)) * projection;
+    const float expert_output = inter_size * swiglu * 0.01f + expert_biases[row];
+    expected_output.insert(expected_output.end(), hidden_size, expert_output);
   }
 
   OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
@@ -1561,9 +1575,11 @@ TEST(MoETest, QMoETest_WebGPU_PackedRaggedBatch) {
   tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected_output));
   tester.SetOutputTolerance(0.01f);
 
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  execution_providers.push_back(std::move(webgpu_ep));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // Test QMoE with num_rows=1 on WebGPU to exercise the fused 1-token decode path.
