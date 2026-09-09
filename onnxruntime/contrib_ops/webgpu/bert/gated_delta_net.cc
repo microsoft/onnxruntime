@@ -34,6 +34,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("TS", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("TI", DataTypeImpl::GetTensorType<int32_t>())
+        .InputMemoryType(OrtMemTypeCPUInput, 10)
         .MayInplace(6, 1),
     GatedDeltaNet);
 
@@ -61,19 +62,22 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("key", ShaderUsage::UseElementTypeAlias);
   shader.AddInput("value", ShaderUsage::UseElementTypeAlias);
   if (has_cu_seqlens_) shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
-  if (update_rule_ == GatedDeltaNetUpdateRule::Gated || update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) {
+  if ((update_rule_ == GatedDeltaNetUpdateRule::Gated || update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) &&
+      !use_packed_params_) {
     shader.AddInput("decay", ShaderUsage::UseUniform);
   }
-  if (update_rule_ == GatedDeltaNetUpdateRule::Delta || update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) {
+  if ((update_rule_ == GatedDeltaNetUpdateRule::Delta || update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) &&
+      !use_packed_params_) {
     shader.AddInput("beta", ShaderUsage::UseUniform);
   }
   if (has_initial_state_ && !initial_state_in_final_state_) {
     shader.AddInput("initial_state", ShaderUsage::UseUniform);
   }
-  if (qwen_gate_) {
+  if (qwen_gate_ && !use_packed_params_) {
     shader.AddInput("a_log", ShaderUsage::UseUniform);
     shader.AddInput("dt_bias", ShaderUsage::UseUniform);
   }
+  if (use_packed_params_) shader.AddInput("parameters", ShaderUsage::UseUniform);
   shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
   if (output_final_state_) shader.AddOutput("final_state", ShaderUsage::UseUniform);
 
@@ -89,7 +93,23 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(qk_l2_norm, qk_l2_norm_),
                              WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
                              WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
-                             WGSL_TEMPLATE_PARAMETER(update_rule, update_rule));
+                             WGSL_TEMPLATE_PARAMETER(update_rule, update_rule),
+                             WGSL_TEMPLATE_PARAMETER(use_packed_params, use_packed_params_));
+}
+
+Status GatedDeltaNetParamsProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  if (has_decay_) shader.AddInput("decay", ShaderUsage::UseUniform);
+  if (has_beta_) shader.AddInput("beta", ShaderUsage::UseUniform);
+  if (qwen_gate_) {
+    shader.AddInput("a_log", ShaderUsage::UseUniform);
+    shader.AddInput("dt_bias", ShaderUsage::UseUniform);
+  }
+  shader.AddOutput("parameters", ShaderUsage::UseUniform);
+  return WGSL_TEMPLATE_APPLY(shader, "bert/gated_delta_net_params.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(has_beta, has_beta_),
+                             WGSL_TEMPLATE_PARAMETER(has_decay, has_decay_),
+                             WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
+                             WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_));
 }
 
 Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
@@ -116,8 +136,11 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   }
   ORT_RETURN_IF_NOT(needs_decay == (decay != nullptr), "decay input presence must match update_rule");
   ORT_RETURN_IF_NOT(needs_beta == (beta != nullptr), "beta input presence must match update_rule");
-  ORT_RETURN_IF_NOT(capture_count == nullptr && state_update_active == nullptr,
-                    "capture_count and state_update_active require state_update_capacity > 0");
+  ORT_RETURN_IF_NOT(capture_count == nullptr, "WebGPU GatedDeltaNet does not support capture_count");
+  if (state_update_active != nullptr) {
+    ORT_RETURN_IF_NOT(state_update_active->Shape() == TensorShape({1}),
+                      "state_update_active must have shape [1]");
+  }
 
   const auto& q_shape = query->Shape();
   const auto& k_shape = key->Shape();
@@ -202,16 +225,37 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   // A WebGPU storage buffer cannot be bound for both read-only and read-write access in one pass.
   const bool state_alias =
       initial_state != nullptr && final_state != nullptr && initial_state->DataRaw() == final_state->DataRaw();
+  const bool use_packed_params = qwen_gate_ || (needs_decay && needs_beta);
+  std::optional<Tensor> packed_params;
+  if (use_packed_params) {
+    packed_params.emplace(
+        context.CreateGPUTensor(DataTypeImpl::GetType<float>(), TensorShape{total_tokens, hv, 2}));
+    GatedDeltaNetParamsProgram params_program{needs_decay, needs_beta, qwen_gate_, sigmoid_beta_};
+    if (decay != nullptr) params_program.AddInput({decay, ProgramTensorMetadataDependency::None});
+    if (beta != nullptr) params_program.AddInput({beta, ProgramTensorMetadataDependency::None});
+    if (qwen_gate_) params_program.AddInputs({{a_log, ProgramTensorMetadataDependency::None},
+                                              {dt_bias, ProgramTensorMetadataDependency::None}});
+    params_program.AddOutput({&*packed_params, ProgramTensorMetadataDependency::None})
+        .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(total_tokens * hv))
+        .SetWorkgroupSize(64)
+        .CacheHint(needs_decay, needs_beta, qwen_gate_, sigmoid_beta_)
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
+                              {onnxruntime::narrow<uint32_t>(hv)}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(params_program));
+  }
+
   GatedDeltaNetProgram program{update_rule_, cu_seqlens != nullptr, initial_state != nullptr, state_alias,
-                               final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_};
+                               final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params};
   program.AddInputs({{query, ProgramTensorMetadataDependency::Type},
                      {key, ProgramTensorMetadataDependency::Type},
                      {value, ProgramTensorMetadataDependency::Type}});
   if (cu_seqlens != nullptr) program.AddInput({cu_seqlens, ProgramTensorMetadataDependency::None});
-  if (decay != nullptr) program.AddInput({decay, ProgramTensorMetadataDependency::None});
-  if (beta != nullptr) program.AddInput({beta, ProgramTensorMetadataDependency::None});
+  if (decay != nullptr && !use_packed_params) program.AddInput({decay, ProgramTensorMetadataDependency::None});
+  if (beta != nullptr && !use_packed_params) program.AddInput({beta, ProgramTensorMetadataDependency::None});
   if (initial_state != nullptr && !state_alias) program.AddInput({initial_state, ProgramTensorMetadataDependency::None});
-  if (qwen_gate_) program.AddInputs({{a_log, ProgramTensorMetadataDependency::None}, {dt_bias, ProgramTensorMetadataDependency::None}});
+  if (qwen_gate_ && !use_packed_params) program.AddInputs({{a_log, ProgramTensorMetadataDependency::None},
+                                                           {dt_bias, ProgramTensorMetadataDependency::None}});
+  if (use_packed_params) program.AddInput({&*packed_params, ProgramTensorMetadataDependency::None});
   program.AddOutput({output, ProgramTensorMetadataDependency::Type});
   if (final_state != nullptr) {
     program.AddOutput({final_state, ProgramTensorMetadataDependency::None});
@@ -221,7 +265,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv * dv))
       .SetWorkgroupSize(256)
       .CacheHint(static_cast<int>(update_rule_), cu_seqlens != nullptr, initial_state != nullptr, state_alias,
-                 final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_)
+                 final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                             {onnxruntime::narrow<uint32_t>(batch)},
                             {onnxruntime::narrow<uint32_t>(hq)},
