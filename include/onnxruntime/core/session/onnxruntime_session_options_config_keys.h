@@ -627,6 +627,11 @@ static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep
 // present_value output of com.microsoft.GroupQueryAttention. Applies to every GQA node in the
 // model. The Key cache (past_key/present_key) is not affected.
 //
+// Requires onnxruntime_ENABLE_GQA_VALUE_LAYOUT, enabled by default in normal builds and automatically
+// disabled in minimal, extended-minimal, and contrib-disabled builds. When disabled, setting this
+// option to any value fails session initialization with ORT_INVALID_ARGUMENT. Leave it unset to load
+// a model with a preconverted BNHS boundary; disabled builds do not validate or warn about its layout.
+//
 // Option values:
 // - "BNSH": (batch_size, num_heads, sequence_length, head_size). Matches the operator schema. [DEFAULT]
 // - "BNHS": (batch_size, num_heads, head_size, sequence_length).

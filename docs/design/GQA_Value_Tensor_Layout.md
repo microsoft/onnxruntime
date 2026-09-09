@@ -398,7 +398,7 @@ immediately after the Level1 `ApplyTransformers` call and before `partitioner.Pa
 ORT_RETURN_IF_ERROR_SESSIONID_(
     graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
 if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsGqaValueLayout, "BNSH") == "BNHS") {
   GqaValueLayoutTransformer gqa_value_layout{};
   ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(gqa_value_layout, *session_logger_, graph));
@@ -488,37 +488,25 @@ with no option set is the documented way to use BNHS there.
 than compiling or fusing them, so every boundary would be reported as unfused even though the EP will
 fuse the pattern when the saved model is loaded.
 
-### 4.3 Minimal builds
+### 4.3 Build availability
 
-`gqa_value_layout_transformer.cc` is not in the minimal or extended-minimal source lists in
-`cmake/onnxruntime_optimizer.cmake`, so it is not compiled there. That is safe because every
-reference to `GqaValueLayoutTransformer` and `ReportUnfusedGqaValueLayoutTransposes` sits inside
-`TransformGraph`, which is itself inside a `#if !defined(ORT_MINIMAL_BUILD)` block, and
-`adjust_global_compile_flags.cmake` defines `ORT_MINIMAL_BUILD` for extended minimal builds as well.
-That guard opens well above `TransformGraph` and closes well below it, with no intervening `#else`, so
-the whole function — including both GQA blocks — is excluded. The declaration in
-`inference_session.h` is inside the same guard, which it has to be for the two to agree at all.
-A minimal build reaches the ORT format path instead, which is handled in section 5.
+The CMake option `onnxruntime_ENABLE_GQA_VALUE_LAYOUT` enables conversion, boundary validation, and
+unfused-Transpose diagnostics. It defaults to `ON` in normal builds. To disable it explicitly, pass
+`--cmake_extra_defines onnxruntime_ENABLE_GQA_VALUE_LAYOUT=OFF` to the build script.
 
-What a minimal build *does* get is `gqa_value_layout_boundaries.{h,cc}`, which is in both minimal
-source lists. It owns the value constants `kGqaValueLayoutBNSH` / `kGqaValueLayoutBNHS`, the
-`GqaValueLayoutBoundaries` struct, and the detection primitives — everything `PartitionOrtFormatModel`
-needs, and nothing else. `gqa_value_layout_transformer.h` includes it rather than declaring any of
-that itself, so the transformer header stays the full-build-only half and there is one home for each
-declaration.
+Minimal, extended-minimal, and contrib-disabled builds automatically force the feature off, even if
+`ON` was requested. `cmake/onnxruntime_optimizer.cmake` excludes both
+`gqa_value_layout_transformer.{h,cc}` and `gqa_value_layout_boundaries.{h,cc}` when disabled.
+`ORT_ENABLE_GQA_VALUE_LAYOUT` guards their session integration and optimizer tests.
 
-Keep that split in mind when maintaining the minimal build: adding a dependency on the transformer
-header from code that compiles in a minimal build will not link, whereas the boundaries header will.
+Disabled builds reject **any explicit** `session.gqa_value_layout` value, including `BNSH`, with
+`ORT_INVALID_ARGUMENT` during session initialization. This prevents silently ignoring a layout claim
+without retaining boundary detection in size-constrained builds. Leaving the option unset preserves
+the model's existing layout, with no GQA layout validation or unfused-Transpose warning.
 
-One consequence is worth knowing before touching the detection. `Graph::GetProducerNode()` and
-`GetConsumerNodes()`, and the maps behind them, are themselves compiled out of a **base** minimal
-build, so `gqa_value_layout_boundaries.cc` reaches them through local `ProducerOf` / `ConsumersOf`
-helpers that fall back to walking the nodes. That fallback is linear per lookup, making a full
-boundary scan O(GQA nodes × graph nodes). `PartitionOrtFormatModel` therefore only asks for boundaries
-in a minimal build when the application actually set the option — nothing else consumes the result
-there, since the diagnostic is full-build only and BNSH is enforced only for an explicit request. A
-full build has the maps and scans on every ORT format load, which is what keeps the diagnostic working
-for a converted model loaded *without* the option.
+To use BNHS in a minimal build, convert the model to ORT format using a feature-enabled build, then
+load that model without setting the layout option. The target build still needs the operators and
+execution provider required to execute the converted model.
 
 ### Fallback cost
 
@@ -552,6 +540,9 @@ caches still require both operator cache pairs to share buffers; this fallback d
 restriction.
 
 ## 5. ORT-format path
+
+This section describes feature-enabled builds. Disabled builds reject every explicit layout option
+as described in 4.3; loading a preconverted model with the option unset remains supported.
 
 `PartitionOrtFormatModel` does not go through `TransformGraph`, so `.ort` models receive no
 insertion. Silently ignoring the option there is not safe: with dynamic or coincidentally square
@@ -587,23 +578,14 @@ partitioning, while the GQA nodes are still present to anchor on. It serves two 
 - **Driving the unfused-Transpose report** after partitioning. Unlike the ORT-format *writing* path,
   `kOrtFormatLoad` does compile and fuse, so a surviving Transpose here really will execute.
 
-The detection lives in its own translation unit, `gqa_value_layout_boundaries.cc`, which **is** in the
-minimal build source lists — the transformer itself is not. That matters because a minimal build
-serves ORT format models only, so this is the sole path on which the BNSH claim can be checked at all;
-guarding the check on build flavour would leave it silently unenforced exactly where a layout misread
-is hardest to diagnose. The report stays full-build only, being a developer diagnostic rather than
-something correctness depends on.
-
-Splitting the file also keeps one definition of "already converted": `ClassifyPastValue` and
+The detection lives in its own translation unit, `gqa_value_layout_boundaries.cc`, compiled alongside
+the transformer only when layout support is enabled. Splitting the file keeps one definition of
+"already converted": `ClassifyPastValue` and
 `ClassifyPresentValue` call the same `FindConverted*Boundary` primitives, so the transformer and the
 ORT format path cannot drift apart on what the converted shape looks like.
 
-That check is deliberately **not** guarded on the build flavour. A minimal build serves ORT format
-models only — `InferenceSession::Initialize` refuses anything else — so this is the only place the
-option can be caught there, and guarding it would let a minimal build silently ignore the option.
-
-Adding real support — running the transformer on the ORT format path — would require the transformer
-in minimal builds (see 4.3) and is deferred until a consumer needs it.
+Running the transformer on the ORT format load path is not supported. Convert the ONNX model in a
+feature-enabled build before deployment instead.
 
 ## 6. Tests
 

@@ -89,13 +89,12 @@ GqaNodeCounts CountGqaNodes(const Graph& graph);
 /**
 Finds every application boundary of a graph that already carries the BNHS conversion.
 
-Lives in its own translation unit, compiled in every build flavour including minimal, because the ORT
-format load path needs it to enforce an explicit BNSH request and to drive the unfused-Transpose
-diagnostic. The rest of the transformer is full-build only.
+Shared by the transformer and the ORT format load path to enforce an explicit BNSH request and drive
+the unfused-Transpose diagnostic. Compiled only when ORT_ENABLE_GQA_VALUE_LAYOUT is defined.
 */
 GqaValueLayoutBoundaries FindConvertedGqaValueLayoutBoundaries(const Graph& graph);
 
-// Uses the same boundary rules without collecting names. Minimal builds also avoid allocating consumers.
+// Uses the same boundary rules without collecting names.
 bool HasConvertedGqaValueLayoutBoundaries(const Graph& graph);
 
 }  // namespace onnxruntime

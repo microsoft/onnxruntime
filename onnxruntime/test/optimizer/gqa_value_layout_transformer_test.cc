@@ -5,8 +5,10 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -25,6 +27,7 @@
 #include "test/util/include/default_providers.h"
 #include "test/util/include/capturing_sink.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 
@@ -34,7 +37,7 @@
 namespace onnxruntime {
 namespace test {
 
-#if !defined(DISABLE_CONTRIB_OPS)
+#if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
 
 namespace {
 
@@ -621,8 +624,9 @@ AllocatorPtr CpuAllocator() {
   return TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
 }
 
-// Physically transposes the last two dimensions of a rank-4 MLFloat16 tensor. Used to convert the
+// Physically transposes the last two dimensions of a rank-4 tensor. Used to convert the
 // BNSH feed into the BNHS one, and to convert a BNHS result back for comparison.
+template <typename CacheT = MLFloat16>
 Status TransposeLastTwoDims(const OrtValue& src, OrtValue& dst) {
   const Tensor& src_tensor = src.Get<Tensor>();
   const auto& src_dims = src_tensor.Shape().GetDims();
@@ -633,9 +637,9 @@ Status TransposeLastTwoDims(const OrtValue& src, OrtValue& dst) {
   const int64_t cols = src_dims[3];
 
   const std::vector<int64_t> dst_dims{src_dims[0], src_dims[1], cols, rows};
-  std::vector<MLFloat16> dst_data(static_cast<size_t>(outer * rows * cols));
+  std::vector<CacheT> dst_data(static_cast<size_t>(outer * rows * cols));
 
-  const MLFloat16* src_data = src_tensor.Data<MLFloat16>();
+  const CacheT* src_data = src_tensor.Data<CacheT>();
   for (int64_t o = 0; o < outer; ++o) {
     for (int64_t r = 0; r < rows; ++r) {
       for (int64_t c = 0; c < cols; ++c) {
@@ -645,17 +649,18 @@ Status TransposeLastTwoDims(const OrtValue& src, OrtValue& dst) {
     }
   }
 
-  CreateMLValue<MLFloat16>(CpuAllocator(), dst_dims, dst_data, &dst);
+  CreateMLValue<CacheT>(CpuAllocator(), dst_dims, dst_data, &dst);
   return Status::OK();
 }
 
+template <typename CacheT = MLFloat16>
 OrtValue CloneTensor(const OrtValue& src) {
   const Tensor& src_tensor = src.Get<Tensor>();
   const std::vector<int64_t> dims{src_tensor.Shape().GetDims().begin(), src_tensor.Shape().GetDims().end()};
-  const std::vector<MLFloat16> data{src_tensor.Data<MLFloat16>(),
-                                    src_tensor.Data<MLFloat16>() + src_tensor.Shape().Size()};
+  const std::vector<CacheT> data{src_tensor.Data<CacheT>(),
+                                 src_tensor.Data<CacheT>() + src_tensor.Shape().Size()};
   OrtValue copy;
-  CreateMLValue<MLFloat16>(CpuAllocator(), dims, data, &copy);
+  CreateMLValue<CacheT>(CpuAllocator(), dims, data, &copy);
   return copy;
 }
 
@@ -680,6 +685,7 @@ Status ExpectTensorsEqual(const OrtValue& expected, const OrtValue& actual, cons
 // Compares two BNSH caches over the region the operator defines. Entries past
 // total_sequence_length are unspecified: the shared-buffer path leaves the caller's stale data
 // there, while a freshly allocated present_value need not.
+template <typename CacheT = MLFloat16>
 Status ExpectCacheRegionEqual(const OrtValue& expected, const OrtValue& actual, int64_t valid_seq,
                               const std::string& what) {
   const Tensor& e = expected.Get<Tensor>();
@@ -694,14 +700,14 @@ Status ExpectCacheRegionEqual(const OrtValue& expected, const OrtValue& actual, 
   const int64_t head_size = dims[3];
   ORT_RETURN_IF_NOT(valid_seq <= seq, what, ": valid_seq ", valid_seq, " exceeds the cache length ", seq, ".");
 
-  const MLFloat16* e_data = e.Data<MLFloat16>();
-  const MLFloat16* a_data = a.Data<MLFloat16>();
+  const CacheT* e_data = e.Data<CacheT>();
+  const CacheT* a_data = a.Data<CacheT>();
   for (int64_t o = 0; o < outer; ++o) {
     for (int64_t s = 0; s < valid_seq; ++s) {
       for (int64_t h = 0; h < head_size; ++h) {
         const size_t i = static_cast<size_t>((o * seq + s) * head_size + h);
-        ORT_RETURN_IF_NOT(e_data[i].val == a_data[i].val, what, ": entry (", o, ", ", s, ", ", h,
-                          ") differs (expected ", e_data[i].ToFloat(), ", got ", a_data[i].ToFloat(), ").");
+        ORT_RETURN_IF_NOT(std::memcmp(e_data + i, a_data + i, sizeof(CacheT)) == 0,
+                          what, ": entry (", o, ", ", s, ", ", h, ") differs.");
       }
     }
   }
@@ -2099,6 +2105,74 @@ TEST_F(GqaValueLayoutTransformerTest, ReportsUnfusedTransposeWhenTheBoundaryHasO
   EXPECT_THAT(unfused, ::testing::UnorderedElementsAre(boundary_in->Name(), boundary_out->Name()));
 }
 
+TEST_F(GqaValueLayoutTransformerTest, ReportsUnfusedTransposeAcrossCopyBranchesWithinHopLimit) {
+  for (int copy_hops : {0, 4, 5}) {
+    for (bool dead_branches_first : {false, true}) {
+      SCOPED_TRACE(MakeString(copy_hops, ",", dead_branches_first));
+      Model model = MakePostPartitionModel(*logger_);
+      Graph& graph = model.MainGraph();
+      ModelTestBuilder builder(graph);
+      const std::vector<int64_t> bnhs{kBatch, kKvNumHeads, kHeadSize, kMaxSeq};
+      auto* boundary = builder.MakeInput<MLFloat16>(bnhs, MLFloat16(0.0f), MLFloat16(0.0f));
+      const auto add_dead_branches = [&]() {
+        for (int branch = 0; branch < 2; ++branch) {
+          auto* copied = builder.MakeIntermediate<MLFloat16>(bnhs);
+          builder.AddNode("MemcpyToHost", {boundary}, {copied});
+          auto* output = builder.MakeOutput<MLFloat16>(bnhs);
+          builder.AddNode("Identity", {copied}, {output});
+        }
+      };
+      if (dead_branches_first) {
+        add_dead_branches();
+      }
+      NodeArg* current = boundary;
+      Node* first_live_consumer = nullptr;
+      for (int hop = 0; hop < copy_hops; ++hop) {
+        auto* copied = builder.MakeIntermediate<MLFloat16>(bnhs);
+        auto& copy = builder.AddNode("MemcpyFromHost", {current}, {copied});
+        if (hop == 0) {
+          first_live_consumer = &copy;
+        }
+        current = copied;
+      }
+      auto* output = builder.MakeOutput<MLFloat16>(
+          std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize});
+      auto& transpose = builder.AddNode("Transpose", {current}, {output});
+      transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+      if (copy_hops == 0) {
+        first_live_consumer = &transpose;
+      }
+      if (!dead_branches_first) {
+        add_dead_branches();
+      }
+      builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(graph.Resolve());
+      const auto consumers = graph.GetMutableConsumerNodes(boundary->Name());
+      ASSERT_EQ(consumers.size(), 3u);
+      if (copy_hops != 0) {
+        Node* selected = dead_branches_first ? consumers.back() : consumers.front();
+        if (selected != first_live_consumer) {
+          std::swap(selected->MutableOutputDefs()[0], first_live_consumer->MutableOutputDefs()[0]);
+          ASSERT_STATUS_OK(graph.Resolve());
+        }
+        const auto ordered_consumers = graph.GetConsumerNodes(boundary->Name());
+        ASSERT_EQ(dead_branches_first ? ordered_consumers.back() : ordered_consumers.front(), selected);
+      }
+      EXPECT_EQ(FindValueLayoutTransposeAfterGraphInput(graph, boundary->Name()),
+                copy_hops <= 4 ? &transpose : nullptr);
+
+      GqaValueLayoutBoundaries boundaries;
+      boundaries.past_value_inputs.push_back(boundary->Name());
+      const auto unfused = ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_);
+      if (copy_hops <= 4) {
+        EXPECT_THAT(unfused, ::testing::ElementsAre(boundary->Name()));
+      } else {
+        EXPECT_TRUE(unfused.empty());
+      }
+    }
+  }
+}
+
 // The other half of the contract: when the provider did absorb the Transposes, nothing is reported.
 TEST_F(GqaValueLayoutTransformerTest, ReportsNothingWhenTheTransposesWereFused) {
   Model model = MakePostPartitionModel(*logger_);
@@ -2261,13 +2335,64 @@ TEST_F(GqaValueLayoutTransformerTest, BnhsWithAliasedCacheBufferMatchesSeparateB
                                           "aliased cache buffer"));
 }
 
-TEST_F(GqaValueLayoutTransformerTest, BnhsWithBothCachesAliasedMatchesBnshAcrossDecodeStepsOnCpu) {
+namespace {
+
+template <typename CacheT = MLFloat16>
+void RunBothCachesAliasedDecodeTest(const logging::Logger& logger, bool disable_flash = false) {
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash ? "1" : "0"}}};
   RuntimeGqaModel model;
-  ASSERT_STATUS_OK(BuildRuntimeGqaModel(*logger_, model));
+  ASSERT_STATUS_OK(BuildRuntimeGqaModel(logger, model));
   ONNX_NAMESPACE::ModelProto proto;
   ASSERT_TRUE(proto.ParseFromString(model.bytes));
   ASSERT_EQ(proto.graph().node_size(), 1);
-  const auto& gqa = proto.graph().node(0);
+  auto& gqa = *proto.mutable_graph()->mutable_node(0);
+  if constexpr (std::is_same_v<CacheT, int8_t>) {
+    for (int index = gqa.attribute_size() - 1; index >= 0; --index) {
+      const auto& name = gqa.attribute(index).name();
+      if (name == "k_quant_type" || name == "v_quant_type" || name == "kv_cache_bit_width") {
+        gqa.mutable_attribute()->DeleteSubrange(index, 1);
+      }
+    }
+    for (auto* definitions : {proto.mutable_graph()->mutable_input(), proto.mutable_graph()->mutable_output()}) {
+      for (auto& definition : *definitions) {
+        if (definition.name() == gqa.input(3) || definition.name() == gqa.input(4) ||
+            definition.name() == gqa.output(1) || definition.name() == gqa.output(2)) {
+          definition.mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
+        }
+      }
+    }
+    while (gqa.input_size() < 12) {
+      gqa.add_input("");
+    }
+    for (int cache_index = 0; cache_index < 2; ++cache_index) {
+      const float scale = cache_index == 0 ? 0.03125f : 0.0625f;
+      auto& cache = model.bnsh_feeds.at(gqa.input(3 + cache_index));
+      const auto& tensor = cache.Get<Tensor>();
+      std::vector<int8_t> data;
+      data.reserve(static_cast<size_t>(tensor.Shape().Size()));
+      for (int64_t index = 0; index < tensor.Shape().Size(); ++index) {
+        data.push_back(static_cast<int8_t>(std::round(tensor.Data<MLFloat16>()[index].ToFloat() / scale)));
+      }
+      OrtValue quantized;
+      CreateMLValue<int8_t>(CpuAllocator(), kBnsh, data, &quantized);
+      cache = quantized;
+      auto* scale_initializer = proto.mutable_graph()->add_initializer();
+      scale_initializer->set_name(cache_index == 0 ? "k_scale" : "v_scale");
+      scale_initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      scale_initializer->add_dims(1);
+      scale_initializer->add_float_data(scale);
+      gqa.add_input(scale_initializer->name());
+      auto* attribute = gqa.add_attribute();
+      attribute->set_name(cache_index == 0 ? "k_quant_type" : "v_quant_type");
+      attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+      attribute->set_s("PER_TENSOR");
+    }
+    auto* bit_width = gqa.add_attribute();
+    bit_width->set_name("kv_cache_bit_width");
+    bit_width->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    bit_width->set_i(8);
+    ASSERT_TRUE(proto.SerializeToString(&model.bytes));
+  }
   const std::string past_key_name = gqa.input(3);
   const std::string present_key_name = gqa.output(1);
   const size_t key_index = IndexOfOutput(model, present_key_name);
@@ -2286,9 +2411,9 @@ TEST_F(GqaValueLayoutTransformerTest, BnhsWithBothCachesAliasedMatchesBnshAcross
   ASSERT_STATUS_OK(ExpectBnhsBoundary(aliased.GetMutableGraph()));
 
   NameMLValMap reference_feeds = model.bnsh_feeds;
-  OrtValue key_cache = CloneTensor(model.bnsh_feeds.at(past_key_name));
+  OrtValue key_cache = CloneTensor<CacheT>(model.bnsh_feeds.at(past_key_name));
   OrtValue value_cache;
-  ASSERT_STATUS_OK(TransposeLastTwoDims(model.bnsh_feeds.at(model.past_value_name), value_cache));
+  ASSERT_STATUS_OK(TransposeLastTwoDims<CacheT>(model.bnsh_feeds.at(model.past_value_name), value_cache));
 
   for (int32_t step = 0; step < 2; ++step) {
     SCOPED_TRACE(step);
@@ -2320,18 +2445,34 @@ TEST_F(GqaValueLayoutTransformerTest, BnhsWithBothCachesAliasedMatchesBnshAcross
       }
     }
     ASSERT_STATUS_OK(aliased.Run(RunOptions{}, *binding));
+    ASSERT_EQ(binding->GetOutputs()[key_index].Get<Tensor>().DataRaw(), key_cache.Get<Tensor>().DataRaw());
+    ASSERT_EQ(binding->GetOutputs()[value_index].Get<Tensor>().DataRaw(), value_cache.Get<Tensor>().DataRaw());
     ASSERT_STATUS_OK(ExpectNonDegenerate(reference_outputs[attention_index], "attention output"));
     ASSERT_STATUS_OK(ExpectTensorsEqual(reference_outputs[attention_index], binding->GetOutputs()[attention_index],
                                         "attention output"));
-    ASSERT_STATUS_OK(ExpectCacheRegionEqual(reference_outputs[key_index], key_cache, total_sequence_length,
-                                            "aliased Key cache"));
+    ASSERT_STATUS_OK(ExpectCacheRegionEqual<CacheT>(reference_outputs[key_index], key_cache, total_sequence_length,
+                                                    "aliased Key cache"));
     OrtValue value_as_bnsh;
-    ASSERT_STATUS_OK(TransposeLastTwoDims(value_cache, value_as_bnsh));
-    ASSERT_STATUS_OK(ExpectCacheRegionEqual(reference_outputs[value_index], value_as_bnsh, total_sequence_length,
-                                            "aliased Value cache"));
+    ASSERT_STATUS_OK(TransposeLastTwoDims<CacheT>(value_cache, value_as_bnsh));
+    ASSERT_STATUS_OK(ExpectCacheRegionEqual<CacheT>(reference_outputs[value_index], value_as_bnsh, total_sequence_length,
+                                                    "aliased Value cache"));
     reference_feeds[past_key_name] = reference_outputs[key_index];
     reference_feeds[model.past_value_name] = reference_outputs[value_index];
   }
+}
+
+}  // namespace
+
+TEST_F(GqaValueLayoutTransformerTest, BnhsWithBothCachesAliasedMatchesBnshAcrossDecodeStepsOnCpu) {
+  RunBothCachesAliasedDecodeTest(*logger_);
+}
+
+TEST_F(GqaValueLayoutTransformerTest, Int8BnhsWithBothCachesAliasedMatchesBnshAcrossDecodeStepsOnCpuFlash) {
+  RunBothCachesAliasedDecodeTest<int8_t>(*logger_, false);
+}
+
+TEST_F(GqaValueLayoutTransformerTest, Int8BnhsWithBothCachesAliasedMatchesBnshAcrossDecodeStepsOnCpuNoFlash) {
+  RunBothCachesAliasedDecodeTest<int8_t>(*logger_, true);
 }
 
 // The ORT format load path does not run TransformGraph, so the option cannot be honored there.
@@ -2366,9 +2507,7 @@ TEST_F(GqaValueLayoutTransformerTest, RejectsAnInvalidLayoutValueOnAnOrtFormatMo
 
 // An explicit BNSH request is a claim about the boundary on the ORT format path too. Leaving the
 // option unset is the documented way to load a BNHS-converted ORT model, so only the explicit request
-// conflicts. The detection this relies on lives in gqa_value_layout_boundaries.cc, which is in the
-// minimal build source lists so the check exists there as well -- a minimal build serves ORT format
-// models only, so it is the sole path on which the claim can be checked at all.
+// conflicts when layout support is enabled. Disabled builds reject every explicit layout option.
 TEST_F(GqaValueLayoutTransformerTest, RejectsAnOrtFormatModelWithBnhsBoundariesWhenBnshIsRequested) {
   const auto ort_model = ORT_TSTR("gqa_value_layout_bnhs.test_output.ort");
 
@@ -2418,7 +2557,7 @@ TEST_F(GqaValueLayoutTransformerTest, AllowsOrtFormatModelWithTheDefaultLayout) 
   ASSERT_STATUS_OK(session.Initialize());
 }
 
-#endif  // !defined(DISABLE_CONTRIB_OPS)
+#endif  // defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -28,66 +28,17 @@ bool IsGroupQueryAttention(const Node& node) {
   return node.OpType().compare("GroupQueryAttention") == 0 && node.Domain().compare(kMSDomain) == 0;
 }
 
-// Graph::GetProducerNode() / GetConsumerNodes() and the maps behind them are compiled out of a base
-// minimal build (include/onnxruntime/core/graph/graph.h, the
-// !ORT_MINIMAL_BUILD || ORT_EXTENDED_MINIMAL_BUILD block), and this translation unit is in the base
-// minimal source list so the ORT format path can enforce an explicit BNSH request there. Fall back to
-// walking the nodes when the maps are unavailable.
-//
-// The fallback is linear per lookup rather than a hash probe, so a full boundary scan costs
-// O(GQA nodes x graph nodes). It is only reached in a minimal build, and there PartitionOrtFormatModel()
-// asks for boundaries only when the application actually set the layout option. A full build has the
-// maps and can afford to ask on every load, which is what keeps the unfused-Transpose diagnostic
-// working for a converted model loaded without the option.
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
 const Node* ProducerOf(const Graph& graph, const std::string& arg_name) {
   return graph.GetProducerNode(arg_name);
 }
 
-#else
-
-const Node* ProducerOf(const Graph& graph, const std::string& arg_name) {
-  for (int index = 0; index < graph.MaxNodeIndex(); ++index) {
-    const Node* node = graph.GetNode(static_cast<NodeIndex>(index));
-    if (node == nullptr) {
-      continue;
-    }
-    for (const auto* def : node->OutputDefs()) {
-      if (def != nullptr && def->Exists() && def->Name() == arg_name) {
-        return node;
-      }
-    }
-  }
-  return nullptr;
-}
-
-#endif
-
 template <typename Result, typename Visitor>
 const Result* FindConsumer(const Graph& graph, const std::string& arg_name, Visitor&& visit) {
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   for (const Node* consumer : graph.GetConsumerNodes(arg_name)) {
     if (const Result* result = visit(consumer)) {
       return result;
     }
   }
-#else
-  for (int index = 0; index < graph.MaxNodeIndex(); ++index) {
-    const Node* node = graph.GetNode(static_cast<NodeIndex>(index));
-    if (node == nullptr) {
-      continue;
-    }
-    for (const auto* def : node->InputDefs()) {
-      if (def != nullptr && def->Exists() && def->Name() == arg_name) {
-        if (const Result* result = visit(node)) {
-          return result;
-        }
-        break;
-      }
-    }
-  }
-#endif
   return nullptr;
 }
 
@@ -150,8 +101,6 @@ bool IsGqaValueLayoutTranspose(const Node& node) {
     return false;
   }
 
-  // Read the attribute directly rather than through graph_utils, so this stays usable from the
-  // minimal build without pulling the optimizer helpers in with it.
   for (const auto& [name, attribute] : node.GetAttributes()) {
     if (name.compare("perm") == 0) {
       if (static_cast<size_t>(attribute.ints_size()) != kValueLayoutPerm.size()) {
@@ -206,32 +155,28 @@ const NodeArg* TraceGqaBoundaryForwardThroughDeviceCopies(const Graph& graph, co
   return TraceBoundaryForwardThroughDeviceCopies(graph, arg, 0);
 }
 
-const Node* FindValueLayoutTransposeAfterGraphInput(const Graph& graph, const std::string& boundary_name) {
-  std::string current = boundary_name;
-  for (int hops = 0; hops <= kMaxDeviceCopyHops; ++hops) {
-    const NodeArg* copy_output = nullptr;
-    const Node* transpose = FindConsumer<Node>(graph, current, [&](const Node* consumer) -> const Node* {
-      if (consumer == nullptr) {
-        return nullptr;
-      }
-      if (IsGqaValueLayoutTranspose(*consumer)) {
-        return consumer;
-      }
-      if (IsDeviceCopy(*consumer) && !consumer->OutputDefs().empty()) {
-        copy_output = consumer->OutputDefs()[0];
-      }
-      return nullptr;
-    });
-    if (transpose != nullptr) {
-      return transpose;
-    }
-
-    if (copy_output == nullptr) {
-      return nullptr;
-    }
-    current = copy_output->Name();
+namespace {
+const Node* FindValueLayoutTransposeAfterCopies(const Graph& graph, const std::string& arg_name, int copy_hops) {
+  if (copy_hops > kMaxDeviceCopyHops) {
+    return nullptr;
   }
-  return nullptr;
+  return FindConsumer<Node>(graph, arg_name, [&](const Node* consumer) -> const Node* {
+    if (consumer == nullptr) {
+      return nullptr;
+    }
+    if (IsGqaValueLayoutTranspose(*consumer)) {
+      return consumer;
+    }
+    if (IsDeviceCopy(*consumer) && !consumer->OutputDefs().empty()) {
+      return FindValueLayoutTransposeAfterCopies(graph, consumer->OutputDefs()[0]->Name(), copy_hops + 1);
+    }
+    return nullptr;
+  });
+}
+}  // namespace
+
+const Node* FindValueLayoutTransposeAfterGraphInput(const Graph& graph, const std::string& boundary_name) {
+  return FindValueLayoutTransposeAfterCopies(graph, boundary_name, 0);
 }
 
 const Node* FindValueLayoutTransposeBeforeGraphOutput(const Graph& graph, const std::string& boundary_name) {

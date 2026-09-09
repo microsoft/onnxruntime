@@ -12,16 +12,6 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/optimizer/graph_optimizer_registry.cc"
   )
 
-  if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
-    # Detection only, not the GQA Value layout transformer itself: the ORT format load path is
-    # compiled in minimal builds and needs it to enforce an explicit session.gqa_value_layout=BNSH
-    # request against a model whose Value cache boundary is already BNHS.
-    list(APPEND onnxruntime_optimizer_src_patterns
-      "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_boundaries.h"
-      "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_boundaries.cc"
-    )
-  endif()
-
   if (onnxruntime_EXTENDED_MINIMAL_BUILD)
     list(APPEND onnxruntime_optimizer_src_patterns
       "${ONNXRUNTIME_INCLUDE_DIR}/core/optimizer/graph_transformer_utils.h"
@@ -108,7 +98,7 @@ endif()
 
 file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS ${onnxruntime_optimizer_src_patterns})
 
-if (onnxruntime_DISABLE_CONTRIB_OPS)
+if (NOT onnxruntime_ENABLE_GQA_VALUE_LAYOUT)
   list(REMOVE_ITEM onnxruntime_optimizer_srcs
     "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_boundaries.h"
     "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_boundaries.cc"
