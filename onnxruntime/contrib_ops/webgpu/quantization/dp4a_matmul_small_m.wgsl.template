@@ -173,14 +173,14 @@ $MAIN {
                 let b_value = b.getByOffset(b_offset);
                 let own_b = DequantizedFrom4BitsTo8Bits(b_value.xy, zero);
                 let own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw, zero);
-                inter_results[row_offset + local_row][local_col] += acc_element_t(SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b));
+                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 #elif n_bits == 8
                 let own_b = AlignWithZeroPoint(b.getByOffset(b_offset * 2));
                 let own_b1 = AlignWithZeroPoint(b.getByOffset(b_offset * 2 + 1));
 #if has_zero_points
-                inter_results[row_offset + local_row][local_col] += acc_element_t(SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b, zero));
+                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b, zero);
 #else
-                inter_results[row_offset + local_row][local_col] += acc_element_t(SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b));
+                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 #endif
 
 #elif n_bits == 2
@@ -192,7 +192,7 @@ $MAIN {
                 let own_b = DequantizedFrom2BitsTo8Bits(b_value.x);
                 let own_b1 = DequantizedFrom2BitsTo8Bits(b_value.y);
 #endif
-                inter_results[row_offset + local_row][local_col] += acc_element_t(SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b));
+                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 #endif
             }
         }

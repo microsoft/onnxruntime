@@ -257,6 +257,8 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                                                  components_a,
                                                                  components_b);
 
+  const bool acc_f32 = context.EnableMatmulFp32Accumulation();
+
   if (use_wide_tile_program) {
     // Enforce output components to 1.
     components = 1;
@@ -278,8 +280,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                            ? context.AdapterInfo().subgroupMinSize
                                            : 0u;
 
-    const bool wide_tile_acc_f32 = context.EnableMatmulFp32Accumulation();
-    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), subgroup_min_size, wide_tile_acc_f32};
+    MatMulNBitsWideTileProgram program{has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, tile_m, tile_n, static_cast<uint32_t>(nbits), subgroup_min_size, acc_f32};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
 
@@ -320,7 +321,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                  {num_N_tile},
                                  {num_M_tile},
                                  {weight_index}});
-    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size, wide_tile_acc_f32);
+    program.CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, subgroup_min_size, acc_f32);
 
     return context.RunProgram(program);
   }
@@ -335,7 +336,6 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   constexpr uint32_t kU32Components = 4;
   uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t K_of_b = (n_blocks_per_col * blob_size) / components_b_with_u32;
-  const bool acc_f32 = context.EnableMatmulFp32Accumulation();
   MatMulNBitsProgram program{tile_size, static_cast<uint32_t>(nbits), has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, single_scale_weights, tile_size_k_vec, broadcast_a, acc_f32};
   program.SetWorkgroupSize(workgroup_size);
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;

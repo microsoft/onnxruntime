@@ -332,13 +332,20 @@ export declare namespace InferenceSession {
      * saturates the accumulator to Inf; setting this avoids that at the cost of registers and
      * workgroup memory.
      *
-     * The fused kernels carry the wider type into their epilogue: the fused MLP applies the bias,
-     * the SiLU and the gate/up product to the f32 accumulators and rounds once at the final store
-     * rather than after every step, so with the option on its output can differ from the same
-     * graph run unfused by more than the accumulation change alone.
+     * Where a fused kernel computes its epilogue on the accumulators, that epilogue carries the
+     * wider type too. On the fused MLP decode fast path the bias, the SiLU and the gate/up product
+     * are applied to the f32 accumulators and rounded once at the final store rather than after
+     * every step, so with the option on its output can differ from the same graph run unfused by
+     * more than the accumulation change alone. Fused MLP shapes that do not take that fast path
+     * materialize the gate and up tensors in the output element type before the activation, and
+     * are unaffected in their epilogue.
      *
      * This currently applies to MatMulNBits and its fused variants. Coverage of the unquantized
      * MatMul family is planned as follow-up work under the same option.
+     *
+     * This option is read by the native WebGPU execution provider only. Builds of onnxruntime-web
+     * that use the JSEP WebGPU backend ignore it, and their MatMulNBits shaders keep accumulating
+     * in the output element type.
      *
      * @default false
      */
