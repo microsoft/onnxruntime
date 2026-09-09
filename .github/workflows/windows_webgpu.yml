@@ -138,11 +138,14 @@ jobs:
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
 
-      # SplitKConfig only enables Split-K on Intel adapters, so the run above takes the non-Split-K
-      # path on this pool. Rerun the Split-K tests with the override on, and confirm from the shader
-      # dump that the reduction dispatched: the tests pass either way, so running them is not by
-      # itself evidence that they exercised Split-K.
-      - name: Run Split-K tests with the path forced on
+      # Non-Intel correctness coverage for the Split-K reduction. SplitKConfig enables Split-K on
+      # Intel adapters only, so the run above took the non-Split-K path on this A10 pool. The step
+      # below forces it on so the deterministic reduction is exercised on the GPUs this pool has.
+      #
+      # It then asserts from the shader dump that MatMul_Split_K_Reduce actually dispatched. That
+      # assertion is the point: these tests pass on either path, so a green run alone would not
+      # show Split-K ran.
+      - name: Verify the Split-K reduction on a non-Intel adapter
         shell: pwsh
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
         env:
