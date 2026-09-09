@@ -174,14 +174,16 @@ repeatability. Memory measurements were identical across reruns.
 | WDDM pre-inference usage | 1,808 MiB | 1,808 MiB | 0 MiB |
 | WDDM inference peak | 2,308 MiB | 2,238 MiB | **-70 MiB** |
 | WDDM inference increase | 500 MiB | 430 MiB | **-70 MiB** |
-| End-to-end average | 2,008.38 ms | 1,028.44 ms | -48.8% (not repeatable) |
-| End-to-end P50 | 1,485.20 ms | 996.96 ms | -32.9% (not repeatable) |
-| End-to-end P90 | 3,516.81 ms | 1,120.18 ms | -68.1% (not repeatable) |
-| Prefill average | 112.36 ms | 94.68 ms | -15.7% (not repeatable) |
-| Decode average per token | 14.81 ms | 7.30 ms | -50.8% (not repeatable) |
-| Decode P90 per token | 23.54 ms | 8.84 ms | -62.5% (not repeatable) |
-| Decode P99 per token | 56.51 ms | 13.49 ms | -76.1% (not repeatable) |
-| Initialization | 3.22 s | 1.73 s | -46.3% |
+| **Latency: median process metric across six fresh-process runs** | | | |
+| End-to-end 10% trimmed mean | 837.51 ms | 849.19 ms | +1.4% |
+| End-to-end P50 | 831.94 ms | 836.34 ms | +0.5% |
+| Prefill 10% trimmed mean | 86.41 ms | 87.32 ms | +1.1% |
+| Decode 10% trimmed mean per token | 5.77 ms | 5.82 ms | +0.9% |
+| Decode P50 per token | 5.64 ms | 5.73 ms | +1.5% |
+| Decode P90 per token | 6.94 ms | 7.01 ms | +1.1% |
+| Decode P99 per token | 9.67 ms | 9.91 ms | +2.5% |
+| Median decode stall rate | 0% | 0% | 0 pp |
+| Initialization | 1.43 s | 1.49 s | +4.1% |
 
 fpA-intB preallocation did not reduce the memory high-water mark. Legacy
 preallocation reduced measured arena reservation by
@@ -206,8 +208,9 @@ The robust rerun produced six paired comparisons per path:
 | Legacy 6 | 834.65 ms | 857.20 ms | +2.7% | +3.5% | +2.5% | 0 / 0 |
 | **Legacy median paired change** | | | **+1.3%** | **+0.7%** | **+1.2%** | |
 
-Legacy is repeatable: all six trimmed-mean changes are between -0.5% and
-+2.7%, so preallocation has effectively no latency effect. fpA-intB remains
+Legacy is repeatable: all six paired trimmed-mean changes are between -0.5% and
++2.7%, and the aggregate latency metrics in the main table differ by at most
+2.5%, so preallocation has effectively no latency effect. fpA-intB remains
 non-repeatable even after trimming: paired changes range from -51.2% to +77.1%.
 Whole processes enter different performance modes, and an earlier dispatch
 trace confirmed that fresh-process tactic profiling can select different
