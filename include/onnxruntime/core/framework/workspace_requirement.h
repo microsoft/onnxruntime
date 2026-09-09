@@ -21,11 +21,9 @@ struct WorkspaceRequirement {
   size_t size_bytes;  // upper-bound scratch bytes for this slot
   int slot_id;        // kernel-defined, stable across runs; unique within one kernel instance
 
-  // Pointer-alignment requirement for this slot's buffer, in bytes (e.g. 128, 256). 0 means "the
-  // allocator's default alignment is sufficient" - true for every kernel using this API today, since
-  // CUDA's allocator already guarantees >= 256-byte aligned allocations. Reserved for a future kernel
-  // with a stricter/exotic alignment need, or a future shared-arena packer that co-locates multiple
-  // kernels' slots (see the "shared per-node memory-budget tracker" direction in issue #29775).
+  // Pointer-alignment requirement for this slot's buffer, in bytes (e.g. 128, 256). 0 requests the
+  // allocator's default alignment. Any nonzero value is a binding requirement on the returned
+  // buffer/root that a planner must honor.
   // A plain size_t (not std::optional<size_t>) is used deliberately: this struct is meant to be usable
   // across a plugin-DLL boundary eventually, and std::optional's layout is not guaranteed stable across
   // compilers/STL versions the way a scalar with a sentinel value is.

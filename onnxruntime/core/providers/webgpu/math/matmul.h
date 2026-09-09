@@ -17,9 +17,34 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last = true,
-                     const TensorShape& input_a_reshape = TensorShape(),
-                     const TensorShape& input_b_reshape = TensorShape());
+class MatMulOptImpl {
+ public:
+  virtual ~MatMulOptImpl() = default;
+
+  virtual Status Compute(ComputeContext& context,
+                         const std::vector<const Tensor*>& inputs,
+                         Tensor* output,
+                         const Activation& activation,
+                         bool is_channels_last,
+                         bool b_is_constant,
+                         /*out*/ bool& handled) = 0;
+};
+
+class MatMulOptImplCache {
+ public:
+  MatMulOptImplCache() = default;
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MatMulOptImplCache);
+
+  MatMulOptImpl* GetOrCreate(const ComputeContextBase& context);
+
+ private:
+  std::once_flag subgroup_impl_init_flag_;
+  std::unique_ptr<MatMulOptImpl> subgroup_impl_;
+};
+
+Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output,
+                     bool is_channels_last, MatMulOptImplCache& cache,
+                     bool b_is_constant = false);
 
 MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
     const Tensor* bias,
@@ -32,24 +57,6 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
 
 class MatMul final : public WebGpuKernel {
  public:
-  // Abstract base class for alternative optimized MatMul implementations.
-  // Implementations can provide optimized computation paths by deriving from this class.
-  class MatMulOptImpl {
-   public:
-    explicit MatMulOptImpl(const MatMul& parent) : parent_(parent) {}
-    virtual ~MatMulOptImpl() = default;
-
-    // Called during Compute phase to execute implementation-specific computation.
-    // @param context       The WebGPU compute context.
-    // @param handled       Output parameter. Set to true if this implementation handled the computation.
-    // @return Status::OK() on success, or an error status on failure.
-    virtual Status Compute(ComputeContext& context,
-                           /*out*/ bool& handled) = 0;
-
-   protected:
-    const MatMul& parent_;
-  };
-
   MatMul(const OpKernelInfo& info) : WebGpuKernel{info} {
     // Whether the B (weight) input is a constant initializer. The subgroup-matrix
     // opt impl uses this to decide it can safely pad B once and cache the result
@@ -60,20 +67,12 @@ class MatMul final : public WebGpuKernel {
 
   Status ComputeInternal(ComputeContext& context) const override;
 
-  // True when input 1 (B) is a constant initializer. See b_is_constant_.
-  bool IsBConstant() const { return b_is_constant_; }
-
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
   constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 
  private:
-  // Alternative optimized implementation (lazily created on the first Compute call,
-  // once the device capabilities can be queried from the compute context). A null
-  // impl_ after initialization means this device has no optimized path.
-  mutable std::unique_ptr<MatMulOptImpl> impl_;
-  mutable std::once_flag impl_init_flag_;
-
+  mutable MatMulOptImplCache compute_cache_;
   bool b_is_constant_ = false;
 };
 

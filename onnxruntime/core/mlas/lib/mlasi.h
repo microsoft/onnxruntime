@@ -1494,6 +1494,10 @@ MlasReorderOutputNchwBlock16Avx512F(
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
     MLAS_LAYERNORM_F32_KERNEL MlasLayerNormKernelRvv;
 #endif
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_IX86)
+    MLAS_LAYERNORM_F32_KERNEL MlasLayerNormKernelAvx2;
+#endif
 }
 
 //
@@ -1692,6 +1696,7 @@ struct MLAS_LINEAR_ATTENTION_DISPATCH;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchDefault;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchAvx512F;
 extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchNeon;
+extern const MLAS_LINEAR_ATTENTION_DISPATCH MlasLinearAttentionDispatchSve;
 
 //
 // Quantized depthwise convolution kernels.

@@ -1520,6 +1520,48 @@ __global__ void PagedConvertHeadSinkToFloatKernel(float* __restrict__ dst, const
   }
 }
 
+// Lower-triangular packed mask for the speculative XQA kernel: row = query token (global, packed
+// token-major), bit p of word w = "may attend to draft token w*32+p".
+__global__ void PagedXqaSpecDecCausalMaskKernel(uint32_t* __restrict__ mask,
+                                                const int* __restrict__ cumulative_seqlens_q,
+                                                const int batch_size,
+                                                const int token_count,
+                                                const int words_per_row) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= token_count * words_per_row) {
+    return;
+  }
+
+  const int token_id = i / words_per_row;
+  const int word = i - token_id * words_per_row;
+  int lo = 0;
+  int hi = batch_size;
+  while (lo < hi) {
+    const int mid = lo + (hi - lo) / 2;
+    if (token_id < cumulative_seqlens_q[mid + 1]) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
+  }
+
+  const int local_row = token_id - cumulative_seqlens_q[lo];
+  const int allowed_bits = local_row + 1 - word * 32;
+  // Do NOT write this as `clamped == 32`. ptxas (CUDA 13.0.48) folds min/max into VIMNMX.RELU and
+  // then reuses that instruction's clamp predicate for an equality test against the clamp bound
+  // with inverted polarity, so `max(0, min(32, x)) == 32` is true for every x. That silently made
+  // every mask word all-ones, i.e. no intra-block causal mask at all.
+  uint32_t value;
+  if (allowed_bits >= 32) {
+    value = ~uint32_t{0};
+  } else if (allowed_bits <= 0) {
+    value = 0u;
+  } else {
+    value = (uint32_t{1} << allowed_bits) - 1u;
+  }
+  mask[i] = value;
+}
+
 template <typename T, typename TCACHE>
 Status PagedXqaDecodeAttention(
     const cudaDeviceProp& device_prop,
@@ -1552,7 +1594,7 @@ Status PagedXqaDecodeAttention(
 
   const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
   const bool v_per_channel = parameters.v_quant_type == KVQuantizationType::PER_CHANNEL;
-  const int64_t q_elements = static_cast<int64_t>(batch_size) * num_heads * head_size;
+  const int64_t q_elements = static_cast<int64_t>(parameters.token_count) * num_heads * head_size;
 
   if (k_per_channel) {
     // Q may point straight at the (const) graph input when there is no packed-QKV / rotary
@@ -1582,21 +1624,44 @@ Status PagedXqaDecodeAttention(
   constexpr bool kIsInt8Cache = std::is_same<TCACHE, int8_t>::value;
   const XqaQuantType kv_quant_type =
       kIsFp8Cache ? XqaQuantType::kFp8 : (kIsInt8Cache ? XqaQuantType::kInt8 : XqaQuantType::kNone);
-  ORT_RETURN_IF_ERROR(LaunchXQAPagedKernel(
-      device_prop, stream,
-      reinterpret_cast<const void*>(query),
-      reinterpret_cast<const void*>(data.key_cache),
-      reinterpret_cast<const void*>(data.value_cache),
-      reinterpret_cast<void*>(data.output),
-      page_table,
-      batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
-      scale, parameters.local_window_size, data.past_seqlens, attention_sinks,
-      // A PER_CHANNEL scale has already been folded into Q / will be applied to the output, so the
-      // kernel must use a scale of 1 (which it does when the pointer is null).
-      k_per_channel ? nullptr : data.k_scale,
-      v_per_channel ? nullptr : data.v_scale,
-      kv_quant_type, std::is_same<T, BFloat16>::value,
-      data.xqa_workspace, data.xqa_workspace_size));
+  // A PER_CHANNEL scale has already been folded into Q / will be applied to the output, so XQA
+  // receives a null scalar scale (which means one).
+  const float* xqa_k_scale = k_per_channel ? nullptr : data.k_scale;
+  const float* xqa_v_scale = v_per_channel ? nullptr : data.v_scale;
+  if (data.use_xqa_spec_dec) {
+    ORT_RETURN_IF_NOT(data.xqa_spec_dec_mask, "Speculative XQA mask scratch was not allocated.");
+    const int words_per_row = (data.max_query_len + 31) / 32;
+    const int mask_words = parameters.token_count * words_per_row;
+    const int blocks = (mask_words + max_threads_per_block - 1) / max_threads_per_block;
+    PagedXqaSpecDecCausalMaskKernel<<<blocks, max_threads_per_block, 0, stream>>>(
+        data.xqa_spec_dec_mask, data.cumulative_seqlens_q, batch_size,
+        parameters.token_count, words_per_row);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+    ORT_RETURN_IF_ERROR(LaunchXQAPagedSpecDecKernel(
+        device_prop, stream,
+        reinterpret_cast<const void*>(query),
+        reinterpret_cast<const void*>(data.key_cache),
+        reinterpret_cast<const void*>(data.value_cache),
+        reinterpret_cast<void*>(data.output), page_table,
+        batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
+        scale, parameters.local_window_size, data.past_seqlens,
+        data.max_query_len, data.cumulative_seqlens_q, data.xqa_spec_dec_mask,
+        attention_sinks, xqa_k_scale, xqa_v_scale, kv_quant_type,
+        std::is_same<T, BFloat16>::value,
+        data.xqa_workspace, data.xqa_workspace_size));
+  } else {
+    ORT_RETURN_IF_ERROR(LaunchXQAPagedKernel(
+        device_prop, stream,
+        reinterpret_cast<const void*>(query),
+        reinterpret_cast<const void*>(data.key_cache),
+        reinterpret_cast<const void*>(data.value_cache),
+        reinterpret_cast<void*>(data.output), page_table,
+        batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
+        scale, parameters.local_window_size, data.past_seqlens, attention_sinks,
+        xqa_k_scale, xqa_v_scale, kv_quant_type, std::is_same<T, BFloat16>::value,
+        data.xqa_workspace, data.xqa_workspace_size));
+  }
 
   if (v_per_channel) {
     const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);

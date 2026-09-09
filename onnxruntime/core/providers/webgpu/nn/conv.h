@@ -8,6 +8,7 @@
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 
 namespace onnxruntime {
@@ -48,6 +49,7 @@ class Conv : public WebGpuKernel {
   // Layout of the tensor ComputeInternal ends up consuming -- `prepacked_kernel_` when it
   // is set, otherwise input 1. Stays `OIHW` while `prepacked_kernel_` is null.
   KernelLayout kernel_layout_{KernelLayout::OIHW};
+  mutable MatMulOptImplCache matmul_compute_cache_;
 };
 
 Status TransposeKernel(ComputeContext& context, const Tensor* kernel, const TensorShape& kernel_shape, Tensor* transposed_kernel, const InlinedVector<size_t>& perm);
