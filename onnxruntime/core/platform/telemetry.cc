@@ -214,28 +214,19 @@ void Telemetry::LogModelLoadStart(uint32_t session_id) const {
   ORT_UNUSED_PARAMETER(session_id);
 }
 
-void Telemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
+void Telemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status,
+                                int64_t duration_us) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(status);
-}
-
-void Telemetry::LogModelLoadEndWithDuration(uint32_t session_id, const common::Status& status,
-                                            int64_t duration_us) const {
   ORT_UNUSED_PARAMETER(duration_us);
-  LogModelLoadEnd(session_id, status);
 }
 
 void Telemetry::LogSessionCreationEnd(uint32_t session_id,
-                                      const common::Status& status) const {
+                                      const common::Status& status,
+                                      int64_t duration_us) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(status);
-}
-
-void Telemetry::LogSessionCreationEndWithDuration(uint32_t session_id,
-                                                  const common::Status& status,
-                                                  int64_t duration_us) const {
   ORT_UNUSED_PARAMETER(duration_us);
-  LogSessionCreationEnd(session_id, status);
 }
 
 void Telemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
@@ -249,16 +240,11 @@ void Telemetry::LogRegisterEpLibraryStart(const std::string& registration_name) 
 }
 
 void Telemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
-                                        const common::Status& status) const {
+                                        const common::Status& status,
+                                        int64_t duration_us) const {
   ORT_UNUSED_PARAMETER(registration_name);
   ORT_UNUSED_PARAMETER(status);
-}
-
-void Telemetry::LogRegisterEpLibraryEndWithDuration(const std::string& registration_name,
-                                                    const common::Status& status,
-                                                    int64_t duration_us) const {
   ORT_UNUSED_PARAMETER(duration_us);
-  LogRegisterEpLibraryEnd(registration_name, status);
 }
 
 }  // namespace onnxruntime

@@ -7,7 +7,6 @@
 #include "core/platform/posix/telemetry_no_throw.h"
 #include "core/platform/posix/telemetry_sampling.h"
 #include "core/platform/posix/telemetry_sha256.h"
-#include "core/platform/device_census.h"
 #include "core/platform/telemetry_environment.h"
 #include "core/platform/telemetry_guid.h"
 #include "core/platform/telemetry_redaction.h"
@@ -93,10 +92,6 @@ std::atomic<bool> PosixTelemetry::telemetry_disabled_{false};
 std::atomic<bool> PosixTelemetry::network_context_suppressed_{false};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
 std::atomic<bool> PosixTelemetry::process_info_logged_{false};
-std::atomic<int64_t> PosixTelemetry::census_utc_day_{-1};
-std::atomic<bool> PosixTelemetry::census_emit_current_day_pending_{false};
-std::mutex PosixTelemetry::census_mutex_;
-
 #if !defined(ORT_TELEMETRY_TENANT_TOKEN)
 namespace {
 
@@ -149,8 +144,6 @@ enum class EventPriority {
   HIGH = EventLatency_RealTime,     // RuntimeError
   CRITICAL = EventLatency_RealTime  // ProcessInfo, SessionCreation
 };
-
-const std::string kDeviceCensusLibraryName = "ort";
 
 // Helper class to build events with common properties
 class EventBuilder {
@@ -394,13 +387,6 @@ bool PrepareProcessEvent(EventBuilder& event) {
 
   event.SetPopsample(telemetry_internal::kProcessEventSampleRatePercent);
   return true;
-}
-
-int64_t GetUtcDay() {
-  const auto hours_since_epoch = std::chrono::duration_cast<std::chrono::hours>(
-                                     std::chrono::system_clock::now().time_since_epoch())
-                                     .count();
-  return hours_since_epoch / 24;
 }
 
 int32_t GetProcessorCount() {
@@ -836,18 +822,11 @@ void PosixTelemetry::LogProcessInfo() const {
       return;
     }
 
-#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
-    RecordCensusActivity(true);
-#else
+#if !defined(__ANDROID__) && !(defined(__APPLE__) && TARGET_OS_IOS)
     auto& device_id = DeviceId::Instance();
     const DeviceIdStatus device_id_status = device_id.GetStatus();
     if (device_id_status == DeviceIdStatus::Failed) {
       ORT_TELEMETRY_WARN("Failed to persist telemetry device ID; using an in-memory identifier");
-    }
-    if (device_id_status != DeviceIdStatus::Failed) {
-      RecordCensusActivity(
-          device_id_status == DeviceIdStatus::New ||
-          device_id_status == DeviceIdStatus::Corrupted);
     }
 #endif
 
@@ -886,91 +865,6 @@ void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
 
 void PosixTelemetry::LogEvaluationStart(uint32_t session_id) const {
   (void)session_id;
-  RunTelemetryOperation("RecordCensusActivity", [&]() {
-    if (!IsEnabled()) {
-      return;
-    }
-    RecordCensusActivity(false);
-  });
-}
-
-void PosixTelemetry::RecordCensusActivity(bool emit_current_day) const {
-  if (emit_current_day) {
-    census_emit_current_day_pending_.store(true, std::memory_order_release);
-  }
-
-  const int64_t utc_day = GetUtcDay();
-  if (census_utc_day_.load(std::memory_order_acquire) == utc_day &&
-      !census_emit_current_day_pending_.load(std::memory_order_acquire)) {
-    return;
-  }
-
-  std::lock_guard<std::mutex> lock(census_mutex_);
-  if (census_utc_day_.load(std::memory_order_relaxed) == utc_day &&
-      !census_emit_current_day_pending_.load(std::memory_order_relaxed)) {
-    return;
-  }
-
-  const bool should_emit_current_day =
-      census_emit_current_day_pending_.load(std::memory_order_relaxed);
-
-#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
-  const std::string device_id_status = "Mobile";
-#else
-  const std::string device_id_status =
-      DeviceId::Instance().GetStatusString();
-#endif
-  const auto emit = [&](int64_t census_day,
-                        const std::vector<std::string>& versions) {
-    auto event = EventBuilder("DeviceCensus", EventPriority::CRITICAL)
-                     .AddInt64("censusSchemaVersion",
-                               telemetry_internal::kDeviceCensusSchemaVersion)
-                     .AddInt64("censusDay", census_day)
-                     .AddString("libraryName", kDeviceCensusLibraryName)
-                     .AddStringList("libraryVersions", versions)
-                     .AddString("deviceIdStatus", device_id_status)
-                     .Build();
-    LogEventAsync(std::move(event));
-  };
-
-  bool recorded = false;
-#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
-  const auto device_information = PAL::GetDeviceInformation();
-  if (device_information) {
-    const std::string& platform_device_id =
-        device_information->GetDeviceId();
-#if defined(__ANDROID__)
-    const bool has_platform_device_id =
-        platform_device_id.size() > 2 &&
-        platform_device_id.compare(0, 2, "a:") == 0;
-#else
-    const bool has_platform_device_id =
-        platform_device_id.size() > 2 &&
-        platform_device_id.compare(0, 2, "i:") == 0;
-#endif
-    if (has_platform_device_id) {
-#if defined(__ANDROID__)
-      const std::string& storage_directory =
-          HttpClient_Android::GetCacheFilePath();
-#else
-      const std::string storage_directory =
-          DeviceId::EnsureStorageDirectory();
-#endif
-      recorded = DeviceId::RecordCensusActivity(
-          HashDeviceId(platform_device_id), storage_directory,
-          utc_day, ORT_VERSION, should_emit_current_day, emit);
-    }
-  }
-#else
-  recorded = DeviceId::Instance().RecordCensusActivity(
-      utc_day, ORT_VERSION, should_emit_current_day, emit);
-#endif
-  if (recorded) {
-    census_utc_day_.store(utc_day, std::memory_order_release);
-    if (should_emit_current_day) {
-      census_emit_current_day_pending_.store(false, std::memory_order_release);
-    }
-  }
 }
 
 void PosixTelemetry::LogSessionCreation(
@@ -1213,8 +1107,8 @@ void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
   (void)session_id;
 }
 
-void PosixTelemetry::LogModelLoadEndWithDuration(uint32_t session_id, const common::Status& status,
-                                                 int64_t duration_us) const {
+void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status,
+                                     int64_t duration_us) const {
   RunTelemetryOperation("LogModelLoadEnd", [&]() {
     if (!IsEnabled()) {
       return;
@@ -1236,8 +1130,8 @@ void PosixTelemetry::LogModelLoadEndWithDuration(uint32_t session_id, const comm
   });
 }
 
-void PosixTelemetry::LogSessionCreationEndWithDuration(uint32_t session_id, const common::Status& status,
-                                                       int64_t duration_us) const {
+void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::Status& status,
+                                           int64_t duration_us) const {
   RunTelemetryOperation("LogSessionCreationEnd", [&]() {
     if (!IsEnabled()) {
       return;
@@ -1322,9 +1216,9 @@ void PosixTelemetry::LogRegisterEpLibraryStart(const std::string& registration_n
   (void)registration_name;
 }
 
-void PosixTelemetry::LogRegisterEpLibraryEndWithDuration(const std::string& registration_name,
-                                                         const common::Status& status,
-                                                         int64_t duration_us) const {
+void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
+                                             const common::Status& status,
+                                             int64_t duration_us) const {
   RunTelemetryOperation("LogRegisterEpLibraryEnd", [&]() {
     if (!IsEnabled()) {
       return;
