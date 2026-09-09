@@ -20,9 +20,6 @@
 // 1DS SDK
 #include <LogManagerProvider.hpp>
 #include <ILogConfiguration.hpp>
-#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
-#include "pal/PAL.hpp"
-#endif
 #if defined(__ANDROID__)
 #include "http/HttpClient_Android.hpp"
 #endif
@@ -488,7 +485,8 @@ void PosixTelemetry::Initialize() {
   auto& config = *pending_config;
 
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
-  config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
+  config[CFG_BOOL_ENABLE_TRACE] = false;  // Disable SDK internal logging
+  config[CFG_INT_TRACE_LEVEL_MASK] = 0;
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
 #if defined(ORT_TELEMETRY_USES_STATIC_CURL)
   if (std::string ca_bundle = GetCertificateAuthorityBundlePath(); !ca_bundle.empty()) {

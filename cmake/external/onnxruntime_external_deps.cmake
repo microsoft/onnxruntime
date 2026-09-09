@@ -1067,6 +1067,10 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       EXCLUDE_FROM_ALL
     )
     onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
+    if(ANDROID)
+      # The SDK writes to Logcat before consulting its runtime trace setting.
+      target_compile_definitions(mat PRIVATE ANDROID_SUPPRESS_LOGCAT)
+    endif()
     unset(MATSDK_USE_VCPKG_DEPS)
     if(_ort_matsdk_vcpkg_was_set)
       if(_ort_matsdk_vcpkg_type STREQUAL "UNINITIALIZED")
