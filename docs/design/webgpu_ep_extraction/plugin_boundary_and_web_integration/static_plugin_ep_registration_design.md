@@ -570,24 +570,56 @@ That also means the only existing lever that trims plugin-EP machinery is `--min
 
 #### Measured size comparison
 
-Both modes were then built locally with the exact CI flag set (`Release`, SIMD + threads, asyncify, WebNN on,
-`--disable_rtti`, `--enable_wasm_api_exception_catching`, and the full reduced-size set above) and the artifacts
-compared:
+The ORT Web npm package ships **two** WebGPU WASM artifacts, not one, and both were measured. The release path
+(`npm-packaging-pipeline.yml` → `templates/web-ci.yml` → `templates/linux-wasm-ci.yml`) and the GitHub Actions path
+(`web.yml` → `linux-wasm-ci-build-and-test-workflow.yml`) pass an identical flag set for the WebGPU legs, which
+differ from each other only in their exception/stack-switching mode:
 
-| Artifact | `static_lib` | `static_plugin` | Delta |
+| Leg | Artifact | Distinguishing flag |
+| --- | --- | --- |
+| `wasm_inferencing_webgpu` | `ort-wasm-simd-threaded.asyncify.{wasm,mjs}` | `--enable_wasm_api_exception_catching` |
+| `wasm_inferencing_webgpu_jspi` | `ort-wasm-simd-threaded.jspi.{wasm,mjs}` | `--enable_wasm_jspi` |
+
+Four clean from-scratch builds were run (both EP modes × both legs) with the exact release flag set: `Release`,
+SIMD + threads, WebNN on, `--disable_rtti`, `--target onnxruntime_webassembly`, and the full reduced-size set
+above. Compressed sizes are included because that is what is actually delivered over the wire; they were produced
+with gzip level 9 and brotli quality 11.
+
+`ort-wasm-simd-threaded.asyncify.wasm`:
+
+| Metric | `static_lib` | `static_plugin` | Delta |
 | --- | ---: | ---: | ---: |
-| `ort-wasm-simd-threaded.asyncify.wasm` | 26,550,879 B | 26,488,911 B | **−61,968 B (−0.23%)** |
-| `ort-wasm-simd-threaded.asyncify.mjs` | 53,249 B | 53,249 B | 0 |
+| raw | 26,549,423 B | 26,487,397 B | **−62,026 B (−0.234%)** |
+| gzip | 6,537,701 B | 6,566,088 B | **+28,387 B (+0.434%)** |
+| brotli | 3,953,625 B | 3,971,550 B | **+17,925 B (+0.453%)** |
 
-(Both binaries rebuilt after merging `main`. An earlier pre-merge pair measured −52,978 B / −0.20%; the merge added
-kernels to both builds and did not change the relationship.)
+`ort-wasm-simd-threaded.jspi.wasm`:
 
-**There is no size regression** — `static_plugin` is marginally smaller. Both configurations compiled cleanly with
-every reduced-size flag, which empirically confirms the analysis above. The plugin build plausibly comes out ahead
-because it drops the internal `IExecutionProvider` / `KernelRegistry` glue and the built-in `WebGpuEpFactory` in
-`ep_library_internal.cc` in favour of the header-only adapters, but that attribution is not separately measured.
-For reference, the same `static_plugin` configuration without any reduced-size flags is 40.9 MB, so those flags are
-worth ~15 MB and remain essential regardless of EP mode.
+| Metric | `static_lib` | `static_plugin` | Delta |
+| --- | ---: | ---: | ---: |
+| raw | 16,627,577 B | 16,687,113 B | **+59,536 B (+0.358%)** |
+| gzip | 4,099,914 B | 4,126,147 B | **+26,233 B (+0.640%)** |
+| brotli | 2,651,643 B | 2,674,520 B | **+22,877 B (+0.863%)** |
+
+The accompanying `.mjs` files are byte-identical between the two EP modes in both legs (53,300 B asyncify, 51,204 B
+JSPI); their compressed sizes differ by at most 23 B.
+
+**Every delta is under 1%, which is the substantive conclusion.** Two details are worth recording so the numbers
+are not over-read:
+
+- *The raw sign is not stable across the two artifacts.* `static_plugin` is marginally smaller raw on asyncify but
+  marginally larger raw on JSPI. An earlier revision of this document reported only the asyncify raw number and
+  generalised it to "no size regression"; that generalisation was too broad. The asyncify measurement itself
+  reproduces well — it was −61,968 B when first taken and −62,026 B in this from-scratch rerun at a later commit.
+
+- *Compressed size grows slightly in both legs*, by +0.4% to +0.9%, so the direction is consistent once the
+  artifacts are compressed. Why compressed size can rise while raw size falls was not investigated; no
+  symbol-level or per-section attribution was done, and none of the earlier speculation about *which* code the
+  plugin build drops or adds has been measured. Given the magnitude, this was not pursued further.
+
+Both configurations compiled cleanly with every reduced-size flag in both legs, which empirically confirms the
+compatibility analysis above. For reference, the same `static_plugin` asyncify configuration without any
+reduced-size flags is 40.9 MB, so those flags are worth ~15 MB and remain essential regardless of EP mode.
 
 #### `--enable_wasm_api_exception_catching` and the EP API adapters
 
