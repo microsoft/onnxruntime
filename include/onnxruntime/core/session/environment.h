@@ -141,14 +141,27 @@ class Environment {
   Status UnregisterExecutionProviderLibrary(const std::string& registration_name);
 
   /**
+   * Passkey that restricts CreateAndRegisterStaticPluginEps() to OrtEnv, which is the only caller able to satisfy
+   * that function's ordering and locking requirements. Only OrtEnv can construct one.
+   */
+  class StaticPluginEpRegistrationToken {
+   private:
+    StaticPluginEpRegistrationToken() = default;
+    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(StaticPluginEpRegistrationToken);
+    friend struct ::OrtEnv;
+  };
+
+  /**
    * Register the plugin execution providers that are statically linked into the ORT binary.
    *
    * This must be called after the OrtEnv singleton that owns this Environment has been published, because a
    * statically linked plugin EP uses the public ORT API, and any OrtEnv API it calls must be able to find the
-   * instance. See docs/design/webgpu_ep_extraction/plugin_boundary_and_web_integration/
-   * static_plugin_ep_registration_design.md.
+   * instance. It must also be called while the OrtEnv creation mutex is held and before any other thread can reach
+   * this Environment, because it intentionally does not take mutex_.
+   *
+   * The passkey parameter limits the set of possible callers to OrtEnv.
    */
-  Status CreateAndRegisterStaticPluginEps();
+  Status CreateAndRegisterStaticPluginEps(StaticPluginEpRegistrationToken);
 
   // convert an OrtEpFactory* to EpFactoryInternal* if possible.
   EpFactoryInternal* GetEpFactoryInternal(OrtEpFactory* factory) const {

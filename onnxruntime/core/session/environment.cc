@@ -644,7 +644,7 @@ Status Environment::CreateAndRegisterInternalEps() {
   return Status::OK();
 }
 
-Status Environment::CreateAndRegisterStaticPluginEps() {
+Status Environment::CreateAndRegisterStaticPluginEps(StaticPluginEpRegistrationToken) {
   // Intentionally does not take mutex_. That is safe because the caller holds the OrtEnv creation mutex, so no other
   // thread can obtain a reference to this Environment yet. Taking mutex_ here would deadlock if a plugin EP called an
   // Environment API from its OrtEpFactory::GetSupportedDevices implementation.
