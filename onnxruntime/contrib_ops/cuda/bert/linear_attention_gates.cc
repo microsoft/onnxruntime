@@ -7,12 +7,25 @@
 #include "core/providers/cuda/cuda_type_conversion.h"
 
 #include <limits>
+#include <string>
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;  // CudaKernel, OrtToCudaType
+
+namespace {
+bool ParseGatedRMSNormActivation(const std::string& activation) {
+  if (activation == "silu" || activation == "swish") {
+    return true;
+  }
+  if (activation == "sigmoid") {
+    return false;
+  }
+  ORT_THROW("activation must be one of: silu, swish, sigmoid");
+}
+}  // namespace
 
 #define REGISTER_KERNEL_TYPED(Op, T)                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
@@ -93,6 +106,7 @@ Status LinearAttentionGate<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 GatedRMSNorm<T>::GatedRMSNorm(const OpKernelInfo& info) : CudaKernel(info) {
+  use_silu_ = ParseGatedRMSNormActivation(info.GetAttrOrDefault<std::string>("activation", "silu"));
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
 }
 
@@ -128,7 +142,8 @@ Status GatedRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(gate->Data<T>()),
       num_rows,
       static_cast<int>(norm_size),
-      epsilon_);
+      epsilon_,
+      use_silu_);
 }
 
 template class LinearAttentionGate<float>;

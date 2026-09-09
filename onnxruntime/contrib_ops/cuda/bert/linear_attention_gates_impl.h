@@ -24,8 +24,9 @@ Status LaunchLinearAttentionGateKernel(
     int64_t num_tokens,
     int num_heads);
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate), reduced over groups of
-// `norm_size` contiguous elements, with all arithmetic in float32.
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate), reduced over groups of
+// `norm_size` contiguous elements, with all arithmetic in float32. `use_silu=true` applies
+// SiLU/Swish (z * Sigmoid(z)); false applies Sigmoid.
 template <typename T>
 Status LaunchGatedRMSNormKernel(
     cudaStream_t stream,
@@ -35,7 +36,8 @@ Status LaunchGatedRMSNormKernel(
     const T* gate,
     int64_t num_rows,
     int norm_size,
-    float epsilon);
+    float epsilon,
+    bool use_silu);
 
 }  // namespace cuda
 }  // namespace contrib

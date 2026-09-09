@@ -4,6 +4,7 @@
 #include "contrib_ops/cpu/bert/linear_attention_gates.h"
 
 #include <cmath>
+#include <string>
 
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
@@ -55,6 +56,16 @@ inline float SigmoidFloat(float value) {
 
 inline float SoftplusFloat(float value) {
   return value > 0.0f ? value + std::log(std::exp(-value) + 1.0f) : std::log(std::exp(value) + 1.0f);
+}
+
+inline bool ParseGatedRMSNormActivation(const std::string& activation) {
+  if (activation == "silu" || activation == "swish") {
+    return true;
+  }
+  if (activation == "sigmoid") {
+    return false;
+  }
+  ORT_THROW("activation must be one of: silu, swish, sigmoid");
 }
 
 }  // namespace
@@ -118,6 +129,7 @@ Status LinearAttentionGate<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 GatedRMSNorm<T>::GatedRMSNorm(const OpKernelInfo& info) : OpKernel(info) {
+  use_silu_ = ParseGatedRMSNormActivation(info.GetAttrOrDefault<std::string>("activation", "silu"));
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
 }
 
@@ -160,11 +172,20 @@ Status GatedRMSNorm<T>::Compute(OpKernelContext* context) const {
           sum_sq += v * v;
         }
         const float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(norm_size) + epsilon_);
-        for (int64_t i = 0; i < norm_size; ++i) {
-          const float z = static_cast<float>(gate_data[offset + i]);
-          const float normalized = static_cast<float>(input_data[offset + i]) * inv_rms *
-                                   static_cast<float>(scale_data[i]);
-          output_data[offset + i] = static_cast<T>(normalized * (z * SigmoidFloat(z)));
+        if (use_silu_) {
+          for (int64_t i = 0; i < norm_size; ++i) {
+            const float z = static_cast<float>(gate_data[offset + i]);
+            const float normalized = static_cast<float>(input_data[offset + i]) * inv_rms *
+                                     static_cast<float>(scale_data[i]);
+            output_data[offset + i] = static_cast<T>(normalized * (z * SigmoidFloat(z)));
+          }
+        } else {
+          for (int64_t i = 0; i < norm_size; ++i) {
+            const float z = static_cast<float>(gate_data[offset + i]);
+            const float normalized = static_cast<float>(input_data[offset + i]) * inv_rms *
+                                     static_cast<float>(scale_data[i]);
+            output_data[offset + i] = static_cast<T>(normalized * SigmoidFloat(z));
+          }
         }
       },
       0);

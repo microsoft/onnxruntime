@@ -17,7 +17,7 @@ class LinearAttentionGate final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate).
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate).
 template <typename T>
 class GatedRMSNorm final : public OpKernel {
  public:
@@ -25,6 +25,7 @@ class GatedRMSNorm final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  bool use_silu_;
   float epsilon_;
 };
 

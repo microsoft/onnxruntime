@@ -63,7 +63,7 @@ __global__ void LinearAttentionGateKernel(
 
 // One block per normalization group. The input is read twice (once for the sum of squares, once
 // for the output); the group is a few hundred bytes so the second read is an L1 hit.
-template <typename T, int kThreadsPerBlock>
+template <typename T, int kThreadsPerBlock, bool kUseSilu>
 __global__ void GatedRMSNormKernel(
     T* output,
     const T* input,
@@ -96,7 +96,8 @@ __global__ void GatedRMSNormKernel(
   for (int i = threadIdx.x; i < norm_size; i += kThreadsPerBlock) {
     const float z = to_float<T>(g[i]);
     const float normalized = to_float<T>(x[i]) * inv_rms * to_float<T>(scale[i]);
-    y[i] = from_float<T>(normalized * (z * SigmoidFloat(z)));
+    const float activated_gate = kUseSilu ? (z * SigmoidFloat(z)) : SigmoidFloat(z);
+    y[i] = from_float<T>(normalized * activated_gate);
   }
 }
 
@@ -136,7 +137,8 @@ Status LaunchGatedRMSNormKernel(
     const T* gate,
     int64_t num_rows,
     int norm_size,
-    float epsilon) {
+    float epsilon,
+    bool use_silu) {
   if (num_rows == 0) {
     return Status::OK();
   }
@@ -144,20 +146,40 @@ Status LaunchGatedRMSNormKernel(
   ORT_RETURN_IF_NOT(num_rows <= std::numeric_limits<int>::max(),
                     "GatedRMSNorm launch requires too many blocks");
   const int blocks = static_cast<int>(num_rows);
-#define LAUNCH_GATED_RMS_NORM(threads)                            \
-  GatedRMSNormKernel<T, threads><<<blocks, threads, 0, stream>>>( \
+#define LAUNCH_GATED_RMS_NORM(threads, use_silu_mode)                            \
+  GatedRMSNormKernel<T, threads, use_silu_mode><<<blocks, threads, 0, stream>>>( \
       output, input, scale, gate, norm_size, epsilon)
 
   if (norm_size <= 64) {
-    LAUNCH_GATED_RMS_NORM(64);
+    if (use_silu) {
+      LAUNCH_GATED_RMS_NORM(64, true);
+    } else {
+      LAUNCH_GATED_RMS_NORM(64, false);
+    }
   } else if (norm_size <= 128) {
-    LAUNCH_GATED_RMS_NORM(128);
+    if (use_silu) {
+      LAUNCH_GATED_RMS_NORM(128, true);
+    } else {
+      LAUNCH_GATED_RMS_NORM(128, false);
+    }
   } else if (norm_size <= 256) {
-    LAUNCH_GATED_RMS_NORM(256);
+    if (use_silu) {
+      LAUNCH_GATED_RMS_NORM(256, true);
+    } else {
+      LAUNCH_GATED_RMS_NORM(256, false);
+    }
   } else if (norm_size <= 512) {
-    LAUNCH_GATED_RMS_NORM(512);
+    if (use_silu) {
+      LAUNCH_GATED_RMS_NORM(512, true);
+    } else {
+      LAUNCH_GATED_RMS_NORM(512, false);
+    }
   } else {
-    LAUNCH_GATED_RMS_NORM(1024);
+    if (use_silu) {
+      LAUNCH_GATED_RMS_NORM(1024, true);
+    } else {
+      LAUNCH_GATED_RMS_NORM(1024, false);
+    }
   }
 #undef LAUNCH_GATED_RMS_NORM
 
@@ -168,7 +190,7 @@ Status LaunchGatedRMSNormKernel(
   template Status LaunchLinearAttentionGateKernel<T>(cudaStream_t, T*, T*, const T*, const T*,  \
                                                      const float*, const float*, int64_t, int); \
   template Status LaunchGatedRMSNormKernel<T>(cudaStream_t, T*, const T*, const T*, const T*,   \
-                                              int64_t, int, float);
+                                              int64_t, int, float, bool);
 
 INSTANTIATE_LINEAR_ATTENTION_GATES(float)
 INSTANTIATE_LINEAR_ATTENTION_GATES(half)
