@@ -7,10 +7,12 @@ run-scoped static workspace preallocation for CUDA `MatMulNBits`. The preallocat
 path declares each kernel's workspace and includes its lifetime in ORT's activation
 memory pattern.
 
-The current RTX 5090 results use a generation workload with a 1,024-token
-prefill followed by 128 chained batch-1 decode steps. It covers both fpA-intB
-CUTLASS workspace and legacy dequantize-plus-cuBLAS workspace. The older T1000
-prefill-only results are retained separately as historical data.
+The current RTX 5090 results approximate ONNX Runtime GenAI generation with a
+1,024-token prefill followed by 128 batch-1 decode steps. Fixed-capacity CUDA
+KV-cache tensors are shared between each layer's past inputs and present outputs.
+The benchmark covers both fpA-intB CUTLASS workspace and legacy
+dequantize-plus-cuBLAS workspace. The older T1000 prefill-only results are
+retained separately as historical data.
 
 ## Methodology
 
@@ -24,19 +26,27 @@ prefill-only results are retained separately as historical data.
 |---|---|
 | Input | Batch 1, 1,024-token prefill followed by 128 deterministic decode tokens |
 | Initial KV cache | Empty |
-| Cache progression | Each decode step's present KV outputs become the next step's past KV inputs |
-| Output | Full logits and present KV outputs for prefill and every decode step |
+| KV-cache capacity | 1,152 tokens |
+| Cache progression | The same fixed-capacity CUDA tensors are bound as past inputs and preallocated present outputs |
+| Attention mask | Fixed 1,152-token capacity; the valid prefix advances after each generated token |
+| Output | Dynamically allocated logits plus preallocated, aliased present KV outputs |
 | Dispatch comparison | fpA-intB (`ep.cuda.fpa_intb_gemm=1`) and legacy (`=0`) |
 | Warmup | 2 complete scenarios |
 | Memory measurement | 1 complete scenario |
 | Timed measurement | 10 complete scenarios |
 | Reported latency | End-to-end scenario, prefill phase, and per-token decode distributions |
 
-Each complete warmup traverses every decode-cache length. One test invocation
-reports end-to-end, prefill, and decode timing for a generation scenario. Each
-dispatch and preallocation configuration remains a separate fresh process so
-arena regions and cached memory patterns from another configuration cannot
-affect its measured high-water mark.
+The tested Qwen packages declare `past_present_share_buffer: true`. Before each
+complete scenario, the benchmark zeroes the fixed-capacity cache and resets the
+attention mask. Every run verifies that each present output retains the fixed
+shape and aliases the corresponding past-input device pointer. Prefill and
+decode therefore reuse two stable memory-pattern shapes instead of creating a
+larger KV tensor at every decode step.
+
+One test invocation reports end-to-end, prefill, and decode timing for a
+generation scenario. Each dispatch and preallocation configuration remains a
+separate fresh process so arena regions and cached memory patterns from another
+configuration cannot affect its measured high-water mark.
 
 | GPU | Compute capability | CUDA toolkit | Driver |
 |---|---:|---:|---:|
@@ -54,6 +64,11 @@ The **measured arena reservation** is the increase in
 Before measuring, the test calls `IArena::Shrink()` to release free first-run
 regions. With `kSameAsRequested`, this exposes the CUDA reservation attributable
 to the cached activation pattern and any separate workspace allocation.
+
+**Arena allocation calls** is the allocator's cumulative logical BFC allocation
+count across initialization, warmup, memory measurement, and timed scenarios.
+It includes requests served from existing arena regions and is not a
+`cudaMalloc` count.
 
 The initialization breakdown uses the CUDA allocator snapshot immediately after
 `InferenceSession::Initialize()`:
@@ -104,25 +119,25 @@ Model:
 | Post-initialization direct reserved bytes | 818,712,576 B | 818,712,576 B | 0 B |
 | Post-initialization BFC region capacity | 1,343,712,512 B | 1,343,712,512 B | 0 B |
 | Post-initialization arena slack | 818,712,576 B | 818,712,576 B | 0 B |
-| Shrink reclaimed after warmup | 1,129,877,504 B | 1,129,877,504 B | 0 B |
-| Measured arena reservation | 420,757,760 B (401.27 MiB) | 421,855,744 B (402.31 MiB) | +1,097,984 B (+0.3%) |
-| Final arena slack | 420,757,760 B | 421,855,744 B | +1,097,984 B |
-| Internal fragmentation | 248 B | 248 B | 0 B |
-| Internal fragmentation ratio | 0.0000185% | 0.0000185% | 0 pp |
-| Arena allocation calls | 431,834 | 433,854 | +0.5% |
+| Shrink reclaimed after warmup | 1,392,873,472 B | 1,392,873,472 B | 0 B |
+| Measured arena reservation | 420,758,784 B (401.27 MiB) | 421,053,952 B (401.55 MiB) | +295,168 B (+0.07%) |
+| Final arena slack | 420,758,784 B | 421,053,952 B | +295,168 B |
+| Internal fragmentation | 15,139,064 B | 15,139,064 B | 0 B |
+| Internal fragmentation ratio | 1.08767% | 1.08767% | 0 pp |
+| Arena allocation calls | 150,704 | 149,041 | -1.1% |
 | WDDM initialization peak | 2,742 MiB | 2,742 MiB | 0 MiB |
 | WDDM post-initialization usage | 2,644 MiB | 2,644 MiB | 0 MiB |
-| WDDM pre-inference usage | 1,856 MiB | 1,856 MiB | 0 MiB |
-| WDDM inference peak | 2,260 MiB | 2,270 MiB | +10 MiB |
-| WDDM inference increase | 404 MiB | 414 MiB | +10 MiB |
-| End-to-end average | 2,544.43 ms | 2,513.70 ms | -1.2% |
-| End-to-end P50 | 2,434.93 ms | 2,424.55 ms | -0.4% |
-| End-to-end P90 | 2,760.08 ms | 2,651.59 ms | -3.9% |
-| Prefill average | 87.14 ms | 84.83 ms | -2.7% |
-| Decode average per token | 19.20 ms | 18.98 ms | -1.2% |
-| Decode P90 per token | 23.19 ms | 21.84 ms | -5.8% |
-| Decode P99 per token | 30.20 ms | 29.26 ms | -3.1% |
-| Initialization | 57.87 s | 67.75 s | +17.1% |
+| WDDM pre-inference usage | 1,896 MiB | 1,896 MiB | 0 MiB |
+| WDDM inference peak | 2,300 MiB | 2,300 MiB | 0 MiB |
+| WDDM inference increase | 404 MiB | 404 MiB | 0 MiB |
+| End-to-end average | 1,452.68 ms | 937.10 ms | -35.5% (not repeatable) |
+| End-to-end P50 | 1,434.68 ms | 918.61 ms | -36.0% (not repeatable) |
+| End-to-end P90 | 1,574.73 ms | 962.70 ms | -38.9% (not repeatable) |
+| Prefill average | 103.38 ms | 86.54 ms | -16.3% (not repeatable) |
+| Decode average per token | 10.54 ms | 6.65 ms | -37.0% (not repeatable) |
+| Decode P90 per token | 14.94 ms | 8.55 ms | -42.8% (not repeatable) |
+| Decode P99 per token | 26.19 ms | 13.32 ms | -49.2% (not repeatable) |
+| Initialization | 58.07 s | 70.86 s | +22.0% |
 | **Generation, legacy path** | | | |
 | Planned workspace nodes | 0 | 141 | +141 |
 | Largest workspace | 0 B | 100,663,296 B (96.00 MiB) | +100,663,296 B |
@@ -130,31 +145,35 @@ Model:
 | Post-initialization direct reserved bytes | 0 B | 0 B | 0 B |
 | Post-initialization BFC region capacity | 1,343,712,512 B | 1,343,712,512 B | 0 B |
 | Post-initialization arena slack | 0 B | 0 B | 0 B |
-| Shrink reclaimed after warmup | 689,979,392 B | 900,481,024 B | +210,501,632 B |
-| Measured arena reservation | 545,014,016 B (519.77 MiB) | 450,691,328 B (429.81 MiB) | **-94,322,688 B (-17.3%)** |
-| Final arena slack | 545,014,016 B | 450,691,328 B | **-94,322,688 B** |
+| Shrink reclaimed after warmup | 674,776,064 B | 885,277,696 B | +210,501,632 B |
+| Measured arena reservation | 521,422,080 B (497.27 MiB) | 449,889,536 B (429.05 MiB) | **-71,532,544 B (-13.7%)** |
+| Final arena slack | 521,422,080 B | 449,889,536 B | **-71,532,544 B** |
 | Internal fragmentation | 248 B | 248 B | 0 B |
-| Internal fragmentation ratio | 0.0000185% | 0.0000185% | 0 pp |
-| Arena allocation calls | 431,378 | 429,686 | -0.4% |
+| Internal fragmentation ratio | 0.0000180% | 0.0000180% | 0 pp |
+| Arena allocation calls | 150,248 | 148,556 | -1.1% |
 | WDDM initialization peak | 1,706 MiB | 1,706 MiB | 0 MiB |
 | WDDM post-initialization usage | 1,706 MiB | 1,706 MiB | 0 MiB |
-| WDDM pre-inference usage | 1,772 MiB | 1,772 MiB | 0 MiB |
-| WDDM inference peak | 2,298 MiB | 2,212 MiB | **-86 MiB** |
-| WDDM inference increase | 526 MiB | 440 MiB | **-86 MiB** |
-| End-to-end average | 2,465.07 ms | 2,453.29 ms | -0.5% |
-| End-to-end P50 | 2,407.36 ms | 2,449.66 ms | +1.8% |
-| End-to-end P90 | 2,568.17 ms | 2,526.84 ms | -1.6% |
-| Prefill average | 87.09 ms | 88.27 ms | +1.4% |
-| Decode average per token | 18.58 ms | 18.48 ms | -0.5% |
-| Decode P90 per token | 21.11 ms | 20.93 ms | -0.8% |
-| Decode P99 per token | 28.88 ms | 30.88 ms | +6.9% |
-| Initialization | 1.80 s | 1.68 s | -6.7% |
+| WDDM pre-inference usage | 1,808 MiB | 1,808 MiB | 0 MiB |
+| WDDM inference peak | 2,308 MiB | 2,238 MiB | **-70 MiB** |
+| WDDM inference increase | 500 MiB | 430 MiB | **-70 MiB** |
+| End-to-end average | 2,008.38 ms | 1,028.44 ms | -48.8% (not repeatable) |
+| End-to-end P50 | 1,485.20 ms | 996.96 ms | -32.9% (not repeatable) |
+| End-to-end P90 | 3,516.81 ms | 1,120.18 ms | -68.1% (not repeatable) |
+| Prefill average | 112.36 ms | 94.68 ms | -15.7% (not repeatable) |
+| Decode average per token | 14.81 ms | 7.30 ms | -50.8% (not repeatable) |
+| Decode P90 per token | 23.54 ms | 8.84 ms | -62.5% (not repeatable) |
+| Decode P99 per token | 56.51 ms | 13.49 ms | -76.1% (not repeatable) |
+| Initialization | 3.22 s | 1.73 s | -46.3% |
 
 fpA-intB preallocation did not reduce the memory high-water mark. Legacy
 preallocation reduced measured arena reservation by
-94,322,688 bytes (89.95 MiB) and WDDM inference peak by 86 MiB, close to its
-96 MiB largest declared workspace. The generation latency changes were small and
-mixed, so the legacy memory reduction is the primary result.
+71,532,544 bytes (68.22 MiB) and WDDM inference peak by 70 MiB.
+
+The 1.5B latency results are not repeatable. An opposite-order rerun made the
+fpA-intB baseline faster than preallocation, while the legacy baseline again
+contained multi-second stalls. These stalls were absent from the preallocated
+runs, but the data is insufficient to attribute them to workspace allocation.
+The memory deltas were identical across the rerun and are the primary result.
 
 ### Qwen 2.5 7B
 
@@ -175,25 +194,25 @@ Model:
 | Post-initialization direct reserved bytes | 3,716,923,392 B | 3,716,923,392 B | 0 B |
 | Post-initialization BFC region capacity | 5,076,114,688 B | 5,076,114,688 B | 0 B |
 | Post-initialization arena slack | 3,716,923,392 B | 3,716,923,392 B | 0 B |
-| Shrink reclaimed after warmup | 4,028,350,464 B | 4,028,350,464 B | 0 B |
-| Measured arena reservation | 565,723,392 B (539.52 MiB) | 567,935,488 B (541.63 MiB) | +2,212,096 B (+0.4%) |
-| Final arena slack | 565,723,392 B | 567,935,488 B | +2,212,096 B |
-| Internal fragmentation | 248 B | 248 B | 0 B |
-| Internal fragmentation ratio | 0.00000489% | 0.00000489% | 0 pp |
-| Arena allocation calls | 433,498 | 430,270 | -0.7% |
+| Shrink reclaimed after warmup | 4,259,151,872 B | 4,259,151,872 B | 0 B |
+| Measured arena reservation | 573,047,040 B (546.50 MiB) | 573,047,040 B (546.50 MiB) | 0 B |
+| Final arena slack | 573,047,040 B | 573,047,040 B | 0 B |
+| Internal fragmentation | 12,681,464 B | 12,681,464 B | 0 B |
+| Internal fragmentation ratio | 0.24601% | 0.24601% | 0 pp |
+| Arena allocation calls | 198,960 | 149,041 | -25.1% |
 | WDDM initialization peak | 9,650 MiB | 9,650 MiB | 0 MiB |
 | WDDM post-initialization usage | 9,424 MiB | 9,424 MiB | 0 MiB |
-| WDDM pre-inference usage | 5,598 MiB | 5,598 MiB | 0 MiB |
-| WDDM inference peak | 6,142 MiB | 6,148 MiB | +6 MiB |
-| WDDM inference increase | 544 MiB | 550 MiB | +6 MiB |
-| End-to-end average | 4,428.60 ms | 4,466.76 ms | +0.9% |
-| End-to-end P50 | 4,421.69 ms | 4,445.41 ms | +0.5% |
-| End-to-end P90 | 4,458.47 ms | 4,506.49 ms | +1.1% |
-| Prefill average | 250.44 ms | 251.37 ms | +0.4% |
-| Decode average per token | 32.64 ms | 32.93 ms | +0.9% |
-| Decode P90 per token | 34.49 ms | 35.01 ms | +1.5% |
-| Decode P99 per token | 37.33 ms | 37.56 ms | +0.6% |
-| Initialization | 107.39 s | 116.42 s | +8.4% |
+| WDDM pre-inference usage | 5,710 MiB | 5,710 MiB | 0 MiB |
+| WDDM inference peak | 6,260 MiB | 6,258 MiB | -2 MiB |
+| WDDM inference increase | 550 MiB | 548 MiB | -2 MiB |
+| End-to-end average | 1,642.61 ms | 1,706.61 ms | +3.9% |
+| End-to-end P50 | 1,582.50 ms | 1,619.38 ms | +2.3% |
+| End-to-end P90 | 1,809.19 ms | 1,793.15 ms | -0.9% |
+| Prefill average | 267.46 ms | 269.18 ms | +0.6% |
+| Decode average per token | 10.74 ms | 11.23 ms | +4.5% |
+| Decode P90 per token | 11.98 ms | 13.31 ms | +11.1% |
+| Decode P99 per token | 16.60 ms | 27.11 ms | +63.4% |
+| Initialization | 128.42 s | 133.42 s | +3.9% |
 | **Generation, legacy path** | | | |
 | Planned workspace nodes | 0 | 141 | +141 |
 | Largest workspace | 0 B | 234,881,024 B (224.00 MiB) | +234,881,024 B |
@@ -201,50 +220,51 @@ Model:
 | Post-initialization direct reserved bytes | 0 B | 0 B | 0 B |
 | Post-initialization BFC region capacity | 5,076,114,688 B | 5,076,114,688 B | 0 B |
 | Post-initialization arena slack | 0 B | 0 B | 0 B |
-| Shrink reclaimed after warmup | 1,174,421,504 B | 1,250,967,552 B | +76,546,048 B |
-| Measured arena reservation | 1,006,125,312 B (959.52 MiB) | 670,695,936 B (639.63 MiB) | **-335,429,376 B (-33.3%)** |
-| Final arena slack | 1,006,125,312 B | 670,695,936 B | **-335,429,376 B** |
+| Shrink reclaimed after warmup | 1,183,335,424 B | 1,259,881,472 B | +76,546,048 B |
+| Measured arena reservation | 943,736,064 B (900.02 MiB) | 676,513,280 B (645.17 MiB) | **-267,222,784 B (-28.3%)** |
+| Final arena slack | 943,736,064 B | 676,513,280 B | **-267,222,784 B** |
 | Internal fragmentation | 248 B | 248 B | 0 B |
-| Internal fragmentation ratio | 0.00000489% | 0.00000489% | 0 pp |
-| Arena allocation calls | 431,378 | 429,686 | -0.4% |
+| Internal fragmentation ratio | 0.00000482% | 0.00000482% | 0 pp |
+| Arena allocation calls | 150,248 | 148,556 | -1.1% |
 | WDDM initialization peak | 5,490 MiB | 5,490 MiB | 0 MiB |
 | WDDM post-initialization usage | 5,490 MiB | 5,490 MiB | 0 MiB |
-| WDDM pre-inference usage | 5,556 MiB | 5,556 MiB | 0 MiB |
-| WDDM inference peak | 6,520 MiB | 6,206 MiB | **-314 MiB** |
-| WDDM inference increase | 964 MiB | 650 MiB | **-314 MiB** |
-| End-to-end average | 4,620.63 ms | 4,555.02 ms | -1.4% |
-| End-to-end P50 | 4,604.12 ms | 4,548.14 ms | -1.2% |
-| End-to-end P90 | 4,683.44 ms | 4,606.32 ms | -1.6% |
-| Prefill average | 276.13 ms | 274.15 ms | -0.7% |
-| Decode average per token | 33.94 ms | 33.44 ms | -1.5% |
-| Decode P90 per token | 36.66 ms | 35.78 ms | -2.4% |
-| Decode P99 per token | 41.13 ms | 39.92 ms | -3.0% |
-| Initialization | 4.16 s | 3.75 s | -9.8% |
+| WDDM pre-inference usage | 5,668 MiB | 5,668 MiB | 0 MiB |
+| WDDM inference peak | 6,572 MiB | 6,314 MiB | **-258 MiB** |
+| WDDM inference increase | 904 MiB | 646 MiB | **-258 MiB** |
+| End-to-end average | 1,627.66 ms | 1,617.01 ms | -0.7% |
+| End-to-end P50 | 1,582.32 ms | 1,577.08 ms | -0.3% |
+| End-to-end P90 | 1,726.39 ms | 1,674.60 ms | -3.0% |
+| Prefill average | 294.60 ms | 293.75 ms | -0.3% |
+| Decode average per token | 10.41 ms | 10.34 ms | -0.7% |
+| Decode P90 per token | 11.28 ms | 11.07 ms | -1.9% |
+| Decode P99 per token | 14.39 ms | 14.52 ms | +0.9% |
+| Initialization | 10.85 s | 4.62 s | -57.4% |
 
 fpA-intB preallocation did not reduce memory. Legacy preallocation reduced
-measured arena reservation by 335,429,376 bytes
-(319.89 MiB) and WDDM inference peak by 314 MiB. The arena change exceeds the
+measured arena reservation by 267,222,784 bytes
+(254.84 MiB) and WDDM inference peak by 258 MiB. The arena change exceeds the
 224 MiB largest individual workspace because memory-pattern placement also
-changed BFC region packing and the allocation high-water mark. The generation
-latency differences remain single-pair observations; the legacy memory reduction
-is the primary result.
+changed BFC region packing and the allocation high-water mark. Legacy latency
+was effectively unchanged.
 
 ### RTX 5090 summary
 
 | Model | Workload and path | WDDM inference-peak change | Arena reservation change | Allocation-call change | Average-latency change |
 |---|---|---:|---:|---:|---:|
-| Qwen 2.5 1.5B | Generation, fpA-intB | +10 MiB | +1,097,984 B | +0.5% | -1.2% |
-| Qwen 2.5 1.5B | Generation, legacy | **-86 MiB** | **-94,322,688 B** | -0.4% | -0.5% |
-| Qwen 2.5 7B | Generation, fpA-intB | +6 MiB | +2,212,096 B | -0.7% | +0.9% |
-| Qwen 2.5 7B | Generation, legacy | **-314 MiB** | **-335,429,376 B** | -0.4% | -1.4% |
+| Qwen 2.5 1.5B | Shared-KV generation, fpA-intB | 0 MiB | +295,168 B | -1.1% | Not repeatable |
+| Qwen 2.5 1.5B | Shared-KV generation, legacy | **-70 MiB** | **-71,532,544 B** | -1.1% | Not repeatable |
+| Qwen 2.5 7B | Shared-KV generation, fpA-intB | -2 MiB | 0 B | **-25.1%** | +3.9% |
+| Qwen 2.5 7B | Shared-KV generation, legacy | **-258 MiB** | **-267,222,784 B** | -1.1% | -0.7% |
 
 The generation workloads show the strongest memory benefit when fpA-intB is
 disabled and preallocation covers the legacy dequantized-weight workspace. The
-legacy path reduced WDDM inference peak by 86 MiB for Qwen 2.5 1.5B and 314 MiB
-for Qwen 2.5 7B. fpA-intB generation did not reduce the memory high-water mark
-for either model because the growing KV cache and workspace-free decode steps
-dominated the complete scenario. Latency moved in different directions across
-the single paired runs.
+legacy path reduced WDDM inference peak by 70 MiB for Qwen 2.5 1.5B and 258 MiB
+for Qwen 2.5 7B. fpA-intB preallocation did not reduce the arena high-water mark
+for either model. Fixed-capacity shared KV buffers also cut decode time
+substantially relative to the previous dynamic-cache benchmark, which measured
+about 19 ms per token for 1.5B and 33 ms for 7B. Those old results represented
+KV-tensor replacement and are not mixed with the production-like shared-buffer
+results above.
 
 ## Historical NVIDIA T1000 prefill-only results
 
