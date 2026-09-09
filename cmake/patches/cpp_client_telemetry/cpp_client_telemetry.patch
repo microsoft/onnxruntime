@@ -30,6 +30,38 @@
    message(STATUS "Using vendored sqlite3, zlib, nlohmann-json")
  endif()
 
+--- a/lib/include/mat/config-default.h
++++ b/lib/include/mat/config-default.h
+@@ -28,7 +28,9 @@
+ #endif
+ #define HAVE_MAT_JSONHPP
+ #define HAVE_MAT_ZLIB
++#if !defined(MATSDK_DISABLE_LOGGING)
+ #define HAVE_MAT_LOGGING
++#endif
+ /* #define HAVE_MAT_WIN_LOG     */
+ /* #define HAVE_MAT_EVT_TRACEID     */
+ #define HAVE_MAT_STORAGE
+
+--- a/lib/pal/PAL.cpp
++++ b/lib/pal/PAL.cpp
+@@ -185,13 +185,15 @@
++#ifdef HAVE_MAT_LOGGING
+ #if !defined(_WIN32) && defined(__linux__)
+         static std::mutex m;
+         static std::map<std::thread::id, pid_t> threads;
+         static long int gettid()
+         {
+             std::lock_guard<std::mutex> l(m);
+             long int tid = syscall(SYS_gettid);
+             threads[std::this_thread::get_id()] = tid;
+             return tid;
+         }
+ #else
+ #define     gettid()       std::this_thread::get_id()
+ #endif
++#endif
+
 --- a/lib/system/EventProperties.cpp
 +++ b/lib/system/EventProperties.cpp
 @@ -449,7 +449,7 @@
