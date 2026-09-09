@@ -12,6 +12,7 @@
 #include <thread>
 #include <queue>
 #include <iomanip>
+#include <gsl/gsl>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
@@ -1048,14 +1049,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   auto p_data_xfr = p_exec_provider->GetDataTransfer();
   if (p_data_xfr) {
     auto st = data_transfer_mgr_.RegisterDataTransfer(std::move(p_data_xfr));
-    if (!st.IsOK()) {
-      return st;
-    }
-  }
-
-  auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();
-  if (p_external_data_loader) {
-    auto st = external_data_loader_mgr_.RegisterExternalDataLoader(std::move(p_external_data_loader));
     if (!st.IsOK()) {
       return st;
     }
@@ -2675,6 +2668,13 @@ common::Status InferenceSession::Initialize() {
 
     // re-acquire mutex
     std::lock_guard<std::mutex> l(session_mutex_);
+
+    auto clear_external_data_loaders = gsl::finally([this] { external_data_loader_mgr_.Clear(); });
+    for (const auto& provider : execution_providers_) {
+      if (auto loader = provider->GetExternalDataLoader()) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(external_data_loader_mgr_.RegisterExternalDataLoader(std::move(loader)));
+      }
+    }
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
     if (!session_options_.external_initializers.empty()) {
