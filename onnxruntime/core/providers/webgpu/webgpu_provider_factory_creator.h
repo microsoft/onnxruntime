@@ -20,7 +20,9 @@ struct WebGpuProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const ConfigOptions& config_options);
 };
 
-// Caller owns the transfer. A null EP selects independent, synchronous environment copies.
+// C API to create data transfer for WebGPU EP with lazy initialization.
+// A null EP selects independent environment recording; otherwise the transfer uses the EP's recording.
+// Caller takes ownership of the returned OrtDataTransferImpl*.
 OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id = 0, WebGpuExecutionProvider* ep = nullptr);
 
 }  // namespace onnxruntime

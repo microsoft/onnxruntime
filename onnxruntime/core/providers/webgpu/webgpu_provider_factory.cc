@@ -441,6 +441,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       return nullptr;
     }
 
+    // Lazily acquire and retain the context once so concurrent copies cannot race initialization.
     std::call_once(impl.context_init_, [&impl]() {
       if (impl.ep_ != nullptr) {
         auto& context = WebGpuContextFactory::GetContext(impl.context_id_);
@@ -455,6 +456,8 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     CommandRecordingState environment_recording;
     auto& recording = impl.ep_ ? impl.ep_->Recording() : environment_recording;
     auto& buffer_manager = impl.ep_ ? impl.ep_->BufferManager() : impl.context_->BufferManager();
+    // DataTransferImpl borrows its BufferManager. The retained context owns the Env manager;
+    // Session transfers also depend on the owning EP's lifetime for its selected manager and recording.
     DataTransferImpl transfer(buffer_manager, recording);
 
     for (size_t idx = 0; idx < num_tensors; ++idx) {
@@ -482,16 +485,11 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }
     }
+    // Flush GPU-to-GPU copies, which BufferManager::MemCpy only records. CPU/GPU transfers already handle
+    // any required submission in BufferManager. This also submits copies before the local Env recording is destroyed.
+    // TODO: Only GPU-to-CPU downloads currently guarantee copy completion. Uploads and GPU-to-GPU copies
+    // only guarantee submission and may still be in flight on return; add completion guarantees for these paths.
     ORT_THROW_IF_ERROR(impl.context_->Flush(buffer_manager, recording));
-    wgpu::QueueWorkDoneStatus completion = wgpu::QueueWorkDoneStatus::Error;
-    auto future = impl.context_->Device().GetQueue().OnSubmittedWorkDone(
-        wgpu::CallbackMode::WaitAnyOnly,
-        [](wgpu::QueueWorkDoneStatus status, wgpu::StringView, wgpu::QueueWorkDoneStatus* result) noexcept {
-          *result = status;
-        },
-        &completion);
-    ORT_THROW_IF_ERROR(impl.context_->Wait(future));
-    ORT_ENFORCE(completion == wgpu::QueueWorkDoneStatus::Success, "WebGPU queue completion failed.");
     return nullptr;
   }
 

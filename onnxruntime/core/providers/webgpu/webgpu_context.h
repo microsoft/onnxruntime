@@ -83,7 +83,7 @@ struct PendingPipelineBuild {
 //    This command owns the asynchronous build for its program key.
 //
 // 3. Later cache miss for the same key  empty            empty
-//    An earlier command in deferred_dispatches_ owns the build. This command keeps program_key so
+//    An earlier command in the same recording owns the build. This command keeps program_key so
 //    pipeline resolution can obtain the completed pipeline from the program cache.
 //
 // 4. Deferred pipeline resolved         empty             set
@@ -117,9 +117,12 @@ struct CommandRecordingState {
   uint32_t num_pending_dispatches = 0;
   bool has_unsubmitted_work = false;
   std::vector<wgpu::Buffer> pending_buffers;
+  // Owns the active dispatch window and the unique pending builds referenced within that window.
   std::vector<CapturedCommandInfo> deferred_dispatches;
+  // info of kernels pending submission for a single batch
   std::vector<PendingKernelInfo> pending_kernels;
   GraphCaptureState graph_capture_state{GraphCaptureState::Default};
+  // External vector to store captured commands, owned by EP
   std::vector<CapturedCommandInfo>* external_captured_commands = nullptr;
 };
 

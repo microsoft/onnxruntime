@@ -53,6 +53,7 @@
 #include "core/providers/webgpu/webgpu_external_header.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/test_environment.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -183,18 +184,26 @@ class WebGpuConcurrentContextTest : public ::testing::Test {
   static constexpr float kExpected = 1.0f + 0.5f * kChainLen;
 
   void SetUp() override {
-    if (DefaultWebGpuExecutionProvider() == nullptr) {
+    if (MakeProvider() == nullptr) {
       GTEST_SKIP() << "WebGPU execution provider is not available.";
     }
     ASSERT_NO_FATAL_FAILURE(BuildAddChainModel(kChainLen, kNumElements, model_bytes_));
     keepalive_ = MakeSession();
   }
 
+  std::unique_ptr<IExecutionProvider> MakeProvider() const {
+    ConfigOptions config_options;
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
+                                                     webgpu::options::kBufferCacheMode_Bucket));
+    return WebGpuExecutionProviderWithOptions(config_options);
+  }
+
   std::unique_ptr<InferenceSession> MakeSession() {
     SessionOptions so;
     so.session_logid = "webgpu_concurrent_ctx";
+    ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
     auto session = std::make_unique<InferenceSession>(so, GetEnvironment());
-    ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+    ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(MakeProvider()));
     ORT_THROW_IF_ERROR(session->Load(model_bytes_.data(), static_cast<int>(model_bytes_.size())));
     ORT_THROW_IF_ERROR(session->Initialize());
     return session;
@@ -397,8 +406,9 @@ TEST_F(WebGpuConcurrentContextTest, ColdAndWarmSessionsRunConcurrently) {
     try {
       SessionOptions so;
       so.session_logid = "webgpu_concurrent_ctx_cold";
+      ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
       InferenceSession cold_session(so, GetEnvironment());
-      ORT_THROW_IF_ERROR(cold_session.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
+      ORT_THROW_IF_ERROR(cold_session.RegisterExecutionProvider(MakeProvider()));
       ORT_THROW_IF_ERROR(cold_session.Load(cold_model_bytes.data(), static_cast<int>(cold_model_bytes.size())));
       ORT_THROW_IF_ERROR(cold_session.Initialize());
 

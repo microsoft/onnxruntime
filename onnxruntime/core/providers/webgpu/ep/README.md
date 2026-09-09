@@ -32,8 +32,10 @@ the Session can subsequently run on another thread. The factory lock does not co
 Env and Session operations reuse `GpuBufferAllocator` and `DataTransferImpl`, but Env allocation
 owns separate recording and Env copies use local recording. Cached-buffer clears are submitted
 before Env allocation returns. Session allocations submit clears outside Run and batch them during Run.
-`CopyTensors` completes synchronously as required for a provider without streams. Ordinary Run and
-graph replay submit commands without an additional completion wait; `OrtEp::Sync` remains a no-op.
+`CopyTensors` submits pending commands before returning; downloads wait for readback, but uploads and
+device copies do not wait for GPU completion. The existing gap against the no-stream synchronous-copy
+contract is left as a TODO for separate work. Ordinary Run and graph replay submit commands without
+an additional completion wait; `OrtEp::Sync` remains a no-op.
 I/O Binding synchronization calls do not guarantee GPU completion; output downloads wait for readback.
 
 There is no recording mutex. Applications must serialize same-Session allocator operations,
