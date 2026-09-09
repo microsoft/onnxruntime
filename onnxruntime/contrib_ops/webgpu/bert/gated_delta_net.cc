@@ -199,6 +199,7 @@ Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
   context.Output(2, TensorShape{batch, 0});
   ORT_RETURN_IF_NOT(output != nullptr, "output is required");
 
+  // A WebGPU storage buffer cannot be bound for both read-only and read-write access in one pass.
   const bool state_alias =
       initial_state != nullptr && final_state != nullptr && initial_state->DataRaw() == final_state->DataRaw();
   GatedDeltaNetProgram program{update_rule_, cu_seqlens != nullptr, initial_state != nullptr, state_alias,
@@ -215,6 +216,7 @@ Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
   if (final_state != nullptr) {
     program.AddOutput({final_state, ProgramTensorMetadataDependency::None});
   }
+  const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(dk));
   program
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv * dv))
       .SetWorkgroupSize(256)
@@ -226,7 +228,7 @@ Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
                             {onnxruntime::narrow<uint32_t>(hv)},
                             {onnxruntime::narrow<uint32_t>(dk)},
                             {onnxruntime::narrow<uint32_t>(dv)},
-                            {scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(dk))}});
+                            {scale}});
   return context.RunProgram(program);
 }
 
