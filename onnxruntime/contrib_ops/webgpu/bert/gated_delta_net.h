@@ -62,7 +62,7 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
 class GatedDeltaNet final : public WebGpuKernel {
  public:
   explicit GatedDeltaNet(const OpKernelInfo& info);
-  Status ComputeInternal(ComputeContext& context) const override;
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
   GatedDeltaNetUpdateRule update_rule_;

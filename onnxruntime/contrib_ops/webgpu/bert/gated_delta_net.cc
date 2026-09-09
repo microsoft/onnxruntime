@@ -92,7 +92,7 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(qk_l2_norm, qk_l2_norm_));
 }
 
-Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
+Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* query = context.Input(0);
   const auto* key = context.Input(1);
   const auto* value = context.Input(2);
