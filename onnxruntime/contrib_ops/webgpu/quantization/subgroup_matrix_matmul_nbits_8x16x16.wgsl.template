@@ -64,6 +64,7 @@ fn dequant_b_to_tile(n_base: u32, k_idx: u32, n_idx: u32, k_chunk_idx: u32) {
     let weight_offset = actual_weight_idx * uniforms.K * uniforms.N;
     let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / kQuantizationBlockSize);
 #else
+    const actual_weight_idx : u32 = 0;
     const weight_offset : u32 = 0;
     const scale_offset : u32 = 0;
 #endif
@@ -71,7 +72,7 @@ fn dequant_b_to_tile(n_base: u32, k_idx: u32, n_idx: u32, k_chunk_idx: u32) {
     let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
     let scale = f16(scales_b.getByOffset(scale_idx));
     let zero = mm_read_zero(
-        global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
+        actual_weight_idx, global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
     let packed_weights = input_b.getByOffset(packed_idx);
     let weights_lo =
         (vec4<f16>(unpack4xU8(packed_weights & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
@@ -108,6 +109,7 @@ fn dequant_b_to_tile(n_base: u32, k_idx: u32, n_idx: u32, k_chunk_idx: u32) {
     let weight_offset = actual_weight_idx * uniforms.K * uniforms.N;
     let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / kQuantizationBlockSize);
 #else
+    const actual_weight_idx : u32 = 0;
     const weight_offset : u32 = 0;
     const scale_offset : u32 = 0;
 #endif
@@ -115,7 +117,7 @@ fn dequant_b_to_tile(n_base: u32, k_idx: u32, n_idx: u32, k_chunk_idx: u32) {
     let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
     let scale = f16(scales_b.getByOffset(scale_idx));
     let zero = mm_read_zero(
-        global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
+        actual_weight_idx, global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
     let packed_weights = input_b.getByOffset(packed_idx);
     let weights_lo = (vec4<f16>(unpack4xU8(packed_weights[0])) - vec4<f16>(zero)) * scale;
     let weights_hi = (vec4<f16>(unpack4xU8(packed_weights[1])) - vec4<f16>(zero)) * scale;

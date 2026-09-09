@@ -11,6 +11,7 @@
 
 #param is_fp16
 #param k
+#param normalize_routing_weights
 
 const K: u32 = k;
 #if is_fp16
@@ -66,7 +67,12 @@ $MAIN {
         // shared_vals is sorted in descending order, so shared_vals[0] is the max.
         let max_val = f32(shared_vals[0]);
         var sum : f32 = 0.0;
-        for (var i = 0u; i < K; i++) {
+    #if normalize_routing_weights
+        let normalization_count = K;
+    #else
+        let normalization_count = cols;
+    #endif
+        for (var i = 0u; i < normalization_count; i++) {
             sum += exp(f32(shared_vals[i]) - max_val);
         }
         for (var i = 0u; i < K; i++) {

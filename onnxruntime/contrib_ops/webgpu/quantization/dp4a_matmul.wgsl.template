@@ -91,7 +91,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         let b_value = b.getByOffset(b_global * uniforms.K16+kidx_v + col);
 #endif
         let block_idx = kidx_v/(block_size/16);
-        let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+        let zero = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
         tile_B[col][row] = DequantizedFrom4BitsTo8Bits(b_value, zero);
         if (col == 0)
         {
@@ -132,7 +132,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
             let b_scale_offset = actual_weight_idx * uniforms.N * (uniforms.K/block_size);
             scale_B[row] = scales_b.getByOffset(b_scale_offset + b_global*(uniforms.K/block_size) + block_idx);
 #if has_zero_points
-            zeroes[row] = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+            zeroes[row] = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
         }
     }
@@ -161,7 +161,7 @@ fn loadSHMA(batch:u32, a_global_base:u32, kidx_v:u32, row: u32, col: u32)
 #endif
         let block_idx = kidx_v/(block_size/16);
 #if has_zero_points
-        let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+        let zero = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
         tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value, zero);
 #else
         tile_B[col][row] = DequantizedFrom2BitsTo8Bits(b_value);

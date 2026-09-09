@@ -73,7 +73,7 @@ $MAIN {
 #if single_scale_weights
   let block_idx = 0;
   let scale_b = scales_b.getByOffset(0 + b_scale_offset);
-  let zero = mm_read_zero(0, 0, uniforms.N, uniforms.zero_blocks_per_col);
+  let zero = mm_read_zero(actual_weight_idx, 0, 0, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
 
   for (var kidx = 0u; kidx < uniforms.K; kidx += tile_size_k)
@@ -93,7 +93,7 @@ $MAIN {
 #if !single_scale_weights
         let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
         let scale_b = scales_b.getByOffset(b_global * uniforms.blocks_per_col + block_idx + b_scale_offset);
-        let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+        let zero = mm_read_zero(actual_weight_idx, b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
 #endif
         var b_value = b.getByOffset(b_global * uniforms.K_of_b + k_offset + b_base_offset);
 
