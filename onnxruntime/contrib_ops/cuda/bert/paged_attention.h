@@ -64,12 +64,12 @@ class PagedAttention final : public CudaKernel {
   // 1 = it fits. Resolved once per node because it only depends on head_size / group size.
   mutable std::atomic<int> xqa_shared_memory_ok_{-1};
   mutable std::atomic<int> xqa_spec_dec_shared_memory_ok_{-1};
-  // -1 = not yet probed, 0 = try_build_paged_graph returned false (planner rejected the shape
-  // signature for this node), 1 = the cuDNN paged graph built successfully. Probed on the first
-  // non-capturing Compute call when cuDNN paged is otherwise eligible; a failed probe makes the
-  // cascade fall back to FlashAttention / MemoryEfficientAttention for the remainder of the
-  // node's lifetime rather than throwing at build time and killing user inference.
-  mutable std::atomic<int> cudnn_paged_build_ok_{-1};
+  // No node-scalar latch for cuDNN paged: the graph cache in cudnn_flash_attention.cc is
+  // thread_local and keyed on the full PagedGraphParams (shape + handle), so buildability is a
+  // per-(thread, shape) property, not a per-node one. ComputeInternal calls try_build_paged_graph
+  // every Run with the current shape; that call is a cache-first read (~10 ns steady state) and
+  // folds the capture-mode check internally, so a shape change or a second worker thread cannot
+  // stale a global latch into a hard dispatch failure.
   const AttentionKernelOptions* kernel_options_;
 };
 

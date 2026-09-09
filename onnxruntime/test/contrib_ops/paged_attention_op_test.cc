@@ -1873,6 +1873,27 @@ TEST(PagedAttention, Cuda_CudnnPagedBuildsWhenPageTableOverAllocated) {
     GTEST_SKIP() << "cuDNN paged SDPA is only auto-enabled on compute capability 9.0 or later.";
   }
 
+  // Shape-independent capability probe: does cuDNN paged fire on the aligned baseline shape? If we
+  // decide "cuDNN paged is available in this build/device" from the same run that also tests the
+  // alignment invariant, a regression in that invariant makes run_paged return false and the test
+  // silently skips instead of failing. Use a known-good shape here so the only reason the
+  // over-allocated case below can miss the cuDNN marker is the alignment invariant itself.
+  {
+    const IoBindingCase probe = MakeCudnnPagedDecodeCase();
+    testing::internal::CaptureStdout();
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, probe);
+    const std::string probe_output = testing::internal::GetCapturedStdout();
+    if (probe_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
+      GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
+                   << probe_output;
+    }
+  }
+
+  // Regression case: over-allocate the page table so `max_num_blocks_per_seq * block_size` exceeds
+  // the reported `max_kv_len_bound`. cuDNN 9.12's planner rejects any smaller value than the page
+  // capacity for max_seq_len_kv, so a working `run_paged` must round the metadata bound up before
+  // building. If that round-up is ever removed, this case fails the ASSERT_NE on the cuDNN marker
+  // below rather than silently falling back to FlashAttention/MEA.
   IoBindingCase c = MakeCudnnPagedDecodeCase();
   c.num_heads = 16;
   c.kv_num_heads = 16;
@@ -1885,16 +1906,19 @@ TEST(PagedAttention, Cuda_CudnnPagedBuildsWhenPageTableOverAllocated) {
   testing::internal::CaptureStdout();
   RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
   const std::string debug_output = testing::internal::GetCapturedStdout();
-  if (debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION") == std::string::npos) {
-    GTEST_SKIP() << "cuDNN paged SDPA is not runnable in this build/device configuration.\n"
-                 << debug_output;
-  }
-  // Wherever cuDNN paged is live, the alignment invariant this test guards must hold: the CUDA
-  // EP still reports the *un*aligned metadata bound (past+1 = 513) as the effective KV length, but
-  // run_paged rounded that up to `max_num_blocks_per_seq * block_size` before feeding cuDNN. A
-  // regression in that round-up would surface as run_paged returning false and this test then
-  // skipping; the EXPECT_NE below just pins the observable state so we notice if the debug fields
-  // ever get renamed.
+
+  // The capability probe above already confirmed cuDNN paged is runnable on this build/device, so a
+  // missing marker here can only mean the alignment round-up in `run_paged` regressed. Hard-assert
+  // rather than skip.
+  ASSERT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos)
+      << "Alignment regression: cuDNN paged fired on the aligned baseline case but not on the "
+         "over-allocated page-table case. `run_paged` is no longer rounding max_seq_len_kv up to "
+         "`max_num_blocks_per_seq * block_size` before feeding cuDNN. Debug output:\n"
+      << debug_output;
+  // EffectiveKvLengthBound pins the *un*aligned metadata bound (past+1 = 513) that the CUDA EP
+  // reports; the fact that the graph compiled at all is the observable proof that `run_paged`
+  // coarsened it to `max_num_blocks_per_seq * block_size = 1024` before build. GqaGroupSize=1
+  // catches the MHA-vs-GQA plumbing.
   EXPECT_NE(debug_output.find("EffectiveKvLengthBound=513"), std::string::npos) << debug_output;
   EXPECT_NE(debug_output.find("GqaGroupSize=1"), std::string::npos) << debug_output;
 }

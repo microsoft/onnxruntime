@@ -512,38 +512,34 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
           parameters.block_size);
   bool use_cudnn_paged = cudnn_paged_eligible && !fp16_xqa_eligible;
 
-  // One-shot cuDNN paged build probe. is_supported_paged only checks static shapes; the planner
-  // may still reject the compiled graph, and we cannot fall back once dispatch has committed. Try
-  // the build ahead of dispatch (mirroring the XQA shared-memory probe below), cache the outcome
-  // for the node, and if it failed, clear use_cudnn_paged so the cascade drops to FlashAttention /
-  // MemoryEfficientAttention instead of throwing. isCapturing() guards the build itself: cuDNN
-  // graph compilation is not capturable, so during graph capture we treat the probe as unresolved
-  // (leaving the atomic at -1) and skip cuDNN paged for this run only. A well-formed producer runs
-  // at least one warm-up Compute before capture, which resolves the probe.
+  // Pre-dispatch buildability probe for cuDNN paged. is_supported_paged only checks static shapes;
+  // the planner may still reject the compiled graph, and we cannot fall back once dispatch has
+  // committed. The graph cache in run_paged is thread_local and keyed on the full PagedGraphParams
+  // (shape + handle), so a node-wide scalar latch would be wrong on two axes: (a) after a
+  // successful probe for one shape, a later Compute with a different batch_size /
+  // max_num_blocks_per_seq / num_blocks would skip the check and hit an unbuildable dispatch, and
+  // (b) a second worker thread has its own empty thread_local cache. So probe the *current* shape
+  // and handle every Run using the same key run_paged will use. try_build_paged_graph is a
+  // cache-first read (returns true on hit without touching cuDNN) and folds isCapturing()
+  // internally: on a cache miss during graph capture it returns false rather than attempting a
+  // non-capturable build. A false result clears use_cudnn_paged for this Run only, so the cascade
+  // drops to FlashAttention / MemoryEfficientAttention.
   if (use_cudnn_paged) {
-    int probe = cudnn_paged_build_ok_.load(std::memory_order_relaxed);
-    if (probe < 0) {
-      if (!onnxruntime::llm::common::isCapturing(cuda_stream)) {
-        const float probe_scale = parameters.scale == 0.0f
-                                      ? 1.f / std::sqrt(static_cast<float>(parameters.head_size))
-                                      : parameters.scale;
-        const bool ok = onnxruntime::cudnn_sdpa::try_build_paged_graph(
-            parameters.batch_size,
-            parameters.num_heads, parameters.kv_num_heads,
-            parameters.head_size, parameters.head_size,
-            parameters.num_blocks,
-            parameters.block_size,
-            parameters.max_num_blocks_per_seq,
-            probe_scale,
-            std::is_same<T, BFloat16>::value,
-            GetCudnnHandle(context));
-        probe = ok ? 1 : 0;
-        cudnn_paged_build_ok_.store(probe, std::memory_order_relaxed);
-      } else {
-        probe = 0;
-      }
-    }
-    if (probe == 0) {
+    const float probe_scale = parameters.scale == 0.0f
+                                  ? 1.f / std::sqrt(static_cast<float>(parameters.head_size))
+                                  : parameters.scale;
+    const bool ok = onnxruntime::cudnn_sdpa::try_build_paged_graph(
+        parameters.batch_size,
+        parameters.num_heads, parameters.kv_num_heads,
+        parameters.head_size, parameters.head_size,
+        parameters.num_blocks,
+        parameters.block_size,
+        parameters.max_num_blocks_per_seq,
+        probe_scale,
+        std::is_same<T, BFloat16>::value,
+        GetCudnnHandle(context),
+        ort_stream.get());
+    if (!ok) {
       use_cudnn_paged = false;
     }
   }

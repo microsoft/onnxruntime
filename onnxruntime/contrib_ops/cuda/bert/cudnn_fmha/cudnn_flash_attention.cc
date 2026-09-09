@@ -77,7 +77,8 @@ bool try_build_paged_graph(
     int /*max_num_blocks_per_seq*/,
     float /*scale*/,
     bool /*is_bf16*/,
-    cudnnHandle_t /*handle*/) {
+    cudnnHandle_t /*handle*/,
+    Stream* /*stream*/) {
   return false;
 }
 
@@ -812,7 +813,8 @@ bool try_build_paged_graph(
     int max_num_blocks_per_seq,
     float scale,
     bool is_bf16,
-    cudnnHandle_t handle) {
+    cudnnHandle_t handle,
+    Stream* stream) {
   PagedGraphParams params;
   FillPagedGraphParams(params, batch_size, num_heads_q, num_heads_kv, head_size_qk, head_size_v,
                        cache_num_blocks, block_size, max_num_blocks_per_seq,
@@ -821,6 +823,13 @@ bool try_build_paged_graph(
   auto it = paged_mha_graph_cache.find(params);
   if (it != paged_mha_graph_cache.end()) {
     return it->second != nullptr;
+  }
+  // Cache miss during CUDA graph capture: cuDNN plan build is not capturable, so return false
+  // rather than compile a plan that would corrupt the capture. The caller clears use_cudnn_paged
+  // for this Run and the cascade falls back to FlashAttention / MemoryEfficientAttention.
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+  if (onnxruntime::llm::common::isCapturing(cuda_stream)) {
+    return false;
   }
   auto mha_graph = build_paged_graph(params);
   if (mha_graph == nullptr) {

@@ -71,11 +71,17 @@ bool is_supported_paged(const cudaDeviceProp& dprops,
                         int max_sequence_length_kv,  // upper bound for graph build
                         int block_size);
 
-// One-time build probe. Returns true iff a cuDNN paged graph for these shape/type parameters
-// exists in the thread-local cache OR was just built successfully. On planner rejection it returns
-// false without throwing, so the PagedAttention cascade can memoize the outcome and fall back to
-// FlashAttention / MemoryEfficientAttention for this node. Must not be called from a capturing
-// stream: cuDNN graph build is not capturable.
+// Pre-dispatch buildability probe. Returns true iff a cuDNN paged graph for these shape/type
+// parameters is present in the thread-local cache OR was just built successfully. On planner
+// rejection it returns false without throwing, so the PagedAttention cascade can clear
+// use_cudnn_paged for the current Run and fall back to FlashAttention / MemoryEfficientAttention.
+// The lookup key is byte-identical to the one run_paged uses, so the caller must invoke this
+// every Run rather than caching the answer in a node-scalar: buildability is a per-(thread,
+// shape) property (the cache is thread_local and keyed on the full PagedGraphParams).
+//
+// Capture-safe: on a cache miss with `stream` capturing the returned graph, this returns false
+// rather than attempting a non-capturable build. A well-behaved producer therefore warms the
+// cache with at least one non-capturing Compute per (thread, shape) before capture.
 //
 // The graph is compiled at max_seq_len_kv == max_num_blocks_per_seq * block_size (the natural
 // page-table capacity) because cuDNN 9.12's planner rejects any smaller value; per-sequence
@@ -92,7 +98,8 @@ bool try_build_paged_graph(
     int max_num_blocks_per_seq,
     float scale,
     bool is_bf16,
-    cudnnHandle_t handle);
+    cudnnHandle_t handle,
+    Stream* stream);
 
 // Executes the paged SDPA. Returns true on success, false if the cuDNN graph is unavailable
 // (planner rejection cached from a prior try_build_paged_graph, cache miss on a capturing stream,
