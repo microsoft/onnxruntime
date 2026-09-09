@@ -830,13 +830,14 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   softmax denominator.
 > - The kernel reads pages in place at their stored width, so a decode step touches the KV cache once
 >   at `int8`/`fp8` bandwidth instead of gathering and dequantizing the whole live context.
-> - **XQA folds the `PER_CHANNEL` K scale into the query in `T`, not FP32.** `PagedFoldChannelScaleKernel`
->   multiplies in FP32 but stores `q_c * k_scale_c` back as FP16/BF16, whereas the portable kernel keeps
->   that product in an FP32 shared-memory tile. The two agree only while `max|q_c * k_scale_c|` is
->   representable in `T`; beyond that FP16 saturates to infinity, and a zero cache code then yields NaN.
->   For FP16 the bound is 65504, which INT4 reaches ~18x sooner than INT8 at equal data, because an INT4
->   scale covers `max|K| / 7` instead of `max|K| / 127`. Removing the bound requires applying the scale
->   during the cache load, where `DequantizeInt4CacheGrain` currently dequantizes at unit scale.
+> - **XQA normalizes a `PER_CHANNEL` K scale before folding it into the query.**
+>   `PagedFoldChannelScaleKernel` stores `q_c * k_scale_c` back in `T`, so a large scale would saturate
+>   FP16 and a zero cache code would then yield NaN, while the portable kernel keeps that product in
+>   FP32. The fold therefore divides by `max|k_scale|`, which `PagedMaxAbsScaleKernel` computes on
+>   device so the step stays capturable, and hands that maximum to XQA as its scalar K scale. XQA
+>   multiplies it back into `qkScale` once per CTA, outside the K/V loop, so the correction is exact
+>   and adds no inner-loop work. The folded query is then bounded by `max|q|` at any scale magnitude.
+>   INT4 needs this more than INT8 because its scale spans `max|K| / 7` rather than `max|K| / 127`.
 > - `softcap` matches FlashAttention bit-for-bit: `softcap * tanh(qk_raw * scale / softcap)`, which is
 >   what `flash_api.cc` produces from `params.softcap = softmax_scale / softcap` and
 >   `params.scale_softmax = softcap`.

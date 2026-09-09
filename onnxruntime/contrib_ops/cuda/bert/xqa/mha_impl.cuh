@@ -1489,6 +1489,13 @@ CUBIN_EXPORT __global__
 
   const uint32_t seqStrideIters = nbSubSeqPerSeq;
   constexpr bool isKVCacheQuantized = (cacheElemSize < 2);
+#if defined(XQA_PAGED_INT4)
+  // INT4 dequantizes into FP16 shared memory, so cacheElemSize is 2 and isKVCacheQuantized is false,
+  // yet the packed codes still carry the caller's scalar dequant factor.
+  constexpr bool hasScalarCacheScale = true;
+#else
+  constexpr bool hasScalarCacheScale = isKVCacheQuantized;
+#endif
   const uint32_t seqIterInit = nbSkipLeadingTiles + idxSubSeqInSeq;
 #if BEAM_WIDTH > 1
   const uint32_t nbCtxCtaTiles = beamSearchParams.ctxLenList[idxReq * beamWidth] / ctaTile.x;
@@ -1502,7 +1509,7 @@ CUBIN_EXPORT __global__
   };
   if (warpIdx.z == 0) {
     // qkScale is applied onto Q*K.T before softmax. A null kCacheScale means the scale is already in Q.
-    const float qkScale = qScale * ((isKVCacheQuantized && kCacheScale != nullptr) ? kCacheScale[0] : 1.f);
+    const float qkScale = qScale * ((hasScalarCacheScale && kCacheScale != nullptr) ? kCacheScale[0] : 1.f);
     CircIdx<nbKBuffers> idxCurrSMemKBuf{nbKBuffers - 1};
     const auto getSMemKTile = [&](uint32_t idx) -> SharedMem::KSmemBuffer& { return smem.k[warpIdx.x][idx]; };
 #if BEAM_WIDTH > 1
@@ -2195,7 +2202,7 @@ CUBIN_EXPORT __global__
     }
 
     // A null vCacheScale means the caller rescales the output itself (per-channel V scale).
-    float voScale = ((isKVCacheQuantized && vCacheScale != nullptr) ? vCacheScale[0] : 1.F);
+    float voScale = ((hasScalarCacheScale && vCacheScale != nullptr) ? vCacheScale[0] : 1.F);
     if (seqIterInit < nbSeqIters) {  // otherwise rcpRowSum will be NAN.
       // The attention sinks are moved to the multi-block reduction part if the multi-block is enabled.
       if (!isMultiBlock && attentionSinks != nullptr) {

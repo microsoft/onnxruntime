@@ -721,23 +721,20 @@ class TestPagedAttentionInt4(unittest.TestCase):
 
     @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_int4_xqa_large_per_channel_k_scale_matches_portable(self):
-        # XQA folds the K scale into the query and stores it as FP16, while the portable kernel
-        # keeps that product in FP32. The folded query must therefore stay within the FP16 range;
-        # this pins the largest scale that does, over channels holding both zero and nonzero codes.
+        # XQA folds the K scale into the query and stores it in T. A large PER_CHANNEL scale used to
+        # saturate FP16 there, and a zero cache code then turned that infinity into NaN. The fold now
+        # divides by max|k_scale| and the kernel reapplies it. Every K code is zero here, so the logits
+        # are uniform and the expected output stays well conditioned no matter how large the scale is.
         heads, kv_heads, width = 24, 4, 256
         model, feeds, _ = make_case(width=width, heads=heads, kv_heads=kv_heads, past=(513, 138), block_size=256)
-        zero_channels = width // 2
-        for side in ("key", "value"):
-            feeds[f"{side}_cache"][..., : zero_channels // 2] = 0x88  # two zero codes per byte
+        feeds["key"][:] = 0
+        feeds["key_cache"][:] = 0x88  # two zero codes per byte
 
         query = np.abs(feeds["query"].reshape(-1, heads, width).astype(np.float32))
-        k_scale = np.full((kv_heads, 1, width), 0.1, dtype=np.float32)
-        for kv_head in range(kv_heads):
-            group = query[:, kv_head * (heads // kv_heads) : (kv_head + 1) * (heads // kv_heads), :zero_channels]
-            k_scale[kv_head, 0, :zero_channels] = 30000.0 / np.maximum(group.max(axis=(0, 1)), 1e-3)
+        k_scale = np.tile(np.linspace(0.5, 1.0, width, dtype=np.float32), (kv_heads, 1)).reshape(kv_heads, 1, width)
+        k_scale *= np.float32(1.0e6 / (query * k_scale[:, 0, :].repeat(heads // kv_heads, axis=0)).max())
         replace_input(model, feeds, "k_scale", k_scale)
-        folded = query[:, :, :zero_channels] * k_scale[:, 0, :zero_channels].repeat(heads // kv_heads, axis=0)
-        self.assertLess(folded.max(), np.finfo(np.float16).max)
+        self.assertGreater((query * k_scale[:, 0, :].repeat(heads // kv_heads, axis=0)).max(), np.finfo(np.float16).max)
 
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
             portable = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
