@@ -978,7 +978,8 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
     const int k_split = ApplyFp8MmaKSplitOverride(selected_k_split, m, n, k);
     const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);
     const dim3 mma_blocks{static_cast<unsigned int>((n + 15) / 16)};
-    const bool pin_residency = Fp8MmaGemvPinsResidency(n, k_split, mtiles, device_prop.multiProcessorCount);
+    const bool pin_residency = Fp8MmaGemvPinsResidency(
+        n, k_split, mtiles, device_prop.multiProcessorCount, device_prop.major, device_prop.minor);
     const auto launch_mma = [&]<int KSplit, int MTiles>() {
       const dim3 mma_threads{32, KSplit};
 #define ORT_FP8_LAUNCH_MMA(kernel_name)                                                      \

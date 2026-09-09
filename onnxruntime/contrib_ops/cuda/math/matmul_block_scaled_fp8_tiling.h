@@ -49,13 +49,18 @@ inline int PickFp8MmaKSplit(int n, int m, int windows, int sm_count,
 //
 //   * a grid at or below 2 blocks per SM is already one wave and must stay on the plain kernel;
 //   * a grid above 3 blocks per SM stays multi-wave either way;
+//   * pre-SM89 devices lack native FP8 tensor-core support and lose about 1% from the register
+//     cap even inside the target grid window;
 //   * 8-warp blocks (KSplit 8, taken from N >= 8192) must not carry the attribute at all --
 //     declaring it replaces nvcc's implicit bounds and costs 1.05-1.08x even when the register
 //     cap is unchanged, and KSplit 32 cannot host 3 blocks per SM at all;
 //   * only one row tile fits the 40-register cap that 3 blocks per SM imply. M = 16 (two tiles)
 //     measures 0.74x and M = 32 (four tiles) 0.24x, both from spills.
-inline bool Fp8MmaGemvPinsResidency(int n, int k_split, int m_tiles, int sm_count) {
-  if (k_split != 16 || m_tiles != 1) {
+inline bool Fp8MmaGemvPinsResidency(int n, int k_split, int m_tiles, int sm_count,
+                                    int compute_capability_major, int compute_capability_minor) {
+  if (compute_capability_major < 8 ||
+      (compute_capability_major == 8 && compute_capability_minor < 9) ||
+      k_split != 16 || m_tiles != 1) {
     return false;
   }
   const int col_blocks = (n + 15) / 16;

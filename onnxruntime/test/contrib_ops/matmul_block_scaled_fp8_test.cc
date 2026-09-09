@@ -620,19 +620,31 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreTilesBf16) {
 // expectations do not move with the test machine.
 TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidencyBoundaries) {
   constexpr int sm_count = 132;
+  constexpr int compute_capability_major = 9;
+  constexpr int compute_capability_minor = 0;
   using onnxruntime::contrib::cuda::Fp8MmaGemvPinsResidency;
 
   // ceil(N / 16) has to land in (2 * sm_count, 3 * sm_count] == (264, 396].
-  EXPECT_FALSE(Fp8MmaGemvPinsResidency(16 * 264, 16, 1, sm_count));
-  EXPECT_TRUE(Fp8MmaGemvPinsResidency(16 * 264 + 1, 16, 1, sm_count));
-  EXPECT_TRUE(Fp8MmaGemvPinsResidency(16 * 396, 16, 1, sm_count));
-  EXPECT_FALSE(Fp8MmaGemvPinsResidency(16 * 396 + 1, 16, 1, sm_count));
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(
+      16 * 264, 16, 1, sm_count, compute_capability_major, compute_capability_minor));
+  EXPECT_TRUE(Fp8MmaGemvPinsResidency(
+      16 * 264 + 1, 16, 1, sm_count, compute_capability_major, compute_capability_minor));
+  EXPECT_TRUE(Fp8MmaGemvPinsResidency(
+      16 * 396, 16, 1, sm_count, compute_capability_major, compute_capability_minor));
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(
+      16 * 396 + 1, 16, 1, sm_count, compute_capability_major, compute_capability_minor));
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(16 * 300, 16, 1, sm_count, 8, 6));
+  EXPECT_TRUE(Fp8MmaGemvPinsResidency(16 * 300, 16, 1, sm_count, 8, 9));
   // 8-warp blocks regress under any explicit bounds, 32-warp blocks cannot host 3 blocks per SM,
   // and 2 or 4 row tiles spill at the register cap that 3 resident blocks imply.
-  EXPECT_FALSE(Fp8MmaGemvPinsResidency(16 * 300, 8, 1, sm_count));
-  EXPECT_FALSE(Fp8MmaGemvPinsResidency(16 * 300, 32, 1, sm_count));
-  EXPECT_FALSE(Fp8MmaGemvPinsResidency(16 * 300, 16, 2, sm_count));
-  EXPECT_FALSE(Fp8MmaGemvPinsResidency(16 * 300, 16, 4, sm_count));
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(
+      16 * 300, 8, 1, sm_count, compute_capability_major, compute_capability_minor));
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(
+      16 * 300, 32, 1, sm_count, compute_capability_major, compute_capability_minor));
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(
+      16 * 300, 16, 2, sm_count, compute_capability_major, compute_capability_minor));
+  EXPECT_FALSE(Fp8MmaGemvPinsResidency(
+      16 * 300, 16, 4, sm_count, compute_capability_major, compute_capability_minor));
 }
 
 // Runs the residency-hinted kernel. It is a second instantiation of the same body, so what is
@@ -667,6 +679,9 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidency) {
   int device_id = 0;
   ASSERT_EQ(cudaGetDevice(&device_id), cudaSuccess);
   ASSERT_EQ(cudaGetDeviceProperties(&device_prop, device_id), cudaSuccess);
+  if (device_prop.major < 8 || (device_prop.major == 8 && device_prop.minor < 9)) {
+    GTEST_SKIP() << "The residency hint requires native FP8 tensor-core support on SM89 or newer devices.";
+  }
   const int sm_count = device_prop.multiProcessorCount;
 
   constexpr int64_t k = 1024;  // 16 K windows, so KSplit stays at its full 16
@@ -685,7 +700,8 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidency) {
   for (const int64_t n : {n_pinned, n_pinned + 5}) {
     const int k_split = onnxruntime::contrib::cuda::PickFp8MmaKSplit(
         static_cast<int>(n), 1, static_cast<int>(k / 64), sm_count, device_prop.major, device_prop.minor);
-    ASSERT_TRUE(onnxruntime::contrib::cuda::Fp8MmaGemvPinsResidency(static_cast<int>(n), k_split, 1, sm_count))
+    ASSERT_TRUE(onnxruntime::contrib::cuda::Fp8MmaGemvPinsResidency(
+        static_cast<int>(n), k_split, 1, sm_count, device_prop.major, device_prop.minor))
         << "N = " << n << " should take the hinted entry point on this device";
 
     std::vector<Float8E4M3FN> b(static_cast<size_t>(n * k));
