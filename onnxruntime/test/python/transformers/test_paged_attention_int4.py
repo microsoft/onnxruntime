@@ -8,10 +8,10 @@ from unittest.mock import patch
 import ml_dtypes
 import numpy as np
 import onnx
-from onnx import helper
+from onnx import TensorProto, helper
+from onnxruntime.capi import _pybind_state
 
 import onnxruntime as ort
-from onnxruntime.capi import _pybind_state
 
 
 def int4_kernel_available():
@@ -59,26 +59,34 @@ def remove_input(model, feeds, name):
             node.input[index] = ""
 
 
-def static_scale(quant_type, kv_heads, width):
-    """Schema scale shape per granularity: (1,) for PER_TENSOR, (kv_num_heads, 1, head_size) otherwise."""
-    if quant_type == "PER_TENSOR":
-        return np.array([0.2], dtype=np.float32)
-    return np.linspace(0.05, 0.25, kv_heads * width, dtype=np.float32).reshape(kv_heads, 1, width)
+def hadamard_matrix(width):
+    matrix = np.ones((1, 1), dtype=np.float32)
+    while matrix.shape[0] < width:
+        matrix = np.block([[matrix, matrix], [matrix, -matrix]])
+    return matrix / np.sqrt(np.float32(width))
 
 
-def quantize(values, scale):
-    """Signed INT4 codes in [-8, 7] stored biased by +8, two per byte, even channel in the low nibble."""
-    values = values.astype(np.float32)
-    scaled = np.divide(values, scale, out=np.zeros_like(values), where=scale != 0)
-    biased = (np.clip(np.rint(scaled), -8, 7).astype(np.int8) + 8).astype(np.uint8)
-    return biased[..., ::2] | (biased[..., 1::2] << 4)
+def rotate(values):
+    return values.astype(np.float32) @ hadamard_matrix(values.shape[-1])
 
 
-def unpack(packed, scale):
+def quantize(values, scale_dtype):
+    scales = np.max(np.abs(values), axis=-1) / 7.0
+    if scale_dtype == np.float16:
+        scales = np.where(scales == 0, 0, np.clip(scales, 2.0**-24, 65504))
+    scales = scales.astype(scale_dtype)
+    scaled = np.divide(values, scales[..., None], out=np.zeros_like(values), where=scales[..., None] != 0)
+    signed = np.clip(np.rint(scaled), -8, 7).astype(np.int8)
+    biased = (signed + 8).astype(np.uint8)
+    packed = biased[..., ::2] | (biased[..., 1::2] << 4)
+    return packed, scales
+
+
+def unpack(packed, scales):
     values = np.empty((*packed.shape[:-1], packed.shape[-1] * 2), dtype=np.float32)
     values[..., ::2] = (packed & 15).astype(np.float32) - 8
     values[..., 1::2] = (packed >> 4).astype(np.float32) - 8
-    return values * scale
+    return values * scales[..., None]
 
 
 def make_case(
@@ -86,7 +94,9 @@ def make_case(
     lengths=(1, 1),
     past=(19, 7),
     int4=True,
-    quant_type="PER_CHANNEL",
+    qk_rotation=True,
+    v_rotation=True,
+    scale_dtype=np.float16,
     packed=False,
     skip=False,
     sink=False,
@@ -121,28 +131,31 @@ def make_case(
     slots = np.array(slots, dtype=np.int32)
     if skip and tokens:
         slots[-1] = -1
-    for name, prefix, current in (("key", "k", key), ("value", "v", value)):
+    for name, current, rotation in (("key", key, qk_rotation), ("value", value, v_rotation)):
         dense = rng.normal(0, 0.5, (num_blocks, block_size, kv_heads, width)).astype(np.float16).astype(np.float32)
         dense[-1] = 0
-        broadcast = None
+        stored = rotate(dense) if rotation else dense
         if int4:
-            scale = static_scale(quant_type, kv_heads, width)
-            broadcast = scale.reshape(kv_heads, width) if quant_type == "PER_CHANNEL" else scale
-            cache_inputs[f"{prefix}_scale"] = scale
-            cache = quantize(dense, broadcast)
+            cache, scales = quantize(stored, scale_dtype)
+            cache_inputs[f"{name}_scale_cache"] = scales.copy()
         else:
-            cache = dense.astype(np.float16)
+            cache = stored.astype(np.float16)
         cache_inputs[f"{name}_cache"] = cache.copy()
+        transformed = rotate(current) if rotation else current.astype(np.float32)
         for token, slot in enumerate(slots):
             if slot < 0:
                 continue
             page, offset = divmod(int(slot), block_size)
             if int4:
-                cache[page, offset] = quantize(current[token], broadcast)
+                cache[page, offset], scales[page, offset] = quantize(transformed[token], scale_dtype)
             else:
-                cache[page, offset] = current[token].astype(np.float16)
+                cache[page, offset] = transformed[token].astype(np.float16)
         expected_cache[f"{name}_cache_out"] = cache
-        logical_cache[name] = unpack(cache, broadcast) if int4 else cache.astype(np.float32)
+        if int4:
+            expected_cache[f"{name}_scale_cache_out"] = scales
+            logical_cache[name] = unpack(cache, scales)
+        else:
+            logical_cache[name] = cache.astype(np.float32)
 
     feeds = {
         "query": query.reshape(tokens, heads * width),
@@ -174,21 +187,27 @@ def make_case(
         "head_sink" if sink else "",
         "",
         "",
-        "k_scale" if int4 else "",
-        "v_scale" if int4 else "",
+        "",
+        "",
         "attention_metadata",
+        "key_scale_cache" if int4 else "",
+        "value_scale_cache" if int4 else "",
     ]
     output_info = [("output", activation_dtype, (tokens, heads * width))]
     output_info.extend((name, values.dtype, values.shape) for name, values in expected_cache.items())
     output_order = ["output", "key_cache_out", "value_cache_out"]
+    if int4:
+        output_order += ["key_scale_cache_out", "value_scale_cache_out"]
     output_info.sort(key=lambda info: output_order.index(info[0]))
     attributes = {
         "num_heads": heads,
         "kv_num_heads": kv_heads,
+        "qk_rotation": "HADAMARD" if qk_rotation else "NONE",
+        "v_rotation": "HADAMARD" if v_rotation else "NONE",
         "k_cache_dtype": "int4" if int4 else "",
         "v_cache_dtype": "int4" if int4 else "",
-        "k_quant_type": quant_type if int4 else "NONE",
-        "v_quant_type": quant_type if int4 else "NONE",
+        "k_quant_type": "PER_TOKEN" if int4 else "NONE",
+        "v_quant_type": "PER_TOKEN" if int4 else "NONE",
         "softcap": softcap,
         "local_window_size": window,
     }
@@ -209,6 +228,7 @@ def make_case(
         graph, opset_imports=[helper.make_opsetid("", 21), helper.make_opsetid("com.microsoft", 1)]
     )
     model.ir_version = 10
+    transformed_query = (rotate(query).astype(activation_dtype) if qk_rotation else query).astype(np.float32)
     expected_output = np.zeros_like(query, dtype=np.float32)
     for sequence, (old, new) in enumerate(zip(past, lengths, strict=True)):
         for offset in range(new):
@@ -221,7 +241,7 @@ def make_case(
                 kv_head = head // (heads // kv_heads)
                 keys = logical_cache["key"][pages, positions % block_size, kv_head]
                 values = logical_cache["value"][pages, positions % block_size, kv_head]
-                logits = keys @ query[token, head].astype(np.float32) / np.sqrt(width)
+                logits = keys @ transformed_query[token, head] / np.sqrt(width)
                 if softcap:
                     logits = softcap * np.tanh(logits / softcap)
                 maximum = max(np.max(logits), float(feeds["head_sink"][head]) if sink else -np.inf)
@@ -229,6 +249,8 @@ def make_case(
                 denominator = probabilities.sum() + (np.exp(float(feeds["head_sink"][head]) - maximum) if sink else 0)
                 expected_output[token, head] = probabilities @ values / denominator
     expected_output = expected_output.astype(activation_dtype)
+    if v_rotation:
+        expected_output = rotate(expected_output).astype(activation_dtype)
     return model, feeds, {"output": expected_output.reshape(tokens, heads * width), **expected_cache}
 
 
@@ -320,6 +342,22 @@ def run_case(model, feeds, steps=1, updates=None, cuda_graph=False):
     return results
 
 
+def per_channel_int4_case(**kwargs):
+    """Both cache sides PER_CHANNEL, which forbids rotation and replaces the scale caches."""
+    model, feeds, _ = make_case(qk_rotation=False, v_rotation=False, **kwargs)
+    node = model.graph.node[0]
+    kv_heads, width = kwargs["kv_heads"], kwargs["width"]
+    for side, index, cache_name in (("k", 14, "key_scale_cache"), ("v", 15, "value_scale_cache")):
+        scale = np.linspace(0.02, 0.15, kv_heads * width, dtype=np.float32).reshape(kv_heads, 1, width)
+        remove_input(model, feeds, cache_name)
+        replace_input(model, feeds, f"{side}_scale", scale)
+        node.input[index] = f"{side}_scale"
+        set_attribute(model, f"{side}_quant_type", "PER_CHANNEL")
+    del node.output[3:]
+    del model.graph.output[3:]
+    return model, feeds
+
+
 @unittest.skipUnless(int4_kernel_available(), "Requires CUDA PagedAttention built with USE_INT4_KV_CACHE")
 class TestPagedAttentionInt4(unittest.TestCase):
     def setUp(self):
@@ -336,17 +374,26 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 np.testing.assert_allclose(
                     actual[name].astype(np.float32), reference.astype(np.float32), atol=tolerance, rtol=5e-3
                 )
+            elif "scale" in name:
+                np.testing.assert_allclose(actual[name], reference, atol=1e-6, rtol=1e-3)
             elif reference.dtype == np.float16:
                 np.testing.assert_allclose(actual[name], reference, atol=1e-6, rtol=1e-3)
             else:
                 np.testing.assert_array_equal(actual[name], reference)
         return actual
 
-    def test_int4_decode_pack(self):
+    def test_hadamard_rotation_is_output_neutral(self):
         for width in (16, 32, 64, 128, 256):
-            for quant_type in ("PER_CHANNEL", "PER_TENSOR"):
-                with self.subTest(width=width, quant_type=quant_type):
-                    self.check_case(width=width, quant_type=quant_type)
+            with self.subTest(width=width):
+                rotated = self.check_case(width=width, int4=False)
+                plain = self.check_case(width=width, int4=False, qk_rotation=False, v_rotation=False)
+                np.testing.assert_allclose(rotated["output"], plain["output"], atol=8e-4, rtol=5e-3)
+
+    def test_int4_decode_pack_and_scale_cache(self):
+        for width in (16, 32, 64, 128, 256):
+            for dtype in (np.float16, np.float32):
+                with self.subTest(width=width, scale_dtype=dtype):
+                    self.check_case(width=width, scale_dtype=dtype)
 
     def test_int4_packed_qkv_and_skipped_slot(self):
         self.check_case(width=128, lengths=(3, 0, 2), past=(15, 7, 31), packed=True, skip=True)
@@ -388,9 +435,8 @@ class TestPagedAttentionInt4(unittest.TestCase):
                         )
 
     def test_int4_xqa_unsupported_scales_fall_back(self):
-        # INT4 XQA only covers PER_CHANNEL scales, so PER_TENSOR must take the portable kernel.
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
-            self.check_case(width=256, heads=24, kv_heads=4, past=(513, 138), block_size=256, quant_type="PER_TENSOR")
+            self.check_case(width=256, heads=24, kv_heads=4, past=(513, 138), block_size=256, scale_dtype=np.float32)
 
     def test_int4_xqa_speculative_decode(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
@@ -416,22 +462,26 @@ class TestPagedAttentionInt4(unittest.TestCase):
             changed = {"key": feeds["key"] * np.float16(3), "value": feeds["value"] * np.float16(0.25)}
             actual = run_case(model, feeds, steps=3, updates={1: changed}, cuda_graph=True)
             reference = run_case(model, {**feeds, **changed})[0]
-            self.assertFalse(np.array_equal(actual[0]["value_cache_out"], actual[1]["value_cache_out"]))
+            self.assertFalse(np.array_equal(actual[0]["value_scale_cache_out"], actual[1]["value_scale_cache_out"]))
             for name in reference:
                 np.testing.assert_array_equal(actual[1][name], actual[2][name])
                 np.testing.assert_allclose(actual[1][name], reference[name], atol=8e-4, rtol=5e-3)
+
+    def test_int4_without_rotation_and_k_only(self):
+        self.check_case(qk_rotation=False, v_rotation=False)
+        self.check_case(v_rotation=False)
 
     def test_int4_cuda_graph_replay(self):
         model, feeds, _ = make_case(width=128)
         changed = {"key": feeds["key"] * np.float16(3), "value": feeds["value"] * np.float16(0.25)}
         actual = run_case(model, feeds, steps=3, updates={1: changed}, cuda_graph=True)
         reference = run_case(model, {**feeds, **changed})[0]
-        self.assertFalse(np.array_equal(actual[0]["value_cache_out"], actual[1]["value_cache_out"]))
+        self.assertFalse(np.array_equal(actual[0]["value_scale_cache_out"], actual[1]["value_scale_cache_out"]))
         for name in reference:
             np.testing.assert_array_equal(actual[1][name], actual[2][name])
             np.testing.assert_allclose(actual[1][name], reference[name], atol=8e-4, rtol=5e-3)
 
-    def test_cache_write_follows_norm_and_partial_rope(self):
+    def test_hadamard_follows_norm_and_partial_rope(self):
         for interleaved in (False, True):
             with self.subTest(interleaved=interleaved):
                 model, feeds, _ = make_case(width=64, lengths=(5,), past=(0,), int4=False)
@@ -470,8 +520,8 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 for name in reference:
                     np.testing.assert_allclose(actual[name], reference[name], atol=8e-4, rtol=5e-3)
 
-    def test_optional_cache_outputs(self):
-        for output_count in (1, 3):
+    def test_optional_scale_outputs(self):
+        for output_count in (1, 3, 4, 5):
             with self.subTest(output_count=output_count):
                 model, feeds, expected = make_case()
                 del model.graph.node[0].output[output_count:]
@@ -484,19 +534,94 @@ class TestPagedAttentionInt4(unittest.TestCase):
         cases = []
         for side in ("key", "value"):
             prefix = "k" if side == "key" else "v"
+            for dimension in range(3):
+                cases.append((f"{side}_scale_dim_{dimension}", side, "shape", dimension, "Scale cache must have shape"))
             cases.extend(
                 [
-                    (f"{side}_ambiguous_uint8", (f"{prefix}_cache_dtype", ""), "explicit int4"),
-                    (f"{side}_wrong_dtype", (f"{prefix}_cache_dtype", "float4e2m1"), "explicit int4"),
+                    (f"{side}_missing_scale", side, "missing", None, "PER_TOKEN requires"),
+                    (f"{side}_static_scale", side, "static", None, "PER_TOKEN requires"),
+                    (f"{side}_ambiguous_uint8", side, "attribute", (f"{prefix}_cache_dtype", ""), "explicit int4"),
+                    (
+                        f"{side}_wrong_dtype",
+                        side,
+                        "attribute",
+                        (f"{prefix}_cache_dtype", "float4e2m1"),
+                        "explicit int4",
+                    ),
+                    (
+                        f"{side}_wrong_mode",
+                        side,
+                        "attribute",
+                        (f"{prefix}_quant_type", "PER_TENSOR"),
+                        "only allowed with PER_TOKEN",
+                    ),
+                    (
+                        f"{side}_rotation_channel",
+                        side,
+                        "attribute",
+                        (f"{prefix}_quant_type", "PER_CHANNEL"),
+                        "PER_CHANNEL",
+                    ),
                 ]
             )
-        for label, attribute, message in cases:
+        cases.extend(
+            [
+                ("invalid_rotation", "key", "attribute", ("qk_rotation", "BAD"), "must be NONE or HADAMARD"),
+                ("invalid_v_rotation", "value", "attribute", ("v_rotation", "BAD"), "must be NONE or HADAMARD"),
+                ("invalid_width", "key", "width", 24, "power-of-two"),
+                ("too_small_width", "key", "width", 8, "power-of-two"),
+                ("too_large_width", "key", "width", 512, "power-of-two"),
+            ]
+        )
+        for label, side, operation, value, message in cases:
             with self.subTest(case=label):
-                model, feeds, _ = make_case(width=64)
-                set_attribute(model, *attribute)
+                model, feeds, _ = make_case(
+                    width=value if operation == "width" else 64,
+                    qk_rotation=operation != "width",
+                    v_rotation=operation != "width",
+                )
+                if operation == "width":
+                    set_attribute(model, "qk_rotation", "HADAMARD")
+                if operation == "attribute":
+                    set_attribute(model, *value)
+                elif operation == "shape":
+                    name = f"{side}_scale_cache"
+                    shape = list(feeds[name].shape)
+                    shape[value] += 1
+                    replace_input(model, feeds, name, np.ones(shape, dtype=np.float16))
+                elif operation == "missing":
+                    remove_input(model, feeds, f"{side}_scale_cache")
+                elif operation == "static":
+                    name, index = ("k_scale", 14) if side == "key" else ("v_scale", 15)
+                    replace_input(model, feeds, name, np.ones(1, dtype=np.float32))
+                    model.graph.node[0].input[index] = name
                 del model.graph.node[0].output[1:]
                 del model.graph.output[1:]
                 with self.assertRaisesRegex(Exception, message):
+                    run_case(model, feeds)
+
+    def test_optional_scale_output_holes(self):
+        for side, prefix, input_index, output_index in (("key", "k", 14, 3), ("value", "v", 15, 4)):
+            with self.subTest(side=side):
+                model, feeds, _ = make_case()
+                remove_input(model, feeds, f"{side}_scale_cache")
+                set_attribute(model, f"{prefix}_quant_type", "PER_TENSOR")
+                replace_input(model, feeds, f"{prefix}_scale", np.array([0.125], dtype=np.float32))
+                model.graph.node[0].input[input_index] = f"{prefix}_scale"
+                missing_output = model.graph.node[0].output[output_index]
+                model.graph.node[0].output[output_index] = ""
+                del model.graph.output[output_index]
+                actual = run_case(model, feeds)[0]
+                reference_model = onnx.ModelProto.FromString(model.SerializeToString())
+                del reference_model.graph.node[0].output[3:]
+                del reference_model.graph.output[3:]
+                reference = run_case(reference_model, feeds)[0]
+                np.testing.assert_array_equal(actual["output"], reference["output"])
+                model.graph.node[0].output[output_index] = missing_output
+                model.graph.output.append(
+                    helper.make_tensor_value_info(missing_output, TensorProto.FLOAT16, feeds[f"{side}_cache"].shape[:3])
+                )
+                with self.assertRaisesRegex(Exception, "Scale cache output requires"):
                     run_case(model, feeds)
 
     def test_invalid_packed_dimensions(self):
@@ -516,7 +641,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 self.check_case(width=width, activation_dtype=ml_dtypes.bfloat16)
 
     def test_int4_known_packing_and_padding(self):
-        model, feeds, _ = make_case(width=32, lengths=(1,), past=(0,), quant_type="PER_TENSOR")
+        model, feeds, _ = make_case(width=32, lengths=(1,), past=(0,), qk_rotation=False, v_rotation=False)
         pattern = np.array(
             [
                 -9,
@@ -559,24 +684,46 @@ class TestPagedAttentionInt4(unittest.TestCase):
         packed = biased[::2] | (biased[1::2] << 4)
         expected = {}
         slot = int(feeds["slot_mapping"][0])
-        for side, prefix in (("key", "k"), ("value", "v")):
+        for side, prefix, index in (("key", "k", 14), ("value", "v", 15)):
             feeds[side][:] = np.tile(pattern, 2)
             feeds[f"{side}_cache"][:] = 0x88
+            remove_input(model, feeds, f"{side}_scale_cache")
             replace_input(model, feeds, f"{prefix}_scale", np.ones(1, dtype=np.float32))
+            model.graph.node[0].input[index] = f"{prefix}_scale"
+            set_attribute(model, f"{prefix}_quant_type", "PER_TENSOR")
             cache = feeds[f"{side}_cache"].copy()
             cache.reshape(-1, 2, 16)[slot] = packed
             expected[f"{side}_cache_out"] = cache
+        del model.graph.node[0].output[3:]
+        del model.graph.output[3:]
         actual = run_case(model, feeds)[0]
         for name, values in expected.items():
             np.testing.assert_array_equal(actual[name], values)
         np.testing.assert_array_equal(actual["output"], np.tile(signed, 4).reshape(1, -1).astype(np.float16))
+
+    def test_int4_k_per_token_v_per_channel(self):
+        model, feeds, expected = make_case(width=32, lengths=(1,), past=(0,), v_rotation=False)
+        scale = np.linspace(0.02, 0.15, 64, dtype=np.float32).reshape(2, 1, 32)
+        remove_input(model, feeds, "value_scale_cache")
+        replace_input(model, feeds, "v_scale", scale)
+        model.graph.node[0].input[15] = "v_scale"
+        set_attribute(model, "v_quant_type", "PER_CHANNEL")
+        del model.graph.node[0].output[4:]
+        del model.graph.output[4:]
+        scaled = feeds["value"].reshape(2, 32).astype(np.float32) / scale.reshape(2, 32)
+        quantized = np.clip(np.rint(scaled), -8, 7)
+        decoded = quantized * scale.reshape(2, 32)
+        actual = run_case(model, feeds)[0]
+        np.testing.assert_allclose(actual["output"], np.repeat(decoded, 2, axis=0).reshape(1, -1), atol=5e-4, rtol=1e-3)
+        np.testing.assert_array_equal(actual["key_cache_out"], expected["key_cache_out"])
+        np.testing.assert_array_equal(actual["key_scale_cache_out"], expected["key_scale_cache_out"])
 
     def test_int4_per_channel_xqa_matches_portable(self):
         # A PER_CHANNEL scale is folded into Q and the output, so XQA has to agree with the
         # portable kernel. lengths (2, 1) also covers the speculative INT4 kernel.
         for lengths in ((1, 1), (2, 1)):
             with self.subTest(lengths=lengths):
-                model, feeds, _ = make_case(
+                model, feeds = per_channel_int4_case(
                     width=256, heads=24, kv_heads=4, past=(513, 138), block_size=256, lengths=lengths
                 )
                 with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
@@ -593,46 +740,79 @@ class TestPagedAttentionInt4(unittest.TestCase):
                     np.testing.assert_array_equal(accelerated[name], portable[name])
 
     def test_int4_scale_extremes(self):
-        for magnitude in (2.0**-24, 1e10):
-            with self.subTest(magnitude=magnitude):
-                model, feeds, _ = make_case(
-                    width=32,
-                    lengths=(1,),
-                    past=(0,),
-                    quant_type="PER_TENSOR",
-                    activation_dtype=ml_dtypes.bfloat16,
-                )
-                pattern = np.tile(np.array([-magnitude, magnitude], dtype=ml_dtypes.bfloat16), 32).reshape(1, 64)
-                for side, prefix in (("key", "k"), ("value", "v")):
-                    feeds[side][:] = pattern
-                    replace_input(model, feeds, f"{prefix}_scale", np.array([1e-6], dtype=np.float32))
-                actual = run_case(model, feeds)[0]
-                raw = pattern.reshape(2, 32).astype(np.float32)
-                biased = (np.clip(np.rint(raw / np.float32(1e-6)), -8, 7).astype(np.int8) + 8).astype(np.uint8)
-                packed = biased[:, ::2] | (biased[:, 1::2] << 4)
-                page, offset = divmod(int(feeds["slot_mapping"][0]), 16)
-                for side in ("key", "value"):
-                    np.testing.assert_array_equal(actual[f"{side}_cache_out"][page, offset], packed)
+        for dynamic in (False, True):
+            for magnitude in (2.0**-24, 1e10):
+                with self.subTest(dynamic=dynamic, magnitude=magnitude):
+                    model, feeds, _ = make_case(
+                        width=32,
+                        lengths=(1,),
+                        past=(0,),
+                        qk_rotation=False,
+                        v_rotation=False,
+                        activation_dtype=ml_dtypes.bfloat16,
+                    )
+                    pattern = np.tile(np.array([-magnitude, magnitude], dtype=ml_dtypes.bfloat16), 32).reshape(1, 64)
+                    for side, prefix, index in (("key", "k", 14), ("value", "v", 15)):
+                        feeds[side][:] = pattern
+                        if not dynamic:
+                            remove_input(model, feeds, f"{side}_scale_cache")
+                            replace_input(model, feeds, f"{prefix}_scale", np.array([1e-6], dtype=np.float32))
+                            model.graph.node[0].input[index] = f"{prefix}_scale"
+                            set_attribute(model, f"{prefix}_quant_type", "PER_TENSOR")
+                    if not dynamic:
+                        del model.graph.node[0].output[3:]
+                        del model.graph.output[3:]
+                    actual = run_case(model, feeds)[0]
+                    raw = pattern.reshape(2, 32).astype(np.float32)
+                    if dynamic:
+                        packed, scales = quantize(raw, np.float16)
+                    else:
+                        signed = np.clip(np.rint(raw / np.float32(1e-6)), -8, 7).astype(np.int8)
+                        biased = (signed + 8).astype(np.uint8)
+                        packed = biased[:, ::2] | (biased[:, 1::2] << 4)
+                    page, offset = divmod(int(feeds["slot_mapping"][0]), 16)
+                    for side in ("key", "value"):
+                        np.testing.assert_array_equal(actual[f"{side}_cache_out"][page, offset], packed)
+                        if dynamic:
+                            np.testing.assert_array_equal(actual[f"{side}_scale_cache_out"][page, offset], scales)
 
-    def test_reject_latent_int4(self):
-        model, feeds, _ = make_case(width=64, lengths=(1,), past=(0,), heads=4, kv_heads=1)
-        set_attribute(model, "kv_cache_layout", "LATENT")
-        set_attribute(model, "v_quant_type", "NONE")
-        set_attribute(model, "v_cache_dtype", "")
-        remove_input(model, feeds, "value")
-        remove_input(model, feeds, "value_cache")
-        remove_input(model, feeds, "v_scale")
-        del model.graph.node[0].output[1:]
-        del model.graph.output[1:]
-        with self.assertRaisesRegex(Exception, "LATENT"):
-            run_case(model, feeds)
+    def test_reject_scale_rank_dtype_and_latent_rotation(self):
+        for operation, message in (
+            ("rank", "Scale cache must have shape"),
+            ("dtype", "invalid"),
+            ("mixed_dtype", "bound to different types"),
+            ("latent", "LATENT"),
+        ):
+            with self.subTest(operation=operation):
+                model, feeds, _ = make_case()
+                if operation == "rank":
+                    replace_input(model, feeds, "key_scale_cache", feeds["key_scale_cache"].reshape(-1, 2))
+                elif operation == "dtype":
+                    replace_input(model, feeds, "key_scale_cache", feeds["key_scale_cache"].astype(np.int32))
+                elif operation == "mixed_dtype":
+                    replace_input(model, feeds, "key_scale_cache", feeds["key_scale_cache"].astype(np.float32))
+                else:
+                    model, feeds, _ = make_case(int4=False)
+                    set_attribute(model, "kv_cache_layout", "LATENT")
+                    remove_input(model, feeds, "value")
+                    remove_input(model, feeds, "value_cache")
+                    set_attribute(model, "kv_num_heads", 1)
+                    replace_input(model, feeds, "key", feeds["key"][:, :64])
+                    replace_input(model, feeds, "key_cache", feeds["key_cache"][:, :, :1, :].copy())
+                del model.graph.node[0].output[1:]
+                del model.graph.output[1:]
+                with self.assertRaisesRegex(Exception, message):
+                    run_case(model, feeds)
 
     def test_int8_fp8_cache_regression(self):
         for cache_dtype, qmax in ((np.int8, 127), (ml_dtypes.float8_e4m3fn, 448)):
-            for mode in ("PER_TENSOR", "PER_CHANNEL"):
+            for mode in ("PER_TENSOR", "PER_CHANNEL", "PER_TOKEN"):
                 for lengths in ((1, 1), (33, 17)):
                     with self.subTest(cache_dtype=cache_dtype, mode=mode, lengths=lengths):
-                        model, feeds, _ = make_case(width=128, lengths=lengths, int4=False)
+                        rotated = mode == "PER_TOKEN"
+                        model, feeds, _ = make_case(
+                            width=128, lengths=lengths, int4=False, qk_rotation=rotated, v_rotation=rotated
+                        )
                         reference_model = onnx.ModelProto.FromString(model.SerializeToString())
                         reference_feeds = {name: array.copy() for name, array in feeds.items()}
                         reference_feeds["slot_mapping"][:] = -1
@@ -641,15 +821,33 @@ class TestPagedAttentionInt4(unittest.TestCase):
                             cache_name = f"{side}_cache"
                             dense = feeds[cache_name].astype(np.float32)
                             current = feeds[side].reshape(-1, 2, 128).astype(np.float32)
-                            scale = (
-                                np.array([0.03125], dtype=np.float32)
-                                if mode == "PER_TENSOR"
-                                else np.linspace(0.02, 0.06, 256, dtype=np.float32).reshape(2, 1, 128)
-                            )
-                            scale_name = f"{prefix}_scale"
-                            replace_input(model, feeds, scale_name, scale)
-                            model.graph.node[0].input[index] = scale_name
-                            divisor = scale.reshape(2, 128) if mode == "PER_CHANNEL" else scale
+                            if rotated:
+                                current = rotate(current)
+                            if mode == "PER_TOKEN":
+                                scales = (np.max(np.abs(dense), axis=-1) / qmax).astype(np.float16)
+                                current_scales = (np.max(np.abs(current), axis=-1) / qmax).astype(np.float16)
+                                scale_name = f"{side}_scale_cache"
+                                replace_input(model, feeds, scale_name, scales.copy())
+                                model.graph.node[0].input[index + 3] = scale_name
+                                model.graph.node[0].output.append(f"{scale_name}_out")
+                                model.graph.output.append(
+                                    helper.make_tensor_value_info(
+                                        f"{scale_name}_out", TensorProto.FLOAT16, scales.shape
+                                    )
+                                )
+                                divisor = scales[..., None]
+                                current_divisor = current_scales[..., None]
+                            else:
+                                scale = (
+                                    np.array([0.03125], dtype=np.float32)
+                                    if mode == "PER_TENSOR"
+                                    else np.linspace(0.02, 0.06, 256, dtype=np.float32).reshape(2, 1, 128)
+                                )
+                                scale_name = f"{prefix}_scale"
+                                replace_input(model, feeds, scale_name, scale)
+                                model.graph.node[0].input[index] = scale_name
+                                divisor = scale.reshape(2, 128) if mode == "PER_CHANNEL" else scale
+                                current_divisor = divisor
 
                             def encode(array, scale, cache_dtype=cache_dtype, qmax=qmax):
                                 scaled = np.divide(array, scale, out=np.zeros_like(array), where=scale != 0)
@@ -663,18 +861,24 @@ class TestPagedAttentionInt4(unittest.TestCase):
                             for output in model.graph.output:
                                 if output.name == f"{cache_name}_out":
                                     output.type.tensor_type.elem_type = cache_type
-                            encoded_current = encode(current, divisor)
+                            encoded_current = encode(current, current_divisor)
                             for token, slot in enumerate(feeds["slot_mapping"]):
                                 page, offset = divmod(int(slot), 16)
                                 cache[page, offset] = encoded_current[token]
+                                if mode == "PER_TOKEN":
+                                    scales[page, offset] = current_scales[token]
                             expected_cache[f"{cache_name}_out"] = cache
+                            if mode == "PER_TOKEN":
+                                expected_cache[f"{scale_name}_out"] = scales
                             reference_feeds[cache_name] = (cache.astype(np.float32) * divisor).astype(np.float16)
                             set_attribute(model, f"{prefix}_quant_type", mode)
                         actual = run_case(model, feeds)[0]
                         reference = run_case(reference_model, reference_feeds)[0]
                         np.testing.assert_allclose(actual["output"], reference["output"], atol=8e-4, rtol=5e-3)
                         for name, expected in expected_cache.items():
-                            if cache_dtype == np.int8:
+                            if "scale" in name:
+                                np.testing.assert_allclose(actual[name], expected, atol=1e-6, rtol=1e-3)
+                            elif cache_dtype == np.int8:
                                 np.testing.assert_allclose(actual[name], expected, atol=1, rtol=0)
                             else:
                                 lower = np.nextafter(expected, np.array(-448, dtype=cache_dtype)).astype(np.float32)

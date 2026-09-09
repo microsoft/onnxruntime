@@ -73,6 +73,9 @@ struct HeadPtr {
   Vec<KVCachePageIndex, nbPages> pageIndices;
   uint32_t nbKHeads;
   uint32_t offset;  // offset inside the first page.
+#if defined(XQA_PAGED_INT4)
+  const half* tokenScales;
+#endif
 
   __device__ inline Head& operator[](uint32_t i) const {
     return *(*this + i);
@@ -155,8 +158,11 @@ __device__ inline void copyPartialHeadsAsync(
       static_assert(!isHeadPadded && sizeof(CacheElem) == 2);
       const bool valid = isValidPage && isHeadInBound;
       const uint32_t packed = valid ? reinterpret_cast<const uint32_t*>(pSrcHead)[idxGrainInsideHead] : 0x88888888U;
-      // The PER_CHANNEL scale is folded into Q and into the output, so a grain holds its raw codes.
-      *reinterpret_cast<uint4*>(pDst) = DequantizeInt4CacheGrain<CacheElem>(packed, 1.f);
+      // A null tokenScales is a PER_CHANNEL scale the caller folded into Q / the output, so the
+      // grain dequantizes to its raw codes and the kernel runs at unit scale.
+      const float tokenScale =
+          (valid && src.tokenScales != nullptr) ? static_cast<float>(src.tokenScales[pSrcHead - src.pool]) : 1.f;
+      *reinterpret_cast<uint4*>(pDst) = DequantizeInt4CacheGrain<CacheElem>(packed, tokenScale);
     } else
 #endif
     {

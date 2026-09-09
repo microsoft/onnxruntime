@@ -35,6 +35,8 @@ class PagedAttention final : public CudaKernel {
   float qk_norm_epsilon_;
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;
+  bool qk_hadamard_;
+  bool v_hadamard_;
   // Logical element type stored in the cache when it cannot be expressed by the cache tensor's own
   // element type (sub-byte formats packed into uint8). DEFAULT uses the tensor's element type. The
   // attribute string is parsed once here so the hot path only compares enums.

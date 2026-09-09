@@ -1553,7 +1553,11 @@ CUBIN_EXPORT __global__
 #if BEAM_WIDTH == 1
 #if PAGED_KV_CACHE_LAYOUT == 1
       const HeadPtr<GMemCacheHead const, tokensPerPage, nbPagesPerWarpTile> src{
-          cacheList.kCacheVLLM, pageIdx, nbKHeads, idxHeadBeg};
+          cacheList.kCacheVLLM, pageIdx, nbKHeads, idxHeadBeg
+    #if defined(XQA_PAGED_INT4)
+          , reinterpret_cast<const half*>(kCacheScale)
+    #endif
+        };
 #else
       const HeadPtr<GMemCacheHead const, tokensPerPage, nbPagesPerWarpTile> src{
           cacheList.pool, pageIdx, nbKHeads, idxHeadBeg};
@@ -1868,7 +1872,11 @@ CUBIN_EXPORT __global__
 #if BEAM_WIDTH == 1
 #if PAGED_KV_CACHE_LAYOUT == 1
       const HeadPtr<GMemCacheHead const, tokensPerPage, nbPagesPerVTile> src{
-          cacheList.vCacheVLLM, pageIdx, nbKHeads, idxHeadBeg};
+          cacheList.vCacheVLLM, pageIdx, nbKHeads, idxHeadBeg
+    #if defined(XQA_PAGED_INT4)
+          , reinterpret_cast<const half*>(vCacheScale)
+    #endif
+        };
 #else
       const HeadPtr<GMemCacheHead const, tokensPerPage, nbPagesPerVTile> src{
           cacheList.pool, pageIdx, nbKHeads, idxHeadBeg};

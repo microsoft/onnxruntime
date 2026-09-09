@@ -229,6 +229,9 @@ struct PagedAttentionData {
   // (kv_num_heads, 1, head_size) for PER_CHANNEL. nullptr when the cache is not quantized.
   const float* k_scale = nullptr;
   const float* v_scale = nullptr;
+  void* key_scale_cache = nullptr;
+  void* value_scale_cache = nullptr;
+  bool scale_cache_is_fp16 = true;
   const int* cumulative_seqlens_q = nullptr;
   const int* past_seqlens = nullptr;
   const int* block_table = nullptr;

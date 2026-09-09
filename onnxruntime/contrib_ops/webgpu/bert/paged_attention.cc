@@ -496,8 +496,9 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   const Tensor* attention_metadata = context.InputCount() > 16 ? context.Input<Tensor>(16) : nullptr;
 
   PagedAttentionParameters parameters{};
-  const KVQuantizationType k_quant_type = StringToKVQuantizationType(k_quant_type_);
-  const KVQuantizationType v_quant_type = StringToKVQuantizationType(v_quant_type_);
+  // PER_TOKEN is a valid PagedAttention attribute value; the quantized-cache guard below rejects it.
+  const KVQuantizationType k_quant_type = StringToKVQuantizationType(k_quant_type_, true);
+  const KVQuantizationType v_quant_type = StringToKVQuantizationType(v_quant_type_, true);
   const KVCacheDataType k_cache_dtype = StringToKVCacheDataType(k_cache_dtype_);
   const KVCacheDataType v_cache_dtype = StringToKVCacheDataType(v_cache_dtype_);
   const bool is_latent_kv = (kv_cache_layout_ == "LATENT");

@@ -313,7 +313,17 @@ Status CheckQKNormWeights(const T* q_norm_weight, const T* k_norm_weight, const 
 template <typename T = Tensor>
 Status CheckKVCacheQuantization(const T* scale, const char* scale_name, const char* quant_type_name,
                                 const KVQuantizationType quant_type, const bool is_quantized_cache,
-                                const int kv_num_heads, const int head_size) {
+                                const int kv_num_heads, const int head_size, const T* scale_cache = nullptr,
+                                const int num_blocks = 0, const int block_size = 0) {
+  if (quant_type == KVQuantizationType::PER_TOKEN) {
+    ORT_RETURN_IF_NOT(is_quantized_cache && scale == nullptr && scale_cache != nullptr,
+                      "PER_TOKEN requires a quantized cache and a scale cache, and forbids static scales.");
+    const auto& dims = scale_cache->Shape().GetDims();
+    ORT_RETURN_IF_NOT(dims.size() == 3 && dims[0] == num_blocks && dims[1] == block_size && dims[2] == kv_num_heads,
+                      "Scale cache must have shape (num_blocks, block_size, kv_num_heads).");
+    return Status::OK();
+  }
+  ORT_RETURN_IF_NOT(scale_cache == nullptr, "Scale cache is only allowed with PER_TOKEN quantization.");
   if (quant_type == KVQuantizationType::NONE) {
     if (scale != nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -322,7 +332,7 @@ Status CheckKVCacheQuantization(const T* scale, const char* scale_name, const ch
     if (is_quantized_cache) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "The KV cache has a quantized element type, so '", quant_type_name,
-                             "' must be 'PER_TENSOR' or 'PER_CHANNEL'.");
+                             "' must be 'PER_TENSOR', 'PER_CHANNEL', or 'PER_TOKEN'.");
     }
     return Status::OK();
   }
@@ -418,7 +428,11 @@ Status CheckInputs(const T* query,
                    int v_head_size_attr,
                    int rotary_offset,
                    bool has_explicit_scale,
-                   int max_threads_per_block) {
+                   int max_threads_per_block,
+                   const T* key_scale_cache = nullptr,
+                   const T* value_scale_cache = nullptr,
+                   bool qk_hadamard = false,
+                   bool v_hadamard = false) {
   const bool is_quantized_cache = IsQuantizedKVCacheDataType(cache_storage_dtype);
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
@@ -515,8 +529,21 @@ Status CheckInputs(const T* query,
   const bool int4_cache = cache_storage_dtype == KVCacheDataType::INT4;
   ORT_RETURN_IF_ERROR(CheckKVCache(key_cache, value_cache, kv_num_heads,
                                    int4_cache ? (head_size + 1) / 2 : head_size, num_blocks, block_size));
-  ORT_RETURN_IF_NOT(!is_latent_kv || !int4_cache, "LATENT does not support an INT4 cache.");
-  ORT_RETURN_IF_NOT(!int4_cache || head_size <= 1024, "INT4 caches require head_size <= 1024.");
+  ORT_RETURN_IF_NOT(!is_latent_kv || (!qk_hadamard && !v_hadamard && !int4_cache &&
+                                      key_scale_cache == nullptr && value_scale_cache == nullptr),
+                    "LATENT does not support Hadamard rotation, INT4, or per-token scale caches.");
+  const auto valid_hadamard_width = [](int width) {
+    return width >= 16 && width <= 256 && (width & (width - 1)) == 0;
+  };
+  ORT_RETURN_IF_NOT(!qk_hadamard || valid_hadamard_width(head_size),
+                    "qk_rotation HADAMARD requires a power-of-two head_size in [16, 256].");
+  ORT_RETURN_IF_NOT(!v_hadamard || valid_hadamard_width(v_head_size),
+                    "v_rotation HADAMARD requires a power-of-two v_head_size in [16, 256].");
+  ORT_RETURN_IF_NOT(!(qk_hadamard && k_quant_type == KVQuantizationType::PER_CHANNEL) &&
+                        !(v_hadamard && v_quant_type == KVQuantizationType::PER_CHANNEL),
+                    "Hadamard rotation does not support PER_CHANNEL quantization on the rotated cache.");
+  ORT_RETURN_IF_NOT(!(int4_cache || key_scale_cache != nullptr || value_scale_cache != nullptr) || head_size <= 1024,
+                    "INT4 and PER_TOKEN caches require head_size <= 1024.");
 
   // Check sequence length tensors
   int batch_size = 0;
@@ -565,10 +592,12 @@ Status CheckInputs(const T* query,
   // Check quantized KV cache. LATENT has no value cache to describe, and the block above already
   // required v_scale / v_quant_type to be unset there.
   ORT_RETURN_IF_ERROR(CheckKVCacheQuantization(k_scale, "k_scale", "k_quant_type", k_quant_type,
-                                               is_quantized_cache, kv_num_heads, head_size));
+                                               is_quantized_cache, kv_num_heads, head_size,
+                                               key_scale_cache, num_blocks, block_size));
   if (!is_latent_kv) {
     ORT_RETURN_IF_ERROR(CheckKVCacheQuantization(v_scale, "v_scale", "v_quant_type", v_quant_type,
-                                                 is_quantized_cache, kv_num_heads, v_head_size));
+                                                 is_quantized_cache, kv_num_heads, v_head_size,
+                                                 value_scale_cache, num_blocks, block_size));
   }
   ORT_RETURN_IF_ERROR(CheckKVCacheDataType(k_cache_dtype, cache_storage_dtype, "k_cache_dtype"));
   ORT_RETURN_IF_ERROR(CheckKVCacheDataType(v_cache_dtype, cache_storage_dtype, "v_cache_dtype"));
@@ -611,6 +640,8 @@ Status CheckInputs(const T* query,
     output_parameters->qk_norm_epsilon = qk_norm_epsilon;
     output_parameters->k_quant_type = k_quant_type;
     output_parameters->v_quant_type = v_quant_type;
+    output_parameters->qk_hadamard = qk_hadamard;
+    output_parameters->v_hadamard = v_hadamard;
   }
 
   return Status::OK();

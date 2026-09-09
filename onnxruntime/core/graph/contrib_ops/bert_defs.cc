@@ -1521,7 +1521,7 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
       if (ctx.getNumOutputs() > 2) {
         fail_shape_inference("value_cache_out must be absent when kv_cache_layout is 'LATENT'.");
       }
-    } else if (ctx.getNumOutputs() != 3) {
+    } else if (ctx.getNumOutputs() < 3) {
       fail_shape_inference("Key cache and value cache output tensors must be both present or both absent.");
     } else if (!ctx.hasInput(4)) {
       // value_cache is schema-optional (it must be absent for LATENT), so a SEPARATE node could omit it
@@ -1545,6 +1545,16 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
     if (ctx.getNumOutputs() > 2) {
       ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 4, 2);
       ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 4, 2);
+    }
+  }
+  for (size_t output_index = 3; output_index < ctx.getNumOutputs(); ++output_index) {
+    const size_t input_index = output_index + 14;
+    if (!ctx.hasInput(input_index)) {
+      continue;
+    }
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+    if (hasInputShape(ctx, input_index)) {
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, input_index, output_index);
     }
   }
 }
@@ -1587,17 +1597,28 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
         .Attr("k_quant_type",
-              "Quantization granularity of the key cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. "
+              "Quantization granularity of the key cache: 'NONE', 'PER_TENSOR', 'PER_CHANNEL' or 'PER_TOKEN'. "
               "Must be non-'NONE' exactly when 'key_cache' has a quantized element type, and then "
-              "'k_scale' is required. Default value is 'NONE'.",
+              "'k_scale' is required except for PER_TOKEN, which requires 'key_scale_cache' and forbids 'k_scale'. "
+              "Default value is 'NONE'.",
               AttributeProto::STRING,
               std::string("NONE"))
         .Attr("v_quant_type",
-              "Quantization granularity of the value cache: 'NONE', 'PER_TENSOR' or 'PER_CHANNEL'. "
+              "Quantization granularity of the value cache: 'NONE', 'PER_TENSOR', 'PER_CHANNEL' or 'PER_TOKEN'. "
               "Must be non-'NONE' exactly when 'value_cache' has a quantized element type, and then "
-              "'v_scale' is required. Default value is 'NONE'.",
+              "'v_scale' is required except for PER_TOKEN, which requires 'value_scale_cache' and forbids 'v_scale'. "
+              "Default value is 'NONE'.",
               AttributeProto::STRING,
               std::string("NONE"))
+        .Attr("qk_rotation",
+              "NONE or HADAMARD. Apply a per-head orthonormal Walsh-Hadamard transform to Q and K after "
+              "QK-Norm and rotary embedding. Requires a power-of-two head_size in [16, 256], SEPARATE layout, "
+              "and no PER_CHANNEL key quantization.",
+              AttributeProto::STRING, std::string("NONE"))
+        .Attr("v_rotation",
+              "NONE or HADAMARD. Rotate V before caching and invert the transform on the attention output. "
+              "Requires a power-of-two v_head_size in [16, 256], SEPARATE layout, and no PER_CHANNEL value quantization.",
+              AttributeProto::STRING, std::string("NONE"))
         .Attr("k_cache_dtype",
               "Logical element type stored in 'key_cache', named after the ONNX element type it denotes: '' "
               "(the default) means the cache tensor's own element type is also the logical type. 'float16', "
@@ -1752,6 +1773,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "attention work.",
                "S",
                OpSchema::Optional)
+        .Input(17, "key_scale_cache",
+               "In-place dynamic key scales with shape (num_blocks, block_size, kv_num_heads). Required only "
+               "for PER_TOKEN quantization. Uses the same slot_mapping and block_table as key_cache.",
+               "T_SCALE_CACHE", OpSchema::Optional)
+        .Input(18, "value_scale_cache",
+               "In-place dynamic value scales with shape (num_blocks, block_size, kv_num_heads). Required only "
+               "for PER_TOKEN quantization. Uses the same slot_mapping and block_table as value_cache.",
+               "T_SCALE_CACHE", OpSchema::Optional)
         .Output(0,
                 "output",
                 "2D output tensor with shape (num_tokens, num_heads * v_head_size), which is "
@@ -1768,10 +1797,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "Must be absent when 'kv_cache_layout' is 'LATENT'.",
                 "T_CACHE",
                 OpSchema::Optional)
+        .Output(3, "key_scale_cache_out", "Aliases key_scale_cache with the same shape and element type.",
+                "T_SCALE_CACHE", OpSchema::Optional)
+        .Output(4, "value_scale_cache_out", "Aliases value_scale_cache with the same shape and element type.",
+                "T_SCALE_CACHE", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("T_CACHE",
                         {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)", "tensor(float8e4m3fn)", "tensor(uint8)"},
                         "Constrain the KV cache to float or quantized tensors.")
+        .TypeConstraint("T_SCALE_CACHE", {"tensor(float16)", "tensor(float)"}, "Dynamic paged quantization scales.")
         .TypeConstraint("T_KV_SCALE", {"tensor(float)"}, "Constrain KV cache scales to float tensors.")
         .TypeConstraint("S", {"tensor(int32)"}, "Constrain Positional inputs to int tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {

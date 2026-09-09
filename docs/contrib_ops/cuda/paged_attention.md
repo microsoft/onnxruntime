@@ -153,8 +153,8 @@ under a both-or-neither rule, and the seven attributes `num_heads`, `kv_num_head
 
 ### 4.3 Inputs
 
-Indices 0–9 are unchanged from the shipped schema. Indices 10–18 are new and optional. The order
-matches the landing order in [§19](#19-phasing), so the schema grows monotonically per phase.
+Indices 0–9 are unchanged from the shipped schema. Indices 10–18 are implemented optional inputs.
+The proposed `query_positions` and `attention_bias` inputs follow them at indices 19–20.
 
 | Idx | Name | Type | Shape | Status |
 |-----|------|------|-------|--------|
@@ -175,11 +175,14 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 | 14 | `k_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8** |
 | 15 | `v_scale` | `T_KV_SCALE` (opt) | `(1,)` or `(kv_num_heads, 1, head_size)` | **new — §8**; absent in `LATENT` |
 | 16 | `attention_metadata` | `S` (opt, **CPU**) | `(2,)` or `(3,)` | **new — trusted bounds only, §4.7** |
-| 17 | `query_positions` | `S` (opt) | `(token_count,)` | **new — §4.8** |
-| 18 | `attention_bias` | `T` (opt) | `(batch_size or 1, num_heads or 1, query_length_capacity, context_length_capacity)` | **new — §10** |
+| 17 | `key_scale_cache` | `T_SCALE_CACHE` (opt) | `(num_blocks, block_size, kv_num_heads)` | implemented for `PER_TOKEN`, §8 |
+| 18 | `value_scale_cache` | `T_SCALE_CACHE` (opt) | `(num_blocks, block_size, kv_num_heads)` | implemented for `PER_TOKEN`, §8 |
+| 19 | `query_positions` | `S` (opt) | `(token_count,)` | proposed — §4.8 |
+| 20 | `attention_bias` | `T` (opt) | `(batch_size or 1, num_heads or 1, query_length_capacity, context_length_capacity)` | proposed — §10 |
 
 For `k_cache_dtype=v_cache_dtype="int4"`, the cache tensors use `uint8` storage and their last
-dimension is `(head_size + 1) / 2`, not `head_size`.
+dimension is `(head_size + 1) / 2`, not `head_size`. Scale tensors are paged with the same slot map
+and block table as the payload. Copying or evicting a block must include its scale tensors.
 
 `max_context_len` is the largest per-sequence total KV length in the batch, bounded above by
 `block_table.shape[1] * block_size`.
@@ -203,14 +206,20 @@ the V view of `key_cache` (§12.3).
 | 0 | `output` | `T` | `(token_count, num_heads * effective_v_head_size)` | existing (shape generalized by §12) |
 | 1 | `key_cache_out` | `T_CACHE` (opt) | aliases `key_cache` | existing |
 | 2 | `value_cache_out` | `T_CACHE` (opt) | aliases `value_cache` | existing |
-| 3 | `output_qk` | `QK` (opt) | `(num_heads, token_count, max_context_len)` | **new — §11** |
+| 3 | `key_scale_cache_out` | `T_SCALE_CACHE` (opt) | aliases `key_scale_cache` | implemented, §8 |
+| 4 | `value_scale_cache_out` | `T_SCALE_CACHE` (opt) | aliases `value_scale_cache` | implemented, §8 |
+| 5 | `output_qk` | `QK` (opt) | `(num_heads, token_count, max_context_len)` | proposed — §11 |
 
 In `SEPARATE` mode outputs 1 and 2 are both present or both absent, preserving the shipped rule. In
 `LATENT` mode output 1 may be present and output 2 must be absent.
 
-Requesting `output_qk` requires a four-entry ONNX output list. Unused optional output positions are
+The proposed `output_qk` requires a six-entry ONNX output list. Unused optional output positions are
 represented by an **empty output name**; indices are never compacted. A `LATENT` node requesting
-`output_qk` therefore writes `[output, key_cache_out-or-empty, "", output_qk]`.
+`output_qk` would therefore write `[output, key_cache_out-or-empty, "", "", "", output_qk]`.
+
+Scale-cache outputs are independently optional. When present, they must alias the corresponding
+inputs, just like the existing payload-cache outputs; the operator updates the input caches even
+when these optional outputs are absent. `LATENT` does not support scale caches.
 
 `output_qk` uses its own `QK` type constraint rather than `T`, matching GQA, so the QK matrix can be
 emitted in `float32` independently of the activation type.
@@ -239,10 +248,12 @@ ops without translation.
 | `do_rotary` | INT | `0` | existing |
 | `rotary_interleaved` | INT | `0` | existing |
 | `qk_norm_epsilon` | FLOAT | `1e-6` | **new — §7** |
-| `k_quant_type` | STRING | `"NONE"` | **new — §8**; `NONE` \| `PER_TENSOR` \| `PER_CHANNEL` |
+| `k_quant_type` | STRING | `"NONE"` | **new — §8**; `NONE` \| `PER_TENSOR` \| `PER_CHANNEL` \| `PER_TOKEN` |
 | `v_quant_type` | STRING | `"NONE"` | **new — §8**; same value set |
 | `k_cache_dtype` | STRING | `""` | **new — §8**; `""` = the K cache tensor's own element type |
 | `v_cache_dtype` | STRING | `""` | **new — §8**; `""` = the V cache tensor's own element type |
+| `qk_rotation` | STRING | `"NONE"` | `NONE` \| `HADAMARD`; applied after QK-Norm and RoPE, §8.8 |
+| `v_rotation` | STRING | `"NONE"` | `NONE` \| `HADAMARD`; inverted on the output, §8.8 |
 | `v_head_size` | INT | `0` | **new — §12**; `0` = `head_size`. Non-zero and `!= head_size` is legal **only** in `LATENT` |
 | `rotary_offset` | INT | `0` | **new — §12.5** |
 | `kv_cache_layout` | STRING | `"SEPARATE"` | **new — §12**; `SEPARATE` \| `LATENT` |
@@ -439,6 +450,7 @@ varlen layout has no `(batch, seq)` grid — but it does mean a GQA↔PagedAtten
 | `T` | `float16`, `bfloat16` | unchanged |
 | `T_CACHE` | `float16`, `bfloat16`, `int8`, `float8e4m3fn`, `uint8` | **new** (split out of `T`) |
 | `T_KV_SCALE` | `float` | **new** |
+| `T_SCALE_CACHE` | `float16`, `float` | dynamic per-token scales, §8 |
 | `QK` | `float`, `float16`, `bfloat16` | **new** — §11 |
 | `S` | `int32` | unchanged |
 
@@ -447,7 +459,8 @@ Splitting `T_CACHE` out of `T` is backward compatible: every previously valid mo
 `paged_attention.cc`.
 
 `uint8` stores packed signed INT4, not an unsigned logical cache type. Its CUDA registrations require
-`onnxruntime_USE_INT4_KV_CACHE=ON`.
+`onnxruntime_USE_INT4_KV_CACHE=ON`. Both scale caches share `T_SCALE_CACHE`, so when both are present
+their element types must match.
 
 ## 5. Feature: `slot_mapping`
 
@@ -638,17 +651,18 @@ if (needs_prologue) {
 
 ### 8.1 Goal
 
-Store the block cache in INT8, FP8 E4M3, or packed INT4 while `query` remains FP16/BF16, halving (or
-better) the dominant memory consumer in a serving deployment and proportionally reducing HBM traffic
-on the decode path. Scope for this phase: **`PER_TENSOR` and `PER_CHANNEL`** static scales.
-INT4 uses the portable decode and gather paths plus a dedicated XQA decode kernel. Performance and
+Store the block cache in INT8, FP8 E4M3, or packed INT4 while `query` remains FP16/BF16, halving (or better) the
+dominant memory consumer in a serving deployment and proportionally reducing HBM traffic on the
+decode path. Static `PER_TENSOR` / `PER_CHANNEL` and dynamic `PER_TOKEN` scales are supported.
+INT4 and per-token scales use the portable decode and gather paths, not XQA. Performance and
 model-quality evaluation are separate gates; reduced cache storage alone does not establish either.
 
 ### 8.2 Schema
 
 - `key_cache` / `value_cache` use `T_CACHE ∈ {float16, bfloat16, int8, float8e4m3fn, uint8}`.
 - `k_scale` / `v_scale` (inputs 14, 15), type `T_KV_SCALE` = **always FP32**, matching GQA.
-- Attributes `k_quant_type`, `v_quant_type` ∈ `{"NONE", "PER_TENSOR", "PER_CHANNEL"}`,
+- `key_scale_cache` / `value_scale_cache` (inputs 17/18, outputs 3/4) use `T_SCALE_CACHE`, FP16 or FP32.
+- Attributes `k_quant_type`, `v_quant_type` ∈ `{"NONE", "PER_TENSOR", "PER_CHANNEL", "PER_TOKEN"}`,
   plus independent `k_cache_dtype` and `v_cache_dtype` attributes. Packed INT4 requires `"int4"`.
 - Kernel becomes `PagedAttention<T, T_CACHE>`, registered for the same combinations GQA uses:
   `{MLFloat16, BFloat16} × {same as T, int8_t, Float8E4M3FN, uint8_t}`, with the narrow formats build-gated.
@@ -664,6 +678,12 @@ quantize/dequantize helpers index only on `(kv_head, channel)` and are layout-ag
 |---|---|---|
 | `PER_TENSOR` | `(1,)` | scalar |
 | `PER_CHANNEL` | `(kv_num_heads, 1, head_size)` | `scale[h * head_size + c]` |
+| `PER_TOKEN` | `(num_blocks, block_size, kv_num_heads)` | `scale_cache[slot * kv_num_heads + h]` |
+
+`PER_TOKEN` computes `amax(abs(head)) / qmax` at cache-write time (`qmax` is 7, 127, or 448).
+Quantization uses the scale after conversion to its stored type. A zero head stores scale 0 and
+zero codes. Nonzero FP16 scales are clamped to `[2^-24, 65504]` before conversion to avoid a zero
+or infinite stored scale. The scale reduction and write are entirely on device, with no host readback.
 
 `v_scale` uses the same last dimension, `head_size`: it exists only where a `value_cache` exists,
 which is `"SEPARATE"` mode, and `effective_v_head_size == head_size` there (§12.3). Under
@@ -718,10 +738,10 @@ versioned-successor topic rather than a late addition.
 scattered to their slots. This is a natural fit: the kernel is already elementwise over
 `(token, kv_head, channel)`, which is exactly the `PER_CHANNEL` scale index.
 
-Packed INT4 selects `ReshapeAndCacheHeads` instead: one block per `(token, kv_head)` for each
-tensor, so a whole head is resident when its channel pairs are packed into nibbles. The original
-elementwise path remains for native, INT8, and FP8 caches. Both paths reuse the explicit/derived
-slot resolvers and skip negative or out-of-range write slots.
+INT4, dynamic scales, or rotation select `ReshapeAndCacheHeads`: one block per `(token, kv_head)`
+for each tensor. It performs the optional transform, dynamic amax reduction, and pair packing.
+The original elementwise path remains for unrotated native, INT8, and FP8 caches with static scales.
+Both paths reuse the explicit/derived slot resolvers and skip negative or out-of-range write slots.
 
 ### 8.5 Read path
 
@@ -738,9 +758,10 @@ output afterward. Both are `O(num_heads * head_size)` passes and avoid touching 
 is the path that makes a quantized cache actually pay off; the gather-based Phase 2 mostly buys
 memory capacity, not bandwidth.
 
-Packed INT4 unpacks a nibble at a time through the same `ReadPagedCache` accessor on both the
-split-KV decode and the gather paths, so the scale foldings above are unchanged. Gather still
-materializes an FP16/BF16 staging buffer, so INT4 does not reduce that prefill allocation.
+For `PER_TOKEN`, split-KV decode multiplies each completed QK dot product by the key token's scale
+before softcap/softmax. The value token's scale multiplies its unnormalized probability, never the
+softmax denominator. Gather unpacks and scales individual elements into the existing FP16/BF16
+buffer. INT4 does not reduce that prefill staging allocation.
 
 ### 8.6 Build gating
 
@@ -749,8 +770,11 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 
 ### 8.7 Validation
 
-- `k_quant_type != "NONE"` requires `k_scale`; likewise for V. Conversely, a `k_scale` with
-  `k_quant_type == "NONE"` is `INVALID_ARGUMENT`.
+- `PER_TENSOR` / `PER_CHANNEL` require the matching static scale and forbid the scale cache.
+  `PER_TOKEN` requires the matching scale cache and forbids the static scale. `NONE` forbids both.
+- Scale-cache rank must be 3, with dimensions exactly `(num_blocks, block_size, kv_num_heads)`.
+- Packed INT4 and per-token writes currently require `head_size <= 1024`, in addition to the
+  existing multiple-of-eight head-width constraint.
 - `T_CACHE != T` requires a non-`NONE` quant type; `T_CACHE == T` requires both to be `NONE` and both
   scales to be absent.
 - `k_cache_dtype` and `v_cache_dtype` may be `""` for non-packed caches, quantized or not:
@@ -762,7 +786,7 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 - In `"LATENT"` mode only K storage exists: `k_quant_type` and `k_scale` describe the latent row,
   `v_quant_type` and `v_cache_dtype` must be unset, and `v_scale` must be
   absent because V is a view of K.
-- `LATENT` rejects packed INT4 in this implementation.
+- `LATENT` rejects packed INT4, per-token scale caches, and Hadamard rotation in this implementation.
 - FP8 is available when ORT is built with `onnxruntime_USE_FP8_KV_CACHE`; no additional runtime
   architecture gate is required for the conversion path used by this operator.
 - `PER_CHANNEL` scale shape must be exactly `(kv_num_heads, 1, head_size)` for both K and V. There
@@ -783,9 +807,8 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
-> - **INT4 extension:** `uint8` packed caches are read by the portable decode/gather paths, and by a
->   dedicated FP16 XQA decode kernel at `head_size = 256`, `group_size = 6` with `PER_CHANNEL`
->   scales for both K and V. Other XQA specializations remain limited to native/INT8/FP8 formats.
+> - **INT4 extension:** `uint8` packed caches and per-token scales are implemented on the portable
+>   decode/gather paths. XQA remains limited to its existing native/INT8/FP8 formats and static scales.
 > - **No architecture gate for portable FP8 decode.** `Float8E4M3FN`'s converting constructor uses
 >   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
 >   onward. FP8 remains gated at *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
@@ -811,7 +834,7 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > limit. Other quantized configurations use `PagedDecodeSplitKV` and `PagedDecodeReduce` from
 > `paged_attention_impl.cu`.
 >
-> - **Both scale foldings are exact and granularity-agnostic.** K folds into Q at load time
+> - **Static scale foldings.** K folds into Q at load time
 >   (`q_sh[c] = float(q[c]) * GetCacheScale(k_scale, kv_head * head_size + c, k_per_channel)`), so
 >   `PER_TENSOR` is just the `per_channel == false` branch of the same expression rather than a
 >   separate "fold into the softmax scale" path. V folds into the epilogue: `v_scale_c` does not
@@ -859,13 +882,26 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   because the decode backend needs neither.
 > - **Still deferred from P5:** the fused MLA decode backend (§12.7).
 
-### 8.8 Packed INT4 tests
+### 8.8 Block-diagonal Hadamard rotation
+
+`qk_rotation="HADAMARD"` applies a symmetric orthonormal Walsh-Hadamard transform independently
+to every Q/K head, after QK-Norm and RoPE. Q is transformed in the fused prologue; K is transformed
+once in the cache writer. `v_rotation="HADAMARD"` transforms V in the writer and applies the same
+transform to the output after the backend and attention-sink epilogue. Each enabled transform
+requires a power-of-two head width in `[16, 256]` and `SEPARATE` layout. `PER_CHANNEL` quantization
+on that rotated cache is rejected; K/V quantization modes and rotations remain independent.
+
+The shared-memory FP32 butterfly costs `O(head_size * log2(head_size))`, with final conversion to
+the activation dtype for Q/output. Since `H H^T = H^2 = I`, scores and output are unchanged in exact
+arithmetic: `(QH)(KH)^T = QK^T` and `(softmax(scores) VH) H = softmax(scores) V`.
+Tests isolate this property with an unquantized cache before checking INT4 error. Rotation is
+CUDA-only; WebGPU rejects it rather than silently ignoring the attributes.
 
 Operator tests are in `onnxruntime/test/python/transformers/test_paged_attention_int4.py`, covering
-FP16/BF16, packed/derived writes, skipped slots, exact nibble encoding, zero padding,
-prefill/decode/speculative attention, norm/RoPE ordering, negative contracts, and the XQA decode
-path. INT8 and FP8 regression cases and extreme scale saturation are also covered. They skip when
-INT4 CUDA kernels are not built.
+FP16/BF16, packed/derived writes, skipped slots, exact nibble encoding, zero padding, scale-cache
+outputs, prefill/decode/speculative attention, norm/RoPE ordering, negative contracts, and CUDA
+graph replay with changed input amplitudes. Static/per-token INT8 and FP8 regression cases and
+extreme scale saturation are also covered. They skip when INT4 CUDA kernels are not built.
 
 ## 9. Feature: Sliding Window Attention
 
@@ -1029,7 +1065,7 @@ across all sequences, all heads, or both, exactly as GQA does.
 
 ### 10.2 Design
 
-Input 18, `attention_bias`, type `T`. For packed token `t` belonging to sequence `b`, let
+Proposed input 20, `attention_bias`, type `T`. For packed token `t` belonging to sequence `b`, let
 `j = t - cumulative_sequence_length[b]` be its sequence-local query offset. Query head `h` and
 logical KV position `k` use:
 
@@ -1080,7 +1116,7 @@ performance requirement justifies adding it to both attention operators.
   The op must reject configurations where the output tensor would exceed a configurable byte
   threshold rather than attempting the allocation.
 - `qk_output != 0` with fewer than 4 outputs, or 4 outputs with `qk_output == 0`, is
-  `INVALID_ARGUMENT`. Shape inference must only touch output 3 when `ctx.getNumOutputs() > 3`.
+  `INVALID_ARGUMENT`. Shape inference must only touch output 5 when `ctx.getNumOutputs() > 5`.
 
 ## 12. Feature: Multi-head Latent Attention (MLA)
 
@@ -1412,7 +1448,11 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
 - `q_norm_weight` / `k_norm_weight`: both-or-neither; rank 1, `dim0 == head_size`, type `T`.
 - `k_scale` / `v_scale`: FP32; `(1,)` for `PER_TENSOR`, `(kv_num_heads, 1, head_size)` for
   `PER_CHANNEL` (both K and V — `v_scale` only exists alongside a `value_cache`, so its last
-  dimension is always `head_size`); present iff the corresponding quant type is not `NONE`.
+  dimension is always `head_size`); present only for `PER_TENSOR` or `PER_CHANNEL`.
+- `key_scale_cache` / `value_scale_cache`: FP16 or FP32 with shape
+  `(num_blocks, block_size, kv_num_heads)`, present only for `PER_TOKEN`. Their optional outputs
+  alias the corresponding inputs. Named scale outputs require matching inputs; empty optional
+  output slots are allowed. Hadamard and packed-cache restrictions are listed in §8.7–§8.8.
 - `T_CACHE != T` iff a quant type is not `NONE`.
 - Non-packed cache-dtype attributes must be `""` or name the cache tensor's own element type.
   Packed `uint8` caches require explicit `"int4"` and `onnxruntime_USE_INT4_KV_CACHE`.
@@ -1465,7 +1505,7 @@ invalid. No other host-supplied value is permitted to bound a launch or workspac
   - `value_cache` (input 4) is now optional: guard `getInputShape(ctx, 4)` and the output-2
     propagation on `ctx.hasInput(4)` before any write.
   - The shipped `getNumOutputs() > 1 ⇒ getNumOutputs() == 3` rule must be relaxed to admit a
-    four-entry output list with empty names at unused optional cache positions (§4.4), while keeping
+    six-entry output list with empty names at unused optional cache positions (§4.4), while keeping
     the both-or-neither rule for `SEPARATE` mode.
   - Output 3 (`output_qk`) is written only when `ctx.getNumOutputs() > 3`, guarded before any write,
     consistent with the contrib-op shape-inference memory-safety rules.
@@ -1617,8 +1657,8 @@ These block the feature work and should land ahead of it.
 | **P3 — Memory** | Quantized cache INT8/FP8, `PER_TENSOR` + `PER_CHANNEL`, dequant-on-gather read path (§8) | `T_CACHE`, `T_KV_SCALE`, inputs 14–15, 4 attrs |
 | **P4 — MLA (correctness)** | `kv_cache_layout="LATENT"`, `v_head_size`, `rotary_offset`, V-aliases-K, optional `value_cache`, unfused MLA reference kernel, absorbed↔non-absorbed equivalence tests (§12) | attrs `kv_cache_layout`, `v_head_size`, `rotary_offset`; input 4 optional |
 | **P5 — Performance** | Paged decode kernel with in-kernel dequant; fused MLA backend (FlashMLA / FlashInfer MLA, §12.7); `softcap` on decode; **remove the D→H sync and make the op CUDA-graph-capturable (§4.7)**; optional `attention_metadata` replay-wide bounds | input 16 |
-| **P6 — Completeness** | `query_positions` (§4.8); `attention_bias` (§10); `output_qk` (§11) | inputs 17–18, output 3, attr `qk_output` |
-| **Later** | MLA quantized latent cache tuning; non-CUDA EPs | — |
+| **P6 — Completeness** | `query_positions` (§4.8); `attention_bias` (§10); `output_qk` (§11) | proposed inputs 19–20, output 5, attr `qk_output` |
+| **Later** | INT4 cache; MLA quantized latent cache tuning; non-CUDA EPs | — |
 
 Status: P0–P4 are implemented, except the `.Alias` registration. P5 is partially
 implemented — the paged decode kernel with in-kernel dequantization (including `softcap`, sliding
@@ -1714,8 +1754,8 @@ The complete deferred list:
 - one required functional `kv_cache_out` instead of two optional aliasing outputs;
 - removal of `kv_num_heads` in favor of `kv_cache.shape[2]`;
 - quantization granularity inferred from scale shape, and zero points (§21.3);
-- sub-byte logical types other than INT4 stored in `uint8` tensors; INT4 is implemented without
-  reinterpreting existing tensor types (§21.4);
+- sub-byte logical types other than INT4 stored in `uint8` tensors; INT4 is implemented by the
+  portable decode and gather paths without reinterpreting existing tensor types (§21.4);
 - inline scales or zero points packed into cache rows (§21.3, note);
 - a physical `HND` cache layout (§21.6);
 - renaming `local_window_size` to `window_size_left` / `window_size_right`, and the
@@ -1777,6 +1817,10 @@ block pool. That thin margin is what makes the merge deferrable.
 
 ### 21.3 Quantization: granularity from scale shape
 
+This is a deferred alternative to the explicit quantization attributes. The current implementation
+uses `PER_TOKEN` with separate `key_scale_cache` / `value_scale_cache` inputs (17/18); it does not
+infer per-token granularity from `k_scale` / `v_scale`.
+
 `k_quant_type` / `v_quant_type` would be removed; granularity read off the scale tensor instead:
 
 | `k_scale` shape | Granularity |
@@ -1806,8 +1850,8 @@ introduces correction terms in both the QK and PV products.
 
 ### 21.4 `k_cache_dtype` / `v_cache_dtype` for sub-byte caches
 
-**The attributes and the `"int4"` value are implemented in §4.5 and §8.** Portable paged decode,
-gather, and one XQA specialization read packed INT4 caches. Other sub-byte values remain deferred.
+**The attributes and the `"int4"` value are implemented in §4.5 and §8.** Portable paged decode and
+gather can read packed INT4 caches; XQA cannot. Other sub-byte values remain deferred.
 A `k_cache_bit_width` / `v_cache_bit_width` pair would be redundant against the cache tensor's
 element type for native formats and could not distinguish INT4 from FP4.
 
@@ -1895,7 +1939,7 @@ migration tool over serialized graphs is cheap compared with breaking a shipped 
 |---|---|---|
 | §21.2 merged `kv_cache` | **No** | Deferred to a versioned successor |
 | §21.5 required `kv_cache_out` | **No** | Deferred; §4.4 registers the alias instead |
-| §21.3 scale-shape granularity, zero points | Yes | Deferred — explicit attributes in §4.5 are preferred while only two granularities exist |
+| §21.3 scale-shape granularity, zero points | Yes | Deferred — explicit `PER_TENSOR` / `PER_CHANNEL` / `PER_TOKEN` attributes remain authoritative |
 | §21.4 `k_cache_dtype` / `v_cache_dtype` | Yes | **Implemented**, including packed INT4; other sub-byte values remain deferred |
 | §21.6 `kv_layout` | Yes | Deferred until a backend requires `HND` |
 | §21.5 `window_size_*` rename | Yes, with deprecated aliases | Deferred with the lookahead window |

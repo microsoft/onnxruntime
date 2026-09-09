@@ -28,19 +28,20 @@ namespace cuda {
 
 constexpr int kFlashSplitKvMinSequenceLength = 512;
 
-#define REGISTER_KERNEL_TYPED(T, TCACHE)                                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
-      PagedAttention,                                                         \
-      kMSDomain,                                                              \
-      1,                                                                      \
-      T##_##TCACHE,                                                           \
-      kCudaExecutionProvider,                                                 \
-      (*KernelDefBuilder::Create())                                           \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())              \
-          .TypeConstraint("T_CACHE", DataTypeImpl::GetTensorType<TCACHE>())   \
-          .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>()) \
-          .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>())        \
-          .InputMemoryType(OrtMemTypeCPUInput, 16),                           \
+#define REGISTER_KERNEL_TYPED(T, TCACHE)                                                                                     \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                             \
+      PagedAttention,                                                                                                        \
+      kMSDomain,                                                                                                             \
+      1,                                                                                                                     \
+      T##_##TCACHE,                                                                                                          \
+      kCudaExecutionProvider,                                                                                                \
+      (*KernelDefBuilder::Create())                                                                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                                                             \
+          .TypeConstraint("T_CACHE", DataTypeImpl::GetTensorType<TCACHE>())                                                  \
+          .TypeConstraint("T_KV_SCALE", DataTypeImpl::GetTensorType<float>())                                                \
+          .TypeConstraint("T_SCALE_CACHE", {DataTypeImpl::GetTensorType<MLFloat16>(), DataTypeImpl::GetTensorType<float>()}) \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>())                                                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 16),                                                                          \
       PagedAttention<T, TCACHE>);
 
 REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
@@ -123,11 +124,18 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
   ORT_ENFORCE(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
               "qk_norm_epsilon must be a positive finite number");
-  k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
-  v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
+  k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"), true);
+  v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"), true);
+  const auto parse_rotation = [&](const char* name) {
+    const auto rotation = info.GetAttrOrDefault<std::string>(name, "NONE");
+    ORT_ENFORCE(rotation == "NONE" || rotation == "HADAMARD", name, " must be NONE or HADAMARD.");
+    return rotation == "HADAMARD";
+  };
+  qk_hadamard_ = parse_rotation("qk_rotation");
+  v_hadamard_ = parse_rotation("v_rotation");
   // Empty means the cache tensor's element type is also its logical type. Packed uint8 caches
-  // instead require an explicit int4 logical type. Other sub-byte formats remain unsupported. The
-  // string is parsed once here; everything downstream compares the enum.
+  // instead require an explicit int4 logical type. Other sub-byte formats remain unsupported. The string is
+  // parsed once here; everything downstream compares the enum.
   k_cache_dtype_ = StringToKVCacheDataType(info.GetAttrOrDefault<std::string>("k_cache_dtype", ""));
   v_cache_dtype_ = StringToKVCacheDataType(info.GetAttrOrDefault<std::string>("v_cache_dtype", ""));
 
@@ -176,6 +184,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* v_scale = context->Input<Tensor>(15);
   // Resident in CPU memory (see the kernel def's InputMemoryType above).
   const Tensor* attention_metadata = context->Input<Tensor>(16);
+  const Tensor* key_scale_cache = context->Input<Tensor>(17);
+  const Tensor* value_scale_cache = context->Input<Tensor>(18);
 
   auto& device_prop = GetDeviceProp();
   PagedAttentionParameters parameters;
@@ -217,7 +227,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                           v_head_size_,
                                                           rotary_offset_,
                                                           has_explicit_scale_,
-                                                          device_prop.maxThreadsPerBlock));
+                                                          device_prop.maxThreadsPerBlock,
+                                                          key_scale_cache, value_scale_cache,
+                                                          qk_hadamard_, v_hadamard_));
   parameters.local_window_size = local_window_size_;
   parameters.is_causal = is_causal_;
   parameters.do_rotary = do_rotary_;
@@ -279,6 +291,23 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "value_cache and value_cache_out must be the same buffer");
   }
+
+  const auto bind_scale_cache = [&](const Tensor* input, int output_index) -> Status {
+    if (input == nullptr) {
+      const auto& outputs = Node().OutputDefs();
+      ORT_RETURN_IF_NOT(static_cast<size_t>(output_index) >= outputs.size() || !outputs[output_index]->Exists(),
+                        "Scale cache output requires its corresponding scale cache input.");
+      return Status::OK();
+    }
+    ORT_RETURN_IF_NOT(input->IsDataType<MLFloat16>() || input->IsDataType<float>(),
+                      "Scale caches must have float16 or float elements.");
+    Tensor* scale_output = context->Output(output_index, input->Shape());
+    ORT_RETURN_IF_NOT(scale_output == nullptr || scale_output->MutableDataRaw() == input->DataRaw(),
+                      "Scale cache input and output must be the same buffer.");
+    return Status::OK();
+  };
+  ORT_RETURN_IF_ERROR(bind_scale_cache(key_scale_cache, 3));
+  ORT_RETURN_IF_ERROR(bind_scale_cache(value_scale_cache, 4));
 
   // Empty query input: output is already shaped [0, hidden_size], and the cache outputs
   // alias the input caches (verified above), so no backend kernel or cache update is needed.
@@ -362,7 +391,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
 
   // The fused prologue (QK-Norm and/or rotary) writes densified Q and K into the workspace, so it
   // needs room for both. Plain packed-QKV only needs to densify Q.
-  const bool needs_qk_prologue = do_rotary_ || parameters.use_qk_norm;
+  const bool needs_qk_prologue = do_rotary_ || parameters.use_qk_norm || qk_hadamard_;
   size_t workspace_buffer_bytes = 0;
   if (needs_qk_prologue) {
     workspace_buffer_bytes = sizeof(T) * parameters.token_count * (parameters.hidden_size + parameters.kv_hidden_size);
@@ -463,13 +492,20 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
   };
 #ifdef USE_INT4_KV_CACHE
-  // INT4 XQA folds the PER_CHANNEL scale into Q and applies it to the output, so the kernel itself
-  // runs at unit scale.
+  // INT4 XQA takes PER_TOKEN scales through the loader's FP16 scale cache, or a PER_CHANNEL scale
+  // that is folded into Q and applied to the output, in which case the kernel runs at unit scale.
+  const auto int4_side_eligible = [](KVQuantizationType type, const Tensor* scale_cache) {
+    if (type == KVQuantizationType::PER_CHANNEL) {
+      return true;
+    }
+    return type == KVQuantizationType::PER_TOKEN && scale_cache != nullptr &&
+           scale_cache->IsDataType<MLFloat16>();
+  };
   const bool int4_xqa_eligible =
       enable_xqa_ && std::is_same_v<TCACHE, uint8_t> && std::is_same_v<T, MLFloat16> &&
       device_prop.major >= 8 && parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0 &&
-      k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
+      int4_side_eligible(k_quant_type_, key_scale_cache) && int4_side_eligible(v_quant_type_, value_scale_cache);
 #else
   constexpr bool int4_xqa_eligible = false;
 #endif
@@ -494,7 +530,8 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       max_query_len_bound > 1 && max_query_len_bound <= 8;
   const bool portable_spec_dec_candidate =
       has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&
-      std::is_same_v<TCACHE, uint8_t>;
+      (std::is_same_v<TCACHE, uint8_t> || k_quant_type_ == KVQuantizationType::PER_TOKEN ||
+       v_quant_type_ == KVQuantizationType::PER_TOKEN);
   // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
   // both hard-code a bottom-right causal mask.
   bool use_paged_decode =
@@ -821,6 +858,10 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                          : reinterpret_cast<CudaTCache*>(const_cast<TCACHE*>(value_cache->Data<TCACHE>()));
   data.k_scale = k_scale == nullptr ? nullptr : k_scale->Data<float>();
   data.v_scale = v_scale == nullptr ? nullptr : v_scale->Data<float>();
+  data.key_scale_cache = key_scale_cache == nullptr ? nullptr : const_cast<void*>(key_scale_cache->DataRaw());
+  data.value_scale_cache = value_scale_cache == nullptr ? nullptr : const_cast<void*>(value_scale_cache->DataRaw());
+  const Tensor* scale_cache = key_scale_cache != nullptr ? key_scale_cache : value_scale_cache;
+  data.scale_cache_is_fp16 = scale_cache == nullptr || scale_cache->IsDataType<MLFloat16>();
   data.cumulative_seqlens_q = reinterpret_cast<const int*>(cumulative_seqlens_q->Data<int>());
   data.past_seqlens = reinterpret_cast<const int*>(past_seqlens->Data<int>());
   data.cumulative_seqlens_kv = cumulative_seqlens_kv_ptr;
