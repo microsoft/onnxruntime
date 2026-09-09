@@ -29,9 +29,10 @@ relies on the current ORT calling sequence, not an API guarantee: the first succ
 EP. There may be only one unbound EP per factory/thread. Binding removes the pending entry, and
 the Session can subsequently run on another thread. The factory lock does not cover creation or Run.
 
-Env and Session operations reuse `GpuBufferAllocator` and `DataTransferImpl`, but Env allocation
-owns separate recording and Env copies use local recording. Cached-buffer clears are submitted
-before Env allocation returns. Session allocations submit clears outside Run and batch them during Run.
+Env and Session operations reuse `GpuBufferAllocator` and `DataTransferImpl`. Env allocators and
+transfers share one context-owned recording, separate from every Session's recording. Cached-buffer
+clears are submitted before Env allocation returns. Session allocations submit clears outside Run
+and batch them during Run.
 `CopyTensors` submits pending commands before returning; downloads wait for readback, but uploads and
 device copies do not wait for GPU completion. The existing gap against the no-stream synchronous-copy
 contract is left as a TODO for separate work. Ordinary Run and graph replay submit commands without
@@ -40,16 +41,19 @@ I/O Binding synchronization calls do not guarantee GPU completion; output downlo
 
 There is no recording mutex. Applications must serialize same-Session allocator operations,
 copies, tensor destruction, graph replay, and graph release with that Session's execution. ORT's
-ordinary same-Session Run lock does not cover these external operations. Shared Env allocator
-operations, including Free/GetStats and tensor destruction, also require caller serialization.
-Concurrent profiling and cross-device transfers are outside the supported scope.
+ordinary same-Session Run lock does not cover these external operations. All Env copies and allocator
+operations on the same context, including Free/GetStats and tensor destruction, require caller
+serialization. Explicit concurrent calls to Env or Session allocator APIs, concurrent Env copies,
+concurrent profiling, and cross-device transfers are outside this PR's supported scope. Internal
+allocation and copies during independent Session creation and Run remain part of the supported path.
 
-`PluginEpWebGpuConcurrency` covers concurrent creation/Run, CPU/GPU I/O, and independent Session
-capture/replay. `CpuPartitionBetweenGpuKernels` verifies both the CPU intermediate and final GPU
-result across a forced GPU/CPU/GPU partition. The 12-thread shared-allocator/Run and 16-thread
-same-Session allocator/Run tests remain disabled next-phase targets, along with the other tests
-requiring concurrent access to a shared allocator or recording. Their interleavings are retained
-and must not be enabled until the corresponding support is implemented.
+Enabled `PluginEpWebGpuConcurrency` tests cover concurrent Session creation/Run with CPU I/O and
+sequential external allocation/copy operations. `CpuPartitionBetweenGpuKernels` verifies both the CPU
+intermediate and final GPU result across a forced GPU/CPU/GPU partition. The GPU-I/O concurrent Run,
+capture/replay, and Session allocator tests remain disabled because they also call Env copies or
+external allocators concurrently. The 12-/16-thread mixed targets and the other shared allocator or
+recording targets also remain disabled. These tests retain their original concurrent operations,
+without test-side copy locks, for future support.
 
 ### Missing parts
 

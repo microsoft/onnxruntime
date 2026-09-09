@@ -307,6 +307,9 @@ class WebGpuContext final {
    */
   webgpu::BufferManager& InitializerBufferManager() const { return *initializer_buffer_mgr_; }
 
+  // Env allocators and transfers share this state; callers serialize all Env operations on this context.
+  CommandRecordingState& EnvironmentRecording() { return environment_recording_; }
+
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
   }
@@ -436,6 +439,7 @@ class WebGpuContext final {
   std::unique_ptr<webgpu::BufferManager> buffer_mgr_;
   std::unique_ptr<webgpu::BufferManager> initializer_buffer_mgr_;
   std::unique_ptr<ProgramManager> program_mgr_;
+  CommandRecordingState environment_recording_;
 
   uint32_t max_num_pending_dispatches_ = 16;
 

@@ -21,7 +21,7 @@ struct WebGpuProviderFactoryCreator {
 };
 
 // C API to create data transfer for WebGPU EP with lazy initialization.
-// A null EP selects independent environment recording; otherwise the transfer uses the EP's recording.
+// A null EP selects the context's shared Env recording; otherwise the transfer uses the EP's recording.
 // Caller takes ownership of the returned OrtDataTransferImpl*.
 OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id = 0, WebGpuExecutionProvider* ep = nullptr);
 

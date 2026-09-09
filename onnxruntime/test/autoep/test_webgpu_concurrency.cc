@@ -353,7 +353,8 @@ TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsCreateAndRunConcurrently) {
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
-TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsRunConcurrently) {
+// Future support: workers also create GPU tensors and call Env copies concurrently.
+TEST_F(PluginEpWebGpuConcurrency, DISABLED_DifferentSessionsRunConcurrently) {
   std::array<std::unique_ptr<Ort::Session>, kThreads> sessions;
   for (auto& session : sessions) {
     session = CreateSession();
@@ -370,7 +371,8 @@ TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsRunConcurrently) {
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
-TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsGraphCaptureAndReplayConcurrently) {
+// Future support: GPU tensors are allocated serially, but Env uploads and downloads overlap.
+TEST_F(PluginEpWebGpuConcurrency, DISABLED_DifferentSessionsGraphCaptureAndReplayConcurrently) {
   std::array<std::atomic<int>, kThreads> replay_counts{};
   std::array<std::unique_ptr<Ort::Session>, kThreads> sessions;
   auto allocator = CreateSharedAllocator();
@@ -533,7 +535,8 @@ TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsWithCpuInputAndOutputRunConcu
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
-TEST_F(PluginEpWebGpuConcurrency, SessionAllocatorsCreateAndCopyConcurrently) {
+// Future support: external Session allocator operations and Env copies are concurrent.
+TEST_F(PluginEpWebGpuConcurrency, DISABLED_SessionAllocatorsCreateAndCopyConcurrently) {
   std::array<std::unique_ptr<Ort::Session>, kThreads> sessions;
   for (auto& session : sessions) {
     session = CreateSession();

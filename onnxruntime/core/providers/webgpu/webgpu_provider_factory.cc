@@ -453,10 +453,9 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       }
     });
 
-    CommandRecordingState environment_recording;
-    auto& recording = impl.ep_ ? impl.ep_->Recording() : environment_recording;
+    auto& recording = impl.ep_ ? impl.ep_->Recording() : impl.context_->EnvironmentRecording();
     auto& buffer_manager = impl.ep_ ? impl.ep_->BufferManager() : impl.context_->BufferManager();
-    // DataTransferImpl borrows its BufferManager. The retained context owns the Env manager;
+    // DataTransferImpl borrows its BufferManager. The retained context owns the Env manager and recording;
     // Session transfers also depend on the owning EP's lifetime for its selected manager and recording.
     DataTransferImpl transfer(buffer_manager, recording);
 
@@ -486,7 +485,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       }
     }
     // Flush GPU-to-GPU copies, which BufferManager::MemCpy only records. CPU/GPU transfers already handle
-    // any required submission in BufferManager. This also submits copies before the local Env recording is destroyed.
+    // any required submission in BufferManager. Submit before subsequent Session work uses the buffers.
     // TODO: Only GPU-to-CPU downloads currently guarantee copy completion. Uploads and GPU-to-GPU copies
     // only guarantee submission and may still be in flight on return; add completion guarantees for these paths.
     ORT_THROW_IF_ERROR(impl.context_->Flush(buffer_manager, recording));

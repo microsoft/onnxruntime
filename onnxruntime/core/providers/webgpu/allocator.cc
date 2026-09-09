@@ -59,10 +59,10 @@ void GpuBufferAllocator::GetStats(AllocatorStats* stats) {
 }
 
 AllocatorPtr CreateSharedWebGpuAllocator(std::shared_ptr<WebGpuContext> context) {
-  auto recording = std::make_shared<CommandRecordingState>();
+  auto& recording = context->EnvironmentRecording();
   return std::make_shared<GpuBufferAllocator>(
       [context = std::move(context)]() -> const BufferManager& { return context->BufferManager(); },
-      [recording = std::move(recording)]() -> CommandRecordingState& { return *recording; },
+      [&recording]() -> CommandRecordingState& { return recording; },
       false,
       []() { return true; });
 }

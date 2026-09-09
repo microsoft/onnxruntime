@@ -46,7 +46,7 @@ class GpuBufferAllocator : public IAllocator {
   bool initialize_to_zero_;
 };
 
-// Environment-level cached allocator with private recording; callers serialize its operations.
+// Environment-level cached allocator sharing the context's Env recording; callers serialize Env operations.
 AllocatorPtr CreateSharedWebGpuAllocator(std::shared_ptr<WebGpuContext> context);
 
 // No-op allocator used for the WebGPU device when the context has no Dawn device (a device-free /

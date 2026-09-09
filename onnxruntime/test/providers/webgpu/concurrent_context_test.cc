@@ -492,8 +492,8 @@ TEST_F(WebGpuConcurrentContextTest, DISABLED_SessionAllocatorAndRunConcurrently)
   ASSERT_FALSE(sink.Failed()) << sink.FirstError();
 }
 
-// Case G (future support): the shared cached allocator requires caller serialization of its
-// private recording and statistics. Shared cache locking alone does not protect these.
+// Case G (future support): the shared cached allocator requires caller serialization of the
+// Env recording and allocator statistics. Shared cache locking alone does not protect these.
 TEST_F(WebGpuConcurrentContextTest, DISABLED_SharedAllocatorMultiThreadCreateTensor) {
   constexpr int kThreads = 4;
   constexpr int kIters = 60;
@@ -522,8 +522,8 @@ TEST_F(WebGpuConcurrentContextTest, DISABLED_SharedAllocatorMultiThreadCreateTen
   ASSERT_FALSE(sink.Failed()) << sink.FirstError();
 }
 
-// Case H (future support): concurrent use of one recording is unsupported. Env transfers use
-// local encoders instead of this Session-bound DataTransferImpl path.
+// Case H (future support): concurrent use of one recording is unsupported, including the
+// context-owned recording shared by Env allocators and transfers.
 TEST_F(WebGpuConcurrentContextTest, DISABLED_SharedDataTransferMultiThreadCopy) {
   constexpr int kThreads = 4;
   constexpr int kIters = 30;
