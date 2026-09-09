@@ -1,0 +1,127 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param update_rule
+#param has_cu_seqlens
+#param has_initial_state
+#param initial_state_in_final_state
+#param qwen_gate
+#param sigmoid_beta
+#param qk_l2_norm
+
+var<workgroup> retrieved: array<f32, workgroup_size_x>;
+var<workgroup> pre_output: array<f32, workgroup_size_x>;
+var<workgroup> key_query: array<f32, workgroup_size_x>;
+#if qk_l2_norm
+var<workgroup> key_norm: array<f32, workgroup_size_x>;
+var<workgroup> query_norm: array<f32, workgroup_size_x>;
+#endif
+var<workgroup> delta: f32;
+
+fn gdn_softplus(x: f32) -> f32 {
+  if (x > 0.0) {
+    return x + log(1.0 + exp(-x));
+  }
+  return log(1.0 + exp(x));
+}
+
+fn gdn_sigmoid(x: f32) -> f32 {
+  if (x > 0.0) {
+    return 1.0 / (1.0 + exp(-x));
+  }
+  let e = exp(x);
+  return e / (1.0 + e);
+}
+
+$MAIN {
+  let workgroup = workgroup_idx;
+  let value_index = workgroup % uniforms.head_size_v;
+  let value_head = (workgroup / uniforms.head_size_v) % uniforms.num_heads_v;
+  let batch = workgroup / (uniforms.head_size_v * uniforms.num_heads_v);
+  let key_index = local_idx;
+  let query_head = value_head * uniforms.num_heads_q / uniforms.num_heads_v;
+  var state = 0.0;
+  if (key_index < uniforms.head_size_qk) {
+    let state_offset = (((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
+                        uniforms.head_size_qk + key_index);
+#if has_initial_state
+#if initial_state_in_final_state
+    state = final_state[state_offset];
+#else
+    state = initial_state[state_offset];
+#endif
+#endif
+  }
+
+  var first_token = batch * (uniforms.total_tokens / uniforms.batch_size);
+  var last_token = first_token + uniforms.total_tokens / uniforms.batch_size;
+#if has_cu_seqlens
+  first_token = u32(clamp(cu_seqlens[batch], 0, i32(uniforms.total_tokens)));
+  last_token = u32(clamp(cu_seqlens[batch + 1u], i32(first_token), i32(uniforms.total_tokens)));
+#endif
+  for (var token = first_token; token < last_token; token++) {
+    var key_value = 0.0;
+    var query_value = 0.0;
+    if (key_index < uniforms.head_size_qk) {
+      key_value = f32(key[(token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index]);
+      query_value = f32(query[(token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index]);
+    }
+#if qk_l2_norm
+    key_norm[key_index] = key_value * key_value;
+    query_norm[key_index] = query_value * query_value;
+    workgroupBarrier();
+    for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
+      if (key_index < stride) {
+        key_norm[key_index] += key_norm[key_index + stride];
+        query_norm[key_index] += query_norm[key_index + stride];
+      }
+      workgroupBarrier();
+    }
+    key_value *= inverseSqrt(key_norm[0] + 1e-12);
+    query_value *= inverseSqrt(query_norm[0] + 1e-12);
+#endif
+#if update_rule == 1 || update_rule == 3
+    var gate = decay[token * uniforms.num_heads_v + value_head];
+#if qwen_gate
+    gate = -exp(a_log[value_head]) * gdn_softplus(gate + dt_bias[value_head]);
+#endif
+    state *= exp(gate);
+#endif
+    retrieved[key_index] = state * key_value;
+    pre_output[key_index] = state * query_value;
+    key_query[key_index] = key_value * query_value;
+    workgroupBarrier();
+    for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
+      if (key_index < stride) {
+        retrieved[key_index] += retrieved[key_index + stride];
+        pre_output[key_index] += pre_output[key_index + stride];
+        key_query[key_index] += key_query[key_index + stride];
+      }
+      workgroupBarrier();
+    }
+    if (key_index == 0u) {
+      var beta_value = 1.0;
+#if update_rule == 2 || update_rule == 3
+      beta_value = beta[token * uniforms.num_heads_v + value_head];
+#if sigmoid_beta
+      beta_value = gdn_sigmoid(beta_value);
+#endif
+#endif
+      var retrieved_value = 0.0;
+#if update_rule == 2 || update_rule == 3
+      retrieved_value = retrieved[0];
+#endif
+      delta = beta_value * (f32(value[(token * uniforms.num_heads_v + value_head) *
+                                      uniforms.head_size_v + value_index]) - retrieved_value);
+      output[(token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index] =
+          output_element_t((pre_output[0] + delta * key_query[0]) * uniforms.scale);
+    }
+    workgroupBarrier();
+    state += key_value * delta;
+    workgroupBarrier();
+  }
+  if (key_index < uniforms.head_size_qk) {
+    final_state[((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
+                uniforms.head_size_qk + key_index] = state;
+  }
+}

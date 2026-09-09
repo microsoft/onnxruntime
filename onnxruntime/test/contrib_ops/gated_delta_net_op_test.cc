@@ -247,7 +247,8 @@ std::vector<float> RoundToTensorType(const std::vector<float>& data) {
 // the buffers are byte-identical, only the declared shapes differ.
 template <typename T>
 void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, float out_tol,
-                  float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr) {
+                  float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
+                  bool use_webgpu = false) {
   Inputs in = in_raw;
   in.q = RoundToTensorType<T>(in_raw.q);
   in.k = RoundToTensorType<T>(in_raw.k);
@@ -326,14 +327,18 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(DefaultCudaExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+  eps.push_back(use_webgpu ? DefaultWebGpuExecutionProvider() : DefaultCudaExecutionProvider());
+  const bool webgpu_compact_update = use_webgpu && o.state_update_capacity > 0;
+  test.Run(webgpu_compact_update ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
+           webgpu_compact_update ? "WebGPU GatedDeltaNet does not support state_update_capacity > 0" : "",
+           {}, nullptr, &eps);
   if (fetches != nullptr) *fetches = test.GetFetches();
 }
 
 void RunCase(const Geometry& g, const Options& o, const Inputs& in, float out_tol,
-             float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr) {
-  RunTypedCase<MLFloat16>(g, o, in, out_tol, state_tol, rank4, fetches);
+             float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
+             bool use_webgpu = false) {
+  RunTypedCase<MLFloat16>(g, o, in, out_tol, state_tol, rank4, fetches, use_webgpu);
 }
 
 constexpr int kDim = 128;  // the chunked engine is specialised for head_size 128
@@ -372,7 +377,65 @@ bool NeedSkipGatedDeltaNetSplitTest() {
 #endif
 }
 
+bool NeedSkipGatedDeltaNetWebGpuTest() {
+  return DefaultWebGpuExecutionProvider() == nullptr;
+}
+
 }  // namespace
+
+TEST(GatedDeltaNetWebGpuTest, Rank4AllRulesAndInverseGqa) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{6, 2, 2, 6, 8, 5};  // Hv/Hq == 3
+  for (const char* rule : {"linear", "gated", "delta", "gated_delta"}) {
+    SCOPED_TRACE(rule);
+    Options options;
+    options.update_rule = rule;
+    options.gate_activation = "qwen";
+    options.beta_activation = "sigmoid";
+    options.qk_l2_norm = 1;
+    RunCase(g, options, MakeInputs(g, 201), 3e-3f, 3e-4f, /*rank4=*/true,
+            /*fetches=*/nullptr, /*use_webgpu=*/true);
+  }
+}
+
+TEST(GatedDeltaNetWebGpuTest, Rank3UniformFloat32) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{8, 2, 1, 3, 7, 4};
+  RunTypedCase<float>(g, Options{}, MakeInputs(g, 211), 3e-4f, 3e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, RaggedWithoutInitialState) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{7, 3, 1, 3, 8, 4};
+  Inputs inputs = MakeInputs(g, 223, /*with_state=*/false);
+  inputs.cu_seqlens = {0, 1, 5, 7};
+  Options options;
+  options.gate_activation = "qwen";
+  options.beta_activation = "sigmoid";
+  options.qk_l2_norm = 1;
+  RunTypedCase<float>(g, options, inputs, 3e-4f, 3e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, RejectsCompactStateUpdates) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{2, 1, 1, 1, 4, 3};
+  Inputs inputs = MakeInputs(g, 227);
+  inputs.capture_count = {1};
+  Options options;
+  options.state_update_capacity = 1;
+  RunTypedCase<float>(g, options, inputs, 1e-4f, 1e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+}
 
 // ---------------------------------------------------------------------------
 // Chunked engine (prefill): T well above the 32-token plan threshold.
