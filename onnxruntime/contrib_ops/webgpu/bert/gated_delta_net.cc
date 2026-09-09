@@ -75,7 +75,7 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddInput("dt_bias", ShaderUsage::UseUniform);
   }
   shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-  shader.AddOutput("final_state", ShaderUsage::UseUniform);
+  if (output_final_state_) shader.AddOutput("final_state", ShaderUsage::UseUniform);
 
   int update_rule = 0;
   if (update_rule_ == GatedDeltaNetUpdateRule::Gated) update_rule = 1;
@@ -86,6 +86,7 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(has_cu_seqlens, has_cu_seqlens_),
                              WGSL_TEMPLATE_PARAMETER(has_initial_state, has_initial_state_),
                              WGSL_TEMPLATE_PARAMETER(initial_state_in_final_state, initial_state_in_final_state_),
+                             WGSL_TEMPLATE_PARAMETER(output_final_state, output_final_state_),
                              WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
                              WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
                              WGSL_TEMPLATE_PARAMETER(qk_l2_norm, qk_l2_norm_));
@@ -107,6 +108,10 @@ Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
   const bool needs_beta = update_rule_ == GatedDeltaNetUpdateRule::Delta ||
                           update_rule_ == GatedDeltaNetUpdateRule::GatedDelta;
   ORT_RETURN_IF_NOT(query && key && value, "query, key and value are required");
+  if (initial_state != nullptr) {
+    ORT_RETURN_IF_NOT(initial_state->Shape().NumDimensions() == 4,
+                      "initial_state must be rank 4 [batch, num_heads_v, head_size_v, head_size_qk]");
+  }
   ORT_RETURN_IF_NOT(needs_decay == (decay != nullptr), "decay input presence must match update_rule");
   ORT_RETURN_IF_NOT(needs_beta == (beta != nullptr), "beta input presence must match update_rule");
 
@@ -149,6 +154,7 @@ Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
     ORT_RETURN_IF_NOT(initial_state != nullptr,
                       "rank-3 uniform packing requires initial_state to determine batch size");
     batch = initial_state->Shape()[0];
+    ORT_RETURN_IF_NOT(batch > 0, "batch size must be positive");
     ORT_RETURN_IF_NOT(total_tokens % batch == 0, "total_tokens must be divisible by batch");
   }
   ORT_RETURN_IF_NOT(batch > 0, "batch size must be positive");
@@ -186,11 +192,12 @@ Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
   auto* output = context.Output(0, TensorShape(output_dims));
   auto* final_state = context.Output(1, state_shape);
   context.Output(2, TensorShape{batch, 0});
-  ORT_RETURN_IF_NOT(output != nullptr && final_state != nullptr, "output and final_state are required");
+  ORT_RETURN_IF_NOT(output != nullptr, "output is required");
 
-  const bool state_alias = initial_state != nullptr && initial_state->DataRaw() == final_state->DataRaw();
+  const bool state_alias =
+      initial_state != nullptr && final_state != nullptr && initial_state->DataRaw() == final_state->DataRaw();
   GatedDeltaNetProgram program{update_rule_, cu_seqlens != nullptr, initial_state != nullptr, state_alias,
-                               qwen_gate_, sigmoid_beta_, qk_l2_norm_};
+                               final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_};
   program.AddInputs({{query, ProgramTensorMetadataDependency::Type},
                      {key, ProgramTensorMetadataDependency::Type},
                      {value, ProgramTensorMetadataDependency::Type}});
@@ -199,11 +206,15 @@ Status GatedDeltaNet::ComputeInternal(ComputeContext& context) const {
   if (beta != nullptr) program.AddInput({beta, ProgramTensorMetadataDependency::None});
   if (initial_state != nullptr && !state_alias) program.AddInput({initial_state, ProgramTensorMetadataDependency::None});
   if (qwen_gate_) program.AddInputs({{a_log, ProgramTensorMetadataDependency::None}, {dt_bias, ProgramTensorMetadataDependency::None}});
-  program.AddOutputs({{output, ProgramTensorMetadataDependency::Type}, {final_state, ProgramTensorMetadataDependency::None}})
+  program.AddOutput({output, ProgramTensorMetadataDependency::Type});
+  if (final_state != nullptr) {
+    program.AddOutput({final_state, ProgramTensorMetadataDependency::None});
+  }
+  program
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv * dv))
       .SetWorkgroupSize(256)
       .CacheHint(static_cast<int>(update_rule_), cu_seqlens != nullptr, initial_state != nullptr, state_alias,
-                 qwen_gate_, sigmoid_beta_, qk_l2_norm_)
+                 final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                             {onnxruntime::narrow<uint32_t>(batch)},
                             {onnxruntime::narrow<uint32_t>(hq)},

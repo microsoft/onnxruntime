@@ -25,12 +25,14 @@ enum class GatedDeltaNetUpdateRule {
 class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
  public:
   GatedDeltaNetProgram(GatedDeltaNetUpdateRule update_rule, bool has_cu_seqlens, bool has_initial_state,
-                       bool initial_state_in_final_state, bool qwen_gate, bool sigmoid_beta, bool qk_l2_norm)
+                       bool initial_state_in_final_state, bool output_final_state, bool qwen_gate,
+                       bool sigmoid_beta, bool qk_l2_norm)
       : Program{"GatedDeltaNet"},
         update_rule_(update_rule),
         has_cu_seqlens_(has_cu_seqlens),
         has_initial_state_(has_initial_state),
         initial_state_in_final_state_(initial_state_in_final_state),
+        output_final_state_(output_final_state),
         qwen_gate_(qwen_gate),
         sigmoid_beta_(sigmoid_beta),
         qk_l2_norm_(qk_l2_norm) {}
@@ -51,6 +53,7 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
   bool has_cu_seqlens_;
   bool has_initial_state_;
   bool initial_state_in_final_state_;
+  bool output_final_state_;
   bool qwen_gate_;
   bool sigmoid_beta_;
   bool qk_l2_norm_;
