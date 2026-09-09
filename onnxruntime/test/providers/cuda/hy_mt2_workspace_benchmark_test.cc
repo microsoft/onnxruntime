@@ -71,6 +71,7 @@ struct ModelProfile {
   int64_t bos_token_id;
   size_t matmul_nbits_nodes;
   CacheLayout cache_layout;
+  bool supports_shared_kv_cache;
 };
 
 struct ArenaMemoryBreakdown {
@@ -134,32 +135,32 @@ void LogArenaCheckpoint(std::string_view checkpoint,
 constexpr ModelProfile kHyMT2Profile{
     "hy-mt2-1.8b",
     "C:\\Users\\lochi\\repos\\onnxruntime\\Hy-MT2-1.8B-ONNX\\Q4_KQuant_tie\\cuda\\model.onnx",
-    32, 4, 128, 120818, 120000, 225, CacheLayout::Transformer};
+    32, 4, 128, 120818, 120000, 225, CacheLayout::Transformer, false};
 
 constexpr ModelProfile kQwen25Profile{
     "qwen2.5-1.5b",
     "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\qwen2.5-1.5b-instruct-cuda-gpu-4\\v4\\model.onnx",
-    28, 2, 128, 151936, 151643, 141, CacheLayout::Transformer};
+    28, 2, 128, 151936, 151643, 141, CacheLayout::Transformer, true};
 
 constexpr ModelProfile kQwen35Profile{
     "qwen3.5-2b-text",
     "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\qwen3.5-2b-text-cuda-gpu-1\\v1\\model.onnx",
-    24, 2, 256, 248320, 1, 187, CacheLayout::Qwen35Hybrid};
+    24, 2, 256, 248320, 1, 187, CacheLayout::Qwen35Hybrid, false};
 
 constexpr ModelProfile kQwen25_7BProfile{
     "qwen2.5-7b",
     "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\qwen2.5-7b-instruct-cuda-gpu-4\\v4\\model.onnx",
-    28, 4, 128, 152064, 151643, 141, CacheLayout::Transformer};
+    28, 4, 128, 152064, 151643, 141, CacheLayout::Transformer, true};
 
 constexpr ModelProfile kDeepSeekR1Qwen7BProfile{
     "deepseek-r1-distill-qwen-7b",
     "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\deepseek-r1-distill-qwen-7b-cuda-gpu-4\\v4\\model.onnx",
-    28, 4, 128, 152064, 151646, 141, CacheLayout::Transformer};
+    28, 4, 128, 152064, 151646, 141, CacheLayout::Transformer, false};
 
 constexpr ModelProfile kQwen3_8BProfile{
     "qwen3-8b",
     "C:\\Users\\lochi\\.foundry\\cache\\models\\Microsoft\\qwen3-8b-cuda-gpu-2\\v2\\model.onnx",
-    36, 8, 128, 151936, 151643, 253, CacheLayout::Transformer};
+    36, 8, 128, 151936, 151643, 253, CacheLayout::Transformer, false};
 
 class CudaMemorySampler {
  public:
@@ -400,7 +401,7 @@ std::string BuildMaxShapeOverride(const ModelProfile& profile,
                                   int64_t past_sequence_length,
                                   int64_t decode_tokens) {
   const int64_t max_past_sequence_length =
-      std::max<int64_t>(past_sequence_length + sequence_length + decode_tokens - 1, 1);
+      std::max<int64_t>(past_sequence_length + sequence_length + decode_tokens, 1);
   std::ostringstream shapes;
   shapes << "input_ids:[1," << sequence_length << "]"
          << ";attention_mask:[1,"
@@ -491,8 +492,10 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   ASSERT_GT(sequence_length, 0);
   ASSERT_GE(past_sequence_length, 0);
   ASSERT_GE(decode_tokens, 0);
-  ASSERT_TRUE(decode_tokens == 0 || profile.cache_layout == CacheLayout::Transformer)
-      << "Prefill-plus-decode benchmarking currently supports transformer KV caches only.";
+  ASSERT_TRUE(decode_tokens == 0 || profile.supports_shared_kv_cache)
+      << "Prefill-plus-decode benchmarking requires a model configured for shared past/present KV buffers.";
+  ASSERT_TRUE(decode_tokens == 0 || past_sequence_length == 0)
+      << "Shared KV-cache generation scenarios must start with an empty logical cache.";
   ASSERT_GT(warmup_runs, 0);
   ASSERT_GT(memory_measurement_runs, 0);
   ASSERT_GT(measured_runs, 0);
@@ -588,8 +591,17 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   }
 
   std::vector<int64_t> input_ids(static_cast<size_t>(sequence_length), profile.bos_token_id);
+  const bool share_kv_cache = decode_tokens > 0;
+  const int64_t kv_cache_capacity =
+      past_sequence_length + sequence_length + decode_tokens;
+  const int64_t attention_mask_length =
+      share_kv_cache ? kv_cache_capacity : past_sequence_length + sequence_length;
   std::vector<int64_t> attention_mask(
-      static_cast<size_t>(past_sequence_length + sequence_length), 1);
+      static_cast<size_t>(attention_mask_length), 0);
+  std::fill_n(
+      attention_mask.begin(),
+      static_cast<size_t>(past_sequence_length + sequence_length),
+      1);
   std::vector<MLFloat16> past_data(
       static_cast<size_t>(profile.num_key_value_heads * past_sequence_length * profile.head_size),
       MLFloat16(0.0f));
@@ -607,7 +619,7 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
 
   OrtValue attention_mask_value;
   CreateMLValue<int64_t>(
-      std::array<int64_t, 2>{1, past_sequence_length + sequence_length},
+      std::array<int64_t, 2>{1, attention_mask_length},
       attention_mask.data(), OrtMemoryInfo(), &attention_mask_value);
   feeds.emplace("attention_mask", attention_mask_value);
 
@@ -620,16 +632,34 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   }
 
   const std::array<int64_t, 4> past_shape{
-      1, profile.num_key_value_heads, past_sequence_length, profile.head_size};
+      1,
+      profile.num_key_value_heads,
+      share_kv_cache ? kv_cache_capacity : past_sequence_length,
+      profile.head_size};
+  std::vector<OrtValue> shared_kv_cache;
+  if (share_kv_cache) {
+    shared_kv_cache.reserve(static_cast<size_t>(2 * profile.num_layers));
+  }
   for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
     const bool uses_full_attention =
         profile.cache_layout == CacheLayout::Transformer || layer % 4 == 3;
     if (uses_full_attention) {
       for (const char* kind : {"key", "value"}) {
         OrtValue past_value;
-        CreateMLValue<MLFloat16>(past_shape, past_data.data(), OrtMemoryInfo(), &past_value);
+        if (share_kv_cache) {
+          AllocateMLValue<MLFloat16>(cuda_allocator, past_shape, &past_value);
+          const cudaError_t memset_status =
+              cudaMemset(past_value.GetMutable<Tensor>()->MutableDataRaw(), 0,
+                         past_value.Get<Tensor>().SizeInBytes());
+          ASSERT_EQ(memset_status, cudaSuccess) << cudaGetErrorString(memset_status);
+        } else {
+          CreateMLValue<MLFloat16>(past_shape, past_data.data(), OrtMemoryInfo(), &past_value);
+        }
         feeds.emplace(
-            "past_key_values." + std::to_string(layer) + "." + kind, std::move(past_value));
+            "past_key_values." + std::to_string(layer) + "." + kind, past_value);
+        if (share_kv_cache) {
+          shared_kv_cache.emplace_back(std::move(past_value));
+        }
       }
     } else {
       OrtValue conv_state_value;
@@ -667,6 +697,13 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
     std::vector<OrtValue> scenario_fetches;
 
     const auto run_step = [&](double* elapsed_ms) -> Status {
+      if (share_kv_cache) {
+        scenario_fetches.clear();
+        scenario_fetches.resize(output_names.size());
+        for (size_t cache_index = 0; cache_index < shared_kv_cache.size(); ++cache_index) {
+          scenario_fetches[cache_index + 1] = shared_kv_cache[cache_index];
+        }
+      }
       cudaError_t cuda_status = cudaDeviceSynchronize();
       ORT_RETURN_IF_NOT(
           cuda_status == cudaSuccess,
@@ -687,6 +724,23 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
       return Status::OK();
     };
 
+    if (share_kv_cache) {
+      std::fill(attention_mask.begin(), attention_mask.end(), 0);
+      std::fill_n(
+          attention_mask.begin(),
+          static_cast<size_t>(past_sequence_length + sequence_length),
+          1);
+      for (OrtValue& cache_value : shared_kv_cache) {
+        const cudaError_t memset_status =
+            cudaMemset(cache_value.GetMutable<Tensor>()->MutableDataRaw(), 0,
+                       cache_value.Get<Tensor>().SizeInBytes());
+        ORT_RETURN_IF_NOT(
+            memset_status == cudaSuccess,
+            "cudaMemset failed while resetting shared KV cache: ",
+            cudaGetErrorString(memset_status));
+      }
+    }
+
     ORT_RETURN_IF_ERROR(run_step(timing == nullptr ? nullptr : &timing->prefill_ms));
     ORT_RETURN_IF_NOT(
         scenario_fetches.size() == output_names.size(),
@@ -697,6 +751,18 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             TensorShape({1, sequence_length, profile.vocab_size}),
         "Unexpected prefill logits shape: ",
         scenario_fetches.front().Get<Tensor>().Shape().ToString());
+    if (share_kv_cache) {
+      for (size_t cache_index = 0; cache_index < shared_kv_cache.size(); ++cache_index) {
+        const Tensor& output_cache = scenario_fetches[cache_index + 1].Get<Tensor>();
+        ORT_RETURN_IF_NOT(
+            output_cache.Shape() == TensorShape(past_shape),
+            "Unexpected shared KV-cache output shape: ",
+            output_cache.Shape().ToString());
+        ORT_RETURN_IF_NOT(
+            output_cache.DataRaw() == shared_kv_cache[cache_index].Get<Tensor>().DataRaw(),
+            "Shared past/present KV-cache buffers did not alias.");
+      }
+    }
 
     if (timing != nullptr) {
       timing->decode_ms.clear();
@@ -704,15 +770,17 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
     }
 
     for (int64_t decode_index = 0; decode_index < decode_tokens; ++decode_index) {
-      for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
-        const size_t key_index = static_cast<size_t>(1 + 2 * layer);
-        const size_t value_index = key_index + 1;
-        scenario_feeds.insert_or_assign(
-            "past_key_values." + std::to_string(layer) + ".key",
-            std::move(scenario_fetches[key_index]));
-        scenario_feeds.insert_or_assign(
-            "past_key_values." + std::to_string(layer) + ".value",
-            std::move(scenario_fetches[value_index]));
+      if (!share_kv_cache) {
+        for (int64_t layer = 0; layer < profile.num_layers; ++layer) {
+          const size_t key_index = static_cast<size_t>(1 + 2 * layer);
+          const size_t value_index = key_index + 1;
+          scenario_feeds.insert_or_assign(
+              "past_key_values." + std::to_string(layer) + ".key",
+              std::move(scenario_fetches[key_index]));
+          scenario_feeds.insert_or_assign(
+              "past_key_values." + std::to_string(layer) + ".value",
+              std::move(scenario_fetches[value_index]));
+        }
       }
       scenario_fetches.clear();
 
@@ -726,15 +794,20 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
 
       const int64_t decode_past_length =
           past_sequence_length + sequence_length + decode_index;
-      std::vector<int64_t> decode_attention_mask(
-          static_cast<size_t>(decode_past_length + 1), 1);
-      OrtValue decode_attention_mask_value;
-      CreateMLValue<int64_t>(
-          std::array<int64_t, 2>{1, decode_past_length + 1},
-          decode_attention_mask.data(), OrtMemoryInfo(),
-          &decode_attention_mask_value);
-      scenario_feeds.insert_or_assign(
-          "attention_mask", std::move(decode_attention_mask_value));
+      std::vector<int64_t> decode_attention_mask;
+      if (share_kv_cache) {
+        attention_mask[static_cast<size_t>(decode_past_length)] = 1;
+      } else {
+        decode_attention_mask.assign(
+            static_cast<size_t>(decode_past_length + 1), 1);
+        OrtValue decode_attention_mask_value;
+        CreateMLValue<int64_t>(
+            std::array<int64_t, 2>{1, decode_past_length + 1},
+            decode_attention_mask.data(), OrtMemoryInfo(),
+            &decode_attention_mask_value);
+        scenario_feeds.insert_or_assign(
+            "attention_mask", std::move(decode_attention_mask_value));
+      }
 
       double decode_ms = 0.0;
       ORT_RETURN_IF_ERROR(run_step(timing == nullptr ? nullptr : &decode_ms));
@@ -747,6 +820,14 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
               TensorShape({1, 1, profile.vocab_size}),
           "Unexpected decode logits shape: ",
           scenario_fetches.front().Get<Tensor>().Shape().ToString());
+      if (share_kv_cache) {
+        for (size_t cache_index = 0; cache_index < shared_kv_cache.size(); ++cache_index) {
+          ORT_RETURN_IF_NOT(
+              scenario_fetches[cache_index + 1].Get<Tensor>().DataRaw() ==
+                  shared_kv_cache[cache_index].Get<Tensor>().DataRaw(),
+              "Shared past/present KV-cache buffers did not alias.");
+        }
+      }
       if (timing != nullptr) {
         timing->decode_ms.push_back(decode_ms);
       }
@@ -881,6 +962,7 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             << " disable_prepacking=" << disable_prepacking
             << " use_device_initializers=" << use_device_initializers
             << " fpa_intb_gemm=" << enable_fpa_intb
+            << " share_kv_cache=" << share_kv_cache
             << " sequence_length=" << sequence_length
             << " past_sequence_length=" << past_sequence_length
             << " decode_tokens=" << decode_tokens
