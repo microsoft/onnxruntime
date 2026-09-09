@@ -664,7 +664,7 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidencyFp16) {
   // A ragged width in the same window leaves the last 16-column tile partly out of range.
   for (const int64_t n : {n_pinned, n_pinned + 5}) {
     const int k_split = onnxruntime::contrib::cuda::PickFp8MmaKSplit(
-      static_cast<int>(n), 1, static_cast<int>(k / 64), sm_count, device_prop.major, device_prop.minor);
+        static_cast<int>(n), 1, static_cast<int>(k / 64), sm_count, device_prop.major, device_prop.minor);
     ASSERT_TRUE(onnxruntime::contrib::cuda::Fp8MmaGemvPinsResidency(static_cast<int>(n), k_split, 1, sm_count))
         << "N = " << n << " should take the hinted entry point on this device";
 
