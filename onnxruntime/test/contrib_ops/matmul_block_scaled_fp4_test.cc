@@ -690,6 +690,50 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreSm121Tiling) {
   }
 }
 
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreGroupedAdaRetainsOriginalTiling) {
+  for (int sm_count : {24, 48, 58, 76, 128, 142}) {
+    for (int m : {1, 4, 8}) {
+      for (int n : {5120, 8416, 8417, 17408, 34816, 248320}) {
+        for (int k : {128, 5120, 17408}) {
+          SCOPED_TRACE("SMs = " + std::to_string(sm_count) + ", M = " + std::to_string(m) +
+                       ", N = " + std::to_string(n) + ", K = " + std::to_string(k));
+          const auto original = onnxruntime::contrib::cuda::PickFp4MmaConfig(m, n, k, sm_count, 8, 9);
+          const auto config = onnxruntime::contrib::cuda::PickFp4MmaGroupedConfig(m, n, k, sm_count, 8, 9);
+          EXPECT_EQ(config.k_split, original.k_split);
+          EXPECT_EQ(config.col_tiles, original.col_tiles);
+          EXPECT_EQ(config.col_groups, 1);
+        }
+      }
+    }
+  }
+}
+
+TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreGroupedArchitectureSelection) {
+  struct Case {
+    int sm_count;
+    int major;
+    int minor;
+    int k_split;
+    int col_groups;
+  };
+  const Case cases[] = {
+      {128, 8, 9, 2, 1},
+      {132, 9, 0, 4, 2},
+      {108, 8, 0, 4, 2},
+      {84, 8, 6, 2, 2},
+      {128, 12, 0, 4, 2},
+      {48, 12, 1, 2, 2},
+  };
+  for (const Case& device : cases) {
+    SCOPED_TRACE("CC = " + std::to_string(device.major) + "." + std::to_string(device.minor));
+    const auto config = onnxruntime::contrib::cuda::PickFp4MmaGroupedConfig(
+        8, 17408, 5120, device.sm_count, device.major, device.minor);
+    EXPECT_EQ(config.k_split, device.k_split);
+    EXPECT_EQ(config.col_tiles, 1);
+    EXPECT_EQ(config.col_groups, device.col_groups);
+  }
+}
+
 // Selection boundaries for the column-grouped tiling. Grouping halves the column grid, so it is
 // only worth taking while the grouped grid still covers kMinBlocksPerSm blocks per SM; below that
 // the launcher must fall back to the ungrouped ladder.
@@ -797,6 +841,10 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreColumnGroupedFp16) {
   ASSERT_EQ(cudaGetDevice(&device_id), cudaSuccess);
   ASSERT_EQ(cudaGetDeviceProperties(&device_prop, device_id), cudaSuccess);
 
+  if (device_prop.major == 8 && device_prop.minor == 9) {
+    GTEST_SKIP() << "Automatic column grouping is disabled on Ada.";
+  }
+
   // Smallest N that groups: ceil(N / 32) >= 2 * sm_count.
   const int64_t n_grouped = 32 * 2 * device_prop.multiProcessorCount;
   constexpr int64_t k = 256;  // two K windows, and k_blocks = 16 so the paired scale load aligns
@@ -842,6 +890,10 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreColumnGroupedBf16Bias) {
   int device_id = 0;
   ASSERT_EQ(cudaGetDevice(&device_id), cudaSuccess);
   ASSERT_EQ(cudaGetDeviceProperties(&device_prop, device_id), cudaSuccess);
+
+  if (device_prop.major == 8 && device_prop.minor == 9) {
+    GTEST_SKIP() << "Automatic column grouping is disabled on Ada.";
+  }
 
   constexpr int64_t m = 8;
   constexpr int64_t k = 256;

@@ -67,6 +67,10 @@ inline Fp4MmaConfig PickFp4MmaConfig(int m, int n, int k, int sm_count,
 // reduction buffer past the 48 KB static limit.
 inline Fp4MmaConfig PickFp4MmaGroupedConfig(int m, int n, int k, int sm_count,
                                             int compute_capability_major, int compute_capability_minor) {
+  if (compute_capability_major == 8 && compute_capability_minor == 9) {
+    return PickFp4MmaConfig(m, n, k, sm_count, compute_capability_major, compute_capability_minor);
+  }
+
   constexpr int kColGroups = 2;
   constexpr int kMinBlocksPerSm = 2;
   constexpr int kWarpBudgetPerSm = 24;
