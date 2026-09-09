@@ -15,6 +15,9 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 // Standalone MLAS builds don't have access to the ORT-internal SafeInt
 // wrapper; fall back to the SafeInt.hpp header directly (its default
@@ -1352,8 +1355,6 @@ static constexpr size_t ComputeChannelsLastConvOutSize(size_t input, size_t kern
     return 0;
 }
 
-constexpr size_t kKleidiAIDepthwiseRowsPerTile = 4;
-constexpr size_t kKleidiAIDepthwiseColsPerTile = 4;
 #endif
 
 }  // namespace
@@ -1461,41 +1462,27 @@ MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
         return false;
     }
 
-    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
+    if (Dimensions != 2) {
         return false;
     }
 
-    if (Dimensions != 2 || BatchCount != 1 || Beta != 0.0f || GroupCount == 0) {
-        return false;
+    MLAS_CONV_PARAMETERS parameters{};
+    parameters.Dimensions = Dimensions;
+    parameters.BatchCount = BatchCount;
+    parameters.GroupCount = GroupCount;
+    parameters.InputChannels = InputChannelsPerGroup;
+    parameters.FilterCount = FilterCount;
+    parameters.Beta = Beta;
+    for (size_t dim = 0; dim < Dimensions; ++dim) {
+        parameters.InputShape[dim] = InputShape[dim];
+        parameters.KernelShape[dim] = KernelShape[dim];
+        parameters.DilationShape[dim] = DilationShape[dim];
+        parameters.Padding[dim] = Padding[dim];
+        parameters.Padding[dim + Dimensions] = Padding[dim + Dimensions];
+        parameters.StrideShape[dim] = StrideShape[dim];
     }
 
-    if (InputChannelsPerGroup != 1 || FilterCount != 1) {
-        return false;
-    }
-
-    if (KernelShape[0] != 3 || KernelShape[1] != 3) {
-        return false;
-    }
-
-    if (StrideShape[0] != 1 || StrideShape[1] != 1) {
-        return false;
-    }
-
-    if (DilationShape[0] != 1 || DilationShape[1] != 1) {
-        return false;
-    }
-
-    const bool zero_padding = Padding[0] == 0 && Padding[1] == 0 && Padding[2] == 0 && Padding[3] == 0;
-    const bool unit_padding = Padding[0] == 1 && Padding[1] == 1 && Padding[2] == 1 && Padding[3] == 1;
-    if (!zero_padding && !unit_padding) {
-        return false;
-    }
-
-    const size_t output_h =
-        ComputeChannelsLastConvOutSize(InputShape[0], KernelShape[0], Padding[0], StrideShape[0]);
-    const size_t output_w =
-        ComputeChannelsLastConvOutSize(InputShape[1], KernelShape[1], Padding[1], StrideShape[1]);
-    return output_h >= kKleidiAIDepthwiseRowsPerTile && output_w >= kKleidiAIDepthwiseColsPerTile;
+    return ArmKleidiAI::DepthwiseConvKleidiAISupported(&parameters);
 #endif
 }
 
