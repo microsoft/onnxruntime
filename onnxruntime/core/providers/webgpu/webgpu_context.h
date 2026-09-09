@@ -35,6 +35,8 @@ namespace onnxruntime {
 class Tensor;
 
 namespace webgpu {
+
+inline constexpr int kDeviceFreeDefaultContextId = -1;
 class WebGpuContext;
 class ComputeContextBase;
 class ComputeContext;
@@ -279,9 +281,7 @@ class WebGpuContext final {
     WaitForInitializeComplete();
     return device_features_.contains(feature);
   }
-#if !defined(__wasm__)
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
-#endif
 
   const wgpu::CommandEncoder& GetCommandEncoder(CommandRecordingState& recording) {
     if (!recording.command_encoder) {
