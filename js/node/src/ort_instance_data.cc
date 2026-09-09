@@ -22,13 +22,13 @@ void OrtInstanceData::InitOrt(Napi::Env env, int log_level, Napi::Function tenso
 
   data->ortTensorConstructor = Napi::Persistent(tensorConstructor);
 
-  if (data->cleanup_hook_registered) {
+  if (data->ort_singleton_referenced) {
     return;
   }
 
-  // Retain the ORT singleton and register one cleanup hook for this env.
+  // Retain one reference to the ORT singleton for this env. The cleanup hook releases it when the env is torn down.
   OrtSingletonData::InitOrtObjects(env, log_level, is_main_thread);
-  data->cleanup_hook_registered = true;
+  data->ort_singleton_referenced = true;
 }
 
 const Napi::FunctionReference& OrtInstanceData::TensorConstructor(Napi::Env env) {

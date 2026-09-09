@@ -29,5 +29,5 @@ struct OrtInstanceData {
   // per env persistent constructors
   Napi::FunctionReference wrappedSessionConstructor;
   Napi::FunctionReference ortTensorConstructor;
-  bool cleanup_hook_registered{false};
+  bool ort_singleton_referenced{false};
 };
