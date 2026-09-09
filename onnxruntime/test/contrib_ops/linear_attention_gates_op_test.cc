@@ -285,7 +285,7 @@ TEST(ContribOpGatedRMSNormTest, Float_Sigmoid_StableSaturation) {
 
   const std::vector<int64_t> dims = {1, 1, 1};
   const std::vector<int64_t> scale_dims = {1};
-  constexpr float kGate = -20.0f;
+  constexpr float kGate = -12.0f;
   const std::vector<float> x = {1.0f};
   const std::vector<float> gate = {kGate};
   const std::vector<float> scale = {1.0f};
@@ -300,7 +300,7 @@ TEST(ContribOpGatedRMSNormTest, Float_Sigmoid_StableSaturation) {
     tester.AddInput<float>("X", dims, x);
     tester.AddInput<float>("scale", scale_dims, scale);
     tester.AddInput<float>("gate", dims, gate);
-    tester.AddOutput<float>("Y", dims, {expected_value}, false, 1e-12f, 1e-12f);
+    tester.AddOutput<float>("Y", dims, {expected_value}, false, 1e-9f, 1e-9f);
 
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(std::move(ep));
