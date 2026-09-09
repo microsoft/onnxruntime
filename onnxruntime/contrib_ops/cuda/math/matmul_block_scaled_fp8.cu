@@ -727,14 +727,6 @@ bool Fp8GemvMmaEnabled() {
   return enabled;
 }
 
-// Tiling override for A/B sweeps; 0 keeps the heuristic.
-int Fp8GemvKSplitOverride() {
-  static int const k_split = onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP8_GEMV_KSPLIT", 0);
-  ORT_ENFORCE(k_split == 0 || k_split == 4 || k_split == 8 || k_split == 16 || k_split == 32,
-              "ORT_FP8_GEMV_KSPLIT must be 0, 4, 8, 16, or 32.");
-  return k_split;
-}
-
 // Largest M each sub-path accepts. One mma launch unrolls 4 tiles of the mma's 8-row N extent.
 // Larger speculative batches are split into two launches so they keep the same per-row arithmetic
 // instead of switching to the dequantize + cuBLAS path.

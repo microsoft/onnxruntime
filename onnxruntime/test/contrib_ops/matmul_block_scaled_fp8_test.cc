@@ -637,10 +637,30 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidencyBoundarie
 
 // Runs the residency-hinted kernel. It is a second instantiation of the same body, so what is
 // under test is the dispatch: nothing above reaches it, because which N selects it depends on the
-// device's SM count (N = 4098 is 257 column blocks, already one wave on anything from 86 SMs up).
-TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidencyFp16) {
+// device's SM count.
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidency) {
+  constexpr const char* kChildProcessVariable = "ORT_FP8_GEMV_PINNED_TEST_CHILD";
+  const bool is_child_process = !Env::Default().GetEnvironmentVar(kChildProcessVariable).empty();
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "CUDA device is required for MatMulBlockQuantizedFp8Weight.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_DISABLE_FUSED_FP8_ACT_QDQ", "0"},
+      {"ORT_FP8_GEMV_MMA", "1"},
+      {"ORT_FP8_GEMV_MAX_M", "32"},
+      {"ORT_FP8_GEMV_KSPLIT", "0"},
+      {"ORT_FP8_GEMV_MATCH_N", "0"},
+      {"ORT_FP8_GEMV_MATCH_K", "0"},
+      {"ORT_FP8_GEMV_DISABLE_GB10_TUNING", "0"},
+      {kChildProcessVariable, "1"},
+  }};
+  if (!is_child_process) {
+    const std::string command =
+        "\"" + CurrentExecutablePath() +
+        "\" --gtest_filter=MatMulBlockQuantizedFp8WeightOpTest.GemvTensorCorePinnedResidency --gtest_color=no";
+    ASSERT_EQ(std::system(command.c_str()), 0);
+    return;
   }
 
   cudaDeviceProp device_prop{};
@@ -700,17 +720,48 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidencyFp16) {
         }
       }
 
-      OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
-      test.AddAttribute<int64_t>("block_size", block_size);
-      test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
-      test.AddInput<Float8E4M3FN>("B", {n, k}, b);
-      test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
-      test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected));
-      test.SetOutputTolerance(0.005f);
+      std::vector<float> bias(static_cast<size_t>(n));
+      for (int64_t col = 0; col < n; ++col) {
+        bias[static_cast<size_t>(col)] = static_cast<float>(col % 5) - 2.0f;
+      }
+      for (const bool with_optional_inputs : {false, true}) {
+        SCOPED_TRACE("with_optional_inputs = " + std::to_string(with_optional_inputs));
+        std::vector<float> expected_output = expected;
+        if (with_optional_inputs) {
+          for (int64_t row = 0; row < m; ++row) {
+            for (int64_t col = 0; col < n; ++col) {
+              expected_output[static_cast<size_t>(row * n + col)] += bias[static_cast<size_t>(col)];
+            }
+          }
+        }
+        for (const bool is_bf16 : {false, true}) {
+          SCOPED_TRACE("is_bf16 = " + std::to_string(is_bf16));
+          OpTester test("MatMulBlockQuantizedFp8Weight", 1, onnxruntime::kMSDomain);
+          test.AddAttribute<int64_t>("block_size", block_size);
+          if (is_bf16) {
+            test.AddInput<BFloat16>("A", {m, k}, FloatsToBFloat16s(a));
+            test.AddOutput<BFloat16>("Y", {m, n}, FloatsToBFloat16s(expected_output));
+          } else {
+            test.AddInput<MLFloat16>("A", {m, k}, FloatsToMLFloat16s(a));
+            test.AddOutput<MLFloat16>("Y", {m, n}, FloatsToMLFloat16s(expected_output));
+          }
+          test.AddInput<Float8E4M3FN>("B", {n, k}, b);
+          test.AddInput<float>("b_scale", {n, k_blocks}, b_scale);
+          if (with_optional_inputs) {
+            test.AddInput<float>("a_scale", {}, {1.0f});
+            if (is_bf16) {
+              test.AddInput<BFloat16>("bias", {n}, FloatsToBFloat16s(bias));
+            } else {
+              test.AddInput<MLFloat16>("bias", {n}, FloatsToMLFloat16s(bias));
+            }
+          }
+          test.SetOutputTolerance(is_bf16 ? 0.02f : 0.005f);
 
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(DefaultCudaExecutionProvider());
-      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+          std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+          execution_providers.push_back(DefaultCudaExecutionProvider());
+          test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+        }
+      }
     }
   }
 }
