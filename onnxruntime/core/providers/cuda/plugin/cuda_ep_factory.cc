@@ -404,7 +404,12 @@ OrtStatus* ORT_API_CALL CudaEpFactory::GetSupportedDevicesImpl(
       OrtKeyValuePairs* hw_metadata = nullptr;
       factory->ort_api_.CreateKeyValuePairs(&hw_metadata);
       factory->ort_api_.AddKeyValuePair(hw_metadata, "cuda_runtime_discovered", "1");
-      factory->ort_api_.AddKeyValuePair(hw_metadata, "Discrete", "1");
+
+      cudaDeviceProp prop;
+      if (cudaGetDeviceProperties(&prop, cuda_ordinal) == cudaSuccess) {
+        factory->ort_api_.AddKeyValuePair(hw_metadata, "Discrete",
+                                          prop.integrated == 0 ? "1" : "0");
+      }
 
       if (!cuda_device_identities[cuda_ordinal].empty()) {
 #ifdef _WIN32
