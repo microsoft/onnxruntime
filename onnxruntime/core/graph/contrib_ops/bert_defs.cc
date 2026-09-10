@@ -11,6 +11,7 @@
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/graph/contrib_ops/shape_inference_functions.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/sparse/sparse_attention_indexer_common.h"
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
 #if defined(_WIN32) && !defined(NDEBUG)
@@ -1892,6 +1893,400 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain integer type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           SparseAttentionTypeAndShapeInference(ctx, 3);
+        }));
+
+namespace sai = ::onnxruntime::contrib::sparse_attention_indexer;
+
+namespace {
+
+bool SparseAttentionIndexerHasInput(ONNX_NAMESPACE::InferenceContext& ctx, int index) {
+  return static_cast<size_t>(index) < ctx.getNumInputs() && ctx.getInputType(index) != nullptr;
+}
+
+// Copies a dimension (value or symbolic parameter) from an input shape into an output shape.
+void SparseAttentionIndexerAppendDim(ONNX_NAMESPACE::TensorShapeProto& shape,
+                                     const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
+  *shape.add_dim() = dim;
+}
+
+const ONNX_NAMESPACE::TensorShapeProto* SparseAttentionIndexerShape(ONNX_NAMESPACE::InferenceContext& ctx, int index,
+                                                                    int expected_rank) {
+  if (!SparseAttentionIndexerHasInput(ctx, index) || !hasInputShape(ctx, index)) {
+    return nullptr;
+  }
+  const auto& shape = getInputShape(ctx, index);
+  if (shape.dim_size() != expected_rank) {
+    fail_shape_inference("SparseAttentionIndexer: input ", index, " must have rank ", expected_rank,
+                         ", got rank ", shape.dim_size());
+  }
+  return &shape;
+}
+
+}  // namespace
+
+void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  const std::string policy_mode = getAttribute(ctx, "policy_mode", std::string());
+  sai::Policy policy = sai::Policy::kQsa;
+  if (!sai::TryParsePolicy(policy_mode, policy)) {
+    fail_shape_inference("SparseAttentionIndexer: policy_mode must be 'qsa' or 'csa', got '", policy_mode, "'");
+  }
+  const bool is_qsa = policy == sai::Policy::kQsa;
+
+  const int64_t compress_ratio = getAttribute(ctx, "compress_ratio", static_cast<int64_t>(0));
+  if (compress_ratio <= 0) {
+    fail_shape_inference("SparseAttentionIndexer: compress_ratio must be > 0, got ", compress_ratio);
+  }
+
+  const int64_t token_budget = getAttribute(ctx, "token_budget", static_cast<int64_t>(0));
+  const int64_t index_topk = getAttribute(ctx, "index_topk", static_cast<int64_t>(0));
+  if (is_qsa) {
+    if (ctx.getAttribute("index_topk") != nullptr || ctx.getAttribute("head_weight_scale") != nullptr) {
+      fail_shape_inference(
+          "SparseAttentionIndexer: index_topk and head_weight_scale must not be set when policy_mode is 'qsa'");
+    }
+    if (token_budget <= 0 || token_budget % compress_ratio != 0) {
+      fail_shape_inference(
+          "SparseAttentionIndexer: policy_mode 'qsa' requires token_budget > 0 and divisible by "
+          "compress_ratio, got token_budget=",
+          token_budget, " compress_ratio=", compress_ratio);
+    }
+  } else {
+    if (ctx.getAttribute("token_budget") != nullptr) {
+      fail_shape_inference("SparseAttentionIndexer: token_budget must not be set when policy_mode is 'csa'");
+    }
+    if (index_topk <= 0) {
+      fail_shape_inference("SparseAttentionIndexer: policy_mode 'csa' requires index_topk > 0, got ", index_topk);
+    }
+  }
+
+  // Strict policy input validation: every slot of the inactive policy must be omitted, and every
+  // slot of the active policy must be provided.
+  constexpr int kQsaOnlyInputs[] = {sai::kMask, sai::kPastKey};
+  constexpr int kCsaOnlyInputs[] = {sai::kGate, sai::kPositionBias, sai::kHeadWeights,
+                                    sai::kPositionIds, sai::kPastCompressedKey,
+                                    sai::kPastKvBuffer, sai::kPastGateBuffer};
+  for (int index = sai::kQuery; index <= sai::kSinCache; ++index) {
+    if (!SparseAttentionIndexerHasInput(ctx, index)) {
+      fail_shape_inference("SparseAttentionIndexer: input ", index, " is required for every policy_mode");
+    }
+  }
+  for (int index : kQsaOnlyInputs) {
+    if (SparseAttentionIndexerHasInput(ctx, index) != is_qsa) {
+      fail_shape_inference("SparseAttentionIndexer: input ", index,
+                           is_qsa ? " is required when policy_mode is 'qsa'"
+                                  : " must be omitted when policy_mode is 'csa'");
+    }
+  }
+  for (int index : kCsaOnlyInputs) {
+    if (SparseAttentionIndexerHasInput(ctx, index) == is_qsa) {
+      fail_shape_inference("SparseAttentionIndexer: input ", index,
+                           is_qsa ? " must be omitted when policy_mode is 'qsa'"
+                                  : " is required when policy_mode is 'csa'");
+    }
+  }
+
+  const size_t expected_outputs = is_qsa ? sai::kQsaOutputCount : sai::kCsaOutputCount;
+  if (ctx.getNumOutputs() != expected_outputs) {
+    fail_shape_inference("SparseAttentionIndexer: policy_mode '", policy_mode, "' requires exactly ",
+                         expected_outputs, " declared outputs, got ", ctx.getNumOutputs());
+  }
+
+  updateOutputElemType(ctx, sai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
+
+  (void)SparseAttentionIndexerShape(ctx, sai::kKey, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kKeyNormWeight, 1);
+  (void)SparseAttentionIndexerShape(ctx, sai::kCosCache, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kSinCache, 3);
+
+  const auto* query_shape = SparseAttentionIndexerShape(ctx, sai::kQuery, 4);
+  if (query_shape == nullptr) {
+    return;
+  }
+  const auto& batch_dim = query_shape->dim(0);
+  const auto& sequence_dim = query_shape->dim(1);
+  const auto& head_size_dim = query_shape->dim(3);
+
+  const int64_t capacity = sai::SelectedCapacity(policy, token_budget, index_topk, compress_ratio);
+  ONNX_NAMESPACE::TensorShapeProto selected_shape;
+  SparseAttentionIndexerAppendDim(selected_shape, batch_dim);
+  SparseAttentionIndexerAppendDim(selected_shape, sequence_dim);
+  selected_shape.add_dim()->set_dim_value(capacity);
+  updateOutputShape(ctx, sai::kSelectedIndices, selected_shape);
+
+  if (is_qsa) {
+    // ctx.getNumOutputs() == 2 was enforced above, so index 1 is in range.
+    propagateElemTypeFromInputToOutput(ctx, sai::kQuery, sai::kPresentKey);
+    const auto* past_key_shape = SparseAttentionIndexerShape(ctx, sai::kPastKey, 3);
+    if (past_key_shape != nullptr) {
+      ONNX_NAMESPACE::TensorShapeProto present_shape;
+      SparseAttentionIndexerAppendDim(present_shape, batch_dim);
+      auto* total_dim = present_shape.add_dim();
+      if (past_key_shape->dim(1).has_dim_value() && sequence_dim.has_dim_value()) {
+        total_dim->set_dim_value(past_key_shape->dim(1).dim_value() + sequence_dim.dim_value());
+      }
+      SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
+      updateOutputShape(ctx, sai::kPresentKey, present_shape);
+    }
+    return;
+  }
+
+  // ctx.getNumOutputs() == 5 was enforced above, so indices 2, 3 and 4 are all in range.
+  propagateElemTypeFromInputToOutput(ctx, sai::kQuery, sai::kPresentCompressedKey);
+  propagateElemTypeFromInputToOutput(ctx, sai::kQuery, sai::kPresentKvBuffer);
+  propagateElemTypeFromInputToOutput(ctx, sai::kQuery, sai::kPresentGateBuffer);
+
+  const auto* past_compressed_shape = SparseAttentionIndexerShape(ctx, sai::kPastCompressedKey, 3);
+  const auto* past_buffer_shape = SparseAttentionIndexerShape(ctx, sai::kPastKvBuffer, 3);
+  const auto* past_gate_shape = SparseAttentionIndexerShape(ctx, sai::kPastGateBuffer, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kGate, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kPositionBias, 2);
+  (void)SparseAttentionIndexerShape(ctx, sai::kHeadWeights, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kPositionIds, 2);
+
+  if (past_buffer_shape != nullptr && past_gate_shape != nullptr) {
+    for (int axis = 0; axis < 3; ++axis) {
+      const auto& kv_dim = past_buffer_shape->dim(axis);
+      const auto& gate_dim = past_gate_shape->dim(axis);
+      if (kv_dim.has_dim_value() && gate_dim.has_dim_value() && kv_dim.dim_value() != gate_dim.dim_value()) {
+        fail_shape_inference(
+            "SparseAttentionIndexer: past_gate_buffer must have the same shape as past_kv_buffer, "
+            "but dimension ",
+            axis, " is ", gate_dim.dim_value(), " instead of ", kv_dim.dim_value());
+      }
+    }
+  }
+
+  sai::CsaWindowPlan plan;
+  const bool plan_known = past_buffer_shape != nullptr && past_buffer_shape->dim(1).has_dim_value() &&
+                          sequence_dim.has_dim_value() &&
+                          sai::TryComputeCsaWindowPlan(past_buffer_shape->dim(1).dim_value(),
+                                                       sequence_dim.dim_value(), compress_ratio, plan);
+  if (past_buffer_shape != nullptr && past_buffer_shape->dim(1).has_dim_value() &&
+      sequence_dim.has_dim_value() && !plan_known) {
+    fail_shape_inference(
+        "SparseAttentionIndexer: past_kv_buffer sequence length must be in [0, 2 * compress_ratio), got ",
+        past_buffer_shape->dim(1).dim_value());
+  }
+
+  if (past_compressed_shape != nullptr) {
+    ONNX_NAMESPACE::TensorShapeProto present_shape;
+    SparseAttentionIndexerAppendDim(present_shape, batch_dim);
+    auto* entry_dim = present_shape.add_dim();
+    if (plan_known && past_compressed_shape->dim(1).has_dim_value()) {
+      entry_dim->set_dim_value(past_compressed_shape->dim(1).dim_value() + plan.new_window_count);
+    }
+    SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
+    updateOutputShape(ctx, sai::kPresentCompressedKey, present_shape);
+  }
+
+  if (past_buffer_shape != nullptr) {
+    ONNX_NAMESPACE::TensorShapeProto buffer_shape;
+    SparseAttentionIndexerAppendDim(buffer_shape, batch_dim);
+    auto* buffer_dim = buffer_shape.add_dim();
+    if (plan_known) {
+      buffer_dim->set_dim_value(plan.present_buffer_length);
+    }
+    SparseAttentionIndexerAppendDim(buffer_shape, past_buffer_shape->dim(2));
+    updateOutputShape(ctx, sai::kPresentKvBuffer, buffer_shape);
+    updateOutputShape(ctx, sai::kPresentGateBuffer, buffer_shape);
+  }
+}
+
+constexpr const char* SparseAttentionIndexer_ver1_doc = R"DOC(
+Selects, for every query token, the sparse-attention candidates that the following attention
+operator is allowed to read. It covers the two indexer flavours used by recent sparse-attention
+decoders, chosen with the policy_mode attribute:
+
+  policy_mode = "qsa" ("query sparse attention" token indexer)
+    Groups the tokens that are visible to a query into complete blocks of compress_ratio tokens,
+    mean-pools the indexer keys of every block, normalizes and rotates the pooled key, scores it
+    against the query heads with sum_h ReLU(q_h . k), keeps the token_budget / compress_ratio
+    highest scoring blocks and emits the token indices of those blocks followed by the visible
+    tokens of the trailing incomplete block.
+
+  policy_mode = "csa" ("compressed sparse attention" block indexer)
+    Compresses every compress_ratio consecutive tokens into one entry with a softmax-gated pooling
+    over a window of 2 * compress_ratio slots (the previous window contributes its "Ca" half and
+    the current window its "Cb" half), normalizes and rotates the entry, appends it to the
+    compressed-key state, scores the queries against every compressed entry with
+    sum_h w_h * ReLU(q_h . k), masks the entries a query may not attend to and emits the index_topk
+    highest scoring entry indices.
+
+Common contract:
+  * selected_indices is int32 with a fixed capacity that only depends on attributes:
+    token_budget + compress_ratio - 1 for "qsa" and index_topk for "csa". Unused entries are -1,
+    so no output size depends on the data and no device-to-host synchronization is required.
+  * All state is explicit in the graph. Nothing is cached inside the operator.
+  * Rotary embeddings reuse the precomputed cos_cache / sin_cache tables, which are indexed by
+    absolute key position. "qsa" applies the half-rotation of the model's (M)RoPE to the leading
+    rotary_dim = cos_cache.shape[2] channels. "csa" applies its trailing rotary to the last
+    2 * cos_cache.shape[2] channels, with each cos/sin entry covering two consecutive channels.
+  * key_norm_weight is the effective RMSNorm multiplier. Models that store a zero-centered gamma
+    (the normalized value is multiplied by 1 + gamma) must fold the addition into this initializer.
+  * Accumulation, pooling, softmax, normalization and scoring are performed in float32 and the
+    result is rounded once to the tensor element type.
+  * Ties in the top-k selection are broken by the smaller entry index, and the emitted entries are
+    ordered by decreasing score, so the result is deterministic.
+
+State layout for policy_mode = "csa": past_kv_buffer / past_gate_buffer hold the tokens that have
+not been folded into a compressed entry yet. When their length is >= compress_ratio, the first
+compress_ratio tokens are the previous complete window (the "Ca" operand of the next window) and
+the remainder is the current incomplete window; when it is < compress_ratio there is no previous
+complete window and the whole buffer is the incomplete window. The length is therefore always in
+[0, 2 * compress_ratio), and the number of compressed entries emitted by a call is known from the
+input shapes alone. position_bias is re-applied to the buffered gates, so the buffers hold the raw
+gate projection.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SparseAttentionIndexer, 1,
+    OpSchema()
+        .SetDoc(SparseAttentionIndexer_ver1_doc)
+        .Attr("policy_mode",
+              "Indexer policy. Must be exactly 'qsa' (token indexer) or 'csa' (compressed block indexer).",
+              AttributeProto::STRING)
+        .Attr("compress_ratio",
+              "Number of consecutive tokens folded into one compressed block. Must be > 0.",
+              AttributeProto::INT)
+        .Attr("token_budget",
+              "Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. "
+              "Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("index_topk",
+              "Only for policy_mode 'csa': number of compressed entries selected per query. Must be > 0. "
+              "Must be omitted when policy_mode is 'qsa'.",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("epsilon",
+              "Epsilon of the RMS normalization applied to the compressed keys. Default is 1e-6.",
+              AttributeProto::FLOAT,
+              1.0e-6f)
+        .Attr("scale",
+              "Scale applied to the per-head ReLU scores. Default is 1/sqrt(head_size).",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("head_weight_scale",
+              "Only for policy_mode 'csa': scale applied to head_weights. Default is 1/sqrt(num_heads). "
+              "Must be omitted when policy_mode is 'qsa'.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "query",
+               "Indexer queries with shape (batch_size, sequence_length, num_heads, head_size), already "
+               "normalized but not yet rotated.",
+               "T")
+        .Input(1,
+               "key",
+               "Indexer key projection of the new tokens. Shape is (batch_size, sequence_length, head_size) "
+               "for policy_mode 'qsa' and (batch_size, sequence_length, 2 * head_size) for policy_mode 'csa', "
+               "where the first head_size channels are the Ca series and the last head_size channels the Cb series.",
+               "T")
+        .Input(2,
+               "key_norm_weight",
+               "Effective RMSNorm multiplier of the compressed keys, with shape (head_size).",
+               "T")
+        .Input(3,
+               "cos_cache",
+               "Cosine rotary table indexed by absolute key position, with shape "
+               "(batch_size, max_rotary_sequence_length, rotary_width).",
+               "T")
+        .Input(4,
+               "sin_cache",
+               "Sine rotary table with the same shape as cos_cache.",
+               "T")
+        .Input(5,
+               "mask",
+               "Only for policy_mode 'qsa': tokens visible to each query, with shape "
+               "(batch_size, 1, sequence_length, total_sequence_length) or "
+               "(batch_size, sequence_length, total_sequence_length). "
+               "total_sequence_length is past_sequence_length + sequence_length.",
+               "TB",
+               OpSchema::Optional)
+        .Input(6,
+               "past_key",
+               "Only for policy_mode 'qsa': cached indexer keys with shape "
+               "(batch_size, past_sequence_length, head_size).",
+               "T",
+               OpSchema::Optional)
+        .Input(7,
+               "gate",
+               "Only for policy_mode 'csa': gate projection of the new tokens with shape "
+               "(batch_size, sequence_length, 2 * head_size).",
+               "T",
+               OpSchema::Optional)
+        .Input(8,
+               "position_bias",
+               "Only for policy_mode 'csa': per-slot gate bias with shape (compress_ratio, 2 * head_size).",
+               "T",
+               OpSchema::Optional)
+        .Input(9,
+               "head_weights",
+               "Only for policy_mode 'csa': per-head score weights with shape "
+               "(batch_size, sequence_length, num_heads).",
+               "T",
+               OpSchema::Optional)
+        .Input(10,
+               "position_ids",
+               "Only for policy_mode 'csa': absolute position of every query with shape "
+               "(batch_size, sequence_length).",
+               "I",
+               OpSchema::Optional)
+        .Input(11,
+               "past_compressed_key",
+               "Only for policy_mode 'csa': compressed keys emitted by previous calls, with shape "
+               "(batch_size, past_compressed_length, head_size).",
+               "T",
+               OpSchema::Optional)
+        .Input(12,
+               "past_kv_buffer",
+               "Only for policy_mode 'csa': buffered key projections with shape "
+               "(batch_size, buffer_length, 2 * head_size), where buffer_length is in [0, 2 * compress_ratio).",
+               "T",
+               OpSchema::Optional)
+        .Input(13,
+               "past_gate_buffer",
+               "Only for policy_mode 'csa': buffered gate projections with the same shape as past_kv_buffer.",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "selected_indices",
+                "Selected entries with shape (batch_size, sequence_length, capacity). capacity is "
+                "token_budget + compress_ratio - 1 for policy_mode 'qsa', where the values are token indices "
+                "into the key cache, and index_topk for policy_mode 'csa', where the values are compressed "
+                "entry indices. Unused entries are -1.",
+                "M")
+        .Output(1,
+                "present_key",
+                "Only for policy_mode 'qsa': past_key concatenated with key, with shape "
+                "(batch_size, total_sequence_length, head_size).",
+                "T",
+                OpSchema::Optional)
+        .Output(2,
+                "present_compressed_key",
+                "Only for policy_mode 'csa': past_compressed_key concatenated with the entries emitted by "
+                "this call, with shape (batch_size, present_compressed_length, head_size).",
+                "T",
+                OpSchema::Optional)
+        .Output(3,
+                "present_kv_buffer",
+                "Only for policy_mode 'csa': updated key buffer with shape "
+                "(batch_size, present_buffer_length, 2 * head_size).",
+                "T",
+                OpSchema::Optional)
+        .Output(4,
+                "present_gate_buffer",
+                "Only for policy_mode 'csa': updated gate buffer with the same shape as present_kv_buffer.",
+                "T",
+                OpSchema::Optional)
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain floating point tensors to float, float16 and bfloat16.")
+        .TypeConstraint("TB", {"tensor(bool)"}, "Constrain the visibility mask to boolean tensors.")
+        .TypeConstraint("I", {"tensor(int64)"}, "Constrain position ids to 64-bit integer tensors.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain selected indices to 32-bit integer tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          SparseAttentionIndexerTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
