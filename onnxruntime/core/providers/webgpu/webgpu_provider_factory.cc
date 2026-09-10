@@ -3,7 +3,6 @@
 
 #include <charconv>
 #include <mutex>
-#include <optional>
 
 #include "core/framework/error_code_helper.h"
 #include "core/providers/webgpu/buffer_manager.h"
@@ -458,18 +457,16 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
           impl.context_ = &WebGpuContextFactory::DefaultContext();
         }
       }
-      if (impl.ep_ == nullptr && impl.data_transfer_ == nullptr) {
+      if (impl.data_transfer_ == nullptr) {
         impl.data_transfer_ = std::make_unique<DataTransferImpl>(impl.context_->BufferManager(),
-                                                                 impl.context_->EnvironmentRecording());
+                                                                 impl.ep_ ? impl.ep_->Recording() : impl.context_->EnvironmentRecording());
       }
     }
 
     auto& recording = impl.ep_ ? impl.ep_->Recording() : impl.context_->EnvironmentRecording();
     auto& buffer_manager = impl.ep_ ? impl.ep_->BufferManager() : impl.context_->BufferManager();
-    // DataTransferImpl borrows its BufferManager. The retained context owns the Env manager and recording;
-    // Session transfers also depend on the owning EP's lifetime for its selected manager and recording.
-    std::optional<DataTransferImpl> session_transfer;
-    auto& transfer = impl.ep_ ? session_transfer.emplace(buffer_manager, recording) : *impl.data_transfer_;
+    // DataTransferImpl borrows the context's BufferManager. The retained context owns the Env recording;
+    // Session transfers depend on the owning EP's lifetime for their recording.
 
     for (size_t idx = 0; idx < num_tensors; ++idx) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
@@ -491,7 +488,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       void* dst_data = dst_tensor.MutableDataRaw();
       bool dst_is_gpu = dst_tensor.Location().device.Type() == OrtDevice::GPU;
 #endif
-      auto status = transfer.CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
+      auto status = impl.data_transfer_->CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }
