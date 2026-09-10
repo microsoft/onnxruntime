@@ -32,6 +32,16 @@ void unpack_uint4_transposed_to_int8_direct_cuda(cudaStream_t stream,
                                                  int n,
                                                  int k);
 
+// Transpose uint2 weight matrix, subtract the default zero point (2), and re-pack as signed 2-bit
+// (4 codes per byte). Input is row-major [n, k/4]; output is transposed [k, n/4]. This is the 2-bit
+// analog of unpack_uint4_transposed_to_int8_direct_cuda; the signed codes feed
+// preprocess_weights_for_mixed_gemm_cuda(QuantType::W2_A16), whose bias+interleave step re-adds +2.
+void unpack_uint2_transposed_to_int2_direct_cuda(cudaStream_t stream,
+                                                 void* packed_transposed_weight,
+                                                 const void* packed_weight,
+                                                 int n,
+                                                 int k);
+
 // Transpose uint8 weight matrix and add default zero points as int8.
 void transpose_uint8_matrix_and_convert_to_int8(cudaStream_t stream,
                                                 int8_t* output,        // shape: (k, n)

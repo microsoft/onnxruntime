@@ -135,6 +135,10 @@ struct Int4DetailsW {
   static constexpr int kElemBits = 4;
 };
 
+struct Int2DetailsW {
+  static constexpr int kElemBits = 2;
+};
+
 struct Fp4DetailsW {
   static constexpr int kElemBits = 4;
 };
@@ -231,12 +235,20 @@ struct KernelDetails {
 template <typename AType, int WElemBits, bool Interleave>
 struct I2FConverter;
 
+// Selects the packed cutlass weight type for the interleaved converter from the bit width.
+template <int WElemBits>
+struct InterleavedCutlassWType {
+  static_assert(WElemBits == 2 || WElemBits == 4 || WElemBits == 8, "WElemBits must be 2, 4 or 8");
+  using type = std::conditional_t<WElemBits == 8, uint8_t,
+                                  std::conditional_t<WElemBits == 4, cutlass::uint4b_t, cutlass::uint2b_t>>;
+};
+
 template <typename AType, int WElemBits>
 struct I2FConverter<AType, WElemBits, true> {
   static_assert(std::is_same_v<AType, half> || std::is_same_v<AType, __nv_bfloat16>);
-  static_assert(WElemBits == 4 || WElemBits == 8);
+  static_assert(WElemBits == 2 || WElemBits == 4 || WElemBits == 8);
   using CutlassAType = std::conditional_t<std::is_same_v<AType, half>, cutlass::half_t, cutlass::bfloat16_t>;
-  using CutlassWType = std::conditional_t<WElemBits == 4, cutlass::uint4b_t, uint8_t>;
+  using CutlassWType = typename InterleavedCutlassWType<WElemBits>::type;
   static constexpr int kConvertCount = 32 / WElemBits;
   using Converter = cutlass::FastInterleavedAndBiasedNumericArrayConverter<CutlassAType, CutlassWType, kConvertCount>;
   using CvtSrcType = typename Converter::source_type;

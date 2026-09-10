@@ -1418,7 +1418,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     MoE, 1,
     OpSchema()
         .SetDoc(MoE_ver1_doc)
-        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
+        .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu, swiglu, geglu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
         .Attr("swiglu_fusion", "0: not fused, 1: fused and interleaved. 2: fused and not interleaved.", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("swiglu_limit", "The limit used to clamp in SwiGLU. No clamp when limit is not provided.", AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Attr("activation_alpha", "Alpha parameter used in activation function.", AttributeProto::FLOAT, 1.0f)
@@ -1471,7 +1471,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(qMoE_ver1_doc)
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
+              "Activation function to use. Choose from relu, gelu, silu, swiglu, geglu and identity. "
+              "geglu is the GELU-gated linear unit (a gated activation like swiglu but using gelu as "
+              "the gate). Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",
@@ -1531,6 +1533,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
+        .Attr("zero_point_offset",
+              "CUDA execution provider only; other execution providers (CPU, WebGPU) reject a "
+              "non-default value. Only meaningful when quant_type='int' and block_size > 0 and no "
+              "integer fc*_zero_points are provided. A single fractional zero-point applied uniformly "
+              "to every weight code: dequant = (code - zero_point_offset) * scale. Enables balanced "
+              "asymmetric schemes whose zero-point is not integer-representable (e.g. the 1.5 "
+              "midpoint of a 2-bit checkpoint, giving codes {0,1,2,3} -> {-1.5,-0.5,0.5,1.5}*scale). "
+              "When omitted, symmetric quantization centered on 2^(expert_weight_bits-1) is used.",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "2D tensor with shape (num_tokens, hidden_size), or "
