@@ -45,6 +45,13 @@ else
    mv $ARTIFACT_NAME/lib64 $ARTIFACT_NAME/lib
 fi
 
+# Change includedir and prefix to match the header and libdir move done above
+sed -i.bak 's|^includedir=.*|includedir=${prefix}/include|' "$ARTIFACT_NAME/lib/pkgconfig/libonnxruntime.pc"
+sed -i.bak 's|^libdir=.*|libdir=${prefix}/lib|' "$ARTIFACT_NAME/lib/pkgconfig/libonnxruntime.pc"
+# Make the pc file relocatable
+sed -i.bak 's|^prefix=.*|prefix=${pcfiledir}/../..|' "$ARTIFACT_NAME/lib/pkgconfig/libonnxruntime.pc"
+rm "$ARTIFACT_NAME/lib/pkgconfig/libonnxruntime.pc.bak"
+
 # copy the README, licence and TPN
 cp $SOURCE_DIR/README.md $BINARY_DIR/$ARTIFACT_NAME/README.md
 cp $SOURCE_DIR/docs/Privacy.md $BINARY_DIR/$ARTIFACT_NAME/Privacy.md
