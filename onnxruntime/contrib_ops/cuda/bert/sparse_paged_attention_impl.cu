@@ -185,7 +185,8 @@ Status SparseQkvToContext(
       device_prop, stream, parameters, data, &prepared_query));
 
   int threads = 1;
-  while (threads < parameters.head_size && threads < device_prop.maxThreadsPerBlock) {
+  while (threads < parameters.head_size &&
+         threads * 2 <= device_prop.maxThreadsPerBlock) {
     threads *= 2;
   }
   const size_t shared_memory_bytes =
