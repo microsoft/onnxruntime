@@ -32,14 +32,15 @@ $MAIN {
   for (var token_offset = chunk_start; token_offset < chunk_end; token_offset++) {
     let token = batch * sequence_length + token_offset;
     if (key_index < uniforms.head_size_qk) {
-      let key_value = f32(key.getByOffset((token * uniforms.num_heads_q + query_head) *
-                                          uniforms.head_size_qk + key_index));
+      let key_offset = (token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index;
+      let key_value = f32(key.getByOffset(key_offset));
       for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
         let value_index = value_start + value_offset;
         if (value_index < uniforms.head_size_v) {
+          let value_offset_in_tensor =
+              (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index;
           contribution[value_offset] += key_value *
-              f32(value.getByOffset((token * uniforms.num_heads_v + value_head) *
-                                    uniforms.head_size_v + value_index));
+              f32(value.getByOffset(value_offset_in_tensor));
         }
       }
     }
