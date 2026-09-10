@@ -385,6 +385,7 @@ static constexpr OrtCompileApi ort_compile_api = {
     // End of Version 24 - DO NOT MODIFY ABOVE
 
     &OrtCompileAPI::ModelCompilationOptions_SetWeightlessEnabled,
+    // End of Version 29 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -394,6 +395,12 @@ static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetOutputModelGetI
               "Size of version 23 of Api cannot change");
 static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetInputModel) / sizeof(void*) == 14,
               "Size of version 24 of Api cannot change");
+static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetWeightlessEnabled) / sizeof(void*) == 15,
+              "Size of version 29 of Api cannot change");
+
+// So that nobody forgets to finish an API version, this check will serve as a reminder:
+static_assert(std::string_view(ORT_VERSION) == "1.31.0",
+              "ORT_Version change detected, please follow below steps to ensure OrtCompileApi is updated properly");
 
 ORT_API(const OrtCompileApi*, OrtCompileAPI::GetCompileApi) {
   return &ort_compile_api;
