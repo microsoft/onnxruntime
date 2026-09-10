@@ -36,6 +36,7 @@ void WherePreservesNegativeZeroTest() {
     const auto& output_tensor = fetches[0].Get<Tensor>();
     const auto* output = output_tensor.Data<T>();
     for (int64_t i = 0; i < output_tensor.Shape().Size(); ++i) {
+      EXPECT_EQ(output[i], T{0});
       EXPECT_TRUE(std::signbit(output[i]));
     }
   };
