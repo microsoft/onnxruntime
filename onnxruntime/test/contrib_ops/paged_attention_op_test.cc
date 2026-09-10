@@ -1744,6 +1744,58 @@ TEST(PagedAttention, Cuda_CudnnPagedDispatchWhenEnabled) {
   EXPECT_NE(debug_output.find("GqaGroupSize=8"), std::string::npos) << debug_output;
 }
 
+// Regression: cuDNN paged SDPA must survive CUDA graph capture/replay. The `try_build_paged_graph`
+// probe is cache-first, and the ORT CUDA EP's two warm-up Runs
+// (min_num_runs_before_cuda_graph_capture_ = 2) populate the thread_local plan cache before
+// capture begins. During capture and replay, the probe hits the cache and returns true without
+// touching cuDNN -- the fused-attention kernel is what the graph captures. A regression that
+// (a) invalidates the cache between warm-up and capture, (b) fails to fold `isCapturing` inside
+// `try_build_paged_graph`, or (c) attempts a non-capturable cuDNN plan build during capture would
+// either crash the capture or silently fall back to FlashAttention on replays. RunIoBindingCase's
+// per-Run softmax(QK^T)V reference (2e-3 tolerance, checked per batch x token x head x dim)
+// covers numerical corruption of the captured graph.
+TEST(PagedAttention, Cuda_CudnnPagedCudaGraphReplay) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 900) {
+    GTEST_SKIP() << "cuDNN paged SDPA is only auto-enabled on compute capability 9.0 or later.";
+  }
+
+  OrtCUDAProviderOptionsV2 provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  provider_options.use_tf32 = false;
+  provider_options.enable_cuda_graph = true;
+
+  IoBindingCase c = MakeCudnnPagedDecodeCase();
+  c.enable_cuda_graph = true;
+  c.irregular_layout = true;
+  // Five Runs: Runs 1-2 are warm-ups (populate the thread_local plan cache), Run 3 begins capture,
+  // Runs 4-5 replay. All Runs share the same PagedGraphParams key (batch / heads / head_size /
+  // blocks / block_size / max_num_blocks_per_seq / scale / dtype / handle), so every call to
+  // try_build_paged_graph -- warm-up, capturing, replaying -- hits the cached plan. past_seqlen
+  // varies across Runs but is not part of the cache key.
+  c.replay_past_seqlens = {
+      {256},
+      {260},
+      {300},
+      {340},
+      {380},
+  };
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(CudaExecutionProviderWithOptions(&provider_options),
+                   kCudaExecutionProvider, true, false, c);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+
+  EXPECT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos) << debug_output;
+}
+
 TEST(PagedAttention, Cuda_CudnnPagedRespectsGlobalCudnnDisable) {
   // ORT_ENABLE_CUDNN_FLASH_ATTENTION=0 is the shared kill switch for every cuDNN
   // attention path in the CUDA EP: it clears the sdpa_kernel bit AND sets

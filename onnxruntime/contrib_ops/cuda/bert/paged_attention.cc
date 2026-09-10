@@ -672,6 +672,36 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     use_xqa_decode = (xqa_smem_ok != 0);
     use_xqa_spec_dec = use_xqa_decode && use_xqa_spec_dec;
   }
+  // XQA was statically preferred over cuDNN paged (see the `!fp16_xqa_eligible` term above), so
+  // when the XQA shared-memory / symbol probe fails at runtime the documented cascade drops to
+  // cuDNN paged before FlashAttention -- not straight to FlashAttention. Retry the shape-keyed
+  // buildability probe now; it is cache-first, so on steady-state Runs this is one hash lookup,
+  // and it only pays for a real cuDNN graph build when cuDNN is about to serve the Run. Guarding
+  // on `fp16_xqa_eligible` scopes the retry to the specific "XQA-preferred-but-runtime-failed"
+  // case, so we don't re-run a probe that already failed at line ~527 for a non-XQA path (that
+  // failure is a definitive per-Run decision).
+  if (fp16_xqa_eligible && cudnn_paged_eligible && !use_cudnn_paged && !use_xqa_decode) {
+    const float probe_scale = parameters.scale == 0.0f
+                                  ? 1.f / std::sqrt(static_cast<float>(parameters.head_size))
+                                  : parameters.scale;
+    if (onnxruntime::cudnn_sdpa::try_build_paged_graph(
+            parameters.batch_size,
+            parameters.num_heads, parameters.kv_num_heads,
+            parameters.head_size, parameters.head_size,
+            parameters.num_blocks,
+            parameters.block_size,
+            parameters.max_num_blocks_per_seq,
+            probe_scale,
+            std::is_same<T, BFloat16>::value,
+            GetCudnnHandle(context),
+            ort_stream.get())) {
+      use_cudnn_paged = true;
+      use_paged_decode = false;
+      // use_flash_attention and use_memory_efficient_attention were both set false at lines 553
+      // and 555 (their `!use_paged_decode` term was false because `use_paged_decode` was true when
+      // XQA was statically preferred), so nothing else to override here.
+    }
+  }
   // Native-cache XQA promotion is speculative until the one-token-per-sequence and shared-memory
   // checks pass. Restore Flash for ragged decode steps and unsupported devices instead of leaving
   // them on the portable scalar paged-decode fallback. This is safe without dense KV staging
