@@ -7,6 +7,7 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 
+#include <cfloat>
 #include <limits>
 
 #include "core/providers/cuda/cuda_common.h"
@@ -445,7 +446,7 @@ __global__ void DynamicSparseAttentionKernel(const T* query,
       max_logit = head_sink == nullptr ? 0.0f : ToFloat(head_sink[head]);
       denominator = 1.0f;
     } else {
-      max_logit = -CUDART_INF_F;
+      max_logit = -FLT_MAX;
       denominator = 0.0f;
     }
     old_weight = 0.0f;
