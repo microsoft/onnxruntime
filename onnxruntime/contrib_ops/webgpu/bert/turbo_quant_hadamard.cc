@@ -17,7 +17,7 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
                                                ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   const auto& value = shader.AddInput("value", ShaderUsage::UseUniform);
-  // present_key/present_value are u32 arrays (packed 4-bit quantized data)
+  // present_key/present_value are u32 arrays containing one scale and packed values.
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
@@ -70,8 +70,9 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 
   const int head_size_log2 = Log2OfPowerOfTwo(head_size);
 
-  // Compressed KV cache: 1 u32 for norm + head_size/8 u32s for packed 4-bit indices.
-  const int compressed_head_size_u32 = head_size / 8 + 1;
+  ORT_ENFORCE(context.KvCacheQuantizationBits() == 4,
+              "Q4 TurboQuant requires a 4-bit KV cache.");
+  const int compressed_head_size_u32 = KvCacheQuantizedHeadSizeU32(head_size, 4);
 
   bool has_past = !parameters.past_present_share_buffer_ && past_key != nullptr && past_value != nullptr && past_key->SizeInBytes() > 0;
   int kv_num_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
@@ -118,7 +119,7 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
                        {past_value, ProgramTensorMetadataDependency::TypeAndRank}});
   }
 
-  // Output: present KV cache as u32 (packed 4-bit quantized).
+  // Output: present KV cache as u32 (one fp32 scale followed by packed values).
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank},
                       {present_value, ProgramTensorMetadataDependency::Rank}});
 
@@ -133,7 +134,8 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
   program.SetDispatchGroupSize(total_workgroups)
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_,
-                 prepare_indirect_dispatch, use_seqlen_k, head_size_log2, components, compressed_head_size_u32)
+                 prepare_indirect_dispatch, use_seqlen_k, head_size_log2, components,
+                 compressed_head_size_u32)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
                             {static_cast<uint32_t>(copy_sequence_length)},
@@ -164,7 +166,7 @@ Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) co
   }
 
   const auto& query = shader.AddOutput("query", ShaderUsage::UseUniform);
-  // present_key/present_value are u32 arrays (packed 4-bit quantized data)
+  // present_key/present_value are u32 arrays containing one scale and packed values.
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
@@ -208,7 +210,9 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
 
   const int head_size_log2 = Log2OfPowerOfTwo(head_size);
 
-  const int compressed_head_size_u32 = head_size / 8 + 1;
+  ORT_ENFORCE(context.KvCacheQuantizationBits() == 4,
+              "Q4 TurboQuant requires a 4-bit KV cache.");
+  const int compressed_head_size_u32 = KvCacheQuantizedHeadSizeU32(head_size, 4);
   const int kv_num_heads = parameters.is_gqa_ ? parameters.kv_num_heads_ : parameters.num_heads_;
   const int half_rotary_dim = static_cast<int>(cos_cache->Shape()[1]);
 
@@ -257,7 +261,8 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(parameters.past_present_share_buffer_,
                  prepare_indirect_dispatch, use_seqlen_k, head_size_log2,
-                 half_rotary_dim, compressed_head_size_u32, multi_rotary_cache_concat_offset)
+                 half_rotary_dim, compressed_head_size_u32,
+                 multi_rotary_cache_concat_offset)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
                             {static_cast<uint32_t>(parameters.hidden_size_)},

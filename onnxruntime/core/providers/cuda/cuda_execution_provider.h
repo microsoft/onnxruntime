@@ -125,7 +125,16 @@ class CUDAExecutionProvider : public IExecutionProvider {
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
+  // Takes ownership of a host buffer that a kernel staged a device copy from while the
+  // stream was capturing.  The copy is a node of the captured graph and re-reads the
+  // buffer on every replay, so it must not go back to the allocator and be overwritten
+  // by a later run.  Held until the provider is destroyed.
+  void RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const;
+
  private:
+  mutable std::mutex captured_host_buffers_mutex_;
+  mutable std::vector<std::shared_ptr<void>> captured_host_buffers_;
+
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
   bool external_stream_ = false;

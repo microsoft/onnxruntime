@@ -122,8 +122,9 @@ Status MatMulBlockQuantizedFp8Weight::ComputeImpl(OpKernelContext* context) cons
   //
   // The decode GEMV absorbs this round trip in-register, so the standalone kernel (and its [M, K]
   // scratch buffer) is only materialized for the cuBLAS path below.
-  constexpr int kGemvMaxM = 8;
-  const bool use_gemv = m_i > 0 && m_i <= kGemvMaxM && (k_i % 16 == 0) && (block_size_ % 16 == 0);
+  const bool use_gemv = m_i > 0 &&
+                        m_i <= MatMulBlockScaledFp8GemvMaxM(k_i, SafeInt<int>(block_size_), GetDeviceProp()) &&
+                        (k_i % 16 == 0) && (block_size_ % 16 == 0);
   const bool fuse_act_qdq = use_gemv && !FusedFp8ActivationQdqDisabled();
 
   const void* a_ptr = a->DataRaw();

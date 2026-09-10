@@ -164,6 +164,12 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
       // Example os_driver_version. A real EP would read the OS driver version from the device.
       // The format is a 4-part dot-separated version matching the DXCore DriverVersion property.
       factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_OSDriverVersion, "31.0.101.1000");
+      // GroupQueryAttention Value cache layout preference. "BNSH" here because GetCapabilityImpl()
+      // only claims Mul, Custom_Mul and EPContext nodes, so this EP cannot fuse the
+      // Transpose -> GroupQueryAttention -> Transpose sequence that ORT inserts for "BNHS".
+      // Reporting "BNHS" without implementing that fusion would steer applications into a layout
+      // this EP cannot execute any faster, and the transposes would run for real.
+      factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout, "BNSH");
       // Report weightless support for all initializers.
       factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_WeightlessSupport, "all");
       factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
@@ -349,6 +355,19 @@ void ORT_API_CALL ExampleEpFactory::ReleaseAllocatorImpl(OrtEpFactory* this_ptr,
   } else {
     delete static_cast<CustomAllocator*>(allocator);
   }
+}
+
+OrtStatus* ExampleEpFactory::ResetArenaChunksUsingStream(const OrtSyncStreamImpl* stream_impl) {
+  OrtStatus* status = nullptr;
+  try {
+    std::lock_guard<std::mutex> lock{mutex_};
+    status = arena_allocator_ ? arena_allocator_->ResetChunksUsingStream(stream_impl) : nullptr;
+  } catch (const std::exception& ex) {
+    status = ort_api.CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());
+  } catch (...) {
+    status = ort_api.CreateStatus(ORT_RUNTIME_EXCEPTION, "ResetArenaChunksUsingStream failed.");
+  }
+  return status;
 }
 
 /*static*/

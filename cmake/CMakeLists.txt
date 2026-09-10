@@ -129,7 +129,10 @@ cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory 
 cmake_dependent_option(onnxruntime_USE_TRT_FUSED_ATTENTION "Build TensorRT fused multi-head attention cubin kernels" ON "onnxruntime_USE_CUDA" OFF)
 cmake_dependent_option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
-cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" ON "onnxruntime_USE_CUDA" OFF)
+cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB GEMM CUDA kernels" ON "onnxruntime_USE_CUDA" OFF)
+cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM_FULL
+  "Build all FpA IntB GEMM CUDA kernel variants instead of the compact FP16 INT4/INT8 set" OFF
+  "onnxruntime_USE_CUDA;onnxruntime_USE_FPA_INTB_GEMM" OFF)
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
 option(onnxruntime_QUICK_BUILD "Speed up build by skipping some kernels for faster development" OFF)
@@ -205,6 +208,8 @@ cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handlin
 option(onnxruntime_DISABLE_ABSEIL "Do not use Abseil data structures in ONNX Runtime source code. Redefine Inlined containers to STD containers." OFF)
 
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
+cmake_dependent_option(onnxruntime_ENABLE_GQA_VALUE_LAYOUT "Enable GroupQueryAttention Value-cache layout conversion and validation" ON
+  "NOT onnxruntime_MINIMAL_BUILD;NOT onnxruntime_EXTENDED_MINIMAL_BUILD;NOT onnxruntime_DISABLE_CONTRIB_OPS" OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
@@ -834,6 +839,7 @@ if (onnxruntime_USE_CUDA)
     set(onnxruntime_USE_LEAN_ATTENTION OFF)
     set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
     set(onnxruntime_USE_FPA_INTB_GEMM OFF)
+    set(onnxruntime_USE_FPA_INTB_GEMM_FULL OFF)
   endif()
 
   if (WIN32)
@@ -872,8 +878,13 @@ if (onnxruntime_USE_CUDA)
     endif()
 
     if (onnxruntime_USE_FPA_INTB_GEMM)
-      message( STATUS "Enable FpA IntB Gemm for CUDA EP")
-      list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
+      if (onnxruntime_USE_FPA_INTB_GEMM_FULL)
+        message( STATUS "Enable full FpA IntB GEMM kernel set for CUDA EP")
+        list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1)
+      else()
+        message( STATUS "Enable compact non-Hopper FP16 INT4/INT8 FpA IntB GEMM kernel set for CUDA EP")
+        list(APPEND ORT_PROVIDER_FLAGS -DUSE_FPA_INTB_GEMM=1 -DUSE_COMPACT_FPA_INTB_GEMM=1)
+      endif()
     endif()
 
     if (onnxruntime_QUICK_BUILD)
@@ -1160,6 +1171,9 @@ function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PRIVATE EIGEN_USE_THREADS)
     if (onnxruntime_DISABLE_CONTRIB_OPS)
       target_compile_definitions(${target_name} PRIVATE DISABLE_CONTRIB_OPS)
+    endif()
+    if (onnxruntime_ENABLE_GQA_VALUE_LAYOUT)
+      target_compile_definitions(${target_name} PRIVATE ORT_ENABLE_GQA_VALUE_LAYOUT)
     endif()
 
     if (onnxruntime_DISABLE_ML_OPS)
@@ -2060,6 +2074,6 @@ if(onnxruntime_BUILD_UNIT_TESTS)
 endif()
 
 # Include precompiled header configuration for providers
-if(TARGET onnxruntime_providers)
+if(TARGET ${onnxruntime_providers_target})
   include("${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_providers_pch.cmake")
 endif()

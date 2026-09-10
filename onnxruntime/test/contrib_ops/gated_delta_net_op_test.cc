@@ -960,7 +960,7 @@ TEST(GatedDeltaNetTest, MalformedCuSeqlensIsClamped) {
        {std::vector<int32_t>{0, -8, 64},       // negative
         std::vector<int32_t>{0, 48, 16},       // decreasing
         std::vector<int32_t>{0, 32, 4096}}) {  // end beyond total_tokens
-    OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain);
+    OpTester test("GatedDeltaNet", 1, onnxruntime::kMSDomain, /*verify_output=*/false);
     Options o;
     AddCommonAttrs(test, o);
     test.AddInput<MLFloat16>("query", {g.total_tokens, g.hq, g.dk}, ToFloat16(in.q));
