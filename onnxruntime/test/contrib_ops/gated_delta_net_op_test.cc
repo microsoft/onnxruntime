@@ -29,6 +29,10 @@
 #include <cuda_runtime_api.h>
 #endif
 
+#ifdef USE_WEBGPU
+#include "contrib_ops/webgpu/bert/gated_delta_net.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -414,6 +418,54 @@ TEST(GatedDeltaNetWebGpuTest, Rank3UniformFloat32) {
   RunTypedCase<float>(g, Options{}, MakeInputs(g, 211), 3e-4f, 3e-4f,
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
+
+TEST(GatedDeltaNetWebGpuTest, ParallelPrefillLinearUniformRank3AndRank4) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{128, 2, 2, 6, 8, 5};
+  const Inputs inputs = MakeInputs(g, 213);
+  Options options;
+  options.update_rule = "linear";
+  RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
+                      /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
+                      /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, LongUniformNonLinearRulesUseRecurrentFallback) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{128, 2, 2, 6, 8, 5};
+  const Inputs inputs = MakeInputs(g, 217);
+  for (const char* rule : {"gated", "delta", "gated_delta"}) {
+    SCOPED_TRACE(rule);
+    Options options;
+    options.update_rule = rule;
+    RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
+                        /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true);
+  }
+}
+
+#ifdef USE_WEBGPU
+TEST(GatedDeltaNetWebGpuPlanTest, ParallelPrefillWorkspaceIsBounded) {
+  using onnxruntime::contrib::webgpu::SelectGatedDeltaNetParallelPrefillPlan;
+
+  const auto short_plan = SelectGatedDeltaNetParallelPrefillPlan(1ull << 20, 4);
+  const auto long_plan = SelectGatedDeltaNetParallelPrefillPlan(1ull << 20, 4096);
+  ASSERT_TRUE(short_plan.has_value());
+  ASSERT_TRUE(long_plan.has_value());
+  EXPECT_LE(short_plan->workspace_bytes, 64ull << 20);
+  EXPECT_LE(long_plan->workspace_bytes, 64ull << 20);
+  EXPECT_LT(long_plan->chunks_per_pass, 4096u);
+  EXPECT_LT(long_plan->workspace_bytes, 16 * short_plan->workspace_bytes);
+  EXPECT_FALSE(SelectGatedDeltaNetParallelPrefillPlan(32ull << 20, 2).has_value());
+}
+#endif
 
 TEST(GatedDeltaNetWebGpuTest, RaggedWithoutInitialState) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
@@ -902,17 +954,17 @@ TEST(GatedDeltaNetTest, TwoCallContinuationMatchesSingleRun) {
 }
 
 void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionProvider> ep,
-                                  const char* execution_provider_type) {
+                                  const char* execution_provider_type, const Options& options = Options{}) {
   ASSERT_NE(ep, nullptr);
 
   Geometry geometry{total_tokens, 1, 1, 2, kDim, kDim};
   Inputs inputs = MakeInputs(geometry, static_cast<uint32_t>(total_tokens) + 163);
   std::vector<float> first_output, first_state;
-  Reference(geometry, Options{}, inputs, &first_output, &first_state);
+  Reference(geometry, options, inputs, &first_output, &first_state);
   Inputs second_inputs = inputs;
   second_inputs.state0 = first_state;
   std::vector<float> expected_output, expected_state;
-  Reference(geometry, Options{}, second_inputs, &expected_output, &expected_state);
+  Reference(geometry, options, second_inputs, &expected_output, &expected_state);
 
   std::unordered_map<std::string, int> domain_to_version = {{kMSDomain, 1}};
   std::vector<ONNX_NAMESPACE::FunctionProto> functions;
@@ -962,6 +1014,7 @@ void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionPr
   std::vector<NodeArg*> node_outputs = {&output_arg, &final_state_arg};
   auto& node = graph.AddNode("gdn", "GatedDeltaNet", "aliased recurrent state",
                              node_inputs, node_outputs, nullptr, kMSDomain);
+  node.AddAttribute("update_rule", options.update_rule);
   node.SetExecutionProviderType(execution_provider_type);
   ASSERT_STATUS_OK(graph.Resolve());
 
@@ -1061,7 +1114,9 @@ TEST(GatedDeltaNetWebGpuTest, AliasedStateIoBinding) {
   if (webgpu_ep == nullptr) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
-  RunAliasedStateIoBindingCase(/*total_tokens=*/4, std::move(webgpu_ep), kWebGpuExecutionProvider);
+  Options options;
+  options.update_rule = "linear";
+  RunAliasedStateIoBindingCase(/*total_tokens=*/64, std::move(webgpu_ep), kWebGpuExecutionProvider, options);
 }
 
 // Device-supplied offsets must not be able to steer an out-of-bounds access.
