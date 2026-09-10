@@ -54,6 +54,10 @@ class PagedAttention final : public CudaKernel {
   bool enable_xqa_;
   // Native FP16/BF16 cache specializations are opt-in because FlashAttention is competitive.
   bool enable_native_xqa_;
+  // Folding a PER_CHANNEL K scale into the fp16 query is what lets XQA read a per-channel cache.
+  // Defaults on; ORT_ENABLE_XQA_PER_CHANNEL_KV=0 routes those steps to the portable FP32 kernel,
+  // which resolves scale tables whose dynamic range exceeds what the fold can represent.
+  bool enable_per_channel_xqa_;
   // cuDNN paged SDPA (decode-only tier). Mirrors GroupQueryAttention: the standard sdpa_kernel bit
   // and ORT_ENABLE_CUDNN_FLASH_ATTENTION opt users in explicitly, and sm>=90 gets it automatically
   // via AllowCudnnFlashAttentionAuto(). ORT_ENABLE_CUDNN_FLASH_ATTENTION=0 is the shared kill switch
