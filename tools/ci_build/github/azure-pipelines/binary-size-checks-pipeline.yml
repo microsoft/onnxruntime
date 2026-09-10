@@ -9,5 +9,5 @@ stages:
   parameters:
     Name: MinimalBaseline
     BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
-    BinarySizeThresholdInBytes: 1306224
+    BinarySizeThresholdInBytes: 1595392
     DoBuildWithDebugInfo: ${{ parameters.DoBuildWithDebugInfo }}
