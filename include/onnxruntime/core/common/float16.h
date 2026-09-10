@@ -79,8 +79,13 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl<MLFloat16> {
 
   operator float() const noexcept { return ToFloat(); }
 
-  using Base::operator==;
-  using Base::operator!=;
+  // Define homogeneous comparison operators on the derived type (mirroring BFloat16) rather than
+  // pulling in the CRTP base's Float16Impl-typed operators via using-declarations. Under C++20,
+  // comparing two MLFloat16 through the inherited base-typed operator== triggers reversed-candidate
+  // ambiguity on conforming compilers such as clang-cl ("use of overloaded operator '==' ... is
+  // ambiguous"); a derived-typed operator== resolves cleanly on both clang-cl and MSVC.
+  bool operator==(const MLFloat16& rhs) const noexcept { return Base::operator==(rhs); }
+  bool operator!=(const MLFloat16& rhs) const noexcept { return Base::operator!=(rhs); }
   using Base::operator<;
 };
 
