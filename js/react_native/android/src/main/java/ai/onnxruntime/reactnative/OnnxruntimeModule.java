@@ -17,6 +17,7 @@ import com.facebook.react.turbomodule.core.CallInvokerHolderImpl;
 @RequiresApi(api = Build.VERSION_CODES.N)
 public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   private static ReactApplicationContext reactContext;
+  private volatile boolean nativeLibLoaded = false;
 
   public OnnxruntimeModule(ReactApplicationContext context) {
     super(context);
@@ -36,7 +37,11 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   @Override
   public void invalidate() {
     super.invalidate();
-    nativeCleanup();
+    // Guard: invalidate() can be called before install() loads the native library,
+    // e.g. during bridge reload, causing UnsatisfiedLinkError and crashing the app.
+    if (nativeLibLoaded) {
+      nativeCleanup();
+    }
   }
 
   /**
@@ -46,6 +51,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   public boolean install() {
     try {
       System.loadLibrary("onnxruntimejsi");
+      nativeLibLoaded = true;
       JavaScriptContextHolder jsContext = getReactApplicationContext().getJavaScriptContextHolder();
       CallInvokerHolderImpl jsCallInvokerHolder =
         (CallInvokerHolderImpl) getReactApplicationContext().getCatalystInstance().getJSCallInvokerHolder();
