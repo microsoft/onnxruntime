@@ -952,6 +952,40 @@ static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int mat
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
 }
 
+// Verifies the fusion is skipped when the GQA node uses an optional input beyond sin_cache (e.g. position_ids),
+// which the fusion does not preserve. Fusing would drop the input and produce an invalid graph.
+static void TestGQAFusionNotApplied(const std::basic_string<ORTCHAR_T>& file_path,
+                                    bool use_empty_placeholders,
+                                    logging::Logger* logger) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  NodeArg* optional_input = use_empty_placeholders
+                                ? &graph.GetOrCreateNodeArg("", nullptr)
+                                : graph.GetNodeArg("position_ids");
+  ASSERT_NE(optional_input, nullptr);
+  for (Node& node : graph.Nodes()) {
+    if (node.OpType() == "GroupQueryAttention") {
+      node.MutableInputDefs().push_back(optional_input);
+      node.MutableInputArgsCount().push_back(1);
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+
+  // Fusion must not fire: RotaryEmbedding nodes are preserved and the graph remains valid.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 2);
+  ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
+
+  // The GQA node must still be resolvable (its input defs and arg counts remain consistent).
+  ASSERT_STATUS_OK(graph.Resolve());
+}
+
 static void TestQuantizedGQAFusionRejectsInitializerShape(const std::string& initializer_name,
                                                           logging::Logger* logger) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx";
@@ -1331,6 +1365,10 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
+
+  // GQA nodes carrying an optional input beyond sin_cache must not be fused.
+  TestGQAFusionNotApplied(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", false, logger_.get());
+  TestGQAFusionNotApplied(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", true, logger_.get());
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingTest) {
