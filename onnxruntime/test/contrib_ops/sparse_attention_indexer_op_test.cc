@@ -275,7 +275,7 @@ std::vector<int> RankByScore(const std::vector<float>& scores, int count) {
 }
 
 struct QsaProblem {
-  int batch_size = 1;
+  int batch_size = 2;
   int sequence_length = 2;
   int num_heads = 2;
   int head_size = 4;
@@ -393,7 +393,7 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
 }
 
 struct CsaProblem {
-  int batch_size = 1;
+  int batch_size = 2;
   int sequence_length = 3;
   int num_heads = 2;
   int head_size = 4;
@@ -582,8 +582,7 @@ void RunOnCuda(OpTester& test) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
-QsaProblem MakeQsaProblem() {
-  QsaProblem problem;
+QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
   const int total = problem.TotalSequenceLength();
   problem.query = MakeWave(static_cast<size_t>(problem.batch_size) * problem.sequence_length * problem.num_heads *
                                problem.head_size,
@@ -611,12 +610,11 @@ QsaProblem MakeQsaProblem() {
 }
 
 template <typename T>
-void RunQsaTest(float tolerance) {
+void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem()) {
   if (!HasCudaProvider()) {
     GTEST_SKIP() << "CUDA execution provider is not available";
   }
 
-  QsaProblem problem = MakeQsaProblem();
   problem.query = RoundTrip<T>(problem.query);
   problem.key = RoundTrip<T>(problem.key);
   problem.key_norm_weight = RoundTrip<T>(problem.key_norm_weight);
@@ -767,6 +765,7 @@ void RunCsaTest(const CsaProblem& base, float tolerance) {
 // unchanged, so the queries score against the entries produced by earlier calls.
 CsaProblem MakeCsaBufferOnlyProblem() {
   CsaProblem problem;
+  problem.batch_size = 1;
   problem.sequence_length = 1;
   problem.num_heads = 1;
   problem.compress_ratio = 4;
@@ -866,6 +865,13 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaAttribute) {
                        "index_topk and head_weight_scale must not be set");
 }
 
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsZeroNumHeads) {
+  QsaGraphOptions options;
+  options.num_heads = 0;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); },
+                       "num_heads must be > 0");
+}
+
 TEST(SparseAttentionIndexerShapeInferenceTest, RejectsQsaTokenBudgetNotDivisibleByCompressRatio) {
   QsaGraphOptions options;
   options.token_budget = 5;
@@ -914,6 +920,15 @@ TEST(SparseAttentionIndexerTest, QsaFloat) { RunQsaTest<float>(1.0e-5f); }
 TEST(SparseAttentionIndexerTest, QsaFloat16) { RunQsaTest<MLFloat16>(2.0e-3f); }
 
 TEST(SparseAttentionIndexerTest, QsaBFloat16) { RunQsaTest<BFloat16>(2.0e-2f); }
+
+TEST(SparseAttentionIndexerTest, QsaMultiTileAndStridedChannels) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.head_size = 192;
+  problem.past_sequence_length = 200;
+  problem.rotary_width = 4;
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
+}
 
 TEST(SparseAttentionIndexerTest, CsaFloat) { RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f); }
 
