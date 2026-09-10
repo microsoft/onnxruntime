@@ -453,13 +453,13 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 np.testing.assert_array_equal(actual[name], reference)
 
     @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
-    def test_int4_xqa_decode(self):
+    def test_int4_per_channel_decode_falls_back(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
             for block_size in (128, 256):
                 for window in (-1, 129):
                     with self.subTest(block_size=block_size, window=window):
                         self.check_case(
-                            expected_kernel="XQA",
+                            expected_kernel="DECODER_ATTENTION",
                             width=256,
                             heads=24,
                             kv_heads=4,
@@ -483,13 +483,13 @@ class TestPagedAttentionInt4(unittest.TestCase):
             )
 
     @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
-    def test_int4_xqa_speculative_decode(self):
+    def test_int4_per_channel_speculative_decode_falls_back(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
             for lengths in ((2, 1), (8, 3), (0, 8)):
                 for window in (-1, 129):
                     with self.subTest(lengths=lengths, window=window):
                         self.check_case(
-                            expected_kernel="XQA",
+                            expected_kernel="DECODER_ATTENTION",
                             width=256,
                             heads=24,
                             kv_heads=4,
@@ -501,14 +501,14 @@ class TestPagedAttentionInt4(unittest.TestCase):
                         )
 
     @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
-    def test_int4_xqa_cuda_graph_replay(self):
+    def test_int4_per_channel_fallback_cuda_graph_replay(self):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
             model, feeds, _ = make_case(
                 width=256, heads=24, kv_heads=4, block_size=256, lengths=(8, 3), past=(513, 138)
             )
             changed = {"key": feeds["key"] * np.float16(3), "value": feeds["value"] * np.float16(0.25)}
-            actual = run_with_kernel(model, feeds, "XQA", steps=3, updates={1: changed}, cuda_graph=True)
-            reference = run_with_kernel(model, {**feeds, **changed}, "XQA")[0]
+            actual = run_with_kernel(model, feeds, "DECODER_ATTENTION", steps=3, updates={1: changed}, cuda_graph=True)
+            reference = run_with_kernel(model, {**feeds, **changed}, "DECODER_ATTENTION")[0]
             self.assertFalse(np.array_equal(actual[0]["value_cache_out"], actual[1]["value_cache_out"]))
             for name in reference:
                 np.testing.assert_array_equal(actual[1][name], actual[2][name])
@@ -698,9 +698,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
         np.testing.assert_array_equal(actual["output"], np.tile(signed, 4).reshape(1, -1).astype(np.float16))
 
     @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
-    def test_int4_per_channel_xqa_matches_portable(self):
-        # A PER_CHANNEL scale is folded into Q and the output, so XQA has to agree with the
-        # portable kernel. lengths (2, 1) also covers the speculative INT4 kernel.
+    def test_int4_per_channel_fallback_matches_portable(self):
         for lengths in ((1, 1), (2, 1)):
             with self.subTest(lengths=lengths):
                 model, feeds, _ = make_case(
@@ -709,7 +707,7 @@ class TestPagedAttentionInt4(unittest.TestCase):
                 with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
                     portable = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
                 with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
-                    accelerated = run_with_kernel(model, feeds, "XQA")[0]
+                    accelerated = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
                 np.testing.assert_allclose(
                     accelerated["output"].astype(np.float32),
                     portable["output"].astype(np.float32),
@@ -721,10 +719,6 @@ class TestPagedAttentionInt4(unittest.TestCase):
 
     @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_int4_xqa_large_per_channel_k_scale_matches_portable(self):
-        # XQA folds the K scale into the query and stores it in T. A large PER_CHANNEL scale used to
-        # saturate FP16 there, and a zero cache code then turned that infinity into NaN. The fold now
-        # divides by max|k_scale| and the kernel reapplies it. Every K code is zero here, so the logits
-        # are uniform and the expected output stays well conditioned no matter how large the scale is.
         heads, kv_heads, width = 24, 4, 256
         model, feeds, _ = make_case(width=width, heads=heads, kv_heads=kv_heads, past=(513, 138), block_size=256)
         feeds["key"][:] = 0
@@ -739,11 +733,157 @@ class TestPagedAttentionInt4(unittest.TestCase):
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
             portable = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
         with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
-            accelerated = run_with_kernel(model, feeds, "XQA")[0]
+            accelerated = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
         self.assertTrue(np.isfinite(accelerated["output"].astype(np.float32)).all())
         np.testing.assert_allclose(
             accelerated["output"].astype(np.float32), portable["output"].astype(np.float32), atol=8e-4, rtol=5e-3
         )
+
+    def test_per_channel_scale_dynamic_range(self):
+        heads, width = 6, 256
+        for cache_dtype in (np.uint8, np.int8, ml_dtypes.float8_e4m3fn):
+            for length in (1, 3):
+                for extreme in (False, True):
+                    with self.subTest(cache_dtype=cache_dtype, length=length, extreme=extreme):
+                        model, feeds, _ = make_case(
+                            width=width, heads=heads, kv_heads=1, block_size=128, lengths=(length,), past=(1,)
+                        )
+                        feeds["query"][:] = 0
+                        feeds["query"].reshape(length, heads, width)[..., 0] = 0.25 if extreme else 1
+                        feeds["slot_mapping"][:] = -1
+                        scale = np.ones((1, 1, width), dtype=np.float32)
+                        scale[..., 1] = 1e8
+                        if extreme:
+                            scale[:] = np.finfo(np.float32).max
+                        replace_input(model, feeds, "k_scale", scale)
+                        replace_input(model, feeds, "v_scale", np.ones_like(scale))
+                        set_attribute(model, "scale", 2.0 if extreme else 1.0)
+                        page = int(feeds["block_table"][0, 0])
+                        for side, prefix in (("key", "k"), ("value", "v")):
+                            codes = np.zeros((*feeds[f"{side}_cache"].shape[:-1], width), dtype=np.float32)
+                            if side == "key":
+                                codes[page, 0, 0, 0] = 1
+                            else:
+                                codes[page, 0] = 1
+                            if cache_dtype == np.uint8:
+                                cache = quantize(codes, np.ones_like(scale[:, 0]))
+                            else:
+                                cache = codes.astype(cache_dtype)
+                                set_attribute(model, f"{prefix}_cache_dtype", "")
+                            replace_input(model, feeds, f"{side}_cache", cache)
+                            output = next(info for info in model.graph.output if info.name == f"{side}_cache_out")
+                            output.CopyFrom(
+                                helper.make_tensor_value_info(
+                                    output.name, helper.np_dtype_to_tensor_dtype(cache.dtype), cache.shape
+                                )
+                            )
+                        changed = scale.copy()
+                        if not extreme:
+                            changed[..., 0] = 2
+                        with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+                            results = run_with_kernel(
+                                model,
+                                feeds,
+                                "DECODER_ATTENTION",
+                                steps=3,
+                                updates={1: {"k_scale": changed}},
+                                cuda_graph=True,
+                            )
+                        for step, actual in enumerate(results):
+                            self.assertTrue(np.isfinite(actual["output"]).all())
+                            weight = np.exp(1.0 if step == 0 else 2.0)
+                            expected = np.ones(length) if extreme else weight / (weight + np.arange(1, length + 1))
+                            np.testing.assert_allclose(
+                                actual["output"],
+                                np.repeat(expected[:, None], heads * width, axis=1),
+                                atol=8e-4,
+                                rtol=5e-3,
+                                equal_nan=False,
+                            )
+                            for side in ("key", "value"):
+                                np.testing.assert_array_equal(actual[f"{side}_cache_out"], feeds[f"{side}_cache"])
+
+    def test_scalar_k_per_channel_v_keeps_int8_xqa(self):
+        for lengths in ((1, 1), (3, 1)):
+            with self.subTest(lengths=lengths):
+                model, feeds, _ = make_case(
+                    width=256, heads=6, kv_heads=1, block_size=128, lengths=lengths, past=(129, 17)
+                )
+                replace_input(model, feeds, "k_scale", np.array([0.125], dtype=np.float32))
+                set_attribute(model, "k_quant_type", "PER_TENSOR")
+                for side, prefix in (("key", "k"), ("value", "v")):
+                    cache = unpack(feeds[f"{side}_cache"], np.float32(1)).astype(np.int8)
+                    replace_input(model, feeds, f"{side}_cache", cache)
+                    set_attribute(model, f"{prefix}_cache_dtype", "")
+                    output = next(info for info in model.graph.output if info.name == f"{side}_cache_out")
+                    output.CopyFrom(helper.make_tensor_value_info(output.name, onnx.TensorProto.INT8, cache.shape))
+                with patch.dict(os.environ, {"ORT_ENABLE_XQA": "0"}):
+                    portable = run_case(model, feeds)[0]
+                with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+                    accelerated = run_with_kernel(model, feeds, "XQA")[0]
+                self.assertTrue(np.isfinite(accelerated["output"]).all())
+                np.testing.assert_allclose(
+                    accelerated["output"], portable["output"], atol=8e-4, rtol=5e-3, equal_nan=False
+                )
+                for side in ("key", "value"):
+                    np.testing.assert_array_equal(accelerated[f"{side}_cache_out"], portable[f"{side}_cache_out"])
+
+    def test_per_channel_scale_values_and_nonfinite_routing(self):
+        width = 256
+        cases = {
+            "all_zero": np.zeros(width, dtype=np.float32),
+            "mixed_zero": np.tile(np.array([0, 1], dtype=np.float32), width // 2),
+            "negative": np.full(width, -1, dtype=np.float32),
+            "subnormal": np.full(width, np.nextafter(np.float32(0), np.float32(1)), dtype=np.float32),
+            "nan": np.full(width, np.nan, dtype=np.float32),
+            "infinity": np.full(width, np.inf, dtype=np.float32),
+        }
+        for cache_dtype in (np.uint8, np.int8, ml_dtypes.float8_e4m3fn):
+            for label, channel_scale in cases.items():
+                with self.subTest(cache_dtype=cache_dtype, scale=label):
+                    model, feeds, _ = make_case(
+                        width=width, heads=6, kv_heads=1, block_size=128, lengths=(1,), past=(0,)
+                    )
+                    feeds["query"][:] = 0
+                    raw = np.tile(np.array([0, 1, -1, 0], dtype=np.float32), width // 4)
+                    scale = channel_scale.reshape(1, 1, width)
+                    replace_input(model, feeds, "k_scale", scale)
+                    replace_input(model, feeds, "v_scale", np.ones_like(scale))
+                    expected_cache = {}
+                    for side, prefix in (("key", "k"), ("value", "v")):
+                        feeds[side][:] = raw
+                        cache = np.zeros((*feeds[f"{side}_cache"].shape[:-1], width), dtype=np.float32)
+                        if cache_dtype == np.uint8:
+                            cache = quantize(cache, np.ones(width, dtype=np.float32))
+                        else:
+                            cache = cache.astype(cache_dtype)
+                            set_attribute(model, f"{prefix}_cache_dtype", "")
+                        replace_input(model, feeds, f"{side}_cache", cache)
+                        output = next(info for info in model.graph.output if info.name == f"{side}_cache_out")
+                        output.CopyFrom(
+                            helper.make_tensor_value_info(
+                                output.name, helper.np_dtype_to_tensor_dtype(cache.dtype), cache.shape
+                            )
+                        )
+                        if np.isfinite(scale).all():
+                            divisor = channel_scale if side == "key" else np.ones(width, dtype=np.float32)
+                            with np.errstate(over="ignore"):
+                                scaled = np.divide(raw, divisor, out=np.zeros_like(raw), where=divisor != 0)
+                            if cache_dtype == np.uint8:
+                                expected_cache[side] = quantize(
+                                    np.clip(scaled, -8, 7), np.ones(width, dtype=np.float32)
+                                )
+                            else:
+                                lower, upper = (-128, 127) if cache_dtype == np.int8 else (-448, 448)
+                                expected_cache[side] = np.clip(np.rint(scaled), lower, upper).astype(cache_dtype)
+                    with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+                        actual = run_with_kernel(model, feeds, "DECODER_ATTENTION")[0]
+                    if np.isfinite(scale).all():
+                        self.assertTrue(np.isfinite(actual["output"]).all())
+                        np.testing.assert_allclose(actual["output"], np.tile(raw, 6).reshape(1, -1), equal_nan=False)
+                        page, offset = divmod(int(feeds["slot_mapping"][0]), 128)
+                        for side, expected in expected_cache.items():
+                            np.testing.assert_array_equal(actual[f"{side}_cache_out"][page, offset, 0], expected)
 
     def test_int4_scale_extremes(self):
         for magnitude in (2.0**-24, 1e10):

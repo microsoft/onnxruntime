@@ -684,6 +684,15 @@ INT4 uses round-to-nearest-even and stores `q + 8`, with the even channel in the
 Zero-filled logical padding is `0x88`, not `0x00`. The caller initializes unwritten slots;
 the operator preserves every slot not selected by the write map.
 
+Scale values must be finite FP32 values. Signed scales are supported: negative values use the
+same division and multiplication formulas. A zero scale writes a zero logical code and dequantizes
+to zero; all-zero and mixed-zero tables are supported. Subnormal scales are supported by the
+portable CUDA path, which divides directly rather than forming a potentially infinite reciprocal.
+NaN and infinity are outside the input contract; their numerical outputs are unspecified. Scale
+values live on the device and are not validated by a synchronizing host readback. Producers must
+validate them before use. FP32 intermediate products, attention logits, and the final activation
+must still fit their respective types; finite scales alone do not guarantee finite arithmetic.
+
 #### 8.3.1 Zero point: always 0, and why the vocabulary is signed-only
 
 There is **no zero-point input and no zero-point attribute**. Dequantization is exactly
@@ -782,18 +791,18 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   `GatherAndExpandPagedKVCache` to dequantize while gathering, and the Flash varlen path uses the
 >   gathered grouped layout. A metadata-bounded speculative step of 2–8 query tokens uses paged XQA
 >   directly for matching native FP16/BF16 query and cache types, or FP16 query/output with an
->   INT8/FP8 cache, or packed INT4 with both scales `PER_CHANNEL`, when `head_size = 256` and
->   `group_size = 6`. Single-token decode reads and
+>   INT8/FP8 cache with `PER_TENSOR` K scales, when `head_size = 256` and
+>   `group_size = 6`. Quantized `PER_CHANNEL` K scales and INT4 use portable paged decode for
+>   metadata-bounded speculative steps. Single-token decode reads and
 >   dequantizes the cache in place through XQA when eligible or `PagedDecodeSplitKV` otherwise.
 > - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
-> - **INT4 extension:** `uint8` packed caches are read by the portable decode/gather paths, and by a
->   dedicated FP16 XQA single-token and speculative-decode kernels at `head_size = 256`,
->   `group_size = 6` with static FP32 `PER_CHANNEL` scales for both K and V. The K scale is folded
->   into Q before XQA, and the V scale is applied to the output afterward; the kernel reads INT4
->   values at unit scale. No per-token scales are stored or passed. `PER_TENSOR` scales and BF16
->   activations remain supported by the portable paths, but are not eligible for INT4 XQA.
+> - **INT4 extension:** `uint8` packed caches are read by the portable decode/gather paths.
+>   Dedicated FP16 INT4 XQA kernels remain compiled, but PagedAttention does not dispatch them:
+>   their per-channel K folding cannot preserve FP32 scale dynamic range in FP16 query storage.
+>   Both `PER_CHANNEL` and `PER_TENSOR` scales and FP16/BF16 activations use the portable paths.
+>   No per-token scales are stored or passed.
 > - **No architecture gate for portable FP8 decode.** `Float8E4M3FN`'s converting constructor uses
 >   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
 >   onward. FP8 remains gated at *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
@@ -803,15 +812,15 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 
 > **Paged decode kernels.** Quantized decode uses XQA directly on the paged cache when the query has
 > one token per sequence, `head_size ∈ {64, 128, 256}`, `group_size ∈ {4, 6, 8, 16, 32}`, no softcap,
-> and a block size divisible by 128. Separate speculative XQA specializations cover matching native
-> FP16/BF16 query and cache types, and FP16 query/output with an INT8/FP8 cache or an INT4 cache
-> with both scales `PER_CHANNEL`, when
+> a block size divisible by 128, and an INT8/FP8 cache with `PER_TENSOR` K scales. Separate
+> speculative XQA specializations cover matching native FP16/BF16 query and cache types, and FP16
+> query/output with an INT8/FP8 cache and `PER_TENSOR` K scales, when
 > `attention_metadata` bounds the longest query to 2–8 tokens, `head_size = 256`, and
 > `group_size = 6`; these kernels write packed token-major output and support ragged batches. A
 > native FP16-cache specialization additionally covers `head_size = 256, group_size = 6`, the
 > Qwen3.8 full-attention geometry, when `attention_metadata` proves one-token-per-sequence decode
 > without a host readback. The CUDA image selected at runtime must contain compatible XQA device code
-> generated for SM80 or newer; INT4, INT8, and native FP16/BF16 XQA require an SM80-or-newer GPU and FP8 XQA
+> generated for SM80 or newer; INT8 and native FP16/BF16 XQA require an SM80-or-newer GPU and FP8 XQA
 > requires SM89 or SM90+. Quantized-cache XQA is enabled by default. Native FP16/BF16-cache XQA is
 > disabled by default because it has not shown a consistent advantage over FlashAttention; set
 > `ORT_ENABLE_XQA_NATIVE_KV=1` to opt in. Setting `ORT_ENABLE_XQA=0` disables all XQA. When Flash is eligible, the operator restores paged Flash
@@ -822,7 +831,7 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 > decode is eligible only when that count fits the device's grid-Y limit (65,535). Larger batches
 > use a gather-based backend when available, including metadata-bounded INT4 speculative steps.
 >
-> - **Both scale foldings are exact and granularity-agnostic.** K folds into Q at load time
+> - **Portable scale folding uses FP32 intermediates and is granularity-agnostic.** K folds into Q at load time
 >   (`q_sh[c] = float(q[c]) * GetCacheScale(k_scale, kv_head * head_size + c, k_per_channel)`), so
 >   `PER_TENSOR` is just the `per_channel == false` branch of the same expression rather than a
 >   separate "fold into the softmax scale" path. V folds into the epilogue: `v_scale_c` does not
@@ -830,14 +839,13 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   softmax denominator.
 > - The kernel reads pages in place at their stored width, so a decode step touches the KV cache once
 >   at `int8`/`fp8` bandwidth instead of gathering and dequantizing the whole live context.
-> - **XQA normalizes a `PER_CHANNEL` K scale before folding it into the query.**
->   `PagedFoldChannelScaleKernel` stores `q_c * k_scale_c` back in `T`, so a large scale would saturate
->   FP16 and a zero cache code would then yield NaN, while the portable kernel keeps that product in
->   FP32. The fold therefore divides by `max|k_scale|`, which `PagedMaxAbsScaleKernel` computes on
->   device so the step stays capturable, and hands that maximum to XQA as its scalar K scale. XQA
->   multiplies it back into `qkScale` once per CTA, outside the K/V loop, so the correction is exact
->   and adds no inner-loop work. The folded query is then bounded by `max|q|` at any scale magnitude.
->   INT4 needs this more than INT8 because its scale spans `max|K| / 7` rather than `max|K| / 127`.
+> - **`PER_CHANNEL` K scales bypass XQA.** Folding the scales into an FP16 query can overflow;
+>   dividing by a global maximum instead can erase small channels and overflow the scalar
+>   `attention_scale * max_scale`. Normal and metadata-bounded speculative decode therefore use
+>   the portable FP32 kernel, independently of `ORT_ENABLE_XQA` and XQA hardware availability.
+>   No scale-reduction or query-folding launch is needed. This preserves CUDA graph capture and
+>   reads the current scale table on every replay, but loses XQA's tensor-core acceleration.
+>   INT8/FP8 with `PER_TENSOR` K and either granularity for V remain eligible for XQA.
 > - `softcap` matches FlashAttention bit-for-bit: `softcap * tanh(qk_raw * scale / softcap)`, which is
 >   what `flash_api.cc` produces from `params.softcap = softmax_scale / softcap` and
 >   `params.scale_softmax = softcap`.

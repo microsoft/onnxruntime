@@ -1008,7 +1008,8 @@ def parity_check_paged_attention(
         )
         if k_scale_max_override is not None:
             assert config.k_quant_type == "PER_CHANNEL"
-            k_scale *= k_scale_max_override / k_scale.max()
+            k_scale = (k_scale / k_scale.max()) * k_scale_max_override
+            assert torch.isfinite(k_scale).all()
         v_scale = compute_kv_scale(
             [v_cache_paged, v_new], config.v_quant_type, config.kv_cache_type, config.kv_num_heads, config.head_size
         )
@@ -1089,6 +1090,10 @@ def parity_check_paged_attention(
     out = torch.reshape(out, (num_tokens, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
+    if k_scale_max_override is not None:
+        assert numpy.isfinite(out_ref).all()
+        assert numpy.isfinite(out).all()
+
     err_msg = f" with {config}"
     # The updated cache is compared to the reference at one quantization step of slack: the host
     # computes rotary / RMSNorm slightly differently from the kernel, and a 1-ULP fp16 difference in
@@ -1116,7 +1121,7 @@ def parity_check_paged_attention(
             k_cache_ref[i, : total_seqlens[i]].detach().cpu().numpy(),
             rtol=cache_rtol,
             atol=cache_atol,
-            equal_nan=True,
+            equal_nan=k_scale_max_override is None,
             err_msg=err_msg,
         )
         numpy.testing.assert_allclose(
@@ -1124,13 +1129,15 @@ def parity_check_paged_attention(
             v_cache_ref[i, : total_seqlens[i]].detach().cpu().numpy(),
             rtol=cache_rtol,
             atol=cache_atol,
-            equal_nan=True,
+            equal_nan=k_scale_max_override is None,
             err_msg=err_msg,
         )
         new_seqlen = cum_seqlens[i + 1] - cum_seqlens[i]
         out_i = out[cum_seqlens[i] : cum_seqlens[i + 1]]
         out_ref_i = out_ref[i, :new_seqlen]
-        numpy.testing.assert_allclose(out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
+        numpy.testing.assert_allclose(
+            out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=k_scale_max_override is None, err_msg=err_msg
+        )
 
 
 def capture_native_stdout(run_func):
