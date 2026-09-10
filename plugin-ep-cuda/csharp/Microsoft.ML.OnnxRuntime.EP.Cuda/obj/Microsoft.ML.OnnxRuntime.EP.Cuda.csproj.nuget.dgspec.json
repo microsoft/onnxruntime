@@ -1,0 +1,75 @@
+{
+  "format": 1,
+  "restore": {
+    "/home/runner/work/onnxruntime/onnxruntime/plugin-ep-cuda/csharp/Microsoft.ML.OnnxRuntime.EP.Cuda/Microsoft.ML.OnnxRuntime.EP.Cuda.csproj": {}
+  },
+  "projects": {
+    "/home/runner/work/onnxruntime/onnxruntime/plugin-ep-cuda/csharp/Microsoft.ML.OnnxRuntime.EP.Cuda/Microsoft.ML.OnnxRuntime.EP.Cuda.csproj": {
+      "version": "0.0.0-dev",
+      "restore": {
+        "projectUniqueName": "/home/runner/work/onnxruntime/onnxruntime/plugin-ep-cuda/csharp/Microsoft.ML.OnnxRuntime.EP.Cuda/Microsoft.ML.OnnxRuntime.EP.Cuda.csproj",
+        "projectName": "Microsoft.ML.OnnxRuntime.EP.Cuda",
+        "projectPath": "/home/runner/work/onnxruntime/onnxruntime/plugin-ep-cuda/csharp/Microsoft.ML.OnnxRuntime.EP.Cuda/Microsoft.ML.OnnxRuntime.EP.Cuda.csproj",
+        "packagesPath": "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages",
+        "outputPath": "/home/runner/work/onnxruntime/onnxruntime/plugin-ep-cuda/csharp/Microsoft.ML.OnnxRuntime.EP.Cuda/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/runner/work/onnxruntime/onnxruntime/NuGet.config",
+          "/home/runner/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "netstandard2.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {},
+          "https://pkgs.dev.azure.com/dnceng/public/_packaging/dotnet-eng/nuget/v3/index.json": {},
+          "https://pkgs.dev.azure.com/mattleibow/OpenSource/_packaging/test-device-runners/nuget/v3/index.json": {}
+        },
+        "frameworks": {
+          "netstandard2.0": {
+            "framework": "netstandard2.0",
+            "targetAlias": "netstandard2.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.400"
+      },
+      "frameworks": {
+        "netstandard2.0": {
+          "framework": "netstandard2.0",
+          "targetAlias": "netstandard2.0",
+          "dependencies": {
+            "NETStandard.Library": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[2.0.3, )",
+              "autoReferenced": true
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.400/RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}
