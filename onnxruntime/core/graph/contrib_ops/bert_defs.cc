@@ -511,7 +511,11 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
         present_shape.add_dim()->set_dim_value(kv_num_heads);
         const auto* total_length_data = ctx.getInputData(10);
         if (total_length_data != nullptr) {
-          present_shape.add_dim()->set_dim_value(ParseData<int32_t>(total_length_data)[0]);
+          const auto total_lengths = ParseData<int32_t>(total_length_data);
+          if (total_lengths.size() != 1) {
+            fail_shape_inference("total_sequence_length must contain exactly one element");
+          }
+          present_shape.add_dim()->set_dim_value(total_lengths[0]);
         } else {
           present_shape.add_dim();
         }
