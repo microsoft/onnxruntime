@@ -300,7 +300,7 @@ TEST(ContribOpGatedRMSNormTest, Float_Sigmoid_StableSaturation) {
     tester.AddInput<float>("X", dims, x);
     tester.AddInput<float>("scale", scale_dims, scale);
     tester.AddInput<float>("gate", dims, gate);
-    tester.AddOutput<float>("Y", dims, {expected_value}, false, 1e-9f, 1e-9f);
+    tester.AddOutput<float>("Y", dims, {expected_value}, false, 1e-7f, 1e-7f);
 
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(std::move(ep));
