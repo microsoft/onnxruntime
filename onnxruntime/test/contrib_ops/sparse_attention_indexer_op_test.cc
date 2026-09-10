@@ -574,11 +574,25 @@ void CsaReference(const CsaProblem& problem, std::vector<int32_t>& selected,
 // Numeric runners
 // ---------------------------------------------------------------------------------------------
 
-bool HasCudaProvider() { return DefaultCudaExecutionProvider() != nullptr; }
+enum class ProviderKind {
+  Cuda,
+  WebGpu,
+};
 
-void RunOnCuda(OpTester& test) {
+std::unique_ptr<IExecutionProvider> CreateProvider(ProviderKind provider_kind) {
+  if (provider_kind == ProviderKind::Cuda) {
+    return DefaultCudaExecutionProvider();
+  }
+#ifdef USE_WEBGPU
+  return DefaultWebGpuExecutionProvider();
+#else
+  return nullptr;
+#endif
+}
+
+void RunOnProvider(OpTester& test, std::unique_ptr<IExecutionProvider> provider) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(DefaultCudaExecutionProvider());
+  providers.push_back(std::move(provider));
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
@@ -610,9 +624,12 @@ QsaProblem MakeQsaProblem(QsaProblem problem = {}) {
 }
 
 template <typename T>
-void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem()) {
-  if (!HasCudaProvider()) {
-    GTEST_SKIP() << "CUDA execution provider is not available";
+void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem(),
+                ProviderKind provider_kind = ProviderKind::Cuda) {
+  auto provider = CreateProvider(provider_kind);
+  if (provider == nullptr) {
+    GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
+                 << " execution provider is not available";
   }
 
   problem.query = RoundTrip<T>(problem.query);
@@ -652,7 +669,7 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem()) {
   test.AddOutput<int32_t>("selected_indices", {batch_size, sequence_length, problem.Capacity()}, selected);
   test.AddOutput<T>("present_key", {batch_size, total, head_size}, ToElementType<T>(present_key), false, 0.0f,
                     tolerance);
-  RunOnCuda(test);
+  RunOnProvider(test, std::move(provider));
 }
 
 CsaProblem MakeCsaProblem() {
@@ -690,9 +707,12 @@ CsaProblem MakeCsaProblem() {
 }
 
 template <typename T>
-void RunCsaTest(const CsaProblem& base, float tolerance) {
-  if (!HasCudaProvider()) {
-    GTEST_SKIP() << "CUDA execution provider is not available";
+void RunCsaTest(const CsaProblem& base, float tolerance,
+                ProviderKind provider_kind = ProviderKind::Cuda) {
+  auto provider = CreateProvider(provider_kind);
+  if (provider == nullptr) {
+    GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
+                 << " execution provider is not available";
   }
 
   CsaProblem problem = base;
@@ -758,7 +778,7 @@ void RunCsaTest(const CsaProblem& base, float tolerance) {
                     ToElementType<T>(present_kv_buffer), false, 0.0f, tolerance);
   test.AddOutput<T>("present_gate_buffer", {batch_size, plan.present_buffer_length, width},
                     ToElementType<T>(present_gate_buffer), false, 0.0f, tolerance);
-  RunOnCuda(test);
+  RunOnProvider(test, std::move(provider));
 }
 
 // A call whose tokens do not close a window: the buffer only grows and the compressed state is
@@ -787,6 +807,14 @@ CsaProblem MakeCsaBufferOnlyProblem() {
   problem.past_kv_buffer = MakeWave(static_cast<size_t>(problem.past_buffer_length) * width, 0.97f, 0.20f);
   problem.past_gate_buffer = MakeWave(static_cast<size_t>(problem.past_buffer_length) * width, 1.48f, 0.24f);
   problem.position_ids = {8};
+  return problem;
+}
+
+CsaProblem MakeCsaNoCompressedEntryProblem() {
+  CsaProblem problem = MakeCsaBufferOnlyProblem();
+  problem.past_compressed_length = 0;
+  problem.past_compressed_key.clear();
+  problem.position_ids = {0};
   return problem;
 }
 
@@ -937,6 +965,36 @@ TEST(SparseAttentionIndexerTest, CsaFloat16) { RunCsaTest<MLFloat16>(MakeCsaProb
 TEST(SparseAttentionIndexerTest, CsaBFloat16) { RunCsaTest<BFloat16>(MakeCsaProblem(), 3.0e-2f); }
 
 TEST(SparseAttentionIndexerTest, CsaBufferOnlyStep) { RunCsaTest<float>(MakeCsaBufferOnlyProblem(), 1.0e-5f); }
+
+TEST(SparseAttentionIndexerTest, CsaNoCompressedEntry) {
+  RunCsaTest<float>(MakeCsaNoCompressedEntryProblem(), 1.0e-5f);
+}
+
+#ifdef USE_WEBGPU
+TEST(SparseAttentionIndexerWebGpuTest, QsaFloat) {
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, QsaFloat16) {
+  RunQsaTest<MLFloat16>(4.0e-3f, MakeQsaProblem(), ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaFloat) {
+  RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaFloat16) {
+  RunCsaTest<MLFloat16>(MakeCsaProblem(), 6.0e-3f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaBufferOnlyStep) {
+  RunCsaTest<float>(MakeCsaBufferOnlyProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaNoCompressedEntry) {
+  RunCsaTest<float>(MakeCsaNoCompressedEntryProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
