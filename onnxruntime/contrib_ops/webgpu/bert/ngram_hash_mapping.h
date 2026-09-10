@@ -15,39 +15,48 @@ using onnxruntime::webgpu::ComputeContext;
 
 class NGramHashMappingProgram final : public Program<NGramHashMappingProgram> {
  public:
-  NGramHashMappingProgram(bool has_past_tokens, bool has_head_offsets, bool qwen_mode)
+  NGramHashMappingProgram(bool has_past_ids, bool has_head_offsets, bool has_eos_token_id,
+                          bool has_segment_ids, bool reset_on_eos)
       : Program{"NGramHashMapping"},
-        has_past_tokens_(has_past_tokens),
+        has_past_ids_(has_past_ids),
         has_head_offsets_(has_head_offsets),
-        qwen_mode_(qwen_mode) {}
+        has_eos_token_id_(has_eos_token_id),
+        has_segment_ids_(has_segment_ids),
+        reset_on_eos_(reset_on_eos) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"context_length", ProgramUniformVariableDataType::Uint32},
                                           {"max_ngram_size", ProgramUniformVariableDataType::Uint32},
                                           {"n_head_per_ngram", ProgramUniformVariableDataType::Uint32},
-                                          {"pad_id", ProgramUniformVariableDataType::Int32},
-                                          {"eos_token_id", ProgramUniformVariableDataType::Int32},
-                                          {"reset_on_eos", ProgramUniformVariableDataType::Uint32});
+                                          {"pad_id", ProgramUniformVariableDataType::Int32});
 
  private:
-  bool has_past_tokens_;
+  bool has_past_ids_;
   bool has_head_offsets_;
-  bool qwen_mode_;
+  bool has_eos_token_id_;
+  bool has_segment_ids_;
+  bool reset_on_eos_;
 };
 
-class NGramPresentTokensProgram final : public Program<NGramPresentTokensProgram> {
+class NGramPresentIdsProgram final : public Program<NGramPresentIdsProgram> {
  public:
-  explicit NGramPresentTokensProgram(bool has_past_tokens)
-      : Program{"NGramPresentTokens"}, has_past_tokens_(has_past_tokens) {}
+  NGramPresentIdsProgram(bool has_input_ids, bool has_past_ids, bool has_eos_token_id, bool past_aliases_present)
+      : Program{"NGramPresentIds"},
+        has_input_ids_(has_input_ids),
+        has_past_ids_(has_past_ids),
+        has_eos_token_id_(has_eos_token_id),
+        past_aliases_present_(past_aliases_present) {}
   Status GenerateShaderCode(ShaderHelper& shader) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total", ProgramUniformVariableDataType::Uint32},
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"context_length", ProgramUniformVariableDataType::Uint32},
-                                          {"eos_token_id", ProgramUniformVariableDataType::Int32});
+                                          {"state_length", ProgramUniformVariableDataType::Uint32},
+                                          {"pad_id", ProgramUniformVariableDataType::Int32});
 
  private:
-  bool has_past_tokens_;
+  bool has_input_ids_;
+  bool has_past_ids_;
+  bool has_eos_token_id_;
+  bool past_aliases_present_;
 };
 
 class NGramHashMapping final : public WebGpuKernel {
@@ -59,9 +68,7 @@ class NGramHashMapping final : public WebGpuKernel {
   int64_t max_ngram_size_;
   int64_t n_head_per_ngram_;
   int64_t pad_id_;
-  int64_t eos_token_id_;
-  bool reset_on_eos_;
-  bool has_eos_token_id_;
+  int64_t reset_on_eos_;
 };
 
 }  // namespace webgpu
