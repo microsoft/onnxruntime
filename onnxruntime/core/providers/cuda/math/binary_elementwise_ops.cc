@@ -504,9 +504,9 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
       }
 
       int has_zero = 0;
-      // A device-to-pageable-host copy completes before cudaMemcpyAsync returns.
       CUDA_RETURN_IF_ERROR(
           cudaMemcpyAsync(&has_zero, has_zero_buffer.get(), sizeof(int), cudaMemcpyDeviceToHost, Stream(context)));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
       ORT_RETURN_IF(has_zero != 0, "Integer modulo by zero");
     }
   }
