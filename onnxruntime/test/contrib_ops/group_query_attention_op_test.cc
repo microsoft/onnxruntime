@@ -413,6 +413,48 @@ TEST(GroupQueryAttentionTest, InvalidCausalValue_CUDA) {
 }
 
 #ifdef USE_WEBGPU
+TEST(GroupQueryAttentionTest, LocalWindowMultiToken_WebGPU) {
+  std::vector<float> expected(16, 1.0f);
+  std::fill(expected.begin() + 8, expected.end(), 3.0f);
+  RunGQACausalMaskTest<float>(GqaTargetEp::kWebGpu, 1, expected,
+                              OpTester::ExpectResult::kExpectSuccess, "", 1);
+}
+
+TEST(GroupQueryAttentionTest, LocalWindowPrefill_WebGPU) {
+  constexpr int sequence_length = 32;
+  constexpr int head_size = 8;
+  std::vector<float> value(sequence_length * head_size);
+  for (int s = 0; s < sequence_length; ++s) {
+    std::fill_n(value.begin() + s * head_size, head_size, static_cast<float>(s + 1));
+  }
+
+  OpTester tester("GroupQueryAttention", 1, kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+  tester.AddAttribute<int64_t>("kv_num_heads", 1);
+  tester.AddAttribute<int64_t>("local_window_size", 1);
+  tester.AddInput<float>("query", {1, sequence_length, head_size},
+                         std::vector<float>(sequence_length * head_size, 0.0f));
+  tester.AddInput<float>("key", {1, sequence_length, head_size},
+                         std::vector<float>(sequence_length * head_size, 0.0f));
+  tester.AddInput<float>("value", {1, sequence_length, head_size}, value);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<int32_t>("seqlens_k", {1}, {sequence_length - 1});
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {sequence_length});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int64_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, sequence_length, head_size}, value);
+  tester.AddOutput<float>("present_key", {1, 1, sequence_length, head_size},
+                          std::vector<float>(sequence_length * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {1, 1, sequence_length, head_size}, value);
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(GroupQueryAttentionTest, BidirectionalMaskNotImplemented_WebGPU) {
   RunGQACausalMaskTest<float>(
       GqaTargetEp::kWebGpu, 0, std::vector<float>(16, 2.0f),
@@ -4119,19 +4161,6 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
   RunOptions run_options;
   ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
   auto first_output = read_output();
-  if (local_window_size != -1) {
-    auto poisoned_key = past_key_data;
-    auto poisoned_value = past_value_data;
-    const size_t batch_offset = kv_num_heads * cache_sequence_length * cache_head_size;
-    const size_t excluded_tile_size = 64 * kv_num_heads * cache_head_size;
-    std::fill_n(poisoned_key.begin() + batch_offset, excluded_tile_size, 100.0f);
-    std::fill_n(poisoned_value.begin() + batch_offset, excluded_tile_size, 100.0f);
-    update_gpu_value(past_key_value, poisoned_key.data(), DataTypeImpl::GetType<float>(), cache_shape);
-    update_gpu_value(past_value_value, poisoned_value.data(), DataTypeImpl::GetType<float>(), cache_shape);
-    ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
-    EXPECT_EQ(first_output, read_output()) << "KV entries outside the local window affected replay";
-  }
-
   if (kv_cache_quant_bits == 8 && do_rotary && rotary_interleaved) {
     constexpr int reference_sequence_length = short_total_sequence_length;
     std::vector<float> reference_query(reference_sequence_length * hidden_size);

@@ -388,20 +388,9 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor qRotary;
   Tensor kRotary;
 
-  // Use a sliding window if the total sequence exceeds the window's length.
-  bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
-  // During graph capture the logical sequence length lives on the GPU. Keep decode on
-  // flash attention and apply the local window dynamically from seqlens_k in the shader.
-  const bool use_dynamic_flash_window = context.IsGraphCaptureEnabled() &&
-                                        parameters.sequence_length_ == 1 &&
-                                        !kv_empty &&
-                                        local_window_size_ != -1;
-  const int flash_local_window_size = use_dynamic_flash_window ? local_window_size_ : -1;
+  const int flash_local_window_size = kv_empty ? -1 : local_window_size_;
   bool will_use_flash_attention = false;
-  // For kv_empty layers (shared KV), sliding window is irrelevant — there's no new KV to window
-  // over, the layer reuses another layer's already-computed KV cache. Flash attention is required
-  // for these layers, so we bypass the sliding window check to allow it.
-  if (!use_smooth_softmax_ && (!use_sliding_window || kv_empty || use_dynamic_flash_window)) {
+  if (!use_smooth_softmax_) {
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;

@@ -230,7 +230,8 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
-                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32});
+                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"local_window_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
