@@ -254,7 +254,19 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   // A WebGPU storage buffer cannot be bound for both read-only and read-write access in one pass.
   const bool state_alias =
       initial_state != nullptr && final_state != nullptr && initial_state->DataRaw() == final_state->DataRaw();
-  const bool use_packed_params = qwen_gate_ || (needs_decay && needs_beta);
+  const auto binding_count = [&context](const Tensor* tensor) {
+    if (tensor == nullptr) return 0u;
+    const uint64_t max_binding_size = context.DeviceLimits().maxStorageBufferBindingSize;
+    return onnxruntime::narrow<uint32_t>((tensor->SizeInBytes() + max_binding_size - 1) / max_binding_size);
+  };
+  uint32_t direct_binding_count = binding_count(query) + binding_count(key) + binding_count(value) +
+                                  binding_count(cu_seqlens) + binding_count(decay) + binding_count(beta) +
+                                  binding_count(initial_state) + binding_count(a_log) + binding_count(dt_bias) +
+                                  binding_count(output) + binding_count(final_state);
+  if (state_alias) direct_binding_count -= binding_count(initial_state);
+  const bool needs_dynamic_params = qwen_gate_ || (needs_decay && needs_beta);
+  const bool use_packed_params =
+      needs_dynamic_params && direct_binding_count > context.DeviceLimits().maxStorageBuffersPerShaderStage;
   std::optional<Tensor> packed_params;
   if (use_packed_params) {
     packed_params.emplace(
@@ -290,11 +302,13 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     program.AddOutput({final_state, ProgramTensorMetadataDependency::None});
   }
   const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(dk));
+  uint32_t workgroup_size = 1;
+  while (workgroup_size < dk) workgroup_size <<= 1;
   program
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv * dv))
-      .SetWorkgroupSize(256)
+      .SetWorkgroupSize(workgroup_size)
       .CacheHint(static_cast<int>(update_rule_), cu_seqlens != nullptr, initial_state != nullptr, state_alias,
-                 final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params)
+                 final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params, workgroup_size)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                             {onnxruntime::narrow<uint32_t>(batch)},
                             {onnxruntime::narrow<uint32_t>(hq)},
