@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2026, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import java.io.IOException;
+import java.util.Map;
 
 /** An ONNX Runtime memory allocator. */
 class OrtAllocator implements AutoCloseable {
@@ -54,6 +55,17 @@ class OrtAllocator implements AutoCloseable {
   }
 
   /**
+   * Gets the statistics from this allocator.
+   *
+   * @return The allocator statistics.
+   * @throws OrtException If the native call failed.
+   */
+  public Map<String, String> getStats() throws OrtException {
+    String[][] stats = getStats(OnnxRuntime.ortApiHandle, handle);
+    return OrtUtil.convertToMap(stats);
+  }
+
+  /**
    * Closes the allocator, must be done after all its child objects have been closed.
    *
    * <p>The default allocator is not closeable, and this operation is a no-op on that allocator.
@@ -75,4 +87,6 @@ class OrtAllocator implements AutoCloseable {
 
   // The default allocator cannot be closed, this is guarded in the close method above.
   private native void closeAllocator(long apiHandle, long nativeHandle) throws OrtException;
+
+  private native String[][] getStats(long apiHandle, long nativeHandle) throws OrtException;
 }
