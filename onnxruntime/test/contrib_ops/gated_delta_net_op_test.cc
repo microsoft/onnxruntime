@@ -447,6 +447,7 @@ TEST(GatedDeltaNetWebGpuTest, ParallelPrefillLinearUniformRank3AndRank4) {
                       /*omit_final_state=*/true);
 }
 
+#ifdef USE_WEBGPU
 TEST(GatedDeltaNetWebGpuTest, SegmentedQueryAndKeyUseHelperIndexing) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
@@ -464,6 +465,7 @@ TEST(GatedDeltaNetWebGpuTest, SegmentedQueryAndKeyUseHelperIndexing) {
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
                       /*omit_final_state=*/true, &config_options);
 }
+#endif
 
 TEST(GatedDeltaNetWebGpuTest, LongUniformNonLinearRulesUseRecurrentFallback) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
