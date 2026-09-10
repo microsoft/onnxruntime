@@ -8,6 +8,8 @@
 
 #include "contrib_ops/cuda/transformers/generation_device_helper.h"
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
+#include "core/framework/allocator.h"
+#include "core/framework/tensor.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "test/util/include/asserts.h"
 
@@ -46,6 +48,20 @@ TEST(GenerationCudaImplTest, EmptyCrossQKPairsSkipLaunches) {
 
   LaunchFinalizeCrossQK(nullptr, 2, 1, 1, 1, 1, 0, nullptr, 1, nullptr, nullptr, 1, nullptr, {});
   CUDA_CALL_THROW(cudaGetLastError());
+}
+
+TEST(GenerationCudaImplTest, ExpandBufferRejectsSequenceLengthExceedingMaximum) {
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  OrtValue input;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape({1, 1, 5, 1}), allocator, input);
+
+  OrtValue expanded;
+  const Status status = GenerationCudaDeviceHelper::ExpandBuffer<float>(
+      nullptr, input, 2, allocator, expanded, false, 4);
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("Input sequence length (5) exceeds max sequence length (4)"),
+            std::string::npos);
 }
 
 TEST(GenerationCudaImplTest, CrossQKPairsAllowDuplicatesAndZeroInvalidIndices) {
