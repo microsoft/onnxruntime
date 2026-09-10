@@ -43,6 +43,9 @@ The operators that are included are specified at build time, in a [configuration
 
   **ONNX Runtime version 1.11 and later:** Updated versions of the source files are generated in the build directory so there is no need to undo source file changes.
 
+* If a reduced-operator build on Ubuntu 20.04 with GCC 9 fails with an unused parameter warning treated as an error,
+  use a newer compiler such as `gcc-10`/`g++-10` for the build.
+
 ### Option to reduce types supported by the required operators
 
 **`--enable_reduced_operator_type_support`**
