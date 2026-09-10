@@ -17,7 +17,7 @@ Usage:
   python profile_matmul_nbits.py --warmup 25 --repeat 200
 
   # Single case:
-  python profile_matmul_nbits.py --k 4096 --n 4096 --m 8 --block-size 32 --bits 4 --dtype fp16
+  python profile_matmul_nbits.py --k 4096 --n 4096 --m 1 --block-size 32 --bits 4 --dtype fp16 --symmetric
 
   # Kernel-level via nsys + the repo parser:
   nsys profile -t cuda,nvtx -o mnb --export=sqlite \
@@ -27,6 +27,7 @@ Usage:
 
 import argparse
 import json
+import os
 import time
 from contextlib import nullcontext
 
@@ -131,10 +132,31 @@ def make_session(model):
     return onnxruntime.InferenceSession(model, so, providers=["CUDAExecutionProvider"])
 
 
-def run_case(name, m, k, n, block_size, bits, dtype, warmup, repeat):
+def is_block32_pipeline_eligible(m, k, n, block_size, bits, dtype, with_zero_point, device_props):
+    if m != 1 or bits != 4 or block_size != 32 or dtype != "fp16" or n % 8 != 0 or k % 8 != 0:
+        return False
+
+    router_gemv_enabled = (
+        not with_zero_point
+        and n == 32
+        and k == 2880
+        and os.environ.get("ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", "0") not in {"1", "True", "true"}
+    )
+    if router_gemv_enabled:
+        return False
+
+    blocks_per_k = (k + block_size - 1) // block_size
+    shared_mem_size = 2 * blocks_per_k * 8
+    if with_zero_point:
+        shared_mem_size += ((blocks_per_k + 1) // 2) * 8 * 2
+
+    return shared_mem_size <= device_props.shared_memory_per_block and n // 8 < device_props.multi_processor_count * 8
+
+
+def run_case(name, m, k, n, block_size, bits, dtype, warmup, repeat, with_zero_point):
     onnx_dtype = _OT[dtype]
     torch_dtype = _TT[dtype]
-    sess = make_session(build_model(k, n, block_size, bits, onnx_dtype))
+    sess = make_session(build_model(k, n, block_size, bits, onnx_dtype, with_zero_point))
     a = np.random.default_rng(m).random((m, k)).astype(np.float32) * 0.02 - 0.01
     at = torch.from_numpy(a).to(torch_dtype).cuda().contiguous()
     y = torch.empty((m, n), dtype=torch_dtype, device="cuda")
@@ -158,6 +180,8 @@ def run_case(name, m, k, n, block_size, bits, dtype, warmup, repeat):
             torch.cuda.synchronize()
             best = min(best, (time.perf_counter() - t0) / repeat)
     us = best * 1e6
+    device_props = torch.cuda.get_device_properties(0)
+    pipeline_eligible = is_block32_pipeline_eligible(m, k, n, block_size, bits, dtype, with_zero_point, device_props)
     result = {
         "case": name,
         "m": m,
@@ -166,6 +190,8 @@ def run_case(name, m, k, n, block_size, bits, dtype, warmup, repeat):
         "block_size": block_size,
         "bits": bits,
         "dtype": dtype,
+        "symmetric": not with_zero_point,
+        "block32_pipeline_eligible": pipeline_eligible,
         "avg_us": round(us, 2),
     }
     print(RESULT_PREFIX + json.dumps(result))
@@ -180,23 +206,50 @@ def main():
     p.add_argument("--block-size", type=int, default=32)
     p.add_argument("--bits", type=int, default=4)
     p.add_argument("--dtype", default="fp16", choices=["fp16", "bf16"])
+    p.add_argument("--symmetric", action="store_true", help="omit zero points and benchmark symmetric weights")
     p.add_argument("--warmup", type=int, default=25)
     p.add_argument("--repeat", type=int, default=200)
     p.add_argument("--ms", type=int, nargs="+", default=DEFAULT_MS, help="row counts to sweep in table mode")
     args = p.parse_args()
+    with_zero_point = not args.symmetric
 
     if args.k and args.n and args.m:
-        run_case("custom", args.m, args.k, args.n, args.block_size, args.bits, args.dtype, args.warmup, args.repeat)
+        run_case(
+            "custom",
+            args.m,
+            args.k,
+            args.n,
+            args.block_size,
+            args.bits,
+            args.dtype,
+            args.warmup,
+            args.repeat,
+            with_zero_point,
+        )
         return
 
     rows = {}
     for name, k, n in DEFAULT_CASES:
         rows[name] = {
-            m: run_case(name, m, k, n, args.block_size, args.bits, args.dtype, args.warmup, args.repeat)["avg_us"]
+            m: run_case(
+                name,
+                m,
+                k,
+                n,
+                args.block_size,
+                args.bits,
+                args.dtype,
+                args.warmup,
+                args.repeat,
+                with_zero_point,
+            )["avg_us"]
             for m in args.ms
         }
 
-    print(f"\n  MatMulNBits {args.bits}-bit block{args.block_size} {args.dtype}  (avg us, lower is better)")
+    quantization = "symmetric" if args.symmetric else "asymmetric"
+    print(
+        f"\n  MatMulNBits {args.bits}-bit block{args.block_size} {args.dtype} {quantization}  (avg us, lower is better)"
+    )
     print("  " + f"{'matrix':10s} {'K':>6} {'N':>7} " + " ".join(f"M={m:<5}" for m in args.ms))
     for name, k, n in DEFAULT_CASES:
         print("  " + f"{name:10s} {k:>6} {n:>7} " + " ".join(f"{rows[name][m]:7.1f}" for m in args.ms))

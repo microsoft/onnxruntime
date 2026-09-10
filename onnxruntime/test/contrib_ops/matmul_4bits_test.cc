@@ -30,6 +30,7 @@
 #include "core/util/qmath.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "contrib_ops/cuda/quantization/matmul_4bits_m1_pipeline.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/test/test_environment.h"
 
@@ -926,6 +927,31 @@ TEST(MatMulNBits, Fp16_Int4_Int4ZeroPoint) {
     RunTest<MLFloat16>(1, 256, 1024, block_size, has_zeropoint, zp_is_4bit, abs_error);
     RunTest<MLFloat16>(32, 1024, 2048, block_size, has_zeropoint, zp_is_4bit, abs_error);
   }
+}
+
+TEST(MatMulNBits, Fp16_Int4_Block32PipelinedM1) {
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = true;
+
+  // K=40 exercises the scalar tail only, K=264 combines one pipelined iteration
+  // with a tail, and K=4096 exercises the steady-state pipeline.
+  for (auto k : {40, 264, 4096}) {
+    for (auto has_zeropoint : {false, true}) {
+      RunTest<MLFloat16>(1, 256, k, 32, has_zeropoint, zp_is_4bit, abs_error);
+    }
+  }
+}
+
+TEST(MatMulNBits, Block32PipelineSelectionTracksGridWaves) {
+  using contrib::cuda::ShouldUseMatMul4BitsM1Pipeline;
+
+  EXPECT_FALSE(ShouldUseMatMul4BitsM1Pipeline(256, 0));
+  EXPECT_FALSE(ShouldUseMatMul4BitsM1Pipeline(255, 18));
+  EXPECT_TRUE(ShouldUseMatMul4BitsM1Pipeline(256, 18));
+  EXPECT_TRUE(ShouldUseMatMul4BitsM1Pipeline(1024, 18));
+  EXPECT_FALSE(ShouldUseMatMul4BitsM1Pipeline(4096, 18));
+  EXPECT_TRUE(ShouldUseMatMul4BitsM1Pipeline(4096, 132));
+  EXPECT_FALSE(ShouldUseMatMul4BitsM1Pipeline(12288, 132));
 }
 
 TEST(MatMulNBits, Fp16_Int4_Fp16ZeroPoint) {
