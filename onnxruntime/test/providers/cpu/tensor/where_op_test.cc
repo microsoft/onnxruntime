@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 
+#include <cmath>
 #include <gsl/gsl>
 
 #include "test/providers/provider_test_utils.h"
@@ -26,6 +27,47 @@ std::vector<TDest> CastVector(const std::vector<TSrc>& source) {
   std::transform(source.begin(), source.end(), std::back_inserter(target),
                  [](TSrc n) { return static_cast<TDest>(n); });
   return target;
+}
+
+template <typename T>
+void WherePreservesNegativeZeroTest() {
+  const auto verify_negative_zero = [](const std::vector<OrtValue>& fetches,
+                                       const std::string& /*provider_type*/) {
+    ASSERT_EQ(fetches.size(), 1u);
+    ASSERT_TRUE(fetches[0].IsTensor());
+
+    const auto& output_tensor = fetches[0].Get<Tensor>();
+    const auto* output = output_tensor.Data<T>();
+    for (int64_t i = 0; i < output_tensor.Shape().Size(); ++i) {
+      EXPECT_TRUE(std::signbit(output[i]));
+    }
+  };
+
+  {
+    OpTester test{kOpName, kOpVersion};
+    test.AddInput<bool>("condition", {1}, {true});
+    test.AddInput<T>("X", {1}, {-T{0}});
+    test.AddInput<T>("Y", {1}, {T{0}});
+    test.AddOutput<T>("output", {1}, {-T{0}});
+    test.SetCustomOutputVerifier(verify_negative_zero);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+
+  {
+    OpTester test{kOpName, kOpVersion};
+    test.AddInput<bool>("condition", {1}, {false});
+    test.AddInput<T>("X", {4}, {T{1}, T{2}, T{3}, T{4}});
+    test.AddInput<T>("Y", {1}, {-T{0}});
+    test.AddOutput<T>("output", {4}, {-T{0}, -T{0}, -T{0}, -T{0}});
+    test.SetCustomOutputVerifier(verify_negative_zero);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
 }
 
 template <typename TNumeric>
@@ -104,6 +146,11 @@ void WhereBroadcastTest(const T& x_value, const T& y_value) {
 TEST(WhereOpTest, BasicNumeric) {
   WhereBasicNumericTest<float>();
   WhereBasicNumericTest<double>();
+}
+
+TEST(WhereOpTest, PreservesNegativeZero) {
+  WherePreservesNegativeZeroTest<float>();
+  WherePreservesNegativeZeroTest<double>();
 }
 
 TEST(WhereOpTest, BasicString) {
