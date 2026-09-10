@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <random>
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -49,11 +50,25 @@ std::vector<std::unique_ptr<IExecutionProvider>> ExecutionProvidersForType() {
 }
 
 float SigmoidRef(float x) {
-  return x > 0.0f ? 1.0f / (1.0f + std::exp(-x)) : 1.0f - 1.0f / (1.0f + std::exp(x));
+  if (x > 0.0f) {
+    return 1.0f / (1.0f + std::exp(-x));
+  }
+  const float e = std::exp(x);
+  return e / (1.0f + e);
 }
 
 float SoftplusRef(float x) {
   return x > 0.0f ? x + std::log(std::exp(-x) + 1.0f) : std::log(std::exp(x) + 1.0f);
+}
+
+enum class GatedRMSNormActivation {
+  kSilu,
+  kSigmoid,
+};
+
+float ApplyGatedRMSNormActivation(float x, GatedRMSNormActivation activation) {
+  const float sigmoid = SigmoidRef(x);
+  return activation == GatedRMSNormActivation::kSigmoid ? sigmoid : x * sigmoid;
 }
 
 std::vector<float> RandomFloats(size_t count, float lo, float hi, uint32_t seed) {
@@ -126,7 +141,9 @@ void RunLinearAttentionGateTest(int batch_size, int seq_length, int num_heads, b
 
 template <typename T>
 void RunGatedRMSNormTest(int batch_size, int seq_length, int num_heads, int head_dim,
-                         float epsilon, float tolerance, const std::string& activation = "silu") {
+                         float epsilon, float tolerance, GatedRMSNormActivation activation,
+                         const char* activation_attr = nullptr,
+                         float gate_min = -5.0f, float gate_max = 5.0f, uint32_t gate_seed = 22) {
   auto execution_providers = ExecutionProvidersForType<T>();
   if (execution_providers.empty()) {
     GTEST_SKIP() << "No execution provider available for this type";
@@ -135,7 +152,7 @@ void RunGatedRMSNormTest(int batch_size, int seq_length, int num_heads, int head
   const int hidden = num_heads * head_dim;
   const size_t count = static_cast<size_t>(batch_size) * seq_length * hidden;
   const auto x = RandomFloats(count, -3.0f, 3.0f, 21);
-  const auto gate = RandomFloats(count, -5.0f, 5.0f, 22);
+  const auto gate = RandomFloats(count, gate_min, gate_max, gate_seed);
   const auto scale = RandomFloats(static_cast<size_t>(head_dim), 0.2f, 1.8f, 23);
 
   std::vector<float> expected(count);
@@ -149,8 +166,7 @@ void RunGatedRMSNormTest(int batch_size, int seq_length, int num_heads, int head
     const float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(head_dim) + epsilon);
     for (int i = 0; i < head_dim; ++i) {
       const float z = gate[base + i];
-      const float activated = activation == "sigmoid" ? SigmoidRef(z) : (z * SigmoidRef(z));
-      expected[base + i] = x[base + i] * inv_rms * scale[i] * activated;
+      expected[base + i] = x[base + i] * inv_rms * scale[i] * ApplyGatedRMSNormActivation(z, activation);
     }
   }
 
@@ -161,7 +177,9 @@ void RunGatedRMSNormTest(int batch_size, int seq_length, int num_heads, int head
     SCOPED_TRACE("EP: " + ep->Type());
     OpTester tester("GatedRMSNorm", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<float>("epsilon", epsilon);
-    tester.AddAttribute<std::string>("activation", activation);
+    if (activation_attr != nullptr) {
+      tester.AddAttribute<std::string>("activation", activation_attr);
+    }
     tester.AddInput<T>("X", dims, ToTensorType<T>(x));
     tester.AddInput<T>("scale", scale_dims, ToTensorType<T>(scale));
     tester.AddInput<T>("gate", dims, ToTensorType<T>(gate));
@@ -236,56 +254,97 @@ TEST(ContribOpLinearAttentionGateTest, BetaWithoutB_FailsShapeInference) {
 }
 
 TEST(ContribOpGatedRMSNormTest, Float_PerHead) {
-  RunGatedRMSNormTest<float>(1, 4, 32, 128, 1e-6f, 1e-4f);
+  RunGatedRMSNormTest<float>(1, 4, 32, 128, 1e-6f, 1e-4f, GatedRMSNormActivation::kSilu);
 }
 
 TEST(ContribOpGatedRMSNormTest, Float_SingleGroup) {
-  RunGatedRMSNormTest<float>(2, 3, 1, 512, 1e-5f, 1e-4f);
+  RunGatedRMSNormTest<float>(2, 3, 1, 512, 1e-5f, 1e-4f, GatedRMSNormActivation::kSilu);
+}
+
+TEST(ContribOpGatedRMSNormTest, Float_ExplicitSilu) {
+  RunGatedRMSNormTest<float>(1, 2, 8, 128, 1e-6f, 1e-4f, GatedRMSNormActivation::kSilu, "silu");
+}
+
+TEST(ContribOpGatedRMSNormTest, Float_ExplicitSwishAlias) {
+  RunGatedRMSNormTest<float>(1, 2, 8, 128, 1e-6f, 1e-4f, GatedRMSNormActivation::kSilu, "swish");
+}
+
+TEST(ContribOpGatedRMSNormTest, Float_Sigmoid) {
+  RunGatedRMSNormTest<float>(1, 4, 32, 128, 1e-6f, 1e-4f, GatedRMSNormActivation::kSigmoid, "sigmoid");
+}
+
+TEST(ContribOpGatedRMSNormTest, Float_Sigmoid_QwenLikeGeometry) {
+  RunGatedRMSNormTest<float>(1, 1, 48, 128, 1e-6f, 1e-4f, GatedRMSNormActivation::kSigmoid, "sigmoid");
+}
+
+TEST(ContribOpGatedRMSNormTest, Float_Sigmoid_StableSaturation) {
+  auto execution_providers = ExecutionProvidersForType<float>();
+  if (execution_providers.empty()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+
+  const std::vector<int64_t> dims = {1, 1, 1};
+  const std::vector<int64_t> scale_dims = {1};
+  constexpr float kGate = -12.0f;
+  const std::vector<float> x = {1.0f};
+  const std::vector<float> gate = {kGate};
+  const std::vector<float> scale = {1.0f};
+  const float expected_value = SigmoidRef(kGate);
+  ASSERT_GT(expected_value, 0.0f);
+
+  for (auto& ep : execution_providers) {
+    SCOPED_TRACE("EP: " + ep->Type());
+    OpTester tester("GatedRMSNorm", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<float>("epsilon", 0.0f);
+    tester.AddAttribute<std::string>("activation", "sigmoid");
+    tester.AddInput<float>("X", dims, x);
+    tester.AddInput<float>("scale", scale_dims, scale);
+    tester.AddInput<float>("gate", dims, gate);
+    tester.AddOutput<float>("Y", dims, {expected_value}, false, 1e-7f, 1e-7f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  }
 }
 
 TEST(ContribOpGatedRMSNormTest, Float16_PerHead) {
-  RunGatedRMSNormTest<MLFloat16>(1, 4, 32, 128, 1e-6f, 2e-3f);
+  RunGatedRMSNormTest<MLFloat16>(1, 4, 32, 128, 1e-6f, 2e-3f, GatedRMSNormActivation::kSilu);
 }
 
 TEST(ContribOpGatedRMSNormTest, Float16_Prefill) {
-  RunGatedRMSNormTest<MLFloat16>(2, 17, 32, 128, 1e-6f, 2e-3f);
+  RunGatedRMSNormTest<MLFloat16>(2, 17, 32, 128, 1e-6f, 2e-3f, GatedRMSNormActivation::kSilu);
 }
 
 // norm_size below, at, and above the thread-count dispatch boundaries.
 TEST(ContribOpGatedRMSNormTest, Float16_SmallNormSize) {
-  RunGatedRMSNormTest<MLFloat16>(1, 4, 8, 48, 1e-6f, 2e-3f);
+  RunGatedRMSNormTest<MLFloat16>(1, 4, 8, 48, 1e-6f, 2e-3f, GatedRMSNormActivation::kSilu);
 }
 
 TEST(ContribOpGatedRMSNormTest, Float16_LargeNormSize) {
-  RunGatedRMSNormTest<MLFloat16>(1, 2, 2, 1536, 1e-6f, 4e-3f);
+  RunGatedRMSNormTest<MLFloat16>(1, 2, 2, 1536, 1e-6f, 4e-3f, GatedRMSNormActivation::kSilu);
+}
+
+TEST(ContribOpGatedRMSNormTest, Float16_Sigmoid_Prefill) {
+  RunGatedRMSNormTest<MLFloat16>(2, 17, 32, 128, 1e-6f, 2e-3f, GatedRMSNormActivation::kSigmoid, "sigmoid");
 }
 
 TEST(ContribOpGatedRMSNormTest, BFloat16_PerHead) {
   if (!CudaHasBF16Support()) {
     GTEST_SKIP() << "bfloat16 requires compute capability 8.0 or later";
   }
-  RunGatedRMSNormTest<BFloat16>(1, 4, 32, 128, 1e-6f, 2e-2f);
+  RunGatedRMSNormTest<BFloat16>(1, 4, 32, 128, 1e-6f, 2e-2f, GatedRMSNormActivation::kSilu);
 }
 
-TEST(ContribOpGatedRMSNormTest, Float_SigmoidActivation) {
-  RunGatedRMSNormTest<float>(1, 4, 32, 128, 1e-6f, 1e-4f, "sigmoid");
-}
-
-TEST(ContribOpGatedRMSNormTest, Float16_SigmoidActivation) {
-  RunGatedRMSNormTest<MLFloat16>(2, 17, 32, 128, 1e-6f, 2e-3f, "sigmoid");
-}
-
-TEST(ContribOpGatedRMSNormTest, BFloat16_SigmoidActivation) {
+TEST(ContribOpGatedRMSNormTest, BFloat16_Sigmoid_PerHead) {
   if (!CudaHasBF16Support()) {
     GTEST_SKIP() << "bfloat16 requires compute capability 8.0 or later";
   }
-  RunGatedRMSNormTest<BFloat16>(1, 4, 32, 128, 1e-6f, 2e-2f, "sigmoid");
+  RunGatedRMSNormTest<BFloat16>(1, 4, 32, 128, 1e-6f, 2e-2f, GatedRMSNormActivation::kSigmoid, "sigmoid");
 }
 
-// Invalid activation strings must be rejected at kernel construction, not silently accepted.
-TEST(ContribOpGatedRMSNormTest, InvalidActivation_Fails) {
+TEST(ContribOpGatedRMSNormTest, InvalidActivationFails) {
   auto execution_providers = AvailableGatedOpExecutionProviders();
-
   const std::vector<int64_t> dims = {1, 2, 8};
   const std::vector<int64_t> scale_dims = {8};
   const std::vector<float> values(16, 0.5f);
@@ -302,7 +361,33 @@ TEST(ContribOpGatedRMSNormTest, InvalidActivation_Fails) {
 
     std::vector<std::unique_ptr<IExecutionProvider>> providers;
     providers.push_back(std::move(ep));
-    tester.Run(OpTester::ExpectResult::kExpectFailure, "", {}, nullptr, &providers);
+    tester.Run(OpTester::ExpectResult::kExpectFailure,
+               "activation must be one of: silu, swish, sigmoid",
+               {}, nullptr, &providers);
+  }
+}
+
+TEST(ContribOpGatedRMSNormTest, ShapeValidationIntact) {
+  auto execution_providers = AvailableGatedOpExecutionProviders();
+  const std::vector<int64_t> x_dims = {1, 2, 8};
+  const std::vector<int64_t> bad_gate_dims = {1, 2, 7};
+  const std::vector<int64_t> scale_dims = {8};
+  const std::vector<float> x_values(16, 0.5f);
+  const std::vector<float> gate_values(14, 0.5f);
+  const std::vector<float> scale(8, 1.0f);
+
+  for (auto& ep : execution_providers) {
+    SCOPED_TRACE("EP: " + ep->Type());
+    OpTester tester("GatedRMSNorm", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<std::string>("activation", "sigmoid");
+    tester.AddInput<float>("X", x_dims, x_values);
+    tester.AddInput<float>("scale", scale_dims, scale);
+    tester.AddInput<float>("gate", bad_gate_dims, gate_values);
+    tester.AddOutput<float>("Y", x_dims, x_values);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(std::move(ep));
+    tester.Run(OpTester::ExpectResult::kExpectFailure, "gate must have the same shape as X", {}, nullptr, &providers);
   }
 }
 

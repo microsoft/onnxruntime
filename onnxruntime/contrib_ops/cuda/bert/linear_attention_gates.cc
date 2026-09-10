@@ -93,11 +93,8 @@ Status LinearAttentionGate<T>::ComputeInternal(OpKernelContext* context) const {
 
 template <typename T>
 GatedRMSNorm<T>::GatedRMSNorm(const OpKernelInfo& info) : CudaKernel(info) {
+  activation_ = ParseGatedRMSNormActivationOrThrow(info.GetAttrOrDefault<std::string>("activation", "silu"));
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
-  const std::string activation = info.GetAttrOrDefault<std::string>("activation", "silu");
-  ORT_ENFORCE(activation == "silu" || activation == "sigmoid",
-              "GatedRMSNorm: activation must be 'silu' or 'sigmoid', got '", activation, "'");
-  use_sigmoid_activation_ = activation == "sigmoid";
 }
 
 template <typename T>
@@ -133,7 +130,8 @@ Status GatedRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
       num_rows,
       static_cast<int>(norm_size),
       epsilon_,
-      use_sigmoid_activation_);
+      activation_,
+      GetDeviceProp().maxThreadsPerBlock);
 }
 
 template class LinearAttentionGate<float>;

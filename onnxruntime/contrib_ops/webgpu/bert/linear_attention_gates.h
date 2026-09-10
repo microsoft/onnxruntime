@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/bert/linear_attention_gates_common.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -32,17 +33,16 @@ class LinearAttentionGate final : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 };
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * activation(gate), where activation is
-// SiLU (gate * Sigmoid(gate)) or plain Sigmoid.
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate).
 class GatedRMSNormProgram final : public Program<GatedRMSNormProgram> {
  public:
-  GatedRMSNormProgram(bool use_sigmoid_activation) : Program{"GatedRMSNorm"}, use_sigmoid_activation_(use_sigmoid_activation) {}
+  GatedRMSNormProgram(GatedRMSNormActivation activation) : Program{"GatedRMSNorm"}, activation_(activation) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"norm_size", ProgramUniformVariableDataType::Uint32},
                                           {"epsilon", ProgramUniformVariableDataType::Float32});
 
  private:
-  bool use_sigmoid_activation_;
+  GatedRMSNormActivation activation_;
 };
 
 class GatedRMSNorm final : public WebGpuKernel {
@@ -51,8 +51,8 @@ class GatedRMSNorm final : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:
+  GatedRMSNormActivation activation_;
   float epsilon_;
-  bool use_sigmoid_activation_;
 };
 
 }  // namespace webgpu

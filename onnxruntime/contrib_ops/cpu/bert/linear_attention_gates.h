@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/bert/linear_attention_gates_common.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 
@@ -17,8 +18,7 @@ class LinearAttentionGate final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * activation(gate), where activation is
-// SiLU (gate * Sigmoid(gate)) or plain Sigmoid.
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate).
 template <typename T>
 class GatedRMSNorm final : public OpKernel {
  public:
@@ -26,8 +26,8 @@ class GatedRMSNorm final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  GatedRMSNormActivation activation_;
   float epsilon_;
-  bool use_sigmoid_activation_;
 };
 
 }  // namespace contrib
