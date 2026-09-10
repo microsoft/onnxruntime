@@ -86,6 +86,11 @@ struct IoBindingCase {
   std::vector<int32_t> block_table;
   std::vector<int32_t> attention_metadata;
   std::string expected_error;
+  // When set, the block_table range check below is skipped and the reference
+  // model treats any block_id outside [0, num_blocks) the same as an explicit
+  // -1 (unmapped): excluded from the softmax and never dereferenced. Lets a
+  // test assert that the CUDA kernel does the same.
+  bool allow_out_of_range_block_table = false;
 };
 
 // Softmax with causal masking: masked positions get -inf → 0 after exp.
@@ -323,9 +328,11 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
   ASSERT_TRUE(c.cumulative_seqlens_q.empty() ||
               (c.cumulative_seqlens_q.size() == static_cast<size_t>(batch_size + 1) &&
                c.cumulative_seqlens_q.front() == 0 && c.cumulative_seqlens_q.back() == token_count));
-  for (int32_t block_id : c.block_table) {
-    ASSERT_GE(block_id, 0);
-    ASSERT_LT(block_id, num_blocks);
+  if (!c.allow_out_of_range_block_table) {
+    for (int32_t block_id : c.block_table) {
+      ASSERT_GE(block_id, 0);
+      ASSERT_LT(block_id, num_blocks);
+    }
   }
 
   std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMSDomain, 1}};
@@ -797,6 +804,11 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
           for (int slot = 0; slot <= new_slot; ++slot) {
             const int block_id =
                 block_table_data[b * max_num_blocks_per_seq + slot / block_size];
+            if (block_id < 0 || block_id >= num_blocks) {
+              // Unmapped: excluded from the softmax, same as the kernel.
+              scores[slot] = -std::numeric_limits<float>::infinity();
+              continue;
+            }
             float dot = 0.0f;
             for (int dim = 0; dim < head_size; ++dim) {
               const int query_index = (token * num_heads + q_head) * head_size + dim;
@@ -821,6 +833,7 @@ void RunIoBindingCase(std::unique_ptr<IExecutionProvider> execution_provider,
             for (int slot = 0; slot <= new_slot; ++slot) {
               const int block_id =
                   block_table_data[b * max_num_blocks_per_seq + slot / block_size];
+              if (block_id < 0 || block_id >= num_blocks) continue;  // unmapped slot, nothing to gather
               const int cache_index = CacheIndex(block_id, slot % block_size, kv_head, dim,
                                                  block_size, kv_num_heads, head_size);
               const float value_element = native_bf16_cache ? value_cache_bf16[cache_index].ToFloat()
@@ -1481,6 +1494,120 @@ TEST(PagedAttention, Cuda_XqaSpecDecFp8CacheHeadSize256Group6) {
   EXPECT_NE(debug_output.find("GqaGroupSize=6"), std::string::npos) << debug_output;
 }
 #endif
+
+// A block_table entry outside [0, num_blocks) must be treated as unmapped,
+// the same as an explicit -1, rather than read out of bounds of the paged
+// cache. Regression test for the read-path bound check: block_table[0]
+// covers the historical KV (slots 0..15); block_table[1] is the write target
+// for the new token and stays valid in both runs. Each run's own reference
+// model (patched above to skip unmapped slots) proves the kernel excludes
+// them from the softmax instead of dereferencing them.
+TEST(PagedAttention, Cuda_OutOfRangeBlockTableTreatedAsUnmapped) {
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  for (int32_t sentinel : {-1, 99}) {
+    IoBindingCase c;
+    c.block_size = 16;
+    c.num_blocks = 3;
+    c.max_num_blocks_per_seq = 2;
+    c.past_seqlen = 16;
+    c.block_table = {sentinel, 1};
+    c.allow_out_of_range_block_table = true;
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+  }
+}
+
+// Same regression as Cuda_OutOfRangeBlockTableTreatedAsUnmapped, but pinned to the
+// FlashAttention-paged backend (head_size = 64, block_size = 256 satisfies
+// flash_min_block_size), which reads block_table directly rather than through the
+// in-kernel range check the paged-decode kernel uses.
+TEST(PagedAttention, Cuda_OutOfRangeBlockTableFlashEligible) {
+#if defined(USE_FLASH_ATTENTION)
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "Flash Attention requires compute capability 8.0 or later.";
+  }
+
+  for (int32_t sentinel : {-1, 99}) {
+    IoBindingCase c;
+    c.head_size = 64;
+    c.block_size = 256;
+    c.num_blocks = 3;
+    c.max_num_blocks_per_seq = 2;
+    c.past_seqlen = 256;
+    c.block_table = {sentinel, 1};
+    c.allow_out_of_range_block_table = true;
+
+    testing::internal::CaptureStdout();
+    RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, c);
+    const std::string debug_output = testing::internal::GetCapturedStdout();
+    EXPECT_NE(debug_output.find("SdpaKernel=FLASH_ATTENTION"), std::string::npos) << debug_output;
+  }
+#else
+  GTEST_SKIP() << "FlashAttention is not built in.";
+#endif
+}
+
+// Same regression, pinned to the native-cache XQA backend with pages_per_block == 1
+// (block_size == kXqaTokensPerPage), the other backend the sanitize-copy design is meant to
+// protect. Skips if this build/device cannot dispatch XQA for this shape.
+TEST(PagedAttention, Cuda_OutOfRangeBlockTableXqaEligible) {
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableDecoderAttention, "0"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"},
+          {"ORT_ENABLE_XQA", "1"},
+          {"ORT_ENABLE_XQA_NATIVE_KV", "1"}}};
+
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+  if (GetCudaArchitecture() < 800) {
+    GTEST_SKIP() << "XQA requires compute capability 8.0 or later.";
+  }
+
+  auto make_case = [](int32_t sentinel) {
+    IoBindingCase c;
+    c.num_heads = 6;
+    c.kv_num_heads = 1;
+    c.head_size = 256;
+    c.block_size = 128;  // pages_per_block == 1 (kXqaTokensPerPage == 128).
+    c.num_blocks = 3;
+    c.max_num_blocks_per_seq = 2;
+    c.past_seqlen = 128;
+    c.block_table = {sentinel, 1};
+    c.allow_out_of_range_block_table = true;
+    c.attention_metadata = {1, 256};
+    return c;
+  };
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, make_case(-1));
+  const std::string baseline_debug_output = testing::internal::GetCapturedStdout();
+  if (baseline_debug_output.find("SdpaKernel=XQA") == std::string::npos) {
+    GTEST_SKIP() << "Paged XQA H256/group6 (pages_per_block=1) is not runnable in this "
+                    "build/device configuration.\n"
+                 << baseline_debug_output;
+  }
+
+  testing::internal::CaptureStdout();
+  RunIoBindingCase(DefaultCudaExecutionProvider(), kCudaExecutionProvider, true, false, make_case(99));
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  EXPECT_NE(debug_output.find("SdpaKernel=XQA"), std::string::npos) << debug_output;
+}
 
 TEST(PagedAttention, Cuda_AttentionMetadataValidation) {
   if (DefaultCudaExecutionProvider() == nullptr) {
