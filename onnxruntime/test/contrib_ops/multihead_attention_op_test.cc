@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/env_var_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -723,6 +724,11 @@ TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQkvBiasPrefill) {
     }
   }
 
+  auto execution_provider = DefaultWebGpuExecutionProvider();
+  if (execution_provider == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is unavailable.";
+  }
+
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);
   tester.AddInput<float>("query", {1, sequence_length, head_size}, query);
@@ -734,12 +740,11 @@ TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQkvBiasPrefill) {
   tester.AddOutput<float>("present_key", {1, 1, sequence_length, head_size}, expected_present_key);
   tester.AddOutput<float>("present_value", {1, 1, sequence_length, head_size}, expected_present_value);
 
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
-  if (execution_providers.back() == nullptr) {
-    GTEST_SKIP() << "WebGPU execution provider is unavailable.";
-  }
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQBiasWithPrecomputedKv) {
@@ -755,6 +760,11 @@ TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQBiasWithPrecomputedKv) {
       3.0f * high_key_probability,
       4.0f * high_key_probability};
 
+  auto execution_provider = DefaultWebGpuExecutionProvider();
+  if (execution_provider == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is unavailable.";
+  }
+
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);
   tester.AddInput<float>("query", {1, 1, head_size}, std::vector<float>(head_size, 0.0f));
@@ -766,12 +776,11 @@ TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQBiasWithPrecomputedKv) {
   tester.AddOutput<float>("output", {1, 1, head_size}, expected_output,
                           false, 1e-4f, 1e-4f);
 
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
-  if (execution_providers.back() == nullptr) {
-    GTEST_SKIP() << "WebGPU execution provider is unavailable.";
-  }
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 #ifdef USE_WEBGPU
@@ -801,6 +810,14 @@ static void RunWebGpuFlashAttentionQkvBiasWithQuantizedKvCache(const char* quant
     }
   }
 
+  ConfigOptions config_options;
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kKvCacheQuantizationBits,
+                                                   quantization_bits));
+  auto execution_provider = WebGpuExecutionProviderWithOptions(config_options);
+  if (execution_provider == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is unavailable.";
+  }
+
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);
   tester.AddInput<float>("query", {1, sequence_length, head_size}, query);
@@ -810,15 +827,11 @@ static void RunWebGpuFlashAttentionQkvBiasWithQuantizedKvCache(const char* quant
   tester.AddOutput<float>("output", {1, sequence_length, head_size}, expected_output,
                           false, 0.1f, 0.4f);
 
-  ConfigOptions config_options;
-  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kKvCacheQuantizationBits,
-                                                   quantization_bits));
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(WebGpuExecutionProviderWithOptions(config_options));
-  if (execution_providers.back() == nullptr) {
-    GTEST_SKIP() << "WebGPU execution provider is unavailable.";
-  }
-  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQkvBiasWithTurboQuant) {
