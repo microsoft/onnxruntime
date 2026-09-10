@@ -31,6 +31,7 @@
 
 #ifdef USE_WEBGPU
 #include "contrib_ops/webgpu/bert/gated_delta_net.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
 
 namespace onnxruntime {
@@ -252,7 +253,8 @@ std::vector<float> RoundToTensorType(const std::vector<float>& data) {
 template <typename T>
 void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, float out_tol,
                   float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
-                  bool use_webgpu = false, bool omit_final_state = false) {
+                  bool use_webgpu = false, bool omit_final_state = false,
+                  const ConfigOptions* webgpu_config = nullptr) {
   Inputs in = in_raw;
   in.q = RoundToTensorType<T>(in_raw.q);
   in.k = RoundToTensorType<T>(in_raw.k);
@@ -337,7 +339,16 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(use_webgpu ? DefaultWebGpuExecutionProvider() : DefaultCudaExecutionProvider());
+  if (use_webgpu) {
+#ifdef USE_WEBGPU
+    eps.push_back(webgpu_config != nullptr ? WebGpuExecutionProviderWithOptions(*webgpu_config)
+                                           : DefaultWebGpuExecutionProvider());
+#else
+    eps.push_back(DefaultWebGpuExecutionProvider());
+#endif
+  } else {
+    eps.push_back(DefaultCudaExecutionProvider());
+  }
   const bool webgpu_compact_update = use_webgpu && o.state_update_capacity > 0;
   test.Run(webgpu_compact_update ? OpTester::ExpectResult::kExpectFailure : OpTester::ExpectResult::kExpectSuccess,
            webgpu_compact_update ? "WebGPU GatedDeltaNet does not support state_update_capacity > 0" : "",
@@ -434,6 +445,24 @@ TEST(GatedDeltaNetWebGpuTest, ParallelPrefillLinearUniformRank3AndRank4) {
   RunTypedCase<float>(g, options, inputs, 4e-4f, 4e-4f,
                       /*rank4=*/true, /*fetches=*/nullptr, /*use_webgpu=*/true,
                       /*omit_final_state=*/true);
+}
+
+TEST(GatedDeltaNetWebGpuTest, SegmentedQueryAndKeyUseHelperIndexing) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  // A 128 MiB binding limit forces Q and K into two storage-buffer segments. The
+  // last token crosses that boundary, exercising the shader helper accessors.
+  Geometry g{131073, 1, 1, 1, 256, 1};
+  Options options;
+  options.update_rule = "linear";
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(
+      config_options.AddConfigEntry(webgpu::options::kMaxStorageBufferBindingSize, "134217728"));
+  RunTypedCase<float>(g, options, MakeInputs(g, 227), 5e-4f, 5e-4f,
+                      /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                      /*omit_final_state=*/true, &config_options);
 }
 
 TEST(GatedDeltaNetWebGpuTest, LongUniformNonLinearRulesUseRecurrentFallback) {

@@ -142,15 +142,17 @@ $MAIN {
         let value_index = value_start + value_offset;
         if (value_index < uniforms.head_size_v) {
           var retrieved_value = 0.0;
+          let value_tensor_offset =
+              (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index;
 #if update_rule == 2 || update_rule == 3
           retrieved_value = retrieved[value_offset * workgroup_size_x];
 #endif
-          delta[value_offset] = beta_value * (f32(value.getByOffset((token * uniforms.num_heads_v + value_head) *
-                                                                      uniforms.head_size_v + value_index)) -
-                                              retrieved_value);
-          output.setByOffset((token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index,
-                             output_element_t((pre_output[value_offset * workgroup_size_x] +
-                                               delta[value_offset] * key_query[0]) * uniforms.scale));
+          delta[value_offset] = beta_value * (f32(value.getByOffset(value_tensor_offset)) - retrieved_value);
+          let output_tensor_offset =
+              (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index;
+          let output_value =
+              (pre_output[value_offset * workgroup_size_x] + delta[value_offset] * key_query[0]) * uniforms.scale;
+          output.setByOffset(output_tensor_offset, output_element_t(output_value));
         } else {
           delta[value_offset] = 0.0;
         }
@@ -167,9 +169,10 @@ $MAIN {
     for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
       let value_index = value_start + value_offset;
       if (value_index < uniforms.head_size_v) {
-        final_state.setByOffset(((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
-                                uniforms.head_size_qk + key_index,
-                                state[value_offset]);
+        let state_offset =
+            ((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
+            uniforms.head_size_qk + key_index;
+        final_state.setByOffset(state_offset, state[value_offset]);
       }
     }
   }
