@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <ctime>
+#include <cstdlib>
 #include <exception>
 #include <type_traits>
 #include <utility>
@@ -143,6 +144,18 @@ LoggingManager::LoggingManager(std::unique_ptr<ISink> sink, Severity default_min
       owns_default_logger_{false} {
   if (sink_ == nullptr) {
     ORT_THROW("ISink must be provided.");
+  }
+
+  // Apply environment variable override for default severity if set.
+  // The ORT_LOG_LEVEL env var always takes precedence over the programmatic severity,
+  // providing a deployment-time override without code changes. This follows the convention
+  // used by other ML frameworks (e.g., TensorFlow's TF_CPP_MIN_LOG_LEVEL).
+  const char* env_severity = std::getenv("ORT_LOG_LEVEL");
+  if (env_severity != nullptr) {
+    Severity env_sev;
+    if (SeverityFromString(env_severity, env_sev)) {
+      default_min_severity_ = env_sev;
+    }
   }
 
   if (instance_type == InstanceType::Default) {
