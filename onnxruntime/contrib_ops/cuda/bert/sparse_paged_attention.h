@@ -10,10 +10,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 template <typename T, typename TCACHE>
-class SparsePagedAttention final : public CudaKernel {
+class SparsePagedAttention final : public onnxruntime::cuda::CudaKernel {
  public:
   explicit SparsePagedAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
