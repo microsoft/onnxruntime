@@ -489,6 +489,16 @@ Return Value:
 
 --*/
 {
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+    // The platform routine covers the element-wise kinds and returns false for the
+    // rest, which fall through to the switch below.
+
+    if (GetMlasPlatform().ActivationRoutine != nullptr &&
+        GetMlasPlatform().ActivationRoutine(Activation, Buffer, Bias, M, N, ldc)) {
+        return;
+    }
+#endif
+
     switch (Activation->ActivationKind) {
 
         case MlasIdentityActivation:
