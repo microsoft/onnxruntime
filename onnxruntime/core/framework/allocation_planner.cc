@@ -1981,7 +1981,9 @@ class PlannerImpl {
                             const PathString& partition_config_file) {
     auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger_, partition_config_file);
     auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_,
-                                              context_->GetExecutionOrder());
+                                              context_->GetExecutionOrder(),
+                                              context_->IsParallelExecutionEnabled(),
+                                              context_->GetMaxNumStreams());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
@@ -2485,7 +2487,9 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
   Status PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                         const ExecutionProviders& execution_providers,
                         std::vector<InlinedVector<NodeIndex>>& stream_nodes,
-                        ExecutionOrder execution_order) override;
+                        ExecutionOrder execution_order,
+                        bool enable_parallel_execution,
+                        size_t max_num_streams) override;
 
   const char* Type() const override { return "DeviceBasedPartitioner"; }
   size_t Streams() const override { return node_names_by_stream_.size(); }
@@ -2507,38 +2511,132 @@ class DeviceBasedPartitioner : public IGraphPartitioner {
 Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& graph_viewer,
                                               const ExecutionProviders& execution_providers,
                                               std::vector<InlinedVector<NodeIndex>>& stream_nodes,
-                                              ExecutionOrder execution_order) {
+                                              ExecutionOrder execution_order,
+                                              bool enable_parallel_execution,
+                                              size_t max_num_streams) {
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder(execution_order);
+  const bool generated_partition = node_names_by_stream_.empty();
+  InlinedHashMap<NodeIndex, size_t> generated_node_to_stream;
 
-  if (node_names_by_stream_.empty()) {  // input configure empty, do it from scratch
-
-    InlinedHashMap<OrtDevice::DeviceType, int> device_to_stream;
-
+  if (generated_partition) {  // input configure empty, do it from scratch
+    InlinedHashMap<NodeIndex, OrtDevice::DeviceType> node_device_types;
+    node_device_types.reserve(p_graph_nodes.size());
     for (auto node_index : p_graph_nodes) {
-      // get device info of the node
       const auto* node = graph_viewer.GetNode(node_index);
-      const auto& op_type = node->OpType();
-      const auto& node_name = node->Name();
-      auto* ep = execution_providers.Get(*node);
-      auto device_type = ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault).Type();
+      ORT_ENFORCE(node);
+      const auto* ep = execution_providers.Get(*node);
+      ORT_ENFORCE(ep);
+      node_device_types[node_index] =
+          ep->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault).Type();
+    }
 
-      // log the device
-      auto it = device_to_stream.find(device_type);
-      if (it == device_to_stream.end()) {
-        device_to_stream[device_type] = static_cast<int>(node_names_by_stream_.size());
-        node_names_by_stream_.push_back({});
-        device_types_.push_back(device_type);
-        it = device_to_stream.find(device_type);
-      }
-      // put the node into the belonging stream
-      if (node_name.empty()) {
-        node_names_by_stream_[it->second].push_back(op_type + std::to_string(op_type_counter[op_type]++));
-      } else {
-        node_names_by_stream_[it->second].push_back(node_name);
+    InlinedHashMap<NodeIndex, size_t> downstream_depth;
+    InlinedHashMap<NodeIndex, NodeIndex> preferred_successors;
+    downstream_depth.reserve(p_graph_nodes.size());
+    preferred_successors.reserve(p_graph_nodes.size());
+    // Keep the deepest CPU successor on its predecessor's stream so critical paths
+    // stay contiguous while fan-outs become candidates for parallel streams.
+    if (enable_parallel_execution && max_num_streams > 1) {
+      for (auto node_it = p_graph_nodes.rbegin(); node_it != p_graph_nodes.rend(); ++node_it) {
+        const auto* node = graph_viewer.GetNode(*node_it);
+        ORT_ENFORCE(node);
+
+        size_t best_depth = 0;
+        for (auto output_it = node->OutputNodesBegin(); output_it != node->OutputNodesEnd(); ++output_it) {
+          const auto output_node_index = output_it->Index();
+          if (node_device_types.at(*node_it) != OrtDevice::CPU ||
+              node_device_types.at(output_node_index) != OrtDevice::CPU) {
+            continue;
+          }
+
+          const size_t output_depth = downstream_depth.at(output_node_index);
+          if (output_depth > best_depth) {
+            best_depth = output_depth;
+            preferred_successors[*node_it] = output_node_index;
+          }
+        }
+
+        downstream_depth[*node_it] = best_depth + 1;
       }
     }
+
+    InlinedHashMap<OrtDevice::DeviceType, size_t> device_to_stream;
+    InlinedVector<size_t> cpu_stream_ids;
+    InlinedVector<size_t> stream_node_counts;
+    generated_node_to_stream.reserve(p_graph_nodes.size());
+
+    for (auto node_index : p_graph_nodes) {
+      const auto* node = graph_viewer.GetNode(node_index);
+      ORT_ENFORCE(node);
+      const auto device_type = node_device_types.at(node_index);
+      size_t stream_id = 0;
+
+      if (device_type == OrtDevice::CPU && enable_parallel_execution && max_num_streams > 1) {
+        bool continues_predecessor = false;
+        size_t predecessor_depth = 0;
+        for (auto input_it = node->InputNodesBegin(); input_it != node->InputNodesEnd(); ++input_it) {
+          const auto input_node_index = input_it->Index();
+          const auto preferred_it = preferred_successors.find(input_node_index);
+          if (node_device_types.at(input_node_index) == OrtDevice::CPU &&
+              preferred_it != preferred_successors.end() &&
+              preferred_it->second == node_index &&
+              (!continues_predecessor || downstream_depth.at(input_node_index) > predecessor_depth)) {
+            stream_id = generated_node_to_stream.at(input_node_index);
+            predecessor_depth = downstream_depth.at(input_node_index);
+            continues_predecessor = true;
+          }
+        }
+
+        if (!continues_predecessor) {
+          if (cpu_stream_ids.size() < max_num_streams) {
+            stream_id = node_names_by_stream_.size();
+            cpu_stream_ids.push_back(stream_id);
+            node_names_by_stream_.push_back({});
+            device_types_.push_back(OrtDevice::CPU);
+            stream_node_counts.push_back(0);
+          } else {
+            stream_id = *std::min_element(
+                cpu_stream_ids.begin(), cpu_stream_ids.end(),
+                [&stream_node_counts](size_t lhs, size_t rhs) {
+                  return stream_node_counts[lhs] < stream_node_counts[rhs];
+                });
+          }
+        }
+      } else {
+        auto device_stream_it = device_to_stream.find(device_type);
+        if (device_stream_it == device_to_stream.end()) {
+          stream_id = node_names_by_stream_.size();
+          device_to_stream[device_type] = stream_id;
+          node_names_by_stream_.push_back({});
+          device_types_.push_back(device_type);
+          stream_node_counts.push_back(0);
+        } else {
+          stream_id = device_stream_it->second;
+        }
+      }
+
+      const auto& op_type = node->OpType();
+      const auto& node_name = node->Name();
+      if (node_name.empty()) {
+        node_names_by_stream_[stream_id].push_back(op_type + std::to_string(op_type_counter[op_type]++));
+      } else {
+        node_names_by_stream_[stream_id].push_back(node_name);
+      }
+      generated_node_to_stream[node_index] = stream_id;
+      ++stream_node_counts[stream_id];
+    }
   }
+
+  if (generated_partition) {
+    stream_nodes.clear();
+    stream_nodes.resize(node_names_by_stream_.size());
+    for (auto node_index : p_graph_nodes) {
+      stream_nodes[generated_node_to_stream.at(node_index)].push_back(node_index);
+    }
+    return Status::OK();
+  }
+
   InlinedHashMap<std::string, size_t> node_stream_map;
   node_stream_map.reserve(p_graph_nodes.size());
   for (size_t i = 0; i < node_names_by_stream_.size(); ++i) {
