@@ -17,11 +17,11 @@ from parity_utilities import find_transformers_source
 if find_transformers_source():
     from fusion_options import FusionOptions
     from onnx_model import OnnxModel
-    from optimizer import optimize_model
+    from optimizer import create_optimization_report, optimize_model
 else:
     from onnxruntime.transformers.fusion_options import FusionOptions
     from onnxruntime.transformers.onnx_model import OnnxModel
-    from onnxruntime.transformers.optimizer import optimize_model
+    from onnxruntime.transformers.optimizer import create_optimization_report, optimize_model
 
 TEST_MODELS = {
     "bert_keras_0": (
@@ -153,6 +153,26 @@ class TestModelOptimization(unittest.TestCase):
                 "ReduceSum": 0,
             }
             self.verify_node_count(model, expected_node_count, file)
+
+    def test_create_optimization_report(self):
+        report = create_optimization_report(
+            input_path="input.onnx",
+            output_path="output.onnx",
+            model_type="bert",
+            opt_level=1,
+            use_gpu=False,
+            provider=None,
+            only_onnxruntime=False,
+            operator_statistics={"MatMul": 2, "Add": 1},
+            fused_operator_statistics={"Attention": 1},
+            fully_optimized=True,
+        )
+
+        self.assertEqual(report["input"], "input.onnx")
+        self.assertEqual(report["output"], "output.onnx")
+        self.assertEqual(report["operator_statistics"], {"Add": 1, "MatMul": 2})
+        self.assertEqual(report["fused_operator_statistics"], {"Attention": 1})
+        self.assertTrue(report["fully_optimized"])
 
 
 if __name__ == "__main__":
