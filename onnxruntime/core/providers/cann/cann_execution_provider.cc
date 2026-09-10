@@ -1088,7 +1088,7 @@ void DeleteRegistry() {
 
     if (cann::g_ge_state) {
       // Calls ge::aclgrphBuildFinalize
-      cann::g_ge_state->promise_final.set_value();
+      cann::g_ge_state->promise_final.set_value(true);
       if (cann::g_ge_state->thread.joinable()) {
         cann::g_ge_state->thread.join();
       }

@@ -115,7 +115,8 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
       try {
         // Both aclgrphBuildInitialize and aclgrphBuildFinalize
         // need to be called from the same thread
-        g_ge_state->thread = std::thread([soc_name = std::string(soc_name ? soc_name : ""), info]() {
+        auto state = g_ge_state.get();
+        g_ge_state->thread = std::thread([state, soc_name = std::string(soc_name ? soc_name : ""), info]() {
           try {
             std::map<ge::AscendString, ge::AscendString> options;
             options.emplace(ge::ir_option::SOC_VERSION, soc_name.c_str());
@@ -128,17 +129,18 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
               options.emplace(ge::ir_option::OPTYPELIST_FOR_IMPLMODE, info.optypelist_for_implmode.c_str());
 
             CANN_GRAPH_CALL_THROW(ge::aclgrphBuildInitialize(options));
-            g_ge_state->promise_init.set_value();
+            state->promise_init.set_value();
 
             try {
-              g_ge_state->future_final.wait();
-              ge::aclgrphBuildFinalize();
+              if (state->future_final.get()) {
+                ge::aclgrphBuildFinalize();
+              }
             } catch (...) {
-              g_ge_state->ex_ptr_final = std::current_exception();
+              state->ex_ptr_final = std::current_exception();
             }
           } catch (...) {
-            g_ge_state->ex_ptr_init = std::current_exception();
-            g_ge_state->promise_init.set_value();
+            state->ex_ptr_init = std::current_exception();
+            state->promise_init.set_value();
           }
         });
       } catch (...) {

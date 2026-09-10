@@ -22,7 +22,24 @@ namespace cann {
 
 struct GeState {
   GeState()
-      : future_init(promise_init.get_future().share()), ex_ptr_init(nullptr), future_final(promise_final.get_future()), ex_ptr_final(nullptr) {}
+      : future_init(promise_init.get_future().share()),
+        ex_ptr_init(nullptr),
+        future_final(promise_final.get_future()),
+        ex_ptr_final(nullptr) {}
+
+  ~GeState() {
+    if (!thread.joinable()) {
+      return;
+    }
+
+    try {
+      promise_final.set_value(false);
+    } catch (const std::future_error&) {
+      /* ignore */
+    }
+
+    thread.join();
+  }
 
   std::thread thread;
 
@@ -30,8 +47,8 @@ struct GeState {
   std::shared_future<void> future_init;
   std::exception_ptr ex_ptr_init;
 
-  std::promise<void> promise_final;
-  std::future<void> future_final;
+  std::promise<bool> promise_final;
+  std::future<bool> future_final;
   std::exception_ptr ex_ptr_final;
 };
 
