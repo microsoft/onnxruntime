@@ -117,6 +117,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const override;
+  bool IsExternalDeviceGraphCaptureActive() const override;
   Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id, bool sync = true) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
@@ -211,6 +212,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     void CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id);
     void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
+    bool IsExternalDeviceGraphCaptureActive() const;
     CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
     Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync = true);
     void IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id);
