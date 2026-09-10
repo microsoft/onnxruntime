@@ -195,8 +195,8 @@ Status SparseQkvToContext(
   }
 
   T* prepared_query = nullptr;
-  ORT_RETURN_IF_ERROR(PreparePagedAttentionQueryAndCache<T, TCACHE>(
-      device_prop, stream, parameters, data, &prepared_query));
+  ORT_RETURN_IF_ERROR((PreparePagedAttentionQueryAndCache<T, TCACHE>(
+      device_prop, stream, parameters, data, &prepared_query)));
 
   const dim3 grid(parameters.token_count, parameters.num_heads);
   const float attention_scale =
