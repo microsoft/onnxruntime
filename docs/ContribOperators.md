@@ -1674,31 +1674,31 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
-<dt><tt>attention_mode</tt> : string (default is selected_only)</dt>
+<dt><tt>attention_mode</tt> : string</dt>
 <dd>One of 'selected_only' or 'local_plus_selected'.</dd>
-<dt><tt>auxiliary_kv_shared</tt> : int (default is 0)</dt>
+<dt><tt>auxiliary_kv_shared</tt> : int</dt>
 <dd>Use auxiliary_key as both key and value when auxiliary_value is omitted.</dd>
-<dt><tt>do_rotary</tt> : int (default is 0)</dt>
+<dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to apply rotary embedding to Q and newly appended K.</dd>
-<dt><tt>is_causal</tt> : int (default is 1)</dt>
+<dt><tt>is_causal</tt> : int</dt>
 <dd>Whether selected main-cache and local entries obey causal visibility.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of main and auxiliary KV heads.</dd>
-<dt><tt>local_window_size</tt> : int (default is -1)</dt>
+<dt><tt>local_window_size</tt> : int</dt>
 <dd>Number of causally visible main-cache entries in local_plus_selected mode.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of query heads.</dd>
-<dt><tt>qk_norm_epsilon</tt> : float (default is 0.0)</dt>
+<dt><tt>qk_norm_epsilon</tt> : float</dt>
 <dd>Epsilon for optional per-head Q/K RMS normalization.</dd>
-<dt><tt>rotary_interleaved</tt> : int (default is 0)</dt>
+<dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Whether rotary pairs use interleaved layout.</dd>
-<dt><tt>rotary_offset</tt> : int (default is 0)</dt>
+<dt><tt>rotary_offset</tt> : int</dt>
 <dd>First head channel covered by rotary embedding.</dd>
 <dt><tt>scale</tt> : float</dt>
 <dd>Scaling factor applied to QK. Defaults to 1/sqrt(head_size).</dd>
-<dt><tt>selected_kv_source</tt> : string (default is main)</dt>
+<dt><tt>selected_kv_source</tt> : string</dt>
 <dd>Source addressed by selected indices: 'main' or 'auxiliary'.</dd>
-<dt><tt>smooth_softmax</tt> : int (default is 0)</dt>
+<dt><tt>smooth_softmax</tt> : int</dt>
 <dd>Add a zero-valued sink logit when no explicit head_sink is supplied.</dd>
 </dl>
 
