@@ -873,7 +873,7 @@ class SparseMoeBlockORTHelper(nn.Module):
 
         tensors = {
             "input": hidden_states_flat.clone().to(device=device, dtype=torch_dtype),
-            "router_probs": router_logits.clone().to(device=device, dtype=torch_dtype),
+            "router_probs": router_input.clone().to(device=device, dtype=torch_dtype),
             "output": torch.zeros((batch_size * sequence_length, hidden_dim), device=device, dtype=torch_dtype),
         }
 
@@ -1468,6 +1468,23 @@ phi3_blockwise_test_cases = [
 
 
 class TestPhiQMoECPU(unittest.TestCase):
+    @parameterized.expand([(0,), (4,)])
+    def test_packed_token_input_cpu(self, quant_bits):
+        torch.manual_seed(1977 + quant_bits)
+        numpy.random.seed(1977 + quant_bits)
+
+        config = PhiMoEConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_tok=2)
+        packed_moe = PhiMoESparseMoeBlock(
+            config,
+            batch_size=1,
+            sequence_length=7,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT,
+            use_asymmetric_quant=False,
+        )
+
+        packed_moe.parity_check()
+
     @parameterized.expand(with_mlas_q4_mode(phi3_test_cases))
     def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
         # Create unique seed based on test parameters to ensure different inputs for each test

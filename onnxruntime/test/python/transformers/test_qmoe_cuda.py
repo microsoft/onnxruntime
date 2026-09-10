@@ -1575,6 +1575,23 @@ def _run_qmoe_cutlass_gemm_second_scale_row_regression(test_case, quant_bits, us
 
 @unittest.skipIf(not torch.cuda.is_available(), "skipping QMoE test since it requires CUDA.")
 class TestPhiQMoE(unittest.TestCase):
+    @parameterized.expand([(0,), (4,)])
+    def test_packed_token_input_cuda(self, quant_bits):
+        torch.manual_seed(1977 + quant_bits)
+        numpy.random.seed(1977 + quant_bits)
+
+        config = PhiMoEConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_tok=2)
+        packed_moe = PhiMoESparseMoeBlock(
+            config,
+            batch_size=1,
+            sequence_length=7,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_asymmetric_quant=False,
+        )
+
+        packed_moe.parity_check()
+
     @parameterized.expand(phi3_test_cases)
     def test_phi3_qmoe_parity(self, batch_size, sequence_length, quant_bits):
         # Create unique seed based on test parameters to ensure different inputs for each test
