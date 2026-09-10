@@ -254,7 +254,7 @@ template <typename T>
 void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, float out_tol,
                   float state_tol, bool rank4 = false, std::vector<OrtValue>* fetches = nullptr,
                   bool use_webgpu = false, bool omit_final_state = false,
-                  const ConfigOptions* webgpu_config = nullptr) {
+                  [[maybe_unused]] const ConfigOptions* webgpu_config = nullptr) {
   Inputs in = in_raw;
   in.q = RoundToTensorType<T>(in_raw.q);
   in.k = RoundToTensorType<T>(in_raw.k);
