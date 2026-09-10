@@ -19,6 +19,9 @@
 #include "ldgsts.cuh"
 #include "mha.h"
 #include "utils.cuh"
+#if defined(XQA_PAGED_INT4)
+#include "int4_cache.cuh"
+#endif
 
 // for beam search
 template <typename Head, uint32_t tokensPerPage, uint32_t nbPages>
@@ -128,6 +131,11 @@ __device__ inline void copyPartialHeadsAsync(
   const uint32_t segIdx = warpLane / thrdsPerSeg;
   const uint32_t segLane = warpLane % thrdsPerSeg;
   constexpr uint32_t partsPerWarpInst = exactDiv(grainBytes * warp_size, partBytes);
+#if defined(XQA_PAGED_INT4)
+  if constexpr (mha::is_same_v<mha::decay_t<decltype(src[0])>, GMemCacheHead>) {
+    __syncwarp();
+  }
+#endif
 #pragma unroll
   for (uint32_t i = 0; i < thrdLdBytes / grainBytes; i++) {
     const uint32_t idxHeadLocal = partsPerWarpInst * i + segIdx;
@@ -140,11 +148,27 @@ __device__ inline void copyPartialHeadsAsync(
     const bool isGrainInBound = (!isHeadPadded || idxGrainInsideHead < nbValidGrains);
     const SrcHead* const pSrcHead = src + localHeadIdxMap(idxHeadLocal);
     const bool isValidPage = (pSrcHead != nullptr);
-    const LdGrain* const pSrc = reinterpret_cast<const LdGrain*>(pSrcHead) + idxGrainInsideHead;
     LdGrain* const pDst = &dst.template at<swizzle>(dstHeadOffset + idxHeadLocal, segLane);
     assert(!hasBankConflict(pDst));
-    ldgsts::copyAsync<grainBytes>(pDst, pSrc, isValidPage && isHeadInBound && isGrainInBound ? grainBytes : 0u);
+#if defined(XQA_PAGED_INT4)
+    if constexpr (mha::is_same_v<SrcHead, GMemCacheHead>) {
+      static_assert(!isHeadPadded && sizeof(CacheElem) == 2);
+      const bool valid = isValidPage && isHeadInBound;
+      const uint32_t packed = valid ? reinterpret_cast<const uint32_t*>(pSrcHead)[idxGrainInsideHead] : 0x88888888U;
+      // The PER_CHANNEL scale is folded into Q and into the output, so a grain holds its raw codes.
+      *reinterpret_cast<uint4*>(pDst) = DequantizeInt4CacheGrain<CacheElem>(packed, 1.f);
+    } else
+#endif
+    {
+      const LdGrain* const pSrc = reinterpret_cast<const LdGrain*>(pSrcHead) + idxGrainInsideHead;
+      ldgsts::copyAsync<grainBytes>(pDst, pSrc, isValidPage && isHeadInBound && isGrainInBound ? grainBytes : 0u);
+    }
   }
+#if defined(XQA_PAGED_INT4)
+  if constexpr (mha::is_same_v<mha::decay_t<decltype(src[0])>, GMemCacheHead>) {
+    __syncwarp();
+  }
+#endif
 }
 
 template <typename Head, uint32_t maxNbCopiedHeads, uint32_t nbWarps, bool swizzle, bool isFull, uint32_t dstNbHeads,
