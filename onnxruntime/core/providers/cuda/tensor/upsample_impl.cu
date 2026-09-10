@@ -159,7 +159,11 @@ void UpsampleImpl(cudaStream_t stream,
                   const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   if (onnxruntime::UpsampleMode::NN == upsample_mode) {
-    if (rank == 4) {
+    if (rank == 5) {
+      _UpsampleNearestKernel<T, 5><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          input_pitches, output_div_pitches, scales_div,
+          input_data, output_data, N);
+    } else if (rank == 4) {
       _UpsampleNearestKernel<T, 4><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           input_pitches, output_div_pitches, scales_div,
           input_data, output_data, N);
