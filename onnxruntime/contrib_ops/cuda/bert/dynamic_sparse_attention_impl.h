@@ -5,7 +5,7 @@
 
 #include <cuda_runtime.h>
 
-#include "contrib_ops/cpu/bert/dynamic_sparse_attention_helper.h"
+#include "contrib_ops/cpu/bert/dynamic_sparse_attention_parameters.h"
 #include "core/common/status.h"
 
 namespace onnxruntime {
