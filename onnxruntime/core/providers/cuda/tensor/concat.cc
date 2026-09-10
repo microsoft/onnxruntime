@@ -1,12 +1,19 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <vector>
+
 #include "core/providers/cuda/tensor/concat.h"
 
 #include "core/providers/cuda/tensor/concat_impl.h"
 
 namespace onnxruntime {
 namespace cuda {
+namespace {
+constexpr int kMaxInlinePointerCount = 32;
+}
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
                                   kOnnxDomain,
                                   4, 10,
@@ -51,37 +58,47 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
 
   std::vector<int64_t> concat_sizes;
   concat_sizes.reserve(input_count);
-
-  CudaAsyncBuffer<const void*> input_ptr(this, input_count);
-  gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
-  std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
-  int index = 0;
   for (int i = 0; i < input_count; ++i) {
-    const auto& input = p.inputs[i];
-    concat_sizes.push_back(input.tensor->Shape()[p.axis]);
-    input_ptr_cpuspan[i] = input.tensor->DataRaw();
-    for (int j = 0; j < input.tensor->Shape()[p.axis]; ++j) {
-      axis_dimension_input_output_mapping.at(index++) = i;
-    }
+    concat_sizes.push_back(p.inputs[i].tensor->Shape()[p.axis]);
   }
 
   auto element_bytes = p.output_tensor->DataType()->Size();
   int block_size_inside_axis_dim = static_cast<int>(p.output_axis_pitch / p.output_tensor->Shape()[p.axis]);
   int block_size_including_axis_dim = static_cast<int>(p.output_axis_pitch);
-  if (std::all_of(concat_sizes.begin(), concat_sizes.end(), [&](int64_t size) { return size == concat_sizes[0]; })) {
-    if (input_count <= 32) {
-      TArray<const void*, 32> input_ptr_array(input_count);
-      for (int i = 0; i < input_count; ++i) input_ptr_array[i] = input_ptr_cpuspan[i];
-      ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(
-          Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
-          p.output_tensor->MutableDataRaw(), input_ptr_array, static_cast<size_t>(p.output_num_elements)));
-    } else {
-      ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(GetComputeStream(ctx)));
-      ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(
-          Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
-          p.output_tensor->MutableDataRaw(), input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
+  const bool same_concat_size =
+      std::all_of(concat_sizes.begin(), concat_sizes.end(), [&](int64_t size) { return size == concat_sizes[0]; });
+  // Dispatch before allocating the pinned pointer buffer. This path passes pointers by value and
+  // needs no pinned memory, which also keeps it CUDA Graph capturable.
+  if (same_concat_size && input_count <= kMaxInlinePointerCount) {
+    TArray<const void*, kMaxInlinePointerCount> input_ptr_array(input_count);
+    for (int i = 0; i < input_count; ++i) {
+      input_ptr_array[i] = p.inputs[i].tensor->DataRaw();
     }
+
+    return ConcatSameConcatDimImpl(
+        Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
+        p.output_tensor->MutableDataRaw(), input_ptr_array, static_cast<size_t>(p.output_num_elements));
+  }
+
+  CudaAsyncBuffer<const void*> input_ptr(this, input_count);
+  gsl::span<const void*> input_ptr_cpuspan = input_ptr.CpuSpan();
+  for (int i = 0; i < input_count; ++i) {
+    input_ptr_cpuspan[i] = p.inputs[i].tensor->DataRaw();
+  }
+
+  ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(GetComputeStream(ctx)));
+  if (same_concat_size) {
+    ORT_RETURN_IF_ERROR(ConcatSameConcatDimImpl(
+        Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim, concat_sizes[0],
+        p.output_tensor->MutableDataRaw(), input_ptr.GpuPtr(), static_cast<size_t>(p.output_num_elements)));
   } else {
+    std::vector<int64_t> axis_dimension_input_output_mapping(p.output_tensor->Shape()[p.axis]);
+    int index = 0;
+    for (int i = 0; i < input_count; ++i) {
+      for (int j = 0; j < concat_sizes[i]; ++j) {
+        axis_dimension_input_output_mapping.at(index++) = i;
+      }
+    }
     CudaAsyncBuffer<int64_t> concat_sizes_gpu(this, concat_sizes);
     CudaAsyncBuffer<int64_t> axis_dimension_input_output_mapping_gpu(this, axis_dimension_input_output_mapping);
     std::vector<int64_t> concat_sizes_range(concat_sizes);
@@ -92,7 +109,6 @@ Status Concat::ComputeInternal(OpKernelContext* ctx) const {
     ORT_RETURN_IF_ERROR(concat_sizes_gpu.CopyToGpu(GetComputeStream(ctx)));
     ORT_RETURN_IF_ERROR(axis_dimension_input_output_mapping_gpu.CopyToGpu(GetComputeStream(ctx)));
     ORT_RETURN_IF_ERROR(concat_sizes_range_gpu.CopyToGpu(GetComputeStream(ctx)));
-    ORT_RETURN_IF_ERROR(input_ptr.CopyToGpu(GetComputeStream(ctx)));
     ORT_RETURN_IF_ERROR(ConcatImpl(Stream(ctx), element_bytes, block_size_including_axis_dim, block_size_inside_axis_dim,
                                    concat_sizes_gpu.GpuPtr(), concat_sizes_range_gpu.GpuPtr(),
                                    axis_dimension_input_output_mapping_gpu.GpuPtr(), p.output_tensor->MutableDataRaw(),

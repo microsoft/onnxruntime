@@ -105,8 +105,11 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
       webgpu_ep_config.kv_cache_quantization_bits = 0;
     } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_4Bit) {
       webgpu_ep_config.kv_cache_quantization_bits = 4;
+    } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_8Bit) {
+      webgpu_ep_config.kv_cache_quantization_bits = 8;
     } else {
-      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str, ". Must be \"0\" or \"4\".");
+      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str,
+                ". Must be \"0\", \"4\", or \"8\".");
     }
   }
 
@@ -412,12 +415,26 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
            (src_type == OrtMemoryInfoDeviceType_CPU && dst_type == OrtMemoryInfoDeviceType_GPU);
   }
 
+  // BufferManager::MemCpy reports misuse by throwing (ORT_ENFORCE), not by returning a Status.
+  // This callback crosses the C ABI and is noexcept, so an escaping exception would terminate the
+  // process. Convert throws to an OrtStatus.
   static OrtStatus* ORT_API_CALL CopyTensorsImpl(
       OrtDataTransferImpl* this_ptr,
       const OrtValue** src_tensors,
       OrtValue** dst_tensors,
-      OrtSyncStream** /*streams*/,
+      OrtSyncStream** streams,
       size_t num_tensors) noexcept {
+    API_IMPL_BEGIN
+    return CopyTensorsOrThrow(this_ptr, src_tensors, dst_tensors, streams, num_tensors);
+    API_IMPL_END
+  }
+
+  static OrtStatus* CopyTensorsOrThrow(
+      OrtDataTransferImpl* this_ptr,
+      const OrtValue** src_tensors,
+      OrtValue** dst_tensors,
+      OrtSyncStream** /*streams*/,
+      size_t num_tensors) {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
 
     if (num_tensors == 0) {
