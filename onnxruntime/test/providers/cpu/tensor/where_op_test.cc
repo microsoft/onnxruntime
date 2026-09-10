@@ -7,9 +7,9 @@
 #include <gsl/gsl>
 
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 #ifdef USE_WEBGPU
-#include "test/util/include/default_providers.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
 
@@ -39,6 +39,7 @@ void WherePreservesNegativeZeroTest() {
     const auto& output_tensor = fetches[0].Get<Tensor>();
     const auto* output = output_tensor.Data<T>();
     for (int64_t i = 0; i < output_tensor.Shape().Size(); ++i) {
+      EXPECT_EQ(output[i], T{0});
       EXPECT_TRUE(std::signbit(output[i]));
     }
   };

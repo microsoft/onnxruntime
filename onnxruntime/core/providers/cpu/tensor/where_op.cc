@@ -277,7 +277,8 @@ Status Where<T>::Compute(OpKernelContext* context) const {
   // These selections are handled within UntypedSelect.
   //
   // Finally, we broadcast over and merge X_selection and Y_selection:
-  //   output = (X_selection != default value) ? X_selection : Y_selection
+  //   output = WasSelected(X_selection) ? X_selection : Y_selection
+  // Floating-point negative zero counts as selected despite comparing equal to the default.
   //
   // The merging is handled within UntypedMerge.
   auto X_selection_tensor = UntypedSelect(*context, true, tensor_allocator, typed_tensor_allocation, funcs);
