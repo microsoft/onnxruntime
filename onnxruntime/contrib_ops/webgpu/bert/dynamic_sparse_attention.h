@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "contrib_ops/cpu/bert/dynamic_sparse_attention_helper.h"
+#include "contrib_ops/cpu/bert/dynamic_sparse_attention_parameters.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -142,7 +142,7 @@ class DynamicSparseAttentionProgram final : public Program<DynamicSparseAttentio
 class DynamicSparseAttention final : public WebGpuKernel {
  public:
   explicit DynamicSparseAttention(const OpKernelInfo& info);
-  Status ComputeInternal(ComputeContext& context) const override;
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
   int num_heads_;

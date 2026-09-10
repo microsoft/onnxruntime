@@ -8,6 +8,7 @@
 #include <limits>
 #include <string>
 
+#include "contrib_ops/cpu/bert/dynamic_sparse_attention_helper.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
@@ -522,7 +523,7 @@ DynamicSparseAttention::DynamicSparseAttention(const OpKernelInfo& info) : WebGp
       ParseKvSource(info.GetAttrOrDefault<std::string>("selected_kv_source", "main"));
 }
 
-Status DynamicSparseAttention::ComputeInternal(ComputeContext& context) const {
+Status DynamicSparseAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* query = context.Input<Tensor>(0);
   const Tensor* key = context.Input<Tensor>(1);
   const Tensor* value = context.Input<Tensor>(2);
