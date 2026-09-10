@@ -142,7 +142,7 @@ Status LaunchGatedRMSNormKernel(
     int64_t num_rows,
     int norm_size,
     float epsilon,
-    bool use_silu) {
+    GatedRMSNormActivation activation) {
   if (num_rows == 0) {
     return Status::OK();
   }
@@ -155,34 +155,28 @@ Status LaunchGatedRMSNormKernel(
       output, input, scale, gate, norm_size, epsilon)
 
   if (norm_size <= 64) {
-    if (use_silu) {
+    if (activation == GatedRMSNormActivation::kSilu) {
       LAUNCH_GATED_RMS_NORM(64, true);
     } else {
       LAUNCH_GATED_RMS_NORM(64, false);
     }
   } else if (norm_size <= 128) {
-    if (use_silu) {
+    if (activation == GatedRMSNormActivation::kSilu) {
       LAUNCH_GATED_RMS_NORM(128, true);
     } else {
       LAUNCH_GATED_RMS_NORM(128, false);
     }
   } else if (norm_size <= 256) {
-    if (use_silu) {
+    if (activation == GatedRMSNormActivation::kSilu) {
       LAUNCH_GATED_RMS_NORM(256, true);
     } else {
       LAUNCH_GATED_RMS_NORM(256, false);
     }
-  } else if (norm_size <= 512) {
-    if (use_silu) {
+  } else {
+    if (activation == GatedRMSNormActivation::kSilu) {
       LAUNCH_GATED_RMS_NORM(512, true);
     } else {
       LAUNCH_GATED_RMS_NORM(512, false);
-    }
-  } else {
-    if (use_silu) {
-      LAUNCH_GATED_RMS_NORM(1024, true);
-    } else {
-      LAUNCH_GATED_RMS_NORM(1024, false);
     }
   }
 #undef LAUNCH_GATED_RMS_NORM
@@ -194,7 +188,7 @@ Status LaunchGatedRMSNormKernel(
   template Status LaunchLinearAttentionGateKernel<T>(cudaStream_t, T*, T*, const T*, const T*,  \
                                                      const float*, const float*, int64_t, int); \
   template Status LaunchGatedRMSNormKernel<T>(cudaStream_t, T*, const T*, const T*, const T*,   \
-                                              int64_t, int, float, bool);
+                                              int64_t, int, float, GatedRMSNormActivation);
 
 INSTANTIATE_LINEAR_ATTENTION_GATES(float)
 INSTANTIATE_LINEAR_ATTENTION_GATES(half)

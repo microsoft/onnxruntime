@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/bert/linear_attention_gates_common.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 
@@ -25,7 +26,7 @@ class GatedRMSNorm final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  bool use_silu_;
+  GatedRMSNormActivation activation_;
   float epsilon_;
 };
 

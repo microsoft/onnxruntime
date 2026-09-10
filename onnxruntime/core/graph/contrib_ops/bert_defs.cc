@@ -3648,7 +3648,7 @@ Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
 
 where `gate_activation` is one of:
 - `silu` or `swish`: `z * sigmoid(z)`
-- `sigmoid`: `sigmoid(z)` (used by Qwen3.8-Flash-Next / qwen4_exp output gating)
+- `sigmoid`: `sigmoid(z)`
 
 The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
 length of `scale`; the input's last dimension must be a multiple of `C`, which lets a

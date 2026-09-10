@@ -7,23 +7,9 @@
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 
-#include <string>
-
 namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
-
-namespace {
-bool ParseGatedRMSNormActivation(const std::string& activation) {
-  if (activation == "silu" || activation == "swish") {
-    return true;
-  }
-  if (activation == "sigmoid") {
-    return false;
-  }
-  ORT_THROW("activation must be one of: silu, swish, sigmoid");
-}
-}  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
     LinearAttentionGate,
@@ -176,7 +162,10 @@ Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    let z = f32(" << gate.GetByOffset("base + i") << ");\n"
       << "    let normalized = f32(" << input.GetByOffset("base + i") << ") * inv_rms * f32("
       << scale.GetByOffset("i") << ");\n"
-      << "    " << output.SetByOffset("base + i", std::string("output_element_t(normalized * ") + (use_silu_ ? "(z * stable_sigmoid(z))" : "stable_sigmoid(z)") + ")")
+      << "    "
+      << output.SetByOffset("base + i", std::string("output_element_t(normalized * ") +
+                                            (activation_ == GatedRMSNormActivation::kSilu ? "(z * stable_sigmoid(z))" : "stable_sigmoid(z)") +
+                                            ")")
       << "\n"
       << "  }\n";
 
@@ -184,7 +173,7 @@ Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 GatedRMSNorm::GatedRMSNorm(const OpKernelInfo& info) : WebGpuKernel(info) {
-  use_silu_ = ParseGatedRMSNormActivation(info.GetAttrOrDefault<std::string>("activation", "silu"));
+  activation_ = ParseGatedRMSNormActivationOrThrow(info.GetAttrOrDefault<std::string>("activation", "silu"));
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
 }
 
@@ -215,8 +204,8 @@ Status GatedRMSNorm::ComputeInternal(ComputeContext& context) const {
                                   : norm_size <= 128 ? 128
                                                      : 256;
 
-  GatedRMSNormProgram program{use_silu_};
-  program.CacheHint(use_silu_);
+  GatedRMSNormProgram program{activation_};
+  program.CacheHint(static_cast<int>(activation_));
   program.AddInputs({{input, ProgramTensorMetadataDependency::Type},
                      {scale, ProgramTensorMetadataDependency::Type},
                      {gate, ProgramTensorMetadataDependency::Type}})

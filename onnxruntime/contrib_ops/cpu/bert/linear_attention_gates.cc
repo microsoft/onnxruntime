@@ -4,7 +4,6 @@
 #include "contrib_ops/cpu/bert/linear_attention_gates.h"
 
 #include <cmath>
-#include <string>
 
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
@@ -46,8 +45,6 @@ REGISTER_KERNEL_TYPED(GatedRMSNorm, MLFloat16)
 
 #undef REGISTER_KERNEL_TYPED
 
-namespace {
-
 inline float SigmoidFloat(float value) {
   float output;
   MlasComputeLogistic(&value, &output, 1);
@@ -57,18 +54,6 @@ inline float SigmoidFloat(float value) {
 inline float SoftplusFloat(float value) {
   return value > 0.0f ? value + std::log(std::exp(-value) + 1.0f) : std::log(std::exp(value) + 1.0f);
 }
-
-inline bool ParseGatedRMSNormActivation(const std::string& activation) {
-  if (activation == "silu" || activation == "swish") {
-    return true;
-  }
-  if (activation == "sigmoid") {
-    return false;
-  }
-  ORT_THROW("activation must be one of: silu, swish, sigmoid");
-}
-
-}  // namespace
 
 template <typename T>
 Status LinearAttentionGate<T>::Compute(OpKernelContext* context) const {
@@ -129,7 +114,7 @@ Status LinearAttentionGate<T>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 GatedRMSNorm<T>::GatedRMSNorm(const OpKernelInfo& info) : OpKernel(info) {
-  use_silu_ = ParseGatedRMSNormActivation(info.GetAttrOrDefault<std::string>("activation", "silu"));
+  activation_ = ParseGatedRMSNormActivationOrThrow(info.GetAttrOrDefault<std::string>("activation", "silu"));
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
 }
 
@@ -172,7 +157,7 @@ Status GatedRMSNorm<T>::Compute(OpKernelContext* context) const {
           sum_sq += v * v;
         }
         const float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(norm_size) + epsilon_);
-        if (use_silu_) {
+        if (activation_ == GatedRMSNormActivation::kSilu) {
           for (int64_t i = 0; i < norm_size; ++i) {
             const float z = static_cast<float>(gate_data[offset + i]);
             const float normalized = static_cast<float>(input_data[offset + i]) * inv_rms *

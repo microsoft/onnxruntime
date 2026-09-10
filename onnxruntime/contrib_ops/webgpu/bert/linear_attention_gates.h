@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/bert/linear_attention_gates_common.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -35,13 +36,13 @@ class LinearAttentionGate final : public WebGpuKernel {
 // Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate).
 class GatedRMSNormProgram final : public Program<GatedRMSNormProgram> {
  public:
-  GatedRMSNormProgram(bool use_silu) : Program{"GatedRMSNorm"}, use_silu_(use_silu) {}
+  GatedRMSNormProgram(GatedRMSNormActivation activation) : Program{"GatedRMSNorm"}, activation_(activation) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"norm_size", ProgramUniformVariableDataType::Uint32},
                                           {"epsilon", ProgramUniformVariableDataType::Float32});
 
  private:
-  bool use_silu_;
+  GatedRMSNormActivation activation_;
 };
 
 class GatedRMSNorm final : public WebGpuKernel {
@@ -50,7 +51,7 @@ class GatedRMSNorm final : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:
-  bool use_silu_;
+  GatedRMSNormActivation activation_;
   float epsilon_;
 };
 

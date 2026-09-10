@@ -2329,7 +2329,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   where `gate_activation` is one of:
   - `silu` or `swish`: `z * sigmoid(z)`
-  - `sigmoid`: `sigmoid(z)` (used by Qwen3.8-Flash-Next / qwen4_exp output gating)
+  - `sigmoid`: `sigmoid(z)`
   
   The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
   length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
@@ -7688,5 +7688,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 

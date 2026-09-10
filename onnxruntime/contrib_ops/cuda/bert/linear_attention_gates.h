@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/bert/linear_attention_gates_common.h"
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
@@ -26,7 +27,7 @@ class GatedRMSNorm final : public onnxruntime::cuda::CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  bool use_silu_;
+  GatedRMSNormActivation activation_;
   float epsilon_;
 };
 
