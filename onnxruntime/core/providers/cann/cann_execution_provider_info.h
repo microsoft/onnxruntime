@@ -21,9 +21,13 @@ struct CANNExecutionProviderInfo {
   bool enable_cann_subgraph{false};
   bool dump_graphs{false};
   bool dump_om_model{true};
-  std::string precision_mode;
+  std::string precision_mode_v2;
   std::string op_select_impl_mode;
   std::string optypelist_for_implmode;
+  std::string input_format;
+  std::string dynamic_batch_size;
+  std::string dynamic_image_size;
+  std::string dynamic_dims;
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
 
   static CANNExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
