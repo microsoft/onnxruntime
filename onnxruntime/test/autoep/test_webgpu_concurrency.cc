@@ -5,7 +5,6 @@
 #include <array>
 #include <atomic>
 #include <barrier>
-#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <stdexcept>

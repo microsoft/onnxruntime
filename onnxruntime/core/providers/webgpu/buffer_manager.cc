@@ -550,11 +550,11 @@ void BufferManager::MemCpy(CommandRecordingState& recording, WGPUBuffer src, WGP
 WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, wgpu::BufferUsage usage,
                                  bool initialize_to_zero,
                                  bool submit_zero_initialize) const {
+  auto& cache = GetCacheManager(usage);
   size_t buffer_size;
   WGPUBuffer buffer;
   {
     std::lock_guard<std::mutex> lock{mutex_};
-    auto& cache = GetCacheManager(usage);
     buffer_size = cache.CalculateBufferSize(size);
     buffer = cache.TryAcquireCachedBuffer(buffer_size);
   }
@@ -586,7 +586,7 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
 
   ORT_ENFORCE(buffer, "Failed to create GPU buffer: size=", buffer_size, ", usage=", uint64_t(usage), ".");
 
-  GetCacheManager(usage).RegisterBuffer(buffer, size);
+  cache.RegisterBuffer(buffer, size);
   return buffer;
 }
 

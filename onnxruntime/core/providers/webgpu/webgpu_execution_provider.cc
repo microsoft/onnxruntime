@@ -801,8 +801,6 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
     session_buffer_pool_->Clear();
   }
 
-  prepack_allocator_.reset();
-  session_buffer_pool_.reset();
   recording_.reset();
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   pix_frame_generator_.reset();

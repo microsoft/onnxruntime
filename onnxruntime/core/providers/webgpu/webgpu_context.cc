@@ -423,7 +423,6 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     return Status::OK();
   }
 
-  const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
   CommandRecordingState& recording = ComputeContextBase::BufferManagerAccessor::GetRecording(context);
 
   // validate inputs and outputs are on WebGPU buffers
@@ -681,6 +680,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   const size_t uniform_buffer_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
 
   WGPUBuffer uniform_buffer = nullptr;
+  const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
   if (uniform_buffer_total_size > 0) {
     std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
 

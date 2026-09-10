@@ -217,14 +217,12 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   // A device-free context (compile-only session) gets a no-op allocator: a real GpuBufferAllocator
   // needs a device, and such a session stops before finalization and never allocates.
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
-  // External Session allocations must not overlap Run. Submit clears outside Run so subsequent
-  // Env copies see initialized buffers; defer clears during Run to preserve command batching.
   auto device_alloc = webgpu::CreateWebGpuAllocator(
       device_free,
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
       [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
       false,
-      /*should_submit_zero_initialize=*/[webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); });
+      [webgpu_ep_ptr]() { return !webgpu_ep_ptr->IsRunActive(); });
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // default device allocator
@@ -301,7 +299,7 @@ OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
   auto* factory = static_cast<Factory*>(this_ptr);
   std::lock_guard<std::mutex> lock{factory->creation_mutex_};
   // ORT currently creates the Env transfer first for each factory. This ordering is not an
-  // EP API guarantee; the Env transfer uses local recording and is not bound to a Session.
+  // EP API guarantee; the Env transfer uses the context's Env recording and is not bound to a Session.
   if (!factory->env_transfer_created_) {
     *data_transfer = OrtWebGpuCreateDataTransfer();
     factory->env_transfer_created_ = true;
