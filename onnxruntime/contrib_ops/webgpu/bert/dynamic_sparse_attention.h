@@ -36,7 +36,7 @@ class DynamicSparseAttentionPrepareQueryProgram final : public Program<DynamicSp
       {"rotary_offset", ProgramUniformVariableDataType::Uint32},
       {"rotary_max_position", ProgramUniformVariableDataType::Uint32},
       {"qk_norm_epsilon", ProgramUniformVariableDataType::Float32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+      {"num_workgroups", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool packed_qkv_;
@@ -94,7 +94,7 @@ class DynamicSparseAttentionAppendKvProgram final : public Program<DynamicSparse
       {"rotary_offset", ProgramUniformVariableDataType::Uint32},
       {"rotary_max_position", ProgramUniformVariableDataType::Uint32},
       {"qk_norm_epsilon", ProgramUniformVariableDataType::Float32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+      {"num_workgroups", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool packed_qkv_;
@@ -127,7 +127,8 @@ class DynamicSparseAttentionProgram final : public Program<DynamicSparseAttentio
       {"auxiliary_sequence_length", ProgramUniformVariableDataType::Uint32},
       {"max_selected", ProgramUniformVariableDataType::Uint32},
       {"local_window_size", ProgramUniformVariableDataType::Uint32},
-      {"scale", ProgramUniformVariableDataType::Float32});
+      {"scale", ProgramUniformVariableDataType::Float32},
+      {"num_workgroups", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_selection_;

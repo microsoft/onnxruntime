@@ -19,13 +19,16 @@
 #include "test/util/include/default_providers.h"
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 #include "core/graph/model.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
-#include "test/common/cuda_op_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/test_environment.h"
+#endif
+
+#ifdef USE_CUDA
+#include "test/common/cuda_op_test_utils.h"
 #endif
 
 namespace onnxruntime {
@@ -519,11 +522,13 @@ TEST(DynamicSparseAttentionTest, PrefillAndTokenDecodeFixedCapacityCache_CUDA) {
   }
 }
 
-TEST(DynamicSparseAttentionTest, TokenDecodeWithAliasedCache_CUDA) {
-  auto cuda_ep = DefaultCudaExecutionProvider();
-  if (!cuda_ep) {
-    GTEST_SKIP() << "CUDA EP not available.";
-  }
+#endif  // USE_CUDA
+
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
+namespace {
+
+void RunTokenDecodeWithAliasedCache(std::unique_ptr<IExecutionProvider> ep) {
+  ASSERT_NE(ep, nullptr);
 
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 1;
@@ -577,15 +582,16 @@ TEST(DynamicSparseAttentionTest, TokenDecodeWithAliasedCache_CUDA) {
   ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
   SessionOptions options;
   InferenceSession session(options, GetEnvironment());
-  IExecutionProvider* cuda_ep_ptr = cuda_ep.get();
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+  IExecutionProvider* ep_ptr = ep.get();
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(ep)));
   std::istringstream model_stream(model_data);
   ASSERT_STATUS_OK(session.Load(model_stream));
   ASSERT_STATUS_OK(session.Initialize());
 
-  auto gpu_allocators = cuda_ep_ptr->CreatePreferredAllocators();
+  auto gpu_allocators = ep_ptr->CreatePreferredAllocators();
   auto gpu_allocator = std::find_if(gpu_allocators.begin(), gpu_allocators.end(), [](const auto& allocator) {
     return allocator->Info().device.Type() == OrtDevice::GPU &&
+           allocator->Info().alloc_type != OrtAllocatorType::OrtReadOnlyAllocator &&
            allocator->Info().mem_type == OrtMemTypeDefault;
   });
   ASSERT_NE(gpu_allocator, gpu_allocators.end());
@@ -598,7 +604,7 @@ TEST(DynamicSparseAttentionTest, TokenDecodeWithAliasedCache_CUDA) {
     Tensor cpu_tensor(DataTypeImpl::GetType<Element>(), shape,
                       const_cast<Element*>(values.data()), cpu_allocator->Info());
     Tensor gpu_tensor(DataTypeImpl::GetType<Element>(), shape, allocator);
-    ORT_THROW_IF_ERROR(cuda_ep_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+    ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
     OrtValue result;
     Tensor::InitOrtValue(std::move(gpu_tensor), result);
     return result;
@@ -607,7 +613,7 @@ TEST(DynamicSparseAttentionTest, TokenDecodeWithAliasedCache_CUDA) {
   const TensorShape qkv_shape{batch_size, sequence_length, head_size};
   const TensorShape cache_shape{batch_size, kv_num_heads, cache_capacity, head_size};
   auto query_value = make_gpu_value(std::vector<MLFloat16>(head_size, MLFloat16{0.0f}), qkv_shape);
-  auto key_value = make_gpu_value(std::vector<MLFloat16>(head_size, MLFloat16{0.0f}), qkv_shape);
+  auto key_value = make_gpu_value(std::vector<MLFloat16>(head_size, MLFloat16{2.0f}), qkv_shape);
   auto value_value = make_gpu_value(std::vector<MLFloat16>(head_size, MLFloat16{5.0f}), qkv_shape);
   auto past_key_value =
       make_gpu_value(std::vector<MLFloat16>(cache_capacity * head_size, MLFloat16{0.0f}), cache_shape);
@@ -652,16 +658,34 @@ TEST(DynamicSparseAttentionTest, TokenDecodeWithAliasedCache_CUDA) {
             past_value_value.Get<Tensor>().Data<MLFloat16>());
 
   Tensor cpu_output(DataTypeImpl::GetType<MLFloat16>(), qkv_shape, cpu_allocator);
-  ASSERT_STATUS_OK(cuda_ep_ptr->GetDataTransfer()->CopyTensor(results[0].Get<Tensor>(), cpu_output));
+  ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(results[0].Get<Tensor>(), cpu_output));
   for (MLFloat16 value : cpu_output.DataAsSpan<MLFloat16>()) {
     EXPECT_FLOAT_EQ(value.ToFloat(), 5.0f);
   }
+  Tensor cpu_present_key(DataTypeImpl::GetType<MLFloat16>(), cache_shape, cpu_allocator);
+  ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(results[1].Get<Tensor>(), cpu_present_key));
   Tensor cpu_present_value(DataTypeImpl::GetType<MLFloat16>(), cache_shape, cpu_allocator);
-  ASSERT_STATUS_OK(cuda_ep_ptr->GetDataTransfer()->CopyTensor(results[2].Get<Tensor>(), cpu_present_value));
+  ASSERT_STATUS_OK(ep_ptr->GetDataTransfer()->CopyTensor(results[2].Get<Tensor>(), cpu_present_value));
   for (int64_t i = 0; i < head_size; ++i) {
+    EXPECT_FLOAT_EQ(cpu_present_key.Data<MLFloat16>()[i].ToFloat(), 0.0f);
+    EXPECT_FLOAT_EQ(cpu_present_key.Data<MLFloat16>()[head_size + i].ToFloat(), 2.0f);
     EXPECT_FLOAT_EQ(cpu_present_value.Data<MLFloat16>()[i].ToFloat(), 1.0f);
     EXPECT_FLOAT_EQ(cpu_present_value.Data<MLFloat16>()[head_size + i].ToFloat(), 5.0f);
   }
+}
+
+}  // namespace
+#endif  // defined(USE_CUDA) || defined(USE_WEBGPU)
+
+#ifdef USE_CUDA
+
+TEST(DynamicSparseAttentionTest, TokenDecodeWithAliasedCache_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  RunTokenDecodeWithAliasedCache(std::move(cuda_ep));
 }
 
 TEST(DynamicSparseAttentionTest, RejectsAuxiliaryInputsInMainMode_CUDA) {
@@ -794,6 +818,15 @@ TEST(DynamicSparseAttentionTest, RejectsUnknownModeAndSource_CUDA) {
 #endif  // USE_CUDA
 
 #ifdef USE_WEBGPU
+
+TEST(DynamicSparseAttentionTest, TokenDecodeWithAliasedCache_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  RunTokenDecodeWithAliasedCache(std::move(webgpu_ep));
+}
 
 TEST(DynamicSparseAttentionTest, SelectedOnlyGqaCacheAppend_Float16_WebGPU) {
   auto webgpu_ep = DefaultWebGpuExecutionProvider();

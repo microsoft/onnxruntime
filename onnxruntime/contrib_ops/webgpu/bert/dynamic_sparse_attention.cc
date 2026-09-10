@@ -91,11 +91,16 @@ Status DynamicSparseAttentionPrepareQueryProgram::GenerateShaderCode(ShaderHelpe
   const auto& prepared_query =
       shader.AddOutput("prepared_query", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
+  if (use_qk_norm_) {
+    shader.AdditionalImplementation()
+        << "var<workgroup> q_sumsq_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n"
+        << "var<workgroup> q_inv_rms: f32;\n";
+  }
+
   auto& body = shader.MainFunctionBody();
-  body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.dispatch_size")
-       << "  let d = global_idx % uniforms.head_size;\n"
-       << "  let h = (global_idx / uniforms.head_size) % uniforms.num_heads;\n"
-       << "  let row = global_idx / (uniforms.head_size * uniforms.num_heads);\n"
+  body << "  if (workgroup_idx >= uniforms.num_workgroups) { return; }\n"
+       << "  let h = workgroup_idx % uniforms.num_heads;\n"
+       << "  let row = workgroup_idx / uniforms.num_heads;\n"
        << "  let s = row % uniforms.sequence_length;\n"
        << "  let b = row / uniforms.sequence_length;\n";
   if (packed_qkv_) {
@@ -103,50 +108,75 @@ Status DynamicSparseAttentionPrepareQueryProgram::GenerateShaderCode(ShaderHelpe
   } else {
     body << "  let q_base = row * uniforms.query_hidden_size + h * uniforms.head_size;\n";
   }
-  body << "  var q_inv_rms = 1.0;\n";
+  body << "  let output_base = (row * uniforms.num_heads + h) * uniforms.head_size;\n";
   if (use_qk_norm_) {
     body << "  var q_sumsq = 0.0;\n"
-         << "  for (var c = 0u; c < uniforms.head_size; c++) {\n"
+         << "  for (var c = local_idx; c < uniforms.head_size; c += "
+         << kAttentionWorkgroupSize << "u) {\n"
          << "    let qv = f32(" << query.GetByOffset("q_base + c") << ");\n"
          << "    q_sumsq += qv * qv;\n"
          << "  }\n"
-         << "  q_inv_rms = inverseSqrt(q_sumsq / f32(uniforms.head_size) + uniforms.qk_norm_epsilon);\n";
+         << "  q_sumsq_partials[local_idx] = q_sumsq;\n"
+         << "  workgroupBarrier();\n"
+         << "  for (var stride = " << (kAttentionWorkgroupSize / 2)
+         << "u; stride > 0u; stride >>= 1u) {\n"
+         << "    if (local_idx < stride) {\n"
+         << "      q_sumsq_partials[local_idx] += q_sumsq_partials[local_idx + stride];\n"
+         << "    }\n"
+         << "    workgroupBarrier();\n"
+         << "  }\n"
+         << "  if (local_idx == 0u) {\n"
+         << "    q_inv_rms = inverseSqrt(q_sumsq_partials[0] / f32(uniforms.head_size)"
+            " + uniforms.qk_norm_epsilon);\n"
+         << "  }\n"
+         << "  workgroupBarrier();\n";
+  } else {
+    body << "  let q_inv_rms = 1.0;\n";
   }
-  body << "  var q_value = f32(" << query.GetByOffset("q_base + d") << ") * q_inv_rms;\n";
+  body << "  for (var d = local_idx; d < uniforms.head_size; d += "
+       << kAttentionWorkgroupSize << "u) {\n"
+       << "    var q_value = f32(" << query.GetByOffset("q_base + d") << ") * q_inv_rms;\n";
   if (use_qk_norm_) {
-    body << "  q_value *= f32(" << q_norm_weight->GetByOffset("d") << ");\n";
+    body << "    q_value *= f32(" << q_norm_weight->GetByOffset("d") << ");\n";
   }
   if (do_rotary_) {
-    body << "  if (d >= uniforms.rotary_offset && d < uniforms.rotary_offset + uniforms.rotary_dim) {\n"
-         << "    let rotary_d = d - uniforms.rotary_offset;\n"
-         << "    let half_dim = uniforms.rotary_dim / 2u;\n";
+    body << "    if (d >= uniforms.rotary_offset && d < uniforms.rotary_offset + uniforms.rotary_dim) {\n"
+         << "      let rotary_d = d - uniforms.rotary_offset;\n"
+         << "      let half_dim = uniforms.rotary_dim / 2u;\n";
     if (rotary_interleaved_) {
-      body << "    let pair_d = uniforms.rotary_offset + (rotary_d ^ 1u);\n"
-           << "    let cache_d = rotary_d / 2u;\n"
-           << "    let first = (rotary_d & 1u) == 0u;\n";
+      body << "      let pair_d = uniforms.rotary_offset + (rotary_d ^ 1u);\n"
+           << "      let cache_d = rotary_d / 2u;\n"
+           << "      let first = (rotary_d & 1u) == 0u;\n";
     } else {
-      body << "    let first = rotary_d < half_dim;\n"
-           << "    let pair_d = uniforms.rotary_offset + select(rotary_d - half_dim, rotary_d + half_dim, first);\n"
-           << "    let cache_d = rotary_d % half_dim;\n";
+      body << "      let first = rotary_d < half_dim;\n"
+           << "      let pair_d = uniforms.rotary_offset"
+              " + select(rotary_d - half_dim, rotary_d + half_dim, first);\n"
+           << "      let cache_d = rotary_d % half_dim;\n";
     }
-    body << "    var q_pair = f32(" << query.GetByOffset("q_base + pair_d") << ") * q_inv_rms;\n";
+    body << "      var q_pair = f32(" << query.GetByOffset("q_base + pair_d") << ") * q_inv_rms;\n";
     if (use_qk_norm_) {
-      body << "    q_pair *= f32(" << q_norm_weight->GetByOffset("pair_d") << ");\n";
+      body << "      q_pair *= f32(" << q_norm_weight->GetByOffset("pair_d") << ");\n";
     }
     if (has_position_ids_) {
-      body << "    let position = " << position_ids->GetByOffset("row") << ";\n";
+      body << "      let position = " << position_ids->GetByOffset("row") << ";\n";
     } else {
-      body << "    let position = " << seqlens_k.GetByOffset("b")
+      body << "      let position = " << seqlens_k.GetByOffset("b")
            << " + 1i - i32(uniforms.sequence_length) + i32(s);\n";
     }
-    body << "    if (position >= 0i && position < i32(uniforms.rotary_max_position)) {\n"
-         << "      let cosine = f32(" << cos_cache->GetByOffset("u32(position) * half_dim + cache_d") << ");\n"
-         << "      let sine = f32(" << sin_cache->GetByOffset("u32(position) * half_dim + cache_d") << ");\n"
-         << "      q_value = q_value * cosine + select(q_pair * sine, -q_pair * sine, first);\n"
+    body << "      if (position >= 0i && position < i32(uniforms.rotary_max_position)) {\n"
+         << "        let cosine = f32("
+         << cos_cache->GetByOffset("u32(position) * half_dim + cache_d") << ");\n"
+         << "        let sine = f32("
+         << sin_cache->GetByOffset("u32(position) * half_dim + cache_d") << ");\n"
+         << "        q_value = q_value * cosine + select(q_pair * sine, -q_pair * sine, first);\n"
+         << "      }\n"
          << "    }\n"
-         << "  }\n";
+         << "    " << prepared_query.SetByOffset("output_base + d", "prepared_query_element_t(q_value)") << "\n";
   }
-  body << "  " << prepared_query.SetByOffset("global_idx", "prepared_query_element_t(q_value)") << "\n";
+  if (!do_rotary_) {
+    body << "    " << prepared_query.SetByOffset("output_base + d", "prepared_query_element_t(q_value)") << "\n";
+  }
+  body << "  }\n";
   return Status::OK();
 }
 
@@ -211,11 +241,16 @@ Status DynamicSparseAttentionAppendKvProgram::GenerateShaderCode(ShaderHelper& s
   const auto& present_value =
       shader.AddOutput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
+  if (use_qk_norm_) {
+    shader.AdditionalImplementation()
+        << "var<workgroup> k_sumsq_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n"
+        << "var<workgroup> k_inv_rms: f32;\n";
+  }
+
   auto& body = shader.MainFunctionBody();
-  body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.dispatch_size")
-       << "  let d = global_idx % uniforms.head_size;\n"
-       << "  let kv_head = (global_idx / uniforms.head_size) % uniforms.kv_num_heads;\n"
-       << "  let row = global_idx / (uniforms.head_size * uniforms.kv_num_heads);\n"
+  body << "  if (workgroup_idx >= uniforms.num_workgroups) { return; }\n"
+       << "  let kv_head = workgroup_idx % uniforms.kv_num_heads;\n"
+       << "  let row = workgroup_idx / uniforms.kv_num_heads;\n"
        << "  let s = row % uniforms.sequence_length;\n"
        << "  let b = row / uniforms.sequence_length;\n"
        << "  let destination = " << seqlens_k.GetByOffset("b")
@@ -230,62 +265,81 @@ Status DynamicSparseAttentionAppendKvProgram::GenerateShaderCode(ShaderHelper& s
     body << "  let key_base = row * uniforms.kv_hidden_size + kv_head * uniforms.head_size;\n"
          << "  let value_base = key_base;\n";
   }
-  body << "  var k_inv_rms = 1.0;\n";
   if (use_qk_norm_) {
     body << "  var k_sumsq = 0.0;\n"
-         << "  for (var c = 0u; c < uniforms.head_size; c++) {\n"
+         << "  for (var c = local_idx; c < uniforms.head_size; c += "
+         << kAttentionWorkgroupSize << "u) {\n"
          << "    let kv = f32("
          << (packed_qkv_ ? query->GetByOffset("key_base + c") : key->GetByOffset("key_base + c"))
          << ");\n"
          << "    k_sumsq += kv * kv;\n"
          << "  }\n"
-         << "  k_inv_rms = inverseSqrt(k_sumsq / f32(uniforms.head_size) + uniforms.qk_norm_epsilon);\n";
+         << "  k_sumsq_partials[local_idx] = k_sumsq;\n"
+         << "  workgroupBarrier();\n"
+         << "  for (var stride = " << (kAttentionWorkgroupSize / 2)
+         << "u; stride > 0u; stride >>= 1u) {\n"
+         << "    if (local_idx < stride) {\n"
+         << "      k_sumsq_partials[local_idx] += k_sumsq_partials[local_idx + stride];\n"
+         << "    }\n"
+         << "    workgroupBarrier();\n"
+         << "  }\n"
+         << "  if (local_idx == 0u) {\n"
+         << "    k_inv_rms = inverseSqrt(k_sumsq_partials[0] / f32(uniforms.head_size)"
+            " + uniforms.qk_norm_epsilon);\n"
+         << "  }\n"
+         << "  workgroupBarrier();\n";
+  } else {
+    body << "  let k_inv_rms = 1.0;\n";
   }
-  body << "  var key_value = f32("
+  body << "  for (var d = local_idx; d < uniforms.head_size; d += "
+       << kAttentionWorkgroupSize << "u) {\n"
+       << "    var key_value = f32("
        << (packed_qkv_ ? query->GetByOffset("key_base + d") : key->GetByOffset("key_base + d"))
        << ") * k_inv_rms;\n";
   if (use_qk_norm_) {
-    body << "  key_value *= f32(" << k_norm_weight->GetByOffset("d") << ");\n";
+    body << "    key_value *= f32(" << k_norm_weight->GetByOffset("d") << ");\n";
   }
   if (do_rotary_) {
-    body << "  if (d >= uniforms.rotary_offset && d < uniforms.rotary_offset + uniforms.rotary_dim) {\n"
-         << "    let rotary_d = d - uniforms.rotary_offset;\n"
-         << "    let half_dim = uniforms.rotary_dim / 2u;\n";
+    body << "    if (d >= uniforms.rotary_offset && d < uniforms.rotary_offset + uniforms.rotary_dim) {\n"
+         << "      let rotary_d = d - uniforms.rotary_offset;\n"
+         << "      let half_dim = uniforms.rotary_dim / 2u;\n";
     if (rotary_interleaved_) {
-      body << "    let pair_d = uniforms.rotary_offset + (rotary_d ^ 1u);\n"
-           << "    let cache_d = rotary_d / 2u;\n"
-           << "    let first = (rotary_d & 1u) == 0u;\n";
+      body << "      let pair_d = uniforms.rotary_offset + (rotary_d ^ 1u);\n"
+           << "      let cache_d = rotary_d / 2u;\n"
+           << "      let first = (rotary_d & 1u) == 0u;\n";
     } else {
-      body << "    let first = rotary_d < half_dim;\n"
-           << "    let pair_d = uniforms.rotary_offset + select(rotary_d - half_dim, rotary_d + half_dim, first);\n"
-           << "    let cache_d = rotary_d % half_dim;\n";
+      body << "      let first = rotary_d < half_dim;\n"
+           << "      let pair_d = uniforms.rotary_offset"
+              " + select(rotary_d - half_dim, rotary_d + half_dim, first);\n"
+           << "      let cache_d = rotary_d % half_dim;\n";
     }
-    body << "    var key_pair = f32("
+    body << "      var key_pair = f32("
          << (packed_qkv_ ? query->GetByOffset("key_base + pair_d") : key->GetByOffset("key_base + pair_d"))
          << ") * k_inv_rms;\n";
     if (use_qk_norm_) {
-      body << "    key_pair *= f32(" << k_norm_weight->GetByOffset("pair_d") << ");\n";
+      body << "      key_pair *= f32(" << k_norm_weight->GetByOffset("pair_d") << ");\n";
     }
     if (has_position_ids_) {
-      body << "    let rotary_position = " << position_ids->GetByOffset("row") << ";\n";
+      body << "      let rotary_position = " << position_ids->GetByOffset("row") << ";\n";
     } else {
-      body << "    let rotary_position = destination;\n";
+      body << "      let rotary_position = destination;\n";
     }
-    body << "    if (rotary_position >= 0i && rotary_position < i32(uniforms.rotary_max_position)) {\n"
-         << "      let cosine = f32("
+    body << "      if (rotary_position >= 0i && rotary_position < i32(uniforms.rotary_max_position)) {\n"
+         << "        let cosine = f32("
          << cos_cache->GetByOffset("u32(rotary_position) * half_dim + cache_d") << ");\n"
-         << "      let sine = f32("
+         << "        let sine = f32("
          << sin_cache->GetByOffset("u32(rotary_position) * half_dim + cache_d") << ");\n"
-         << "      key_value = key_value * cosine + select(key_pair * sine, -key_pair * sine, first);\n"
-         << "    }\n"
-         << "  }\n";
+         << "        key_value = key_value * cosine + select(key_pair * sine, -key_pair * sine, first);\n"
+         << "      }\n"
+         << "    }\n";
   }
   const std::string value_expression =
       packed_qkv_ ? query->GetByOffset("value_base + d") : value->GetByOffset("value_base + d");
-  body << "  let cache_offset = ((b * uniforms.kv_num_heads + kv_head) * uniforms.cache_capacity"
+  body << "    let cache_offset = ((b * uniforms.kv_num_heads + kv_head) * uniforms.cache_capacity"
        << " + u32(destination)) * uniforms.head_size + d;\n"
-       << "  " << present_key.SetByOffset("cache_offset", "present_key_element_t(key_value)") << "\n"
-       << "  " << present_value.SetByOffset("cache_offset", value_expression) << "\n";
+       << "    " << present_key.SetByOffset("cache_offset", "present_key_element_t(key_value)") << "\n"
+       << "    " << present_value.SetByOffset("cache_offset", value_expression) << "\n"
+       << "  }\n";
   return Status::OK();
 }
 
@@ -317,7 +371,8 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
   shader.AdditionalImplementation()
       << "var<workgroup> dot_partials: array<f32, " << kAttentionWorkgroupSize << ">;\n";
   auto& body = shader.MainFunctionBody();
-  body << "  let head = workgroup_idx % uniforms.num_heads;\n"
+  body << "  if (workgroup_idx >= uniforms.num_workgroups) { return; }\n"
+       << "  let head = workgroup_idx % uniforms.num_heads;\n"
        << "  let row = workgroup_idx / uniforms.num_heads;\n"
        << "  let s = row % uniforms.sequence_length;\n"
        << "  let b = row / uniforms.sequence_length;\n"
@@ -373,33 +428,32 @@ Status DynamicSparseAttentionProgram::GenerateShaderCode(ShaderHelper& shader) c
   if (local_plus_selected_) {
     body << "  let local_start = max(0i, query_position - i32(uniforms.local_window_size) + 1i);\n"
          << "  let local_end = min(query_position, min(total_length - 1i, i32(uniforms.cache_capacity) - 1i));\n"
-         << "  for (var local_offset = 0u; local_offset < uniforms.local_window_size; local_offset++) {\n"
-         << "    let index = local_start + i32(local_offset);\n"
-         << "    let safe_index = u32(clamp(index, 0i, i32(uniforms.cache_capacity) - 1i));\n";
+         << "  for (var index = local_start; index <= local_end; index++) {\n"
+         << "    let safe_index = u32(index);\n";
     emit_candidate(main_key, main_value,
-                   "query_position >= 0i && total_length > 0i && index <= local_end",
+                   "index >= 0i && index < i32(uniforms.cache_capacity)",
                    "((b * uniforms.kv_num_heads + kv_head) * uniforms.cache_capacity + safe_index)"
                    " * uniforms.head_size");
     body << "  }\n";
   }
 
   if (has_selection_) {
-    body << "  let selected_count = " << selected_counts->GetByOffset("row") << ";\n"
-         << "  for (var i = 0u; i < uniforms.max_selected; i++) {\n"
+    body << "  let selected_count_i32 = " << selected_counts->GetByOffset("row") << ";\n"
+         << "  let selected_count = u32(clamp(selected_count_i32, 0i, i32(uniforms.max_selected)));\n"
+         << "  for (var i = 0u; i < selected_count; i++) {\n"
          << "    let selected_index = "
          << selected_indices->GetByOffset("row * uniforms.max_selected + i") << ";\n";
     if (selected_from_auxiliary_) {
       body << "    let safe_index = u32(clamp(selected_index, 0i,"
               " i32(uniforms.auxiliary_sequence_length) - 1i));\n";
       emit_candidate(*auxiliary_key, has_auxiliary_value_ ? *auxiliary_value : *auxiliary_key,
-                     "i32(i) < selected_count && selected_index >= 0i"
-                     " && selected_index < i32(uniforms.auxiliary_sequence_length)",
+                     "selected_index >= 0i && selected_index < i32(uniforms.auxiliary_sequence_length)",
                      "((b * uniforms.kv_num_heads + kv_head) * uniforms.auxiliary_sequence_length"
                      " + safe_index) * uniforms.head_size");
     } else {
       body << "    let safe_index = u32(clamp(selected_index, 0i, i32(uniforms.cache_capacity) - 1i));\n";
       emit_candidate(main_key, main_value,
-                     "i32(i) < selected_count && selected_index >= 0i && selected_index < total_length"
+                     "selected_index >= 0i && selected_index < total_length"
                      " && selected_index <= query_position"
                      " && selected_index < i32(uniforms.cache_capacity)",
                      "((b * uniforms.kv_num_heads + kv_head) * uniforms.cache_capacity"
@@ -580,8 +634,9 @@ Status DynamicSparseAttention::ComputeInternal(ComputeContext& context) const {
       past_key != nullptr && past_key->DataRaw() == present_key_output->DataRaw();
   const bool past_value_aliases_present =
       past_value != nullptr && past_value->DataRaw() == present_value_output->DataRaw();
-  const uint32_t query_elements = narrow<uint32_t>(query_elements_64);
   const uint32_t cache_elements = narrow<uint32_t>(cache_elements_64);
+  const uint32_t query_workgroups = narrow<uint32_t>(
+      static_cast<uint64_t>(parameters.batch_size) * parameters.sequence_length * parameters.num_heads);
   const bool has_position_ids = parameters.do_rotary && position_ids != nullptr;
 
   DynamicSparseAttentionPrepareQueryProgram prepare_query_program(
@@ -616,9 +671,10 @@ Status DynamicSparseAttention::ComputeInternal(ComputeContext& context) const {
           {narrow<uint32_t>(parameters.rotary_offset)},
           {narrow<uint32_t>(parameters.rotary_max_position)},
           {parameters.qk_norm_epsilon},
-          {query_elements},
+          {query_workgroups},
       })
-      .SetDispatchGroupSize((query_elements + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+      .SetDispatchGroupSize(query_workgroups)
+      .SetWorkgroupSize(kAttentionWorkgroupSize);
   ORT_RETURN_IF_ERROR(context.RunProgram(prepare_query_program));
 
   const bool initialize_key = !past_key_aliases_present;
@@ -647,12 +703,11 @@ Status DynamicSparseAttention::ComputeInternal(ComputeContext& context) const {
     ORT_RETURN_IF_ERROR(context.RunProgram(initialize_cache_program));
   }
 
-  const uint64_t append_elements_64 =
-      static_cast<uint64_t>(parameters.batch_size) * parameters.sequence_length *
-      parameters.kv_num_heads * parameters.head_size;
-  ORT_RETURN_IF_NOT(append_elements_64 <= std::numeric_limits<uint32_t>::max(),
+  const uint64_t append_workgroups_64 =
+      static_cast<uint64_t>(parameters.batch_size) * parameters.sequence_length * parameters.kv_num_heads;
+  ORT_RETURN_IF_NOT(append_workgroups_64 <= std::numeric_limits<uint32_t>::max(),
                     "DynamicSparseAttention (WebGPU): KV append dispatch exceeds WebGPU bounds.");
-  const uint32_t append_elements = narrow<uint32_t>(append_elements_64);
+  const uint32_t append_workgroups = narrow<uint32_t>(append_workgroups_64);
   DynamicSparseAttentionAppendKvProgram append_kv_program(
       parameters.is_packed_qkv, parameters.use_qk_norm, parameters.do_rotary,
       parameters.rotary_interleaved, has_position_ids);
@@ -697,9 +752,10 @@ Status DynamicSparseAttention::ComputeInternal(ComputeContext& context) const {
           {narrow<uint32_t>(parameters.rotary_offset)},
           {narrow<uint32_t>(parameters.rotary_max_position)},
           {parameters.qk_norm_epsilon},
-          {append_elements},
+          {append_workgroups},
       })
-      .SetDispatchGroupSize((append_elements + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+      .SetDispatchGroupSize(append_workgroups)
+      .SetWorkgroupSize(kAttentionWorkgroupSize);
   ORT_RETURN_IF_ERROR(context.RunProgram(append_kv_program));
 
   const bool selected_from_auxiliary =
@@ -747,8 +803,9 @@ Status DynamicSparseAttention::ComputeInternal(ComputeContext& context) const {
           {narrow<uint32_t>(parameters.max_selected)},
           {narrow<uint32_t>(std::max(parameters.local_window_size, 0))},
           {parameters.scale},
+          {query_workgroups},
       })
-      .SetDispatchGroupSize(parameters.batch_size * parameters.sequence_length * parameters.num_heads)
+      .SetDispatchGroupSize(query_workgroups)
       .SetWorkgroupSize(kAttentionWorkgroupSize);
   return context.RunProgram(attention_program);
 }
