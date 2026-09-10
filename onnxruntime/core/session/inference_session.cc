@@ -4,7 +4,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
-#include <charconv>
 #include <memory>
 #include <sstream>
 #include <list>
@@ -1170,9 +1169,13 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
+#if defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
+#endif
   ORT_TRY {
+#if defined(ORT_USE_TELEMETRY)
     env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+#endif
 
     // clang-format off
     ORT_TELEMETRY_CAPTURE_STATUS_BEGIN(status)
@@ -1213,7 +1216,9 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     session_profiler_.EndTimeAndRecordEvent(profiling::SESSION_EVENT, event_name, tp);
   }
 
+#if defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, ORT_TELEMETRY_DURATION_US(tp));
+#endif
 
   return status;
 }
@@ -2114,9 +2119,11 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
+#if defined(ORT_USE_TELEMETRY)
   const Env& env = Env::Default();
   const TimePoint tp = ORT_TELEMETRY_TIME_POINT();
   env.GetTelemetryProvider().LogModelLoadStart(session_id_);
+#endif
 
   Status status = Status::OK();
   // clang-format off
@@ -2148,15 +2155,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
     const auto* fbs_ort_model_version = fbs_session->ort_version();
     ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
 
-    int model_version = 0;
-    const std::string_view model_version_string = fbs_ort_model_version->string_view();
-    const auto [model_version_end, model_version_error] =
-        std::from_chars(model_version_string.data(),
-                        model_version_string.data() + model_version_string.size(),
-                        model_version);
-    ORT_RETURN_IF(model_version_error != std::errc{} ||
-                      model_version_end != model_version_string.data() + model_version_string.size(),
-                  "Invalid ORT format model version [", model_version_string, "].");
+    const auto model_version = std::stoi(fbs_ort_model_version->str());
     const bool is_supported = IsOrtModelVersionSupported(model_version);
 
     OrtFormatLoadOptions load_options{};
@@ -2256,7 +2255,9 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   ORT_TELEMETRY_CAPTURE_STATUS_END();
   // clang-format on
 
+#if defined(ORT_USE_TELEMETRY)
   env.GetTelemetryProvider().LogModelLoadEnd(session_id_, status, ORT_TELEMETRY_DURATION_US(tp));
+#endif
   return status;
 }
 
@@ -2633,7 +2634,9 @@ common::Status InferenceSession::Initialize() {
     if (session_profiler_.IsEnabled()) {
       start_time = session_profiler_.Start();
     }
+#if defined(ORT_USE_TELEMETRY)
     Env::Default().GetTelemetryProvider().LogSessionCreationStart(session_id_);
+#endif
     return start_time;
   };
 
@@ -3071,8 +3074,8 @@ common::Status InferenceSession::Initialize() {
       if (session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1") {
         LOGS(*session_logger_, INFO)
             << "Compile-only session: skipping session-state finalization. The session is not runnable.";
-        LogSessionCreationTelemetry(graph, model_weight_type, model_graph_hash, model_weight_hash);
 #if defined(ORT_USE_TELEMETRY)
+        LogSessionCreationTelemetry(graph, model_weight_type, model_graph_hash, model_weight_hash);
         return Status::OK();
 #else
         return RecordSessionCreationEndTelemetry(tp, status);
@@ -3149,7 +3152,9 @@ common::Status InferenceSession::Initialize() {
       session_state_->PruneRemovableAttributes();
 
       // and log telemetry
+#if defined(ORT_USE_TELEMETRY)
       LogSessionCreationTelemetry(graph, model_weight_type, model_graph_hash, model_weight_hash);
+#endif
 
       LOGS(*session_logger_, INFO) << "Session successfully initialized.";
       ORT_TELEMETRY_RETURN_OK();
@@ -4576,8 +4581,10 @@ common::Status InferenceSession::RecordSessionCreationEndTelemetry(const TimePoi
     }
   }
 
+#if defined(ORT_USE_TELEMETRY)
   Env::Default().GetTelemetryProvider().LogSessionCreationEnd(
       session_id_, status, ORT_TELEMETRY_DURATION_US(tp));
+#endif
   return status;
 }
 
