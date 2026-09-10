@@ -128,6 +128,7 @@ bool FileExist(const std::string& file_name);
 void GenerateHashValue(const std::string string, HashValue& hash_value);
 bool is_dynamic_shape(const aclmdlIODims& dims);
 std::string MatchFile(const std::string& file_name);
+Status SaveFile(const std::string& file_name, const ge::ModelBufferData& model);
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
 bool GetRepeatInitFlag();
 void SetRepeatInitFlag(bool val);

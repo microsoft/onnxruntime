@@ -5,6 +5,9 @@
 #include <unistd.h>
 #include <algorithm>
 #include <string>
+#include <gsl/util>
+#include <system_error>
+#include <random>
 
 #include "core/providers/cann/cann_utils.h"
 
@@ -242,6 +245,42 @@ std::string MatchFile(const std::string& file_name) {
     }
   }
   return "";
+}
+
+Status SaveFile(const std::string& file_name, const ge::ModelBufferData& model) {
+  try {
+    const auto file_dir = fs::absolute(file_name).parent_path();
+
+    fs::path tmp_dir;
+    std::random_device random;
+    bool created = false;
+
+    // MatchFile does not perform subdirectory lookup
+    for (int attempt = 0; attempt < 64 && !created; ++attempt) {
+      tmp_dir = file_dir / (".ort-cann-tmp-" + std::to_string(random()));
+      created = fs::create_directory(tmp_dir);
+    }
+
+    ORT_RETURN_IF_NOT(created, "Could not create a temporary model directory in ", file_dir.string());
+
+    auto cleanup = gsl::finally([&tmp_dir] {
+      std::error_code ec;
+      fs::remove_all(tmp_dir, ec);
+    });
+
+    const auto tmp_file_name = (tmp_dir / fs::path(file_name).filename()).string();
+    CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(tmp_file_name.c_str(), model));
+
+    for (const auto& entry : fs::directory_iterator(tmp_dir)) {
+      if (entry.is_regular_file() && entry.path().extension() == ".om") {
+        fs::rename(entry.path(), file_dir / entry.path().filename());
+      }
+    }
+  } catch (const std::exception& e) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to save model: ", e.what());
+  }
+
+  return Status::OK();
 }
 
 static bool repeat_acl_init_flag = false;

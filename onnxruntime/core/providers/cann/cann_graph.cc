@@ -6,6 +6,7 @@
 #include <set>
 
 #include "core/providers/cann/cann_graph.h"
+#include "core/providers/cann/cann_utils.h"
 
 namespace onnxruntime {
 namespace cann {
@@ -107,7 +108,7 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
     if (!info.optypelist_for_implmode.empty())
       options.emplace(ge::ir_option::OPTYPELIST_FOR_IMPLMODE, info.optypelist_for_implmode.c_str());
 
-    CANN_CALL_THROW(ge::aclgrphBuildInitialize(options));
+    CANN_GRAPH_CALL_THROW(ge::aclgrphBuildInitialize(options));
   });
 
   std::map<ge::AscendString, ge::AscendString> options;
@@ -115,7 +116,7 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
   CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphBuildModel(graph, options, model));
 
   if (info.dump_om_model) {
-    CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(file_name.c_str(), model));
+    return SaveFile(file_name, model);
   }
 
   return Status::OK();
