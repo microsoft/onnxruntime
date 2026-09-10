@@ -1,0 +1,199 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// SparsePagedAttention — partial attention over the paged main K/V cache.
+//
+// One workgroup owns one (token, head) pair and walks its candidate list:
+//
+//   candidates [0, local_count)                  local window positions
+//   candidates [local_count, local_count + selected_count)
+//                                                externally selected positions
+//
+// local_count is only non-zero in 'local_plus_selected' mode; selected entries
+// are only present when the selection comes from the main cache. The loop runs
+// exactly candidate_count times — bounded by the input shapes and the
+// device-resident selected_counts, and never truncated.
+//
+// The running softmax state (max, denominator) and the value accumulator are
+// kept in FP32 and are written out alongside the accumulator so the finalize
+// stage can merge this partial state with the auxiliary partial state into one
+// joint softmax.
+//
+// Every caller-owned i32 (selected index, block table entry) is validated
+// before conversion to u32, and invalid, out-of-range, non-causal, or unmapped
+// positions are ignored rather than clamped, matching the CUDA kernel.
+//
+// Layout:
+//   query                   : (token_count, num_heads * head_size)
+//   key_cache / value_cache : (num_blocks, block_size, kv_num_heads, head_size)
+//   token_meta              : (token_count, 4)
+//   block_table             : (batch_size, max_num_blocks_per_seq)
+//   selected_indices        : (token_count, max_selected_entries)
+//   selected_counts         : (token_count,)
+//   partial                 : (token_count, num_heads, head_size + 2)
+//
+// selected_indices / selected_counts are only bound when the selection applies
+// to the main cache, so they are read with raw indexing.
+
+#param qkv_head_size
+#param is_causal
+#param use_local_window
+#param use_selected
+#param dedup_selected
+
+#use .getByOffset .setByOffset
+
+const head_size: u32 = qkv_head_size;
+const negative_infinity: f32 = -3.4028234663852886e38;
+
+var<workgroup> q_shared: array<f32, head_size>;
+var<workgroup> accumulator: array<f32, head_size>;
+var<workgroup> reduction: array<f32, workgroup_size_x>;
+
+$MAIN {
+  if (workgroup_idx >= uniforms.workgroup_count) {
+    return;
+  }
+
+  let token_idx = workgroup_idx / uniforms.num_heads;
+  let head_idx = workgroup_idx % uniforms.num_heads;
+  let kv_head_idx = head_idx / (uniforms.num_heads / uniforms.kv_num_heads);
+
+  // token_meta is produced by SparsePagedAttentionTokenMeta and is already
+  // sanitized, so the batch id can be converted to u32 directly.
+  let meta_base = token_idx * 4u;
+  let batch_idx = u32(token_meta.getByOffset(meta_base));
+  let query_position = token_meta.getByOffset(meta_base + 1u);
+  let main_length = token_meta.getByOffset(meta_base + 2u);
+
+  let query_base = (token_idx * uniforms.num_heads + head_idx) * head_size;
+  for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+    q_shared[c] = f32(query.getByOffset(query_base + c));
+    accumulator[c] = 0.0;
+  }
+
+  var local_begin: i32 = 0;
+  var local_end: i32 = -1;
+#if use_local_window && !is_causal
+  local_end = main_length - 1;
+#endif
+#if use_local_window && is_causal
+  local_end = query_position;
+#endif
+#if use_local_window
+  if (uniforms.local_window_size > 0u) {
+    local_begin = max(0, query_position - i32(uniforms.local_window_size) + 1);
+  }
+#endif
+
+  var local_count: i32 = 0;
+  if (local_end >= local_begin) {
+    local_count = local_end - local_begin + 1;
+  }
+
+  var selected_count: i32 = 0;
+#if use_selected
+  selected_count = clamp(selected_counts[token_idx], 0, i32(uniforms.max_selected_entries));
+#endif
+
+  let candidate_count = u32(local_count + selected_count);
+  var running_max: f32 = negative_infinity;
+  var running_sum: f32 = 0.0;
+  var has_contribution = false;
+  workgroupBarrier();
+
+  for (var candidate: u32 = 0u; candidate < candidate_count; candidate = candidate + 1u) {
+    let is_local = i32(candidate) < local_count;
+    var logical_position: i32 = -1;
+    if (is_local) {
+      logical_position = local_begin + i32(candidate);
+    }
+#if use_selected
+    if (!is_local) {
+      let selected_slot = candidate - u32(local_count);
+      logical_position = selected_indices[token_idx * uniforms.max_selected_entries + selected_slot];
+    }
+#endif
+
+    var valid = logical_position >= 0;
+    // 'local_plus_selected' is a set union: a selected position that already
+    // sits inside the local window must not be weighted twice.
+#if dedup_selected
+    if (valid && !is_local && logical_position >= local_begin && logical_position <= local_end) {
+      valid = false;
+    }
+#endif
+    if (valid && logical_position >= main_length) {
+      valid = false;
+    }
+#if is_causal
+    if (valid && logical_position > query_position) {
+      valid = false;
+    }
+#endif
+
+    var cache_offset: u32 = 0u;
+    if (valid) {
+      let logical_block = u32(logical_position) / uniforms.block_size;
+      if (logical_block >= uniforms.max_num_blocks_per_seq) {
+        valid = false;
+      } else {
+        let physical_block = block_table.getByOffset(batch_idx * uniforms.max_num_blocks_per_seq + logical_block);
+        if (physical_block < 0) {
+          valid = false;
+        } else if (u32(physical_block) >= uniforms.num_blocks) {
+          valid = false;
+        } else {
+          let physical_slot = u32(physical_block) * uniforms.block_size +
+                              u32(logical_position) % uniforms.block_size;
+          cache_offset = (physical_slot * uniforms.kv_num_heads + kv_head_idx) * head_size;
+        }
+      }
+    }
+
+    var partial_dot: f32 = 0.0;
+    if (valid) {
+      for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+        partial_dot = partial_dot + q_shared[c] * f32(key_cache.getByOffset(cache_offset + c));
+      }
+    }
+    reduction[local_idx] = partial_dot;
+    workgroupBarrier();
+    for (var offset: u32 = workgroup_size_x / 2u; offset > 0u; offset = offset / 2u) {
+      if (local_idx < offset) {
+        reduction[local_idx] = reduction[local_idx] + reduction[local_idx + offset];
+      }
+      workgroupBarrier();
+    }
+
+    if (valid) {
+      var logit = reduction[0] * uniforms.scale;
+      if (uniforms.softcap > 0.0) {
+        logit = tanh(logit / uniforms.softcap) * uniforms.softcap;
+      }
+      let new_max = max(running_max, logit);
+      var old_weight = 0.0;
+      if (has_contribution) {
+        old_weight = exp(running_max - new_max);
+      }
+      let new_weight = exp(logit - new_max);
+      for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+        accumulator[c] = accumulator[c] * old_weight +
+                         f32(value_cache.getByOffset(cache_offset + c)) * new_weight;
+      }
+      running_sum = running_sum * old_weight + new_weight;
+      running_max = new_max;
+      has_contribution = true;
+    }
+    workgroupBarrier();
+  }
+
+  let partial_base = (token_idx * uniforms.num_heads + head_idx) * (head_size + 2u);
+  for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+    partial.setByOffset(partial_base + c, accumulator[c]);
+  }
+  if (local_idx == 0u) {
+    partial.setByOffset(partial_base + head_size, running_max);
+    partial.setByOffset(partial_base + head_size + 1u, running_sum);
+  }
+}

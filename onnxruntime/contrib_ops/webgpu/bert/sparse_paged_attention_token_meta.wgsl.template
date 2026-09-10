@@ -1,0 +1,56 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// SparsePagedAttention — resolve the per-token metadata the sparse stages need,
+// entirely on device:
+//
+//   token_meta[t] = (batch_id, query_position, main_length, auxiliary_length)
+//
+// Every value read here is an i32 coming from a caller-owned buffer, so it is
+// sanitized before it is written: negative lengths clamp to zero, the
+// cumulative range is forced non-decreasing, and the auxiliary length is
+// clamped to the auxiliary cache capacity. Downstream shaders can therefore
+// convert these fields to u32 without a range check of their own.
+
+#param has_auxiliary_lengths
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .setByOffset
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  let token_idx = global_idx;
+  let token_index_i32 = i32(token_idx);
+
+  // Locate the request this packed token belongs to. Falls back to the last
+  // request when cumulative_sequence_length does not cover the token, which
+  // keeps every later index in range.
+  var batch_idx: u32 = uniforms.batch_size - 1u;
+  for (var i: u32 = 0u; i < uniforms.batch_size; i = i + 1u) {
+    if (token_index_i32 < cumulative_sequence_length.getByOffset(i + 1u)) {
+      batch_idx = i;
+      break;
+    }
+  }
+
+  let cum_lo = max(cumulative_sequence_length.getByOffset(batch_idx), 0);
+  let cum_hi = max(cumulative_sequence_length.getByOffset(batch_idx + 1u), cum_lo);
+  let query_length = cum_hi - cum_lo;
+  let past_length = max(past_seqlens.getByOffset(batch_idx), 0);
+  let query_position = past_length + max(token_index_i32 - cum_lo, 0);
+  let main_length = past_length + query_length;
+
+  var auxiliary_length: i32 = 0;
+#if has_auxiliary_lengths
+  // Raw indexing (instead of `.getByOffset`) because this binding only exists
+  // when has_auxiliary_lengths is set.
+  auxiliary_length = clamp(auxiliary_lengths[batch_idx], 0, i32(uniforms.auxiliary_capacity));
+#endif
+
+  let base = token_idx * 4u;
+  token_meta.setByOffset(base, i32(batch_idx));
+  token_meta.setByOffset(base + 1u, query_position);
+  token_meta.setByOffset(base + 2u, main_length);
+  token_meta.setByOffset(base + 3u, auxiliary_length);
+}
