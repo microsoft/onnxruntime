@@ -43,6 +43,26 @@ then
 else
    # Linux
    mv $ARTIFACT_NAME/lib64 $ARTIFACT_NAME/lib
+   # Fix stale lib64 paths baked into cmake config files by `install(EXPORT ...)`
+   # - lib64/ was renamed to lib/ above
+   if [ -d "$ARTIFACT_NAME/lib/cmake" ]; then
+       find "$ARTIFACT_NAME/lib/cmake" -type f -name "*.cmake" -exec sh -c \
+           'sed -i.bak -e '"'"'s|/lib64/|/lib/|g'"'"' "$1" && rm "$1.bak"' _ {} \;
+   fi
+   # Fix pkg-config file similarly
+   if [ -f "$ARTIFACT_NAME/lib/pkgconfig/libonnxruntime.pc" ]; then
+       sed -i.bak -e 's|/lib64$|/lib|' -e 's|/lib64/|/lib/|g' \
+              -e 's|/include/onnxruntime$|/include|' -e 's|/include/onnxruntime/|/include/|g' \
+           "$ARTIFACT_NAME/lib/pkgconfig/libonnxruntime.pc" && \
+       rm "$ARTIFACT_NAME/lib/pkgconfig/libonnxruntime.pc.bak"
+   fi
+fi
+
+# Fix cmake include paths on both Linux and macOS: include/onnxruntime/ was
+# flattened into include/ above (line 21), so update any baked-in cmake paths.
+if [ -d "$ARTIFACT_NAME/lib/cmake" ]; then
+    find "$ARTIFACT_NAME/lib/cmake" -type f -name "*.cmake" -exec sh -c \
+        'sed -i.bak -e '"'"'s|/include/onnxruntime"|/include"|g'"'"' "$1" && rm "$1.bak"' _ {} \;
 fi
 
 # copy the README, licence and TPN
