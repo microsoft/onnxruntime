@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cpu/bert/varlen_ngram_hash_mapping.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 
@@ -158,15 +159,17 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   T* output_data = total_tokens == 0 ? nullptr : output->MutableData<T>();
 
   ThreadPool::TryParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(batch_size),
-      static_cast<double>((total_tokens > 0 ? total_tokens / std::max<int64_t>(batch_size, 1) : 1) *
-                          max_ngram_size_ * n_head_per_ngram_),
+      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total_tokens),
+      static_cast<double>(max_ngram_size_ * n_head_per_ngram_),
       [&](ptrdiff_t begin, ptrdiff_t end) {
-        for (int64_t b = begin; b < end; ++b) {
+        int64_t b = std::upper_bound(cu_data, cu_data + batch_size, static_cast<int32_t>(begin)) - cu_data - 1;
+        for (int64_t linear = begin; linear < end; ++linear) {
+          while (b + 1 < batch_size && linear >= cu_data[b + 1]) {
+            ++b;
+          }
           const int64_t start = cu_data[b];
-          const int64_t seq_end = cu_data[b + 1];
-          const int64_t local_length = seq_end - start;
-
+          const int64_t t = linear - start;
+          const int64_t idx = state_length + t;
           int64_t last_reset = -1;
           if (do_reset) {
             for (int64_t i = 0; i < state_length; ++i) {
@@ -186,67 +189,73 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
               last_reset = std::max(last_reset, state_length - 1);
             }
           }
-          for (int64_t t = 0; t < local_length; ++t) {
-            const int64_t idx = state_length + t;
-            if (t > 0) {
-              const int64_t previous = idx - 1;
-              bool boundary = do_reset && input_data[start + t - 1] == eos_value;
-              if (segment_data != nullptr && segment_data[start + t] != segment_data[start + t - 1]) {
-                boundary = true;
-              }
-              if (boundary) {
-                last_reset = previous;
-              }
+          for (int64_t current_t = 1; current_t <= t; ++current_t) {
+            bool boundary = do_reset && input_data[start + current_t - 1] == eos_value;
+            if (segment_data != nullptr &&
+                segment_data[start + current_t] != segment_data[start + current_t - 1]) {
+              boundary = true;
             }
-            const int64_t output_base = (start + t) * num_heads;
-            for (int64_t n = 2; n <= max_ngram_size_; ++n) {
-              T mix = 0;
-              for (int64_t k = 0; k < n; ++k) {
-                const int64_t source = idx - k;
-                const T token =
-                    source <= last_reset
-                        ? eos_value
-                        : (source >= state_length
-                               ? input_data[start + source - state_length]
-                               : HistoryId(past_data, b, source, state_length, eos_value));
-                const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
-                mix = k == 0 ? product : static_cast<T>(mix ^ product);
-              }
-
-              const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
-              for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
-                const int64_t out_h = ngram_offset + h;
-                // vocab_sizes was validated to be positive above, so the modulo is always well defined.
-                T result = engram_helper::PositiveMod(mix, vocab_data[out_h]);
-                if (offset_data != nullptr) {
-                  result = static_cast<T>(result + offset_data[out_h]);
-                }
-                output_data[output_base + out_h] = result;
-              }
+            if (boundary) {
+              last_reset = state_length + current_t - 1;
             }
           }
-
-          if (present_data != nullptr) {
-            for (int64_t j = 0; j < state_length; ++j) {
-              const int64_t source_t = local_length - state_length + j;
-              present_data[b * state_length + j] =
-                  source_t >= 0 ? input_data[start + source_t]
-                                : HistoryId(past_data, b, state_length + source_t, state_length, eos_value);
+          const int64_t output_base = linear * num_heads;
+          for (int64_t n = 2; n <= max_ngram_size_; ++n) {
+            T mix = 0;
+            for (int64_t k = 0; k < n; ++k) {
+              const int64_t source_t = t - k;
+              const int64_t source = idx - k;
+              const T token =
+                  source <= last_reset
+                      ? eos_value
+                      : (source_t >= 0
+                             ? input_data[start + source_t]
+                             : HistoryId(past_data, b, state_length + source_t, state_length, eos_value));
+              const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
+              mix = k == 0 ? product : static_cast<T>(mix ^ product);
             }
-          }
-          if (present_segment_data != nullptr) {
-            for (int64_t j = 0; j < state_length; ++j) {
-              const int64_t source_t = local_length - state_length + j;
-              present_segment_data[b * state_length + j] =
-                  source_t >= 0
-                      ? segment_data[start + source_t]
-                      : (past_segment_data != nullptr
-                             ? past_segment_data[b * state_length + state_length + source_t]
-                             : segment_data[start]);
+
+            const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
+            for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
+              const int64_t out_h = ngram_offset + h;
+              // vocab_sizes was validated to be positive above, so the modulo is always well defined.
+              T result = engram_helper::PositiveMod(mix, vocab_data[out_h]);
+              if (offset_data != nullptr) {
+                result = static_cast<T>(result + offset_data[out_h]);
+              }
+              output_data[output_base + out_h] = result;
             }
           }
         }
       });
+
+  if (present_data != nullptr) {
+    for (int64_t b = 0; b < batch_size; ++b) {
+      const int64_t start = cu_data[b];
+      const int64_t local_length = cu_data[b + 1] - start;
+      for (int64_t j = 0; j < state_length; ++j) {
+        const int64_t source_t = local_length - state_length + j;
+        present_data[b * state_length + j] =
+            source_t >= 0 ? input_data[start + source_t]
+                          : HistoryId(past_data, b, state_length + source_t, state_length, eos_value);
+      }
+    }
+  }
+  if (present_segment_data != nullptr) {
+    for (int64_t b = 0; b < batch_size; ++b) {
+      const int64_t start = cu_data[b];
+      const int64_t local_length = cu_data[b + 1] - start;
+      for (int64_t j = 0; j < state_length; ++j) {
+        const int64_t source_t = local_length - state_length + j;
+        present_segment_data[b * state_length + j] =
+            source_t >= 0
+                ? segment_data[start + source_t]
+                : (past_segment_data != nullptr
+                       ? past_segment_data[b * state_length + state_length + source_t]
+                       : segment_data[start]);
+      }
+    }
+  }
 
   return Status::OK();
 }

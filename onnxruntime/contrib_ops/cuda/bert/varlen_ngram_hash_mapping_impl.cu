@@ -138,29 +138,10 @@ __global__ void VarlenNGramHashMappingKernel(
   const T missing_history_value = eos_token_id == nullptr ? pad_id : eos_token_id[0];
   const bool do_reset = reset_on_eos && eos_token_id != nullptr;
 
-  // present_ids is the right-aligned trailing window of (past_ids ++ this request's tokens), so it
-  // is well defined even when this call is shorter than the window.
-  if (present_ids != nullptr) {
-    for (int64_t j = threadIdx.x; j < state_length; j += blockDim.x) {
-      const int64_t source_t = local_length - state_length + j;
-      present_ids[b * state_length + j] =
-          source_t >= 0 ? input_ids[start + source_t]
-                        : HistoryId<T>(past_ids, b, state_length + source_t, state_length, missing_history_value);
-    }
-  }
-  if (present_segment_ids != nullptr) {
-    for (int64_t j = threadIdx.x; j < state_length; j += blockDim.x) {
-      const int64_t source_t = local_length - state_length + j;
-      present_segment_ids[b * state_length + j] =
-          source_t >= 0
-              ? segment_ids[start + source_t]
-              : (past_segment_ids != nullptr
-                     ? past_segment_ids[b * state_length + state_length + source_t]
-                     : segment_ids[start]);
-    }
-  }
-
-  for (int64_t out_h = threadIdx.x; out_h < num_heads; out_h += blockDim.x) {
+  const int64_t work_items = local_length * num_heads;
+  for (int64_t work_item = threadIdx.x; work_item < work_items; work_item += blockDim.x) {
+    const int64_t t = work_item / num_heads;
+    const int64_t out_h = work_item % num_heads;
     const int64_t n = out_h / n_head_per_ngram + 2;
     const T mod = vocab_sizes[out_h];
     int64_t last_reset = -1;
@@ -182,39 +163,62 @@ __global__ void VarlenNGramHashMappingKernel(
         last_reset = last_reset > state_length - 1 ? last_reset : state_length - 1;
       }
     }
-    for (int64_t t = 0; t < local_length; ++t) {
-      const int64_t idx = state_length + t;
-      if (t > 0) {
-        const int64_t previous = idx - 1;
-        bool boundary = do_reset && input_ids[start + t - 1] == missing_history_value;
-        if (segment_ids != nullptr && segment_ids[start + t] != segment_ids[start + t - 1]) {
-          boundary = true;
-        }
-        if (boundary) {
-          last_reset = previous;
-        }
+    for (int64_t current_t = 1; current_t <= t; ++current_t) {
+      bool boundary = do_reset && input_ids[start + current_t - 1] == missing_history_value;
+      if (segment_ids != nullptr &&
+          segment_ids[start + current_t] != segment_ids[start + current_t - 1]) {
+        boundary = true;
       }
-      T mix = 0;
-      for (int64_t k = 0; k < n; ++k) {
-        const int64_t source_t = t - k;
-        const int64_t source = idx - k;
-        const T token = source <= last_reset
-                            ? missing_history_value
-                            : (source_t >= 0
-                                   ? input_ids[start + source_t]
-                                   : HistoryId<T>(past_ids, b, state_length + source_t, state_length,
-                                                  missing_history_value));
-        const T product = engram_helper::WrappedMultiply<T>(token, multipliers[k]);
-        mix = k == 0 ? product : static_cast<T>(mix ^ product);
+      if (boundary) {
+        last_reset = state_length + current_t - 1;
       }
-      T result = T{};
-      if (mod > 0) {
-        result = engram_helper::PositiveMod(mix, mod);
-        if (head_offsets != nullptr) {
-          result = static_cast<T>(result + head_offsets[out_h]);
-        }
+    }
+    const int64_t idx = state_length + t;
+    T mix = 0;
+    for (int64_t k = 0; k < n; ++k) {
+      const int64_t source_t = t - k;
+      const int64_t source = idx - k;
+      const T token = source <= last_reset
+                          ? missing_history_value
+                          : (source_t >= 0
+                                 ? input_ids[start + source_t]
+                                 : HistoryId<T>(past_ids, b, state_length + source_t, state_length,
+                                                missing_history_value));
+      const T product = engram_helper::WrappedMultiply<T>(token, multipliers[k]);
+      mix = k == 0 ? product : static_cast<T>(mix ^ product);
+    }
+    T result = T{};
+    if (mod > 0) {
+      result = engram_helper::PositiveMod(mix, mod);
+      if (head_offsets != nullptr) {
+        result = static_cast<T>(result + head_offsets[out_h]);
       }
-      output[(start + t) * num_heads + out_h] = result;
+    }
+    output[(start + t) * num_heads + out_h] = result;
+  }
+
+  __syncthreads();
+
+  // present_ids is the right-aligned trailing window of (past_ids ++ this request's tokens), so it
+  // is well defined even when this call is shorter than the window. Write it after hash computation
+  // because past_ids may alias present_ids.
+  if (present_ids != nullptr) {
+    for (int64_t j = threadIdx.x; j < state_length; j += blockDim.x) {
+      const int64_t source_t = local_length - state_length + j;
+      present_ids[b * state_length + j] =
+          source_t >= 0 ? input_ids[start + source_t]
+                        : HistoryId<T>(past_ids, b, state_length + source_t, state_length, missing_history_value);
+    }
+  }
+  if (present_segment_ids != nullptr) {
+    for (int64_t j = threadIdx.x; j < state_length; j += blockDim.x) {
+      const int64_t source_t = local_length - state_length + j;
+      present_segment_ids[b * state_length + j] =
+          source_t >= 0
+              ? segment_ids[start + source_t]
+              : (past_segment_ids != nullptr
+                     ? past_segment_ids[b * state_length + state_length + source_t]
+                     : segment_ids[start]);
     }
   }
 }
@@ -287,8 +291,7 @@ Status LaunchVarlenNGramHashMappingKernel(
   }
 
   // 3) Compute real values if (and only if) the array is valid.
-  const int threads = static_cast<int>(std::max<int64_t>(
-      1, std::min<int64_t>(num_heads, std::min(256, max_threads_per_block))));
+  const int threads = std::min(256, max_threads_per_block);
   VarlenNGramHashMappingKernel<T><<<static_cast<unsigned int>(batch_size), threads, 0, stream>>>(
       input_ids, multipliers, vocab_sizes, cu_seqlens, past_ids, head_offsets, eos_token_id, segment_ids,
       past_segment_ids, output, present_ids, present_segment_ids,
