@@ -58,28 +58,36 @@ GatedDeltaNet::GatedDeltaNet(const OpKernelInfo& info) : WebGpuKernel(info) {
 }
 
 Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("query", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("key", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("value", ShaderUsage::UseElementTypeAlias);
-  if (has_cu_seqlens_) shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
+  const auto& query = shader.AddInput("query", ShaderUsage::UseElementTypeAlias);
+  const auto& key = shader.AddInput("key", ShaderUsage::UseElementTypeAlias);
+  const auto& value = shader.AddInput("value", ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* cu_seqlens = &query;
+  if (has_cu_seqlens_) cu_seqlens = &shader.AddInput("cu_seqlens", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* decay = &query;
   if ((update_rule_ == GatedDeltaNetUpdateRule::Gated || update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) &&
       !use_packed_params_) {
-    shader.AddInput("decay", ShaderUsage::UseUniform);
+    decay = &shader.AddInput("decay", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* beta = &query;
   if ((update_rule_ == GatedDeltaNetUpdateRule::Delta || update_rule_ == GatedDeltaNetUpdateRule::GatedDelta) &&
       !use_packed_params_) {
-    shader.AddInput("beta", ShaderUsage::UseUniform);
+    beta = &shader.AddInput("beta", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* initial_state = &query;
   if (has_initial_state_ && !initial_state_in_final_state_) {
-    shader.AddInput("initial_state", ShaderUsage::UseUniform);
+    initial_state = &shader.AddInput("initial_state", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* a_log = &query;
+  const ShaderVariableHelper* dt_bias = &query;
   if (qwen_gate_ && !use_packed_params_) {
-    shader.AddInput("a_log", ShaderUsage::UseUniform);
-    shader.AddInput("dt_bias", ShaderUsage::UseUniform);
+    a_log = &shader.AddInput("a_log", ShaderUsage::UseUniform);
+    dt_bias = &shader.AddInput("dt_bias", ShaderUsage::UseUniform);
   }
-  if (use_packed_params_) shader.AddInput("parameters", ShaderUsage::UseUniform);
-  shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-  if (output_final_state_) shader.AddOutput("final_state", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* parameters = &query;
+  if (use_packed_params_) parameters = &shader.AddInput("parameters", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+  const ShaderVariableHelper* final_state = &output;
+  if (output_final_state_) final_state = &shader.AddOutput("final_state", ShaderUsage::UseUniform);
 
   int update_rule = 0;
   if (update_rule_ == GatedDeltaNetUpdateRule::Gated) update_rule = 1;
@@ -94,22 +102,43 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
                              WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
                              WGSL_TEMPLATE_PARAMETER(update_rule, update_rule),
-                             WGSL_TEMPLATE_PARAMETER(use_packed_params, use_packed_params_));
+                             WGSL_TEMPLATE_PARAMETER(use_packed_params, use_packed_params_),
+                             WGSL_TEMPLATE_VARIABLE(a_log, *a_log),
+                             WGSL_TEMPLATE_VARIABLE(beta, *beta),
+                             WGSL_TEMPLATE_VARIABLE(cu_seqlens, *cu_seqlens),
+                             WGSL_TEMPLATE_VARIABLE(decay, *decay),
+                             WGSL_TEMPLATE_VARIABLE(dt_bias, *dt_bias),
+                             WGSL_TEMPLATE_VARIABLE(final_state, *final_state),
+                             WGSL_TEMPLATE_VARIABLE(initial_state, *initial_state),
+                             WGSL_TEMPLATE_VARIABLE(key, key),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(parameters, *parameters),
+                             WGSL_TEMPLATE_VARIABLE(query, query),
+                             WGSL_TEMPLATE_VARIABLE(value, value));
 }
 
 Status GatedDeltaNetParamsProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  if (has_decay_) shader.AddInput("decay", ShaderUsage::UseUniform);
-  if (has_beta_) shader.AddInput("beta", ShaderUsage::UseUniform);
+  const auto& parameters = shader.AddOutput("parameters", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* decay = &parameters;
+  if (has_decay_) decay = &shader.AddInput("decay", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* beta = &parameters;
+  if (has_beta_) beta = &shader.AddInput("beta", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* a_log = &parameters;
+  const ShaderVariableHelper* dt_bias = &parameters;
   if (qwen_gate_) {
-    shader.AddInput("a_log", ShaderUsage::UseUniform);
-    shader.AddInput("dt_bias", ShaderUsage::UseUniform);
+    a_log = &shader.AddInput("a_log", ShaderUsage::UseUniform);
+    dt_bias = &shader.AddInput("dt_bias", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("parameters", ShaderUsage::UseUniform);
   return WGSL_TEMPLATE_APPLY(shader, "bert/gated_delta_net_params.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_beta, has_beta_),
                              WGSL_TEMPLATE_PARAMETER(has_decay, has_decay_),
                              WGSL_TEMPLATE_PARAMETER(qwen_gate, qwen_gate_),
-                             WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_));
+                             WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
+                             WGSL_TEMPLATE_VARIABLE(a_log, *a_log),
+                             WGSL_TEMPLATE_VARIABLE(beta, *beta),
+                             WGSL_TEMPLATE_VARIABLE(decay, *decay),
+                             WGSL_TEMPLATE_VARIABLE(dt_bias, *dt_bias),
+                             WGSL_TEMPLATE_VARIABLE(parameters, parameters));
 }
 
 Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
