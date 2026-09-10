@@ -211,16 +211,18 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
   }
 
   if (attention_metadata != nullptr) {
+    // This direct-read functional kernel does not allocate attention-length-dependent
+    // temporary storage. Keep the complete bounds contract for future staged kernels.
     const auto& dims = attention_metadata->Shape().GetDims();
-    if (dims.size() != 1 || dims[0] != 4) {
+    if (dims.size() != 1 || dims[0] != 5) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
-          "attention_metadata must have shape (4): [max_query_len_bound, "
-          "max_main_kv_len_bound, max_selected_entries_bound, "
-          "max_auxiliary_len_bound].");
+          "attention_metadata must have shape (5): [max_query_len_bound, "
+          "max_local_main_len_bound, max_selected_entries_bound, "
+          "max_auxiliary_len_bound, max_combined_attention_len_bound].");
     }
     const int* metadata = attention_metadata->Data<int32_t>();
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 5; ++i) {
       if (metadata[i] < 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "attention_metadata entries must be non-negative.");
