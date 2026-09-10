@@ -3735,6 +3735,79 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesRank5DataNotSupported) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
 }
 
+namespace {
+// X(float graph input) Equal Y(const) -> bool cmp -> Cast(float) -> output.
+// The bool output of Equal stays internal -- CoreML partitions cannot expose
+// bool I/O, so the trailing Cast brings it back to float for the partition
+// boundary.
+std::string MakeEqualModelData() {
+  onnxruntime::Model model("equal_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto make_type = [](int32_t elem_type) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(elem_type);
+    for (int64_t d : {1, 4}) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto float_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  const auto bool_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+
+  auto& x = graph.GetOrCreateNodeArg("X", &float_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &float_type);
+  auto& cmp = graph.GetOrCreateNodeArg("Cmp", &bool_type);
+  auto& out = graph.GetOrCreateNodeArg("Out", &float_type);
+
+  ONNX_NAMESPACE::TensorProto y_init;
+  y_init.set_name("Y");
+  y_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  y_init.add_dims(1);
+  y_init.add_dims(4);
+  for (float v : {1.0f, 2.0f, 3.0f, 4.0f}) y_init.add_float_data(v);
+  graph.AddInitializedTensor(y_init);
+
+  graph.AddNode("eq", "Equal", "equal", {&x, &y}, {&cmp});
+  auto& cast = graph.AddNode("cast", "Cast", "bool -> float", {&cmp}, {&out});
+  cast.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+}  // namespace
+
+// Equal is lowered to the ML Program 'equal' op.
+TEST(CoreMLExecutionProviderTest, Equal_MLProgram) {
+  const std::string model_data = MakeEqualModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  OrtValue x_val;
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims, {1.0f, 0.0f, 3.0f, 0.0f}, &x_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// Equal only has an ML Program lowering; on the NeuralNetwork format the
+// graph falls back to CPU.
+TEST(CoreMLExecutionProviderTest, EqualNeuralNetworkNotSupported) {
+  const std::string model_data = MakeEqualModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 }  // namespace test
 }  // namespace onnxruntime
