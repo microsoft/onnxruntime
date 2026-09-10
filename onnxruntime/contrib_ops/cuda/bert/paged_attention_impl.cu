@@ -1733,7 +1733,7 @@ Status PagedXqaDecodeAttention(
   if (v_per_channel) {
     const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);
     PagedFoldChannelScaleKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(
-      data.output, data.output, data.v_scale, num_heads, head_size,
+        data.output, data.output, data.v_scale, num_heads, head_size,
         num_heads / kv_num_heads, q_elements);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }
