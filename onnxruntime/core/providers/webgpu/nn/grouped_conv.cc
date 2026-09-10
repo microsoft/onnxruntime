@@ -11,6 +11,37 @@
 namespace onnxruntime {
 namespace webgpu {
 
+// NHWC depthwise: one output channel per group, so the channel index is shared by x, w and the
+// output and the input-channel loop collapses. Everything is indexed in whole channel vectors,
+// which is what makes this form worth separating - the general path below must index x one scalar
+// channel at a time.
+static std::string CalculateResultDepthwiseVec(const ShaderVariableHelper& x, const ShaderVariableHelper& w) {
+  std::stringstream ss;
+  // Offsets are stepped rather than rebuilt: only the width index changes inside the inner loop,
+  // and it moves by one channel vector, so a tap costs one multiply-add instead of the full
+  // four-dimensional index construction. This kernel does nine of them per output for a 3x3 and is
+  // bound by that arithmetic, not by its (fully cached) reads.
+  ss << "let x_row_base = batch * uniforms.x_shape[1];\n"
+     << "let w_plane = uniforms.w_shape[2] * uniforms.w_shape[3];\n"
+     << "for (var wHeight: u32 = 0u; wHeight < uniforms.w_shape[0]; wHeight++) {\n"
+     << "  let xHeight = xRCCorner.x + wHeight * uniforms.dilations[0];\n"
+     << "  if (xHeight >= uniforms.x_shape[1]) {\n"
+     << "    continue;\n"
+     << "  }\n"
+     << "  let x_base = ((x_row_base + xHeight) * uniforms.x_shape[2]) * uniforms.x_shape[3] + output_channel;\n"
+     << "  let w_base = wHeight * uniforms.w_shape[1] * w_plane + output_channel;\n"
+     << "  for (var wWidth: u32 = 0u; wWidth < uniforms.w_shape[1]; wWidth++) {\n"
+     << "    let xWidth = xRCCorner.y + wWidth * uniforms.dilations[1];\n"
+     << "    if (xWidth >= uniforms.x_shape[2]) {\n"
+     << "      continue;\n"
+     << "    }\n"
+     << "    value += " << x.GetByOffset("x_base + xWidth * uniforms.x_shape[3]")
+     << " * " << w.GetByOffset("w_base + wWidth * w_plane") << ";\n"
+     << "  }\n"
+     << "}\n";
+  return ss.str();
+}
+
 std::string CanculateResult(const ShaderVariableHelper& x, const ShaderVariableHelper& w, bool is_channels_last) {
   std::stringstream ss;
   if (is_channels_last) {
@@ -65,8 +96,13 @@ std::string CanculateResult(const ShaderVariableHelper& x, const ShaderVariableH
 }
 
 Status GroupedConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseIndicesTypeAlias);
-  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseIndicesTypeAlias);
+  // The depthwise form addresses x and w by offset, so it does not pull in the shape uniforms the
+  // way GetByIndices does - but it still reads them for the loop bounds and the strides it steps
+  // by, so ask for them explicitly.
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
+                                           ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseShapeAndStride);
+  const auto& w = shader.AddInput("w", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
+                                           ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseShapeAndStride);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   shader.AdditionalImplementation() << GetActivationDeclaration(activation_, "output_value_t", "output_element_t");
@@ -77,10 +113,15 @@ Status GroupedConvProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let xRCCorner_x: u32 = " << output.IndicesGet("output_indices", is_channels_last_ ? "1" : "2") << ";\n"
                             << "let xRCCorner_y: u32 = " << output.IndicesGet("output_indices", is_channels_last_ ? "2" : "3") << ";\n"
                             << "let xRCCorner: vec2<u32> = vec2<u32>(xRCCorner_x, xRCCorner_y) * uniforms.strides - uniforms.pads;\n"
-                            << "let group_id = output_channel * uniforms.components / uniforms.output_channels_per_group;\n"
-                            << "let in_channel_offset = group_id * " << w.IndicesGet("uniforms.w_shape", is_channels_last_ ? 2 : 1) << ";\n"
-                            << "var value: output_value_t = output_value_t(0);\n"
-                            << CanculateResult(x, w, is_channels_last_);
+                            << "var value: output_value_t = output_value_t(0);\n";
+  if (depthwise_vec_) {
+    shader.MainFunctionBody() << CalculateResultDepthwiseVec(x, w);
+  } else {
+    shader.MainFunctionBody()
+        << "let group_id = output_channel * uniforms.components / uniforms.output_channels_per_group;\n"
+        << "let in_channel_offset = group_id * " << w.IndicesGet("uniforms.w_shape", is_channels_last_ ? 2 : 1) << ";\n"
+        << CanculateResult(x, w, is_channels_last_);
+  }
   if (has_bias_) {
     const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
     shader.MainFunctionBody() << "value += " + b.GetByIndices("output_channel") + ";\n";
