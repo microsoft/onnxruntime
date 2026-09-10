@@ -97,6 +97,15 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+if(onnxruntime_BUILD_UNIT_TESTS)
+  add_test(
+    NAME onnxruntime_test_cuda_architecture_virtual_only
+    COMMAND ${CMAKE_COMMAND}
+      -S "${CMAKE_CURRENT_SOURCE_DIR}/tests/cuda_architectures"
+      -B "${CMAKE_CURRENT_BINARY_DIR}/tests/cuda_architectures/virtual_only"
+      "-DTEST_CUDA_ARCHITECTURES=75-virtual"
+      "-DEXPECTED_CUDA_ARCHITECTURES=75-virtual")
+endif()
 # Materialize the ONNX node-test corpus from ONNX's Python generators into the build tree at
 # configure/build time, instead of depending on the on-disk corpus shipped in the ONNX source
 # archive. This detaches ORT from ONNX PR #7959 (which deletes onnx/backend/test/data/node).
