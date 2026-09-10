@@ -470,7 +470,7 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     }
 
     auto output_shape = query_shape;
-    if (!hasInputShape(ctx, 2)) {
+    if (ctx.getInputType(2) == nullptr) {
       const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
       const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
       if (num_heads > 0 && kv_num_heads > 0 && query_dims[2].has_dim_value()) {
@@ -487,11 +487,37 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
 
   for (int output_index = 1; output_index <= 2; ++output_index) {
     const int input_index = output_index + 2;
-    if (ctx.getNumOutputs() > static_cast<size_t>(output_index) &&
-        ctx.hasOutput(output_index) &&
-        hasInputShape(ctx, input_index)) {
-      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, input_index, output_index);
+    if (ctx.getNumOutputs() <= static_cast<size_t>(output_index) || !ctx.hasOutput(output_index)) {
+      continue;
+    }
+
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, output_index);
+    if (hasInputShape(ctx, input_index)) {
       ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, input_index, output_index);
+      continue;
+    }
+
+    if (hasInputShape(ctx, 0)) {
+      const auto& query_dims = getInputShape(ctx, 0).dim();
+      const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+      const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
+      if (query_dims.size() == 3 && num_heads > 0 && kv_num_heads > 0 &&
+          query_dims[2].has_dim_value()) {
+        const bool is_packed = ctx.getInputType(2) == nullptr;
+        const int64_t head_size = query_dims[2].dim_value() /
+                                  (is_packed ? num_heads + 2 * kv_num_heads : num_heads);
+        ONNX_NAMESPACE::TensorShapeProto present_shape;
+        *present_shape.add_dim() = query_dims[0];
+        present_shape.add_dim()->set_dim_value(kv_num_heads);
+        const auto* total_length_data = ctx.getInputData(10);
+        if (total_length_data != nullptr) {
+          present_shape.add_dim()->set_dim_value(ParseData<int32_t>(total_length_data)[0]);
+        } else {
+          present_shape.add_dim();
+        }
+        present_shape.add_dim()->set_dim_value(head_size);
+        updateOutputShape(ctx, output_index, present_shape);
+      }
     }
   }
 }
@@ -513,6 +539,11 @@ must be -1. Valid entries must be unique, non-negative request-local positions i
 normalizes causally valid main-cache entries in `local_window_size`, selected auxiliary entries, and an optional
 per-query-head sink. The sink contributes to the softmax denominator but has no value vector. A row with no entries and
 no sink produces zero output.
+
+Supported mode/source combinations:
+
+- `selected_only` + `main`: Qwen4-Exp QSA-compatible execution.
+- `local_plus_selected` + `auxiliary`: DeepSeek V4 CSA-compatible execution and requires `local_window_size > 0`.
 
 The main cache uses BNSH layout and ordinary contiguous append semantics. Selection changes reads, not cache writes.
 Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
@@ -554,11 +585,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "T",
                OpSchema::Optional)
-        .Input(3, "past_key", "Main key cache in BNSH layout.", "T_CACHE", OpSchema::Optional)
-        .Input(4, "past_value", "Main value cache in BNSH layout.", "T_CACHE", OpSchema::Optional)
-        .Input(5, "auxiliary_key", "Read-only auxiliary key sequence in BNSH layout.", "T_AUX",
+        .Input(3, "past_key", "Main key cache in BNSH layout.", "T", OpSchema::Optional)
+        .Input(4, "past_value", "Main value cache in BNSH layout.", "T", OpSchema::Optional)
+        .Input(5, "auxiliary_key", "Read-only auxiliary key sequence in BNSH layout.", "T",
                OpSchema::Optional)
-        .Input(6, "auxiliary_value", "Read-only auxiliary value sequence in BNSH layout.", "T_AUX",
+        .Input(6, "auxiliary_value", "Read-only auxiliary value sequence in BNSH layout.", "T",
                OpSchema::Optional)
         .Input(7, "selected_indices", "Selected request-local source positions [batch * sequence, max_selected].",
                "M")
@@ -576,14 +607,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(15, "k_norm_weight", "Optional K RMSNorm weight [head_size].", "T", OpSchema::Optional)
         .Input(16, "head_sink", "Optional sink logit [num_heads].", "T", OpSchema::Optional)
         .Output(0, "output", "Attention output [batch, sequence, num_heads * head_size].", "T")
-        .Output(1, "present_key", "Updated main key cache in BNSH layout.", "T_CACHE", OpSchema::Optional)
-        .Output(2, "present_value", "Updated main value cache in BNSH layout.", "T_CACHE", OpSchema::Optional)
+        .Output(1, "present_key", "Updated main key cache in BNSH layout.", "T", OpSchema::Optional)
+        .Output(2, "present_value", "Updated main value cache in BNSH layout.", "T", OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                        "Constrain query, current QKV, and output to floating-point tensors.")
-        .TypeConstraint("T_CACHE", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                        "Constrain the main cache to floating-point tensors.")
-        .TypeConstraint("T_AUX", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
-                        "Constrain the auxiliary cache to floating-point tensors.")
+                        "Constrain all floating-point inputs and outputs to one element type.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain selection and sequence metadata to int32.")
         .TypeAndShapeInferenceFunction(DynamicSparseAttentionTypeAndShapeInference));
 
