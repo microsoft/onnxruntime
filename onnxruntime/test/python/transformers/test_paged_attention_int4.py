@@ -744,6 +744,54 @@ class TestPagedAttentionInt4(unittest.TestCase):
             accelerated["output"].astype(np.float32), portable["output"].astype(np.float32), atol=8e-4, rtol=5e-3
         )
 
+    def test_xqa_large_attention_scale_and_k_scale(self):
+        # An attention scale above one together with a channel scale at FLT_MAX would make
+        # attention_scale * normalizer overflow fp32 and every logit NaN. The normalizer exponent is
+        # bounded to prevent that, and this table spans one binade so it stays on XQA.
+        heads, width = 6, 256
+        for cache_dtype in (np.uint8, np.int8, ml_dtypes.float8_e4m3fn):
+            for length in (1, 3):
+                with self.subTest(cache_dtype=cache_dtype, length=length):
+                    model, feeds, _ = make_case(
+                        width=width, heads=heads, kv_heads=1, block_size=128, lengths=(length,), past=(1,)
+                    )
+                    feeds["query"][:] = 0
+                    feeds["query"].reshape(length, heads, width)[..., 0] = 0.25
+                    feeds["slot_mapping"][:] = -1
+                    scale = np.full((1, 1, width), np.finfo(np.float32).max, dtype=np.float32)
+                    replace_input(model, feeds, "k_scale", scale)
+                    replace_input(model, feeds, "v_scale", np.ones_like(scale))
+                    set_attribute(model, "scale", 2.0)
+                    page = int(feeds["block_table"][0, 0])
+                    for side, prefix in (("key", "k"), ("value", "v")):
+                        codes = np.zeros((*feeds[f"{side}_cache"].shape[:-1], width), dtype=np.float32)
+                        if side == "key":
+                            codes[page, 0, 0, 0] = 1
+                        else:
+                            codes[page, 0] = 1
+                        if cache_dtype == np.uint8:
+                            cache = quantize(codes, np.ones_like(scale[:, 0]))
+                        else:
+                            cache = codes.astype(cache_dtype)
+                            set_attribute(model, f"{prefix}_cache_dtype", "")
+                        replace_input(model, feeds, f"{side}_cache", cache)
+                        output = next(info for info in model.graph.output if info.name == f"{side}_cache_out")
+                        output.CopyFrom(
+                            helper.make_tensor_value_info(
+                                output.name, helper.np_dtype_to_tensor_dtype(cache.dtype), cache.shape
+                            )
+                        )
+                    with patch.dict(os.environ, {"ORT_ENABLE_XQA": "1"}):
+                        actual = run_with_kernel(model, feeds, "XQA")[0]
+                    self.assertTrue(np.isfinite(actual["output"]).all())
+                    np.testing.assert_allclose(
+                        actual["output"],
+                        np.repeat(np.ones(length)[:, None], heads * width, axis=1),
+                        atol=8e-4,
+                        rtol=5e-3,
+                        equal_nan=False,
+                    )
+
     def test_per_channel_scale_dynamic_range(self):
         # 1e8 between the smallest and largest channel is wider than folding into an fp16 query can
         # hold, so this pins the portable kernel reached through the per-channel opt-out.
