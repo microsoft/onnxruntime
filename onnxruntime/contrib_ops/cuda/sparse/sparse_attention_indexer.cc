@@ -188,8 +188,8 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   ORT_RETURN_IF(selected_indices == nullptr || present_key == nullptr,
                 "SparseAttentionIndexer: policy_mode 'qsa' requires both selected_indices and present_key outputs");
 
-  auto float_workspace = GetScratchBuffer<float>(GetQsaWorkspaceFloatCount(params), context->GetComputeStream());
-  auto int_workspace = GetScratchBuffer<int32_t>(GetQsaWorkspaceIntCount(params), context->GetComputeStream());
+  auto float_workspace = GetScratchBuffer<float>(GetQsaWorkspaceFloatCount(params), GetComputeStream(context));
+  auto int_workspace = GetScratchBuffer<int32_t>(GetQsaWorkspaceIntCount(params), GetComputeStream(context));
 
   return LaunchQsaSparseAttentionIndexer<CudaT>(
       Stream(context), params,
@@ -317,7 +317,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
                 "SparseAttentionIndexer: policy_mode 'csa' requires selected_indices, present_compressed_key, "
                 "present_kv_buffer and present_gate_buffer outputs");
 
-  auto float_workspace = GetScratchBuffer<float>(GetCsaWorkspaceFloatCount(params), context->GetComputeStream());
+  auto float_workspace = GetScratchBuffer<float>(GetCsaWorkspaceFloatCount(params), GetComputeStream(context));
 
   const CudaT* empty = nullptr;
   return LaunchCsaSparseAttentionIndexer<CudaT>(
