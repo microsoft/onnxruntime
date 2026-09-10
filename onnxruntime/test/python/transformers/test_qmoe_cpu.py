@@ -420,13 +420,14 @@ def create_cpu_moe_onnx_graph(
     if not has_onnx:
         return None
 
-    assert fc1_experts_weights.dtype == torch.uint8, "FC1 weights must be uint8 for QMoE"
-    assert fc2_experts_weights.dtype == torch.uint8, "FC2 weights must be uint8 for QMoE"
-    assert fc1_scales is not None, "FC1 scales must be provided for QMoE"
-    assert fc2_scales is not None, "FC2 scales must be provided for QMoE"
-    # Accept float16 or float32 scales; tests may produce float32 for better precision
-    assert fc1_scales.dtype in (torch.float16, torch.float32), "FC1 scales must be float16 or float32 for QMoE"
-    assert fc2_scales.dtype in (torch.float16, torch.float32), "FC2 scales must be float16 or float32 for QMoE"
+    if use_quant:
+        assert fc1_experts_weights.dtype == torch.uint8, "FC1 weights must be uint8 for QMoE"
+        assert fc2_experts_weights.dtype == torch.uint8, "FC2 weights must be uint8 for QMoE"
+        assert fc1_scales is not None, "FC1 scales must be provided for QMoE"
+        assert fc2_scales is not None, "FC2 scales must be provided for QMoE"
+        # Accept float16 or float32 scales; tests may produce float32 for better precision
+        assert fc1_scales.dtype in (torch.float16, torch.float32), "FC1 scales must be float16 or float32 for QMoE"
+        assert fc2_scales.dtype in (torch.float16, torch.float32), "FC2 scales must be float16 or float32 for QMoE"
 
     if not has_onnx:
         return None
@@ -531,45 +532,24 @@ def create_cpu_moe_onnx_graph(
         ),
     ]
 
-    # Calculate scale tensor shapes based on block_size
-    if block_size > 0:
-        # Block-wise quantization: 3D scale tensors
-        fc1_blocks_per_row = (hidden_size + block_size - 1) // block_size
-        fc2_blocks_per_row = (inter_size + block_size - 1) // block_size
+    if use_quant:
+        if block_size > 0:
+            fc1_blocks_per_row = (hidden_size + block_size - 1) // block_size
+            fc2_blocks_per_row = (inter_size + block_size - 1) // block_size
+            fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size, fc1_blocks_per_row]
+            fc2_scale_shape = [num_experts, hidden_size, fc2_blocks_per_row]
+        else:
+            fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size]
+            fc2_scale_shape = [num_experts, hidden_size]
 
-        fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size, fc1_blocks_per_row]
-        fc2_scale_shape = [num_experts, hidden_size, fc2_blocks_per_row]
-    else:
-        # Row-wise quantization: 2D scale tensors
-        fc1_scale_shape = [num_experts, 2 * inter_size if use_swiglu else inter_size]
-        fc2_scale_shape = [num_experts, hidden_size]
-
-    # Handle scale tensors
-    fc1_scale_tensor = fc1_scales.to(torch_dtype).flatten().detach().cpu().numpy()
-    fc2_scale_tensor = fc2_scales.to(torch_dtype).flatten().detach().cpu().numpy()
-
-    # Process scale tensors for proper data format
-    fc1_scale_data = fc1_scale_tensor.tolist()
-    fc2_scale_data = fc2_scale_tensor.tolist()
-
-    initializers.extend(
-        [
-            helper.make_tensor(
-                "fc1_scales",
-                onnx_dtype,
-                fc1_scale_shape,
-                fc1_scale_data,
-                raw=False,
-            ),
-            helper.make_tensor(
-                "fc2_scales",
-                onnx_dtype,
-                fc2_scale_shape,
-                fc2_scale_data,
-                raw=False,
-            ),
-        ]
-    )
+        fc1_scale_data = fc1_scales.to(torch_dtype).flatten().detach().cpu().tolist()
+        fc2_scale_data = fc2_scales.to(torch_dtype).flatten().detach().cpu().tolist()
+        initializers.extend(
+            [
+                helper.make_tensor("fc1_scales", onnx_dtype, fc1_scale_shape, fc1_scale_data, raw=False),
+                helper.make_tensor("fc2_scales", onnx_dtype, fc2_scale_shape, fc2_scale_data, raw=False),
+            ]
+        )
 
     # Add zero-point initializers if provided
     if fc1_zero_points is not None:
