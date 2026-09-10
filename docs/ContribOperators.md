@@ -6972,7 +6972,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.SparsePagedAttention"></a><a name="com.microsoft.sparsepagedattention">**com.microsoft.SparsePagedAttention**</a>
 
   Selected-index attention over the PagedAttention main K/V cache.
-
+  
   Selection is supplied by an external indexer. selected_only attends selected entries;
   local_plus_selected combines a main-cache local window and selected entries in one softmax.
   Selected indices are request-local logical positions in the main cache or in a contiguous
@@ -7019,7 +7019,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Main value-cache quantization: NONE, PER_TENSOR, or PER_CHANNEL.</dd>
 </dl>
 
-#### Inputs (8 - 22)
+#### Inputs (11 - 22)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
