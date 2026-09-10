@@ -36,6 +36,21 @@ namespace {
 
 constexpr size_t BlockSize = 16;
 
+//
+// Number of output positions a kernel accumulates at once.
+//
+// A block of channels fills a register group, so no parallelism is left inside
+// one: the multiply accumulates for an output position form a chain. It comes
+// from the output positions instead, and they share one filter load. Four of
+// them plus that filter occupy twenty of the thirty two registers at LMUL 4.
+//
+// A register group cannot be held in an array, so the positions are spelled out,
+// and a group holding fewer than four repeats the first position in the slots it
+// does not use. Those slots are not stored, which lets one body serve both a
+// full group and the remainder.
+//
+constexpr size_t OutputStep = 4;
+
 MLAS_FORCEINLINE
 void
 ApplyPostProcessing(
@@ -60,6 +75,105 @@ ApplyPostProcessing(
     if (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) {
         vfloat32m4_t zero = __riscv_vfmv_v_f_f32m4(0.0f, vl);
         acc = __riscv_vfmax_vv_f32m4(acc, zero, vl);
+    }
+}
+
+MLAS_FORCEINLINE
+float
+LoadInRange(
+    const float* Address,
+    const float* RowStart,
+    const float* RowEnd
+    )
+{
+    return (Address >= RowStart && Address < RowEnd) ? *Address : 0.0f;
+}
+
+//
+// Accumulates a group of output positions of the direct NCHW convolution. Input
+// and Output address the first of them; the filter is already at its block.
+//
+
+MLAS_FORCEINLINE
+void
+MlasConvNchwFloatGroupRvv(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidthElements,
+    size_t DilationWidthElements,
+    size_t InputWidthElements,
+    size_t DilatedInputWidthElements,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    const float* Bias,
+    unsigned KernelFlags,
+    size_t vl,
+    size_t OutputCountThisIteration
+    )
+{
+    const size_t offset1 = (OutputCountThisIteration > 1 ? 1 : 0) * StrideWidthElements;
+    const size_t offset2 = (OutputCountThisIteration > 2 ? 2 : 0) * StrideWidthElements;
+    const size_t offset3 = (OutputCountThisIteration > 3 ? 3 : 0) * StrideWidthElements;
+
+    const size_t offset_last = (OutputCountThisIteration - 1) * StrideWidthElements;
+
+    vfloat32m4_t acc0 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+    vfloat32m4_t acc1 = acc0;
+    vfloat32m4_t acc2 = acc0;
+    vfloat32m4_t acc3 = acc0;
+
+    for (size_t kh = 0; kh < KernelHeight; kh++) {
+
+        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+        const float* input_row_end = input_row_start + InputWidthElements;
+
+        for (size_t kw = 0; kw < KernelWidth; kw++) {
+
+            const float* input_pos =
+                Input + kh * DilatedInputWidthElements + kw * DilationWidthElements;
+
+            vfloat32m4_t filt =
+                __riscv_vle32_v_f32m4(&Filter[(kh * KernelWidth + kw) * BlockSize], vl);
+
+            if (input_pos >= input_row_start && (input_pos + offset_last) < input_row_end) {
+                acc0 = __riscv_vfmacc_vf_f32m4(acc0, input_pos[0], filt, vl);
+                acc1 = __riscv_vfmacc_vf_f32m4(acc1, input_pos[offset1], filt, vl);
+                acc2 = __riscv_vfmacc_vf_f32m4(acc2, input_pos[offset2], filt, vl);
+                acc3 = __riscv_vfmacc_vf_f32m4(acc3, input_pos[offset3], filt, vl);
+            } else {
+                acc0 = __riscv_vfmacc_vf_f32m4(
+                    acc0, LoadInRange(input_pos, input_row_start, input_row_end), filt, vl);
+                acc1 = __riscv_vfmacc_vf_f32m4(
+                    acc1, LoadInRange(input_pos + offset1, input_row_start, input_row_end),
+                    filt, vl);
+                acc2 = __riscv_vfmacc_vf_f32m4(
+                    acc2, LoadInRange(input_pos + offset2, input_row_start, input_row_end),
+                    filt, vl);
+                acc3 = __riscv_vfmacc_vf_f32m4(
+                    acc3, LoadInRange(input_pos + offset3, input_row_start, input_row_end),
+                    filt, vl);
+            }
+        }
+    }
+
+    ApplyPostProcessing(acc0, &Output[0], Bias, KernelFlags, vl);
+    __riscv_vse32_v_f32m4(&Output[0], acc0, vl);
+
+    if (OutputCountThisIteration > 1) {
+        ApplyPostProcessing(acc1, &Output[BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[BlockSize], acc1, vl);
+    }
+
+    if (OutputCountThisIteration > 2) {
+        ApplyPostProcessing(acc2, &Output[2 * BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[2 * BlockSize], acc2, vl);
+    }
+
+    if (OutputCountThisIteration > 3) {
+        ApplyPostProcessing(acc3, &Output[3 * BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[3 * BlockSize], acc3, vl);
     }
 }
 
@@ -110,41 +224,140 @@ MlasConvNchwFloatKernelRvv(
 
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
-    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
+    for (size_t filterSetBlock = 0; filterSetBlock < FilterCount; filterSetBlock++) {
 
-        for (size_t filterSetBlock = 0; filterSetBlock < FilterCount; filterSetBlock++) {
-            const float* filter = Filter + filterSetBlock * FilterStrideElements;
-            float* output = Output + filterSetBlock * OutputStrideElements;
+        const float* filter = Filter + filterSetBlock * FilterStrideElements;
+        float* output = Output + filterSetBlock * OutputStrideElements;
+        const float* bias = (Bias != nullptr) ? &Bias[filterSetBlock * BlockSize] : nullptr;
 
-            vfloat32m4_t acc = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+        size_t output_idx = 0;
 
-            for (size_t kh = 0; kh < KernelHeight; kh++) {
-                for (size_t kw = 0; kw < KernelWidth; kw++) {
-                    const float* input_pos = Input + output_idx * StrideWidthElements +
-                                             kh * DilatedInputWidthElements + kw * DilationWidthElements;
+        for (; output_idx + OutputStep <= TotalOutputCount; output_idx += OutputStep) {
+            MlasConvNchwFloatGroupRvv(
+                Input + output_idx * StrideWidthElements, filter, &output[output_idx * BlockSize],
+                StrideWidthElements, DilationWidthElements, InputWidthElements,
+                DilatedInputWidthElements, KernelHeight, KernelWidth, InputBase, bias,
+                KernelFlags, vl, OutputStep);
+        }
 
-                    const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-                    const float* input_row_end = input_row_start + InputWidthElements;
-
-                    float input_value = 0.0f;
-                    if (input_pos >= input_row_start && input_pos < input_row_end) {
-                        input_value = *input_pos;
-                    }
-
-                    size_t kernel_base_pos = kh * KernelWidth + kw;
-                    vfloat32m4_t filt = __riscv_vle32_v_f32m4(&filter[kernel_base_pos * BlockSize], vl);
-                    acc = __riscv_vfmacc_vf_f32m4(acc, input_value, filt, vl);
-                }
-            }
-
-            ApplyPostProcessing(acc, &output[output_idx * BlockSize],
-                                Bias ? &Bias[filterSetBlock * BlockSize] : nullptr,
-                                KernelFlags, vl);
-
-            __riscv_vse32_v_f32m4(&output[output_idx * BlockSize], acc, vl);
+        if (output_idx < TotalOutputCount) {
+            MlasConvNchwFloatGroupRvv(
+                Input + output_idx * StrideWidthElements, filter, &output[output_idx * BlockSize],
+                StrideWidthElements, DilationWidthElements, InputWidthElements,
+                DilatedInputWidthElements, KernelHeight, KernelWidth, InputBase, bias,
+                KernelFlags, vl, TotalOutputCount - output_idx);
         }
     }
 }
+
+namespace {
+
+//
+// Accumulates a group of output positions of the direct NCHWc convolution. Input
+// and Output address the first of them; the filter is already at its block.
+//
+
+MLAS_FORCEINLINE
+void
+MlasConvNchwcFloatGroupRvv(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidthElements,
+    size_t DilationWidthElements,
+    size_t InputWidthElements,
+    size_t DilatedInputWidthElements,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    const float* Bias,
+    unsigned KernelFlags,
+    size_t vl,
+    size_t OutputCountThisIteration
+    )
+{
+    const size_t offset1 = (OutputCountThisIteration > 1 ? 1 : 0) * StrideWidthElements;
+    const size_t offset2 = (OutputCountThisIteration > 2 ? 2 : 0) * StrideWidthElements;
+    const size_t offset3 = (OutputCountThisIteration > 3 ? 3 : 0) * StrideWidthElements;
+
+    // Furthest position the group stores; the slots it does not use sit at zero.
+    const size_t offset_last = (OutputCountThisIteration - 1) * StrideWidthElements;
+
+    vfloat32m4_t acc0 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+    vfloat32m4_t acc1 = acc0;
+    vfloat32m4_t acc2 = acc0;
+    vfloat32m4_t acc3 = acc0;
+
+    for (size_t kh = 0; kh < KernelHeight; kh++) {
+
+        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+        const float* input_row_end = input_row_start + InputWidthElements;
+
+        for (size_t kw = 0; kw < KernelWidth; kw++) {
+
+            const float* filter_position =
+                Filter + (kh * KernelWidth + kw) * BlockSize * BlockSize;
+
+            const float* input_base =
+                Input + kh * DilatedInputWidthElements + kw * DilationWidthElements;
+            const float* input_base0 = input_base;
+            const float* input_base1 = input_base + offset1;
+            const float* input_base2 = input_base + offset2;
+            const float* input_base3 = input_base + offset3;
+
+            const bool all_in_bounds = (input_base >= input_row_start) &&
+                                     ((input_base + offset_last + BlockSize) <= input_row_end);
+
+            if (all_in_bounds) {
+                for (size_t ic = 0; ic < BlockSize; ic++) {
+                    vfloat32m4_t filt =
+                        __riscv_vle32_v_f32m4(&filter_position[ic * BlockSize], vl);
+                    acc0 = __riscv_vfmacc_vf_f32m4(acc0, input_base0[ic], filt, vl);
+                    acc1 = __riscv_vfmacc_vf_f32m4(acc1, input_base1[ic], filt, vl);
+                    acc2 = __riscv_vfmacc_vf_f32m4(acc2, input_base2[ic], filt, vl);
+                    acc3 = __riscv_vfmacc_vf_f32m4(acc3, input_base3[ic], filt, vl);
+                }
+            } else {
+                for (size_t ic = 0; ic < BlockSize; ic++) {
+                    vfloat32m4_t filt =
+                        __riscv_vle32_v_f32m4(&filter_position[ic * BlockSize], vl);
+                    acc0 = __riscv_vfmacc_vf_f32m4(
+                        acc0, LoadInRange(input_base0 + ic, input_row_start, input_row_end),
+                        filt, vl);
+                    acc1 = __riscv_vfmacc_vf_f32m4(
+                        acc1, LoadInRange(input_base1 + ic, input_row_start, input_row_end),
+                        filt, vl);
+                    acc2 = __riscv_vfmacc_vf_f32m4(
+                        acc2, LoadInRange(input_base2 + ic, input_row_start, input_row_end),
+                        filt, vl);
+                    acc3 = __riscv_vfmacc_vf_f32m4(
+                        acc3, LoadInRange(input_base3 + ic, input_row_start, input_row_end),
+                        filt, vl);
+                }
+            }
+        }
+    }
+
+    ApplyPostProcessing(acc0, &Output[0], Bias, KernelFlags, vl);
+    __riscv_vse32_v_f32m4(&Output[0], acc0, vl);
+
+    if (OutputCountThisIteration > 1) {
+        ApplyPostProcessing(acc1, &Output[BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[BlockSize], acc1, vl);
+    }
+
+    if (OutputCountThisIteration > 2) {
+        ApplyPostProcessing(acc2, &Output[2 * BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[2 * BlockSize], acc2, vl);
+    }
+
+    if (OutputCountThisIteration > 3) {
+        ApplyPostProcessing(acc3, &Output[3 * BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[3 * BlockSize], acc3, vl);
+    }
+}
+
+}  // namespace
 
 //
 // Direct NCHWc convolution kernel.
@@ -191,57 +404,147 @@ MlasConvNchwcFloatKernelRvv(
 
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
-    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
+    for (size_t filterSetBlock = 0; filterSetBlock < FilterCount; filterSetBlock++) {
 
-        for (size_t filterSetBlock = 0; filterSetBlock < FilterCount; filterSetBlock++) {
-            const float* filter = Filter + filterSetBlock * FilterStrideElements;
-            float* output = Output + filterSetBlock * OutputStrideElements;
+        const float* filter = Filter + filterSetBlock * FilterStrideElements;
+        float* output = Output + filterSetBlock * OutputStrideElements;
+        const float* bias = (Bias != nullptr) ? &Bias[filterSetBlock * BlockSize] : nullptr;
 
-            vfloat32m4_t acc = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+        size_t output_idx = 0;
 
-            for (size_t kh = 0; kh < KernelHeight; kh++) {
-                for (size_t kw = 0; kw < KernelWidth; kw++) {
-                    const float* input_base = Input + output_idx * StrideWidthElements +
-                                              kh * DilatedInputWidthElements + kw * DilationWidthElements;
+        for (; output_idx + OutputStep <= TotalOutputCount; output_idx += OutputStep) {
+            MlasConvNchwcFloatGroupRvv(
+                Input + output_idx * StrideWidthElements, filter, &output[output_idx * BlockSize],
+                StrideWidthElements, DilationWidthElements, InputWidthElements,
+                DilatedInputWidthElements, KernelHeight, KernelWidth, InputBase, bias,
+                KernelFlags, vl, OutputStep);
+        }
 
-                    const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-                    const float* input_row_end = input_row_start + InputWidthElements;
-
-                    size_t kernel_pos = kh * KernelWidth + kw;
-
-                    bool in_bounds = (input_base >= input_row_start) &&
-                                     ((input_base + BlockSize) <= input_row_end);
-
-                    if (in_bounds) {
-                        for (size_t ic = 0; ic < BlockSize; ic++) {
-                            float input_value = input_base[ic];
-                            size_t filter_offset = kernel_pos * BlockSize * BlockSize + ic * BlockSize;
-                            vfloat32m4_t filt = __riscv_vle32_v_f32m4(&filter[filter_offset], vl);
-                            acc = __riscv_vfmacc_vf_f32m4(acc, input_value, filt, vl);
-                        }
-                    } else {
-                        for (size_t ic = 0; ic < BlockSize; ic++) {
-                            const float* input_element = input_base + ic;
-                            float input_value = 0.0f;
-                            if (input_element >= input_row_start && input_element < input_row_end) {
-                                input_value = *input_element;
-                            }
-                            size_t filter_offset = kernel_pos * BlockSize * BlockSize + ic * BlockSize;
-                            vfloat32m4_t filt = __riscv_vle32_v_f32m4(&filter[filter_offset], vl);
-                            acc = __riscv_vfmacc_vf_f32m4(acc, input_value, filt, vl);
-                        }
-                    }
-                }
-            }
-
-            ApplyPostProcessing(acc, &output[output_idx * BlockSize],
-                                Bias ? &Bias[filterSetBlock * BlockSize] : nullptr,
-                                KernelFlags, vl);
-
-            __riscv_vse32_v_f32m4(&output[output_idx * BlockSize], acc, vl);
+        if (output_idx < TotalOutputCount) {
+            MlasConvNchwcFloatGroupRvv(
+                Input + output_idx * StrideWidthElements, filter, &output[output_idx * BlockSize],
+                StrideWidthElements, DilationWidthElements, InputWidthElements,
+                DilatedInputWidthElements, KernelHeight, KernelWidth, InputBase, bias,
+                KernelFlags, vl, TotalOutputCount - output_idx);
         }
     }
 }
+
+namespace {
+
+MLAS_FORCEINLINE
+vfloat32m4_t
+LoadBlockInRange(
+    const float* Address,
+    const float* RowStart,
+    const float* RowEnd,
+    size_t vl
+    )
+{
+    if (Address >= RowStart && (Address + BlockSize - 1) < RowEnd) {
+        return __riscv_vle32_v_f32m4(Address, vl);
+    }
+
+    return __riscv_vfmv_v_f_f32m4(0.0f, vl);
+}
+
+//
+// Accumulates a group of output positions of the depthwise convolution.
+//
+
+MLAS_FORCEINLINE
+void
+MlasConvDepthwiseFloatGroupRvv(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidthElements,
+    size_t DilationWidthElements,
+    size_t InputWidthElements,
+    size_t DilatedInputWidthElements,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    const float* Bias,
+    unsigned KernelFlags,
+    size_t vl,
+    size_t OutputCountThisIteration
+    )
+{
+    const size_t offset1 = (OutputCountThisIteration > 1 ? 1 : 0) * StrideWidthElements;
+    const size_t offset2 = (OutputCountThisIteration > 2 ? 2 : 0) * StrideWidthElements;
+    const size_t offset3 = (OutputCountThisIteration > 3 ? 3 : 0) * StrideWidthElements;
+
+    const size_t offset_last = (OutputCountThisIteration - 1) * StrideWidthElements;
+
+    vfloat32m4_t acc0 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+    vfloat32m4_t acc1 = acc0;
+    vfloat32m4_t acc2 = acc0;
+    vfloat32m4_t acc3 = acc0;
+
+    for (size_t kh = 0; kh < KernelHeight; kh++) {
+
+        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+        const float* input_row_end = input_row_start + InputWidthElements;
+
+        for (size_t kw = 0; kw < KernelWidth; kw++) {
+
+            const float* input_base =
+                Input + kh * DilatedInputWidthElements + kw * DilationWidthElements;
+
+            vfloat32m4_t filt =
+                __riscv_vle32_v_f32m4(&Filter[(kh * KernelWidth + kw) * BlockSize], vl);
+
+            if (input_base >= input_row_start &&
+                (input_base + offset_last + BlockSize - 1) < input_row_end) {
+                acc0 = __riscv_vfmacc_vv_f32m4(
+                    acc0, __riscv_vle32_v_f32m4(input_base, vl), filt, vl);
+                acc1 = __riscv_vfmacc_vv_f32m4(
+                    acc1, __riscv_vle32_v_f32m4(input_base + offset1, vl), filt, vl);
+                acc2 = __riscv_vfmacc_vv_f32m4(
+                    acc2, __riscv_vle32_v_f32m4(input_base + offset2, vl), filt, vl);
+                acc3 = __riscv_vfmacc_vv_f32m4(
+                    acc3, __riscv_vle32_v_f32m4(input_base + offset3, vl), filt, vl);
+            } else {
+                acc0 = __riscv_vfmacc_vv_f32m4(
+                    acc0, LoadBlockInRange(input_base, input_row_start, input_row_end, vl),
+                    filt, vl);
+                acc1 = __riscv_vfmacc_vv_f32m4(
+                    acc1,
+                    LoadBlockInRange(input_base + offset1, input_row_start, input_row_end, vl),
+                    filt, vl);
+                acc2 = __riscv_vfmacc_vv_f32m4(
+                    acc2,
+                    LoadBlockInRange(input_base + offset2, input_row_start, input_row_end, vl),
+                    filt, vl);
+                acc3 = __riscv_vfmacc_vv_f32m4(
+                    acc3,
+                    LoadBlockInRange(input_base + offset3, input_row_start, input_row_end, vl),
+                    filt, vl);
+            }
+        }
+    }
+
+    ApplyPostProcessing(acc0, &Output[0], Bias, KernelFlags, vl);
+    __riscv_vse32_v_f32m4(&Output[0], acc0, vl);
+
+    if (OutputCountThisIteration > 1) {
+        ApplyPostProcessing(acc1, &Output[BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[BlockSize], acc1, vl);
+    }
+
+    if (OutputCountThisIteration > 2) {
+        ApplyPostProcessing(acc2, &Output[2 * BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[2 * BlockSize], acc2, vl);
+    }
+
+    if (OutputCountThisIteration > 3) {
+        ApplyPostProcessing(acc3, &Output[3 * BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[3 * BlockSize], acc3, vl);
+    }
+}
+
+}  // namespace
 
 //
 // Depthwise NCHWc convolution kernel.
@@ -280,38 +583,91 @@ MlasConvDepthwiseFloatKernelRvv(
     const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
 
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
-    const size_t KernelSize = KernelHeight * KernelWidth;
 
-    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
+    size_t output_idx = 0;
 
-        vfloat32m4_t acc = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+    for (; output_idx + OutputStep <= TotalOutputCount; output_idx += OutputStep) {
+        MlasConvDepthwiseFloatGroupRvv(
+            Input + output_idx * StrideWidthElements, Filter, &Output[output_idx * BlockSize],
+            StrideWidthElements, DilationWidthElements, InputWidthElements,
+            DilatedInputWidthElements, KernelHeight, KernelWidth, InputBase, Bias, KernelFlags,
+            vl, OutputStep);
+    }
 
-        for (size_t kpos = 0; kpos < KernelSize; kpos++) {
-            size_t kh = kpos / KernelWidth;
-            size_t kw = kpos % KernelWidth;
-
-            const float* input_base = Input + output_idx * StrideWidthElements +
-                                      kh * DilatedInputWidthElements + kw * DilationWidthElements;
-
-            const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-            const float* input_row_end = input_row_start + InputWidthElements;
-
-            vfloat32m4_t input_vec;
-            if (input_base >= input_row_start && (input_base + BlockSize - 1) < input_row_end) {
-                input_vec = __riscv_vle32_v_f32m4(input_base, vl);
-            } else {
-                input_vec = __riscv_vfmv_v_f_f32m4(0.0f, vl);
-            }
-
-            vfloat32m4_t filt = __riscv_vle32_v_f32m4(&Filter[kpos * BlockSize], vl);
-            acc = __riscv_vfmacc_vv_f32m4(acc, input_vec, filt, vl);
-        }
-
-        ApplyPostProcessing(acc, &Output[output_idx * BlockSize], Bias, KernelFlags, vl);
-
-        __riscv_vse32_v_f32m4(&Output[output_idx * BlockSize], acc, vl);
+    if (output_idx < TotalOutputCount) {
+        MlasConvDepthwiseFloatGroupRvv(
+            Input + output_idx * StrideWidthElements, Filter, &Output[output_idx * BlockSize],
+            StrideWidthElements, DilationWidthElements, InputWidthElements,
+            DilatedInputWidthElements, KernelHeight, KernelWidth, InputBase, Bias, KernelFlags,
+            vl, TotalOutputCount - output_idx);
     }
 }
+
+namespace {
+
+//
+// Accumulates a group of output positions of the pointwise convolution. Nothing
+// is padded here, so no position needs a range test.
+//
+
+MLAS_FORCEINLINE
+void
+MlasConvPointwiseFloatGroupRvv(
+    const float* Input,
+    const float* Filter,
+    float* Output,
+    size_t StrideWidthElements,
+    size_t InputStrideElements,
+    size_t InputChannels,
+    const float* Bias,
+    unsigned KernelFlags,
+    size_t vl,
+    size_t OutputCountThisIteration
+    )
+{
+    const size_t offset1 = (OutputCountThisIteration > 1 ? 1 : 0) * StrideWidthElements;
+    const size_t offset2 = (OutputCountThisIteration > 2 ? 2 : 0) * StrideWidthElements;
+    const size_t offset3 = (OutputCountThisIteration > 3 ? 3 : 0) * StrideWidthElements;
+
+    vfloat32m4_t acc0 = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+    vfloat32m4_t acc1 = acc0;
+    vfloat32m4_t acc2 = acc0;
+    vfloat32m4_t acc3 = acc0;
+
+    for (size_t ic = 0; ic < InputChannels; ic++) {
+
+        const float* input = Input + ic * InputStrideElements;
+        const float* filter = Filter + ic * BlockSize * BlockSize;
+
+        for (size_t j = 0; j < BlockSize; j++) {
+            vfloat32m4_t filt = __riscv_vle32_v_f32m4(&filter[j * BlockSize], vl);
+            acc0 = __riscv_vfmacc_vf_f32m4(acc0, input[j], filt, vl);
+            acc1 = __riscv_vfmacc_vf_f32m4(acc1, input[offset1 + j], filt, vl);
+            acc2 = __riscv_vfmacc_vf_f32m4(acc2, input[offset2 + j], filt, vl);
+            acc3 = __riscv_vfmacc_vf_f32m4(acc3, input[offset3 + j], filt, vl);
+        }
+    }
+
+    ApplyPostProcessing(acc0, &Output[0], Bias, KernelFlags, vl);
+    __riscv_vse32_v_f32m4(&Output[0], acc0, vl);
+
+    if (OutputCountThisIteration > 1) {
+        ApplyPostProcessing(acc1, &Output[BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[BlockSize], acc1, vl);
+    }
+
+    if (OutputCountThisIteration > 2) {
+        ApplyPostProcessing(acc2, &Output[2 * BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[2 * BlockSize], acc2, vl);
+    }
+
+    if (OutputCountThisIteration > 3) {
+        ApplyPostProcessing(acc3, &Output[3 * BlockSize], Bias, KernelFlags, vl);
+        __riscv_vse32_v_f32m4(&Output[3 * BlockSize], acc3, vl);
+    }
+}
+
+}  // namespace
 
 //
 // Pointwise (1x1) NCHWc convolution kernel.
@@ -345,29 +701,25 @@ MlasConvPointwiseFloatKernelRvv(
     const size_t OutputStrideElements = OutputStride / sizeof(float);
 
     for (size_t f = 0; f < FilterCount; f++) {
+
         const float* filter = Filter + f * FilterStrideElements;
         float* output = Output + f * OutputStrideElements;
+        const float* bias = (Bias != nullptr) ? &Bias[f * BlockSize] : nullptr;
 
-        for (size_t out = 0; out < OutputCount; out++) {
+        size_t out = 0;
 
-            vfloat32m4_t acc = __riscv_vfmv_v_f_f32m4(0.0f, vl);
+        for (; out + OutputStep <= OutputCount; out += OutputStep) {
+            MlasConvPointwiseFloatGroupRvv(
+                Input + out * StrideWidthElements, filter, &output[out * BlockSize],
+                StrideWidthElements, InputStrideElements, InputChannels, bias, KernelFlags, vl,
+                OutputStep);
+        }
 
-            const float* input = Input + out * StrideWidthElements;
-
-            for (size_t ic = 0; ic < InputChannels; ic++) {
-                for (size_t j = 0; j < BlockSize; j++) {
-                    float input_value = input[ic * InputStrideElements + j];
-                    vfloat32m4_t filt = __riscv_vle32_v_f32m4(
-                        &filter[ic * BlockSize * BlockSize + j * BlockSize], vl);
-                    acc = __riscv_vfmacc_vf_f32m4(acc, input_value, filt, vl);
-                }
-            }
-
-            ApplyPostProcessing(acc, &output[out * BlockSize],
-                                Bias ? &Bias[f * BlockSize] : nullptr,
-                                KernelFlags, vl);
-
-            __riscv_vse32_v_f32m4(&output[out * BlockSize], acc, vl);
+        if (out < OutputCount) {
+            MlasConvPointwiseFloatGroupRvv(
+                Input + out * StrideWidthElements, filter, &output[out * BlockSize],
+                StrideWidthElements, InputStrideElements, InputChannels, bias, KernelFlags, vl,
+                OutputCount - out);
         }
     }
 }
