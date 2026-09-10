@@ -23,6 +23,12 @@ def has_sm80_cuda():
     )
 
 
+def has_sm89_cuda():
+    return bool(os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER")) or (
+        torch.cuda.is_available() and torch.cuda.get_device_capability() >= (8, 9)
+    )
+
+
 def int4_kernel_available():
     if os.getenv("ORT_PAGED_ATTENTION_TEST_RUNNER"):
         return True
@@ -744,12 +750,14 @@ class TestPagedAttentionInt4(unittest.TestCase):
             accelerated["output"].astype(np.float32), portable["output"].astype(np.float32), atol=8e-4, rtol=5e-3
         )
 
+    @unittest.skipUnless(has_sm80_cuda(), "XQA requires an SM80 or newer GPU")
     def test_xqa_large_attention_scale_and_k_scale(self):
         # An attention scale above one together with a channel scale at FLT_MAX would make
         # attention_scale * normalizer overflow fp32 and every logit NaN. The normalizer exponent is
         # bounded to prevent that, and this table spans one binade so it stays on XQA.
         heads, width = 6, 256
-        for cache_dtype in (np.uint8, np.int8, ml_dtypes.float8_e4m3fn):
+        cache_dtypes = (np.uint8, np.int8, ml_dtypes.float8_e4m3fn) if has_sm89_cuda() else (np.uint8, np.int8)
+        for cache_dtype in cache_dtypes:
             for length in (1, 3):
                 with self.subTest(cache_dtype=cache_dtype, length=length):
                     model, feeds, _ = make_case(
