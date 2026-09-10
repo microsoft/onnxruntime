@@ -8,6 +8,7 @@ import sys
 import unittest
 from collections.abc import Sequence
 
+import numpy as np
 import onnx
 from autoep_helper import AutoEpTestCase
 from helper import get_name, get_shared_library_filename_for_platform
@@ -264,6 +265,62 @@ class TestCompileApi(AutoEpTestCase):
         model_compiler = onnxrt.ModelCompiler(
             session_options,
             input_model_bytes,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+        )
+        output_model_bytes = model_compiler.compile_to_bytes()
+        self.assertTrue(isinstance(output_model_bytes, bytes))
+        self.assertGreater(len(output_model_bytes), 0)
+
+    def test_compile_model_with_outer_scope_initializer_used_only_in_subgraph(self):
+        """
+        A subgraph (e.g. an If body) may read an initializer of the enclosing graph
+        that no node of the enclosing graph reads itself. Such an initializer must
+        still be copied into the EPContext model; otherwise compilation fails on a
+        dangling outer-scope reference even though the model runs fine in a normal
+        session (see #32131).
+        """
+        provider = None
+        provider_options = dict()
+        if "QNNExecutionProvider" in available_providers:
+            provider = "QNNExecutionProvider"
+            provider_options["backend_type"] = "htp"
+
+        # `axes` and `data` are outer-graph initializers consumed only from inside
+        # the If subgraphs (implicit inputs); `cond` selects the branch.
+        axes = onnx.numpy_helper.from_array(np.array([0], np.int64), "axes")
+        data = onnx.numpy_helper.from_array(np.array([10.0, 20.0, 30.0, 40.0], np.float32), "data")
+        cond = onnx.numpy_helper.from_array(np.array(True), "cond")
+        then_body = onnx.helper.make_graph(
+            [onnx.helper.make_node("Unsqueeze", ["data", "axes"], ["y_then"])],
+            "then_body",
+            [],
+            [onnx.helper.make_tensor_value_info("y_then", onnx.TensorProto.FLOAT, [1, 4])],
+        )
+        else_body = onnx.helper.make_graph(
+            [onnx.helper.make_node("Unsqueeze", ["data", "axes"], ["y_else"])],
+            "else_body",
+            [],
+            [onnx.helper.make_tensor_value_info("y_else", onnx.TensorProto.FLOAT, [1, 4])],
+        )
+        graph = onnx.helper.make_graph(
+            [onnx.helper.make_node("If", ["cond"], ["Y"], then_branch=then_body, else_branch=else_body)],
+            "main",
+            [],
+            [onnx.helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 4])],
+            [axes, data, cond],
+        )
+        model = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 21)])
+        model.ir_version = 10
+        onnx.checker.check_model(model, full_check=True)
+
+        session_options = onnxrt.SessionOptions()
+        if provider:
+            session_options.add_provider(provider, provider_options)
+
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            model.SerializeToString(),
             embed_compiled_data_into_model=True,
             external_initializers_file_path=None,
         )
