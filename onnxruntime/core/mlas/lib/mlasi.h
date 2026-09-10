@@ -659,6 +659,10 @@ void
     size_t N
     );
 
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+constexpr size_t kDepthwiseGeneralMaxKernelWidth = 16;
+#endif
+
 typedef
 void
 (MLASCALL MLAS_COMPUTE_ERF_FP16_KERNEL)(
