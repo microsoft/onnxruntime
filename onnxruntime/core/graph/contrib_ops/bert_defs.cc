@@ -1777,6 +1777,89 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           PagedAttentionTypeAndShapeInference(ctx);
         }));
 
+constexpr const char* SparsePagedAttention_ver1_doc = R"DOC(
+Selected-index attention over the PagedAttention main K/V cache.
+
+Selection is supplied by an external indexer. selected_only attends selected entries;
+local_plus_selected combines a main-cache local window and selected entries in one softmax.
+Selected indices are request-local logical positions in the main cache or in a contiguous
+auxiliary cache, according to selected_kv_source.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SparsePagedAttention, 1,
+    OpSchema()
+        .SetDoc(SparsePagedAttention_ver1_doc)
+        .Attr("num_heads", "Number of query heads.", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of main K/V heads.", AttributeProto::INT)
+        .Attr("scale", "Attention scale; defaults to 1/sqrt(head_size).",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("softcap", "Optional tanh softcap for attention logits.",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("is_causal", "Apply causal filtering to main-cache reads.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("local_window_size", "Left main-cache window size; -1 means all visible tokens.",
+              AttributeProto::INT, static_cast<int64_t>(-1))
+        .Attr("attention_mode", "'selected_only' or 'local_plus_selected'.",
+              AttributeProto::STRING, std::string("selected_only"))
+        .Attr("selected_kv_source", "'main' or 'auxiliary'.",
+              AttributeProto::STRING, std::string("main"))
+        .Attr("auxiliary_cache_layout", "Version 1 supports only 'contiguous'.",
+              AttributeProto::STRING, std::string("contiguous"))
+        .Attr("auxiliary_kv_shared", "When 1, auxiliary_key supplies both K and V.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("do_rotary", "Apply rotary embedding to current Q/K.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("rotary_interleaved", "Use interleaved rotary embedding.", AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("rotary_offset", "First head channel covered by rotary embedding.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("qk_norm_epsilon", "QK RMSNorm epsilon.", AttributeProto::FLOAT, 1e-6f)
+        .Attr("k_quant_type", "Main key-cache quantization: NONE, PER_TENSOR, or PER_CHANNEL.",
+              AttributeProto::STRING, std::string("NONE"))
+        .Attr("v_quant_type", "Main value-cache quantization: NONE, PER_TENSOR, or PER_CHANNEL.",
+              AttributeProto::STRING, std::string("NONE"))
+        .Input(0, "query", "Query or packed QKV, shaped as for PagedAttention.", "T")
+        .Input(1, "key", "Current key.", "T", OpSchema::Optional)
+        .Input(2, "value", "Current value.", "T", OpSchema::Optional)
+        .Input(3, "key_cache", "Paged main key cache.", "T_CACHE")
+        .Input(4, "value_cache", "Paged main value cache.", "T_CACHE")
+        .Input(5, "cumulative_sequence_length", "Packed query offsets.", "S")
+        .Input(6, "past_seqlens", "Past main-cache lengths.", "S")
+        .Input(7, "block_table", "Logical-to-physical main-cache block table.", "S")
+        .Input(8, "slot_mapping", "Optional main-cache write slots; -1 suppresses a write.",
+               "S", OpSchema::Optional)
+        .Input(9, "selected_indices",
+               "Request-local positions, shape (token_count, max_selected_entries); unused entries are -1.", "S")
+        .Input(10, "selected_counts", "Selected entry count per query token.", "S")
+        .Input(11, "auxiliary_key",
+               "Shape (batch_size, capacity, kv_num_heads_or_one, head_size).",
+               "T_AUX", OpSchema::Optional)
+        .Input(12, "auxiliary_value", "Same shape as auxiliary_key.", "T_AUX", OpSchema::Optional)
+        .Input(13, "auxiliary_lengths", "Valid auxiliary length per request.", "S", OpSchema::Optional)
+        .Input(14, "cos_cache", "Rotary cosine cache.", "T", OpSchema::Optional)
+        .Input(15, "sin_cache", "Rotary sine cache.", "T", OpSchema::Optional)
+        .Input(16, "head_sink", "Optional softmax sink logit per query head.", "T", OpSchema::Optional)
+        .Input(17, "q_norm_weight", "QK-Norm query weight.", "T", OpSchema::Optional)
+        .Input(18, "k_norm_weight", "QK-Norm key weight.", "T", OpSchema::Optional)
+        .Input(19, "k_scale", "Main key-cache quantization scale.", "T_KV_SCALE", OpSchema::Optional)
+        .Input(20, "v_scale", "Main value-cache quantization scale.", "T_KV_SCALE", OpSchema::Optional)
+        .Input(21, "attention_metadata",
+               "CPU tensor [max_query_len, max_main_kv_len, max_selected_entries, max_auxiliary_len].",
+               "S", OpSchema::Optional)
+        .Output(0, "output", "Shape (token_count, num_heads * head_size).", "T")
+        .Output(1, "key_cache_out", "In-place alias of key_cache.", "T_CACHE", OpSchema::Optional)
+        .Output(2, "value_cache_out", "In-place alias of value_cache.", "T_CACHE", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Activation type.")
+        .TypeConstraint("T_CACHE", {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)"},
+                        "Main cache storage type.")
+        .TypeConstraint("T_AUX", {"tensor(float16)", "tensor(bfloat16)"}, "Auxiliary cache type.")
+        .TypeConstraint("T_KV_SCALE", {"tensor(float)"}, "Main cache scale type.")
+        .TypeConstraint("S", {"tensor(int32)"}, "Index and length type.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          PagedAttentionTypeAndShapeInference(ctx);
+        }));
+
 constexpr const char* SparseAttention_ver1_doc = R"DOC(
 Block Sparse Attention used in Phi-3-small (https://arxiv.org/pdf/2404.14219).
 

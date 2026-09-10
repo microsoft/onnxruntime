@@ -1850,6 +1850,18 @@ Status EfficientAttention(
 ////////// API Functions
 
 template <typename T, typename TCACHE>
+Status PreparePagedAttentionQueryAndCache(
+    const cudaDeviceProp& device_prop,
+    Stream* ort_stream,
+    contrib::PagedAttentionParameters& parameters,
+    PagedAttentionData<T, TCACHE>& data,
+    T** query) {
+  return PrepareQueryAndCache<T, TCACHE>(
+      static_cast<cudaStream_t>(ort_stream->GetHandle()), parameters, data,
+      device_prop.maxThreadsPerBlock, query);
+}
+
+template <typename T, typename TCACHE>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& /*cublas*/,
@@ -1889,13 +1901,17 @@ Status QkvToContext(
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No PagedAttention kernel available for the current configuration.");
 }
 
-#define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)       \
-  template struct PagedAttentionData<T, TCACHE>;     \
-  template Status QkvToContext<T, TCACHE>(           \
-      const cudaDeviceProp& device_prop,             \
-      cublasHandle_t& cublas,                        \
-      Stream* ort_stream,                            \
-      contrib::PagedAttentionParameters& parameters, \
+#define INSTANTIATE_PAGED_ATTENTION(T, TCACHE)                   \
+  template struct PagedAttentionData<T, TCACHE>;                 \
+  template Status PreparePagedAttentionQueryAndCache<T, TCACHE>( \
+      const cudaDeviceProp& device_prop, Stream* stream,         \
+      contrib::PagedAttentionParameters& parameters,             \
+      PagedAttentionData<T, TCACHE>& data, T** query);           \
+  template Status QkvToContext<T, TCACHE>(                       \
+      const cudaDeviceProp& device_prop,                         \
+      cublasHandle_t& cublas,                                    \
+      Stream* ort_stream,                                        \
+      contrib::PagedAttentionParameters& parameters,             \
       PagedAttentionData<T, TCACHE>& data);
 
 INSTANTIATE_PAGED_ATTENTION(half, half)
