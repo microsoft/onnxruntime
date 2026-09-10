@@ -1,18 +1,22 @@
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -120,2 +120,8 @@
+@@ -113,6 +113,12 @@
+ message(STATUS "PAL implementation: ${PAL_IMPLEMENTATION}")
+ string(TOUPPER ${PAL_IMPLEMENTATION} PAL_IMPLEMENTATION_UPPER)
+ add_library(matsdk_internal_config INTERFACE)
 +option(MATSDK_DISABLE_LOGGING "Compile internal SDK logging out" OFF)
 +if(MATSDK_DISABLE_LOGGING)
 +  target_compile_definitions(matsdk_internal_config INTERFACE
 +    MATSDK_DISABLE_LOGGING)
 +endif()
 +
- option(GCC5_CXX11_ABI_WORKAROUND "Workaround: Use legacy C++11 ABI (for GCC 5 compatibility)" OFF)
- if(GCC5_CXX11_ABI_WORKAROUND)
+ target_compile_definitions(matsdk_internal_config INTERFACE
+   MATSDK_PAL_${PAL_IMPLEMENTATION_UPPER}=1
+   NOMINMAX)
 
 --- a/lib/include/mat/config-default.h
 +++ b/lib/include/mat/config-default.h
-@@ -29,7 +29,9 @@
+@@ -28,7 +28,9 @@
  #endif
  #define HAVE_MAT_JSONHPP
  #define HAVE_MAT_ZLIB
@@ -25,21 +29,24 @@
 
 --- a/lib/pal/PAL.cpp
 +++ b/lib/pal/PAL.cpp
-@@ -183,3 +183,4 @@
+@@ -185,4 +185,5 @@
  #if !defined(_WIN32) && defined(__linux__)
 +#ifdef HAVE_MAT_LOGGING
          static std::mutex m;
          static std::map<std::thread::id, pid_t> threads;
-@@ -194,4 +195,5 @@
+         static long int gettid()
+@@ -192,6 +193,7 @@
+             threads[std::this_thread::get_id()] = tid;
+             return tid;
          }
++#endif
  #else
  #define     gettid()       std::this_thread::get_id()
-+#endif
  #endif
 
 --- a/lib/pal/TaskDispatcher_CAPI.cpp
 +++ b/lib/pal/TaskDispatcher_CAPI.cpp
-@@ -44,4 +44,5 @@
+@@ -46,4 +46,5 @@
                  }
                  catch (const std::exception& ex) {
 +                    (void)ex;
@@ -48,7 +55,7 @@
 
 --- a/lib/pal/WorkerThread.cpp
 +++ b/lib/pal/WorkerThread.cpp
-@@ -247,4 +247,5 @@
+@@ -249,4 +249,5 @@
                          }
                          catch (const std::exception& ex) {
 +                            (void)ex;
