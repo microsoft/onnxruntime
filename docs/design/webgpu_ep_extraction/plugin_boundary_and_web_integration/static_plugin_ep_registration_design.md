@@ -170,7 +170,9 @@ Properties:
 
 - The entire `OrtApi` behaves normally for provider code. `TryGetInstance` finds a published instance, and a
   re-entrant `CreateEnv` acquires the recursive lock and increments the reference count.
-- No new contract for provider authors, and nothing for a future API author to remember.
+- No new contract for provider authors, and nothing for a future API author to remember. The constraints that do
+  apply to `GetSupportedDevices` are the ones dynamic plugin EP registration already imposes, now documented on
+  `OrtEpFactory::GetSupportedDevices` in `onnxruntime_ep_c_api.h`.
 - No race. Other threads block on `m_` for the duration, which is already true across `Environment::Create`.
 - The reference count cannot reach zero mid-construction, because the creating thread's reference is taken first.
 - Provider sources need no conditional compilation for the two linkage modes.
@@ -179,7 +181,14 @@ Costs and limits:
 
 - Failure during registration requires explicit teardown of the just-published instance.
 - A recursive mutex is normally undesirable. Here it states the actual invariant: the environment creation path can
-  legitimately re-enter the environment accessor on the same thread.
+  legitimately re-enter the environment accessor on the same thread. Static plugin EP registration is the only reason
+  `OrtEnv::m_` is recursive; it was a `std::mutex` before this change and no other code path requires recursion.
+- A static plugin EP's `GetSupportedDevices` runs against an environment in which its own `OrtEpDevice` instances are
+  not yet registered, so `OrtApi::GetEpDevices` returns an incomplete list. This is not specific to static linking:
+  `EpInfo::Create` calls `GetSupportedDevices` before `RegisterExecutionProviderLibrary` appends to
+  `execution_devices_`, so a dynamically registered plugin EP sees the same thing. Registration also proceeds one
+  library at a time, so with more than one static plugin EP the Nth would observe the first N-1, making the visible
+  set depend on `CreateStaticPluginEpLibraries` ordering. Accepted as a side effect.
 - Callers of `onnxruntime::Environment::Create` do not get static plugin EPs. In the tree this is one production call
   site plus tests and orttraining sample binaries.
 - Provider code that starts a thread which calls `CreateEnv` and then joins it will deadlock. This is already true of
