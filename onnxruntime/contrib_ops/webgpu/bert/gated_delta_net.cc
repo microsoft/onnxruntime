@@ -144,6 +144,14 @@ Status GatedDeltaNetParamsProgram::GenerateShaderCode(ShaderHelper& shader) cons
                              WGSL_TEMPLATE_VARIABLE(parameters, parameters));
 }
 
+Status GatedDeltaNetCopyProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& src = shader.AddInput("src");
+  const auto& dst = shader.AddOutput("dst");
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.element_count")
+                            << "  " << dst.SetByOffset("global_idx", src.GetByOffset("global_idx")) << "\n";
+  return Status::OK();
+}
+
 Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const auto* query = context.Input(0);
   const auto* key = context.Input(1);
@@ -267,9 +275,72 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
                                   binding_count(initial_state) + binding_count(a_log) + binding_count(dt_bias) +
                                   binding_count(output) + binding_count(final_state);
   if (state_alias) direct_binding_count -= binding_count(initial_state);
+  const uint32_t max_storage_buffers = context.DeviceLimits().maxStorageBuffersPerShaderStage;
+  const uint32_t qkv_binding_count = binding_count(query) + binding_count(key) + binding_count(value);
+  const uint64_t qkv_element_count =
+      static_cast<uint64_t>(query->Shape().Size()) + key->Shape().Size() + value->Shape().Size();
+  const uint64_t qkv_size_in_bytes = query->SizeInBytes() + key->SizeInBytes() + value->SizeInBytes();
+  const uint32_t packed_qkv_binding_count =
+      onnxruntime::narrow<uint32_t>((qkv_size_in_bytes + context.DeviceLimits().maxStorageBufferBindingSize - 1) /
+                                    context.DeviceLimits().maxStorageBufferBindingSize);
+  const uint32_t largest_qkv_binding_count =
+      std::max({binding_count(query), binding_count(key), binding_count(value)});
   const bool needs_dynamic_params = qwen_gate_ || (needs_decay && needs_beta);
+  uint32_t dynamic_param_binding_count = 0;
+  if (needs_decay) dynamic_param_binding_count += binding_count(decay);
+  if (needs_beta) dynamic_param_binding_count += binding_count(beta);
+  if (qwen_gate_) dynamic_param_binding_count += binding_count(a_log) + binding_count(dt_bias);
+  const uint64_t packed_params_size_in_bytes =
+      static_cast<uint64_t>(total_tokens) * hv * 2 * sizeof(float);
+  const uint32_t packed_params_binding_count =
+      onnxruntime::narrow<uint32_t>((packed_params_size_in_bytes + context.DeviceLimits().maxStorageBufferBindingSize - 1) /
+                                    context.DeviceLimits().maxStorageBufferBindingSize);
+  const bool can_pack_params =
+      needs_dynamic_params &&
+      dynamic_param_binding_count + packed_params_binding_count <= max_storage_buffers;
+  const bool can_copy_qkv =
+      qkv_element_count <= kMaxUint32 &&
+      largest_qkv_binding_count + packed_qkv_binding_count <= max_storage_buffers;
+  const bool use_packed_qkv =
+      direct_binding_count > max_storage_buffers &&
+      can_copy_qkv &&
+      (direct_binding_count - qkv_binding_count + packed_qkv_binding_count <= max_storage_buffers ||
+       (can_pack_params &&
+        direct_binding_count - qkv_binding_count + packed_qkv_binding_count - dynamic_param_binding_count +
+                packed_params_binding_count <=
+            max_storage_buffers));
+  std::optional<Tensor> packed_qkv;
+  if (use_packed_qkv) {
+    packed_qkv.emplace(
+        context.CreateGPUTensor(query->DataType(), TensorShape{onnxruntime::narrow<int64_t>(qkv_element_count)}));
+    uint32_t packed_offset = 0;
+    const auto copy_to_packed_qkv = [&](const Tensor* source) -> Status {
+      GatedDeltaNetCopyProgram copy_program;
+      copy_program
+          .AddInput({source, ProgramTensorMetadataDependency::Type})
+          .AddOutput(ProgramOutput::BufferView(&*packed_qkv,
+                                               ProgramTensorMetadataDependency::Type,
+                                               source->Shape(),
+                                               packed_offset))
+          .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(source->Shape().Size()) + WORKGROUP_SIZE - 1) /
+                                WORKGROUP_SIZE)
+          .SetWorkgroupSize(WORKGROUP_SIZE)
+          .AddUniformVariable({onnxruntime::narrow<uint32_t>(source->Shape().Size())});
+      ORT_RETURN_IF_ERROR(context.RunProgram(copy_program));
+      packed_offset += onnxruntime::narrow<uint32_t>(source->Shape().Size());
+      return Status::OK();
+    };
+    ORT_RETURN_IF_ERROR(copy_to_packed_qkv(query));
+    ORT_RETURN_IF_ERROR(copy_to_packed_qkv(key));
+    ORT_RETURN_IF_ERROR(copy_to_packed_qkv(value));
+  }
+  const uint32_t binding_count_after_qkv =
+      direct_binding_count - (use_packed_qkv ? qkv_binding_count - packed_qkv_binding_count : 0);
   const bool use_packed_params =
-      needs_dynamic_params && direct_binding_count > context.DeviceLimits().maxStorageBuffersPerShaderStage;
+      needs_dynamic_params &&
+      can_pack_params &&
+      binding_count_after_qkv > max_storage_buffers &&
+      binding_count_after_qkv - dynamic_param_binding_count + packed_params_binding_count <= max_storage_buffers;
   std::optional<Tensor> packed_params;
   if (use_packed_params) {
     packed_params.emplace(
@@ -290,9 +361,27 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
 
   GatedDeltaNetProgram program{update_rule_, cu_seqlens != nullptr, initial_state != nullptr, state_alias,
                                final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params};
-  program.AddInputs({{query, ProgramTensorMetadataDependency::Type},
-                     {key, ProgramTensorMetadataDependency::Type},
-                     {value, ProgramTensorMetadataDependency::Type}});
+  if (use_packed_qkv) {
+    const uint32_t query_offset = 0;
+    const uint32_t key_offset = onnxruntime::narrow<uint32_t>(query->Shape().Size());
+    const uint32_t value_offset = key_offset + onnxruntime::narrow<uint32_t>(key->Shape().Size());
+    program.AddInputs({ProgramInput::BufferView(&*packed_qkv,
+                                                ProgramTensorMetadataDependency::Type,
+                                                query->Shape(),
+                                                query_offset),
+                       ProgramInput::BufferView(&*packed_qkv,
+                                                ProgramTensorMetadataDependency::Type,
+                                                key->Shape(),
+                                                key_offset),
+                       ProgramInput::BufferView(&*packed_qkv,
+                                                ProgramTensorMetadataDependency::Type,
+                                                value->Shape(),
+                                                value_offset)});
+  } else {
+    program.AddInputs({{query, ProgramTensorMetadataDependency::Type},
+                       {key, ProgramTensorMetadataDependency::Type},
+                       {value, ProgramTensorMetadataDependency::Type}});
+  }
   if (cu_seqlens != nullptr) program.AddInput({cu_seqlens, ProgramTensorMetadataDependency::None});
   if (decay != nullptr && !use_packed_params) program.AddInput({decay, ProgramTensorMetadataDependency::None});
   if (beta != nullptr && !use_packed_params) program.AddInput({beta, ProgramTensorMetadataDependency::None});
@@ -313,8 +402,8 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
       .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv) * value_tiles)
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(static_cast<int>(update_rule_), cu_seqlens != nullptr, initial_state != nullptr, state_alias,
-                 final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params, workgroup_size,
-                 kValueChannelsPerWorkgroup)
+                 final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_qkv, use_packed_params,
+                 workgroup_size, kValueChannelsPerWorkgroup)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                             {onnxruntime::narrow<uint32_t>(batch)},
                             {onnxruntime::narrow<uint32_t>(hq)},
