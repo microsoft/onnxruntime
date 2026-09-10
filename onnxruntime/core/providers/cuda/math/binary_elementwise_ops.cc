@@ -482,6 +482,34 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
                   element_type == on::TensorProto_DataType_INT64 || element_type == on::TensorProto_DataType_UINT32 ||
                   element_type == on::TensorProto_DataType_UINT64,
               "Non-fmod can support integer types only.");
+  if (element_type == on::TensorProto_DataType_INT32 || element_type == on::TensorProto_DataType_INT64 ||
+      element_type == on::TensorProto_DataType_UINT32 || element_type == on::TensorProto_DataType_UINT64) {
+    const size_t divisor_count = prepare.rhs_tensor->Shape().Size();
+    if (divisor_count > 0) {
+      auto has_zero_buffer = GetScratchBuffer<int>(1, GetComputeStream(context));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(has_zero_buffer.get(), 0, sizeof(int), Stream(context)));
+      switch (element_type) {
+        case on::TensorProto_DataType_INT32:
+          CheckZeroDivisor(Stream(context), prepare.rhs_tensor->Data<int32_t>(), divisor_count, has_zero_buffer.get());
+          break;
+        case on::TensorProto_DataType_INT64:
+          CheckZeroDivisor(Stream(context), prepare.rhs_tensor->Data<int64_t>(), divisor_count, has_zero_buffer.get());
+          break;
+        case on::TensorProto_DataType_UINT32:
+          CheckZeroDivisor(Stream(context), prepare.rhs_tensor->Data<uint32_t>(), divisor_count, has_zero_buffer.get());
+          break;
+        case on::TensorProto_DataType_UINT64:
+          CheckZeroDivisor(Stream(context), prepare.rhs_tensor->Data<uint64_t>(), divisor_count, has_zero_buffer.get());
+          break;
+      }
+
+      int has_zero = 0;
+      // A device-to-pageable-host copy completes before cudaMemcpyAsync returns.
+      CUDA_RETURN_IF_ERROR(
+          cudaMemcpyAsync(&has_zero, has_zero_buffer.get(), sizeof(int), cudaMemcpyDeviceToHost, Stream(context)));
+      ORT_RETURN_IF(has_zero != 0, "Integer modulo by zero");
+    }
+  }
 #define CASE_MOD_ELEMENT_TYPE(name, onnx_type, data_type)                                                           \
   case onnx_type: {                                                                                                 \
     Impl_##name<typename ToCudaType<data_type>::MappedType>(                                                        \
