@@ -183,7 +183,7 @@ test {
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
 	}
-	systemProperties System.getProperties().subMap([
+	def allowlist = [
 		'ENABLE_TRAINING_APIS',
 		'JAVA_FULL_TEST',
 		'USE_ACL',
@@ -206,7 +206,10 @@ test {
 		'USE_WEBGPU',
 		'USE_WEBNN',
 		'USE_XNNPACK',
-		])
+		]
+	def dynamicProps = System.getProperties().findAll { it.key.toString().startsWith('onnxruntime.native.') }
+	def explicitProps = System.getProperties().findAll { allowlist.contains(it.key.toString()) }
+	systemProperties(explicitProps + dynamicProps)
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true

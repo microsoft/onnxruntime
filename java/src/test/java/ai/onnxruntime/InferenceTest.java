@@ -1482,7 +1482,7 @@ public class InferenceTest {
 
       try (SessionOptions options = new SessionOptions()) {
         options.registerCustomOpLibrary(customLibraryName);
-        if (OnnxRuntime.extractCUDA()) {
+        if (OnnxRuntime.stageCUDA()) {
           options.addCUDA();
         }
         try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {
@@ -1551,7 +1551,7 @@ public class InferenceTest {
           options.registerCustomOpsUsingFunction("RegisterCustomOps");
 
           if (isWindows || isMac) {
-            if (OnnxRuntime.extractCUDA()) {
+            if (OnnxRuntime.stageCUDA()) {
               options.addCUDA();
             }
             try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {

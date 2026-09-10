@@ -107,31 +107,31 @@ public abstract class OrtProviderOptions implements AutoCloseable {
     // Shared providers need their libraries loaded before options can be defined.
     switch (provider) {
       case CUDA:
-        if (!OnnxRuntime.extractCUDA()) {
+        if (!OnnxRuntime.stageCUDA()) {
           throw new OrtException(
               OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find CUDA shared provider");
         }
         break;
       case DNNL:
-        if (!OnnxRuntime.extractDNNL()) {
+        if (!OnnxRuntime.stageDNNL()) {
           throw new OrtException(
               OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find DNNL shared provider");
         }
         break;
       case OPEN_VINO:
-        if (!OnnxRuntime.extractOpenVINO()) {
+        if (!OnnxRuntime.stageOpenVINO()) {
           throw new OrtException(
               OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find OpenVINO shared provider");
         }
         break;
       case ROCM:
-        if (!OnnxRuntime.extractROCM()) {
+        if (!OnnxRuntime.stageROCM()) {
           throw new OrtException(
               OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find ROCm shared provider");
         }
         break;
       case TENSOR_RT:
-        if (!OnnxRuntime.extractTensorRT()) {
+        if (!OnnxRuntime.stageTensorRT()) {
           throw new OrtException(
               OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find TensorRT shared provider");
         }
