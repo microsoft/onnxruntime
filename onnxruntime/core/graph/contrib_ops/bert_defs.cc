@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -1934,8 +1935,8 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   const bool is_qsa = policy == sai::Policy::kQsa;
 
   const int64_t compress_ratio = getAttribute(ctx, "compress_ratio", static_cast<int64_t>(0));
-  if (compress_ratio <= 0) {
-    fail_shape_inference("SparseAttentionIndexer: compress_ratio must be > 0, got ", compress_ratio);
+  if (compress_ratio <= 0 || compress_ratio > std::numeric_limits<int>::max()) {
+    fail_shape_inference("SparseAttentionIndexer: compress_ratio must be in (0, INT_MAX], got ", compress_ratio);
   }
 
   const int64_t token_budget = getAttribute(ctx, "token_budget", static_cast<int64_t>(0));
@@ -1945,18 +1946,20 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
       fail_shape_inference(
           "SparseAttentionIndexer: index_topk and head_weight_scale must not be set when policy_mode is 'qsa'");
     }
-    if (token_budget <= 0 || token_budget % compress_ratio != 0) {
+    if (token_budget <= 0 || token_budget % compress_ratio != 0 ||
+        token_budget > std::numeric_limits<int>::max() - compress_ratio + 1) {
       fail_shape_inference(
-          "SparseAttentionIndexer: policy_mode 'qsa' requires token_budget > 0 and divisible by "
-          "compress_ratio, got token_budget=",
+          "SparseAttentionIndexer: policy_mode 'qsa' requires token_budget > 0, divisible by "
+          "compress_ratio, and a selected capacity no greater than INT_MAX, got token_budget=",
           token_budget, " compress_ratio=", compress_ratio);
     }
   } else {
     if (ctx.getAttribute("token_budget") != nullptr) {
       fail_shape_inference("SparseAttentionIndexer: token_budget must not be set when policy_mode is 'csa'");
     }
-    if (index_topk <= 0) {
-      fail_shape_inference("SparseAttentionIndexer: policy_mode 'csa' requires index_topk > 0, got ", index_topk);
+    if (index_topk <= 0 || index_topk > std::numeric_limits<int>::max()) {
+      fail_shape_inference("SparseAttentionIndexer: policy_mode 'csa' requires index_topk in (0, INT_MAX], got ",
+                           index_topk);
     }
   }
 

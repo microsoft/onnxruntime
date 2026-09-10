@@ -26,8 +26,10 @@ class SparseAttentionIndexer final : public onnxruntime::cuda::CudaKernel {
   int64_t token_budget_;
   int64_t index_topk_;
   float epsilon_;
-  float scale_;              // 0 means "derive from head_size"
-  float head_weight_scale_;  // 0 means "derive from num_heads"
+  float scale_;
+  float head_weight_scale_;
+  bool has_scale_;
+  bool has_head_weight_scale_;
 };
 
 }  // namespace cuda

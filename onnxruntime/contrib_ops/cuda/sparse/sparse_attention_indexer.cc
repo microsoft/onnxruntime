@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer.h"
 
 #include <cmath>
+#include <limits>
 #include <string>
 
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer_impl.h"
@@ -59,32 +60,36 @@ SparseAttentionIndexer<T>::SparseAttentionIndexer(const OpKernelInfo& info) : Cu
 
   ORT_ENFORCE(info.GetAttr<int64_t>("compress_ratio", &compress_ratio_).IsOK(),
               "SparseAttentionIndexer: compress_ratio is required");
-  ORT_ENFORCE(compress_ratio_ > 0, "SparseAttentionIndexer: compress_ratio must be > 0, got ", compress_ratio_);
+  ORT_ENFORCE(compress_ratio_ > 0 && compress_ratio_ <= std::numeric_limits<int>::max(),
+              "SparseAttentionIndexer: compress_ratio must be in (0, INT_MAX], got ", compress_ratio_);
 
   const bool has_token_budget = info.GetAttr<int64_t>("token_budget", &token_budget_).IsOK();
   const bool has_index_topk = info.GetAttr<int64_t>("index_topk", &index_topk_).IsOK();
   float head_weight_scale = 0.0f;
-  const bool has_head_weight_scale = info.GetAttr<float>("head_weight_scale", &head_weight_scale).IsOK();
+  has_head_weight_scale_ = info.GetAttr<float>("head_weight_scale", &head_weight_scale).IsOK();
 
   if (policy_ == sai::Policy::kQsa) {
     ORT_ENFORCE(has_token_budget, "SparseAttentionIndexer: token_budget is required when policy_mode is 'qsa'");
-    ORT_ENFORCE(!has_index_topk && !has_head_weight_scale,
+    ORT_ENFORCE(!has_index_topk && !has_head_weight_scale_,
                 "SparseAttentionIndexer: index_topk and head_weight_scale must not be set when policy_mode is 'qsa'");
-    ORT_ENFORCE(token_budget_ > 0 && token_budget_ % compress_ratio_ == 0,
-                "SparseAttentionIndexer: token_budget must be > 0 and divisible by compress_ratio, got token_budget=",
+    ORT_ENFORCE(token_budget_ > 0 && token_budget_ % compress_ratio_ == 0 &&
+                    token_budget_ <= std::numeric_limits<int>::max() - compress_ratio_ + 1,
+                "SparseAttentionIndexer: token_budget must be > 0, divisible by compress_ratio, and produce a "
+                "selected capacity no greater than INT_MAX, got token_budget=",
                 token_budget_, " compress_ratio=", compress_ratio_);
     index_topk_ = 0;
   } else {
     ORT_ENFORCE(has_index_topk, "SparseAttentionIndexer: index_topk is required when policy_mode is 'csa'");
     ORT_ENFORCE(!has_token_budget, "SparseAttentionIndexer: token_budget must not be set when policy_mode is 'csa'");
-    ORT_ENFORCE(index_topk_ > 0, "SparseAttentionIndexer: index_topk must be > 0, got ", index_topk_);
+    ORT_ENFORCE(index_topk_ > 0 && index_topk_ <= std::numeric_limits<int>::max(),
+                "SparseAttentionIndexer: index_topk must be in (0, INT_MAX], got ", index_topk_);
     token_budget_ = 0;
   }
 
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1.0e-6f);
   ORT_ENFORCE(epsilon_ >= 0.0f, "SparseAttentionIndexer: epsilon must be >= 0, got ", epsilon_);
-  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
-  head_weight_scale_ = has_head_weight_scale ? head_weight_scale : 0.0f;
+  has_scale_ = info.GetAttr<float>("scale", &scale_).IsOK();
+  head_weight_scale_ = head_weight_scale;
 }
 
 template <typename T>
@@ -171,7 +176,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   params.capacity = static_cast<int>(
       sai::SelectedCapacity(sai::Policy::kQsa, token_budget_, index_topk_, compress_ratio_));
   params.epsilon = epsilon_;
-  params.scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size));
+  params.scale = has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size));
   params.past_sequence_length = static_cast<int>(past_sequence_length);
   params.total_sequence_length = static_cast<int>(total_sequence_length);
   params.max_block_count = static_cast<int>(total_sequence_length / compress_ratio_);
@@ -287,7 +292,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   params.capacity = static_cast<int>(
       sai::SelectedCapacity(sai::Policy::kCsa, token_budget_, index_topk_, compress_ratio_));
   params.epsilon = epsilon_;
-  params.scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size));
+  params.scale = has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size));
   params.past_compressed_length = static_cast<int>(past_compressed_length);
   params.present_compressed_length = static_cast<int>(present_compressed_length);
   params.past_buffer_length = static_cast<int>(past_buffer_length);
@@ -297,7 +302,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   params.present_buffer_start = static_cast<int>(plan.present_buffer_start);
   params.index_topk = static_cast<int>(index_topk_);
   params.head_weight_scale =
-      head_weight_scale_ != 0.0f ? head_weight_scale_ : 1.0f / std::sqrt(static_cast<float>(num_heads));
+      has_head_weight_scale_ ? head_weight_scale_ : 1.0f / std::sqrt(static_cast<float>(num_heads));
 
   Tensor* selected_indices = context->Output(sai::kSelectedIndices,
                                              TensorShape({batch_size, sequence_length, params.capacity}));

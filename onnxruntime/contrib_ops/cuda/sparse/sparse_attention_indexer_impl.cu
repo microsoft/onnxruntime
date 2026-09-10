@@ -123,7 +123,7 @@ __device__ __forceinline__ float TrailingRope(const float* value, int head_size,
 
 // Highest compressed entry a query at `position` may attend to, matching (position + 1) // ratio.
 __device__ __forceinline__ int64_t CausalThreshold(int64_t position, int compress_ratio) {
-  return position < 0 ? 0 : (position + 1) / compress_ratio;
+  return position < 0 ? 0 : position / compress_ratio + (position % compress_ratio == compress_ratio - 1);
 }
 
 __device__ __forceinline__ int ClampPosition(int64_t position, int max_rotary_length) {
@@ -668,7 +668,7 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
         past_compressed_key, present_compressed_key, params);
   }
 
-  if (params.new_window_count > 0) {
+  if (params.batch_size > 0 && params.new_window_count > 0) {
     const int compress_blocks = static_cast<int>(
         std::min<int64_t>(static_cast<int64_t>(params.batch_size) * params.new_window_count, kMaxGridDimX));
     CsaCompressKernel<T><<<compress_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
