@@ -16,12 +16,10 @@ limitations under the License.
 
 #include "core/platform/env.h"
 #include "core/platform/windows/telemetry.h"
-#ifdef USE_1DS_TELEMETRY
-#include "core/platform/posix/telemetry.h"
-#endif
 #include "core/common/inlined_containers.h"
 #include <Windows.h>
 #include <filesystem>
+#include <memory>
 
 namespace onnxruntime {
 
@@ -146,11 +144,7 @@ class WindowsEnv : public Env {
   // Keep the TraceLogging provider registered for local ETW diagnostics even when 1DS is the
   // telemetry upload backend.
   WindowsTelemetry windows_telemetry_provider_;
-#ifdef USE_1DS_TELEMETRY
-  PosixTelemetry telemetry_provider_;
-#elif !defined(USE_WINDOWS_TELEMETRY)
-  Telemetry telemetry_provider_;
-#endif
+  std::unique_ptr<Telemetry> telemetry_provider_;
 };
 
 namespace internal {

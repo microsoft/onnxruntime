@@ -1033,9 +1033,11 @@ if(onnxruntime_USE_TELEMETRY AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETR
     else()
       set(MATSDK_SQLITE_PROVIDER MINIMAL CACHE STRING "Use 1DS's feature-stripped SQLite" FORCE)
     endif()
-    # A vcpkg package build has the telemetry feature's zlib package. Android
-    # intentionally bypasses that package, so keep its FetchContent fallback self-contained.
-    if(onnxruntime_USE_VCPKG AND NOT ANDROID)
+    # Android intentionally bypasses the vcpkg telemetry package, so its FetchContent
+    # fallback must not infer a system zlib merely because a vcpkg toolchain is active.
+    if(ANDROID)
+      set(MATSDK_ZLIB_PROVIDER VENDORED CACHE STRING "Use 1DS's bundled zlib" FORCE)
+    elseif(onnxruntime_USE_VCPKG)
       set(MATSDK_ZLIB_PROVIDER SYSTEM CACHE STRING "Reuse ONNX Runtime's vcpkg zlib" FORCE)
     else()
       set(MATSDK_ZLIB_PROVIDER AUTO CACHE STRING "Reuse an existing zlib or bundle one" FORCE)
