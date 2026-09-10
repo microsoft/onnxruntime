@@ -743,9 +743,11 @@ TEST(XnnpackEP, TestResize_EmptyScales_NoTerminate) {
     resize_node.AddAttribute("mode", "linear");
     resize_node.AddAttribute("coordinate_transformation_mode", "asymmetric");
   };
-  // ExpectedEPNodeAssignment::None asserts both that the session initialized without aborting AND
-  // that XNNPACK rejected the malformed Resize. RunModelTest also compares the run against the pure
-  // CPU baseline, verifying the fallback is numerically correct.
+  // The Resize itself is valid ONNX: the empty scales initializer is the positional placeholder for
+  // the populated sizes input. ExpectedEPNodeAssignment::None asserts both that the session
+  // initialized without aborting AND that XNNPACK declined to take the node (it does not support
+  // this form) rather than crashing. RunModelTest also compares the run against the pure CPU
+  // baseline, verifying the fallback is numerically correct.
   RunModelTest(modelBuilder, "xnnpack_test_graph_resize_empty_scales",
                {
                    ExpectedEPNodeAssignment::None,
