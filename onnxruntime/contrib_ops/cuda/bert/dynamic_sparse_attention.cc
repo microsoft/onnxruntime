@@ -199,10 +199,12 @@ Status DynamicSparseAttention<T>::ComputeInternal(OpKernelContext* context) cons
   auto validation_error = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
   cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
   CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(stream, &capture_status));
+  ORT_RETURN_IF_NOT(
+      capture_status == cudaStreamCaptureStatusNone,
+      "DynamicSparseAttention metadata validation cannot run during CUDA graph capture.");
   ORT_RETURN_IF_ERROR(ValidateDynamicSparseAttentionOnDevice(
       stream, data.selected_indices, data.selected_counts, data.seqlens_k,
-      data.position_ids, parameters, validation_error.get(),
-      capture_status == cudaStreamCaptureStatusNone));
+      data.position_ids, parameters, validation_error.get(), true));
 
   const bool initialize_key_cache = data.past_key != data.present_key;
   const bool initialize_value_cache = data.past_value != data.present_value;

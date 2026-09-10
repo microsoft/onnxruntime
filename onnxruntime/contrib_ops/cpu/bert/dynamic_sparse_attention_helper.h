@@ -35,6 +35,7 @@ struct DynamicSparseAttentionParameters {
   int kv_hidden_size = 0;
   int cache_capacity = 0;
   int past_cache_capacity = 0;
+  int total_sequence_length = 0;
   int auxiliary_sequence_length = 0;
   int max_selected = 0;
   int rotary_dim = 0;
@@ -162,6 +163,9 @@ Status CheckInputs(const T* query,
   const int total_length = *total_sequence_length->template Data<int32_t>();
   ORT_RETURN_IF_NOT(total_length >= sequence_length,
                     "DynamicSparseAttention: total_sequence_length must be at least sequence length.");
+  ORT_RETURN_IF_NOT(past_key != nullptr || total_length == sequence_length,
+                    "DynamicSparseAttention: total_sequence_length must equal sequence length when no past cache "
+                    "is provided.");
   ORT_RETURN_IF_NOT(past_key == nullptr || total_length <= past_cache_capacity,
                     "DynamicSparseAttention: total_sequence_length must not exceed the past cache capacity.");
   const int cache_capacity = past_key == nullptr ? total_length : past_cache_capacity;
@@ -274,6 +278,7 @@ Status CheckInputs(const T* query,
   parameters.kv_hidden_size = kv_hidden_size;
   parameters.cache_capacity = cache_capacity;
   parameters.past_cache_capacity = past_cache_capacity;
+  parameters.total_sequence_length = total_length;
   parameters.auxiliary_sequence_length = auxiliary_sequence_length;
   parameters.max_selected = static_cast<int>(selected_indices->Shape()[1]);
   parameters.rotary_dim = do_rotary ? rotary_dim : 0;
