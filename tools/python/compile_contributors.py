@@ -146,6 +146,7 @@ def extract_authors_from_commit(commit_id):
 # Bots to exclude from contributor lists
 BOT_NAMES = {
     "Copilot",
+    "claude",
     "dependabot[bot]",
     "app/dependabot",
     "github-actions[bot]",

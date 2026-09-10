@@ -3,7 +3,20 @@
 
 import unittest
 
-from compile_contributors import sort_contributors
+from compile_contributors import is_bot, is_invalid, sort_contributors
+
+
+class ContributorFilteringTest(unittest.TestCase):
+    def test_is_bot_excludes_claude(self):
+        for name in ("claude", "@claude", " @claude "):
+            with self.subTest(name=name):
+                self.assertTrue(is_bot(name))
+
+    def test_is_bot_preserves_similar_human_login(self):
+        self.assertFalse(is_bot("claudette"))
+
+    def test_is_invalid_preserves_claude_for_csv(self):
+        self.assertFalse(is_invalid("claude"))
 
 
 class SortContributorsTest(unittest.TestCase):
