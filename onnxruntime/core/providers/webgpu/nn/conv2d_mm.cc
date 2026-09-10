@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include <string>
-#include <utility>
 #include <vector>
 #include <iterator>
 #include <algorithm>
@@ -177,54 +176,57 @@ constexpr uint32_t kConv2dMMWorkgroupSizeX = 8;
 constexpr uint32_t kDefaultConv2dMMWorkgroupSizeY = 8;
 constexpr uint32_t kConv2dMMWorkgroupSizeZ = 1;
 
-// Rows of A that one Conv2dMM workgroup tile covers above the narrow-shape gate.
-constexpr uint32_t kConv2dMMTileAOuter = 32;
-constexpr int64_t kDefaultConv2dMMElementsPerThreadY = 4;
-static_assert(kDefaultConv2dMMWorkgroupSizeY * kDefaultConv2dMMElementsPerThreadY == kConv2dMMTileAOuter,
-              "The default Conv2dMM workgroup must cover exactly kConv2dMMTileAOuter rows of A.");
+void SelectConv2dMMWorkgroupConfig(
+    const wgpu::AdapterInfo& adapter_info,
+    const wgpu::Limits& limits,
+    uint32_t target_workgroup_size,
+    bool is_vec4,
+    int64_t in_channels,
+    uint32_t dim_a_outer,
+    uint32_t& workgroup_size_y,
+    int64_t& elements_per_thread_y) {
+  constexpr uint32_t kTileRows = 32;
 
-// One subgroup per NVIDIA warp scheduler, matching MatMul. NVIDIA SMs have 4 warp schedulers
-// (GP100 is the exception, with 2), so 4 subgroups is the smallest workgroup that gives each
-// scheduler a warp. An A/B on a TITAN V found 8 subgroups indistinguishable from 4 on
-// ResNet-50, YOLO26n and EfficientNet-B0 (all within 0.3%, per-round p50 ranges overlapping),
-// so the higher count was not buying anything. This count is an NVIDIA hardware fact rather
-// than a WebGPU capability, which is why the rule stays vendor-gated.
-constexpr uint32_t kNvidiaSubgroupsPerWorkgroup = 4;
+  // Start with the existing configuration as the fallback.
+  workgroup_size_y = kDefaultConv2dMMWorkgroupSizeY;
+  elements_per_thread_y = kTileRows / kDefaultConv2dMMWorkgroupSizeY;
 
-// Chooses the Conv2dMM workgroup y dimension and the matching elements-per-thread.
-// Returns {workgroup_size_y, elements_per_thread_y}.
-std::pair<uint32_t, int64_t> SelectConv2dMMWorkgroupConfig(const PackedTileCaps& caps,
-                                                           bool is_vec4,
-                                                           int64_t in_channels,
-                                                           uint32_t dim_a_outer) {
-  // Preconditions of SelectSubgroupAlignedTileConfigY, checked here because every argument it
-  // takes other than the caps is a compile-time constant.
-  static_assert(kConv2dMMWorkgroupSizeX > 0 && kDefaultConv2dMMWorkgroupSizeY > 0 &&
-                    kNvidiaSubgroupsPerWorkgroup > 0,
-                "Workgroup dimensions and the subgroup count must be non-zero.");
-  static_assert(kConv2dMMTileAOuter % kDefaultConv2dMMWorkgroupSizeY == 0,
-                "The default workgroup y dimension must divide the A tile.");
-
-  // Narrow outputs are bounded by dim_a_outer rather than by the tile, so they take one row
-  // per thread and never reach kConv2dMMTileAOuter.
-  if (dim_a_outer <= 8) {
-    return {kDefaultConv2dMMWorkgroupSizeY, 1};
+  // Narrow outputs use one row per thread.
+  if (dim_a_outer <= kDefaultConv2dMMWorkgroupSizeY) {
+    elements_per_thread_y = 1;
+    return;
   }
 
-  // in_channels % 4 == 0 keeps inner_element_size at 4, which is what pins tile_inner to
-  // kConv2dMMTileAOuter; a 3-wide inner element would shift the tile and break the invariant.
-  if (is_vec4 && in_channels % 4 == 0 && caps.is_nvidia) {
-    return SelectSubgroupAlignedTileConfigY(caps, kConv2dMMWorkgroupSizeX,
-                                            kNvidiaSubgroupsPerWorkgroup, kConv2dMMTileAOuter,
-                                            kDefaultConv2dMMWorkgroupSizeY);
+  // Four-wide channels are required to preserve this packed tile geometry.
+  if (!is_vec4 || in_channels % 4 != 0 || !IsNvidiaAdapter(adapter_info) ||
+      adapter_info.subgroupMinSize == 0) {
+    return;
   }
 
-  return {kDefaultConv2dMMWorkgroupSizeY, kDefaultConv2dMMElementsPerThreadY};
+  // The requested workgroup must contain whole subgroups and whole X rows.
+  if (target_workgroup_size % adapter_info.subgroupMinSize != 0 ||
+      target_workgroup_size % kConv2dMMWorkgroupSizeX != 0 ||
+      target_workgroup_size > limits.maxComputeInvocationsPerWorkgroup) {
+    return;
+  }
+
+  const uint32_t subgroups_per_workgroup = target_workgroup_size / adapter_info.subgroupMinSize;
+  const uint32_t candidate_workgroup_size_y =
+      adapter_info.subgroupMinSize * subgroups_per_workgroup / kConv2dMMWorkgroupSizeX;
+
+  // Preserve the 32-row tile so the dispatch grid remains unchanged.
+  if (candidate_workgroup_size_y > limits.maxComputeWorkgroupSizeY ||
+      kTileRows % candidate_workgroup_size_y != 0) {
+    return;
+  }
+
+  workgroup_size_y = candidate_workgroup_size_y;
+  elements_per_thread_y = kTileRows / candidate_workgroup_size_y;
 }
 
 }  // namespace
 
-Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const PackedTileCaps& caps, const std::vector<TensorShape>& input_output_shapes) {
+Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const wgpu::AdapterInfo& adapter_info, const wgpu::Limits& limits, const std::vector<TensorShape>& input_output_shapes) {
   const auto* input = inputs[0];
   const auto* weight = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -242,8 +244,12 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   // TODO: fine tune size
   const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;
   const auto dispatch_y = is_channels_last ? output_width * output_height : output_channels;
-  const auto [workgroup_size_y, elements_per_thread_y] =
-      SelectConv2dMMWorkgroupConfig(caps, is_vec4, in_channels, dim_a_outer);
+  // 32 subgroup lanes x 4 NVIDIA warp schedulers, so every scheduler on an SM gets a warp.
+  constexpr uint32_t kTargetWorkgroupSize = 128;
+  uint32_t workgroup_size_y = 0;
+  int64_t elements_per_thread_y = 0;
+  SelectConv2dMMWorkgroupConfig(adapter_info, limits, kTargetWorkgroupSize, is_vec4, in_channels,
+                                dim_a_outer, workgroup_size_y, elements_per_thread_y);
   std::vector<uint32_t> workgroup_size = {kConv2dMMWorkgroupSizeX, workgroup_size_y, kConv2dMMWorkgroupSizeZ};
   InlinedVector<int64_t> elements_per_thread = {4, elements_per_thread_y, 1};
   auto integer_ceil = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };

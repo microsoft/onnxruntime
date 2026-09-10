@@ -4,7 +4,6 @@
 #include "core/providers/webgpu/math/matmul.h"
 
 #include <limits>
-#include <utility>
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -159,46 +158,53 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
 
 namespace {
 
-// Rows of A that one packed-MatMul workgroup tile covers above the narrow-shape gate.
-constexpr uint32_t kMatMulTileAOuter = 32;
-constexpr int64_t kDefaultMatMulElementsPerThreadY = 4;
-static_assert(MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y * kDefaultMatMulElementsPerThreadY == kMatMulTileAOuter,
-              "The default MatMul workgroup must cover exactly kMatMulTileAOuter rows of A.");
+void SelectMatMulWorkgroupConfig(
+    const wgpu::AdapterInfo& adapter_info,
+    const wgpu::Limits& limits,
+    uint32_t target_workgroup_size,
+    bool is_channels_last,
+    bool is_vec4,
+    uint32_t dim_a_outer,
+    uint32_t& workgroup_size_y,
+    int64_t& elements_per_thread_y) {
+  constexpr uint32_t kTileRows = 32;
+  constexpr uint32_t kWorkgroupSizeX = MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X;
+  constexpr uint32_t kDefaultWorkgroupSizeY = MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y;
 
-// NVIDIA SMs have 4 warp schedulers (GP100 is the exception, with 2), so 4 subgroups per
-// workgroup is the smallest size that gives each scheduler a warp. This count is an NVIDIA
-// hardware fact rather than a WebGPU capability, which is why the rule stays vendor-gated;
-// the subgroup size and workgroup limits it combines with are queried from the device.
-constexpr uint32_t kNvidiaSubgroupsPerWorkgroup = 4;
+  // Start with the existing configuration as the fallback.
+  workgroup_size_y = kDefaultWorkgroupSizeY;
+  elements_per_thread_y = kTileRows / kDefaultWorkgroupSizeY;
 
-// Chooses the packed-MatMul workgroup y dimension and the matching elements-per-thread.
-// Returns {workgroup_size_y, elements_per_thread_y}.
-std::pair<uint32_t, int64_t> SelectMatMulWorkgroupConfig(const PackedTileCaps& caps,
-                                                         bool is_channels_last,
-                                                         bool is_vec4,
-                                                         uint32_t dim_a_outer) {
-  // Preconditions of SelectSubgroupAlignedTileConfigY, checked here because every argument it
-  // takes other than the caps is a compile-time constant.
-  static_assert(MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X > 0 &&
-                    MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y > 0 &&
-                    kNvidiaSubgroupsPerWorkgroup > 0,
-                "Workgroup dimensions and the subgroup count must be non-zero.");
-  static_assert(kMatMulTileAOuter % MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y == 0,
-                "The default workgroup y dimension must divide the A tile.");
-
-  // Narrow outputs are bounded by dim_a_outer rather than by the tile, so they take one row
-  // per thread and never reach kMatMulTileAOuter.
-  if (dim_a_outer <= 8) {
-    return {MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y, 1};
+  // Narrow outputs use one row per thread.
+  if (dim_a_outer <= kDefaultWorkgroupSizeY) {
+    elements_per_thread_y = 1;
+    return;
   }
 
-  if (is_channels_last && is_vec4 && caps.is_nvidia) {
-    return SelectSubgroupAlignedTileConfigY(caps, MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X,
-                                            kNvidiaSubgroupsPerWorkgroup, kMatMulTileAOuter,
-                                            MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y);
+  if (!is_channels_last || !is_vec4 || !IsNvidiaAdapter(adapter_info) ||
+      adapter_info.subgroupMinSize == 0) {
+    return;
   }
 
-  return {MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y, kDefaultMatMulElementsPerThreadY};
+  // The requested workgroup must contain whole subgroups and whole X rows.
+  if (target_workgroup_size % adapter_info.subgroupMinSize != 0 ||
+      target_workgroup_size % kWorkgroupSizeX != 0 ||
+      target_workgroup_size > limits.maxComputeInvocationsPerWorkgroup) {
+    return;
+  }
+
+  const uint32_t subgroups_per_workgroup = target_workgroup_size / adapter_info.subgroupMinSize;
+  const uint32_t candidate_workgroup_size_y =
+      adapter_info.subgroupMinSize * subgroups_per_workgroup / kWorkgroupSizeX;
+
+  // Preserve the 32-row tile so the dispatch grid remains unchanged.
+  if (candidate_workgroup_size_y > limits.maxComputeWorkgroupSizeY ||
+      kTileRows % candidate_workgroup_size_y != 0) {
+    return;
+  }
+
+  workgroup_size_y = candidate_workgroup_size_y;
+  elements_per_thread_y = kTileRows / candidate_workgroup_size_y;
 }
 
 }  // namespace
@@ -310,9 +316,12 @@ Status ComputeMatMul(ComputeContext* context,
 
   const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
-  const auto [workgroup_size_y, elements_per_thread_y] =
-      SelectMatMulWorkgroupConfig(GetPackedTileCaps(context->AdapterInfo(), context->DeviceLimits()),
-                                  is_channels_last, is_vec4, dim_a_outer);
+  // 32 subgroup lanes x 4 NVIDIA warp schedulers, so every scheduler on an SM gets a warp.
+  constexpr uint32_t kTargetWorkgroupSize = 128;
+  uint32_t workgroup_size_y = 0;
+  int64_t elements_per_thread_y = 0;
+  SelectMatMulWorkgroupConfig(context->AdapterInfo(), context->DeviceLimits(), kTargetWorkgroupSize,
+                              is_channels_last, is_vec4, dim_a_outer, workgroup_size_y, elements_per_thread_y);
   InlinedVector<int64_t> elements_per_thread{4, elements_per_thread_y, 1};
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
