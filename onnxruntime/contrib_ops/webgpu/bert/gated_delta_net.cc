@@ -15,6 +15,8 @@ namespace onnxruntime::contrib::webgpu {
 
 namespace {
 
+constexpr uint32_t kValueChannelsPerWorkgroup = 4;
+
 GatedDeltaNetUpdateRule ParseUpdateRule(const std::string& rule) {
   if (rule == "linear") return GatedDeltaNetUpdateRule::Linear;
   if (rule == "gated") return GatedDeltaNetUpdateRule::Gated;
@@ -103,6 +105,7 @@ Status GatedDeltaNetProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(sigmoid_beta, sigmoid_beta_),
                              WGSL_TEMPLATE_PARAMETER(update_rule, update_rule),
                              WGSL_TEMPLATE_PARAMETER(use_packed_params, use_packed_params_),
+                             WGSL_TEMPLATE_PARAMETER(value_channels_per_workgroup, kValueChannelsPerWorkgroup),
                              WGSL_TEMPLATE_VARIABLE(a_log, *a_log),
                              WGSL_TEMPLATE_VARIABLE(beta, *beta),
                              WGSL_TEMPLATE_VARIABLE(cu_seqlens, *cu_seqlens),
@@ -304,11 +307,14 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   const float scale = scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(dk));
   uint32_t workgroup_size = 1;
   while (workgroup_size < dk) workgroup_size <<= 1;
+  const uint32_t value_tiles =
+      (onnxruntime::narrow<uint32_t>(dv) + kValueChannelsPerWorkgroup - 1) / kValueChannelsPerWorkgroup;
   program
-      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv * dv))
+      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch * hv) * value_tiles)
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(static_cast<int>(update_rule_), cu_seqlens != nullptr, initial_state != nullptr, state_alias,
-                 final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params, workgroup_size)
+                 final_state != nullptr, qwen_gate_, sigmoid_beta_, qk_l2_norm_, use_packed_params, workgroup_size,
+                 kValueChannelsPerWorkgroup)
       .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
                             {onnxruntime::narrow<uint32_t>(batch)},
                             {onnxruntime::narrow<uint32_t>(hq)},

@@ -280,6 +280,17 @@ ProgramInput::ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency
       use_override_shape{true},
       override_shape{override_shape} {}
 
+ProgramInput ProgramInput::BufferView(const Tensor* backing_tensor,
+                                      ProgramTensorMetadataDependency dependency,
+                                      const TensorShape& shape,
+                                      uint32_t offset_in_elements,
+                                      int component) {
+  ProgramInput view{backing_tensor, dependency, shape, component};
+  view.is_buffer_view = true;
+  view.buffer_offset_in_elements = offset_in_elements;
+  return view;
+}
+
 ProgramOutput::ProgramOutput(Tensor* tensor)
     : ProgramOutput{tensor, ProgramTensorMetadataDependency::None} {}
 
@@ -321,6 +332,17 @@ ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dep
       use_override_shape{true},
       override_shape{override_shape} {}
 
+ProgramOutput ProgramOutput::BufferView(Tensor* backing_tensor,
+                                        ProgramTensorMetadataDependency dependency,
+                                        const TensorShape& shape,
+                                        uint32_t offset_in_elements,
+                                        int component) {
+  ProgramOutput view{backing_tensor, dependency, shape, component};
+  view.is_buffer_view = true;
+  view.buffer_offset_in_elements = offset_in_elements;
+  return view;
+}
+
 ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
     : name_{name},
       metadata_{metadata},
@@ -336,22 +358,84 @@ ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
 
 ProgramBase& ProgramBase::AddInput(ProgramInput&& input) {
   inputs_.emplace_back(std::move(input));
+  const size_t input_index = inputs_.size() - 1;
+  const auto& added_input = inputs_.back();
+  if (added_input.is_buffer_view) {
+    const size_t owner_index = InputBufferOwner(input_index);
+    const auto& owner = inputs_[owner_index];
+    ORT_ENFORCE(added_input.var_type == owner.var_type,
+                "Packed input views must use the same storage type.");
+    const uint64_t backing_element_count =
+        (added_input.tensor->Shape().Size() + NumberOfComponents(added_input.var_type) - 1) /
+        NumberOfComponents(added_input.var_type);
+    const uint64_t view_element_count = added_input.override_shape.Size();
+    ORT_ENFORCE(static_cast<uint64_t>(added_input.buffer_offset_in_elements) + view_element_count <= backing_element_count,
+                "Packed input view exceeds the backing tensor.");
+  }
   return *this;
 }
 
 ProgramBase& ProgramBase::AddInputs(std::initializer_list<ProgramInput> inputs) {
-  inputs_.insert(inputs_.end(), inputs.begin(), inputs.end());
+  for (const auto& input : inputs) {
+    AddInput(ProgramInput{input});
+  }
   return *this;
 }
 
 ProgramBase& ProgramBase::AddOutput(ProgramOutput&& output) {
   outputs_.emplace_back(std::move(output));
+  const size_t output_index = outputs_.size() - 1;
+  const auto& added_output = outputs_.back();
+  if (added_output.is_buffer_view) {
+    const size_t owner_index = OutputBufferOwner(output_index);
+    const auto& owner = outputs_[owner_index];
+    ORT_ENFORCE(added_output.var_type == owner.var_type && added_output.is_atomic == owner.is_atomic,
+                "Packed output views must use the same storage type and access mode.");
+    const uint64_t backing_element_count =
+        (added_output.tensor->Shape().Size() + NumberOfComponents(added_output.var_type) - 1) /
+        NumberOfComponents(added_output.var_type);
+    const uint64_t view_element_count = added_output.override_shape.Size();
+    ORT_ENFORCE(static_cast<uint64_t>(added_output.buffer_offset_in_elements) + view_element_count <= backing_element_count,
+                "Packed output view exceeds the backing tensor.");
+  }
   return *this;
 }
 
 ProgramBase& ProgramBase::AddOutputs(std::initializer_list<ProgramOutput> outputs) {
-  outputs_.insert(outputs_.end(), outputs.begin(), outputs.end());
+  for (const auto& output : outputs) {
+    AddOutput(ProgramOutput{output});
+  }
   return *this;
+}
+
+size_t ProgramBase::InputBufferOwner(size_t input_index) const {
+  ORT_ENFORCE(input_index < inputs_.size(), "Input index is out of range.");
+  const auto& input = inputs_[input_index];
+  if (!input.is_buffer_view) {
+    return input_index;
+  }
+
+  for (size_t i = 0; i < input_index; ++i) {
+    if (inputs_[i].is_buffer_view && inputs_[i].tensor == input.tensor) {
+      return i;
+    }
+  }
+  return input_index;
+}
+
+size_t ProgramBase::OutputBufferOwner(size_t output_index) const {
+  ORT_ENFORCE(output_index < outputs_.size(), "Output index is out of range.");
+  const auto& output = outputs_[output_index];
+  if (!output.is_buffer_view) {
+    return output_index;
+  }
+
+  for (size_t i = 0; i < output_index; ++i) {
+    if (outputs_[i].is_buffer_view && outputs_[i].tensor == output.tensor) {
+      return i;
+    }
+  }
+  return output_index;
 }
 
 ProgramBase& ProgramBase::SetDispatchGroupSize(uint32_t x) {

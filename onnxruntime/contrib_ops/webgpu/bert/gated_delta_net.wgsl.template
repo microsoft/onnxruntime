@@ -10,16 +10,18 @@
 #param sigmoid_beta
 #param qk_l2_norm
 #param use_packed_params
+#param value_channels_per_workgroup
 #use .getByOffset .setByOffset
 
-var<workgroup> retrieved: array<f32, workgroup_size_x>;
-var<workgroup> pre_output: array<f32, workgroup_size_x>;
+const VALUE_CHANNELS_PER_WORKGROUP: u32 = value_channels_per_workgroup;
+var<workgroup> retrieved: array<f32, workgroup_size_x * VALUE_CHANNELS_PER_WORKGROUP>;
+var<workgroup> pre_output: array<f32, workgroup_size_x * VALUE_CHANNELS_PER_WORKGROUP>;
 var<workgroup> key_query: array<f32, workgroup_size_x>;
 #if qk_l2_norm
 var<workgroup> key_norm: array<f32, workgroup_size_x>;
 var<workgroup> query_norm: array<f32, workgroup_size_x>;
 #endif
-var<workgroup> delta: f32;
+var<workgroup> delta: array<f32, VALUE_CHANNELS_PER_WORKGROUP>;
 
 fn gdn_softplus(x: f32) -> f32 {
   if (x > 0.0) {
@@ -38,24 +40,30 @@ fn gdn_sigmoid(x: f32) -> f32 {
 
 $MAIN {
   let workgroup = workgroup_idx;
-  if (workgroup >= uniforms.batch_size * uniforms.num_heads_v * uniforms.head_size_v) {
+  let num_value_tiles = (uniforms.head_size_v + VALUE_CHANNELS_PER_WORKGROUP - 1u) / VALUE_CHANNELS_PER_WORKGROUP;
+  if (workgroup >= uniforms.batch_size * uniforms.num_heads_v * num_value_tiles) {
     return;
   }
-  let value_index = workgroup % uniforms.head_size_v;
-  let value_head = (workgroup / uniforms.head_size_v) % uniforms.num_heads_v;
-  let batch = workgroup / (uniforms.head_size_v * uniforms.num_heads_v);
+  let value_start = (workgroup % num_value_tiles) * VALUE_CHANNELS_PER_WORKGROUP;
+  let value_head = (workgroup / num_value_tiles) % uniforms.num_heads_v;
+  let batch = workgroup / (num_value_tiles * uniforms.num_heads_v);
   let key_index = local_idx;
   let query_head = value_head / (uniforms.num_heads_v / uniforms.num_heads_q);
-  var state = 0.0;
+  var state: array<f32, VALUE_CHANNELS_PER_WORKGROUP>;
   if (key_index < uniforms.head_size_qk) {
-    let state_offset = (((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
-                        uniforms.head_size_qk + key_index);
 #if has_initial_state
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let value_index = value_start + value_offset;
+      if (value_index < uniforms.head_size_v) {
+        let state_offset = (((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
+                            uniforms.head_size_qk + key_index);
 #if initial_state_in_final_state
-    state = f32(final_state.getByOffset(state_offset));
+        state[value_offset] = f32(final_state.getByOffset(state_offset));
 #else
-    state = f32(initial_state.getByOffset(state_offset));
+        state[value_offset] = f32(initial_state.getByOffset(state_offset));
 #endif
+      }
+    }
 #endif
   }
 
@@ -95,16 +103,25 @@ $MAIN {
     gate = -exp(a_log.getByOffset(value_head)) * gdn_softplus(gate + dt_bias.getByOffset(value_head));
 #endif
 #endif
-    state *= exp(gate);
+    let gate_scale = exp(gate);
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      state[value_offset] *= gate_scale;
+    }
 #endif
-    retrieved[key_index] = state * key_value;
-    pre_output[key_index] = state * query_value;
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let reduction_offset = value_offset * workgroup_size_x + key_index;
+      retrieved[reduction_offset] = state[value_offset] * key_value;
+      pre_output[reduction_offset] = state[value_offset] * query_value;
+    }
     key_query[key_index] = key_value * query_value;
     workgroupBarrier();
     for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
       if (key_index < stride) {
-        retrieved[key_index] += retrieved[key_index + stride];
-        pre_output[key_index] += pre_output[key_index + stride];
+        for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+          let reduction_offset = value_offset * workgroup_size_x + key_index;
+          retrieved[reduction_offset] += retrieved[reduction_offset + stride];
+          pre_output[reduction_offset] += pre_output[reduction_offset + stride];
+        }
         key_query[key_index] += key_query[key_index + stride];
       }
       workgroupBarrier();
@@ -121,24 +138,40 @@ $MAIN {
 #endif
 #endif
 #endif
-      var retrieved_value = 0.0;
+      for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+        let value_index = value_start + value_offset;
+        if (value_index < uniforms.head_size_v) {
+          var retrieved_value = 0.0;
 #if update_rule == 2 || update_rule == 3
-      retrieved_value = retrieved[0];
+          retrieved_value = retrieved[value_offset * workgroup_size_x];
 #endif
-      delta = beta_value * (f32(value.getByOffset((token * uniforms.num_heads_v + value_head) *
-                                                   uniforms.head_size_v + value_index)) - retrieved_value);
-      output.setByOffset((token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index,
-                         output_element_t((pre_output[0] + delta * key_query[0]) * uniforms.scale));
+          delta[value_offset] = beta_value * (f32(value.getByOffset((token * uniforms.num_heads_v + value_head) *
+                                                                      uniforms.head_size_v + value_index)) -
+                                              retrieved_value);
+          output.setByOffset((token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index,
+                             output_element_t((pre_output[value_offset * workgroup_size_x] +
+                                               delta[value_offset] * key_query[0]) * uniforms.scale));
+        } else {
+          delta[value_offset] = 0.0;
+        }
+      }
     }
     workgroupBarrier();
-    state += key_value * delta;
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      state[value_offset] += key_value * delta[value_offset];
+    }
     workgroupBarrier();
   }
 #if output_final_state
   if (key_index < uniforms.head_size_qk) {
-    final_state.setByOffset(((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
-                            uniforms.head_size_qk + key_index,
-                            state);
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let value_index = value_start + value_offset;
+      if (value_index < uniforms.head_size_v) {
+        final_state.setByOffset(((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
+                                uniforms.head_size_qk + key_index,
+                                state[value_offset]);
+      }
+    }
   }
 #endif
 }

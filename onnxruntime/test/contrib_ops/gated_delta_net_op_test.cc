@@ -431,11 +431,11 @@ TEST(GatedDeltaNetWebGpuTest, RaggedWithoutInitialState) {
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
 
-TEST(GatedDeltaNetWebGpuTest, RaggedQwenWithInitialState) {
+TEST(GatedDeltaNetWebGpuTest, RaggedQwenWithInitialStateAndNonDivisibleDv) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
-  Geometry g{7, 3, 1, 3, 8, 4};
+  Geometry g{7, 3, 1, 3, 8, 5};
   Inputs inputs = MakeInputs(g, 225);
   inputs.cu_seqlens = {0, 1, 5, 7};
   Options options;

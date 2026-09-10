@@ -22,7 +22,9 @@ void AppendTensorInfo(OStringStream& ss,
                       ProgramVariableDataType var_type,
                       ProgramTensorMetadataDependency dependency,
                       bool& first,
-                      uint32_t segments) {
+                      uint32_t segments,
+                      bool is_buffer_view,
+                      uint32_t buffer_offset_in_elements) {
   if (first) {
     first = false;
   } else {
@@ -40,6 +42,9 @@ void AppendTensorInfo(OStringStream& ss,
 
   if (segments != 1) {
     ss D("Segs=") << segments << ';';
+  }
+  if (is_buffer_view && buffer_offset_in_elements != 0) {
+    ss D("ViewOffset=") << buffer_offset_in_elements << ';';
   }
 
   if ((dependency & ProgramTensorMetadataDependency::Shape) == ProgramTensorMetadataDependency::Shape) {
@@ -117,7 +122,9 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
                      input.var_type,
                      input.dependency,
                      first,
-                     inputs_segments[i]);
+                     inputs_segments[i],
+                     input.is_buffer_view,
+                     input.buffer_offset_in_elements);
   }
 
   ss << ":" D("Outputs=");
@@ -129,7 +136,9 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
                      output.var_type,
                      output.dependency,
                      first,
-                     outputs_segments[i]);
+                     outputs_segments[i],
+                     output.is_buffer_view,
+                     output.buffer_offset_in_elements);
   }
 
   if (!program.Indices().empty()) {

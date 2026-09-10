@@ -56,14 +56,18 @@ Status ProgramManager::NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint
 }
 
 Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const {
-  inputs_segments.resize(program.Inputs().size(), 1);
-  outputs_segments.resize(program.Outputs().size(), 1);
+  inputs_segments.resize(program.Inputs().size(), 0);
+  outputs_segments.resize(program.Outputs().size(), 0);
 
   const uint64_t maxStorageBufferBindingSize = webgpu_context_.DeviceLimits().maxStorageBufferBindingSize;
 
   // Inputs
   for (size_t i = 0; i < program.Inputs().size(); ++i) {
+    if (program.InputBufferOwner(i) != i) {
+      continue;
+    }
     const auto& input = program.Inputs()[i];
+    inputs_segments[i] = 1;
     if (input.tensor && input.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
       uint32_t segments = static_cast<uint32_t>((input.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
       inputs_segments[i] = segments;
@@ -71,7 +75,11 @@ Status ProgramManager::CalculateSegmentsForInputsAndOutputs(const ProgramBase& p
   }
   // Outputs
   for (size_t i = 0; i < program.Outputs().size(); ++i) {
+    if (program.OutputBufferOwner(i) != i) {
+      continue;
+    }
     const auto& output = program.Outputs()[i];
+    outputs_segments[i] = 1;
     if (output.tensor && output.tensor->SizeInBytes() > maxStorageBufferBindingSize) {
       uint32_t segments = static_cast<uint32_t>((output.tensor->SizeInBytes() + maxStorageBufferBindingSize - 1) / maxStorageBufferBindingSize);
       outputs_segments[i] = segments;
