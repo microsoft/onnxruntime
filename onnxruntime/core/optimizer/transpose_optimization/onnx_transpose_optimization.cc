@@ -2747,11 +2747,179 @@ static bool HandleReshapeSplit(HandlerArgs& args) {
   return true;
 }
 
+// Push a Transpose past a Reshape when the Reshape merges contiguous runs of
+// post-transpose axes, and the pre-transpose axes inside each merged run are
+// themselves (1) contiguous and (2) in ascending order in the input.
+//
+// Example:
+//   input {1, 40, 40, 80}
+//   -> Transpose(perm=[0,3,1,2]) -> {1, 80, 40, 40}
+//   -> Reshape({1, 80, 1600})    -> {1, 80, 1600}
+//
+//   After: input -> Reshape({1, 1600, 80}) -> Transpose(perm=[0,2,1]) -> {1, 80, 1600}
+static bool HandleReshapeMerge(HandlerArgs& args) {
+  // Need a concrete transpose-input shape (i.e. the original pre-transpose tensor).
+  auto transpose_input_shape_opt = args.ctx.graph.GetValueInfo(args.transpose.Inputs()[0])->Shape();
+  if (!transpose_input_shape_opt.has_value()) {
+    return false;
+  }
+  const std::vector<int64_t>& transpose_input_shape = *transpose_input_shape_opt;
+  for (int64_t d : transpose_input_shape) {
+    // Reject symbolic (< 0) and zero-sized (== 0) dims. Zero-sized dims would make the partition
+    // loop below unable to grow `prod` past 0, so any positive requested dim would spuriously fail;
+    // we bail explicitly here rather than relying on that implicit behavior.
+    if (d <= 0) {
+      return false;
+    }
+  }
+
+  size_t rank = args.perm.size();
+  if (transpose_input_shape.size() != rank) {
+    return false;
+  }
+  std::vector<int64_t> transposed_shape(rank);
+  for (size_t i = 0; i < rank; ++i) {
+    transposed_shape[i] = transpose_input_shape[gsl::narrow_cast<size_t>(args.perm[i])];
+  }
+
+  // requested shape (must be a constant initializer, fully concrete).
+  auto requested_shape_data = args.ctx.graph.GetConstant(args.node.Inputs()[1]);
+  if (requested_shape_data == nullptr || requested_shape_data->Data().size() == 0) {
+    return false;
+  }
+  std::vector<int64_t> requested_shape = DataInt64(*requested_shape_data);
+  for (int64_t d : requested_shape) {
+    if (d <= 0) {
+      return false;  // -1 / 0 not handled here; HandleReshapeAsTranspose owns those when applicable.
+    }
+  }
+
+  // Check that the Reshape is purely merging axes: partition transposed_shape into contiguous runs
+  // whose products match requested_shape in order. Each run collapses (merges) one or more
+  // post-transpose axes into a single output dim; no run may split an axis. If the partition cannot
+  // be formed, the Reshape is not a pure axis-merge and we bail out.
+  // Consume at least one post-transpose axis per requested dim so that a target of 1 grabs a
+  // size-1 axis rather than leaving a zero-length run (which would let the next run start at the
+  // same cursor and silently overlap — breaking the contiguity check for cases like
+  // {1, 80, 1600} paired with a leading size-1 axis).
+  std::vector<std::pair<size_t, size_t>> runs;  // [start, end) in post-transpose axis space
+  runs.reserve(requested_shape.size());
+  size_t cursor = 0;
+  for (int64_t target : requested_shape) {
+    const size_t start = cursor;
+    int64_t prod = 1;
+    do {
+      if (cursor >= rank) {
+        return false;
+      }
+      const int64_t dim = transposed_shape[cursor];
+      // Guard the multiply: if prod * dim would exceed target, we cannot land on target exactly,
+      // and continuing would risk signed overflow on large concrete dims. All dims and target are
+      // validated positive above, so target / dim is well-defined.
+      if (prod > target / dim) {
+        return false;
+      }
+      prod *= dim;
+      ++cursor;
+    } while (prod < target);
+    if (prod != target) {
+      return false;
+    }
+    runs.emplace_back(start, cursor);
+  }
+  if (cursor != rank) {
+    return false;
+  }
+
+  // For each run in post-transpose space, check that the pre-transpose indices
+  // (args.perm[run_start..run_end)) are contiguous and ascending. If yes, the
+  // run represents a flatten of an already-contiguous block of original axes.
+  for (const auto& [run_start, run_end] : runs) {
+    for (size_t i = run_start + 1; i < run_end; ++i) {
+      if (args.perm[i] != args.perm[i - 1] + 1) {
+        return false;
+      }
+    }
+  }
+
+  // Build the new Reshape shape: one dim per run. Each run's pre-image is contiguous in ascending
+  // order (verified above), so the product of its pre-transpose dims equals the corresponding
+  // requested dim — reuse requested_shape directly rather than recomputing the product.
+  std::vector<int64_t> new_reshape_shape;
+  new_reshape_shape.reserve(runs.size());
+  std::vector<int64_t> run_first_orig_axis;  // first pre-transpose axis index of each run
+  run_first_orig_axis.reserve(runs.size());
+  for (size_t r = 0; r < runs.size(); ++r) {
+    new_reshape_shape.push_back(requested_shape[r]);
+    run_first_orig_axis.push_back(args.perm[runs[r].first]);
+  }
+
+  // Derive the new Transpose perm: sort runs by their pre-transpose start index
+  // — that's the order they appear in the new Reshape's input — and the
+  // permutation taking that sorted order back to the original run order is the
+  // new perm. If the runs are already in sorted order, the perm is identity
+  // and we can skip the Transpose entirely (cleanest win).
+  std::vector<int64_t> sorted_indices(runs.size());
+  for (size_t i = 0; i < runs.size(); ++i) sorted_indices[i] = gsl::narrow_cast<int64_t>(i);
+  std::sort(sorted_indices.begin(), sorted_indices.end(),
+            [&](int64_t a, int64_t b) { return run_first_orig_axis[a] < run_first_orig_axis[b]; });
+
+  std::vector<int64_t> sorted_reshape_shape(runs.size());
+  for (size_t i = 0; i < runs.size(); ++i) {
+    // sorted_indices[i] = which original-run is at position i after sorting.
+    // The new Reshape's axis i is that run, so the post-Reshape tensor's axis
+    // i carries the data of original run sorted_indices[i]. To recover the
+    // original Reshape output ordering we need a Transpose whose perm[j] tells
+    // us "the axis in the post-Reshape tensor that becomes output axis j",
+    // which is the inverse mapping of sorted_indices.
+    sorted_reshape_shape[i] = new_reshape_shape[gsl::narrow_cast<size_t>(sorted_indices[i])];
+  }
+  std::vector<int64_t> new_perm = InvertPerm(sorted_indices);
+
+  // Rewrite the graph:
+  //   1) Replace the Reshape's data input with the *pre-transpose* tensor, and
+  //      its shape input with the new (sorted) shape.
+  //   2) If new_perm is not identity, append a Transpose on the Reshape's
+  //      output. Otherwise drop the trailing transpose-merge entirely.
+  //   3) Remove the original Transpose if it has no other consumers.
+
+  std::string_view transpose_input = args.transpose.Inputs()[0];
+  std::string_view old_shape_init = args.node.Inputs()[1];
+  std::vector<int64_t> shape_initializer_shape{gsl::narrow_cast<int64_t>(sorted_reshape_shape.size())};
+  std::string_view new_shape_init =
+      AddInitializerInt64(args.ctx.graph, shape_initializer_shape, sorted_reshape_shape);
+
+  args.node.SetInput(0, transpose_input);
+  args.node.SetInput(1, new_shape_init);
+  if (!args.ctx.graph.HasValueConsumers(old_shape_init)) {
+    args.ctx.graph.RemoveInitializer(old_shape_init);
+  }
+
+  // If new_perm is identity the new Reshape's output already matches the
+  // original Reshape's output shape and no trailing Transpose is needed.
+  if (!IsIdentityPerm(new_perm)) {
+    TransposeOutput(args.ctx.graph, args.node, 0, new_perm, InvertPerm(new_perm));
+  }
+
+  // Drop the now-unused original Transpose if nothing else uses it.
+  if (!args.ctx.graph.HasValueConsumers(args.transpose.Outputs()[0])) {
+    args.ctx.graph.RemoveNode(args.transpose);
+  }
+  return true;
+}
+
 bool HandleReshape(HandlerArgs& args) {
   if (HandleReshapeAsTranspose(args)) {
     return true;
   }
-  return HandleReshapeSplit(args);
+
+  if (HandleReshapeSplit(args)) {
+    return true;
+  }
+
+  // Fall back to the run-merge rewrite: Transpose -> Reshape where the Reshape
+  // collapses contiguous, ascending pre-transpose axes into fewer output dims.
+  return HandleReshapeMerge(args);
 }
 
 constexpr HandlerInfo reshape_handler = {&FirstInput, &HandleReshape, /*transposes_outputs*/ false};
