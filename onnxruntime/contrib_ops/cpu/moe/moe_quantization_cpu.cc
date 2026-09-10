@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/moe/moe_quantization_cpu.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "contrib_ops/moe_profiler.h"
+#endif
 #include "core/framework/allocator.h"
 #include "core/common/float16.h"
 #include "core/mlas/inc/mlas.h"
@@ -954,6 +957,17 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const int64_t hidden_size = moe_params.hidden_size;
   const int64_t inter_size = moe_params.inter_size;
   const int64_t num_experts = moe_params.num_experts;
+#if !defined(ORT_MINIMAL_BUILD)
+  const size_t routing_element_count =
+      SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_);
+  const auto* instrumentation = GetMoeRunInstrumentationContext(context);
+  if (instrumentation != nullptr &&
+      !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
+    instrumentation = nullptr;
+  }
+  const TimePoint instrumentation_start =
+      instrumentation != nullptr ? instrumentation->StartProfiling() : TimePoint{};
+#endif
 
   ORT_RETURN_IF_NOT(k_ <= num_experts,
                     "QMoE attribute 'k' must be <= num_experts; got k=", k_,
@@ -1927,6 +1941,15 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   } else {
     accumulate(output->template MutableData<T>());
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (instrumentation != nullptr) {
+    RecordMoeRoutingEvent(*instrumentation, Node(),
+                          gsl::make_span(route_expert, routing_element_count),
+                          gsl::make_span(route_scale, routing_element_count),
+                          num_tokens, k_, instrumentation_start);
+  }
+#endif
 
   return Status::OK();
 }

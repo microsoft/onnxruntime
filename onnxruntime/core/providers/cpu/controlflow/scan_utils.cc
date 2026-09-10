@@ -291,7 +291,12 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
                                     ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger(),
                                     context.GetComputeStream(),
                                     /*sync_subgraph_fetches*/ false,
-                                    context.GetRunProfiler());
+                                    context.GetRunProfiler()
+#if !defined(ORT_MINIMAL_BUILD)
+                                        ,
+                                    context.GetRunInstrumentationContext()
+#endif
+    );
 
     ORT_RETURN_IF_ERROR(status);
 
