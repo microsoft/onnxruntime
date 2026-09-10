@@ -106,32 +106,33 @@ Status VarlenNGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) c
       << "  let state_length = uniforms.max_ngram_size - 1u;\n"
       << "  let num_heads = state_length * uniforms.n_head_per_ngram;\n"
       << "  let past_base = b * state_length;\n"
-      << "  for (var out_h = local_idx; out_h < num_heads; out_h += workgroup_size_x) {\n"
+      << "  let work_items = local_length * num_heads;\n"
+      << "  for (var work_item = local_idx; work_item < work_items; work_item += workgroup_size_x) {\n"
+      << "    let t = work_item / num_heads;\n"
+      << "    let out_h = work_item % num_heads;\n"
       << "    let n = out_h / uniforms.n_head_per_ngram + 2u;\n"
       << "    let mod_value = " << vocab_sizes.GetByOffset("out_h") << ";\n"
-      << "    for (var t = 0u; t < local_length; t++) {\n"
-      << "      var mix = 0i;\n"
-      << "      for (var k = 0u; k < n; k++) {\n"
-      << "        var token = uniforms.pad_id;\n"
-      << "        if (t >= k) {\n"
-      << "          token = " << input_ids.GetByOffset("u32(start) + t - k") << ";\n"
+      << "    var mix = 0i;\n"
+      << "    for (var k = 0u; k < n; k++) {\n"
+      << "      var token = uniforms.pad_id;\n"
+      << "      if (t >= k) {\n"
+      << "        token = " << input_ids.GetByOffset("u32(start) + t - k") << ";\n"
       << "        }\n";
   if (has_past_ids_) {
     shader.MainFunctionBody()
-        << "        if (t < k) {\n"
-        << "          token = " << past_ids->GetByOffset("past_base + state_length + t - k") << ";\n"
-        << "        }\n";
+        << "      if (t < k) {\n"
+        << "        token = " << past_ids->GetByOffset("past_base + state_length + t - k") << ";\n"
+        << "      }\n";
   }
   shader.MainFunctionBody()
-      << "        let product = token * " << multipliers.GetByOffset("k") << ";\n"
-      << "        if (k == 0u) { mix = product; } else { mix = mix ^ product; }\n"
-      << "      }\n"
-      << "      var result = 0i;\n"
-      << "      if (mod_value > 0i) {\n"
-      << "        result = positive_mod(mix, mod_value);\n"
-      << "      }\n"
-      << "      " << output.SetByOffset("(u32(start) + t) * num_heads + out_h", "result") << "\n"
+      << "      let product = token * " << multipliers.GetByOffset("k") << ";\n"
+      << "      if (k == 0u) { mix = product; } else { mix = mix ^ product; }\n"
       << "    }\n"
+      << "    var result = 0i;\n"
+      << "    if (mod_value > 0i) {\n"
+      << "      result = positive_mod(mix, mod_value);\n"
+      << "    }\n"
+      << "    " << output.SetByOffset("(u32(start) + t) * num_heads + out_h", "result") << "\n"
       << "  }\n";
   return Status::OK();
 }
@@ -296,6 +297,28 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
     ORT_RETURN_IF_ERROR(context.RunProgram(fill_program));
   }
 
+  if (total_tokens > 0) {
+    VarlenNGramHashMappingProgram program{has_past_ids};
+    program.CacheHint(has_past_ids)
+        .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
+                    {multipliers, ProgramTensorMetadataDependency::None},
+                    {vocab_sizes, ProgramTensorMetadataDependency::None},
+                    {cu_seqlens, ProgramTensorMetadataDependency::None},
+                    {&is_valid, ProgramTensorMetadataDependency::None}});
+    if (has_past_ids) {
+      program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
+    }
+    program.AddOutput({output, ProgramTensorMetadataDependency::None})
+        .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch_size))
+        .SetWorkgroupSize(WORKGROUP_SIZE)
+        .AddUniformVariables({{onnxruntime::narrow<uint32_t>(batch_size)},
+                              {onnxruntime::narrow<uint32_t>(total_tokens)},
+                              {onnxruntime::narrow<uint32_t>(max_ngram_size_)},
+                              {onnxruntime::narrow<uint32_t>(n_head_per_ngram_)},
+                              {onnxruntime::narrow<int32_t>(pad_id_)}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(program));
+  }
+
   if (present_count > 0) {
     const bool has_input_ids = total_tokens > 0;
     VarlenNGramPresentIdsProgram present_program{has_input_ids, has_past_ids};
@@ -315,32 +338,10 @@ Status VarlenNGramHashMapping::ComputeInternal(ComputeContext& context) const {
                               {onnxruntime::narrow<uint32_t>(batch_size)},
                               {onnxruntime::narrow<uint32_t>(total_tokens)},
                               {onnxruntime::narrow<int32_t>(pad_id_)}});
-    ORT_RETURN_IF_ERROR(context.RunProgram(present_program));
+    return context.RunProgram(present_program);
   }
 
-  if (total_tokens == 0) {
-    return Status::OK();
-  }
-
-  VarlenNGramHashMappingProgram program{has_past_ids};
-  program.CacheHint(has_past_ids)
-      .AddInputs({{input_ids, ProgramTensorMetadataDependency::None},
-                  {multipliers, ProgramTensorMetadataDependency::None},
-                  {vocab_sizes, ProgramTensorMetadataDependency::None},
-                  {cu_seqlens, ProgramTensorMetadataDependency::None},
-                  {&is_valid, ProgramTensorMetadataDependency::None}});
-  if (has_past_ids) {
-    program.AddInput({past_ids, ProgramTensorMetadataDependency::None});
-  }
-  program.AddOutput({output, ProgramTensorMetadataDependency::None})
-      .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch_size))
-      .SetWorkgroupSize(WORKGROUP_SIZE)
-      .AddUniformVariables({{onnxruntime::narrow<uint32_t>(batch_size)},
-                            {onnxruntime::narrow<uint32_t>(total_tokens)},
-                            {onnxruntime::narrow<uint32_t>(max_ngram_size_)},
-                            {onnxruntime::narrow<uint32_t>(n_head_per_ngram_)},
-                            {onnxruntime::narrow<int32_t>(pad_id_)}});
-  return context.RunProgram(program);
+  return Status::OK();
 }
 
 }  // namespace webgpu

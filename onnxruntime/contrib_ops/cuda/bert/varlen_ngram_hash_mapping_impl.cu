@@ -122,21 +122,13 @@ __global__ void VarlenNGramHashMappingKernel(
   const int64_t state_length = max_ngram_size - 1;
   const int64_t num_heads = state_length * n_head_per_ngram;
 
-  // present_ids is the right-aligned trailing window of (past_ids ++ this request's tokens), so it
-  // is well defined even when this call is shorter than the window.
-  if (present_ids != nullptr) {
-    for (int64_t j = threadIdx.x; j < state_length; j += blockDim.x) {
-      const int64_t source_t = local_length - state_length + j;
-      present_ids[b * state_length + j] =
-          source_t >= 0 ? input_ids[start + source_t]
-                        : HistoryId<T>(past_ids, b, state_length + source_t, state_length, pad_id);
-    }
-  }
-
-  for (int64_t out_h = threadIdx.x; out_h < num_heads; out_h += blockDim.x) {
+  const int64_t work_items = local_length * num_heads;
+  for (int64_t work_item = threadIdx.x; work_item < work_items; work_item += blockDim.x) {
+    const int64_t t = work_item / num_heads;
+    const int64_t out_h = work_item % num_heads;
     const int64_t n = out_h / n_head_per_ngram + 2;
     const T mod = vocab_sizes[out_h];
-    for (int64_t t = 0; t < local_length; ++t) {
+    {
       T mix = 0;
       for (int64_t k = 0; k < n; ++k) {
         const int64_t source_t = t - k;
@@ -147,6 +139,18 @@ __global__ void VarlenNGramHashMappingKernel(
         mix = k == 0 ? product : static_cast<T>(mix ^ product);
       }
       output[(start + t) * num_heads + out_h] = mod <= 0 ? T{} : engram_helper::PositiveMod(mix, mod);
+    }
+  }
+
+  // present_ids is the right-aligned trailing window of (past_ids ++ this request's tokens), so it
+  // is well defined even when this call is shorter than the window. Write it after hash computation
+  // because past_ids may alias present_ids.
+  if (present_ids != nullptr) {
+    for (int64_t j = threadIdx.x; j < state_length; j += blockDim.x) {
+      const int64_t source_t = local_length - state_length + j;
+      present_ids[b * state_length + j] =
+          source_t >= 0 ? input_ids[start + source_t]
+                        : HistoryId<T>(past_ids, b, state_length + source_t, state_length, pad_id);
     }
   }
 }
@@ -211,8 +215,7 @@ Status LaunchVarlenNGramHashMappingKernel(
   }
 
   // 3) Compute real values if (and only if) the array is valid.
-  const int threads = static_cast<int>(std::max<int64_t>(
-      1, std::min<int64_t>(num_heads, std::min(256, max_threads_per_block))));
+  const int threads = std::min(256, max_threads_per_block);
   VarlenNGramHashMappingKernel<T><<<static_cast<unsigned int>(batch_size), threads, 0, stream>>>(
       input_ids, multipliers, vocab_sizes, cu_seqlens, past_ids, output, present_ids,
       static_cast<int>(batch_size), static_cast<int>(total_tokens), max_ngram_size, n_head_per_ngram,

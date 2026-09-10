@@ -1182,6 +1182,14 @@ TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsSingleElementCuSe
   RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(1);
 }
 
+TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsEmptyCuSeqlensWithoutPresentIds) {
+  RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(0, false);
+}
+
+TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsSingleElementCuSeqlensWithoutPresentIds) {
+  RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(1, false);
+}
+
 TEST(EngramOpsTest, VarlenNGramHashMappingShapeInferenceRejectsNon1DCuSeqlensWithoutPresentIds) {
   RunVarlenNGramHashMappingShapeInferenceRejectsShortCuSeqlensTest(
       2, false, true, "VarlenNGramHashMapping: cumulative_sequence_length must have rank 1");

@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cpu/bert/varlen_ngram_hash_mapping.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 
@@ -125,49 +126,51 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
   T* output_data = total_tokens == 0 ? nullptr : output->MutableData<T>();
 
   ThreadPool::TryParallelFor(
-      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(batch_size),
-      static_cast<double>((total_tokens > 0 ? total_tokens / std::max<int64_t>(batch_size, 1) : 1) *
-                          max_ngram_size_ * n_head_per_ngram_),
+      context->GetOperatorThreadPool(), narrow<ptrdiff_t>(total_tokens),
+      static_cast<double>(max_ngram_size_ * n_head_per_ngram_),
       [&](ptrdiff_t begin, ptrdiff_t end) {
-        for (int64_t b = begin; b < end; ++b) {
+        int64_t b = std::upper_bound(cu_data, cu_data + batch_size, static_cast<int32_t>(begin)) - cu_data - 1;
+        for (int64_t linear = begin; linear < end; ++linear) {
+          while (b + 1 < batch_size && linear >= cu_data[b + 1]) {
+            ++b;
+          }
           const int64_t start = cu_data[b];
           const int64_t seq_end = cu_data[b + 1];
           const int64_t local_length = seq_end - start;
-
-          // present_ids is the right-aligned trailing window of (past_ids ++ this request's tokens),
-          // so it is well defined even when this call is shorter than the window. It never reads
-          // across a sequence boundary into an adjacent packed request.
-          if (present_data != nullptr) {
-            for (int64_t j = 0; j < state_length; ++j) {
-              const int64_t source_t = local_length - state_length + j;
-              present_data[b * state_length + j] =
-                  source_t >= 0 ? input_data[start + source_t]
-                                : HistoryId(past_data, b, state_length + source_t, state_length);
+          const int64_t t = linear - start;
+          const int64_t output_base = linear * num_heads;
+          for (int64_t n = 2; n <= max_ngram_size_; ++n) {
+            T mix = 0;
+            for (int64_t k = 0; k < n; ++k) {
+              const int64_t source_t = t - k;
+              const T token = source_t >= 0 ? input_data[start + source_t]
+                                            : HistoryId(past_data, b, state_length + source_t, state_length);
+              const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
+              mix = k == 0 ? product : static_cast<T>(mix ^ product);
             }
-          }
 
-          for (int64_t t = 0; t < local_length; ++t) {
-            const int64_t output_base = (start + t) * num_heads;
-            for (int64_t n = 2; n <= max_ngram_size_; ++n) {
-              T mix = 0;
-              for (int64_t k = 0; k < n; ++k) {
-                const int64_t source_t = t - k;
-                const T token = source_t >= 0 ? input_data[start + source_t]
-                                              : HistoryId(past_data, b, state_length + source_t, state_length);
-                const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
-                mix = k == 0 ? product : static_cast<T>(mix ^ product);
-              }
-
-              const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
-              for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
-                const int64_t out_h = ngram_offset + h;
-                // vocab_sizes was validated to be positive above, so the modulo is always well defined.
-                output_data[output_base + out_h] = engram_helper::PositiveMod(mix, vocab_data[out_h]);
-              }
+            const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
+            for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
+              const int64_t out_h = ngram_offset + h;
+              // vocab_sizes was validated to be positive above, so the modulo is always well defined.
+              output_data[output_base + out_h] = engram_helper::PositiveMod(mix, vocab_data[out_h]);
             }
           }
         }
       });
+
+  if (present_data != nullptr) {
+    for (int64_t b = 0; b < batch_size; ++b) {
+      const int64_t start = cu_data[b];
+      const int64_t local_length = cu_data[b + 1] - start;
+      for (int64_t j = 0; j < state_length; ++j) {
+        const int64_t source_t = local_length - state_length + j;
+        present_data[b * state_length + j] =
+            source_t >= 0 ? input_data[start + source_t]
+                          : HistoryId(past_data, b, state_length + source_t, state_length);
+      }
+    }
+  }
 
   return Status::OK();
 }
