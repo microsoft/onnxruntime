@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/platform/telemetry.h"
+#include "core/platform/telemetry_environment.h"
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -154,6 +155,7 @@ class PosixTelemetry : public Telemetry {
   std::string GetOsDescription() const;
   std::string GetCpuModel() const;
   std::string GetDeviceClass() const;
+  static telemetry_detail::HostEnvironmentInfo GetHostEnvironmentInfo();
   static std::string GetArchitecture();
   static int64_t GetTotalMemoryMB();
 

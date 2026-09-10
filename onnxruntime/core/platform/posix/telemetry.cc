@@ -37,6 +37,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <cstdint>
@@ -737,6 +738,63 @@ std::string PosixTelemetry::GetDeviceClass() const {
 #endif
 }
 
+namespace {
+
+#if defined(__linux__) || defined(__ANDROID__)
+std::string ReadBoundedFile(const char* path) {
+  constexpr size_t kMaxProbeBytes = 16 * 1024;
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    return {};
+  }
+
+  std::array<char, kMaxProbeBytes> buffer{};
+  input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+  return std::string(buffer.data(), static_cast<size_t>(input.gcount()));
+}
+
+bool FileExists(const char* path) {
+  std::ifstream input(path);
+  return input.good();
+}
+#endif
+
+}  // namespace
+
+telemetry_detail::HostEnvironmentInfo PosixTelemetry::GetHostEnvironmentInfo() {
+  telemetry_detail::HostEnvironmentEvidence evidence;
+#if defined(__linux__) || defined(__ANDROID__)
+  evidence.docker_marker = FileExists("/.dockerenv");
+  evidence.podman_marker = FileExists("/run/.containerenv");
+  evidence.kubernetes = !telemetry_detail::GetTelemetryEnv("KUBERNETES_SERVICE_HOST").empty();
+  evidence.aws_ecs = !telemetry_detail::GetTelemetryEnv("ECS_CONTAINER_METADATA_URI").empty() ||
+                     !telemetry_detail::GetTelemetryEnv("ECS_CONTAINER_METADATA_URI_V4").empty();
+  evidence.generic_container =
+      telemetry_detail::IsTruthyCiValue(telemetry_detail::GetTelemetryEnv("DOTNET_RUNNING_IN_CONTAINER"));
+  evidence.systemd_container =
+      ReadBoundedFile("/run/systemd/container") + telemetry_detail::GetTelemetryEnv("container");
+  evidence.cgroup = ReadBoundedFile("/proc/1/cgroup") + ReadBoundedFile("/proc/self/cgroup");
+  evidence.cpu_info = ReadBoundedFile("/proc/cpuinfo");
+  evidence.kernel_release = ReadBoundedFile("/proc/sys/kernel/osrelease");
+  evidence.dmi = ReadBoundedFile("/sys/class/dmi/id/sys_vendor") +
+                 ReadBoundedFile("/sys/class/dmi/id/product_name") +
+                 ReadBoundedFile("/sys/class/dmi/id/board_vendor");
+#if defined(__ANDROID__)
+  const std::string android_properties = ReadBoundedFile("/system/build.prop");
+  evidence.android_emulator = telemetry_detail::ContainsAscii(android_properties, "ro.kernel.qemu=1") ||
+                              telemetry_detail::ContainsAscii(android_properties, "ro.boot.qemu=1") ||
+                              telemetry_detail::ContainsAscii(android_properties, "ro.product.manufacturer=genymotion");
+#endif
+#elif defined(__APPLE__) && !TARGET_OS_IOS
+  int is_virtual_machine = 0;
+  size_t size = sizeof(is_virtual_machine);
+  evidence.apple_virtual_machine =
+      sysctlbyname("kern.hv_vmm_present", &is_virtual_machine, &size, nullptr, 0) == 0 &&
+      is_virtual_machine != 0;
+#endif
+  return telemetry_detail::ClassifyHostEnvironment(evidence);
+}
+
 // Get the CPU architecture the binary was compiled for
 std::string PosixTelemetry::GetArchitecture() {
 #if defined(__x86_64__)
@@ -833,6 +891,7 @@ void PosixTelemetry::LogProcessInfo() const {
       return;
     }
 
+    const auto host_environment = GetHostEnvironmentInfo();
     builder.AddString("runtimeVersion", ORT_VERSION)
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
         .AddString("DeviceInfo.Status", "Mobile")
@@ -843,6 +902,14 @@ void PosixTelemetry::LogProcessInfo() const {
         .AddString("architecture", GetArchitecture())
         .AddString("cpuModel", GetCpuModel())
         .AddString("deviceClass", GetDeviceClass())
+        .AddBool("isContainer", host_environment.is_container)
+        .AddString("containerType", host_environment.container_type)
+        .AddBool("isVirtualMachine", host_environment.is_virtual_machine)
+        .AddString("virtualizationType", host_environment.virtualization_type)
+        .AddBool("isEmulator", host_environment.is_emulator)
+        .AddString("hostEnvironment", host_environment.environment_class)
+        .AddString("environmentDetectionConfidence", host_environment.detection_confidence)
+        .AddString("deviceIdScope", host_environment.device_id_scope)
         .AddInt32("processorCount", GetProcessorCount())
         .AddInt64("totalMemoryMB", GetTotalMemoryMB());
 
