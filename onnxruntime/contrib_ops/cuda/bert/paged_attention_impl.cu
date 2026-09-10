@@ -1777,7 +1777,7 @@ Status EfficientAttention(
     float scale) {
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
-  const int token_count = parameters.token_count;
+  [[maybe_unused]] const int token_count = parameters.token_count;
   const int num_heads = parameters.num_heads;
   const int kv_num_heads = parameters.kv_num_heads;
   const int head_size = parameters.head_size;

@@ -207,6 +207,8 @@ cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handlin
 option(onnxruntime_DISABLE_ABSEIL "Do not use Abseil data structures in ONNX Runtime source code. Redefine Inlined containers to STD containers." OFF)
 
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
+cmake_dependent_option(onnxruntime_ENABLE_GQA_VALUE_LAYOUT "Enable GroupQueryAttention Value-cache layout conversion and validation" ON
+  "NOT onnxruntime_MINIMAL_BUILD;NOT onnxruntime_EXTENDED_MINIMAL_BUILD;NOT onnxruntime_DISABLE_CONTRIB_OPS" OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
@@ -1140,6 +1142,9 @@ function(onnxruntime_set_compile_flags target_name)
     target_compile_definitions(${target_name} PRIVATE EIGEN_USE_THREADS)
     if (onnxruntime_DISABLE_CONTRIB_OPS)
       target_compile_definitions(${target_name} PRIVATE DISABLE_CONTRIB_OPS)
+    endif()
+    if (onnxruntime_ENABLE_GQA_VALUE_LAYOUT)
+      target_compile_definitions(${target_name} PRIVATE ORT_ENABLE_GQA_VALUE_LAYOUT)
     endif()
 
     if (onnxruntime_DISABLE_ML_OPS)
