@@ -64,7 +64,7 @@ struct OrtDevice {
     ARM = onnxruntime::pci_vendor_ids::kArm,               // ARM GPU EP
     MICROSOFT = onnxruntime::pci_vendor_ids::kMicrosoft,   // DML EP
     HUAWEI = onnxruntime::pci_vendor_ids::kHuawei,         // CANN EP
-    QUALCOMM = onnxruntime::pci_vendor_ids::kQualcommInc,  // QNN DP
+    QUALCOMM = onnxruntime::pci_vendor_ids::kQualcommInc,  // QNN EP
     INTEL = onnxruntime::pci_vendor_ids::kIntel,           // OpenVINO
   };
 
