@@ -200,7 +200,6 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
       ORT_NAPI_THROW_TYPEERROR_IF(!tensorDataValue.IsTypedArray(), env,
                                   "Tensor.data must be a typed array for numeric tensor.");
 
-      auto tensorDataTypedArray = tensorDataValue.As<Napi::TypedArray>();
       std::underlying_type_t<napi_typedarray_type> typedArrayType = tensorDataValue.As<Napi::TypedArray>().TypedArrayType();
 
       // For float16 tensors, accept both Uint16Array and Float16Array.
@@ -217,10 +216,15 @@ Ort::Value NapiValueToOrtValue(Napi::Env env, Napi::Value value, OrtMemoryInfo* 
                                   elemType == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ? " or Float16Array" : "",
                                   ") for ", tensorTypeString, " tensors, but got typed array (", typedArrayType, ").");
 
-      char* buffer = reinterpret_cast<char*>(tensorDataTypedArray.ArrayBuffer().Data());
-      size_t bufferByteOffset = tensorDataTypedArray.ByteOffset();
-      size_t bufferByteLength = tensorDataTypedArray.ByteLength();
-      return Ort::Value::CreateTensor(cpu_memory_info, buffer + bufferByteOffset, bufferByteLength,
+      size_t typedArrayElementCount = 0;
+      void* typedArrayData = nullptr;
+      NAPI_THROW_IF_FAILED(
+        env,
+        napi_get_typedarray_info(env, tensorDataValue, nullptr, &typedArrayElementCount, &typedArrayData,
+                                 nullptr, nullptr),
+        Ort::Value());
+      const size_t bufferByteLength = typedArrayElementCount * DATA_TYPE_ELEMENT_SIZE_MAP[elemType];
+      return Ort::Value::CreateTensor(cpu_memory_info, typedArrayData, bufferByteLength,
                                       dims.empty() ? nullptr : &dims[0], dims.size(), elemType);
     } else {
       ORT_NAPI_THROW_TYPEERROR_IF(tensorLocation != DATA_LOCATION_GPU_BUFFER, env, "Tensor.location must be 'gpu-buffer' for IO binding.");
