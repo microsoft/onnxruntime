@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/compile_api.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include <memory>
