@@ -341,7 +341,7 @@ TEST(DynamicSparseAttentionTest, PackedQkvSelectedOnlyGqa_CUDA) {
   DynamicSparseAttentionCase c;
   c.packed_qkv = true;
   c.num_heads = 2;
-  c.query.assign(2 * 8, 0.0f);  // Q
+  c.query.assign(2 * 8, 0.0f);             // Q
   c.query.insert(c.query.end(), 8, 0.0f);  // K
   c.query.insert(c.query.end(), 8, 6.0f);  // V
   c.past_key.assign(8, 0.0f);
@@ -728,6 +728,40 @@ TEST(DynamicSparseAttentionTest, RejectsInvalidSelectionMetadata_CUDA) {
     c.selected_indices = {1, -1};
     c.selected_counts = {1};
     RunDynamicSparseAttentionCase(c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectFailure);
+  }
+  {
+    SCOPED_TRACE("selected entry is non-causal");
+    DynamicSparseAttentionCase c;
+    c.sequence_length = 2;
+    c.cache_sequence_length = 2;
+    c.max_selected = 1;
+    c.total_sequence_length = 2;
+    c.query.assign(2 * 8, 0.0f);
+    c.key.assign(2 * 8, 0.0f);
+    c.value.assign(2 * 8, 1.0f);
+    c.past_key.assign(2 * 8, 0.0f);
+    c.past_value.assign(2 * 8, 0.0f);
+    c.selected_indices = {1, 1};
+    c.selected_counts = {1, 1};
+    c.seqlens_k = {1};
+    c.expected_output.assign(2 * 8, 0.0f);
+    c.expected_present_key.assign(2 * 8, 0.0f);
+    c.expected_present_value.assign(2 * 8, 1.0f);
+    RunDynamicSparseAttentionCase(c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectFailure,
+                                  "must not refer to a future key");
+  }
+  {
+    SCOPED_TRACE("per-batch length exceeds declared total length");
+    auto c = MakeSingleTokenSelectedOnlyCase();
+    c.cache_sequence_length = 3;
+    c.total_sequence_length = 2;
+    c.past_key.assign(3 * 8, 0.0f);
+    c.past_value.assign(3 * 8, 0.0f);
+    c.seqlens_k = {2};
+    c.expected_present_key.assign(3 * 8, 0.0f);
+    c.expected_present_value.assign(3 * 8, 0.0f);
+    RunDynamicSparseAttentionCase(c, DefaultCudaExecutionProvider(), OpTester::ExpectResult::kExpectFailure,
+                                  "incompatible with the current sequence");
   }
 }
 

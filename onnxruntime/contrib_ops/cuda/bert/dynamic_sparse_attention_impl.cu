@@ -39,6 +39,7 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
                                      int batch_size,
                                      int sequence_length,
                                      int max_selected,
+                                     int maximum_total_length,
                                      int main_capacity,
                                      int auxiliary_sequence_length,
                                      int rotary_max_position,
@@ -53,7 +54,9 @@ __global__ void ValidateInputsKernel(const int32_t* selected_indices,
   }
 
   const int64_t total_length_64 = static_cast<int64_t>(seqlens_k[b]) + 1;
-  if (total_length_64 < sequence_length || total_length_64 > main_capacity) {
+  if (total_length_64 < sequence_length ||
+      total_length_64 > maximum_total_length ||
+      total_length_64 > main_capacity) {
     SetValidationError(error_flag, kDynamicSparseAttentionInvalidSequenceLength);
     return;
   }
@@ -545,6 +548,7 @@ Status ValidateDynamicSparseAttentionOnDevice(
   ValidateInputsKernel<<<static_cast<int>(row_count), 1, 0, stream>>>(
       selected_indices, selected_counts, seqlens_k, position_ids,
       parameters.batch_size, parameters.sequence_length, parameters.max_selected,
+      parameters.total_sequence_length,
       parameters.cache_capacity, parameters.auxiliary_sequence_length,
       parameters.rotary_max_position, parameters.do_rotary,
       parameters.selected_kv_source == DynamicSparseAttentionKvSource::kAuxiliary,
