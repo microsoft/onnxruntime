@@ -426,24 +426,24 @@ std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset, bool 
     case onnxruntime::webgpu::ProgramVariableDataType::Int64:
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
       if (use_storage_type) {
-        ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u]";
+        ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "]";
       } else {
-        ss << ElementType() << "(" << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u].x)";
+        ss << ElementType() << "(" << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "].x)";
       }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
       ss << "vec4<bool>(bool("
-         << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u] & 0xFFu), bool("
-         << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u] & 0xFF00u), bool("
-         << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u] & 0xFF0000u), bool("
-         << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u] & 0xFF000000u))";
+         << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "] & 0xFFu), bool("
+         << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "] & 0xFF00u), bool("
+         << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "] & 0xFF0000u), bool("
+         << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "] & 0xFF000000u))";
       break;
     default:
       // Uint8x4 falls through here intentionally: GetByOffset returns the raw packed u32 storage
       // word, matching the convention other kernels rely on for byte-packed uint8 tensors (they
       // unpack sub-byte fields themselves, e.g. via unpack4xU8). Callers that want the 4 unpacked
       // byte values apply unpack4xU8 at the use site.
-      ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u]";
+      ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "]";
   }
 
   return SS_GET(ss);
@@ -470,37 +470,37 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
     case onnxruntime::webgpu::ProgramVariableDataType::Int64:
       if (use_storage_type) {
         // Value is already storage type (vec2<u32>), use directly
-        ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u]=" << value << ";";
+        ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "]=" << value << ";";
       } else {
         // Value is i32, sign-extend to int64 (vec2<u32>)
-        ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u]=vec2<u32>(u32("
+        ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "]=vec2<u32>(u32("
            << value << "), select(0u, 0xFFFFFFFFu, i32(" << value << ") < 0));";
       }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
       if (use_storage_type) {
         // Value is already storage type (vec2<u32>), use directly
-        ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u]=" << value << ";";
+        ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "]=" << value << ";";
       } else {
         // Value is u32, zero-extend to uint64 (vec2<u32>)
-        ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u]=vec2<u32>(u32("
+        ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "]=vec2<u32>(u32("
            << value << "), 0u);";
       }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
       ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_
-         << "u]=dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(" << value << "));";
+         << "]=dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(" << value << "));";
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Uint8x4:
       // Pack 4 uint8 elements (supplied as a vec4<u32>, one value per lane) into a single u32
       // storage word, lane 0 -> low byte. Same byte layout as Boolx4, but mask each lane to a
       // byte so values > 1 (real uint8, not just 0/1) pack correctly.
       ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_
-         << "u]=dot(vec4<u32>(0x1u, 0x100u, 0x10000u, 0x1000000u), (vec4<u32>("
+         << "]=dot(vec4<u32>(0x1u, 0x100u, 0x10000u, 0x1000000u), (vec4<u32>("
          << value << ") & vec4<u32>(0xFFu)));";
       break;
     default:
-      ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "u]=" << value << ";";
+      ss << storage_name_ << "[(" << offset << ") + " << storage_offset_in_elements_ << "]=" << value << ";";
   }
 
   return SS_GET(ss);
