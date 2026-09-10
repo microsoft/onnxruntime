@@ -84,6 +84,16 @@ class GatedDeltaNetParamsProgram final : public Program<GatedDeltaNetParamsProgr
   bool sigmoid_beta_;
 };
 
+class GatedDeltaNetCopyProgram final : public Program<GatedDeltaNetCopyProgram> {
+ public:
+  GatedDeltaNetCopyProgram() : Program{"GatedDeltaNetCopy"} {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"element_count", ProgramUniformVariableDataType::Uint32});
+};
+
 class GatedDeltaNet final : public WebGpuKernel {
  public:
   explicit GatedDeltaNet(const OpKernelInfo& info);
