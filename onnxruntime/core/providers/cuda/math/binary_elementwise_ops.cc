@@ -510,6 +510,7 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
       ORT_RETURN_IF(has_zero != 0, "Integer modulo by zero");
     }
   }
+
 #define CASE_MOD_ELEMENT_TYPE(name, onnx_type, data_type)                                                           \
   case onnx_type: {                                                                                                 \
     Impl_##name<typename ToCudaType<data_type>::MappedType>(                                                        \
