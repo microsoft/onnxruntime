@@ -169,5 +169,57 @@ class TestONNXModel(unittest.TestCase):
         check_op_type_order(self, onnx_model.model, ["Op1", "Op1", "Op2", "Op3"])
 
 
+class TestReplaceGemmWithMatmul(unittest.TestCase):
+    def test_replace_gemm_with_matmul_trans_b_initializer_metadata_updated(self):
+        # Build minimal Gemm with transB=1 and B as initializer with value_info
+        a = helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 2])
+        y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3])
+        weight = numpy_helper.from_array(
+            np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32), name="B"
+        )
+        # ValueInfo for B with original dims [2, 3]
+        b_vi = helper.make_tensor_value_info("B", TensorProto.FLOAT, [2, 3])
+        gemm = helper.make_node("Gemm", ["A", "B"], ["Y"], transB=1, alpha=1.0, beta=1.0, name="Gemm0")
+        graph = helper.make_graph([gemm], "g", [a], [y], initializer=[weight])
+        graph.value_info.extend([b_vi])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+
+        onnx_model = ONNXModel(model)
+        onnx_model.replace_gemm_with_matmul()
+
+        # Confirm Gemm was replaced by MatMul
+        ops = [n.op_type for n in onnx_model.model.graph.node]
+        assert "MatMul" in ops and "Gemm" not in ops
+
+        # Initializer B should now have transposed dims [3, 2]
+        b_init = next(i for i in onnx_model.model.graph.initializer if i.name == "B")
+        assert list(b_init.dims) == [3, 2]
+
+        # ValueInfo for B should be updated to [3, 2]
+        b_vi = next(vi for vi in onnx_model.model.graph.value_info if vi.name == "B")
+        assert [d.dim_value for d in b_vi.type.tensor_type.shape.dim] == [3, 2]
+
+        # Shape inference should succeed without mismatch
+        onnx.shape_inference.infer_shapes(onnx_model.model)
+
+    def test_replace_gemm_with_matmul_transb_dynamic_b_inserts_transpose(self):
+        # B is a graph input (not initializer) so a Transpose should be inserted
+        a = helper.make_tensor_value_info("A", TensorProto.FLOAT, [1, 2])
+        b = helper.make_tensor_value_info("B", TensorProto.FLOAT, [2, 3])
+        y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3])
+        gemm = helper.make_node("Gemm", ["A", "B"], ["Y"], transB=1, alpha=1.0, beta=1.0, name="Gemm0")
+        graph = helper.make_graph([gemm], "g", [a, b], [y], initializer=[])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+
+        onnx_model = ONNXModel(model)
+        onnx_model.replace_gemm_with_matmul()
+
+        ops = [n.op_type for n in onnx_model.model.graph.node]
+        assert "Transpose" in ops and "MatMul" in ops and "Gemm" not in ops
+
+        # Shape inference should succeed
+        onnx.shape_inference.infer_shapes(onnx_model.model)
+
+
 if __name__ == "__main__":
     unittest.main()
