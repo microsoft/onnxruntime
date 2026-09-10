@@ -696,22 +696,23 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreGroupedArchitectureSelec
     int major;
     int minor;
     int k_split;
+    int col_tiles;
     int col_groups;
   };
   const Case cases[] = {
-      {128, 8, 9, 2, 1},
-      {132, 9, 0, 4, 2},
-      {108, 8, 0, 2, 1},
-      {28, 8, 6, 2, 1},   // RTX 3060
-      {36, 12, 0, 2, 1},  // RTX 5060 Ti
-      {48, 12, 1, 16, 1},
+      {128, 8, 9, 2, 1, 1},
+      {132, 9, 0, 4, 1, 2},
+      {108, 8, 0, 2, 1, 1},
+      {28, 8, 6, 2, 4, 1},   // RTX 3060
+      {36, 12, 0, 2, 4, 1},  // RTX 5060 Ti
+      {48, 12, 1, 16, 1, 1},
   };
   for (const Case& device : cases) {
     SCOPED_TRACE("CC = " + std::to_string(device.major) + "." + std::to_string(device.minor));
     const auto config = onnxruntime::contrib::cuda::PickFp4MmaGroupedConfig(
         8, 17408, 5120, device.sm_count, device.major, device.minor);
     EXPECT_EQ(config.k_split, device.k_split);
-    EXPECT_EQ(config.col_tiles, 1);
+    EXPECT_EQ(config.col_tiles, device.col_tiles);
     EXPECT_EQ(config.col_groups, device.col_groups);
   }
 }
@@ -823,8 +824,8 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreColumnGroupedFp16) {
   ASSERT_EQ(cudaGetDevice(&device_id), cudaSuccess);
   ASSERT_EQ(cudaGetDeviceProperties(&device_prop, device_id), cudaSuccess);
 
-  if (device_prop.major == 8 && device_prop.minor == 9) {
-    GTEST_SKIP() << "Automatic column grouping is disabled on Ada.";
+  if (device_prop.major != 9 || device_prop.minor != 0) {
+    GTEST_SKIP() << "Automatic column grouping is enabled only on SM90.";
   }
 
   // Smallest N that groups: ceil(N / 32) >= 2 * sm_count.
@@ -873,8 +874,8 @@ TEST(MatMulBlockQuantizedFp4WeightOpTest, GemvTensorCoreColumnGroupedBf16Bias) {
   ASSERT_EQ(cudaGetDevice(&device_id), cudaSuccess);
   ASSERT_EQ(cudaGetDeviceProperties(&device_prop, device_id), cudaSuccess);
 
-  if (device_prop.major == 8 && device_prop.minor == 9) {
-    GTEST_SKIP() << "Automatic column grouping is disabled on Ada.";
+  if (device_prop.major != 9 || device_prop.minor != 0) {
+    GTEST_SKIP() << "Automatic column grouping is enabled only on SM90.";
   }
 
   constexpr int64_t m = 8;
