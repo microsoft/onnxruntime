@@ -874,6 +874,104 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
     break;                                                                                                                                        \
   }
 
+Status SelectOptimizationProfile(Ort::KernelContext& ctx,
+                                 nvinfer1::ICudaEngine* trt_engine,
+                                 nvinfer1::IExecutionContext* trt_context,
+                                 gsl::span<const char* const> input_binding_names,
+                                 const std::unordered_map<std::string, size_t>& input_indexes,
+                                 cudaStream_t stream) {
+  const int32_t num_profiles = trt_engine->getNbOptimizationProfiles();
+  if (num_profiles <= 1) {
+    return Status::OK();
+  }
+
+  struct RuntimeInputShape {
+    const char* name;
+    std::vector<int64_t> shape;
+  };
+
+  std::vector<RuntimeInputShape> runtime_input_shapes;
+  runtime_input_shapes.reserve(input_binding_names.size());
+
+  for (const char* input_name : input_binding_names) {
+    if (trt_engine->isShapeInferenceIO(input_name)) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, EP_FAIL,
+          "TensorRT EP does not support multiple optimization profiles for engines with shape-tensor input '",
+          input_name, "'.");
+    }
+
+    const auto input_iter = input_indexes.find(input_name);
+    if (input_iter == input_indexes.end()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "TensorRT EP could not find ORT input index for engine input '", input_name, "'.");
+    }
+
+    auto input_tensor = ctx.GetInput(input_iter->second);
+    runtime_input_shapes.push_back(
+        RuntimeInputShape{input_name, input_tensor.GetTensorTypeAndShapeInfo().GetShape()});
+  }
+
+  const auto profile_matches = [&](int32_t profile_index) {
+    for (const auto& runtime_input : runtime_input_shapes) {
+      const auto min_dims =
+          trt_engine->getProfileShape(runtime_input.name, profile_index, nvinfer1::OptProfileSelector::kMIN);
+      const auto max_dims =
+          trt_engine->getProfileShape(runtime_input.name, profile_index, nvinfer1::OptProfileSelector::kMAX);
+
+      if (min_dims.nbDims < 0 || max_dims.nbDims < 0) {
+        return false;
+      }
+
+      if (static_cast<size_t>(min_dims.nbDims) != runtime_input.shape.size() ||
+          min_dims.nbDims != max_dims.nbDims) {
+        return false;
+      }
+
+      for (int32_t dimension = 0; dimension < min_dims.nbDims; ++dimension) {
+        const auto actual = runtime_input.shape[dimension];
+        if (actual < min_dims.d[dimension] || actual > max_dims.d[dimension]) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  };
+
+  const int32_t current_profile = trt_context->getOptimizationProfile();
+  if (current_profile >= 0 && current_profile < num_profiles && profile_matches(current_profile)) {
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Selected optimization profile " << current_profile;
+    return Status::OK();
+  }
+
+  int32_t selected_profile = -1;
+  for (int32_t profile_index = 0; profile_index < num_profiles; ++profile_index) {
+    if (profile_index == current_profile) {
+      continue;
+    }
+
+    if (profile_matches(profile_index)) {
+      selected_profile = profile_index;
+      break;
+    }
+  }
+
+  if (selected_profile < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "TensorRT EP could not find an optimization profile for the runtime input shapes.");
+  }
+
+  if (!trt_context->setOptimizationProfileAsync(selected_profile, stream)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "TensorRT EP failed to select optimization profile ", selected_profile, ".");
+  }
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Switched optimization profile from "
+                        << current_profile << " to " << selected_profile;
+
+  return Status::OK();
+}
+
 /*
  * Set TensorRT execution context input.
  *
@@ -3981,6 +4079,11 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       }
     }
 
+    // A cached multi-profile engine was built from explicit profiles. Use those profiles as-is instead of
+    // treating the first profile as an implicit profile that can be expanded from runtime input shapes.
+    const bool has_multi_profile_engine =
+        trt_engine != nullptr && trt_engine->getNbOptimizationProfiles() > 1;
+
     // Check and update shape ranges for dynamic shape inputs.
     for (int i = 0, end = num_inputs; i < end; ++i) {
       auto input = trt_state->network->get()->getInput(i);
@@ -3989,7 +4092,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
       // If there is any input tensor in shape_ranges, it means this input tensor has dynamic shape and its profile shape values have not yet resolved.
       // TRT EP will help determine the min/max/opt profile values based on current input tensor value.
-      if (shape_ranges.find(input_name) != shape_ranges.end()) {
+      if (!has_multi_profile_engine && shape_ranges.find(input_name) != shape_ranges.end()) {
         auto status = ApplyProfileShapesFromInputTensorValue(trt_profiles, ctx, input, shape_ranges, input_indexes, shape_tensor_values, shape_tensor_values_int64, stream, &engine_update);
         if (status != Status::OK()) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to parse input tensor and generate optimization profiles.");
@@ -4267,6 +4370,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     /*
      * Set input shapes and bind input buffers
      */
+    ORT_RETURN_IF_ERROR(SelectOptimizationProfile(
+        ctx, trt_engine, trt_context, input_binding_names, input_indexes, stream));
+
     std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
     for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
       char const* input_name = input_binding_names[i];
@@ -4609,6 +4715,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     /*
      * Set input shapes and bind input buffers
      */
+    ORT_RETURN_IF_ERROR(SelectOptimizationProfile(
+        ctx, trt_engine, trt_context, input_binding_names, input_indexes, stream));
+
     std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
     for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
       char const* input_name = input_binding_names[i];
