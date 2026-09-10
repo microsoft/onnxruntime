@@ -1617,8 +1617,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
         const size_t workspace_estimate = accountant->GetCommittedWorkspaceEstimate();
         const size_t persistent_prepack_estimate =
             accountant->GetCommittedPersistentPrepackEstimate();
-        const size_t temporary_prepack_estimate =
-            accountant->GetCommittedTemporaryPrepackEstimate();
+        const size_t initialization_scratch_estimate =
+            accountant->GetCommittedInitializationScratchEstimate();
         const auto source_counts = accountant->GetWorkspaceEstimateSourceCounts();
         const auto comparison = accountant->GetWorkspaceEstimateComparisonSummary();
         const size_t categorized_estimate =
@@ -1633,7 +1633,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                            << "workspace memory: " << workspace_estimate << " bytes, "
                            << "persistent prepack memory: " << persistent_prepack_estimate << " bytes, "
                            << "peak initialization scratch memory (not included in budget): "
-                           << temporary_prepack_estimate << " bytes, "
+                           << initialization_scratch_estimate << " bytes, "
                            << "total estimated memory: " << total_estimate << " bytes, "
                            << "workspace sources: fallback=" << source_counts.fallback
                            << ", profile=" << source_counts.profile

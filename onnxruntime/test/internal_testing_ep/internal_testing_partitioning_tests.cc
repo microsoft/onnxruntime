@@ -62,16 +62,16 @@ Level1MemoryEstimate GetNhwcAccountingTestEstimate(const std::string& op_type) {
   if (op_type == "Conv") {
     return {/*runtime_workspace_bytes=*/kNhwcSurvivorWorkspaceBytes,
             /*persistent_prepack_bytes=*/102,
-            /*temporary_prepack_bytes=*/103};
+            /*initialization_scratch_bytes=*/103};
   }
   if (op_type == "Relu") {
     return {/*runtime_workspace_bytes=*/kNhwcPass2OnlyWorkspaceBytes,
             /*persistent_prepack_bytes=*/302,
-            /*temporary_prepack_bytes=*/303};
+            /*initialization_scratch_bytes=*/303};
   }
   return {/*runtime_workspace_bytes=*/kNhwcDroppedWorkspaceBytes,
           /*persistent_prepack_bytes=*/202,
-          /*temporary_prepack_bytes=*/203};
+          /*initialization_scratch_bytes=*/203};
 }
 
 class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
@@ -580,7 +580,7 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRol
   std::optional<size_t> observed_consumed;
   std::optional<size_t> observed_workspace;
   std::optional<size_t> observed_persistent_prepack;
-  std::optional<size_t> observed_temporary_prepack;
+  std::optional<size_t> observed_initialization_scratch;
   std::optional<WorkspaceEstimateSourceCounts> observed_source_counts;
   bool pass2_only_relu_assigned = false;
   OnPartitionAssignmentFunction on_assignment =
@@ -595,8 +595,8 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRol
               observed_workspace = ep_raw->observed_accountant()->GetCommittedWorkspaceEstimate();
               observed_persistent_prepack =
                   ep_raw->observed_accountant()->GetCommittedPersistentPrepackEstimate();
-              observed_temporary_prepack =
-                  ep_raw->observed_accountant()->GetCommittedTemporaryPrepackEstimate();
+              observed_initialization_scratch =
+                  ep_raw->observed_accountant()->GetCommittedInitializationScratchEstimate();
               observed_source_counts =
                   ep_raw->observed_accountant()->GetWorkspaceEstimateSourceCounts();
             }
@@ -635,11 +635,11 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRol
       << "Dropped LogSoftmax must not block the pass-2-only Relu that fits with the Conv survivor.";
   ASSERT_TRUE(observed_workspace.has_value());
   ASSERT_TRUE(observed_persistent_prepack.has_value());
-  ASSERT_TRUE(observed_temporary_prepack.has_value());
+  ASSERT_TRUE(observed_initialization_scratch.has_value());
   ASSERT_TRUE(observed_source_counts.has_value());
   EXPECT_EQ(*observed_workspace, *conv_estimate.runtime_workspace_bytes);
   EXPECT_EQ(*observed_persistent_prepack, conv_estimate.persistent_prepack_bytes);
-  EXPECT_EQ(*observed_temporary_prepack, conv_estimate.temporary_prepack_bytes);
+  EXPECT_EQ(*observed_initialization_scratch, conv_estimate.initialization_scratch_bytes);
   EXPECT_EQ(observed_source_counts->estimator, size_t{1});
   EXPECT_EQ(observed_source_counts->fallback, size_t{0});
 }

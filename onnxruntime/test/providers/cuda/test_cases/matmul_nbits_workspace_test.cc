@@ -146,7 +146,7 @@ TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
   ASSERT_TRUE(estimate.has_value());
   EXPECT_FALSE(estimate->runtime_workspace_bytes.has_value());
   EXPECT_EQ(estimate->persistent_prepack_bytes, size_t{131072 + 16384});
-  EXPECT_EQ(estimate->temporary_prepack_bytes, size_t{131072 + 32 * sizeof(int32_t)});
+  EXPECT_EQ(estimate->initialization_scratch_bytes, size_t{131072 + 32 * sizeof(int32_t)});
 
   const auto with_zero_points = ComputeMatMulNBitsPrepackMemoryEstimate(
       /*n=*/256, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
@@ -161,7 +161,7 @@ TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
   // The CUDA initializer already holds the offline-prepacked weight and is
   // reused in place. Only the transposed scale destination is newly allocated.
   EXPECT_EQ(offline_prepacked->persistent_prepack_bytes, size_t{16384});
-  EXPECT_EQ(offline_prepacked->temporary_prepack_bytes, size_t{0});
+  EXPECT_EQ(offline_prepacked->initialization_scratch_bytes, size_t{0});
 }
 
 TEST(MatMulNBitsWorkspace, PrepackMemoryRejectsInvalidMetadata) {

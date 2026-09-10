@@ -210,7 +210,7 @@ TEST(ResourceAccountantTest, Level1MemoryEstimateReplacesFallbackAndReportsIniti
   const Level1MemoryEstimate level1_estimate{
       /*runtime_workspace_bytes=*/250,
       /*persistent_prepack_bytes=*/300,
-      /*temporary_prepack_bytes=*/400};
+      /*initialization_scratch_bytes=*/400};
   auto resource_count = accountant->ComputeResourceCount(*h.node_a, level1_estimate);
   EXPECT_EQ(GetSizeT(resource_count), size_t{2550});
   const auto pending_workspace =
@@ -218,7 +218,7 @@ TEST(ResourceAccountantTest, Level1MemoryEstimateReplacesFallbackAndReportsIniti
   EXPECT_EQ(pending_workspace.bytes, size_t{250});
   EXPECT_EQ(pending_workspace.source, WorkspaceEstimateSource::kEstimator);
   EXPECT_EQ(pending_workspace.persistent_prepack_bytes, size_t{300});
-  EXPECT_EQ(pending_workspace.temporary_prepack_bytes, size_t{400});
+  EXPECT_EQ(pending_workspace.initialization_scratch_bytes, size_t{400});
 
   IndexedSubGraph sub_graph;
   sub_graph.nodes.push_back(h.node_a->Index());
@@ -228,7 +228,7 @@ TEST(ResourceAccountantTest, Level1MemoryEstimateReplacesFallbackAndReportsIniti
 
   EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), size_t{250});
   EXPECT_EQ(accountant->GetCommittedPersistentPrepackEstimate(), size_t{300});
-  EXPECT_EQ(accountant->GetCommittedTemporaryPrepackEstimate(), size_t{400});
+  EXPECT_EQ(accountant->GetCommittedInitializationScratchEstimate(), size_t{400});
   EXPECT_EQ(accountant->GetWorkspaceEstimateSourceCounts().estimator, size_t{1});
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), size_t{2550});
 }
@@ -243,7 +243,7 @@ TEST(ResourceAccountantTest, Level1MemoryEstimateKeepsFallbackWhenRuntimeWorkspa
   const Level1MemoryEstimate level1_estimate{
       /*runtime_workspace_bytes=*/std::nullopt,
       /*persistent_prepack_bytes=*/300,
-      /*temporary_prepack_bytes=*/400};
+      /*initialization_scratch_bytes=*/400};
   const auto resource_count = accountant->ComputeResourceCount(*h.node_a, level1_estimate);
   EXPECT_EQ(GetSizeT(resource_count), size_t{3300});
 
@@ -252,7 +252,7 @@ TEST(ResourceAccountantTest, Level1MemoryEstimateKeepsFallbackWhenRuntimeWorkspa
   EXPECT_EQ(pending_workspace.bytes, size_t{1000});
   EXPECT_EQ(pending_workspace.source, WorkspaceEstimateSource::kFallback);
   EXPECT_EQ(pending_workspace.persistent_prepack_bytes, size_t{300});
-  EXPECT_EQ(pending_workspace.temporary_prepack_bytes, size_t{400});
+  EXPECT_EQ(pending_workspace.initialization_scratch_bytes, size_t{400});
 }
 
 TEST(ResourceAccountantTest, InitializationScratchIsCommittedAsPeakAndExcludedFromBudget) {
@@ -267,13 +267,13 @@ TEST(ResourceAccountantTest, InitializationScratchIsCommittedAsPeakAndExcludedFr
       Level1MemoryEstimate{
           /*runtime_workspace_bytes=*/250,
           /*persistent_prepack_bytes=*/0,
-          /*temporary_prepack_bytes=*/400});
+          /*initialization_scratch_bytes=*/400});
   const auto cost_b = accountant->ComputeResourceCount(
       *h.node_b,
       Level1MemoryEstimate{
           /*runtime_workspace_bytes=*/250,
           /*persistent_prepack_bytes=*/0,
-          /*temporary_prepack_bytes=*/700});
+          /*initialization_scratch_bytes=*/700});
 
   IndexedSubGraph sub_graph;
   sub_graph.nodes.push_back(h.node_a->Index());
@@ -283,7 +283,7 @@ TEST(ResourceAccountantTest, InitializationScratchIsCommittedAsPeakAndExcludedFr
   sub_graph.AppendNodeCost(cost_b);
   sub_graph.AccountForAllNodes();
 
-  EXPECT_EQ(accountant->GetCommittedTemporaryPrepackEstimate(), size_t{700});
+  EXPECT_EQ(accountant->GetCommittedInitializationScratchEstimate(), size_t{700});
   EXPECT_EQ(GetSizeT(accountant->GetConsumedAmount()), GetSizeT(cost_a) + GetSizeT(cost_b));
 }
 
@@ -299,7 +299,7 @@ TEST(ResourceAccountantTest, RuntimeTransientIsPeakedWithFallbackOrEstimatedWork
       Level1MemoryEstimate{
           /*runtime_workspace_bytes=*/std::nullopt,
           /*persistent_prepack_bytes=*/0,
-          /*temporary_prepack_bytes=*/0,
+          /*initialization_scratch_bytes=*/0,
           /*runtime_transient_bytes=*/1200});
   EXPECT_EQ(GetSizeT(fallback_cost), size_t{3200});
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSelection(h.node_a->Index()).bytes, size_t{1200});
@@ -309,7 +309,7 @@ TEST(ResourceAccountantTest, RuntimeTransientIsPeakedWithFallbackOrEstimatedWork
       Level1MemoryEstimate{
           /*runtime_workspace_bytes=*/250,
           /*persistent_prepack_bytes=*/0,
-          /*temporary_prepack_bytes=*/0,
+          /*initialization_scratch_bytes=*/0,
           /*runtime_transient_bytes=*/700});
   EXPECT_EQ(GetSizeT(estimated_cost), size_t{1700});
   EXPECT_EQ(accountant->GetPendingWorkspaceEstimateSelection(h.node_b->Index()).bytes, size_t{700});
@@ -646,7 +646,7 @@ TEST(RealAccountantTest, StatsPath_Level1EstimateUsesMaximumWorkspace) {
       Level1MemoryEstimate{
           /*runtime_workspace_bytes=*/std::nullopt,
           /*persistent_prepack_bytes=*/0,
-          /*temporary_prepack_bytes=*/0,
+          /*initialization_scratch_bytes=*/0,
           /*runtime_transient_bytes=*/800});
   EXPECT_EQ(GetSizeT(transient_cost), size_t{1400});
   const auto transient_selection =
@@ -706,7 +706,7 @@ TEST(RealAccountantTest, StatsPath_UnknownNodeHasZeroCost) {
       Level1MemoryEstimate{
           /*runtime_workspace_bytes=*/250,
           /*persistent_prepack_bytes=*/300,
-          /*temporary_prepack_bytes=*/400});
+          /*initialization_scratch_bytes=*/400});
   EXPECT_EQ(std::get<size_t>(unknown_cost), size_t{0});
   const auto pending_workspace =
       accountant->GetPendingWorkspaceEstimateSelection(h.node_b->Index());

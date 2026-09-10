@@ -42,7 +42,7 @@ struct WorkspaceEstimateSelection {
   size_t profiled_bytes = 0;
   size_t level1_estimated_bytes = 0;
   size_t persistent_prepack_bytes = 0;
-  size_t temporary_prepack_bytes = 0;
+  size_t initialization_scratch_bytes = 0;
 };
 
 struct WorkspaceEstimateSourceCounts {
@@ -182,7 +182,7 @@ class IResourceAccountant {
 
   /// Returns the peak initialization scratch estimate across accepted nodes.
   /// This diagnostic is not included in the additive partitioning budget.
-  virtual size_t GetCommittedTemporaryPrepackEstimate() const { return 0; }
+  virtual size_t GetCommittedInitializationScratchEstimate() const { return 0; }
 
   /// Returns accepted-node counts grouped by the workspace source used for budgeting.
   virtual WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const { return {}; }

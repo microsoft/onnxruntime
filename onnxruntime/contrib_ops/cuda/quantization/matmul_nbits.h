@@ -78,7 +78,7 @@ inline std::optional<Level1MemoryEstimate> ComputeMatMulNBitsPrepackMemoryEstima
     if (weight_prepacked == kMatMulNBitsWeightNotPrepacked) {
       persistent_prepack_bytes += packed_weight_bytes;
       constexpr size_t kPermutationMapBytes = 32 * sizeof(int32_t);
-      estimate.temporary_prepack_bytes =
+      estimate.initialization_scratch_bytes =
           static_cast<size_t>(packed_weight_bytes + kPermutationMapBytes);
     }
     estimate.persistent_prepack_bytes = static_cast<size_t>(persistent_prepack_bytes);

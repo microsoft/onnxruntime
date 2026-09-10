@@ -100,8 +100,8 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
             std::max(stats.total_temp_allocations, level1_workspace_bytes);
         const size_t persistent_prepack_bytes =
             level1_memory_estimate.has_value() ? level1_memory_estimate->persistent_prepack_bytes : 0;
-        const size_t temporary_prepack_bytes =
-            level1_memory_estimate.has_value() ? level1_memory_estimate->temporary_prepack_bytes : 0;
+        const size_t initialization_scratch_bytes =
+            level1_memory_estimate.has_value() ? level1_memory_estimate->initialization_scratch_bytes : 0;
         pending_workspace_selection_by_node_.insert_or_assign(
             node.Index(),
             WorkspaceEstimateSelection{
@@ -111,7 +111,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
                 stats.total_temp_allocations,
                 level1_workspace_bytes,
                 persistent_prepack_bytes,
-                temporary_prepack_bytes});
+                initialization_scratch_bytes});
         const SafeInt<size_t> resource_count =
             SafeInt<size_t>(stats.input_sizes) + stats.initializers_sizes +
             stats.total_dynamic_sizes + selected_workspace +
@@ -218,8 +218,8 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
         has_runtime_workspace_estimator || runtime_transient_bytes > fallback_workspace;
     const size_t persistent_prepack_bytes =
         level1_memory_estimate.has_value() ? level1_memory_estimate->persistent_prepack_bytes : 0;
-    const size_t temporary_prepack_bytes =
-        level1_memory_estimate.has_value() ? level1_memory_estimate->temporary_prepack_bytes : 0;
+    const size_t initialization_scratch_bytes =
+        level1_memory_estimate.has_value() ? level1_memory_estimate->initialization_scratch_bytes : 0;
     pending_workspace_selection_by_node_.insert_or_assign(
         node.Index(),
         WorkspaceEstimateSelection{
@@ -229,7 +229,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
             0,
             level1_workspace_bytes,
             persistent_prepack_bytes,
-            temporary_prepack_bytes});
+            initialization_scratch_bytes});
     return static_cast<size_t>(estimated + selected_workspace +
                                persistent_prepack_bytes);
   }
@@ -283,8 +283,8 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     return committed_persistent_prepack_estimate_;
   }
 
-  size_t GetCommittedTemporaryPrepackEstimate() const override {
-    return committed_temporary_prepack_estimate_;
+  size_t GetCommittedInitializationScratchEstimate() const override {
+    return committed_initialization_scratch_estimate_;
   }
 
  private:
@@ -296,12 +296,12 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
                             selection.persistent_prepack_bytes);
     // Kernel construction and PrePack() are sequential today, so committed
     // initialization scratch is a session-wide peak rather than a sum.
-    const size_t new_temporary_prepack_estimate =
-        std::max(committed_temporary_prepack_estimate_, selection.temporary_prepack_bytes);
+    const size_t new_initialization_scratch_estimate =
+        std::max(committed_initialization_scratch_estimate_, selection.initialization_scratch_bytes);
 
     committed_workspace_estimate_ = new_workspace_estimate;
     committed_persistent_prepack_estimate_ = new_persistent_prepack_estimate;
-    committed_temporary_prepack_estimate_ = new_temporary_prepack_estimate;
+    committed_initialization_scratch_estimate_ = new_initialization_scratch_estimate;
     switch (selection.source) {
       case WorkspaceEstimateSource::kFallback:
         ++workspace_source_counts_.fallback;
@@ -355,7 +355,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   // Workspace total and source counts for nodes ultimately accepted by the EP.
   size_t committed_workspace_estimate_ = 0;
   size_t committed_persistent_prepack_estimate_ = 0;
-  size_t committed_temporary_prepack_estimate_ = 0;
+  size_t committed_initialization_scratch_estimate_ = 0;
   WorkspaceEstimateSourceCounts workspace_source_counts_;
   WorkspaceEstimateComparisonSummary workspace_estimate_comparison_;
 };

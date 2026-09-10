@@ -342,8 +342,8 @@ static std::optional<Level1MemoryEstimate> EstimateMatMulNBitsMemoryImpl(
       return std::nullopt;
     }
     // Kernel construction profiling and PrePack_B conversion happen sequentially.
-    estimate->temporary_prepack_bytes =
-        std::max(estimate->temporary_prepack_bytes, *constructor_profile_scratch);
+    estimate->initialization_scratch_bytes =
+        std::max(estimate->initialization_scratch_bytes, *constructor_profile_scratch);
 
     if (m.has_value()) {
       estimate->runtime_workspace_bytes =

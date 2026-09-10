@@ -21,7 +21,7 @@ namespace onnxruntime {
 // accountant does not subtract a source initializer after its final prepack
 // consumer releases it.
 struct Level1MemoryEstimate {
-  // Temporary workspace used while executing the kernel. nullopt means that
+  // Temporary workspace used by normal kernel execution. nullopt means that
   // runtime workspace is not estimable and the accountant must use its fallback.
   std::optional<size_t> runtime_workspace_bytes;
 
@@ -29,10 +29,14 @@ struct Level1MemoryEstimate {
   size_t persistent_prepack_bytes = 0;
 
   // Initialization-only scratch, including prepack conversion and constructor-time profiling.
-  size_t temporary_prepack_bytes = 0;
+  size_t initialization_scratch_bytes = 0;
 
-  // Temporary allocation that can occur during Run() but does not overlap the ordinary kernel
-  // workspace. The accountant peaks this with runtime_workspace_bytes (or fallback workspace).
+  // Temporary allocation used by runtime preparation outside normal kernel execution, such as
+  // lazy tactic profiling for a previously unseen input-size bucket. Because profiling completes
+  // before normal execution, this allocation does not overlap runtime_workspace_bytes. The
+  // accountant therefore uses their peak (or the peak with fallback workspace) instead of
+  // summing them:
+  //   runtime_peak_bytes = std::max(runtime_workspace_bytes, runtime_transient_bytes)
   size_t runtime_transient_bytes = 0;
 };
 

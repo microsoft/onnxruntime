@@ -554,10 +554,10 @@ plugin-compatible contract will let the host bridge obtain the equivalent estima
 The MatMulNBits pilot now returns a structured Level-1 estimate rather than collapsing allocations with
 different lifetimes into one workspace scalar. `runtime_workspace_bytes` is optional so dynamic shapes can
 fall back to the heuristic while still reporting shape-independent prepack memory.
-`persistent_prepack_bytes` describes kernel-owned packed destinations, and `temporary_prepack_bytes`
+`persistent_prepack_bytes` describes kernel-owned packed destinations, and `initialization_scratch_bytes`
 describes initialization-only scratch such as packing conversion and constructor-time tactic profiling.
 Persistent prepack memory is additive to the hard partition budget. Because kernel construction and prepacking
-are sequential, committed `temporary_prepack_bytes` is reported as the maximum across accepted nodes rather than
+are sequential, committed `initialization_scratch_bytes` is reported as the maximum across accepted nodes rather than
 charged cumulatively. `runtime_transient_bytes`, such as bounded lazy tactic-profiler scratch, participates in
 the runtime peak together with normal workspace instead of being treated as persistent session memory.
 `DeclareWorkspaceRequirements()` remains a Level-2 runtime-workspace declaration and does not report

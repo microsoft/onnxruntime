@@ -358,7 +358,7 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
     ASSERT_TRUE(estimate.has_value());
     ASSERT_TRUE(estimate->runtime_workspace_bytes.has_value());
     EXPECT_GT(estimate->runtime_transient_bytes, *estimate->runtime_workspace_bytes);
-    EXPECT_GT(estimate->runtime_transient_bytes, estimate->temporary_prepack_bytes);
+    EXPECT_GT(estimate->runtime_transient_bytes, estimate->initialization_scratch_bytes);
 
     std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.0f));
     OrtValue a_value;
@@ -711,7 +711,7 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   std::cout << "[ WORKSPACE ] Level1(runtime)=" << level1_runtime_workspace
             << " bytes, Level1(runtime transient)=" << level1->runtime_transient_bytes
             << " bytes, Level1(persistent prepack)=" << level1->persistent_prepack_bytes
-            << " bytes, Level1(temporary prepack)=" << level1->temporary_prepack_bytes
+            << " bytes, Level1(initialization scratch)=" << level1->initialization_scratch_bytes
             << " bytes, Level2(declare)=" << level2
             << " bytes, runtime(request)=" << runtime << " bytes" << std::endl;
 
@@ -941,7 +941,7 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
   EXPECT_FALSE(level1->runtime_workspace_bytes.has_value())
       << "Level-1 runtime workspace must be unknown for a dynamic (symbolic) leading dim.";
   EXPECT_GT(level1->persistent_prepack_bytes, size_t{0});
-  EXPECT_GT(level1->temporary_prepack_bytes, size_t{0});
+  EXPECT_GT(level1->initialization_scratch_bytes, size_t{0});
   EXPECT_GT(level1->runtime_transient_bytes, size_t{0});
 
   // A separately inferred maximum shape makes the same dynamic node estimable without

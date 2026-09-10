@@ -3583,8 +3583,8 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                 << level1_memory_estimate->runtime_transient_bytes
                                 << " bytes, persistent prepack="
                                 << level1_memory_estimate->persistent_prepack_bytes
-                                << " bytes, temporary prepack="
-                                << level1_memory_estimate->temporary_prepack_bytes << " bytes";
+                                << " bytes, initialization scratch="
+                                << level1_memory_estimate->initialization_scratch_bytes << " bytes";
         }
       }
 #endif
