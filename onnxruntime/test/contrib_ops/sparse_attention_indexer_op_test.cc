@@ -920,13 +920,13 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsQsaTokenBudgetNotDivisible
   QsaGraphOptions options;
   options.token_budget = 5;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); },
-                       "requires token_budget > 0 and divisible by compress_ratio");
+                       "requires token_budget > 0, divisible by compress_ratio");
 }
 
 TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedQsaCapacity) {
   QsaGraphOptions options;
   options.compress_ratio = 2;
-  options.token_budget = std::numeric_limits<int>::max() - 1;
+  options.token_budget = static_cast<int64_t>(std::numeric_limits<int>::max()) + 1;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); },
                        "selected capacity no greater than INT_MAX");
 }
