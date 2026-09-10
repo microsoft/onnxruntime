@@ -2,8 +2,10 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
+#include <filesystem>
 #include <map>
 #include <set>
+#include <unistd.h>
 
 #include "core/providers/cann/cann_graph.h"
 
@@ -115,7 +117,13 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
   CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphBuildModel(graph, options, model));
 
   if (info.dump_om_model) {
-    CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(file_name.c_str(), model));
+    std::string tmp_file_name = file_name + "_tmp_" + std::to_string(static_cast<int>(getpid()));
+    CANN_GRAPH_RETURN_IF_ERROR(ge::aclgrphSaveModel(tmp_file_name.c_str(), model));
+    std::error_code ec;
+    std::filesystem::rename(tmp_file_name + ".om", file_name + ".om", ec);
+    if (ec) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to atomically rename .om.tmp to .om: ", ec.message());
+    }
   }
 
   return Status::OK();
