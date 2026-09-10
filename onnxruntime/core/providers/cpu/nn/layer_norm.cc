@@ -16,6 +16,5 @@ namespace onnxruntime {
 REGISTER_ONNX_KERNEL_TYPED(float)
 REGISTER_ONNX_KERNEL_TYPED(double)
 REGISTER_ONNX_KERNEL_TYPED(MLFloat16)
-REGISTER_ONNX_KERNEL_TYPED(BFloat16)
 
 }  // namespace onnxruntime

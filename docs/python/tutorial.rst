@@ -17,7 +17,7 @@ At a high level, you can:
    for more details.
 3. Load and run the model using *ONNX Runtime*.
 
-In this tutorial, we will briefly create a
+In this tutorial, we will briefly create a 
 pipeline with *scikit-learn*, convert it into
 ONNX format and run the first predictions.
 
@@ -28,17 +28,21 @@ Step 1: Train a model using your favorite framework
 
 We'll use the famous iris datasets.
 
-.. code-block:: python
+.. runpython::
+    :showcode:
+    :store:
+    :warningout: ImportWarning FutureWarning
 
     from sklearn.datasets import load_iris
     from sklearn.model_selection import train_test_split
     iris = load_iris()
     X, y = iris.data, iris.target
-    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y)
 
     from sklearn.linear_model import LogisticRegression
-    clr = LogisticRegression(max_iter=200, random_state=42)
+    clr = LogisticRegression()
     clr.fit(X_train, y_train)
+    print(clr)
 
 Step 2: Convert or export the model into ONNX format
 ++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -50,7 +54,11 @@ There are `tools <https://github.com/onnx/tutorials>`_
 to convert other model formats into ONNX. Here we will use
 `ONNXMLTools <https://github.com/onnx/onnxmltools>`_.
 
-.. code-block:: python
+.. runpython::
+    :showcode:
+    :restore:
+    :store:
+    :warningout: ImportWarning FutureWarning
 
     from skl2onnx import convert_sklearn
     from skl2onnx.common.data_types import FloatTensorType
@@ -63,46 +71,18 @@ to convert other model formats into ONNX. Here we will use
 Step 3: Load and run the model using ONNX Runtime
 +++++++++++++++++++++++++++++++++++++++++++++++++
 
-We will use *ONNX Runtime* to compute the predictions
+We will use *ONNX Runtime* to compute the predictions 
 for this machine learning model.
 
-.. exec_code::
-
-    # hide: start
-    from sklearn.datasets import load_iris
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import train_test_split
-    from skl2onnx import convert_sklearn
-    from skl2onnx.common.data_types import FloatTensorType
-
-    iris = load_iris()
-    X, y = iris.data, iris.target
-    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
-    clr = LogisticRegression(max_iter=200, random_state=42)
-    clr.fit(X_train, y_train)
-    initial_type = [('float_input', FloatTensorType([None, 4]))]
-    onx = convert_sklearn(clr, initial_types=initial_type)
-    with open("logreg_iris.onnx", "wb") as f:
-        f.write(onx.SerializeToString())
-
-    # Force GetPciBusId errors to be piped to null. When generating the logs
-    # This is because we get some output during initialization in the Sphinx generator
-    import os
-    _stderr_fd = os.dup(2)
-    _devnull = open(os.devnull, "w")
-    os.dup2(_devnull.fileno(), 2)
-    # hide: stop
+.. runpython::
+    :showcode:
+    :restore:
+    :store:
 
     import numpy
     import onnxruntime as rt
 
-    # hide: start
-    os.dup2(_stderr_fd, 2)
-    os.close(_stderr_fd)
-    _devnull.close()
-    # hide: stop
-
-    sess = rt.InferenceSession("logreg_iris.onnx", providers=["CPUExecutionProvider"])
+    sess = rt.InferenceSession("logreg_iris.onnx", providers=rt.get_available_providers())
     input_name = sess.get_inputs()[0].name
     pred_onx = sess.run(None, {input_name: X_test.astype(numpy.float32)})[0]
     print(pred_onx)
@@ -110,44 +90,17 @@ for this machine learning model.
 The code can be changed to get one specific output
 by specifying its name into a list.
 
-.. exec_code::
-
-    # hide: start
-    from sklearn.datasets import load_iris
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import train_test_split
-    from skl2onnx import convert_sklearn
-    from skl2onnx.common.data_types import FloatTensorType
-
-    iris = load_iris()
-    X, y = iris.data, iris.target
-    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
-    clr = LogisticRegression(max_iter=200, random_state=42)
-    clr.fit(X_train, y_train)
-    initial_type = [('float_input', FloatTensorType([None, 4]))]
-    onx = convert_sklearn(clr, initial_types=initial_type)
-    with open("logreg_iris.onnx", "wb") as f:
-        f.write(onx.SerializeToString())
-
-    # Force GetPciBusId errors to be piped to null. When generating the logs
-    # This is because we get some output during initialization in the Sphinx generator
-    import os
-    _stderr_fd = os.dup(2)
-    _devnull = open(os.devnull, "w")
-    os.dup2(_devnull.fileno(), 2)
-    # hide: stop
+.. runpython::
+    :showcode:
+    :restore:
 
     import numpy
     import onnxruntime as rt
 
-    # hide: start
-    os.dup2(_stderr_fd, 2)
-    os.close(_stderr_fd)
-    _devnull.close()
-    # hide: stop
-
-    sess = rt.InferenceSession("logreg_iris.onnx", providers=["CPUExecutionProvider"])
+    sess = rt.InferenceSession("logreg_iris.onnx", providers=rt.get_available_providers())
     input_name = sess.get_inputs()[0].name
     label_name = sess.get_outputs()[0].name
     pred_onx = sess.run([label_name], {input_name: X_test.astype(numpy.float32)})[0]
     print(pred_onx)
+
+

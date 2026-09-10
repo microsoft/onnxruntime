@@ -331,7 +331,7 @@ Status CheckKVCacheQuantization(const T* scale, const char* scale_name, const ch
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "'", quant_type_name,
                            "' is set, but the KV cache element type is not quantized. "
-                           "Use an int8, float8e4m3fn, or packed int4 cache, or set '",
+                           "Use an int8 or float8e4m3fn cache, or set '",
                            quant_type_name, "' to 'NONE'.");
   }
   if (scale == nullptr) {
@@ -364,13 +364,12 @@ Status CheckKVCacheQuantization(const T* scale, const char* scale_name, const ch
 
 // Validates one side (K or V) of the `k_cache_dtype` / `v_cache_dtype` contract against
 // `storage_dtype`, the element type the kernel was instantiated for. DEFAULT means "the cache
-// tensor's element type is also the logical type"; naming that same type explicitly must agree.
-// Packed uint8 storage instead requires an explicit int4 logical type. Other sub-byte formats
-// remain unsupported. See docs/contrib_ops/cuda/paged_attention.md §8.
+// tensor's element type is also the logical type" and always passes; naming that same type
+// explicitly is allowed but must agree. The sub-byte members describe a logical type packed two per
+// byte into a uint8 cache; the schema reserves them, but no backend decodes them yet, so they are
+// rejected here instead of being silently mis-read. See docs/contrib_ops/cuda/paged_attention.md §8.
 inline Status CheckKVCacheDataType(const KVCacheDataType cache_dtype, const KVCacheDataType storage_dtype,
                                    const char* attr_name) {
-  ORT_RETURN_IF_NOT(storage_dtype != KVCacheDataType::INT4 || cache_dtype == KVCacheDataType::INT4,
-                    "A uint8 packed cache requires an explicit int4 cache dtype.");
   if (cache_dtype == KVCacheDataType::DEFAULT || cache_dtype == storage_dtype) {
     return Status::OK();
   }
@@ -512,11 +511,7 @@ Status CheckInputs(const T* query,
   // Check KV-Cache
   int num_blocks = 0;
   int block_size = 0;
-  const bool int4_cache = cache_storage_dtype == KVCacheDataType::INT4;
-  ORT_RETURN_IF_ERROR(CheckKVCache(key_cache, value_cache, kv_num_heads,
-                                   int4_cache ? (head_size + 1) / 2 : head_size, num_blocks, block_size));
-  ORT_RETURN_IF_NOT(!is_latent_kv || !int4_cache, "LATENT does not support an INT4 cache.");
-  ORT_RETURN_IF_NOT(!int4_cache || head_size <= 1024, "INT4 caches require head_size <= 1024.");
+  ORT_RETURN_IF_ERROR(CheckKVCache(key_cache, value_cache, kv_num_heads, head_size, num_blocks, block_size));
 
   // Check sequence length tensors
   int batch_size = 0;

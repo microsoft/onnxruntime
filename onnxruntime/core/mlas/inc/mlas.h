@@ -22,10 +22,6 @@ Abstract:
 #include <cstdint>
 #include <stdexcept>
 
-#if defined(__APPLE__)
-#include <TargetConditionals.h>
-#endif
-
 //
 // Define the calling convention for Windows targets.
 //
@@ -92,16 +88,6 @@ Abstract:
 
 #if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER) || defined (MLAS_TARGET_ZVECTOR)
 #define MLAS_SUPPORTS_GEMM_DOUBLE
-#endif
-
-// Runtime BF16 and SME2 capabilities are checked separately before selecting
-// an accelerated SBGEMM path.
-#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
-#define MLAS_SBGEMM_AVAILABLE
-#elif defined(__APPLE__)
-#if defined(MLAS_TARGET_ARM64) && TARGET_OS_OSX
-#define MLAS_SBGEMM_AVAILABLE
-#endif
 #endif
 
 #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
@@ -2190,7 +2176,7 @@ MlasHalfGemmConvertPackB(
     void* PackedB
     );
 
-#if defined(MLAS_SBGEMM_AVAILABLE)
+#if defined(__aarch64__) && defined(__linux__)
 /**
  * @brief Whether current CPU supports Bfloat16(bf16) acceleration.
  */
@@ -2348,7 +2334,7 @@ MlasSBGemmConvertPackB(
     void* PackedB,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
-#endif  // MLAS_SBGEMM_AVAILABLE
+#endif
 
 /**
  * @brief Indirect Depthwise convolution for fp16

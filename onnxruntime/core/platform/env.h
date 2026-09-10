@@ -108,35 +108,6 @@ std::ostream& operator<<(std::ostream& os, gsl::span<const LogicalProcessors>);
 /// <returns>errno and the error message string if errno indicates an error.</returns>
 std::pair<int, std::string> GetErrnoInfo();
 
-/**
- * An owned open file supporting concurrent positional reads.
- *
- * Reads and length queries refer to the same file even if its pathname is replaced.
- * This is not a snapshot: callers must not modify the file in place while reading it.
- * Keep the object alive until all callers have finished. Its destruction closes the file.
- */
-class RandomAccessFile {
- public:
-  virtual ~RandomAccessFile() = default;
-
-  // Query the open file, leaving length unchanged on failure.
-  virtual common::Status GetLength(size_t& length) const = 0;
-
-  /**
-   * Fill buffer starting at offset without changing a shared file position.
-   * Concurrent calls must use disjoint buffers. Returns only after all I/O has completed.
-   * Negative offsets, unrepresentable ranges, and unexpected EOF are errors.
-   * An empty buffer succeeds for any nonnegative offset. On failure, buffer may be partially written.
-   */
-  virtual common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const = 0;
-
- protected:
-  RandomAccessFile() = default;
-
- private:
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RandomAccessFile);
-};
-
 /// \brief An interface used by the onnxruntime implementation to
 /// access operating system functionality like the filesystem etc.
 ///
@@ -314,17 +285,6 @@ class Env {
   // Returns the corresponding value stored in the environment variable if available
   // Returns empty string if there is no such environment variable available
   virtual std::string GetEnvironmentVar(const std::string& var_name) const = 0;
-
-  /**
-   * Open a regular file for positional reads. Leaves file unchanged on failure.
-   * Retain the returned object across every read that must use the same file identity,
-   * for example throughout loading a tensor or all tensors from one external-data file.
-   * Custom environments can override this to supply their own file implementation.
-   */
-  virtual common::Status OpenRandomAccessFile(const ORTCHAR_T* /*file_path*/,
-                                              std::unique_ptr<RandomAccessFile>& /*file*/) const {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "This environment does not support random-access files.");
-  }
 
  protected:
   Env();

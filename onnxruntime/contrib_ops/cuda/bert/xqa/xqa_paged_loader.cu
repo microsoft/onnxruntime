@@ -64,9 +64,6 @@ XQA_PAGED_DECL(LaunchXQAPagedFp8KernelBF16);
 
 namespace H256 {
 XQA_PAGED_DECL(LaunchXQAPagedFp16Kernel);
-#ifdef USE_INT4_KV_CACHE
-XQA_PAGED_DECL(LaunchXQAPagedInt4Kernel);
-#endif
 XQA_PAGED_DECL(LaunchXQAPagedInt8Kernel);
 XQA_PAGED_DECL(LaunchXQAPagedInt8KernelBF16);
 #ifdef USE_FP8_KV_CACHE
@@ -106,9 +103,6 @@ XQA_PAGED_DECL(LaunchXQAPagedFp8KernelBF16);
 XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecFp16Kernel);
 XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecBf16Kernel);
 XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecInt8Kernel);
-#ifdef USE_INT4_KV_CACHE
-XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecInt4Kernel);
-#endif
 #ifdef USE_FP8_KV_CACHE
 XQA_PAGED_SPEC_DEC_DECL(LaunchXQAPagedSpecDecFp8Kernel);
 #endif
@@ -142,14 +136,6 @@ Status LaunchXQAPagedKernel(
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA is only supported on Ampere (SM80) or newer GPUs.");
   }
 
-#ifdef USE_INT4_KV_CACHE
-  if (kv_quant_type == XqaQuantType::kInt4) {
-    // The caller passes the K folding normalizer and applies the folded V scale to the output.
-    ORT_RETURN_IF_NOT(head_size == 256 && !is_bf16 && kv_num_heads > 0 && num_heads == 6 * kv_num_heads,
-                      "INT4 paged XQA requires FP16 queries, head_size 256, and group size 6.");
-    return H256::LaunchXQAPagedInt4Kernel(XQA_PAGED_ARGS);
-  }
-#endif
   if (kv_quant_type == XqaQuantType::kNone) {
     if (head_size == 256 && !is_bf16) {
       return H256::LaunchXQAPagedFp16Kernel(XQA_PAGED_ARGS);
@@ -240,11 +226,6 @@ Status LaunchXQAPagedSpecDecKernel(
   if (kv_quant_type == XqaQuantType::kInt8) {
     return H256::LaunchXQAPagedSpecDecInt8Kernel(XQA_PAGED_SPEC_DEC_ARGS);
   }
-#ifdef USE_INT4_KV_CACHE
-  if (kv_quant_type == XqaQuantType::kInt4) {
-    return H256::LaunchXQAPagedSpecDecInt4Kernel(XQA_PAGED_SPEC_DEC_ARGS);
-  }
-#endif
 #ifdef USE_FP8_KV_CACHE
   if (kv_quant_type == XqaQuantType::kFp8) {
     return H256::LaunchXQAPagedSpecDecFp8Kernel(XQA_PAGED_SPEC_DEC_ARGS);
@@ -262,12 +243,6 @@ size_t GetXQAPagedSpecDecWorkspaceSize(
     int max_pages_per_seq,
     int max_query_len,
     XqaQuantType kv_quant_type) {
-#ifdef USE_INT4_KV_CACHE
-  if (kv_quant_type == XqaQuantType::kInt4) {
-    return H256::LaunchXQAPagedSpecDecInt4Kernel_WorkspaceSize(
-        device_prop, batch_size, kv_num_heads, max_pages_per_seq, max_query_len);
-  }
-#endif
   if (kv_quant_type == XqaQuantType::kNone) {
     return H256::LaunchXQAPagedSpecDecFp16Kernel_WorkspaceSize(
         device_prop, batch_size, kv_num_heads, max_pages_per_seq, max_query_len);
@@ -286,11 +261,6 @@ size_t GetXQAPagedSpecDecWorkspaceSize(
 }
 
 size_t GetXQAPagedSpecDecRequiredSharedMemoryBytes(XqaQuantType kv_quant_type) {
-#ifdef USE_INT4_KV_CACHE
-  if (kv_quant_type == XqaQuantType::kInt4) {
-    return H256::LaunchXQAPagedSpecDecInt4Kernel_SmemSize(6, 1);
-  }
-#endif
   if (kv_quant_type == XqaQuantType::kNone) {
     return H256::LaunchXQAPagedSpecDecFp16Kernel_SmemSize(6, 1);
   }
@@ -315,13 +285,6 @@ size_t GetXQAPagedRequiredSharedMemoryBytes(
   if (device_prop.major < 8 || kv_num_heads <= 0) {
     return 0;
   }
-#ifdef USE_INT4_KV_CACHE
-  if (kv_quant_type == XqaQuantType::kInt4) {
-    return head_size == 256 && !is_bf16 && num_heads == 6 * kv_num_heads
-               ? H256::LaunchXQAPagedInt4Kernel_SmemSize(num_heads, kv_num_heads)
-               : 0;
-  }
-#endif
   // FP16 and BF16 kernels have identical shared-memory footprints (both 2-byte elements), so the
   // FP16 instantiation is queried for both.
   if (kv_quant_type == XqaQuantType::kNone) {

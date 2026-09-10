@@ -15,11 +15,9 @@ Abstract:
 
 --*/
 
+#if defined(__aarch64__) && defined(__linux__)
+
 #pragma once
-
-#include "core/mlas/inc/mlas.h"
-
-#if defined(MLAS_SBGEMM_AVAILABLE)
 
 #include "test_util.h"
 
@@ -368,4 +366,4 @@ class MlasSBGemmTest : public MlasTestBase {
   }
 };
 
-#endif  // MLAS_SBGEMM_AVAILABLE
+#endif  // defined(__aarch64__) && defined(__linux__)

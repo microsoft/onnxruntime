@@ -6,7 +6,6 @@
 #include <cmath>
 
 #include "core/framework/op_kernel.h"
-#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
@@ -66,7 +65,7 @@ class MatMul<float> final : public OpKernel {
     trans_batch_a_ = trans_batch_a_attr != 0;
     trans_batch_b_ = trans_batch_b_attr != 0;
 
-#if defined(MLAS_SBGEMM_AVAILABLE)
+#if defined(__aarch64__) && defined(__linux__)
     auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16);
     use_fastmath_mode_ = (config_ops == "1") && MlasBf16AccelerationSupported();
 #endif
@@ -98,7 +97,7 @@ class MatMul<float> final : public OpKernel {
 
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 
-#if defined(MLAS_SBGEMM_AVAILABLE)
+#if defined(__aarch64__) && defined(__linux__)
   // fastmath mode state
   bool use_fastmath_mode_;
   // sbgemm kernel is implemented as 8x8 blocks with weights pre-packed to 4 blocks of 4x2
@@ -107,7 +106,6 @@ class MatMul<float> final : public OpKernel {
 
   bool CanUseFastMathModeSBGemm(size_t n, size_t k) const {
     return use_fastmath_mode_ &&
-           (alpha_attr_ == 1.0f) &&
            (trans_a_attr_ == 0) &&
            (trans_b_attr_ == 0) &&
            ((n * k) >= kFastMathModeKernelsizeThreshold);

@@ -21,7 +21,6 @@ limitations under the License.
 #include <iostream>
 #include <fstream>
 #include <filesystem>
-#include <limits>
 #include <optional>
 #include <string>
 #include <thread>
@@ -355,122 +354,6 @@ common::Status WindowsEnv::GetFileLength(int fd, /*out*/ size_t& file_size) cons
   }
 
   file_size = static_cast<size_t>(buf.st_size);
-  return Status::OK();
-}
-
-namespace {
-
-class WindowsRandomAccessFile final : public RandomAccessFile {
- public:
-  explicit WindowsRandomAccessFile(wil::unique_hfile file_handle) : file_handle_(std::move(file_handle)) {}
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WindowsRandomAccessFile);
-
-  Status GetLength(size_t& length) const override {
-    LARGE_INTEGER file_size{};
-    if (!GetFileSizeEx(file_handle_.get(), &file_size)) {
-      return FileError("GetFileSizeEx", GetLastError());
-    }
-    if (file_size.QuadPart < 0 ||
-        static_cast<ULONGLONG>(file_size.QuadPart) > std::numeric_limits<size_t>::max()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "RandomAccessFile: invalid or unrepresentable file length");
-    }
-    length = static_cast<size_t>(file_size.QuadPart);
-    return Status::OK();
-  }
-
-  Status Read(FileOffsetType offset, gsl::span<char> buffer) const override {
-    if (offset < 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RandomAccessFile: offset < 0");
-    }
-    if (buffer.size() > static_cast<uint64_t>(std::numeric_limits<FileOffsetType>::max() - offset)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RandomAccessFile: offset + length overflows");
-    }
-    if (buffer.empty()) {
-      return Status::OK();
-    }
-
-    // Each caller owns its event and OVERLAPPED; neither the file cursor nor another caller's event is used.
-    wil::unique_handle event{CreateEventExW(nullptr, nullptr, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS)};
-    if (!event) {
-      return FileError("CreateEventExW", GetLastError());
-    }
-
-    size_t total_bytes_read = 0;
-    while (total_bytes_read < buffer.size()) {
-      OVERLAPPED overlapped{};
-      const auto current_offset = static_cast<uint64_t>(offset) + total_bytes_read;
-      overlapped.Offset = static_cast<DWORD>(current_offset & 0xFFFFFFFF);
-      overlapped.OffsetHigh = static_cast<DWORD>(current_offset >> 32);
-      overlapped.hEvent = event.get();
-      constexpr size_t kMaxBytesToRead = 1 << 30;
-      const DWORD bytes_to_read =
-          static_cast<DWORD>(std::min(buffer.size() - total_bytes_read, kMaxBytesToRead));
-      if (!ReadFile(file_handle_.get(), buffer.data() + total_bytes_read, bytes_to_read, nullptr, &overlapped)) {
-        const auto error_code = GetLastError();
-        if (error_code != ERROR_IO_PENDING) {
-          return FileError("ReadFile", error_code);
-        }
-      }
-
-      DWORD bytes_read = 0;
-      if (!GetOverlappedResult(file_handle_.get(), &overlapped, &bytes_read, TRUE)) {
-        const auto error_code = GetLastError();
-        // A failed wait must not let outstanding I/O outlive the buffer, OVERLAPPED, or event.
-        if (!HasOverlappedIoCompleted(&overlapped)) {
-          (void)CancelIoEx(file_handle_.get(), &overlapped);
-          do {
-            (void)GetOverlappedResult(file_handle_.get(), &overlapped, &bytes_read, TRUE);
-          } while (!HasOverlappedIoCompleted(&overlapped));
-        }
-        return FileError("GetOverlappedResult", error_code);
-      }
-      if (bytes_read == 0) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "RandomAccessFile: unexpected end of file");
-      }
-      total_bytes_read += bytes_read;
-    }
-    return Status::OK();
-  }
-
- private:
-  static Status FileError(const char* operation, DWORD error_code) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "RandomAccessFile: ", operation, " failed, errcode = ",
-                           error_code, " - ", std::system_category().message(error_code));
-  }
-
-  wil::unique_hfile file_handle_;
-};
-
-}  // namespace
-
-Status WindowsEnv::OpenRandomAccessFile(_In_z_ const ORTCHAR_T* file_path,
-                                        std::unique_ptr<RandomAccessFile>& file) const {
-  if (file_path == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "OpenRandomAccessFile: file_path == nullptr");
-  }
-  CREATEFILE2_EXTENDED_PARAMETERS parameters{};
-  parameters.dwSize = sizeof(parameters);
-  parameters.dwFileFlags = FILE_FLAG_OVERLAPPED;
-  wil::unique_hfile file_handle{
-      CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, OPEN_EXISTING, &parameters)};
-  if (file_handle.get() == INVALID_HANDLE_VALUE) {
-    const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToUTF8String(Basename(file_path)),
-                           " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
-  }
-  if (GetFileType(file_handle.get()) != FILE_TYPE_DISK) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OpenRandomAccessFile: expected a disk file");
-  }
-  BY_HANDLE_FILE_INFORMATION information{};
-  if (!GetFileInformationByHandle(file_handle.get(), &information)) {
-    const auto error_code = GetLastError();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileInformationByHandle failed, errcode = ",
-                           error_code, " - ", std::system_category().message(error_code));
-  }
-  if ((information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OpenRandomAccessFile: expected a regular file");
-  }
-  file = std::make_unique<WindowsRandomAccessFile>(std::move(file_handle));
   return Status::OK();
 }
 

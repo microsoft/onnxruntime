@@ -19,9 +19,6 @@ class ExternalDataLoaderManager {
 
   const IExternalDataLoader* GetExternalDataLoader(const OrtMemoryInfo& target_memory_info) const;
 
-  // Release initialization-only loaders without invalidating SessionState references to this manager.
-  void Clear() noexcept { external_data_loaders_.clear(); }
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ExternalDataLoaderManager);
 

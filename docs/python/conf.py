@@ -29,7 +29,7 @@ extensions = [
     "sphinx.ext.githubpages",
     "sphinx_gallery.gen_gallery",
     "sphinx.ext.graphviz",
-    "sphinx_exec_code",
+    "pyquickhelper.sphinxext.sphinx_runpython_extension",
     "sphinxcontrib.googleanalytics",
     "sphinx.ext.napoleon",
 ]

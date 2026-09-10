@@ -238,7 +238,7 @@ INT4 caches are not supported by XQA. Quantized configurations that are ineligib
 dequantize-then-Flash-Attention fallback when available.
 
 INT8 cache kernels are always built; FP8 (`onnxruntime_USE_FP8_KV_CACHE`, default ON) and INT4
-(`onnxruntime_USE_INT4_KV_CACHE`, default ON) are gated by build options (see §11).
+(`onnxruntime_USE_INT4_KV_CACHE`, default OFF) are gated by build options (see §11).
 
 ## 5. Attention Sink (`head_sink`) and Smooth Softmax
 
@@ -466,7 +466,7 @@ These CMake options speed up CUDA builds during development. Pass them through
 |--------|---------|--------|
 | `onnxruntime_QUICK_BUILD` | `OFF` | Builds only the `hdim128` FP16/BF16 Flash Attention kernels. Greatly reduces compile time, but **changes dispatch**: shapes with `head_size != 128` fall back to Memory Efficient Attention because Flash is no longer compiled for them. Do not use it to characterize Flash-vs-arch behavior. |
 | `onnxruntime_USE_FP8_KV_CACHE` | `ON` | Builds the FP8 (E4M3) quantized KV-cache kernels (`-DUSE_FP8_KV_CACHE=1`). |
-| `onnxruntime_USE_INT4_KV_CACHE` | `ON` | Builds the INT4 quantized KV-cache kernels (`-DUSE_INT4_KV_CACHE=1`). A `kv_cache_bit_width == 4` node errors out if this is off. |
+| `onnxruntime_USE_INT4_KV_CACHE` | `OFF` | Builds the INT4 quantized KV-cache kernels (`-DUSE_INT4_KV_CACHE=1`). A `kv_cache_bit_width == 4` node errors out if this is off. |
 
 Other ways to shorten the iteration loop:
 

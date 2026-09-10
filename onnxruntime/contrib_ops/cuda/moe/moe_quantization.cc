@@ -21,7 +21,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_util_kernels.h"
-#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
+#if defined(HAS_SM90_OR_LATER)
 #include "contrib_ops/cuda/llm/moe_gemm/deep_gemm_sm90.h"
 #endif
 
@@ -172,7 +172,7 @@ bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_
 
 // Returns the per-rank expert count DeepGEMM would run, or 0 if the static shapes rule it out.
 int StaticFp4DeepGemmNumExperts(const OpKernelInfo& op_kernel_info) {
-#if !defined(HAS_SM90_OR_LATER) || !defined(USE_DEEP_GEMM)
+#if !defined(HAS_SM90_OR_LATER)
   ORT_UNUSED_PARAMETER(op_kernel_info);
   return 0;
 #else
@@ -895,7 +895,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       // through the fused GEMV or the dense A16 fallback instead. (MXFP4 keeps its existing routing.)
       !(is_nvfp4 && fp4_prefill_min_tokens_ > 0 &&
         static_cast<int64_t>(moe_params.num_rows) < fp4_prefill_min_tokens_);
-#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
+#if defined(HAS_SM90_OR_LATER)
   const bool use_fp4_deep_gemm =
       enable_fp4_deep_gemm_ && moe_params.num_rows > 0 &&
       moe_params.num_rows <= onnxruntime::llm::kernels::deep_gemm_sm90::kMaxTokensPerExpert &&
@@ -2042,7 +2042,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 #define DUMP_PACK_TENSOR(name, packed_scales, scales)
 #endif
 
-#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
+#if defined(HAS_SM90_OR_LATER)
   if (enable_fp4_deep_gemm_ && (input_idx == 2 || input_idx == 5 || input_idx == 3 || input_idx == 6)) {
     const bool fc1 = input_idx == 2 || input_idx == 3;
     const bool weight = input_idx == 2 || input_idx == 5;
@@ -2736,7 +2736,7 @@ void QMoE::TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc
 }
 
 void QMoE::TryBuildFp4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr alloc) {
-#if defined(HAS_SM90_OR_LATER) && defined(USE_DEEP_GEMM)
+#if defined(HAS_SM90_OR_LATER)
   if (!enable_fp4_deep_gemm_) {
     return;
   }

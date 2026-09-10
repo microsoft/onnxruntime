@@ -1141,20 +1141,6 @@ ProcessCountM4:
 ProcessCountM6:
         ProcessCountM 6, ASigned, BSigned
 
-ProcessCountM1:
-        cmp     DWORD PTR GemmInt8KernelFrame.PreviousP1Home[rsp],-1
-        je ProcessCountM1AvxVnni
-        ProcessCountM 1, ASigned, BSigned
-
-ProcessCountM1AvxVnni:
-        ProcessCount1AvxVnni 1, ASigned, BSigned
-
-ProcessCountM3:
-        ProcessCountM 3, ASigned, BSigned
-
-ProcessCountM5:
-        ProcessCountM 5, ASigned, BSigned
-
 ;
 ; Restore non-volatile registers and return.
 ;
@@ -1183,6 +1169,20 @@ ExitKernel:
         pop     rbx
         pop     rbp
         ret
+
+ProcessCountM1:
+        cmp     DWORD PTR GemmInt8KernelFrame.PreviousP1Home[rsp],-1
+        je ProcessCountM1AvxVnni
+        ProcessCountM 1, ASigned, BSigned
+
+ProcessCountM1AvxVnni:
+        ProcessCount1AvxVnni 1, ASigned, BSigned
+
+ProcessCountM3:
+        ProcessCountM 3, ASigned, BSigned
+
+ProcessCountM5:
+        ProcessCountM 5, ASigned, BSigned
 
         ENDM
 

@@ -6,15 +6,8 @@ import * as assert from 'assert';
 import * as path from 'path';
 
 describe('Standalone Process Tests', () => {
-  type ProcessResult = {
-    code: number | null;
-    signal: NodeJS.Signals | null;
-    stdout: string;
-    stderr: string;
-  };
-
   // Helper function to run test script in a separate process
-  const runTest = async (args: string[] = []): Promise<ProcessResult> =>
+  const runTest = async (args: string[] = []): Promise<{ code: number; stdout: string; stderr: string }> =>
     new Promise((resolve, reject) => {
       // Use the compiled main.js file from the lib directory
       const testFile = path.join(__dirname, './main.js');
@@ -27,22 +20,16 @@ describe('Standalone Process Tests', () => {
       child.stdout.on('data', (data) => (stdout += data.toString()));
       child.stderr.on('data', (data) => (stderr += data.toString()));
 
-      child.on('close', (code, signal) => {
-        resolve({ code, signal, stdout, stderr });
+      child.on('close', (code) => {
+        resolve({ code: code || 0, stdout, stderr });
       });
 
       child.on('error', reject);
     });
 
-  // Helper function to verify that the child was not terminated by a signal
-  const assertNormalExit = (result: ProcessResult) => {
-    assert.strictEqual(result.signal, null, `Child terminated by signal ${result.signal}.\n${result.stderr}`);
-    assert.strictEqual(result.code, 0, result.stderr);
-  };
-
   // Helper function to check basic success criteria
-  const assertSuccess = (result: ProcessResult) => {
-    assertNormalExit(result);
+  const assertSuccess = (result: { code: number; stdout: string; stderr: string }) => {
+    assert.strictEqual(result.code, 0);
     assert.ok(result.stdout.includes('SUCCESS: Inference completed'));
     assert.ok(!result.stderr.includes('mutex lock failed'));
   };
@@ -66,7 +53,6 @@ describe('Standalone Process Tests', () => {
   it('should handle uncaught exceptions', async () => {
     const result = await runTest(['--throw-exception']);
 
-    assert.strictEqual(result.signal, null, `Child terminated by signal ${result.signal}.\n${result.stderr}`);
     assert.notStrictEqual(result.code, 0);
     assert.ok(result.stdout.includes('SUCCESS: Inference completed'));
     assert.ok(result.stderr.includes('Test exception'));
@@ -96,11 +82,5 @@ describe('Standalone Process Tests', () => {
     const result = await runTest(['--process-exit']);
     assertSuccess(result);
     assert.ok(result.stdout.includes('Session NOT released'));
-  });
-
-  it('should allow repeated native ORT initialization', async () => {
-    const result = await runTest(['--initialize-twice']);
-    assertNormalExit(result);
-    assert.ok(result.stdout.includes('SUCCESS: ORT initialized twice'));
   });
 });

@@ -541,8 +541,7 @@ class InferenceSession {
   const DataTransferManager& GetDataTransferManager() const;
 
   /*
-   * Get the ExternalDataLoaderManager associated with this session.
-   * Registered loaders are available only during graph initialization, not during inference.
+   * Get the GetExternalDataLoaderManager associated with this session
    */
   const ExternalDataLoaderManager& GetExternalDataLoaderManager() const;
 

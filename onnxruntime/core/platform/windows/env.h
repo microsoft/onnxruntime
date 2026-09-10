@@ -61,8 +61,6 @@ class WindowsEnv : public Env {
   PIDType GetSelfPid() const override;
   Status GetFileLength(_In_z_ const ORTCHAR_T* file_path, size_t& length) const override;
   common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override;
-  Status OpenRandomAccessFile(_In_z_ const ORTCHAR_T* file_path,
-                              std::unique_ptr<RandomAccessFile>& file) const override;
   Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
                             const gsl::span<char> buffer) const override;
   Status MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,

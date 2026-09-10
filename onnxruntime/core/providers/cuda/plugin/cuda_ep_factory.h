@@ -160,11 +160,6 @@ class CudaEpFactory : public OrtEpFactory {
   // Ordinal-to-HardwareDeviceKey mapping built during GetSupportedDevicesImpl.
   InlinedHashMap<int, HardwareDeviceKey> ordinal_to_device_key_;
 
-  // Hardware devices created for CUDA-visible ordinals that platform discovery did not expose.
-  // This occurs on WSL, where CUDA devices are available through /dev/dxg while Linux sysfs only
-  // reports Microsoft synthetic display adapters.
-  InlinedHashMap<int, OrtHardwareDevice*> runtime_discovered_hardware_devices_;
-
   /// Find the DeviceCacheEntry for a given CUDA ordinal.
   /// Returns nullptr if the ordinal has not been registered.
   DeviceCacheEntry* FindDeviceCacheEntryByOrdinal(int cuda_ordinal);

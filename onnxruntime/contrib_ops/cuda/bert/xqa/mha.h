@@ -68,11 +68,7 @@ constexpr uint32_t tokensPerPage = TOKENS_PER_PAGE;
 
 using IOHead = Vec<InputElem, validElemsPerHead>;
 using InputHead = IOHead;
-#if defined(XQA_PAGED_INT4)
-using GMemCacheHead = Vec<uint8_t, validElemsPerHead / 2>;
-#else
 using GMemCacheHead = Vec<CacheElem, validElemsPerHead>;
-#endif
 
 constexpr uint32_t validElemsPerKHead = validElemsPerHead;
 constexpr bool lowPrecOutput = LOW_PREC_OUTPUT;
