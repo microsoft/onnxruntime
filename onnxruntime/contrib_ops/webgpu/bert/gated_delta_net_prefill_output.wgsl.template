@@ -1,0 +1,86 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param value_channels_per_workgroup
+#use .getByOffset .setByOffset
+
+const VALUE_CHANNELS_PER_WORKGROUP: u32 = value_channels_per_workgroup;
+var<workgroup> output_reduction: array<f32, workgroup_size_x * VALUE_CHANNELS_PER_WORKGROUP>;
+
+$MAIN {
+  let value_tiles = (uniforms.head_size_v + VALUE_CHANNELS_PER_WORKGROUP - 1u) /
+                    VALUE_CHANNELS_PER_WORKGROUP;
+  let workgroups_per_batch = uniforms.num_heads_v * value_tiles * uniforms.chunks_in_pass;
+  if (workgroup_idx >= uniforms.batch_size * workgroups_per_batch) {
+    return;
+  }
+
+  let chunk = workgroup_idx % uniforms.chunks_in_pass;
+  let value_tile = (workgroup_idx / uniforms.chunks_in_pass) % value_tiles;
+  let value_head = (workgroup_idx / (uniforms.chunks_in_pass * value_tiles)) % uniforms.num_heads_v;
+  let batch = workgroup_idx / workgroups_per_batch;
+  let key_index = local_idx;
+  let value_start = value_tile * VALUE_CHANNELS_PER_WORKGROUP;
+  let query_head = value_head / (uniforms.num_heads_v / uniforms.num_heads_q);
+  let sequence_length = uniforms.total_tokens / uniforms.batch_size;
+  let chunk_start = (uniforms.chunk_base + chunk) * uniforms.chunk_size;
+  let chunk_end = min(chunk_start + uniforms.chunk_size, sequence_length);
+  var state: array<f32, VALUE_CHANNELS_PER_WORKGROUP>;
+  for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+    state[value_offset] = 0.0;
+  }
+
+  if (key_index < uniforms.head_size_qk) {
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let value_index = value_start + value_offset;
+      if (value_index < uniforms.head_size_v) {
+        let offset = ((((chunk * uniforms.batch_size + batch) * uniforms.num_heads_v + value_head) *
+                       uniforms.head_size_v + value_index) * uniforms.head_size_qk + key_index);
+        state[value_offset] = chunk_state.getByOffset(offset);
+      }
+    }
+  }
+
+  for (var token_offset = chunk_start; token_offset < chunk_end; token_offset++) {
+    let token = batch * sequence_length + token_offset;
+    var key_value = 0.0;
+    var query_value = 0.0;
+    if (key_index < uniforms.head_size_qk) {
+      key_value = f32(key.getByOffset((token * uniforms.num_heads_q + query_head) *
+                                      uniforms.head_size_qk + key_index));
+      query_value = f32(query.getByOffset((token * uniforms.num_heads_q + query_head) *
+                                          uniforms.head_size_qk + key_index));
+      for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+        let value_index = value_start + value_offset;
+        if (value_index < uniforms.head_size_v) {
+          state[value_offset] += key_value *
+              f32(value.getByOffset((token * uniforms.num_heads_v + value_head) *
+                                    uniforms.head_size_v + value_index));
+        }
+      }
+    }
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      output_reduction[value_offset * workgroup_size_x + key_index] =
+          state[value_offset] * query_value;
+    }
+    workgroupBarrier();
+    for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
+      if (key_index < stride) {
+        for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+          let offset = value_offset * workgroup_size_x + key_index;
+          output_reduction[offset] += output_reduction[offset + stride];
+        }
+      }
+      workgroupBarrier();
+    }
+    if (key_index == 0u) {
+      for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+        let value_index = value_start + value_offset;
+        if (value_index < uniforms.head_size_v) {
+          output.setByOffset((token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index,
+                             output_element_t(output_reduction[value_offset * workgroup_size_x] * uniforms.scale));
+        }
+      }
+    }
+  }
+}
