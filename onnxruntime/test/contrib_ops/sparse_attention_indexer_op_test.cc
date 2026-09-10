@@ -20,6 +20,7 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -284,6 +285,7 @@ struct QsaProblem {
   int compress_ratio = 2;
   int token_budget = 4;
   float epsilon = 1.0e-6f;
+  std::optional<float> scale;
 
   std::vector<float> query;
   std::vector<float> key;
@@ -303,7 +305,7 @@ void QsaReference(const QsaProblem& problem, std::vector<int32_t>& selected, std
   const int head_size = problem.head_size;
   const int capacity = problem.Capacity();
   const int block_topk = problem.token_budget / problem.compress_ratio;
-  const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
+  const float scale = problem.scale.value_or(1.0f / std::sqrt(static_cast<float>(head_size)));
 
   present_key.assign(static_cast<size_t>(problem.batch_size) * total * head_size, 0.0f);
   for (int b = 0; b < problem.batch_size; ++b) {
@@ -404,6 +406,8 @@ struct CsaProblem {
   int past_buffer_length = 3;
   int max_rotary_length = 5;
   float epsilon = 1.0e-6f;
+  std::optional<float> scale;
+  std::optional<float> head_weight_scale;
 
   std::vector<float> query;
   std::vector<float> key;
@@ -445,8 +449,9 @@ void CsaReference(const CsaProblem& problem, std::vector<int32_t>& selected,
   const int present_compressed_length =
       problem.past_compressed_length + static_cast<int>(plan.new_window_count);
   const int present_buffer_length = static_cast<int>(plan.present_buffer_length);
-  const float scale = 1.0f / std::sqrt(static_cast<float>(head_size));
-  const float head_weight_scale = 1.0f / std::sqrt(static_cast<float>(problem.num_heads));
+  const float scale = problem.scale.value_or(1.0f / std::sqrt(static_cast<float>(head_size)));
+  const float head_weight_scale =
+      problem.head_weight_scale.value_or(1.0f / std::sqrt(static_cast<float>(problem.num_heads)));
 
   present_compressed_key.assign(
       static_cast<size_t>(problem.batch_size) * present_compressed_length * head_size, 0.0f);
@@ -540,7 +545,10 @@ void CsaReference(const CsaProblem& problem, std::vector<int32_t>& selected,
                          sin_base + query_position * problem.rotary_width);
       }
 
-      const int64_t threshold = position < 0 ? 0 : (position + 1) / problem.compress_ratio;
+      const int64_t threshold =
+          position < 0 ? 0
+                       : position / problem.compress_ratio +
+                             (position % problem.compress_ratio == problem.compress_ratio - 1);
       std::vector<float> scores(static_cast<size_t>(present_compressed_length), 0.0f);
       for (int entry = 0; entry < present_compressed_length; ++entry) {
         if (static_cast<int64_t>(entry) >= threshold) {
@@ -640,6 +648,9 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem()) {
   test.AddAttribute("policy_mode", std::string(sai::kPolicyModeQsa));
   test.AddAttribute("compress_ratio", static_cast<int64_t>(problem.compress_ratio));
   test.AddAttribute("token_budget", static_cast<int64_t>(problem.token_budget));
+  if (problem.scale.has_value()) {
+    test.AddAttribute("scale", *problem.scale);
+  }
   test.AddInput<T>("query", {batch_size, sequence_length, problem.num_heads, head_size},
                    ToElementType<T>(problem.query));
   test.AddInput<T>("key", {batch_size, sequence_length, head_size}, ToElementType<T>(problem.key));
@@ -655,8 +666,7 @@ void RunQsaTest(float tolerance, QsaProblem problem = MakeQsaProblem()) {
   RunOnCuda(test);
 }
 
-CsaProblem MakeCsaProblem() {
-  CsaProblem problem;
+CsaProblem MakeCsaProblem(CsaProblem problem = {}) {
   const int width = problem.Width();
   problem.query = MakeWave(static_cast<size_t>(problem.batch_size) * problem.sequence_length * problem.num_heads *
                                problem.head_size,
@@ -728,6 +738,12 @@ void RunCsaTest(const CsaProblem& base, float tolerance) {
   test.AddAttribute("policy_mode", std::string(sai::kPolicyModeCsa));
   test.AddAttribute("compress_ratio", static_cast<int64_t>(problem.compress_ratio));
   test.AddAttribute("index_topk", static_cast<int64_t>(problem.index_topk));
+  if (problem.scale.has_value()) {
+    test.AddAttribute("scale", *problem.scale);
+  }
+  if (problem.head_weight_scale.has_value()) {
+    test.AddAttribute("head_weight_scale", *problem.head_weight_scale);
+  }
   test.AddInput<T>("query", {batch_size, sequence_length, problem.num_heads, head_size},
                    ToElementType<T>(problem.query));
   test.AddInput<T>("key", {batch_size, sequence_length, width}, ToElementType<T>(problem.key));
@@ -879,6 +895,14 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsQsaTokenBudgetNotDivisible
                        "requires token_budget > 0 and divisible by compress_ratio");
 }
 
+TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedQsaCapacity) {
+  QsaGraphOptions options;
+  options.compress_ratio = 2;
+  options.token_budget = std::numeric_limits<int>::max() - 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddQsaNode(builder, options); },
+                       "selected capacity no greater than INT_MAX");
+}
+
 TEST(SparseAttentionIndexerShapeInferenceTest, RejectsQsaWithCsaInput) {
   QsaGraphOptions options;
   options.add_csa_inputs = true;
@@ -930,6 +954,12 @@ TEST(SparseAttentionIndexerTest, QsaMultiTileAndStridedChannels) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
 }
 
+TEST(SparseAttentionIndexerTest, QsaExplicitZeroScale) {
+  QsaProblem problem = MakeQsaProblem();
+  problem.scale = 0.0f;
+  RunQsaTest<float>(1.0e-5f, std::move(problem));
+}
+
 TEST(SparseAttentionIndexerTest, CsaFloat) { RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f); }
 
 TEST(SparseAttentionIndexerTest, CsaFloat16) { RunCsaTest<MLFloat16>(MakeCsaProblem(), 4.0e-3f); }
@@ -937,6 +967,25 @@ TEST(SparseAttentionIndexerTest, CsaFloat16) { RunCsaTest<MLFloat16>(MakeCsaProb
 TEST(SparseAttentionIndexerTest, CsaBFloat16) { RunCsaTest<BFloat16>(MakeCsaProblem(), 3.0e-2f); }
 
 TEST(SparseAttentionIndexerTest, CsaBufferOnlyStep) { RunCsaTest<float>(MakeCsaBufferOnlyProblem(), 1.0e-5f); }
+
+TEST(SparseAttentionIndexerTest, CsaExplicitZeroScales) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.scale = 0.0f;
+  problem.head_weight_scale = 0.0f;
+  RunCsaTest<float>(problem, 1.0e-5f);
+}
+
+TEST(SparseAttentionIndexerTest, CsaInt64MaxPosition) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.position_ids[0] = std::numeric_limits<int64_t>::max();
+  RunCsaTest<float>(problem, 1.0e-5f);
+}
+
+TEST(SparseAttentionIndexerTest, CsaEmptyBatch) {
+  CsaProblem problem;
+  problem.batch_size = 0;
+  RunCsaTest<float>(MakeCsaProblem(std::move(problem)), 1.0e-5f);
+}
 
 }  // namespace test
 }  // namespace onnxruntime
