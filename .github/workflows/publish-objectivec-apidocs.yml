@@ -30,6 +30,7 @@ jobs:
     timeout-minutes: 120
     steps:
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
     - uses: microsoft/onnxruntime-github-actions/setup-build-tools@d19341fb036c43a947a2c0e4a53ad4d15e10bc5c # v0.0.9
       with:
         vcpkg-version: '2025.08.27'
@@ -40,12 +41,13 @@ jobs:
         disable-terrapin: 'true'
 
     - name: Install Jazzy and dependencies
-      run: |
-        gem install 'jazzy:0.14.3' \
-          'mustache:<1.1.3'  # pin version as workaround for issue: https://github.com/realm/jazzy/issues/1435
-
+      env:
+        BUNDLE_GEMFILE: ./objectivec/docs/Gemfile
+      run: bundle install
 
     - name: Generate Objective-C docs
+      env:
+        BUNDLE_GEMFILE: ./objectivec/docs/Gemfile
       run: |
         set -e
 
@@ -55,7 +57,7 @@ jobs:
                "This documentation was generated from the ONNX Runtime source at commit ${ORT_COMMIT_SHORT}." \
                >> ./objectivec/docs/main_page.md
 
-        jazzy --config ./objectivec/docs/jazzy_config.yaml \
+        bundle exec jazzy --config ./objectivec/docs/jazzy_config.yaml \
               --clean --output ./_site/docs/api/objectivec
       shell: bash
 
