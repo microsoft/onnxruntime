@@ -4093,7 +4093,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>Same shape as input: packed (total_tokens, hidden_size) or padded (batch_size, sequence_length, hidden_size)</dd>
 </dl>
 
 #### Type Constraints
@@ -4203,7 +4203,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>Same shape as input: packed (total_tokens, hidden_size) or padded (batch_size, sequence_length, hidden_size)</dd>
+<dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
 <dt><tt>present_key</tt> (optional) : T</dt>
 <dd>present state for key with shape (batch_size, num_heads, total_sequence_length, head_size) or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used</dd>
 <dt><tt>present_value</tt> (optional) : T</dt>
