@@ -460,11 +460,164 @@ void GroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& 
       ctx, past_key_index, sliding_window_cache == 1 ? 1 : use_max_past_present_buffer, qk_output_index);
 }
 
+void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  if (hasInputShape(ctx, 0)) {
+    const auto& query_shape = getInputShape(ctx, 0);
+    const auto& query_dims = query_shape.dim();
+    if (query_dims.size() != 3) {
+      fail_shape_inference("The query input shall be 3 dimensions");
+    }
+
+    auto output_shape = query_shape;
+    if (ctx.getInputType(2) == nullptr) {
+      const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+      const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
+      if (num_heads > 0 && kv_num_heads > 0 && query_dims[2].has_dim_value()) {
+        const int64_t packed_heads = num_heads + 2 * kv_num_heads;
+        const int64_t packed_hidden_size = query_dims[2].dim_value();
+        if (packed_hidden_size % packed_heads != 0) {
+          fail_shape_inference("Packed QKV hidden size must be divisible by num_heads + 2 * kv_num_heads");
+        }
+        output_shape.mutable_dim(2)->set_dim_value(num_heads * (packed_hidden_size / packed_heads));
+      }
+    }
+    updateOutputShape(ctx, 0, output_shape);
+  }
+
+  for (int output_index = 1; output_index <= 2; ++output_index) {
+    const int input_index = output_index + 2;
+    if (ctx.getNumOutputs() <= static_cast<size_t>(output_index) || !ctx.hasOutput(output_index)) {
+      continue;
+    }
+
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, output_index);
+    if (hasInputShape(ctx, input_index)) {
+      ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, input_index, output_index);
+      continue;
+    }
+
+    if (hasInputShape(ctx, 0)) {
+      const auto& query_dims = getInputShape(ctx, 0).dim();
+      const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+      const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
+      if (query_dims.size() == 3 && num_heads > 0 && kv_num_heads > 0 &&
+          query_dims[2].has_dim_value()) {
+        const bool is_packed = ctx.getInputType(2) == nullptr;
+        const int64_t head_size = query_dims[2].dim_value() /
+                                  (is_packed ? num_heads + 2 * kv_num_heads : num_heads);
+        ONNX_NAMESPACE::TensorShapeProto present_shape;
+        *present_shape.add_dim() = query_dims[0];
+        present_shape.add_dim()->set_dim_value(kv_num_heads);
+        const auto* total_length_data = ctx.getInputData(10);
+        if (total_length_data != nullptr) {
+          const auto total_lengths = ParseData<int32_t>(total_length_data);
+          if (total_lengths.size() != 1) {
+            fail_shape_inference("total_sequence_length must contain exactly one element");
+          }
+          present_shape.add_dim()->set_dim_value(total_lengths[0]);
+        } else {
+          present_shape.add_dim();
+        }
+        present_shape.add_dim()->set_dim_value(head_size);
+        updateOutputShape(ctx, output_index, present_shape);
+      }
+    }
+  }
+}
+
 void SparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_key_index) {
   constexpr int use_max_past_present_buffer = 1;
   constexpr int qk_output_index = -1;
   BaseGroupQueryAttentionTypeAndShapeInference(ctx, past_key_index, use_max_past_present_buffer, qk_output_index);
 }
+
+constexpr const char* DynamicSparseAttention_ver1_doc = R"DOC(
+Model-neutral sparse grouped-query attention with a contiguous main KV cache.
+
+`selected_indices` and `selected_counts` are produced by an external selector. The operator never computes selection
+scores or TopK indices. The first `selected_counts[q]` entries in each selected-index row are valid; remaining entries
+must be -1. Valid entries must be unique, non-negative request-local positions in the selected source.
+
+`attention_mode="selected_only"` attends only to selected entries. `attention_mode="local_plus_selected"` jointly
+normalizes causally valid main-cache entries in `local_window_size`, selected auxiliary entries, and an optional
+per-query-head sink. The sink contributes to the softmax denominator but has no value vector. A row with no entries and
+no sink produces zero output.
+
+Supported mode/source combinations:
+
+- `selected_only` + `main`: Qwen4-Exp QSA-compatible execution.
+- `local_plus_selected` + `auxiliary`: DeepSeek V4 CSA-compatible execution and requires `local_window_size > 0`.
+
+The main cache uses BNSH layout and ordinary contiguous append semantics. Selection changes reads, not cache writes.
+Auxiliary K/V use BNSH layout and are read-only. When `auxiliary_kv_shared=1`, auxiliary_value may be omitted and
+auxiliary_key is used as both K and V. DeepSeek-style post-attention inverse/conjugate RoPE and output projection remain
+the exporter's responsibility.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DynamicSparseAttention, 1,
+    OpSchema()
+        .SetDoc(DynamicSparseAttention_ver1_doc)
+        .Attr("num_heads", "Number of query heads.", AttributeProto::INT)
+        .Attr("kv_num_heads", "Number of main and auxiliary KV heads.", AttributeProto::INT)
+        .Attr("scale", "Scaling factor applied to QK. Defaults to 1/sqrt(head_size).",
+              AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("is_causal", "Whether selected main-cache and local entries obey causal visibility.",
+              AttributeProto::INT, static_cast<int64_t>(1))
+        .Attr("local_window_size", "Number of causally visible main-cache entries in local_plus_selected mode.",
+              AttributeProto::INT, static_cast<int64_t>(-1))
+        .Attr("attention_mode", "One of 'selected_only' or 'local_plus_selected'.",
+              AttributeProto::STRING, std::string("selected_only"))
+        .Attr("selected_kv_source", "Source addressed by selected indices: 'main' or 'auxiliary'.",
+              AttributeProto::STRING, std::string("main"))
+        .Attr("do_rotary", "Whether to apply rotary embedding to Q and newly appended K.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("rotary_interleaved", "Whether rotary pairs use interleaved layout.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("rotary_offset", "First head channel covered by rotary embedding.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("qk_norm_epsilon", "Epsilon for optional per-head Q/K RMS normalization.",
+              AttributeProto::FLOAT, 1e-6f)
+        .Attr("smooth_softmax", "Add a zero-valued sink logit when no explicit head_sink is supplied.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("auxiliary_kv_shared", "Use auxiliary_key as both key and value when auxiliary_value is omitted.",
+              AttributeProto::INT, static_cast<int64_t>(0))
+        .Input(0, "query",
+               "Query [batch, sequence, num_heads * head_size], or packed QKV.", "T")
+        .Input(1, "key", "Current main key [batch, sequence, kv_num_heads * head_size].", "T",
+               OpSchema::Optional)
+        .Input(2, "value", "Current main value [batch, sequence, kv_num_heads * head_size].", "T",
+               OpSchema::Optional)
+        .Input(3, "past_key", "Main key cache in BNSH layout.", "T", OpSchema::Optional)
+        .Input(4, "past_value", "Main value cache in BNSH layout.", "T", OpSchema::Optional)
+        .Input(5, "auxiliary_key", "Read-only auxiliary key sequence in BNSH layout.", "T",
+               OpSchema::Optional)
+        .Input(6, "auxiliary_value", "Read-only auxiliary value sequence in BNSH layout.", "T",
+               OpSchema::Optional)
+        .Input(7, "selected_indices", "Selected request-local source positions [batch * sequence, max_selected].",
+               "M")
+        .Input(8, "selected_counts", "Number of valid entries per selected-index row [batch * sequence].", "M")
+        .Input(9, "seqlens_k", "Total logical main sequence length minus one for each batch entry.", "M")
+        .Input(10, "total_sequence_length", "Maximum total main sequence length, as a scalar or one-element tensor.",
+               "M")
+        .Input(11, "cos_cache", "Rotary cosine cache [max_sequence_length, rotary_dim / 2].", "T",
+               OpSchema::Optional)
+        .Input(12, "sin_cache", "Rotary sine cache [max_sequence_length, rotary_dim / 2].", "T",
+               OpSchema::Optional)
+        .Input(13, "position_ids", "Optional rotary positions [batch, sequence].", "tensor(int64)",
+               OpSchema::Optional)
+        .Input(14, "q_norm_weight", "Optional Q RMSNorm weight [head_size].", "T", OpSchema::Optional)
+        .Input(15, "k_norm_weight", "Optional K RMSNorm weight [head_size].", "T", OpSchema::Optional)
+        .Input(16, "head_sink", "Optional sink logit [num_heads].", "T", OpSchema::Optional)
+        .Output(0, "output", "Attention output [batch, sequence, num_heads * head_size].", "T")
+        .Output(1, "present_key", "Updated main key cache in BNSH layout.", "T", OpSchema::Optional)
+        .Output(2, "present_value", "Updated main value cache in BNSH layout.", "T", OpSchema::Optional)
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain all floating-point inputs and outputs to one element type.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain selection and sequence metadata to int32.")
+        .TypeAndShapeInferenceFunction(DynamicSparseAttentionTypeAndShapeInference));
 
 constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).

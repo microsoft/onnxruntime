@@ -124,6 +124,114 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
         raise AssertionError()
 
+    def test_dynamic_sparse_attention_separate_qkv_with_past(self):
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("value", TensorProto.FLOAT16, ["b", "s", 16]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+            helper.make_tensor_value_info("past_value", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+        ]
+        node = helper.make_node(
+            "DynamicSparseAttention",
+            [
+                "query",
+                "key",
+                "value",
+                "past_key",
+                "past_value",
+                "",
+                "",
+                "selected_indices",
+                "selected_counts",
+                "seqlens_k",
+                "total_sequence_length",
+            ],
+            ["output", "present_key", "present_value"],
+            domain="com.microsoft",
+            num_heads=4,
+            kv_num_heads=2,
+        )
+        outputs = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+        ]
+        graph = helper.make_graph(
+            [node],
+            "DynamicSparseAttentionSeparate",
+            inputs,
+            outputs,
+            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, ["b", 2, "c", 8]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_dynamic_sparse_attention_packed_qkv_without_past(self):
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["b", "s", 64]),
+            helper.make_tensor_value_info("selected_indices", TensorProto.INT32, ["b*s", "k"]),
+            helper.make_tensor_value_info("selected_counts", TensorProto.INT32, ["b*s"]),
+            helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, ["b"]),
+        ]
+        node = helper.make_node(
+            "DynamicSparseAttention",
+            [
+                "query",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "selected_indices",
+                "selected_counts",
+                "seqlens_k",
+                "total_sequence_length",
+            ],
+            ["output", "present_key", "present_value"],
+            domain="com.microsoft",
+            num_heads=4,
+            kv_num_heads=2,
+        )
+        outputs = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, None),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, None),
+        ]
+        graph = helper.make_graph(
+            [node],
+            "DynamicSparseAttentionPacked",
+            inputs,
+            outputs,
+            [helper.make_tensor("total_sequence_length", TensorProto.INT32, [], [12])],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_operatorsetid("", 18), helper.make_operatorsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info("output", TensorProto.FLOAT16, ["b", "s", 32]),
+            helper.make_tensor_value_info("present_key", TensorProto.FLOAT16, ["b", 2, 12, 8]),
+            helper.make_tensor_value_info("present_value", TensorProto.FLOAT16, ["b", 2, 12, 8]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
             [
