@@ -2346,10 +2346,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>activation</tt> : string</dt>
+<dd>Fused gate activation. One of: 'silu', 'swish', 'sigmoid'. 'swish' is an alias of 'silu'.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon added to the mean of squares before the reciprocal square root.</dd>
-<dt><tt>activation</tt> : string (default is `'silu'`)</dt>
-<dd>Fused gate activation. One of: 'silu', 'swish', 'sigmoid'. 'swish' is an alias of 'silu'.</dd>
 </dl>
 
 #### Inputs
@@ -7688,4 +7688,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
 
