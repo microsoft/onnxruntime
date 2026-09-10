@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "nchwc_ops.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
@@ -156,14 +158,33 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
   const auto* B = context->Input<Tensor>(2);
   const auto* Sum = context->Input<Tensor>(3);
 
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
-
   const auto& X_shape = X->Shape();
   const auto& W_shape = W->Shape();
-  ORT_ENFORCE(X_shape.NumDimensions() == 4);
+  ORT_RETURN_IF_NOT(conv_attrs_.group > 0, "NCHWc Conv group must be greater than 0.");
+  ORT_RETURN_IF_NOT(X_shape.NumDimensions() == 4 && W_shape.NumDimensions() == 4,
+                    "NCHWc Conv input and filter must be rank 4.");
 
-  const size_t nchwc_block_size = MlasNchwcGetBlockSize();
-  ORT_ENFORCE((static_cast<size_t>(X_shape[1]) < nchwc_block_size) || ((X_shape[1] % nchwc_block_size) == 0));
+  const int64_t input_channels_per_group = W_shape[1];
+  const int64_t output_channels = W_shape[0];
+  ORT_RETURN_IF_NOT(input_channels_per_group > 0 && output_channels > 0,
+                    "NCHWc Conv input and output channels must be greater than 0.");
+  ORT_RETURN_IF_NOT(input_channels_per_group <= std::numeric_limits<int64_t>::max() / conv_attrs_.group,
+                    "NCHWc Conv input channels per group is too large.");
+
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
+
+  const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
+  const int64_t output_channels_per_group = output_channels / conv_attrs_.group;
+  const bool is_nchw_input = conv_attrs_.group == 1 && input_channels_per_group < nchwc_block_size;
+  const bool is_depthwise = input_channels_per_group == 1 && output_channels_per_group == 1;
+  const bool is_nchwc_input = input_channels_per_group % nchwc_block_size == 0 &&
+                              output_channels_per_group % nchwc_block_size == 0;
+
+  ORT_RETURN_IF_NOT(output_channels % nchwc_block_size == 0 &&
+                        (is_nchw_input || is_depthwise || is_nchwc_input),
+                    "NCHWc Conv input and filter shapes do not match a supported blocked layout.");
+  ORT_RETURN_IF_NOT(B == nullptr || (B->Shape().NumDimensions() == 1 && B->Shape().Size() == output_channels),
+                    "NCHWc Conv bias must be a 1D tensor matching the physical output channels.");
 
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W_shape, kernel_shape));
