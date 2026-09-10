@@ -169,6 +169,7 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
                                              bool q_BNSH,
                                              bool use_seqlen_k,
                                              bool has_head_sink,
+                                             bool has_local_window,
                                              uint32_t kv_cache_quantization_bits,
                                              int compressed_head_size_u32,
                                              bool use_seqlens_q)
@@ -184,6 +185,7 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
       q_BNSH_(q_BNSH),
       use_seqlen_k_(use_seqlen_k),
       has_head_sink_(has_head_sink),
+      has_local_window_(has_local_window),
       max_k_step_(SelectDensePrefillMaxKStep(use_shm_path_, is_fp16, qkv_head_size)),
       kv_cache_quantization_(kv_cache_quantization_bits != 0),
       kv_cache_quantization_bits_(kv_cache_quantization_bits),
@@ -435,6 +437,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
+                             WGSL_TEMPLATE_PARAMETER(has_local_window, has_local_window_),
                              WGSL_TEMPLATE_PARAMETER(has_qkv_bias, has_qkv_bias_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
@@ -956,10 +959,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const Tensor* cos_cache, const Tensor* sin_cache, const Tensor* head_sink,
                            const Tensor* total_seqlen, const Tensor* seqlens_q,
                            const Tensor* block_table, uint32_t block_size, uint32_t max_num_blocks_per_seq,
-                           const Tensor* cumulative_seqlens_q) {
+                           const Tensor* cumulative_seqlens_q, int local_window_size) {
   constexpr uint32_t tile_size = 64;
   const bool use_seqlens_q = seqlens_q != nullptr;
   const bool use_paged_kv_cache = block_table != nullptr;
+  const bool has_local_window = local_window_size > 0;
 
   const uint32_t kv_cache_quantization_bits = context.KvCacheQuantizationBits();
   const bool kv_cache_quantization_enabled = kv_cache_quantization_bits != 0;
@@ -1255,8 +1259,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
           kv_cache_quantization_bits, is_qualcomm, dense_prefill_workgroup_size,
           context.DeviceLimits().maxComputeWorkgroupStorageSize);
   const bool use_split_reduce =
-      parameters.sequence_length_ < 32 ||
-      (!use_paged_kv_cache && !dense_prefill_fits_workgroup_storage);
+      !has_local_window &&
+      (parameters.sequence_length_ < 32 ||
+       (!use_paged_kv_cache && !dense_prefill_fits_workgroup_storage));
 
   if (!use_split_reduce) {
     // Ask the shared helper whether the fused paged-prefill shader can run on
@@ -1336,6 +1341,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                     q_BNSH,
                                     use_seqlen_k,
                                     has_head_sink,
+                                    has_local_window,
                                     kv_cache_quantization_bits,
                                     compressed_head_size_u32,
                                     use_seqlens_q};
@@ -1386,7 +1392,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
           .SetWorkgroupSize(prefill_tile_size)
           .CacheHint(has_attention_bias, has_qkv_bias, parameters.head_size_, parameters.num_heads_,
                      parameters.is_unidirectional_, is_qualcomm, is_nvidia, is_apple,
-                     has_subgroups, q_BNSH, use_seqlen_k, has_head_sink,
+                     has_subgroups, q_BNSH, use_seqlen_k, has_head_sink, has_local_window,
                      kv_cache_quantization_bits,
                      compressed_head_size_u32, program.max_k_step(), use_seqlens_q)
           .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
@@ -1398,7 +1404,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                 {num_seq_tile},
                                 {attn_bias_dim0},
                                 {attn_bias_dim1},
-                                {attn_bias_dim3}});
+                                {attn_bias_dim3},
+                                {static_cast<uint32_t>(has_local_window ? local_window_size : 0)}});
 
       ORT_RETURN_IF_ERROR(context.RunProgram(program));
     }
