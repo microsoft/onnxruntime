@@ -370,6 +370,13 @@ std::mutex InferenceSession::active_sessions_mutex_;  // Protects access to acti
 onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
 #endif
 
+#if defined(ORT_USE_TELEMETRY)
+InferenceSession::Telemetry::Telemetry()
+    : time_sent_last_(std::chrono::high_resolution_clock::now()) {}
+#else
+InferenceSession::Telemetry::Telemetry() = default;
+#endif
+
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
                                      const ONNX_NAMESPACE::ModelProto& model_proto,
                                      bool is_model_proto_parsed,
@@ -898,6 +905,8 @@ InferenceSession::~InferenceSession() {
                                         telemetry_.total_runs_since_last_,
                                         telemetry_.total_run_duration_since_last_,
                                         telemetry_.duration_per_batch_size_);
+      // Also flush a final EpDeviceUsage per (EP, device) to capture any runs
+      // that occurred between the last heartbeat and session destruction.
       for (const auto& ep_info : telemetry_.ep_device_info_) {
         telemetry_provider.LogEpDeviceUsage(
             session_id_, ep_info.ep_type, ep_info.hardware_device_type,
@@ -2132,15 +2141,17 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
     std::lock_guard<std::mutex> l(session_mutex_);
 
     if (is_model_loaded_) {  // already loaded
-      Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
-      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-      return status;
+      const Status load_status(
+          common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
+      LOGS(*session_logger_, ERROR) << load_status.ErrorMessage();
+      return load_status;
     }
 
     if (is_inited_) {
-      Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
-      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-      return status;
+      const Status initialized_status(
+          common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
+      LOGS(*session_logger_, ERROR) << initialized_status.ErrorMessage();
+      return initialized_status;
     }
 
     ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());
@@ -3807,6 +3818,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                                   telemetry_.total_run_duration_since_last_,
                                                   telemetry_.duration_per_batch_size_);
 
+        // Emit one EpDeviceUsage event per (EP, hardware device) tuple so
+        // downstream consumers can attribute usage to a specific EP+device combo
+        // without joining back to SessionCreation (which may fall outside the
+        // telemetry pipeline's lookback window for long-lived sessions).
         for (const auto& ep_info : telemetry_.ep_device_info_) {
           env.GetTelemetryProvider().LogEpDeviceUsage(
               session_id_, ep_info.ep_type, ep_info.hardware_device_type,
@@ -4567,7 +4582,9 @@ void InferenceSession::LogSessionCreationTelemetry(const onnxruntime::Graph& gra
       telemetry_.ep_versions_summary_,
       model_has_fp16_inputs, false);
 
-  // Emit one inventory event per (EP, device) pair.
+  // Emit one initial EpDeviceUsage event per (EP, device) pair with run counts of 0.
+  // Ensures we capture EP/device topology even for sessions that end before the
+  // first RuntimePerf heartbeat (2s after the first Run()).
   for (const auto& ep_info : telemetry_.ep_device_info_) {
     env.GetTelemetryProvider().LogEpDeviceUsage(
         session_id_, ep_info.ep_type, ep_info.hardware_device_type,
