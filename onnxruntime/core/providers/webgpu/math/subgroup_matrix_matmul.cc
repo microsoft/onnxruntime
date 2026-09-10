@@ -154,13 +154,26 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
       return Status::OK();
     }
 
-    // The optimized path will run: now materialize the even-strided B for odd N.
-    const Tensor* b_used = b;
+    // N_b is just N rounded up to even - compute it before doing any padding work so
+    // the tile-fit check below can bail out without a wasted pad dispatch.
     uint32_t N_b = N;
     if (needs_padded_b) {
-      ORT_RETURN_IF_ERROR(EnsurePaddedB(context, *b, b_shape, N));
+      ORT_RETURN_IF_NOT(N < std::numeric_limits<uint32_t>::max(),
+                        "Cannot pad odd-N B because N+1 exceeds uint32_t range.");
+      N_b = N + 1;
+    }
+
+    // The kernel keeps its operand loads in bounds by shifting a trailing partial
+    // tile back, which is only possible when the tile fits within M and N.
+    if (M < tiling->tile_m || N_b < tiling->tile_n) {
+      return Status::OK();
+    }
+
+    // The optimized path will run: now materialize the even-strided B for odd N.
+    const Tensor* b_used = b;
+    if (needs_padded_b) {
+      ORT_RETURN_IF_ERROR(EnsurePaddedB(context, *b, b_shape, N, N_b));
       b_used = padded_b_.get();
-      N_b = padded_b_stride_;
     }
 
     const Tensor* bias = has_bias ? inputs[2] : nullptr;
@@ -211,10 +224,8 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
   Status EnsurePaddedB(ComputeContext& context,
                        const Tensor& b,
                        const TensorShape& b_shape,
-                       uint32_t N) const {
-    ORT_RETURN_IF_NOT(N < std::numeric_limits<uint32_t>::max(),
-                      "Cannot pad odd-N B because N+1 exceeds uint32_t range.");
-    const uint32_t n_b = N + 1;
+                       uint32_t N,
+                       uint32_t n_b) const {
     TensorShapeVector padded_dims{b_shape.GetDims().begin(), b_shape.GetDims().end()};
     padded_dims.back() = static_cast<int64_t>(n_b);
     const TensorShape padded_shape{padded_dims};
@@ -241,7 +252,6 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
       }
       if (s.IsOK()) {
         padded_b_ = std::move(padded);
-        padded_b_stride_ = n_b;
       }
     });
     // padded_b_ persists the outcome across calls: call_once runs the body only on
@@ -256,7 +266,6 @@ class SubgroupMatrixMatMulImpl final : public MatMulOptImpl {
   // Cached even-strided B for odd N; built once by EnsurePaddedB.
   mutable std::once_flag pad_once_;
   mutable std::unique_ptr<Tensor> padded_b_;
-  mutable uint32_t padded_b_stride_ = 0;
 };
 
 Status GenerateShaderCode8x16x16(ShaderHelper& shader,
