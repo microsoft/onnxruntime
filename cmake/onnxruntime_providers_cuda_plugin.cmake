@@ -120,6 +120,9 @@ onnxruntime_extract_sm_specific_cuda_sources(CUDA_PLUGIN_EP_CU_SRCS
 onnxruntime_extract_flash_attention_sources(CUDA_PLUGIN_EP_CU_SRCS
   FLASH_SOURCES _cuda_plugin_flash_attention_srcs
 )
+onnxruntime_extract_xqa_sources(CUDA_PLUGIN_EP_CU_SRCS
+  XQA_SOURCES _cuda_plugin_xqa_srcs
+)
 onnxruntime_extract_llm_sources(CUDA_PLUGIN_EP_CU_SRCS
   LLM_SOURCES _cuda_plugin_llm_srcs
   LLM_SM90_SOURCES _cuda_plugin_llm_sm90_srcs
@@ -352,6 +355,21 @@ if(_cuda_plugin_flash_attention_srcs)
     # linker can find the host-side symbols referenced by flash_api.cc. The kernels
     # themselves will be empty stubs due to __CUDA_ARCH__ >= 800 guards.
     target_sources(onnxruntime_providers_cuda_plugin PRIVATE ${_cuda_plugin_flash_attention_srcs})
+  endif()
+endif()
+
+if(_cuda_plugin_xqa_srcs)
+  onnxruntime_filter_cuda_archs(_plugin_xqa_cuda_architectures MIN_SM 80)
+  if(_plugin_xqa_cuda_architectures)
+    onnxruntime_add_cuda_plugin_object_library(
+      NAME onnxruntime_providers_cuda_plugin_xqa
+      PARENT onnxruntime_providers_cuda_plugin
+      CUDA_ARCHITECTURES "${_plugin_xqa_cuda_architectures}"
+      NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+      SOURCES ${_cuda_plugin_xqa_srcs})
+  else()
+    target_sources(onnxruntime_providers_cuda_plugin PRIVATE ${_cuda_plugin_xqa_srcs})
   endif()
 endif()
 
