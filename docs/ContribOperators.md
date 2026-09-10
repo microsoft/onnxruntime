@@ -118,6 +118,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
   * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
   * <a href="#com.microsoft.SparseAttention">com.microsoft.SparseAttention</a>
+  * <a href="#com.microsoft.SparsePagedAttention">com.microsoft.SparsePagedAttention</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
@@ -6968,6 +6969,132 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.SparsePagedAttention"></a><a name="com.microsoft.sparsepagedattention">**com.microsoft.SparsePagedAttention**</a>
+
+  Selected-index attention over the PagedAttention main K/V cache.
+
+  Selection is supplied by an external indexer. selected_only attends selected entries;
+  local_plus_selected combines a main-cache local window and selected entries in one softmax.
+  Selected indices are request-local logical positions in the main cache or in a contiguous
+  auxiliary cache, according to selected_kv_source.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>attention_mode</tt> : string</dt>
+<dd>'selected_only' or 'local_plus_selected'.</dd>
+<dt><tt>auxiliary_cache_layout</tt> : string</dt>
+<dd>Version 1 supports only 'contiguous'.</dd>
+<dt><tt>auxiliary_kv_shared</tt> : int</dt>
+<dd>When 1, auxiliary_key supplies both K and V.</dd>
+<dt><tt>do_rotary</tt> : int</dt>
+<dd>Apply rotary embedding to current Q/K.</dd>
+<dt><tt>is_causal</tt> : int</dt>
+<dd>Apply causal filtering to main-cache reads.</dd>
+<dt><tt>k_quant_type</tt> : string</dt>
+<dd>Main key-cache quantization: NONE, PER_TENSOR, or PER_CHANNEL.</dd>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dd>Number of main K/V heads.</dd>
+<dt><tt>local_window_size</tt> : int</dt>
+<dd>Left main-cache window size; -1 means all visible tokens.</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of query heads.</dd>
+<dt><tt>qk_norm_epsilon</tt> : float</dt>
+<dd>QK RMSNorm epsilon.</dd>
+<dt><tt>rotary_interleaved</tt> : int</dt>
+<dd>Use interleaved rotary embedding.</dd>
+<dt><tt>rotary_offset</tt> : int</dt>
+<dd>First head channel covered by rotary embedding.</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Attention scale; defaults to 1/sqrt(head_size).</dd>
+<dt><tt>selected_kv_source</tt> : string</dt>
+<dd>'main' or 'auxiliary'.</dd>
+<dt><tt>softcap</tt> : float</dt>
+<dd>Optional tanh softcap for attention logits.</dd>
+<dt><tt>v_quant_type</tt> : string</dt>
+<dd>Main value-cache quantization: NONE, PER_TENSOR, or PER_CHANNEL.</dd>
+</dl>
+
+#### Inputs (8 - 22)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query or packed QKV, shaped as for PagedAttention.</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Current key.</dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Current value.</dd>
+<dt><tt>key_cache</tt> : T_CACHE</dt>
+<dd>Paged main key cache.</dd>
+<dt><tt>value_cache</tt> : T_CACHE</dt>
+<dd>Paged main value cache.</dd>
+<dt><tt>cumulative_sequence_length</tt> : S</dt>
+<dd>Packed query offsets.</dd>
+<dt><tt>past_seqlens</tt> : S</dt>
+<dd>Past main-cache lengths.</dd>
+<dt><tt>block_table</tt> : S</dt>
+<dd>Logical-to-physical main-cache block table.</dd>
+<dt><tt>slot_mapping</tt> (optional) : S</dt>
+<dd>Optional main-cache write slots; -1 suppresses a write.</dd>
+<dt><tt>selected_indices</tt> : S</dt>
+<dd>Request-local positions, shape (token_count, max_selected_entries); unused entries are -1.</dd>
+<dt><tt>selected_counts</tt> : S</dt>
+<dd>Selected entry count per query token.</dd>
+<dt><tt>auxiliary_key</tt> (optional) : T_AUX</dt>
+<dd>Shape (batch_size, capacity, kv_num_heads_or_one, head_size).</dd>
+<dt><tt>auxiliary_value</tt> (optional) : T_AUX</dt>
+<dd>Same shape as auxiliary_key.</dd>
+<dt><tt>auxiliary_lengths</tt> (optional) : S</dt>
+<dd>Valid auxiliary length per request.</dd>
+<dt><tt>cos_cache</tt> (optional) : T</dt>
+<dd>Rotary cosine cache.</dd>
+<dt><tt>sin_cache</tt> (optional) : T</dt>
+<dd>Rotary sine cache.</dd>
+<dt><tt>head_sink</tt> (optional) : T</dt>
+<dd>Optional softmax sink logit per query head.</dd>
+<dt><tt>q_norm_weight</tt> (optional) : T</dt>
+<dd>QK-Norm query weight.</dd>
+<dt><tt>k_norm_weight</tt> (optional) : T</dt>
+<dd>QK-Norm key weight.</dd>
+<dt><tt>k_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Main key-cache quantization scale.</dd>
+<dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
+<dd>Main value-cache quantization scale.</dd>
+<dt><tt>attention_metadata</tt> (optional) : S</dt>
+<dd>CPU tensor [max_query_len, max_local_main_len, max_selected_entries, max_auxiliary_len, max_combined_attention_len].</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>Shape (token_count, num_heads * head_size).</dd>
+<dt><tt>key_cache_out</tt> (optional) : T_CACHE</dt>
+<dd>In-place alias of key_cache.</dd>
+<dt><tt>value_cache_out</tt> (optional) : T_CACHE</dt>
+<dd>In-place alias of value_cache.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Activation type.</dd>
+<dt><tt>T_CACHE</tt> : tensor(float16), tensor(bfloat16), tensor(int8)</dt>
+<dd>Main cache storage type.</dd>
+<dt><tt>T_AUX</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Auxiliary cache type.</dd>
+<dt><tt>T_KV_SCALE</tt> : tensor(float)</dt>
+<dd>Main cache scale type.</dd>
+<dt><tt>S</tt> : tensor(int32)</dt>
+<dd>Index and length type.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.SparseToDenseMatMul"></a><a name="com.microsoft.sparsetodensematmul">**com.microsoft.SparseToDenseMatMul**</a>
 
 #### Version
@@ -7682,5 +7809,4 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
 
