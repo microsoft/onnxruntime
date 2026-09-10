@@ -131,22 +131,26 @@ Status CheckInputs(MoEParameters& parameters,
   const int64_t fc1_inter_size = is_fused_swiglu ? (inter_size + inter_size) : inter_size;
   const int64_t zp_pack_size = pack_size;  // Zero points packing (1 for 8-bit, 2 for 4-bit)
 
+  // Weights, and every tensor indexed by the weights' expert dimension, only cover the experts that
+  // are local to this rank. They are identical to num_experts unless expert parallelism is used
+  // (ShardedMoE), where each rank only owns a slice of the experts.
   if (legacy_shape) {
     // legacy shape does not match column major memory layout. This is for backward compatibility.
-    CHECK_SHAPE(fc1_experts_weights_shape, "fc1_experts_weights", num_experts, hidden_size, fc1_inter_size / pack_size);
-    CHECK_SHAPE(fc2_experts_weights_shape, "fc2_experts_weights", num_experts, inter_size, hidden_size / pack_size);
-    CHECK_SHAPE(fc3_experts_weights_shape, "fc3_experts_weights", num_experts, hidden_size, inter_size / pack_size);
+    CHECK_SHAPE(fc1_experts_weights_shape, "fc1_experts_weights", local_num_experts, hidden_size, fc1_inter_size / pack_size);
+    CHECK_SHAPE(fc2_experts_weights_shape, "fc2_experts_weights", local_num_experts, inter_size, hidden_size / pack_size);
+    CHECK_SHAPE(fc3_experts_weights_shape, "fc3_experts_weights", local_num_experts, hidden_size, inter_size / pack_size);
   } else {
-    CHECK_SHAPE(fc1_experts_weights_shape, "fc1_experts_weights", num_experts, fc1_inter_size, hidden_size / pack_size);
-    CHECK_SHAPE(fc2_experts_weights_shape, "fc2_experts_weights", num_experts, hidden_size, inter_size / pack_size);
-    CHECK_SHAPE(fc3_experts_weights_shape, "fc3_experts_weights", num_experts, inter_size, hidden_size / pack_size);
+    CHECK_SHAPE(fc1_experts_weights_shape, "fc1_experts_weights", local_num_experts, fc1_inter_size, hidden_size / pack_size);
+    CHECK_SHAPE(fc2_experts_weights_shape, "fc2_experts_weights", local_num_experts, hidden_size, inter_size / pack_size);
+    CHECK_SHAPE(fc3_experts_weights_shape, "fc3_experts_weights", local_num_experts, inter_size, hidden_size / pack_size);
   }
 
   CHECK_TENSOR_SHAPE(router_probs, num_rows, num_experts);
 
-  CHECK_TENSOR_SHAPE(fc1_experts_bias, num_experts, fc1_inter_size);
+  CHECK_TENSOR_SHAPE(fc1_experts_bias, local_num_experts, fc1_inter_size);
+  // fc2_experts_bias is applied after the results of all ranks are combined, so it covers all experts.
   CHECK_TENSOR_SHAPE(fc2_experts_bias, num_experts, hidden_size);
-  CHECK_TENSOR_SHAPE(fc3_experts_bias, num_experts, inter_size);
+  CHECK_TENSOR_SHAPE(fc3_experts_bias, local_num_experts, inter_size);
 
   // Validate scale tensors: Handle both row-wise and block-wise quantization flexibly
   // First, detect the actual quantization method from the tensor shapes
@@ -166,29 +170,29 @@ Status CheckInputs(MoEParameters& parameters,
     const int64_t fc2_blocks_per_row = (inter_size + block_size - 1) / block_size;
     const int64_t fc3_blocks_per_row = (hidden_size + block_size - 1) / block_size;
 
-    CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size, fc1_blocks_per_row);
-    CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size, fc2_blocks_per_row);
-    CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size, fc3_blocks_per_row);
+    CHECK_TENSOR_SHAPE(fc1_experts_scales, local_num_experts, fc1_inter_size, fc1_blocks_per_row);
+    CHECK_TENSOR_SHAPE(fc2_experts_scales, local_num_experts, hidden_size, fc2_blocks_per_row);
+    CHECK_TENSOR_SHAPE(fc3_experts_scales, local_num_experts, inter_size, fc3_blocks_per_row);
 
     // Validate zero-point tensors (block-wise)
     const int64_t fc1_zp_blocks = (fc1_blocks_per_row + zp_pack_size - 1) / zp_pack_size;
     const int64_t fc2_zp_blocks = (fc2_blocks_per_row + zp_pack_size - 1) / zp_pack_size;
     const int64_t fc3_zp_blocks = (fc3_blocks_per_row + zp_pack_size - 1) / zp_pack_size;
 
-    CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts, fc1_inter_size, fc1_zp_blocks);
-    CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts, hidden_size, fc2_zp_blocks);
-    CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts, inter_size, fc3_zp_blocks);
+    CHECK_TENSOR_SHAPE(fc1_zero_points, local_num_experts, fc1_inter_size, fc1_zp_blocks);
+    CHECK_TENSOR_SHAPE(fc2_zero_points, local_num_experts, hidden_size, fc2_zp_blocks);
+    CHECK_TENSOR_SHAPE(fc3_zero_points, local_num_experts, inter_size, fc3_zp_blocks);
   } else {
     // Row-wise quantization: 2D scale tensors or 3D with last dimension = 1
     // Handle both {num_experts, features} and {num_experts, features, 1} shapes
     if (fc1_experts_scales != nullptr) {
       const auto& fc1_scales_dims = fc1_experts_scales->Shape().GetDims();
       if (fc1_scales_dims.size() == 2) {
-        CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size);
-        CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts, (fc1_inter_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc1_experts_scales, local_num_experts, fc1_inter_size);
+        CHECK_TENSOR_SHAPE(fc1_zero_points, local_num_experts, (fc1_inter_size + zp_pack_size - 1) / zp_pack_size);
       } else if (fc1_scales_dims.size() == 3) {
-        CHECK_TENSOR_SHAPE(fc1_experts_scales, num_experts, fc1_inter_size, 1);
-        CHECK_TENSOR_SHAPE(fc1_zero_points, num_experts, (fc1_inter_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc1_experts_scales, local_num_experts, fc1_inter_size, 1);
+        CHECK_TENSOR_SHAPE(fc1_zero_points, local_num_experts, (fc1_inter_size + zp_pack_size - 1) / zp_pack_size);
       } else {
         ORT_THROW("fc1_experts_scales must be 2D or 3D tensor");
       }
@@ -197,11 +201,11 @@ Status CheckInputs(MoEParameters& parameters,
     if (fc2_experts_scales != nullptr) {
       const auto& fc2_scales_dims = fc2_experts_scales->Shape().GetDims();
       if (fc2_scales_dims.size() == 2) {
-        CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size);
-        CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts, (hidden_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc2_experts_scales, local_num_experts, hidden_size);
+        CHECK_TENSOR_SHAPE(fc2_zero_points, local_num_experts, (hidden_size + zp_pack_size - 1) / zp_pack_size);
       } else if (fc2_scales_dims.size() == 3) {
-        CHECK_TENSOR_SHAPE(fc2_experts_scales, num_experts, hidden_size, 1);
-        CHECK_TENSOR_SHAPE(fc2_zero_points, num_experts, (hidden_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc2_experts_scales, local_num_experts, hidden_size, 1);
+        CHECK_TENSOR_SHAPE(fc2_zero_points, local_num_experts, (hidden_size + zp_pack_size - 1) / zp_pack_size);
       } else {
         ORT_THROW("fc2_experts_scales must be 2D or 3D tensor");
       }
@@ -210,11 +214,11 @@ Status CheckInputs(MoEParameters& parameters,
     if (fc3_experts_scales != nullptr) {
       const auto& fc3_scales_dims = fc3_experts_scales->Shape().GetDims();
       if (fc3_scales_dims.size() == 2) {
-        CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size);
-        CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts, (inter_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc3_experts_scales, local_num_experts, inter_size);
+        CHECK_TENSOR_SHAPE(fc3_zero_points, local_num_experts, (inter_size + zp_pack_size - 1) / zp_pack_size);
       } else if (fc3_scales_dims.size() == 3) {
-        CHECK_TENSOR_SHAPE(fc3_experts_scales, num_experts, inter_size, 1);
-        CHECK_TENSOR_SHAPE(fc3_zero_points, num_experts, (inter_size + zp_pack_size - 1) / zp_pack_size);
+        CHECK_TENSOR_SHAPE(fc3_experts_scales, local_num_experts, inter_size, 1);
+        CHECK_TENSOR_SHAPE(fc3_zero_points, local_num_experts, (inter_size + zp_pack_size - 1) / zp_pack_size);
       } else {
         ORT_THROW("fc3_experts_scales must be 2D or 3D tensor");
       }
@@ -241,6 +245,8 @@ Status CheckInputs(MoEParameters& parameters,
       parameters.parallel_type = MoEParallelType::TP;
     }
   } else if (num_experts > local_num_experts) {
+    ORT_RETURN_IF(local_num_experts <= 0 || num_experts % local_num_experts != 0,
+                  "num_experts (", num_experts, ") must be divisible by local_num_experts (", local_num_experts, ")");
     if (parameters.tensor_shards == 1) {
       parameters.parallel_type = MoEParallelType::EP;
     } else {
