@@ -841,26 +841,10 @@ class SparseMoeBlockORTHelper(nn.Module):
             router_input = router_logits
             # print("DEBUG: Using QMoE routing (raw logits)")
         else:
-            # Regular MoE: Apply the same routing logic as PyTorch reference
-            # This converts raw logits to proper routing probabilities
-            routing_weights, selected_experts = masked_sampling_omp_inference(
-                router_logits,
-                top_k=self.top_k,
-                jitter_eps=self.router_jitter_noise,
-                training=False,
-            )
-
-            # IMPORTANT: The routing weights from masked_sampling_omp_inference sum to top_k,
-            # but ONNX Runtime expects normalized probabilities that sum to 1.0
-            # Normalize the routing weights per token
-            routing_weights = routing_weights / routing_weights.sum(dim=1, keepdim=True)
-
-            # Create proper router probabilities tensor that matches PyTorch routing
+            top_k_logits, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)
+            routing_weights = F.softmax(top_k_logits, dim=-1, dtype=torch.float).to(router_logits.dtype)
             router_input = torch.zeros_like(router_logits)
-            for i in range(router_logits.shape[0]):  # For each token
-                for j in range(self.top_k):  # For each top-k expert
-                    expert_idx = selected_experts[i, j]
-                    router_input[i, expert_idx] = routing_weights[i, j]
+            router_input.scatter_(1, selected_experts, routing_weights)
 
         #     print("DEBUG: Using regular MoE routing (processed probabilities)")
 
@@ -1068,9 +1052,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         self.ort_sess = self.create_ort_session(self.moe_onnx_graph) if self.moe_onnx_graph else None
         return self.ort_sess is not None
 
-    def parity_check(self):
-        model_updated = self.recreate_onnx_model()
-        if not model_updated:
+    def parity_check(self, recreate_model=True):
+        if recreate_model and not self.recreate_onnx_model():
             return
 
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim).to(device)
@@ -1483,7 +1466,9 @@ class TestPhiQMoECPU(unittest.TestCase):
             use_asymmetric_quant=False,
         )
 
-        packed_moe.parity_check()
+        self.assertTrue(packed_moe.recreate_onnx_model())
+        self.assertIsNotNone(packed_moe.ort_sess)
+        packed_moe.parity_check(recreate_model=False)
 
     @parameterized.expand(with_mlas_q4_mode(phi3_test_cases))
     def test_phi3_qmoe_parity_cpu(self, batch_size, sequence_length, quant_bits, enable_mlas_q4_gemm):
