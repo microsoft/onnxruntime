@@ -54,25 +54,3 @@
 +                            (void)ex;
                              LOG_ERROR("Unhandled exception in worker task: %s", ex.what());
                          }
-
---- a/lib/pal/posix/sysinfo_utils_mac.mm
-+++ b/lib/pal/posix/sysinfo_utils_mac.mm
-@@ -8,4 +8,5 @@
- #include <unistd.h>
- #include <uuid/uuid.h>
- #include <vector>
-+#include <TargetConditionals.h>
- #import <Foundation/Foundation.h>
-@@ -37,5 +38,8 @@
- std::string GetDeviceId()
- {
-+#if !TARGET_OS_OSX
-+    return {EMPTY_GUID};
-+#else
-     uuid_t uuidBytes;
-     const struct timespec spec = {1, 0};
-     int hostUUIDResult = gethostuuid(uuidBytes, &spec);
-@@ -49,2 +53,3 @@
-     return {EMPTY_GUID};
-+#endif
- }
