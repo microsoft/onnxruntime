@@ -408,6 +408,43 @@ wiring; runtime behaviour was established separately by the ORT Web prototype de
 A practical build note: the WASM build needs `node` on `PATH` — `node_helper.cmake` does a hard `find_program` and
 fails configure without it. emsdk bundles a suitable one under `cmake/external/emsdk/node/<version>/bin`.
 
+### Native shared-library plugin performance
+
+The latency criterion covers two shapes of plugin, and the ORT Web numbers under
+[Measured performance comparison](#measured-performance-comparison) settle only the static one. A
+native `--use_webgpu shared_lib` A/B against a built-in baseline measured the plugin slower by ~8% on a
+dispatch-bound model and 4-6% on Qwen3.5-0.8B, fitting roughly **67 µs per `Run` plus 1.2 µs per node**. The
+reproducibility caveat recorded for the web numbers applies here too; these figures should be re-taken with the
+commit, flags and harness recorded.
+
+One control is what licenses reading the delta as boundary cost at all: matching build flags do not prove two
+executables perform alike, so both binaries were also run on the CPU EP, where no plugin is loaded. That gave a
+ratio of minima of 1.001 — but only single-threaded. Run with default threading the same control showed the
+plugin executable 24% *faster*, which would have been actively misleading.
+
+**Root cause: redundant per-kernel work, not boundary crossing.** 1.2 µs/node is ~4,400 cycles, far more than a
+cross-DLL indirect call can account for, so both arms were CPU-profiled. `ep::adapter::CreateTensorFromApiValue`
+rebuilds an `onnxruntime::Tensor` — nine C API round trips, an allocator-name `std::string`, a `TensorShape`
+allocation — for every input and output of every node on every `Run`, because the adapter's `OpKernelContext` is
+constructed fresh per `Compute()` and caches nothing beyond it. The adapter symbols are absent from the built-in
+profile entirely, `Tensor`/`TensorShape` work doubles, and the extra CPU (+0.53 ms/rep) accounts for the entire
+extra wall latency (+0.42 ms/rep).
+
+That makes the cost look **reducible rather than intrinsic**, which matters for how the latency criterion is
+settled: negotiating a tolerance around a fixable defect would be the wrong order. The obvious candidates are
+caching the `Tensor` wrapper across `Compute()` calls, and avoiding the allocator-name `std::string` and the
+`TensorShape` allocation on the per-node path. This is also the leading candidate for the unattributed web
+per-node cost, since both boundaries charge per kernel node.
+
+Two gaps remain in the native numbers. Session-creation cost was not compared — the plugin arm must also discover
+and load the DLL, so it is likely worse in relative terms. And both arms ran with default WebGPU options; graph
+capture in particular targets exactly the per-dispatch cost identified above and is worth a follow-up.
+
+**The plugin path silently loses the WebGPU EP's `Api` profiling events.** The built-in arm emits 15,300 `Api`
+category events under `-p` and the plugin arm emits none. This is an observability regression independent of
+latency, and it also means ORT's own profiler cannot perform this A/B: under `-p` the built-in arm measures
+*slower* and the result inverts.
+
 ## ORT Web migration
 
 The intended end state is that the WebGPU EP is always a plugin EP and `--use_webgpu static_lib` goes away
@@ -695,7 +732,8 @@ Reading of these numbers:
   adapters instead of a direct in-process virtual call. Unlike the compute-bound case this one does separate
   cleanly — the plugin build's slowest control sample is still faster than its own fastest sample. It only shows
   up when nodes do essentially no GPU work, which is the worst case by construction rather than a representative
-  one. Amortized over ~300 nodes it is on the order of 3 µs per node.
+  one. Amortized over ~300 nodes it is on the order of 3 µs per node — but see the caveat below before relying on
+  that figure.
 - **Session creation costs about 3%** (measured pre-merge: 1136 → 1172 ms and 1250 → 1290 ms for the two models).
   This covers plugin EP registration, `GetCapability` and kernel creation through the C API. The absolute figure
   is dominated by fetching and parsing the model, so the true relative cost of the plugin machinery within session
@@ -710,6 +748,25 @@ Two cautions on methodology:
   regression that does not exist.
 - Timings taken with `--webgpu.profiling.mode=default` are inflated by the timestamp queries and must never be
   compared against timings taken without it.
+
+**The per-node magnitude is not reliably established, and a controlled re-measurement is outstanding.** Three
+separate measurements of the same 300-node dispatch-bound model disagree by roughly 3.7x: +0.80 ms (2.7 µs/node)
+above, +1.50 ms (5.0 µs/node) in a later four-model sweep that fitted 4.76 µs/node across 150/300/600 nodes, and
++3.00 ms (10.0 µs/node) in a four-side build comparison. The `static_lib` baseline itself moved from 7.90 ms to
+11.90 ms for the same model on the same machine within a day, so build-to-build and session drift dominates the
+spread, and Edge's 0.1 ms `performance.now()` floor without cross-origin isolation limits resolution further. The
+three runs also did not use the same statistic (per-run P50 versus median-of-round-minimum). A re-measurement
+should record the commit of each arm, the full build flag set, the model definitions, the statistic, the
+interleaved sampling order and the GPU submit counts, so the number can be reproduced.
+
+What *is* robust is the sign and the mechanism. The plugin side was slower in 26 of 26 paired rounds in the sweep
+and 6 of 6 in a three-way run, and GPU submit counts were byte-identical on every side, model and round, so the
+cost is CPU-side per-kernel work rather than extra queue work. The same three-way run also excludes the
+JavaScript side: a `mismatch` arm (plugin bundle against a `static_lib` wasm) came out level with `static_lib`, so
+the `_OrtAppendExecutionProviderV2` call and the EP-name lookup are free and the cost is inside the
+`static_plugin` wasm's per-kernel C++ path. **Where exactly is not yet attributed** — an `--enable_wasm_profiling`
+build would give named frames, and the native root cause recorded under
+[Native shared-library plugin performance](#native-shared-library-plugin-performance) is the leading candidate.
 
 > Should static factories be registered before environment creation or through environment construction options?
 
