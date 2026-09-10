@@ -87,7 +87,8 @@ template <typename T>
 void launch_moe_gemv_fp4_symmetric(
     const T* act, const uint8_t* weight, const T* scales, const T* bias, T* out,
     const int64_t* expert_first_token_offset, const int* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
-    int64_t n, int64_t k, int group_size, int sm, MoeGemvConfig config, bool sm80_pair_interleaved, cudaStream_t stream);
+    int64_t n, int64_t k, int group_size, int sm, MoeGemvConfig config, bool sm80_pair_interleaved,
+    cudaStream_t stream);
 
 // Launches the MXFP4 MoE GEMV and fuses interleaved SwiGLU activation.
 //   weight/scales/bias use raw FC1 output width n = 2 * inter_size
