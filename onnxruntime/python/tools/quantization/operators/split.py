@@ -52,12 +52,12 @@ class QSplit(QuantOperatorBase):
 
 
 class QDQSplit(QDQOperatorBase):
-    def quantize(self):
+    def reg2quant(self):
         node = self.node
         assert node.op_type == "Split"
 
-        if not self.quantizer.is_tensor_quantized(node.input[0]):
-            self.quantizer.quantize_activation_tensor(node.input[0])
+        if not self.quantizer.is_tensor_reg2quant(node.input[0]):
+            self.quantizer.reg2quant_activation_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:
             for output in node.output:
-                self.quantizer.quantize_output_same_as_input(output, node.input[0], node.name)
+                self.quantizer.reg2quant_output_same_as_input(output, node.input[0], node.name)
