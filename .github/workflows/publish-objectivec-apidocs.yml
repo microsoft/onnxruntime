@@ -39,9 +39,11 @@ jobs:
         add-cmake-to-path: 'true'
         disable-terrapin: 'true'
 
-    - name: Install Jazzy
+    - name: Install Jazzy and dependencies
       run: |
-        sudo gem install jazzy --version 0.14.3
+        gem install 'jazzy:0.14.3' \
+          'mustache:<1.1.3'  # pin version as workaround for issue: https://github.com/realm/jazzy/issues/1435
+
 
     - name: Generate Objective-C docs
       run: |
