@@ -125,3 +125,25 @@
      return {EMPTY_GUID};
 +#endif
  }
+
+--- a/lib/offline/LogSessionDataProvider.cpp
++++ b/lib/offline/LogSessionDataProvider.cpp
+@@ -91,7 +91,8 @@
+     void LogSessionDataProvider::DeleteLogSessionDataFromFile()
+     {
+-        std::string sessionPath = m_cacheFilePath.empty() ? "" : (m_cacheFilePath + ".ses").c_str();
++        std::string sessionPath =
++            (m_cacheFilePath.empty() || m_cacheFilePath == ":memory:") ? "" : m_cacheFilePath + ".ses";
+         if (!sessionPath.empty() && MAT::FileExists(sessionPath.c_str()))
+         {
+             MAT::FileDelete(sessionPath.c_str());
+@@ -104,7 +105,8 @@
+     {
+         uint64_t sessionFirstTimeLaunch = 0;
+         std::string sessionSDKUid;
+-        std::string sessionPath = m_cacheFilePath.empty() ? "" : (m_cacheFilePath + ".ses").c_str();
++        std::string sessionPath =
++            (m_cacheFilePath.empty() || m_cacheFilePath == ":memory:") ? "" : m_cacheFilePath + ".ses";
+         if (!sessionPath.empty()) 
+         {
+             if (MAT::FileExists(sessionPath.c_str())) 
