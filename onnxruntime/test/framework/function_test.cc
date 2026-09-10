@@ -444,6 +444,63 @@ TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
 // --- Synthetic adjacency-list tests for ValidateCallGraphAcyclic ---
 // These test the cycle detection algorithm directly without constructing ONNX models.
 
+static ONNX_NAMESPACE::ModelProto CreateNestedLocalFunctionModel(size_t depth, bool use_graphs_attribute) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto* nodes = model_proto.add_functions()->mutable_node();
+  for (size_t i = 0; i < depth; ++i) {
+    auto* node = nodes->Add();
+    auto* attr = node->add_attribute();
+    if (use_graphs_attribute) {
+      nodes = attr->add_graphs()->mutable_node();
+    } else {
+      nodes = attr->mutable_g()->mutable_node();
+    }
+  }
+
+  return model_proto;
+}
+
+static ONNX_NAMESPACE::ModelProto CreateNestedLocalFunctionDefaultAttributeModel(
+    size_t depth, bool use_graphs_attribute) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto* function = model_proto.add_functions();
+  auto* attr = function->add_attribute_proto();
+  auto* graph = use_graphs_attribute ? attr->add_graphs() : attr->mutable_g();
+  for (size_t i = 1; i < depth; ++i) {
+    auto* node = graph->add_node();
+    attr = node->add_attribute();
+    graph = attr->mutable_g();
+  }
+
+  return model_proto;
+}
+
+TEST(FunctionTest, LocalFunctionSubgraphDepthValidated) {
+  EXPECT_STATUS_OK(ValidateModelSubgraphDepth(
+      CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth, false)));
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth + 1, false))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth + 1, true))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+}
+
+TEST(FunctionTest, LocalFunctionDefaultAttributeSubgraphDepthValidated) {
+  EXPECT_STATUS_OK(ValidateModelSubgraphDepth(
+      CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth, false)));
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth + 1, false))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth + 1, true))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+}
+
 TEST(FunctionTest, CallGraphAcyclic_EmptyGraph) {
   onnxruntime::LocalFunctionCallGraph call_graph;
   ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
