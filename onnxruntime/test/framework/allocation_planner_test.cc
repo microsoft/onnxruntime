@@ -512,6 +512,29 @@ TEST_F(PlannerTest, InPlaceTest) {
   CheckFreed(2, {X2});
 }
 
+TEST_F(PlannerTest, InPlaceTestWithTypeProtoShapeFallback) {
+  // tensor variables:
+  std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
+
+  // graph structure:
+  AddNormalNode(X1, X2);   // no in-place operator; X1: input; X2: temporary
+  AddInplaceNode(X2, X3);  // may-in-place operator; X3: temporary
+  AddNormalNode(X3, X4);   // no in-place operator; X4: output
+
+  // Do not populate planner context shapes. Instead provide equivalent shape metadata via NodeArg type protos.
+  Type symbolic_type{"M", "N"};
+  Arg(X2)->SetType(symbolic_type.value);
+  Arg(X3)->SetType(symbolic_type.value);
+
+  CreatePlan();
+
+  // check allocation kind:
+  CheckAllocKind(X1, AllocKind::kPreExisting);
+  CheckAllocKind(X2, AllocKind::kAllocate);
+  CheckAllocKind(X3, AllocKind::kReuse);
+  CheckAllocKind(X4, AllocKind::kAllocateOutput);
+}
+
 TEST_F(PlannerTest, ExternalOutputsTest) {
   // tensor variables:
   std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
