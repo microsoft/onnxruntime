@@ -150,6 +150,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // Read once during op construction so ORT_DISABLE_FP4_GEMV_SKIP_EXPAND follows the same
   // session-scoped configuration model as the other FP4 GEMV environment options.
   bool fp4_gemv_skip_expand_ = true;
+  bool nvfp4_gemv_raw_layout_ = false;
   bool enable_fp4_cutlass_gemm_ = false;
   // Native block-scaled CUTLASS FP4xFP4 grouped GEMM for NVFP4 (e2m1 weight + e2m1 activation,
   // block size 16, E4M3 block scales). Blackwell SM120+. When enabled, prefill routes through the
@@ -208,8 +209,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // decode GEMV reads gemv_fp4_fc*_weights_ directly.
   IAllocatorUniquePtr<void> gemv_fp4_fc1_weights_decode_;
   IAllocatorUniquePtr<void> gemv_fp4_fc2_weights_decode_;
-  // MXFP4-only combined activation-dtype scales. Raw-layout NVFP4 GEMV reads the E4M3 block
-  // scales and fp32 per-expert globals directly, avoiding a persistent full-model scale bank.
+  // Combined activation-dtype scales for prepacked GEMV. Raw-layout NVFP4 skips this bank.
   IAllocatorUniquePtr<void> gemv_fp4_fc1_scales_;  // [E, hidden/32, 2*inter] activation dtype
   IAllocatorUniquePtr<void> gemv_fp4_fc2_scales_;  // [E, inter/32, hidden] activation dtype
   // Raw [E, n, k_blocks] e8m0 block scales kept for GEMV when the native CUTLASS path has

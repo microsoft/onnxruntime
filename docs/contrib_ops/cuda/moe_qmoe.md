@@ -944,16 +944,48 @@ compile-time template (`static_assert((CtaK/kInterleave) % GroupSize == 0)`). NV
 - `is_moe_gemv_fp4_supported` accepts `group_size ∈ {16, 32}`; the dispatch instantiates the
   `GroupSize=16` cases in `dispatch_moe_gemv_group_size` /
   `dispatch_moe_gemv_interleaved_swiglu_group_size` ([moe_gemv_device.cuh](onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_gemv_device.cuh)).
-- NVFP4 uses **only** the non-interleaved `ColumnMajor` layout; the opt-in interleaved path
+- Prepacked NVFP4 uses the non-interleaved `ColumnMajor` layout; the opt-in interleaved path
   ([§9.10](#910-interleaved-gemv-layout--dtype-conditional-accumulation)) is MXFP4-only because its
   `kStepK=32` tile is tied to the block-32 scale layout.
 - `QMoECombineNvfp4ScalesForGemv` ([qmoe_kernels.cu](onnxruntime/contrib_ops/cuda/moe/qmoe_kernels.cu))
   decodes the `float8e4m3fn` block scales, folds in the per-expert FP32 global scale, and rewrites
   `[E, n, k/16] → [E, k/16, n]` in the activation dtype (`TypeA`) that the GEMV expects.
 - The decode gate ([moe_quantization.cc](onnxruntime/contrib_ops/cuda/moe/moe_quantization.cc)) fires
-  when `expanded = num_tokens·top_k ∈ (0, 8]`, SwiGLU is fused, and both FC1
+  when `expanded = num_tokens·top_k ∈ (0, 64]`, SwiGLU is fused, and both FC1
   (`n=2·inter`, `k=hidden`) and FC2 (`n=hidden`, `k=inter`) satisfy `n,k ≥ 512` and group-16 block
-  alignment. For Qwen3.6-35B-A3B (`hidden=2048`, `inter=512`, `E=256`, `top_k=8`) both GEMMs qualify.
+  alignment.
+  The fused expert-map prologue supports `top_k ∈ {1, 2, 4, 6, 8, 10}` and up to 1022 experts.
+  Qwen Flash (`hidden=2560`, `inter=640`, `top_k=10`) qualifies for one through six tokens.
+
+#### Raw-layout memory option
+
+Set `ORT_NVFP4_GEMV_RAW_LAYOUT=1` **before creating the session** to skip the decode-only
+weight repack and combined activation-dtype scale bank. The default is `0` (prepacked),
+preserving the existing latency-oriented path. The option applies only to NVFP4 GEMV;
+MXFP4, native grouped GEMM, and the dense fallback retain their existing layouts.
+
+Raw GEMV reads `[E, K, N/2]` packed E2M1 weights, `[E, N, K/16]` E4M3 block scales, and FP32
+per-expert global scales directly. It transposes an N16/K1024 tile in shared memory and
+reuses each scale for sixteen weights. Scales and scaled weights are rounded to the
+activation dtype before FP32 accumulation. No persistent weight conversion is performed.
+Raw initializers remain available for input validation and fallback in both modes.
+
+For each weight matrix, raw mode avoids an additional `E*N*K/2` weight bytes and
+`E*N*K/16*sizeof(activation)` combined-scale bytes. This describes persistent buffers, not
+measured peak session memory; native prefill buffers and allocator retention still contribute.
+
+The raw mode is a memory/latency tradeoff, not a universally faster replacement. A100
+kernel-only measurements covering FP16/BF16 decode, multi-token prediction, and long K
+found the tiled raw implementation approximately 1.8 to 4.5 times slower than prepacked
+GEMV, although substantially faster than the original scalar raw kernel. These are not
+full-model measurements and do not establish performance on other GPU architectures.
+Disabling GEMV entirely is not equivalent: the dense fallback dequantizes every expert,
+which can be much slower for large expert counts.
+
+Raw mode ignores `ORT_FP4_GEMV_AUTOTUNE`: the prepacked tiling candidates do not change
+the raw kernel, so profiling them only adds synchronization and repeated work. With
+`ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO=1`, the routes are reported as `fp4_gemv_raw` and
+`fp4_gemv_prepacked`.
 
 ### 9b.3 Fast E2M1 → half/bf16 decode
 

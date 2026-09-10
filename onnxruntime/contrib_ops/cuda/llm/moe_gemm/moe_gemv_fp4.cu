@@ -172,16 +172,14 @@ __device__ __forceinline__ float DecodeE4M3Fn(uint8_t code) {
     return __int_as_float(0x7fffffff);
   }
   const float value = exponent == 0
-                          ? ldexpf(static_cast<float>(mantissa), -9)
-                          : ldexpf(1.0f + static_cast<float>(mantissa) * 0.125f, exponent - 7);
+                          ? static_cast<float>(mantissa) * 0.001953125f
+                          : __int_as_float(((exponent + 120) << 23) | (mantissa << 20));
   return sign ? -value : value;
 }
 
 // NVFP4 schema weights are [E, K, N/2], with adjacent output columns in the two nibbles of
-// each byte. A generic remapped ColumnMajor iterator would make every lane gather strided bytes.
-// Instead, each warp owns 16 adjacent output columns: its eight N lanes load eight contiguous
-// packed bytes for each of four K lanes, then reduce the four partial K streams in-register.
-// This keeps the raw initializer directly consumable while giving each K row one coalesced N slice.
+// each byte. Transpose an N16/K1024 tile in shared memory so 64 independent K groups can
+// reuse each block scale for 16 values. Padding distributes compute-time reads across banks.
 template <typename T, bool FusedSwiGlu, bool EnableBias>
 __global__ void MoeGemvFp4RawNPackedKernel(
     const T* act, const uint8_t* weight, const uint8_t* block_scales, const float* global_scales,
@@ -193,7 +191,9 @@ __global__ void MoeGemvFp4RawNPackedKernel(
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
   constexpr int kWarpSize = 32;
   constexpr int kWarpsPerBlock = 4;
-  constexpr int kColsPerWarp = 16;
+  constexpr int kColsPerThread = 8;
+  constexpr int kNLanes = 2;
+  constexpr int kKLanes = kWarpsPerBlock * kWarpSize / kNLanes;
   constexpr unsigned kFullMask = 0xffffffffu;
 
   const int row = static_cast<int>(blockIdx.x);
@@ -212,10 +212,9 @@ __global__ void MoeGemvFp4RawNPackedKernel(
 
   const int lane = threadIdx.x % kWarpSize;
   const int warp = threadIdx.x / kWarpSize;
-  const int n_pair = lane % (kColsPerWarp / 2);
-  const int k_lane = lane / (kColsPerWarp / 2);
-  const int n0 = (static_cast<int>(blockIdx.y) * kWarpsPerBlock + warp) * kColsPerWarp + n_pair * 2;
-  const bool valid_n = n0 < n;
+  const int n_lane = lane % kNLanes;
+  const int k_lane = threadIdx.x / kNLanes;
+  const int n_base = (static_cast<int>(blockIdx.y) * kNLanes + n_lane) * kColsPerThread;
   const int source_row = permuted_row_to_source_row ? permuted_row_to_source_row[row] % num_rows : row;
 
   const T* row_act = act + static_cast<int64_t>(source_row) * k;
@@ -224,56 +223,123 @@ __global__ void MoeGemvFp4RawNPackedKernel(
   const float global_scale = global_scales[expert];
   const T* expert_bias = EnableBias ? bias + static_cast<int64_t>(expert) * n : nullptr;
 
-  float acc0 = 0.0f;
-  float acc1 = 0.0f;
-  for (int k_idx = k_lane; k_idx < k; k_idx += 4) {
-    float a = n_pair == 0 ? static_cast<float>(row_act[k_idx]) : 0.0f;
-    a = __shfl_sync(kFullMask, a, k_lane * (kColsPerWarp / 2));
-    if (valid_n) {
-      const uint8_t packed = expert_weight[static_cast<int64_t>(k_idx) * (n / 2) + n0 / 2];
-      const int k_blocks = k / 16;
-      const T scale0 = static_cast<T>(
-          DecodeE4M3Fn(expert_scales[static_cast<int64_t>(n0) * k_blocks + k_idx / 16]) * global_scale);
-      const T scale1 = static_cast<T>(
-          DecodeE4M3Fn(expert_scales[static_cast<int64_t>(n0 + 1) * k_blocks + k_idx / 16]) * global_scale);
-      const T weight0 = fiv::Fp4I2FConverter<T>::decode(packed & 0x0f);
-      const T weight1 = fiv::Fp4I2FConverter<T>::decode(packed >> 4);
-      const T scaled_weight0 = static_cast<T>(static_cast<float>(weight0) * static_cast<float>(scale0));
-      const T scaled_weight1 = static_cast<T>(static_cast<float>(weight1) * static_cast<float>(scale1));
-      acc0 += static_cast<float>(scaled_weight0) * a;
-      acc1 += static_cast<float>(scaled_weight1) * a;
+  __shared__ uint32_t weight_tile[kKLanes][kNLanes][17];
+  float accumulators[kColsPerThread] = {};
+  for (int k_tile = 0; k_tile < k; k_tile += kKLanes * 16) {
+    for (int tile_row = threadIdx.x; tile_row < kKLanes * 16; tile_row += kWarpSize * kWarpsPerBlock) {
+      const int tile_n = static_cast<int>(blockIdx.y) * kNLanes * kColsPerThread;
+      uint2 packed = {};
+      if (k_tile + tile_row < k) {
+        const uint8_t* weights = expert_weight + static_cast<int64_t>(k_tile + tile_row) * (n / 2);
+        if (n % (kNLanes * kColsPerThread) == 0) {
+          packed = *reinterpret_cast<const uint2*>(weights + tile_n / 2);
+        } else {
+#pragma unroll
+          for (int vector = 0; vector < kNLanes; ++vector) {
+            uint32_t word = 0;
+#pragma unroll
+            for (int pair = 0; pair < kColsPerThread / 2; ++pair) {
+              const int column = tile_n + vector * kColsPerThread + pair * 2;
+              if (column < n) {
+                word |= static_cast<uint32_t>(weights[column / 2]) << (pair * 8);
+              }
+            }
+            reinterpret_cast<uint32_t*>(&packed)[vector] = word;
+          }
+        }
+      }
+      weight_tile[tile_row / 16][0][tile_row % 16] = packed.x;
+      weight_tile[tile_row / 16][1][tile_row % 16] = packed.y;
     }
+    __syncthreads();
+    const int k_base = k_tile + k_lane * 16;
+    if (k_base < k) {
+      alignas(4) T scales[kColsPerThread];
+#pragma unroll
+      for (int col = 0; col < kColsPerThread; ++col) {
+        scales[col] = n_base + col < n
+                          ? static_cast<T>(DecodeE4M3Fn(expert_scales[static_cast<int64_t>(n_base + col) *
+                                                                          (k / 16) +
+                                                                      k_base / 16]) *
+                                           global_scale)
+                          : static_cast<T>(0.0f);
+      }
+      alignas(16) T activations[16];
+      reinterpret_cast<uint4*>(activations)[0] = reinterpret_cast<const uint4*>(row_act + k_base)[0];
+      reinterpret_cast<uint4*>(activations)[1] = reinterpret_cast<const uint4*>(row_act + k_base)[1];
+#pragma unroll
+      for (int element = 0; element < 16; ++element) {
+        uint32_t packed = weight_tile[k_lane][n_lane][element];
+        const float activation = static_cast<float>(activations[element]);
+        alignas(4) T decoded[kColsPerThread];
+        fiv::Fp4I2FConverter<T>::template convert<kColsPerThread>(&packed, decoded);
+        using PackedT = std::conditional_t<std::is_same_v<T, half>, half2, __nv_bfloat162>;
+#pragma unroll
+        for (int pair = 0; pair < kColsPerThread / 2; ++pair) {
+          reinterpret_cast<PackedT*>(decoded)[pair] =
+              __hmul2(reinterpret_cast<const PackedT*>(decoded)[pair],
+                      reinterpret_cast<const PackedT*>(scales)[pair]);
+        }
+#pragma unroll
+        for (int col = 0; col < kColsPerThread; ++col) {
+          accumulators[col] += static_cast<float>(decoded[col]) * activation;
+        }
+      }
+    }
+    __syncthreads();
   }
 
-  acc0 += __shfl_xor_sync(kFullMask, acc0, 8);
-  acc1 += __shfl_xor_sync(kFullMask, acc1, 8);
-  acc0 += __shfl_xor_sync(kFullMask, acc0, 16);
-  acc1 += __shfl_xor_sync(kFullMask, acc1, 16);
-  if (k_lane != 0 || !valid_n) {
+  __shared__ float partials[kWarpsPerBlock][kColsPerThread][kNLanes];
+#pragma unroll
+  for (int col = 0; col < kColsPerThread; ++col) {
+    accumulators[col] += __shfl_xor_sync(kFullMask, accumulators[col], 2);
+    accumulators[col] += __shfl_xor_sync(kFullMask, accumulators[col], 4);
+    accumulators[col] += __shfl_xor_sync(kFullMask, accumulators[col], 8);
+    accumulators[col] += __shfl_xor_sync(kFullMask, accumulators[col], 16);
+    if (lane < kNLanes) {
+      partials[warp][col][n_lane] = accumulators[col];
+    }
+  }
+  __syncthreads();
+  if (k_lane != 0 || n_base >= n) {
     return;
   }
 
-  if constexpr (EnableBias) {
-    acc0 += static_cast<float>(expert_bias[n0]);
-    acc1 += static_cast<float>(expert_bias[n0 + 1]);
-  }
-  if constexpr (FusedSwiGlu) {
-    const float* alpha = activation_params.swiglu_alpha;
-    const float* beta = activation_params.swiglu_beta;
-    const float* limit = activation_params.swiglu_limit;
-    const float activation_alpha = alpha ? alpha[expert] : activation_params.alpha;
-    const float activation_beta = beta ? beta[expert] : activation_params.beta;
-    const float activation_limit = limit ? limit[expert] : activation_params.limit;
-    if (isfinite(activation_limit)) {
-      acc0 = fminf(acc0, activation_limit);
-      acc1 = fminf(fmaxf(acc1, -activation_limit), activation_limit);
+#pragma unroll
+  for (int col = 0; col < kColsPerThread; col += 2) {
+    const int n0 = n_base + col;
+    if (n0 >= n) {
+      continue;
     }
-    acc1 += activation_beta;
-    const float sigmoid = 1.0f / (1.0f + expf(-activation_alpha * acc0));
-    out[static_cast<int64_t>(row) * (n / 2) + n0 / 2] = static_cast<T>(acc0 * sigmoid * acc1);
-  } else {
-    out[static_cast<int64_t>(row) * n + n0] = static_cast<T>(acc0);
-    out[static_cast<int64_t>(row) * n + n0 + 1] = static_cast<T>(acc1);
+    float acc0 = 0.0f;
+    float acc1 = 0.0f;
+#pragma unroll
+    for (int partial = 0; partial < kWarpsPerBlock; ++partial) {
+      acc0 += partials[partial][col][n_lane];
+      acc1 += partials[partial][col + 1][n_lane];
+    }
+    if constexpr (EnableBias) {
+      acc0 += static_cast<float>(expert_bias[n0]);
+      acc1 += static_cast<float>(expert_bias[n0 + 1]);
+    }
+    if constexpr (FusedSwiGlu) {
+      const float* alpha = activation_params.swiglu_alpha;
+      const float* beta = activation_params.swiglu_beta;
+      const float* limit = activation_params.swiglu_limit;
+      const float activation_alpha = alpha ? alpha[expert] : activation_params.alpha;
+      const float activation_beta = beta ? beta[expert] : activation_params.beta;
+      const float activation_limit = limit ? limit[expert] : activation_params.limit;
+      if (isfinite(activation_limit)) {
+        acc0 = fminf(acc0, activation_limit);
+        acc1 = fminf(fmaxf(acc1, -activation_limit), activation_limit);
+      }
+      acc1 += activation_beta;
+      const float sigmoid = 1.0f / (1.0f + expf(-activation_alpha * acc0));
+      out[static_cast<int64_t>(row) * (n / 2) + n0 / 2] = static_cast<T>(acc0 * sigmoid * acc1);
+    } else {
+      out[static_cast<int64_t>(row) * n + n0] = static_cast<T>(acc0);
+      out[static_cast<int64_t>(row) * n + n0 + 1] = static_cast<T>(acc1);
+    }
   }
 #endif
 }
@@ -286,7 +352,7 @@ void LaunchMoeGemvFp4RawNPacked(
     int64_t expanded_num_rows, int64_t n, int64_t k, cutlass_kernels::ActivationParams activation_params,
     const int* permuted_row_to_source_row, int64_t num_rows, cudaStream_t stream) {
   constexpr int kThreads = 128;
-  constexpr int kColsPerBlock = 64;
+  constexpr int kColsPerBlock = 16;
   const int64_t weight_expert_stride = n * k / 2;
   const int64_t scale_expert_stride = n * (k / 16);
   const dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>((n + kColsPerBlock - 1) / kColsPerBlock));
