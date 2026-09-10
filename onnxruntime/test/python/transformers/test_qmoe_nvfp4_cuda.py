@@ -322,6 +322,7 @@ class TestQMoENVFP4(unittest.TestCase):
         atol_override=None,
         router_logits_override=None,
         use_bias=False,
+        rtol_override=0.0,
     ):
         self._skip_if_no_fp4()
 
@@ -472,10 +473,12 @@ class TestQMoENVFP4(unittest.TestCase):
         # error far above this (order 1.0+), so gross regressions are still caught.
         if _routes_native_fp4_prefill(num_tokens):
             atol = 0.25 if torch_dtype == torch.float16 else 0.28
+        tolerance = atol + rtol_override * ref_output.float().abs().max().item()
         self.assertLess(
             max_diff,
-            atol,
-            f"NVFP4 MoE parity check failed: max_diff={max_diff:.6f} > atol={atol}",
+            tolerance,
+            f"NVFP4 MoE parity check failed: max_diff={max_diff:.6f} > tolerance={tolerance:.6f} "
+            f"(atol={atol}, normwise rtol={rtol_override})",
         )
 
         return ort_output
@@ -737,13 +740,18 @@ class TestQMoENVFP4(unittest.TestCase):
 
     @parameterized.expand(
         [
-            ("test_nvfp4_fp16_gemv_decode_swiglu",),
-            ("test_nvfp4_fp16_gemv_qwen_flash_decode_shape",),
-            ("test_nvfp4_gemv_decode_swiglu_bias_0_fp16",),
-            ("test_nvfp4_gemv_decode_swiglu_bias_1_bf16",),
+            (test_name, raw_layout)
+            for test_name in (
+                "test_nvfp4_fp16_gemv_decode_swiglu",
+                "test_nvfp4_fp16_gemv_qwen_flash_decode_shape",
+                "test_nvfp4_gemv_decode_swiglu_bias_0_fp16",
+                "test_nvfp4_gemv_decode_swiglu_bias_1_bf16",
+                "test_nvfp4_gemv_512_experts",
+            )
+            for raw_layout in (None, "0", "1")
         ]
     )
-    def test_nvfp4_gemv_route_debug(self, test_name):
+    def test_nvfp4_gemv_route_debug(self, test_name, raw_layout):
         # Run in a fresh process because QMoE reads the debug and GEMV env switches when the
         # session constructs the kernel. Each case must use GEMV, including Qwen's top_k=10
         # prologue and both bias-enabled raw-kernel instantiations.
@@ -751,6 +759,12 @@ class TestQMoENVFP4(unittest.TestCase):
         env = dict(os.environ)
         env["ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO"] = "1"
         env["ORT_ENABLE_FP4_GEMV"] = "1"
+        if raw_layout is None:
+            env.pop("ORT_NVFP4_GEMV_RAW_LAYOUT", None)
+        else:
+            env["ORT_NVFP4_GEMV_RAW_LAYOUT"] = raw_layout
+        env["ORT_FP4_GEMV_AUTOTUNE"] = "1" if raw_layout == "1" else "0"
+        env["ORT_FP4_GEMV_AUTOTUNE_LOG"] = "1"
         proc = subprocess.run(
             [
                 sys.executable,
@@ -768,16 +782,32 @@ class TestQMoENVFP4(unittest.TestCase):
         output = proc.stdout + proc.stderr
         self.assertEqual(proc.returncode, 0, output)
         self.assertIn("Operator=QMoE", output)
-        self.assertIn("Route=fp4_gemv", output)
+        expected_layout = "raw" if raw_layout == "1" else "prepacked"
+        self.assertIn(f"Route=fp4_gemv_{expected_layout}", output)
+        self.assertNotIn("FP4 GEMV autotune", output)
+
+    def test_nvfp4_gemv_512_experts(self):
+        self._run_nvfp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=512,
+            top_k=10,
+            num_tokens=1,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_swiglu=True,
+            gemv_mode="1",
+        )
 
     def test_nvfp4_fp16_gemv_scales_weights_before_multiply(self):
         # Overflow guard for accumulate_column_tile(): it must apply the group scale to the
         # decoded weight *before* multiplying by the activation. FP4 codes reach 6.0 and the
         # group scales are well below 1, so multiplying first can overflow FP16 (max 65504)
-        # even when the scaled product is representable. Driving the activations to ~1e4 puts
-        # the unscaled products past that limit, which the isfinite() check in the helper
-        # catches. atol is raised because the outputs themselves are ~1e4 times larger; 3.0
-        # there is ~3e-4 relative, i.e. far tighter than the default 0.12 at unit scale.
+        # even when the scaled product is representable. SwiGLU clamps can hide nonfinite
+        # intermediates, so output parity is required in addition to the helper's finiteness check.
+        # At input_scale=1e4, FP16 scale/weight rounding can move nearly cancelled FC1 gates
+        # across zero; FP32 accumulation does not remove this difference from the FP32 reference.
+        # Use a normwise 32-epsilon budget with a small absolute guard: SwiGLU bounds the
+        # outputs, so their magnitude is not proportional to input_scale.
         self._run_nvfp4_moe_test(
             hidden_size=512,
             inter_size=512,
@@ -788,7 +818,7 @@ class TestQMoENVFP4(unittest.TestCase):
             use_swiglu=True,
             gemv_mode="1",
             input_scale=10000.0,
-            atol_override=3.0,
+            rtol_override=32 * torch.finfo(torch.float16).eps,
         )
 
     def test_nvfp4_fp16_gemv_disabled_swiglu(self):
