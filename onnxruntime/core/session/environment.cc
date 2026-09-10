@@ -567,20 +567,28 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
                                                      std::unique_ptr<EpLibrary> ep_library,
                                                      const std::vector<EpFactoryInternal*>& internal_factories) {
   const Env& env = Env::Default();
+#if defined(ORT_USE_TELEMETRY)
   const TimePoint tp = std::chrono::high_resolution_clock::now();
+#endif
   env.GetTelemetryProvider().LogRegisterEpLibraryStart(registration_name);
 
   if (ep_libraries_.count(registration_name) > 0) {
     auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
+#if defined(ORT_USE_TELEMETRY)
     env.GetTelemetryProvider().LogRegisterEpLibraryEnd(
         registration_name, status, TimeDiffMicroSeconds(tp));
+#else
+    env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status, 0);
+#endif
     return status;
   }
 
   auto status = Status::OK();
 
   ORT_TRY {
+#if defined(ORT_USE_TELEMETRY)
     status = [&]() -> Status {
+#endif
       // create the EpInfo which loads the library if required
       std::unique_ptr<EpInfo> ep_info = nullptr;
       ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
@@ -619,8 +627,10 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       }
 
       ep_libraries_[registration_name] = std::move(ep_info);
+#if defined(ORT_USE_TELEMETRY)
       return Status::OK();
     }();
+#endif
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -629,8 +639,11 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     });
   }
 
-  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(
-      registration_name, status, TimeDiffMicroSeconds(tp));
+#if defined(ORT_USE_TELEMETRY)
+  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status, TimeDiffMicroSeconds(tp));
+#else
+  env.GetTelemetryProvider().LogRegisterEpLibraryEnd(registration_name, status, 0);
+#endif
   return status;
 }
 
