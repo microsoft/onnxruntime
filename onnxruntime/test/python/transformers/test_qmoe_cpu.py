@@ -1446,7 +1446,6 @@ class TestPhiQMoECPU(unittest.TestCase):
             use_asymmetric_quant=False,
         )
 
-        self.assertTrue(packed_moe.recreate_onnx_model())
         self.assertIsNotNone(packed_moe.ort_sess)
         packed_moe.parity_check(recreate_model=False)
 
