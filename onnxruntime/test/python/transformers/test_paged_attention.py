@@ -2317,9 +2317,7 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         )
 
         def run():
-            parity_check_paged_attention(
-                config, rtol=rtol, atol=atol, k_scale_max_override=k_scale_max_override
-            )
+            parity_check_paged_attention(config, rtol=rtol, atol=atol, k_scale_max_override=k_scale_max_override)
 
         if require_xqa:
             with patch.dict(
