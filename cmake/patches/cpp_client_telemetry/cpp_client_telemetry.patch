@@ -37,6 +37,24 @@
 +#endif
  #endif
 
+--- a/lib/pal/TaskDispatcher_CAPI.cpp
++++ b/lib/pal/TaskDispatcher_CAPI.cpp
+@@ -44,4 +44,5 @@
+                 }
+                 catch (const std::exception& ex) {
++                    (void)ex;
+                     LOG_ERROR("Unhandled exception in CAPI task: %s", ex.what());
+                 }
+
+--- a/lib/pal/WorkerThread.cpp
++++ b/lib/pal/WorkerThread.cpp
+@@ -247,4 +247,5 @@
+                         }
+                         catch (const std::exception& ex) {
++                            (void)ex;
+                             LOG_ERROR("Unhandled exception in worker task: %s", ex.what());
+                         }
+
 --- a/lib/pal/posix/sysinfo_utils_mac.mm
 +++ b/lib/pal/posix/sysinfo_utils_mac.mm
 @@ -8,4 +8,5 @@

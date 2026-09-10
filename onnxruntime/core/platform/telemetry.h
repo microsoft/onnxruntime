@@ -106,17 +106,6 @@ class Telemetry {
                                 uint32_t total_runs_since_last,
                                 int64_t total_run_duration_since_last) const;
 
-  // Emits one inventory event per (Execution Provider, hardware device) pairing in use by a session.
-  virtual void LogEpDeviceInventory(uint32_t session_id,
-                                    const std::string& ep_type,
-                                    const std::string& hardware_device_type,
-                                    uint32_t hardware_vendor_id,
-                                    uint32_t hardware_device_id,
-                                    const std::string& hardware_vendor,
-                                    const std::string& ep_vendor,
-                                    const std::string& ep_version,
-                                    int assigned_node_count) const;
-
   virtual void LogExecutionProviderEvent(LUID* adapterLuid) const;
 
   virtual void LogDriverInfoEvent(const std::string_view device_class,

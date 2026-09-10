@@ -4555,10 +4555,10 @@ void InferenceSession::LogSessionCreationTelemetry(const onnxruntime::Graph& gra
 
   // Emit one inventory event per (EP, device) pair.
   for (const auto& ep_info : telemetry_.ep_device_info_) {
-    env.GetTelemetryProvider().LogEpDeviceInventory(
+    env.GetTelemetryProvider().LogEpDeviceUsage(
         session_id_, ep_info.ep_type, ep_info.hardware_device_type,
         ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
-        ep_info.ep_version, ep_info.assigned_node_count);
+        ep_info.ep_version, ep_info.assigned_node_count, 0, 0);
   }
 }
 

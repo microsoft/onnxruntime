@@ -1,10 +1,10 @@
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-vcpkg_from_github(
+vcpkg_from_git(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO microsoft/cpp_client_telemetry
-    REF v${VERSION}
-    SHA512 4a3cdb2f8d7664f6b003d8cb24190c7d98ad39c899d13e2ecf27af4f32b8820f5deecacd6377c7dafda698864a19f7beb9501372c2d1291b6a75f44a9cf832fc
+    URL https://github.com/microsoft/cpp_client_telemetry.git
+    REF e71bdaafdb263c09f280474f2e241613529f33f2
+    FETCH_REF v${VERSION}
     HEAD_REF main
     PATCHES
         "${CMAKE_CURRENT_LIST_DIR}/../../patches/cpp_client_telemetry/cpp_client_telemetry.patch"

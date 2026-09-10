@@ -124,16 +124,6 @@ class PosixTelemetry : public Telemetry {
                         uint32_t total_runs_since_last,
                         int64_t total_run_duration_since_last) const override;
 
-  void LogEpDeviceInventory(uint32_t session_id,
-                            const std::string& ep_type,
-                            const std::string& hardware_device_type,
-                            uint32_t hardware_vendor_id,
-                            uint32_t hardware_device_id,
-                            const std::string& hardware_vendor,
-                            const std::string& ep_vendor,
-                            const std::string& ep_version,
-                            int assigned_node_count) const override;
-
   void LogRegisterEpLibraryStart(const std::string& registration_name) const override;
   void LogRegisterEpLibraryEnd(const std::string& registration_name,
                                const common::Status& status,
