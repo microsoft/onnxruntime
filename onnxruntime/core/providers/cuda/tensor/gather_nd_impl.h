@@ -7,6 +7,11 @@
 namespace onnxruntime {
 namespace cuda {
 
+struct GatherNDValidationResult {
+  int64_t position;
+  int64_t value;
+};
+
 template <typename TIndex>
 void ComputeSliceOffsetsImpl(
     cudaStream_t stream,
@@ -16,9 +21,19 @@ void ComputeSliceOffsetsImpl(
     const size_t num_slices_per_batch,
     const size_t input_batch_stride,
     const size_t num_slice_dims,
-    const int64_t* const sizes_from_slice_dims_data,  // num_slice_dims elements
-    const TIndex* const indices_data,                 // num_slices * num_slice_dims elements
-    int64_t* const input_slice_offsets_data);         // num_slices elements
+    const TArray<int64_t> sizes_from_slice_dims,  // num_slice_dims elements
+    const TIndex* const indices_data,             // num_slices * num_slice_dims elements
+    int64_t* const input_slice_offsets_data);     // num_slices elements
+
+template <typename TIndex>
+GatherNDValidationResult ValidateIndicesAndReturnFirstInvalidIndex(
+    cudaStream_t stream,
+    const int64_t batch_dims,
+    const TArray<int64_t> input_dims,
+    const size_t num_slices,
+    const size_t num_slice_dims,
+    const TIndex* const indices_data,
+    GatherNDValidationResult* device_result);
 
 template <typename T>
 void GatherNDImpl(
