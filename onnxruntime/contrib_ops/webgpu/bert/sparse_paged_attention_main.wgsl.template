@@ -11,8 +11,9 @@
 //
 // local_count is only non-zero in 'local_plus_selected' mode; selected entries
 // are only present when the selection comes from the main cache. The loop runs
-// exactly candidate_count times — bounded by the input shapes and the
-// device-resident selected_counts, and never truncated.
+// exactly candidate_count times — bounded by the input shapes, by the number of
+// positions the block table can address, and by the device-resident
+// selected_counts, and never truncated.
 //
 // The running softmax state (max, denominator) and the value accumulator are
 // kept in FP32 and are written out alongside the accumulator so the finalize
@@ -60,11 +61,16 @@ $MAIN {
   let kv_head_idx = head_idx / (uniforms.num_heads / uniforms.kv_num_heads);
 
   // token_meta is produced by SparsePagedAttentionTokenMeta and is already
-  // sanitized, so the batch id can be converted to u32 directly.
+  // sanitized, so the batch id can be converted to u32 directly. The lengths
+  // are re-clamped to the block table's reach here as well: this shader must
+  // never derive a candidate count from an unvalidated value, because the loop
+  // below is not otherwise bounded and a 2^31-iteration walk would hang the
+  // device.
   let meta_base = token_idx * 4u;
+  let position_limit = i32(uniforms.max_main_positions);
   let batch_idx = u32(token_meta.getByOffset(meta_base));
-  let query_position = token_meta.getByOffset(meta_base + 1u);
-  let main_length = token_meta.getByOffset(meta_base + 2u);
+  let query_position = clamp(token_meta.getByOffset(meta_base + 1u), 0, position_limit);
+  let main_length = clamp(token_meta.getByOffset(meta_base + 2u), 0, position_limit);
 
   let query_base = (token_idx * uniforms.num_heads + head_idx) * head_size;
   for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
@@ -96,7 +102,9 @@ $MAIN {
   selected_count = clamp(selected_counts[token_idx], 0, i32(uniforms.max_selected_entries));
 #endif
 
-  let candidate_count = u32(local_count + selected_count);
+  // local_count is bounded by position_limit + 1 and selected_count by the
+  // selected_indices width, so the u32 sum below cannot wrap.
+  let candidate_count = u32(local_count) + u32(selected_count);
   var running_max: f32 = negative_infinity;
   var running_sum: f32 = 0.0;
   var has_contribution = false;

@@ -8,9 +8,21 @@
 //
 // Every value read here is an i32 coming from a caller-owned buffer, so it is
 // sanitized before it is written: negative lengths clamp to zero, the
-// cumulative range is forced non-decreasing, and the auxiliary length is
-// clamped to the auxiliary cache capacity. Downstream shaders can therefore
-// convert these fields to u32 without a range check of their own.
+// cumulative range is forced non-decreasing, the main lengths are clamped to
+// the number of positions the block table can address, and the auxiliary
+// length is clamped to the auxiliary cache capacity. Downstream shaders can
+// therefore convert these fields to u32 without a range check of their own.
+//
+// The clamps run *before* any addition, and both bounds are below 2^30, so no
+// sum here can overflow i32 regardless of what the caller wrote into
+// past_seqlens or cumulative_sequence_length. Without that, a hostile or
+// merely stale past_seqlens value (up to 2^31-1) would wrap into a negative
+// length or produce a candidate count large enough to hang the device in the
+// main shader's local-window loop.
+//
+// Clamping to the block table's reach loses nothing: a position at or beyond
+// max_num_blocks_per_seq * block_size has no physical block, so the attention
+// shaders would drop it anyway.
 
 #param has_auxiliary_lengths
 
@@ -22,6 +34,10 @@ $MAIN {
 
   let token_idx = global_idx;
   let token_index_i32 = i32(token_idx);
+  // max_main_positions is host-clamped to 2^30-1; the token bound gets the same
+  // treatment here so that every i32 sum below stays representable.
+  let position_limit = i32(uniforms.max_main_positions);
+  let token_limit = i32(min(uniforms.dispatch_size, 0x3fffffffu));
 
   // Locate the request this packed token belongs to. Falls back to the last
   // request when cumulative_sequence_length does not cover the token, which
@@ -34,12 +50,14 @@ $MAIN {
     }
   }
 
-  let cum_lo = max(cumulative_sequence_length.getByOffset(batch_idx), 0);
-  let cum_hi = max(cumulative_sequence_length.getByOffset(batch_idx + 1u), cum_lo);
+  let cum_lo = clamp(cumulative_sequence_length.getByOffset(batch_idx), 0, token_limit);
+  let cum_hi = clamp(cumulative_sequence_length.getByOffset(batch_idx + 1u), cum_lo, token_limit);
   let query_length = cum_hi - cum_lo;
-  let past_length = max(past_seqlens.getByOffset(batch_idx), 0);
-  let query_position = past_length + max(token_index_i32 - cum_lo, 0);
-  let main_length = past_length + query_length;
+  let query_offset = clamp(token_index_i32 - cum_lo, 0, token_limit);
+  let past_length = clamp(past_seqlens.getByOffset(batch_idx), 0, position_limit);
+  // Both operands are already clamped below 2^30, so these sums cannot overflow.
+  let query_position = min(past_length + query_offset, position_limit);
+  let main_length = min(past_length + query_length, position_limit);
 
   var auxiliary_length: i32 = 0;
 #if has_auxiliary_lengths

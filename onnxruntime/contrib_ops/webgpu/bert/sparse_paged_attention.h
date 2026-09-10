@@ -74,8 +74,10 @@ class SparsePagedAttentionScatterKVProgram final
 // Output (write):
 //   token_meta : (token_count, 4)                   [S]
 //
-// Every int32 read is sanitized (negative values clamped, ranges ordered)
-// before it is written, so downstream shaders can convert to u32 safely.
+// Every int32 read is sanitized (negative values clamped, ranges ordered, main
+// lengths clamped to max_num_blocks_per_seq * block_size) before it is written,
+// so downstream shaders can convert to u32 safely and can never derive an
+// unbounded candidate count from a caller-supplied past_seqlens value.
 class SparsePagedAttentionTokenMetaProgram final
     : public Program<SparsePagedAttentionTokenMetaProgram> {
  public:
@@ -88,6 +90,7 @@ class SparsePagedAttentionTokenMetaProgram final
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
       {"auxiliary_capacity", ProgramUniformVariableDataType::Uint32},
+      {"max_main_positions", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 
  private:
@@ -117,7 +120,8 @@ class SparsePagedAttentionTokenMetaProgram final
 // auxiliary partial state into one joint FP32 softmax.
 //
 // One workgroup handles one (token, head) pair and iterates the candidate list
-// exactly `local_count + selected_count` times: bounded by the input shapes and
+// exactly `local_count + selected_count` times: bounded by the input shapes, by
+// the number of positions the block table can address, and by the
 // device-resident counts, and never truncated.
 class SparsePagedAttentionMainProgram final
     : public Program<SparsePagedAttentionMainProgram> {
@@ -139,6 +143,7 @@ class SparsePagedAttentionMainProgram final
       {"block_size", ProgramUniformVariableDataType::Uint32},
       {"num_blocks", ProgramUniformVariableDataType::Uint32},
       {"max_num_blocks_per_seq", ProgramUniformVariableDataType::Uint32},
+      {"max_main_positions", ProgramUniformVariableDataType::Uint32},
       {"max_selected_entries", ProgramUniformVariableDataType::Uint32},
       {"local_window_size", ProgramUniformVariableDataType::Uint32},
       {"workgroup_count", ProgramUniformVariableDataType::Uint32},

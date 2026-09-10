@@ -46,8 +46,13 @@ and no stage truncates its candidate list.
    `token_meta[t] = (batch_id, query_position, main_length, auxiliary_length)`
    on device from `cumulative_sequence_length`, `past_seqlens`, and
    `auxiliary_lengths`. Values are sanitized here (negatives clamped, ranges
-   ordered, auxiliary length clamped to capacity) so later stages can convert to
-   `u32` without further checks.
+   ordered, main lengths clamped to `max_num_blocks_per_seq * block_size`,
+   auxiliary length clamped to capacity) so later stages can convert to `u32`
+   without further checks. Clamping happens before any addition and the bounds
+   stay below 2^30, so no caller-supplied length can overflow the `i32`
+   arithmetic or turn into a candidate count large enough to hang the device.
+   Positions at or beyond the block table's reach have no physical block, so
+   clamping to it drops nothing the attention stages would have used.
 4. **Partial attention.** One workgroup per `(token, head)` walks its candidate
    list and produces an FP32 online-softmax state
    `(accumulator[head_size], running_max, running_sum)`. Up to two partial states
@@ -103,7 +108,8 @@ Each of these is rejected with an explicit error; none silently changes numerics
 | `rotary_offset != 0` | `NOT_IMPLEMENTED` |
 | `auxiliary_cache_layout` other than `contiguous` | Rejected when the kernel is created |
 | `head_size > 512`, or a head size whose workgroup storage exceeds the device limit | `NOT_IMPLEMENTED` |
-| Configurations needing more storage buffers per stage than the device reports | `NOT_IMPLEMENTED` |
+| Configurations needing more storage buffer bindings per stage than the device reports | `NOT_IMPLEMENTED` |
+| An optional (raw-indexed) binding larger than `maxStorageBufferBindingSize` | `NOT_IMPLEMENTED` |
 
 ## Limitations
 
@@ -111,9 +117,16 @@ Each of these is rejected with an explicit error; none silently changes numerics
   states to a scratch tensor of
   `token_count * num_heads * (head_size + 2)` floats and merges them in a second
   pass. The scratch size is validated against `maxStorageBufferBindingSize`.
-- The main-cache stage binds eight storage buffers, which is the guaranteed
-  WebGPU minimum for `maxStorageBuffersPerShaderStage`. Adding further per-token
-  inputs to that stage would require restructuring.
+- Storage-binding budgets are validated per stage, from the actual binding
+  segments rather than from a tensor count: the WebGPU EP binds any buffer larger
+  than `maxStorageBufferBindingSize` as several consecutive segments, so a large
+  KV cache consumes more than one binding. The main-cache stage binds eight
+  tensors, which is the guaranteed WebGPU minimum for
+  `maxStorageBuffersPerShaderStage`, so any segmented buffer in that stage is
+  rejected up front instead of failing during shader creation. Optional bindings
+  (`selected_indices`, `selected_counts`, `auxiliary_value`, `auxiliary_lengths`,
+  the partial scratch, `head_sink`) are read with raw indexing, which cannot
+  address past the first segment, so they must each fit one binding.
 - `cos_cache`/`sin_cache` lengths are not validated against the largest KV
   position actually reached, because that would require reading device-resident
   lengths on the host. WebGPU's robust buffer access makes an out-of-range read

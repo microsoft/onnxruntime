@@ -3,7 +3,9 @@
 
 #include "contrib_ops/webgpu/bert/sparse_paged_attention.h"
 
+#include <algorithm>
 #include <cmath>
+#include <initializer_list>
 #include <string>
 
 #include "contrib_ops/cpu/bert/attention_parameters.h"
@@ -26,6 +28,79 @@ constexpr uint32_t kAttentionWorkgroupSize = 64;
 // The staged shaders keep two head_size-sized FP32 arrays plus one
 // workgroup-size-sized reduction array in workgroup memory.
 constexpr int kMaxSupportedHeadSize = 512;
+
+// Upper bound for every sanitized position the shaders derive from
+// caller-owned i32 buffers (past_seqlens, cumulative_sequence_length). Staying
+// below 2^30 lets the shaders add two sanitized values without overflowing i32.
+constexpr uint64_t kMaxSanitizedPosition = 0x3FFFFFFF;
+
+// Number of logical positions the block table can address. Anything at or
+// beyond this has no physical block, so clamping to it is lossless.
+uint32_t MainCachePositionBound(const PagedAttentionParameters& parameters) {
+  const uint64_t positions = static_cast<uint64_t>(std::max(parameters.max_num_blocks_per_seq, 0)) *
+                             static_cast<uint64_t>(std::max(parameters.block_size, 0));
+  return static_cast<uint32_t>(std::min(positions, kMaxSanitizedPosition));
+}
+
+// A buffer larger than maxStorageBufferBindingSize is bound as several
+// consecutive segments (see ProgramManager::CalculateSegmentsForInputsAndOutputs),
+// so it consumes more than one storage binding in the bind group layout.
+uint32_t StorageBindingSegments(const Tensor* tensor, uint64_t max_binding_size) {
+  if (tensor == nullptr) {
+    return 0;
+  }
+  const uint64_t bytes = tensor->SizeInBytes();
+  if (max_binding_size == 0 || bytes <= max_binding_size) {
+    return 1;
+  }
+  return static_cast<uint32_t>((bytes + max_binding_size - 1) / max_binding_size);
+}
+
+struct StageBinding {
+  const Tensor* tensor;
+  const char* name;
+  // Optional bindings are read with raw indexing in the templates, because the
+  // WGSL template system cannot take a conditionally added variable. Raw
+  // indexing only ever reaches the first segment of a segmented buffer, so such
+  // a binding must stay within one segment.
+  bool raw_indexed = false;
+};
+
+// Validate a stage's bind group against the device *before* the shader is
+// generated, so the caller gets an actionable NOT_IMPLEMENTED instead of a
+// ShaderHelper/Dawn validation failure deep inside program creation. Counting
+// tensors is not sufficient: a buffer beyond maxStorageBufferBindingSize takes
+// several bindings, so a large KV cache or selection buffer can exhaust
+// maxStorageBuffersPerShaderStage even when the tensor count looks fine.
+Status CheckStageStorageBindings(const onnxruntime::webgpu::ComputeContext& context,
+                                 const char* stage_name,
+                                 std::initializer_list<StageBinding> bindings) {
+  const uint64_t max_binding_size = context.DeviceLimits().maxStorageBufferBindingSize;
+  const uint32_t max_bindings = context.DeviceLimits().maxStorageBuffersPerShaderStage;
+  uint32_t binding_count = 0;
+  for (const StageBinding& binding : bindings) {
+    const uint32_t segments = StorageBindingSegments(binding.tensor, max_binding_size);
+    if (segments > 1 && binding.raw_indexed) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "SparsePagedAttention (WebGPU): the ", stage_name, " stage binds '",
+                             binding.name, "' as ", segments,
+                             " buffer segments because it is larger than the ", max_binding_size,
+                             " byte maxStorageBufferBindingSize; segmented bindings are not "
+                             "supported for this input.");
+    }
+    binding_count += segments;
+  }
+  if (binding_count > max_bindings) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "SparsePagedAttention (WebGPU): the ", stage_name, " stage needs ",
+                           binding_count, " storage buffer bindings (buffers larger than the ",
+                           max_binding_size,
+                           " byte maxStorageBufferBindingSize are bound as multiple segments), "
+                           "but the device supports only ",
+                           max_bindings, " per shader stage.");
+  }
+  return Status::OK();
+}
 
 }  // namespace
 
@@ -211,6 +286,7 @@ Status RunSparseTokenMeta(onnxruntime::webgpu::ComputeContext& context,
       .AddUniformVariables({
           {batch_size},
           {auxiliary_capacity},
+          {MainCachePositionBound(parameters)},
           {dispatch_size},
       })
       .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
@@ -268,6 +344,7 @@ Status RunSparseMainPartial(onnxruntime::webgpu::ComputeContext& context,
           {static_cast<uint32_t>(parameters.block_size)},
           {static_cast<uint32_t>(parameters.num_blocks)},
           {static_cast<uint32_t>(parameters.max_num_blocks_per_seq)},
+          {MainCachePositionBound(parameters)},
           {max_selected_entries},
           {local_window_size},
           {workgroup_count},
@@ -637,8 +714,11 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
   const uint64_t partial_bytes = static_cast<uint64_t>(parameters.token_count) *
                                  static_cast<uint64_t>(parameters.num_heads) *
                                  (static_cast<uint64_t>(parameters.head_size) + 2u) * sizeof(float);
+  // The finalize stage reads the partial scratch with raw indexing (an optional
+  // binding cannot be a template variable), which only reaches the first
+  // segment, so the scratch must fit a single binding.
   if (partial_bytes > max_storage_buffer_binding_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "SparsePagedAttention (WebGPU): the partial softmax scratch requires ",
                            partial_bytes, " bytes, exceeding maxStorageBufferBindingSize of ",
                            max_storage_buffer_binding_size, ".");
@@ -652,21 +732,11 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
                            " bytes of workgroup storage, exceeding the device limit of ",
                            context.DeviceLimits().maxComputeWorkgroupStorageSize, ".");
   }
-  // Widest stage. Main partial over the paged cache binds query, key_cache,
-  // value_cache, token_meta, block_table, selected_indices, selected_counts and
-  // one output (8). The auxiliary partial binds query, auxiliary_key,
-  // auxiliary_value, token_meta, selected_indices, selected_counts and one
-  // output (6 when K and V are shared, otherwise 7).
-  const uint32_t required_storage_buffers =
-      selected_from_auxiliary ? (auxiliary_kv_shared_ ? 6u : 7u) : 8u;
-  if (required_storage_buffers > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SparsePagedAttention (WebGPU): this configuration needs ",
-                           required_storage_buffers,
-                           " storage buffers per shader stage, but the "
-                           "device supports only ",
-                           context.DeviceLimits().maxStorageBuffersPerShaderStage, ".");
-  }
+  // Storage-binding budget. Counting tensors is not enough: the program manager
+  // splits any buffer larger than maxStorageBufferBindingSize into several
+  // consecutive bindings, so a KV cache or a selection buffer past that limit
+  // silently inflates the bind group. Every stage below is therefore validated
+  // against its actual segment count, immediately before it is dispatched.
 
   // Packed-QKV: materialize standalone Q/K/V so the staged pipeline below sees
   // a single layout. Reuses the PagedAttention split program.
@@ -681,6 +751,12 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
         dtype, TensorShape({parameters.token_count, parameters.kv_hidden_size}));
     packed_v_tensor = context.CreateGPUTensor(
         dtype, TensorShape({parameters.token_count, parameters.kv_hidden_size}));
+    ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
+        context, "packed-QKV split",
+        {{query, "query"},
+         {&packed_q_tensor, "query"},
+         {&packed_k_tensor, "key"},
+         {&packed_v_tensor, "value"}}));
     ORT_RETURN_IF_ERROR(RunPagedAttentionSplitPackedQKV(context, parameters, query,
                                                         &packed_q_tensor, &packed_k_tensor,
                                                         &packed_v_tensor));
@@ -695,12 +771,28 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
   Tensor rotated_key_tensor;
   if (do_rotary_) {
     rotated_query_tensor = context.CreateGPUTensor(query->DataType(), query->Shape());
+    rotated_key_tensor = context.CreateGPUTensor(key->DataType(), key->Shape());
+    ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
+        context, "rotary embedding",
+        {{query, "query"},
+         {cos_cache, "cos_cache"},
+         {sin_cache, "sin_cache"},
+         {cumulative_seqlens_q, "cumulative_sequence_length"},
+         {past_seqlens, "past_seqlens"},
+         {&rotated_query_tensor, "output"}}));
+    ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
+        context, "rotary embedding",
+        {{key, "key"},
+         {cos_cache, "cos_cache"},
+         {sin_cache, "sin_cache"},
+         {cumulative_seqlens_q, "cumulative_sequence_length"},
+         {past_seqlens, "past_seqlens"},
+         {&rotated_key_tensor, "output"}}));
     ORT_RETURN_IF_ERROR(RunPagedAttentionRotaryEmbedding(
         context, parameters, static_cast<uint32_t>(parameters.num_heads), rotary_interleaved_,
         query, cos_cache, sin_cache, cumulative_seqlens_q, past_seqlens, &rotated_query_tensor));
     query_for_attention = &rotated_query_tensor;
 
-    rotated_key_tensor = context.CreateGPUTensor(key->DataType(), key->Shape());
     ORT_RETURN_IF_ERROR(RunPagedAttentionRotaryEmbedding(
         context, parameters, static_cast<uint32_t>(parameters.kv_num_heads), rotary_interleaved_,
         key, cos_cache, sin_cache, cumulative_seqlens_q, past_seqlens, &rotated_key_tensor));
@@ -711,10 +803,26 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
   // the placement (including -1 = "do not store this token"); otherwise the
   // block_table-derived placement of PagedAttention applies.
   if (slot_mapping != nullptr) {
+    ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
+        context, "KV scatter",
+        {{key_for_scatter, "key"},
+         {value, "value"},
+         {slot_mapping, "slot_mapping"},
+         {key_cache_out, "key_cache"},
+         {value_cache_out, "value_cache"}}));
     ORT_RETURN_IF_ERROR(RunSparseScatterKVWithSlotMapping(context, parameters, key_for_scatter,
                                                           value, slot_mapping, key_cache_out,
                                                           value_cache_out));
   } else {
+    ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
+        context, "KV scatter",
+        {{key_for_scatter, "key"},
+         {value, "value"},
+         {cumulative_seqlens_q, "cumulative_sequence_length"},
+         {past_seqlens, "past_seqlens"},
+         {block_table, "block_table"},
+         {key_cache_out, "key_cache"},
+         {value_cache_out, "value_cache"}}));
     ORT_RETURN_IF_ERROR(RunPagedAttentionScatterKVToPagedCache(
         context, parameters, key_for_scatter, value, cumulative_seqlens_q, past_seqlens,
         block_table, key_cache_out, value_cache_out));
@@ -723,6 +831,13 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
   const auto* int32_type = DataTypeImpl::GetType<int32_t>();
   Tensor token_meta = context.CreateGPUTensor(
       int32_type, TensorShape({static_cast<int64_t>(parameters.token_count), 4}));
+  ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
+      context, "token metadata",
+      {{cumulative_seqlens_q, "cumulative_sequence_length"},
+       {past_seqlens, "past_seqlens"},
+       {selected_from_auxiliary ? auxiliary_lengths : nullptr, "auxiliary_lengths",
+        /*raw_indexed*/ true},
+       {&token_meta, "token_meta"}}));
   ORT_RETURN_IF_ERROR(RunSparseTokenMeta(context, parameters,
                                          static_cast<uint32_t>(auxiliary_capacity),
                                          cumulative_seqlens_q, past_seqlens,
@@ -751,6 +866,18 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
 
   if (run_main) {
     partial_main = context.CreateGPUTensor(float_type, partial_shape);
+    ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
+        context, "main partial attention",
+        {{query_for_attention, "query"},
+         {key_cache_out, "key_cache"},
+         {value_cache_out, "value_cache"},
+         {&token_meta, "token_meta"},
+         {block_table, "block_table"},
+         {main_uses_selected ? selected_indices : nullptr, "selected_indices",
+          /*raw_indexed*/ true},
+         {main_uses_selected ? selected_counts : nullptr, "selected_counts",
+          /*raw_indexed*/ true},
+         {&partial_main, "partial"}}));
     ORT_RETURN_IF_ERROR(RunSparseMainPartial(
         context, parameters, is_causal_, local_plus_selected, main_uses_selected,
         local_plus_selected && main_uses_selected,
@@ -761,6 +888,16 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
   }
   if (run_auxiliary) {
     partial_auxiliary = context.CreateGPUTensor(float_type, partial_shape);
+    ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
+        context, "auxiliary partial attention",
+        {{query_for_attention, "query"},
+         {auxiliary_key, "auxiliary_key"},
+         {auxiliary_kv_shared_ ? nullptr : auxiliary_value, "auxiliary_value",
+          /*raw_indexed*/ true},
+         {&token_meta, "token_meta"},
+         {selected_indices, "selected_indices"},
+         {selected_counts, "selected_counts"},
+         {&partial_auxiliary, "partial"}}));
     ORT_RETURN_IF_ERROR(RunSparseAuxiliaryPartial(
         context, parameters, auxiliary_kv_shared_, static_cast<uint32_t>(auxiliary_capacity),
         static_cast<uint32_t>(auxiliary_num_heads), static_cast<uint32_t>(max_selected_entries),
@@ -768,6 +905,12 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
         selected_counts, &partial_auxiliary));
   }
 
+  ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
+      context, "softmax finalize",
+      {{run_main ? &partial_main : nullptr, "partial_main", /*raw_indexed*/ true},
+       {run_auxiliary ? &partial_auxiliary : nullptr, "partial_auxiliary", /*raw_indexed*/ true},
+       {head_sink, "head_sink", /*raw_indexed*/ true},
+       {output, "output"}}));
   return RunSparseFinalize(context, parameters, run_main ? &partial_main : nullptr,
                            run_auxiliary ? &partial_auxiliary : nullptr, head_sink, output);
 }
