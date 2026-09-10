@@ -246,8 +246,8 @@ DeepSeek's `DeepseekV4RMSNorm` uses a plain `weight *`, so its tensor is passed 
 ## 7. CUDA Kernel Pipeline
 
 All kernels use a fixed block of 128 threads (a power of two, required by the shared-memory block
-reductions). Grid sizes are clamped to 65535 blocks and the elementwise kernels use grid-stride
-loops, so no launch configuration depends on tensor data.
+reductions). Elementwise kernels clamp the grid to 65535 blocks and use grid-stride loops; kernels
+that assign one block to each work item clamp the grid to the CUDA `gridDim.x` limit.
 
 ### `qsa`
 
@@ -267,7 +267,7 @@ loops, so no launch configuration depends on tensor data.
 | 2 | `CsaCompressKernel` | one block per `(b, window)`; per-channel softmax over `2r` slots |
 | 3 | `CsaCopyBufferKernel` | element |
 | 4 | `RotateQueryKernel<T, /*leading=*/false>` | one block per `(b, s, h)` |
-| 5 | `CsaScoreKernel` | one block per `(b, s, entry)` |
+| 5 | `CsaScoreKernel` | one thread per `(b, s, entry)` |
 | 6 | `CsaSelectKernel` | one block per `(b, s)`; iterated block arg-max |
 
 ### Workspaces

@@ -122,6 +122,7 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   const int64_t sequence_length = query_shape[1];
   const int64_t num_heads = query_shape[2];
   const int64_t head_size = query_shape[3];
+  ORT_RETURN_IF_NOT(num_heads > 0, "SparseAttentionIndexer: num_heads must be > 0, got ", num_heads);
 
   const auto& cos_shape = cos_cache->Shape();
   ORT_RETURN_IF_NOT(cos_shape.NumDimensions() == 3 && cos_shape[0] == batch_size && cos_shape[1] > 0,
@@ -226,6 +227,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   const int64_t sequence_length = query_shape[1];
   const int64_t num_heads = query_shape[2];
   const int64_t head_size = query_shape[3];
+  ORT_RETURN_IF_NOT(num_heads > 0, "SparseAttentionIndexer: num_heads must be > 0, got ", num_heads);
   const int64_t width = 2 * head_size;
 
   const auto& cos_shape = cos_cache->Shape();
