@@ -1,0 +1,78 @@
+parameters:
+- name: machine_pool
+  displayName: 'The agent pool to run on (must use onnxruntime-ubuntu2204-cuda image)'
+  type: string
+  default: 'onnxruntime-tensorrt-linuxbuild-T4'
+
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.8'
+
+stages:
+- stage: Linux_CUDA_Build_Test
+  dependsOn: []
+  variables:
+  - template: ../templates/common-variables.yml
+  - name: docker_base_image
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1
+  - name: linux_trt_version
+    ${{ if eq(parameters.CudaVersion, '13.0') }}:
+      value: ${{ variables.linux_trt_version_cuda13 }}
+    ${{ if eq(parameters.CudaVersion, '12.8') }}:
+      value: ${{ variables.linux_trt_version_cuda12 }}
+  jobs:
+  - job: Linux_CUDA_Build
+    timeoutInMinutes: 180
+    variables:
+      skipComponentGovernanceDetection: true
+      ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+    workspace:
+      clean: all
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.12'
+        addToPath: true
+        architecture: 'x64'
+
+    - template: ../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "
+        --network=host
+        --build-arg BASEIMAGE=${{ variables.docker_base_image }}
+        --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
+        --build-arg BUILD_UID=$( id -u )
+        "
+        Repository: onnxruntimecudavalidation
+
+    - task: CmdLine@2
+      displayName: 'Build and test CUDA EP in Docker'
+      inputs:
+        script: |
+            docker run -e SYSTEM_COLLECTIONURI --gpus all --rm \
+                --volume /data/onnx:/data/onnx:ro \
+                --volume $(Build.SourcesDirectory):/onnxruntime_src \
+                --volume $(Build.BinariesDirectory):/build \
+                --volume /data/models:/build/models:ro \
+                --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+                -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+                -e NIGHTLY_BUILD \
+                -e BUILD_BUILDNUMBER \
+                -w /onnxruntime_src \
+                onnxruntimecudavalidation tools/ci_build/github/linux/build_tensorrt_ci.sh --cuda_minimal=ON
+        workingDirectory: $(Build.SourcesDirectory)
+
+    - template: ../templates/explicitly-defined-final-tasks.yml

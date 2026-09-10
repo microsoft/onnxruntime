@@ -1,52 +1,3 @@
-parameters:
-
-- name: is_nightly_build
-  displayName: 'Nightly or Release Candidate build. Set to false if Release build.'
-  type: boolean
-  default: true
-
-- name: enable_linux_cpu
-  displayName: 'Whether Linux CPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_windows_cpu
-  displayName: 'Whether Windows CPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_mac_cpu
-  displayName: 'Whether Mac CPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_linux_arm
-  displayName: 'Whether Linux ARM package is built.'
-  type: boolean
-  default: true
-
-- name: build_py_parameters
-  displayName: 'Specify extra build parameters'
-  type: string
-  default: '--use_azure'
-
-# TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
-- name: cmake_build_type
-  type: string
-  displayName: 'Linux packages cmake build type. Linux Only.'
-  default: 'Release'
-  values:
-  - Debug
-  - Release
-  - RelWithDebInfo
-  - MinSizeRel
-
-variables:
-  # Magic env-var used by CI build scripts & piped around several docker containers.
-  # This should also be set to `1` for release candidates, despite the name. RCs do not yet have proper handling, so
-  # wheels can only be nightly or full release.
-  # FUTURE WORK: Add proper RC handling/suffix for wheels. Replace this w/ nightly/RC/release options.
-  NIGHTLY_BUILD: ${{ iif(parameters.is_nightly_build, '1', '0') }}
 
 trigger: none
 
@@ -56,14 +7,29 @@ resources:
     type: git
     name: 1ESPipelineTemplates/1ESPipelineTemplates
     ref: refs/tags/release
+
+parameters:
+- name: image_list
+  displayName: 'Images to validate'
+  type: stringList
+  values:
+  - 'onnxruntime-azlinux3-arm64'
+  # - 'onnxruntime-qnn-windows22-arm64'
+  # - 'onnxruntime-qnnep-ubuntu2204-managed2'
+  # - 'onnxruntime-ubuntu2204-cuda'
+  # - 'onnxruntime-win-cpu-vs2022-latest-nvme-x64'
+
 extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
+    settings:
+      networkIsolationPolicy: Permissive
     featureFlags:
       binskimScanAllExtensions: true
     sdl:
       binskim:
         enabled: true
+        scanOutputDirectoryOnly: true
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
@@ -72,6 +38,10 @@ extends:
       spotBugs:
         enabled: false
         justificationForDisabling: "Getting ##[error]1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+      codeql:
+        compiled:
+          enabled: false
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
       tsa:
         enabled: true
       codeSignValidation:
@@ -80,12 +50,7 @@ extends:
       policheck:
         enabled: true
         exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
+
     stages:
-    - template: stages/py-cpu-packaging-stage.yml
-      parameters:
-        enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
-        enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
-        enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
-        enable_linux_arm: ${{ parameters.enable_linux_arm }}
-        build_py_parameters: ${{ parameters.build_py_parameters }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
+    - ${{ each image in parameters.image_list }}:
+      - template: stages/${{ image }}-validation.yml
