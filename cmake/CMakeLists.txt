@@ -133,7 +133,7 @@ cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB GEMM CUDA k
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM_FULL
   "Build all FpA IntB GEMM CUDA kernel variants instead of the compact FP16 INT4/INT8 set" OFF
   "onnxruntime_USE_CUDA;onnxruntime_USE_FPA_INTB_GEMM" OFF)
-option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
+option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" ON)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
 option(onnxruntime_QUICK_BUILD "Speed up build by skipping some kernels for faster development" OFF)
 # Raises the minimum driver to the CUDA 12.4 level (Linux >= 550.54.14, Windows >= 551.61); always on for CUDA >= 13.0.
@@ -1513,7 +1513,7 @@ if (Git_FOUND)
   if (onnxruntime_QUICK_BUILD)
     string(APPEND ORT_BUILD_INFO "quick-build=1, ")
   endif()
-  if (onnxruntime_USE_INT4_KV_CACHE)
+  if (onnxruntime_USE_CUDA AND onnxruntime_USE_INT4_KV_CACHE)
     string(APPEND ORT_BUILD_INFO "int4-kv-cache=1, ")
   endif()
   if (onnxruntime_USE_FP8_KV_CACHE)
