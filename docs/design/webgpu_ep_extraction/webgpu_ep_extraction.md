@@ -47,7 +47,7 @@ The effort is divided into four workstreams:
 | Identifier | Workstream | Primary outcome |
 | --- | --- | --- |
 | `plugin-boundary` | [Plugin boundary and Web/Wasm integration](plugin_boundary_and_web_integration/plugin_boundary_and_web_integration_workstream.md) | Static and dynamic builds use the same public plugin EP boundary, including the ORT Web browser bridge |
-| `provider-isolation` | [Provider isolation and repository migration](provider_isolation_and_repository_migration/provider_isolation_and_repository_migration_workstream.md) | WebGPU-owned code, dependencies, tests, and existing plugin packaging move under `plugin-ep-webgpu/` and then to an independent repository |
+| `provider-isolation` | [Provider isolation and repository migration](provider_isolation_and_repository_migration/provider_isolation_and_repository_migration_workstream.md) | WebGPU-owned code, dependencies, tests, and the Python and NuGet plugin packaging are consolidated under `plugin-ep-webgpu/` and then move to an independent repository |
 | `test-conformance` | [Test ownership and operator conformance](test_ownership_and_conformance/test_ownership_and_conformance_workstream.md) | Existing coverage is preserved, every test has an owner, and portable conformance coverage protects the external provider |
 | `node-migration` | [Node plugin migration](node_plugin_migration/node_plugin_migration_workstream.md) | Existing bundled Node WebGPU support is replaced by an explicitly consumable plugin without regressing current users |
 
@@ -80,13 +80,16 @@ provider being extracted. This is handled in
 Every consumer that receives WebGPU today needs a recorded disposition before the built-in implementation is removed
 from ORT. Platform and architecture details remain to be inventoried in the individual workstreams.
 
-| Consumer or package | Disposition | Extraction requirement |
-| --- | --- | --- |
-| `onnxruntime-web` | Consume a pinned external WebGPU source revision through static plugin registration | Required |
-| Python WebGPU plugin package | Move the existing optional plugin package and release pipeline | Required |
-| WebGPU NuGet plugin package | Move the existing optional plugin package and release pipeline | Required |
-| Node WebGPU support | Provide a tested replacement for the WebGPU implementation currently bundled in `onnxruntime-node`; final package naming is open | Required before bundled support is removed |
-| `onnxruntime-webgpu` on PyPI | Publication has already stopped; do not resurrect it or convert it into a plugin-dependent package | Confirm whether any other retired package needs the same treatment |
+| Consumer or package | Disposition |
+| --- | --- |
+| `onnxruntime-web` | Consume a pinned external WebGPU source revision through static plugin registration |
+| Python WebGPU plugin package | Move the existing plugin package and packaging pipeline |
+| WebGPU NuGet plugin package | Move the existing plugin package and packaging pipeline |
+| Node WebGPU support | Provide a tested replacement for the WebGPU implementation currently bundled in `onnxruntime-node`; final package naming is open |
+| Android AAR | Not yet decided. The default full AAR build enables WebGPU |
+| Java packages | Not yet decided. `OrtProvider.WEBGPU` and `SessionOptions.addWebGPU()` are public API, and the JAR carries the Dawn and DXC native libraries |
+| macOS native packages | Not yet decided. macOS packaging builds with `--use_webgpu`, so the released `onnxruntime-osx-*` tarball has WebGPU in `libonnxruntime.dylib`, and that tarball also supplies the native NuGet package. The Apple `.framework` build does not enable WebGPU |
+| Python `onnxruntime-webgpu` package | Publication has already stopped. Do not resurrect it or convert it into a plugin-dependent package |
 
 Hosts that do not ship WebGPU support today are outside this table. Adding one is a separate decision and is not an
 extraction prerequisite.
@@ -124,7 +127,9 @@ The other convergence points between workstreams:
 - Test classification determines which tests move with the provider and which remain in ORT. Source transfer waits on
   it.
 - The Node workstream consumes generic plugin loading from ORT and native WebGPU artifacts from the external
-  provider. It does not gate source transfer, but bundled Node WebGPU cannot be removed until it lands.
+  provider. It does not gate source transfer, but bundled Node WebGPU cannot be removed until it lands. If transfer
+  comes first, the bundled Node build has to consume the pinned external source until the replacement package ships;
+  the alternative is to delay transfer until it does.
 
 ## Success criteria
 
