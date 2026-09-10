@@ -1846,7 +1846,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(19, "k_scale", "Main key-cache quantization scale.", "T_KV_SCALE", OpSchema::Optional)
         .Input(20, "v_scale", "Main value-cache quantization scale.", "T_KV_SCALE", OpSchema::Optional)
         .Input(21, "attention_metadata",
-               "CPU tensor [max_query_len, max_main_kv_len, max_selected_entries, max_auxiliary_len].",
+               "CPU tensor [max_query_len, max_local_main_len, max_selected_entries, max_auxiliary_len, "
+               "max_combined_attention_len].",
                "S", OpSchema::Optional)
         .Output(0, "output", "Shape (token_count, num_heads * head_size).", "T")
         .Output(1, "key_cache_out", "In-place alias of key_cache.", "T_CACHE", OpSchema::Optional)
