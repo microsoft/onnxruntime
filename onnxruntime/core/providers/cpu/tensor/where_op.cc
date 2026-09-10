@@ -4,6 +4,7 @@
 #include "core/providers/cpu/tensor/where_op.h"
 
 #include <algorithm>
+#include <cmath>
 #include <type_traits>
 
 #include "core/providers/cpu/math/element_wise_ops.h"  // for broadcast utilities
@@ -149,8 +150,17 @@ EnableIfEigenNotScalar<T, ProcessBroadcastSpanFuncs> SelectBroadcastFuncs() {
 }
 
 template <typename T>
+bool WasSelected(const T& value) {
+  if constexpr (std::is_floating_point<T>::value) {
+    return value != T{} || std::signbit(value);
+  }
+
+  return value != T{};
+}
+
+template <typename T>
 void MergeScalarAndVector(EigenVectorMap<T> output, const T& scalar_value, ConstEigenVectorMap<T> vector_value) {
-  if (scalar_value != T{}) {
+  if (WasSelected(scalar_value)) {
     output = EigenVectorMap<T>::PlainObject::Constant(vector_value.size(), scalar_value);
   } else {
     output = vector_value;
@@ -175,7 +185,7 @@ EnableIfEigenScalar<T, ProcessBroadcastSpanFuncs> MergeBroadcastFuncs() {
         auto Y_selection = per_iter_bh.EigenInput1<T>();
         per_iter_bh.OutputEigen<T>() = X_selection.binaryExpr(Y_selection,
                                                               [](T x, T y) -> T {
-                                                                return x != T{} ? x : y;
+                                                                return WasSelected(x) ? x : y;
                                                               });
       }};
 }
