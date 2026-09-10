@@ -573,29 +573,41 @@ TEST(SparsePagedAttention, WebGpu_GroupedQueryMultiRequestSelection) {
     GTEST_SKIP() << "WebGPU EP not available.";
   }
 
-  constexpr int kGqaHeadSize = 4;
+  constexpr int kGqaHeadSize = 8;
   constexpr int kNumHeads = 2;
   constexpr int kNumBlocks = 2;
   constexpr int kGqaCacheElems = kNumBlocks * kBlockSize * kGqaHeadSize;
 
   // head 0 reads key element 0, head 1 reads key element 1.
   const std::vector<MLFloat16> query{
-      MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),   // token 0, head 0
-      MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f),   // token 0, head 1
-      MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),   // token 1, head 0
-      MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f),   // token 1, head 1
-      MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),   // token 2, head 0
-      MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f)};  // token 2, head 1
+      MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+      MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),  // token 0, head 0
+      MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+      MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),  // token 0, head 1
+      MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+      MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),  // token 1, head 0
+      MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+      MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),  // token 1, head 1
+      MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+      MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),  // token 2, head 0
+      MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+      MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f)};  // token 2, head 1
 
   // The current K/V of all three tokens is stored through slot_mapping and then
   // read back through the selection, so the scatter is part of what is verified.
   const std::vector<MLFloat16> key{
       MLFloat16(1.0f), MLFloat16(0.5f), MLFloat16(0.0f), MLFloat16(0.0f),
+      MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),
       MLFloat16(0.0f), MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(0.0f),
-      MLFloat16(0.5f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f)};
+      MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+      MLFloat16(0.5f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+      MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f)};
   const std::vector<MLFloat16> value{
       MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+      MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
       MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(2.0f),
+      MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(2.0f), MLFloat16(2.0f),
+      MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(3.0f),
       MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(3.0f), MLFloat16(3.0f)};
 
   // Request 1 owns block 1; its position 0 is pre-populated, its position 3 is
