@@ -24,11 +24,24 @@ namespace onnxruntime {
 namespace webgpu {
 namespace wgsl_gen {
 
+namespace detail {
+
+// The pointer overload allows a template variable to be null when all of its uses are conditionally generated.
+constexpr const ShaderVariableHelper* ToShaderVariableHelperPtr(const ShaderVariableHelper& value) noexcept {
+  return &value;
+}
+
+constexpr const ShaderVariableHelper* ToShaderVariableHelperPtr(const ShaderVariableHelper* value) noexcept {
+  return value;
+}
+
+}  // namespace detail
+
 #define WGSL_TEMPLATE_PARAMETER(name, value) \
   .param_##name = static_cast<int>(value)
 
 #define WGSL_TEMPLATE_VARIABLE(name, value) \
-  .var_##name = &value
+  .var_##name = onnxruntime::webgpu::wgsl_gen::detail::ToShaderVariableHelperPtr(value)
 
 #define WGSL_TEMPLATE_APPLY(shader_helper, template_filepath, ...) \
   onnxruntime::webgpu::wgsl_gen::ApplyTemplate<template_filepath>(shader_helper, {__VA_ARGS__})

@@ -94,10 +94,6 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                                               ShaderUsage::UseValueTypeAlias |
                                                                   ShaderUsage::UseElementTypeAlias)
                                           : nullptr;
-    const auto& skip_var = skip != nullptr ? *skip : a;
-    const auto& norm_scale_var = norm_scale != nullptr ? *norm_scale : a;
-    const auto& input_skip_bias_sum_var = input_skip_bias_sum != nullptr ? *input_skip_bias_sum : output;
-
     const uint32_t components_a = a.NumComponents();
     const uint32_t components_b = gate_b.NumComponents() / 4;
     const uint32_t tile_size_k_vec = tile_size_k_vec_;
@@ -129,10 +125,10 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                WGSL_TEMPLATE_VARIABLE(a, a),
                                WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
                                WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
-                               WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum_var),
-                               WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale_var),
+                               WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
+                               WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale),
                                WGSL_TEMPLATE_VARIABLE(output, output),
-                               WGSL_TEMPLATE_VARIABLE(skip, skip_var),
+                               WGSL_TEMPLATE_VARIABLE(skip, skip),
                                WGSL_TEMPLATE_VARIABLE(up_b, up_b),
                                WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
   }

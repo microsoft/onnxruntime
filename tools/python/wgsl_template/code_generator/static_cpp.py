@@ -126,10 +126,10 @@ class StaticCodeGenerator:
         return f"__param_{name}"
 
     def variable(self, name: str) -> str:
-        return f"__var_{name}"
+        return f"(*__var_{name})"
 
     def property(self, obj: str, property_name: str) -> str:
-        return f"__var_{obj}.{property_name}"
+        return f"__var_{obj}->{property_name}"
 
     def function(self, name: str, args: list[CodeSegmentArg]) -> str:
         rendered = ", ".join(self._render_arg(a) for a in args)
@@ -137,7 +137,7 @@ class StaticCodeGenerator:
 
     def method(self, obj: str, method_name: str, args: list[CodeSegmentArg]) -> str:
         rendered = ", ".join(self._render_arg(a) for a in args)
-        return f"__var_{obj}.{method_name}({rendered})"
+        return f"__var_{obj}->{method_name}({rendered})"
 
     # ------------------------------------------------------------------
     # Read-only access to the string table (used by build() to emit
@@ -343,7 +343,7 @@ class StaticCodeGenerator:
         if gr.variables:
             out.append("  // Extract variables")
             for var_name in gr.variables:
-                out.append(f"  auto& {self.variable(var_name)} = *params.var_{var_name};")
+                out.append(f"  auto* __var_{var_name} = params.var_{var_name};")
             out.append("")
 
         out.append(gr.code)
