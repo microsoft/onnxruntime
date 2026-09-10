@@ -1282,7 +1282,7 @@ CUBIN_EXPORT __global__
 #endif
 #endif
         const uint32_t batchSize,
-        // Device memory scalars, used only for int8/fp8 KV cache. K and V have independent scales:
+        // Device memory scalars for quantized KV cache. K and V have independent scales:
         // kCacheScale is folded into qkScale (applied to Q*K.T before softmax) and vCacheScale into
         // voScale (applied to the P*V accumulator). Both are read once per CTA, outside the K/V loop.
         // Either may be null, meaning "scale is 1": the caller has already folded a non-scalar
@@ -2466,7 +2466,7 @@ CUBIN_EXPORT __global__ __launch_bounds__(256, nbCtaPerSM) void kernel_mha(
     const BeamSearchParams beamSearchParams,
 #endif
     const uint32_t batchSize,
-    // Device memory scalars, used only for int8/fp8 KV cache. See kernel_mha_impl.
+    // Device memory scalars for quantized KV cache. See kernel_mha_impl.
     const float* __restrict__ kCacheScale,
     const float* __restrict__ vCacheScale,
     uint32_t* __restrict__ semaphores = nullptr, void* __restrict__ scratch = nullptr) {
@@ -2547,8 +2547,8 @@ void launchMHA(const cudaDeviceProp& prop, uint32_t nbKHeads,
                const BeamSearchParams& beamSearchParams,
 #endif
                uint32_t batchSize,
-               // Device memory scalars, used only for int8/fp8 KV cache. K and V may have different
-               // scales; both are per-tensor (a single float each).
+               // Device memory scalars for quantized KV cache. K and V may have different scales;
+               // each is either a per-tensor scale or a normalizer for a folded per-channel scale.
                const float* __restrict__ kCacheScale,
                const float* __restrict__ vCacheScale,
 #if SPEC_DEC

@@ -1587,8 +1587,9 @@ __global__ void PagedFoldChannelScaleKernel(T* dst,
   }
   const int h = static_cast<int>(i / head_size) % num_heads;
   const int c = static_cast<int>(i % head_size);
-  const float norm = (scale_norm == nullptr) ? 1.0f : (1.0f / scale_norm[0]);
-  dst[i] = static_cast<T>(static_cast<float>(src[i]) * channel_scale[(h / group_size) * head_size + c] * norm);
+  const float scale = channel_scale[(h / group_size) * head_size + c];
+  const float normalized_scale = (scale_norm == nullptr) ? scale : (scale / scale_norm[0]);
+  dst[i] = static_cast<T>(static_cast<float>(src[i]) * normalized_scale);
 }
 
 // Largest magnitude in a PER_CHANNEL scale table, computed in one block so the XQA path stays

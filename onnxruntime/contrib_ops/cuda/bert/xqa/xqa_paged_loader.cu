@@ -144,7 +144,7 @@ Status LaunchXQAPagedKernel(
 
 #ifdef USE_INT4_KV_CACHE
   if (kv_quant_type == XqaQuantType::kInt4) {
-    // Null scales are the PER_CHANNEL case: the caller folded them into Q and the output.
+    // The caller passes the K folding normalizer and applies the folded V scale to the output.
     ORT_RETURN_IF_NOT(head_size == 256 && !is_bf16 && kv_num_heads > 0 && num_heads == 6 * kv_num_heads,
                       "INT4 paged XQA requires FP16 queries, head_size 256, and group size 6.");
     return H256::LaunchXQAPagedInt4Kernel(XQA_PAGED_ARGS);

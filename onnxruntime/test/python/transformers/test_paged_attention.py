@@ -869,6 +869,7 @@ def parity_check_paged_attention(
     new_seqlens_override=None,
     local_window_size_override=None,
     past_seqlens_override=None,
+    k_scale_max_override=None,
 ):
     # Generate padded inputs
     q = torch.randn(
@@ -1005,6 +1006,9 @@ def parity_check_paged_attention(
         k_scale = compute_kv_scale(
             [k_cache_paged, k_ro], config.k_quant_type, config.kv_cache_type, config.kv_num_heads, config.head_size
         )
+        if k_scale_max_override is not None:
+            assert config.k_quant_type == "PER_CHANNEL"
+            k_scale *= k_scale_max_override / k_scale.max()
         v_scale = compute_kv_scale(
             [v_cache_paged, v_new], config.v_quant_type, config.kv_cache_type, config.kv_num_heads, config.head_size
         )
@@ -2289,7 +2293,16 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
             setattr(config, key, value)
         return config
 
-    def _check_xqa(self, quant_type="PER_TENSOR", kv_cache_type="int8", rtol=5e-3, atol=5e-3, **overrides):
+    def _check_xqa(
+        self,
+        quant_type="PER_TENSOR",
+        kv_cache_type="int8",
+        rtol=5e-3,
+        atol=5e-3,
+        k_scale_max_override=None,
+        require_xqa=False,
+        **overrides,
+    ):
         if kv_cache_type == "fp8":
             if not has_fp8_kv_cache():
                 self.skipTest("FP8 KV cache kernels are not built")
@@ -2302,7 +2315,21 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
             v_quant_type=quant_type,
             **overrides,
         )
-        parity_check_paged_attention(config, rtol=rtol, atol=atol)
+
+        def run():
+            parity_check_paged_attention(
+                config, rtol=rtol, atol=atol, k_scale_max_override=k_scale_max_override
+            )
+
+        if require_xqa:
+            with patch.dict(
+                os.environ,
+                {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+            ):
+                debug_output = capture_native_stdout(run)
+            self.assertIn("SdpaKernel=XQA", debug_output)
+            return
+        run()
 
     def _capture_xqa_debug(self, config):
         with patch.dict(
@@ -2485,6 +2512,16 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
     )
     def test_xqa_quant_type(self, _, kv_cache_type, quant_type):
         self._check_xqa(kv_cache_type=kv_cache_type, quant_type=quant_type)
+
+    @parameterized.expand([("int8", "int8"), ("fp8", "fp8")])
+    def test_xqa_large_per_channel_k_scale(self, _, kv_cache_type):
+        # A finite channel scale can overflow FP32 when multiplied by Q before normalization.
+        self._check_xqa(
+            kv_cache_type=kv_cache_type,
+            quant_type="PER_CHANNEL",
+            k_scale_max_override=torch.finfo(torch.float32).max,
+            require_xqa=True,
+        )
 
     def test_xqa_mixed_granularity(self):
         # k PER_CHANNEL folds into Q, v PER_TENSOR stays a kernel argument: the two scales take
