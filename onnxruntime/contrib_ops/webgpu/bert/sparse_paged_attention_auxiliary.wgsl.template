@@ -1,0 +1,132 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// SparsePagedAttention — partial attention over the contiguous auxiliary cache.
+//
+// One workgroup owns one (token, head) pair and walks the selected entries for
+// that token. Selected entries are request-local rows in the auxiliary cache;
+// entries that are negative or beyond the request's auxiliary length are
+// ignored, so a caller can pad selected_indices freely.
+//
+// The result is a partial FP32 softmax state (accumulator, running max,
+// running denominator) that the finalize stage merges with the main-cache
+// partial state, giving one joint softmax over both sources.
+//
+// Layout:
+//   query                           : (token_count, num_heads * head_size)
+//   auxiliary_key / auxiliary_value : (batch_size, capacity, aux_heads, head_size)
+//   token_meta                      : (token_count, 4)
+//   selected_indices                : (token_count, max_selected_entries)
+//   selected_counts                 : (token_count,)
+//   partial                         : (token_count, num_heads, head_size + 2)
+//
+// When 'auxiliary_kv_shared' is set the op receives a single auxiliary tensor
+// used as both K and V, so auxiliary_value is not bound and is read with raw
+// indexing where it applies.
+
+#param qkv_head_size
+#param auxiliary_kv_shared
+
+#use .getByOffset .setByOffset
+
+const head_size: u32 = qkv_head_size;
+const negative_infinity: f32 = -3.4028234663852886e38;
+
+var<workgroup> q_shared: array<f32, head_size>;
+var<workgroup> accumulator: array<f32, head_size>;
+var<workgroup> reduction: array<f32, workgroup_size_x>;
+
+$MAIN {
+  if (workgroup_idx >= uniforms.workgroup_count) {
+    return;
+  }
+
+  let token_idx = workgroup_idx / uniforms.num_heads;
+  let head_idx = workgroup_idx % uniforms.num_heads;
+  let kv_head_idx = head_idx / (uniforms.num_heads / uniforms.kv_num_heads);
+  var auxiliary_head_idx = kv_head_idx;
+  if (uniforms.auxiliary_num_heads == 1u) {
+    auxiliary_head_idx = 0u;
+  }
+
+  // token_meta is produced by SparsePagedAttentionTokenMeta; its auxiliary
+  // length is already clamped to [0, capacity].
+  let meta_base = token_idx * 4u;
+  let batch_idx = u32(token_meta.getByOffset(meta_base));
+  let auxiliary_length = token_meta.getByOffset(meta_base + 3u);
+
+  let query_base = (token_idx * uniforms.num_heads + head_idx) * head_size;
+  for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+    q_shared[c] = f32(query.getByOffset(query_base + c));
+    accumulator[c] = 0.0;
+  }
+
+  let selected_count = u32(clamp(selected_counts.getByOffset(token_idx), 0, i32(uniforms.max_selected_entries)));
+  var running_max: f32 = negative_infinity;
+  var running_sum: f32 = 0.0;
+  var has_contribution = false;
+  workgroupBarrier();
+
+  for (var candidate: u32 = 0u; candidate < selected_count; candidate = candidate + 1u) {
+    let logical_position = selected_indices.getByOffset(token_idx * uniforms.max_selected_entries + candidate);
+    let valid = logical_position >= 0 && logical_position < auxiliary_length;
+
+    var cache_offset: u32 = 0u;
+    if (valid) {
+      cache_offset = ((batch_idx * uniforms.auxiliary_capacity + u32(logical_position)) *
+                          uniforms.auxiliary_num_heads +
+                      auxiliary_head_idx) *
+                     head_size;
+    }
+
+    var partial_dot: f32 = 0.0;
+    if (valid) {
+      for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+        partial_dot = partial_dot + q_shared[c] * f32(auxiliary_key.getByOffset(cache_offset + c));
+      }
+    }
+    reduction[local_idx] = partial_dot;
+    workgroupBarrier();
+    for (var offset: u32 = workgroup_size_x / 2u; offset > 0u; offset = offset / 2u) {
+      if (local_idx < offset) {
+        reduction[local_idx] = reduction[local_idx] + reduction[local_idx + offset];
+      }
+      workgroupBarrier();
+    }
+
+    if (valid) {
+      var logit = reduction[0] * uniforms.scale;
+      if (uniforms.softcap > 0.0) {
+        logit = tanh(logit / uniforms.softcap) * uniforms.softcap;
+      }
+      let new_max = max(running_max, logit);
+      var old_weight = 0.0;
+      if (has_contribution) {
+        old_weight = exp(running_max - new_max);
+      }
+      let new_weight = exp(logit - new_max);
+      for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+#if auxiliary_kv_shared
+        let v = f32(auxiliary_key.getByOffset(cache_offset + c));
+#else
+        // Raw indexing: auxiliary_value is only bound when K and V are separate.
+        let v = f32(auxiliary_value[cache_offset + c]);
+#endif
+        accumulator[c] = accumulator[c] * old_weight + v * new_weight;
+      }
+      running_sum = running_sum * old_weight + new_weight;
+      running_max = new_max;
+      has_contribution = true;
+    }
+    workgroupBarrier();
+  }
+
+  let partial_base = (token_idx * uniforms.num_heads + head_idx) * (head_size + 2u);
+  for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+    partial.setByOffset(partial_base + c, accumulator[c]);
+  }
+  if (local_idx == 0u) {
+    partial.setByOffset(partial_base + head_size, running_max);
+    partial.setByOffset(partial_base + head_size + 1u, running_sum);
+  }
+}

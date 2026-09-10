@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dgSpecHash": "7Qu/vNus90M=",
+  "success": true,
+  "projectFilePath": "/home/runner/work/onnxruntime/onnxruntime/plugin-ep-webgpu/csharp/test/WebGpuEpNuGetTest/WebGpuEpNuGetTest.csproj",
+  "expectedPackageFiles": [
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.ml.onnxruntime/1.30.0/microsoft.ml.onnxruntime.1.30.0.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.ml.onnxruntime.ep.webgpu/0.3.0/microsoft.ml.onnxruntime.ep.webgpu.0.3.0.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.ml.onnxruntime.managed/1.30.0/microsoft.ml.onnxruntime.managed.1.30.0.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/system.memory/4.5.5/system.memory.4.5.5.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/system.numerics.tensors/9.0.0/system.numerics.tensors.9.0.0.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.netcore.app.ref/8.0.30/microsoft.netcore.app.ref.8.0.30.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.aspnetcore.app.ref/8.0.30/microsoft.aspnetcore.app.ref.8.0.30.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.netcore.app.host.linux-x64/8.0.30/microsoft.netcore.app.host.linux-x64.8.0.30.nupkg.sha512"
+  ],
+  "logs": []
+}
