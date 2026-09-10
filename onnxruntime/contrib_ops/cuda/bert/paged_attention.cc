@@ -733,6 +733,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   IAllocatorUniquePtr<void> xqa_workspace_buffer;
   IAllocatorUniquePtr<void> xqa_page_table_buffer;
   IAllocatorUniquePtr<void> xqa_query_buffer;
+  IAllocatorUniquePtr<void> xqa_k_scale_norm_buffer;
   IAllocatorUniquePtr<void> xqa_head_sink_buffer;
   IAllocatorUniquePtr<void> xqa_spec_dec_mask_buffer;
   size_t xqa_workspace_bytes = 0;
@@ -762,6 +763,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
       xqa_query_buffer = GetScratchBuffer<void>(
           sizeof(T) * static_cast<size_t>(parameters.token_count) * parameters.num_heads * parameters.head_size,
           GetComputeStream(context));
+      xqa_k_scale_norm_buffer = GetScratchBuffer<void>(sizeof(float), GetComputeStream(context));
     }
     if (parameters.use_smooth_softmax && head_sink != nullptr) {
       xqa_head_sink_buffer = GetScratchBuffer<void>(sizeof(float) * parameters.num_heads,
@@ -868,6 +870,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     data.xqa_workspace_size = xqa_workspace_bytes;
     data.xqa_page_table_scratch = reinterpret_cast<int*>(xqa_page_table_buffer.get());
     data.xqa_query = reinterpret_cast<CudaT*>(xqa_query_buffer.get());
+    data.xqa_k_scale_norm = reinterpret_cast<float*>(xqa_k_scale_norm_buffer.get());
     data.xqa_head_sink = reinterpret_cast<float*>(xqa_head_sink_buffer.get());
     data.xqa_spec_dec_mask = reinterpret_cast<uint32_t*>(xqa_spec_dec_mask_buffer.get());
   }
