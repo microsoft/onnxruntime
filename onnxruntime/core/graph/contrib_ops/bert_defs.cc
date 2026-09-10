@@ -2005,7 +2005,11 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   }
   const auto& batch_dim = query_shape->dim(0);
   const auto& sequence_dim = query_shape->dim(1);
+  const auto& num_heads_dim = query_shape->dim(2);
   const auto& head_size_dim = query_shape->dim(3);
+  if (num_heads_dim.has_dim_value() && num_heads_dim.dim_value() <= 0) {
+    fail_shape_inference("SparseAttentionIndexer: num_heads must be > 0, got ", num_heads_dim.dim_value());
+  }
 
   const int64_t capacity = sai::SelectedCapacity(policy, token_budget, index_topk, compress_ratio);
   ONNX_NAMESPACE::TensorShapeProto selected_shape;
