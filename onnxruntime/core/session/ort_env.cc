@@ -87,7 +87,7 @@ OrtEnvPtr OrtEnv::GetOrCreateInstance(const OrtEnv::LoggingManagerConstructionIn
       return OrtEnvPtr(nullptr, OrtEnv::Release);
     }
     // Use 'new' to allocate OrtEnv, as it will be managed by p_instance_
-    // and deleted in ReleaseEnv or leaked if g_is_process_shutting_down is true.
+    // and deleted in ReleaseEnv or leaked if process shutdown cleanup should be skipped.
     p_instance_ = new OrtEnv(std::move(env));
   }
 
@@ -109,21 +109,14 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
 
     --ref_count_;
     if (ref_count_ == 0) {
-      if (!g_is_shutting_down.load(std::memory_order_acquire)) {
+      if (!ShouldSkipShutdownCleanup()) {
         instance_to_delete = p_instance_;  // Point to the instance to be deleted.
         p_instance_ = nullptr;             // Set the static instance pointer to nullptr under the lock.
       } else {
-#if !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
         // Process is shutting down, let it leak.
         // p_instance_ remains as is (though ref_count_ is 0), future CreateEnv calls
         // would increment ref_count_ on this "leaked" instance.
         // This behavior matches the requirement to "just let the memory leak out".
-#else
-        // we're tracing for memory leaks so we want to avoid as many leaks as possible and the leaks are considered
-        // as failures for test apps.
-        instance_to_delete = p_instance_;
-        p_instance_ = nullptr;
-#endif
       }
     }
   }  // Mutex m_ is released here when lock_guard goes out of scope.
@@ -131,6 +124,15 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
   // Perform the deletion outside the lock if an instance was marked for deletion.
   // instance_to_delete can be null here, but it's perfectly safe to delete a nullptr
   delete instance_to_delete;
+}
+
+/*static*/
+bool OrtEnv::ShouldSkipShutdownCleanup() noexcept {
+#if !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+  return g_is_shutting_down.load(std::memory_order_acquire);
+#else
+  return false;
+#endif
 }
 
 /*static*/
