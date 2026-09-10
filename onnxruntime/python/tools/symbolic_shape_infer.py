@@ -2623,6 +2623,48 @@ class SymbolicShapeInference:
                     vi = self.known_vi_[node.output[0]]
                     vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, query_shape))
 
+        self._infer_GroupQueryAttention_output_qk(node, output_dtype, past_shape)
+
+    def _infer_GroupQueryAttention_output_qk(self, node, output_dtype, past_shape):  # noqa: N802
+        """Infer the optional 4th output (output_qk) of GroupQueryAttention.
+
+        Its shape is (batch_size, num_heads, sequence_length, total_sequence_length), matching
+        BaseGroupQueryAttentionTypeAndShapeInference in onnxruntime/core/graph/contrib_ops/bert_defs.cc.
+        """
+        if len(node.output) <= 3 or node.output[3] == "":
+            return
+
+        num_heads = get_attribute(node, "num_heads")
+        if not num_heads:
+            return
+
+        # Read the query shape again because the packed-QKV branch above rewrites its last dimension in place.
+        query_shape = self._try_get_shape(node, 0)
+        if query_shape is None or len(query_shape) != 3:
+            return
+
+        # total_sequence_length is a scalar input at index 6. It is normally a run-time value, so fall back
+        # to the cache length carried by past_key when that is available, and to a fresh symbolic dimension
+        # otherwise. past_key is the same source the present_key/present_value shapes above are taken from.
+        #
+        # Only a positive constant is usable. bert_defs.cc defaults total_sequence_length_value to 0 when the
+        # input carries no data and then gates the output_qk shape on `total_sequence_length_value > 0`, so a
+        # literal 0 there means "not provided" rather than a zero-length dimension. Treat it the same way
+        # instead of writing an empty dimension into the graph.
+        total_sequence_length = self._try_get_value(node, 6)
+        if total_sequence_length is not None:
+            total_sequence_length = as_scalar(total_sequence_length)
+        if is_literal(total_sequence_length) and int(total_sequence_length) > 0:
+            total_sequence_length = int(total_sequence_length)
+        elif past_shape is not None and len(past_shape) == 4:
+            total_sequence_length = past_shape[2]
+        else:
+            total_sequence_length = str(self._new_symbolic_dim_from_output(node, 3, 3))
+
+        output_qk_shape = [query_shape[0], num_heads, query_shape[1], total_sequence_length]
+        vi = self.known_vi_[node.output[3]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[3], output_dtype, output_qk_shape))
+
     def _infer_SparseAttention(self, node):  # noqa: N802
         self._infer_GroupQueryAttention(node)
 
