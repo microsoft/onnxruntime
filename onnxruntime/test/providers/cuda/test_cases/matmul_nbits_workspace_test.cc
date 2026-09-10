@@ -28,6 +28,7 @@
 #if !defined(DISABLE_CONTRIB_OPS) && defined(USE_FPA_INTB_GEMM) && USE_FPA_INTB_GEMM
 
 #include <cstring>
+#include <limits>
 
 // NOTE: do NOT include core/graph/onnx_protobuf.h here. matmul_nbits.h pulls in the CUDA-provider
 // shared-provider bridge (provider_api.h), which defines its own copies of the ONNX enums
@@ -43,6 +44,8 @@ namespace test {
 
 using onnxruntime::contrib::cuda::CheckFpAIntBEligibility;
 using onnxruntime::contrib::cuda::EffectiveFpAIntBWorkspaceSm;
+using onnxruntime::contrib::cuda::GetFpAIntBPrefillBucketsToValidate;
+using onnxruntime::contrib::cuda::HasFpAIntBPrefillTactics;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightNotPrepacked;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm80;
 using onnxruntime::contrib::cuda::kMatMulNBitsWeightPrepackedSm90;
@@ -147,6 +150,41 @@ TEST(MatMulNBitsWorkspace, EffectiveArchSelection) {
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(100, kMatMulNBitsWeightNotPrepacked), 80);
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(120, kMatMulNBitsWeightNotPrepacked), 80);
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(75, kMatMulNBitsWeightNotPrepacked), 80);
+}
+
+TEST(MatMulNBitsWorkspace, PrefillValidationUsesDefaultProfileBuckets) {
+  const std::vector<int> expected{16, 32, 64, 128, 256, 512, 1024, 2048};
+  EXPECT_EQ(GetFpAIntBPrefillBucketsToValidate({}, 2048), expected);
+}
+
+TEST(MatMulNBitsWorkspace, PrefillValidationRespectsSparseProfileOverride) {
+  const std::vector<int> profile_m{1, 8, 32, 512};
+  const std::vector<int> expected{32, 512};
+  EXPECT_EQ(GetFpAIntBPrefillBucketsToValidate(profile_m, 512), expected);
+}
+
+TEST(MatMulNBitsWorkspace, PrefillValidationIncludesRoundedProfileEndpoint) {
+  const std::vector<int> profile_m{1, 17};
+  const std::vector<int> expected{17, 32};
+  EXPECT_EQ(GetFpAIntBPrefillBucketsToValidate(profile_m, 32), expected);
+}
+
+TEST(MatMulNBitsWorkspace, PrefillValidationClampsOverLimitOverride) {
+  const std::vector<int> profile_m{1, std::numeric_limits<int>::max()};
+  const std::vector<int> expected{8192};
+  EXPECT_EQ(GetFpAIntBPrefillBucketsToValidate(profile_m, 8192), expected);
+}
+
+TEST(MatMulNBitsWorkspace, PrefillValidationIncludesMinimumPrefillBucket) {
+  const std::vector<int> profile_m{1, 8};
+  const std::vector<int> expected{16};
+  EXPECT_EQ(GetFpAIntBPrefillBucketsToValidate(profile_m, 16), expected);
+}
+
+TEST(MatMulNBitsWorkspace, PrefillTacticValidationRejectsMissingBucket) {
+  const std::vector<int> buckets{16, 32, 64};
+  EXPECT_TRUE(HasFpAIntBPrefillTactics(buckets, [](int) { return true; }));
+  EXPECT_FALSE(HasFpAIntBPrefillTactics(buckets, [](int m) { return m != 32; }));
 }
 
 // ---------------------------------------------------------------------------

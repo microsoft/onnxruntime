@@ -312,6 +312,15 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
         out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1", "ep.cuda.fpa_intb_profile_m": "1,8,32"})
         np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2)
 
+    def test_narrow_n_int4_prefill_falls_back_when_cutlass_has_no_tactic(self):
+        # This is the Qwen2.5-0.5B projection shape from #29691. On affected full fpA_intB builds
+        # (notably SM90), CUTLASS has no valid prefill tactic and the node must retain its standard
+        # weights for the dequantize+GEMM fallback instead of failing at M=16.
+        model, a, _, _ = self._make_int4_case(m=16, k=896, n=128, block_size=128)
+        ref = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "0"})
+        out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": "1"})
+        np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2)
+
     def test_session_config_overrides_env(self):
         # env var says off, session config says on -> the session config must win.
         model, a, _, _ = self._make_int4_case()
