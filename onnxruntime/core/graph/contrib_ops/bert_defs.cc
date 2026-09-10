@@ -1654,13 +1654,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(3,
                "key_cache",
-               "Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in "
+               "Block-based key cache with shape (num_blocks, block_size, kv_num_heads, cache_head_size), where "
+               "cache_head_size is (head_size + 1) / 2 for packed INT4 and head_size otherwise. This is updated in "
                "place within the op. When 'kv_cache_layout' is 'LATENT' this is the only cache, and V is read from its "
                "leading v_head_size channels.",
                "T_CACHE")
         .Input(4,
                "value_cache",
-               "Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated "
+               "Block-based value cache with shape (num_blocks, block_size, kv_num_heads, cache_head_size), where "
+               "cache_head_size is (head_size + 1) / 2 for packed INT4 and head_size otherwise. This is updated "
                "in place within the op. This should be the same shape as key_cache. Must be absent when "
                "'kv_cache_layout' is 'LATENT'.",
                "T_CACHE",
@@ -1758,19 +1760,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "key_cache_out",
-                "Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always "
-                "the same tensor as key_cache.",
+                "Aliases key_cache with the same shape and element type, including its packed dimension for INT4.",
                 "T_CACHE",
                 OpSchema::Optional)
         .Output(2,
                 "value_cache_out",
-                "Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always "
-                "the same tensor as value_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.",
+                "Aliases value_cache with the same shape and element type, including its packed dimension for INT4. "
+                "Must be absent when 'kv_cache_layout' is 'LATENT'.",
                 "T_CACHE",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("T_CACHE",
-                        {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)", "tensor(float8e4m3fn)"},
+                        {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)", "tensor(float8e4m3fn)", "tensor(uint8)"},
                         "Constrain the KV cache to float or quantized tensors.")
         .TypeConstraint("T_KV_SCALE", {"tensor(float)"}, "Constrain KV cache scales to float tensors.")
         .TypeConstraint("S", {"tensor(int32)"}, "Constrain Positional inputs to int tensor.")

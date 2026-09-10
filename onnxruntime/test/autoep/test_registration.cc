@@ -72,6 +72,10 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ASSERT_STREQ(metadata.GetValue("supported_devices"), "CrackGriffin 7+");
   // Verify the example plugin's expected os_driver_version value.
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_OSDriverVersion), "31.0.101.1000");
+  // Verify the example plugin's advertised GroupQueryAttention Value cache layout preference. It is
+  // "BNSH" because the example EP does not fuse the Transpose -> GQA -> Transpose sequence; only an
+  // EP that does should report "BNHS".
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout), "BNSH");
   // Verify the example plugin reports weightless support for all initializers.
   ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_WeightlessSupport), "all");
 
