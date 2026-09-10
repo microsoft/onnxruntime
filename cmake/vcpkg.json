@@ -86,7 +86,13 @@
     },
     "coreml-ep": {
       "description": "Build with CoreML EP",
-      "dependencies": ["fp16"]
+      "dependencies": [
+        "fp16",
+        {
+          "name": "libuuid",
+          "platform": "linux"
+        }
+      ]
     },
     "dml-ep": {
       "description": "Build with DirectML EP",
