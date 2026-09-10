@@ -7,6 +7,8 @@
 #include <type_traits>
 
 #include "contrib_ops/cuda/bert/paged_attention_impl.h"
+#include "core/framework/stream_handles.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime {
 namespace contrib {
