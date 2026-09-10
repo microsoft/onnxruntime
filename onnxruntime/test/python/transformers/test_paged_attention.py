@@ -2307,7 +2307,7 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         rtol=5e-3,
         atol=5e-3,
         k_scale_max_override=None,
-        require_xqa=False,
+        expect_xqa=None,
         **overrides,
     ):
         if kv_cache_type == "fp8":
@@ -2326,15 +2326,18 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         def run():
             parity_check_paged_attention(config, rtol=rtol, atol=atol, k_scale_max_override=k_scale_max_override)
 
-        if require_xqa:
-            with patch.dict(
-                os.environ,
-                {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
-            ):
-                debug_output = capture_native_stdout(run)
-            self.assertIn("SdpaKernel=XQA", debug_output)
+        if expect_xqa is None:
+            run()
             return
-        run()
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+        ):
+            debug_output = capture_native_stdout(run)
+        if expect_xqa:
+            self.assertIn("SdpaKernel=XQA", debug_output)
+        else:
+            self.assertNotIn("SdpaKernel=XQA", debug_output)
 
     def _capture_xqa_debug(self, config):
         with patch.dict(
@@ -2519,18 +2522,19 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         self._check_xqa(kv_cache_type=kv_cache_type, quant_type=quant_type)
 
     @parameterized.expand([("int8", "int8"), ("fp8", "fp8")])
-    def test_xqa_large_per_channel_k_scale(self, _, kv_cache_type):
-        # A finite channel scale can overflow FP32 when multiplied by Q before normalization.
+    def test_large_per_channel_k_scale_falls_back(self, _, kv_cache_type):
+        # A channel scale this large overflows FP32 once multiplied into Q, so per-channel K decode
+        # is routed to the portable kernel that keeps the product in FP32 and must stay finite.
         self._check_xqa(
             kv_cache_type=kv_cache_type,
             quant_type="PER_CHANNEL",
             k_scale_max_override=torch.finfo(torch.float32).max,
-            require_xqa=True,
+            expect_xqa=False,
         )
 
     def test_xqa_mixed_granularity(self):
-        # k PER_CHANNEL folds into Q, v PER_TENSOR stays a kernel argument: the two scales take
-        # different routes, so an asymmetric config catches a mix-up between them.
+        # k PER_CHANNEL sends the step to the portable kernel while v PER_TENSOR stays a kernel
+        # argument: the two scales take different routes, so an asymmetric config catches a mix-up.
         config = self._config(kv_cache_type="int8", k_quant_type="PER_CHANNEL", v_quant_type="PER_TENSOR")
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 
