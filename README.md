@@ -22,6 +22,8 @@
 
 * **Plugin EP repositories**:
   - ONNX Runtime QNN Plugin EP: [onnxruntime/onnxruntime-qnn](https://github.com/onnxruntime/onnxruntime-qnn)
+  - ONNX Runtime TensorRT Plugin EP: [onnxruntime/onnxruntime-ep-tensorrt](https://github.com/onnxruntime/onnxruntime-ep-tensorrt)
+  - ONNX Runtime AMD GPU Plugin EPs: [onnxruntime/onnxruntime-ep-amdgpu](https://github.com/onnxruntime/onnxruntime-ep-amdgpu)
 
 ## Releases
 
