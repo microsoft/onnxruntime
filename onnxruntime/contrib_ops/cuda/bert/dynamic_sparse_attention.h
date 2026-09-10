@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include "contrib_ops/cpu/bert/dynamic_sparse_attention_helper.h"
 #include "core/providers/cuda/cuda_kernel.h"
+#include "contrib_ops/cpu/bert/dynamic_sparse_attention_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
