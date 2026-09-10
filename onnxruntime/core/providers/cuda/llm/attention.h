@@ -8,6 +8,26 @@
 namespace onnxruntime {
 namespace cuda {
 
+namespace llm_attention_detail {
+
+// Session-scoped logger used only for the present-cache alias diagnostic.
+class PresentCopyLogger {
+ public:
+  explicit PresentCopyLogger(const OpKernelInfo& info) noexcept;
+  void Log() const;
+
+ private:
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  // OrtLogger is owned by the session and outlives its kernels.
+  const OrtLogger* logger_{nullptr};
+#else
+  const logging::Logger* logger_{nullptr};
+#endif
+  bool enabled_{false};
+};
+
+}  // namespace llm_attention_detail
+
 template <typename T>
 class Attention final : public CudaKernel {
  public:
@@ -31,7 +51,7 @@ class Attention final : public CudaKernel {
       Tensor* Y, Tensor* present_key, Tensor* present_value,
       const attention_helper::AttentionParameters& parameters) const;
 
-  // cuDNN SDPA decode tier (Phase 1: opset-24 external KV cache).
+  // cuDNN SDPA tier for opset-24 external-cache decode.
   // Reads the full `present` KV cache (K/V) and a per-batch valid length derived from
   // nonpad_kv_seqlen; produces GQA-class decode latency without any host-side valid-length
   // readback (CUDA-graph safe). Only reached for the narrowly gated decode case: external
@@ -91,6 +111,7 @@ class Attention final : public CudaKernel {
   // disabled it.
   bool enable_cudnn_flash_attention_;
   bool auto_enable_cudnn_flash_attention_;
+  llm_attention_detail::PresentCopyLogger present_copy_logger_;
 };
 
 }  // namespace cuda
