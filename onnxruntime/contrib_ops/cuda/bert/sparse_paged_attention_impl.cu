@@ -87,6 +87,12 @@ __global__ void SparsePagedAttentionKernel(
     }
 
     const bool use_auxiliary = !is_local && selected_from_auxiliary;
+    // local_plus_selected denotes a set union. Avoid weighting a selected main-cache
+    // position twice when the external indexer also returns an entry in the local window.
+    if (!is_local && !use_auxiliary && local_plus_selected &&
+        logical_position >= local_begin && logical_position <= local_end) {
+      continue;
+    }
     const TCACHE* main_key = nullptr;
     const TCACHE* main_value = nullptr;
     const T* aux_key = nullptr;
