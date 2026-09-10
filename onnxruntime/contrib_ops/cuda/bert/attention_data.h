@@ -288,11 +288,16 @@ struct PagedAttentionData {
   // (quantized cache with one or a bounded speculative group of new tokens -- see use_xqa_decode).
   //   xqa_workspace          : XQA semaphores + multi-block scratch (GetXQAScratchSize bytes).
   //   xqa_page_table_scratch : mutable destination for expansion when block_size is greater than 128.
+  //   xqa_query              : scratch for Q pre-scaled by a PER_CHANNEL k_scale; unused otherwise.
   //   xqa_head_sink          : head_sink converted to fp32, which is what XQA consumes.
+  //   xqa_k_scale_norm       : power of two divided out of that pre-scaled Q and handed to XQA as
+  //                            its scalar K scale, so the FP16 copy of Q cannot overflow.
   void* xqa_workspace = nullptr;
   size_t xqa_workspace_size = 0;
   int* xqa_page_table_scratch = nullptr;
+  T* xqa_query = nullptr;
   float* xqa_head_sink = nullptr;
+  float* xqa_k_scale_norm = nullptr;
   uint32_t* xqa_spec_dec_mask = nullptr;
 
   // Output Tensors

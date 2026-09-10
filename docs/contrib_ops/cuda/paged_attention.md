@@ -798,11 +798,10 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 > - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
-> - **INT4 extension:** `uint8` packed caches are read by the portable decode/gather paths.
->   Dedicated FP16 INT4 XQA kernels remain compiled, but PagedAttention does not dispatch them:
->   their per-channel K folding cannot preserve FP32 scale dynamic range in FP16 query storage.
->   Both `PER_CHANNEL` and `PER_TENSOR` scales and FP16/BF16 activations use the portable paths.
->   No per-token scales are stored or passed.
+> - **INT4 extension:** `uint8` packed caches are read in place by the portable decode/gather paths
+>   and, with `PER_CHANNEL` scales at `head_size = 256` and `group_size = 6`, by dedicated FP16 INT4
+>   XQA decode and speculative-decode kernels. `PER_TENSOR` scales and BF16 activations use the
+>   portable paths. No per-token scales are stored or passed.
 > - **No architecture gate for portable FP8 decode.** `Float8E4M3FN`'s converting constructor uses
 >   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
 >   onward. FP8 remains gated at *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
@@ -812,9 +811,10 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 
 > **Paged decode kernels.** Quantized decode uses XQA directly on the paged cache when the query has
 > one token per sequence, `head_size ∈ {64, 128, 256}`, `group_size ∈ {4, 6, 8, 16, 32}`, no softcap,
-> a block size divisible by 128, and an INT8/FP8 cache with `PER_TENSOR` K scales. Separate
+> a block size divisible by 128, and an INT8/FP8 cache with `PER_TENSOR` or `PER_CHANNEL` K scales.
+> Separate
 > speculative XQA specializations cover matching native FP16/BF16 query and cache types, and FP16
-> query/output with an INT8/FP8 cache and `PER_TENSOR` K scales, when
+> query/output with an INT8/FP8/INT4 cache, when
 > `attention_metadata` bounds the longest query to 2–8 tokens, `head_size = 256`, and
 > `group_size = 6`; these kernels write packed token-major output and support ragged batches. A
 > native FP16-cache specialization additionally covers `head_size = 256, group_size = 6`, the
@@ -839,13 +839,23 @@ when reusing a directory configured with the feature disabled. INT8 kernels are 
 >   softmax denominator.
 > - The kernel reads pages in place at their stored width, so a decode step touches the KV cache once
 >   at `int8`/`fp8` bandwidth instead of gathering and dequantizing the whole live context.
-> - **`PER_CHANNEL` K scales bypass XQA.** Folding the scales into an FP16 query can overflow;
->   dividing by a global maximum instead can erase small channels and overflow the scalar
->   `attention_scale * max_scale`. Normal and metadata-bounded speculative decode therefore use
->   the portable FP32 kernel, independently of `ORT_ENABLE_XQA` and XQA hardware availability.
->   No scale-reduction or query-folding launch is needed. This preserves CUDA graph capture and
->   reads the current scale table on every replay, but loses XQA's tensor-core acceleration.
->   INT8/FP8 with `PER_TENSOR` K and either granularity for V remain eligible for XQA.
+> - **`PER_CHANNEL` K scales are folded into Q for XQA, normalized by a power of two.** XQA takes a
+>   single scalar K scale, so the channel scale is folded into the query. Storing that product in
+>   fp16 would saturate on a large scale, and a zero cache code would then turn the infinity into a
+>   `NaN`. `PagedScaleNormalizerKernel` reduces the table to the power of two just above
+>   `max|k_scale|`; the fold divides by it and XQA multiplies it back into `qkScale` once per CTA,
+>   outside the K/V loop. A power of two is used rather than `max|k_scale|` itself so that both the
+>   division and the reapplication are exact, and every normalized scale lands in `(0, 1]` so the
+>   fold cannot overflow for any finite table. The reduction is a single block on the compute
+>   stream, so the path stays CUDA-graph capturable and re-reads the table on every replay.
+> - **Limit of the fold, and how to opt out.** fp16 spans about 40 binades, and an overflow-free
+>   normalizer must be at least `max|k_scale|`, so channels more than **24 binades** below the
+>   largest flush to zero in the folded query. Calibrated tables sit far inside that budget — across
+>   the 128 per-(head, side) tables of a Qwen3.8-27B INT4 export the widest spans 4.9 binades — and
+>   MMLU-Pro over 800 questions puts the INT4 per-channel cache within noise of an INT8 cache. A
+>   table that does span more than the fold can hold should set `ORT_ENABLE_XQA_PER_CHANNEL_KV=0`,
+>   which routes `PER_CHANNEL` K decode and metadata-bounded speculative decode to the portable FP32
+>   kernel at the cost of XQA's tensor-core acceleration. `PER_TENSOR` K is unaffected either way.
 > - `softcap` matches FlashAttention bit-for-bit: `softcap * tanh(qk_raw * scale / softcap)`, which is
 >   what `flash_api.cc` produces from `params.softcap = softmax_scale / softcap` and
 >   `params.scale_softmax = softcap`.

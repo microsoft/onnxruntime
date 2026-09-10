@@ -2308,6 +2308,7 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         atol=5e-3,
         k_scale_max_override=None,
         expect_xqa=None,
+        per_channel_xqa=None,
         **overrides,
     ):
         if kv_cache_type == "fp8":
@@ -2522,19 +2523,31 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         self._check_xqa(kv_cache_type=kv_cache_type, quant_type=quant_type)
 
     @parameterized.expand([("int8", "int8"), ("fp8", "fp8")])
-    def test_large_per_channel_k_scale_falls_back(self, _, kv_cache_type):
-        # A channel scale this large overflows FP32 once multiplied into Q, so per-channel K decode
-        # is routed to the portable kernel that keeps the product in FP32 and must stay finite.
+    def test_xqa_large_per_channel_k_scale(self, _, kv_cache_type):
+        # Scaling the whole table up to FP32 max leaves its dynamic range intact, which is the shape
+        # a calibrated table has. The power-of-two normalizer keeps the fold in range, so this stays
+        # on XQA.
         self._check_xqa(
             kv_cache_type=kv_cache_type,
             quant_type="PER_CHANNEL",
             k_scale_max_override=torch.finfo(torch.float32).max,
+            expect_xqa=True,
+        )
+
+    @parameterized.expand([("int8", "int8"), ("fp8", "fp8")])
+    def test_per_channel_xqa_opt_out_uses_portable_kernel(self, _, kv_cache_type):
+        # ORT_ENABLE_XQA_PER_CHANNEL_KV=0 is the escape hatch for scale tables whose channel range
+        # exceeds what folding into an fp16 query can hold.
+        self._check_xqa(
+            kv_cache_type=kv_cache_type,
+            quant_type="PER_CHANNEL",
             expect_xqa=False,
+            per_channel_xqa=False,
         )
 
     def test_xqa_mixed_granularity(self):
-        # k PER_CHANNEL sends the step to the portable kernel while v PER_TENSOR stays a kernel
-        # argument: the two scales take different routes, so an asymmetric config catches a mix-up.
+        # k PER_CHANNEL folds into Q, v PER_TENSOR stays a kernel argument: the two scales take
+        # different routes, so an asymmetric config catches a mix-up between them.
         config = self._config(kv_cache_type="int8", k_quant_type="PER_CHANNEL", v_quant_type="PER_TENSOR")
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
 

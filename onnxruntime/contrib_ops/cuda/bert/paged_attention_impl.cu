@@ -1542,10 +1542,13 @@ Status PagedDecodeAttention(
 //     concatenation of pages [b * pages_per_block, (b + 1) * pages_per_block). ExpandBlockTable-
 //     ToPages rewrites blocks larger than 128 tokens accordingly. A 128-token block table is
 //     already in XQA page units and passes through without scratch allocation or expansion.
-//  2. Per-channel scales. XQA only accepts a scalar dequantization scale per cache. Per-channel K
-//     uses portable decode: folding a normalized scale into low-precision Q can erase channels,
-//     and reapplying the normalizer can overflow the scalar QK scale. Per-channel V is applied to
-//     the attention output (it is a free dim of the PV accumulation, outside the softmax).
+//  2. Per-channel scales. XQA only accepts a scalar dequantization scale per cache. A PER_CHANNEL
+//     scale is folded out exactly the same way GroupQueryAttention does it (see the derivation
+//     next to LaunchScaleHeadsByChannelScale in group_query_attention_qdq.cuh): k_scale into Q
+//     (it multiplies the QK contraction dim) and v_scale into the attention output (it is a free
+//     dim of the PV accumulation, so it never touches the softmax denominator). The K fold is
+//     normalized by a power of two so the fp16 copy of Q cannot overflow; see
+//     PagedScaleNormalizerKernel.
 //  3. Attention sinks. XQA consumes them as fp32, laid out [kv_head][group] -- which is ORT's
 //     [num_heads] order -- so only a dtype conversion is needed.
 
@@ -1567,12 +1570,16 @@ __global__ void ExpandBlockTableToPages(const int* __restrict__ block_table,
   page_table[i] = block_id < 0 ? -1 : block_id * pages_per_block + (page_in_seq % pages_per_block);
 }
 
-// Multiply XQA's output by a PER_CHANNEL V scale indexed [kv_head, channel]. dst may alias src
-// (the output scaling is done in place), so neither pointer is marked __restrict__.
+// Multiply every head vector by a PER_CHANNEL scale indexed [kv_head, channel]. Used to fold
+// k_scale into Q before XQA and v_scale into XQA's output afterwards. dst may alias src (the
+// output scaling is done in place), so neither pointer is marked __restrict__.
+// When scale_norm is set, the scale is divided by it first; XQA multiplies the same value back
+// into qkScale, which keeps the folded product inside T's range without changing the result.
 template <typename T>
 __global__ void PagedFoldChannelScaleKernel(T* dst,
                                             const T* src,
                                             const float* __restrict__ channel_scale,
+                                            const float* __restrict__ scale_norm,
                                             const int num_heads, const int head_size,
                                             const int group_size, const int64_t total_elements) {
   const int64_t i = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -1582,7 +1589,58 @@ __global__ void PagedFoldChannelScaleKernel(T* dst,
   const int h = static_cast<int>(i / head_size) % num_heads;
   const int c = static_cast<int>(i % head_size);
   const float scale = channel_scale[(h / group_size) * head_size + c];
-  dst[i] = static_cast<T>(static_cast<float>(src[i]) * scale);
+  const float normalized_scale = (scale_norm == nullptr) ? scale : (scale / scale_norm[0]);
+  dst[i] = static_cast<T>(static_cast<float>(src[i]) * normalized_scale);
+}
+
+// Normalizer for the PER_CHANNEL K fold, computed in one block so the XQA path stays capturable.
+//
+// The fold stores Q * k_scale in T, so a large scale saturates fp16 and a zero cache code then
+// turns that infinity into a NaN. Dividing the scale table by this normalizer and handing the
+// normalizer to XQA as its scalar K scale keeps the product in range: XQA folds it back into
+// qkScale once per CTA, outside the K/V loop, so the result is unchanged.
+//
+// The normalizer is the power of two just above max|k_scale| rather than max|k_scale| itself:
+// dividing by it is exact, so the fold adds no rounding of its own; qkScale * norm is an exponent
+// adjustment in fp32, so reapplying it is exact too; and every normalized scale then lies in
+// (0, 1], so |Q * s| <= |Q| and the fp16 store cannot overflow for any finite table. The exponent
+// is bounded so both the normalizer and attention_scale * normalizer stay in fp32's normal range.
+//
+// Channels more than 24 binades below the largest flush to zero in fp16. Calibrated tables sit far
+// inside that budget (the widest we have measured spans 4.9 binades), but a table that does not can
+// be routed to the portable FP32 kernel with ORT_ENABLE_XQA_PER_CHANNEL_KV=0.
+__global__ void PagedScaleNormalizerKernel(float* __restrict__ out, const float* __restrict__ scale,
+                                           const int count, const float attention_scale) {
+  constexpr int kWarpSize = 32;
+  __shared__ float warp_max[kWarpSize];
+  float local = 0.0f;
+  for (int i = threadIdx.x; i < count; i += blockDim.x) {
+    const float s = fabsf(scale[i]);
+    local = fmaxf(local, isfinite(s) ? s : 0.0f);
+  }
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    local = fmaxf(local, __shfl_down_sync(0xffffffffu, local, offset));
+  }
+  const int lane = threadIdx.x % kWarpSize;
+  const int warp = threadIdx.x / kWarpSize;
+  if (lane == 0) {
+    warp_max[warp] = local;
+  }
+  __syncthreads();
+  if (warp == 0) {
+    const int num_warps = (blockDim.x + kWarpSize - 1) / kWarpSize;
+    local = lane < num_warps ? warp_max[lane] : 0.0f;
+    for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+      local = fmaxf(local, __shfl_down_sync(0xffffffffu, local, offset));
+    }
+    if (lane == 0) {
+      // An all-zero (or non-finite) table would make the normalized fold 0/0, so it reports 1.
+      // 126 - ilogb(attention_scale) keeps attention_scale * 2^e below 2^127.
+      const int headroom = 126 - ilogbf(fmaxf(attention_scale, 1.0f));
+      const int exponent = max(min(ilogbf(local) + 1, headroom), -126);
+      out[0] = local > 0.0f ? ldexpf(1.0f, exponent) : 1.0f;
+    }
+  }
 }
 
 template <typename T>
@@ -1643,9 +1701,6 @@ Status PagedXqaDecodeAttention(
     contrib::PagedAttentionParameters& parameters,
     PagedAttentionData<T, TCACHE>& data,
     float scale) {
-  ORT_RETURN_IF_NOT(parameters.k_quant_type != KVQuantizationType::PER_CHANNEL,
-                    "PagedAttention: per-channel K scales require the portable paged decode backend.");
-
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
   const int num_heads = parameters.num_heads;
@@ -1669,8 +1724,25 @@ Status PagedXqaDecodeAttention(
     page_table = data.xqa_page_table_scratch;
   }
 
+  const bool k_per_channel = parameters.k_quant_type == KVQuantizationType::PER_CHANNEL;
   const bool v_per_channel = parameters.v_quant_type == KVQuantizationType::PER_CHANNEL;
   const int64_t q_elements = static_cast<int64_t>(parameters.token_count) * num_heads * head_size;
+
+  if (k_per_channel) {
+    // Q may point straight at the (const) graph input when there is no packed-QKV / rotary
+    // prologue, so the scaled copy always goes to a dedicated scratch buffer.
+    ORT_RETURN_IF_NOT(data.xqa_k_scale_norm, "XQA k_scale normalizer scratch was not allocated.");
+    ORT_RETURN_IF_NOT(data.xqa_query, "XQA folded-query scratch was not allocated.");
+    PagedScaleNormalizerKernel<<<1, 256, 0, stream>>>(data.xqa_k_scale_norm, data.k_scale,
+                                                      kv_num_heads * head_size, scale);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);
+    PagedFoldChannelScaleKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(
+        data.xqa_query, query, data.k_scale, data.xqa_k_scale_norm, num_heads, head_size,
+        num_heads / kv_num_heads, q_elements);
+    CUDA_RETURN_IF_ERROR(cudaGetLastError());
+    query = data.xqa_query;
+  }
 
   const float* attention_sinks = nullptr;
   if (parameters.use_smooth_softmax && data.head_sink != nullptr) {
@@ -1693,7 +1765,10 @@ Status PagedXqaDecodeAttention(
       kIsInt4Cache  ? XqaQuantType::kInt4
       : kIsFp8Cache ? XqaQuantType::kFp8
                     : (kIsInt8Cache ? XqaQuantType::kInt8 : XqaQuantType::kNone);
-  // A PER_CHANNEL V scale is applied to the output below, so XQA sees a null scale (one).
+  // A PER_CHANNEL K scale is folded into Q up to a power-of-two normalizer, which XQA reapplies as
+  // its scalar scale; a PER_CHANNEL V scale is applied to the output below, so XQA sees a null
+  // scale (one).
+  const float* xqa_k_scale = k_per_channel ? data.xqa_k_scale_norm : data.k_scale;
   const float* xqa_v_scale = v_per_channel ? nullptr : data.v_scale;
   if (data.use_xqa_spec_dec) {
     ORT_RETURN_IF_NOT(data.xqa_spec_dec_mask, "Speculative XQA mask scratch was not allocated.");
@@ -1714,7 +1789,7 @@ Status PagedXqaDecodeAttention(
         batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
         scale, parameters.local_window_size, data.past_seqlens,
         data.max_query_len, data.cumulative_seqlens_q, data.xqa_spec_dec_mask,
-        attention_sinks, data.k_scale, xqa_v_scale, kv_quant_type,
+        attention_sinks, xqa_k_scale, xqa_v_scale, kv_quant_type,
         std::is_same<T, BFloat16>::value,
         data.xqa_workspace, data.xqa_workspace_size));
   } else {
@@ -1726,14 +1801,14 @@ Status PagedXqaDecodeAttention(
         reinterpret_cast<void*>(data.output), page_table,
         batch_size, num_heads, kv_num_heads, head_size, max_pages_per_seq,
         scale, parameters.local_window_size, data.past_seqlens, attention_sinks,
-        data.k_scale, xqa_v_scale, kv_quant_type, std::is_same<T, BFloat16>::value,
+        xqa_k_scale, xqa_v_scale, kv_quant_type, std::is_same<T, BFloat16>::value,
         data.xqa_workspace, data.xqa_workspace_size));
   }
 
   if (v_per_channel) {
     const int blocks = static_cast<int>((q_elements + max_threads_per_block - 1) / max_threads_per_block);
     PagedFoldChannelScaleKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(
-        data.output, data.output, data.v_scale, num_heads, head_size,
+        data.output, data.output, data.v_scale, /*scale_norm*/ nullptr, num_heads, head_size,
         num_heads / kv_num_heads, q_elements);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
   }

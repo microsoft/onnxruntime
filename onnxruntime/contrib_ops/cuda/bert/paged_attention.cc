@@ -152,6 +152,10 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   enable_xqa_ = sizeof(T) == 2 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
   enable_native_xqa_ =
       enable_xqa_ && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_NATIVE_KV", 0) != 0);
+  // The PER_CHANNEL K fold covers every calibrated scale table we have measured. The opt-out exists
+  // for tables whose channel scales span more than the fold can hold; see paged_attention.md §18.7.
+  enable_per_channel_xqa_ =
+      enable_xqa_ && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_PER_CHANNEL_KV", 1) != 0);
 }
 
 template <typename T, typename TCACHE>
@@ -463,11 +467,15 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   const auto is_supported_quant_type = [](KVQuantizationType t) {
     return t == KVQuantizationType::PER_TENSOR || t == KVQuantizationType::PER_CHANNEL;
   };
+  // A PER_CHANNEL K scale reaches XQA by being folded into the fp16 query, which only the
+  // enable_per_channel_xqa_ switch turns on; everything else keeps the portable FP32 kernel.
+  const bool per_channel_k = k_quant_type_ == KVQuantizationType::PER_CHANNEL;
+  const bool per_channel_k_on_xqa = !per_channel_k || enable_per_channel_xqa_;
 #ifdef USE_INT4_KV_CACHE
-  // Retain the compiled INT4 geometry for speculative-decode sizing. The per-channel K gate
-  // below routes these candidates to portable decode without FP16 query folding.
+  // INT4 XQA reads the packed cache at unit scale, so it exists only for folded PER_CHANNEL scales.
   const bool int4_xqa_eligible =
-      enable_xqa_ && std::is_same_v<TCACHE, uint8_t> && std::is_same_v<T, MLFloat16> &&
+      enable_xqa_ && enable_per_channel_xqa_ && std::is_same_v<TCACHE, uint8_t> &&
+      std::is_same_v<T, MLFloat16> &&
       device_prop.major >= 8 && parameters.softcap == 0.0f && parameters.head_size == 256 && group_size == 6 &&
       (parameters.block_size % kXqaTokensPerPage) == 0 &&
       k_quant_type_ == KVQuantizationType::PER_CHANNEL && v_quant_type_ == KVQuantizationType::PER_CHANNEL;
@@ -489,14 +497,13 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // attention sinks stay eligible: the kernel's rows are flattened (query token, query head) pairs,
   // so it derives the window from each row's own query position and the sink from its own head.
   const bool xqa_spec_dec_candidate =
-      decode_eligible && has_metadata_bounds &&
+      decode_eligible && has_metadata_bounds && per_channel_k_on_xqa &&
       ((quantized_xqa_eligible && std::is_same<T, MLFloat16>::value) || native_spec_xqa_eligible) &&
       parameters.head_size == 256 && group_size == 6 &&
       max_query_len_bound > 1 && max_query_len_bound <= 8;
   const bool portable_spec_dec_candidate =
       has_metadata_bounds && max_query_len_bound > 1 && max_query_len_bound <= 8 &&
-      (std::is_same_v<TCACHE, uint8_t> ||
-       (kIsQuantizedCache && k_quant_type_ == KVQuantizationType::PER_CHANNEL));
+      (std::is_same_v<TCACHE, uint8_t> || (kIsQuantizedCache && per_channel_k && !enable_per_channel_xqa_));
   // Only the FlashAttention backend takes a causality flag; the paged decode and CUTLASS kernels
   // both hard-code a bottom-right causal mask.
   bool use_paged_decode =
@@ -528,7 +535,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // from the metadata bound or from the readback below, then rules out any contributing two.
   bool xqa_candidate = false;
   if (use_paged_decode && enable_xqa_ && (kIsQuantizedCache || fp16_xqa_eligible) &&
-      parameters.token_count == parameters.batch_size && k_quant_type_ != KVQuantizationType::PER_CHANNEL) {
+      parameters.token_count == parameters.batch_size && per_channel_k_on_xqa) {
     xqa_candidate = kIsQuantizedCache ? quantized_xqa_eligible : fp16_xqa_eligible;
   }
   const XqaQuantType xqa_kv_quant_type =
@@ -595,8 +602,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     }
   }
 
-  bool use_xqa_spec_dec = xqa_spec_dec_candidate && max_query_len > 1 &&
-                          k_quant_type_ != KVQuantizationType::PER_CHANNEL;
+  bool use_xqa_spec_dec = xqa_spec_dec_candidate && max_query_len > 1;
   bool use_xqa_decode = (xqa_candidate && max_query_len == 1) || use_xqa_spec_dec;
   if (use_xqa_decode) {
     // The kernel's dynamic shared-memory request is fixed at compile time for its target SM and
@@ -734,7 +740,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
   // table is already in XQA page units and is passed through without an allocation.
   IAllocatorUniquePtr<void> xqa_workspace_buffer;
   IAllocatorUniquePtr<void> xqa_page_table_buffer;
+  IAllocatorUniquePtr<void> xqa_query_buffer;
   IAllocatorUniquePtr<void> xqa_head_sink_buffer;
+  IAllocatorUniquePtr<void> xqa_k_scale_norm_buffer;
   IAllocatorUniquePtr<void> xqa_spec_dec_mask_buffer;
   size_t xqa_workspace_bytes = 0;
   int xqa_max_pages_per_seq = 0;
@@ -762,6 +770,13 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     if (parameters.use_smooth_softmax && head_sink != nullptr) {
       xqa_head_sink_buffer = GetScratchBuffer<void>(sizeof(float) * parameters.num_heads,
                                                     GetComputeStream(context));
+    }
+    if (per_channel_k) {
+      // The k_scale fold writes a scaled copy of Q, which may otherwise alias a const graph input.
+      const size_t q_elements = static_cast<size_t>(parameters.token_count) *
+                                parameters.num_heads * parameters.head_size;
+      xqa_query_buffer = GetScratchBuffer<void>(sizeof(CudaT) * q_elements, GetComputeStream(context));
+      xqa_k_scale_norm_buffer = GetScratchBuffer<void>(sizeof(float), GetComputeStream(context));
     }
     if (use_xqa_spec_dec) {
       const size_t mask_words = static_cast<size_t>(parameters.token_count) * ((max_query_len + 31) / 32);
@@ -863,7 +878,9 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     data.xqa_workspace = xqa_workspace_buffer.get();
     data.xqa_workspace_size = xqa_workspace_bytes;
     data.xqa_page_table_scratch = reinterpret_cast<int*>(xqa_page_table_buffer.get());
+    data.xqa_query = reinterpret_cast<CudaT*>(xqa_query_buffer.get());
     data.xqa_head_sink = reinterpret_cast<float*>(xqa_head_sink_buffer.get());
+    data.xqa_k_scale_norm = reinterpret_cast<float*>(xqa_k_scale_norm_buffer.get());
     data.xqa_spec_dec_mask = reinterpret_cast<uint32_t*>(xqa_spec_dec_mask_buffer.get());
   }
   if (use_memory_efficient_attention && fmha_buffer != nullptr) {
