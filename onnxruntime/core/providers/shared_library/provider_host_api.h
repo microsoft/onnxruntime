@@ -42,7 +42,7 @@ struct Provider {
                                           const OrtSessionOptions& /*session_options*/,
                                           const OrtLogger& /*logger*/,
                                           std::unique_ptr<IExecutionProvider>& /*ep*/) {
-    return Status(common::StatusCategory::NONE, common::NOT_IMPLEMENTED,
+    return Status(common::StatusCategory::ONNXRUNTIME, common::NOT_IMPLEMENTED,
                   "CreateIExecutionProvider is not implemented for this provider");
   }
 
