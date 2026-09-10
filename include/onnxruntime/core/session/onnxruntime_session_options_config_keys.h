@@ -20,6 +20,18 @@
 // If the config value is set to "1" then the prepacking is disabled, otherwise prepacking is enabled (default value)
 static const char* const kOrtSessionOptionsConfigDisablePrepacking = "session.disable_prepacking";
 
+// Key for releasing the ONNX NodeProto instances the Graph retains from the loaded model.
+// Graph construction copies each NodeProto's attributes into the owning Node, so after initialization
+// the retained protos are duplicates that inference never reads. Releasing them is a large saving for
+// models whose payload lives in node attributes rather than initializers - an ai.onnx.ml tree ensemble
+// holds a second copy of the whole model otherwise - and a small one for everything else.
+// Saving the model still works afterwards - it is rebuilt from the graph as initialized rather than
+// returned as it was loaded - but the graph cannot be resolved again. Ignored when
+// optimized_model_filepath is set.
+// If the config value is set to "1" the protos are released, otherwise they are retained (default).
+static const char* const kOrtSessionOptionsConfigReleaseNodeProtosAfterInit =
+    "session.release_node_protos_after_init";
+
 // A value of "1" means allocators registered in the env will be used. "0" means the allocators created in the session
 // will be used. Use this to override the usage of env allocators on a per session level.
 static const char* const kOrtSessionOptionsConfigUseEnvAllocators = "session.use_env_allocators";

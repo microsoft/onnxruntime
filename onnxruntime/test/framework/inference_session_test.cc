@@ -839,6 +839,105 @@ TEST(InferenceSessionTests, LoadInvalidGraphReturnsError) {
   ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("undefined_input"));
 }
 
+// Releasing the retained NodeProtos must not disturb inference: the Node instances own their own copy
+// of everything the kernels were built from, so the session behaves exactly as it does without the
+// option. Serializing the graph afterwards must still work too, since Graph::ToGraphProto rebuilds the
+// node list from those Node instances rather than from what was released.
+TEST(InferenceSessionTests, ReleaseNodeProtosAfterInit) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.ReleaseNodeProtosAfterInit";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigReleaseNodeProtosAfterInit, "1"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  RunModel(session_object, run_options);
+
+  ASSERT_EQ(session_object.GetGraph().NumberOfNodes(), 1);
+
+  // Rebuilt from the Node instances, so the released protos are not missed.
+  ASSERT_EQ(session_object.GetMutableGraph().ToGraphProto().node_size(), 1);
+}
+
+// Same model, option off: the default must not change behaviour.
+TEST(InferenceSessionTests, ReleaseNodeProtosAfterInitDefaultsToOff) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.ReleaseNodeProtosAfterInitDefaultsToOff";
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  RunModel(session_object, run_options);
+
+  ASSERT_EQ(session_object.GetGraph().NumberOfNodes(), 1);
+}
+
+// Control flow models are where the duplication actually lives, and where the release has the most to
+// get wrong: a subgraph body is held by the parent Node's own attributes, so releasing it empties an
+// attribute that Node still carries. Nothing reads that emptied attribute again - the If kernel runs
+// the subgraph Graph instance, and serialization rebuilds the body from it - but only because
+// ReleaseNodeProtos flags every subgraph as needing a proto sync as well as the main graph.
+TEST(InferenceSessionTests, ReleaseNodeProtosAfterInitWithSubgraphs) {
+  SessionOptions so;
+  so.session_logid = "InferenceSessionTests.ReleaseNodeProtosAfterInitWithSubgraphs";
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigReleaseNodeProtosAfterInit, "1"));
+
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(ORT_TSTR("testdata/if_mul.onnx")));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // if_mul.onnx computes C = B * 2 when A is true, and the Mul that does it lives in the then_branch
+  // subgraph whose body was just released.
+  std::vector<int64_t> cond_dims = {1};
+  InlinedVector<bool> cond_value = {true};
+  OrtValue cond;
+  CreateMLValue<bool>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], cond_dims, cond_value, &cond);
+
+  std::vector<int64_t> data_dims = {3, 2};
+  std::vector<float> data_values = {2.0f, 3.0f, 4.0f, -5.0f, 6.0f, 7.0f};
+  OrtValue data;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], data_dims, data_values, &data);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("A", cond));
+  feeds.insert(std::make_pair("B", data));
+
+  std::vector<std::string> output_names{"C"};
+  std::vector<OrtValue> fetches;
+
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
+
+  std::vector<int64_t> expected_dims = {3, 2};
+  std::vector<float> expected_values = {4.0f, 6.0f, 8.0f, -10.0f, 12.0f, 14.0f};
+  VerifySingleOutput(fetches, expected_dims, expected_values);
+
+  // Both branch bodies come back, rebuilt from the subgraph Graph instances.
+  const ONNX_NAMESPACE::GraphProto& graph_proto = session_object.GetMutableGraph().ToGraphProto();
+  ASSERT_EQ(graph_proto.node_size(), 1);
+  ASSERT_EQ(graph_proto.node(0).op_type(), "If");
+
+  int then_branch_nodes = 0;
+  int else_branch_nodes = 0;
+  for (const auto& attribute : graph_proto.node(0).attribute()) {
+    if (attribute.name() == "then_branch") {
+      then_branch_nodes = attribute.g().node_size();
+    } else if (attribute.name() == "else_branch") {
+      else_branch_nodes = attribute.g().node_size();
+    }
+  }
+
+  EXPECT_EQ(then_branch_nodes, 1);
+  EXPECT_EQ(else_branch_nodes, 1);
+}
+
 TEST(InferenceSessionTests, CheckRunLogger) {
   if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
     GTEST_SKIP() << "Skipping the test";
