@@ -1837,7 +1837,25 @@ class SymbolicShapeInference:
         self._fuse_tensor_type(node, 0, vi_out_seq.type, vi_tensor.type)
 
     def _infer_Shape(self, node):  # noqa: N802
-        self.sympy_data_[node.output[0]] = self._get_sympy_shape(node, 0)
+        sympy_shape = self._get_sympy_shape(node, 0)
+
+        # Shape op started supporting start/end attributes in opset 15.
+        if get_opset(self.out_mp_) >= 15:
+            rank = len(sympy_shape)
+            start = get_attribute(node, "start", 0)
+            end = get_attribute(node, "end", rank)
+
+            # Normalize negative indices, then clamp into [0, rank].
+            if start < 0:
+                start += rank
+            if end < 0:
+                end += rank
+            start = max(0, min(start, rank))
+            end = max(0, min(end, rank))
+
+            sympy_shape = sympy_shape[start:end]
+
+        self.sympy_data_[node.output[0]] = sympy_shape
 
     def _infer_Size(self, node):  # noqa: N802
         sympy_shape = self._get_sympy_shape(node, 0)
