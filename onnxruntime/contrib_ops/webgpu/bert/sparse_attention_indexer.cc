@@ -534,7 +534,7 @@ SparseAttentionIndexer::SparseAttentionIndexer(const OpKernelInfo& info) : WebGp
   ORT_ENFORCE(epsilon_ >= 0.0f, "SparseAttentionIndexer: epsilon must be >= 0");
 }
 
-Status SparseAttentionIndexer::ComputeInternal(ComputeContext& context) const {
+Status SparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const bool is_qsa = policy_ == sai::Policy::kQsa;
   for (int index = sai::kMask; index < sai::kInputCount; ++index) {
     const bool policy_owns_slot = is_qsa ? (index <= sai::kPastKey) : (index >= sai::kGate);
@@ -546,7 +546,7 @@ Status SparseAttentionIndexer::ComputeInternal(ComputeContext& context) const {
   return is_qsa ? ComputeQsa(context) : ComputeCsa(context);
 }
 
-Status SparseAttentionIndexer::ComputeQsa(ComputeContext& context) const {
+Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* query = context.Input(sai::kQuery);
   const Tensor* key = context.Input(sai::kKey);
   const Tensor* norm = context.Input(sai::kKeyNormWeight);
@@ -642,7 +642,7 @@ Status SparseAttentionIndexer::ComputeQsa(ComputeContext& context) const {
   return context.RunProgram(select);
 }
 
-Status SparseAttentionIndexer::ComputeCsa(ComputeContext& context) const {
+Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* query = context.Input(sai::kQuery);
   const Tensor* key = context.Input(sai::kKey);
   const Tensor* norm = context.Input(sai::kKeyNormWeight);

@@ -139,11 +139,11 @@ class SparseAttentionIndexerCsaSelectProgram final
 class SparseAttentionIndexer final : public WebGpuKernel {
  public:
   explicit SparseAttentionIndexer(const OpKernelInfo& info);
-  Status ComputeInternal(ComputeContext& context) const override;
+  Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 
  private:
-  Status ComputeQsa(ComputeContext& context) const;
-  Status ComputeCsa(ComputeContext& context) const;
+  Status ComputeQsa(onnxruntime::webgpu::ComputeContext& context) const;
+  Status ComputeCsa(onnxruntime::webgpu::ComputeContext& context) const;
 
   sparse_attention_indexer::Policy policy_;
   int64_t compress_ratio_;
