@@ -160,6 +160,7 @@ Status LaunchGetSequenceLengths(
     const int batch_size,
     const int sequence_length,
     const bool is_first_prompt,
+    const int max_total_sequence_length,
     const int kv_cache_capacity,
     const int kv_cache_real_capacity,
     cudaStream_t stream,
