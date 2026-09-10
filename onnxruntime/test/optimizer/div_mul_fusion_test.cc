@@ -43,10 +43,10 @@ TEST(DivMulFusionTest, PreservesProducerEdgeForReplacementInput) {
   ASSERT_STATUS_OK(transformer.Apply(graph, modified, logger));
   EXPECT_TRUE(modified);
 
-  const auto op_counts = CountOpsInGraph(graph);
-  EXPECT_EQ(GetOpCount(op_counts, "Neg"), 1);
-  EXPECT_EQ(GetOpCount(op_counts, "Div"), 1);
-  EXPECT_EQ(GetOpCount(op_counts, "Mul"), 0);
+  auto op_counts = CountOpsInGraph(graph);
+  EXPECT_EQ(op_counts["Neg"], 1);
+  EXPECT_EQ(op_counts["Div"], 1);
+  EXPECT_EQ(op_counts["Mul"], 0);
 
   const Node* fused_div = nullptr;
   for (const auto& graph_node : graph.Nodes()) {
