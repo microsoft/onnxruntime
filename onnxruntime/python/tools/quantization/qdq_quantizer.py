@@ -30,6 +30,7 @@ from .quant_utils import (
     add_quant_input_suffix,
     add_quant_output_suffix,
     add_quant_suffix,
+    bias_abs_max_per_channel,
     compute_data_quant_params,
     compute_scale_zp,
     compute_scale_zp_blocked,
@@ -474,10 +475,10 @@ class QDQQuantizer(BaseQuantizer):
                 updated_an_elem = True
         elif weight_scale.shape and len(weight_scale.shape) == 1:
             # per-channel case
-            num_elems = weight_scale.shape[0]
+            bias_abs = bias_abs_max_per_channel(bias_float_data, weight_scale.shape[0])
 
-            for i in range(num_elems):
-                bias_rmax = np.abs(bias_float_data[i])
+            for i in range(weight_scale.shape[0]):
+                bias_rmax = bias_abs[i]
                 bias_smallest_valid_scale = multiplicative_epsilon * (2.0 * bias_rmax) / qrange
 
                 input_scale_fp64 = np.array(input_scale.item(), dtype=np.float64)
@@ -1250,13 +1251,19 @@ class QDQQuantizer(BaseQuantizer):
             node_qtype,
         ) = self.quantize_bias_static_impl(bias_name, input_scale, weight_scale, bias_info.beta)
 
+        # Bias (which may be 2D for Gemm) is dequantized along its last axis.
+        bias_axis = None
+        if bias_scale_data.size > 1:
+            bias_initializer = find_by_name(bias_name, self.model.initializer())
+            bias_axis = len(bias_initializer.dims) - 1
+
         quantized_value = QuantizedValue(
             bias_name,
             quantized_bias_name,
             quantized_bias_scale_name,
             quantized_bias_zp_name,
             QuantizedValueType.Initializer,
-            0 if bias_scale_data.size > 1 else None,
+            bias_axis,
             node_type=node_type,
             node_qtype=node_qtype,
         )
