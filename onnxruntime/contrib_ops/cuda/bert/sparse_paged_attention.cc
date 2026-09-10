@@ -258,8 +258,8 @@ Status SparsePagedAttention<T, TCACHE>::ComputeInternal(
   auto workspace =
       GetScratchBuffer<void>(workspace_bytes, GetComputeStream(context));
 
-  using CudaT = typename ToCudaType<T>::MappedType;
-  using CudaTCache = typename ToCudaType<TCACHE>::MappedType;
+  using CudaT = typename onnxruntime::cuda::ToCudaType<T>::MappedType;
+  using CudaTCache = typename onnxruntime::cuda::ToCudaType<TCACHE>::MappedType;
   PagedAttentionData<CudaT, CudaTCache> data;
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key =

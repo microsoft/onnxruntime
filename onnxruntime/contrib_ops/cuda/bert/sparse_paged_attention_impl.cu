@@ -180,10 +180,6 @@ Status SparseQkvToContext(
     const T* auxiliary_key, const T* auxiliary_value, const int* auxiliary_lengths,
     int auxiliary_capacity, int auxiliary_num_heads, SparseAttentionMode attention_mode,
     SelectedKvSource selected_kv_source, bool auxiliary_kv_shared) {
-  T* prepared_query = nullptr;
-  ORT_RETURN_IF_ERROR(PreparePagedAttentionQueryAndCache<T, TCACHE>(
-      device_prop, stream, parameters, data, &prepared_query));
-
   int threads = 1;
   while (threads < parameters.head_size &&
          threads * 2 <= device_prop.maxThreadsPerBlock) {
@@ -197,6 +193,10 @@ Status SparseQkvToContext(
                            " bytes of shared memory, but the device provides ",
                            device_prop.sharedMemPerBlock, " bytes.");
   }
+
+  T* prepared_query = nullptr;
+  ORT_RETURN_IF_ERROR(PreparePagedAttentionQueryAndCache<T, TCACHE>(
+      device_prop, stream, parameters, data, &prepared_query));
 
   const dim3 grid(parameters.token_count, parameters.num_heads);
   const float attention_scale =
