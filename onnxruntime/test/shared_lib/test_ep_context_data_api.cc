@@ -15,6 +15,8 @@
 #include "gtest/gtest.h"
 #include "test/util/include/api_asserts.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+
 namespace {
 
 void ExpectFailureOrtStatus(OrtStatus* status_ptr, OrtErrorCode expected_code, const char* expected_message) {
@@ -315,3 +317,5 @@ TEST(EpContextDataApiTest, ReturnedReadFuncAllowsEmptyPayloads) {
   EXPECT_EQ(buffer, nullptr);
   EXPECT_EQ(buffer_size, 0U);
 }
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
