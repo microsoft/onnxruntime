@@ -749,7 +749,10 @@ class TestPagedAttentionInt4(unittest.TestCase):
         # attention_scale * normalizer overflow fp32 and every logit NaN. The normalizer exponent is
         # bounded to prevent that, and this table spans one binade so it stays on XQA.
         heads, width = 6, 256
-        for cache_dtype in (np.uint8, np.int8, ml_dtypes.float8_e4m3fn):
+        cache_dtypes = [np.uint8, np.int8]
+        if torch.cuda.is_available() and torch.cuda.get_device_capability() >= (8, 9):
+            cache_dtypes.append(ml_dtypes.float8_e4m3fn)
+        for cache_dtype in cache_dtypes:
             for length in (1, 3):
                 with self.subTest(cache_dtype=cache_dtype, length=length):
                     model, feeds, _ = make_case(
