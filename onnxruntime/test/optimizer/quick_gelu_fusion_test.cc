@@ -35,7 +35,7 @@ void BuildResizeWithEmptyOptionalInputs(ModelTestBuilder& builder) {
   auto* roi = builder.MakeEmptyInput();
   auto* scales = builder.MakeEmptyInput();
   auto* sizes = builder.MakeInitializer<int64_t>({4}, {1, 1, 4, 4});
-  auto* output = builder.MakeOutput<float>({1, 1, 4, 4});
+  auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, 1, 4, 4});
 
   builder.AddNode("Resize", {input, roi, scales, sizes}, {output});
 }
