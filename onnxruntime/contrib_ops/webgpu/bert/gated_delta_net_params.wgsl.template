@@ -5,6 +5,7 @@
 #param has_decay
 #param qwen_gate
 #param sigmoid_beta
+#use .getByOffset .setByOffset
 
 fn gdn_params_softplus(x: f32) -> f32 {
   if (x > 0.0) {
@@ -29,19 +30,19 @@ $MAIN {
   let value_head = index % uniforms.num_heads_v;
   var gate = 0.0;
 #if has_decay
-  gate = decay[index];
+  gate = decay.getByOffset(index);
 #if qwen_gate
-  gate = -exp(a_log[value_head]) * gdn_params_softplus(gate + dt_bias[value_head]);
+  gate = -exp(a_log.getByOffset(value_head)) * gdn_params_softplus(gate + dt_bias.getByOffset(value_head));
 #endif
 #endif
-  parameters[index * 2u] = gate;
+  parameters.setByOffset(index * 2u, gate);
 
   var beta_value = 1.0;
 #if has_beta
-  beta_value = beta[index];
+  beta_value = beta.getByOffset(index);
 #if sigmoid_beta
   beta_value = gdn_params_sigmoid(beta_value);
 #endif
 #endif
-  parameters[index * 2u + 1u] = beta_value;
+  parameters.setByOffset(index * 2u + 1u, beta_value);
 }

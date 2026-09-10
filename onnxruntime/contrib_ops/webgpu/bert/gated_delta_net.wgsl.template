@@ -10,6 +10,7 @@
 #param sigmoid_beta
 #param qk_l2_norm
 #param use_packed_params
+#use .getByOffset .setByOffset
 
 var<workgroup> retrieved: array<f32, workgroup_size_x>;
 var<workgroup> pre_output: array<f32, workgroup_size_x>;
@@ -51,9 +52,9 @@ $MAIN {
                         uniforms.head_size_qk + key_index);
 #if has_initial_state
 #if initial_state_in_final_state
-    state = final_state[state_offset];
+    state = f32(final_state.getByOffset(state_offset));
 #else
-    state = initial_state[state_offset];
+    state = f32(initial_state.getByOffset(state_offset));
 #endif
 #endif
   }
@@ -61,15 +62,15 @@ $MAIN {
   var first_token = batch * (uniforms.total_tokens / uniforms.batch_size);
   var last_token = first_token + uniforms.total_tokens / uniforms.batch_size;
 #if has_cu_seqlens
-  first_token = u32(clamp(cu_seqlens[batch], 0, i32(uniforms.total_tokens)));
-  last_token = u32(clamp(cu_seqlens[batch + 1u], i32(first_token), i32(uniforms.total_tokens)));
+  first_token = u32(clamp(cu_seqlens.getByOffset(batch), 0, i32(uniforms.total_tokens)));
+  last_token = u32(clamp(cu_seqlens.getByOffset(batch + 1u), i32(first_token), i32(uniforms.total_tokens)));
 #endif
   for (var token = first_token; token < last_token; token++) {
     var key_value = 0.0;
     var query_value = 0.0;
     if (key_index < uniforms.head_size_qk) {
-      key_value = f32(key[(token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index]);
-      query_value = f32(query[(token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index]);
+      key_value = f32(key.getByOffset((token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index));
+      query_value = f32(query.getByOffset((token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index));
     }
 #if qk_l2_norm
     key_norm[key_index] = key_value * key_value;
@@ -87,11 +88,11 @@ $MAIN {
 #endif
 #if update_rule == 1 || update_rule == 3
 #if use_packed_params
-    var gate = parameters[(token * uniforms.num_heads_v + value_head) * 2u];
+    var gate = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u);
 #else
-    var gate = decay[token * uniforms.num_heads_v + value_head];
+    var gate = decay.getByOffset(token * uniforms.num_heads_v + value_head);
 #if qwen_gate
-    gate = -exp(a_log[value_head]) * gdn_softplus(gate + dt_bias[value_head]);
+    gate = -exp(a_log.getByOffset(value_head)) * gdn_softplus(gate + dt_bias.getByOffset(value_head));
 #endif
 #endif
     state *= exp(gate);
@@ -112,9 +113,9 @@ $MAIN {
       var beta_value = 1.0;
 #if update_rule == 2 || update_rule == 3
 #if use_packed_params
-      beta_value = parameters[(token * uniforms.num_heads_v + value_head) * 2u + 1u];
+      beta_value = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u + 1u);
 #else
-      beta_value = beta[token * uniforms.num_heads_v + value_head];
+      beta_value = beta.getByOffset(token * uniforms.num_heads_v + value_head);
 #if sigmoid_beta
       beta_value = gdn_sigmoid(beta_value);
 #endif
@@ -124,10 +125,10 @@ $MAIN {
 #if update_rule == 2 || update_rule == 3
       retrieved_value = retrieved[0];
 #endif
-      delta = beta_value * (f32(value[(token * uniforms.num_heads_v + value_head) *
-                                      uniforms.head_size_v + value_index]) - retrieved_value);
-      output[(token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index] =
-          output_element_t((pre_output[0] + delta * key_query[0]) * uniforms.scale);
+      delta = beta_value * (f32(value.getByOffset((token * uniforms.num_heads_v + value_head) *
+                                                   uniforms.head_size_v + value_index)) - retrieved_value);
+      output.setByOffset((token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index,
+                         output_element_t((pre_output[0] + delta * key_query[0]) * uniforms.scale));
     }
     workgroupBarrier();
     state += key_value * delta;
@@ -135,8 +136,9 @@ $MAIN {
   }
 #if output_final_state
   if (key_index < uniforms.head_size_qk) {
-    final_state[((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
-                uniforms.head_size_qk + key_index] = state;
+    final_state.setByOffset(((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
+                            uniforms.head_size_qk + key_index,
+                            state);
   }
 #endif
 }
