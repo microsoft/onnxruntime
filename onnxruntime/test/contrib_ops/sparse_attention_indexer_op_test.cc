@@ -1028,6 +1028,12 @@ TEST(SparseAttentionIndexerWebGpuTest, QsaFloat16) {
   RunQsaTest<MLFloat16>(4.0e-3f, MakeQsaProblem(), ProviderKind::WebGpu);
 }
 
+TEST(SparseAttentionIndexerWebGpuTest, QsaExplicitZeroScale) {
+  QsaProblem problem = MakeQsaProblem();
+  problem.scale = 0.0f;
+  RunQsaTest<float>(1.0e-5f, std::move(problem), ProviderKind::WebGpu);
+}
+
 TEST(SparseAttentionIndexerWebGpuTest, CsaFloat) {
   RunCsaTest<float>(MakeCsaProblem(), 1.0e-5f, ProviderKind::WebGpu);
 }
@@ -1042,6 +1048,19 @@ TEST(SparseAttentionIndexerWebGpuTest, CsaBufferOnlyStep) {
 
 TEST(SparseAttentionIndexerWebGpuTest, CsaNoCompressedEntry) {
   RunCsaTest<float>(MakeCsaNoCompressedEntryProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaExplicitZeroScales) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.scale = 0.0f;
+  problem.head_weight_scale = 0.0f;
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(SparseAttentionIndexerWebGpuTest, CsaInt64MaxPosition) {
+  CsaProblem problem = MakeCsaProblem();
+  problem.position_ids[0] = std::numeric_limits<int64_t>::max();
+  RunCsaTest<float>(problem, 1.0e-5f, ProviderKind::WebGpu);
 }
 #endif
 }  // namespace test

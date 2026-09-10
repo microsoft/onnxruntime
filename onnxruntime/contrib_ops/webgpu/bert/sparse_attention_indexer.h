@@ -152,6 +152,8 @@ class SparseAttentionIndexer final : public WebGpuKernel {
   float epsilon_;
   float scale_;
   float head_weight_scale_;
+  bool has_scale_;
+  bool has_head_weight_scale_;
 };
 
 }  // namespace webgpu

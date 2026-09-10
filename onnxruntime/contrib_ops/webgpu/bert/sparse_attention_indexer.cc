@@ -423,6 +423,21 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
   const auto& selected = shader.AddOutput("selected_indices", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation()
+      << "fn clamped_position(row: u32, limit: u32) -> u32 {\n"
+      << "  let raw = " << position_ids.GetByOffset("row", true) << ";\n"
+      << "  if ((raw.y & 0x80000000u) != 0u) { return 0u; }\n"
+      << "  if (raw.y != 0u || raw.x > limit) { return limit; }\n"
+      << "  return raw.x;\n"
+      << "}\n"
+      << "fn visible_entry_count(row: u32, count: u32) -> u32 {\n"
+      << "  let raw = " << position_ids.GetByOffset("row", true) << ";\n"
+      << "  if ((raw.y & 0x80000000u) != 0u) { return 0u; }\n"
+      << "  if (raw.y != 0u) { return count; }\n"
+      << "  let quotient = raw.x / uniforms.compress_ratio;\n"
+      << "  if (quotient >= count) { return count; }\n"
+      << "  let increment = select(0u, 1u, raw.x % uniforms.compress_ratio == uniforms.compress_ratio - 1u);\n"
+      << "  return min(count, quotient + increment);\n"
+      << "}\n"
       << "fn query_value(row: u32, head: u32, d: u32) -> f32 {\n"
       << "  let base = (row * uniforms.num_heads + head) * uniforms.head_size;\n"
       << "  var value = f32(" << query.GetByOffset("base + d") << ");\n"
@@ -433,8 +448,7 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "    let sign = select(1.0, -1.0, (offset & 1u) == 0u);\n"
       << "    let paired = sign * f32(" << query.GetByOffset("base + pair_d") << ");\n"
       << "    let batch = row / uniforms.sequence_length;\n"
-      << "    let raw_position = max(" << position_ids.GetByOffset("row") << ", 0);\n"
-      << "    let position = min(u32(raw_position), uniforms.max_rotary_length - 1u);\n"
+      << "    let position = clamped_position(row, uniforms.max_rotary_length - 1u);\n"
       << "    let cache = (batch * uniforms.max_rotary_length + position) * uniforms.rotary_width + offset / 2u;\n"
       << "    value = value * f32(" << cos_cache.GetByOffset("cache") << ") + paired * f32("
       << sin_cache.GetByOffset("cache") << ");\n"
@@ -463,9 +477,8 @@ Status SparseAttentionIndexerCsaSelectProgram::GenerateShaderCode(ShaderHelper& 
       << "  for (var i = 0u; i < uniforms.capacity; i++) {\n"
       << "    " << selected.SetByOffset("output_base + i", "-1") << "\n"
       << "  }\n"
-      << "  let position = " << position_ids.GetByOffset("row") << ";\n"
-      << "  let threshold = select(0u, u32(position + 1) / uniforms.compress_ratio, position >= 0);\n"
       << "  let count = uniforms.present_compressed_length;\n"
+      << "  let threshold = visible_entry_count(row, count);\n"
       << "  let ranks = min(uniforms.capacity, count);\n"
       << "  var previous_score = 0.0;\n"
       << "  var previous_index = -1i;\n"
@@ -503,12 +516,12 @@ SparseAttentionIndexer::SparseAttentionIndexer(const OpKernelInfo& info) : WebGp
 
   const bool has_token_budget = info.GetAttr<int64_t>("token_budget", &token_budget_).IsOK();
   const bool has_index_topk = info.GetAttr<int64_t>("index_topk", &index_topk_).IsOK();
-  float head_weight_scale = 0.0f;
-  const bool has_head_weight_scale = info.GetAttr<float>("head_weight_scale", &head_weight_scale).IsOK();
+  has_scale_ = info.GetAttr<float>("scale", &scale_).IsOK();
+  has_head_weight_scale_ = info.GetAttr<float>("head_weight_scale", &head_weight_scale_).IsOK();
   if (policy_ == sai::Policy::kQsa) {
     ORT_ENFORCE(has_token_budget && token_budget_ > 0 && token_budget_ % compress_ratio_ == 0,
                 "SparseAttentionIndexer: token_budget must be > 0 and divisible by compress_ratio for qsa");
-    ORT_ENFORCE(!has_index_topk && !has_head_weight_scale,
+    ORT_ENFORCE(!has_index_topk && !has_head_weight_scale_,
                 "SparseAttentionIndexer: csa attributes must be omitted for qsa");
     index_topk_ = 0;
   } else {
@@ -519,8 +532,6 @@ SparseAttentionIndexer::SparseAttentionIndexer(const OpKernelInfo& info) : WebGp
   }
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1.0e-6f);
   ORT_ENFORCE(epsilon_ >= 0.0f, "SparseAttentionIndexer: epsilon must be >= 0");
-  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
-  head_weight_scale_ = has_head_weight_scale ? head_weight_scale : 0.0f;
 }
 
 Status SparseAttentionIndexer::ComputeInternal(ComputeContext& context) const {
@@ -627,7 +638,7 @@ Status SparseAttentionIndexer::ComputeQsa(ComputeContext& context) const {
                             {ToUint32(total_length)},
                             {ToUint32(token_budget_ / compress_ratio_)},
                             {epsilon_},
-                            {scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size))}});
+                            {has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size))}});
   return context.RunProgram(select);
 }
 
@@ -800,8 +811,8 @@ Status SparseAttentionIndexer::ComputeCsa(ComputeContext& context) const {
                             {ToUint32(compress_ratio_)},
                             {ToUint32(capacity)},
                             {ToUint32(present_compressed_length)},
-                            {scale_ != 0.0f ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size))},
-                            {head_weight_scale_ != 0.0f
+                            {has_scale_ ? scale_ : 1.0f / std::sqrt(static_cast<float>(head_size))},
+                            {has_head_weight_scale_
                                  ? head_weight_scale_
                                  : 1.0f / std::sqrt(static_cast<float>(num_heads))}});
   return context.RunProgram(select);
