@@ -35,7 +35,7 @@ retained separately as historical data.
 | Memory measurement | 1 complete scenario |
 | Timed measurement | 10 complete scenarios |
 | Reported latency | End-to-end scenario, prefill phase, and per-token decode distributions, including 10% trimmed means and stall rates |
-| Qwen 2.5 1.5B robust rerun | Six fresh-process pairs per path in three ABBA/BAAB blocks |
+| Qwen 2.5 robust reruns | Six fresh-process pairs per path and model in three ABBA/BAAB blocks |
 
 The tested Qwen packages declare `past_present_share_buffer: true`. Before each
 complete scenario, the benchmark zeroes the fixed-capacity cache and resets the
@@ -242,20 +242,22 @@ Model:
 | Final arena slack | 573,047,040 B | 573,047,040 B | 0 B |
 | Internal fragmentation | 12,681,464 B | 12,681,464 B | 0 B |
 | Internal fragmentation ratio | 0.24601% | 0.24601% | 0 pp |
-| Arena allocation calls | 198,960 | 149,041 | -25.1% |
+| Arena allocation calls, six-run median (range) | 152,368 (152,368-292,144) | 149,013 (149,012-149,013) | Process-dependent |
 | WDDM initialization peak | 9,650 MiB | 9,650 MiB | 0 MiB |
 | WDDM post-initialization usage | 9,424 MiB | 9,424 MiB | 0 MiB |
 | WDDM pre-inference usage | 5,710 MiB | 5,710 MiB | 0 MiB |
-| WDDM inference peak | 6,260 MiB | 6,258 MiB | -2 MiB |
+| WDDM inference peak | 6,262 MiB | 6,260 MiB | -2 MiB |
 | WDDM inference increase | 550 MiB | 548 MiB | -2 MiB |
-| End-to-end average | 1,642.61 ms | 1,706.61 ms | +3.9% |
-| End-to-end P50 | 1,582.50 ms | 1,619.38 ms | +2.3% |
-| End-to-end P90 | 1,809.19 ms | 1,793.15 ms | -0.9% |
-| Prefill average | 267.46 ms | 269.18 ms | +0.6% |
-| Decode average per token | 10.74 ms | 11.23 ms | +4.5% |
-| Decode P90 per token | 11.98 ms | 13.31 ms | +11.1% |
-| Decode P99 per token | 16.60 ms | 27.11 ms | +63.4% |
-| Initialization | 128.42 s | 133.42 s | +3.9% |
+| **Latency: median process metric across six fresh-process runs** | | | |
+| End-to-end 10% trimmed mean | 2,797.44 ms | 2,404.54 ms | -14.0% (not repeatable) |
+| End-to-end P50 | 1,877.18 ms | 1,636.79 ms | -12.8% (not repeatable) |
+| Prefill 10% trimmed mean | 296.66 ms | 281.53 ms | -5.1% (not repeatable) |
+| Decode 10% trimmed mean per token | 16.72 ms | 14.02 ms | -16.2% (not repeatable) |
+| Decode P50 per token | 12.88 ms | 10.53 ms | -18.2% (not repeatable) |
+| Decode P90 per token | 49.96 ms | 39.45 ms | -21.0% (not repeatable) |
+| Decode P99 per token | 125.41 ms | 111.55 ms | -11.1% (not repeatable) |
+| Median decode stall rate | 14.73% | 8.98% | -5.74 pp (not repeatable) |
+| Initialization | 128.96 s | 130.76 s | +1.4% |
 | **Generation, legacy path** | | | |
 | Planned workspace nodes | 0 | 141 | +141 |
 | Largest workspace | 0 B | 234,881,024 B (224.00 MiB) | +234,881,024 B |
@@ -274,21 +276,49 @@ Model:
 | WDDM pre-inference usage | 5,668 MiB | 5,668 MiB | 0 MiB |
 | WDDM inference peak | 6,572 MiB | 6,314 MiB | **-258 MiB** |
 | WDDM inference increase | 904 MiB | 646 MiB | **-258 MiB** |
-| End-to-end average | 1,627.66 ms | 1,617.01 ms | -0.7% |
-| End-to-end P50 | 1,582.32 ms | 1,577.08 ms | -0.3% |
-| End-to-end P90 | 1,726.39 ms | 1,674.60 ms | -3.0% |
-| Prefill average | 294.60 ms | 293.75 ms | -0.3% |
-| Decode average per token | 10.41 ms | 10.34 ms | -0.7% |
-| Decode P90 per token | 11.28 ms | 11.07 ms | -1.9% |
-| Decode P99 per token | 14.39 ms | 14.52 ms | +0.9% |
-| Initialization | 10.85 s | 4.62 s | -57.4% |
+| **Latency: median process metric across six fresh-process runs** | | | |
+| End-to-end 10% trimmed mean | 1,728.05 ms | 1,672.84 ms | -3.2% (not repeatable) |
+| End-to-end P50 | 1,638.19 ms | 1,620.62 ms | -1.1% (not repeatable) |
+| Prefill 10% trimmed mean | 303.96 ms | 302.49 ms | -0.5% (not repeatable) |
+| Decode 10% trimmed mean per token | 11.02 ms | 10.59 ms | -3.9% (not repeatable) |
+| Decode P50 per token | 10.53 ms | 10.32 ms | -2.0% (not repeatable) |
+| Decode P90 per token | 18.13 ms | 13.98 ms | -22.9% (not repeatable) |
+| Decode P99 per token | 97.39 ms | 33.21 ms | -65.9% (not repeatable) |
+| Median decode stall rate | 5.43% | 0.94% | -4.49 pp (not repeatable) |
+| Initialization | 4.47 s | 4.21 s | -5.7% |
 
 fpA-intB preallocation did not reduce memory. Legacy preallocation reduced
 measured arena reservation by 267,222,784 bytes
 (254.84 MiB) and WDDM inference peak by 258 MiB. The arena change exceeds the
 224 MiB largest individual workspace because memory-pattern placement also
-changed BFC region packing and the allocation high-water mark. Legacy latency
-was effectively unchanged.
+changed BFC region packing and the allocation high-water mark.
+
+The robust rerun produced six paired comparisons per path:
+
+| Path and pair | Scratch trimmed mean | Preallocated trimmed mean | Trimmed-mean change | P50 change | Decode trimmed-mean change | Decode stalls, scratch / preallocated |
+|---|---:|---:|---:|---:|---:|---:|
+| fpA-intB 1 | 2,402.89 ms | 2,656.77 ms | +10.6% | -13.3% | -12.7% | 111 / 77 |
+| fpA-intB 2 | 3,097.98 ms | 3,211.54 ms | +3.7% | +23.0% | -0.8% | 232 / 113 |
+| fpA-intB 3 | 2,677.17 ms | 2,520.03 ms | -5.9% | -2.2% | -9.6% | 245 / 216 |
+| fpA-intB 4 | 2,053.97 ms | 1,793.41 ms | -12.7% | -2.7% | -12.1% | 165 / 73 |
+| fpA-intB 5 | 2,917.71 ms | 2,289.05 ms | -21.5% | -6.8% | -19.6% | 212 / 182 |
+| fpA-intB 6 | 3,880.78 ms | 2,038.25 ms | -47.5% | -58.5% | -51.9% | 32 / 117 |
+| **fpA-intB median paired change** | | | **-9.3%** | **-4.8%** | **-12.4%** | |
+| Legacy 1 | 1,702.05 ms | 1,771.47 ms | +4.1% | +6.6% | +5.6% | 55 / 104 |
+| Legacy 2 | 1,767.76 ms | 1,672.03 ms | -5.4% | +0.4% | -6.2% | 67 / 1 |
+| Legacy 3 | 1,774.75 ms | 1,663.33 ms | -6.3% | -4.9% | -8.1% | 127 / 16 |
+| Legacy 4 | 1,716.08 ms | 1,699.34 ms | -1.0% | -3.7% | -0.3% | 44 / 85 |
+| Legacy 5 | 1,696.11 ms | 1,673.64 ms | -1.3% | +1.3% | -2.8% | 81 / 8 |
+| Legacy 6 | 1,740.02 ms | 1,647.99 ms | -5.3% | -2.6% | -6.3% | 72 / 2 |
+| **Legacy median paired change** | | | **-3.3%** | **-1.1%** | **-4.5%** | |
+
+Neither 7B path produced repeatable latency. fpA-intB paired trimmed-mean
+changes range from -47.5% to +10.6%, with decode stall rates of 9% to 15% for
+the median process metrics. Legacy is less variable, but its paired
+trimmed-mean changes still range from -6.3% to +4.1%, and both configurations
+contain process-dependent decode stalls. The apparent median speedups and tail
+latency reductions therefore cannot be attributed to workspace preallocation.
+The repeatable 7B result is the legacy memory reduction.
 
 ### RTX 5090 summary
 
@@ -296,8 +326,8 @@ was effectively unchanged.
 |---|---|---:|---:|---:|---:|
 | Qwen 2.5 1.5B | Shared-KV generation, fpA-intB | 0 MiB | +295,168 B | -1.1% | Six-pair range: -51.2% to +77.1%; not repeatable |
 | Qwen 2.5 1.5B | Shared-KV generation, legacy | **-70 MiB** | **-71,532,544 B** | -1.1% | Six-pair median: +1.3%; effectively unchanged |
-| Qwen 2.5 7B | Shared-KV generation, fpA-intB | -2 MiB | 0 B | **-25.1%** | +3.9% |
-| Qwen 2.5 7B | Shared-KV generation, legacy | **-258 MiB** | **-267,222,784 B** | -1.1% | -0.7% |
+| Qwen 2.5 7B | Shared-KV generation, fpA-intB | -2 MiB | 0 B | Process-dependent | Six-pair range: -47.5% to +10.6%; not repeatable |
+| Qwen 2.5 7B | Shared-KV generation, legacy | **-258 MiB** | **-267,222,784 B** | -1.1% | Six-pair range: -6.3% to +4.1%; not repeatable |
 
 The generation workloads show the strongest memory benefit when fpA-intB is
 disabled and preallocation covers the legacy dequantized-weight workspace. The
