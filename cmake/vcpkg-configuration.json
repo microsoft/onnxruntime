@@ -1,5 +1,5 @@
 {
-    "$comment": "The telemetry feature requires cpp-client-telemetry 3.10.240.1 or newer from the default registry.",
+    "$comment": "ORT's overlay pins cpp-client-telemetry 3.10.240.1 and preserves its static curl/mbedTLS transport.",
     "default-registry": {
         "kind": "git",
         "repository": "https://github.com/Microsoft/vcpkg",

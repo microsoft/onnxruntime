@@ -1954,15 +1954,17 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
     std::lock_guard<std::mutex> l(session_mutex_);
 
     if (is_model_loaded_) {  // already loaded
-      Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
-      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-      return status;
+      const Status load_status(common::ONNXRUNTIME, common::MODEL_LOADED,
+                               "This session already contains a loaded model.");
+      LOGS(*session_logger_, ERROR) << load_status.ErrorMessage();
+      return load_status;
     }
 
     if (is_inited_) {
-      Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session has already been initialized.");
-      LOGS(*session_logger_, ERROR) << status.ErrorMessage();
-      return status;
+      const Status initialized_status(common::ONNXRUNTIME, common::MODEL_LOADED,
+                                      "This session has already been initialized.");
+      LOGS(*session_logger_, ERROR) << initialized_status.ErrorMessage();
+      return initialized_status;
     }
 
     ORT_RETURN_IF_ERROR(load_ort_format_model_bytes());

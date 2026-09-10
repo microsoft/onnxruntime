@@ -297,6 +297,12 @@ if(onnxruntime_USE_TELEMETRY AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETR
     # and exported below so a downstream find_package(onnxruntime) resolves them.
     target_link_libraries(onnxruntime_common PRIVATE mat)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES mat)
+    if(ANDROID)
+      # ORT checks whether the Java bridge initialized the SDK before logging. That type is an
+      # internal 1DS implementation detail and is not exposed by mat's public include interface.
+      target_include_directories(onnxruntime_common SYSTEM PRIVATE
+        "${cpp_client_telemetry_SOURCE_DIR}/lib")
+    endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET libcurl_static)
       # Prevent shared-library consumers from re-exporting the embedded transport symbols. This does
       # not namespace static symbols; static ORT consumers must not co-link another curl/mbedTLS copy.
