@@ -217,6 +217,7 @@ class SymbolicShapeInference:
             "GroupQueryAttention": self._infer_GroupQueryAttention,
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
+            "MatMulIntegerToFloat": self._infer_MatMulIntegerToFloat,
             "MatMulNBits": self._infer_MatMulNBits,
             "MultiHeadAttention": self._infer_MultiHeadAttention,
             "NhwcConv": self._infer_NhwcConv,
@@ -1294,6 +1295,10 @@ class SymbolicShapeInference:
 
     def _infer_MatMulInteger(self, node):  # noqa: N802
         self._compute_matmul_shape(node, onnx.TensorProto.INT32)
+
+    def _infer_MatMulIntegerToFloat(self, node):  # noqa: N802
+        output_dtype = self.known_vi_[node.input[2]].type.tensor_type.elem_type
+        self._compute_matmul_shape(node, output_dtype)
 
     def _infer_MatMulNBits(self, node):  # noqa: N802
         lhs_shape = self._get_shape(node, 0)
