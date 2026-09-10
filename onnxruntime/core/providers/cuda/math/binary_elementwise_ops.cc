@@ -503,11 +503,11 @@ Status Mod::ComputeInternal(OpKernelContext* context) const {
           break;
       }
 
-      int has_zero = 0;
+      auto has_zero = AllocateBufferOnCPUPinned<int>(1);
       CUDA_RETURN_IF_ERROR(
-          cudaMemcpyAsync(&has_zero, has_zero_buffer.get(), sizeof(int), cudaMemcpyDeviceToHost, Stream(context)));
+          cudaMemcpyAsync(has_zero.get(), has_zero_buffer.get(), sizeof(int), cudaMemcpyDeviceToHost, Stream(context)));
       CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
-      ORT_RETURN_IF(has_zero != 0, "Integer modulo by zero");
+      ORT_RETURN_IF(*has_zero != 0, "Integer modulo by zero");
     }
   }
 
