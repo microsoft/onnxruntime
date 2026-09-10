@@ -4,6 +4,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
+#include <charconv>
 #include <memory>
 #include <sstream>
 #include <list>
@@ -2155,7 +2156,15 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
     const auto* fbs_ort_model_version = fbs_session->ort_version();
     ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
 
-    const auto model_version = std::stoi(fbs_ort_model_version->str());
+    int model_version = 0;
+    const std::string_view model_version_string = fbs_ort_model_version->string_view();
+    const auto [model_version_end, model_version_error] =
+        std::from_chars(model_version_string.data(),
+                        model_version_string.data() + model_version_string.size(),
+                        model_version);
+    ORT_RETURN_IF(model_version_error != std::errc{} ||
+                      model_version_end != model_version_string.data() + model_version_string.size(),
+                  "Invalid ORT format model version [", model_version_string, "].");
     const bool is_supported = IsOrtModelVersionSupported(model_version);
 
     OrtFormatLoadOptions load_options{};
