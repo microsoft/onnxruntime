@@ -22,6 +22,7 @@ namespace {
 constexpr int kHeadSize = 8;
 constexpr int kBlockSize = 16;
 constexpr int kCacheElementCount = kBlockSize * kHeadSize;
+constexpr int kCacheElems = kCacheElementCount;
 
 std::vector<MLFloat16> HalfVector(float value, int count = kHeadSize) {
   return std::vector<MLFloat16>(count, MLFloat16(value));
@@ -674,7 +675,8 @@ TEST(SparsePagedAttention, WebGpu_ExtremePastSeqlenClampsToCacheCapacity) {
                              std::vector<MLFloat16>(kCacheElems, MLFloat16(0.0f)));
   tester.AddInput<MLFloat16>("value_cache", {1, kBlockSize, 1, kHeadSize}, value_cache);
   tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
-  tester.AddInput<int32_t>("past_seqlens", {1}, {std::numeric_limits<int32_t>::max()});
+  tester.AddInput<int32_t>("past_seqlens", {1},
+                           std::vector<int32_t>{std::numeric_limits<int32_t>::max()});
   tester.AddInput<int32_t>("block_table", {1, 1}, {0});
   tester.AddInput<int32_t>("slot_mapping", {1}, {-1});
   // Position 0 is already inside the local window, so the de-duplication rule
@@ -711,9 +713,11 @@ TEST(SparsePagedAttention, WebGpu_ExtremeCumulativeSequenceLengthIsSanitized) {
   tester.AddInput<MLFloat16>("key_cache", {1, kBlockSize, 1, kHeadSize},
                              std::vector<MLFloat16>(kCacheElems, MLFloat16(0.0f)));
   tester.AddInput<MLFloat16>("value_cache", {1, kBlockSize, 1, kHeadSize}, value_cache);
-  tester.AddInput<int32_t>("cumulative_sequence_length", {2},
-                           {0, std::numeric_limits<int32_t>::max()});
-  tester.AddInput<int32_t>("past_seqlens", {1}, {std::numeric_limits<int32_t>::max()});
+  tester.AddInput<int32_t>(
+      "cumulative_sequence_length", {2},
+      std::vector<int32_t>{0, std::numeric_limits<int32_t>::max()});
+  tester.AddInput<int32_t>("past_seqlens", {1},
+                           std::vector<int32_t>{std::numeric_limits<int32_t>::max()});
   tester.AddInput<int32_t>("block_table", {1, 1}, {0});
   tester.AddInput<int32_t>("slot_mapping", {1}, {-1});
   tester.AddInput<int32_t>("selected_indices", {1, 2}, {0, -1});
