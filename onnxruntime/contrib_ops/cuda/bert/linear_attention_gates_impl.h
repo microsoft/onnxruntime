@@ -37,7 +37,8 @@ Status LaunchGatedRMSNormKernel(
     int64_t num_rows,
     int norm_size,
     float epsilon,
-    GatedRMSNormActivation activation);
+    GatedRMSNormActivation activation,
+    int max_threads_per_block);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -130,7 +130,8 @@ Status GatedRMSNorm<T>::ComputeInternal(OpKernelContext* context) const {
       num_rows,
       static_cast<int>(norm_size),
       epsilon_,
-      activation_);
+      activation_,
+      GetDeviceProp().maxThreadsPerBlock);
 }
 
 template class LinearAttentionGate<float>;

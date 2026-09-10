@@ -142,41 +142,50 @@ Status LaunchGatedRMSNormKernel(
     int64_t num_rows,
     int norm_size,
     float epsilon,
-    GatedRMSNormActivation activation) {
+    GatedRMSNormActivation activation,
+    int max_threads_per_block) {
   if (num_rows == 0) {
     return Status::OK();
   }
 
   ORT_RETURN_IF_NOT(num_rows <= std::numeric_limits<int>::max(),
                     "GatedRMSNorm launch requires too many blocks");
+  ORT_RETURN_IF_NOT(max_threads_per_block >= 64, "GatedRMSNorm requires maxThreadsPerBlock >= 64");
   const int blocks = static_cast<int>(num_rows);
 #define LAUNCH_GATED_RMS_NORM(threads, use_silu_mode)                            \
   GatedRMSNormKernel<T, threads, use_silu_mode><<<blocks, threads, 0, stream>>>( \
       output, input, scale, gate, norm_size, epsilon)
 
-  if (norm_size <= 64) {
+  const int max_threads = max_threads_per_block;
+  if (norm_size <= 64 || max_threads < 128) {
     if (activation == GatedRMSNormActivation::kSilu) {
       LAUNCH_GATED_RMS_NORM(64, true);
     } else {
       LAUNCH_GATED_RMS_NORM(64, false);
     }
-  } else if (norm_size <= 128) {
+  } else if (norm_size <= 128 || max_threads < 256) {
     if (activation == GatedRMSNormActivation::kSilu) {
       LAUNCH_GATED_RMS_NORM(128, true);
     } else {
       LAUNCH_GATED_RMS_NORM(128, false);
     }
-  } else if (norm_size <= 256) {
+  } else if (norm_size <= 256 || max_threads < 512) {
     if (activation == GatedRMSNormActivation::kSilu) {
       LAUNCH_GATED_RMS_NORM(256, true);
     } else {
       LAUNCH_GATED_RMS_NORM(256, false);
     }
-  } else {
+  } else if (norm_size <= 512 || max_threads < 1024) {
     if (activation == GatedRMSNormActivation::kSilu) {
       LAUNCH_GATED_RMS_NORM(512, true);
     } else {
       LAUNCH_GATED_RMS_NORM(512, false);
+    }
+  } else {
+    if (activation == GatedRMSNormActivation::kSilu) {
+      LAUNCH_GATED_RMS_NORM(1024, true);
+    } else {
+      LAUNCH_GATED_RMS_NORM(1024, false);
     }
   }
 #undef LAUNCH_GATED_RMS_NORM
@@ -188,7 +197,7 @@ Status LaunchGatedRMSNormKernel(
   template Status LaunchLinearAttentionGateKernel<T>(cudaStream_t, T*, T*, const T*, const T*,  \
                                                      const float*, const float*, int64_t, int); \
   template Status LaunchGatedRMSNormKernel<T>(cudaStream_t, T*, const T*, const T*, const T*,   \
-                                              int64_t, int, float, GatedRMSNormActivation);
+                                              int64_t, int, float, GatedRMSNormActivation, int);
 
 INSTANTIATE_LINEAR_ATTENTION_GATES(float)
 INSTANTIATE_LINEAR_ATTENTION_GATES(half)
