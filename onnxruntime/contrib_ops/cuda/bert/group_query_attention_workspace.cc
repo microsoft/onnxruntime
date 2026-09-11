@@ -171,16 +171,29 @@ GQAWorkspaceStatus ValidateProblem(const GQAWorkspaceProblem& problem,
       return Invalid("GQA XQA preprocessing requires K and V to both be quantized or both be unquantized.");
     }
 
-    if (k_is_quantized && problem.kv_cache_bit_width != 8) {
-      return Invalid("Quantized GQA XQA preprocessing requires eight-bit KV-cache storage.");
+    if (k_is_quantized &&
+        (problem.cache_element_size != 1 || problem.kv_cache_bit_width != 8)) {
+      return Invalid("Quantized GQA XQA preprocessing requires one-byte, eight-bit KV-cache storage.");
     }
 
-    if (!k_is_quantized && problem.kv_cache_bit_width != 0) {
-      return Invalid("Unquantized GQA XQA preprocessing requires unpacked KV-cache storage.");
+    if (!k_is_quantized &&
+        (problem.cache_element_size != 2 || problem.kv_cache_bit_width != 0)) {
+      return Invalid("Unquantized GQA XQA preprocessing requires unpacked two-byte KV-cache storage.");
     }
 
     if (k_is_quantized && problem.use_qk_norm) {
       return Invalid("Quantized GQA XQA preprocessing is incompatible with QK-Norm.");
+    }
+
+    if (!IsSupportedGQAXqaHeadSize(problem.head_size)) {
+      return Invalid("GQA XQA preprocessing requires head size 64, 128, or 256.");
+    }
+
+    const int64_t group_size = problem.num_heads / problem.kv_num_heads;
+    if (!IsSupportedGQAXqaGroupSize(group_size, k_is_quantized)) {
+      return Invalid(
+          "GQA XQA preprocessing requires group size 1, 2, 4, 5, 8, 16, or 32 "
+          "(4, 8, 16, or 32 when quantized).");
     }
   }
 

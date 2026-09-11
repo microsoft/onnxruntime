@@ -34,6 +34,21 @@ enum class GQAKvQuantizationType {
   PerChannel,
 };
 
+// Shared by runtime dispatch and graph-free workspace recipes. These predicates cover
+// only XQA's head-size and group-size geometry; they are not complete route-eligibility checks.
+constexpr bool IsSupportedGQAXqaHeadSize(int64_t head_size) noexcept {
+  return head_size == 64 || head_size == 128 || head_size == 256;
+}
+
+constexpr bool IsSupportedGQAXqaGroupSize(int64_t group_size, bool is_quantized) noexcept {
+  if (is_quantized) {
+    return group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32;
+  }
+
+  return group_size == 1 || group_size == 2 || group_size == 4 || group_size == 5 ||
+         group_size == 8 || group_size == 16 || group_size == 32;
+}
+
 // This mode describes only the QKV preprocessing behavior selected by the runtime route.
 // It does not describe or size the backend's internal attention scratch.
 enum class GQAPreprocessMode {
@@ -78,7 +93,9 @@ struct GQAWorkspaceProblem {
 };
 
 struct GQAPreparationRoute {
-  // QKV preprocessing behavior of the backend route already selected by the runtime.
+  // QKV preprocessing behavior of the final backend route selected after all runtime
+  // eligibility and device-capability fallbacks. Do not derive this route from the
+  // partial geometry predicates above.
   GQAPreprocessMode preprocess_mode = GQAPreprocessMode::Unfused;
 
   // This is the authoritative selected runtime fact. Complete-route
