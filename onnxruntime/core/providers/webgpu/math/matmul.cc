@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/matmul.h"
+#include "core/providers/webgpu/math/matmul_workgroup_config.h"
 
 #include <limits>
 
@@ -156,17 +157,16 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
                        /*is_channels_last=*/true, compute_cache_, b_is_constant_);
 }
 
-namespace {
-
-void SelectMatMulWorkgroupConfig(
-    const wgpu::AdapterInfo& adapter_info,
-    const wgpu::Limits& limits,
-    uint32_t target_workgroup_size,
-    bool is_channels_last,
-    bool is_vec4,
-    uint32_t dim_a_outer,
-    uint32_t& workgroup_size_y,
-    int64_t& elements_per_thread_y) {
+void SelectMatMulWorkgroupConfig(uint32_t subgroup_min_size,
+                                 uint32_t max_compute_workgroup_size_y,
+                                 uint32_t max_compute_invocations_per_workgroup,
+                                 bool is_nvidia,
+                                 uint32_t target_workgroup_size,
+                                 bool is_channels_last,
+                                 bool is_vec4,
+                                 uint32_t dim_a_outer,
+                                 uint32_t& workgroup_size_y,
+                                 int64_t& elements_per_thread_y) {
   constexpr uint32_t kTileRows = 32;
   constexpr uint32_t kWorkgroupSizeX = MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X;
   constexpr uint32_t kDefaultWorkgroupSizeY = MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y;
@@ -181,24 +181,23 @@ void SelectMatMulWorkgroupConfig(
     return;
   }
 
-  if (!is_channels_last || !is_vec4 || !IsNvidiaAdapter(adapter_info) ||
-      adapter_info.subgroupMinSize == 0) {
+  if (!is_channels_last || !is_vec4 || !is_nvidia || subgroup_min_size == 0) {
     return;
   }
 
   // The requested workgroup must contain whole subgroups and whole X rows.
-  if (target_workgroup_size % adapter_info.subgroupMinSize != 0 ||
+  if (target_workgroup_size % subgroup_min_size != 0 ||
       target_workgroup_size % kWorkgroupSizeX != 0 ||
-      target_workgroup_size > limits.maxComputeInvocationsPerWorkgroup) {
+      target_workgroup_size > max_compute_invocations_per_workgroup) {
     return;
   }
 
-  const uint32_t subgroups_per_workgroup = target_workgroup_size / adapter_info.subgroupMinSize;
+  const uint32_t subgroups_per_workgroup = target_workgroup_size / subgroup_min_size;
   const uint32_t candidate_workgroup_size_y =
-      adapter_info.subgroupMinSize * subgroups_per_workgroup / kWorkgroupSizeX;
+      subgroup_min_size * subgroups_per_workgroup / kWorkgroupSizeX;
 
   // Preserve the 32-row tile so the dispatch grid remains unchanged.
-  if (candidate_workgroup_size_y > limits.maxComputeWorkgroupSizeY ||
+  if (candidate_workgroup_size_y > max_compute_workgroup_size_y ||
       kTileRows % candidate_workgroup_size_y != 0) {
     return;
   }
@@ -206,8 +205,6 @@ void SelectMatMulWorkgroupConfig(
   workgroup_size_y = candidate_workgroup_size_y;
   elements_per_thread_y = kTileRows / candidate_workgroup_size_y;
 }
-
-}  // namespace
 
 Status ComputeMatMul(ComputeContext* context,
                      const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output_tensor, bool is_channels_last,
@@ -320,8 +317,12 @@ Status ComputeMatMul(ComputeContext* context,
   constexpr uint32_t kTargetWorkgroupSize = 128;
   uint32_t workgroup_size_y = 0;
   int64_t elements_per_thread_y = 0;
-  SelectMatMulWorkgroupConfig(context->AdapterInfo(), context->DeviceLimits(), kTargetWorkgroupSize,
-                              is_channels_last, is_vec4, dim_a_outer, workgroup_size_y, elements_per_thread_y);
+  const auto& adapter_info = context->AdapterInfo();
+  const auto& limits = context->DeviceLimits();
+  SelectMatMulWorkgroupConfig(adapter_info.subgroupMinSize, limits.maxComputeWorkgroupSizeY,
+                              limits.maxComputeInvocationsPerWorkgroup, IsNvidiaAdapter(adapter_info),
+                              kTargetWorkgroupSize, is_channels_last, is_vec4, dim_a_outer,
+                              workgroup_size_y, elements_per_thread_y);
   InlinedVector<int64_t> elements_per_thread{4, elements_per_thread_y, 1};
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MatMul::DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /

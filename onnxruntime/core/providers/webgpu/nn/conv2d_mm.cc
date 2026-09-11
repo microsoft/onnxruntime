@@ -5,6 +5,7 @@
 #include <iterator>
 #include <algorithm>
 #include "core/providers/webgpu/nn/conv2d_mm.h"
+#include "core/providers/webgpu/nn/conv2d_mm_workgroup_config.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/activation_util.h"
@@ -176,15 +177,18 @@ constexpr uint32_t kConv2dMMWorkgroupSizeX = 8;
 constexpr uint32_t kDefaultConv2dMMWorkgroupSizeY = 8;
 constexpr uint32_t kConv2dMMWorkgroupSizeZ = 1;
 
-void SelectConv2dMMWorkgroupConfig(
-    const wgpu::AdapterInfo& adapter_info,
-    const wgpu::Limits& limits,
-    uint32_t target_workgroup_size,
-    bool is_vec4,
-    int64_t in_channels,
-    uint32_t dim_a_outer,
-    uint32_t& workgroup_size_y,
-    int64_t& elements_per_thread_y) {
+}  // namespace
+
+void SelectConv2dMMWorkgroupConfig(uint32_t subgroup_min_size,
+                                   uint32_t max_compute_workgroup_size_y,
+                                   uint32_t max_compute_invocations_per_workgroup,
+                                   bool is_nvidia,
+                                   uint32_t target_workgroup_size,
+                                   bool is_vec4,
+                                   int64_t in_channels,
+                                   uint32_t dim_a_outer,
+                                   uint32_t& workgroup_size_y,
+                                   int64_t& elements_per_thread_y) {
   constexpr uint32_t kTileRows = 32;
 
   // Start with the existing configuration as the fallback.
@@ -198,24 +202,23 @@ void SelectConv2dMMWorkgroupConfig(
   }
 
   // Four-wide channels are required to preserve this packed tile geometry.
-  if (!is_vec4 || in_channels % 4 != 0 || !IsNvidiaAdapter(adapter_info) ||
-      adapter_info.subgroupMinSize == 0) {
+  if (!is_vec4 || in_channels % 4 != 0 || !is_nvidia || subgroup_min_size == 0) {
     return;
   }
 
   // The requested workgroup must contain whole subgroups and whole X rows.
-  if (target_workgroup_size % adapter_info.subgroupMinSize != 0 ||
+  if (target_workgroup_size % subgroup_min_size != 0 ||
       target_workgroup_size % kConv2dMMWorkgroupSizeX != 0 ||
-      target_workgroup_size > limits.maxComputeInvocationsPerWorkgroup) {
+      target_workgroup_size > max_compute_invocations_per_workgroup) {
     return;
   }
 
-  const uint32_t subgroups_per_workgroup = target_workgroup_size / adapter_info.subgroupMinSize;
+  const uint32_t subgroups_per_workgroup = target_workgroup_size / subgroup_min_size;
   const uint32_t candidate_workgroup_size_y =
-      adapter_info.subgroupMinSize * subgroups_per_workgroup / kConv2dMMWorkgroupSizeX;
+      subgroup_min_size * subgroups_per_workgroup / kConv2dMMWorkgroupSizeX;
 
   // Preserve the 32-row tile so the dispatch grid remains unchanged.
-  if (candidate_workgroup_size_y > limits.maxComputeWorkgroupSizeY ||
+  if (candidate_workgroup_size_y > max_compute_workgroup_size_y ||
       kTileRows % candidate_workgroup_size_y != 0) {
     return;
   }
@@ -223,8 +226,6 @@ void SelectConv2dMMWorkgroupConfig(
   workgroup_size_y = candidate_workgroup_size_y;
   elements_per_thread_y = kTileRows / candidate_workgroup_size_y;
 }
-
-}  // namespace
 
 Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const wgpu::AdapterInfo& adapter_info, const wgpu::Limits& limits, const std::vector<TensorShape>& input_output_shapes) {
   const auto* input = inputs[0];
@@ -248,8 +249,10 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   constexpr uint32_t kTargetWorkgroupSize = 128;
   uint32_t workgroup_size_y = 0;
   int64_t elements_per_thread_y = 0;
-  SelectConv2dMMWorkgroupConfig(adapter_info, limits, kTargetWorkgroupSize, is_vec4, in_channels,
-                                dim_a_outer, workgroup_size_y, elements_per_thread_y);
+  SelectConv2dMMWorkgroupConfig(adapter_info.subgroupMinSize, limits.maxComputeWorkgroupSizeY,
+                                limits.maxComputeInvocationsPerWorkgroup, IsNvidiaAdapter(adapter_info),
+                                kTargetWorkgroupSize, is_vec4, in_channels, dim_a_outer,
+                                workgroup_size_y, elements_per_thread_y);
   std::vector<uint32_t> workgroup_size = {kConv2dMMWorkgroupSizeX, workgroup_size_y, kConv2dMMWorkgroupSizeZ};
   InlinedVector<int64_t> elements_per_thread = {4, elements_per_thread_y, 1};
   auto integer_ceil = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
