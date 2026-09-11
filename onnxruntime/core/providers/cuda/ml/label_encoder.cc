@@ -209,14 +209,22 @@ static void CopyToGpu(const OpKernelInfo& info,
                       IAllocatorUniquePtr<TKey>& keys_gpu, IAllocatorUniquePtr<TValue>& values_gpu) {
   auto alloc = info.GetAllocator(OrtMemTypeDefault);
   if (!keys.empty()) {
+    // Issue the host->device copies on the per-thread default stream rather than the
+    // NULL/legacy default stream, which implicitly synchronizes with every other blocking stream
+    // in the process.
+    // The cudaStreamSynchronize is required for correctness:
+    // - the host source vectors are freed when this function returns;
+    // - the GPU arrays are read later from a different stream.
+    cudaStream_t stream = cudaStreamPerThread;
     keys_gpu = IAllocator::MakeUniquePtr<TKey>(alloc, keys.size());
-    CUDA_CALL_THROW(cudaMemcpy(keys_gpu.get(), keys.data(),
-                               SafeInt<size_t>(keys.size()) * sizeof(TKey),
-                               cudaMemcpyHostToDevice));
+    CUDA_CALL_THROW(cudaMemcpyAsync(keys_gpu.get(), keys.data(),
+                                    SafeInt<size_t>(keys.size()) * sizeof(TKey),
+                                    cudaMemcpyHostToDevice, stream));
     values_gpu = IAllocator::MakeUniquePtr<TValue>(alloc, values.size());
-    CUDA_CALL_THROW(cudaMemcpy(values_gpu.get(), values.data(),
-                               SafeInt<size_t>(values.size()) * sizeof(TValue),
-                               cudaMemcpyHostToDevice));
+    CUDA_CALL_THROW(cudaMemcpyAsync(values_gpu.get(), values.data(),
+                                    SafeInt<size_t>(values.size()) * sizeof(TValue),
+                                    cudaMemcpyHostToDevice, stream));
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   }
 }
 
