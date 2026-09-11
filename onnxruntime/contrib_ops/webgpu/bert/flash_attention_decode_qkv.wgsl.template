@@ -263,7 +263,7 @@ $MAIN {
       let causal_sequence_length = past_sequence_length + q_idx + 1u;
       if (uniforms.local_window_size > 0u &&
           total_seq_offset + local_idx + uniforms.local_window_size < causal_sequence_length) {
-        sum = q_element_t(-65504.0f);
+        sum = f32(-3.4028234663852886e+38f);
       }
 #endif
       tile_qk[m][local_idx] = sum;

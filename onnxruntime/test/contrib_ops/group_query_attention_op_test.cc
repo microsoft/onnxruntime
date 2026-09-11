@@ -3952,9 +3952,12 @@ static void ExpectBlockQuantInt8Close(const std::vector<float>& reference,
 static void RunIndirectDispatchGraphCapture(bool do_rotary,
                                             uint32_t kv_cache_quant_bits,
                                             bool enable_multi_rotary_cache,
-                                            bool rotary_interleaved = false) {
+                                            bool rotary_interleaved = false,
+                                            int sequence_length = 4,
+                                            int local_window_size = -1,
+                                            bool enable_graph_capture = true,
+                                            std::vector<float>* replay_output = nullptr) {
   constexpr int batch_size = 2;
-  constexpr int sequence_length = 4;
   constexpr int short_total_sequence_length = 2;
   constexpr int cache_sequence_length = 130;  // Three 64-token attention tiles.
   constexpr int num_heads = 2;
@@ -4013,6 +4016,9 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
       node.AddAttribute("do_rotary", int64_t{1});
       node.AddAttribute("rotary_interleaved", static_cast<int64_t>(rotary_interleaved));
     }
+    if (local_window_size > 0) {
+      node.AddAttribute("local_window_size", static_cast<int64_t>(local_window_size));
+    }
     ORT_THROW_IF_ERROR(graph.Resolve());
   }
 
@@ -4022,7 +4028,7 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
   SessionOptions session_options;
   InferenceSession session{session_options, GetEnvironment()};
   auto webgpu_ep = WebGpuEPForGqaOptions(
-      /*enable_graph_capture=*/true,
+      enable_graph_capture,
       kv_cache_quant_bits,
       enable_multi_rotary_cache ? multi_rotary_cache_concat_offset : 0);
   if (!webgpu_ep) {
@@ -4112,9 +4118,16 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
   std::vector<int32_t> seqlens_data{short_total_sequence_length - 1, cache_sequence_length - 1};
   auto seqlens_value = make_gpu_value(seqlens_data.data(), DataTypeImpl::GetType<int32_t>(), seqlens_shape);
   std::vector<int32_t> total_sequence_length_data{cache_sequence_length};
-  auto total_sequence_length_value = make_gpu_value(total_sequence_length_data.data(),
-                                                    DataTypeImpl::GetType<int32_t>(),
-                                                    total_sequence_length_shape);
+  OrtValue total_sequence_length_value;
+  if (enable_graph_capture) {
+    total_sequence_length_value = make_gpu_value(total_sequence_length_data.data(),
+                                                 DataTypeImpl::GetType<int32_t>(),
+                                                 total_sequence_length_shape);
+  } else {
+    Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), total_sequence_length_shape,
+                         total_sequence_length_data.data(), cpu_allocator->Info(),
+                         total_sequence_length_value);
+  }
   auto cos_cache_value = make_gpu_value(cos_cache_data.data(), DataTypeImpl::GetType<float>(), rotary_cache_shape);
   auto sin_cache_value = make_gpu_value(sin_cache_data.data(), DataTypeImpl::GetType<float>(), rotary_cache_shape);
 
@@ -4261,6 +4274,9 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
   update_gpu_value(seqlens_value, seqlens_data.data(), DataTypeImpl::GetType<int32_t>(), seqlens_shape);
   ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
   auto second_output = read_output();
+  if (replay_output != nullptr) {
+    *replay_output = second_output;
+  }
 
   ASSERT_EQ(first_output.size(), second_output.size());
   EXPECT_TRUE(std::all_of(first_output.begin(), first_output.end(),
@@ -4269,7 +4285,7 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
   EXPECT_TRUE(std::all_of(second_output.begin(), second_output.end(),
                           [](float value) { return std::isfinite(value); }))
       << "second graph-capture output contains a non-finite value";
-  constexpr size_t output_elements_per_batch = sequence_length * hidden_size;
+  const size_t output_elements_per_batch = static_cast<size_t>(sequence_length) * hidden_size;
   for (int second_batch = 0; second_batch < batch_size; ++second_batch) {
     const int first_batch = batch_size - 1 - second_batch;
     const auto* second_begin = second_output.data() + second_batch * output_elements_per_batch;
@@ -4321,6 +4337,15 @@ TEST(GroupQueryAttentionTest, WebGPU_BlockQuantInt8_IndirectDispatch_NoRotary) {
   RunIndirectDispatchGraphCapture(/*do_rotary=*/false,
                                   /*kv_cache_quant_bits=*/8,
                                   /*enable_multi_rotary_cache=*/false);
+}
+
+TEST(GroupQueryAttentionTest, WebGPU_GraphCapture_PackedRotaryLocalWindow) {
+  std::vector<float> captured_output;
+  std::vector<float> eager_output;
+  RunIndirectDispatchGraphCapture(true, 0, false, false, 1, 64, true, &captured_output);
+  RunIndirectDispatchGraphCapture(true, 0, false, false, 1, 64, false, &eager_output);
+  ExpectOutputsMatch(captured_output, eager_output, 2e-3f,
+                     "WebGPU_GraphCapture_PackedRotaryLocalWindow");
 }
 
 // The non-static packed-QKV path uses split_packed_qkv_with_rotary_embedding.
