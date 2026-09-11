@@ -135,8 +135,6 @@ Status VarlenNGramHashMapping<T>::Compute(OpKernelContext* context) const {
             ++b;
           }
           const int64_t start = cu_data[b];
-          const int64_t seq_end = cu_data[b + 1];
-          const int64_t local_length = seq_end - start;
           const int64_t t = linear - start;
           const int64_t output_base = linear * num_heads;
           for (int64_t n = 2; n <= max_ngram_size_; ++n) {
