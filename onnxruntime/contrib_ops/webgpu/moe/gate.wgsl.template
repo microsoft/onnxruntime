@@ -14,6 +14,7 @@
 
 #param is_fp16
 #param k
+#param has_router_weights
 #param normalize_routing_weights
 
 const K: u32 = k;
@@ -71,6 +72,24 @@ $MAIN {
         hiddenstate_for_expert[expert_base + target_idx] = row + uniforms.token_offset;
     }
     if (local_idx == 0u) {
+#if has_router_weights
+        var sum : f32 = 1.0;
+#if normalize_routing_weights
+        sum = 0.0;
+        for (var i = 0u; i < K; i++) {
+            sum += f32(router_weights[(row + uniforms.token_offset) * cols + shared_idxs[i]]);
+        }
+#endif
+        for (var i = 0u; i < K; i++) {
+            let expert_idx = shared_idxs[i];
+            let weight = f32(router_weights[(row + uniforms.token_offset) * cols + expert_idx]);
+            var normalized_weight = 0.0;
+            if (sum != 0.0) {
+                normalized_weight = weight / sum;
+            }
+            topk_values[output_base + expert_idx] = topk_values_value_t(normalized_weight);
+        }
+#else
         // softmax with max-subtraction for numerical stability — without it, large
         // logits (e.g. >= ~89 for f32) cause exp() to overflow to +inf and the
         // ratio inf/inf becomes NaN, propagating through the rest of the kernel.
@@ -89,5 +108,6 @@ $MAIN {
             let expert_idx = shared_idxs[i];
             topk_values[output_base + expert_idx] = topk_values_value_t(exp(f32(shared_vals[i]) - max_val) / sum);
         }
+#endif
     }
 } // MAIN

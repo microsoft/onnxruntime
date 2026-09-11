@@ -34,6 +34,7 @@ class MoEGateProgram final : public Program<MoEGateProgram> {
     shader.AddOutput("hiddenstate_for_expert");
     shader.AddOutput("tokencount_for_expert");
     return WGSL_TEMPLATE_APPLY(shader, "moe/gate.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(has_router_weights, false),
                                WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
                                WGSL_TEMPLATE_PARAMETER(k, k_),
                                WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_));
@@ -161,8 +162,7 @@ class MoEFinalMixProgram final : public Program<MoEFinalMixProgram> {
     shader.AddInput("router_values", ShaderUsage::UseElementTypeAlias);
     shader.AddInput("expert_tokens", ShaderUsage::UseElementTypeAlias);
     shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
-    return WGSL_TEMPLATE_APPLY(shader, "moe/final_mix.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(has_router_weights, false));
+    return WGSL_TEMPLATE_APPLY(shader, "moe/final_mix.wgsl.template");
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -221,6 +221,12 @@ Status MoE::ComputeInternal(ComputeContext& context) const {
   const auto dtype_uint32 = DataTypeImpl::GetType<uint32_t>();
   const bool is_fp16 = dtype == DataTypeImpl::GetType<MLFloat16>();
   const uint32_t num_experts = static_cast<uint32_t>(params.num_experts);
+  const auto& device_limits = context.DeviceLimits();
+  ORT_RETURN_IF_NOT(num_experts <= device_limits.maxComputeWorkgroupSizeX &&
+                        num_experts <= device_limits.maxComputeInvocationsPerWorkgroup,
+                    "WebGPU MoE requires num_experts to fit in one workgroup; got ", num_experts,
+                    ", maxComputeWorkgroupSizeX=", device_limits.maxComputeWorkgroupSizeX,
+                    ", maxComputeInvocationsPerWorkgroup=", device_limits.maxComputeInvocationsPerWorkgroup, ".");
   const uint32_t hidden_size = static_cast<uint32_t>(params.hidden_size);
   const uint32_t inter_size = static_cast<uint32_t>(params.inter_size);
   const uint32_t fc1_cols = is_fused_swiglu ? 2 * inter_size : inter_size;

@@ -7,17 +7,11 @@
 // out: output
 // uniform: hidden_size, num_experts, expert_idx, token_offset
 
-#param has_router_weights
-
 $MAIN {
     let token_idx = expert_tokens[workgroup_idx];
     // token_idx is the offset into hidden state while fc2_outputs is for the chunk so
     // we need to substract uniforms.token_offset
-#if has_router_weights
-    let router_value_offset = token_idx * uniforms.num_experts + uniforms.expert_idx;
-#else
     let router_value_offset = (token_idx - uniforms.token_offset) * uniforms.num_experts + uniforms.expert_idx;
-#endif
     let router_value = router_values[router_value_offset];
     let fc2_outputs_offset = workgroup_idx * uniforms.hidden_size;
     let output_offset = token_idx * uniforms.hidden_size;

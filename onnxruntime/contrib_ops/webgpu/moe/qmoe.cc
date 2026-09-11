@@ -21,19 +21,24 @@ using onnxruntime::webgpu::ComputeContext;
 
 class GateProgram final : public Program<GateProgram> {
  public:
-  GateProgram(int k, bool is_fp16, bool normalize_routing_weights)
+  GateProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights)
       : Program<GateProgram>{"QmoeGate"},
         k_{k},
         is_fp16_{is_fp16},
+        has_router_weights_{has_router_weights},
         normalize_routing_weights_{normalize_routing_weights} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+    if (has_router_weights_) {
+      shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
+    }
     shader.AddOutput("topk_values");
     shader.AddOutput("hiddenstate_for_expert");
     shader.AddOutput("tokencount_for_expert");
 
     return WGSL_TEMPLATE_APPLY(shader, "moe/gate.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
                                WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
                                WGSL_TEMPLATE_PARAMETER(k, k_),
                                WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_));
@@ -47,23 +52,29 @@ class GateProgram final : public Program<GateProgram> {
  private:
   int k_;
   bool is_fp16_;
+  bool has_router_weights_;
   bool normalize_routing_weights_;
 };
 
 class Gate1TokenProgram final : public Program<Gate1TokenProgram> {
  public:
-  Gate1TokenProgram(int k, bool is_fp16, bool normalize_routing_weights)
+  Gate1TokenProgram(int k, bool is_fp16, bool has_router_weights, bool normalize_routing_weights)
       : Program<Gate1TokenProgram>{"QmoeGate1Token"},
         k_{k},
         is_fp16_{is_fp16},
+        has_router_weights_{has_router_weights},
         normalize_routing_weights_{normalize_routing_weights} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     shader.AddInput("router_logits", ShaderUsage::UseElementTypeAlias);
+    if (has_router_weights_) {
+      shader.AddInput("router_weights", ShaderUsage::UseElementTypeAlias);
+    }
     shader.AddOutput("topk_values");
     shader.AddOutput("indirect_experts");
 
     return WGSL_TEMPLATE_APPLY(shader, "moe/gate_1token.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_),
                                WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
                                WGSL_TEMPLATE_PARAMETER(k, k_),
                                WGSL_TEMPLATE_PARAMETER(normalize_routing_weights, normalize_routing_weights_));
@@ -76,6 +87,7 @@ class Gate1TokenProgram final : public Program<Gate1TokenProgram> {
  private:
   int k_;
   bool is_fp16_;
+  bool has_router_weights_;
   bool normalize_routing_weights_;
 };
 
@@ -181,8 +193,7 @@ class FusedFinalMix1TokenProgram final : public Program<FusedFinalMix1TokenProgr
 
 class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
  public:
-  explicit QMoEFinalMixProgram(bool has_router_weights)
-      : Program<QMoEFinalMixProgram>{"QMoEFinalMix"}, has_router_weights_{has_router_weights} {}
+  QMoEFinalMixProgram() : Program<QMoEFinalMixProgram>{"QMoEFinalMix"} {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     shader.AddInput("fc2_outputs", ShaderUsage::UseElementTypeAlias);
@@ -190,8 +201,7 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
     shader.AddInput("expert_tokens", ShaderUsage::UseElementTypeAlias);
     shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
 
-    return WGSL_TEMPLATE_APPLY(shader, "moe/final_mix.wgsl.template",
-                               WGSL_TEMPLATE_PARAMETER(has_router_weights, has_router_weights_));
+    return WGSL_TEMPLATE_APPLY(shader, "moe/final_mix.wgsl.template");
   }
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
@@ -199,9 +209,6 @@ class QMoEFinalMixProgram final : public Program<QMoEFinalMixProgram> {
       {"num_experts", ProgramUniformVariableDataType::Uint32},
       {"expert_idx", ProgramUniformVariableDataType::Uint32},
       {"token_offset", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_router_weights_;
 };
 
 Status QMoE::ComputeInternal(ComputeContext& context) const {
@@ -258,6 +265,12 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const int max_tokens = 2 * 1024;
 
   const uint32_t num_experts = static_cast<uint32_t>(moe_params.num_experts);
+  const auto& device_limits = context.DeviceLimits();
+  ORT_RETURN_IF_NOT(num_experts <= device_limits.maxComputeWorkgroupSizeX &&
+                        num_experts <= device_limits.maxComputeInvocationsPerWorkgroup,
+                    "WebGPU QMoE requires num_experts to fit in one workgroup; got ", num_experts,
+                    ", maxComputeWorkgroupSizeX=", device_limits.maxComputeWorkgroupSizeX,
+                    ", maxComputeInvocationsPerWorkgroup=", device_limits.maxComputeInvocationsPerWorkgroup, ".");
   const uint32_t hidden_size = static_cast<uint32_t>(moe_params.hidden_size);
   const int64_t fc1_output_size = is_fused_swiglu ? 2 * moe_params.inter_size : moe_params.inter_size;
   const bool is_fp16 = hidden_state->DataType() == DataTypeImpl::GetType<MLFloat16>();
@@ -294,15 +307,18 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     Tensor indirect_experts = context.CreateGPUTensor(dtype_uint32, indirect_experts_shape);
 
     // Step 1: Gate — select top-k experts
-    Gate1TokenProgram gate{k_, is_fp16, normalize_routing_weights_};
+    Gate1TokenProgram gate{k_, is_fp16, router_weights != nullptr, normalize_routing_weights_};
     gate
-        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}})
-        .AddOutput({&router_values, ProgramTensorMetadataDependency::None})
+        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}});
+    if (router_weights) {
+      gate.AddInputs({{router_weights, ProgramTensorMetadataDependency::Type}});
+    }
+    gate.AddOutput({&router_values, ProgramTensorMetadataDependency::None})
         .AddOutput({&indirect_experts, ProgramTensorMetadataDependency::None})
         .SetWorkgroupSize(num_experts)
         .SetDispatchGroupSize(num_tokens)
         .AddUniformVariables({num_tokens, num_experts})
-        .CacheHint(k_, is_fp16 ? "fp16" : "fp32", normalize_routing_weights_);
+        .CacheHint(k_, is_fp16 ? "fp16" : "fp32", router_weights != nullptr, normalize_routing_weights_);
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 
     // Step 2: Batched fc1 MatMulNBits with M=k, per-row expert selection.
@@ -355,7 +371,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
     FusedFinalMix1TokenProgram final_mix;
     final_mix
         .AddInputs({{&fc2_outputs, ProgramTensorMetadataDependency::Type}})
-        .AddInputs({{router_weights ? router_weights : &router_values, ProgramTensorMetadataDependency::Type}})
+        .AddInputs({{&router_values, ProgramTensorMetadataDependency::Type}})
         .AddInputs({{&indirect_experts, ProgramTensorMetadataDependency::Type}})
         .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
         .SetWorkgroupSize(mix_wg_size)
@@ -403,16 +419,19 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
         .AddUniformVariables({num_experts});
     ORT_RETURN_IF_ERROR(context.RunProgram(zero_counts));
 
-    GateProgram gate{k_, is_fp16, normalize_routing_weights_};
+    GateProgram gate{k_, is_fp16, router_weights != nullptr, normalize_routing_weights_};
     gate
-        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}})
-        .AddOutput({&router_values, ProgramTensorMetadataDependency::None})
+        .AddInputs({{router_logits, ProgramTensorMetadataDependency::Type}});
+    if (router_weights) {
+      gate.AddInputs({{router_weights, ProgramTensorMetadataDependency::Type}});
+    }
+    gate.AddOutput({&router_values, ProgramTensorMetadataDependency::None})
         .AddOutput({&gate_hidden, ProgramTensorMetadataDependency::None})
         .AddOutput({&gate_counts, ProgramTensorMetadataDependency::None, ProgramOutput::Atomic})
         .SetWorkgroupSize(num_experts)
         .SetDispatchGroupSize(static_cast<uint32_t>(num_tokens))
         .AddUniformVariables({static_cast<uint32_t>(num_tokens), num_experts, static_cast<uint32_t>(token_offset)})
-        .CacheHint(k_, is_fp16 ? "fp16" : "fp32", normalize_routing_weights_);
+        .CacheHint(k_, is_fp16 ? "fp16" : "fp32", router_weights != nullptr, normalize_routing_weights_);
 
     ORT_RETURN_IF_ERROR(context.RunProgram(gate));
 
@@ -499,10 +518,10 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
       //
       // Step 6: multiply fc2_outputs with router_values and accumulate
       //
-      QMoEFinalMixProgram final_mix{router_weights != nullptr};
+      QMoEFinalMixProgram final_mix;
       final_mix
           .AddInputs({{&fc2_outputs, ProgramTensorMetadataDependency::Type}})
-          .AddInputs({{router_weights ? router_weights : &router_values, ProgramTensorMetadataDependency::Type}})
+          .AddInputs({{&router_values, ProgramTensorMetadataDependency::Type}})
           .AddInputs({{&expert_tokens, ProgramTensorMetadataDependency::Type}})
           .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
           .SetDispatchGroupSize(used_by)
@@ -510,7 +529,7 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
                                 num_experts,
                                 expert_idx,
                                 static_cast<uint32_t>(token_offset)})
-          .CacheHint(router_weights != nullptr);
+          .CacheHint(router_weights != nullptr, normalize_routing_weights_);
 
       ORT_RETURN_IF_ERROR(context.RunProgram(final_mix));
     }
