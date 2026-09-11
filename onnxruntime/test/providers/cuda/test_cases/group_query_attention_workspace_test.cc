@@ -245,12 +245,20 @@ class GroupQueryAttentionQkvPreprocessTest
 TEST_P(GroupQueryAttentionQkvPreprocessTest, MatchesHandCalculatedRuntimeFormula) {
   const auto& test_case = GetParam();
   auto problem = ValidProblem();
+  if (test_case.mode == GQAPreprocessMode::Xqa) {
+    problem.sequence_length = 1;
+  }
   problem.is_first_prompt = test_case.is_first_prompt;
   problem.do_rotary = test_case.do_rotary;
   problem.is_packed_qkv = test_case.is_packed_qkv;
   problem.use_qk_norm = test_case.use_qk_norm;
   problem.k_quantization = test_case.k_quantization;
   problem.v_quantization = test_case.v_quantization;
+  if (test_case.mode == GQAPreprocessMode::Xqa &&
+      test_case.k_quantization != GQAKvQuantizationType::None) {
+    problem.cache_element_size = 1;
+    problem.kv_cache_bit_width = 8;
+  }
 
   GQAPreparationRecipe recipe;
   ASSERT_TRUE(BuildRecipe(problem, recipe, test_case.mode));
@@ -268,26 +276,26 @@ INSTANTIATE_TEST_SUITE_P(
     RuntimeModes,
     GroupQueryAttentionQkvPreprocessTest,
     testing::Values(
-        // B=2, S=3, N=4, Nk=2, H=8, sizeof(T)=2.
+        // XQA cases use S=1: Q=128 bytes. Other modes use S=3:
         // Q=384 bytes and K=V=192 bytes.
         QkvPreprocessCase{"XqaNoMaterialization", GQAPreprocessMode::Xqa,
                           false, false, false, false,
-                          GQAKvQuantizationType::PerTensor, GQAKvQuantizationType::None, 0},
+                          GQAKvQuantizationType::PerTensor, GQAKvQuantizationType::PerTensor, 0},
         QkvPreprocessCase{"XqaRotaryQ", GQAPreprocessMode::Xqa,
                           false, true, false, false,
-                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 384},
+                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 128},
         QkvPreprocessCase{"XqaPackedQ", GQAPreprocessMode::Xqa,
                           false, false, true, false,
-                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 384},
+                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 128},
         QkvPreprocessCase{"XqaQkNormQ", GQAPreprocessMode::Xqa,
                           false, false, false, true,
-                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 384},
+                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 128},
         QkvPreprocessCase{"XqaPerChannelKScaleQ", GQAPreprocessMode::Xqa,
                           false, false, false, false,
-                          GQAKvQuantizationType::PerChannel, GQAKvQuantizationType::None, 384},
+                          GQAKvQuantizationType::PerChannel, GQAKvQuantizationType::PerTensor, 128},
         QkvPreprocessCase{"XqaCombinedReasonsStillOneQ", GQAPreprocessMode::Xqa,
                           false, true, true, true,
-                          GQAKvQuantizationType::PerChannel, GQAKvQuantizationType::None, 384},
+                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 128},
         QkvPreprocessCase{"FlashQuantizedPromptQkv", GQAPreprocessMode::Flash,
                           true, false, false, false,
                           GQAKvQuantizationType::PerTensor, GQAKvQuantizationType::PerTensor, 768},
@@ -309,6 +317,59 @@ INSTANTIATE_TEST_SUITE_P(
                           false, false, false, true,
                           GQAKvQuantizationType::None, GQAKvQuantizationType::None, 384}),
     [](const testing::TestParamInfo<QkvPreprocessCase>& info) {
+      return std::string(info.param.name);
+    });
+
+struct XqaContradictionCase {
+  const char* name;
+  int64_t sequence_length;
+  bool is_first_prompt;
+  GQAKvQuantizationType k_quantization;
+  GQAKvQuantizationType v_quantization;
+  int64_t kv_cache_bit_width;
+  bool use_qk_norm;
+};
+
+class GroupQueryAttentionXqaValidationTest
+    : public testing::TestWithParam<XqaContradictionCase> {};
+
+TEST_P(GroupQueryAttentionXqaValidationTest, RejectsImpossibleRuntimeRouteFacts) {
+  const auto& test_case = GetParam();
+  auto problem = ValidProblem();
+  problem.sequence_length = test_case.sequence_length;
+  problem.is_first_prompt = test_case.is_first_prompt;
+  problem.k_quantization = test_case.k_quantization;
+  problem.v_quantization = test_case.v_quantization;
+  problem.kv_cache_bit_width = test_case.kv_cache_bit_width;
+  problem.cache_element_size = test_case.kv_cache_bit_width == 0 ? 2 : 1;
+  problem.use_qk_norm = test_case.use_qk_norm;
+
+  EXPECT_EQ(
+      GetGQAPreparationRecipe(
+          problem, GQAPreparationRoute{GQAPreprocessMode::Xqa, false})
+          .status.error,
+      GQAWorkspaceError::InvalidArgument);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ImpossibleRuntimeRoutes,
+    GroupQueryAttentionXqaValidationTest,
+    testing::Values(
+        XqaContradictionCase{"MultiToken", 2, false,
+                             GQAKvQuantizationType::None, GQAKvQuantizationType::None, 0, false},
+        XqaContradictionCase{"FirstPrompt", 1, true,
+                             GQAKvQuantizationType::None, GQAKvQuantizationType::None, 0, false},
+        XqaContradictionCase{"QuantizedKOnly", 1, false,
+                             GQAKvQuantizationType::PerTensor, GQAKvQuantizationType::None, 8, false},
+        XqaContradictionCase{"QuantizedVOnly", 1, false,
+                             GQAKvQuantizationType::None, GQAKvQuantizationType::PerChannel, 8, false},
+        XqaContradictionCase{"Int4Cache", 1, false,
+                             GQAKvQuantizationType::PerTensor, GQAKvQuantizationType::PerTensor, 4, false},
+        XqaContradictionCase{"PackedUnquantizedCache", 1, false,
+                             GQAKvQuantizationType::None, GQAKvQuantizationType::None, 8, false},
+        XqaContradictionCase{"QuantizedQkNorm", 1, false,
+                             GQAKvQuantizationType::PerTensor, GQAKvQuantizationType::PerTensor, 8, true}),
+    [](const testing::TestParamInfo<XqaContradictionCase>& info) {
       return std::string(info.param.name);
     });
 
