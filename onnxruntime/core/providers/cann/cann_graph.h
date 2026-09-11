@@ -10,6 +10,8 @@
 #include <string>
 #include <exception>
 #include <future>
+#include <memory>
+#include <shared_mutex>
 #include <thread>
 
 #include "core/providers/cann/cann_common.h"
@@ -23,7 +25,6 @@ namespace cann {
 struct GeState {
   GeState()
       : future_init(promise_init.get_future().share()),
-        ex_ptr_init(nullptr),
         future_final(promise_final.get_future()),
         ex_ptr_final(nullptr) {}
 
@@ -35,22 +36,31 @@ struct GeState {
     try {
       promise_final.set_value(false);
     } catch (const std::future_error&) {
-      /* ignore */
+      // Already signalled by DeleteRegistry()
     }
 
-    thread.join();
+    try {
+      thread.join();
+    } catch (...) {
+      // Nothing actionable during static teardown
+    }
   }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GeState);
 
   std::thread thread;
 
   std::promise<void> promise_init;
   std::shared_future<void> future_init;
-  std::exception_ptr ex_ptr_init;
 
   std::promise<bool> promise_final;
   std::future<bool> future_final;
   std::exception_ptr ex_ptr_final;
 };
+
+extern bool g_ge_shutdown;
+extern std::unique_ptr<GeState> g_ge_state;
+extern std::shared_mutex g_ge_mutex;
 
 struct CannModelPreparation {
   explicit CannModelPreparation(uint32_t modelID) {

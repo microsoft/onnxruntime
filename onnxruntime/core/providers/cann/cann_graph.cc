@@ -6,6 +6,7 @@
 #include <set>
 #include <exception>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <thread>
@@ -17,6 +18,7 @@ namespace cann {
 
 static int lower_bound = 8;  // Supported domain version lower bounds
 
+bool g_ge_shutdown = false;
 std::unique_ptr<GeState> g_ge_state;
 std::shared_mutex g_ge_mutex;
 
@@ -105,8 +107,16 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
   std::shared_lock<std::shared_mutex> shared_lock(g_ge_mutex);
 
   while (!g_ge_state) {
+    if (g_ge_shutdown) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GraphEngine is shutting down or has already been finalized");
+    }
+
     shared_lock.unlock();
     std::unique_lock<std::shared_mutex> exclusive_lock(g_ge_mutex);
+
+    if (g_ge_shutdown) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GraphEngine is shutting down or has already been finalized");
+    }
 
     // Double-check, another thread might have already initialized it
     if (!g_ge_state) {
@@ -130,17 +140,17 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
 
             CANN_GRAPH_CALL_THROW(ge::aclgrphBuildInitialize(options));
             state->promise_init.set_value();
+          } catch (...) {
+            state->promise_init.set_exception(std::current_exception());
+            return;
+          }
 
-            try {
-              if (state->future_final.get()) {
-                ge::aclgrphBuildFinalize();
-              }
-            } catch (...) {
-              state->ex_ptr_final = std::current_exception();
+          try {
+            if (state->future_final.get()) {
+              ge::aclgrphBuildFinalize();
             }
           } catch (...) {
-            state->ex_ptr_init = std::current_exception();
-            state->promise_init.set_value();
+            state->ex_ptr_final = std::current_exception();
           }
         });
       } catch (...) {
@@ -153,11 +163,7 @@ Status BuildONNXModel(ge::Graph& graph, std::string input_shape, const char* soc
     shared_lock.lock();
   }
 
-  g_ge_state->future_init.wait();
-
-  if (g_ge_state->ex_ptr_init) {
-    std::rethrow_exception(g_ge_state->ex_ptr_init);
-  }
+  g_ge_state->future_init.get();
 
   std::map<ge::AscendString, ge::AscendString> options;
   options.emplace(ge::ir_option::INPUT_SHAPE, input_shape.c_str());

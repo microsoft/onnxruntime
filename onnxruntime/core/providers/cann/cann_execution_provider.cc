@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <exception>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 
 #define ORT_API_MANUAL_INIT
@@ -34,13 +35,6 @@ namespace onnxruntime {
 
 // Models can only be parsed and built serially in the same process
 std::mutex g_mutex;
-namespace cann {
-
-// See cann_graph.cc
-extern std::unique_ptr<GeState> g_ge_state;
-extern std::shared_mutex g_ge_mutex;
-
-}  // namespace cann
 
 class Memcpy final : public OpKernel {
  public:
@@ -1071,12 +1065,15 @@ static bool s_owns_acl = false;
 
 void InitializeRegistry() {
   s_owns_acl = false;
-  cann::SetRepeatInitFlag(false);
-  CANN_CALL_THROW(aclInit(nullptr));
-  s_owns_acl = !cann::GetRepeatInitFlag();
+  s_owns_acl = CANN_CALL_THROW(aclInit(nullptr));
 
   s_kernel_registry = KernelRegistry::Create();
   ORT_THROW_IF_ERROR(cann::RegisterCANNKernels(*s_kernel_registry));
+
+  {
+    std::unique_lock<std::shared_mutex> lock(cann::g_ge_mutex);
+    cann::g_ge_shutdown = false;
+  }
 }
 
 void DeleteRegistry() {
@@ -1085,15 +1082,21 @@ void DeleteRegistry() {
 
   {
     std::unique_lock<std::shared_mutex> lock(cann::g_ge_mutex);
+    cann::g_ge_shutdown = true;
 
     if (cann::g_ge_state) {
-      // Calls ge::aclgrphBuildFinalize
-      cann::g_ge_state->promise_final.set_value(true);
-      if (cann::g_ge_state->thread.joinable()) {
-        cann::g_ge_state->thread.join();
+      try {
+        // Calls ge::aclgrphBuildFinalize
+        cann::g_ge_state->promise_final.set_value(true);
+        if (cann::g_ge_state->thread.joinable()) {
+          cann::g_ge_state->thread.join();
+        }
+
+        ex_ptr_final = cann::g_ge_state->ex_ptr_final;
+      } catch (...) {
+        ex_ptr_final = std::current_exception();
       }
 
-      ex_ptr_final = cann::g_ge_state->ex_ptr_final;
       cann::g_ge_state.reset();
     }
   }
