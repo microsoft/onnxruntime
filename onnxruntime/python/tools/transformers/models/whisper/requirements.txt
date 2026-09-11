@@ -8,7 +8,7 @@ librosa
 optimum
 onnxruntime-extensions>=0.9.0
 onnx
-protobuf==4.25.8
+protobuf==5.29.6
 numpy==1.23.3
 psutil
 py3nvml
