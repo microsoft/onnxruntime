@@ -226,5 +226,20 @@ that ships today.
 
 ## Open questions
 
-- What is the stable representation of JavaScript-owned WebGPU objects at the C API boundary?
-- Which private-dependency findings require a public plugin EP API addition rather than a provider-owned replacement?
+- Is the current JavaScript/Wasm object boundary the one an out-of-tree provider should depend on? The
+  representation itself is no longer unknown: `GPUDevice` and `GPUBuffer` already cross as Emscripten native
+  handles. `webgpuRegisterDevice` in `onnxruntime/wasm/post-webgpu.js` imports a device with
+  `WebGPU.importJsDevice`, pairs it with an instance from the `_OrtCreateWebGpuInstance` export, and passes both as
+  decimal strings in the `webgpuInstance` and `webgpuDevice` EP options; `webgpuRegisterBuffer` does the equivalent
+  for buffers and releases them with `_wgpuBufferRelease`. The prototype confirmed these options reach the provider
+  unchanged over the plugin path. What is unsettled is that this contract is spread across Emscripten's WebGPU
+  bindings, ORT-owned Wasm exports and stringified pointers in session options, none of which is a documented public
+  C API, and that ownership and device-loss rules are not written down anywhere.
+- Which remaining private-dependency findings require a public plugin EP API addition rather than a provider-owned
+  replacement? Of the two gaps recorded in `onnxruntime/core/providers/webgpu/ep/README.md`, one is now classified
+  and one is closed. EP default configuration still needs a public API addition, sketched there as
+  `SetEpDefaultConfig(ep_name, key, value)`, because it must be settable before a session exists. WebGPU cleanup is
+  handled on the plugin path by `ReleaseEpFactory`, which clears the kernel registries and WebGPU contexts, with the
+  legacy `OrtEnv` cleanup compiled out for adapter builds; whether that holds across unregister and re-register is
+  untested, and is tracked by work package 3 rather than as an API gap. The rest of the triage waits on
+  `provider-isolation` findings (work package 5).
