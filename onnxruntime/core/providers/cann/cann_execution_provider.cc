@@ -8,6 +8,10 @@
 #include <iterator>
 #include <map>
 #include <unordered_set>
+#include <exception>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
 
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
@@ -19,6 +23,7 @@
 #include "core/providers/cann/cann_stream_handle.h"
 #include "core/providers/cann/npu_data_transfer.h"
 #include "core/providers/cann/cann_utils.h"
+#include "core/providers/cann/cann_graph.h"
 
 using onnxruntime::cann::BuildONNXModel;
 using onnxruntime::cann::CannModelPreparation;
@@ -1056,21 +1061,56 @@ Status CANNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_op
 }
 
 static std::shared_ptr<KernelRegistry> s_kernel_registry;
+static bool s_owns_acl = false;
 
 void InitializeRegistry() {
-  CANN_CALL_THROW(aclInit(nullptr));
+  s_owns_acl = false;
+  s_owns_acl = CANN_CALL_THROW(aclInit(nullptr));
 
   s_kernel_registry = KernelRegistry::Create();
   ORT_THROW_IF_ERROR(cann::RegisterCANNKernels(*s_kernel_registry));
+
+  {
+    std::unique_lock<std::shared_mutex> lock(cann::g_ge_mutex);
+    cann::g_ge_shutdown = false;
+  }
 }
 
 void DeleteRegistry() {
   s_kernel_registry.reset();
+  std::exception_ptr ex_ptr_final;
 
-  ge::aclgrphBuildFinalize();
+  {
+    std::unique_lock<std::shared_mutex> lock(cann::g_ge_mutex);
+    cann::g_ge_shutdown = true;
 
-  if (!cann::GetRepeatInitFlag()) {
-    CANN_CALL_THROW(aclFinalize());
+    if (cann::g_ge_state) {
+      try {
+        // Calls ge::aclgrphBuildFinalize
+        cann::g_ge_state->promise_final.set_value(true);
+        if (cann::g_ge_state->thread.joinable()) {
+          cann::g_ge_state->thread.join();
+        }
+
+        ex_ptr_final = cann::g_ge_state->ex_ptr_final;
+      } catch (...) {
+        ex_ptr_final = std::current_exception();
+      }
+
+      cann::g_ge_state.reset();
+    }
+  }
+
+  if (std::exchange(s_owns_acl, false)) {
+    if (ex_ptr_final) {
+      CANN_CALL(aclFinalize());
+    } else {
+      CANN_CALL_THROW(aclFinalize());
+    }
+  }
+
+  if (ex_ptr_final) {
+    std::rethrow_exception(ex_ptr_final);
   }
 }
 
