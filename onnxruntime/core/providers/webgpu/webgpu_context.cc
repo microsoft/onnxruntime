@@ -216,6 +216,10 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     device_queue_ = device_.GetQueue();
     // cache device limits
     ORT_ENFORCE(Device().GetLimits(&device_limits_) == wgpu::Status::Success);
+    if (max_storage_buffer_binding_size_ != 0) {
+      device_limits_.maxStorageBufferBindingSize =
+          std::min(device_limits_.maxStorageBufferBindingSize, max_storage_buffer_binding_size_);
+    }
     // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
     // buffer segment offsets are always properly aligned for WebGPU bind group creation.
     if (device_limits_.minStorageBufferOffsetAlignment > 0) {
@@ -821,8 +825,8 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
   required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
   required_limits.maxStorageBuffersPerShaderStage = adapter_limits.maxStorageBuffersPerShaderStage;
 
-  if (max_storage_buffer_binding_size_ == 0) {
-    // If not set by the user, use the adapter limit.
+  if (max_storage_buffer_binding_size_ < kWebGpuGuaranteedMaxStorageBufferBindingSize) {
+    // Lower values are applied as a logical segmentation limit after device creation.
     required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
   } else {
     required_limits.maxStorageBufferBindingSize = max_storage_buffer_binding_size_;

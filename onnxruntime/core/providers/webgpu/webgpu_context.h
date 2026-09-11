@@ -216,6 +216,12 @@ class WebGpuContextFactory {
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
+  static constexpr uint64_t kMinConfigurableStorageBufferBindingSize = 256;
+  // WebGPU's guaranteed maxStorageBufferBindingSize limit is 128 MiB.
+  // See https://gpuweb.github.io/gpuweb/?utm_source=openai
+  static constexpr uint64_t kWebGpuGuaranteedMaxStorageBufferBindingSize =
+      128ULL * 1024 * 1024;
+
   Status Wait(wgpu::Future f);
 
   const wgpu::Instance& Instance() const { return instance_; }
@@ -348,8 +354,9 @@ class WebGpuContext final {
         query_type_{TimestampQueryType::None},
         preserve_device_{preserve_device},
         max_storage_buffer_binding_size_{max_storage_buffer_binding_size} {
-    ORT_ENFORCE(max_storage_buffer_binding_size_ == 0 || max_storage_buffer_binding_size_ >= 134217728,
-                "max_storage_buffer_binding_size must be 0 or at least 128MB");
+    ORT_ENFORCE(max_storage_buffer_binding_size_ == 0 ||
+                    max_storage_buffer_binding_size_ >= kMinConfigurableStorageBufferBindingSize,
+                "max_storage_buffer_binding_size must be 0 or at least 256 bytes");
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
