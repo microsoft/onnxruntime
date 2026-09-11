@@ -144,7 +144,6 @@ class BatchNorm : public OpKernel {
       const auto* input_running_var = p_op_kernel_context->Input<Tensor>(4);
 
       // Assume that running mean and variance are initialized properly in the model given to us
-      // Because we alias it, we have the past history here
       EigenVectorArrayMap<T> running_mean_arr(
           running_mean->MutableData<T>(), C);
       EigenVectorArrayMap<T> running_var_arr(
