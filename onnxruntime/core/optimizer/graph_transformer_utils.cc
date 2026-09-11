@@ -8,6 +8,7 @@
 #include <variant>
 
 #include "core/framework/execution_providers.h"
+#include "core/framework/kernel_registry_manager.h"
 
 #include "core/optimizer/conv_activation_fusion.h"
 #include "core/optimizer/matmul_nbits_fusion.h"
@@ -214,8 +215,19 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
     [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
-    [[maybe_unused]] const ExecutionProviders* execution_providers) {
+    [[maybe_unused]] const ExecutionProviders* execution_providers,
+    [[maybe_unused]] const KernelRegistryManager* kernel_registry_manager) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
+#ifndef DISABLE_CONTRIB_OPS
+  GraphTransformer::NodeKernelSupportChecker node_kernel_support_checker;
+  if (kernel_registry_manager != nullptr) {
+    node_kernel_support_checker = [kernel_registry_manager](const Node& node, const logging::Logger& logger) {
+      const auto& provider_type = node.GetExecutionProviderType();
+      return !provider_type.empty() &&
+             KernelRegistryManager::HasImplementationOf(*kernel_registry_manager, node, provider_type, logger);
+    };
+  }
+#endif
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
   const bool enable_cast_chain_elimination =
@@ -419,7 +431,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_acl_cuda_dml_webgpu_eps));
-      transformers.emplace_back(std::make_unique<GroupQueryAttentionFusion>(cuda_eps));
+      transformers.emplace_back(
+          std::make_unique<GroupQueryAttentionFusion>(cuda_eps, node_kernel_support_checker));
       // Run MatMulAddFusion again after *AttentionFusion transforms with `preserve_attention_pattern = false`,
       // to cleanup the remaining MatMul-Add that were part of the attention pattern but not detected or fused.
       transformers.emplace_back(std::make_unique<MatMulAddFusion>(no_limit_empty_ep_list, false));
@@ -464,7 +477,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
-                                           onnxruntime::kWebGpuExecutionProvider}));
+                                           onnxruntime::kWebGpuExecutionProvider},
+          node_kernel_support_checker));
       bool has_matmul_nbits_mlp_kernel = false;
       bool has_matmul_nbits_qkv_kernel = false;
       if (execution_providers != nullptr) {

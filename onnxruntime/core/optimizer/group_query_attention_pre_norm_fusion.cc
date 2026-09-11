@@ -301,6 +301,12 @@ Status GroupQueryAttentionPreNormFusion::ApplyImpl(Graph& graph,
       continue;
     }
 
+    if (node_kernel_support_checker_ && !node_kernel_support_checker_(node, logger)) {
+      LOGS(logger, VERBOSE) << "GroupQueryAttentionPreNormFusion skipped node '" << node.Name()
+                            << "' because its assigned EP has no compatible GroupQueryAttention kernel";
+      continue;
+    }
+
     LOGS(logger, VERBOSE) << "GroupQueryAttentionPreNormFusion: matched gqa='" << node.Name()
                           << "' q_sln='" << q_sln->Name() << "' k_sln='" << k_sln->Name()
                           << "' head_size=" << head_size

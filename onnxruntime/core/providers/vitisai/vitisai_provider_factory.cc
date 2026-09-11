@@ -105,7 +105,7 @@ struct VitisAI_Provider : Provider {
 
 struct VitisAIEpFactory : OrtEpFactory {
   VitisAIEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in)
-      : ort_api{ort_api_in}, default_logger{default_logger_in} {
+      : OrtEpFactory{}, ort_api{ort_api_in}, default_logger{default_logger_in} {
     ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;

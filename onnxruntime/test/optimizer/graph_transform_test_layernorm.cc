@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <type_traits>
+#include <utility>
 
 #include "gtest/gtest.h"
 
@@ -1331,6 +1332,40 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsQuarantinedPluginKernel) {
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx",
+                               model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+
+  size_t support_check_count = 0;
+  auto checker = [&support_check_count](const Node& node, const logging::Logger&) {
+    ++support_check_count;
+    EXPECT_EQ(node.Domain(), kMSDomain);
+    EXPECT_EQ(node.OpType(), "GroupQueryAttention");
+    EXPECT_EQ(node.SinceVersion(), 1);
+    EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    // A schema-digest mismatch removes the plugin kernel from the effective registry.
+    return false;
+  };
+
+  GraphTransformerManager graph_transformation_mgr{3};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<GroupQueryAttentionFusion>(
+          InlinedHashSet<std::string_view>{kCudaExecutionProvider}, std::move(checker)),
+      TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  const auto op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count.at("com.microsoft.MatMulNBits"), 3);
+  EXPECT_EQ(op_to_count.at("com.microsoft.RotaryEmbedding"), 2);
+  EXPECT_EQ(op_to_count.at("com.microsoft.GroupQueryAttention"), 1);
+  EXPECT_EQ(support_check_count, 1u);
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingTest) {

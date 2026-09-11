@@ -591,6 +591,13 @@ Status GroupQueryAttentionFusion::ApplyImpl(
       continue;
     }
 
+    if (node_kernel_support_checker_ && !node_kernel_support_checker_(node, logger)) {
+      DEBUG_LOG("GroupQueryAttentionFusion skipped node '" << node.Name()
+                                                           << "' because its assigned EP has no compatible "
+                                                              "GroupQueryAttention kernel");
+      continue;
+    }
+
     auto& matmul_or_nbits_output = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("MatMul_output"), &mutable_matmul_or_nbits_tensor_proto);
     const std::array mmnb_output_defs{&matmul_or_nbits_output};
 

@@ -12,10 +12,13 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/tensor.h"
+#include "core/graph/constants.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/plugin_ep/ep_api.h"
 #include "core/session/plugin_ep/ep_control_flow_kernel_impls.h"
+#include "core/session/plugin_ep/ep_schema_compatibility.h"
+#include "onnx/defs/schema.h"
 
 //
 // OrtSharedPrePackedWeightCache
@@ -275,6 +278,8 @@ KernelCreateInfo MakePluginEpKernelCreateInfo(const KernelDef* kernel_def,
 
 // Copies a const OrtKernelRegistry into a shared_ptr<KernelRegistry>.
 static Status CopyEpKernelRegistry(const OrtKernelRegistry* ep_registry,
+                                   const PluginEpSchemaCompatibility& schema_compatibility,
+                                   const logging::Logger& logger,
                                    /*out*/ std::shared_ptr<KernelRegistry>& registry_copy) {
   if (ep_registry == nullptr) {
     registry_copy = nullptr;
@@ -285,6 +290,59 @@ static Status CopyEpKernelRegistry(const OrtKernelRegistry* ep_registry,
   auto dst_registry = std::make_shared<KernelRegistry>();
 
   for (const auto& [key, src_create_info] : src_registry->GetKernelCreateMap()) {
+    ORT_UNUSED_PARAMETER(key);
+    const auto& kernel_def = *src_create_info.kernel_def;
+    if (schema_compatibility.IsNegotiated() && kernel_def.Domain() == kMSDomain) {
+      int start_version = 0;
+      int end_version = 0;
+      kernel_def.SinceVersion(&start_version, &end_version);
+      const auto& domain_versions = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+      const auto domain_version = domain_versions.find(kernel_def.Domain());
+      ORT_RETURN_IF(start_version <= 0 || end_version < start_version ||
+                        domain_version == domain_versions.end(),
+                    "Plugin EP has an invalid com.microsoft kernel range for ",
+                    kernel_def.OpName(), ": [", start_version, ", ", end_version, "].");
+
+      const int core_max_version = domain_version->second.second;
+      if (start_version > core_max_version) {
+        // A newer plugin may contain kernels for schemas that do not exist in
+        // this core. They are invisible here and must not disable older kernels
+        // from the same plugin.
+        LOGS(logger, INFO) << "Excluding plugin EP kernel " << kernel_def.Domain() << ":"
+                           << kernel_def.OpName() << " with future version range [" << start_version << ", "
+                           << end_version << "]; this core supports through version " << core_max_version << ".";
+        continue;
+      }
+
+      // Validate only versions visible to this core. A bounded range may extend
+      // into schemas supplied by a newer plugin build.
+      int compatibility_end_version = std::min(end_version, core_max_version);
+      if (end_version == INT_MAX) {
+        // KernelRegistry treats an open-ended registration as an exact match
+        // for its start version. Keep that behavior when a newer core adds
+        // another schema so an older plugin retains its compatible kernel.
+        compatibility_end_version = start_version;
+      }
+
+      bool is_compatible = true;
+      for (int version = start_version; version <= compatibility_end_version; ++version) {
+        const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(
+            kernel_def.OpName(), version, kernel_def.Domain());
+        if (schema == nullptr || (version == start_version && schema->since_version() != start_version) ||
+            !schema_compatibility.IsCompatible(kernel_def.Domain(), kernel_def.OpName(), schema->since_version())) {
+          is_compatible = false;
+          break;
+        }
+      }
+
+      if (!is_compatible) {
+        LOGS(logger, WARNING) << "Excluding incompatible plugin EP kernel " << kernel_def.Domain() << ":"
+                              << kernel_def.OpName() << " with version range [" << start_version << ", "
+                              << end_version << "].";
+        continue;
+      }
+    }
+
     auto dst_kernel_def = std::make_unique<KernelDef>(*src_create_info.kernel_def);
     KernelCreateInfo dst_create_info(std::move(dst_kernel_def), src_create_info.kernel_create_func);
 
@@ -296,7 +354,10 @@ static Status CopyEpKernelRegistry(const OrtKernelRegistry* ep_registry,
 }
 
 // Gets an OrtEp instance's kernel registry.
-Status GetPluginEpKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRegistry>& kernel_registry) {
+Status GetPluginEpKernelRegistry(OrtEp& ort_ep,
+                                 const PluginEpSchemaCompatibility& schema_compatibility,
+                                 const logging::Logger& logger,
+                                 /*out*/ std::shared_ptr<KernelRegistry>& kernel_registry) {
   kernel_registry = nullptr;
 
   if (ort_ep.ort_version_supported < 24) {
@@ -312,7 +373,7 @@ Status GetPluginEpKernelRegistry(OrtEp& ort_ep, /*out*/ std::shared_ptr<KernelRe
     // ORT needs a shared_ptr<KernelRegistry> due to the IExecutionProvider::GetKernelRegistry() interface.
     // We copy the EP's OrtKernelRegistry into a new shared_ptr<KernelRegistry> to ensure the EP fully owns
     // the lifetime of the registry it created.
-    ORT_RETURN_IF_ERROR(CopyEpKernelRegistry(ep_registry, kernel_registry));
+    ORT_RETURN_IF_ERROR(CopyEpKernelRegistry(ep_registry, schema_compatibility, logger, kernel_registry));
   }
 
   return Status::OK();
