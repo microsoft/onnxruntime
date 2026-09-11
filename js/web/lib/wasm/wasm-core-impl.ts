@@ -106,7 +106,7 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
   getInstance().asyncInit?.();
 
   // perform WebGPU availability check ( either JSEP or WebGPU EP )
-  let webgpuAdapter = env.webgpu.adapter as GPUAdapter | null;
+  let webgpuAdapter: GPUAdapter | null = env.webgpu.adapter;
   if (epName === 'webgpu') {
     if (typeof navigator === 'undefined' || !navigator.gpu) {
       throw new Error('WebGPU is not supported in current environment');
@@ -358,9 +358,14 @@ export const createSession = async (
       const loadingPromises = [];
       for (const file of options.externalData) {
         const path = typeof file === 'string' ? file : file.path;
+        const data = typeof file === 'string' ? file : file.data;
+        if (BUILD_DEFS.ENABLE_JSPI && data instanceof Blob) {
+          wasm.mountExternalData(path, data);
+          continue;
+        }
         loadingPromises.push(
-          loadFile(typeof file === 'string' ? file : file.data).then((data) => {
-            wasm.mountExternalData(path, data);
+          loadFile(data).then((fileData) => {
+            wasm.mountExternalData(path, fileData);
           }),
         );
       }
@@ -616,7 +621,7 @@ export const prepareInputOutputTensor = async (
       rawData = registerBuffer(sessionId, index, gpuBuffer, dataByteLength);
     }
   } else if (location === 'ml-tensor') {
-    const mlTensor = tensor[2].mlTensor as MLTensor;
+    const mlTensor = tensor[2].mlTensor;
     dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
 
     const registerMLTensor = wasm.webnnRegisterMLTensor;
@@ -653,7 +658,7 @@ export const prepareInputOutputTensor = async (
           if (!createTemporaryTensor || !uploadTensor) {
             throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
           }
-          const tensorId = await createTemporaryTensor(sessionId, dataTypeEnum, dims as number[]);
+          const tensorId = await createTemporaryTensor(sessionId, dataTypeEnum, dims);
           uploadTensor(tensorId, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
           rawData = tensorId;
         } else {
@@ -725,6 +730,7 @@ export const run = async (
   const inputTensorHandles: number[] = [];
   const outputTensorHandles: number[] = [];
   const inputOutputAllocs: number[] = [];
+  const preAllocatedOutputs: number[] = [];
 
   const beforeRunStack = wasm.stackSave();
   const inputValuesOffset = wasm.stackAlloc(inputCount * ptrSize);
@@ -797,7 +803,8 @@ export const run = async (
         const location = outputTensors[i]?.[3]; // undefined means output is not pre-allocated.
 
         if (location) {
-          // output is pre-allocated. bind the tensor.
+          // output is pre-allocated, store and bind the tensor.
+          preAllocatedOutputs.push(outputTensorHandles[i]);
           const errorCode = wasm._OrtBindOutput(handle, outputNamesUTF8Encoded[index], outputTensorHandles[i], 0);
           if (errorCode !== 0) {
             checkLastError(`Can't bind pre-allocated output[${i}] for session=${sessionId}.`);
@@ -861,9 +868,20 @@ export const run = async (
     TRACE_EVENT_BEGIN('wasm ProcessOutputTensor');
     for (let i = 0; i < outputCount; i++) {
       const tensor = Number(wasm.getValue(outputValuesOffset + i * ptrSize, '*'));
-      if (tensor === outputTensorHandles[i]) {
+      // TODO: revisit this part to ensure it works for WebGPU when both pre-allocated outputs and
+      // preferred location are specified.
+      // Certain pre-allocated tensors may already be bound in the IO binding. e.g. the WebNN backend
+      // always binds its tensor to 'ml-tensor'. In such cases, the tensor ID might change after binding,
+      // but copying data for these tensors should still be avoided.
+      if (tensor === outputTensorHandles[i] || preAllocatedOutputs.includes(outputTensorHandles[i])) {
         // output tensor is pre-allocated. no need to copy data.
         output.push(outputTensors[i]!);
+        if (tensor !== outputTensorHandles[i]) {
+          // release redundant tensor earlier.
+          if (wasm._OrtReleaseTensor(tensor) !== 0) {
+            checkLastError("Can't release tensor.");
+          }
+        }
         continue;
       }
 

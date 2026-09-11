@@ -1,0 +1,1110 @@
+{
+  "$schema": "https://json.schemastore.org/component-detection-manifest.json",
+  "version": 1,
+  "registrations": [
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+          "repositoryUrl": "https://github.com/google/dawn.git"
+        }
+      },
+      "comments": "runtime; WebGPU EP root dependency pinned in cmake/deps.txt and patched by cmake/external/onnxruntime_external_deps.cmake.",
+      "detectedComponentLocations": [
+        "{SourceFileRoot}/cmake/deps.txt",
+        "{SourceFileRoot}/cmake/external/onnxruntime_external_deps.cmake",
+        "{SourceFileRoot}/cmake/patches/dawn"
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b4711839eb9a87da7c3436d9b212e0492359fbbd",
+          "repositoryUrl": "https://github.com/microsoft/DirectXShaderCompiler.git",
+          "tag": "v1.8.2502"
+        }
+      },
+      "comments": "runtime; redistributed by Windows WebGPU plugin packages as dxil.dll and dxcompiler.dll. Release zip: https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2502/dxc_2025_02_20.zip; SHA256: 70B1913A1BFCE4A3E1A5311D16246F4ECDF3A3E613ABEC8AA529E57668426F85.",
+      "detectedComponentLocations": [
+        "{SourceFileRoot}/tools/ci_build/github/azure-pipelines/stages/plugin-win-webgpu-stage.yml",
+        "{SourceFileRoot}/plugin-ep-webgpu/csharp/pack_nuget.py",
+        "{SourceFileRoot}/plugin-ep-webgpu/python/build_wheel.py"
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7ef32bbacabd0d04a6cfac92a542841c531e1b21",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/abseil-cpp. ORT static WebGPU builds point Dawn at ORT's Abseil source when available.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ],
+      "detectedComponentLocations": [
+        "{SourceFileRoot}/cmake/external/onnxruntime_external_deps.cmake"
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "a0f4dc977fa2ef7f47708aec914a4fbfeefc6103",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/third_party/protobuf"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/protobuf. ORT static WebGPU builds point Dawn at ORT's Protobuf source when available.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ],
+      "detectedComponentLocations": [
+        "{SourceFileRoot}/cmake/external/onnxruntime_external_deps.cmake"
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "f31ca173eff866369e54d35e53375fadbabd58f4",
+          "repositoryUrl": "https://github.com/KhronosGroup/SPIRV-Headers.git"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/spirv-headers/src used by Dawn/Tint SPIR-V support.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "cb38b2342beedde25bcff582dc3528a135cf6e67",
+          "repositoryUrl": "https://github.com/KhronosGroup/SPIRV-Tools.git"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/spirv-tools/src used by Dawn/Tint SPIR-V support.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "49f1a381e2aec33ef32adf4a377b5a39ec016ec4",
+          "repositoryUrl": "https://github.com/KhronosGroup/Vulkan-Headers.git"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/vulkan-headers/src and ORT Dawn port dependency for Vulkan-enabled WebGPU builds.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "50af38b6cd43afb1462f9ad26b8d015382d11a3d",
+          "repositoryUrl": "https://github.com/KhronosGroup/Vulkan-Utility-Libraries.git"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/vulkan-utility-libraries/src and ORT Dawn port dependency for Vulkan-enabled WebGPU builds.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "cb0597213b0fcb999caa9ed08c2f88dc45eb7d50",
+          "repositoryUrl": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/vulkan_memory_allocator used by Vulkan-enabled Dawn builds.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7eda07b1e067ef3fd7eea0419c88b5af45c9a776",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/third_party/zlib"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/zlib.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "008e4fdd7e31d9133d028659348e054d350ccc3e",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/base/allocator/partition_allocator.git"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/partition_alloc used by Dawn standalone builds.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "3e6e148537683c22e3e74977d56516f16f39c7be",
+          "repositoryUrl": "https://github.com/microsoft/DirectXShaderCompiler.git"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/dxc used when ORT builds Dawn's built DXC path for Windows WebGPU builds.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "980971e835876dc0cde415e8f9bc646e64667bf7",
+          "repositoryUrl": "https://github.com/microsoft/DirectX-Headers.git"
+        }
+      },
+      "comments": "runtime; Dawn DEPS third_party/dxheaders and ORT Dawn port dependency for D3D12/DXC-enabled WebGPU builds.",
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "6a18683f555b4ac8b05ac8395c29c84483ac9588",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/buildtools"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS buildtools, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "c2725e0622e1a86d55f14514f2177a39efea4a0e",
+          "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/clang-format/script, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "425882d8c0acaab53bf2f8abbe7efcf5db5b168b",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/tools/depot_tools.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/depot_tools, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7ab65651aed6802d2599dcb7a73b1f82d5179d05",
+          "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxx.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/libc++/src, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "8f11bb1d4438d0239d0dfc1bd9456a9f31629dda",
+          "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libcxxabi.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/libc++abi/src, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d38523b674e26b7c8d61ed2e48d6cfe248b12da0",
+          "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libc.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/llvm-libc/src required by libc++, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "369990d9660a387f618d0eedc341eb285016243b",
+          "repositoryUrl": "https://chromium.googlesource.com/chromiumos/third_party/libdrm.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/libdrm/src for Linux build support, condition: dawn_standalone and host_os == \"linux\".",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "4c2c31b6776c1fe03a029f66ef530796f0add90d",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/build"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS build, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7fd7d7092fa5ee06380f06f66f1b7bd03fca71a8",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/tools/clang"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS tools/clang, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b635f27e932356a2e29450e5cfa544cdcc9ea6bb",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/tools/memory"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS tools/memory, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "da34b95fdbf2032df6cda5f3828c2ba421592644",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/tools/valgrind"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS tools/valgrind, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "baacfc6d5986b07abe0503216b491e234b94ba79",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/tools/win"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS tools/win, condition: checkout_win and not build_with_chromium.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "a975ec0340bd4b7dab6c8e43b15dbc638621a23c",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/tools/mb"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS tools/mb, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "4d438b31b58e2dc84b592a052b6b97e05ceb6497",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/testing"
+        }
+      },
+      "comments": "test-only; Dawn DEPS testing, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "bea408a6e01f0f7e6c82a43121fe3af4506c932e",
+          "repositoryUrl": "https://chromium.googlesource.com/external/github.com/llvm/llvm-project/compiler-rt/lib/fuzzer.git"
+        }
+      },
+      "comments": "test-only; Dawn DEPS third_party/libFuzzer/src, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "4fe3307fb2d9f86d19777c7eb0e4809e9694dde7",
+          "repositoryUrl": "https://github.com/google/googletest.git"
+        }
+      },
+      "comments": "test-only; Dawn DEPS third_party/googletest, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "59090f1f5e2b3ad9c90e4dc5fc8e79aed9110587",
+          "repositoryUrl": "https://chromium.googlesource.com/catapult.git"
+        }
+      },
+      "comments": "test-only; Dawn DEPS third_party/catapult, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "188e8278990a9069ffc84441cb5a024fd0bede37",
+          "repositoryUrl": "https://github.com/google/benchmark.git"
+        }
+      },
+      "comments": "test-only; Dawn DEPS third_party/google_benchmark/src, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "2e683eb7385c54f872acc47b371210d2282bc103",
+          "repositoryUrl": "https://gitlab.freedesktop.org/mesa/mesa.git"
+        }
+      },
+      "comments": "test-only; Dawn DEPS third_party/mesa/src, condition: dawn_standalone and checkout_mesa.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d389906a136c2aac9820ded0f38d1e25ef25fb9a",
+          "repositoryUrl": "https://github.com/mesonbuild/meson.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/meson/src, condition: dawn_standalone and checkout_mesa.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "c3027d884967773057bf74b957e3fea87e5df4d7",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/third_party/jinja2"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/jinja2 for code generation, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "4256084ae14175d38a3ff7d739dca83ae49ccec6",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/third_party/markupsafe"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/markupsafe for code generation, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b35641f4a3c62aa86a0b3c983d163bc0fe36026d",
+          "repositoryUrl": "https://github.com/glfw/glfw.git"
+        }
+      },
+      "comments": "conditional; Dawn DEPS third_party/glfw. ORT disables GLFW unless onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP is enabled.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ],
+      "detectedComponentLocations": [
+        "{SourceFileRoot}/cmake/external/onnxruntime_external_deps.cmake"
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "cce16dfb64c7525c6a417f98c67423330db8f3d7",
+          "repositoryUrl": "https://chromium.googlesource.com/angle/angle"
+        }
+      },
+      "comments": "conditional; Dawn DEPS third_party/angle. ORT disables Dawn desktop GL/OpenGLES unless PIX support is enabled.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ],
+      "detectedComponentLocations": [
+        "{SourceFileRoot}/cmake/external/onnxruntime_external_deps.cmake"
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b7b7fd22e5f28079b92412f47f6da4df43e4cd37",
+          "repositoryUrl": "https://swiftshader.googlesource.com/SwiftShader"
+        }
+      },
+      "comments": "conditional; Dawn DEPS third_party/swiftshader. Not redistributed by ORT WebGPU packages.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "a26b8836968dc480ad283234823e6ffc62052489",
+          "repositoryUrl": "https://chromium.googlesource.com/vulkan-deps"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/vulkan-deps roll metadata. Concrete Vulkan components are registered separately.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "022de31e7ffa5230068858d9e6cd85ae11170bda",
+          "repositoryUrl": "https://github.com/KhronosGroup/glslang.git"
+        }
+      },
+      "comments": "conditional; Dawn DEPS third_party/glslang/src. ORT disables GLSL writer/validator unless PIX support is enabled.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ],
+      "detectedComponentLocations": [
+        "{SourceFileRoot}/cmake/external/onnxruntime_external_deps.cmake"
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "09a024d4e422f8e603412f582d76c2051ef51cfc",
+          "repositoryUrl": "https://github.com/KhronosGroup/Vulkan-Loader.git"
+        }
+      },
+      "comments": "conditional; Dawn DEPS third_party/vulkan-loader/src and ORT Dawn port dependency. Not redistributed by current WebGPU plugin packages.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "39a19dccf79d28951516c3c7c9f1ee4a606fb733",
+          "repositoryUrl": "https://github.com/KhronosGroup/Vulkan-Tools.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/vulkan-tools/src.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "145be10eff68bf41f1b556026ecf7da9a7c8d15b",
+          "repositoryUrl": "https://github.com/KhronosGroup/Vulkan-ValidationLayers.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/vulkan-validation-layers/src. ORT disables Dawn SPIR-V validation.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ],
+      "detectedComponentLocations": [
+        "{SourceFileRoot}/cmake/external/onnxruntime_external_deps.cmake"
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "5bae8738b23d06968e7c3a41308568120943ae77",
+          "repositoryUrl": "https://github.com/KhronosGroup/OpenGL-Registry.git"
+        }
+      },
+      "comments": "conditional; Dawn DEPS third_party/khronos/OpenGL-Registry. ORT disables desktop GL/OpenGLES unless PIX support is enabled.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ],
+      "detectedComponentLocations": [
+        "{SourceFileRoot}/cmake/external/onnxruntime_external_deps.cmake"
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7dea2ed79187cd13f76183c4b9100159b9e3e071",
+          "repositoryUrl": "https://github.com/KhronosGroup/EGL-Registry.git"
+        }
+      },
+      "comments": "conditional; Dawn DEPS third_party/khronos/EGL-Registry. ORT disables desktop GL/OpenGLES unless PIX support is enabled.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ],
+      "detectedComponentLocations": [
+        "{SourceFileRoot}/cmake/external/onnxruntime_external_deps.cmake"
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "dbe37c7d554fd72651510c362cf62992e5f45e1f",
+          "repositoryUrl": "https://github.com/gpuweb/cts.git"
+        }
+      },
+      "comments": "test-only; Dawn DEPS third_party/webgpu-cts, condition: build_with_chromium or dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b4258c35121c8d0e12f53568ffb22236d7816723",
+          "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/emsdk, condition: dawn_wasm.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "d5cfe19da8b974ca35764dd1c73b91d57cd3c4ce",
+          "repositoryUrl": "https://github.com/nodejs/node-api-headers.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/node-api-headers, condition: dawn_node.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "1e26dcb52829a74260ec262edb41fc22998669b6",
+          "repositoryUrl": "https://github.com/nodejs/node-addon-api.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/node-addon-api, condition: dawn_node.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "b4b5752ff755fe33bf6a67fb6e5964ba9d40dcdc",
+          "repositoryUrl": "https://github.com/gpuweb/gpuweb.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/gpuweb, condition: dawn_node.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "0bfcdc4f487023d85e33597de0a94fc523e30fca",
+          "repositoryUrl": "https://github.com/webgpu-native/webgpu-headers.git"
+        }
+      },
+      "comments": "test-only; Dawn DEPS third_party/webgpu-headers/src for testing purposes.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "3438d4183bfc7c0d6850e8b970204cc8189f0323",
+          "repositoryUrl": "https://chromium.googlesource.com/chromium/src/tools/protoc_wrapper"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS tools/protoc_wrapper, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7bf98f78a30b067e22420ff699348f084f802e12",
+          "repositoryUrl": "https://github.com/google/libprotobuf-mutator.git"
+        }
+      },
+      "comments": "test-only; Dawn DEPS third_party/libprotobuf-mutator/src, condition: dawn_standalone.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "42e892d96e47b1f6e29844cc705e148ec4856448",
+          "repositoryUrl": "https://github.com/open-source-parsers/jsoncpp.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/jsoncpp, condition: dawn_tintd.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "303c526231a90049a3e384549720f3fbd453cf66",
+          "repositoryUrl": "https://github.com/google/langsvr.git"
+        }
+      },
+      "comments": "build-tool; Dawn DEPS third_party/langsvr, condition: dawn_tintd.",
+      "developmentDependency": true,
+      "dependencyRoots": [
+        {
+          "type": "git",
+          "git": {
+            "commitHash": "ec7b457e5bb1fcec6f59733c4f3dd84d2f885a38",
+            "repositoryUrl": "https://github.com/google/dawn.git"
+          }
+        }
+      ]
+    }
+  ]
+}

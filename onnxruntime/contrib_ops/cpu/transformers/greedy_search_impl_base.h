@@ -6,6 +6,7 @@
 #include <vector>
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/generate_impl_base.h"
+#include "contrib_ops/cpu/transformers/sampling_buffer_element_count.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -22,25 +23,32 @@ struct SamplingState : public ISamplingState<T> {
             int seed,
             bool is_cuda,
             Stream* stream) {
-    int total_count = batch_size * vocab_size;
+    // Compute the product entirely in SafeInt's checked domain; an `int * int` multiply
+    // with model-controlled operands can silently positive-wrap before any SafeInt cast
+    // sees it, leading to under-allocated buffers (heap-buffer-overflow on the downstream
+    // memcpy in SamplingCpuHelper::Sample). `SafeMul<size_t>` also rejects negative
+    // inputs (e.g. an unvalidated `vocab_size` of -1) up front, which a
+    // `static_cast<size_t>` would silently turn into a huge value. `SamplingBufferElementCount`
+    // is the shared helper that regression tests exercise so a revert breaks them.
+    const size_t total_count = SamplingBufferElementCount(batch_size, vocab_size);
 
-    this->h_softmaxed_score = AllocateBuffer<float>(cpu_allocator, h_softmaxed_score_buffer_, SafeInt<size_t>(total_count), stream);
+    this->h_softmaxed_score = AllocateBuffer<float>(cpu_allocator, h_softmaxed_score_buffer_, total_count, stream);
 
     this->generator = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
 
     if (is_cuda) {
-      this->d_index_in = AllocateBuffer<int>(allocator, d_index_in_buffer_, SafeInt<size_t>(total_count), stream);
-      this->d_index_out = AllocateBuffer<int>(allocator, d_index_out_buffer_, SafeInt<size_t>(total_count), stream);
-      this->d_offset = AllocateBuffer<int>(allocator, d_offset_buffer_, SafeInt<size_t>(batch_size + 1), stream);
-      this->d_sorted_score = AllocateBuffer<T>(allocator, d_sorted_score_buffer_, SafeInt<size_t>(total_count), stream);
-      this->d_sorted_softmaxed_score = AllocateBuffer<float>(allocator, d_sorted_softmaxed_score_buffer_, SafeInt<size_t>(total_count), stream);
-      this->d_softmaxed_score = AllocateBuffer<float>(allocator, d_softmaxed_score_buffer_, SafeInt<size_t>(total_count), stream);
+      this->d_index_in = AllocateBuffer<int>(allocator, d_index_in_buffer_, total_count, stream);
+      this->d_index_out = AllocateBuffer<int>(allocator, d_index_out_buffer_, total_count, stream);
+      this->d_offset = AllocateBuffer<int>(allocator, d_offset_buffer_, SafeInt<size_t>(batch_size) + 1, stream);
+      this->d_sorted_score = AllocateBuffer<T>(allocator, d_sorted_score_buffer_, total_count, stream);
+      this->d_sorted_softmaxed_score = AllocateBuffer<float>(allocator, d_sorted_softmaxed_score_buffer_, total_count, stream);
+      this->d_softmaxed_score = AllocateBuffer<float>(allocator, d_softmaxed_score_buffer_, total_count, stream);
       this->d_sampled = AllocateBuffer<float>(allocator, d_sampled_buffer_, SafeInt<size_t>(batch_size), stream);
-      this->h_sampled_all = AllocateBuffer<float>(cpu_allocator, h_sampled_all_buffer_, SafeInt<size_t>(batch_size * max_iter), stream);
+      this->h_sampled_all = AllocateBuffer<float>(cpu_allocator, h_sampled_all_buffer_, SamplingBufferElementCount(batch_size, max_iter), stream);
       this->d_indices = AllocateBuffer<int32_t>(allocator, d_indices_buffer_, SafeInt<size_t>(batch_size), stream);
       this->temp_storage_bytes = 0;
       // TODO: Do not allocate this buffer if there's no presence_mask
-      this->d_presence_mask = AllocateBuffer<int>(allocator, d_presence_mask_buffer_, SafeInt<size_t>(total_count), stream);
+      this->d_presence_mask = AllocateBuffer<int>(allocator, d_presence_mask_buffer_, total_count, stream);
 
       std::uniform_real_distribution<float> distribution(0.0, 1.0);
       static_cast<void>(distribution(this->generator));
@@ -49,8 +57,8 @@ struct SamplingState : public ISamplingState<T> {
       }
     } else {
       // TODO: Some buffer can be reused for CPU
-      this->sorted_scores = AllocateBuffer<T>(cpu_allocator, sorted_scores_buffer_, SafeInt<size_t>(total_count), stream);
-      this->cumulative_probs = AllocateBuffer<T>(cpu_allocator, cumulative_probs_buffer_, SafeInt<size_t>(total_count), stream);
+      this->sorted_scores = AllocateBuffer<T>(cpu_allocator, sorted_scores_buffer_, total_count, stream);
+      this->cumulative_probs = AllocateBuffer<T>(cpu_allocator, cumulative_probs_buffer_, total_count, stream);
     }
   }
 

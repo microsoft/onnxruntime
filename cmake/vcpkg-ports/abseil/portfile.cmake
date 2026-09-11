@@ -6,9 +6,12 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO abseil/abseil-cpp
     REF "${VERSION}"
-    SHA512 92542db666e0c628cf56bf8ad09412af9c8b622e4f26e72d1e1b092ceec430a5c105f6561e2d9983af565f55da07f67e770cafe373b20cc4cb29a893a6a236fc
+    SHA512 4ee1a217203933382e728d354a149253a517150eee7580a0abecc69584b2eb200d91933ef424487e3a3fe0e8ab5e77b0288485cac982171b3585314a4417e7d4
     HEAD_REF master
     PATCHES absl_windows.patch
+            absl_cuda_warnings.patch
+            absl_cuda13_member_template.patch
+            absl_msvc_unreachable_code.patch
 )
 
 
@@ -22,7 +25,7 @@ vcpkg_cmake_configure(
     DISABLE_PARALLEL_CONFIGURE
     OPTIONS
         -DABSL_PROPAGATE_CXX_STD=ON
-        ${ABSL_USE_CXX17_OPTION}
+        -DCMAKE_CXX_STANDARD=17
         ${ABSL_STATIC_RUNTIME_OPTION}
 )
 

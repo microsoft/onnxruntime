@@ -65,8 +65,11 @@ const BROWSER_TEST_CASES = [
   [false, true, './browser-test-wasm-path-override-prefix.js', 'ort.min.js', ['port=8081']],
   [false, true, './browser-test-wasm-path-override-prefix.js', 'ort.wasm.min.js', ['port=8081']],
 
-  [true, true, './browser-test-wasm-image-tensor-image.js', 'ort.min.js'], // pre-post-process
+  [true, true, './browser-test-wasm-image-tensor-image.js', 'ort.min.js', ['port=8081']], // pre-post-process
+  [true, true, './browser-test-webgpu-custom-device.js', 'ort.webgpu.min.js'], // user-provided GPUDevice
   [true, true, './browser-test-webgpu-external-data.js', 'ort.webgpu.min.js'], // external data
+  [true, true, './browser-test-webgpu-external-data-blob.js', 'ort.webgpu.min.js'], // external data as Blob (fallback)
+  [true, true, './browser-test-webgpu-external-data-blob.js', 'ort.jspi.min.js'], // external data as Blob (on-demand)
 ];
 
 // [bundle_path, format]
@@ -77,6 +80,8 @@ const BUNDLER_TEST_CASES = [
   ['./dist/rollup_umd_js/ort-test-e2e.bundle.js', 'iife'],
   ['./dist/parcel_esm_js/main.js', 'esm'],
   ['./dist/parcel_umd_js/main.js', 'iife'],
+  ['./dist/vite_esm_js/ort-test-e2e.bundle.mjs', 'esm'],
+  ['./dist/vite_umd_js/ort-test-e2e.bundle.js', 'iife'],
 ];
 
 module.exports = {

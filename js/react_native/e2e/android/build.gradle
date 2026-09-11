@@ -39,6 +39,10 @@ allprojects {
           // Add Detox as a precompiled native dependency
           url("$rootDir/../node_modules/detox/Detox-android")
         }
+        maven {
+          // Local onnxruntime-android package
+          url("$rootDir/app/libs")
+        }
 
         google()
         mavenCentral()

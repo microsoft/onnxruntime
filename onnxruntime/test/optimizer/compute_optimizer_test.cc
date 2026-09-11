@@ -30,14 +30,14 @@
 
 #include "test/common/tensor_op_test_utils.h"
 #include "test/compare_ortvalue.h"
-#include "test/framework/test_utils.h"
-#include "test/optimizer/graph_transform_test_builder.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "test/optimizer/graph_transform_test_fixture.h"
 #include "test/optimizer/test_optimizer_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/temp_dir.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/temp_dir.h"
 
 namespace onnxruntime {
 namespace test {
@@ -195,8 +195,6 @@ TEST(ComputeOptimizerTests, GatherND_E2E) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
   const std::vector<std::string> output_names{"output", "gather_output"};
@@ -300,8 +298,6 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnBatchDim) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -406,8 +402,6 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnBatchDim) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -504,8 +498,6 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnLastDim) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -602,8 +594,6 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnLastDim) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -702,8 +692,6 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -801,8 +789,6 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnSecondLastDim) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -1232,8 +1218,6 @@ TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnBatchDim) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -1327,8 +1311,6 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnBatchDim) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -1420,8 +1402,6 @@ TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnSeqlenDim) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -1514,8 +1494,6 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -1608,8 +1586,6 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim2) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -1781,8 +1757,6 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 
@@ -1799,9 +1773,8 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
 
     ASSERT_TRUE(expected_ort_values.size() == actual_ort_values.size());
 
-    // "expected 0.793675 (3f4b2e44), got 0.79232 (3f4ad584), diff: 0.00135422, tol=0.000179367 idx=4276.
-    // 1713 of 8192 differ"
-    // Loose the atol a bit because we see the MatMuls results differ once we move Gather before it.
+    // Moving Gather before MatMul changes the MatMul shapes and may alter the
+    // floating-point accumulation order, so allow a small numerical difference.
     constexpr double per_sample_tolerance = 2e-3;
     constexpr double relative_per_sample_tolerance = 2e-3;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
@@ -3072,8 +3045,6 @@ TEST(ComputeOptimizerTests, ReshapeMlmBertE2E) {
       onnxruntime::kCpuExecutionProvider,
 #ifdef USE_CUDA
       onnxruntime::kCudaExecutionProvider,
-#elif USE_ROCM
-      onnxruntime::kRocmExecutionProvider,
 #endif
   };
 

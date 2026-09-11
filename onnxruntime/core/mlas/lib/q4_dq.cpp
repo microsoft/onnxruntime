@@ -545,7 +545,7 @@ struct BlockwiseQuantizer {
                     }
                 }
 
-                for (int32_t j = c; j < c_end; ++j) {
+                for (int32_t j = c; j < c_end; ++j) { // this does not work if j runs more then 1 because zp_bytes is indexed by i.
                     const int32_t meta_c = j / QuantBlk::kColumn;
                     for (int32_t i = r; i < r_end; i += kPackSize) {
                         for (int l = 0; l < kPackSize && i + l < r_end; l++) {
@@ -656,19 +656,42 @@ struct BlockwiseQuantizer {
  * @tparam signed_quant  quantized type is signed
  */
 template <typename Tin, int qbits, bool signed_quant>
-struct BlockwiseQDQQuantizer;
-
-template <typename Tin, bool signed_quant>
-struct BlockwiseQDQQuantizer<Tin, 4, signed_quant> {
+struct BlockwiseQDQQuantizer {
     static MLAS_FORCEINLINE uint8_t GetElem(uint8_t val, int32_t idx)
     {
-        return (val >> (idx << 2)) & 0xF;
+        if constexpr (qbits == 2) {
+            return (val >> (idx << 1)) & 0x3;
+        } else if constexpr (qbits == 4) {
+            return (val >> (idx << 2)) & 0xF;
+        } else if constexpr (qbits == 8) {
+            (void)idx;
+            return val;
+        }
     }
 
     static MLAS_FORCEINLINE uint8_t SetElem(uint8_t val, int32_t idx, uint8_t dst)
     {
-        auto shift = idx << 2;
-        return ((val & 0xF) << shift) | (dst & (~(0xF << shift)));
+        if constexpr (qbits == 2) {
+            auto shift = idx << 1;
+            return ((val & 0x3) << shift) | (dst & (~(0x3 << shift)));
+        } else if constexpr (qbits == 4) {
+            auto shift = idx << 2;
+            return ((val & 0xF) << shift) | (dst & (~(0xF << shift)));
+        } else if constexpr (qbits == 8) {
+            (void)idx;
+            (void)dst;
+            return val;
+        }
+    }
+
+    template <bool add2>
+    static MLAS_FORCEINLINE uint8_t Pack(uint8_t v0, uint8_t v1, uint8_t v2, uint8_t v3)
+    {
+          if constexpr (add2) {
+            return ((v0 & 0x3) ^ 2) | (((v1 & 0x3) ^ 2) << 2) | (((v2 & 0x3) ^ 2) << 4) | (((v3 & 0x3) ^ 2) << 6);
+          } else {
+              return (v0 & 0x3) | ((v1 & 0x3) << 2) | ((v2 & 0x3) << 4) | ((v3 & 0x3) << 6);
+          }
     }
 
     template <bool add8>
@@ -797,21 +820,185 @@ struct BlockwiseQDQQuantizer<Tin, 4, signed_quant> {
             src_zero_points || signed_quant || dst_zero_points,
             "Unsigned quant types without zero points must allocate zero points with value 0."
         );
-        // Must avoid multiple thread write to a single byte, which means the starting index
-        // of a thread block must be even. To achieve that, we need to customize the thread
-        // block size based on the parity of columns.
-        if (columns & 1) {
-            TransposeColumnWiseQuantizedPackUnaligned(
-                src_weights, src_scales, src_zero_points,
-                dst_weights, dst_scales, dst_zero_points,
-                rows, columns, quant_block_size, thread_pool
+
+        if constexpr (qbits == 8) {
+            // 8-bit: each element is one byte, no sub-byte packing needed.
+            // Simple byte-level transpose from [rows, columns] to [columns, k_blocks, block_size].
+            auto row_quant_blk_num = (rows + quant_block_size - 1) / quant_block_size;
+            auto dst_bytes_per_quant_blk = quant_block_size;  // 8 bits = 1 byte per element
+            auto dstT_num_row = row_quant_blk_num * dst_bytes_per_quant_blk;
+
+            // Transpose weights: src [rows, columns] -> dst [columns, k_blocks, block_size]
+            MlasTryBatchParallel(
+                thread_pool, static_cast<ptrdiff_t>(row_quant_blk_num * columns),
+                [&](ptrdiff_t thread_blk_idx) {
+                    auto row_blk = static_cast<int32_t>(thread_blk_idx / columns);
+                    auto col = static_cast<int32_t>(thread_blk_idx % columns);
+
+                    auto src_row_start = row_blk * quant_block_size;
+                    auto src_row_end = std::min(src_row_start + quant_block_size, rows);
+
+                    auto dst_base = col * dstT_num_row + row_blk * dst_bytes_per_quant_blk;
+                    for (auto r = src_row_start; r < src_row_end; ++r) {
+                        auto src_val = src_weights[r * columns + col];
+                        if constexpr (signed_quant) {
+                            src_val ^= 0x80;  // INT8 -> UINT8: add 128
+                        }
+                        dst_weights[dst_base + (r - src_row_start)] = src_val;
+                    }
+                    // Zero-pad remaining bytes in the last block if rows % block_size != 0
+                    for (auto r = src_row_end - src_row_start; r < quant_block_size; ++r) {
+                        dst_weights[dst_base + r] = signed_quant ? 0x80 : 0;
+                    }
+                }
             );
+
+            // Transpose scales: src [k_blocks, columns] -> dst [columns, k_blocks]
+            MlasTryBatchParallel(
+                thread_pool, static_cast<ptrdiff_t>(columns),
+                [&](ptrdiff_t col) {
+                    auto src_idx = static_cast<int32_t>(col);
+                    auto dst_idx = static_cast<int32_t>(col) * row_quant_blk_num;
+                    for (int32_t i = 0; i < row_quant_blk_num; ++i, ++dst_idx, src_idx += columns) {
+                        dst_scales[dst_idx] = src_scales[src_idx];
+                    }
+                }
+            );
+
+            // Transpose zero points: src [k_blocks, columns] -> dst [columns, k_blocks]
+            // For 8-bit, zero points are byte-aligned (1 byte each), no packing needed.
+            if (src_zero_points && dst_zero_points) {
+                MlasTryBatchParallel(
+                    thread_pool, static_cast<ptrdiff_t>(columns),
+                    [&](ptrdiff_t col) {
+                        auto src_idx = static_cast<int32_t>(col);
+                        auto dst_idx = static_cast<int32_t>(col) * row_quant_blk_num;
+                        for (int32_t i = 0; i < row_quant_blk_num; ++i, ++dst_idx, src_idx += columns) {
+                            auto zp = src_zero_points[src_idx];
+                            if constexpr (signed_quant) {
+                                zp ^= 0x80;  // INT8 -> UINT8
+                            }
+                            dst_zero_points[dst_idx] = zp;
+                        }
+                    }
+                );
+            }
+        } else if constexpr (qbits == 2) {
+            // 2-bit: 4 elements per byte. Element-by-element transpose.
+            constexpr int32_t kPackSize = 4;
+            auto row_quant_blk_num = (rows + quant_block_size - 1) / quant_block_size;
+            auto packed_src_cols = (columns + kPackSize - 1) / kPackSize;
+            auto dst_bytes_per_quant_blk = (quant_block_size + kPackSize - 1) / kPackSize;
+            auto dstT_num_row = row_quant_blk_num * dst_bytes_per_quant_blk;
+
+            // Transpose weights: src [rows, ceil(columns/4)] -> dst [columns, k_blocks, ceil(block_size/4)]
+            // Each thread handles one (row_block, column) pair writing to non-overlapping dst ranges.
+            MlasTryBatchParallel(
+                thread_pool, static_cast<ptrdiff_t>(row_quant_blk_num * columns),
+                [&](ptrdiff_t thread_blk_idx) {
+                    auto row_blk = static_cast<int32_t>(thread_blk_idx / columns);
+                    auto col = static_cast<int32_t>(thread_blk_idx % columns);
+
+                    auto src_row_start = row_blk * quant_block_size;
+                    auto src_row_end = std::min(src_row_start + quant_block_size, rows);
+
+                    auto dst_base = col * dstT_num_row + row_blk * dst_bytes_per_quant_blk;
+
+                    // Zero destination bytes for this block
+                    for (int32_t b = 0; b < dst_bytes_per_quant_blk; ++b) {
+                        dst_weights[dst_base + b] = 0;
+                    }
+
+                    for (auto r = src_row_start; r < src_row_end; ++r) {
+                        // Extract 2-bit value from source
+                        auto src_byte_idx = r * packed_src_cols + col / kPackSize;
+                        auto src_bit_shift = (col % kPackSize) * 2;
+                        uint8_t val = (src_weights[src_byte_idx] >> src_bit_shift) & 0x3;
+
+                        if constexpr (signed_quant) {
+                            val ^= 0x2;  // int2[-2,1] -> uint2[0,3]
+                        }
+
+                        // Place in destination
+                        auto r_in_blk = r - src_row_start;
+                        auto dst_byte_off = r_in_blk / kPackSize;
+                        auto dst_bit_shift = (r_in_blk % kPackSize) * 2;
+                        dst_weights[dst_base + dst_byte_off] |= (val << dst_bit_shift);
+                    }
+
+                    // Zero-pad remaining positions (unsigned equivalent of 0)
+                    if constexpr (signed_quant) {
+                        for (auto r_in_blk = src_row_end - src_row_start;
+                             r_in_blk < quant_block_size; ++r_in_blk) {
+                            auto dst_byte_off = r_in_blk / kPackSize;
+                            auto dst_bit_shift = (r_in_blk % kPackSize) * 2;
+                            dst_weights[dst_base + dst_byte_off] |= (0x2 << dst_bit_shift);
+                        }
+                    }
+                }
+            );
+
+            // Transpose scales: src [k_blocks, columns] -> dst [columns, k_blocks]
+            MlasTryBatchParallel(
+                thread_pool, static_cast<ptrdiff_t>(columns),
+                [&](ptrdiff_t col) {
+                    auto src_idx = static_cast<int32_t>(col);
+                    auto dst_idx = static_cast<int32_t>(col) * row_quant_blk_num;
+                    for (int32_t i = 0; i < row_quant_blk_num; ++i, ++dst_idx, src_idx += columns) {
+                        dst_scales[dst_idx] = src_scales[src_idx];
+                    }
+                }
+            );
+
+            // Transpose zero points: src [k_blocks, ceil(columns/4)] -> dst [columns, ceil(k_blocks/4)]
+            if (src_zero_points && dst_zero_points) {
+                auto packed_src_zp_cols = (columns + kPackSize - 1) / kPackSize;
+                auto zp_dst_bytes_per_col = (row_quant_blk_num + kPackSize - 1) / kPackSize;
+
+                MlasTryBatchParallel(
+                    thread_pool, static_cast<ptrdiff_t>(columns),
+                    [&](ptrdiff_t col_idx) {
+                        auto col = static_cast<int32_t>(col_idx);
+                        auto dst_base = col * zp_dst_bytes_per_col;
+
+                        for (int32_t b = 0; b < zp_dst_bytes_per_col; ++b) {
+                            dst_zero_points[dst_base + b] = 0;
+                        }
+
+                        for (int32_t blk = 0; blk < row_quant_blk_num; ++blk) {
+                            auto src_byte_idx = blk * packed_src_zp_cols + col / kPackSize;
+                            auto src_bit_shift = (col % kPackSize) * 2;
+                            uint8_t val = (src_zero_points[src_byte_idx] >> src_bit_shift) & 0x3;
+
+                            if constexpr (signed_quant) {
+                                val ^= 0x2;
+                            }
+
+                            auto dst_byte_off = blk / kPackSize;
+                            auto dst_bit_shift = (blk % kPackSize) * 2;
+                            dst_zero_points[dst_base + dst_byte_off] |= (val << dst_bit_shift);
+                        }
+                    }
+                );
+            }
         } else {
-            TransposeColumnWiseQuantizedPackAligned(
-                src_weights, src_scales, src_zero_points,
-                dst_weights, dst_scales, dst_zero_points,
-                rows, columns, quant_block_size, thread_pool
-            );
+            // 4-bit sub-byte types: use packing-aware transpose paths.
+            // Must avoid multiple thread write to a single byte, which means the starting index
+            // of a thread block must be even. To achieve that, we need to customize the thread
+            // block size based on the parity of columns.
+            if (columns & 1) {
+                TransposeColumnWiseQuantizedPackUnaligned(
+                    src_weights, src_scales, src_zero_points,
+                    dst_weights, dst_scales, dst_zero_points,
+                    rows, columns, quant_block_size, thread_pool
+                );
+            } else {
+                TransposeColumnWiseQuantizedPackAligned(
+                    src_weights, src_scales, src_zero_points,
+                    dst_weights, dst_scales, dst_zero_points,
+                    rows, columns, quant_block_size, thread_pool
+                );
+            }
         }
     }
 
@@ -1436,8 +1623,7 @@ MlasBlockwiseQuantMetaShape<MLAS_FP16, 2>(
     int& meta_cols
     );
 
-template
-void
+template void
 MlasBlockwiseQuantMetaShape<float, 4>(
     int block_size,
     bool columnwise,
@@ -1445,7 +1631,7 @@ MlasBlockwiseQuantMetaShape<float, 4>(
     int columns,
     int& meta_rows,
     int& meta_cols
-    );
+);
 
 template
 void
@@ -1513,8 +1699,7 @@ MlasBlockwiseQuantizedShape<float, 4>(
     int& q_cols
     );
 
-template
-void
+template void
 MlasBlockwiseQuantizedShape<MLAS_FP16, 4>(
     int block_size,
     bool columnwise,
@@ -1524,7 +1709,7 @@ MlasBlockwiseQuantizedShape<MLAS_FP16, 4>(
     int& q_cols
     );
 
-    template
+template
 void
 MlasBlockwiseQuantizedShape<float, 8>(
     int block_size,
@@ -1625,7 +1810,8 @@ MlasBlockwiseQuantizedBufferSizes(
             break;
 
         default:
-            // Only block size 16, 32, 64, 128, 256 are supported.
+            ORT_ENFORCE(false, "Only block sizes 16, 32, 64, 128, 256 are supported for buffer size calculation, got: ",
+                        block_size);
             break;
     }
 }
@@ -1733,7 +1919,8 @@ MlasQuantizeBlockwise(
             break;
 
         default:
-            // Only block size 16, 32, 64, 128, 256 are supported.
+            ORT_ENFORCE(false, "Only block sizes 16, 32, 64, 128, 256 are supported for quantization, got: ",
+                        block_size);
             break;
     }
 }
@@ -1889,7 +2076,8 @@ MlasDequantizeBlockwise(
             }
             break;
         default:
-            // Only block size 16, 32, 64, 128, 256 are supported.
+            ORT_ENFORCE(false, "Only block sizes 16, 32, 64, 128, 256 are supported for dequantization, got: ",
+                        block_size);
             break;
     }
 }
@@ -1972,6 +2160,110 @@ MlasDequantizeBlockwise<MLAS_FP16, 8>(
     MLAS_THREADPOOL* thread_pool
 );
 
+//
+// Blockwise dequantization with floating point zero points. The per-block
+// span kernel is platform dispatched on x64; every element computes
+// float(q) * scale + (-scale * zp), matching the arithmetic the CPU
+// MatMulNBits operator historically used for this path.
+//
+
+void
+MLASCALL
+MlasDequantizeBlockwise2BitsKernel(
+    float* Output,
+    const uint8_t* PackedData,
+    size_t N,
+    float Scale,
+    float ZeroPointAdjust
+)
+{
+    for (size_t i = 0; i < N; i++) {
+        const uint8_t packed = PackedData[i >> 2];
+        const float q = static_cast<float>((packed >> (2 * (i & 3))) & 0x3);
+        Output[i] = q * Scale + ZeroPointAdjust;
+    }
+}
+
+template <typename ElementT, typename ZeroPointT, int qbits>
+void
+MlasDequantizeBlockwiseFpZeroPoint(
+    ElementT* dst,
+    const uint8_t* src,
+    const ElementT* scales,
+    const ZeroPointT* zero_points,
+    int block_size,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+)
+{
+    static_assert(qbits == 2, "only 2 bit is implemented");
+    static_assert(std::is_same_v<ElementT, float>, "only float dequantized elements are implemented");
+
+    // The packed stream is columnwise: elements in a block come from the same column.
+    // This routine only needs block_size to be a multiple of 4 so each block starts byte
+    // aligned in the packed stream; the MatMulNBits op passes a power of two >= 16, which
+    // satisfies that.
+
+    const int k_blocks = (rows + block_size - 1) / block_size;
+    const size_t src_col_stride = static_cast<size_t>(k_blocks) * block_size / 4;
+
+    MLAS_DEQUANTIZE_BLOCKWISE_2BITS_KERNEL* kernel =
+#if defined(MLAS_TARGET_AMD64)
+        GetMlasPlatform().DequantizeBlockwise2BitsKernel;
+#else
+        MlasDequantizeBlockwise2BitsKernel;
+#endif
+
+    MlasTryBatchParallel(
+        thread_pool, static_cast<ptrdiff_t>(columns),
+        [&](ptrdiff_t n) {
+            const uint8_t* src_col = src + static_cast<size_t>(n) * src_col_stride;
+            float* dst_col = dst + static_cast<size_t>(n) * rows;
+            const size_t block_base = static_cast<size_t>(n) * k_blocks;
+            for (int kb = 0; kb < k_blocks; kb++) {
+                const int k_start = kb * block_size;
+                const size_t count = static_cast<size_t>(std::min(block_size, rows - k_start));
+                const float scale = static_cast<float>(scales[block_base + kb]);
+                float zp = 0.0f;
+                if (zero_points != nullptr) {
+                    if constexpr (std::is_same_v<ZeroPointT, MLAS_FP16>) {
+                        zp = zero_points[block_base + kb].ToFloat();
+                    } else {
+                        zp = static_cast<float>(zero_points[block_base + kb]);
+                    }
+                }
+                kernel(dst_col + k_start,
+                       src_col + static_cast<size_t>(kb) * (block_size / 4),
+                       count, scale, -scale * zp);
+            }
+        });
+}
+
+template void
+MlasDequantizeBlockwiseFpZeroPoint<float, float, 2>(
+    float* dst,
+    const uint8_t* src,
+    const float* scales,
+    const float* zero_points,
+    int block_size,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasDequantizeBlockwiseFpZeroPoint<float, MLAS_FP16, 2>(
+    float* dst,
+    const uint8_t* src,
+    const float* scales,
+    const MLAS_FP16* zero_points,
+    int block_size,
+    int rows,
+    int columns,
+    MLAS_THREADPOOL* thread_pool
+);
+
 template <typename Tin, int qbits>
 bool
 MlasQDQQuantizeBlockwise(
@@ -1986,6 +2278,8 @@ MlasQDQQuantizeBlockwise(
     MLAS_THREADPOOL* thread_pool
 )
 {
+    ORT_ENFORCE(MlasQDQBlockwiseShapeIsValid(rows, columns, quant_block_size, qbits, columnwise, false),
+                "QDQ blockwise quantization shape exceeds the int32 index range.");
     if (columnwise) {
         if (zero_points) {
             BlockwiseQDQQuantizer<Tin, qbits, false>::QuantizeColumnWise(
@@ -2017,7 +2311,33 @@ MlasQDQQuantizeBlockwise<float, 4>(
 );
 
 template bool
+MlasQDQQuantizeBlockwise<float, 2>(
+    const float* src,
+    float* scales,
+    uint8_t* zero_points,
+    uint8_t* dst,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template bool
 MlasQDQQuantizeBlockwise<MLAS_FP16, 4>(
+    const MLAS_FP16* src,
+    MLAS_FP16* scales,
+    uint8_t* zero_points,
+    uint8_t* dst,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template bool
+MlasQDQQuantizeBlockwise<MLAS_FP16, 2>(
     const MLAS_FP16* src,
     MLAS_FP16* scales,
     uint8_t* zero_points,
@@ -2045,6 +2365,8 @@ MlasQDQTransposeBlockwiseQuantized(
     MLAS_THREADPOOL* thread_pool
 )
 {
+    ORT_ENFORCE(MlasQDQBlockwiseShapeIsValid(rows, columns, quant_block_size, qbits, columnwise, true),
+                "QDQ blockwise quantization shape exceeds the int32 index range.");
     if (columnwise) {
         BlockwiseQDQQuantizer<Tin, qbits, signed_quant>::TransposeColumnWiseQuantized(
             src_weights, src_scales, src_zero_points, dst_weights, dst_scales, dst_zero_points,
@@ -2054,6 +2376,36 @@ MlasQDQTransposeBlockwiseQuantized(
         ORT_THROW("Row-wise MlasQDQTransposeBlockwiseQuantized is not implemented");
     }
 }
+
+template void
+MlasQDQTransposeBlockwiseQuantized<float, 2, true>(
+    const uint8_t* src_weights,
+    const float* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    float* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<float, 2, false>(
+    const uint8_t* src_weights,
+    const float* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    float* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
 
 template void
 MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
@@ -2102,6 +2454,96 @@ MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 4, true>(
 
 template void
 MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 4, false>(
+    const uint8_t* src_weights,
+    const MLAS_FP16* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    MLAS_FP16* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<float, 8, true>(
+    const uint8_t* src_weights,
+    const float* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    float* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<float, 8, false>(
+    const uint8_t* src_weights,
+    const float* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    float* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 8, true>(
+    const uint8_t* src_weights,
+    const MLAS_FP16* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    MLAS_FP16* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 8, false>(
+    const uint8_t* src_weights,
+    const MLAS_FP16* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    MLAS_FP16* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 2, true>(
+    const uint8_t* src_weights,
+    const MLAS_FP16* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    MLAS_FP16* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<MLAS_FP16, 2, false>(
     const uint8_t* src_weights,
     const MLAS_FP16* src_scales,
     const uint8_t* src_zero_points,

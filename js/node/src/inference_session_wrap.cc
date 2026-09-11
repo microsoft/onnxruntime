@@ -6,6 +6,7 @@
 #include "common.h"
 #include "inference_session_wrap.h"
 #include "ort_instance_data.h"
+#include "ort_singleton_data.h"
 #include "run_options_helper.h"
 #include "session_options_helper.h"
 #include "tensor_helper.h"
@@ -14,10 +15,6 @@
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
   // create ONNX runtime env
   Ort::InitApi();
-  ORT_NAPI_THROW_ERROR_IF(
-      Ort::Global<void>::api_ == nullptr, env,
-      "Failed to initialize ONNX Runtime API. It could happen when this nodejs binding was built with a higher version "
-      "ONNX Runtime but now runs with a lower version ONNX Runtime DLL(or shared library).");
 
   // initialize binding
   Napi::HandleScope scope(env);
@@ -50,14 +47,31 @@ Napi::Value InferenceSessionWrap::InitOrtOnce(const Napi::CallbackInfo& info) {
 
   int log_level = info[0].As<Napi::Number>().Int32Value();
   Napi::Function tensorConstructor = info[1].As<Napi::Function>();
+  bool is_main_thread = info[2].As<Napi::Boolean>().Value();
 
-  OrtInstanceData::InitOrt(env, log_level, tensorConstructor);
+  OrtInstanceData::InitOrt(env, log_level, tensorConstructor, is_main_thread);
 
   return env.Undefined();
 }
 
 InferenceSessionWrap::InferenceSessionWrap(const Napi::CallbackInfo& info)
     : Napi::ObjectWrap<InferenceSessionWrap>(info), initialized_(false), disposed_(false), session_(nullptr) {}
+
+InferenceSessionWrap::~InferenceSessionWrap() {
+  // If the ORT singleton has already been destroyed (e.g. during process shutdown when the
+  // cleanup hook fires before N-API finalizers run), we must not call into ORT to
+  // release owned ORT objects — doing so would crash. Intentionally leak in that case.
+  if (!OrtSingletonData::GetOrtObjects()) {
+    for (auto& type_info : inputTypes_) {
+      (void)type_info.release();
+    }
+    for (auto& type_info : outputTypes_) {
+      (void)type_info.release();
+    }
+    (void)ioBinding_.release();
+    (void)session_.release();
+  }
+}
 
 Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
@@ -76,7 +90,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
       Napi::String value = info[0].As<Napi::String>();
 
       ParseSessionOptions(info[1].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(*OrtInstanceData::OrtEnv(),
+      this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
 #ifdef _WIN32
                                             reinterpret_cast<const wchar_t*>(value.Utf16Value().c_str()),
 #else
@@ -91,7 +105,7 @@ Napi::Value InferenceSessionWrap::LoadModel(const Napi::CallbackInfo& info) {
       int64_t bytesLength = info[2].As<Napi::Number>().Int64Value();
 
       ParseSessionOptions(info[3].As<Napi::Object>(), sessionOptions);
-      this->session_.reset(new Ort::Session(*OrtInstanceData::OrtEnv(),
+      this->session_.reset(new Ort::Session(OrtSingletonData::GetOrtObjects()->env,
                                             reinterpret_cast<char*>(buffer) + bytesOffset, bytesLength,
                                             sessionOptions));
     } else {
@@ -184,7 +198,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
   size_t inputIndex = 0;
   size_t outputIndex = 0;
   Ort::MemoryInfo cpuMemoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buffer", OrtDeviceAllocator, 0, OrtMemTypeDefault};
+  Ort::MemoryInfo gpuBufferMemoryInfo{"WebGPU_Buf", OrtDeviceAllocator, 0, OrtMemTypeDefault};
 
   try {
     for (auto& name : inputNames_) {
@@ -211,7 +225,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       ParseRunOptions(info[2].As<Napi::Object>(), runOptions);
     }
     if (preferredOutputLocations_.size() == 0) {
-      session_->Run(runOptions == nullptr ? *OrtInstanceData::OrtDefaultRunOptions() : runOptions,
+      session_->Run(runOptions == nullptr ? OrtSingletonData::GetOrtObjects()->default_run_options : runOptions,
                     inputIndex == 0 ? nullptr : &inputNames_cstr[0], inputIndex == 0 ? nullptr : &inputValues[0],
                     inputIndex, outputIndex == 0 ? nullptr : &outputNames_cstr[0],
                     outputIndex == 0 ? nullptr : &outputValues[0], outputIndex);
@@ -219,7 +233,7 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
       Napi::Object result = Napi::Object::New(env);
 
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
+        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputValues[i])));
       }
       return scope.Escape(result);
     } else {
@@ -240,14 +254,14 @@ Napi::Value InferenceSessionWrap::Run(const Napi::CallbackInfo& info) {
         }
       }
 
-      session_->Run(runOptions == nullptr ? *OrtInstanceData::OrtDefaultRunOptions() : runOptions, *ioBinding_);
+      session_->Run(runOptions == nullptr ? OrtSingletonData::GetOrtObjects()->default_run_options : runOptions, *ioBinding_);
 
       auto outputs = ioBinding_->GetOutputValues();
       ORT_NAPI_THROW_ERROR_IF(outputs.size() != outputIndex, env, "Output count mismatch.");
 
       Napi::Object result = Napi::Object::New(env);
       for (size_t i = 0; i < outputIndex; i++) {
-        result.Set(outputNames_[i], OrtValueToNapiValue(env, std::move(outputs[i])));
+        result.Set(outputNames_cstr[i], OrtValueToNapiValue(env, std::move(outputs[i])));
       }
       return scope.Escape(result);
     }
@@ -262,6 +276,9 @@ Napi::Value InferenceSessionWrap::Dispose(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   ORT_NAPI_THROW_ERROR_IF(!this->initialized_, env, "Session is not initialized.");
   ORT_NAPI_THROW_ERROR_IF(this->disposed_, env, "Session already disposed.");
+
+  this->inputTypes_.clear();
+  this->outputTypes_.clear();
 
   this->ioBinding_.reset(nullptr);
   this->session_.reset(nullptr);

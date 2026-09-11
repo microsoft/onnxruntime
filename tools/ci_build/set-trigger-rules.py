@@ -12,7 +12,6 @@ from os.path import abspath, dirname
 
 skip_doc_changes = ["web-ci-pipeline.yml"]
 skip_js_changes = [
-    "android-arm64-v8a-QNN-crosscompile-ci-pipeline.yml",
     "android-x86_64-crosscompile-ci-pipeline.yml",
     "bigmodels-ci-pipeline.yml",
     "linux-ci-pipeline.yml",
@@ -21,8 +20,6 @@ skip_js_changes = [
     "linux-gpu-tensorrt-ci-pipeline.yml",
     "linux-migraphx-ci-pipeline.yml",
     "linux-openvino-ci-pipeline.yml",
-    "linux-qnn-ci-pipeline.yml",
-    "linux-rocm-ci-pipeline.yml",
     "mac-ci-pipeline.yml",
     "mac-coreml-ci-pipeline.yml",
     "mac-ios-ci-pipeline.yml",
@@ -31,12 +28,9 @@ skip_js_changes = [
     "win-ci-pipeline.yml",
     "win-gpu-dml-ci-pipeline.yml",
     "win-gpu-cuda-ci-pipeline.yml",
-    "win-gpu-doc-gen-ci-pipeline.yml",
     "win-gpu-tensorrt-ci-pipeline.yml",
     "win-gpu-webgpu-ci-pipeline.yml",
     "win-openvino-ci-pipeline.yml",
-    "win-qnn-arm64-ci-pipeline.yml",
-    "win-qnn-ci-pipeline.yml",
 ]
 
 

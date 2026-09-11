@@ -323,6 +323,8 @@ article section {
 }
 .docs-search > .search-query:focus {
   outline: 0;
+  border: 2px solid #0050C5;
+  background-color: #f8f9fa;
 }
 .search-results-frame {
   clear: both;
@@ -597,6 +599,8 @@ body .toc{
 }
 .toc-filter > input:focus {
   outline: 0;
+  border: 2px solid #0050C5;
+  background-color: #f8f9fa;
 }
 .toc-filter > .filter-icon {
   position: absolute;

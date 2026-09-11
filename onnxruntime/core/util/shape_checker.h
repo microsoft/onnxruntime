@@ -27,6 +27,8 @@ TensorShape make_shape(Args... args) {
     }                                                                                                            \
   }
 
+#define CHECK_TENSOR_SHAPE ASSERT_TENSOR_DIMS
+
 // This assumes the tensor is optional, and check wether its shape is expected.
 #define ASSERT_TENSOR_SHAPE(tensor, shape)                                                                       \
   if (tensor != nullptr) {                                                                                       \
@@ -59,5 +61,32 @@ TensorShape make_shape(Args... args) {
           " or ", shape_2, ", got ", tensor_shape);                                                              \
     }                                                                                                            \
   }
+
+#define ASSERT_TENSOR_DIMENSION(tensor, dim)                                                                     \
+  if (tensor != nullptr) {                                                                                       \
+    static_assert(std::is_same<decltype(tensor), const Tensor*>::value, "tensor must be a pointer to a Tensor"); \
+    const auto tensor_dimensions = tensor->Shape().NumDimensions();                                              \
+    if (tensor_dimensions != dim) {                                                                              \
+      return ORT_MAKE_STATUS(                                                                                    \
+          ONNXRUNTIME, INVALID_ARGUMENT, "Input '" #tensor "' is expected to have " #dim " dimensions, got ",    \
+          tensor_dimensions);                                                                                    \
+    }                                                                                                            \
+  }
+
+#define ASSERT_TENSOR_DIMENSION_2_CHOICES(tensor, choice1, choice2)                                              \
+  if ((tensor) != nullptr) {                                                                                     \
+    static_assert(std::is_same<decltype(tensor), const Tensor*>::value, "tensor must be a pointer to a Tensor"); \
+    const auto tensor_dimensions = tensor->Shape().NumDimensions();                                              \
+    if (tensor_dimensions != choice1 && tensor_dimensions != choice2) {                                          \
+      return ORT_MAKE_STATUS(                                                                                    \
+          ONNXRUNTIME, INVALID_ARGUMENT,                                                                         \
+          "Input '" #tensor "' is expected to have " #choice1 " or ", #choice2, " dimensions, got ",             \
+          tensor_dimensions);                                                                                    \
+    }                                                                                                            \
+  }
+
+#define ASSERT_TENSOR_2D(tensor) ASSERT_TENSOR_DIMENSION(tensor, 2)
+#define ASSERT_TENSOR_3D(tensor) ASSERT_TENSOR_DIMENSION(tensor, 3)
+#define ASSERT_TENSOR_2D_OR_3D(tensor) ASSERT_TENSOR_DIMENSION_2_CHOICES(tensor, 2, 3)
 
 }  // namespace onnxruntime

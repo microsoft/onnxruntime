@@ -38,6 +38,8 @@ ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
     return ncclInt64;
   } else if (type == DataTypeImpl::GetType<MLFloat16>()) {
     return ncclFloat16;
+  } else if (type == DataTypeImpl::GetType<BFloat16>()) {
+    return ncclBfloat16;
   } else if (type == DataTypeImpl::GetType<float>()) {
     return ncclFloat32;
   } else if (type == DataTypeImpl::GetType<double>()) {
@@ -259,7 +261,6 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
 
   void* output_data = context->Output(0, in_shape)->MutableDataRaw();
 
-#ifndef USE_ROCM
   return FuncCustomAllReduce(nccl_,
                              Stream(context),
                              input_data,
@@ -267,12 +268,6 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
                              input_count,
                              input_tensor->DataType(),
                              onnxruntime::cuda::collective::IPCMemoryResourcePack::GetGlobalInstance());
-#else
-  ncclComm_t comm = nccl_->Comm();
-  ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
-  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
-  return Status::OK();
-#endif
 }
 
 AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
@@ -389,7 +384,10 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
         .AllocateInputsContiguously()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<MLFloat16>(),
+                              DataTypeImpl::GetTensorType<BFloat16>()}),
     AllReduce);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -428,7 +426,6 @@ Status FuncAllReduce(
   return Status::OK();
 }
 
-#ifndef USE_ROCM
 Status FuncCustomAllReduce(
     NcclContext* nccl,
     cudaStream_t stream,
@@ -478,7 +475,6 @@ Status FuncCustomAllReduce(
 
   return Status::OK();
 }
-#endif
 
 static std::vector<size_t> CalculatePermToSwapAxes(
     const int64_t axis,

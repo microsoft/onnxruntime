@@ -119,6 +119,10 @@ Status InPlaceAccumulatorV2<T, T_GRAD>::ComputeInternal(OpKernelContext* ctx) co
   const Tensor* overwrite_tensor = ctx->Input<Tensor>(2);
   const bool overwrite = overwrite_tensor != nullptr ? *(overwrite_tensor->template Data<bool>()) : false;
 
+  ORT_RETURN_IF_NOT(left_addee_buffer.Shape() == right_addee_buffer.Shape(),
+                    "InPlaceAccumulatorV2: accumulation_buffer shape (", left_addee_buffer.Shape(),
+                    ") must match value shape (", right_addee_buffer.Shape(), ").");
+
   if (overwrite) {
     const T_GRAD* source = right_addee_buffer.template Data<T_GRAD>();
     T* target = left_addee_buffer.template MutableData<T>();

@@ -16,6 +16,9 @@ template <>
 struct has_mlas_transpose<uint8_t> : std::true_type {};
 
 template <>
+struct has_mlas_transpose<uint16_t> : std::true_type {};
+
+template <>
 struct has_mlas_transpose<uint32_t> : std::true_type {};
 
 // moving a single axis outwards where the read/write size is a power of 2 and between 8 and 64 bits.

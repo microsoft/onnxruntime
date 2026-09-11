@@ -10,13 +10,8 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
-#ifdef USE_ROCM
-constexpr int kNumElementsPerThread = 2;
-constexpr int kNumThreadsPerBlock = 512;
-#else
 constexpr int kNumElementsPerThread = GridDim::maxElementsPerThread;
 constexpr int kNumThreadsPerBlock = GridDim::maxThreadsPerBlock;
-#endif
 }  // namespace
 
 template <typename T, typename OutputDataArray>
@@ -157,7 +152,6 @@ Status SplitImpl(cudaStream_t stream, const size_t element_size, const int block
   return Status::OK();
 }
 
-#ifndef USE_ROCM
 template <typename T>
 __global__ void _Split3InnerKernel(const int64_t size0_in_byte,
                                    const int64_t size1_in_byte,
@@ -264,7 +258,6 @@ Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t
 
   return Status::OK();
 }
-#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime

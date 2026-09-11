@@ -109,7 +109,7 @@ def get_args():
         "--device",
         type=str,
         required=True,
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda"],
         help="Device to benchmark models",
     )
 

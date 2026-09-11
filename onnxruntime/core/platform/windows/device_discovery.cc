@@ -8,10 +8,12 @@
 #include <codecvt>
 #include <locale>
 #include <string>
+#include <system_error>
 #include <unordered_set>
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
+#include "core/common/pci_vendor_ids.h"
 #include "core/platform/env.h"
 #include "core/session/abi_devices.h"
 
@@ -347,8 +349,13 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12(bool have_remote_dis
       continue;
     }
 
+    // Microsoft Remote Display Adapter and Microsoft Hyper-V Video display adapters use the basic render driver
+    // but don't set the DXGI_ADAPTER_FLAG_SOFTWARE flag. Filter them out by checking the vendor and device IDs.
+    const bool is_microsoft_basic_render_driver =
+        desc.VendorId == pci_vendor_ids::kMicrosoft && desc.DeviceId == 0x008c;
     if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0 ||
-        (desc.Flags & DXGI_ADAPTER_FLAG_REMOTE) != 0) {
+        (desc.Flags & DXGI_ADAPTER_FLAG_REMOTE) != 0 ||
+        is_microsoft_basic_render_driver) {
       // software or remote. skip
       continue;
     }
@@ -539,6 +546,21 @@ DeviceInfo GetDeviceInfoCPUID() {
 
   return cpu_info;
 }
+
+// Returns true if the Win32k system calls are disabled (e.g., in a sandboxed process).
+// Both SetupDi and DXGI depend on Win32k and must be skipped under this policy.
+bool Win32kSystemCallsDisallowed() {
+  PROCESS_MITIGATION_SYSTEM_CALL_DISABLE_POLICY policy = {};
+  if (GetProcessMitigationPolicy(GetCurrentProcess(), ProcessSystemCallDisablePolicy,
+                                 &policy, sizeof(policy))) {
+    return policy.DisallowWin32kSystemCalls != 0;
+  }
+  const auto error_code = ::GetLastError();
+  LOGS_DEFAULT(ERROR) << "GetProcessMitigationPolicy failed errcode = " << error_code
+                      << " - " << std::system_category().message(error_code);
+  return false;
+}
+
 }  // namespace
 
 // Get devices from various sources and combine them into a single set of devices.
@@ -555,12 +577,15 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
     }
   }
 
-  // setupapi_info. key is vendor_id+device_id
-  bool have_remote_display_adapter = false;  // set if we see the RdpIdd_IndirectDisplay hardware ID.
-  std::unordered_map<uint64_t, DeviceInfo> setupapi_info = GetDeviceInfoSetupApi(npus, have_remote_display_adapter);
-
-  // d3d12 info. key is luid
-  std::unordered_map<uint64_t, DeviceInfo> luid_to_d3d12_info = GetDeviceInfoD3D12(have_remote_display_adapter);
+  bool have_remote_display_adapter = false;                // set if we see the RdpIdd_IndirectDisplay hardware ID.
+  std::unordered_map<uint64_t, DeviceInfo> setupapi_info;  // key is vendor_id+device_id
+  std::unordered_map<uint64_t, DeviceInfo> luid_to_d3d12_info;
+  if (!Win32kSystemCallsDisallowed()) {
+    setupapi_info = GetDeviceInfoSetupApi(npus, have_remote_display_adapter);
+    luid_to_d3d12_info = GetDeviceInfoD3D12(have_remote_display_adapter);
+  } else {
+    LOGS_DEFAULT(INFO) << "Skip SetupDi and D3D12 device discovery due to Win32k lockdown.";
+  }
 
   // Ensure we have at least one CPU
   bool found_cpu = false;
@@ -634,19 +659,6 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
         }
       }
     }
-
-    std::ostringstream oss;
-    oss << "Adding OrtHardwareDevice {vendor_id:0x" << std::hex << ortdevice.vendor_id
-        << ", device_id:0x" << ortdevice.device_id
-        << ", vendor:" << ortdevice.vendor
-        << ", type:" << std::dec << static_cast<int>(ortdevice.type)
-        << ", metadata: [";
-    for (auto& [key, value] : ortdevice.metadata.Entries()) {
-      oss << key << "=" << value << ", ";
-    }
-
-    oss << "]}" << std::endl;
-    LOGS_DEFAULT(INFO) << oss.str();
 
     return ortdevice;
   };

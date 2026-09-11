@@ -10,6 +10,7 @@
 #include "core/framework/tensor_external_data_info.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/session/inference_session.h"
 
 #define DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(external_type, internal_type, internal_api) \
   external_type* ToExternal() { return static_cast<external_type*>(this); }                        \
@@ -30,8 +31,10 @@ enum class OrtGraphIrApi {
   kEpApi,
 };
 
-// Alias OrtExternalInitializerInfo to the internal type.
-struct OrtExternalInitializerInfo : onnxruntime::ExternalDataInfo {};
+// Alias OrtExternalInitializerInfo to the internal onnxruntime::ExternalDataInfo type.
+struct OrtExternalInitializerInfo : onnxruntime::ExternalDataInfo {
+  using onnxruntime::ExternalDataInfo::ExternalDataInfo;  // inherit constructors
+};
 
 /// <summary>
 /// Public type that represents an ONNX value info.
@@ -252,16 +255,6 @@ struct OrtNode {
   virtual onnxruntime::Status GetAttributes(gsl::span<const OrtOpAttr*> attrs) const = 0;
 
   /// <summary>
-  /// Gets the node's 'TENSOR' attribute as an OrtValue.
-  /// </summary>
-  /// <param name="attr">Node's 'TENSOR' attribute.</param>
-  /// <param name="value">Output parameter is set to a newly created OrtValue containing the 'TENSOR' attribute value,
-  ///                     only if the attribute is of type 'TENSOR'</param>
-  /// <returns>A status indicating success or an error.</returns>
-  virtual onnxruntime::Status GetTensorAttributeAsOrtValue(const OrtOpAttr* attr,
-                                                           OrtValue*& value) const = 0;
-
-  /// <summary>
   /// Gets the number of node subgraphs.
   /// </summary>
   /// <param name="num_subgraphs">Output parameter set to the number of subgraphs.</param>
@@ -301,6 +294,11 @@ struct OrtGraph {
   /// <returns>The graph's name.</returns>
   virtual const std::string& GetName() const = 0;
 
+  /// <summary>
+  /// Returns the model's metadata.
+  /// </summary>
+  /// <returns>The model metadata.</returns>
+  virtual std::unique_ptr<onnxruntime::ModelMetadata> GetModelMetadata() const = 0;
   /// <summary>
   /// Returns the model's path, which is empty if unknown.
   /// </summary>

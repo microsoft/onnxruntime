@@ -5,13 +5,19 @@
 # --------------------------------------------------------------------------
 
 import os
+import tempfile
 import unittest
 
+import numpy as np
 import onnx
-from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d
-from gpt2_model_generator import create_gpt2_attention
+from bart_model_generator import create_bart_attention_sdpa
+from bert_model_generator import create_bert_attention, create_bert_attention_pre_ln, create_tf2onnx_attention_3d
+from dit_model_generator import create_dit_attention, create_dit_attention_no_k_transpose
+from gpt2_model_generator import create_gpt2_attention, create_gpt2_attention_no_past
 from model_loader import get_test_data_path
+from onnx import numpy_helper
 from parity_utilities import find_transformers_source
+from qwen3_model_generator import create_qwen3_decoder_layer
 
 if find_transformers_source():
     from fusion_options import FusionOptions
@@ -24,6 +30,45 @@ else:
 
 
 class TestFusion(unittest.TestCase):
+    def _validate_mha_input_types(self, optimized_model):
+        """Verify all MultiHeadAttention inputs share the same element type.
+
+        MHA's type parameter T binds Q, K, V to a single type. A mismatch
+        (e.g., Q=float32, V=float16) produces a graph that ORT rejects at load time.
+
+        Runs ONNX shape inference first to populate type info for intermediate
+        tensors — without this, get_dtype returns None for outputs of internal
+        nodes and the check would pass vacuously even if types are mismatched.
+        """
+        # Run shape inference to propagate types through standard ONNX ops
+        # so that MHA inputs (from Reshape, Transpose, etc.) have type info.
+        try:
+            inferred = onnx.shape_inference.infer_shapes(optimized_model.model, check_type=True, strict_mode=False)
+            optimized_model.model.CopyFrom(inferred)
+            # Reset cached dtype dict so get_dtype picks up inferred types
+            optimized_model._dtype_dict = None
+        except Exception:
+            pass  # Custom ops (com.microsoft) may cause warnings; proceed with available info
+
+        for node in optimized_model.model.graph.node:
+            if node.op_type == "MultiHeadAttention":
+                input_types = []
+                for inp_name in node.input[:3]:  # Q, K, V
+                    if not inp_name:
+                        continue
+                    dtype = optimized_model.get_dtype(inp_name)
+                    if dtype is not None:
+                        input_types.append((inp_name, dtype))
+                if len(input_types) >= 2:
+                    first_name, first_dtype = input_types[0]
+                    for inp_name, dtype in input_types[1:]:
+                        self.assertEqual(
+                            dtype,
+                            first_dtype,
+                            f"MHA input type mismatch: {first_name} has type {first_dtype} "
+                            f"but {inp_name} has type {dtype}",
+                        )
+
     def verify_fusion(self, optimized_model, expected_model_filename):
         optimized_model.topological_sort(is_deterministic=True)
 
@@ -151,6 +196,67 @@ class TestFusion(unittest.TestCase):
 
         self.verify_fusion(optimized_model, "bert_3d_attention_opt.onnx")
 
+    def test_attention_fusion_pre_ln(self):
+        """Test attention fusion for pre-layer-norm first block.
+
+        In a pre-LN model the first block has no Add before the first
+        LayerNormalization — the graph input feeds LN directly.
+        """
+        model = create_bert_attention_pre_ln()
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "pre_ln_attention.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, opt_level=0, optimization_options=options)
+        os.remove(model_path)
+
+        attention_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+        self.assertEqual(len(attention_nodes), 1, "Expected exactly 1 fused Attention node")
+        num_heads_attr = next((a for a in attention_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 2)
+
+    def test_attention_fusion_pre_ln_reverse_add_order(self):
+        """Pre-LN fusion with reversed Add input ordering."""
+        model = create_bert_attention_pre_ln(switch_add_inputs=True)
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "pre_ln_attention_reverse.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, opt_level=0, optimization_options=options)
+        os.remove(model_path)
+
+        attention_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+        self.assertEqual(len(attention_nodes), 1, "Expected exactly 1 fused Attention node")
+        num_heads_attr = next((a for a in attention_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 2)
+
+    def test_attention_fusion_pre_ln_with_skiplayernorm(self):
+        """Pre-LN fusion when SkipLayerNorm fusion runs first (exercises Change 3).
+
+        The optimizer runs fuse_skip_layer_norm before fuse_attention.  When enabled,
+        the Add + LayerNorm after the residual becomes a SkipLayerNormalization node,
+        and attention fusion must handle that anchor type.
+        """
+        model = create_bert_attention_pre_ln()
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "pre_ln_attention_skiplayernorm.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        options.enable_skip_layer_norm = True
+        optimized_model = optimize_model(model_path, opt_level=0, optimization_options=options)
+        os.remove(model_path)
+
+        attention_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+        self.assertEqual(len(attention_nodes), 1, "Expected exactly 1 fused Attention node with SkipLN anchor")
+        num_heads_attr = next((a for a in attention_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 2)
+
     def test_gpt2_attention_fusion(self):
         hidden_size = 64
         num_heads = 4
@@ -192,6 +298,83 @@ class TestFusion(unittest.TestCase):
                 model_name = f"gpt2_attention_{model_suffix}.onnx"
                 self.verify_fusion(optimized_model, model_name)
 
+    def test_bart_attention_sdpa_fusion(self):
+        hidden_size = 16
+        num_heads = 4
+        for with_mask in [True, False]:
+            model = create_bart_attention_sdpa(
+                hidden_size=hidden_size,
+                num_heads=num_heads,
+                with_mask=with_mask,
+            )
+
+            options = FusionOptions("bart")
+            # Disable SkipLayerNorm fusion to match real SDPA BART behaviour,
+            # where symbolic shape inference fails and the attention fusion
+            # anchor is a plain LayerNormalization node.
+            options.enable_skip_layer_norm = False
+
+            optimized_model = optimize_by_fusion(
+                model,
+                model_type="bart",
+                num_heads=num_heads,
+                hidden_size=hidden_size,
+                optimization_options=options,
+            )
+
+            attn_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Attention"]
+            self.assertEqual(
+                len(attn_nodes),
+                1,
+                f"Expected 1 Attention node for with_mask={with_mask}, got {len(attn_nodes)}",
+            )
+
+            attn = attn_nodes[0]
+            num_heads_attr = next((a for a in attn.attribute if a.name == "num_heads"), None)
+            self.assertIsNotNone(num_heads_attr)
+            self.assertEqual(num_heads_attr.i, num_heads)
+
+            unidirectional_attr = next((a for a in attn.attribute if a.name == "unidirectional"), None)
+            if with_mask:
+                # With mask → decoder self-attention → unidirectional=1
+                self.assertIsNotNone(unidirectional_attr)
+                self.assertEqual(unidirectional_attr.i, 1)
+            else:
+                # No mask → encoder attention → unidirectional=0
+                if unidirectional_attr is not None:
+                    self.assertEqual(unidirectional_attr.i, 0)
+
+    def test_gpt2_attention_no_past_fusion(self):
+        hidden_size = 64
+        num_heads = 4
+        for add_cast in [True, False]:
+            for switch_add_inputs in [False, True]:
+                model = create_gpt2_attention_no_past(
+                    hidden_size=hidden_size,
+                    num_heads=num_heads,
+                    switch_add_inputs=switch_add_inputs,
+                    add_cast=add_cast,
+                )
+                dir = "."
+                model_path = os.path.join(dir, "gpt2_attention_no_past.onnx")
+                onnx.save(model, model_path)
+
+                options = FusionOptions("gpt2")
+
+                optimized_model = optimize_model(
+                    model_path,
+                    model_type="gpt2",
+                    num_heads=num_heads,
+                    hidden_size=hidden_size,
+                    optimization_options=options,
+                )
+
+                os.remove(model_path)
+
+                model_suffix = "add_opt" if switch_add_inputs else "opt"
+                model_name = f"gpt2_attention_no_past_{model_suffix}.onnx"
+                self.verify_fusion(optimized_model, model_name)
+
     def test_megatron_gpt2_attention_fusion(self):
         for enable_skip_layer_norm_fusion in [False, True]:
             path = get_test_data_path("models", "gpt2_megatron.onnx")
@@ -216,6 +399,389 @@ class TestFusion(unittest.TestCase):
 
             model_name = f"gpt2_megatron_{model_suffix}.onnx"
             self.verify_fusion(optimized_model, model_name)
+
+    def test_qwen3_normalization_fusion(self):
+        """Test Qwen3 decoder layer optimization.
+
+        Verifies that the optimizer fuses RMSNorm patterns into SimplifiedLayerNormalization.
+        """
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        sln_count = sum(1 for n in nodes if n.op_type == "SimplifiedLayerNormalization")
+
+        # 4 RMSNorm patterns all fuse into SimplifiedLayerNormalization:
+        # pre-attn, Q-norm, K-norm, post-attn.
+        self.assertEqual(
+            sln_count,
+            4,
+            f"Expected 4 SimplifiedLayerNormalization, got {sln_count}",
+        )
+
+    def test_qwen3_rotary_embedding_fusion(self):
+        """Test Qwen3 RotaryEmbedding fusion for on-the-fly RoPE with dynamic Slice indices.
+
+        Verifies that the optimizer fuses:
+          - On-the-fly RoPE (MatMul → Cos/Sin → Mul(scaling)) into RotaryEmbedding nodes
+          - Both Q and K paths get RotaryEmbedding fusion (2 total)
+        """
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        rope_count = sum(1 for n in nodes if n.op_type == "RotaryEmbedding")
+        sln_count = sum(1 for n in nodes if n.op_type == "SimplifiedLayerNormalization")
+
+        self.assertEqual(
+            rope_count,
+            2,
+            f"Expected 2 RotaryEmbedding (Q + K), got {rope_count}",
+        )
+        self.assertEqual(
+            sln_count,
+            4,
+            f"Expected 4 SimplifiedLayerNormalization, got {sln_count}",
+        )
+
+    def test_qwen3_rotary_embedding_fusion_with_expand(self):
+        """Test RotaryEmbedding fusion when inv_freq path includes Cast → Expand → Where nodes."""
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+            include_expand_in_inv_freq=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope_expand.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        rope_count = sum(1 for n in nodes if n.op_type == "RotaryEmbedding")
+
+        self.assertEqual(
+            rope_count,
+            2,
+            f"Expected 2 RotaryEmbedding (Q + K) with Expand in inv_freq path, got {rope_count}",
+        )
+
+    def test_qwen3_rotary_embedding_fusion_negative_dynamic_inv_freq(self):
+        """Test that RotaryEmbedding fusion gracefully falls back when inv_freq is a dynamic graph input.
+
+        When inv_freq is not a constant initializer (e.g., computed dynamically), the fusion cannot
+        extract the values at optimization time and should skip fusion without crashing.
+        """
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+            inv_freq_as_graph_input=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope_dynamic_inv_freq.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        nodes = optimized_model.model.graph.node
+        rope_count = sum(1 for n in nodes if n.op_type == "RotaryEmbedding")
+
+        # Fusion should gracefully skip — 0 RotaryEmbedding nodes, no crash
+        self.assertEqual(
+            rope_count,
+            0,
+            f"Expected 0 RotaryEmbedding when inv_freq is dynamic, got {rope_count}",
+        )
+
+    def test_qwen3_rotary_embedding_fusion_cache_numerical_validation(self):
+        """Test that the generated cos/sin caches have correct values.
+
+        Verifies the mathematical correctness of the precomputed caches:
+            freqs[pos, i] = pos * inv_freq[i]
+            cos_cache[pos, i] = cos(freqs[pos, i]) * scaling
+            sin_cache[pos, i] = sin(freqs[pos, i]) * scaling
+        """
+        hidden_size = 64
+        num_heads = 8
+        num_kv_heads = 2
+        head_dim = hidden_size // num_heads  # 8
+        half_dim = head_dim // 2  # 4
+
+        model = create_qwen3_decoder_layer(
+            hidden_size=hidden_size,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            include_rope=True,
+        )
+
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "qwen3_decoder_rope_numerical.onnx")
+        onnx.save(model, model_path)
+
+        options = FusionOptions("qwen3")
+        optimized_model = optimize_model(
+            model_path,
+            model_type="qwen3",
+            num_heads=num_heads,
+            hidden_size=hidden_size,
+            optimization_options=options,
+        )
+
+        os.remove(model_path)
+
+        # Verify cos/sin cache initializers exist
+        cos_init = optimized_model.get_initializer("cos_cache")
+        sin_init = optimized_model.get_initializer("sin_cache")
+        self.assertIsNotNone(cos_init, "cos_cache initializer not found after fusion")
+        self.assertIsNotNone(sin_init, "sin_cache initializer not found after fusion")
+
+        cos_data = numpy_helper.to_array(cos_init)
+        sin_data = numpy_helper.to_array(sin_init)
+
+        # Verify shape: (max_seq_len, head_dim // 2)
+        self.assertEqual(cos_data.shape[1], half_dim, f"cos_cache dim 1 should be {half_dim}")
+        self.assertEqual(sin_data.shape[1], half_dim, f"sin_cache dim 1 should be {half_dim}")
+        self.assertEqual(cos_data.shape, sin_data.shape, "cos_cache and sin_cache shapes should match")
+
+        # Recompute expected values from inv_freq (must match the generator's formula)
+        inv_freq = 1.0 / (10000.0 ** (np.arange(0, head_dim, 2, dtype=np.float32) / head_dim))
+        scaling = 1.0  # attention_scaling in the test generator
+
+        # Spot-check at several positions
+        for pos in [0, 1, 7, 100, 1000]:
+            expected_freqs = pos * inv_freq
+            expected_cos = np.cos(expected_freqs) * scaling
+            expected_sin = np.sin(expected_freqs) * scaling
+            np.testing.assert_allclose(
+                cos_data[pos],
+                expected_cos,
+                rtol=1e-6,
+                err_msg=f"cos_cache mismatch at position {pos}",
+            )
+            np.testing.assert_allclose(
+                sin_data[pos],
+                expected_sin,
+                rtol=1e-6,
+                err_msg=f"sin_cache mismatch at position {pos}",
+            )
+
+    def test_dit_attention_fusion(self):
+        """Test DiT attention fusion for F5-TTS-style pattern (FP32, with K pre-transpose)."""
+        model = create_dit_attention(
+            batch_size=2,
+            seq_len=4,
+            num_heads=4,
+            head_dim=8,
+            scale=100.0,
+            use_fp16_casts=False,
+        )
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "dit_attention.onnx")
+        onnx.save(model, model_path)
+
+        optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
+        os.remove(model_path)
+
+        # Validate the optimized model produces a type-consistent fused graph.
+        self._validate_mha_input_types(optimized_model)
+
+        mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
+        self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
+
+        # Verify num_heads attribute
+        num_heads_attr = next((a for a in mha_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 4)
+
+        # Verify scale attribute
+        scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
+        self.assertIsNotNone(scale_attr)
+        self.assertAlmostEqual(scale_attr.f, 100.0, places=5)
+
+        # Verify no Softmax remains (it should be absorbed into MHA)
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
+    def test_dit_attention_fusion_with_fp16_casts(self):
+        """Test DiT attention fusion with FP16 Cast nodes around Softmax."""
+        model = create_dit_attention(
+            batch_size=2,
+            seq_len=4,
+            num_heads=4,
+            head_dim=8,
+            scale=100.0,
+            use_fp16_casts=True,
+        )
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "dit_attention_fp16.onnx")
+        onnx.save(model, model_path)
+
+        optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
+        os.remove(model_path)
+
+        # Validate MHA input types — catches mixed-dtype fused graphs (e.g.,
+        # Q=float32 but V=float16) that pass structural assertions but fail at ORT load.
+        self._validate_mha_input_types(optimized_model)
+
+        mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
+        self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
+
+        # Verify num_heads and scale
+        num_heads_attr = next((a for a in mha_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 4)
+
+        scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
+        self.assertIsNotNone(scale_attr)
+        self.assertAlmostEqual(scale_attr.f, 100.0, places=5)
+
+        # Verify no Softmax remains (it should be absorbed into MHA)
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
+    def test_dit_attention_fusion_custom_scale(self):
+        """Test DiT attention fusion with standard 1/sqrt(d_k) scale."""
+        head_dim = 8
+        standard_scale = 1.0 / (head_dim**0.5)
+        model = create_dit_attention(
+            batch_size=1,
+            seq_len=4,
+            num_heads=4,
+            head_dim=head_dim,
+            scale=standard_scale,
+            use_fp16_casts=False,
+        )
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "dit_attention_standard_scale.onnx")
+        onnx.save(model, model_path)
+
+        optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
+        os.remove(model_path)
+
+        self._validate_mha_input_types(optimized_model)
+
+        mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
+        self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
+
+        scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
+        self.assertIsNotNone(scale_attr)
+        self.assertAlmostEqual(scale_attr.f, standard_scale, places=5)
+
+        # Verify no Softmax remains (it should be absorbed into MHA)
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
+    def test_dit_attention_fusion_no_k_transpose(self):
+        """Test DiT attention fusion when K is natively BNHS (no explicit Transpose node)."""
+        model = create_dit_attention_no_k_transpose(
+            batch_size=2,
+            seq_len=4,
+            num_heads=4,
+            head_dim=8,
+            scale=100.0,
+        )
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "dit_attention_no_k_transpose.onnx")
+        onnx.save(model, model_path)
+
+        optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
+        os.remove(model_path)
+
+        self._validate_mha_input_types(optimized_model)
+
+        mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
+        self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
+
+        # Verify scale attribute
+        scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
+        self.assertIsNotNone(scale_attr)
+        self.assertAlmostEqual(scale_attr.f, 100.0, places=5)
+
+        # Verify no Softmax remains
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
+        # Verify the fusion added a Transpose for K (BNHS -> BNSH)
+        transpose_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Transpose"]
+        has_bnhs_to_bnsh = any(OnnxModel.get_node_attribute(t, "perm") == [0, 1, 3, 2] for t in transpose_nodes)
+        self.assertTrue(has_bnhs_to_bnsh, "Fusion should add Transpose(BNHS->BNSH) for K")
 
 
 if __name__ == "__main__":

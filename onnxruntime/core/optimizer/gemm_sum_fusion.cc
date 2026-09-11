@@ -41,7 +41,8 @@ Status GemmSumFusion::Apply(Graph& graph, Node& gemm_node, RewriteRuleEffect& mo
                                       "Fused Gemm with Sum",
                                       new_gemm_input_defs,
                                       new_gemm_output_defs,
-                                      {},
+                                      gemm_node,
+                                      nullptr,
                                       gemm_node.Domain());
   new_gemm_node.AddAttribute("transA", static_cast<int64_t>(transA));
   new_gemm_node.AddAttribute("transB", static_cast<int64_t>(transB));

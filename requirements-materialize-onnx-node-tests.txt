@@ -1,0 +1,15 @@
+# Minimal deps for the onnxruntime_MATERIALIZE_ONNX_NODE_TESTS configure-time gate, which
+# regenerates the ONNX node-test corpus into the build tree for onnx_test_runner. Consumed by
+# the QNN/Android CI legs (see tools/ci_build/github/azure-pipelines/*-qnn-*.yml and
+# .github/workflows/windows_qnn_x64.yml) via `pip install -r`.
+#
+# Deliberately kept to onnx + numpy ONLY so Dependabot can track these two pins (this file lives
+# at the repo root, the sole pip directory Dependabot scans) WITHOUT the QNN/Android legs having
+# to pull the heavy docker requirements.txt.
+#
+# PIN-LOCK: these values MUST stay in lockstep with the CMake gate (cmake/onnxruntime_unittests.cmake,
+# which HARD-FATALs when the installed versions differ from its expected onnx/numpy pins) and with
+# the Python MIN pins. Bump here and in cmake/deps.txt + the numpy MIN pins together.
+onnx==1.22.0
+numpy==2.2.6; python_version < "3.11"
+numpy==2.4.2; python_version >= "3.11"

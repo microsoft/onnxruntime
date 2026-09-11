@@ -42,8 +42,9 @@ interface GpuResourceConstructorParameters<T extends Tensor.Type> {
 /**
  * represent the parameter for constructing a tensor from a pinned CPU buffer
  */
-export interface CpuPinnedConstructorParameters<T extends Tensor.CpuPinnedDataTypes = Tensor.CpuPinnedDataTypes>
-  extends CommonConstructorParameters<T> {
+export interface CpuPinnedConstructorParameters<
+  T extends Tensor.CpuPinnedDataTypes = Tensor.CpuPinnedDataTypes,
+> extends CommonConstructorParameters<T> {
   /**
    * Specify the location of the data to be 'cpu-pinned'.
    */
@@ -58,8 +59,7 @@ export interface CpuPinnedConstructorParameters<T extends Tensor.CpuPinnedDataTy
  * represent the parameter for constructing a tensor from a WebGL texture
  */
 export interface TextureConstructorParameters<T extends Tensor.TextureDataTypes = Tensor.TextureDataTypes>
-  extends CommonConstructorParameters<T>,
-    GpuResourceConstructorParameters<T> {
+  extends CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
   /**
    * Specify the location of the data to be 'texture'.
    */
@@ -74,8 +74,7 @@ export interface TextureConstructorParameters<T extends Tensor.TextureDataTypes 
  * represent the parameter for constructing a tensor from a WebGPU buffer
  */
 export interface GpuBufferConstructorParameters<T extends Tensor.GpuBufferDataTypes = Tensor.GpuBufferDataTypes>
-  extends CommonConstructorParameters<T>,
-    GpuResourceConstructorParameters<T> {
+  extends CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
   /**
    * Specify the location of the data to be 'gpu-buffer'.
    */
@@ -87,8 +86,7 @@ export interface GpuBufferConstructorParameters<T extends Tensor.GpuBufferDataTy
 }
 
 export interface MLTensorConstructorParameters<T extends Tensor.MLTensorDataTypes = Tensor.MLTensorDataTypes>
-  extends CommonConstructorParameters<T>,
-    GpuResourceConstructorParameters<T> {
+  extends CommonConstructorParameters<T>, GpuResourceConstructorParameters<T> {
   /**
    * Specify the location of the data to be 'ml-tensor'.
    */
@@ -191,21 +189,24 @@ export interface OptionsNormalizationParameters {
 // #region Options composition
 
 export interface TensorFromImageDataOptions
-  extends OptionResizedDimensions,
+  extends
+    OptionResizedDimensions,
     OptionsTensorFormat,
     OptionsTensorLayout,
     OptionsTensorDataType,
     OptionsNormalizationParameters {}
 
 export interface TensorFromImageElementOptions
-  extends OptionResizedDimensions,
+  extends
+    OptionResizedDimensions,
     OptionsTensorFormat,
     OptionsTensorLayout,
     OptionsTensorDataType,
     OptionsNormalizationParameters {}
 
 export interface TensorFromUrlOptions
-  extends OptionsDimensions,
+  extends
+    OptionsDimensions,
     OptionResizedDimensions,
     OptionsTensorFormat,
     OptionsTensorLayout,
@@ -213,20 +214,18 @@ export interface TensorFromUrlOptions
     OptionsNormalizationParameters {}
 
 export interface TensorFromImageBitmapOptions
-  extends OptionResizedDimensions,
+  extends
+    OptionResizedDimensions,
     OptionsTensorFormat,
     OptionsTensorLayout,
     OptionsTensorDataType,
     OptionsNormalizationParameters {}
 
 export interface TensorFromTextureOptions<T extends Tensor.TextureDataTypes>
-  extends Required<OptionsDimensions>,
-    OptionsFormat,
-    GpuResourceConstructorParameters<T> /* TODO: add more */ {}
+  extends Required<OptionsDimensions>, OptionsFormat, GpuResourceConstructorParameters<T> /* TODO: add more */ {}
 
 export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes>
-  extends Pick<Tensor, 'dims'>,
-    GpuResourceConstructorParameters<T> {
+  extends Pick<Tensor, 'dims'>, GpuResourceConstructorParameters<T> {
   /**
    * Describes the data type of the tensor.
    */
@@ -234,8 +233,7 @@ export interface TensorFromGpuBufferOptions<T extends Tensor.GpuBufferDataTypes>
 }
 
 export interface TensorFromMLTensorOptions<T extends Tensor.MLTensorDataTypes>
-  extends Pick<Tensor, 'dims'>,
-    GpuResourceConstructorParameters<T> {
+  extends Pick<Tensor, 'dims'>, GpuResourceConstructorParameters<T> {
   /**
    * Describes the data type of the tensor.
    */

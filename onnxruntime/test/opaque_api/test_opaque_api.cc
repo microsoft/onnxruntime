@@ -15,7 +15,7 @@
 #include "gtest/gtest.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -118,10 +118,9 @@ ONNX_OPERATOR_KERNEL_EX(
   ONNX_TEST_OPERATOR_SCHEMA_UNIQ_HELPER(__COUNTER__, name)
 #define ONNX_TEST_OPERATOR_SCHEMA_UNIQ_HELPER(Counter, name) \
   ONNX_TEST_OPERATOR_SCHEMA_UNIQ(Counter, name)
-#define ONNX_TEST_OPERATOR_SCHEMA_UNIQ(Counter, name)            \
-  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce( \
-      op_schema_register_once##name##Counter) ONNX_UNUSED =      \
-      ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__)
+#define ONNX_TEST_OPERATOR_SCHEMA_UNIQ(Counter, name)                                                  \
+  static ONNX_NAMESPACE::OpSchemaRegistry::OpSchemaRegisterOnce op_schema_register_once##name##Counter \
+      [[maybe_unused]] = ONNX_NAMESPACE::OpSchema(#name, __FILE__, __LINE__)
 
 static void RegisterCustomKernel() {
   // Register our custom type

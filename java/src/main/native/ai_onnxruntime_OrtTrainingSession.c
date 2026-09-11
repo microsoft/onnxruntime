@@ -533,6 +533,9 @@ JNIEXPORT jbooleanArray JNICALL Java_ai_onnxruntime_OrtTrainingSession_evalStep
     outputValues[i] = (OrtValue*)outputHandleLongs[i];
   }
 
+  // Release the java array copy of pointers to the outputs.
+  (*jniEnv)->ReleaseLongArrayElements(jniEnv, outputHandlesArr, outputHandleLongs, JNI_ABORT);
+
   // Actually score the inputs.
   //ORT_API2_STATUS(EvalStep, _In_ const OrtTrainingSession* sess, _In_opt_ const OrtRunOptions* run_options,
   //                size_t inputs_len, _In_reads_(inputs_len) const OrtValue* const* inputs,

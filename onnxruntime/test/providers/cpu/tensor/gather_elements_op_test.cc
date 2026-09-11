@@ -9,12 +9,32 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 
-#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
+#ifdef USE_CUDA
+#include <limits>
+
+#include "core/providers/cuda/tensor/gather_elements_common.h"
+#endif
+
+#if defined(ENABLE_STRIDED_TENSORS) && defined(USE_CUDA)
 #include "test/providers/kernel_compute_test_utils.h"
 #endif
 
 namespace onnxruntime {
 namespace test {
+
+#ifdef USE_CUDA
+TEST(GatherElementsOpTest, CudaElementCountRange) {
+  EXPECT_TRUE(cuda::IsGatherElementsElementCountSupported(0));
+  EXPECT_TRUE(cuda::IsGatherElementsElementCountSupported(std::numeric_limits<int32_t>::max()));
+  EXPECT_FALSE(cuda::IsGatherElementsElementCountSupported(
+      static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1));
+  EXPECT_FALSE(cuda::IsGatherElementsElementCountSupported(4294967301LL));
+  EXPECT_FALSE(cuda::IsGatherElementsElementCountSupported(-1));
+  const auto error = cuda::GatherElementsElementCountErrorMessage(4294967301LL);
+  EXPECT_NE(error.find("4294967301"), std::string::npos);
+  EXPECT_NE(error.find("2147483647"), std::string::npos);
+}
+#endif
 
 namespace {
 
@@ -216,7 +236,7 @@ void RunTestWrapper<std::string>() {
   test8.Run();
 }
 
-#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && defined(USE_CUDA)
 template <typename T, typename TIndex>
 void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
                           std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false,
@@ -228,8 +248,6 @@ void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initia
   GetData(input_dims, indices_dims, indices_strides, new_axis, input_data, indices_data, output_data);
 #ifdef USE_CUDA
   const char* provider = kCudaExecutionProvider;
-#else  // USE_ROCM
-  const char* provider = kRocmExecutionProvider;
 #endif
   KernelComputeTester test("GatherElements", provider);
   if (has_axis) test.AddAttribute<int64_t>("axis", axis);
@@ -391,7 +409,7 @@ TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   // skip QNN because it doesn't support out of bounds indices
   // skip WebGPU because it doesn't support out of bounds indices
   test.Run(OpTester::ExpectResult::kExpectFailure, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kOpenVINOExecutionProvider,
             kTensorrtExecutionProvider, kDmlExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
 }
 
@@ -413,7 +431,7 @@ TEST(GatherElementsOpTest, BigIndices) {
   test1.Run();
 }
 
-#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && defined(USE_CUDA)
 TEST(GatherElementsOpTest, Strided_float) { RunKernelComputeTestWrapper<float>(); }
 
 TEST(GatherElementsOpTest, Strided_double) { RunKernelComputeTestWrapper<double>(); }

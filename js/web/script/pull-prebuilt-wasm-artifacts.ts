@@ -57,7 +57,7 @@ if (args.help || args.h) {
 // Check if GitHub CLI (gh) is installed and available in PATH
 try {
   execSync('gh --version', { stdio: 'pipe' }).toString().trim();
-} catch (e) {
+} catch {
   console.error('Error: GitHub CLI (gh) is not installed or not in PATH.');
   console.error('Please install it from https://cli.github.com/ and try again.');
   process.exit(1);
@@ -152,10 +152,12 @@ async function downloadArtifactsForRun(run: any): Promise<void> {
         fs.readdirSync(WASM_FOLDER).forEach((file) => {
           if (
             [
+              'ort-wasm-simd-threaded.asyncify.mjs',
+              'ort-wasm-simd-threaded.asyncify.wasm',
               'ort-wasm-simd-threaded.jsep.mjs',
               'ort-wasm-simd-threaded.jsep.wasm',
-              'ort-wasm-simd-threaded.jsep.mjs',
-              'ort-wasm-simd-threaded.jsep.wasm',
+              'ort-wasm-simd-threaded.jspi.mjs',
+              'ort-wasm-simd-threaded.jspi.wasm',
               'ort-wasm-simd-threaded.mjs',
               'ort-wasm-simd-threaded.wasm',
             ].includes(file)
@@ -179,7 +181,7 @@ async function downloadArtifactsForRun(run: any): Promise<void> {
 async function main() {
   // Bootstrap global-agent to honor the proxy settings in
   // environment variables, e.g. GLOBAL_AGENT_HTTPS_PROXY.
-  // See https://github.com/gajus/global-agent/blob/v3.0.0/README.md#environment-variables for details.
+  // See the https://github.com/gajus/global-agent ReadMe.md regarding environment variables.
   globalAgentBootstrap();
 
   console.log(

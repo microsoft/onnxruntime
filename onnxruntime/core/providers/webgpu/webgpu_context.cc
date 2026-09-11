@@ -1,19 +1,28 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
+#include <algorithm>
 #include <cmath>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+// Dawn's DawnPlatform.h has unused parameters in its inline CachingInterface default methods,
+// which trips ORT's -Werror=unused-parameter under GCC.
+#pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
 #if !defined(__wasm__)
-#if !defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if !defined(BUILD_DAWN_SHARED_LIBRARY)
 #include "dawn/dawn_proc.h"
 #endif
 #if !defined(USE_EXTERNAL_DAWN)
+#include "dawn/platform/DawnPlatform.h"
 #include "dawn/native/DawnNative.h"
 #endif
 #endif
@@ -27,6 +36,7 @@
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/webgpu_profiler.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/program.h"
@@ -37,37 +47,57 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture) {
-  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+namespace {
+
+// Scale the pipeline-compilation worker pool with the CPU, following ORT's convention of sizing
+// thread pools from the core count. Uses half the logical processors (approximating physical
+// cores) with a floor of 2, which also covers hardware_concurrency() reporting 0.
+uint32_t GetDawnWorkerThreadCount() {
+  return std::max(2u, std::thread::hardware_concurrency() / 2u);
+}
+
+class DawnPlatform final : public dawn::platform::Platform {
+ public:
+  std::unique_ptr<dawn::platform::WorkerTaskPool> CreateWorkerTaskPool() override {
+    return dawn::platform::WorkerTaskPool::CreateDawnDefault(GetDawnWorkerThreadCount());
+  }
+};
+
+DawnPlatform& GetDawnPlatform() {
+  // The Dawn instance retains this non-owning pointer. Keep it alive for the process lifetime to
+  // avoid static destruction order issues with Dawn's instance teardown.
+  static DawnPlatform* platform = new DawnPlatform();
+  return *platform;
+}
+
+}  // namespace
+#endif  // !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+
+void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
+  std::call_once(init_flag_, [this, &config]() {
+    max_num_pending_dispatches_ = config.max_num_pending_dispatches;
+    enable_robustness_ = config.enable_robustness;
+
+    // Three easily-conflated concepts, at three layers (a pipeline, not the same flag):
+    //   * allow_virtual_devices (env)     -- selectability: surface a virtual GPU OrtEpDevice so WebGPU is
+    //                                        pickable when OS enumeration finds no GPU (e.g. Win32k sandbox).
+    //   * compile_only (session)          -- intent: transform only, never finalize/run.
+    //   * device-free / HasDevice() (ctx) -- mechanism: no Dawn device, no-op allocator.
+    // compile_only alone is valid (device-free even with a real GPU); a virtual device without compile_only is
+    // rejected at factory CreateEp -- it would try to build a real Dawn device with no hardware.
+    if (config.compile_only) {
+      // Device-free: skip Dawn adapter/device creation. Such a context only transforms the graph; the session
+      // stops before finalization and never executes kernels or allocates.
+      LOGS_DEFAULT(INFO) << "WebGPU EP context created device-free (compile-only session, no Dawn device).";
+      return;
+    }
+
     if (device_ == nullptr) {
       // Create wgpu::Adapter
-#if !defined(__wasm__) && defined(_MSC_VER) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
-      // If we are using the D3D12 backend on Windows and the build does not use external Dawn, dxil.dll and dxcompiler.dll are required.
-      //
-      // Dawn will try to load them later, but if they are in the different directory to the executable, it may fail to find them.
-      // To avoid this issue, we try to load them from the same directory as current module (usually onnxruntime.dll).
-      auto runtime_path = Env::Default().GetRuntimePath();
-      if (!runtime_path.empty()) {
-        Status status;
-        void* module_handle = nullptr;
-
-        PathString dxil_path = runtime_path + ToPathString(L"dxil.dll");
-        status = Env::Default().LoadDynamicLibrary(dxil_path, false, &module_handle);
-        if (status.IsOK() && module_handle != nullptr) {
-          modules_.Add(dxil_path, module_handle);
-        }
-
-        PathString dxcompiler_path = runtime_path + ToPathString(L"dxcompiler.dll");
-        status = Env::Default().LoadDynamicLibrary(dxcompiler_path, false, &module_handle);
-        if (status.IsOK() && module_handle != nullptr) {
-          modules_.Add(dxcompiler_path, module_handle);
-        }
-      }
-#endif
-
       wgpu::RequestAdapterOptions req_adapter_options = {};
-      req_adapter_options.backendType = static_cast<wgpu::BackendType>(backend_type);
-      req_adapter_options.powerPreference = wgpu::PowerPreference::HighPerformance;
+      req_adapter_options.backendType = static_cast<wgpu::BackendType>(config.backend_type);
+      req_adapter_options.powerPreference = static_cast<wgpu::PowerPreference>(config.power_preference);
 
 #if !defined(__wasm__)
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
@@ -79,16 +109,33 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       req_adapter_options.nextInChain = &adapter_toggles_desc;
 #endif
 
-      wgpu::Adapter adapter;
+      // Capture adapter request result without throwing inside the Dawn callback.
+      // Throwing C++ exceptions inside Dawn callbacks leaves Dawn's internal mutexes locked,
+      // which causes a self-deadlock when the WGPUInstance is later released (e.g., during
+      // OrtEnv teardown via EventManager::ShutDown()).
+      struct RequestAdapterResult {
+        wgpu::RequestAdapterStatus status = wgpu::RequestAdapterStatus::Error;
+        wgpu::Adapter adapter;
+        std::string message;
+      };
+      RequestAdapterResult adapter_result;
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
                                                                      &req_adapter_options,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message, wgpu::Adapter* ptr) {
-                                                                       ORT_ENFORCE(status == wgpu::RequestAdapterStatus::Success, "Failed to get a WebGPU adapter: ", std::string_view{message});
-                                                                       *ptr = std::move(adapter);
+                                                                     [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message,
+                                                                        RequestAdapterResult* result) noexcept {
+                                                                       result->status = status;
+                                                                       if (status == wgpu::RequestAdapterStatus::Success) {
+                                                                         result->adapter = std::move(adapter);
+                                                                       } else {
+                                                                         result->message = std::string{message};
+                                                                       }
                                                                      },
-                                                                     &adapter),
+                                                                     &adapter_result),
                                                                  UINT64_MAX));
+      ORT_ENFORCE(adapter_result.status == wgpu::RequestAdapterStatus::Success,
+                  "Failed to get a WebGPU adapter: ", adapter_result.message);
+      wgpu::Adapter adapter = std::move(adapter_result.adapter);
       ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
 
       // Create wgpu::Device
@@ -108,7 +155,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
 #endif
 
       std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter);
-      if (required_features.size() > 0) {
+      if (!required_features.empty()) {
         device_desc.requiredFeatures = required_features.data();
         device_desc.requiredFeatureCount = required_features.size();
       }
@@ -116,23 +163,50 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       device_desc.requiredLimits = &required_limits;
 
       // TODO: revise temporary error handling
-      device_desc.SetUncapturedErrorCallback([](const wgpu::Device& /*device*/, wgpu::ErrorType type, wgpu::StringView message) {
-        LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
-      });
+      device_desc.SetUncapturedErrorCallback(
+          // Note: Don't throw from a Dawn callback.
+          [](const wgpu::Device& /*device*/, wgpu::ErrorType type,
+             wgpu::StringView message) noexcept {
+            if (logging::LoggingManager::HasDefaultLogger()) {
+              LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
+            }
+          });
       // TODO: revise temporary device lost handling
-      device_desc.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous, [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) {
-        LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
-      });
+      device_desc.SetDeviceLostCallback(
+          wgpu::CallbackMode::AllowSpontaneous,
+          // Note: Don't throw from a Dawn callback.
+          [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) noexcept {
+            if (logging::LoggingManager::HasDefaultLogger()) {
+              LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
+            }
+          });
 
+      struct RequestDeviceResult {
+        wgpu::RequestDeviceStatus status = wgpu::RequestDeviceStatus::Error;
+        wgpu::Device device;
+        std::string message;
+      };
+      RequestDeviceResult device_result;
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter.RequestDevice(
                                                                      &device_desc,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message, wgpu::Device* ptr) {
-                                                                       ORT_ENFORCE(status == wgpu::RequestDeviceStatus::Success, "Failed to get a WebGPU device: ", std::string_view{message});
-                                                                       *ptr = std::move(device);
+                                                                     // Note: Don't throw from a Dawn callback.
+                                                                     [](wgpu::RequestDeviceStatus status,
+                                                                        wgpu::Device device,
+                                                                        wgpu::StringView message,
+                                                                        RequestDeviceResult* result) noexcept {
+                                                                       result->status = status;
+                                                                       if (status == wgpu::RequestDeviceStatus::Success) {
+                                                                         result->device = std::move(device);
+                                                                       } else {
+                                                                         result->message = std::string{message};
+                                                                       }
                                                                      },
-                                                                     &device_),
+                                                                     &device_result),
                                                                  UINT64_MAX));
+      ORT_ENFORCE(device_result.status == wgpu::RequestDeviceStatus::Success,
+                  "Failed to get a WebGPU device: ", device_result.message);
+      device_ = std::move(device_result.device);
       ORT_ENFORCE(device_ != nullptr, "Failed to get a WebGPU device.");
     }
 
@@ -141,7 +215,13 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     // cache device queue
     device_queue_ = device_.GetQueue();
     // cache device limits
-    ORT_ENFORCE(Device().GetLimits(&device_limits_));
+    ORT_ENFORCE(Device().GetLimits(&device_limits_) == wgpu::Status::Success);
+    // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
+    // buffer segment offsets are always properly aligned for WebGPU bind group creation.
+    if (device_limits_.minStorageBufferOffsetAlignment > 0) {
+      device_limits_.maxStorageBufferBindingSize -=
+          (device_limits_.maxStorageBufferBindingSize % device_limits_.minStorageBufferOffsetAlignment);
+    }
     // cache device features
     wgpu::SupportedFeatures supported_features;
     Device().GetFeatures(&supported_features);
@@ -149,43 +229,65 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       device_features_.insert(supported_features.features[i]);
     }
     // cache adapter info
-#if !defined(__wasm__)
     if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
       adapter_info_.nextInChain = &subgroup_matrix_configs_;
     }
-#endif
-    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
+    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_) == wgpu::Status::Success);
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
-                                               buffer_cache_config.storage.mode,
-                                               buffer_cache_config.uniform.mode,
-                                               buffer_cache_config.query_resolve.mode);
+                                               config.buffer_cache_config.storage.mode,
+                                               config.buffer_cache_config.uniform.mode,
+                                               config.buffer_cache_config.query_resolve.mode,
+                                               config.buffer_cache_config.default_entry.mode);
+
+    // create initializer buffer manager.
+    initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
+                                                           BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::Disabled,
+                                                           BufferCacheMode::Disabled);
 
     // create program manager
-    program_mgr_ = std::make_unique<ProgramManager>(Device(), DeviceLimits());
+    program_mgr_ = std::make_unique<ProgramManager>(*this);
+
+    // create split-k config
+    split_k_config_ = std::make_unique<SplitKConfig>(adapter_info_);
 
     // set query type
 #if !defined(__wasm__)
-    if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
+    if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
       query_type_ = TimestampQueryType::InsidePasses;
     } else
 #endif
-        if (device_.HasFeature(wgpu::FeatureName::TimestampQuery)) {
+        if (DeviceHasFeature(wgpu::FeatureName::TimestampQuery)) {
       query_type_ = TimestampQueryType::AtPasses;
     } else {
       query_type_ = TimestampQueryType::None;
     }
-    if (enable_pix_capture) {
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-      // set pix frame generator
-      pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>(instance_,
-                                                                       Device());
-#else
-    ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
-    }
   });
+
+  if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
+    LOGS_DEFAULT(WARNING)
+        << "WebGPU context is already initialized with "
+        << "maxNumPendingDispatches="
+        << max_num_pending_dispatches_
+        << ". Requested value "
+        << config.max_num_pending_dispatches
+        << " will be ignored.";
+  }
+
+  if (config.enable_robustness_explicitly_set) {
+    if (config.device != nullptr) {
+      LOGS_DEFAULT(WARNING)
+          << "WebGPU enableRobustness cannot affect an externally supplied WebGPU device. "
+          << "The requested value will be ignored.";
+    } else if (device_ != nullptr && enable_robustness_ != config.enable_robustness) {
+      LOGS_DEFAULT(WARNING)
+          << "WebGPU context is already initialized with enableRobustness=" << enable_robustness_
+          << ". Requested value " << config.enable_robustness << " will be ignored.";
+    }
+  }
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {
@@ -196,30 +298,141 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
-Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
-  const auto& inputs = program.Inputs();
-  const auto& outputs = program.Outputs();
+PendingPipelineBuild* WebGpuContext::FindPendingPipelineBuild(std::string_view key) {
+  for (auto& dispatch : deferred_dispatches_) {
+    if (dispatch.program_key == key && dispatch.pending_build) {
+      return &*dispatch.pending_build;
+    }
+  }
 
-  if (outputs.size() == 0) {
+  return nullptr;
+}
+
+Status WebGpuContext::WaitForDeferredPipelineBuilds() {
+  Status result = Status::OK();
+  for (auto& dispatch : deferred_dispatches_) {
+    if (dispatch.compute_pipeline) {
+      continue;
+    }
+
+    const ProgramArtifact* artifact = program_mgr_->Get(dispatch.program_key);
+    // Another thread may populate the cache after this dispatch starts its own build. In that case,
+    // the cached pipeline can be reused, but the pending build must still be waited on before its
+    // callback context is released.
+    if (artifact != nullptr && !dispatch.pending_build) {
+      dispatch.compute_pipeline = artifact->compute_pipeline;
+      continue;
+    }
+
+    if (!dispatch.pending_build) {
+      result = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "No cached or pending pipeline for deferred dispatch: ", dispatch.program_key);
+      // Do not return early. Later dispatches may own pending callback contexts that must remain
+      // alive until their builds complete. The caller will discard all dispatches without encoding
+      // them after this function finishes draining the window.
+      continue;
+    }
+
+    // With WaitAnyOnly, dropping the future does not cancel its callback; Dawn retains the callback
+    // context and may invoke it when the instance shuts down. Wait before discarding the context,
+    // even if another dispatch has populated the cache in the meantime.
+    auto& build = *dispatch.pending_build;
+    Status wait_status = Wait(build.future);
+    if (!wait_status.IsOK()) {
+      result = wait_status;
+      continue;
+    }
+    if (build.callback_context && !build.callback_context->status.IsOK()) {
+      result = build.callback_context->status;
+      continue;
+    }
+
+    if (artifact == nullptr) {
+      ProgramArtifact completed_artifact{std::move(build.name), std::move(build.callback_context->pipeline),
+                                         std::move(build.bind_group_layout),
+                                         std::move(build.shape_uniform_ranks)};
+      artifact = program_mgr_->Set(dispatch.program_key, std::move(completed_artifact));
+    }
+    dispatch.compute_pipeline = artifact->compute_pipeline;
+    dispatch.pending_build.reset();
+  }
+
+  return result;
+}
+
+Status WebGpuContext::EncodeDeferredDispatches() {
+  if (deferred_dispatches_.empty()) {
     return Status::OK();
   }
 
+  ORT_RETURN_IF_NOT(static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() <=
+                        max_num_pending_dispatches_,
+                    "WebGpuContext::EncodeDeferredDispatches: encoded dispatch count (",
+                    num_pending_dispatches_, ") plus deferred dispatch count (", deferred_dispatches_.size(),
+                    ") exceeds maxNumPendingDispatches (", max_num_pending_dispatches_, ").");
+
+  auto reset_deferred_state = [this]() {
+    deferred_dispatches_.clear();
+  };
+
+  // Resolve every pipeline before encoding so a failed build cannot leave a partially encoded run.
+  Status result = WaitForDeferredPipelineBuilds();
+  if (!result.IsOK()) {
+    reset_deferred_state();
+    return result;
+  }
+
+  // Encode the recorded dispatches in order, using the same command objects for graph capture.
+  for (auto& dispatch : deferred_dispatches_) {
+    // Preserve profiling info in the captured command for future replays. Otherwise, replay it
+    // into the current batch so pending_kernels_ stays in sync with num_pending_dispatches_.
+    if (is_profiling_ && dispatch.pending_kernel_info.has_value()) {
+      if (graph_capture_state_ != GraphCaptureState::Capturing) {
+        pending_kernels_.emplace_back(std::move(*dispatch.pending_kernel_info));
+      }
+    }
+    DispatchCommand(dispatch);
+    if (graph_capture_state_ == GraphCaptureState::Capturing) {
+      ORT_ENFORCE(external_captured_commands_ != nullptr);
+      external_captured_commands_->push_back(std::move(dispatch));
+    }
+  }
+
+  reset_deferred_state();
+  return result;
+}
+
+Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& program) {
+  const auto& inputs = program.Inputs();
+  const auto& outputs = program.Outputs();
+
+  if (outputs.empty()) {
+    return Status::OK();
+  }
+
+  // validate inputs and outputs are on WebGPU buffers
   if (ValidationMode() >= ValidationMode::Basic) {
     ORT_ENFORCE(std::all_of(inputs.begin(), inputs.end(), [](const ProgramInput& input) {
                   const auto* tensor = input.tensor;
                   return tensor != nullptr &&
                          tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                          tensor->Location().device.Type() == OrtDevice::GPU &&
-                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                         !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All inputs must be tensors on WebGPU buffers.");
+
+    if (program.IndirectDispatchTensor() != nullptr) {
+      ORT_ENFORCE(!inputs.empty() && inputs.back().tensor == program.IndirectDispatchTensor(),
+                  "The indirect dispatch tensor must be the last input. "
+                  "Ensure no call to program.AddInput() occurs after program.SetIndirectDispatchTensor().");
+    }
 
     ORT_ENFORCE(std::all_of(outputs.begin(), outputs.end(), [](const ProgramOutput& output) {
                   const auto* tensor = output.tensor;
                   return tensor != nullptr &&
                          tensor->Location().mem_type == OrtMemType::OrtMemTypeDefault &&
                          tensor->Location().device.Type() == OrtDevice::GPU &&
-                         !strcmp(tensor->Location().name, WEBGPU_BUFFER);
+                         !strcmp(tensor->Location().name.c_str(), WEBGPU_BUFFER);
                 }),
                 "All outputs must be tensors on WebGPU buffers.");
   }
@@ -270,64 +483,82 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     }
   }
 
+  // "Segments" is a feature that allows big buffer to be used in shader.
+  //
+  // For example, if `maxStorageBufferBindingSize` is 128MB, a 200MB sized input buffer can be split into two segments
+  // (128MB + 72MB) to be bound to the shader. In this case, the input segment count is 2. There will be 2 input
+  // bindings in the shader for this input buffer.
+  //
+  // See https://github.com/microsoft/onnxruntime/pull/25962 for more information.
+
+  std::vector<uint32_t> inputs_segments;
+  std::vector<uint32_t> outputs_segments;
+  ORT_RETURN_IF_ERROR(program_mgr_->CalculateSegmentsForInputsAndOutputs(program, inputs_segments, outputs_segments));
+
   uint32_t x = program.DispatchGroupSizeX();
   uint32_t y = program.DispatchGroupSizeY();
   uint32_t z = program.DispatchGroupSizeZ();
-  ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
 
-  bool is_1d_dispatch = (y == 1 && z == 1);
-
-  auto key = CalculateProgramCacheKey(program, is_1d_dispatch);
-
-  if (is_profiling_) {
-    PendingKernelInfo pending_kernel_info(context.KernelContext().GetNodeName(),
-                                          context.KernelContext().GetOpType(),
-                                          program.Name(),
-                                          key,
-                                          inputs,
-                                          outputs);
-    pending_kernels_.emplace_back(std::move(pending_kernel_info));
+  // Skip normalization for indirect dispatch since dimensions are determined by the indirect buffer
+  if (program.IndirectDispatchTensor() == nullptr) {
+    ORT_RETURN_IF_ERROR(program_mgr_->NormalizeDispatchGroupSize(x, y, z));
+  } else {
+    ORT_ENFORCE(x == 0 && y == 0 && z == 0,
+                "Only one of SetIndirectDispatchTensor and SetDispatchGroupSize should be called for program", program.Name());
   }
 
-  LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
+  auto key = CalculateProgramCacheKey(program, inputs_segments, outputs_segments);
 
+  LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
+  // The program cache prevents duplicate builds across encoded windows.
+  // EncodeDeferredDispatches() inserts completed pipelines into this cache before clearing the window.
   const auto* program_artifact = program_mgr_->Get(key);
+
+  // For cache misses, reuse a pending build already owned by this bounded dispatch window instead
+  // of starting another build for the same key.
+  std::optional<PendingPipelineBuild> pending_build;
+  const std::vector<int>* deferred_ranks = nullptr;
+  const wgpu::BindGroupLayout* bind_group_layout = nullptr;
   if (program_artifact == nullptr) {
-    wgpu::ComputePipeline compute_pipeline;
-    std::vector<int> shape_uniform_ranks;
-    auto status = program_mgr_->Build(program,
-                                      metadata,
-#ifndef NDEBUG  // if debug build
-                                      key,
-#endif
-                                      x,
-                                      y,
-                                      z,
-                                      compute_pipeline,
-                                      shape_uniform_ranks);
-    ORT_RETURN_IF_ERROR(status);
-    program_artifact = program_mgr_->Set(key, ProgramArtifact{program,
-                                                              std::move(compute_pipeline),
-                                                              std::move(shape_uniform_ranks)});
-#ifndef NDEBUG  // if debug build
-    ORT_ENFORCE(program_artifact != nullptr, "Program artifact should not be nullptr.");
-#endif
+    PendingPipelineBuild* in_flight_build = FindPendingPipelineBuild(key);
+
+    // Reuse an in-flight same-key build instead of compiling the shader again.
+    if (in_flight_build == nullptr) {
+      auto& build = pending_build.emplace();
+      build.name = program.Name();
+      build.callback_context = std::make_unique<PipelineCallbackContext>();
+      ORT_RETURN_IF_ERROR(program_mgr_->Build(program, metadata, inputs_segments, outputs_segments,
+                                              key, x, y, z,
+                                              build.bind_group_layout,
+                                              build.shape_uniform_ranks,
+                                              build.future,
+                                              *build.callback_context));
+      in_flight_build = &*pending_build;
+    }
+    deferred_ranks = &in_flight_build->shape_uniform_ranks;
+    bind_group_layout = &in_flight_build->bind_group_layout;
+  } else {
+    bind_group_layout = &program_artifact->bind_group_layout;
   }
 
   // prepare shape uniforms for shader variables (if any) and user defined uniforms
+  // On a deferred cache miss, use the ranks produced while starting the pending build; otherwise
+  // use the cached artifact's ranks.
+  const std::vector<int>& shape_uniform_ranks = deferred_ranks ? *deferred_ranks
+                                                               : program_artifact->shape_uniform_ranks;
   std::vector<ProgramUniformVariableValue> shape_uniforms;
-  shape_uniforms.reserve(program_artifact->shape_uniform_ranks.size() * 2);
+  shape_uniforms.reserve(shape_uniform_ranks.size() * 2);
   if (ValidationMode() >= ValidationMode::Basic) {
-    ORT_RETURN_IF_NOT(program_artifact->shape_uniform_ranks.size() == inputs.size() + outputs.size() + program.Indices().size(),
-                      "Invalid program artifact: variable size (", program_artifact->shape_uniform_ranks.size(),
+    ORT_RETURN_IF_NOT(shape_uniform_ranks.size() == inputs.size() + outputs.size() + program.Indices().size(),
+                      "Invalid program artifact: variable size (", shape_uniform_ranks.size(),
                       ") does not match current program (input: ", inputs.size(),
                       ", output: ", outputs.size(),
                       ", indices: ", program.Indices().size(), ")");
   }
 
-  auto append_shape_uniforms = [&shape_uniforms, program_artifact](size_t i, const TensorShape& shape) {
-    if (program_artifact->shape_uniform_ranks[i] > 0) {
-      size_t expected_rank = static_cast<size_t>(program_artifact->shape_uniform_ranks[i]);
+  auto append_shape_uniforms = [&shape_uniforms, &shape_uniform_ranks](size_t i, const TensorShape& shape) {
+    if (shape_uniform_ranks[i] > 0) {
+      size_t expected_rank = static_cast<size_t>(shape_uniform_ranks[i]);
       ORT_RETURN_IF(expected_rank != shape.NumDimensions(),
                     "Invalid program artifact: variable[", i, "] rank mismatch. Expected: ", expected_rank,
                     ", Actual: ", shape.NumDimensions());
@@ -432,7 +663,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   const size_t uniform_buffer_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
 
   WGPUBuffer uniform_buffer = nullptr;
-  const webgpu::BufferManager& buffer_mgr = context.BufferManager();
+  const webgpu::BufferManager& buffer_mgr = ComputeContextBase::BufferManagerAccessor::Get(context);
   if (uniform_buffer_total_size > 0) {
     std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
 
@@ -444,39 +675,57 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
-  const auto& compute_pass_encoder = GetComputePassEncoder();
-
-  WriteTimestamp(num_pending_dispatches_ * 2);
+  const size_t total_buffer_count = inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0);
 
   std::vector<WGPUBuffer> bind_buffers;
-  bind_buffers.reserve(inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0));
-  for (const auto& input : inputs) {
-    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(input.tensor->DataRaw())));
+  std::vector<uint32_t> bind_buffers_segments;
+  bind_buffers.reserve(total_buffer_count);
+  bind_buffers_segments.reserve(total_buffer_count);
+  for (size_t i = 0; i < inputs.size(); i++) {
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(inputs[i].tensor->DataRaw())));
+    bind_buffers_segments.push_back(inputs_segments[i]);
   }
-  for (const auto& output : outputs) {
-    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(output.tensor->MutableDataRaw()));
+  for (size_t i = 0; i < outputs.size(); i++) {
+    bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(outputs[i].tensor->MutableDataRaw()));
+    bind_buffers_segments.push_back(outputs_segments[i]);
   }
   if (uniform_buffer) {
     bind_buffers.push_back(uniform_buffer);
+    bind_buffers_segments.push_back(1);  // uniform buffer defaults to 1 segment
   }
 
-  LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
+  // Record the ready bind group and return. The deferred drain only needs to wait for the pipeline
+  // and encode the dispatch commands.
+  webgpu::CapturedCommandInfo command;
+  command.program_key = key;
+  if (program_artifact != nullptr) {
+    command.compute_pipeline = program_artifact->compute_pipeline;
+  }
+  command.bind_group = CreateBindGroup(bind_buffers, bind_buffers_segments,
+                                       *bind_group_layout, program.Name());
+  command.pending_build = std::move(pending_build);
   if (uniform_buffer) {
+    // The bind group owns a reference now, so return the allocator's reference immediately.
     buffer_mgr.Release(uniform_buffer);
   }
-
-  WriteTimestamp(num_pending_dispatches_ * 2 + 1);
-  ++num_pending_dispatches_;
-
-  if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
-      (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
-    EndComputePass();
+  command.dispatch_group = {x, y, z};
+  if (program.IndirectDispatchTensor() != nullptr) {
+    command.indirect_buffer = reinterpret_cast<WGPUBuffer>(
+        const_cast<void*>(program.IndirectDispatchTensor()->DataRaw()));
   }
-  if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
-    Flush(buffer_mgr);
-    num_pending_dispatches_ = 0;
+  // Capture profiling info now (shapes must be read while tensors are alive); replayed in flush.
+  if (is_profiling_) {
+    command.pending_kernel_info.emplace(context.NodeName(), context.OpType(), program.Name(),
+                                        key, inputs, outputs);
   }
+  deferred_dispatches_.push_back(std::move(command));
 
+  // Drain and submit a full window to bound both recorded and encoded dispatch state. Partial
+  // windows are encoded and submitted by the caller at its execution boundary.
+  if (static_cast<size_t>(num_pending_dispatches_) + deferred_dispatches_.size() >=
+      max_num_pending_dispatches_) {
+    ORT_RETURN_IF_ERROR(Flush(buffer_mgr));
+  }
   return Status::OK();
 }
 
@@ -487,8 +736,10 @@ std::vector<const char*> WebGpuContext::GetEnabledAdapterToggles() const {
   constexpr const char* toggles[] = {
       "use_dxc",
       "allow_unsafe_apis",
+      "decompose_uniform_buffers",
 #if defined(DAWN_ENABLE_VULKAN)
       "use_vulkan_memory_model",
+      "vulkan_enable_f16_on_nvidia",
 #endif
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
@@ -498,19 +749,40 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   // Enable / disable other toggles that may affect the performance.
   // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
   constexpr const char* toggles[] = {
-      "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
-      "disable_robustness",
+      "skip_validation",
       "d3d_disable_ieee_strictness",
   };
-  return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
-                                      ? std::begin(toggles) + 1
-                                      : std::begin(toggles),
-                                  std::end(toggles));
+  std::vector<const char*> enabled_toggles;
+#ifndef NDEBUG
+  // validation_mode_explicitly_set_ only changes release behavior; mark it used in debug builds
+  // to avoid -Wunused-private-field on toolchains that treat warnings as errors.
+  ORT_UNUSED_PARAMETER(validation_mode_explicitly_set_);
+  enabled_toggles = std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
+                                                 ? std::begin(toggles) + 1
+                                                 : std::begin(toggles),
+                                             std::end(toggles));
+#else
+  // In release/relwithdebinfo builds, default to skip_validation for performance,
+  // but honor explicit validationMode overrides.
+  if (!validation_mode_explicitly_set_) {
+    enabled_toggles = std::vector<const char*>(std::begin(toggles), std::end(toggles));
+  } else {
+    enabled_toggles = std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
+                                                   ? std::begin(toggles) + 1
+                                                   : std::begin(toggles),
+                                               std::end(toggles));
+  }
+#endif
+
+  if (!enable_robustness_) {
+    enabled_toggles.push_back("disable_robustness");
+  }
+  enabled_toggles.push_back("lazy_clear_resource_on_first_use");
+  return enabled_toggles;
 }
 
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
   constexpr const char* toggles[] = {
-      "lazy_clear_resource_on_first_use",
       "timestamp_quantization",
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
@@ -521,11 +793,12 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
   constexpr wgpu::FeatureName features[]{
 #if !defined(__wasm__)
       wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
-      wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
 #endif
+      wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
+      wgpu::FeatureName::SubgroupSizeControl,
 #if !defined(__wasm__)
       wgpu::FeatureName::BufferMapExtendedUsages,
 #endif
@@ -541,12 +814,20 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
 wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) const {
   wgpu::Limits required_limits{};
   wgpu::Limits adapter_limits;
-  ORT_ENFORCE(adapter.GetLimits(&adapter_limits));
+  ORT_ENFORCE(adapter.GetLimits(&adapter_limits) == wgpu::Status::Success);
 
   required_limits.maxBindGroups = adapter_limits.maxBindGroups;
   required_limits.maxComputeWorkgroupStorageSize = adapter_limits.maxComputeWorkgroupStorageSize;
   required_limits.maxComputeWorkgroupsPerDimension = adapter_limits.maxComputeWorkgroupsPerDimension;
-  required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  required_limits.maxStorageBuffersPerShaderStage = adapter_limits.maxStorageBuffersPerShaderStage;
+
+  if (max_storage_buffer_binding_size_ == 0) {
+    // If not set by the user, use the adapter limit.
+    required_limits.maxStorageBufferBindingSize = adapter_limits.maxStorageBufferBindingSize;
+  } else {
+    required_limits.maxStorageBufferBindingSize = max_storage_buffer_binding_size_;
+  }
+
   required_limits.maxBufferSize = adapter_limits.maxBufferSize;
   required_limits.maxComputeInvocationsPerWorkgroup = adapter_limits.maxComputeInvocationsPerWorkgroup;
   required_limits.maxComputeWorkgroupSizeX = adapter_limits.maxComputeWorkgroupSizeX;
@@ -557,7 +838,7 @@ wgpu::Limits WebGpuContext::GetRequiredLimits(const wgpu::Adapter& adapter) cons
 }
 
 void WebGpuContext::WriteTimestamp(uint32_t query_index) {
-  if (!is_profiling_ || query_type_ != TimestampQueryType::InsidePasses) {
+  if (!is_profiling_ || graph_capture_state_ == GraphCaptureState::Capturing || query_type_ != TimestampQueryType::InsidePasses) {
     return;
   }
 
@@ -571,6 +852,11 @@ void WebGpuContext::StartProfiling() {
   }
 
   is_profiling_ = true;
+  // profiling_start_time_ is supplied separately via SetProfilingStartTime, which is
+  // driven by WebGpuProfiler::StartProfiling and carries the ORT profiler's CPU time
+  // base for both session-level and run-level profiling.
+  gpu_timestamp_offset_ = 0;
+  profiling_first_submit_cpu_offset_us_ = -1;
 
   const uint32_t query_count = max_num_pending_dispatches_ * 2;
 
@@ -594,42 +880,63 @@ void WebGpuContext::StartProfiling() {
 
 void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   if (!pending_queries_.empty()) {
+    // Shift GPU timestamps (which start from 0 at the first submit) onto the ORT
+    // profiler's CPU timeline by adding the CPU elapsed time from profiling_start_time_
+    // to that first submit. This keeps GPU events aligned with ORT CPU events.
+    int64_t cpu_offset_us = profiling_first_submit_cpu_offset_us_ > 0
+                                ? profiling_first_submit_cpu_offset_us_
+                                : 0;
+
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
       const auto& query_read_buffer = pending_query.query_buffer;
 
-      ORT_ENFORCE(Wait(query_read_buffer.MapAsync(wgpu::MapMode::Read,
-                                                  0,
-                                                  static_cast<size_t>(query_read_buffer.GetSize()),
-                                                  wgpu::CallbackMode::WaitAnyOnly,
-                                                  [](wgpu::MapAsyncStatus status, wgpu::StringView message) {
-                                                    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", std::string_view{message});
-                                                  })) == Status::OK());
+      struct MapAsyncResult {
+        wgpu::MapAsyncStatus status{};
+        std::string message{};
+      } map_async_result;
+
+      ORT_THROW_IF_ERROR(Wait(query_read_buffer.MapAsync(
+          wgpu::MapMode::Read,
+          0,
+          static_cast<size_t>(query_read_buffer.GetSize()),
+          wgpu::CallbackMode::WaitAnyOnly,
+          // Note: Don't throw from a Dawn callback.
+          [](wgpu::MapAsyncStatus status, wgpu::StringView message, MapAsyncResult* result) noexcept {
+            result->status = status;
+            if (auto message_sv = static_cast<std::string_view>(message);
+                !message_sv.empty()) {
+              result->message = std::string{message_sv};
+            }
+          },
+          &map_async_result)));
+
+      ORT_ENFORCE(map_async_result.status == wgpu::MapAsyncStatus::Success,
+                  "Failed to download data from buffer. wgpu::MapAsyncStatus value: ",
+                  static_cast<int>(map_async_result.status), ", message: ", map_async_result.message);
+
       auto mapped_data = static_cast<const uint64_t*>(query_read_buffer.GetConstMappedRange());
 
       for (size_t i = 0; i < pending_kernels.size(); i++) {
         const PendingKernelInfo& pending_kernel_info = pending_kernels[i];
-        const auto& inputs = pending_kernel_info.inputs;
-        const auto& outputs = pending_kernel_info.outputs;
+        const auto& input_shapes = pending_kernel_info.input_shapes;
+        const auto& output_shapes = pending_kernel_info.output_shapes;
 
         SS(shapes, 128);
-        for (size_t s = 0; s < inputs.size(); s++) {
-          const auto& input = inputs[s];
-          shapes << "inputs[" << s << "] = " << input.override_shape.ToString() << " ";
+        for (size_t s = 0; s < input_shapes.size(); s++) {
+          shapes << "inputs[" << s << "] = " << input_shapes[s].ToString() << " ";
         }
-        for (size_t s = 0; s < outputs.size(); s++) {
-          const auto& output = outputs[s];
-          shapes << "outputs[" << s << "] = " << output.override_shape.ToString() << " ";
+        for (size_t s = 0; s < output_shapes.size(); s++) {
+          shapes << "outputs[" << s << "] = " << output_shapes[s].ToString() << " ";
         }
 
         if (gpu_timestamp_offset_ == 0) {
           gpu_timestamp_offset_ = mapped_data[i * 2];
-          // TODO: apply CPU-GPU time offset so that timestamps are aligned
         }
         uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
         uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
 
-        const std::unordered_map<std::string, std::string>& event_args = {
+        InlinedHashMap<std::string, std::string> event_args = {
             {"shapes", SS_GET(shapes)},
             {"cache_key", pending_kernel_info.cache_key},
         };
@@ -638,7 +945,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
                                      -1,
                                      -1,
                                      pending_kernel_info.name,
-                                     static_cast<int64_t>(std::round(start_time / 1000.0)),
+                                     static_cast<int64_t>(std::round(start_time / 1000.0)) + cpu_offset_us,
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
         events.emplace_back(std::move(event));
@@ -654,7 +961,11 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   is_profiling_ = false;
 }
 
-void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, profiling::Events& cached_events) {
+void WebGpuContext::CollectProfilingData() {
+  CollectProfilingData(events_);
+}
+
+void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events) {
   // This function is called when no active inference is ongoing.
   ORT_ENFORCE(!is_profiling_, "Profiling is ongoing in an inference run.");
 
@@ -663,10 +974,9 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, 
     ORT_ENFORCE(pending_kernels_.empty() && pending_queries_.empty(), "Pending kernels or queries are not empty.");
 
     events.insert(events.end(),
-                  std::make_move_iterator(cached_events.begin()),
-                  std::make_move_iterator(cached_events.end()));
-
-    cached_events.clear();
+                  std::make_move_iterator(events_.begin()),
+                  std::make_move_iterator(events_.end()));
+    events_.clear();
   } else {
     LOGS_DEFAULT(WARNING) << "TimestampQuery is not supported in this device.";
   }
@@ -678,25 +988,39 @@ Status WebGpuContext::PopErrorScope() {
   Status status{};
   ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
       wgpu::CallbackMode::WaitAnyOnly,
-      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
-        ORT_ENFORCE(pop_status == wgpu::PopErrorScopeStatus::Success, "Instance dropped.");
-        if (error_type == wgpu::ErrorType::NoError) {
-          return;
+      // Note: Don't throw from a Dawn callback.
+      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, wgpu::StringView message,
+         Status* status) noexcept {
+        if (pop_status != wgpu::PopErrorScopeStatus::Success) {
+          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to pop WebGPU error scope. status=",
+                                    static_cast<uint32_t>(pop_status));
+        } else if (error_type != wgpu::ErrorType::NoError) {
+          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", std::string_view(message));
         }
-        *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
       },
       &status)));
   return status;
 }
 
-void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
+Status WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
+  Status status = EncodeDeferredDispatches();
   if (!current_command_encoder_) {
-    return;
+    return status;
   }
 
   EndComputePass();
 
-  if (is_profiling_ && num_pending_dispatches_ > 0) {
+  if (is_profiling_ && num_pending_dispatches_ > 0 && graph_capture_state_ != GraphCaptureState::Capturing) {
+    ORT_ENFORCE(num_pending_dispatches_ == pending_kernels_.size(),
+                "Number of pending dispatches (", num_pending_dispatches_,
+                ") does not match pending kernels size (", pending_kernels_.size(), ")");
+
+    // Capture the CPU elapsed time from the ORT profiler's start to this first submit.
+    // Used in CollectProfilingData to offset GPU timestamps onto the ORT CPU timeline.
+    if (profiling_first_submit_cpu_offset_us_ < 0) {
+      profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_);
+    }
+
     uint32_t query_count = num_pending_dispatches_ * 2;
     current_command_encoder_.ResolveQuerySet(
         query_set_,
@@ -727,53 +1051,78 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
   }
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
+  return status;
 }
 
-void WebGpuContext::OnRunEnd() {
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-  if (pix_frame_generator_) {
-    pix_frame_generator_->GeneratePIXFrame();
-  }
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
-}
-
-void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
-                                          const std::vector<WGPUBuffer>& bind_buffers,
-                                          const ProgramArtifact& program_artifact,
-                                          uint32_t x, uint32_t y, uint32_t z) {
+wgpu::BindGroup WebGpuContext::CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
+                                               const std::vector<uint32_t>& bind_buffers_segments,
+                                               const wgpu::BindGroupLayout& bind_group_layout,
+                                               std::string_view label) const {
   uint32_t entry_index = 0;
   std::vector<WGPUBindGroupEntry> bind_group_entries;
-  for (WGPUBuffer buffer : bind_buffers) {
-    bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
+
+  const uint64_t kMaxBufferSize = device_limits_.maxStorageBufferBindingSize;
+  for (size_t buffer_idx = 0; buffer_idx < bind_buffers.size(); ++buffer_idx) {
+    WGPUBuffer buffer = bind_buffers[buffer_idx];
+    const uint32_t total_segments = bind_buffers_segments[buffer_idx];
+    // `total_segments` we used is calculated by tensor size, not actual buffer size. Because for bucketed buffer,
+    // the actual buffer size may be larger than the tensor size, an extreme case is that tensor size = 127MB, buffer size = 256MB,
+    // maxStorageBufferBindingSize = 128MB, in this case we only need to bind 1 segment instead of 2 segments because
+    // there is no data for the second segment.
+    if (total_segments > 1) {
+      uint64_t offset = 0;
+      uint64_t buffer_size = wgpuBufferGetSize(buffer);
+      for (uint32_t segment = 0; segment < total_segments; ++segment) {
+        uint64_t segment_size = std::min(kMaxBufferSize, buffer_size - offset);
+        bind_group_entries.push_back({nullptr, entry_index++, buffer, offset, segment_size, nullptr, nullptr});
+        offset += segment_size;
+      }
+    } else {
+      bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
+    }
   }
 
-  WGPUBindGroupLayout bind_group_layout = program_artifact.compute_pipeline.GetBindGroupLayout(0).MoveToCHandle();
+  ORT_ENFORCE(entry_index <= device_limits_.maxBindingsPerBindGroup, "Number of bind group entries (", entry_index,
+              ") exceeds device limit (", device_limits_.maxBindingsPerBindGroup, ").");
+
   WGPUBindGroupDescriptor bind_group_desc{};
-  bind_group_desc.layout = bind_group_layout;
+  bind_group_desc.layout = bind_group_layout.Get();
   bind_group_desc.entryCount = bind_group_entries.size();
   bind_group_desc.entries = bind_group_entries.data();
-  bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
+  bind_group_desc.label = {label.data(), label.length()};
 
-  auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
-  if (graph_capture_state_ == GraphCaptureState::Capturing) {
-    external_captured_commands_->push_back({program_artifact.compute_pipeline,
-                                            bind_group,
-                                            bind_group_layout,
-                                            {x, y, z}});
+  WGPUBindGroup bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
+  ORT_ENFORCE(bind_group != nullptr, "Failed to create bind group for program ", label, ".");
+  return wgpu::BindGroup::Acquire(bind_group);
+}
+
+void WebGpuContext::DispatchCommand(const webgpu::CapturedCommandInfo& command) {
+  ORT_ENFORCE(command.compute_pipeline.has_value());
+  ORT_ENFORCE(command.bind_group != nullptr);
+  const auto& compute_pass_encoder = GetComputePassEncoder();
+  WriteTimestamp(num_pending_dispatches_ * 2);
+  compute_pass_encoder.SetPipeline(*command.compute_pipeline);
+  compute_pass_encoder.SetBindGroup(0, command.bind_group);
+
+  if (command.indirect_buffer != nullptr) {
+    compute_pass_encoder.DispatchWorkgroupsIndirect(command.indirect_buffer, 0);
   } else {
-    compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
-    wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
-    compute_pass_encoder.DispatchWorkgroups(x, y, z);
-
-    wgpuBindGroupRelease(bind_group);
-    wgpuBindGroupLayoutRelease(bind_group_layout);
+    compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0],
+                                            command.dispatch_group[1],
+                                            command.dispatch_group[2]);
+  }
+  WriteTimestamp(num_pending_dispatches_ * 2 + 1);
+  ++num_pending_dispatches_;
+  if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
+      (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
+    EndComputePass();
   }
 }
 
 void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager) {
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
-  Flush(buffer_manager);
+  ORT_THROW_IF_ERROR(Flush(buffer_manager));
 
   external_captured_commands_ = captured_commands;
 
@@ -781,9 +1130,6 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
   if (external_captured_commands_) {
     external_captured_commands_->clear();
   }
-
-  // TODO: support profiling with graph capture.
-  ORT_ENFORCE(!is_profiling_, "profiling is not supported yet under graph capture mode");
 
   graph_capture_state_ = GraphCaptureState::Capturing;
 }
@@ -795,25 +1141,26 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
   const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
     auto& command = captured_commands[i];
-    const auto& compute_pass_encoder = GetComputePassEncoder();
-    WriteTimestamp(num_pending_dispatches_ * 2);
-    compute_pass_encoder.SetPipeline(command.compute_pipeline);
-    wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, command.bind_group, 0, nullptr);
-    compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
-    WriteTimestamp(num_pending_dispatches_ * 2 + 1);
-    ++num_pending_dispatches_;
-    if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
-        (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
-      EndComputePass();
+
+    // Restore profiling info when profiling is enabled. All commands are expected
+    // to have profiling data in this mode to keep pending_kernels_ consistent
+    // with num_pending_dispatches_.
+    if (is_profiling_) {
+      ORT_ENFORCE(command.pending_kernel_info.has_value(),
+                  "WebGpuContext::Replay: profiling is enabled but captured command at index ",
+                  i,
+                  " is missing pending_kernel_info.");
+      pending_kernels_.emplace_back(*command.pending_kernel_info);
     }
+
+    DispatchCommand(command);
     if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
-      Flush(buffer_manager);
-      num_pending_dispatches_ = 0;
+      ORT_THROW_IF_ERROR(Flush(buffer_manager));
     }
   }
 
   // Flush any remaining commands
-  Flush(buffer_manager);
+  ORT_THROW_IF_ERROR(Flush(buffer_manager));
 
   graph_capture_state_ = GraphCaptureState::Default;
 }
@@ -829,22 +1176,15 @@ void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInf
   LOGS_DEFAULT(VERBOSE) << "ReleaseGraphResources: Releasing " << captured_commands.size() << " captured command resources";
 
   for (auto& command : captured_commands) {
-    if (command.bind_group != nullptr) {
-      wgpuBindGroupRelease(command.bind_group);
-      command.bind_group = nullptr;
-    }
-
-    if (command.bind_group_layout != nullptr) {
-      wgpuBindGroupLayoutRelease(command.bind_group_layout);
-      command.bind_group_layout = nullptr;
-    }
+    command.bind_group = nullptr;
   }
 }
 
-std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
 std::mutex WebGpuContextFactory::mutex_;
 std::once_flag WebGpuContextFactory::init_default_flag_;
-wgpu::Instance WebGpuContextFactory::default_instance_;
+
+std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo>* WebGpuContextFactory::contexts_ = nullptr;
+WGPUInstance WebGpuContextFactory::default_instance_ = nullptr;
 
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
   const int context_id = config.context_id;
@@ -856,11 +1196,11 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                          dawn_proc_table = config.dawn_proc_table
 #endif
   ]() {
-  // Step.1 - setup dawn proc table (only for non-WASM build)
+  // Setup dawn proc table (only for non-WASM build)
 
 #if !defined(__wasm__)
     const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
-#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#if defined(BUILD_DAWN_SHARED_LIBRARY)
     ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
 #else
 #if !defined(USE_EXTERNAL_DAWN)
@@ -873,48 +1213,82 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     dawnProcSetProcs(dawn_procs);
 #endif
 #endif
+  });
 
-    // Step.2 - Create wgpu::Instance
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (default_instance_ == nullptr) {
+    // Create wgpu::Instance
+    wgpu::InstanceFeatureName required_instance_features[] = {wgpu::InstanceFeatureName::TimedWaitAny};
     wgpu::InstanceDescriptor instance_desc{};
-    instance_desc.capabilities.timedWaitAnyEnable = true;
-    default_instance_ = wgpu::CreateInstance(&instance_desc);
+    instance_desc.requiredFeatures = required_instance_features;
+    instance_desc.requiredFeatureCount = sizeof(required_instance_features) / sizeof(required_instance_features[0]);
+#if !defined(__wasm__) && !defined(USE_EXTERNAL_DAWN)
+    dawn::native::DawnInstanceDescriptor dawn_instance_desc{};
+    dawn_instance_desc.platform = &GetDawnPlatform();
+    instance_desc.nextInChain = &dawn_instance_desc;
+#endif
+    default_instance_ = wgpu::CreateInstance(&instance_desc).MoveToCHandle();
 
     ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
-  });
+  }
 
   if (context_id == 0) {
     // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
     ORT_ENFORCE(instance == nullptr && device == nullptr,
                 "WebGPU EP default context (contextId=0) must not have custom WebGPU instance or device.");
 
-    instance = default_instance_.Get();
+    instance = default_instance_;
   } else {
     // for context ID > 0, user must provide custom WebGPU instance and device.
     ORT_ENFORCE(instance != nullptr && device != nullptr,
                 "WebGPU EP custom context (contextId>0) must have custom WebGPU instance and device.");
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
+  // Lazy-allocate the contexts map on first use (heap-allocated to avoid static destruction crash).
+  if (contexts_ == nullptr) {
+    contexts_ = new std::unordered_map<int32_t, WebGpuContextInfo>();
+  }
 
-  auto it = contexts_.find(context_id);
-  if (it == contexts_.end()) {
+  auto it = contexts_->find(context_id);
+  if (it == contexts_->end()) {
     GSL_SUPPRESS(r.11)
-    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, device, config.validation_mode, config.preserve_device));
-    it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
+    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
+                                                                    device,
+                                                                    config.validation_mode,
+                                                                    config.validation_mode_explicitly_set,
+                                                                    config.preserve_device,
+                                                                    config.max_storage_buffer_binding_size));
+    it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
                     it->second.context->device_.Get() == device,
                 "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance or device.");
   }
   it->second.ref_count++;
+
+  // perform initialization; on failure, undo the ref_count increment and remove the entry
+  // if this was the first (and only) reference, so we don't leave a zombie context in the map
+  // that would later deadlock during Cleanup().
+  ORT_TRY {
+    it->second.context->Initialize(config);
+  }
+  ORT_CATCH(...) {
+    if (--it->second.ref_count == 0) {
+      contexts_->erase(it);
+    }
+    ORT_RETHROW;
+  }
+
   return *it->second.context;
 }
 
 WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  auto it = contexts_.find(context_id);
-  ORT_ENFORCE(it != contexts_.end(), "WebGPU EP context ID ", context_id, " is not found.");
+  ORT_ENFORCE(contexts_ != nullptr, "WebGPU contexts have not been initialized or have been cleaned up.");
+  auto it = contexts_->find(context_id);
+  ORT_ENFORCE(it != contexts_->end(), "WebGPU EP context ID ", context_id, " is not found.");
 
   return *it->second.context;
 }
@@ -922,18 +1296,32 @@ WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
 void WebGpuContextFactory::ReleaseContext(int context_id) {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  auto it = contexts_.find(context_id);
-  ORT_ENFORCE(it != contexts_.end(), "WebGPU EP context ID ", context_id, " is not found.");
+  ORT_ENFORCE(contexts_ != nullptr, "WebGPU contexts have not been initialized or have been cleaned up.");
+  auto it = contexts_->find(context_id);
+  ORT_ENFORCE(it != contexts_->end(), "WebGPU EP context ID ", context_id, " is not found.");
 
   if (--it->second.ref_count == 0 && !it->second.context->preserve_device_) {
-    contexts_.erase(it);
+    contexts_->erase(it);
   }
 }
 
 void WebGpuContextFactory::Cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
-  contexts_.clear();
-  default_instance_ = nullptr;
+
+  if (contexts_ != nullptr) {
+    delete contexts_;
+    contexts_ = nullptr;
+  }
+
+  if (default_instance_ != nullptr) {
+    wgpuInstanceRelease(default_instance_);
+    default_instance_ = nullptr;
+  }
+}
+
+WebGpuContext& WebGpuContextFactory::DefaultContext() {
+  WebGpuContextConfig config{};
+  return WebGpuContextFactory::CreateContext(config);
 }
 
 void CleanupWebGpuContexts() {

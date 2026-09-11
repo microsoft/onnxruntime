@@ -122,14 +122,21 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         continue;
       }
 
-      // Skip if unknown rank
-      auto shape = api_graph->GetValueInfo(node->Inputs()[0])->Shape();
-      if (!shape.has_value()) {
+      // The NCHW<->NHWC permutation depends only on rank. For Conv/ConvTranspose (and FusedConv, which is treated as Conv
+      // here) the data input and the weight share the same rank, so an unknown input[0] rank can be recovered from the
+      // weight at input[1].
+      std::optional<size_t> input_rank = api_graph->GetValueInfo(node->Inputs()[0])->ShapeRank();
+      if (!input_rank.has_value() && (op_type == "Conv" || op_type == "ConvTranspose")) {
+        input_rank = api_graph->GetValueInfo(node->Inputs()[1])->ShapeRank();
+      }
+
+      // Skip if rank is still unknown.
+      if (!input_rank.has_value()) {
         continue;
       }
 
       // Convert to channels last
-      size_t rank = shape->size();
+      size_t rank = *input_rank;
 
       bool has_channel_last_attr = node->GetAttributeInt("channels_last").has_value() ? true : false;
       if (has_channel_last_attr) {

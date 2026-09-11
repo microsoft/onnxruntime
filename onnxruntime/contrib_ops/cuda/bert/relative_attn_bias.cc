@@ -163,7 +163,7 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   const size_t elements_after_gemm = (size_t)BNS * (size_t)D;
   bool reuse_output = (seq_len >= D);
   size_t workspace_size = sizeof(T) * (elements_in_query + (reuse_output ? (size_t)0 : elements_after_gemm));
-  auto workspace = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());
+  auto workspace = this->GetScratchBuffer<void>(workspace_size, this->GetComputeStream(context));
 
   cudaStream_t stream = Stream(context);
   if (!is_padding_removed) {

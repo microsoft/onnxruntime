@@ -6,6 +6,7 @@
 #include <sstream>
 #include "core/common/common.h"
 #include "core/common/hash_combine.h"
+#include "core/common/pci_vendor_ids.h"
 
 // fix clash with INTEL that is defined in
 // MacOSX14.2.sdk/System/Library/Frameworks/Security.framework/Headers/oidsbase.h
@@ -24,16 +25,16 @@ struct OrtDevice {
   using Alignment = size_t;
 
   // Pre-defined device types.
-  static const DeviceType CPU = 0;
-  static const DeviceType GPU = 1;
-  static const DeviceType FPGA = 2;
-  static const DeviceType NPU = 3;
+  static constexpr DeviceType CPU = 0;
+  static constexpr DeviceType GPU = 1;
+  static constexpr DeviceType FPGA = 2;
+  static constexpr DeviceType NPU = 3;
   // this is used in the python API so we need to keep it for backward compatibility
   // it is only used in the OrtDevice ctor, and is mapped to GPU + VendorIds::MICROSOFT
-  static const DeviceType DML = 4;
+  static constexpr DeviceType DML = 4;
 
   struct MemType {
-    static const MemoryType DEFAULT = 0;
+    static constexpr MemoryType DEFAULT = 0;
 
     // deprecated values. MemType + VendorId is used to identify the memory type.
     enum Deprecated : MemoryType {
@@ -49,20 +50,22 @@ struct OrtDevice {
     //   - When creating an OrtDevice for an EP allocator, you would typically use the same device type and id
     //     that the EP is registered with (i.e. the OrtDevice passed to the base IExecutionProvider constructor).
     //   - Otherwise use OrtDevice::CPU.
-    static const MemoryType HOST_ACCESSIBLE = 5;
+    static constexpr MemoryType HOST_ACCESSIBLE = 5;
   };
 
-  // PCI vendor ids
+  // Compatibility aliases for vendor IDs used by OrtDevice-based allocator and data transfer code.
+  // The canonical PCI vendor ID constants live in core/common/pci_vendor_ids.h.
+  // Python's OrtDeviceVendorId enum mirrors these names and values.
   enum VendorIds : VendorId {
     // No vendor ID. Valid for DeviceType::CPU + MemType::DEFAULT or for generic allocators like WebGPU.
     NONE = 0x0000,
-    AMD = 0x1002,        // ROCm, MIGraphX EPs
-    NVIDIA = 0x10DE,     // CUDA/TensorRT
-    ARM = 0x13B5,        // ARM GPU EP
-    MICROSOFT = 0x1414,  // DML EP
-    HUAWEI = 0x19E5,     // CANN EP
-    QUALCOMM = 0x5143,   // QNN DP
-    INTEL = 0x8086,      // OpenVINO
+    AMD = onnxruntime::pci_vendor_ids::kAmdAti,            // MIGraphX EP
+    NVIDIA = onnxruntime::pci_vendor_ids::kNvidia,         // CUDA/TensorRT
+    ARM = onnxruntime::pci_vendor_ids::kArm,               // ARM GPU EP
+    MICROSOFT = onnxruntime::pci_vendor_ids::kMicrosoft,   // DML EP
+    HUAWEI = onnxruntime::pci_vendor_ids::kHuawei,         // CANN EP
+    QUALCOMM = onnxruntime::pci_vendor_ids::kQualcommInc,  // QNN EP
+    INTEL = onnxruntime::pci_vendor_ids::kIntel,           // OpenVINO
   };
 
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, VendorId vendor_id_, DeviceId device_id_,
@@ -148,6 +151,13 @@ struct OrtDevice {
       return device_id < other.device_id;
 
     return alignment < other.alignment;
+  }
+
+  bool EqualIgnoringAlignment(const OrtDevice& other) const {
+    return device_type == other.device_type &&
+           memory_type == other.memory_type &&
+           vendor_id == other.vendor_id &&
+           device_id == other.device_id;
   }
 
  private:

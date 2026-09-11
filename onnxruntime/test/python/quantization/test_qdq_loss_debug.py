@@ -156,7 +156,7 @@ class TestSaveActivations(unittest.TestCase):
             for expected, actual in zip(model_outputs, test_outputs, strict=False):
                 exp = expected.reshape(-1)
                 act = actual.reshape(-1)
-                np.testing.assert_equal(exp, act)
+                np.testing.assert_equal(act, exp)
 
     def test_create_activation_matching_present(self):
         float_model_path = str(Path(self._tmp_model_dir.name) / "float_model2.onnx")

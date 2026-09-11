@@ -10,6 +10,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 
@@ -53,6 +54,7 @@ Status DuplicateDQForOutputEdge(const graph_utils::GraphEdge& original_dq_output
                                     MakeString("Added by ", kTransformerName),
                                     dq_inputs,
                                     {&new_dq_output_nodearg},
+                                    original_dq_node,
                                     &original_dq_node.GetAttributes(),
                                     original_dq_node.Domain());
 

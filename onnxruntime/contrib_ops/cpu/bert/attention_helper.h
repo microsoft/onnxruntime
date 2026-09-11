@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <limits>
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -34,6 +35,52 @@ void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, T softcap) {
 template <typename T>
 void ApplyAttentionBias(T* softmax_logits, const T* attention_mask, int N) {
   MlasEltwiseAdd(softmax_logits, attention_mask, softmax_logits, N);
+}
+
+template <typename T>
+void PreparePaddingMask(const int32_t* mask_index,
+                        gsl::span<const int64_t> mask_index_dims,
+                        T* mask_data,  // shape [B, T], pre-filled with 0
+                        int batch_size,
+                        int kv_sequence_length,
+                        int past_sequence_length,
+                        float mask_filter_value) {
+  // A pure padding mask (1D mask_index of shape (B) or (2B), or a 2D raw key mask of shape (B, T))
+  // does not depend on the query position, so it is stored as [B, T] and broadcast across S during
+  // softmax. This avoids materializing the full [B, S, T] mask. Values 0/1 are converted to
+  // mask_filter_value/0.0.
+  const int all_sequence_length = past_sequence_length + kv_sequence_length;
+  const bool is_raw_attention_mask = (mask_index_dims.size() == 2);
+  const bool has_mask_start_position =
+      (mask_index_dims.size() == 1 && static_cast<int>(mask_index_dims[0]) == 2 * batch_size);
+
+  for (int b_i = 0; b_i < batch_size; b_i++) {
+    const ptrdiff_t batch_offset = SafeInt<ptrdiff_t>(b_i) * all_sequence_length;
+    T* p_mask = mask_data + batch_offset;
+
+    if (is_raw_attention_mask) {
+      // Raw attention mask has value 0 or 1. Convert 0 to mask_filter_value, and 1 to 0.0.
+      const int32_t* raw_mask = mask_index + batch_offset;
+      for (int m_i = 0; m_i < all_sequence_length; m_i++) {
+        p_mask[m_i] = (raw_mask[m_i] > 0) ? static_cast<T>(0.0f) : static_cast<T>(mask_filter_value);
+      }
+    } else {
+      // mask_index is 1D: (B) or (2B).
+      // Handle right-side padding: mask value at or after the end position will be mask_filter_value.
+      int end_position = std::clamp(static_cast<int>(mask_index[b_i]), 0, all_sequence_length);
+      for (int m_i = end_position; m_i < all_sequence_length; m_i++) {
+        p_mask[m_i] = static_cast<T>(mask_filter_value);
+      }
+
+      // Handle left-side padding: mask value before the start position will be mask_filter_value.
+      if (has_mask_start_position) {
+        int start_position = std::clamp(static_cast<int>(mask_index[b_i + batch_size]), 0, all_sequence_length);
+        for (int m_i = 0; m_i < start_position; m_i++) {
+          p_mask[m_i] = static_cast<T>(mask_filter_value);
+        }
+      }
+    }
+  }
 }
 
 template <typename T>
@@ -95,14 +142,14 @@ void PrepareMask(const int32_t* mask_index,
         // mask_index is 1D: (B) or (2B) => (Bx)T
 
         // Handle right-side padding: mask value at or after the end position will be mask_filter_value
-        int end_position = mask_index[b_i];
+        int end_position = std::clamp(static_cast<int>(mask_index[b_i]), 0, all_sequence_length);
         for (int m_i = end_position; m_i < all_sequence_length; m_i++) {
           p_mask[m_i] = static_cast<T>(mask_filter_value);
         }
 
         // Handle left-side padding: mask value before the start position will be mask_filter_value
         if (has_mask_start_position) {
-          int start_position = std::min(mask_index[b_i + batch_size], all_sequence_length);
+          int start_position = std::clamp(static_cast<int>(mask_index[b_i + batch_size]), 0, all_sequence_length);
           for (int m_i = 0; m_i < start_position; m_i++) {
             p_mask[m_i] = static_cast<T>(mask_filter_value);
           }
@@ -167,11 +214,11 @@ T* ConcatStateChunkGQA(const T* past,
   T* p = start;
   if (!past_present_share_buffer && past_chunk_length > 0) {
     const T* src_past = past + i * past_buff_chunk_length;
-    memcpy(p, src_past, past_chunk_length * sizeof(T));
+    memcpy(p, src_past, SafeInt<size_t>(past_chunk_length) * sizeof(T));
   }
   p += past_chunk_length;
 
-  memcpy(p, chunk, new_chunk_length * sizeof(T));
+  memcpy(p, chunk, SafeInt<size_t>(new_chunk_length) * sizeof(T));
   return start;
 }
 

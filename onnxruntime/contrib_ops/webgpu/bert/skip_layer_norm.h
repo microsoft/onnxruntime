@@ -31,7 +31,8 @@ class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"components", ProgramUniformVariableDataType::Uint32},
       {"hidden_size", ProgramUniformVariableDataType::Uint32},
-      {"epsilon", ProgramUniformVariableDataType::Float32});
+      {"epsilon", ProgramUniformVariableDataType::Float32},
+      {"skip_size", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool hasBeta_;
@@ -58,6 +59,21 @@ class SkipLayerNorm final : public WebGpuKernel {
  private:
   float epsilon_;
 };
+
+// Configures and dispatches a SkipLayerNormProgram. Centralizes program-setup logic
+// (uniform variables, components, split_hidden_dim heuristic, workgroup sizing) so callers
+// other than the SkipLayerNorm kernel (e.g. fused MatMulNBits ops) do not need to duplicate it.
+// `beta`, `bias` and `input_skip_bias_sum` may be nullptr.
+Status RunSkipLayerNormProgram(ComputeContext& context,
+                               const Tensor* x,
+                               const Tensor* skip,
+                               const Tensor* gamma,
+                               const Tensor* beta,
+                               const Tensor* bias,
+                               float epsilon,
+                               bool simplified,
+                               Tensor* output,
+                               Tensor* input_skip_bias_sum);
 
 }  // namespace webgpu
 }  // namespace contrib

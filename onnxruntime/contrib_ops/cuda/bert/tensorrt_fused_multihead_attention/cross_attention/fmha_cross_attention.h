@@ -116,6 +116,7 @@ struct Fused_multihead_attention_params_mhca {
   }
 };
 
+#if USE_TRT_FUSED_ATTENTION
 extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin[];
 extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin[];
 extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin[];
@@ -141,8 +142,9 @@ extern const uint32_t cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin_len;
 extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm80_cu_cubin_len;
 extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm86_cu_cubin_len;
 extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin_len;
+#endif  // USE_TRT_FUSED_ATTENTION
 
-static const struct FusedMultiHeadCrossAttentionKernelMetaInfoV2 {
+struct FusedMultiHeadCrossAttentionKernelMetaInfoV2 {
   Data_type mDataType;
   int32_t mS;
   int32_t mD;
@@ -154,7 +156,10 @@ static const struct FusedMultiHeadCrossAttentionKernelMetaInfoV2 {
   int32_t mThreadsPerCTA;
   int32_t mUnrollStep;
   bool mInterleaved;
-} sMhaKernelMetaInfos[] = {
+};
+
+#if USE_TRT_FUSED_ATTENTION
+static const FusedMultiHeadCrossAttentionKernelMetaInfoV2 sMhaKernelMetaInfos[] = {
     {DATA_TYPE_FP16, 128, 64, kSM_75, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin_len, "fmha_mhca_fp16_128_64_sm75_kernel", 40960, 128, 0, false},
     {DATA_TYPE_FP16, 128, 64, kSM_75, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin, cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin_len, "fmha_mhca_fp16_128_64_sm75_kernel_nl", 36864, 128, 32, false},
 
@@ -178,6 +183,7 @@ static const struct FusedMultiHeadCrossAttentionKernelMetaInfoV2 {
     {DATA_TYPE_FP16, 128, 128, kSM_89, cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin, cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin_len, "fmha_mhca_fp16_128_128_sm89_kernel_nl", 81920, 128, 32, false},
     {DATA_TYPE_FP16, 128, 256, kSM_89, cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin, cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin_len, "fmha_mhca_fp16_128_256_sm89_kernel", 163840, 256, 0, false},
     {DATA_TYPE_FP16, 128, 256, kSM_89, cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin, cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin_len, "fmha_mhca_fp16_128_256_sm89_kernel_nl", 81920, 256, 16, false}};
+#endif  // USE_TRT_FUSED_ATTENTION
 
 static Fused_multihead_attention_params_mhca getMHCAParams(
     // sizes
@@ -273,16 +279,28 @@ using FusedMHACrossKernelFactory = TSharedCubinKernelFactory<FusedMultiHeadCross
 // Below are public interface
 
 inline bool has_fused_cross_attention_kernel(int sm, int head_size, int kv_sequence_length) {
+#if USE_TRT_FUSED_ATTENTION
   constexpr int min_head_size = 0;
   const int max_head_size = (sm == 75 ? 64 : 256);
   return (sm == 75 || sm == 80 || sm == 86 || sm == 89) &&
          (head_size > min_head_size) && (head_size <= max_head_size) &&
          (kv_sequence_length <= 128);  // TODO: shall we remove this constraint on kv_sequence_length?
+#else
+  ORT_UNUSED_PARAMETER(sm);
+  ORT_UNUSED_PARAMETER(head_size);
+  ORT_UNUSED_PARAMETER(kv_sequence_length);
+  return false;
+#endif
 }
 
 inline FusedMultiHeadCrossAttentionKernel const* get_fused_cross_attention_kernels(int32_t sm) {
+#if USE_TRT_FUSED_ATTENTION
   return FusedMHACrossKernelFactory::Get().getCubinKernels(
       sMhaKernelMetaInfos, sizeof(sMhaKernelMetaInfos) / sizeof(sMhaKernelMetaInfos[0]), DATA_TYPE_FP16, sm);
+#else
+  ORT_UNUSED_PARAMETER(sm);
+  return nullptr;
+#endif
 }
 
 inline void run_fused_cross_attention(

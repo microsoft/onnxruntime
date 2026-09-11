@@ -1,6 +1,7 @@
 /******************************************************************************
  * Copyright (c) 2023, Tri Dao.
  ******************************************************************************/
+
 #pragma once
 
 #include <assert.h>
@@ -20,9 +21,11 @@
 #include <cutlass/numeric_conversion.h>
 #include <cutlass/numeric_types.h>
 
+#include "contrib_ops/cuda/bert/flash_attention/namespace_config.h"
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-namespace onnxruntime {
-namespace flash {
+
+namespace FLASH_NAMESPACE {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -34,18 +37,14 @@ __forceinline__ __device__ uint32_t relu2<cutlass::half_t>(const uint32_t x) {
   uint32_t res;
   const uint32_t zero = 0u;
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-  asm volatile("max.f16x2 %0, %1, %2;\n"
-               : "=r"(res)
-               : "r"(x), "r"(zero));
+  asm volatile("max.f16x2 %0, %1, %2;\n" : "=r"(res) : "r"(x), "r"(zero));
 #else
   asm volatile(
       "{\n"
       "\t .reg .f16x2 sela;\n"
       "\t set.gtu.u32.f16x2 sela, %1, %2;\n"
       "\t and.b32 %0, sela, %1;\n"
-      "}\n"
-      : "=r"(res)
-      : "r"(x), "r"(zero));
+      "}\n" : "=r"(res) : "r"(x), "r"(zero));
 #endif
   return res;
 }
@@ -55,9 +54,7 @@ template <>
 __forceinline__ __device__ uint32_t relu2<cutlass::bfloat16_t>(const uint32_t x) {
   uint32_t res;
   const uint32_t zero = 0u;
-  asm volatile("max.bf16x2 %0, %1, %2;\n"
-               : "=r"(res)
-               : "r"(x), "r"(zero));
+  asm volatile("max.bf16x2 %0, %1, %2;\n" : "=r"(res) : "r"(x), "r"(zero));
   return res;
 }
 #endif
@@ -74,9 +71,7 @@ __forceinline__ __device__ uint32_t convert_relu2<cutlass::half_t>(const float2 
   uint32_t res;
   const uint32_t a = reinterpret_cast<const uint32_t&>(x.x);
   const uint32_t b = reinterpret_cast<const uint32_t&>(x.y);
-  asm volatile("cvt.rn.relu.f16x2.f32 %0, %1, %2;\n"
-               : "=r"(res)
-               : "r"(b), "r"(a));
+  asm volatile("cvt.rn.relu.f16x2.f32 %0, %1, %2;\n" : "=r"(res) : "r"(b), "r"(a));
   return res;
 }
 
@@ -85,9 +80,7 @@ __forceinline__ __device__ uint32_t convert_relu2<cutlass::bfloat16_t>(const flo
   uint32_t res;
   const uint32_t a = reinterpret_cast<const uint32_t&>(x.x);
   const uint32_t b = reinterpret_cast<const uint32_t&>(x.y);
-  asm volatile("cvt.rn.relu.bf16x2.f32 %0, %1, %2;\n"
-               : "=r"(res)
-               : "r"(b), "r"(a));
+  asm volatile("cvt.rn.relu.bf16x2.f32 %0, %1, %2;\n" : "=r"(res) : "r"(b), "r"(a));
   return res;
 }
 
@@ -285,8 +278,8 @@ __forceinline__ __device__ auto convert_type_relu(Tensor<Engine, Layout> const& 
   }
   Tensor out = make_tensor(make_rmem_ptr<To_type>(out_uint32.data()), tensor.layout());
 #else
-  Tensor out = flash::convert_type<To_type>(tensor);
-  flash::relu_(out);
+  Tensor out = FLASH_NAMESPACE::convert_type<To_type>(tensor);
+  FLASH_NAMESPACE::relu_(out);
 #endif
   return out;
 }
@@ -342,10 +335,10 @@ __forceinline__ __device__ void copy(TiledCopy tiled_copy, Tensor<Engine0, Layou
 template <bool Is_even_K = true,
           typename Engine0, typename Layout0, typename Engine1, typename Layout1,
           typename Engine2, typename Layout2, typename Engine3, typename Layout3>
-inline __device__ void copy_w_min_idx(Tensor<Engine0, Layout0> const& S,
-                                      Tensor<Engine1, Layout1>& D, Tensor<Engine2, Layout2> const& identity_MN,
-                                      Tensor<Engine3, Layout3> const& predicate_K,
-                                      const int max_MN = 0, const int min_MN = 0) {
+__forceinline__ __device__ void copy_w_min_idx(Tensor<Engine0, Layout0> const& S,
+                                               Tensor<Engine1, Layout1>& D, Tensor<Engine2, Layout2> const& identity_MN,
+                                               Tensor<Engine3, Layout3> const& predicate_K,
+                                               const int max_MN = 0, const int min_MN = 0) {
   CUTE_STATIC_ASSERT_V(rank(S) == Int<3>{});
   CUTE_STATIC_ASSERT_V(rank(D) == Int<3>{});
   CUTE_STATIC_ASSERT_V(size<0>(S) == size<0>(D));  // MMA
@@ -379,5 +372,4 @@ __forceinline__ __device__ void apply_softcap(Tensor<Engine, Layout>& tensor, co
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-}  // namespace flash
-}  // namespace onnxruntime
+}  // namespace FLASH_NAMESPACE

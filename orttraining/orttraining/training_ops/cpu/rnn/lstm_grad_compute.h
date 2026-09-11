@@ -4,6 +4,7 @@
 #pragma once
 
 #include "orttraining/training_ops/cpu/rnn/lstm_io_utils.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime::lstm {
 
@@ -11,7 +12,9 @@ template <typename T>
 class LSTMGradImpl {
  public:
   LSTMGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size,
-               concurrency::ThreadPool* thread_pool, AllocatorPtr allocator);
+               concurrency::ThreadPool* thread_pool,
+               const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config,
+               AllocatorPtr allocator);
 
   void ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradOutputs<T>& outputs);
 
@@ -21,6 +24,7 @@ class LSTMGradImpl {
   const int hidden_size_;
   const int input_size_;
   concurrency::ThreadPool* thread_pool_;
+  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config_;
   const AllocatorPtr allocator_;
   IAllocatorUniquePtr<T> grad_a_ptr_;
   gsl::span<T> grad_a_span_;

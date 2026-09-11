@@ -5,6 +5,8 @@ package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 # Expect to return the absolute path of the react native root project dir
 root_dir =  File.dirname(File.dirname(__dir__))
 
+common_cpp_flags = '-Wall -Wextra -DUSE_COREML'
+
 Pod::Spec.new do |spec|
   spec.static_framework = true
 
@@ -18,13 +20,20 @@ Pod::Spec.new do |spec|
   spec.platforms            = { :ios => "15.1" }
   spec.source               = { :git => "https://github.com/Microsoft/onnxruntime.git", :tag => "rel-#{spec.version}" }
 
-  spec.source_files         = "ios/*.{h,mm}"
+  spec.source_files         = "ios/*.{h,mm}", "cpp/*.{h,cpp}"
+  spec.private_header_files = "ios/*.h", "cpp/*.h"
 
-  spec.dependency "React-Core"
   spec.dependency "onnxruntime-c"
 
+  if respond_to?(:install_modules_dependencies, true)
+    install_modules_dependencies(spec)
+  else
+    spec.dependency "React-Core"
+    spec.dependency "React-callinvoker"
+  end
+
   spec.xcconfig = {
-    'OTHER_CPLUSPLUSFLAGS' => '-Wall -Wextra',
+    'OTHER_CPLUSPLUSFLAGS' => common_cpp_flags,
   }
 
   if (File.exist?(File.join(root_dir, 'package.json')))
@@ -33,7 +42,7 @@ Pod::Spec.new do |spec|
     if (root_package["onnxruntimeExtensionsEnabled"] == 'true')
       spec.dependency "onnxruntime-extensions-c"
       spec.xcconfig = {
-        'OTHER_CPLUSPLUSFLAGS' => '-DORT_ENABLE_EXTENSIONS=1 -Wall -Wextra',
+        'OTHER_CPLUSPLUSFLAGS' => common_cpp_flags + ' -DORT_ENABLE_EXTENSIONS=1',
       }
     end
   else

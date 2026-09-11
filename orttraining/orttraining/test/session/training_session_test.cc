@@ -5,7 +5,7 @@
 #include "gtest/gtest.h"
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "core/common/path_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
@@ -57,7 +57,7 @@ TEST(TrainingSessionTest, LoadOptimState_FullPrecision_FP32Moments_Adam) {
   RunTrainingSessionLoadOptimTests(k_adam_optimizer_op_name, false, false);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(TrainingSessionTest, LoadOptimState_MixedPrecision_FP32Moments_Adam) {
   RunTrainingSessionLoadOptimTests(k_adam_optimizer_op_name, true, false);
 }

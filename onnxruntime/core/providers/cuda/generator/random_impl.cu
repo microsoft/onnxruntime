@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/cuda/curand_wrapper.h"
 #include "core/providers/cuda/generator/random_impl.h"
 
-#include <curand_kernel.h>
 #include <algorithm>
 #include "core/providers/cuda/cu_inc/common.cuh"
 
@@ -101,6 +101,12 @@ template <typename T, typename DistFuncT, typename TransformFuncT>
 void RandomKernelImpl(const cudaDeviceProp& prop, cudaStream_t stream, const int64_t N, const DistFuncT& dist_func,
                       const TransformFuncT& transform_func, float alpha, float beta, PhiloxGenerator& generator,
                       T* Y_data) {
+  // Zero-sized output tensors are legal in ONNX. Bail out before computing grid_size, which would otherwise be
+  // zero and make the counter_offset division below divide by zero.
+  if (N == 0) {
+    return;
+  }
+
   const int block_size = 256;
   const int blocks_per_sm = prop.maxThreadsPerMultiProcessor / block_size;
   const int grid_size =
@@ -140,6 +146,7 @@ RANDOM_KERNEL_IMPL(RandomUniform)
 SPECIALIZED_RANDOM_KERNELS(float)
 SPECIALIZED_RANDOM_KERNELS(double)
 SPECIALIZED_RANDOM_KERNELS(half)
+SPECIALIZED_RANDOM_KERNELS(BFloat16)
 
 }  // namespace cuda
 }  // namespace onnxruntime

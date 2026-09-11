@@ -35,7 +35,6 @@ __global__ void _GatherKernel(
     T* output_data,
     const CUDA_LONG N) {
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  CUDA_LONG input_index = 0;
   int input_block_index, block_offset;
   output_block_size.divmod(id, input_block_index, block_offset);
   int indices_index, offset;
@@ -47,7 +46,10 @@ __global__ void _GatherKernel(
     return;
   }
 
-  input_index = input_block_index * input_block_size + idx * block_size.d_ + offset;
+  // Use int64_t to avoid overflow when the input tensor has more than
+  // INT32_MAX elements (e.g. a [262144, 8960] embedding table = 2.35B).
+  int64_t input_index = static_cast<int64_t>(input_block_index) * input_block_size +
+                        idx * block_size.d_ + offset;
   output_data[id] = input_data[input_index];
 }
 

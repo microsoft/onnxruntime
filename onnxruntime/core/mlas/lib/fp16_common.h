@@ -19,7 +19,7 @@ Abstract:
 #include "mlas_float16.h"
 #include "mlasi.h"
 
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 
 // TODO!! Add intel fp16 implementations
 
@@ -579,4 +579,56 @@ MlasShiftLeftInt16(MLAS_INT16X4 Vector)
     return vshl_n_s16(Vector, ShiftCount);
 }
 
-#endif  // fp16 vector intrinsic supported
+// NEON FP16 vector intrinsics
+#if defined(__ARM_FEATURE_FP16_VECTOR_ARITHMETIC)
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasBroadcastF16Float16x8(float16_t Value) { return vdupq_n_f16(Value); }
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasLoadf16Float16x8(const float16_t* Buffer) { return vld1q_f16(Buffer); }
+
+MLAS_FORCEINLINE
+void
+MlasStoref16Float16x8(float16_t* Buffer, MLAS_FLOAT16X8 Vector)
+{
+    vst1q_f16(Buffer, Vector);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasReciprocalStepFloat16(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+{
+    return vrecpsq_f16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasApproximateReciprocalFloat16(MLAS_FLOAT16X8 Vector)
+{
+    return vrecpeq_f16(Vector);
+}
+
+MLAS_FORCEINLINE
+MLAS_UINT16X8
+MlasCompareLessThanFloat16(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+{
+    return vcltq_f16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasAbsFloat16(MLAS_FLOAT16X8 Vector)
+{
+    return vabsq_f16(Vector);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasSelectFloat16(MLAS_UINT16X8 Vector, MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+{
+    return vbslq_f16(Vector, Vector1, Vector2);
+}
+#endif  // NEON FP16 vector intrinsics supported
+#endif  // mlas fp16 intrinsic supported

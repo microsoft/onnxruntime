@@ -12,7 +12,7 @@ using namespace onnxruntime::concurrency;
 
 // Thread pool configuration to test.
 constexpr int NUM_THREADS = 8;
-constexpr bool ALLOW_SPINNING = true;
+constexpr int SPIN_DURATION_US = kSpinDurationDefault;
 
 static void BM_CreateThreadPool(benchmark::State& state) {
   for (auto _ : state) {
@@ -20,7 +20,7 @@ static void BM_CreateThreadPool(benchmark::State& state) {
                   onnxruntime::ThreadOptions(),
                   ORT_TSTR(""),
                   NUM_THREADS,
-                  ALLOW_SPINNING);
+                  SPIN_DURATION_US);
   }
 }
 BENCHMARK(BM_CreateThreadPool)
@@ -37,7 +37,7 @@ BENCHMARK(BM_CreateThreadPool)
 void SimpleForLoop(ptrdiff_t first, ptrdiff_t last) {
   size_t sum = 0;
   for (; first != last; ++first) {
-    ++sum;
+    benchmark::DoNotOptimize(++sum);
   }
 }
 #ifdef _WIN32
@@ -53,7 +53,7 @@ static void BM_ThreadPoolParallelFor(benchmark::State& state) {
   auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
                                          onnxruntime::ThreadOptions(),
                                          nullptr,
-                                         NUM_THREADS, ALLOW_SPINNING);
+                                         NUM_THREADS, SPIN_DURATION_US);
   for (auto _ : state) {
     ThreadPool::TryParallelFor(tp.get(), len, cost, SimpleForLoop);
   }
@@ -98,11 +98,12 @@ static void BM_ThreadPoolSimpleParallelFor(benchmark::State& state) {
   auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
                                          onnxruntime::ThreadOptions(),
                                          nullptr,
-                                         num_threads, ALLOW_SPINNING);
+                                         num_threads, SPIN_DURATION_US);
   for (auto _ : state) {
     for (int j = 0; j < 100; j++) {
       ThreadPool::TrySimpleParallelFor(tp.get(), len, [&](size_t) {
-        for (volatile size_t x = 0; x < body; x++) {
+        for (size_t x = 0; x < body; x++) {
+          benchmark::DoNotOptimize(x);
         }
       });
     }

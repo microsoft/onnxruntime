@@ -144,7 +144,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     }
 
     const Node& next_node = (*next_node_itr);
-    if ((!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Dropout", {12, 13}, kOnnxDomain) &&
+    if ((!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Dropout", {12, 13, 22}, kOnnxDomain) &&
          !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "BitmaskDropout", {1}, kMSDomain)) ||
         next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;

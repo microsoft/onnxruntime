@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "graph_transform_test_builder.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
 
 #include "core/graph/graph.h"
 
@@ -31,13 +31,14 @@ void TestConvPath(const std::vector<int64_t>& input_shape, const std::vector<int
   auto check_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     EXPECT_EQ(op_to_count["com.microsoft.FusedConv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
   };
-  InlinedHashSet<std::string> disabled_optimizers = {"NchwcTransformer"};
+  InlinedHashSet<std::string> disabled_optimizers = {"NchwcTransformer", "NhwcTransformer"};
   TransformerTester(build_test_case,
                     check_graph,
                     TransformerLevel::Default,
-                    TransformerLevel::Level3, 12, 0.0001, 0.000001,
-                    0, {}, disabled_optimizers);
+                    TransformerLevel::Level3, {12, 22}, 0.0001, 0.000001,
+                    nullptr, {}, disabled_optimizers);
 }
 
 TEST(ConvAddActivationFusionTests, ConvExpandThenGemm) {

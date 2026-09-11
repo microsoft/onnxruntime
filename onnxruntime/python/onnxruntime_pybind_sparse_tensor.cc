@@ -95,25 +95,29 @@ void addSparseTensorMethods(pybind11::module& m) {
   py::class_<PySparseCooView>(m, "SparseCooView")
       // Returns a numpy array of COO indices backed by Sparse Tensor memory
       // be aware that indices may reside on GPU if Sparse Tensor is on GPU
-      .def("indices", [](const PySparseCooView* view) -> py::array {
+      .def("indices", [](py::object self) -> py::array {
+        auto* view = self.cast<const PySparseCooView*>();
         const auto& indices = view->Indices();
-        return MakeNumpyArrayFromIndices(indices, py::cast(*view));
+        return MakeNumpyArrayFromIndices(indices, self);
       });
 
   py::class_<PySparseCsrView>(m, "SparseCsrView")
-      .def("inner", [](const PySparseCsrView* view) -> py::array {
+      .def("inner", [](py::object self) -> py::array {
+        auto* view = self.cast<const PySparseCsrView*>();
         const auto& indices = view->Inner();
-        return MakeNumpyArrayFromIndices(indices, py::cast(*view));
+        return MakeNumpyArrayFromIndices(indices, self);
       })
-      .def("outer", [](const PySparseCsrView* view) -> py::array {
+      .def("outer", [](py::object self) -> py::array {
+        auto* view = self.cast<const PySparseCsrView*>();
         const auto& indices = view->Outer();
-        return MakeNumpyArrayFromIndices(indices, py::cast(*view));
+        return MakeNumpyArrayFromIndices(indices, self);
       });
 
   py::class_<PySparseBlockSparseView>(m, "SparseBlockSparseView")
-      .def("indices", [](const PySparseBlockSparseView* view) -> py::array {
+      .def("indices", [](py::object self) -> py::array {
+        auto* view = self.cast<const PySparseBlockSparseView*>();
         const auto& indices = view->Indices();
-        return MakeNumpyArrayFromIndices(indices, py::cast(*view));
+        return MakeNumpyArrayFromIndices(indices, self);
       });
 
   py::class_<PySparseTensor> sparse_bind(m, "SparseTensor");
@@ -296,7 +300,8 @@ void addSparseTensorMethods(pybind11::module& m) {
           })
       // Returns a numpy array that is backed by SparseTensor values memory
       // be aware that it may be on GPU
-      .def("values", [](const PySparseTensor* py_tensor) -> py::array {
+      .def("values", [](py::object self) -> py::array {
+        auto* py_tensor = self.cast<const PySparseTensor*>();
         const SparseTensor& sparse_tensor = py_tensor->Instance();
         if (sparse_tensor.Format() == SparseFormat::kUndefined) {
           ORT_THROW("This sparse tensor instance does not contain data");
@@ -311,7 +316,7 @@ void addSparseTensorMethods(pybind11::module& m) {
           auto dtype = t_disp.InvokeRet<py::dtype, MakeDType>();
           const auto& values = sparse_tensor.Values();
           // See https://github.com/pybind/pybind11/issues/2271
-          py::array result(dtype, values.Shape().GetDims(), values.DataRaw(), py::cast(*py_tensor));
+          py::array result(dtype, values.Shape().GetDims(), values.DataRaw(), self);
           assert(!result.owndata());
           // Set a read-only flag
           PyArray_CLEARFLAGS(reinterpret_cast<PyArrayObject*>(result.ptr()), NPY_ARRAY_WRITEABLE);

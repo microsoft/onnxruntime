@@ -464,7 +464,7 @@ class TestBeamSearchWhisper(unittest.TestCase):
         self.int8_cpu_arguments = [
             "--precision",
             "int8",
-            "--quantize_embedding_layer",
+            "--quantize_symmetric",
         ]
 
     def tearDown(self):

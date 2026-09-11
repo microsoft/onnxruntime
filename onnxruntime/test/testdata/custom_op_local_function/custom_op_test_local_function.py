@@ -40,7 +40,7 @@ class TestOnnxToolsGraph(unittest.TestCase):
         x = np.arange(2**2).reshape((2,) * 2).astype(np.float32)
         t = np.arange(8).reshape((2, 4)).astype(np.float32)
         got = sess.run(None, {"X": x})[0]
-        np.testing.assert_allclose(t, got, atol=1e-5)
+        np.testing.assert_allclose(got, t, atol=1e-5)
 
 
 if __name__ == "__main__":

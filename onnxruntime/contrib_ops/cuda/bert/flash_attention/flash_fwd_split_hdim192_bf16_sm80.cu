@@ -1,15 +1,12 @@
-// Copyright (c) 2023, Tri Dao.
-// Splitting the different head dimensions to different files to speed up compilation.
+/******************************************************************************
+ * Copyright (c) 2024, Tri Dao.
+ ******************************************************************************/
 
-#if USE_FLASH_ATTENTION
-
+#include "contrib_ops/cuda/bert/flash_attention/namespace_config.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_fwd_launch_template.h"
 
-namespace onnxruntime {
-namespace flash {
+namespace FLASH_NAMESPACE {
 
-template void run_mha_fwd_splitkv_dispatch<cutlass::bfloat16_t, 192>(Flash_fwd_params& params, cudaStream_t stream);
+template void run_mha_fwd_splitkv_dispatch<cutlass::bfloat16_t, 192, false>(Flash_fwd_params& params, cudaStream_t stream);
 
-}  // namespace flash
-}  // namespace onnxruntime
-#endif
+}  // namespace FLASH_NAMESPACE

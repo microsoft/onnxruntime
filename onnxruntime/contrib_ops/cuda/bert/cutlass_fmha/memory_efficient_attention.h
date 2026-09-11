@@ -4,6 +4,8 @@
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
 
+#include <algorithm>
+
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
@@ -13,9 +15,17 @@ namespace cuda {
 
 constexpr int kEfficientAttentionMaxHeadSize = 1024;
 
+// CUTLASS online softmax multiplies attention scores by kLog2e (≈1.4427).
+// For float/bf16, |lowest() × kLog2e| > FLT_MAX, overflowing to -inf and
+// causing s_prime=0 → NaN for fully-masked batches. Cap to prevent this.
+// -1e+30 is safe: 1e30 × 1.4427 ≈ 1.4e30 << FLT_MAX ≈ 3.4e38, and
+// exp(-1e30) ≈ 0 (effectively masked). For fp16 lowest()=-65504 > -1e30, no-op.
+constexpr float kCutlassSafeMaskFilterValue = -1.0e+30f;
+
 struct MemoryEfficientAttentionParams {
   int32_t sm = 50;
   bool is_half = false;
+  bool is_bf16 = false;
   bool is_kv_bsnh = true;
   int32_t batch_size = 0;
   int32_t num_heads = 0;
@@ -26,6 +36,12 @@ struct MemoryEfficientAttentionParams {
   int32_t v_head_size = 0;
   int32_t local_window_size = -1;
   bool causal = false;
+  // When true, causal masking uses upper-left alignment (q_i attends to kv[0..i]).
+  // When false (default), uses lower-right alignment (q_i attends to kv[kv_len-q_len+i..kv_len-1]).
+  // ONNX Attention spec requires upper-left for cross-attention without past (S_q != S_kv, past=0).
+  // Lower-right is correct for decode with KV cache (past > 0).
+  // For square matrices (S_q == S_kv), both alignments produce identical results.
+  bool causal_from_top_left = false;
   bool use_smooth_softmax = false;
   bool broadcast_attn_bias_dim_0 = false;
   bool broadcast_attn_bias_dim_1 = false;
@@ -51,11 +67,28 @@ struct MemoryEfficientAttentionParams {
 
 void run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);
 
-inline bool has_memory_efficient_attention(int32_t sm, bool is_half, int qk_head_size, int v_head_size) {
+inline bool has_memory_efficient_attention(int32_t sm, bool is_half, bool is_bf16, int qk_head_size, int v_head_size) {
+  if (is_bf16 && sm < 80) return false;
   return sm >= (is_half ? 53 : 50) &&
          (qk_head_size & 7) == 0 &&
          (v_head_size & 7) == 0 &&
          qk_head_size <= kEfficientAttentionMaxHeadSize && v_head_size <= kEfficientAttentionMaxHeadSize;
+}
+
+inline bool has_memory_efficient_attention_for_head_size_bounds(
+    int32_t sm, bool is_half, bool is_bf16,
+    int qk_head_size_bound, int v_head_size_bound) {
+  const int qk_search_limit = std::min(qk_head_size_bound, kEfficientAttentionMaxHeadSize);
+  const int v_search_limit = std::min(v_head_size_bound, kEfficientAttentionMaxHeadSize);
+  for (int qk_head_size = 8; qk_head_size <= qk_search_limit; qk_head_size += 8) {
+    for (int v_head_size = 8; v_head_size <= v_search_limit; v_head_size += 8) {
+      if (has_memory_efficient_attention(sm, is_half, is_bf16, qk_head_size, v_head_size)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 void run_memory_efficient_attention_sm80(const MemoryEfficientAttentionParams& params);

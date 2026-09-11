@@ -12,6 +12,8 @@
 #include "core/providers/cpu/tensor/tile.h"
 #include "core/providers/cpu/tensor/utils.h"
 
+#include <limits>
+
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
@@ -139,64 +141,75 @@ Status TileCoreForStringType(const Tensor& input_tensor, Tensor& output_tensor, 
   return Status::OK();
 }
 
-namespace TileOp {
-// Find the first non-1 repeat and check the input shape to the left of that dimension:
-// 1) If the dim values to the left are all 1s (or don't exist), then the tiling logic is essentially copying the input buffer
-// multiple times. The number of times can be computed as the product of the repeat values. (OR)
-// 2) Allow at-most one non-1 dim value to the left (for the batch dimension), in this case, the sub-tensor at each batch index
-// is copied multiple times. This is still faster because it avoids other Tile operator's machinery.
-bool IsTileMemcpy(const TensorShape& input_shape,
-                  const int64_t* repeats,
-                  size_t rank,
-                  /*out*/ bool& is_batched_memcpy,
-                  /*out*/ size_t& num_of_elements_per_batch,
-                  /*out*/ size_t& num_of_copies_per_batch,
-                  /*out*/ size_t& num_of_batch_copies) {
-  for (int64_t i = static_cast<int64_t>(rank) - 1; i >= 0; --i) {
-    if (repeats[i] != 1) {
-      if (input_shape.SizeToDimension(onnxruntime::narrow<size_t>(i)) == 1) {
-        num_of_copies_per_batch = 1;
-        for (int64_t j = 0; j <= i; ++j) {
-          num_of_copies_per_batch *= onnxruntime::narrow<size_t>(repeats[onnxruntime::narrow<size_t>(j)]);
-        }
-        is_batched_memcpy = false;
-        return true;
-      } else if (i == 1) {  // else check if the previous dim is just the batch dim
-        num_of_elements_per_batch = static_cast<size_t>(input_shape.SizeFromDimension(1));
-        num_of_copies_per_batch = onnxruntime::narrow<size_t>(repeats[onnxruntime::narrow<size_t>(i)]);
-        num_of_batch_copies = onnxruntime::narrow<size_t>(repeats[0]);
-        is_batched_memcpy = true;
-        return true;
-      } else {
-        break;
-      }
-    }
-  }
-  return false;
-}
-}  // namespace TileOp
-
 Status Tile::Compute(OpKernelContext* ctx) const {
   const auto* tensor_pointer = ctx->Input<Tensor>(0);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the first one is empty");
+  if (tensor_pointer == nullptr)
+    return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the first one is empty");
+
   const Tensor& input_tensor = *tensor_pointer;
   const auto& input_shape = input_tensor.Shape();
   const size_t input_rank = input_shape.NumDimensions();
   tensor_pointer = ctx->Input<Tensor>(1);
-  if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the second one is empty");
+  if (tensor_pointer == nullptr)
+    return Status(common::ONNXRUNTIME, common::FAIL, "Input count of Tile OP mismatch, the second one is empty");
+
   const Tensor& repeats_tensor = *tensor_pointer;
-  if (input_rank < 1)
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "the tensor to be tiled using Tile OP must be atleast 1 dimensional");
   if (repeats_tensor.Shape().NumDimensions() != 1)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must be 1 dimensional");
+
   if (size_t(repeats_tensor.Shape().Size()) != input_rank)
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'repeat' input tensor must have the same length as the 'input' tensor");
 
   // Calculate the shape of the output tensor
   const auto* repeats = repeats_tensor.Data<int64_t>();
   auto output_dims = input_shape.AsShapeVector();
+
+  // Bound the total tiled byte count so that a combination of large (but
+  // individually in-range) per-axis repeats cannot request an allocation that
+  // exceeds a reasonable upper limit. Track the running product using
+  // division-based checks so we can return INVALID_ARGUMENT instead of throwing
+  // an integer overflow exception from SafeInt.
+  constexpr int64_t kMaxTileOutputBytes = int64_t{4} * 1024 * 1024 * 1024;  // 4 GiB
+  constexpr int64_t kMaxSupportedTileOutputBytes =
+      std::numeric_limits<size_t>::max() < static_cast<uint64_t>(kMaxTileOutputBytes)
+          ? static_cast<int64_t>(std::numeric_limits<size_t>::max())
+          : kMaxTileOutputBytes;
+  const int64_t element_size = narrow<int64_t>(input_tensor.DataType()->Size());
+  const int64_t max_elements = kMaxSupportedTileOutputBytes / element_size;
+  int64_t total_elements = 1;
+
   for (size_t axis = 0; axis < input_rank; axis++) {
-    output_dims[axis] *= repeats[axis];
+    if (repeats[axis] < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile repeat value must be non-negative, got: ", repeats[axis]);
+    }
+    const int64_t input_dim = output_dims[axis];
+    const int64_t r = repeats[axis];
+    // Compute output_dims[axis] = input_dim * r while detecting both int64
+    // overflow and exceeding the supported byte budget. If the result would
+    // exceed max_elements it cannot fit anyway, so we reject in either case
+    // with the same controlled error message.
+    int64_t dim;
+    if (input_dim == 0 || r == 0) {
+      dim = 0;
+    } else if (input_dim > max_elements / r) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile output tensor would require more than ",
+                             kMaxSupportedTileOutputBytes,
+                             " bytes, which exceeds the supported maximum of ",
+                             kMaxSupportedTileOutputBytes, " bytes.");
+    } else {
+      dim = input_dim * r;
+    }
+    output_dims[axis] = dim;
+    if (dim > 0 && total_elements > max_elements / dim) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Tile output tensor would require more than ",
+                             kMaxSupportedTileOutputBytes,
+                             " bytes, which exceeds the supported maximum of ",
+                             kMaxSupportedTileOutputBytes, " bytes.");
+    }
+    total_elements *= dim;
   }
 
   TensorShape output_shape(output_dims);

@@ -6,7 +6,6 @@
 import json
 import logging
 import os
-import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -93,16 +92,10 @@ class WhisperHelper:
         if separate_encoder_and_decoder_init:
             return
 
-        audio_processor_json = textwrap.dedent("""\
-        {
+        audio_processor_cfg = {
             "feature_extraction": {
                 "sequence": [
-                    {
-                        "operation": {
-                            "name": "audio_decoder",
-                            "type": "AudioDecoder"
-                        }
-                    },
+                    {"operation": {"name": "audio_decoder", "type": "AudioDecoder"}},
                     {
                         "operation": {
                             "name": "STFT",
@@ -511,35 +504,34 @@ class WhisperHelper:
                                     0.000986635684967041,
                                     0.0005550682544708252,
                                     0.0002467334270477295,
-                                    0.0000616908073425293
-                                ]
-                            }
+                                    0.0000616908073425293,
+                                ],
+                            },
                         }
                     },
                     {
                         "operation": {
                             "name": "log_mel_spectrogram",
                             "type": "LogMelSpectrum",
-                            "attrs": {
-                                "chunk_size": 30,
-                                "hop_length": 160,
-                                "n_fft": 400,
-                                "n_mel": 80
-                            }
+                            "attrs": {"chunk_size": 30, "hop_length": 160, "n_fft": 400, "n_mel": config.num_mel_bins},
                         }
-                    }
+                    },
                 ]
             }
         }
-        """)
+        audio_processor_json = json.dumps(audio_processor_cfg, indent=4)
+
         with open(os.path.join(output_dir, "audio_processor_config.json"), "w") as f:
             f.write(audio_processor_json)
 
         provider_options = [] if "cpu" in provider else [{f"{provider}": {}}]
+        # Prefer max_target_positions (always 448 for Whisper) over max_length,
+        # which may not exist on WhisperConfig and fall back to a wrong default (20).
+        context_length = getattr(config, "max_target_positions", None) or config.max_length
         genai_config = {
             "model": {
                 "bos_token_id": config.bos_token_id,
-                "context_length": config.max_length,
+                "context_length": context_length,
                 "decoder": {
                     "session_options": {
                         "log_id": "onnxruntime-genai",
@@ -592,7 +584,7 @@ class WhisperHelper:
                 "do_sample": False,
                 "early_stopping": True,
                 "length_penalty": 1.0,
-                "max_length": config.max_length,
+                "max_length": context_length,
                 "min_length": 0,
                 "no_repeat_ngram_size": 0,
                 "num_beams": 1,
@@ -778,7 +770,7 @@ class WhisperHelper:
 
         optimization_options = FusionOptions("bart")
         optimization_options.use_multi_head_attention = True
-        optimization_options.disable_multi_head_attention_bias = provider == "rocm"
+        optimization_options.disable_multi_head_attention_bias = False
 
         m = optimize_model(
             onnx_model_path,

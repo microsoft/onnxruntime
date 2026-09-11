@@ -14,6 +14,8 @@
 // C4324: structure was padded due to alignment specifier
 // Usage of alignas causes some internal padding in places.
 #pragma warning(disable : 4324)
+// C4702: unreachable code
+#pragma warning(disable : 4702)
 #else
 // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=102329#c2
 #if !defined(__clang__) && defined(__GNUC__)

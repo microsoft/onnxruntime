@@ -36,11 +36,7 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
   constexpr int next_power_of_two = 1 << log2_elements;
   constexpr int WARP_SIZE = (next_power_of_two < GPU_WARP_SIZE) ? next_power_of_two : GPU_WARP_SIZE;
   constexpr int WARP_ITERATIONS = next_power_of_two / WARP_SIZE;
-#ifdef USE_ROCM
-  constexpr int WARP_BATCH = 1;
-#else
   constexpr int WARP_BATCH = (next_power_of_two <= 128) ? 2 : 1;
-#endif
 
   int first_batch = (blockDim.y * blockIdx.x + threadIdx.y) * WARP_BATCH;
 
@@ -227,11 +223,7 @@ template <typename T>
 Status SoftmaxGradImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* input_grad, const T* output_grad,
                        const T* softmax_output, int element_count, int batch_count, bool is_log_softmax) {
   if (element_count == 0) return Status::OK();
-#ifdef USE_ROCM
-  if (element_count <= 1024 && element_count * sizeof(T) <= 4096) {
-#else
   if (element_count <= 2048 && element_count * sizeof(T) <= 4096) {
-#endif
     typedef AccumulationType_t<T> AccT;
     int log2_elements = log2_ceil(element_count);
     const int next_power_of_two = 1 << log2_elements;
@@ -240,13 +232,8 @@ Status SoftmaxGradImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T* input
     int warp_size = std::min(next_power_of_two, GPU_WARP_SIZE_HOST);
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_backward.
-#ifdef USE_ROCM
-    int batches_per_warp = 1;
-    constexpr int threads_per_block = 256;
-#else
     int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
     constexpr int threads_per_block = 128;
-#endif
 
     int warps_per_block = (threads_per_block / warp_size);
     int batches_per_block = warps_per_block * batches_per_warp;

@@ -1,0 +1,41 @@
+# Setup python/nodejs/cmake/vcpkg tools. Also, setup telemetry header file if the current OS is Windows.
+
+parameters:
+# for selecting python binary
+- name: host_cpu_arch
+  type: string
+
+- name: python_version
+  type: string
+  default: '3.12'
+
+- name: action_version
+  type: string
+  default: 'v0.0.9'
+
+steps:
+- template: telemetry-steps.yml
+
+- template: setup-feeds-and-python-steps.yml
+  parameters:
+    versionSpec: ${{ parameters.python_version }}
+    architecture: ${{ parameters.host_cpu_arch }}
+
+- task: UseNode@1
+  inputs:
+    version: '22.x'
+
+- script: |
+    node -v
+    npm -v
+  displayName: 'Display Node.js Version'
+
+- script: |
+    python3 -m pip install requests
+  displayName: 'Install Python requests package'
+
+- task: PythonScript@0
+  displayName: 'Run GitHub Action via Python Wrapper'
+  inputs:
+    scriptPath: 'tools/ci_build/run_gh_action.py'
+    arguments: '${{ parameters.action_version }}'

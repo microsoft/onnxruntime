@@ -31,12 +31,12 @@ static void calculateExpectedOutput(const std::vector<float>& emb_data,
                                     const std::vector<int64_t>& mul_dim,
                                     std::vector<MLFloat16>& output1,
                                     std::vector<MLFloat16>& output2) {
-  for (long int i = 0; i < mul_dim[0]; ++i) {
-    for (long int j = 0; j < mul_dim[1]; ++j) {
-      for (long int k = 0; k < mul_dim[2]; ++k) {
-        for (long int l = 0; l < mul_dim[3]; ++l) {
-          long int embIdx = i * mul_dim[1] * mul_dim[3] + k * mul_dim[3] + l;
-          long int mulIdx = i * mul_dim[1] * mul_dim[2] * mul_dim[3] + j * mul_dim[2] * mul_dim[3] + k * mul_dim[3] + l;
+  for (int64_t i = 0; i < mul_dim[0]; ++i) {
+    for (int64_t j = 0; j < mul_dim[1]; ++j) {
+      for (int64_t k = 0; k < mul_dim[2]; ++k) {
+        for (int64_t l = 0; l < mul_dim[3]; ++l) {
+          int64_t embIdx = i * mul_dim[1] * mul_dim[3] + k * mul_dim[3] + l;
+          int64_t mulIdx = i * mul_dim[1] * mul_dim[2] * mul_dim[3] + j * mul_dim[2] * mul_dim[3] + k * mul_dim[3] + l;
 
           MLFloat16 sin_val = static_cast<MLFloat16>(sin(emb_data[embIdx]));
           MLFloat16 cos_val = static_cast<MLFloat16>(cos(emb_data[embIdx]));

@@ -52,9 +52,45 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                   Loop);
 
 // opset-19 supports float 8 types.
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
+                                  kOnnxDomain,
+                                  19, 20,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
+                                      .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
+                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                  Loop);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
+                                  kOnnxDomain,
+                                  21, 22,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
+                                      .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
+                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                  Loop);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
+                                  kOnnxDomain,
+                                  23, 24,
+                                  kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
+                                      .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
+                                      .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+                                      .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+                                      .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
+                                  Loop);
+
 ONNX_OPERATOR_KERNEL_EX(Loop,
                         kOnnxDomain,
-                        19,
+                        25,
                         kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU

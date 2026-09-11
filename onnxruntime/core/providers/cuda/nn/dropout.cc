@@ -35,6 +35,17 @@ struct DropoutComputeImpl {
 
 }  // namespace
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 7, 9, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  Dropout<false>);
+
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 10, 11, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
+                                      .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
+                                  Dropout<false>);
+
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Dropout, kOnnxDomain, 12, 12, kCudaExecutionProvider,
                                   (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
@@ -93,14 +104,22 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
     }
 
-    // If mask is requested, return all 1s.
+    // If mask is requested, fill it appropriately.
+    // BitmaskDropout (UseBitmask=true): mask is always bitmask where 1 = kept. All 1s for inference.
+    // Opset 12+: mask is bool, spec says "mask will contain all ones". All true for inference.
+    // Opset 7-11: mask is memset to 0, consistent with CPU IdentityOp<true> behavior.
     if (mask) {
-      if (UseBitmask) {
+      if constexpr (UseBitmask) {
+        // BitmaskDropout always uses bitmask semantics (all bits set = all kept).
         CUDA_RETURN_IF_ERROR(
             cudaMemsetAsync(mask->MutableDataRaw(), -1, mask_element_count * sizeof(BitmaskElementType), Stream(context)));
-      } else {
+      } else if (opset_ >= 12) {
         CUDA_RETURN_IF_ERROR(
             cudaMemsetAsync(mask->MutableData<bool>(), true, mask_element_count * sizeof(bool), Stream(context)));
+      } else {
+        // Opset 7-11: zero-fill mask to match CPU IdentityOp behavior.
+        CUDA_RETURN_IF_ERROR(
+            cudaMemsetAsync(mask->MutableDataRaw(), 0, mask->SizeInBytes(), Stream(context)));
       }
     }
 
@@ -111,7 +130,7 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer, context]() {
     if (mask) return mask->MutableDataRaw();
     temp_mask_buffer =
-        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)), context->GetComputeStream());
+        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)), GetComputeStream(context));
     return temp_mask_buffer.get();
   }();
 

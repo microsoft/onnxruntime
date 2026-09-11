@@ -87,11 +87,16 @@ public class OrtException extends Exception {
     /** Model requires compilation. */
     ORT_MODEL_REQUIRES_COMPILATION(13),
     /** Item was not found. */
-    ORT_NOT_FOUND(14);
+    ORT_NOT_FOUND(14),
+    /** The execution provider's hardware device has been reset. Create a new session. */
+    ORT_DEVICE_RESET(15);
 
     private final int value;
 
-    private static final OrtErrorCode[] values = new OrtErrorCode[15];
+    // Assumptions about the array and its length:
+    // - We don't include the negative ORT_JAVA_UNKNOWN value.
+    // - There are N other error code values, with values from 0 to N-1.
+    private static final OrtErrorCode[] values = new OrtErrorCode[OrtErrorCode.values().length - 1];
 
     static {
       for (OrtErrorCode ot : OrtErrorCode.values()) {

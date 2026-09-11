@@ -25,7 +25,7 @@ export function createWebGLContext(contextId?: 'webgl' | 'webgl2'): WebGLContext
       // try to create webgl context from an offscreen canvas
       const offscreenCanvas = createOffscreenCanvas();
       context = createNewWebGLContext(offscreenCanvas, contextId);
-    } catch (e) {
+    } catch {
       // if failed, fallback to try to use a normal canvas element
       const canvas = createCanvas();
       context = createNewWebGLContext(canvas, contextId);

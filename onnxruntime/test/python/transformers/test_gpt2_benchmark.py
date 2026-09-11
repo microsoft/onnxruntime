@@ -9,7 +9,6 @@ import logging
 import os
 import unittest
 
-import coloredlogs
 import pytest
 from parity_utilities import find_transformers_source
 
@@ -50,6 +49,6 @@ class TestGpt2(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    coloredlogs.install(fmt="%(message)s")
+    logging.basicConfig(format="%(message)s")
     logging.getLogger("transformers").setLevel(logging.ERROR)
     unittest.main()

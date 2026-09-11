@@ -17,6 +17,12 @@ class Col2Im final : public OpKernel {
       ORT_ENFORCE(dilations_.empty());
     if (!info.GetAttrs("pads", pads_).IsOK())
       ORT_ENFORCE(pads_.empty());
+    for (auto s : strides_) {
+      ORT_ENFORCE(s > 0, "All stride values must be positive, got: ", s);
+    }
+    for (auto d : dilations_) {
+      ORT_ENFORCE(d > 0, "All dilation values must be positive, got: ", d);
+    }
   }
 
   Status Compute(OpKernelContext* context) const override;

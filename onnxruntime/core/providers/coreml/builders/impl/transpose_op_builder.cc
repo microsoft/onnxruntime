@@ -17,6 +17,8 @@ class TransposeOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override;
 
   bool SupportsMLProgram() const override { return true; }
+
+  bool IsTrivial(const Node& /*node*/) const override { return true; }
 };
 
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,

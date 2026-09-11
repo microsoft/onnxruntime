@@ -21,13 +21,19 @@ namespace onnxruntime {
 class EpLibraryProviderBridge : public EpLibrary {
  public:
   EpLibraryProviderBridge(std::unique_ptr<ProviderLibrary> provider_library,
-                          std::unique_ptr<EpLibrary> ep_library_plugin)
+                          std::unique_ptr<EpLibrary> ep_library_plugin,
+                          std::filesystem::path library_path)
       : provider_library_{std::move(provider_library)},
-        ep_library_plugin_{std::move(ep_library_plugin)} {
+        ep_library_plugin_{std::move(ep_library_plugin)},
+        library_path_{std::move(library_path)} {
   }
 
   const char* RegistrationName() const override {
     return ep_library_plugin_->RegistrationName();
+  }
+
+  const std::filesystem::path* LibraryPath() const override {
+    return &library_path_;
   }
 
   const std::vector<OrtEpFactory*>& GetFactories() override {
@@ -52,6 +58,9 @@ class EpLibraryProviderBridge : public EpLibrary {
   // we wrap the OrtEpFactory instances it contains to pass through function calls, and
   // implement EpFactoryInternal::CreateIExecutionProvider by calling Provider::CreateIExecutionProvider.
   std::unique_ptr<EpLibrary> ep_library_plugin_;
+
+  // Library path for EP metadata
+  std::filesystem::path library_path_;
 
   std::vector<std::unique_ptr<EpFactoryInternal>> factories_;
   std::vector<OrtEpFactory*> factory_ptrs_;                // for convenience

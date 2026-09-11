@@ -4,6 +4,8 @@
 #include "core/session/plugin_ep/ep_factory_provider_bridge.h"
 
 #include "core/providers/shared_library/provider_host_api.h"
+#include "core/session/plugin_ep/ep_library_plugin.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 namespace onnxruntime {
 OrtStatus* ProviderBridgeEpFactory::GetSupportedDevices(EpFactoryInternal& ep_factory,

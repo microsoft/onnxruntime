@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "range.h"
@@ -13,10 +15,33 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Range,
     kOnnxDomain,
     11,
+    26,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)  // start
+        .InputMemoryType(OrtMemTypeCPUInput, 1)  // limit
+        .InputMemoryType(OrtMemTypeCPUInput, 2)  // delta
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<int16_t>(),
+                              DataTypeImpl::GetTensorType<int32_t>(),
+                              DataTypeImpl::GetTensorType<int64_t>()}),
+    Range);
+
+// Opset 27 added float16/bfloat16 to the type constraint and a stash_type attribute.
+// This kernel continues to natively support the common numeric types only; a native
+// float16/bfloat16 CUDA kernel (range_impl.cu specialization) is a follow-up enhancement.
+// Note that float16/bfloat16 Range models still execute correctly today: Range-27 carries
+// an ONNX function body that ORT expands into primitive ops at graph-partition time, so the
+// follow-up is about adding an efficient native kernel, not about fixing broken functionality.
+ONNX_OPERATOR_KERNEL_EX(
+    Range,
+    kOnnxDomain,
+    27,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)  // start
@@ -64,11 +89,28 @@ static Status ComputeRange(cudaStream_t stream, OpKernelContext* ctx) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator can not be zero!");
   }
 
-  double num = (static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta);
-  int count = static_cast<int>(ceil(num));
-  if (count <= 0)
-    count = 0;
-  TensorShape shape = {static_cast<int64_t>(count)};
+  // Compute the element count in double, mirroring the CPU kernel's guard structure and error
+  // messages (core/providers/cpu/generator/range.cc ComputeRange) and the shape-inference path
+  // (core/graph/contrib_ops/range_schema_defs.cc CalcRangeDim). The operands are
+  // promoted to double before the subtraction so integral inputs cannot overflow in T.
+  double num = ceil((static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta));
+  if (!std::isfinite(num)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Range: the computed number of elements is not a finite value.");
+  }
+  // Empty or backward ranges clamp to 0; handle the non-positive case before the cast so a
+  // large-magnitude negative count can never reach (and overflow) the int64 conversion.
+  int64_t count = 0;
+  if (num > 0) {
+    // static_cast<double>(INT64_MAX) rounds up to 2^63 (9223372036854775808.0), which is not
+    // representable as int64_t, so reject any count at or above that boundary before the cast.
+    if (num >= 9223372036854775808.0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Range: the computed number of elements exceeds the supported range.");
+    }
+    count = static_cast<int64_t>(num);
+  }
+  TensorShape shape = {count};
   T* y = ctx->Output(0, shape)->MutableData<T>();
 
   if (count > 0) {

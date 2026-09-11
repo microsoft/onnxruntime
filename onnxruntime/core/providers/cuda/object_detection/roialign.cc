@@ -7,11 +7,37 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+#define ADD_VERSIONED_TYPED_ROIALIGN_OP_10(T)                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                               \
       RoiAlign,                                                          \
       kOnnxDomain,                                                       \
       10,                                                                \
+      15,                                                                \
+      T,                                                                 \
+      kCudaExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                      \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
+      RoiAlign<T>);
+
+#define ADD_VERSIONED_TYPED_ROIALIGN_OP_16(T)                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                               \
+      RoiAlign,                                                          \
+      kOnnxDomain,                                                       \
+      16,                                                                \
+      21,                                                                \
+      T,                                                                 \
+      kCudaExecutionProvider,                                            \
+      (*KernelDefBuilder::Create())                                      \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>()), \
+      RoiAlign<T>);
+
+#define ADD_TYPED_ROIALIGN_OP_22(T)                                      \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+      RoiAlign,                                                          \
+      kOnnxDomain,                                                       \
+      22,                                                                \
       T,                                                                 \
       kCudaExecutionProvider,                                            \
       (*KernelDefBuilder::Create())                                      \
@@ -60,19 +86,29 @@ Status RoiAlign<T>::ComputeInternal(OpKernelContext* context) const {
         reinterpret_cast<typename ToCudaType<T>::MappedType*>(Y.MutableData<T>()),
         this->mode_ == RoiAlignMode::avg,
         this->half_pixel_,
-        batch_indices_ptr->Data<int64_t>());
+        batch_indices_ptr->Data<int64_t>(),
+        x_dims[0]);  // batch_size
   }
 
   return Status::OK();
 }
 
-#define SPECIALIZED_COMPUTE(T) \
-  REGISTER_KERNEL_TYPED(T)     \
+#define SPECIALIZED_COMPUTE(T)          \
+  ADD_VERSIONED_TYPED_ROIALIGN_OP_10(T) \
+  ADD_VERSIONED_TYPED_ROIALIGN_OP_16(T) \
+  ADD_TYPED_ROIALIGN_OP_22(T)           \
   template Status RoiAlign<T>::ComputeInternal(OpKernelContext* ctx) const;
 
 SPECIALIZED_COMPUTE(float)
 SPECIALIZED_COMPUTE(double)
-// SPECIALIZED_COMPUTE(MLFloat16)
+// MLFloat16 is available for RoiAlign op from version 16 (not version 10):
+ADD_VERSIONED_TYPED_ROIALIGN_OP_16(MLFloat16)
+ADD_TYPED_ROIALIGN_OP_22(MLFloat16)
+template Status RoiAlign<MLFloat16>::ComputeInternal(OpKernelContext* ctx) const;
+
+// BFloat16 is available for RoiAlign op from version 22:
+ADD_TYPED_ROIALIGN_OP_22(BFloat16)
+template Status RoiAlign<BFloat16>::ComputeInternal(OpKernelContext* ctx) const;
 
 }  // namespace cuda
 };  // namespace onnxruntime

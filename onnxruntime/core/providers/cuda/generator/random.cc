@@ -9,24 +9,44 @@ namespace cuda {
 
 using namespace ONNX_NAMESPACE;
 
-ONNX_OPERATOR_KERNEL_EX(RandomNormal, kOnnxDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(RandomNormal, kOnnxDomain, 1, 21, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  RandomNormal);
+
+ONNX_OPERATOR_KERNEL_EX(RandomNormal, kOnnxDomain, 22, kCudaExecutionProvider,
+                        (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16, double, BFloat16>()),
                         RandomNormal);
 
-ONNX_OPERATOR_KERNEL_EX(RandomNormalLike, kOnnxDomain, 1, kCudaExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(RandomNormalLike, kOnnxDomain, 1, 21, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
+                                      .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  RandomNormalLike);
+
+ONNX_OPERATOR_KERNEL_EX(RandomNormalLike, kOnnxDomain, 22, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
-                            .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                            .TypeConstraint("T2", BuildKernelDefConstraints<float, MLFloat16, double, BFloat16>()),
                         RandomNormalLike);
 
-ONNX_OPERATOR_KERNEL_EX(RandomUniform, kOnnxDomain, 1, kCudaExecutionProvider,
-                        (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(RandomUniform, kOnnxDomain, 1, 21, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  RandomUniform);
+
+ONNX_OPERATOR_KERNEL_EX(RandomUniform, kOnnxDomain, 22, kCudaExecutionProvider,
+                        (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<float, MLFloat16, double, BFloat16>()),
                         RandomUniform);
 
-ONNX_OPERATOR_KERNEL_EX(RandomUniformLike, kOnnxDomain, 1, kCudaExecutionProvider,
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(RandomUniformLike, kOnnxDomain, 1, 21, kCudaExecutionProvider,
+                                  (*KernelDefBuilder::Create())
+                                      .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
+                                      .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                                  RandomUniformLike);
+
+ONNX_OPERATOR_KERNEL_EX(RandomUniformLike, kOnnxDomain, 22, kCudaExecutionProvider,
                         (*KernelDefBuilder::Create())
                             .TypeConstraint("T1", DataTypeImpl::AllTensorTypes())
-                            .TypeConstraint("T2", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                            .TypeConstraint("T2", BuildKernelDefConstraints<float, MLFloat16, double, BFloat16>()),
                         RandomUniformLike);
 
 #define RANDOM_COMPUTE_IMPL(name)                                                                        \
@@ -49,7 +69,7 @@ Status RandomNormalBase::ComputeNormal(const CudaKernel& cuda_kernel, OpKernelCo
   Tensor& Y = *ctx.Output(0, shape);
   const int64_t N = shape.Size();
   PhiloxGenerator& generator = GetPhiloxGenerator();
-  utils::MLTypeCallDispatcher<float, MLFloat16, double> t_disp(dtype);
+  utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(dtype);
   t_disp.Invoke<RandomNormalComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(&ctx), N, scale_, mean_, generator, Y);
   return Status::OK();
 }
@@ -63,7 +83,7 @@ Status RandomNormalLike::ComputeInternal(OpKernelContext* p_ctx) const {
 
   int dtype = GetDType();
   if (dtype == TensorProto_DataType_UNDEFINED && !p_X->IsDataType<float>() && !p_X->IsDataType<double>() &&
-      !p_X->IsDataType<MLFloat16>()) {
+      !p_X->IsDataType<MLFloat16>() && !p_X->IsDataType<BFloat16>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Output data type is required to be one of float types, but got incompatible data type ",
                            p_X->DataType(), " from input tensor.");
@@ -79,7 +99,7 @@ Status RandomUniformBase::ComputeUniform(const CudaKernel& cuda_kernel, OpKernel
   Tensor& Y = *ctx.Output(0, shape);
   const int64_t N = shape.Size();
   PhiloxGenerator& generator = GetPhiloxGenerator();
-  utils::MLTypeCallDispatcher<float, MLFloat16, double> t_disp(dtype);
+  utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(dtype);
   t_disp.Invoke<RandomUniformComputeImpl>(cuda_kernel.GetDeviceProp(), cuda_kernel.Stream(&ctx), N, range_, from_, generator, Y);
   return Status::OK();
 }
@@ -93,7 +113,7 @@ Status RandomUniformLike::ComputeInternal(OpKernelContext* p_ctx) const {
 
   int dtype = GetDType();
   if (dtype == TensorProto_DataType_UNDEFINED && !p_X->IsDataType<float>() && !p_X->IsDataType<double>() &&
-      !p_X->IsDataType<MLFloat16>()) {
+      !p_X->IsDataType<MLFloat16>() && !p_X->IsDataType<BFloat16>()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Output data type is required to be one of float types, but got incompatible data type ",
                            p_X->DataType(), " from input tensor.");

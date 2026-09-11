@@ -9,7 +9,9 @@
 #include "helper.h"
 #include "op_builder_factory.h"
 
+#include "core/framework/external_data_loader.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 
@@ -19,12 +21,11 @@ namespace onnxruntime {
 namespace webnn {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-                           const emscripten::val& context, const DataLayout preferred_layout,
-                           const WebnnDeviceType wnn_device_type, const emscripten::val& wnn_limits)
+                           const emscripten::val& context, const WebnnDeviceType wnn_device_type,
+                           const emscripten::val& wnn_limits)
     : graph_viewer_(graph_viewer),
       logger_(logger),
       wnn_context_(context),
-      preferred_layout_(preferred_layout),
       wnn_device_type_(wnn_device_type),
       wnn_limits_(wnn_limits) {
   // Create WebNN MLGraphBuilder for each ModelBuilder, because MLGraphBuilder.build()
@@ -100,31 +101,34 @@ Status ModelBuilder::RegisterConstant(const onnx::TensorProto& tensor, emscripte
   emscripten::val wnn_builder = GetBuilder();
   const auto data_type = tensor.data_type();
 
-  // A flag to indicate if we should convert int64 constant to int32.
-  const bool should_convert_int64_to_int32 = !IsInt64Supported() &&
-                                             data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64;
-
-  if (utils::HasExternalData(tensor) && !utils::HasExternalDataInMemory(tensor)) {
-    // Create WebNN Constant from external data.
-    std::basic_string<ORTCHAR_T> external_file_path;
-    onnxruntime::FileOffsetType data_offset;
-    SafeInt<size_t> tensor_byte_size;
-    ORT_RETURN_IF_ERROR(utils::GetExternalDataInfo(
-        tensor, graph_viewer_.ModelPath(), external_file_path, data_offset, tensor_byte_size));
-
-    auto webnnRegisterMLConstant = emscripten::val::module_property("webnnRegisterMLConstant");
-    operand = webnnRegisterMLConstant(emscripten::val(external_file_path),
-                                      static_cast<int32_t>(data_offset),
-                                      static_cast<int32_t>(tensor_byte_size),
-                                      wnn_builder,
-                                      desc,
-                                      should_convert_int64_to_int32);
-  } else {
+  {
     std::byte* tensor_ptr = nullptr;
     std::vector<uint8_t> unpacked_tensor;
     emscripten::val view = emscripten::val::undefined();
 
-    if (tensor.has_raw_data()) {
+    if (utils::HasExternalData(tensor) && !utils::HasExternalDataInMemory(tensor)) {
+      // The initializer's data lives on disk (an external data file). Stream just this
+      // initializer's byte range into a scratch buffer via the shared WebAssembly external data
+      // loader, then build the WebNN constant from it below - identical to the in-memory path.
+      // In JSPI builds the loader reads the range from a Blob on demand and releases it right after
+      // this copy, so the whole file is never materialized in the JS heap; other builds fall back to
+      // reading from the fully-materialized file. Using the shared loader also lifts the old
+      // int32 offset/size limit (it takes a double offset and SafeInt<size_t> length).
+      std::basic_string<ORTCHAR_T> external_file_path;
+      onnxruntime::FileOffsetType data_offset;
+      SafeInt<size_t> tensor_byte_size;
+      ORT_RETURN_IF_ERROR(utils::GetExternalDataInfo(
+          tensor, graph_viewer_.ModelPath(), external_file_path, data_offset, tensor_byte_size));
+
+      unpacked_tensor.resize(static_cast<size_t>(tensor_byte_size));
+      ORT_RETURN_IF_ERROR(LoadWebAssemblyExternalData(Env::Default(),
+                                                      external_file_path,
+                                                      data_offset,
+                                                      tensor_byte_size,
+                                                      ExternalDataLoadType::CPU,
+                                                      unpacked_tensor.data()));
+      tensor_ptr = reinterpret_cast<std::byte*>(unpacked_tensor.data());
+    } else if (tensor.has_raw_data()) {
       tensor_ptr = reinterpret_cast<std::byte*>(const_cast<char*>(tensor.raw_data().c_str()));
     } else {
       ORT_RETURN_IF_NOT(UnpackInitializerData(tensor, unpacked_tensor, graph_viewer_, logger),
@@ -182,7 +186,7 @@ Status ModelBuilder::RegisterConstant(const onnx::TensorProto& tensor, emscripte
 
     // If int64 is not supported, convert int64 to int32.
     std::vector<int32_t> int32_data;
-    if (should_convert_int64_to_int32) {
+    if (!IsInt64Supported() && data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       try {
         int32_data = GetNarrowedIntFromInt64<int32_t>(
             gsl::span<const int64_t>(reinterpret_cast<int64_t*>(tensor_ptr), num_elements));
@@ -230,7 +234,7 @@ Status ModelBuilder::RegisterInitializers() {
     desc.set("shape", emscripten::val::array(dims));
     const auto data_type = tensor.data_type();
     emscripten::val operand = emscripten::val::object();
-    if (IsSupportedDataType(data_type, wnn_limits_["constant"]["dataTypes"])) {
+    if (IsSupportedDataType(data_type, wnn_limits_, "constant", "")) {
       ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
       ORT_RETURN_IF_ERROR(RegisterConstant(tensor, operand, desc, logger_));
     } else {
@@ -373,66 +377,6 @@ Status ModelBuilder::AddOperations() {
     }
   }
 
-  return Status::OK();
-}
-
-Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
-    const std::string& name, const void* buffer, const size_t size,
-    const std::vector<uint32_t> shape, const int32_t data_type) {
-  auto persist_buffer = std::make_unique<uint8_t[]>(size);
-  uint8_t* dest = persist_buffer.get();
-  memcpy(dest, buffer, size);
-  emscripten::val view = emscripten::val::undefined();
-  emscripten::val desc = emscripten::val::object();
-  ORT_RETURN_IF_NOT(SetWebnnDataType(desc, data_type), "WebNN backend does not support data type: ", data_type);
-  switch (data_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint8_t),
-                                                           reinterpret_cast<const uint8_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int8_t),
-                                                           reinterpret_cast<const int8_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint16_t),
-                                                           reinterpret_cast<const uint16_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(float),
-                                                           reinterpret_cast<const float*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int32_t),
-                                                           reinterpret_cast<const int32_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(int64_t),
-                                                           reinterpret_cast<const int64_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint32_t),
-                                                           reinterpret_cast<const uint32_t*>(dest))};
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      view = emscripten::val{emscripten::typed_memory_view(size / sizeof(uint64_t),
-                                                           reinterpret_cast<const uint64_t*>(dest))};
-      break;
-    default:
-      break;
-  }
-
-  desc.set("dimensions", emscripten::val::array(shape));
-  desc.set("shape", emscripten::val::array(shape));
-  emscripten::val operand = emscripten::val::object();
-  // Wasm memory growth will cause all array buffers reallocation, which will be treated as detached
-  // buffers in JS side. Simply create a copy to fix it.
-  view = view.call<emscripten::val>("slice");
-  operand = wnn_builder_.call<emscripten::val>("constant", desc, view["buffer"]);
-
-  AddOperand(name, operand);
-  mem_persist_buffers_.push_back(std::move(persist_buffer));
   return Status::OK();
 }
 

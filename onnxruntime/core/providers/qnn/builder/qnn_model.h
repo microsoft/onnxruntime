@@ -115,6 +115,11 @@ class QnnModel {
   Status SetupTensors(std::vector<QnnTensorInfo>& tensors, const std::vector<QnnTensorWrapper>& tensor_wrappers,
                       bool is_input = true);
 
+  void LogTensorDetails(QnnModelWrapper& qnn_model_wrapper,
+                        const std::string& graph_name,
+                        const std::string& json_qnn_graph_path,
+                        const logging::Logger& logger) const;
+
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
 
   size_t GetInputOutputIndex(const std::string& name, const std::unordered_map<std::string, OnnxTensorInfo>& io_info) const {

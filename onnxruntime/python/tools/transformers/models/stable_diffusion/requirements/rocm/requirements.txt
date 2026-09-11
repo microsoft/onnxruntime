@@ -1,2 +1,0 @@
--r ../requirements.txt
-# Install onnxruntime-rocm that is built from source (https://onnxruntime.ai/docs/build/eps.html#amd-rocm)

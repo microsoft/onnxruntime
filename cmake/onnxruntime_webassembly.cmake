@@ -101,6 +101,9 @@ if (NOT onnxruntime_USE_VCPKG)
   target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 endif()
 
+# Include the Node.js helper for finding and validating Node.js and NPM
+include(node_helper.cmake)
+
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
       ${PROTOBUF_LIB}
@@ -113,7 +116,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       onnxruntime_graph
       onnxruntime_mlas
       onnxruntime_optimizer
-      onnxruntime_providers
+      ${onnxruntime_providers_target}
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
       ${PROVIDERS_WEBNN}
@@ -147,11 +150,6 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
         onnxruntime_webassembly
         GTest::gtest
       )
-
-      find_program(NODE_EXECUTABLE node required)
-      if (NOT NODE_EXECUTABLE)
-        message(FATAL_ERROR "Node is required for a test")
-      endif()
 
       add_test(NAME onnxruntime_webassembly_test
         COMMAND ${NODE_EXECUTABLE} onnxruntime_webassembly_test.js
@@ -191,7 +189,7 @@ else()
     onnxruntime_graph
     onnxruntime_mlas
     onnxruntime_optimizer
-    onnxruntime_providers
+    ${onnxruntime_providers_target}
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}
@@ -246,10 +244,6 @@ else()
   )
 
   if (onnxruntime_USE_JSEP)
-    # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
-    #       This flag allows async functions to be called from sync functions, in the cost of binary size and
-    #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
-
     target_compile_definitions(onnxruntime_webassembly PRIVATE USE_JSEP=1)
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
@@ -277,13 +271,24 @@ else()
   endif()
 
   if (onnxruntime_USE_JSEP OR onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
-    # if any of the above is enabled, we need to use the asyncify library
-    target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
-      "SHELL:-s ASYNCIFY=1"
-      "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
-    )
-    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-async.js")
+    if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      target_link_options(onnxruntime_webassembly PRIVATE
+        "SHELL:-s JSPI=1"
+        "SHELL:-s JSPI_EXPORTS=[OrtAppendExecutionProvider,OrtCreateSession,OrtRun,OrtRunWithBinding,OrtBindInput]"
+      )
+    else()
+      # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
+      #       This flag allows async functions to be called from sync functions, in the cost of binary size and
+      #       build time. See https://emscripten.org/docs/porting/asyncify.html for more details.
+      #
+      # if any of the above is enabled, we need to use the asyncify library
+      target_link_options(onnxruntime_webassembly PRIVATE
+        "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-async.js\""
+        "SHELL:-s ASYNCIFY=1"
+        "SHELL:-s ASYNCIFY_STACK_SIZE=65536"
+      )
+      list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-async.js")
+    endif()
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
@@ -324,8 +329,12 @@ else()
     endif()
   endif()
 
-  # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
+  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+    # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
+    target_link_options(onnxruntime_webassembly PRIVATE
+      "SHELL:-s DISABLE_EXCEPTION_THROWING=0"
+    )
+  endif()
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
     target_link_options(onnxruntime_webassembly PRIVATE --profiling --profiling-funcs)
@@ -342,6 +351,19 @@ else()
       "SHELL:-s EXPORT_NAME=ortWasm"
     )
   endif()
+
+  #
+  # Apply post-processing script for the generated JavaScript file
+  #
+  list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/wasm_post_build.js")
+  add_custom_command(
+    TARGET onnxruntime_webassembly
+    POST_BUILD
+    # Backup file at $<TARGET_FILE_NAME:onnxruntime_webassembly>.bak
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE_NAME:onnxruntime_webassembly>" "$<TARGET_FILE_NAME:onnxruntime_webassembly>.bak"
+    COMMAND ${CMAKE_COMMAND} -E echo "Performing post-process for $<TARGET_FILE_NAME:onnxruntime_webassembly>"
+    COMMAND ${NODE_EXECUTABLE} "${ONNXRUNTIME_ROOT}/wasm/wasm_post_build.js" "$<TARGET_FILE_NAME:onnxruntime_webassembly>"
+  )
 
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_DEPENDS "${onnxruntime_webassembly_script_deps}")
 
@@ -368,66 +390,12 @@ else()
   if (onnxruntime_USE_JSEP)
     string(APPEND target_name ".jsep")
   elseif (onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
-    string(APPEND target_name ".asyncify")
-    # TODO: support JSPI and add ".jspi" once JSPI build is supported
+    if (onnxruntime_ENABLE_WEBASSEMBLY_JSPI)
+      string(APPEND target_name ".jspi")
+    else()
+      string(APPEND target_name ".asyncify")
+    endif()
   endif()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name} SUFFIX ".mjs")
-
-  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    #
-    # The following POST_BUILD script is a workaround for enabling:
-    # - using onnxruntime-web with Multi-threading enabled when import from CDN
-    # - using onnxruntime-web when consumed in some frameworks like Vite
-    #
-    # In the use case mentioned above, the file name of the script may be changed. So we need to replace the line:
-    # `new Worker(new URL("ort-wasm-*.mjs", import.meta.url),`
-    # with
-    # `new Worker(new URL(import.meta.url),`
-    #
-    # This behavior is introduced in https://github.com/emscripten-core/emscripten/pull/22165. Since it's unlikely to be
-    # reverted, and there is no config to disable this behavior, we have to use a post-build script to workaround it.
-    #
-
-    # Generate a script to do the post-build work
-    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/wasm_post_build.js "
-      const fs = require('fs');
-      const path = require('path');
-
-      // node wasm_post_build.js <mjsFilePath>
-      const mjsFilePath = process.argv[2];
-      let contents = fs.readFileSync(mjsFilePath).toString();
-
-      const regex = 'new Worker\\\\(new URL\\\\(\".+?\", ?import\\\\.meta\\\\.url\\\\),';
-      const matches = [...contents.matchAll(new RegExp(regex, 'g'))];
-      if (matches.length !== 1) {
-        throw new Error(
-          `Unexpected number of matches for \"\${regex}\" in \"\${mjsFilePath}\": \${matches.length}.`,
-        );
-      }
-
-      // Replace the only occurrence.
-      contents = contents.replace(
-        new RegExp(regex),
-        `new Worker(new URL(import.meta.url),`,
-      );
-
-      fs.writeFileSync(mjsFilePath, contents);
-    "
-    )
-
-    find_program(NODE_EXECUTABLE node required)
-    if (NOT NODE_EXECUTABLE)
-      message(FATAL_ERROR "Node is required to run the post-build script")
-    endif()
-
-    add_custom_command(
-      TARGET onnxruntime_webassembly
-      POST_BUILD
-      # Backup file at $<TARGET_FILE_NAME:onnxruntime_webassembly>.bak
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE_NAME:onnxruntime_webassembly>" "$<TARGET_FILE_NAME:onnxruntime_webassembly>.bak"
-      COMMAND ${CMAKE_COMMAND} -E echo "Performing post-process for $<TARGET_FILE_NAME:onnxruntime_webassembly>"
-      COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_BINARY_DIR}/wasm_post_build.js" "$<TARGET_FILE_NAME:onnxruntime_webassembly>"
-    )
-  endif()
 endif()

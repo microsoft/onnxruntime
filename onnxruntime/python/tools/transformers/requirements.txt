@@ -1,6 +1,5 @@
 onnx >= 1.8
 numpy >= 1.19.0
-coloredlogs
 psutil
 py-cpuinfo
 py3nvml

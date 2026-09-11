@@ -26,7 +26,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/framework/run_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/model_metadef_id_generator.h"
@@ -150,7 +150,10 @@ class NodeAttrHelper {
   int64_t Get(const std::string& key, int64_t def_val) const;
   std::vector<int64_t> Get(const std::string& key, const std::vector<int64_t>& def_val) const;
 
+  // Lvalue defaults may be returned by reference; temporary and literal defaults return owned strings.
   const std::string& Get(const std::string& key, const std::string& def_val) const;
+  std::string Get(const std::string& key, std::string&& def_val) const;
+  std::string Get(const std::string& key, const char* def_val) const;
   std::vector<std::string> Get(const std::string& key, const std::vector<std::string>& def_val) const;
 
   // Convert the i() or ints() of the attribute from int64_t to int32_t

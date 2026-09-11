@@ -3,6 +3,9 @@
 
 #include "core/providers/cuda/tensor/onehot.h"
 
+#include <algorithm>
+#include <limits>
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -55,10 +58,18 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   // allocate output
   const auto* values_data = reinterpret_cast<const CudaT_Out*>(values->Data<out_type>());
   Tensor* output = ctx->Output(0, TensorShape(output_shape));
+  ORT_RETURN_IF_NOT(output, "OneHot: failed to allocate output tensor. Output shape may be too large.");
 
   // edge case where we have a dim with a value of 0
   if (output->Shape().Size() == 0)
     return Status::OK();
+
+  // Validate that suffix_dim_size fits in int32 range. fast_divmod requires int32 operands
+  // and fdm_suffix is constructed on every code path below.
+  constexpr int64_t kInt32Max = std::numeric_limits<int>::max();
+  ORT_RETURN_IF_NOT(suffix_dim_size <= kInt32Max,
+                    "OneHot: suffix dimension size (", suffix_dim_size,
+                    ") exceeds int32 range supported by the CUDA kernel.");
 
   const fast_divmod fdm_suffix(gsl::narrow_cast<int>(suffix_dim_size));
   const auto* indices_data = indices->Data<in_type>();
@@ -76,6 +87,10 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
     return Status::OK();
   }
 
+  // depth * suffix is only needed for fdm_depth_suffix on the non-zero-off-value path.
+  ORT_RETURN_IF_NOT(depth_val <= kInt32Max / std::max(suffix_dim_size, int64_t{1}),
+                    "OneHot: depth (", depth_val, ") * suffix dimension size (", suffix_dim_size,
+                    ") exceeds int32 range supported by the CUDA kernel.");
   const fast_divmod fdm_depth_suffix(gsl::narrow_cast<int>(depth_val * suffix_dim_size));
   OneHotImpl(Stream(ctx),
              indices_data, fdm_depth_suffix, fdm_suffix, depth_val,

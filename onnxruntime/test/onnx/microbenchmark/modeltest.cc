@@ -14,11 +14,12 @@ extern OrtEnv* env;
 extern const OrtApi* g_ort;
 
 static void BM_LoadModel(benchmark::State& state) {
+  constexpr const ORTCHAR_T* model_path = ORT_TSTR("transformers/test_data/models/gpt2_embedlayer_exp.onnx");
   auto logger = env->GetLoggingManager()->CreateLogger("test");
   for (auto _ : state) {
     std::shared_ptr<onnxruntime::Model> yolomodel;
     auto st =
-        onnxruntime::Model::Load(ORT_TSTR("../models/opset8/test_tiny_yolov2/model.onnx"), yolomodel, nullptr, *logger);
+        onnxruntime::Model::Load(model_path, yolomodel, nullptr, *logger);
     if (!st.IsOK()) {
       state.SkipWithError(st.ErrorMessage().c_str());
       break;
@@ -39,7 +40,7 @@ BENCHMARK(BM_LoadModel);
 
 #ifdef USE_CUDA
 static void BM_CreateSession_WithGPU(benchmark::State& state) {
-  const ORTCHAR_T* model_path = ORT_TSTR("../models/opset8/test_bvlc_alexnet/model.onnx");
+  const ORTCHAR_T* model_path = ORT_TSTR("transformers/test_data/models/gpt2_embedlayer_exp.onnx");
   OrtSessionOptions* session_option;
   ORT_BREAK_ON_ERROR(g_ort->CreateSessionOptions(&session_option));
   ORT_BREAK_ON_ERROR(OrtSessionOptionsAppendExecutionProvider_CUDA(session_option, 0));
@@ -56,7 +57,7 @@ BENCHMARK(BM_CreateSession_WithGPU);
 #endif
 
 static void BM_CreateSession(benchmark::State& state) {
-  const ORTCHAR_T* model_path = ORT_TSTR("../models/opset8/test_bvlc_alexnet/model.onnx");
+  const ORTCHAR_T* model_path = ORT_TSTR("transformers/test_data/models/gpt2_embedlayer_exp.onnx");
   OrtSessionOptions* session_option;
   ORT_BREAK_ON_ERROR(g_ort->CreateSessionOptions(&session_option));
   for (auto _ : state) {

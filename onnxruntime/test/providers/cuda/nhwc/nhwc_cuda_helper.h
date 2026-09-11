@@ -43,6 +43,8 @@
 #define MAKE_PROVIDERS_EPS_TYPE_EXT(T, pad_to_nc1d) \
   if (std::is_same<T, MLFloat16>::value) {          \
     MAKE_PROVIDERS_EPS_EXT(2e-2, pad_to_nc1d)       \
+  } else if (std::is_same<T, BFloat16>::value) {    \
+    MAKE_PROVIDERS_EPS_EXT(1e-1, pad_to_nc1d)       \
   } else if (std::is_same<T, double>::value) {      \
     MAKE_PROVIDERS_EPS_EXT(2e-4, pad_to_nc1d)       \
   } else {                                          \
@@ -60,5 +62,6 @@ class CudaNhwcTypedTest : public ::testing::Test {};
 
 using CudaNhwcTestTypes = ::testing::Types<float, MLFloat16>;  // double,
 TYPED_TEST_SUITE(CudaNhwcTypedTest, CudaNhwcTestTypes);
+
 }  // namespace test
 }  // namespace onnxruntime

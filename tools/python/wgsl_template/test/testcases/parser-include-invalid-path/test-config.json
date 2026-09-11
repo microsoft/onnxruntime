@@ -1,0 +1,5 @@
+{
+  "type": "parser",
+  "description": "Test parser behavior with include directive containing invalid path characters",
+  "expectsError": "File \"../../../invalid<>path|file*.wgsl.template\" not found"
+}

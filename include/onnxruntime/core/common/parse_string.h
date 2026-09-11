@@ -35,13 +35,30 @@ template <typename T>
 std::enable_if_t<detail::ParseWithFromChars<T>, bool>
 TryParseStringWithClassicLocale(std::string_view str, T& value) {
   T parsed_value{};
-  const auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), parsed_value);
 
-  if (ec != std::errc{}) {
+  std::from_chars_result conversion_result{};
+  if constexpr (std::is_integral_v<T> && std::is_unsigned_v<T>) {
+    // For unsigned integral types, also handle hex values, i.e., those beginning with "0x".
+    // std::from_chars() does not accept the "0x" prefix.
+    const bool has_hex_prefix = str.size() >= 2 &&
+                                str[0] == '0' &&
+                                (str[1] == 'x' || str[1] == 'X');
+
+    if (has_hex_prefix) {
+      str = str.substr(2);
+    }
+
+    const int base = has_hex_prefix ? 16 : 10;
+    conversion_result = std::from_chars(str.data(), str.data() + str.size(), parsed_value, base);
+  } else {
+    conversion_result = std::from_chars(str.data(), str.data() + str.size(), parsed_value);
+  }
+
+  if (conversion_result.ec != std::errc{}) {
     return false;
   }
 
-  if (ptr != str.data() + str.size()) {
+  if (conversion_result.ptr != str.data() + str.size()) {
     return false;
   }
 

@@ -1,0 +1,28 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// local_idx is used to copy hidden state row, workgroup_idx is token_idx
+// workgroup_idx is the token index in this expert
+
+// in: hiddenstate_for_expert [num_experts, num_tokens]
+// in: hidden_state(vec4)
+// out: new_hidden_state(vec4) [used_by, hidden_size]
+// out: expert_tokens [used_by]
+// uniform: expert_idx, num_experts, num_tokens, hidden_size(vec4)
+
+$MAIN {
+    let expert_base = uniforms.expert_idx * uniforms.num_tokens;
+    let token_idx = hiddenstate_for_expert[expert_base + workgroup_idx];
+    tokens[workgroup_idx] = token_idx;
+
+    // copy hidden state for this token
+    let step = (uniforms.hidden_size + workgroup_size_x  - 1) / workgroup_size_x;
+    let wg_offset = local_idx * step;
+    let src_offset = token_idx * uniforms.hidden_size + wg_offset;
+    let dst_offset = workgroup_idx * uniforms.hidden_size + wg_offset;
+
+    for (var i = 0u; i < step; i++) {
+        let src = hidden_state[src_offset + i];
+        new_hidden_state[dst_offset + i] = src;
+    }
+} // MAIN

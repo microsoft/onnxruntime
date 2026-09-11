@@ -41,6 +41,117 @@ inline static void RunLoop(concurrency::ThreadPool* tp, std::ptrdiff_t total_cha
   concurrency::ThreadPool::TryParallelFor(tp, total_channels, task.Cost(), task);
 }
 
+// Core (non-MLAS) average-pooling loop, operating on caller-provided NCHW float buffers and
+// pre-computed output_dims/pads. Correct for ceil_mode + count_include_pad because the
+// AveragePool{1,2,3}DTask functors clamp the window end to input+tail_pad, excluding the
+// ceil-mode phantom cells that MLAS's full-kernel divisor would count.
+//
+// This is the single source of truth for the reference average, shared by:
+//   - the float production path (AveragePoolV19 and the Pool<float, AveragePool> opset 7-18
+//     ceil_mode+count_include_pad fallback), via the ComputeAveragePoolReference wrapper below;
+//   - the fp16 fallback (PoolFp16::ComputeAveragePoolFp16Reference), which casts the tensor
+//     MLFloat16->float, calls this, then casts float->MLFloat16 (single round at store).
+// Accumulation is in float regardless of caller dtype, so the fp16 path is numerically
+// equivalent to accumulate-in-float + round-once.
+Status ComputeAveragePoolReferenceCompute(const float* X_data, float* Y_data,
+                                          const TensorShape& x_shape,
+                                          gsl::span<const int64_t> output_dims,
+                                          gsl::span<const int64_t> pads,
+                                          const PoolAttributes& pool_attrs,
+                                          concurrency::ThreadPool* tp) {
+  const auto& kernel_shape = pool_attrs.kernel_shape;
+
+  const int64_t channels = x_shape[1];
+  const int64_t height = x_shape[2];
+  const int64_t width = kernel_shape.size() > 1 ? x_shape[3] : 1;
+  const int64_t depth = kernel_shape.size() > 2 ? x_shape[4] : 1;
+  const int64_t pooled_height = output_dims[2];
+  const int64_t pooled_width = kernel_shape.size() > 1 ? output_dims[3] : 1;
+  const int64_t pooled_depth = kernel_shape.size() > 2 ? output_dims[4] : 1;
+  const int64_t total_channels = x_shape[0] * channels;
+
+  const int64_t stride_h = pool_attrs.strides[0];
+  const int64_t stride_w = kernel_shape.size() > 1 ? pool_attrs.strides[1] : 1;
+  const int64_t stride_d = kernel_shape.size() > 2 ? pool_attrs.strides[2] : 1;
+
+  // p (LpPool p-norm) is unused by AveragePool functors; pass 0.
+  constexpr int64_t p = 0;
+
+  switch (kernel_shape.size()) {
+    case 1: {
+      int64_t x_step = height;
+      int64_t y_step = pooled_height;
+      const int64_t dilation_h = pool_attrs.dilations[0];
+      RunLoop<AveragePool1DTask<float>>(tp, onnxruntime::narrow<size_t>(total_channels),
+                                        {X_data, Y_data, x_step, y_step, dilation_h, pooled_height, stride_h,
+                                         height, kernel_shape, pads, pool_attrs.count_include_pad, p});
+      break;
+    }
+    case 2: {
+      int64_t x_step = height * width;
+      int64_t y_step = pooled_height * pooled_width;
+      const int64_t dilation_h = pool_attrs.dilations[0];
+      const int64_t dilation_w = pool_attrs.dilations[1];
+      RunLoop<AveragePool2DTask<float>>(
+          tp, onnxruntime::narrow<size_t>(total_channels),
+          {X_data, Y_data, x_step, y_step, dilation_h, dilation_w, pooled_height, pooled_width, stride_h,
+           stride_w, height, width, kernel_shape, pads, pool_attrs.count_include_pad, p});
+      break;
+    }
+    case 3: {
+      int64_t x_step = height * width * depth;
+      int64_t y_step = pooled_height * pooled_width * pooled_depth;
+      const int64_t dilation_h = pool_attrs.dilations[0];
+      const int64_t dilation_w = pool_attrs.dilations[1];
+      const int64_t dilation_d = pool_attrs.dilations[2];
+      RunLoop<AveragePool3DTask<float>>(tp, onnxruntime::narrow<size_t>(total_channels),
+                                        {X_data, Y_data, x_step, y_step, dilation_h, dilation_w, dilation_d,
+                                         pooled_height, pooled_width, pooled_depth, stride_h, stride_w, stride_d,
+                                         height, width, depth, kernel_shape, pads, pool_attrs.count_include_pad, p});
+      break;
+    }
+    default:
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                    "Unsupported kernel dimension : " + std::to_string(kernel_shape.size()));
+  }
+  return Status::OK();
+}
+
+// Context wrapper for the float production path (AveragePoolV19, opset >= 19; and the
+// Pool<float, AveragePool> opset 7-18 ceil_mode+count_include_pad fallback). Pulls X/Y from
+// the kernel context, mirrors PoolBase's rank checks, computes output_dims/pads, then runs the
+// shared float compute. Behavior-preserving: identical geometry + functor dispatch as before.
+template <typename T>
+Status ComputeAveragePoolReference(OpKernelContext* context,
+                                   const PoolAttributes& pool_attrs,
+                                   concurrency::ThreadPool* tp) {
+  ORT_ENFORCE(!pool_attrs.global_pooling,
+              "ComputeAveragePoolReference requires non-global pooling; "
+              "strides/dilations are not populated for global pooling.");
+
+  const auto* X = context->Input<Tensor>(0);
+  const TensorShape& x_shape = X->Shape();
+  ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
+
+  // Mirror the rank checks PoolBase::Compute performs before SetOutputSize. This function is
+  // reached directly from the Pool<float, AveragePool>::Compute ceil_mode+count_include_pad
+  // guard (and from AveragePoolV19), bypassing PoolBase::Compute, so without these a
+  // rank-mismatched model would reach SetOutputSize/InferOutputSize and read out of bounds.
+  const size_t pooling_dims = x_shape.NumDimensions() - 2;
+  if (pooling_dims > 3) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size.");
+  }
+  ORT_RETURN_IF_NOT(pooling_dims == pool_attrs.kernel_shape.size(),
+                    "kernel_shape num_dims is not compatible with X num_dims.");
+
+  auto pads = pool_attrs.pads;
+  auto output_dims = pool_attrs.SetOutputSize(x_shape, x_shape[1], &pads);
+  Tensor* Y = context->Output(0, output_dims);
+
+  return ComputeAveragePoolReferenceCompute(X->Data<T>(), Y->MutableData<T>(), x_shape,
+                                            output_dims, pads, pool_attrs, tp);
+}
+
 template <typename T, typename PoolType>
 Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
@@ -152,6 +263,15 @@ Status Pool<float, MaxPool<1 /*VERSION*/>>::Compute(OpKernelContext* context) co
 
 template <>
 Status Pool<float, AveragePool>::Compute(OpKernelContext* context) const {
+  // MLAS's include-pad path divides by the full kernel size and cannot drop the
+  // ceil_mode phantom tail cells, giving a wrong average for
+  // ceil_mode=1 && count_include_pad. Route only that combo to the reference loop,
+  // which clamps the window to input+tail_pad. Everything else keeps the MLAS fast path.
+  // Global pooling is excluded because it has no ceil/pads (so it is already correct) and
+  // its strides[] are not populated, which ComputeAveragePoolReference requires.
+  if (pool_attrs_.ceil_mode == 1 && pool_attrs_.count_include_pad && !pool_attrs_.global_pooling) {
+    return ComputeAveragePoolReference<float>(context, pool_attrs_, context->GetOperatorThreadPool());
+  }
   return PoolBase::Compute(context,
                            pool_attrs_.count_include_pad ? MlasAveragePoolingIncludePad : MlasAveragePoolingExcludePad);
 }
@@ -251,77 +371,7 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
 
 template <typename T>
 Status AveragePoolV19<T>::Compute(OpKernelContext* context) const {
-  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
-  bool need_dilation = false;
-  for (auto n : pool_attrs_.dilations) {
-    need_dilation |= n > 1;
-  }
-
-  const auto* X = context->Input<Tensor>(0);
-  const TensorShape& x_shape = X->Shape();
-
-  ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
-
-  auto pads = pool_attrs_.pads;
-  auto kernel_shape = pool_attrs_.kernel_shape;
-
-  auto output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
-  Tensor* Y = context->Output(0, output_dims);
-
-  const auto* X_data = X->Data<T>();
-  auto* Y_data = Y->MutableData<T>();
-
-  // The main loop
-  int64_t channels = x_shape[1];
-  int64_t height = x_shape[2];
-  int64_t width = kernel_shape.size() > 1 ? x_shape[3] : 1;
-  int64_t depth = kernel_shape.size() > 2 ? x_shape[4] : 1;
-  int64_t pooled_height = output_dims[2];
-  int64_t pooled_width = kernel_shape.size() > 1 ? output_dims[3] : 1;
-  int64_t pooled_depth = kernel_shape.size() > 2 ? output_dims[4] : 1;
-  const int64_t total_channels = x_shape[0] * channels;
-
-  switch (kernel_shape.size()) {
-    case 1: {
-      int64_t x_step = height;
-      int64_t y_step = pooled_height;
-      const int64_t dilation_h = pool_attrs_.dilations[0];
-
-      RunLoop<AveragePool1DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
-                                    {X_data, Y_data, x_step, y_step, dilation_h, pooled_height, stride_h(),
-                                     height, kernel_shape, pads, pool_attrs_.count_include_pad, p_});
-      break;
-    }
-
-    case 2: {
-      int64_t x_step = height * width;
-      int64_t y_step = pooled_height * pooled_width;
-      const int64_t dilation_h = pool_attrs_.dilations[0];
-      const int64_t dilation_w = pool_attrs_.dilations[1];
-      RunLoop<AveragePool2DTask<T>>(
-          tp, onnxruntime::narrow<size_t>(total_channels),
-          {X_data, Y_data, x_step, y_step, dilation_h, dilation_w, pooled_height, pooled_width, stride_h(),
-           stride_w(), height, width, kernel_shape, pads, pool_attrs_.count_include_pad, p_});
-      break;
-    }
-    case 3: {
-      int64_t x_step = height * width * depth;
-      int64_t y_step = pooled_height * pooled_width * pooled_depth;
-      const int64_t dilation_h = pool_attrs_.dilations[0];
-      const int64_t dilation_w = pool_attrs_.dilations[1];
-      const int64_t dilation_d = pool_attrs_.dilations[2];
-      RunLoop<AveragePool3DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
-                                    {X_data, Y_data, x_step, y_step,
-                                     dilation_h, dilation_w, dilation_d, pooled_height, pooled_width,
-                                     pooled_depth, stride_h(), stride_w(), stride_d(), height,
-                                     width, depth, kernel_shape, pads, pool_attrs_.count_include_pad, p_});
-      break;
-    }
-    default:
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported kernel dimension : " + std::to_string(kernel_shape.size()));
-  }
-
-  return Status::OK();
+  return ComputeAveragePoolReference<T>(context, pool_attrs_, context->GetOperatorThreadPool());
 }
 
 template <typename T>

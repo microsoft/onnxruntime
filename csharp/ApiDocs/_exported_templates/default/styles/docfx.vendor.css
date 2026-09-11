@@ -1220,7 +1220,7 @@ to{background-position:0 0}
 .list-group-item.active .list-group-item-text,.list-group-item.active:focus .list-group-item-text,.list-group-item.active:hover .list-group-item-text{color:#c7ddef}
 a.list-group-item,button.list-group-item{color:#555}
 a.list-group-item .list-group-item-heading,button.list-group-item .list-group-item-heading{color:#333}
-a.list-group-item:focus,a.list-group-item:hover,button.list-group-item:focus,button.list-group-item:hover{color:#555;text-decoration:none;background-color:#f5f5f5}
+a.list-group-item:focus,a.list-group-item:hover,button.list-group-item:focus,button.list-group-item:hover{color:#333;text-decoration:none;background-color:#f5f5f5}
 button.list-group-item{width:100%;text-align:left}
 .list-group-item-success{color:#3c763d;background-color:#dff0d8}
 a.list-group-item-success,button.list-group-item-success{color:#3c763d}
@@ -1230,7 +1230,7 @@ a.list-group-item-success.active,a.list-group-item-success.active:focus,a.list-g
 .list-group-item-info{color:#31708f;background-color:#d9edf7}
 a.list-group-item-info,button.list-group-item-info{color:#31708f}
 a.list-group-item-info .list-group-item-heading,button.list-group-item-info .list-group-item-heading{color:inherit}
-a.list-group-item-info:focus,a.list-group-item-info:hover,button.list-group-item-info:focus,button.list-group-item-info:hover{color:#31708f;background-color:#c4e3f3}
+a.list-group-item-info:focus,a.list-group-item-info:hover,button.list-group-item-info:focus,button.list-group-item-info:hover{color:#1e4a5f;background-color:#c4e3f3}
 a.list-group-item-info.active,a.list-group-item-info.active:focus,a.list-group-item-info.active:hover,button.list-group-item-info.active,button.list-group-item-info.active:focus,button.list-group-item-info.active:hover{color:#fff;background-color:#31708f;border-color:#31708f}
 .list-group-item-warning{color:#8a6d3b;background-color:#fcf8e3}
 a.list-group-item-warning,button.list-group-item-warning{color:#8a6d3b}

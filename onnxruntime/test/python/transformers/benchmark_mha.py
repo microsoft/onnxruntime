@@ -71,7 +71,6 @@ class SdpaKernel(IntEnum):
     MATH = 16
     TRT_FLASH_ATTENTION = 32
     TRT_CROSS_ATTENTION = 64
-    TRT_CAUSAL_ATTENTION = 128
     LEAN_ATTENTION = 256
 
 
@@ -835,7 +834,6 @@ def sdpa_kernel_from_debug_info(
                 "TRT_FUSED_ATTENTION": "ort:trt_fmha",
                 "TRT_FLASH_ATTENTION": "ort:trt_flash",
                 "TRT_CROSS_ATTENTION": "ort:trt_cross",
-                "TRT_CAUSAL_ATTENTION": "ort:trt_causal",
             }
             return kernel_names[name]
         else:

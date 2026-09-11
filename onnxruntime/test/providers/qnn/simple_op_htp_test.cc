@@ -10,8 +10,8 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
-#include "test/optimizer/qdq_test_utils.h"
 #include "test/providers/qnn/qnn_test_utils.h"
+#include "test/unittest_util/qdq_test_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -31,6 +31,25 @@ static void RunOpTestOnCPU(const std::string& op_type,
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, {}, attrs, op_domain),
+                  provider_options,
+                  opset_version,
+                  expected_ep_assignment);
+}
+
+template <typename InputType1, typename InputType2 = int64_t>
+static void RunOpTestOnCPU(const std::string& op_type,
+                           const std::vector<TestInputDef<InputType1>>& input_defs_1,
+                           const std::vector<TestInputDef<InputType2>>& input_defs_2,
+                           const std::vector<TestInputDef<InputType1>>& input_defs_3,
+                           const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                           int opset_version,
+                           ExpectedEPNodeAssignment expected_ep_assignment,
+                           const std::string& op_domain = kOnnxDomain) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "cpu";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  RunQnnModelTest(BuildOpTestCase<InputType1, InputType2>(op_type, input_defs_1, input_defs_2, input_defs_3, attrs, op_domain),
                   provider_options,
                   opset_version,
                   expected_ep_assignment);
@@ -109,6 +128,15 @@ TEST_F(QnnCPUBackendTests, DISABLED_UnaryOp_Relu) {
                  ExpectedEPNodeAssignment::All);
 }
 
+TEST_F(QnnCPUBackendTests, Concat_EmptyInput) {
+  RunOpTestOnCPU("Concat",
+                 {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                  TestInputDef<float>({1, 0, 4, 4}, false, {})},
+                 {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+                 13,
+                 ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model
@@ -128,6 +156,31 @@ static void RunQDQOpTest(const std::string& op_type,
 
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input_defs, {}, attrs, op_domain),
                        BuildQDQOpTestCase<InputQType>(op_type, input_defs, {}, attrs, op_domain, use_contrib_qdq),
+                       provider_options,
+                       opset_version,
+                       expected_ep_assignment,
+                       tolerance);
+}
+// Tests the accuracy of a QDQ model with indices inputs on QNN EP by comparing to CPU EP, which runs
+// both the fp32 model and the QDQ model.
+template <typename InputQType = uint8_t, typename InputType2 = int64_t>
+static void RunQDQOpTest(const std::string& op_type,
+                         const std::vector<TestInputDef<float>>& input_defs_1,
+                         const std::vector<TestInputDef<InputType2>>& input_defs_2,
+                         const std::vector<TestInputDef<float>>& input_defs_3,
+                         const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                         int opset_version,
+                         ExpectedEPNodeAssignment expected_ep_assignment,
+                         const std::string& op_domain = kOnnxDomain,
+                         bool use_contrib_qdq = false,
+                         QDQTolerance tolerance = QDQTolerance()) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  TestQDQModelAccuracy(BuildOpTestCase<float, InputType2>(op_type, input_defs_1, input_defs_2, input_defs_3, attrs, op_domain),
+                       BuildQDQOpTestCase<InputQType, InputType2>(op_type, input_defs_1, input_defs_2, input_defs_3, attrs,
+                                                                  op_domain, use_contrib_qdq),
                        provider_options,
                        opset_version,
                        expected_ep_assignment,
@@ -153,6 +206,33 @@ static void RunOpTest(const std::string& op_type,
 
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
   RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, {}, attrs, op_domain),
+                  provider_options,
+                  opset_version,
+                  expected_ep_assignment,
+                  fp32_abs_err);
+}
+
+// Runs a non-QDQ model with indices inputs (int64) on HTP and compares output to CPU EP.
+template <typename InputType1, typename InputType2 = int64_t>
+static void RunOpTest(const std::string& op_type,
+                      const std::vector<TestInputDef<InputType1>>& input_defs_1,
+                      const std::vector<TestInputDef<InputType2>>& input_defs_2,
+                      const std::vector<TestInputDef<InputType1>>& input_defs_3,
+                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                      int opset_version,
+                      ExpectedEPNodeAssignment expected_ep_assignment,
+                      const std::string& op_domain = kOnnxDomain,
+                      float fp32_abs_err = 1e-5f,
+                      bool enable_htp_fp16_precision = false) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+
+  if (enable_htp_fp16_precision) {
+    provider_options["enable_htp_fp16_precision"] = "1";
+  }
+
+  // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
+  RunQnnModelTest(BuildOpTestCase<InputType1, InputType2>(op_type, input_defs_1, input_defs_2, input_defs_3, attrs, op_domain),
                   provider_options,
                   opset_version,
                   expected_ep_assignment,
@@ -186,6 +266,26 @@ static void RunFP16OpTest(const std::string& op_type,
                         opset_version,
                         expected_ep_assignment,
                         tolerance);
+}
+
+// Test Concat with empty input
+TEST_F(QnnHTPBackendTests, Concat_EmptyInput) {
+  RunOpTest("Concat",
+            {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+             TestInputDef<float>({1, 0, 4, 4}, false, {})},
+            {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+            13,
+            ExpectedEPNodeAssignment::All);
+}
+
+// Test Concat with empty initializer
+TEST_F(QnnHTPBackendTests, Concat_EmptyInitializer) {
+  RunOpTest("Concat",
+            {TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+             TestInputDef<float>({1, 0, 4, 4}, true, {})},  // true makes this an initializer
+            {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
+            13,
+            ExpectedEPNodeAssignment::All);
 }
 
 // Test the accuracy of QDQ Sigmoid.
@@ -639,8 +739,19 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Abs_U16) {
                          true);        // Use com.microsoft domain for Q/DQ ops
 }
 
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=24, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): -12
+// qdq@QNN_EP val: -11.011764526367188 (err: 0.9882354736328125, err/output_range: 4.1176481246948242%)
+// qdq@CPU_EP val: -12.047059059143066 (err: 0.047059059143066406, err/output_range: 0.19607941806316376%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 3.9215683937072754%
 // Test accuracy of QDQ Ceil op.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Ceil) {
+#else
 TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
+#endif
   const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
   RunQDQOpTest<uint8_t>("Ceil",
                         {TestInputDef<float>({1, 2, 3}, false, input_data)},
@@ -1160,6 +1271,156 @@ TEST_F(QnnHTPBackendTests, ScatterND_int64_int64_reduction_min) {
                      ExpectedEPNodeAssignment::None);
 }
 
+// Test ScatterElements with default attributes on CPU
+TEST_F(QnnCPUBackendTests, ScatterElements_Float_Reduction_None) {
+  std::vector<float> data = {0.0f, 1.0f, 2.0f, 3.0f};
+  std::vector<int64_t> indices = {1};
+  std::vector<float> updates = {10.0f};
+  RunOpTestOnCPU<float, int64_t>("ScatterElements",
+                                 {
+                                     TestInputDef<float>({4}, false, std::move(data)),
+                                 },
+                                 {
+                                     TestInputDef<int64_t>({1}, false, std::move(indices)),
+                                 },
+                                 {
+                                     TestInputDef<float>({1}, false, std::move(updates)),
+                                 },
+                                 {},
+                                 17,
+                                 ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterElements with reduction Add on CPU
+TEST_F(QnnCPUBackendTests, ScatterElements_Float_Reduction_Add) {
+  std::vector<float> data = {0.0f, 1.0f, 2.0f, 3.0f};
+  std::vector<int64_t> indices = {1};
+  std::vector<float> updates = {10.0f};
+  RunOpTestOnCPU<float, int64_t>("ScatterElements",
+                                 {
+                                     TestInputDef<float>({4}, false, std::move(data)),
+                                 },
+                                 {
+                                     TestInputDef<int64_t>({1}, false, std::move(indices)),
+                                 },
+                                 {
+                                     TestInputDef<float>({1}, false, std::move(updates)),
+                                 },
+                                 {
+                                     utils::MakeAttribute("reduction", "add"),
+                                 },
+                                 17,
+                                 ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterElements with default attributes on HTP
+TEST_F(QnnHTPBackendTests, ScatterElements_Float_Reduction_None) {
+  std::vector<float> data = {0.0f, 1.0f, 2.0f, 3.0f};
+  std::vector<int64_t> indices = {1};
+  std::vector<float> updates = {10.0f};
+  RunOpTest<float, int64_t>("ScatterElements",
+                            {
+                                TestInputDef<float>({4}, false, std::move(data)),
+                            },
+                            {
+                                TestInputDef<int64_t>({1}, false, std::move(indices)),
+                            },
+                            {
+                                TestInputDef<float>({1}, false, std::move(updates)),
+                            },
+                            {},
+                            17,
+                            ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterElements with default attributes on HTP
+// Disable this due to an accuracy issue with selected data range
+TEST_F(QnnHTPBackendTests, DISABLED_ScatterElements_Int8_Reduction_None) {
+  std::vector<float> data = {0.0f, 1.0f, 2.0f, 3.0f};
+  std::vector<int64_t> indices = {1};
+  std::vector<float> updates = {10.0f};
+  RunQDQOpTest<uint8_t, int64_t>("ScatterElements",
+                                 {
+                                     TestInputDef<float>({4}, false, std::move(data)),
+                                 },
+                                 {
+                                     TestInputDef<int64_t>({1}, false, std::move(indices)),
+                                 },
+                                 {
+                                     TestInputDef<float>({1}, false, std::move(updates)),
+                                 },
+                                 {},
+                                 17,
+                                 ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterElements with reduction ADD on HTP
+// Disable this due to an accuracy issue with selected data range
+TEST_F(QnnHTPBackendTests, DISABLED_ScatterElements_Int8_Reduction_Add) {
+  std::vector<float> data = {0.0f, 1.0f, 2.0f, 3.0f};
+  std::vector<int64_t> indices = {1};
+  std::vector<float> updates = {10.0f};
+  RunQDQOpTest<uint8_t, int64_t>("ScatterElements",
+                                 {
+                                     TestInputDef<float>({4}, false, std::move(data)),
+                                 },
+                                 {
+                                     TestInputDef<int64_t>({1}, false, std::move(indices)),
+                                 },
+                                 {
+                                     TestInputDef<float>({1}, false, std::move(updates)),
+                                 },
+                                 {
+                                     utils::MakeAttribute("reduction", "add"),
+                                 },
+                                 17,
+                                 ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterElements with reduction Max on HTP
+TEST_F(QnnHTPBackendTests, ScatterElements_Int8_Reduction_Max) {
+  std::vector<float> data = {0.0f, 1.0f, 2.0f, 3.0f};
+  std::vector<int64_t> indices = {1};
+  std::vector<float> updates = {10.0f};
+  RunQDQOpTest<uint8_t, int64_t>("ScatterElements",
+                                 {
+                                     TestInputDef<float>({4}, false, std::move(data)),
+                                 },
+                                 {
+                                     TestInputDef<int64_t>({1}, false, std::move(indices)),
+                                 },
+                                 {
+                                     TestInputDef<float>({1}, false, std::move(updates)),
+                                 },
+                                 {
+                                     utils::MakeAttribute("reduction", "max"),
+                                 },
+                                 17,
+                                 ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterElements with reduction Mul on HTP
+TEST_F(QnnHTPBackendTests, ScatterElements_int8_reduction_mul) {
+  std::vector<float> data = {0.0f, 1.0f, 2.0f, 3.0f};
+  std::vector<int64_t> indices = {1};
+  std::vector<float> updates = {10.0f};
+  RunQDQOpTest<uint8_t, int64_t>("ScatterElements",
+                                 {
+                                     TestInputDef<float>({4}, false, std::move(data)),
+                                 },
+                                 {
+                                     TestInputDef<int64_t>({1}, false, std::move(indices)),
+                                 },
+                                 {
+                                     TestInputDef<float>({1}, false, std::move(updates)),
+                                 },
+                                 {
+                                     utils::MakeAttribute("reduction", "mul"),
+                                 },
+                                 17,
+                                 ExpectedEPNodeAssignment::All);
+}
+
 // Test 8-bit QDQ GridSample with bilinear
 TEST_F(QnnHTPBackendTests, GridSample_Bilinear) {
   RunQDQOpTest<uint8_t>("GridSample",
@@ -1496,6 +1757,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_QDQ_Supported) {
 // Check that QNN EP can support float32 HardSigmoid on HTP.
 // Enables running f32 ops using fp16 precision.
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
 
   RunOpTest<float>("HardSigmoid",
@@ -1521,6 +1783,8 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_F32_as_FP16) {
 
 // Check that QNN EP can support float16 HardSigmoid on HTP
 TEST_F(QnnHTPBackendTests, UnaryOp_HardSigmoid_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
+
   std::vector<float> input_data = GetFloatDataInRange(-5.0f, 5.0f, 16);
 
   RunFP16OpTest("HardSigmoid",
@@ -1573,6 +1837,7 @@ static GetTestModelFn BuildHardSigmoidFusionTestCase(TestInputDef<FloatType>& in
 // Test FP32 fusion of HardSigmoid into HardSwish on the HTP backend with the enable_htp_fp16_precision option enabled
 // to run it with fp16 precision.
 TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP32_as_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
   ProviderOptions provider_options;
 
   provider_options["backend_type"] = "htp";
@@ -1596,6 +1861,8 @@ TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP32_as_FP16) {
 
 // Test FP16 fusion of HardSigmoid into HardSwish on the HTP backend.
 TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP16) {
+  QNN_SKIP_TEST_IF_HTP_FP16_UNSUPPORTED();
+
   ProviderOptions provider_options;
 
   provider_options["backend_type"] = "htp";
@@ -1616,6 +1883,38 @@ TEST_F(QnnHTPBackendTests, HardSigmoidFusedIntoHardSwish_FP16) {
                         provider_options,
                         18,  // opset
                         ExpectedEPNodeAssignment::All);
+}
+
+// Test RandomUniformLike + Add operation on HTP backend
+TEST_F(QnnHTPBackendTests, RandomUniformLikeAddTest) {
+  // Create a function that builds the test model: input -> RandomUniformLike -> Add -> output
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    // Create input tensor with shape [1, 4, 3] and float32 data
+    std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+                                     7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+    auto* input = builder.MakeInput<float>({1, 4, 3}, input_data);
+
+    // RandomUniformLike node
+    auto* random_output = builder.MakeIntermediate();
+    Node& random_node = builder.AddNode("RandomUniformLike", {input}, {random_output});
+    random_node.AddAttribute("low", 0.0f);
+    random_node.AddAttribute("high", 10.0f);
+    random_node.AddAttribute("seed", 42.0f);
+
+    // Add node: input + random_output
+    auto* final_output = builder.MakeOutput();
+    builder.AddNode("Add", {input, random_output}, {final_output});
+  };
+
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+
+  // Run the test - we expect both RandomUniformLike and Add to be assigned to QNN EP
+  // Using the NoVerify version since RandomUniformLike randomness algo differs from ORT CPU
+  RunQnnModelTestHTPNoVerify(build_test_case,
+                             provider_options,
+                             14,
+                             ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

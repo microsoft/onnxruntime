@@ -138,14 +138,14 @@ if (isProxyWorker) {
         case 'copy-from': {
           const { buffer } = message!;
           const bufferData = copyFromExternalBuffer(buffer);
-          postMessage({ type, out: bufferData } as OrtWasmMessage);
+          postMessage({ type, out: bufferData });
           break;
         }
         case 'create': {
           const { model, options } = message!;
           createSession(model, options).then(
             (sessionMetadata) => {
-              postMessage({ type, out: sessionMetadata } as OrtWasmMessage);
+              postMessage({ type, out: sessionMetadata });
             },
             (err) => {
               postMessage({ type, err });
@@ -165,7 +165,7 @@ if (isProxyWorker) {
                 postMessage({ type, err: 'Proxy does not support non-cpu tensor location.' });
               } else {
                 postMessage(
-                  { type, out: outputs } as OrtWasmMessage,
+                  { type, out: outputs },
                   extractTransferableBuffers([...inputs, ...outputs] as SerializableTensorMetadata[]),
                 );
               }
@@ -183,7 +183,7 @@ if (isProxyWorker) {
         default:
       }
     } catch (err) {
-      postMessage({ type, err } as OrtWasmMessage);
+      postMessage({ type, err });
     }
   };
 }

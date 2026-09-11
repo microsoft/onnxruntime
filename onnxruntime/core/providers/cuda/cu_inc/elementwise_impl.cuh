@@ -8,13 +8,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-#ifdef USE_ROCM
-constexpr int kElementsPerThread = 2;
-constexpr int kThreadsPerBlock = 512;
-#else
 constexpr int kElementsPerThread = GridDim::maxElementsPerThread;
 constexpr int kThreadsPerBlock = GridDim::maxThreadsPerBlock;
-#endif
 
 template <typename T, typename FuncT, typename TIndex>
 __global__ void ElementwiseKernel(T* output_data, const FuncT functor, TIndex N) {

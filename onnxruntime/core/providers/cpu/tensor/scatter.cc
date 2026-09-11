@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 // https://github.com/onnx/onnx/blob/main/docs/Operators.md#Scatter
+#include <atomic>
 #include <type_traits>
 #include <core/common/safeint.h>
 
@@ -10,6 +11,7 @@
 #include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/op_kernel_type_control_utils.h"
+#include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/providers/op_kernel_type_control.h"
 #if defined(ENABLE_TRAINING_OPS)
@@ -236,29 +238,44 @@ struct Func_Max<BFloat16> {
 template <class TIndex>
 Status GetIndices(
     const Tensor& data_input, const Tensor& indices_input, int64_t axis,
+    concurrency::ThreadPool* tp,
     std::vector<int64_t>& indices_data) {
   const auto& input_data_shape = data_input.Shape();
   const auto* indices_data_raw = indices_input.Data<TIndex>();
   const auto num_indices = indices_input.Shape().Size();
   const auto axis_dim_limit = input_data_shape[narrow<size_t>(axis)];
 
-  std::vector<int64_t> indices_data_result;
-  indices_data_result.reserve(narrow<size_t>(num_indices));
+  indices_data.resize(narrow<size_t>(num_indices));
 
-  for (int64_t i = 0; i < num_indices; ++i) {
-    const int64_t idx = static_cast<int64_t>(indices_data_raw[i]);
+  // When multiple indices are out-of-bounds, the reported index is nondeterministic
+  // (whichever thread wins the CAS). This is acceptable—we only need to report that
+  // validation failed and provide one example of a bad index.
+  std::atomic<bool> found_error{false};
+  std::atomic<int64_t> first_bad_idx{0};
 
-    if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "indices element out of data bounds, idx=", idx,
-                             " must be within the inclusive range [", -axis_dim_limit,
-                             ",", axis_dim_limit - 1, "]");
-    }
+  concurrency::ThreadPool::TryParallelFor(
+      tp, narrow<std::ptrdiff_t>(num_indices), 1.0,
+      [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+        for (std::ptrdiff_t i = first; i < last; ++i) {
+          const int64_t idx = static_cast<int64_t>(indices_data_raw[i]);
+          if (idx < -axis_dim_limit || idx >= axis_dim_limit) {
+            bool expected = false;
+            if (found_error.compare_exchange_strong(expected, true)) {
+              first_bad_idx.store(idx, std::memory_order_relaxed);
+            }
+            return;
+          }
+          indices_data[narrow<size_t>(i)] = idx < 0 ? idx + axis_dim_limit : idx;
+        }
+      });
 
-    indices_data_result.push_back(idx < 0 ? idx + axis_dim_limit : idx);
+  if (found_error.load()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "indices element out of data bounds, idx=", first_bad_idx.load(),
+                           " must be within the inclusive range [", -axis_dim_limit,
+                           ",", axis_dim_limit - 1, "]");
   }
 
-  indices_data = std::move(indices_data_result);
   return Status::OK();
 }
 
@@ -266,6 +283,7 @@ template <class Tdata, typename FuncT>
 Status ScatterData(
     const FuncT& func,
     const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
+    concurrency::ThreadPool* tp,
     Tensor* data_output) {
   const TensorShape& input_data_shape = data_input->Shape();
 
@@ -296,103 +314,129 @@ Status ScatterData(
   const auto num_dims = input_data_shape.NumDimensions();
   ORT_RETURN_IF_NOT(num_dims > 0, "ScatterElements op: input tensor must have at least one dimension");
 
-  // Allocate and zero out counts. The input/output is of the same rank as
-  // indices/updates but the actual dimensions of indices/updates must be less or equal
-  // than that of input/output because we can update no more elements than
-  // the input contains. As we walk through the indices/updates
-  // we maintain dimension count as we will need to use it
-  // to compute output offset but using input/output dim values.
-  // We treat the whole array as a number where each element having
-  // different cardinality according to the upd_shape dimensions.
-  // As each counter reaches its max (upd_shape) it resets to zero
-  // and we carry to the more significant dim (right to left)
-  std::vector<int64_t> dim_counters(num_dims);
-
-  // This vector contains number of elements under the dimension.
-  // For example, for the dimensions of [4, 2, 3] the vector
-  // would contain [6, 3, 1] since for each count of dim 1 it
-  // contains 3 elements of dim 2.
-  // For each count of dim 0 we would have 2x3=6 elements.
-  // The last value is always 1.
-  // We use it to compute output element offset. For a given value of
-  // counters we multiple each counter value per corresponding entry of dim_block_size value
-  // and add up resulting the output element offset. However, for dimensions
-  // that are equal to the specified axis value we take indices_data[index]
-  // instead of the counter value.
-  // E.g. for 3-dim and axis=0
-  //    output[indices[i][j][k]][j][k] = updates[i][j][k]
-  // for axis 1
-  //    output[i][indices[i][j][k]][k] = updates[i][j][k]
-  // and so on
-  std::vector<int64_t> dim_block_size(num_dims);
-
-  dim_block_size.back() = 1;
-  if (num_dims > 1) {
-    // We start at num_dims - 2 because we already pre-populated
-    // the last element above
-    for (auto i = int64_t(num_dims - 2); i >= 0; --i) {
-      dim_block_size[narrow<size_t>(i)] = input_data_shape[SafeInt<size_t>(i) + 1] * dim_block_size[SafeInt<size_t>(i) + 1];
-    }
+  if (num_indices == 0) {
+    return Status::OK();
   }
 
   const auto* update_data = static_cast<const Tdata*>(updates_input->DataRaw());
-  // For every update we compute the destination offset and copy it there
-  for (int64_t index = 0; index < num_indices;) {
-    const auto axis_idx = indices_data[narrow<size_t>(index)];
 
-    // Compute the offset
-    // See comments above for dim_block_size
-    size_t dst_offset = 0;
-    for (size_t i = 0; i < num_dims; ++i) {
-      if (i == size_t(axis)) {
-        // replace the counter with the update index for this dim
-        dst_offset += narrow<size_t>(axis_idx * dim_block_size[narrow<size_t>(i)]);
-      } else {
-        dst_offset += narrow<size_t>(dim_counters[narrow<size_t>(i)] * dim_block_size[narrow<size_t>(i)]);
-      }
-    }
+  // Compute outer_size (product of dims before axis) and inner_size (product of dims after axis).
+  // For ScatterElements with axis=a:
+  //   output[i0]...[indices[i0..iN]][...][iN] = updates[i0][...][iN]
+  // Work units identified by (outer_idx, inner_idx) are completely independent:
+  // they never write to the same output element, even with reductions.
+  // This allows safe parallelization over outer_size * inner_size work units.
+  int64_t outer_size = 1;
+  for (int64_t i = 0; i < axis; ++i) {
+    outer_size *= upd_shape[narrow<size_t>(i)];
+  }
+  const int64_t axis_size = upd_shape[narrow<size_t>(axis)];
+  int64_t inner_size = 1;
+  for (size_t i = narrow<size_t>(axis) + 1; i < num_dims; ++i) {
+    inner_size *= upd_shape[i];
+  }
 
-    func(dst_base + dst_offset, update_data + index);
-
-    if (++index == num_indices) {
-      break;
-    }
-    // Increment counters
-    // See comments for dim_counters above
-    for (auto i = int64_t(num_dims - 1); i >= 0; --i) {
-      auto v = ++dim_counters[narrow<size_t>(i)];
-      assert(v <= upd_shape[narrow<size_t>(i)]);
-      if (v < upd_shape[narrow<size_t>(i)]) {
-        // No carry, done
-        break;
-      }
-      // No carry for the most significant dim
-      assert(i > 0);
-      dim_counters[narrow<size_t>(i)] = 0;
+  // Compute strides for the input/output tensor
+  std::vector<int64_t> input_strides(num_dims);
+  input_strides.back() = 1;
+  if (num_dims > 1) {
+    for (auto i = int64_t(num_dims - 2); i >= 0; --i) {
+      input_strides[narrow<size_t>(i)] = input_data_shape[SafeInt<size_t>(i) + 1] * input_strides[SafeInt<size_t>(i) + 1];
     }
   }
+
+  // Compute strides for the updates/indices tensor
+  std::vector<int64_t> upd_strides(num_dims);
+  upd_strides.back() = 1;
+  if (num_dims > 1) {
+    for (auto i = int64_t(num_dims - 2); i >= 0; --i) {
+      upd_strides[narrow<size_t>(i)] = upd_shape[SafeInt<size_t>(i) + 1] * upd_strides[SafeInt<size_t>(i) + 1];
+    }
+  }
+
+  const int64_t total_work_units = outer_size * inner_size;
+  const int64_t input_axis_stride = input_strides[narrow<size_t>(axis)];
+  const int64_t upd_axis_stride = upd_strides[narrow<size_t>(axis)];
+
+  // Parallelize over independent work units.
+  // Each work unit processes axis_size elements along the scatter axis.
+  // Cost per unit is proportional to axis_size (number of scatter ops per work unit).
+  concurrency::ThreadPool::TryParallelFor(
+      tp, narrow<std::ptrdiff_t>(total_work_units), static_cast<double>(axis_size),
+      [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+        for (std::ptrdiff_t work_idx = first; work_idx < last; ++work_idx) {
+          // Decompose work_idx into outer_idx and inner_idx
+          const int64_t outer_idx = static_cast<int64_t>(work_idx) / inner_size;
+          const int64_t inner_idx = static_cast<int64_t>(work_idx) % inner_size;
+
+          // Compute the base offset in the output for dimensions outside the axis.
+          // For dims before axis: determined by outer_idx
+          // For dims after axis: determined by inner_idx
+          int64_t dst_base_offset = 0;
+          int64_t outer_remain = outer_idx;
+          for (int64_t d = axis - 1; d >= 0; --d) {
+            const auto dim_size = upd_shape[narrow<size_t>(d)];
+            const auto coord = outer_remain % dim_size;
+            outer_remain /= dim_size;
+            dst_base_offset += coord * input_strides[narrow<size_t>(d)];
+          }
+          int64_t inner_remain = inner_idx;
+          for (int64_t d = int64_t(num_dims) - 1; d > axis; --d) {
+            const auto dim_size = upd_shape[narrow<size_t>(d)];
+            const auto coord = inner_remain % dim_size;
+            inner_remain /= dim_size;
+            dst_base_offset += coord * input_strides[narrow<size_t>(d)];
+          }
+
+          // Compute the base index into the updates/indices flat array
+          int64_t upd_base_offset = 0;
+          outer_remain = outer_idx;
+          for (int64_t d = axis - 1; d >= 0; --d) {
+            const auto dim_size = upd_shape[narrow<size_t>(d)];
+            const auto coord = outer_remain % dim_size;
+            outer_remain /= dim_size;
+            upd_base_offset += coord * upd_strides[narrow<size_t>(d)];
+          }
+          inner_remain = inner_idx;
+          for (int64_t d = int64_t(num_dims) - 1; d > axis; --d) {
+            const auto dim_size = upd_shape[narrow<size_t>(d)];
+            const auto coord = inner_remain % dim_size;
+            inner_remain /= dim_size;
+            upd_base_offset += coord * upd_strides[narrow<size_t>(d)];
+          }
+
+          // Process axis_size elements along the axis
+          for (int64_t a = 0; a < axis_size; ++a) {
+            const int64_t upd_flat_idx = upd_base_offset + a * upd_axis_stride;
+            const int64_t axis_idx = indices_data[narrow<size_t>(upd_flat_idx)];
+            const int64_t dst_offset = dst_base_offset + axis_idx * input_axis_stride;
+            func(dst_base + dst_offset, update_data + upd_flat_idx);
+          }
+        }
+      });
+
   return Status::OK();
 }
 
 template <typename TData>
 struct ScatterDataDispatchTarget {
   Status operator()(const Tensor* data_input, const std::vector<int64_t>& indices_data, const Tensor* updates_input, int64_t axis,
-                    const std::string& reduction, Tensor* data_output) const {
+                    const std::string& reduction, concurrency::ThreadPool* tp, Tensor* data_output) const {
     if (reduction == "add")
       return ScatterData<TData>(
-          Func_Add<TData>(), data_input, indices_data, updates_input, axis, data_output);
+          Func_Add<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);
     else if (reduction == "mul")
       return ScatterData<TData>(
-          Func_Mul<TData>(), data_input, indices_data, updates_input, axis, data_output);
+          Func_Mul<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);
     else if (reduction == "min")
       return ScatterData<TData>(
-          Func_Min<TData>(), data_input, indices_data, updates_input, axis, data_output);
+          Func_Min<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);
     else if (reduction == "max")
       return ScatterData<TData>(
-          Func_Max<TData>(), data_input, indices_data, updates_input, axis, data_output);
+          Func_Max<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);
     else  // if (reduction == "none")
       return ScatterData<TData>(
-          Func_Assignment<TData>(), data_input, indices_data, updates_input, axis, data_output);
+          Func_Assignment<TData>(), data_input, indices_data, updates_input, axis, tp, data_output);
   }
 };
 
@@ -444,11 +488,12 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
   Status status{};
   const auto index_type = indices_input->GetElementType();
   std::vector<int64_t> indices_data{};
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
   if (index_type == utils::ToTensorProtoElementType<int32_t>()) {
-    status = GetIndices<int32_t>(*data_input, *indices_input, axis, indices_data);
+    status = GetIndices<int32_t>(*data_input, *indices_input, axis, tp, indices_data);
   } else if (index_type == utils::ToTensorProtoElementType<int64_t>()) {
-    status = GetIndices<int64_t>(*data_input, *indices_input, axis, indices_data);
+    status = GetIndices<int64_t>(*data_input, *indices_input, axis, tp, indices_data);
   } else {
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Indices type is not supported.");
   }
@@ -462,7 +507,7 @@ Status Scatter<EnabledDataTypes>::Compute(OpKernelContext* context) const {
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledDataTypes> dispatcher{data_type};
   status = dispatcher.template InvokeRet<Status, ScatterDataDispatchTarget>(
-      data_input, indices_data, updates_input, axis, this->reduction_, data_output);
+      data_input, indices_data, updates_input, axis, this->reduction_, tp, data_output);
 
   return status;
 }
@@ -482,8 +527,8 @@ template <class Tin, class Tdata>
 Status GatherElementsGradImpl(const Tensor* indices_input, const Tensor* updates_input,
                               const int64_t axis, Tensor* data_output) {
   std::vector<int64_t> indices_data{};
-  ORT_RETURN_IF_ERROR(GetIndices<Tin>(*data_output, *indices_input, axis, indices_data));
-  return ScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, data_output);
+  ORT_RETURN_IF_ERROR(GetIndices<Tin>(*data_output, *indices_input, axis, nullptr, indices_data));
+  return ScatterData<Tdata>(Func_Add<Tdata>(), data_output, indices_data, updates_input, axis, nullptr, data_output);
 }
 
 #define GATHER_ELEMENTS_GRAD_IMPL_SPECIALIZED(Tin, Tdata) \

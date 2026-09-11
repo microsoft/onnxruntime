@@ -193,9 +193,24 @@ export const validateInputs = (
       passPastInKv = true;
     }
   }
+  // Spec requires 1D shape (batch_size), but older model builders may add unit
+  // dimensions (e.g. [B, 1] instead of [B]). Allow shapes where each dim is 1 or batchSize.
   const seqlLens = inputs.length > 4 ? inputs[5] : undefined;
-  if (seqlLens && seqlLens.dims.length !== 1 && seqlLens.dims[0] !== batchSize) {
-    throw new Error('Input "seqlens" is expected to have 1 dimension and the same dim 0 as batch_size');
+  if (seqlLens) {
+    if (seqlLens.dims.length === 0) {
+      throw new Error('seqlens_k must be at least 1D, got scalar.');
+    }
+    const seqlLenSize = seqlLens.dims.reduce((a, b) => a * b, 1);
+    if (seqlLenSize !== batchSize) {
+      throw new Error(`seqlens_k must have batch_size (${batchSize}) elements, got ${seqlLenSize}.`);
+    }
+    for (let i = 0; i < seqlLens.dims.length; i++) {
+      if (seqlLens.dims[i] !== 1 && seqlLens.dims[i] !== batchSize) {
+        throw new Error(
+          `seqlens_k has unexpected shape. Each dimension must be 1 or batch_size (${batchSize}), got dims[${i}] = ${seqlLens.dims[i]}.`,
+        );
+      }
+    }
   }
   const totalSequenceLength = -1;
   const maxSequenceLength = -1;
@@ -313,6 +328,16 @@ const generatePositionIdsProgramInfo = (
 };
 
 export const groupQueryAttention = (context: ComputeContext, attributes: GroupQueryAttentionAttributes): void => {
+  // q_norm_weight (input 14) / k_norm_weight (input 15) are emitted by the CUDA/native WebGPU
+  // GroupQueryAttentionPreNormFusion optimizer pass. JSEP does not implement the fused
+  // per-head Q/K RMS normalization prologue, so reject the node if either input is present
+  // (regardless of rank, including scalars) rather than silently dropping the normalization.
+  if ((context.inputs.length > 14 && context.inputs[14]) || (context.inputs.length > 15 && context.inputs[15])) {
+    throw new Error(
+      'GroupQueryAttention (JSEP): q_norm_weight / k_norm_weight inputs are not supported. ' +
+        'The per-head Q/K RMS normalization prologue is implemented only on the CUDA and native WebGPU EPs.',
+    );
+  }
   const params = validateInputs(context.inputs, attributes);
   if (context.inputs[0].dims.length === 5) {
     throw new Error('Packed QKV is not implemented');

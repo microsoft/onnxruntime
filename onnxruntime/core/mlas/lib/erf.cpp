@@ -22,46 +22,12 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-
+#include "elementwise_constants.h"
 //
 // Bundles the constants for use by kernels written in assembly.
 //
 
-MLAS_INTERNAL_DATA const struct {
-    float ErfUpperAbsRange;
-    float ErfSplitBoundary;
-    float ErfSMALL_P0;
-    float ErfSMALL_P1;
-    float ErfSMALL_P2;
-    float ErfSMALL_P3;
-    float ErfSMALL_P4;
-    float ErfSMALL_P5_Minus_One;
-    float ErfReserved0;
-    float ErfBIG_P0;
-    float ErfBIG_P1;
-    float ErfBIG_P2;
-    float ErfBIG_P3;
-    float ErfBIG_P4;
-    float ErfBIG_P5;
-    float ErfBIG_P6_Minus_One;
-    float ErfNegZero;
-    float ErfOne;
-
-    float Exp_UpperRange;
-    float Exp_LowerRange;
-    float Exp_Log2Reciprocal;
-    float Exp_log2_hi;
-    float Exp_log2_lo;
-    float Exp_P0;
-    float Exp_P1;
-    float Exp_P2;
-    float Exp_P3;
-    float Exp_P4;
-    float Exp_P5;
-    float Exp_P6;
-    float Exp_C;
-    int32_t Exp_X7F;
-} MlasErfConstants = {
+MLAS_INTERNAL_DATA const MLAS_ERF_CONSTANTS MlasErfConstants = {
     3.925f,
     0.921875f,
     -5.99104969e-4f,
@@ -261,9 +227,29 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
     GetMlasPlatform().ErfKernelRoutine(Input, Output, N);
 #else
     MlasErfKernel(Input, Output, N);
 #endif
+}
+
+void
+MLASCALL
+MlasComputeFP16Erf(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    float* Input_tmp_fp32,
+    float* Output_tmp_fp32,
+    size_t N
+    )
+{
+    if(GetMlasPlatform().ErfFP16KernelRoutine){
+        GetMlasPlatform().ErfFP16KernelRoutine(Input, Output, N);
+        return;
+    }
+
+    MlasConvertHalfToFloatBuffer(Input, Input_tmp_fp32, N);
+    MlasComputeErf(Input_tmp_fp32, Output_tmp_fp32, N);
+    MlasConvertFloatToHalfBuffer(Output_tmp_fp32, Output, N);
 }

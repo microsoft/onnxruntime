@@ -15,6 +15,7 @@ bool TryMatMul4Bits(
     const uint8_t* b_data_quant,
     const T* scales_data,
     const uint8_t* zero_points,
+    const T* bias_data,
     int m,
     int n,
     int k,
@@ -44,6 +45,7 @@ bool TryMatMulNBits(
     const uint8_t* b_data_quant,
     const T* scales_data,
     const uint8_t* zero_points,
+    const T* bias_data,
     int m,
     int n,
     int k,
@@ -51,17 +53,30 @@ bool TryMatMulNBits(
     size_t shared_mem_per_block,
     cudaStream_t stream) {
   if (bits == 8) {
+    if (bias_data != nullptr) {
+      return false;
+    }
     return TryMatMul8Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
                              m, n, k, block_size, shared_mem_per_block, stream);
   }
 
   if (bits == 4) {
-    return TryMatMul4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
+    return TryMatMul4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points, bias_data,
                              m, n, k, block_size, shared_mem_per_block, stream);
   }
 
   return false;
 }
+
+// Adds a per-column bias of shape [n] to the output of shape [m, n] (row-major).
+// Used as a fallback when the fused bias GEMV specialization does not apply.
+template <class T>
+void LaunchMatMulNBitsBiasAdd(
+    T* output,
+    const T* bias_data,
+    int m,
+    int n,
+    cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

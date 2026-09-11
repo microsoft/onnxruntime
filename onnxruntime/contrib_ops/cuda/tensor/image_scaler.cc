@@ -47,7 +47,9 @@ Status ImageScaler<T>::ComputeInternal(OpKernelContext* context) const {
 
   const int64_t C = dims[1];  // dims are NCHW
 
-  if (!bias_.empty() && bias_.size() != static_cast<size_t>(C)) {
+  // The kernel indexes bias_data[c] for every channel, so the bias must have exactly one entry per
+  // channel. An empty bias would leave b_data_ pointing at a zero-sized allocation.
+  if (bias_.size() != static_cast<size_t>(C)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Bias size (", bias_.size(), ") does not match the number of channels (", C, ")");
   }
 

@@ -13,7 +13,6 @@ sys.path.append(str(_script_dir.parent))
 
 
 from package_assembly_utils import (  # noqa: E402
-    PackageVariant,
     copy_repo_relative_to_dir,
     gen_file_from_template,
     get_podspec_values,
@@ -21,16 +20,39 @@ from package_assembly_utils import (  # noqa: E402
 )
 
 
-def get_pod_config_file(package_variant: PackageVariant):
+def get_platform_frameworks(framework_info, platforms):
+    frameworks = ""
+    for platform in platforms:
+        if platform not in framework_info:
+            continue
+        platform_frameworks = framework_info[platform].get("SYSTEM_FRAMEWORKS", "")
+        if frameworks:
+            if platform_frameworks != frameworks:
+                raise ValueError(f"Inconsistent SYSTEM_FRAMEWORKS for {platform}: {platform_frameworks!r}")
+        else:
+            frameworks = platform_frameworks
+    return frameworks
+
+
+def get_platform_libraries(framework_info, platforms):
+    libraries = ""
+    for platform in platforms:
+        if platform not in framework_info:
+            continue
+        platform_libraries = framework_info[platform].get("SYSTEM_LIBRARIES", "")
+        if libraries:
+            if platform_libraries != libraries:
+                raise ValueError(f"Inconsistent SYSTEM_LIBRARIES for {platform}: {platform_libraries!r}")
+        else:
+            libraries = platform_libraries
+    return libraries
+
+
+def get_pod_config_file():
     """
-    Gets the pod configuration file path for the given package variant.
+    Gets the pod configuration file path.
     """
-    if package_variant == PackageVariant.Full:
-        return _script_dir / "onnxruntime-c.config.json"
-    elif package_variant == PackageVariant.Training:
-        return _script_dir / "onnxruntime-training-c.config.json"
-    else:
-        raise ValueError(f"Unhandled package variant: {package_variant}")
+    return _script_dir / "onnxruntime-c.config.json"
 
 
 def assemble_c_pod_package(
@@ -39,7 +61,6 @@ def assemble_c_pod_package(
     framework_info_file: pathlib.Path,
     public_headers_dir: pathlib.Path,
     framework_dir: pathlib.Path,
-    package_variant: PackageVariant,
 ):
     """
     Assembles the files for the C/C++ pod package in a staging directory.
@@ -49,7 +70,6 @@ def assemble_c_pod_package(
     :param framework_info_file Path to the framework_info.json or xcframework_info.json file containing additional values for the podspec.
     :param public_headers_dir Path to the public headers directory to include in the pod.
     :param framework_dir Path to the onnxruntime framework directory to include in the pod.
-    :param package_variant The pod package variant.
     :return Tuple of (package name, path to the podspec file).
     """
     staging_dir = staging_dir.resolve()
@@ -58,7 +78,7 @@ def assemble_c_pod_package(
     framework_dir = framework_dir.resolve(strict=True)
 
     framework_info = load_json_config(framework_info_file)
-    pod_config = load_json_config(get_pod_config_file(package_variant))
+    pod_config = load_json_config(get_pod_config_file())
 
     pod_name = pod_config["name"]
 
@@ -72,13 +92,21 @@ def assemble_c_pod_package(
     copy_repo_relative_to_dir(["LICENSE"], staging_dir)
 
     (ios_deployment_target, macos_deployment_target, weak_framework) = get_podspec_values(framework_info)
+    ios_frameworks = get_platform_frameworks(framework_info, ("iphonesimulator", "iphoneos"))
+    macos_frameworks = get_platform_frameworks(framework_info, ("macosx",))
+    ios_libraries = get_platform_libraries(framework_info, ("iphonesimulator", "iphoneos"))
+    macos_libraries = get_platform_libraries(framework_info, ("macosx",))
 
     # generate the podspec file from the template
     variable_substitutions = {
         "DESCRIPTION": pod_config["description"],
         # By default, we build both "iphoneos" and "iphonesimulator" architectures, and the deployment target should be the same between these two.
         "IOS_DEPLOYMENT_TARGET": ios_deployment_target,
+        "IOS_SYSTEM_FRAMEWORKS": ios_frameworks,
+        "IOS_SYSTEM_LIBRARIES": ios_libraries,
         "MACOSX_DEPLOYMENT_TARGET": macos_deployment_target,
+        "MACOS_SYSTEM_FRAMEWORKS": macos_frameworks,
+        "MACOS_SYSTEM_LIBRARIES": macos_libraries,
         "LICENSE_FILE": "LICENSE",
         "NAME": pod_name,
         "ORT_C_FRAMEWORK": framework_dir.name,
@@ -130,9 +158,6 @@ def parse_args():
         required=True,
         help="Path to the onnxruntime framework directory to include in the pod.",
     )
-    parser.add_argument(
-        "--variant", choices=PackageVariant.all_variant_names(), required=True, help="Pod package variant."
-    )
 
     return parser.parse_args()
 
@@ -146,7 +171,6 @@ def main():
         framework_info_file=args.framework_info_file,
         public_headers_dir=args.public_headers_dir,
         framework_dir=args.framework_dir,
-        package_variant=PackageVariant[args.variant],
     )
 
     return 0

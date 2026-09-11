@@ -5,8 +5,6 @@ package com.reactnativeonnxruntimemodule;
 
 import static java.util.stream.Collectors.joining;
 
-import ai.onnxruntime.reactnative.OnnxruntimeModule;
-import ai.onnxruntime.reactnative.TensorHelper;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -149,7 +147,7 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
     inputTensorMap.putArray("dims", dims);
 
     // type
-    inputTensorMap.putString("type", TensorHelper.JsTensorTypeFloat);
+    inputTensorMap.putString("type", "float32");
 
     // data encoded as Base64
     imageByteBuffer.rewind();

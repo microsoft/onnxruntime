@@ -45,6 +45,15 @@ struct ForwardToFactoryImpl {
                                                       session_options, logger, ep);
   }
 
+  static OrtStatus* ORT_API_CALL ValidateCompiledModelCompatibilityInfo(OrtEpFactory* this_ptr,
+                                                                        _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                                                        size_t num_devices,
+                                                                        const char* compatibility_info,
+                                                                        OrtCompiledModelCompatibility* model_compatibility) noexcept {
+    return static_cast<TFactory*>(this_ptr)->ValidateCompiledModelCompatibilityInfo(devices, num_devices,
+                                                                                    compatibility_info, model_compatibility);
+  }
+
   static OrtStatus* ORT_API_CALL CreateAllocator(_In_ OrtEpFactory* this_ptr,
                                                  _In_ const OrtMemoryInfo* memory_info,
                                                  _In_opt_ const OrtKeyValuePairs* allocator_options,
@@ -71,6 +80,41 @@ struct ForwardToFactoryImpl {
                                                            _Outptr_opt_ OrtSyncStreamImpl** stream) noexcept {
     // ignore the OrtEp input as we won't ever have one for internal EPs
     return static_cast<TFactory*>(this_ptr)->CreateSyncStreamForDevice(memory_device, stream_options, stream);
+  }
+
+  static OrtStatus* ORT_API_CALL CreateExternalResourceImporterForDevice(
+      _In_ OrtEpFactory* this_ptr,
+      _In_ const OrtEpDevice* ep_device,
+      _Outptr_result_maybenull_ OrtExternalResourceImporterImpl** importer) noexcept {
+    return static_cast<TFactory*>(this_ptr)->CreateExternalResourceImporterForDevice(ep_device, importer);
+  }
+
+  static OrtStatus* ORT_API_CALL GetHardwareDeviceIncompatibilityDetails(_In_ OrtEpFactory* this_ptr,
+                                                                         _In_ const OrtHardwareDevice* hw,
+                                                                         _Inout_ OrtDeviceEpIncompatibilityDetails* details) noexcept {
+    return static_cast<TFactory*>(this_ptr)->GetHardwareDeviceIncompatibilityDetails(hw, details);
+  }
+
+  static OrtStatus* ORT_API_CALL InitGraphicsInterop(_In_ OrtEpFactory* this_ptr,
+                                                     _In_ const OrtEpDevice* ep_device,
+                                                     _In_ const OrtGraphicsInteropConfig* config) noexcept {
+    return static_cast<TFactory*>(this_ptr)->InitGraphicsInterop(ep_device, config);
+  }
+
+  static OrtStatus* ORT_API_CALL DeinitGraphicsInterop(_In_ OrtEpFactory* this_ptr,
+                                                       _In_ const OrtEpDevice* ep_device) noexcept {
+    return static_cast<TFactory*>(this_ptr)->DeinitGraphicsInterop(ep_device);
+  }
+
+  static OrtStatus* ORT_API_CALL SelectBestModelCandidate(
+      OrtEpFactory* this_ptr,
+      _In_ const OrtHardwareDevice* device,
+      _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
+      size_t num_candidates,
+      _In_opt_ const OrtSessionOptions* session_options,
+      size_t* selected_index) noexcept {
+    return static_cast<TFactory*>(this_ptr)->SelectBestModelCandidate(
+        device, candidates, num_candidates, session_options, selected_index);
   }
 
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {

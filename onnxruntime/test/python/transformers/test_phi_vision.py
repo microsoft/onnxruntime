@@ -208,6 +208,7 @@ class TestFusion(unittest.TestCase):
                     "input": {0: "batch", 1: "seq"},
                     "attention_mask": {0: "batch", 2: "seq", 3: "seq"},
                 },
+                dynamo=False,
             )
         else:
             torch.onnx.export(
@@ -217,6 +218,7 @@ class TestFusion(unittest.TestCase):
                 export_params=True,
                 opset_version=14,
                 do_constant_folding=True,
+                dynamo=False,
             )
 
     def tearDown(self):

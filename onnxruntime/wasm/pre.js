@@ -9,7 +9,7 @@
  * Mount external data files of a model to an internal map, which will be used during session initialization.
  *
  * @param {string} externalDataFilesPath
- * @param {Uint8Array} externalDataFilesData
+ * @param {Uint8Array|Blob} externalDataFilesData
  */
 Module["mountExternalData"] = (externalDataFilePath, externalDataFileData) => {
   if (externalDataFilePath.startsWith("./")) {
@@ -24,6 +24,10 @@ Module["mountExternalData"] = (externalDataFilePath, externalDataFileData) => {
  */
 Module["unmountExternalData"] = () => {
   delete Module.MountedFiles;
+  // Release the buffers used by the Blob-backed external data loader
+  delete Module.ortExtDataScratch;
+  delete Module.ortExtDataChunk;
+  delete Module.ortExtDataScratchBusy;
 };
 
 /**
@@ -47,5 +51,9 @@ Module["unmountExternalData"] = () => {
  */
 var SharedArrayBuffer =
   globalThis.SharedArrayBuffer ??
-  new WebAssembly.Memory({ initial: 0, maximum: 0, shared: true }).buffer
-    .constructor;
+  // prettier-ignore
+  //
+  // the line above is used to force prettier to skip formatting the next statement.
+  // this is because prettier will remove the quotes around the property names, but we need to keep them
+  // because otherwise closure compiler may rename them and break the code.
+  new WebAssembly.Memory({ "initial": 0, "maximum": 0, "shared": true }).buffer.constructor;

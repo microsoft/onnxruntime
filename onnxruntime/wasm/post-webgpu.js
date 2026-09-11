@@ -69,7 +69,7 @@ Module["webgpuInit"] = (setDefaultDevice) => {
     if (device) {
       let deviceInfo = webgpuActiveDevices.get(device);
       if (!deviceInfo) {
-        const instanceHandle = _wgpuCreateInstance(0);
+        const instanceHandle = _OrtCreateWebGpuInstance();
         const deviceHandle = WebGPU.importJsDevice(device, instanceHandle);
         deviceInfo = [webgpuNextDeviceId++, instanceHandle, deviceHandle];
         webgpuActiveDevices.set(device, deviceInfo);

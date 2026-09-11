@@ -290,6 +290,7 @@ def do_export_internal(model: nn.Module, onnx_io_tuple: tuple, onnx_inputs: tupl
             input_names=onnx_inp_names,
             output_names=onnx_out_names,
             dynamic_axes=onnx_dynamic_axes,
+            dynamo=False,
         )
 
         onnx_path.unlink(missing_ok=True)

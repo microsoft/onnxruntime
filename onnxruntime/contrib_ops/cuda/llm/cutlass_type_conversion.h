@@ -29,7 +29,14 @@
 
 #if defined(ENABLE_FP4)
 #include "cutlass/float_subbyte.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
 #include <cuda_fp4.h>
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 #endif
 
 namespace onnxruntime::llm {

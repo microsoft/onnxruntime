@@ -12,7 +12,6 @@ from typing import Any
 
 import numpy as np
 import onnx
-import onnx.numpy_helper
 from onnx import TensorProto
 from onnx import onnx_pb as onnx_proto
 
@@ -33,12 +32,14 @@ from .quant_utils import (
     add_quant_suffix,
     compute_data_quant_params,
     compute_scale_zp,
+    compute_scale_zp_blocked,
     compute_scale_zp_float8,
     find_by_name,
     get_qmin_qmax_for_qType,
     ms_domain,
     normalize_axis,
     quantize_onnx_initializer,
+    snap_zero_point_to_uint8,
     tensor_proto_to_array,
 )
 from .registry import CreateQDQQuantizer
@@ -212,6 +213,9 @@ class QDQQuantizer(BaseQuantizer):
 
         # Let user disable adjustment of weight scales for bias inputs that are quantized to int32.
         self.qdq_disable_weight_adjust_for_int32_bias = extra_options.get("QDQDisableWeightAdjustForInt32Bias", False)
+
+        # Opset-21 block-wise quantization block size. 0 means disabled (per-tensor or per-channel).
+        self.block_size: int = extra_options.get("BlockSize", 0)
 
         # The ONNX spec did not support 16-bit Q/DQ ops before opset 21.
         # So, may have to override the Q/DQ op domain to 'com.microsoft' if the activation or weight types
@@ -603,17 +607,20 @@ class QDQQuantizer(BaseQuantizer):
         scale_name: str,
         zp_name: str,
         axis: int | None = None,
+        block_size: int = 0,
     ):
         """
         Creates a QuantizeLinear node and adds it to the model.
         """
+        kwargs: dict[str, Any] = {"axis": axis, "domain": self.qdq_op_domain}
+        if block_size:
+            kwargs["block_size"] = block_size
         qlinear_node = onnx.helper.make_node(
             QUANT_OP_NAME,
             [q_input, scale_name, zp_name],
             [q_output],
             quant_node_name,
-            axis=axis,
-            domain=self.qdq_op_domain,
+            **kwargs,
         )
         self.model.add_nodes([qlinear_node])
 
@@ -625,38 +632,52 @@ class QDQQuantizer(BaseQuantizer):
         scale_name: str,
         zp_name: str,
         axis: int | None = None,
+        block_size: int = 0,
     ):
         """
         Creates a DequantizeLinear node and adds it to the model.
         """
+        kwargs: dict[str, Any] = {"axis": axis, "domain": self.qdq_op_domain}
+        if block_size:
+            kwargs["block_size"] = block_size
         dequant_node = onnx.helper.make_node(
             DEQUANT_OP_NAME,
             [dq_input, scale_name, zp_name],
             [dq_output],
             dequant_node_name,
-            axis=axis,
-            domain=self.qdq_op_domain,
+            **kwargs,
         )
         self.model.add_nodes([dequant_node])
 
     def _create_qdq_nodes(
-        self, q_input, q_output, quant_node_name, dq_input, dq_output, dequant_node_name, scale_name, zp_name, axis=None
+        self,
+        q_input,
+        q_output,
+        quant_node_name,
+        dq_input,
+        dq_output,
+        dequant_node_name,
+        scale_name,
+        zp_name,
+        axis=None,
+        block_size: int = 0,
     ):
+        kwargs: dict[str, Any] = {"axis": axis, "domain": self.qdq_op_domain}
+        if block_size:
+            kwargs["block_size"] = block_size
         qlinear_node = onnx.helper.make_node(
             QUANT_OP_NAME,
             [q_input, scale_name, zp_name],
             [q_output],
             quant_node_name,
-            axis=axis,
-            domain=self.qdq_op_domain,
+            **kwargs,
         )
         dequant_node = onnx.helper.make_node(
             DEQUANT_OP_NAME,
             [dq_input, scale_name, zp_name],
             [dq_output],
             dequant_node_name,
-            axis=axis,
-            domain=self.qdq_op_domain,
+            **kwargs,
         )
         self.model.add_nodes([qlinear_node, dequant_node])
 
@@ -672,6 +693,7 @@ class QDQQuantizer(BaseQuantizer):
 
         quant_params: QuantizationParams = self.initializer_quant_params[weight_name]
         axis: int = quant_params.get("axis")
+        block_size: int = quant_params.get("block_size", 0)
         scale_zp_initializers = self._make_scale_zp_initializers(weight_name, quant_params)
         q_weight_name: str | None = None
         weight_dequant_output = add_dequant_output_suffix(weight_name)
@@ -692,6 +714,7 @@ class QDQQuantizer(BaseQuantizer):
                 scale_zp_initializers.scale.name,
                 scale_zp_initializers.zero_point.name,
                 axis,
+                block_size=block_size,
             )
         else:
             # Quantize the weight and create the node sequence:
@@ -702,19 +725,20 @@ class QDQQuantizer(BaseQuantizer):
                 quant_params["zero_point"],
                 quant_params["scale"],
                 axis,
+                block_size=block_size,
             )
             self.model.add_initializer(quant_weight)
 
             q_weight_name = quant_weight.name
-            dequant_node = onnx.helper.make_node(
-                DEQUANT_OP_NAME,
-                [quant_weight.name, scale_zp_initializers.scale.name, scale_zp_initializers.zero_point.name],
-                [weight_dequant_output],
+            self._create_dq_node(
+                quant_weight.name,
+                weight_dequant_output,
                 add_dequant_suffix(weight_name),
+                scale_zp_initializers.scale.name,
+                scale_zp_initializers.zero_point.name,
                 axis=axis,
-                domain=self.qdq_op_domain,
+                block_size=block_size,
             )
-            self.model.add_node(dequant_node)
 
         # Log entry for this quantized weight
         quantized_value = QuantizedValue(
@@ -1253,9 +1277,13 @@ class QDQQuantizer(BaseQuantizer):
         scale = quant_params["scale"]
         zero_point_type = quant_params["quant_type"]
         axis: int | None = quant_params.get("axis")
-        assert (axis is not None and len(scale.shape) == 1) or (axis is None and len(scale.shape) == 0), (
-            "Wrong scale/zp shapes"
-        )
+        block_size: int = quant_params.get("block_size", 0)
+        is_blocked = bool(block_size)
+        assert (
+            (is_blocked and axis is not None and len(scale.shape) == 2)
+            or (not is_blocked and axis is not None and len(scale.shape) == 1)
+            or (not is_blocked and axis is None and len(scale.shape) == 0)
+        ), "Wrong scale/zp shapes"
         assert len(scale.shape) == len(zero_point.shape), "Scale and zero-point must have the same rank"
 
         zero_point_name = param_name + "_zero_point" + init_name_suffix
@@ -1321,6 +1349,11 @@ class QDQQuantizer(BaseQuantizer):
             reduce_range = quant_overrides.get("reduce_range", False)
             qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range=reduce_range, symmetric=symmetric)
             zero, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, self.min_real_range)
+            if self.is_activation_restricted_asymmetric and quant_type == onnx.TensorProto.UINT8 and not symmetric:
+                # Forward effective qmin/qmax and min_real_range so reduce_range / MinimumRealRange are honored.
+                zero, scale = snap_zero_point_to_uint8(
+                    rmin, rmax, qmin=qmin, qmax=qmax, min_real_range=self.min_real_range
+                )
 
         return QuantizationParams(zero_point=zero.squeeze(), scale=scale.squeeze(), quant_type=quant_type)
 
@@ -1428,7 +1461,32 @@ class QDQQuantizer(BaseQuantizer):
             zero_point: np.ndarray | None = None
             scale: np.ndarray | None = None
 
-            if not is_per_channel:
+            # Resolve block-wise axis: fall back to axis 0 if no per-channel axis was configured.
+            block_axis = channel_axis if channel_axis is not None else 0
+            if is_weight and self.block_size > 0:
+                # Per-block (opset-21) quantization path.
+                is_axis_valid, norm_block_axis = normalize_axis(block_axis, initializer_rank)
+                if not is_axis_valid:
+                    raise ValueError(
+                        f"Weight {initializer.name} has a block-wise axis with value {block_axis} that is "
+                        f"out-of-bounds for rank {initializer_rank}"
+                    )
+                channel_axis = norm_block_axis
+                zero_point, scale = compute_scale_zp_blocked(
+                    initializer_data,
+                    quant_type,
+                    channel_axis,
+                    self.block_size,
+                    is_symmetric,
+                )
+                quantization_params[tensor_name] = QuantizationParams(
+                    zero_point=zero_point,
+                    scale=scale,
+                    quant_type=quant_type,
+                    axis=channel_axis,
+                    block_size=self.block_size,
+                )
+            elif not is_per_channel:
                 zero_point, scale = compute_data_quant_params(
                     initializer_data.flatten(),
                     quant_type,
@@ -1437,6 +1495,12 @@ class QDQQuantizer(BaseQuantizer):
                     min_real_range=self.min_real_range,
                     rmin_override=overrides[0].get("rmin"),
                     rmax_override=overrides[0].get("rmax"),
+                )
+                quantization_params[tensor_name] = QuantizationParams(
+                    zero_point=zero_point,
+                    scale=scale,
+                    quant_type=quant_type,
+                    axis=channel_axis,
                 )
             else:
                 is_axis_valid, norm_channel_axis = normalize_axis(channel_axis, initializer_rank)
@@ -1467,12 +1531,11 @@ class QDQQuantizer(BaseQuantizer):
 
                 zero_point = np.asarray(zero_points_list)
                 scale = np.asarray(scales_list)
-
-            quantization_params[tensor_name] = QuantizationParams(
-                zero_point=zero_point,
-                scale=scale,
-                quant_type=quant_type,
-                axis=channel_axis,
-            )
+                quantization_params[tensor_name] = QuantizationParams(
+                    zero_point=zero_point,
+                    scale=scale,
+                    quant_type=quant_type,
+                    axis=channel_axis,
+                )
 
         return quantization_params

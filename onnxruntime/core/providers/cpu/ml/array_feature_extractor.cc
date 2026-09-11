@@ -73,10 +73,10 @@ common::Status ArrayFeatureExtractorOp<T>::Compute(OpKernelContext* context) con
   }
 
   for (int64_t i = 0; i < num_indices; ++i) {
-    if (y_data[i] >= stride) {
+    if (y_data[i] < 0 || y_data[i] >= stride) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
-          "Invalid Y argument: index is out of range: Y[", i, "] (", y_data[i], ") >=", stride);
+          "Invalid Y argument: index is out of range: Y[", i, "] (", y_data[i], ") must be in [0, ", stride, ")");
     }
   }
 

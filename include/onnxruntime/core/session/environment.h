@@ -6,7 +6,9 @@
 #include <atomic>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <vector>
+#include <shared_mutex>
 #include <string>
 
 #include "core/common/common.h"
@@ -20,6 +22,7 @@
 #include "core/platform/threadpool.h"
 
 #include "core/session/abi_devices.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/plugin_ep/ep_library.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -51,11 +54,13 @@ class Environment {
     @param tp_options optional set of parameters controlling the number of intra and inter op threads for the global
     threadpools.
     @param create_global_thread_pools determine if this function will create the global threadpools or not.
+    @param config_entries Application-specified configuration entries.
   */
   static Status Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                        std::unique_ptr<Environment>& environment,
                        const OrtThreadingOptions* tp_options = nullptr,
-                       bool create_global_thread_pools = false);
+                       bool create_global_thread_pools = false,
+                       const OrtKeyValuePairs* config_entries = nullptr);
 
   /**
    * Set the global threading options for the environment, if no global thread pools have been created yet.
@@ -107,6 +112,15 @@ class Environment {
   }
 
   /**
+   * Returns an AllocatorPtr for a shared IAllocator based allocator if it matches the memory info.
+   * The OrtMemoryInfo name and whether it's an arena or device allocator is ignored in the lookup, as is the
+   * alignment.
+   * The user calling this function is not expected to know the alignment, and we expect the allocator instance to be
+   * created with a valid alignment for the device.
+   */
+  AllocatorPtr GetRegisteredSharedAllocator(const OrtMemoryInfo& mem_info) const;
+
+  /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
    */
   Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
@@ -137,6 +151,17 @@ class Environment {
     return execution_devices_;
   }
 
+  /// Get hardware device incompatibility details for a specific EP.
+  /// @param ep_name The name of the execution provider to check.
+  /// @param hw The hardware device to check for incompatibility.
+  /// @param details Output: Incompatibility details including reasons for incompatibility if any.
+  /// @returns Status indicating success or failure.
+  Status GetHardwareDeviceEpIncompatibilityDetails(const std::string& ep_name,
+                                                   const OrtHardwareDevice* hw,
+                                                   std::unique_ptr<OrtDeviceEpIncompatibilityDetails>& details) const;
+
+  const std::vector<const OrtHardwareDevice*>& GetSortedOrtHardwareDevices() const;
+
   Status CreateSharedAllocator(const OrtEpDevice& ep_device,
                                OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
                                const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator);
@@ -150,6 +175,39 @@ class Environment {
   // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
   Status GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator);
 
+  /// <summary>
+  /// Returns a copy of the configuration entries set by the application on environment creation.
+  ///
+  /// Primarily used by EP libraries to retrieve environment-level configurations, but could be used
+  /// more generally to specify global settings.
+  ///
+  /// Refer to OrtApi::CreateEnvWithOptions().
+  /// </summary>
+  /// <returns></returns>
+  OrtKeyValuePairs GetConfigEntries() const;
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+  /**
+   * Returns the per-session thread pool work callbacks, or nullptr if not set.
+   *
+   * Not safe to call concurrently with SetPerSessionWorkCallbacks.
+   */
+  const OrtThreadPoolCallbacksConfig* GetPerSessionWorkCallbacks() const {
+    return per_session_work_callbacks_.has_value()
+               ? &per_session_work_callbacks_.value()
+               : nullptr;
+  }
+
+  /**
+   * Sets thread pool work callbacks for per-session thread pools.
+   * Only affects sessions created after this call. Does not affect global thread pools.
+   *
+   * Not safe to call concurrently with GetPerSessionWorkCallbacks or session creation.
+   * Must be called before creating any sessions that should use the callbacks.
+   */
+  Status SetPerSessionWorkCallbacks(const OrtThreadPoolCallbacksConfig& config);
+#endif
+
   ~Environment();
 
  private:
@@ -157,7 +215,8 @@ class Environment {
 
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                     const OrtThreadingOptions* tp_options = nullptr,
-                    bool create_global_thread_pools = false);
+                    bool create_global_thread_pools = false,
+                    const OrtKeyValuePairs* config_entries = nullptr);
 
   Status RegisterAllocatorImpl(AllocatorPtr allocator);
   Status UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool error_if_not_found = true);
@@ -166,12 +225,19 @@ class Environment {
                                    const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator,
                                    bool replace_existing);
 
+  // Inserts (or assigns) a config entry into `config_entries_`. Locks `config_entries_mutex_`.
+  void InsertOrAssignConfigEntry(std::string key, std::string value);
+
+  // Removes a config entry from `config_entries_`. Does nothing if the key does not exist.
+  // Locks `config_entries_mutex_`.
+  void RemoveConfigEntry(const std::string& key);
+
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
 
   // shared allocators from various sources.
   // CreateAndRegisterAllocator[V2]: IAllocator allocators created by ORT
@@ -189,23 +255,6 @@ class Environment {
   std::unique_ptr<OrtAllocatorImplWrappingIAllocator> default_cpu_ort_allocator_;
 
   using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
-
-  // if the user calls CreateSharedAllocator and wraps the plugin EP's allocator with an arena we end up with
-  // OrtAllocator from EP -> wrapped in IAllocatorImplWrappingOrtAllocator -> inside a BFCArena IAllocator.
-  // we can put that in shared_allocators_ for sessions to use, but to have an OrtAllocator available in
-  // shared_ort_allocators_ that can be used outside of a session we need to additionally wrap that in an
-  // OrtAllocatorImplWrappingIAllocator. way too many levels of indirection but that is what it is currently.
-  // we need something to own that final OrtAllocator, so we add it to arena_ort_allocators_.
-  //
-  // TODO: we could split out the BFCArena implementation so it can be plugged into either an IAllocator
-  // or an OrtAllocator instance to reduce the indirection a little.
-  // with that we get an OrtAllocator from the EP, wrap it with an OrtAllocator based BFCArena, and wrap that with the
-  // IAllocatorImplWrappingOrtAllocator which takes ownership of the OrtAllocator and is in shared_allocators_.
-  //
-  // Alternatively we can disable wrapping an EP's allocator with a BFCArena and say the EP should provide the arena
-  // implementation directly. They're free to copy BFCArena as it came from TF originally. Or we could provide a
-  // cut-and-paste BFCArena implementation that works using the EP API that can be included in the EP source.
-  std::unordered_map<const OrtMemoryInfo*, std::unique_ptr<OrtAllocatorImplWrappingIAllocator>> arena_ort_allocators_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // register EPs that are built into the ORT binary so they can take part in AutoEP selection
@@ -251,6 +300,24 @@ class Environment {
   DataTransferManager data_transfer_mgr_;  // plugin EP IDataTransfer instances
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+  // Application-specified environment configuration entries
+  // The environment may add or remove an entry on EP library registration and unregistration, respectively.
+  OrtKeyValuePairs config_entries_;
+  mutable std::shared_mutex config_entries_mutex_;  // Should be locked when accessing config_entries_
+
+  // Tracks the number of registered EP libraries that can create virtual devices.
+  // It is incremented when an EP library is registered with a name that ends in ".virtual".
+  // It is decremented when that EP library is unregistered.
+  // If it reaches 0, the config entry "allow_virtual_devices" is removed.
+  //
+  // This starts at 1 if user created an OrtEnv with the config "allow_virtual_devices" set to "1"
+  // to prevent removal of the config entry in that case.
+  size_t num_allow_virtual_device_uses_{};
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+  std::optional<OrtThreadPoolCallbacksConfig> per_session_work_callbacks_;
+#endif
 };
 
 }  // namespace onnxruntime

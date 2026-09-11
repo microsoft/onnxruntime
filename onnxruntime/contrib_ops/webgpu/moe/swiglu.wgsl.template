@@ -1,0 +1,25 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+
+// This implements:
+// gate, up = gate_up[..., 0::2], gate_up[..., 1::2]
+// gate = gate.clamp(min=None, max=self.limit)
+// up = up.clamp(min=-self.limit, max=self.limit)
+// glu = gate * torch.sigmoid(gate * self.alpha)
+// gated_output = (up + 1) * glu
+
+$MAIN {
+  let total = uniforms.rows * uniforms.cols;
+  guardAgainstOutOfBoundsWorkgroupSizes(total);
+
+  let row = global_idx / uniforms.cols;
+  let col = global_idx % uniforms.cols;
+  let base = row * uniforms.cols;
+  let gate_up = vec2<f32>(input[base + col]);
+  let gate_val = min(gate_up.x, uniforms.swiglu_limit);
+  let up_val = clamp(gate_up.y, -uniforms.swiglu_limit, uniforms.swiglu_limit);
+  let glu = gate_val * 1.0f / (1.0f + exp(-uniforms.alpha * gate_val));
+  output[global_idx] = output_element_t(glu * (up_val + uniforms.beta));
+} // MAIN

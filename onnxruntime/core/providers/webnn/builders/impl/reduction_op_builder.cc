@@ -19,6 +19,8 @@ namespace webnn {
 class ReductionOpBuilder : public BaseOpBuilder {
   // Add operator related.
  public:
+  // Allow axes potentially being empty inputs that are ignored during processing.
+  ReductionOpBuilder() : BaseOpBuilder(/*allow empty inputs*/ true) {}
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
   // Add operator related.
@@ -37,6 +39,7 @@ void ReductionOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, cons
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() > 1) {
     model_builder.AddInitializerToSkip(input_defs[1]->Name());  // axes
+    model_builder.AddInputToSkip(input_defs[1]->Name());        // axes
   }
 }
 
@@ -53,70 +56,49 @@ Status ReductionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   NodeAttrHelper helper(node);
   const auto keep_dims = helper.Get("keepdims", 1);
+
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
   options.set("keepDimensions", keep_dims == 1);
-  std::vector<int32_t> axes_data;
 
-  emscripten::val output = emscripten::val::object();
-
+  std::vector<int64_t> axes_data;
   const auto opset = node.SinceVersion();
   const auto& op_type = node.OpType();
   if (opset >= 18 || (op_type == "ReduceSum" && opset >= 13)) {
     // 'axes' is an optional input.
-    const auto noop_with_empty_axes = helper.Get("noop_with_empty_axes", 0);
-    if (!GetTensorName(input_defs, 1).empty()) {
-      // Optional input axes is provided, use axes initializer data.
-      const auto& initializers(model_builder.GetInitializerTensors());
-      const auto& axes_tensor = *initializers.at(input_defs[1]->Name());
-      Initializer axes_initializer(axes_tensor);
-      const auto axes_data_span = axes_initializer.DataAsSpan<int64_t>();
-      std::transform(
-          axes_data_span.begin(), axes_data_span.end(), std::back_inserter(axes_data),
-          [input_rank](int64_t axis) -> int32_t { return SafeInt<int32_t>(HandleNegativeAxis(axis, input_rank)); });
-    } else {
-      if (noop_with_empty_axes) {
-        // When axes is empty and this attribute is set to true, input tensor will not be reduced.
-        output = input;
-        model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
-        return Status::OK();
+    std::vector<int64_t> axes_shape;
+    if (TensorExists(input_defs, 1)) {
+      ORT_RETURN_IF_NOT(GetShape(*input_defs[1], axes_shape, logger), "Cannot get shape of input axes");
+      if (axes_shape[0] != 0) {
+        // Optional input axes is provided and we already ensure it is an initializer.
+        // Use that initializer data.
+        const auto& initializers(model_builder.GetInitializerTensors());
+        const auto& axes_tensor = *initializers.at(input_defs[1]->Name());
+        Initializer axes_initializer(axes_tensor);
+        const auto axes_data_span = axes_initializer.DataAsSpan<int64_t>();
+        axes_data = HandleNegativeAxes(axes_data_span, input_rank);
       }
     }
   } else {
     if (helper.HasAttr("axes")) {
-      auto axes = helper.Get("axes", std::vector<int64_t>{});
-      std::transform(
-          axes.begin(), axes.end(), std::back_inserter(axes_data),
-          [input_rank](int64_t axis) -> int32_t { return SafeInt<int32_t>(HandleNegativeAxis(axis, input_rank)); });
+      axes_data = GetResolvedAxes(helper, input_rank);
     }
   }
-  if (axes_data.size() > 0) {
-    options.set("axes", emscripten::val::array(axes_data));
+
+  // When axes is not provided or is empty, check the 'noop_with_empty_axes' attribute:
+  // - If it is false, perform reduction over all dimensions.
+  //   (In WebNN, this means the 'axes' option is not set.)
+  // - If it is true, no reduction is applied, but other operations are still performed.
+  //   (In WebNN, this requires setting 'axes' to an empty array.)
+  if (!axes_data.empty() || helper.Get("noop_with_empty_axes", 0) == 1) {
+    options.set("axes", emscripten::val::array(GetNarrowedIntFromInt64<uint32_t>(axes_data)));
   }
 
-  if (op_type == "ReduceL1") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reduceL1", input, options);
-  } else if (op_type == "ReduceL2") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reduceL2", input, options);
-  } else if (op_type == "ReduceLogSum") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reduceLogSum", input, options);
-  } else if (op_type == "ReduceLogSumExp") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reduceLogSumExp", input, options);
-  } else if (op_type == "ReduceMax") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reduceMax", input, options);
-  } else if (op_type == "ReduceMean") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reduceMean", input, options);
-  } else if (op_type == "ReduceMin") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reduceMin", input, options);
-  } else if (op_type == "ReduceProd") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reduceProduct", input, options);
-  } else if (op_type == "ReduceSum") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reduceSum", input, options);
-  } else if (op_type == "ReduceSumSquare") {
-    output = model_builder.GetBuilder().call<emscripten::val>("reduceSumSquare", input, options);
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ReductionOpBuilder, unknown op: ", op_type);
-  }
+  const std::string_view webnn_op_type = GetWebNNOpType(op_type);
+  ORT_RETURN_IF(webnn_op_type.empty(), "Cannot get WebNN op type");
+
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(
+      std::string(webnn_op_type).c_str(), input, options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
@@ -128,11 +110,25 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                            const WebnnDeviceType /* device_type */,
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const std::string axes_name = GetTensorName(input_defs, 1);
-  // If the optional input 'axes' is provided, it must be an initializer.
-  if (!axes_name.empty() && !graph_viewer.GetConstantInitializer(axes_name)) {
-    LOGS(logger, VERBOSE) << "Input axes of " << node.OpType() << " must be a constant";
-    return false;
+
+  if (TensorExists(input_defs, 1)) {
+    std::vector<int64_t> axes_shape;
+    if (!GetShape(*input_defs[1], axes_shape, logger)) {
+      LOGS(logger, VERBOSE) << "Cannot get shape of input axes";
+      return false;
+    }
+
+    if (axes_shape.size() != 1) {
+      LOGS(logger, VERBOSE) << "Input axes of " << node.OpType() << " must be 1D";
+      return false;
+    }
+
+    const std::string axes_name = GetTensorName(input_defs, 1);
+    // If the optional input 'axes' is provided and not empty, it must be an initializer.
+    if (axes_shape[0] != 0 && !graph_viewer.GetConstantInitializer(axes_name)) {
+      LOGS(logger, VERBOSE) << "Input axes of " << node.OpType() << " must be a constant";
+      return false;
+    }
   }
 
   return true;

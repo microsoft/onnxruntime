@@ -143,8 +143,8 @@ const createBinaryOpProgramInfo = (
   additionalImplementation?: string,
   outputDataType: number = a.dataType,
 ): ProgramInfo => {
-  const aDims = a.dims.map((x) => Number(x) ?? 1);
-  const bDims = b.dims.map((x) => Number(x) ?? 1);
+  const aDims = a.dims.map(Number);
+  const bDims = b.dims.map(Number);
   const isBroadcast = !ShapeUtil.areEqual(aDims, bDims);
   let outputShape = aDims;
   let outputSize = ShapeUtil.size(aDims);

@@ -5,13 +5,12 @@
 
 import argparse
 import csv
+import logging
 import os
 import statistics
 import sys
 import time
 from pathlib import Path
-
-import coloredlogs
 
 # import torch before onnxruntime so that onnxruntime uses the cuDNN in the torch package.
 import torch
@@ -31,7 +30,6 @@ SD_MODELS = {
 
 PROVIDERS = {
     "cuda": "CUDAExecutionProvider",
-    "rocm": "ROCMExecutionProvider",
     "migraphx": "MIGraphXExecutionProvider",
     "tensorrt": "TensorrtExecutionProvider",
 }
@@ -328,7 +326,7 @@ def run_ort(
     skip_warmup: bool = False,
 ):
     provider_and_options = provider
-    if tuning and provider in ["CUDAExecutionProvider", "ROCMExecutionProvider"]:
+    if tuning and provider in ["CUDAExecutionProvider"]:
         provider_and_options = (provider, {"tunable_op_enable": 1, "tunable_op_tuning_enable": 1})
 
     load_start = time.time()
@@ -1150,8 +1148,7 @@ def parse_arguments():
         "-t",
         "--tuning",
         action="store_true",
-        help="Enable TunableOp and tuning. "
-        "This will incur longer warmup latency, and is mandatory for some operators of ROCm EP.",
+        help="Enable TunableOp and tuning. This will incur longer warmup latency.",
     )
 
     parser.add_argument(
@@ -1322,11 +1319,6 @@ def main():
 
         from onnxruntime import __version__ as ort_version  # noqa: PLC0415
 
-        if version.parse(ort_version) == version.parse("1.16.0"):
-            # ORT 1.16 has a bug that might trigger Attention RuntimeError when latest fusion script is applied on clip model.
-            # The walkaround is to enable fused causal attention, or disable Attention fusion for clip model.
-            os.environ["ORT_ENABLE_FUSED_CAUSAL_ATTENTION"] = "1"
-
         if args.enable_cuda_graph:
             if not (args.engine == "onnxruntime" and args.provider in ["cuda", "tensorrt"] and args.pipeline is None):
                 raise ValueError("The stable diffusion pipeline does not support CUDA graph.")
@@ -1334,9 +1326,9 @@ def main():
             if version.parse(ort_version) < version.parse("1.16"):
                 raise ValueError("CUDA graph requires ONNX Runtime 1.16 or later")
 
-    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+    logging.basicConfig(format="%(funcName)20s: %(message)s", level=logging.INFO, force=True)
 
-    memory_monitor_type = "rocm" if args.provider == "rocm" else "cuda"
+    memory_monitor_type = "cuda"
 
     start_memory = measure_gpu_memory(memory_monitor_type, None)
     print("GPU memory used before loading models:", start_memory)
@@ -1383,9 +1375,6 @@ def main():
                 skip_warmup=args.skip_warmup,
             )
     elif args.engine == "optimum" and provider == "CUDAExecutionProvider":
-        if "xl" in args.version:
-            os.environ["ORT_ENABLE_FUSED_CAUSAL_ATTENTION"] = "1"
-
         result = run_optimum_ort(
             model_name=sd_model,
             directory=args.pipeline,

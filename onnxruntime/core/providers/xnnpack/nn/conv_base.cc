@@ -490,11 +490,14 @@ ConvBase::ConvBase(const OpKernelInfo& info, bool is_transpose)
     if (conv_transpose_attrs_.output_padding.empty()) {
       conv_transpose_attrs_.output_padding.resize(kernel_shape_.size(), 0);
     }
+    ORT_ENFORCE(conv_transpose_attrs_.output_padding.size() == kernel_shape_.size(),
+                "output_padding size (", conv_transpose_attrs_.output_padding.size(),
+                ") does not match the number of spatial dimensions (", kernel_shape_.size(), ").");
 
-    conv_transpose_attrs_.ComputePadsAndOutputShape(
+    ORT_THROW_IF_ERROR(conv_transpose_attrs_.ComputePadsAndOutputShape(
         input_shape, M_, kernel_shape_,
         conv_transpose_attrs_.strides, conv_transpose_attrs_.dilations,
-        conv_transpose_attrs_.output_padding, 1, &conv_transpose_attrs_.pads, &output_shape_);
+        conv_transpose_attrs_.output_padding, 1, &conv_transpose_attrs_.pads, &output_shape_));
 
     output_shape_[1] = output_shape_[2];
     if (rank == 4) {

@@ -1,0 +1,14 @@
+
+
+
+
+
+
+const value_a = 10;
+const value_b = (10 * 2);
+const value_c = ((10 * 2) + 5);
+const circle_circumference = (3.14159 * 2) * radius;
+
+fn calculate() -> f32 {
+    return 10 + (10 * 2) + ((10 * 2) + 5);
+}

@@ -1,0 +1,5 @@
+{
+  "type": "parser",
+  "description": "Test parser error handling for circular macro references",
+  "expectsError": "Circular macro reference in file circular.wgsl.template at line 4: macro \"B\" creates circular dependency with \"A\""
+}

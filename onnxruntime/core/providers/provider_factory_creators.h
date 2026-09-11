@@ -9,17 +9,13 @@
 // The functions are typically implemented in
 // onnxruntime/core/providers/<provider name>/<provider name>_provider_factory.cc.
 //
-// For execution providers that are built as separate libraries (CUDA, TensorRT, ROCm, MIGraphX, DNNL, OpenVINO)
+// For execution providers that are built as separate libraries (CUDA, TensorRT, MIGraphX, DNNL, OpenVINO)
 // the functions are implemented in provider_bridge_ort.cc.
 
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 
 #if defined(USE_ACL)
 #include "core/providers/acl/acl_provider_factory_creator.h"
-#endif
-
-#if defined(USE_ARMNN)
-#include "core/providers/armnn/armnn_provider_factory_creator.h"
 #endif
 
 #if defined(USE_COREML)
@@ -60,10 +56,6 @@
 
 #if defined(USE_RKNPU)
 #include "core/providers/rknpu/rknpu_provider_factory_creator.h"
-#endif
-
-#if defined(USE_ROCM)
-#include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
 
 #if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)

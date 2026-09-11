@@ -64,6 +64,13 @@ Status Sample(AllocatorPtr& allocator,
               const IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(dumper);
 
+  // vocab_size is validated to be in [1, decoder-logits-width] before this point, but min_tokens_to_keep is
+  // copied verbatim from an untrusted graph attribute. Guard against it so the unsigned loop bound
+  // (vocab_size - min_tokens_to_keep) in cumulate_and_filter() cannot underflow and walk off the heap buffer.
+  ORT_RETURN_IF_NOT(parameters->min_tokens_to_keep >= 0 && parameters->min_tokens_to_keep < parameters->vocab_size,
+                    "Sampling: min_tokens_to_keep must be in [0, vocab_size), got ",
+                    parameters->min_tokens_to_keep, " with vocab_size ", parameters->vocab_size);
+
   gsl::span<T>& sorted_scores = sampling_state->sorted_scores;
   memcpy(sorted_scores.data(), next_token_scores.data(), next_token_scores.size_bytes());
   std::vector<size_t> sorted_indices(static_cast<size_t>(parameters->batch_size) * static_cast<size_t>(parameters->vocab_size));
@@ -99,12 +106,22 @@ Status Sample(AllocatorPtr& allocator,
 
   gsl::span<T>& cumulative_probs = sampling_state->cumulative_probs;
 
+  // TODO(hasesh): Plumb through mlas backend config to SoftmaxCPU
+  // Currently, MLAS uses a dedicated softmax kernel for float type
+  // that does not need the mlas backend config.
+  // The backend config is only needed for the double type softmax kernel
+  // which uses Gemm/Matmul for its implementation.
+  // At the time of writing, there is no backend other than MLAS that implements
+  // double type Gemm/Matmul. Hence, the cost of plumbing through the session option
+  // to enable/disable a backend (like KleidiAI) is not justified.
+  // It is better re-visited when it is relevant for the double type.
   ORT_RETURN_IF_ERROR(SoftmaxCPU<T>(parameters->batch_size,
                                     parameters->vocab_size,
                                     sorted_scores.data(),
                                     cumulative_probs.data(),
                                     false,
-                                    thread_pool));
+                                    thread_pool,
+                                    nullptr));  // mlas_backend_kernel_selector_config
 
   if (parameters->custom_sampling) {
     cumulate_and_filter_custom(next_token_scores, cumulative_probs, parameters, sorted_indices);

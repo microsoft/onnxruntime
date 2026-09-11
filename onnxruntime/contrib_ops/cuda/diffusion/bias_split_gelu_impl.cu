@@ -19,7 +19,6 @@
  * limitations under the License.
  */
 
-#include <cub/cub.cuh>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/diffusion/bias_split_gelu_impl.h"
 

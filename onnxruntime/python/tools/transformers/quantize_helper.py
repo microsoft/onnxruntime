@@ -9,7 +9,11 @@ import os
 
 import onnx
 import torch
-from transformers.modeling_utils import Conv1D
+
+try:
+    from transformers.pytorch_utils import Conv1D
+except ImportError:
+    from transformers.modeling_utils import Conv1D
 
 logger = logging.getLogger(__name__)
 

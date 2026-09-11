@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
-#include "../framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/execution_providers.h"
@@ -25,7 +25,7 @@ void PutAllNodesOnOneProvider(Graph& graph, const std::string& provider_type) {
 
 namespace test {
 TEST(MemcpyTest, copy1) {
-  concurrency::ThreadPool tp(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR("MemcpyTest"), 2, true);
+  concurrency::ThreadPool tp(&onnxruntime::Env::Default(), ThreadOptions(), ORT_TSTR("MemcpyTest"), 2, concurrency::kSpinDurationDefault);
 
   ExecutionProviders execution_providers;
   CPUExecutionProviderInfo epi;

@@ -5,8 +5,6 @@
 #include "core/providers/migraphx/gpu_data_transfer.h"
 #include "core/providers/migraphx/migraphx_call.h"
 
-// If you make change below, please also update onnxruntime/core/providers/rocm/gpu_data_transfer.cc
-
 namespace onnxruntime {
 
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {

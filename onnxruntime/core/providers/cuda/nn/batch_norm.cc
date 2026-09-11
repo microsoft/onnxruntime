@@ -99,10 +99,10 @@ Status BatchNorm<T, NHWC>::ComputeInternal(OpKernelContext* p_op_kernel_context)
 
     // Convert the scale, B, mean, var to float
     const int64_t C = x_shape.GetDims()[NHWC ? 3 : 1];
-    auto f_scale = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
-    auto f_B = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
-    auto f_mean = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
-    auto f_var = GetScratchBuffer<float>(C, p_op_kernel_context->GetComputeStream());
+    auto f_scale = GetScratchBuffer<float>(C, GetComputeStream(p_op_kernel_context));
+    auto f_B = GetScratchBuffer<float>(C, GetComputeStream(p_op_kernel_context));
+    auto f_mean = GetScratchBuffer<float>(C, GetComputeStream(p_op_kernel_context));
+    auto f_var = GetScratchBuffer<float>(C, GetComputeStream(p_op_kernel_context));
     Impl_Cast<CudaT, float>(Stream(p_op_kernel_context), scale_data, f_scale.get(), C);
     Impl_Cast<CudaT, float>(Stream(p_op_kernel_context), b_data, f_B.get(), C);
     Impl_Cast<CudaT, float>(Stream(p_op_kernel_context), mean_data, f_mean.get(), C);
@@ -137,7 +137,7 @@ Status BatchNorm<T, NHWC>::ComputeInternal(OpKernelContext* p_op_kernel_context)
     auto saved_mean_data = reinterpret_cast<CudaT*>(saved_mean->MutableData<T>());
     auto saved_inv_var_data = reinterpret_cast<CudaT*>(saved_var->MutableData<T>());
 
-    auto stream = static_cast<cudaStream_t>(p_op_kernel_context->GetComputeStream()->GetHandle());
+    auto stream = Stream(p_op_kernel_context);
     CUDA_RETURN_IF_ERROR(
         cudaMemcpyAsync(running_mean_data, mean_data, mean->SizeInBytes(), cudaMemcpyDeviceToDevice, stream));
     CUDA_RETURN_IF_ERROR(

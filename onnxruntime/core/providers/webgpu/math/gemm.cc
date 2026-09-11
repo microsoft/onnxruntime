@@ -3,11 +3,13 @@
 
 #include "core/providers/webgpu/math/gemm.h"
 #include "core/providers/webgpu/math/gemm_packed.h"
+#include "core/providers/webgpu/vendor/intel/math/gemm.h"
 
 #include <vector>
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/math/subgroup_matrix_gemm.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -72,9 +74,7 @@ Status GemmNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   // Calculate Alpha
-  if (alpha_) {
-    shader.MainFunctionBody() << "  value = value * output_value_t(uniforms.alpha);\n";
-  }
+  shader.MainFunctionBody() << "  value = value * output_value_t(uniforms.alpha);\n";
 
   // Calculate Bias
   if (need_handle_bias_) {
@@ -120,13 +120,28 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+  // Lazily create the vendor-optimized implementation (e.g. Intel subgroup-matrix)
+  // on the first Compute call, once the device capabilities can be queried from the
+  // compute context. std::call_once makes the one-time init safe against concurrent
+  // Compute calls on this shared kernel; a null impl_ means no vendor path exists.
+  std::call_once(impl_init_flag_, [&]() {
+    impl_ = CreateSubgroupMatrixGemmImpl(*this, context);
+  });
+  if (impl_) {
+    bool handled = false;
+    ORT_RETURN_IF_ERROR(impl_->Compute(context, handled));
+    if (handled) {
+      return Status::OK();
+    }
+  }
+
   // WebGPU doesn't support binding a zero-sized buffer, so we need to check if A or B is empty.
   bool need_handle_matmul = A_shape.Size() > 0 && B_shape.Size() > 0;
   bool need_handle_bias = C && beta_;
 
   if (M <= 8 && N <= 8 && K <= 8) {
     // Use naive implementation for small matrices
-    GemmNaiveProgram program{transA_, transB_, alpha_, need_handle_bias, need_handle_matmul};
+    GemmNaiveProgram program{transA_, transB_, need_handle_bias, need_handle_matmul};
     if (need_handle_matmul) {
       program.AddInputs({{A, ProgramTensorMetadataDependency::Type},
                          {B, ProgramTensorMetadataDependency::Type}});
@@ -136,7 +151,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
       program.AddInput({C, ProgramTensorMetadataDependency::Rank});
     }
 
-    program.CacheHint(alpha_, transA_, transB_)
+    program.CacheHint(transA_, transB_)
         .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .SetWorkgroupSize(WORKGROUP_SIZE)
@@ -147,6 +162,10 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
                               {alpha_},
                               {beta_}});
     return context.RunProgram(program);
+  }
+
+  if (intel::CanApplyGemmIntel(context, M, N, K, transA_, transB_)) {
+    return intel::ApplyGemmIntel(A, B, C, transA_, transB_, alpha_, beta_, context);
   }
 
   return ApplyGemmPacked(A, B, C, transA_, transB_, alpha_, beta_, context);

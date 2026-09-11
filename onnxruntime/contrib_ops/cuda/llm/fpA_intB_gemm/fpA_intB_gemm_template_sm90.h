@@ -26,13 +26,12 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.h"
 
-namespace tkc = onnxruntime::llm::cutlass_extensions;
-
-using namespace cute;
-
 namespace onnxruntime::llm {
 namespace kernels {
 namespace cutlass_kernels {
+
+namespace tkc = onnxruntime::llm::cutlass_extensions;
+using namespace cute;
 
 // This filters out invalid template combinations that we DON'T want instantiated in CUTLASS. For example,
 // instantiating SM=75, Stages=3 is invalid so we would need to filter that out. Fine grained

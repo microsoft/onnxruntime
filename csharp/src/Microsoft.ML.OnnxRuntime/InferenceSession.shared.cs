@@ -215,6 +215,82 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Fetches memory info for all inputs in the same order as their names.
+        /// (See InputNames property).
+        /// </summary>
+        /// <returns>A disposable readonly collection of OrtMemoryInfo</returns>
+        public IDisposableReadOnlyCollection<OrtMemoryInfo> GetMemoryInfosForInputs()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out UIntPtr numInputs));
+
+            if(numInputs == UIntPtr.Zero)
+            {
+                return new DisposableList<OrtMemoryInfo>();
+            }
+
+            var memoryInfoArray = new IntPtr[(ulong)numInputs];
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetMemoryInfoForInputs(_nativeHandle,
+                memoryInfoArray, numInputs));
+
+            return new DisposableList<OrtMemoryInfo>(
+                memoryInfoArray.Select(static ptr => new OrtMemoryInfo(ptr, /* owned= */ false)));
+        }
+
+        /// <summary>
+        /// Fetches memory info for all outputs in the same order as their names.
+        /// (See OutputNames property).
+        /// </summary>
+        /// <returns>A disposable readonly collection of OrtMemoryInfo</returns>
+        public IDisposableReadOnlyCollection<OrtMemoryInfo> GetMemoryInfosForOutputs()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle,
+                out UIntPtr numOutputs));
+
+            if(numOutputs == UIntPtr.Zero)
+            {
+                return new DisposableList<OrtMemoryInfo>();
+            }
+
+            var memoryInfoArray = new IntPtr[(ulong)numOutputs];
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetMemoryInfoForOutputs(_nativeHandle,
+                memoryInfoArray, numOutputs));
+            return new DisposableList<OrtMemoryInfo>(
+                memoryInfoArray.Select(static ptr => new OrtMemoryInfo(ptr, /* owned= */ false)));
+        }
+
+        /// <summary>
+        /// Fetches OrtEpDevice instances for all inputs in the same order as their input names.
+        /// For inputs that do not have a device, the corresponding entry in the returned list is null.
+        /// See InputNames property.
+        /// </summary>
+        /// <returns>IReadOnlyList<OrtEpDevice></returns>
+        public IReadOnlyList<OrtEpDevice> GetEpDeviceForInputs()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle,
+                out UIntPtr numInputs));
+
+            if (numInputs == UIntPtr.Zero)
+            {
+                // OrtSessionGetEpDeviceForInputs expects numInputs > 0, otherwise it is an invalid arg.
+                return [];
+            }
+
+            var epDevicesForInputs = new IntPtr[(ulong)numInputs];
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetEpDeviceForInputs(_nativeHandle,
+                epDevicesForInputs, numInputs));
+
+            // Some entries in epDevicesForInputs can be IntPtr.Zero, indicating the input does not
+            // have a device; return null for those entries.
+            return epDevicesForInputs
+                .Select(static ptr => ptr == IntPtr.Zero ? null : new OrtEpDevice(ptr))
+                .ToList()
+                .AsReadOnly();
+        }
+
+        /// <summary>
         /// Runs the loaded model for the given inputs, and fetches all the outputs.
         /// </summary>
         /// <param name="inputs">specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
@@ -1056,6 +1132,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
+                host.Dispose();
                 hostHdl.Free();
             }
         }
@@ -1067,8 +1144,10 @@ namespace Microsoft.ML.OnnxRuntime
 
         private delegate void UserCallbackDelegate(IReadOnlyCollection<OrtValue> outputs, IntPtr status);
 
-        private class CallbackHost
+        private class CallbackHost : IDisposable
         {
+            public InferenceSession session { get; }
+            public RunOptions options { get; }
             public IReadOnlyCollection<string> inputNames { get; }
             public IReadOnlyCollection<OrtValue> inputValues { get; }
             public IReadOnlyCollection<string> outputNames { get; }
@@ -1080,14 +1159,21 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr[] rawOutputNames { get; }
             public IntPtr[] rawOutputValues { get; }
 
+            public IntPtr rawInputNamesPointer => GetPinnedPointer(rawInputNamesHandle);
+            public IntPtr rawInputValuesPointer => GetPinnedPointer(rawInputValuesHandle);
+            public IntPtr rawOutputNamesPointer => GetPinnedPointer(rawOutputNamesHandle);
+            public IntPtr rawOutputValuesPointer => GetPinnedPointer(rawOutputValuesHandle);
+
             public CallbackHost(InferenceSession session,
+                                RunOptions options,
                                 IReadOnlyCollection<string> cbInputNames,
                                 IReadOnlyCollection<OrtValue> cbinputValues,
                                 IReadOnlyCollection<string> cbOutputNames,
                                 IReadOnlyCollection<OrtValue> cbOutputValues,
                                 UserCallbackDelegate userCallback)
             {
-
+                this.session = session;
+                this.options = options;
                 inputNames = cbInputNames;
                 inputValues = cbinputValues;
                 outputNames = cbOutputNames;
@@ -1099,7 +1185,52 @@ namespace Microsoft.ML.OnnxRuntime
 
                 rawOutputNames = LookupUtf8Names(outputNames, n => n, session.LookupOutputMetadata);
                 rawOutputValues = outputValues.Select(v => v.Handle).ToArray();
+
+                // Native RunAsync retains these array addresses after the P/Invoke call returns.
+                try
+                {
+                    rawInputNamesHandle = PinArray(rawInputNames);
+                    rawInputValuesHandle = PinArray(rawInputValues);
+                    rawOutputNamesHandle = PinArray(rawOutputNames);
+                    rawOutputValuesHandle = PinArray(rawOutputValues);
+                }
+                catch
+                {
+                    Dispose();
+                    throw;
+                }
             }
+
+            public void Dispose()
+            {
+                FreeHandle(ref rawInputNamesHandle);
+                FreeHandle(ref rawInputValuesHandle);
+                FreeHandle(ref rawOutputNamesHandle);
+                FreeHandle(ref rawOutputValuesHandle);
+            }
+
+            private static GCHandle PinArray(IntPtr[] array)
+            {
+                return array.Length == 0 ? default : GCHandle.Alloc(array, GCHandleType.Pinned);
+            }
+
+            private static IntPtr GetPinnedPointer(GCHandle handle)
+            {
+                return handle.IsAllocated ? handle.AddrOfPinnedObject() : IntPtr.Zero;
+            }
+
+            private static void FreeHandle(ref GCHandle handle)
+            {
+                if (handle.IsAllocated)
+                {
+                    handle.Free();
+                }
+            }
+
+            private GCHandle rawInputNamesHandle = default;
+            private GCHandle rawInputValuesHandle = default;
+            private GCHandle rawOutputNamesHandle = default;
+            private GCHandle rawOutputValuesHandle = default;
         }
 
         private void RunAsyncInternal(RunOptions options,
@@ -1109,27 +1240,41 @@ namespace Microsoft.ML.OnnxRuntime
                                       IReadOnlyCollection<OrtValue> outputValues,
                                       UserCallbackDelegate callback)
         {
-            CallbackHost host = new CallbackHost(this, inputNames, inputValues, outputNames, outputValues, callback);
-            var host_hdl = GCHandle.Alloc(host, GCHandleType.Normal);
+            if (inputNames.Count != inputValues.Count)
+            {
+                throw new ArgumentException($"Length of {nameof(inputNames)} ({inputNames.Count}) must match that of {nameof(inputValues)} ({inputValues.Count}).");
+            }
+            if (outputNames.Count != outputValues.Count)
+            {
+                throw new ArgumentException($"Length of {nameof(outputNames)} ({outputNames.Count}) must match that of {nameof(outputValues)} ({outputValues.Count}).");
+            }
+
+            CallbackHost host = new CallbackHost(this, options, inputNames, inputValues, outputNames, outputValues, callback);
+            GCHandle host_hdl = default;
 
             try
             {
+                host_hdl = GCHandle.Alloc(host, GCHandleType.Normal);
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRunAsync(
                                                     _nativeHandle,
                                                     options == null ? (IntPtr)null : options.Handle,
-                                                    host.rawInputNames,
-                                                    host.rawInputValues,
+                                                    host.rawInputNamesPointer,
+                                                    host.rawInputValuesPointer,
                                                     (UIntPtr)host.rawInputNames.Length,
-                                                    host.rawOutputNames,
+                                                    host.rawOutputNamesPointer,
                                                     (UIntPtr)host.rawOutputNames.Length,
-                                                    host.rawOutputValues,
+                                                    host.rawOutputValuesPointer,
                                                     Marshal.GetFunctionPointerForDelegate(ortCallback),
                                                     GCHandle.ToIntPtr(host_hdl)
                                                     ));
             }
-            catch (OnnxRuntimeException)
+            catch
             {
-                host_hdl.Free();
+                host.Dispose();
+                if (host_hdl.IsAllocated)
+                {
+                    host_hdl.Free();
+                }
                 throw;
             }
         }

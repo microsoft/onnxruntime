@@ -35,6 +35,7 @@ Status LSTMGrad<T>::Compute(OpKernelContext* context) const {
                                   attributes_.hidden_size,
                                   lstmgrad_inputs.shape.input_size,
                                   context->GetOperatorThreadPool(),
+                                  &mlas_backend_kernel_selector_config_,
                                   alloc);
 
   lstm_cell.ComputeGradient(lstmgrad_inputs, lstmgrad_outputs);

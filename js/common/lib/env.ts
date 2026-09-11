@@ -16,6 +16,7 @@ export declare namespace Env {
      * - `ort-wasm-simd-threaded.wasm` for default build
      * - `ort-wasm-simd-threaded.jsep.wasm` for JSEP build (with WebGPU and WebNN)
      * - `ort-wasm-simd-threaded.asyncify.wasm` for WebGPU build with Asyncify (with WebNN)
+     * - `ort-wasm-simd-threaded.jspi.wasm` for WebGPU build with JSPI support (with WebNN)
      */
     wasm?: URL | string;
     /**
@@ -27,6 +28,7 @@ export declare namespace Env {
      * - `ort-wasm-simd-threaded.mjs` for default build
      * - `ort-wasm-simd-threaded.jsep.mjs` for JSEP build (with WebGPU and WebNN)
      * - `ort-wasm-simd-threaded.asyncify.mjs` for WebGPU build with Asyncify (with WebNN)
+     * - `ort-wasm-simd-threaded.jspi.mjs` for WebGPU build with JSPI support (with WebNN)
      */
     mjs?: URL | string;
   }

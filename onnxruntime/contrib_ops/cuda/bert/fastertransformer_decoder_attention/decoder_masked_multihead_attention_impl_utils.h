@@ -151,7 +151,7 @@ inline size_t CalcDynamicBlockMemory(const DecoderMaskedMultiHeadAttentionParame
   // The extra memory needed if we are not using floats for the final logits.
   size_t logits_sz = 0;
 
-  if (sizeof(T) != 4) {
+  if constexpr (sizeof(T) != 4) {
     logits_sz = (((total_sequence_length + 3) / 4) * 4 * sizeof(T));
   }
 

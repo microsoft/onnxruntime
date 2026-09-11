@@ -6,6 +6,7 @@
 #include "core/providers/cuda/nn/pool.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/nn/max_pool_with_index.h"
+#include "core/providers/cuda/nn/avg_pool_impl.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace onnxruntime::common;
@@ -47,12 +48,23 @@ POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 10, 10, kOnnxDomain, f
 POOLING_KERNEL_VERSIONED(AveragePool, double, AveragePool, 10, 10, kOnnxDomain, false)
 POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 10, 10, kOnnxDomain, false)
 // AveragePool and MaxPool op set 11 only update spec document on default value for dilations and strides.
-POOLING_KERNEL(AveragePool, float, AveragePool, 11, kOnnxDomain, false)
-POOLING_KERNEL(AveragePool, double, AveragePool, 11, kOnnxDomain, false)
-POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 11, kOnnxDomain, false)
-POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1, kOnnxDomain, false)
-POOLING_KERNEL(GlobalAveragePool, double, AveragePool, 1, kOnnxDomain, false)
-POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 11, 18, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(AveragePool, double, AveragePool, 11, 18, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 11, 18, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 19, 21, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(AveragePool, double, AveragePool, 19, 21, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 19, 21, kOnnxDomain, false)
+POOLING_KERNEL(AveragePool, float, AveragePool, 22, kOnnxDomain, false)
+POOLING_KERNEL(AveragePool, double, AveragePool, 22, kOnnxDomain, false)
+POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 22, kOnnxDomain, false)
+POOLING_KERNEL(AveragePool, BFloat16, AveragePool, 22, kOnnxDomain, false)
+// GlobalAveragePool opsets 1-22 share the same CUDA implementation for the currently supported types.
+POOLING_KERNEL_VERSIONED(GlobalAveragePool, float, AveragePool, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(GlobalAveragePool, double, AveragePool, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(GlobalAveragePool, MLFloat16, AveragePool, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 22, kOnnxDomain, false)
+POOLING_KERNEL(GlobalAveragePool, double, AveragePool, 22, kOnnxDomain, false)
+POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 22, kOnnxDomain, false)
 POOLING_KERNEL_VERSIONED(MaxPool, float, MaxPool<1>, 1, 7, kOnnxDomain, false)
 POOLING_KERNEL_VERSIONED(MaxPool, double, MaxPool<1>, 1, 7, kOnnxDomain, false)
 POOLING_KERNEL_VERSIONED(MaxPool, MLFloat16, MaxPool<1>, 1, 7, kOnnxDomain, false)
@@ -71,9 +83,13 @@ POOLING_KERNEL_WITH_INDICES(MaxPool, MLFloat16, MaxPool<8>, 12, kOnnxDomain, fal
 POOLING_KERNEL_WITH_INDICES(MaxPool, int8_t, MaxPool<8>, 12, kOnnxDomain, false)
 POOLING_KERNEL_WITH_INDICES(MaxPool, uint8_t, MaxPool<8>, 12, kOnnxDomain, false)
 
-POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1, kOnnxDomain, false)
-POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 1, kOnnxDomain, false)
-POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1, kOnnxDomain, false)
+// GlobalMaxPool opsets 1-22 share the same CUDA implementation for the currently supported types.
+POOLING_KERNEL_VERSIONED(GlobalMaxPool, float, MaxPool<1>, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(GlobalMaxPool, double, MaxPool<1>, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL_VERSIONED(GlobalMaxPool, MLFloat16, MaxPool<1>, 1, 21, kOnnxDomain, false)
+POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 22, kOnnxDomain, false)
+POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 22, kOnnxDomain, false)
+POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 22, kOnnxDomain, false)
 
 // NHWC variants
 #ifdef ENABLE_CUDA_NHWC_OPS
@@ -90,18 +106,26 @@ POOLING_KERNEL_WITH_INDICES(MaxPool, MLFloat16, MaxPool<8>, 12, kMSInternalNHWCD
 POOLING_KERNEL_WITH_INDICES(MaxPool, int8_t, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
 POOLING_KERNEL_WITH_INDICES(MaxPool, uint8_t, MaxPool<8>, 12, kMSInternalNHWCDomain, true)
 
-POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1, kMSInternalNHWCDomain, true)
-POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 1, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(GlobalMaxPool, float, MaxPool<1>, 1, 21, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(GlobalMaxPool, MLFloat16, MaxPool<1>, 1, 21, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 22, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(GlobalMaxPool, MLFloat16, MaxPool<1>, 22, kMSInternalNHWCDomain, true)
 
 POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 7, 9, kMSInternalNHWCDomain, true)
 POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 7, 9, kMSInternalNHWCDomain, true)
 POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 10, 10, kMSInternalNHWCDomain, true)
 POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 10, 10, kMSInternalNHWCDomain, true)
 // AveragePool and MaxPool op set 11 only update spec document on default value for dilations
-POOLING_KERNEL(AveragePool, float, AveragePool, 11, kMSInternalNHWCDomain, true)
-POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 11, kMSInternalNHWCDomain, true)
-POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 1, kMSInternalNHWCDomain, true)
-POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 1, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 11, 18, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 11, 18, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 19, 21, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(AveragePool, MLFloat16, AveragePool, 19, 21, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(AveragePool, float, AveragePool, 22, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(AveragePool, MLFloat16, AveragePool, 22, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(GlobalAveragePool, float, AveragePool, 1, 21, kMSInternalNHWCDomain, true)
+POOLING_KERNEL_VERSIONED(GlobalAveragePool, MLFloat16, AveragePool, 1, 21, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(GlobalAveragePool, float, AveragePool, 22, kMSInternalNHWCDomain, true)
+POOLING_KERNEL(GlobalAveragePool, MLFloat16, AveragePool, 22, kMSInternalNHWCDomain, true)
 #endif
 
 class CudnnPoolingDescriptor final {
@@ -182,6 +206,37 @@ Status Pool<T, PoolType, Layout>::ComputeInternal(OpKernelContext* context) cons
   auto x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
+  // cuDNN's pooling descriptor cannot represent two ONNX features:
+  //  (1) Asymmetric padding: it stores a single symmetric pad value per axis and applies it to
+  //      both sides, so it silently drops ONNX end pads when pad_begin != pad_end (explicit
+  //      asymmetric pads, or auto_pad=SAME_UPPER/SAME_LOWER resolving to asymmetric pads).
+  //  (2) Dilation: the pooling descriptor has no dilation parameter at all, so any dilation > 1
+  //      is silently ignored.
+  // Either case produces wrong sums and divisors on cuDNN, so route it to the custom kernel,
+  // which honors per-side pads AND dilation and matches the CPU reference divisor exactly.
+  // Symmetric, non-dilated pooling (the common case, including all global pooling) keeps the
+  // fast cuDNN path unchanged, so there is zero perf regression. (MaxPool<8> guards dilation the
+  // same way via !default_dilations.) Global pooling is always symmetric and never dilated, and
+  // its kernel_shape/strides/dilations are left unpopulated (PoolAttributes returns early), so it
+  // is excluded here and stays on cuDNN.
+  if constexpr (PoolType::type == onnxruntime::PoolType::kAveragePool) {
+    if (!pool_attrs_.global_pooling) {
+      const size_t spatial_rank = kernel_shape.size();
+      bool asymmetric_pads = false;
+      for (size_t i = 0; i < spatial_rank; ++i) {
+        if (pads[i] != pads[spatial_rank + i]) {
+          asymmetric_pads = true;
+          break;
+        }
+      }
+      if (asymmetric_pads || !pool_attrs_.default_dilations) {
+        AveragePoolWithPad<CudaT, Layout>(Stream(context), x_shape, y_shape, kernel_shape, strides, pads,
+                                          pool_attrs_.dilations, pool_attrs_.count_include_pad, x_data, y_data);
+        return Status::OK();
+      }
+    }
+  }
+
   TensorShapeVector x_dims_cudnn(x_dims.begin(), x_dims.end());
   TensorShapeVector y_dims_cudnn(y_dims);
   if (kernel_shape.size() < 2) {
@@ -223,8 +278,8 @@ Status Pool<T, PoolType, Layout>::ComputeInternal(OpKernelContext* context) cons
     const auto input_count = x_shape.Size();
     const auto output_count = y_shape.Size();
 
-    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, context->GetComputeStream());
-    auto temp_Y = GetScratchBuffer<float>(output_count, context->GetComputeStream());
+    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, GetComputeStream(context));
+    auto temp_Y = GetScratchBuffer<float>(output_count, GetComputeStream(context));
     Impl_Cast<CudaT, float>(Stream(context), reinterpret_cast<const CudaT*>(x_data), temp_X.get(), input_count);
     CUDNN_RETURN_IF_ERROR(PoolingForwardHelper(GetCudnnHandle(context), pooling_desc, &alpha, x_tensor, temp_X.get(),
                                                &beta, y_tensor, temp_Y.get()));

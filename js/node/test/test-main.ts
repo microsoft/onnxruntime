@@ -18,10 +18,13 @@ require('./unittests/lib/inference-session');
 require('./unittests/lib/model-metadata');
 require('./unittests/lib/tensor');
 
-// E2E tests
-require('./e2e/simple-e2e-tests');
-require('./e2e/inference-session-run');
-require('./e2e/worker-test');
+// API tests
+require('./api/simple-api-tests');
+require('./api/inference-session-run');
+require('./api/worker-test');
+
+// standalone tests
+require('./standalone/index');
 
 // Test ONNX spec tests
 import { run as runTestRunner } from './test-runner';

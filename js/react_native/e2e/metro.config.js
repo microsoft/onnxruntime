@@ -12,6 +12,7 @@ const config = {
   ],
   resolver: {
     sourceExts: ['tsx', 'ts', 'jsx', 'js', 'json'], // Ensure TypeScript files are recognized
+    assetExts: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'ico', 'webp', 'svg', 'ort', 'onnx'],
   },
 };
 module.exports = mergeConfig(getDefaultConfig(__dirname), config);

@@ -22,7 +22,7 @@
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -67,7 +67,7 @@ static common::Status LoadInferenceSessionFromModel(FenceCudaTestInferenceSessio
     tensor_proto.set_data_type(PROTO_DATATYPE);                                                             \
     for (auto v : value) tensor_proto.PROTO_ADD_DATA(v);                                                    \
     tensor_proto.set_name(name);                                                                            \
-    return graph_utils::AddInitializerWithExternalData(graph, tensor_proto);                                \
+    return graph_utils::AddInitializerWithOrtValue(graph, tensor_proto);                                    \
   }
 
 CREATE_INITIALIZER_FUNC(float, TensorProto_DataType_FLOAT, add_float_data)

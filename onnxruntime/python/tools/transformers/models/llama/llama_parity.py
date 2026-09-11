@@ -228,7 +228,7 @@ def get_args(argv: list[str]):
         "--execution_provider",
         required=False,
         default="cpu",
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda"],
         help="Execution provider to verify parity with",
     )
 

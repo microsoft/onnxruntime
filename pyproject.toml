@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel", "packaging"]
+build-backend = "setuptools.build_meta"
+
 [tool.pydocstyle]
 convention = "google"
 

@@ -78,15 +78,14 @@ if ($MODE -eq "dev") {
     Write-Host "Start checking version for onnxruntime-common@dev"
     npm view onnxruntime-common@dev --json | Out-File -Encoding utf8 ./ort_common_latest_info.json
     $ort_common_latest_version=node -p "require('./ort_common_latest_info.json').version"
-    $ort_common_latest_dist_tarball=node -p "require('./ort_common_latest_info.json').dist.tarball"
-    $ort_common_latest_dist_shasum=node -p "require('./ort_common_latest_info.json').dist.shasum"
     Write-Host "latest version is: $ort_common_latest_version"
 
     # download package latest@dev
-    Invoke-WebRequest $ort_common_latest_dist_tarball -OutFile ./latest.tgz
-    if ($(Get-FileHash -Algorithm SHA1 ./latest.tgz).Hash -ne "$ort_common_latest_dist_shasum") {
-        throw "SHASUM mismatch"
+    $packed_filename=npm pack "onnxruntime-common@dev"
+    if (!(Test-Path $packed_filename)) {
+        throw "npm pack failed to produce: $packed_filename"
     }
+    Rename-Item $packed_filename ./latest.tgz
     Write-Host "Tarball downloaded"
 
     # generate @dev version

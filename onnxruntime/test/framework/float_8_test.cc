@@ -5,10 +5,10 @@
 
 #include <vector>
 
-#include "core/framework/float8.h"
+#include "core/common/float8.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 
 using namespace ONNX_NAMESPACE;

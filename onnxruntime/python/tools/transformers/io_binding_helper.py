@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy
 import torch
+from onnx import TensorProto
 
 from onnxruntime import InferenceSession, RunOptions
 
@@ -34,12 +35,20 @@ class TypeHelper:
     @staticmethod
     def ort_type_to_numpy_type(ort_type: str):
         ort_type_to_numpy_type_map = {
-            "tensor(int64)": numpy.longlong,
-            "tensor(int32)": numpy.intc,
+            "tensor(int64)": numpy.int64,
+            "tensor(int32)": numpy.int32,
             "tensor(float)": numpy.float32,
             "tensor(float16)": numpy.float16,
             "tensor(bool)": bool,
             "tensor(uint8)": numpy.uint8,
+            "tensor(int8)": numpy.int8,
+            "tensor(double)": numpy.float64,
+            "tensor(int16)": numpy.int16,
+            "tensor(uint16)": numpy.uint16,
+            "tensor(uint32)": numpy.uint32,
+            "tensor(uint64)": numpy.uint64,
+            "tensor(complex64)": numpy.complex64,
+            "tensor(complex128)": numpy.complex128,
         }
         if ort_type not in ort_type_to_numpy_type_map:
             raise ValueError(f"{ort_type} not found in map")
@@ -56,6 +65,20 @@ class TypeHelper:
             "tensor(bfloat16)": torch.bfloat16,
             "tensor(bool)": torch.bool,
             "tensor(uint8)": torch.uint8,
+            "tensor(int8)": torch.int8,
+            "tensor(double)": torch.float64,
+            "tensor(int16)": torch.int16,
+            "tensor(uint16)": torch.uint16,
+            "tensor(uint32)": torch.uint32,
+            "tensor(uint64)": torch.uint64,
+            "tensor(complex64)": torch.complex64,
+            "tensor(complex128)": torch.complex128,
+            "tensor(float8e4m3fn)": torch.float8_e4m3fn,
+            "tensor(float8e4m3fnuz)": torch.float8_e4m3fnuz,
+            "tensor(float8e5m2)": torch.float8_e5m2,
+            "tensor(float8e5m2fnuz)": torch.float8_e5m2fnuz,
+            "tensor(int4)": torch.int4,
+            "tensor(uint4)": torch.uint4,
         }
         if ort_type not in ort_type_to_torch_type_map:
             raise ValueError(f"{ort_type} not found in map")
@@ -63,16 +86,67 @@ class TypeHelper:
         return ort_type_to_torch_type_map[ort_type]
 
     @staticmethod
+    def get_io_onnx_type_map(ort_session: InferenceSession) -> dict[str, int]:
+        """Create a mapping from input/output name to onnx data type"""
+        name_to_onnx_type = {}
+        for input in ort_session.get_inputs():
+            name_to_onnx_type[input.name] = TypeHelper.ort_type_to_onnx_type(input.type)
+
+        for output in ort_session.get_outputs():
+            name_to_onnx_type[output.name] = TypeHelper.ort_type_to_onnx_type(output.type)
+        return name_to_onnx_type
+
+    @staticmethod
+    def ort_type_to_onnx_type(ort_type: str):
+        ort_type_to_onnx_type_map = {
+            "tensor(int64)": TensorProto.INT64,
+            "tensor(int32)": TensorProto.INT32,
+            "tensor(float)": TensorProto.FLOAT,
+            "tensor(float16)": TensorProto.FLOAT16,
+            "tensor(bfloat16)": TensorProto.BFLOAT16,
+            "tensor(bool)": TensorProto.BOOL,
+            "tensor(uint8)": TensorProto.UINT8,
+            "tensor(int8)": TensorProto.INT8,
+            "tensor(double)": TensorProto.DOUBLE,
+            "tensor(int16)": TensorProto.INT16,
+            "tensor(uint16)": TensorProto.UINT16,
+            "tensor(uint32)": TensorProto.UINT32,
+            "tensor(uint64)": TensorProto.UINT64,
+            "tensor(complex64)": TensorProto.COMPLEX64,
+            "tensor(complex128)": TensorProto.COMPLEX128,
+            "tensor(float8e4m3fn)": TensorProto.FLOAT8E4M3FN,
+            "tensor(float8e4m3fnuz)": TensorProto.FLOAT8E4M3FNUZ,
+            "tensor(float8e5m2)": TensorProto.FLOAT8E5M2,
+            "tensor(float8e5m2fnuz)": TensorProto.FLOAT8E5M2FNUZ,
+            "tensor(float4e2m1)": TensorProto.FLOAT4E2M1,
+            "tensor(int4)": TensorProto.INT4,
+            "tensor(uint4)": TensorProto.UINT4,
+            "tensor(string)": TensorProto.STRING,
+        }
+        if ort_type not in ort_type_to_onnx_type_map:
+            raise ValueError(f"{ort_type} not found in map")
+
+        return ort_type_to_onnx_type_map[ort_type]
+
+    @staticmethod
     def numpy_type_to_torch_type(numpy_type: numpy.dtype):
         numpy_type_to_torch_type_map = {
-            numpy.longlong: torch.int64,
-            numpy.intc: torch.int32,
+            numpy.int64: torch.int64,
             numpy.int32: torch.int32,
             numpy.float32: torch.float32,
             numpy.float16: torch.float16,
             bool: torch.bool,
             numpy.uint8: torch.uint8,
+            numpy.int8: torch.int8,
+            numpy.float64: torch.float64,
+            numpy.int16: torch.int16,
+            numpy.uint16: torch.uint16,
+            numpy.uint32: torch.uint32,
+            numpy.uint64: torch.uint64,
+            numpy.complex64: torch.complex64,
+            numpy.complex128: torch.complex128,
         }
+
         if numpy_type not in numpy_type_to_torch_type_map:
             raise ValueError(f"{numpy_type} not found in map")
 
@@ -81,13 +155,22 @@ class TypeHelper:
     @staticmethod
     def torch_type_to_numpy_type(torch_type: torch.dtype):
         torch_type_to_numpy_type_map = {
-            torch.int64: numpy.longlong,
-            torch.int32: numpy.intc,
+            torch.int64: numpy.int64,
+            torch.int32: numpy.int32,
             torch.float32: numpy.float32,
             torch.float16: numpy.float16,
             torch.bool: bool,
             torch.uint8: numpy.uint8,
+            torch.int8: numpy.int8,
+            torch.float64: numpy.float64,
+            torch.int16: numpy.int16,
+            torch.uint16: numpy.uint16,
+            torch.uint32: numpy.uint32,
+            torch.uint64: numpy.uint64,
+            torch.complex64: numpy.complex64,
+            torch.complex128: numpy.complex128,
         }
+
         if torch_type not in torch_type_to_numpy_type_map:
             raise ValueError(f"{torch_type} not found in map")
 
@@ -103,6 +186,17 @@ class TypeHelper:
         for output in ort_session.get_outputs():
             name_to_numpy_type[output.name] = TypeHelper.ort_type_to_numpy_type(output.type)
         return name_to_numpy_type
+
+    @staticmethod
+    def get_io_torch_type_map(ort_session: InferenceSession) -> dict[str, torch.dtype]:
+        """Create a mapping from input/output name to torch data type"""
+        name_to_torch_type = {}
+        for input in ort_session.get_inputs():
+            name_to_torch_type[input.name] = TypeHelper.ort_type_to_torch_type(input.type)
+
+        for output in ort_session.get_outputs():
+            name_to_torch_type[output.name] = TypeHelper.ort_type_to_torch_type(output.type)
+        return name_to_torch_type
 
 
 class IOBindingHelper:
@@ -125,11 +219,10 @@ class IOBindingHelper:
         past: list[torch.Tensor],
         output_buffers,
         output_shapes,
-        name_to_np_type=None,
     ):
-        """Returnas IO binding object for a session."""
-        if name_to_np_type is None:
-            name_to_np_type = TypeHelper.get_io_numpy_type_map(ort_session)
+        """IO binding for a session: bind inputs (input_ids, position_ids, attention_mask, past_*) and outputs."""
+
+        name_to_onnx_type = TypeHelper.get_io_onnx_type_map(ort_session)
 
         # Bind inputs and outputs to onnxruntime session
         io_binding = ort_session.io_binding()
@@ -140,7 +233,7 @@ class IOBindingHelper:
             "input_ids",
             input_ids.device.type,
             0,
-            name_to_np_type["input_ids"],
+            name_to_onnx_type["input_ids"],
             list(input_ids.size()),
             input_ids.data_ptr(),
         )
@@ -159,7 +252,7 @@ class IOBindingHelper:
                     f"past_{i}",
                     past_i.device.type,
                     0,
-                    name_to_np_type[f"past_{i}"],
+                    name_to_onnx_type[f"past_{i}"],
                     list(past_i.size()),
                     data_ptr,
                 )
@@ -170,7 +263,7 @@ class IOBindingHelper:
                 "attention_mask",
                 attention_mask.device.type,
                 0,
-                name_to_np_type["attention_mask"],
+                name_to_onnx_type["attention_mask"],
                 list(attention_mask.size()),
                 attention_mask.data_ptr(),
             )
@@ -181,7 +274,7 @@ class IOBindingHelper:
                 "position_ids",
                 position_ids.device.type,
                 0,
-                name_to_np_type["position_ids"],
+                name_to_onnx_type["position_ids"],
                 list(position_ids.size()),
                 position_ids.data_ptr(),
             )
@@ -195,7 +288,7 @@ class IOBindingHelper:
                 output_name,
                 output_buffer.device.type,
                 0,
-                name_to_np_type[output_name],
+                name_to_onnx_type[output_name],
                 output_shapes[output_name],
                 output_buffer.data_ptr(),
             )
@@ -225,7 +318,8 @@ class CudaSession:
         self.ort_session = ort_session
         self.input_names = [input.name for input in self.ort_session.get_inputs()]
         self.output_names = [output.name for output in self.ort_session.get_outputs()]
-        self.io_name_to_numpy_type = TypeHelper.get_io_numpy_type_map(self.ort_session)
+        self.io_name_to_onnx_type = TypeHelper.get_io_onnx_type_map(self.ort_session)
+        self.io_name_to_torch_type = TypeHelper.get_io_torch_type_map(self.ort_session)
         self.io_binding = self.ort_session.io_binding()
         self.enable_cuda_graph = enable_cuda_graph
 
@@ -255,7 +349,7 @@ class CudaSession:
             name,
             tensor.device.type,
             device_id,
-            self.io_name_to_numpy_type[name],
+            self.io_name_to_onnx_type[name],
             tensor_shape,
             tensor.data_ptr(),
         )
@@ -265,7 +359,7 @@ class CudaSession:
                 self.buffer_sharing[name],
                 tensor.device.type,
                 device_id,
-                self.io_name_to_numpy_type[name],
+                self.io_name_to_onnx_type[name],
                 tensor_shape,
                 tensor.data_ptr(),
             )
@@ -282,10 +376,8 @@ class CudaSession:
                             continue
                         raise RuntimeError("Expect static input shape for cuda graph")
 
-                    numpy_dtype = self.io_name_to_numpy_type[name]
-                    tensor = torch.empty(tuple(shape), dtype=TypeHelper.numpy_type_to_torch_type(numpy_dtype)).to(
-                        device=self.device
-                    )
+                    torch_dtype = self.io_name_to_torch_type[name]
+                    tensor = torch.empty(tuple(shape), dtype=torch_dtype).to(device=self.device)
                     self.input_tensors[name] = tensor
                     self.bind_input_and_buffer_sharing(name, tensor)
 
@@ -298,17 +390,15 @@ class CudaSession:
                 if name in self.buffer_sharing:
                     continue
 
-                numpy_dtype = self.io_name_to_numpy_type[name]
-                tensor = torch.empty(tuple(shape), dtype=TypeHelper.numpy_type_to_torch_type(numpy_dtype)).to(
-                    device=self.device
-                )
+                torch_dtype = self.io_name_to_torch_type[name]
+                tensor = torch.empty(tuple(shape), dtype=torch_dtype).to(device=self.device)
                 self.output_tensors[name] = tensor
 
                 self.io_binding.bind_output(
                     name,
                     tensor.device.type,
                     tensor.device.index if tensor.device.index is not None else 0,
-                    numpy_dtype,
+                    self.io_name_to_onnx_type[name],
                     list(tensor.size()),
                     tensor.data_ptr(),
                 )

@@ -1,17 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// cub.cuh includes device/dispatch_radix_sort.cuh which has assignment in conditional expressions
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4706)
-#endif
-#include <cub/cub.cuh>
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-
-#include <cub/util_type.cuh>
+#include "core/providers/cuda/cu_inc/cub.cuh"
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
@@ -685,7 +675,7 @@ void LaunchBeamSearchScoreCopy(gsl::span<const float> final_scores,
   constexpr unsigned ThreadPerBlock = 256;
   unsigned num_blocks = (unsigned)((final_scores.size() + (ThreadPerBlock - 1)) / ThreadPerBlock);
 
-  typedef typename ToCudaType<float>::MappedType CudaT;
+  typedef typename ToCudaType<T>::MappedType CudaT;
 
   FloatConvertAndCopyKernel<<<num_blocks, ThreadPerBlock, 0, stream>>>(
       final_scores.data(), (CudaT*)output_scores.data(), final_scores.size());
@@ -1263,7 +1253,6 @@ void UpdateDecoderMaskedMultiHeadAttentionCacheIndirection(int32_t* tgt_indir_ca
                                                                                           current_length);
 }
 
-#ifndef USE_ROCM
 namespace {
 template <typename T, size_t size>
 struct TypeMapper : public V_vec_m_<T, size> {};
@@ -1278,7 +1267,6 @@ struct TypeMapper<int32_t, 4> {
   using Type = uint4;
 };
 }  // namespace
-#endif
 
 template <typename T>
 __global__ void KeyCacheExpansionKernel(const T* input,
@@ -1330,7 +1318,6 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
   tpb |= (tpb >> 16);
   tpb++;
 
-#ifndef USE_ROCM
   if ((head_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     const dim3 block(tpb);
@@ -1348,16 +1335,13 @@ void KeyCacheExpansionKernelLauncher(const T* key_cache,
                                                         max_seq_length,
                                                         equiv_head_size);
   } else {
-#endif
     const dim3 block(tpb);
     KeyCacheExpansionKernel<<<grid, block, 0, stream>>>(key_cache,
                                                         key_cache_expanded,
                                                         beam_width,
                                                         max_seq_length,
                                                         head_size);
-#ifndef USE_ROCM
   }
-#endif
 }
 
 template void KeyCacheExpansionKernelLauncher(const float* key_cache,
@@ -1417,7 +1401,6 @@ void BufferExpansionKernelLauncher(const T* input,
                                    cudaStream_t stream) {
   const dim3 block(128);
 
-#ifndef USE_ROCM
   if ((chunk_size % 4) == 0) {
     using vec_type = typename TypeMapper<T, 4>::Type;
     const dim3 grid(batch_size, beam_width, (chunk_size / 4 + block.x - 1) / block.x);
@@ -1431,14 +1414,11 @@ void BufferExpansionKernelLauncher(const T* input,
                                                       reinterpret_cast<vec_type*>(output),
                                                       chunk_size / 2);
   } else {
-#endif
     const dim3 grid(batch_size, beam_width, (chunk_size + block.x - 1) / block.x);
     BufferExpansionKernel<<<grid, block, 0, stream>>>(input,
                                                       output,
                                                       chunk_size);
-#ifndef USE_ROCM
   }
-#endif
 }
 
 template void BufferExpansionKernelLauncher(const float* input,
@@ -1541,6 +1521,17 @@ __global__ void CopyCrossQKSingleDecodeStepKernel(
   const int head = *(cross_qk_layer_head_pairs + 1);
 
   target += ((int64_t)bbm * layer_head_pair_count + pair) * max_length * frames + ((int64_t)token_index * frames);
+
+  // The pairs come from a model input, so the indices are untrusted. For an out-of-range pair, zero the output
+  // slice rather than indexing qk_layer_pointers: returning early would leave uninitialized scratch memory in
+  // the cross_qk output.
+  if (layer < 0 || layer >= num_layers || head < 0 || head >= num_heads) {
+    for (int tid = threadIdx.x; tid < frames; tid += blockDim.x) {
+      target[tid] = (T)0;
+    }
+    return;
+  }
+
   T* src = qk_layer_pointers[layer] + ((int64_t)bbm * num_heads + head) * frames;
 
   for (int tid = threadIdx.x; tid < frames; tid += blockDim.x) {
@@ -1560,6 +1551,10 @@ void LaunchCopyCrossQKSingleDecodeStep(
     const int* cross_qk_layer_head_pairs,
     int frames,
     int max_length) {
+  if (cross_qk_layer_head_pair_count == 0) {
+    return;
+  }
+
   dim3 block(512);
   dim3 grid(cross_qk_layer_head_pair_count, batchxbeam);
   typedef typename ToCudaType<float>::MappedType CudaT;
@@ -1625,6 +1620,10 @@ void LaunchFinalizeCrossQK(
     int num_return_sequences,
     const int* cache_indir_data,
     const int32_t* beam_indices) {
+  if (cross_qk_layer_head_pair_count == 0) {
+    return;
+  }
+
   int64_t br = (int64_t)batch_size * num_return_sequences;
   ORT_ENFORCE(br < 65536L && cross_qk_layer_head_pair_count < 65536);
   const int total_decoding_length = iteration_number - 1;

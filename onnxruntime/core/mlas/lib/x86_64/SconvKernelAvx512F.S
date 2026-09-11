@@ -470,15 +470,15 @@ MlasConvPostProcessFloatAvx512FFilter\FilterCount\()Output\OutputCount\():
         EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 1, "vmaxps zmm2,zmm24,zmm2"
         EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 2, "vmaxps zmm6,zmm24,zmm6"
         EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 3, "vmaxps zmm10,zmm24,zmm10"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vmaxps zmm14,zmm24,zmm14"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vmaxps zmm18,zmm24,zmm18"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vmaxps zmm22,zmm24,zmm22"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 4, "vmaxps zmm14,zmm24,zmm14"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 5, "vmaxps zmm18,zmm24,zmm18"
+        EmitIfCount2GE \FilterCount\(), 3, \OutputCount\(), 6, "vmaxps zmm22,zmm24,zmm22"
         EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 1, "vmaxps zmm3,zmm24,zmm3"
         EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 2, "vmaxps zmm7,zmm24,zmm7"
         EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 3, "vmaxps zmm11,zmm24,zmm11"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 4, "vmaxps zmm15,zmm24,zmm15"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 5, "vmaxps zmm19,zmm24,zmm19"
-        EmitIfCount2GE \FilterCount\(), 2, \OutputCount\(), 6, "vmaxps zmm23,zmm24,zmm23"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 4, "vmaxps zmm15,zmm24,zmm15"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 5, "vmaxps zmm19,zmm24,zmm19"
+        EmitIfCount2GE \FilterCount\(), 4, \OutputCount\(), 6, "vmaxps zmm23,zmm24,zmm23"
 
 .LPostProcessBlock.\FilterCount\().\OutputCount\().SkipReluActivation:
 

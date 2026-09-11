@@ -1,0 +1,96 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include <memory>
+#include <vector>
+
+#include "core/framework/tensor_shape.h"
+#include "core/framework/tensor.h"
+#include "core/framework/op_kernel.h"
+#include "core/providers/cpu/nn/conv_attributes.h"
+#include "core/providers/webgpu/program.h"
+#include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_kernel.h"
+#include "core/providers/webgpu/nn/fuse_utils.h"
+
+namespace onnxruntime {
+namespace webgpu {
+
+class Im2ColMatMulProgram final : public Program<Im2ColMatMulProgram> {
+ public:
+  Im2ColMatMulProgram(bool has_bias,
+                      uint32_t tile_m,
+                      uint32_t tile_n,
+                      uint32_t vec_size,
+                      bool use_subgroup,
+                      ActivationKind activation_kind) : Program("Im2ColMatMul"),
+                                                        has_bias_(has_bias),
+                                                        tile_m_(tile_m),
+                                                        tile_n_(tile_n),
+                                                        vec_size_(vec_size),
+                                                        use_subgroup_(use_subgroup),
+                                                        activation_kind_(activation_kind) {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"batch", ProgramUniformVariableDataType::Uint32},
+      {"src_h", ProgramUniformVariableDataType::Uint32},
+      {"src_w", ProgramUniformVariableDataType::Uint32},
+      {"channel_i", ProgramUniformVariableDataType::Uint32},
+      {"kernel_h", ProgramUniformVariableDataType::Uint32},
+      {"kernel_w", ProgramUniformVariableDataType::Uint32},
+      {"output_h", ProgramUniformVariableDataType::Uint32},
+      {"output_w", ProgramUniformVariableDataType::Uint32},
+      {"im2col_m", ProgramUniformVariableDataType::Uint32},
+      {"im2col_k", ProgramUniformVariableDataType::Uint32},
+      {"im2col_n", ProgramUniformVariableDataType::Uint32},
+      {"M_tiles", ProgramUniformVariableDataType::Uint32},
+      {"N_tiles", ProgramUniformVariableDataType::Uint32},
+      {"K_tiles", ProgramUniformVariableDataType::Uint32},
+      {"dilations", ProgramUniformVariableDataType::Uint32},
+      {"pads", ProgramUniformVariableDataType::Uint32},
+      {"strides", ProgramUniformVariableDataType::Uint32},
+      WEBGPU_PROGRAM_ACTIVATION_UNIFORM_VARIABLES);
+
+ private:
+  bool has_bias_;
+
+  uint32_t tile_m_;
+  uint32_t tile_n_;
+  uint32_t vec_size_;
+  bool use_subgroup_;
+  ActivationKind activation_kind_;
+};
+
+bool CanApplyIm2ColMatMulProgram(ComputeContextBase& context,
+                                 const bool is_channels_last,
+                                 const Activation& activation,
+                                 const TensorShape kernel_shape,
+                                 const uint32_t group,
+                                 const MLDataType data_type);
+
+// Transposes the OIHW weight into the OHWI layout expected by Im2ColMatMulProgram.
+// Called from Conv::PrePackInternal so the transpose runs once at session
+// initialization instead of on every inference.
+Status PrePackIm2ColMatMulWeight(ComputeContextBase& context,
+                                 const Tensor& weight,
+                                 AllocatorPtr alloc,
+                                 /*out*/ std::unique_ptr<Tensor>& packed_weight);
+
+// `packed_weight` is the OHWI weight produced by PrePackIm2ColMatMulWeight. When it
+// is nullptr, the OIHW weight is read from input 1 and transposed on the fly.
+Status ApplyIm2ColMatMulProgram(ComputeContext& context,
+                                const bool is_channels_last,
+                                const Activation& activation,
+                                const std::vector<uint32_t>& dilations,
+                                const std::vector<uint32_t>& pads,
+                                const std::vector<uint32_t>& strides,
+                                const Tensor* packed_weight,
+                                Tensor* output);
+
+}  // namespace webgpu
+}  // namespace onnxruntime

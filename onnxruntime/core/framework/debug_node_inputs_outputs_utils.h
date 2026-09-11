@@ -54,6 +54,8 @@ constexpr const char* kOpTypeFilter = "ORT_DEBUG_NODE_IO_OP_TYPE_FILTER";
 constexpr const char* kDumpDataDestination = "ORT_DEBUG_NODE_IO_DUMP_DATA_DESTINATION";
 // set to non-zero to append OpenMPI world rank to filename
 constexpr const char* kAppendRankToFileName = "ORT_DEBUG_NODE_IO_APPEND_RANK_TO_FILE_NAME";
+// set to non-zero to prepend ep type to filename
+constexpr const char* kPrependEpToFileName = "ORT_DEBUG_NODE_IO_PREPEND_EP_TO_FILE_NAME";
 // specify the output directory for any data files produced
 constexpr const char* kOutputDir = "ORT_DEBUG_NODE_IO_OUTPUT_DIR";
 // specify the file prefix for sqlite3 db (process id will be appended)
@@ -116,6 +118,9 @@ struct NodeDumpOptions {
     // write to one row per tensor input/output in Sqlite table
     SqliteDb
   } data_destination{DataDestination::StdOut};
+
+  // Whether to prepend ep type to output file name.
+  bool prepend_ep_to_file_name{false};
 
   std::string file_suffix;
   // the output directory for dumped data files

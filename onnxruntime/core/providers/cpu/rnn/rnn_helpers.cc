@@ -35,7 +35,8 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                                const Tensor* sequence_lens,
                                const Tensor* initial_h,
                                int64_t num_directions,
-                               int64_t hidden_size) {
+                               int64_t hidden_size,
+                               bool weights_transposed) {
   auto& X_shape = X.Shape();
 
   int64_t seq_length = X_shape[0];
@@ -45,21 +46,26 @@ Status ValidateCommonRnnInputs(const Tensor& X,
   if (X_shape.NumDimensions() != 3)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must have 3 dimensions only. Actual:", X_shape);
 
+  // The gate dimension (mult * hidden_size) and the input/hidden dimension are on dims 1 and 2
+  // respectively for the standard layout, and swapped for the transposed (quantized) layout.
+  const int64_t gate_dim = hidden_size * WRB_dim_1_multipler;
   if (W_shape.NumDimensions() != 3 ||
       W_shape[0] != num_directions ||
-      W_shape[1] != hidden_size * WRB_dim_1_multipler ||
-      W_shape[2] != input_size)
+      (weights_transposed ? W_shape[2] : W_shape[1]) != gate_dim ||
+      (weights_transposed ? W_shape[1] : W_shape[2]) != input_size)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input W must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           input_size, "}. Actual:", W_shape);
+                           num_directions, ",",
+                           weights_transposed ? input_size : gate_dim, ",",
+                           weights_transposed ? gate_dim : input_size, "}. Actual:", W_shape);
 
   if (R_shape.NumDimensions() != 3 ||
       R_shape[0] != num_directions ||
-      R_shape[1] != hidden_size * WRB_dim_1_multipler ||
-      R_shape[2] != hidden_size)
+      (weights_transposed ? R_shape[2] : R_shape[1]) != gate_dim ||
+      (weights_transposed ? R_shape[1] : R_shape[2]) != hidden_size)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input R must have shape {",
-                           num_directions, ",", WRB_dim_1_multipler, "*", hidden_size, ",",
-                           hidden_size, "}. Actual:", R_shape);
+                           num_directions, ",",
+                           weights_transposed ? hidden_size : gate_dim, ",",
+                           weights_transposed ? gate_dim : hidden_size, "}. Actual:", R_shape);
 
   if (B != nullptr) {
     auto& B_shape = B->Shape();
@@ -78,13 +84,13 @@ Status ValidateCommonRnnInputs(const Tensor& X,
                              batch_size, "}. Actual:", sequence_lens_shape);
     }
 
-    auto sequence_len_entries = sequence_lens->DataAsSpan<int>();
+    auto sequence_len_entries = sequence_lens->DataAsSpan<int32_t>();
     if (std::any_of(sequence_len_entries.begin(),
                     sequence_len_entries.end(),
-                    [seq_length](int len) { return len < 0 || len > seq_length; })) {
+                    [seq_length](int32_t len) { return len < 0 || len > seq_length; })) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, INVALID_ARGUMENT,
-          "Invalid value/s in sequence_lens. All values must be > 0 and < seq_length. seq_length=", seq_length);
+          "Invalid value/s in sequence_lens. All values must be >= 0 and <= seq_length. seq_length=", seq_length);
     }
   }
 
@@ -220,7 +226,8 @@ void ComputeGemm(const int M,
                  const int ldc,
                  uint8_t* /* quantized_A_buffer */,
                  int32_t* /* quantize_agg_C_buffer */,
-                 concurrency::ThreadPool* thread_pool) {
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(A + (M * K) <= A_end);
@@ -232,14 +239,14 @@ void ComputeGemm(const int M,
         M, N, K, alpha,
         A, K,
         weights.buffer_, beta,
-        C, ldc, thread_pool);
+        C, ldc, thread_pool, mlas_backend_kernel_selector_config);
   } else {
     ::onnxruntime::math::GemmEx<float>(
         CblasNoTrans, CblasTrans,
         M, N, K, alpha,
         A, K,
         static_cast<const float*>(weights.buffer_), K, beta,
-        C, ldc, thread_pool);
+        C, ldc, thread_pool, mlas_backend_kernel_selector_config);
   }
 }
 
@@ -256,7 +263,10 @@ void ComputeGemm(const int M,
                  const int ldc,
                  uint8_t* quantized_A_buffer,
                  int32_t* quantize_agg_C_buffer,
-                 concurrency::ThreadPool* thread_pool) {
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
+  ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
+
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(A + (M * K) <= A_end);

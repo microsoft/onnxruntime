@@ -31,6 +31,7 @@ class UniDirectionalLstm {
                      const gsl::span<const T>& initial_hidden_state, const gsl::span<const T>& initial_cell_state,
                      const ActivationFuncs::Entry& activation_func_f, const ActivationFuncs::Entry& activation_func_g,
                      const ActivationFuncs::Entry& activation_func_h, float clip, concurrency::ThreadPool* thread_pool,
+                     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config,
                      const bool training_mode = false);
 
   template <typename WeightT>
@@ -128,6 +129,7 @@ class UniDirectionalLstm {
   ActivationInfo<deepcpu::LstmMergeGatesFuncPtr> activation_h_;
 
   concurrency::ThreadPool* thread_pool_;
+  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config_;
 
   // Quantized operation related allocation members
   template <typename WeightT>

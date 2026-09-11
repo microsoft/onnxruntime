@@ -27,11 +27,9 @@ Please follow the steps described below to setup development environment.
 - Node.js (20.0+): https://nodejs.org/ - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
 - Python (3.9+): https://www.python.org/downloads/
-
   - python should be added to the PATH environment variable
 
 - Visual Studio Code: https://code.visualstudio.com/
-
   - **required** extension: [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
   - **required** extension: [Prettier](https://marketplace.visualstudio.com/items?itemName=SimonSiefke.prettier-vscode)
   - **required** extension: [JavaScript Debugger](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly)
@@ -294,13 +292,11 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
 ### Build
 
 1. Install NPM packages for ONNX Runtime common JavaScript library and required React Native JavaScript libraries
-
    - in `<ORT_ROOT>/js/`, run `npm ci`.
    - in `<ORT_ROOT>/js/common/`, run `npm ci`.
    - in `<ORT_ROOT>/js/react_native/`, run `yarn`.
 
 2. Acquire or build the Android ONNX Runtime package
-
    1. To use a published Android ONNX Runtime package from Maven, go to step 5.
 
    2. Set up an Android build environment using these [instructions](https://onnxruntime.ai/docs/build/android.html). Note that the dependencies are quite convoluted, so using the specified JDK and Gradle versions is important.
@@ -326,7 +322,6 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
       ```
 
 3. Build iOS ONNX Runtime package
-
    1. To use the published C/C++ ONNX Runtime package from CocoaPods, skip all steps below.
 
    2. Set up iOS build environment using these [instructions](https://onnxruntime.ai/docs/build/ios.html).
@@ -371,7 +366,6 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
 - Run E2E Testing with Detox framework
 
   When testing with integrated [Detox](https://wix.github.io/Detox/docs/next/introduction/getting-started) framework for Android and iOS e2e apps:
-
   - Detox prerequisites:
 
     Install detox command line tools:
@@ -388,7 +382,6 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
     ```
 
     Main Detox project files:
-
     - `.detoxrc.js` -Detox config file;
     - `e2e/jest.config.js` -Jest configuration;
     - `e2e/OnnxruntimeModuleExample.test.js` - initial react native onnxruntimemodule e2e detox test.

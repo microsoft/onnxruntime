@@ -584,7 +584,7 @@ def get_args(rank=0):
         "--device",
         type=str,
         default="cuda" if torch.cuda.is_available() else "cpu",
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda"],
     )
     parser.add_argument("-id", "--device-id", type=int, default=0)
     parser.add_argument("-w", "--warmup-runs", type=int, default=5)
@@ -622,9 +622,6 @@ def get_args(rank=0):
         setattr(args, "execution_provider", f"{args.device.upper()}ExecutionProvider")  # noqa: B010
         if args.execution_provider == "CUDAExecutionProvider":
             args.execution_provider = (args.execution_provider, {"device_id": rank})
-        elif args.execution_provider == "ROCMExecutionProvider":
-            args.execution_provider = (args.execution_provider, {"device_id": rank})
-            args.device = "cuda"
 
     # Check that paths have been specified for any benchmarking with ORT
     if args.benchmark_type == "hf-ort":

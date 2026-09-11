@@ -224,10 +224,13 @@ class BaseOpBuilder : public IOpBuilder {
         {"InstanceNormalization", QNN_OP_INSTANCE_NORM},
         {"BatchNormalization", QNN_OP_BATCHNORM},
         {"LayerNormalization", QNN_OP_LAYER_NORM},
+        {"RMSNormalization", QNN_OP_RMS_NORM},
 
         {"LRN", QNN_OP_LRN},
 
         {"Pad", QNN_OP_PAD},
+
+        {"ScatterElements", QNN_OP_SCATTER_ELEMENTS},
 
         {"Expand", QNN_OP_ELEMENT_WISE_MULTIPLY}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
@@ -236,7 +239,7 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]
-  void ReArranagePads(std::vector<uint32_t>& pads) const {
+  void ReArrangePads(std::vector<uint32_t>& pads) const {
     auto pads_size = pads.size();
     auto middle_pos = pads_size / 2;
     std::vector<uint32_t> first_half(pads.begin(), pads.begin() + middle_pos);

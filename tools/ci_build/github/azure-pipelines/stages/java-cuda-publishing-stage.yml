@@ -12,7 +12,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-2022'
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
     variables:
     - name: SYSTEM_ACCESSTOKEN
       value: $(System.AccessToken)

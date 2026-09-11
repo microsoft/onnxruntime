@@ -5,7 +5,7 @@
 
 #include "core/framework/tensor.h"
 #include "core/quantization/quantization.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 
 namespace onnxruntime {
 namespace test {

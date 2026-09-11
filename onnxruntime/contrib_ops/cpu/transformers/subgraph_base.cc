@@ -62,6 +62,8 @@ Status Subgraph::Setup(const SessionState& session_state,
   session_state_ = &session_state;
   subgraph_session_state_ = &subgraph_session_state;
 
+  ORT_RETURN_IF(subgraph_output_names.empty(), "subgraph must have at least one output");
+
   InlinedVector<std::string_view> feed_names;
   feed_names.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
 
@@ -132,8 +134,7 @@ const IExecutionProvider* Subgraph::GetProvider() const {
   const ExecutionProviders& providers = session_state_->GetExecutionProviders();
   const IExecutionProvider* cpu_provider = providers.Get(onnxruntime::kCpuExecutionProvider);
   const IExecutionProvider* cuda_provider = providers.Get(onnxruntime::kCudaExecutionProvider);
-  const IExecutionProvider* rocm_provider = providers.Get(onnxruntime::kRocmExecutionProvider);
-  const IExecutionProvider* gpu_provider = cuda_provider ? cuda_provider : rocm_provider;
+  const IExecutionProvider* gpu_provider = cuda_provider;
   const IExecutionProvider* provider = gpu_provider ? gpu_provider : cpu_provider;
   return provider;
 }
@@ -141,6 +142,9 @@ const IExecutionProvider* Subgraph::GetProvider() const {
 Status Subgraph::GetParameters(const ONNX_NAMESPACE::TensorShapeProto* past_shape,
                                const ONNX_NAMESPACE::TensorShapeProto* logits_shape,
                                bool merged_past) {
+  ORT_RETURN_IF(past_shape == nullptr,
+                "subgraph past state shape cannot be nullptr");
+
   if (merged_past) {
     // Merged past state shape is like (2, batch_size, num_heads, past_seq_len, hidden_size/num_heads)
     ORT_RETURN_IF(past_shape->dim_size() != 5,

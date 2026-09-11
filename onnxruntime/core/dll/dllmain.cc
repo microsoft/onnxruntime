@@ -30,6 +30,10 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
       if (lpvReserved != nullptr) {
         g_is_shutting_down = true;
         // do not do cleanup if process termination scenario
+#if defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+        // In leak-check builds we still want protobuf shutdown to avoid flagged leaks.
+        ::google::protobuf::ShutdownProtobufLibrary();
+#endif
       } else {
         // Cleanup protobuf library.
         // NOTE: it might be too early to do so, as all function local statics and global objects are not destroyed yet.

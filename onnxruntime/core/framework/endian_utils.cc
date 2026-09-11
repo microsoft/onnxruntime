@@ -6,7 +6,7 @@
 #include <cassert>
 #include <cstring>
 
-#include "core/framework/endian.h"
+#include "core/common/endian.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -80,6 +80,12 @@ Status CopyLittleEndian(size_t element_size_in_bytes,
 common::Status ReadLittleEndian(size_t element_size,
                                 gsl::span<const unsigned char> source_bytes,
                                 gsl::span<unsigned char> destination_bytes) {
+  return detail::CopyLittleEndian(element_size, source_bytes, destination_bytes);
+}
+
+common::Status WriteLittleEndian(size_t element_size,
+                                 gsl::span<const unsigned char> source_bytes,
+                                 gsl::span<unsigned char> destination_bytes) {
   return detail::CopyLittleEndian(element_size, source_bytes, destination_bytes);
 }
 

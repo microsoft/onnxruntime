@@ -20,11 +20,11 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::IConsoleDumper {
   void Print(const char* name, const OrtValue& value) const override;
   void Print(const std::string& value) const override;
 
-#define CUDA_DUMPER_PRINT_TYPE(dtype)                                                              \
-  void Print(const char* name, const dtype* tensor, int dim0, int dim1) const;                     \
-  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const;           \
-  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const; \
-  void Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const;
+#define CUDA_DUMPER_PRINT_TYPE(dtype)                                                                       \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1) const override;                     \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const override;           \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const override; \
+  void Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const override;
 
   CUDA_DUMPER_PRINT_TYPE(int8_t)
   CUDA_DUMPER_PRINT_TYPE(uint8_t)
@@ -35,6 +35,14 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::IConsoleDumper {
   CUDA_DUMPER_PRINT_TYPE(BFloat16)
   CUDA_DUMPER_PRINT_TYPE(UInt4x2)
   CUDA_DUMPER_PRINT_TYPE(Int4x2)
+#undef CUDA_DUMPER_PRINT_TYPE
+
+#define CUDA_DUMPER_PRINT_TYPE(dtype)                                                              \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1) const;                     \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const;           \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const; \
+  void Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const;
+
   CUDA_DUMPER_PRINT_TYPE(half)
   CUDA_DUMPER_PRINT_TYPE(__nv_bfloat16)
 #undef CUDA_DUMPER_PRINT_TYPE

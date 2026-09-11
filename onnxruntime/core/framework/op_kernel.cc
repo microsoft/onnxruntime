@@ -80,7 +80,7 @@ OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
 
   OrtValue* p_ml_value = nullptr;
   Status status = execution_frame_->GetOrCreateNodeOutputMLValue(index, GetOutputArgIndex(index), &shape, p_ml_value, kernel_->Node());
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  ORT_THROW_IF_ERROR(status);
   return p_ml_value;
 }
 
@@ -126,7 +126,7 @@ OrtValue* OpKernelContext::GetOrCreateOutputMLValue(int index) {
   auto output_arg_index = GetOutputArgIndex(index);
   OrtValue* value = nullptr;
   auto status = execution_frame_->GetOrCreateNodeOutputMLValue(index, output_arg_index, nullptr, value, kernel_->Node());
-  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
+  ORT_THROW_IF_ERROR(status);
   return value;
 }
 
@@ -185,6 +185,19 @@ OrtValue* OpKernelContext::GetOutputMLValue(int index) {
 
   auto output_arg_index = GetOutputArgIndex(index);
   return execution_frame_->GetMutableNodeInputOrOutputMLValue(output_arg_index);
+}
+
+OrtValue* OpKernelContext::GetPreallocatedOutputMLValue(int index) const {
+  if (index < 0 || index >= OutputCount()) {
+    return nullptr;
+  }
+
+  OrtValue* output = execution_frame_->GetMutableNodeInputOrOutputMLValue(GetOutputArgIndex(index));
+  if (output == nullptr || !output->IsAllocated()) {
+    return nullptr;
+  }
+
+  return output;
 }
 
 AllocatorPtr OpKernelContext::GetAllocator(const OrtDevice& device) const {

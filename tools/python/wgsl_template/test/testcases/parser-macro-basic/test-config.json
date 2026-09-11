@@ -1,0 +1,4 @@
+{
+  "type": "parser",
+  "description": "Test basic #define macro directive functionality with simple macro definitions and substitutions"
+}

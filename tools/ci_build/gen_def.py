@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import argparse
 import os
+import sys
 
 
 def parse_arguments():
@@ -9,8 +10,14 @@ def parse_arguments():
     parser.add_argument("--output", required=True, help="output file")
     parser.add_argument("--output_source", required=True, help="output file")
     parser.add_argument("--version_file", required=True, help="VERSION_NUMBER file")
-    parser.add_argument("--style", required=True, choices=["gcc", "vc", "xcode"])
+    parser.add_argument("--style", required=True, choices=["gcc", "vc", "xcode", "aix"])
     parser.add_argument("--config", required=True, nargs="+")
+    parser.add_argument(
+        "--extra_symbol_file",
+        action="append",
+        default=[],
+        help="Additional symbols to export without adding them to GetFunctionEntryByName",
+    )
     return parser.parse_args()
 
 
@@ -21,16 +28,29 @@ with open(args.version_file) as f:
 
 print(f"VERSION:{VERSION_STRING}")
 
-symbols = set()
+provider_symbols = set()
 for c in args.config:
     file_name = os.path.join(args.src_root, "core", "providers", c, "symbols.txt")
     with open(file_name) as file:
         for line in file:
             line = line.strip()  # noqa: PLW2901
+            if not line:
+                continue
+            if line in provider_symbols:
+                sys.exit(f"dup symbol in {file_name}: {line}")
+            provider_symbols.add(line)
+
+symbols = set(provider_symbols)
+for file_name in args.extra_symbol_file:
+    with open(file_name) as file:
+        for line in file:
+            line = line.strip()  # noqa: PLW2901
+            if not line:
+                continue
             if line in symbols:
-                print("dup symbol: %s", line)
-                exit(-1)
+                sys.exit(f"dup symbol in {file_name}: {line}")
             symbols.add(line)
+
 symbols = sorted(symbols)
 
 symbol_index = 1
@@ -38,8 +58,8 @@ with open(args.output, "w") as file:
     if args.style == "vc":
         file.write("LIBRARY\n")
         file.write("EXPORTS\n")
-    elif args.style == "xcode":
-        pass  # xcode compile don't has any header.
+    elif args.style in ["xcode", "aix"]:
+        pass  # Both xcode and AIX export files don't need a specific header.
     else:
         file.write(f"VERS_{VERSION_STRING} {{\n")
         file.write(" global:\n")
@@ -49,6 +69,8 @@ with open(args.output, "w") as file:
             file.write(f" {symbol} @{symbol_index}\n")
         elif args.style == "xcode":
             file.write(f"_{symbol}\n")
+        elif args.style == "aix":
+            file.write(f"{symbol}\n")  # AIX just needs the name
         else:
             file.write(f"  {symbol};\n")
         symbol_index += 1
@@ -71,7 +93,6 @@ with open(args.output_source, "w") as file:
             "vitisai",
             "winml",
             "cuda",
-            "rocm",
             "migraphx",
             "qnn",
             "snpe",
@@ -85,7 +106,7 @@ with open(args.output_source, "w") as file:
         ):
             file.write(f"#include <core/providers/{c}/{c}_provider_factory.h>\n")
     file.write("void* GetFunctionEntryByName(const char* name){\n")
-    for symbol in symbols:
+    for symbol in sorted(provider_symbols):
         if symbol != "OrtGetWinMLAdapter":
             file.write(f'if(strcmp(name,"{symbol}") ==0) return (void*)&{symbol};\n')
     file.write("return NULL;\n")

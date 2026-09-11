@@ -7,6 +7,7 @@
 #include "core/graph/graph_utils.h"
 #include "float.h"
 #include <deque>
+#include <optional>
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -32,10 +33,24 @@ static bool CheckNode(Graph& graph, const Node& node,
          !graph.NodeProducesGraphOutput(node);
 }
 
+static std::optional<size_t> OtherInputIndex(const Node& node, const NodeArg& input) {
+  if (node.InputDefs().size() != 2) {
+    return std::nullopt;
+  }
+
+  const int input_index = optimizer_utils::IndexOfNodeInput(node, input);
+  if (input_index < 0 || input_index >= 2) {
+    return std::nullopt;
+  }
+
+  return 1u - onnxruntime::narrow<size_t>(input_index);
+}
+
 MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
                                               InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul1_node, "Mul", {7, 13, 14}) ||
+      mul1_node.InputDefs().size() != 2 ||
       !graph_utils::IsSupportedProvider(mul1_node, GetCompatibleExecutionProviders()) ||
       mul1_node.GetOutputEdgesCount() != 1 ||
       !IsSupportedDataType(mul1_node)) {
@@ -53,24 +68,26 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
 
   if (input_index == -1) return matchResult;
 
-  NodeArg* gelu_without_bias_input_arg = mul1_node.MutableInputDefs()[(input_index + 1) % 2];
+  NodeArg* gelu_without_bias_input_arg = mul1_node.MutableInputDefs()[1u - onnxruntime::narrow<size_t>(input_index)];
   nodes_to_fuse.push_back(mul1_node);
 
   Node& mul2_node = *graph.GetNode(mul1_node.OutputNodesBegin()->Index());
-  input_index = optimizer_utils::IndexOfNodeInput(mul2_node, *mul1_node.MutableOutputDefs()[0]);
+  auto other_input_index = OtherInputIndex(mul2_node, *mul1_node.MutableOutputDefs()[0]);
   if (!(graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7, 13, 14}) &&
         CheckNode(graph, mul2_node, mul1_node.GetExecutionProviderType(), true)) ||
-      mul2_node.MutableInputDefs()[(input_index + 1) % 2]->Name() != gelu_without_bias_input_arg->Name()) {
+      !other_input_index ||
+      mul2_node.InputDefs()[*other_input_index]->Name() != gelu_without_bias_input_arg->Name()) {
     return matchResult;
   }
   nodes_to_fuse.push_back(mul2_node);
 
   Node& add1_node = *graph.GetNode(mul2_node.OutputNodesBegin()->Index());
-  input_index = optimizer_utils::IndexOfNodeInput(add1_node, *mul2_node.MutableOutputDefs()[0]);
+  other_input_index = OtherInputIndex(add1_node, *mul2_node.MutableOutputDefs()[0]);
 
   if (!(graph_utils::IsSupportedOptypeVersionAndDomain(add1_node, "Add", {7, 13, 14}) &&
         CheckNode(graph, add1_node, mul1_node.GetExecutionProviderType(), true)) ||
-      !optimizer_utils::IsInitializerWithExpectedValue(graph, *(add1_node.InputDefs()[(input_index + 1) % 2]), 1.0f, true)) {
+      !other_input_index ||
+      !optimizer_utils::IsInitializerWithExpectedValue(graph, *add1_node.InputDefs()[*other_input_index], 1.0f, true)) {
     return matchResult;
   }
   nodes_to_fuse.push_back(add1_node);
@@ -82,11 +99,14 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
   }
   nodes_to_fuse.push_back(mul3_node);
 
-  input_index = optimizer_utils::IndexOfNodeInput(mul3_node, *add1_node.MutableOutputDefs()[0]);
-  const Node* p_mul3_input_node = graph_utils::GetInputNode(mul3_node, (input_index + 1) % 2);
+  other_input_index = OtherInputIndex(mul3_node, *add1_node.MutableOutputDefs()[0]);
+  if (!other_input_index) return matchResult;
+  const Node* p_mul3_input_node =
+      graph_utils::GetInputNode(mul3_node, onnxruntime::narrow<int>(*other_input_index));
   if (p_mul3_input_node == nullptr) return matchResult;
   Node& mul4_node = const_cast<Node&>(*p_mul3_input_node);
-  if (!(graph_utils::IsSupportedOptypeVersionAndDomain(mul3_node, "Mul", {7, 13, 14}) &&
+  if (!(graph_utils::IsSupportedOptypeVersionAndDomain(mul4_node, "Mul", {7, 13, 14}) &&
+        mul4_node.InputDefs().size() == 2 &&
         CheckNode(graph, mul4_node, mul1_node.GetExecutionProviderType(), true))) {
     return matchResult;
   }
@@ -100,7 +120,8 @@ MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
     }
   }
 
-  if (input_index == -1 || mul4_node.InputDefs()[(input_index + 1) % 2]->Name() != gelu_without_bias_input_arg->Name())
+  if (input_index == -1 ||
+      mul4_node.InputDefs()[1u - onnxruntime::narrow<size_t>(input_index)]->Name() != gelu_without_bias_input_arg->Name())
     return matchResult;
   nodes_to_fuse.push_back(mul4_node);
 
@@ -114,6 +135,7 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
                                                InlinedVector<std::reference_wrapper<Node>>& nodes_to_fuse) const {
   MatchResult matchResult{false, nullptr, nullptr};
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow1_node, "Pow", {7, 12, 13, 15}) ||
+      pow1_node.InputDefs().size() != 2 ||
       !graph_utils::IsSupportedProvider(pow1_node, GetCompatibleExecutionProviders()) ||
       pow1_node.GetOutputEdgesCount() != 1 ||
       !IsSupportedDataType(pow1_node)) {
@@ -128,20 +150,22 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
   nodes_to_fuse.push_back(pow1_node);
 
   Node& mul1_node = *graph.GetNode(pow1_node.OutputNodesBegin()->Index());
-  auto input_index = optimizer_utils::IndexOfNodeInput(mul1_node, *pow1_node.MutableOutputDefs()[0]);
+  auto other_input_index = OtherInputIndex(mul1_node, *pow1_node.MutableOutputDefs()[0]);
   if (!(graph_utils::IsSupportedOptypeVersionAndDomain(mul1_node, "Mul", {7, 13, 14}) &&
         CheckNode(graph, mul1_node, pow1_node.GetExecutionProviderType(), true)) ||
-      !optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul1_node.InputDefs()[(input_index + 1) % 2]),
+      !other_input_index ||
+      !optimizer_utils::IsInitializerWithExpectedValue(graph, *mul1_node.InputDefs()[*other_input_index],
                                                        0.044714998453855515f, true)) {
     return matchResult;
   }
   nodes_to_fuse.push_back(mul1_node);
 
   Node& add1_node = *graph.GetNode(mul1_node.OutputNodesBegin()->Index());
-  input_index = optimizer_utils::IndexOfNodeInput(add1_node, *mul1_node.MutableOutputDefs()[0]);
+  other_input_index = OtherInputIndex(add1_node, *mul1_node.MutableOutputDefs()[0]);
   if (!(graph_utils::IsSupportedOptypeVersionAndDomain(add1_node, "Add", {7, 13, 14}) &&
         CheckNode(graph, add1_node, pow1_node.GetExecutionProviderType(), true)) ||
-      add1_node.MutableInputDefs()[(input_index + 1) % 2]->Name() != pow_input_arg->Name()) {
+      !other_input_index ||
+      add1_node.InputDefs()[*other_input_index]->Name() != pow_input_arg->Name()) {
     return matchResult;
   }
   nodes_to_fuse.push_back(add1_node);
@@ -151,7 +175,8 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
   if (p_cast1_node != nullptr) {
     Node& cast1_node = *graph.GetNode(p_cast1_node->Index());
     // this is fused Cast node, so expect 2 output edges
-    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(cast1_node, "Cast", {9, 13, 19}) &&
+    if (!(graph_utils::IsSupportedOptypeVersionAndDomain(cast1_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
+          cast1_node.InputDefs().size() == 1 &&
           CheckNode(graph, cast1_node, pow1_node.GetExecutionProviderType(), false)) ||
         cast1_node.GetOutputEdgesCount() != 2) {
       return matchResult;
@@ -167,10 +192,11 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
   }
 
   Node& mul2_node = *graph.GetNode(add1_node.OutputNodesBegin()->Index());
-  input_index = optimizer_utils::IndexOfNodeInput(mul2_node, *add1_node.MutableOutputDefs()[0]);
+  other_input_index = OtherInputIndex(mul2_node, *add1_node.MutableOutputDefs()[0]);
   if (!(graph_utils::IsSupportedOptypeVersionAndDomain(mul2_node, "Mul", {7, 13, 14}) &&
         CheckNode(graph, mul2_node, pow1_node.GetExecutionProviderType(), true)) ||
-      !optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul2_node.InputDefs()[(input_index + 1) % 2]),
+      !other_input_index ||
+      !optimizer_utils::IsInitializerWithExpectedValue(graph, *mul2_node.InputDefs()[*other_input_index],
                                                        0.7978845834732056f, true)) {
     return matchResult;
   }
@@ -233,8 +259,9 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-    auto input_index = optimizer_utils::IndexOfNodeInput(add2_node, *tanh_node.MutableOutputDefs()[0]);
-    if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(add2_node.InputDefs()[(input_index + 1) % 2]), 1.0f, true)) {
+    auto other_input_index = OtherInputIndex(add2_node, *tanh_node.MutableOutputDefs()[0]);
+    if (!other_input_index ||
+        !optimizer_utils::IsInitializerWithExpectedValue(graph, *add2_node.InputDefs()[*other_input_index], 1.0f, true)) {
       continue;
     }
 
@@ -245,8 +272,10 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-    input_index = optimizer_utils::IndexOfNodeInput(mul5_node, *add2_node.MutableOutputDefs()[0]);
-    const Node* p_mul5_input_node = graph_utils::GetInputNode(mul5_node, (input_index + 1) % 2);
+    other_input_index = OtherInputIndex(mul5_node, *add2_node.MutableOutputDefs()[0]);
+    if (!other_input_index) continue;
+    const Node* p_mul5_input_node =
+        graph_utils::GetInputNode(mul5_node, onnxruntime::narrow<int>(*other_input_index));
     if (p_mul5_input_node == nullptr) continue;
 
     // if this is second formula and if pow node has Cast parent, expect mul5_node has Cast parent as well
@@ -262,12 +291,14 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
         if (p_cast3_node == nullptr) continue;
 
         Node& cast3_node = *graph.GetNode(p_cast3_node->Index());
-        if (!(graph_utils::IsSupportedOptypeVersionAndDomain(cast3_node, "Cast", {9, 13, 19}) &&
+        if (!(graph_utils::IsSupportedOptypeVersionAndDomain(cast3_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
+              cast3_node.InputDefs().size() == 1 &&
               CheckNode(graph, cast3_node, node.GetExecutionProviderType(), true))) {
           continue;
         }
         // overwrite and continue as usual
         p_mul5_input_node = graph_utils::FirstParentByType(cast3_node, "Mul");
+        if (p_mul5_input_node == nullptr) continue;
         nodes_to_fuse.push_back(cast3_node);
         // keep cast1_node for reuse, its output edges will be adjusted in FinalizeNodeFusion()
       }
@@ -275,25 +306,27 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
 
     Node& mul6_node = const_cast<Node&>(*p_mul5_input_node);
     if (!(graph_utils::IsSupportedOptypeVersionAndDomain(mul6_node, "Mul", {7, 13, 14}) &&
+          mul6_node.InputDefs().size() == 2 &&
           CheckNode(graph, mul6_node, node.GetExecutionProviderType(), false))) {
       continue;
     }
 
-    input_index = -1;
-    for (auto i = 0; i < 2; i++) {
+    std::optional<size_t> scale_input_index;
+    for (size_t i = 0; i < 2; ++i) {
       if (optimizer_utils::IsInitializerWithExpectedValue(graph, *(mul6_node.InputDefs()[i]), 0.5f, true)) {
-        input_index = i;
+        scale_input_index = i;
         break;
       }
     }
 
-    if (input_index == -1) continue;
+    if (!scale_input_index) continue;
+    const size_t mul6_other_input_index = 1u - *scale_input_index;
     // check same parent for both mul6 and pow, with or without cast
     if (cast_input_arg != nullptr) {
-      if (mul6_node.InputDefs()[(input_index + 1) % 2]->Name() != cast_input_arg->Name())
+      if (mul6_node.InputDefs()[mul6_other_input_index]->Name() != cast_input_arg->Name())
         continue;
     } else {
-      if (mul6_node.InputDefs()[(input_index + 1) % 2]->Name() != matchRet.gelu_without_bias_input_arg->Name())
+      if (mul6_node.InputDefs()[mul6_other_input_index]->Name() != matchRet.gelu_without_bias_input_arg->Name())
         continue;
     }
 

@@ -139,11 +139,6 @@ class TestFloat8Gemm8(unittest.TestCase):
         providers = ["CPUExecutionProvider"]
         if "CUDAExecutionProvider" in available_providers:
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-        elif "ROCMExecutionProvider" in available_providers:
-            providers = [
-                ("ROCMExecutionProvider", {"tunable_op_enable": "1", "tunable_op_tuning_enable": "1"}),
-                ("CPUExecutionProvider", {}),
-            ]
 
         expected = (a.T if kwargs.get("transA", 0) else a) @ (b.T if kwargs.get("transB", 0) else b)
         expected *= kwargs.get("alpha", 1.0)
@@ -340,29 +335,6 @@ class TestFloat8Gemm8(unittest.TestCase):
         self.assertEqual(expected.shape, got[0].shape)
         self.assertEqual(expected.dtype, got[0].dtype)
         assert_allclose(expected, got[0])
-
-    @parameterized.parameterized.expand(
-        [
-            ("FLOAT8E4M3FN", "FLOAT16", 0, 0),
-            ("FLOAT16", "FLOAT8E4M3FN", 0, 0),
-            ("FLOAT16", "FLOAT8E4M3FN", 0, 1),
-        ]
-    )
-    @unittest.skipIf("ROCMExecutionProvider" not in available_providers, reason="Not running without ROCm.")
-    @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
-    def test_model_rocm_gemm_float8_e4m3(self, a_float_name, b_float_name, transA, transB):
-        self.common_test_model_gemm(
-            a_float_name=a_float_name,
-            b_float_name=b_float_name,
-            c_float_name="FLOAT8E4M3FN",
-            rtol=0.5,
-            dtype=TensorProto.FLOAT16,
-            transA=0,
-            transB=transB,
-            scaleY=False,
-            alpha=10.0,
-            beta=0.0,
-        )
 
 
 if __name__ == "__main__":

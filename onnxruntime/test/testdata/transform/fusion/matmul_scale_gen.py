@@ -246,3 +246,36 @@ def gen_scale_input(model_path: str):
 
 
 gen_scale_input("matmul_scale_with_scale_input.onnx")
+
+
+def gen_double(model_path: str):
+    matmul_op = "MatMul"
+
+    nodes = [
+        helper.make_node("Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"),
+        helper.make_node(
+            matmul_op,
+            ["scaled_input_0", "input_1"],
+            ["output"],
+            "MatMul input_0 and input_1",
+        ),
+    ]
+
+    initializers = [helper.make_tensor("scale", TensorProto.DOUBLE, [], [scale_value])]
+
+    inputs = [
+        helper.make_tensor_value_info("input_0", TensorProto.DOUBLE, [2, "M", "K"]),
+        helper.make_tensor_value_info("input_1", TensorProto.DOUBLE, [2, "K", "N"]),
+    ]
+
+    outputs = [
+        helper.make_tensor_value_info("output", TensorProto.DOUBLE, [2, "M", "N"]),
+    ]
+
+    onnxdomain_v13 = OperatorSetIdProto()
+    onnxdomain_v13.version = 13
+    onnxdomain_v13.domain = ""
+    save(model_path, nodes, inputs, outputs, initializers, [onnxdomain_v13, msdomain])
+
+
+gen_double("matmul_scale_double.onnx")

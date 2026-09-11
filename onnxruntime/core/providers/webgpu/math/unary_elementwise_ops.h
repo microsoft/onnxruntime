@@ -3,12 +3,16 @@
 
 #pragma once
 
+#include "core/framework/kernel_registry.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/program.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
+// Register int64 Clip kernels (dedicated ClipInt64 kernel) with conditional int64 support.
+void RegisterClipInt64Kernels(KernelRegistry& kernel_registry, bool enable_int64);
 
 class UnaryElementwiseProgram final : public Program<UnaryElementwiseProgram> {
  public:
@@ -108,9 +112,18 @@ fn erf_v(v: x_value_t) -> x_value_t {
 constexpr const char HardSigmoidImpl[] = R"(
 fn hard_sigmoid_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
   let alpha = x_element_t(uniforms.attr[0]);
-  let beta_v = vec4<x_element_t>(uniforms.attr[1]);
+  let beta_v = vec4<x_element_t>(x_element_t(uniforms.attr[1]));
   return max(vec4<x_element_t>(0.0),
              min(vec4<x_element_t>(1.0), alpha * v + beta_v));
+}
+)";
+
+constexpr const char HardSwishImpl[] = R"(
+fn hard_swish_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
+  let alpha = x_element_t(1.0 / 6.0);
+  let beta_v = vec4<x_element_t>(x_element_t(0.5));
+  return v * max(vec4<x_element_t>(0.0),
+                 min(vec4<x_element_t>(1.0), alpha * v + beta_v));
 }
 )";
 
@@ -136,9 +149,9 @@ fn elu_v(v: vec4<x_element_t>) -> vec4<x_element_t> {
 
 constexpr const char QuickGeluImpl[] = R"(
 fn quick_gelu_v(a: vec4<x_element_t>) -> vec4<x_element_t> {
-  let one = 1.0;
-  let zero = 0.0;
-  let alpha_vec = vec4<x_element_t>(uniforms.attr);
+  let one = x_element_t(1.0);
+  let zero = x_element_t(0.0);
+  let alpha_vec = vec4<x_element_t>(x_element_t(uniforms.attr));
   let v = a * alpha_vec;
   var x1 : vec4<x_element_t>;
   for (var i = 0; i < 4; i = i + 1) {

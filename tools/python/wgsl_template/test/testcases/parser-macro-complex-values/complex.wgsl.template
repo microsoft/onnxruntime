@@ -1,0 +1,11 @@
+#define COMPLEX_EXPR (a + b) * (c - d) / 2.0
+#define STRING_LIKE "hello world"
+#define WITH_SYMBOLS @#$%^&*(){}[]
+#define MATH_EXPR sin(x * PI / 180.0)
+#define ARRAY_ACCESS data[index * 2 + 1]
+
+const result1 = COMPLEX_EXPR;
+const result2 = STRING_LIKE;
+const result3 = WITH_SYMBOLS;
+const result4 = MATH_EXPR;
+const result5 = ARRAY_ACCESS;

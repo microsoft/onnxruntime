@@ -256,23 +256,33 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
     // Step 1: y_pow2 = x * x, using ElementWiseMultiply instead of ElementWisePower so we don't need to add a new
     // initializer tensor for the power value. The performance difference is negligible.
-    const std::string pow2_name = input_name + "_ort_qnn_ep_pow2";
-    QnnTensorWrapper pow2_tensorwrapper(pow2_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type, QnnQuantParamsWrapper(),
+    const std::string pow2_output_name = utils::GetUniqueName(input_name, "_pow2");
+    QnnTensorWrapper pow2_tensorwrapper(pow2_output_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type, QnnQuantParamsWrapper(),
                                         std::move(input_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(pow2_tensorwrapper)), "AddTensorWrapper failed");
     ORT_RETURN_IF_NOT(
-        qnn_model_wrapper.CreateQnnNode(pow2_name, QNN_OP_PACKAGE_NAME_QTI_AISW, QNN_OP_ELEMENT_WISE_MULTIPLY,
-                                        {input_name, input_name}, {pow2_name}, {}, do_op_validation),
+        qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit, QNN_OP_ELEMENT_WISE_MULTIPLY),
+                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                        QNN_OP_ELEMENT_WISE_MULTIPLY,
+                                        {input_name, input_name},
+                                        {pow2_output_name},
+                                        {},
+                                        do_op_validation),
         "CreateQnnNode failed");
 
     // Step 2: y_pow2_sum = ReduceSum(y_pow2)
-    const std::string reduce_name = input_name + "_ort_qnn_ep_pow2_sum";
-    QnnTensorWrapper reduce_tensorwrapper(reduce_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type, QnnQuantParamsWrapper(),
+    const std::string reduce_output_name = utils::GetUniqueName(input_name, "_sum");
+    QnnTensorWrapper reduce_tensorwrapper(reduce_output_name, QNN_TENSOR_TYPE_NATIVE, qnn_data_type, QnnQuantParamsWrapper(),
                                           std::vector<uint32_t>(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reduce_tensorwrapper)), "AddTensorWrapper failed");
     ORT_RETURN_IF_NOT(
-        qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit), QNN_OP_PACKAGE_NAME_QTI_AISW, QNN_OP_REDUCE_SUM,
-                                        {pow2_name}, {reduce_name}, std::move(param_tensor_names), do_op_validation),
+        qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit, QNN_OP_REDUCE_SUM),
+                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                        QNN_OP_REDUCE_SUM,
+                                        {pow2_output_name},
+                                        {reduce_output_name},
+                                        std::move(param_tensor_names),
+                                        do_op_validation),
         "CreateQnnNode failed");
 
     // Step 3: y = Sqrt(y_pow2_sum)
@@ -281,9 +291,13 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     QnnTensorWrapper sqrt_tensorwrapper(output.node_arg.Name(), output_tensor_type, qnn_data_type,
                                         QnnQuantParamsWrapper(), std::move(output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(sqrt_tensorwrapper)), "AddTensorWrapper failed");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(input_name + "_ort_qnn_ep_pow2_sum_sqrt",
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW, QNN_OP_ELEMENT_WISE_SQUARE_ROOT,
-                                                      {reduce_name}, {output.node_arg.Name()}, {}, do_op_validation),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit, QNN_OP_ELEMENT_WISE_SQUARE_ROOT),
+                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                      QNN_OP_ELEMENT_WISE_SQUARE_ROOT,
+                                                      {reduce_output_name},
+                                                      {output.node_arg.Name()},
+                                                      {},
+                                                      do_op_validation),
                       "CreateQnnNode failed");
   } else {
     ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names),

@@ -45,6 +45,8 @@ if (onnxruntime_MINIMAL_BUILD)
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer.cc"
       "${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer.h"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/slice_concat_to_space_to_depth_fusion.cc"
+      "${ONNXRUNTIME_ROOT}/core/optimizer/slice_concat_to_space_to_depth_fusion.h"
       # files required for layout transformation
       "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/layout_transformation.h"
       "${ONNXRUNTIME_ROOT}/core/optimizer/layout_transformation/layout_transformation.cc"
@@ -95,6 +97,15 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 file(GLOB onnxruntime_optimizer_srcs CONFIGURE_DEPENDS ${onnxruntime_optimizer_src_patterns})
+
+if (NOT onnxruntime_ENABLE_GQA_VALUE_LAYOUT)
+  list(REMOVE_ITEM onnxruntime_optimizer_srcs
+    "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_boundaries.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_boundaries.cc"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_transformer.h"
+    "${ONNXRUNTIME_ROOT}/core/optimizer/gqa_value_layout_transformer.cc"
+  )
+endif()
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_optimizer_srcs})
 

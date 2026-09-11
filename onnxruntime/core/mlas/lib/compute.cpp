@@ -20,30 +20,14 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "elementwise_constants.h"
 #include "softmax.h"
 
 //
 // Bundles the constants for use by kernels written in assembly.
 //
 
-MLAS_INTERNAL_DATA const struct {
-    float LowerRange;
-    float UpperRange;
-    float LowerRangeSumExp;
-    float UpperRangeSumExp;
-    float RoundingBias;
-    float Log2Reciprocal;
-    float Log2High;
-    float Log2Low;
-    float poly_0;
-    float poly_1;
-    float poly_2;
-    float poly_3;
-    float poly_4;
-    float poly_56;
-    int32_t MinimumExponent;
-    int32_t MaximumExponent;
-} MlasExpConstants = {
+MLAS_INTERNAL_DATA const MLAS_EXP_CONSTANTS MlasExpConstants = {
     -103.9720840454f,
     88.7762626647950f,
     -88.3762626647949f,
@@ -277,7 +261,7 @@ Return Value:
 
 --*/
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64) || defined(MLAS_USE_SVE)
     GetMlasPlatform().ComputeExpF32Kernel(Input, Output, N);
 #else
     MlasComputeExpF32Kernel(Input, Output, N);
@@ -501,7 +485,6 @@ Return Value:
         Input += 1;
         N -= 1;
     }
-
     return Accumulator;
 }
 
@@ -571,7 +554,6 @@ Return Value:
         Input += 1;
         N -= 1;
     }
-
     return Maximum;
 }
 
@@ -834,7 +816,7 @@ Return Value:
 --*/
 {
     const auto* WorkBlock = (MLAS_SOFTMAX_WORK_BLOCK<float>*)Context;
-
+    
     //
     // Partition the operation along the N dimension.
     //
@@ -876,11 +858,12 @@ Return Value:
         //
         // Find the maximum value for the row.
         //
+        float Maximum;
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
-        float Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
-#else
-        float Maximum = MlasReduceMaximumF32Kernel(Input, D);
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
+        Maximum = GetMlasPlatform().ReduceMaximumF32Kernel(Input, D);
+#else 
+        Maximum = MlasReduceMaximumF32Kernel(Input, D);
 #endif
         if (SmoothSoftmax && Sink > Maximum) {
             Maximum = Sink;
@@ -893,10 +876,12 @@ Return Value:
         // compute the sum of these exponential functions.
         //
         float* Temp = LogSoftmax ? nullptr : Output;
-#if defined(MLAS_TARGET_AMD64)
-        float Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
+        float Accumulation;
+
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
+        Accumulation = GetMlasPlatform().ComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
 #else
-        float Accumulation = MlasComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
+        Accumulation = MlasComputeSumExpF32Kernel(Input, Temp, D, &NegativeMaximum);
 #endif
 
         if (SmoothSoftmax) {
@@ -909,19 +894,19 @@ Return Value:
             //
             float Parameters[] = {NegativeMaximum, std::log(Accumulation)};
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
             GetMlasPlatform().ComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
-#else
+#else 
+
             MlasComputeLogSoftmaxOutputF32Kernel(Input, Output, D, Parameters);
 #endif
-
         } else {
             //
             // Normalize the softmax output.
             //
             float Parameters[] = {1.0f / Accumulation};
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_USE_SVE) || defined(MLAS_TARGET_RISCV64)
             GetMlasPlatform().ComputeSoftmaxOutputF32Kernel(Output, D, Parameters);
 #else
             MlasComputeSoftmaxOutputF32Kernel(Output, D, Parameters);

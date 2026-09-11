@@ -23,9 +23,11 @@ Status Impl(cudaStream_t stream,
 template <bool dynamic>
 class Slice : public CudaKernel, public SliceBase {
  public:
-  Slice(const OpKernelInfo& info) : CudaKernel(info), SliceBase(info, dynamic) {}
+  explicit Slice(const OpKernelInfo& info) : CudaKernel(info),
+                                             SliceBase(info, dynamic, CudaProviderTag{}) {}
 
-  Status ComputeInternal(OpKernelContext* ctx) const override;
+  Status
+  ComputeInternal(OpKernelContext* ctx) const override;
 
  private:
   virtual const Tensor* GetSlicedOrUnslicedTensor(OpKernelContext* ctx) const;
@@ -33,7 +35,10 @@ class Slice : public CudaKernel, public SliceBase {
                                   TensorShapeVector& input_ends, TensorShapeVector& input_axes,
                                   TensorShapeVector& input_steps) const;
 
-  virtual Status CallSliceImp(size_t element_size, size_t dimension_count, const TArray<int64_t>& starts_buffer,
+  virtual Status CallSliceImp(size_t element_size, size_t dimension_count,
+                              gsl::span<const int64_t> sliced_input_dims,
+                              gsl::span<const int64_t> sliced_output_dims,
+                              const TArray<int64_t>& starts_buffer,
                               const TArray<int64_t>& steps_buffer, const TArray<int64_t>& input_strides,
                               const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
                               const TensorShape& output_shape) const;

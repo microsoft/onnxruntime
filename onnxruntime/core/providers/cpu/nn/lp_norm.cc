@@ -7,14 +7,22 @@
 #include "core/providers/common.h"
 
 namespace onnxruntime {
+#define REGISTER_LPNORMALISATION_VERSIONED_KERNEL(type, sinceVersion, endVersion)  \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                        \
+      LpNormalization, sinceVersion, endVersion, type,                             \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
+      LpNorm<type>);
+
 #define REGISTER_LPNORMALISATION_KERNEL(type, sinceVersion)                        \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                  \
       LpNormalization, sinceVersion, type,                                         \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<type>()), \
       LpNorm<type>);
 
-REGISTER_LPNORMALISATION_KERNEL(float, 1)
-REGISTER_LPNORMALISATION_KERNEL(double, 1)
+REGISTER_LPNORMALISATION_VERSIONED_KERNEL(float, 1, 21)
+REGISTER_LPNORMALISATION_VERSIONED_KERNEL(double, 1, 21)
+REGISTER_LPNORMALISATION_KERNEL(float, 22)
+REGISTER_LPNORMALISATION_KERNEL(double, 22)
 
 using InnerStride = Eigen::InnerStride<Eigen::Dynamic>;
 
@@ -75,6 +83,10 @@ Status LpNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
   Tensor* output = p_op_kernel_context->Output(0, input_shape);
 
   const auto canonical_axis = HandleNegativeAxis(axis_, static_cast<int64_t>(input_shape.NumDimensions()));
+  if (input_shape.Size() == 0) {
+    return Status::OK();
+  }
+
   const int64_t m = input_shape.GetDims()[onnxruntime::narrow<size_t>(canonical_axis)];
   const int64_t n = input_shape.Size() / m;
   const int64_t sf = input_shape.SizeFromDimension(SafeInt<size_t>(canonical_axis) + 1);

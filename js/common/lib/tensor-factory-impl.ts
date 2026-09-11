@@ -19,11 +19,7 @@ import { Tensor } from './tensor-impl.js';
 import { Tensor as TensorInterface } from './tensor.js';
 
 interface BufferToTensorOptions
-  extends OptionsDimensions,
-    OptionsTensorLayout,
-    OptionsNormalizationParameters,
-    OptionsFormat,
-    OptionsTensorFormat {}
+  extends OptionsDimensions, OptionsTensorLayout, OptionsNormalizationParameters, OptionsFormat, OptionsTensorFormat {}
 
 /**
  * Create a new tensor object from image object

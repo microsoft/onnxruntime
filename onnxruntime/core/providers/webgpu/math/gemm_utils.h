@@ -13,18 +13,23 @@ void MatMulReadFnSource(ShaderHelper& shader,
                         const ShaderVariableHelper& b,
                         const ShaderIndicesHelper* batch_dims,
                         bool transA,
-                        bool transB,
-                        bool is_vec4);
+                        bool transB);
 
-void MatMulWriteFnSource(ShaderHelper& shader,
-                         const ShaderVariableHelper& output,
-                         bool has_bias,
-                         bool is_gemm,
-                         int c_components,
-                         int output_components,
-                         bool c_is_scalar,
-                         std::string activation_snippet = "",
-                         bool is_channels_last = false);
+void MatMulWriteFnSourceForMatMul(ShaderHelper& shader,
+                                  const ShaderVariableHelper& output,
+                                  const ShaderVariableHelper* bias,
+                                  std::string activation_snippet,
+                                  bool is_channels_last);
+
+void MatMulWriteFnSourceForGemm(ShaderHelper& shader,
+                                const ShaderVariableHelper& output,
+                                const ShaderVariableHelper* bias,
+                                bool c_is_scalar);
+
+void MatMulWriteFnSourceWithSplitK(ShaderHelper& shader,
+                                   const ShaderVariableHelper& output,
+                                   bool is_gemm,
+                                   ProgramVariableDataType output_variable_type);
 
 // The two following functions are used to generate shader code for vec4 and scalar.
 // It is used in GEMM, Matmul, and Conv.
@@ -43,7 +48,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   int output_components = 4,
                                   uint32_t tile_inner = 32,
                                   bool split_k = false,
-                                  uint32_t splitted_dim_inner = 32);
+                                  uint32_t split_dim_inner = 32);
 
 Status MakeMatMulPackedSource(ShaderHelper& shader,
                               const InlinedVector<int64_t>& elements_per_thread,
@@ -57,7 +62,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
                               bool need_handle_matmul = true,
                               uint32_t tile_inner = 32,
                               bool split_k = false,
-                              uint32_t splitted_dim_inner = 32);
+                              uint32_t split_dim_inner = 32);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <limits>
+
 #include "core/common/common.h"
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
@@ -177,6 +179,12 @@ Status CheckPast(const T* past_key, const T* past_value, const T* past_seq_len,
           "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
     }
     past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+    if (past_sequence_length < 0 || past_sequence_length >= max_sequence_length) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "past_sequence_length must be non-negative and less than max_sequence_length (",
+          max_sequence_length, "), got ", past_sequence_length);
+    }
   }
   return Status::OK();
 }
@@ -242,16 +250,22 @@ inline Status CheckCacheIndirection(
                            "Input 'cache_indirection' is expected to have 3 dimensions, got ",
                            cache_indir_dims.size());
   }
-  num_beams = static_cast<int>(cache_indir_dims[1]);
-  if (cache_indir_dims[1] == 0) {
+  if (cache_indir_dims[1] <= 0 ||
+      cache_indir_dims[1] > static_cast<int64_t>(std::numeric_limits<int>::max())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cache_indirection' dimension 1 should be num_beams, got ",
                            cache_indir_dims[1]);
   }
-  if (cache_indir_dims[0] != static_cast<int64_t>(batch_beam_size / num_beams)) {
+  num_beams = static_cast<int>(cache_indir_dims[1]);
+  // Require num_beams to evenly divide batch_beam_size, and dim 0 to be exactly batch_beam_size / num_beams.
+  // Comparing dim 0 against the exact quotient (rather than multiplying dim 0 by num_beams) keeps the
+  // relation intact while avoiding int64_t overflow on the multiplication for arbitrary shape inputs.
+  if (batch_beam_size % num_beams != 0 ||
+      cache_indir_dims[0] != static_cast<int64_t>(batch_beam_size / num_beams)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'cache_indirection' dimension 0 should be batch_size, got ",
-                           cache_indir_dims[0]);
+                           "Input 'cache_indirection' dimension 0 (", cache_indir_dims[0],
+                           ") times dimension 1 (num_beams=", num_beams,
+                           ") must equal batch_beam_size (", batch_beam_size, ")");
   }
   if (max_sequence_length > 0 && cache_indir_dims[2] != static_cast<int64_t>(max_sequence_length)) {
     // First condition is to avoid this check for cross attention layers where
@@ -346,12 +360,11 @@ Status CheckInputs(const T* query,
   //
   //  The following inputs are not used in cross attention (so they are None for cross attention):
   //     past_key                   : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
-  //                                  For CUDA, past_present_share_buffer is always True. ROCm supports both.
+  //                                  For CUDA, past_present_share_buffer is always True.
   //     past_value                 : (B, N, P, H), or (B, N, M, H) when past_present_share_buffer is True.
-  //                                  For CUDA, past_present_share_buffer is always True. ROCm supports both.
+  //                                  For CUDA, past_present_share_buffer is always True.
   //     past_sequence_length       : scalar (1) when past_present_share_buffer is True.
   //  CUDA version has extra inputs (beam_width, cache_indirection) that are not checked in the class.
-  //  For ROCm, see contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh for more details.
   // ---------------------------------------------------------------
   AttentionQkvFormat qkv_format = UNKNOWN;
 

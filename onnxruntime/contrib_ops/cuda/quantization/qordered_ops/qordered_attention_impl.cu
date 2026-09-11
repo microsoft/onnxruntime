@@ -5,8 +5,6 @@
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_attention_impl.h"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_common.cuh"
 
-#include <cub/cub.cuh>
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {

@@ -4,7 +4,7 @@
 #include "core/framework/data_types.h"
 #include "core/framework/op_kernel.h"
 #include "test/providers/provider_test_utils.h"
-#include "test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "core/session/inference_session.h"
 
 #include "gtest/gtest.h"

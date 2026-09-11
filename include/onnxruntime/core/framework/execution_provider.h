@@ -36,6 +36,7 @@ class GraphOptimizerRegistry;
 #include "core/framework/framework_provider_common.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
+#include "core/session/onnxruntime_c_api.h"
 
 struct OrtEpDevice;
 struct OrtRunOptions;
@@ -83,10 +84,23 @@ class IExecutionProvider {
       : default_device_(device), type_{type}, logger_{&logger} {
   }
 
+  IExecutionProvider(const std::string& type, OrtDevice device,
+                     std::vector<const OrtEpDevice*> ep_devices, const logging::Logger& logger)
+      : default_device_(device), ep_devices_{ep_devices}, type_{type}, logger_{&logger} {
+  }
+
   /*
      default device for this ExecutionProvider
   */
   const OrtDevice default_device_;
+
+  /*
+     The OrtEpDevice list this execution provider supports.
+
+     It's mainly for plugin EP which implements this interface or provider-bridge EP that
+     implements OrtEpFactory as OrtEpDevice(s) are available for such scenarios.
+  */
+  const std::vector<const OrtEpDevice*> ep_devices_;
 
  public:
   virtual ~IExecutionProvider() = default;
@@ -109,6 +123,10 @@ class IExecutionProvider {
    * in WebAssembly build, because the memory is limited and Web platform supports loading data from external sources
    * directly into GPU memory, this method is overridden to provide a custom external data loader to avoid the extra
    * CPU memory usage.
+   *
+   * The session requests a fresh loader for each graph initialization attempt. It owns the returned loader and
+   * destroys it after initializing the main graph and its subgraphs, including on failure. The loader is not
+   * retained for inference, and must finish any outstanding work before its destruction completes.
    */
   virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const {
     return nullptr;
@@ -179,7 +197,17 @@ class IExecutionProvider {
   /**
      Get the device id of current execution provider
   */
-  virtual int GetDeviceId() const { return default_device_.Id(); };
+  virtual int GetDeviceId() const { return default_device_.Id(); }
+
+  /**
+   * Get the OrtDevice the execution provider was registered with.
+   */
+  const OrtDevice& GetDevice() const { return default_device_; }
+
+  /**
+   * Get the OrtEpDevice list the execution provider was registered with.
+   */
+  const std::vector<const OrtEpDevice*>& GetEpDevices() const { return ep_devices_; }
 
   /**
      Get execution provider's configuration options.
@@ -251,8 +279,8 @@ class IExecutionProvider {
   }
 
   /**
-     Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
-     the provider.
+     Indicate whether graph capture/replay (for example, CUDA graph capture) is
+     enabled for the provider.
    */
   virtual bool IsGraphCaptureEnabled() const { return false; }
 
@@ -263,9 +291,33 @@ class IExecutionProvider {
 
   /**
      Run the instantiated graph.
+     @param sync If true, synchronize the device/stream after replay to ensure completion before returning.
+                 If false, the caller is responsible for synchronization.
+                 EPs that always replay synchronously may ignore this parameter.
    */
-  virtual common::Status ReplayGraph(int /*graph_annotation_id*/) {
+  virtual common::Status ReplayGraph(int /*graph_annotation_id*/, bool /*sync*/ = true) {
     return Status::OK();
+  }
+
+  /**
+     Release a previously captured graph and its associated resources.
+     Called when the caller no longer needs the captured graph for the given annotation ID.
+
+     Thread safety: For EPs where ConcurrentRunSupported() returns true, this method may be
+     called concurrently with Run(). The EP is responsible for its own synchronization in
+     that case. For non-concurrent EPs, the session serializes calls via session_mutex_.
+   */
+  virtual common::Status ReleaseCapturedGraph(int /*graph_annotation_id*/) {
+    return Status::OK();
+  }
+
+  /**
+     Get the node assignment validation policy for graph capture.
+     When graph capture is enabled, ORT validates that nodes are assigned to EPs
+     in a way compatible with graph capture. This tells ORT which policy to apply.
+   */
+  virtual OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const {
+    return OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP;
   }
 
   /**
@@ -316,6 +368,29 @@ class IExecutionProvider {
   */
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
+
+  /**
+   * Get the compatibility info for a compiled model.
+   *
+   * The execution provider determines this value, which denotes the compatibility of the compiled model with the EP.
+   * This is stored in the model metadata under a key associated with the EP type.
+   */
+  virtual std::string GetCompiledModelCompatibilityInfo(const onnxruntime::GraphViewer& graph_viewer) const {
+    // graph_viewer and model_metadata are not used in the default implementation.
+    ORT_UNUSED_PARAMETER(graph_viewer);
+    // Default implementation returns empty string
+    return std::string();
+  }
+
+  /**
+   * Validate the compatibility of a compiled model with this execution provider.
+   */
+  virtual common::Status ValidateCompiledModelCompatibilityInfo(const std::string& /*compatibility_info*/,
+                                                                OrtCompiledModelCompatibility& model_compatibility) const {
+    // Default implementation indicates this EP does not support model compatibility validation
+    model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+    return Status::OK();
+  }
 
 #endif
 
@@ -385,6 +460,15 @@ class IExecutionProvider {
    */
   virtual const InlinedVector<const Node*> GetEpContextNodes() const {
     return InlinedVector<const Node*>();
+  }
+
+  /**
+   * Returns the underlying OrtEp instance if this IExecutionProvider wraps a plugin EP.
+   * Otherwise, returns a nullptr (default implementation).
+   * This is used to retrieve the OrtEp instance from a OrtKernelInfo instance in a plugin EP's kernel implementation.
+   */
+  virtual const OrtEp* GetOrtEp() const {
+    return nullptr;
   }
 
  private:

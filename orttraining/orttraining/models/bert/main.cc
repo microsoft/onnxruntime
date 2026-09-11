@@ -26,11 +26,6 @@ namespace onnxruntime {
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
 }  // namespace onnxruntime
 #endif
-#ifdef USE_ROCM
-namespace onnxruntime {
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
-}  // namespace onnxruntime
-#endif
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -635,22 +630,6 @@ void setup_training_params(BertParameters& params) {
 
     params.providers.emplace(kCudaExecutionProvider, CudaProviderFactoryCreator::Create(&info));
     params.input_allocator = CreateCUDAPinnedAllocator(CUDA_PINNED);
-  }
-#endif
-
-#ifdef USE_ROCM
-  {
-    OrtROCMProviderOptions info;
-    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
-    info.do_copy_in_default_stream = true;
-
-    if (params.gpu_mem_limit_in_gb > 0) {
-      info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
-    }
-    info.miopen_conv_exhaustive_search = true;  // true, exhaustive search (slow)
-
-    params.providers.emplace(kRocmExecutionProvider, RocmProviderFactoryCreator::Create(&info));
-    params.input_allocator = CreateROCMPinnedAllocator(HIP_PINNED);
   }
 #endif
 

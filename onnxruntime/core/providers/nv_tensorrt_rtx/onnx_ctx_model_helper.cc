@@ -7,6 +7,7 @@
 #include <filesystem>
 
 #include "onnx_ctx_model_helper.h"
+#include "core/common/path_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/framework/execution_provider.h"
 #include "nv_execution_provider.h"
@@ -15,15 +16,70 @@ namespace onnxruntime {
 extern TensorrtLogger& GetTensorrtLogger(bool verbose_log);
 
 /*
+ * Convert binary data to hex string
+ */
+std::string BinaryToHexString(const void* data, size_t size) {
+  static const char hex_chars[] = "0123456789abcdef";
+  const uint8_t* bytes = static_cast<const uint8_t*>(data);
+  std::string result;
+  result.reserve(size * 2);
+
+  for (size_t i = 0; i < size; ++i) {
+    result.push_back(hex_chars[(bytes[i] >> 4) & 0xF]);
+    result.push_back(hex_chars[bytes[i] & 0xF]);
+  }
+  return result;
+}
+
+/*
+ * Convert hex string back to binary
+ */
+std::vector<uint8_t> HexStringToBinary(const std::string& hex) {
+  if (hex.size() % 2 != 0) {
+    ORT_THROW("Hex string must have even length");
+  }
+
+  std::vector<uint8_t> result;
+  result.reserve(hex.size() / 2);
+
+  for (size_t i = 0; i < hex.size(); i += 2) {
+    uint8_t byte = 0;
+
+    // High nibble
+    char c = hex[i];
+    byte |= (c >= '0' && c <= '9') ? static_cast<uint8_t>((c - '0') << 4) : (c >= 'a' && c <= 'f') ? static_cast<uint8_t>((c - 'a' + 10) << 4)
+                                                                        : (c >= 'A' && c <= 'F')   ? static_cast<uint8_t>((c - 'A' + 10) << 4)
+                                                                                                   : 0;
+
+    // Low nibble
+    c = hex[i + 1];
+    byte |= (c >= '0' && c <= '9') ? static_cast<uint8_t>(c - '0') : (c >= 'a' && c <= 'f') ? static_cast<uint8_t>(c - 'a' + 10)
+                                                                 : (c >= 'A' && c <= 'F')   ? static_cast<uint8_t>(c - 'A' + 10)
+                                                                                            : 0;
+
+    result.push_back(byte);
+  }
+  return result;
+}
+
+/*
  *  Check whether the graph has the EP context contrib op.
  *  The op can contain the precompiled engine info for TRT EP to directly load the engine.
  *
  *  Note: Please see more details about "EPContext" contrib op in contrib_defs.cc
  */
-bool GraphHasCtxNode(const GraphViewer& graph_viewer) {
+bool GraphHasCtxNode(const GraphViewer& graph_viewer, size_t& node_idx) {
   for (int i = 0; i < graph_viewer.MaxNodeIndex(); ++i) {
     auto node = graph_viewer.GetNode(i);
     if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
+      // Only match EPContext nodes that belong to this EP.
+      // If the source attribute is present and doesn't match, skip the node.
+      const auto& attrs = node->GetAttributes();
+      if (attrs.count(SOURCE) > 0 &&
+          attrs.at(SOURCE).s() != kNvTensorRTRTXExecutionProvider) {
+        continue;
+      }
+      node_idx = i;
       return true;
     }
   }
@@ -63,19 +119,18 @@ void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
 }
 
 /*
- * Create "EP context node" model where engine information is embedded
+ * Create EP context node where engine information is embedded
  */
-ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
-                                           const std::string engine_cache_path,
-                                           char* engine_data,
-                                           size_t size,
-                                           const int64_t embed_mode,
-                                           const std::string compute_capability,
-                                           const std::string onnx_model_path,
-                                           const logging::Logger* logger) {
-  auto model_build = graph_viewer.CreateModel(*logger);
-  auto& graph_build = model_build->MainGraph();
-
+Status CreateCtxNode(const GraphViewer& graph_viewer,
+                     Graph& graph_build,
+                     const std::string engine_cache_path,
+                     char* engine_data,
+                     size_t size,
+                     const int64_t embed_mode,
+                     const std::string compute_capability,
+                     const std::string onnx_model_path,
+                     const std::string& ep_context_node_name,
+                     int32_t trt_version) {
   // Get graph inputs and outputs
   std::vector<onnxruntime::NodeArg*> inputs, outputs;
   for (auto input : graph_viewer.GetInputs()) {
@@ -89,197 +144,83 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   }
 
   // Create EP context node attributes
-  auto attr_0 = ONNX_NAMESPACE::AttributeProto::Create();  // embed_mode
-  auto attr_1 = ONNX_NAMESPACE::AttributeProto::Create();  // ep_cache_context
-  auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();  // hardware_architecture
-  auto attr_3 = ONNX_NAMESPACE::AttributeProto::Create();  // onnx_model_filename
+  auto attr_embed_mode = ONNX_NAMESPACE::AttributeProto::Create();
+  auto attr_main_context = ONNX_NAMESPACE::AttributeProto::Create();
+  auto attr_ep_cache_context = ONNX_NAMESPACE::AttributeProto::Create();
+  auto attr_sdk_version = ONNX_NAMESPACE::AttributeProto::Create();
+  auto attr_hw_architecture = ONNX_NAMESPACE::AttributeProto::Create();
+  auto attr_onnx_filename = ONNX_NAMESPACE::AttributeProto::Create();
+  auto attr_partition_name = ONNX_NAMESPACE::AttributeProto::Create();
+  auto attr_source = ONNX_NAMESPACE::AttributeProto::Create();
   std::string engine_data_str = "";
-  attr_0->set_name(EMBED_MODE);
-  attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
-  attr_0->set_i(embed_mode);
-  attr_1->set_name(EP_CACHE_CONTEXT);
-  attr_1->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_main_context->set_name(MAIN_CONTEXT);
+  attr_main_context->set_type(onnx::AttributeProto_AttributeType_INT);
+  attr_main_context->set_i(0);  // we do not support a main context node but each has it's own engine payload
+  attr_embed_mode->set_name(EMBED_MODE);
+  attr_embed_mode->set_type(onnx::AttributeProto_AttributeType_INT);
+  attr_embed_mode->set_i(embed_mode);
+  attr_ep_cache_context->set_name(EP_CACHE_CONTEXT);
+  attr_ep_cache_context->set_type(onnx::AttributeProto_AttributeType_STRING);
   if (embed_mode) {
     if (size > 0) {
       engine_data_str.assign(engine_data, size);
     }
-    attr_1->set_s(engine_data_str);
-    // TODO(maximilianm) we might want to disable this warning as we only support weightless engines that are really small
-    //                   the reason we had this was that the field will be hashed and storing a large bytestream has significant overhead
-    LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
+    attr_ep_cache_context->set_s(engine_data_str);
   } else {
-    attr_1->set_s(engine_cache_path);
-  }
-  attr_2->set_name(COMPUTE_CAPABILITY);
-  attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_2->set_s(compute_capability);
-  attr_3->set_name(ONNX_MODEL_FILENAME);
-  attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_3->set_s(std::filesystem::path(onnx_model_path).filename().string());
-
-  auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-  constexpr int num_attributes = 4;
-  node_attributes->reserve(num_attributes);
-  node_attributes->emplace(EMBED_MODE, *attr_0);
-  node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
-  node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
-  node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_3);
-
-  // Create EP context node
-  graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
-  ORT_ENFORCE(graph_build.Resolve().IsOK());
-
-  // Serialize modelproto to string
-  auto new_graph_viewer = graph_build.CreateGraphViewer();
-  auto& metadata = graph_viewer.GetGraph().GetModel().MetaData();
-  auto model = new_graph_viewer->CreateModel(*logger, metadata);
-  auto model_proto = model->ToProto();
-  new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
-  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  return model_proto.release();
-}
-
-/*
- * Return the directory where the ep context model locates
- */
-std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path) {
-  if (ep_context_file_path.empty()) {
-    return std::filesystem::path();
-  }
-  std::filesystem::path ctx_path(ep_context_file_path);
-  if (std::filesystem::is_directory(ep_context_file_path)) {
-    return ctx_path;
-  } else {
-    return ctx_path.parent_path();
-  }
-}
-
-/*
- * Get "EP context" model path.
- *
- * Function logic:
- * If ep_context_file_path is provided,
- *     - If ep_context_file_path is a file, return "ep_context_file_path".
- *     - If ep_context_file_path is a directory, return "ep_context_file_path/original_model_name_ctx.onnx".
- * If ep_context_file_path is not provided,
- *     - Return "original_model_name_ctx.onnx".
- *
- * TRT EP has rules about context model path and engine cache path (see tensorrt_execution_provider.cc):
- * - If dump_ep_context_model_ and engine_cache_enabled_ is enabled, TRT EP will dump context model and save engine cache
- *   to the same directory provided by ep_context_file_path_. (i.e. engine_cache_path_ = ep_context_file_path_)
- *
- * Example 1:
- * ep_context_file_path = "/home/user/ep_context_model_directory"
- * original_model_path = "model.onnx"
- * => return "/home/user/ep_context_model_folder/model_ctx.onnx"
- *
- * Example 2:
- * ep_context_file_path = "my_ctx_model.onnx"
- * original_model_path = "model.onnx"
- * => return "my_ctx_model.onnx"
- *
- * Example 3:
- * ep_context_file_path = "/home/user2/ep_context_model_directory/my_ctx_model.onnx"
- * original_model_path = "model.onnx"
- * => return "/home/user2/ep_context_model_directory/my_ctx_model.onnx"
- *
- */
-std::string GetCtxModelPath(const std::string& ep_context_file_path,
-                            const std::string& original_model_path) {
-  std::string ctx_model_path;
-
-  if (!ep_context_file_path.empty() && !std::filesystem::is_directory(ep_context_file_path)) {
-    ctx_model_path = ep_context_file_path;
-  } else {
-    std::filesystem::path model_path = original_model_path;
-    std::filesystem::path model_name_stem = model_path.stem();  // model_name.onnx -> model_name
-    std::string ctx_model_name = model_name_stem.string() + "_ctx.onnx";
-
-    if (std::filesystem::is_directory(ep_context_file_path)) {
-      std::filesystem::path model_directory = ep_context_file_path;
-      ctx_model_path = model_directory.append(ctx_model_name).string();
+    std::string engine_cache_filename = PathToUTF8String(std::filesystem::path(engine_cache_path).filename().native());
+    attr_ep_cache_context->set_s(engine_cache_filename);
+    std::fstream engine_cache_file(engine_cache_path, std::ios::binary | std::ios::out);
+    if (engine_cache_file.is_open()) {
+      engine_cache_file.write(engine_data, size);
+      engine_cache_file.close();
     } else {
-      ctx_model_path = ctx_model_name;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "NvTensorRTRTX EP could not write cache to ", engine_cache_path);
     }
   }
-  return ctx_model_path;
+
+  attr_hw_architecture->set_name(COMPUTE_CAPABILITY);
+  attr_hw_architecture->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_hw_architecture->set_s(compute_capability);
+
+  attr_partition_name->set_name(PARTITION_NAME);
+  attr_partition_name->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_partition_name->set_s(ep_context_node_name);  // includes hash of the subgraph that was built
+
+  attr_onnx_filename->set_name(ONNX_MODEL_FILENAME);
+  attr_onnx_filename->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_onnx_filename->set_s(PathToUTF8String(std::filesystem::path(onnx_model_path).filename().native()));
+
+  attr_sdk_version->set_name(SDK_VERSION);
+  attr_sdk_version->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_sdk_version->set_s(std::to_string(trt_version));
+
+  attr_source->set_name(SOURCE);
+  attr_source->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_source->set_s(kNvTensorRTRTXExecutionProvider);
+
+  auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
+  constexpr int num_attributes = 8;
+  node_attributes->reserve(num_attributes);
+  node_attributes->emplace(MAIN_CONTEXT, *attr_main_context);
+  node_attributes->emplace(EMBED_MODE, *attr_embed_mode);
+  node_attributes->emplace(EP_CACHE_CONTEXT, *attr_ep_cache_context);
+  node_attributes->emplace(COMPUTE_CAPABILITY, *attr_hw_architecture);
+  node_attributes->emplace(PARTITION_NAME, *attr_partition_name);
+  node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_onnx_filename);
+  node_attributes->emplace(SDK_VERSION, *attr_sdk_version);
+  node_attributes->emplace(SOURCE, *attr_source);
+
+  // Create EP context node
+  graph_build.AddNode(ep_context_node_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
+  ORT_ENFORCE(graph_build.Resolve().IsOK());
+  return Status::OK();
 }
 
-/*
- * Dump "EP context" model
- *
- */
-void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
-                  const std::string& ctx_model_path) {
-  std::fstream dump(ctx_model_path, std::ios::out | std::ios::trunc | std::ios::binary);
-  model_proto->SerializeToOstream(dump);
-  LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Dumped " + ctx_model_path;
-}
-
-bool IsAbsolutePath(const std::string& path_string) {
-#ifdef _WIN32
-  onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
-  auto path = std::filesystem::path(ort_path_string.c_str());
-  return path.is_absolute();
-#else
-  if (!path_string.empty() && path_string[0] == '/') {
-    return true;
-  }
-  return false;
-#endif
-}
-
-// Like "../file_path"
-bool IsRelativePathToParentPath(const std::string& path_string) {
-#ifdef _WIN32
-  onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
-  auto path = std::filesystem::path(ort_path_string.c_str());
-  auto relative_path = path.lexically_normal().make_preferred().wstring();
-  if (relative_path.find(L"..", 0) != std::string::npos) {
-    return true;
-  }
-  return false;
-#else
-  if (!path_string.empty() && path_string.find("..", 0) != std::string::npos) {
-    return true;
-  }
-  return false;
-#endif
-}
-
-/*
- * Get the weight-refitted engine cache path from a weight-stripped engine cache path
- *
- * Weight-stipped engine:
- * An engine with weights stripped and its size is smaller than a regualr engine.
- * The cache name of weight-stripped engine is NvExecutionProvider_TRTKernel_XXXXX.stripped.engine
- *
- * Weight-refitted engine:
- * An engine that its weights have been refitted and it's simply a regular engine.
- * The cache name of weight-refitted engine is NvExecutionProvider_TRTKernel_XXXXX.engine
- */
-std::string GetWeightRefittedEnginePath(std::string stripped_engine_cache) {
-  std::filesystem::path stripped_engine_cache_path(stripped_engine_cache);
-  std::string refitted_engine_cache_path = stripped_engine_cache_path.stem().stem().string() + ".engine";
-  return refitted_engine_cache_path;
-}
-
-bool IsWeightStrippedEngineCache(std::filesystem::path& engine_cache_path) {
-  // The weight-stripped engine cache has the naming of xxx.stripped.engine
-  return engine_cache_path.stem().extension().string() == ".stripped";
-}
-
-Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer) {
-  if (!ValidateEPCtxNode(graph_viewer)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "It's not a valid EP Context node");
-  }
-  auto node = graph_viewer.GetNode(0);
-  auto& attrs = node->GetAttributes();
+Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
+  auto& attrs = node.GetAttributes();
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
-  // Only make path checks if model not provided as byte buffer
-  bool make_secure_path_checks = !GetModelPath(graph_viewer).empty();
 
   if (embed_mode) {
     // Get engine from byte stream.
@@ -294,15 +235,13 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
 
     if (weight_stripped_engine_refit_) {
       const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
-      std::string placeholder;
       auto status = NvExecutionProvider::RefitEngine(onnx_model_filename,
                                                      onnx_model_folder_path_,
-                                                     placeholder,
-                                                     make_secure_path_checks,
                                                      onnx_model_bytestream_,
                                                      onnx_model_bytestream_size_,
+                                                     onnx_external_data_bytestream_,
+                                                     onnx_external_data_bytestream_size_,
                                                      (*trt_engine_).get(),
-                                                     false /* serialize refitted engine to disk */,
                                                      detailed_build_log_);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -312,35 +251,14 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     // Get engine from cache file.
     std::string cache_path = attrs.at(EP_CACHE_CONTEXT).s();
 
-    // For security purpose, in the case of running context model, TRT EP won't allow
-    // engine cache path to be the relative path like "../file_path" or the absolute path.
-    // It only allows the engine cache to be in the same directory or sub directory of the context model.
-    if (IsAbsolutePath(cache_path)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "For security purpose, the ep_cache_context attribute should be set with a relative path, but it is an absolute path:  " + cache_path);
-    }
-    if (IsRelativePathToParentPath(cache_path)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "The file path in ep_cache_context attribute has '..'. For security purpose, it's not allowed to point outside the directory.");
-    }
+    // Validate that the cache path does not escape the model directory.
+    // Rejects absolute paths, ".." traversal, and symlink-based escapes.
+    std::filesystem::path ctx_model_dir(path_utils::GetDirOrParentPath(ep_context_model_path_));
+    ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(ctx_model_dir, std::filesystem::path(cache_path)));
 
     // The engine cache and context model (current model) should be in the same directory
-    std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
     auto engine_cache_path = ctx_model_dir.append(cache_path);
     LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] GetEpContextFromGraph engine_cache_path: " + engine_cache_path.string();
-
-    // If it's a weight-stripped engine cache, it needs to be refitted even though the refit flag is not enabled
-    if (!weight_stripped_engine_refit_) {
-      weight_stripped_engine_refit_ = IsWeightStrippedEngineCache(engine_cache_path);
-    }
-
-    // If the serialized refitted engine is present, use it directly without refitting the engine again
-    if (weight_stripped_engine_refit_) {
-      const std::filesystem::path refitted_engine_cache_path = GetWeightRefittedEnginePath(engine_cache_path.string());
-      if (std::filesystem::exists(refitted_engine_cache_path)) {
-        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " + refitted_engine_cache_path.string() + " exists.";
-        engine_cache_path = refitted_engine_cache_path.string();
-        weight_stripped_engine_refit_ = false;
-      }
-    }
 
     if (!std::filesystem::exists(engine_cache_path)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
@@ -348,13 +266,19 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                  ". Please make sure engine cache is in the same directory or sub-directory of context model.");
     }
 
-    std::ifstream engine_file(engine_cache_path.string(), std::ios::binary | std::ios::in);
-    engine_file.seekg(0, std::ios::end);
-    size_t engine_size = engine_file.tellg();
-    engine_file.seekg(0, std::ios::beg);
-    std::unique_ptr<char[]> engine_buf{new char[engine_size]};
-    engine_file.read((char*)engine_buf.get(), engine_size);
-    *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(engine_buf.get(), engine_size));
+    size_t file_length = 0;
+    auto path_str = ToPathString(engine_cache_path.string());
+
+    Env::MappedMemoryPtr engine_buf;
+    const auto& env = GetDefaultEnv();
+    ORT_RETURN_IF_ERROR(env.GetFileLength(path_str.c_str(), file_length));
+    if (!file_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "Nv EP could not read engine from cache: " + engine_cache_path.string());
+    }
+    ORT_RETURN_IF_ERROR(env.MapFileIntoMemory(path_str.c_str(), 0, file_length, engine_buf));
+
+    *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(engine_buf.get(), file_length));
     if (!(*trt_engine_)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "Nv EP could not deserialize engine from cache: " + engine_cache_path.string());
@@ -366,12 +290,11 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
       std::string weight_stripped_engine_cache = engine_cache_path.string();
       auto status = NvExecutionProvider::RefitEngine(onnx_model_filename,
                                                      onnx_model_folder_path_,
-                                                     weight_stripped_engine_cache,
-                                                     make_secure_path_checks,
                                                      onnx_model_bytestream_,
                                                      onnx_model_bytestream_size_,
+                                                     onnx_external_data_bytestream_,
+                                                     onnx_external_data_bytestream_size_,
                                                      (*trt_engine_).get(),
-                                                     true /* serialize refitted engine to disk */,
                                                      detailed_build_log_);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -384,11 +307,8 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
 /*
  * The sanity check for EP context contrib op.
  */
-bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewer) {
-  assert(graph_viewer.NumberOfNodes() == 1);
-  assert(graph_viewer.GetNode(0)->OpType() == EPCONTEXT_OP);
-  auto node = graph_viewer.GetNode(0);
-  auto& attrs = node->GetAttributes();
+bool TensorRTCacheModelHandler::ValidateEPCtxNode(const Node& node) {
+  auto& attrs = node.GetAttributes();
 
   // Show the warning if compute capability is not matched
   if (attrs.count(COMPUTE_CAPABILITY) > 0) {
@@ -413,7 +333,7 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
   if (embed_mode == 1) {
     // engine binary data
-    LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
+    // LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
   }
 
   return true;

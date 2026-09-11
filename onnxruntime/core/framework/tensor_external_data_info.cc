@@ -18,10 +18,18 @@ using ::google::protobuf::RepeatedPtrField;
 using ::ONNX_NAMESPACE::StringStringEntryProto;
 
 namespace onnxruntime {
+ExternalDataInfo::ExternalDataInfo() = default;
+
+#if !defined(ORT_MINIMAL_BUILD)
+ExternalDataInfo::ExternalDataInfo(const PathString& rel_path, OFFSET_TYPE offset, size_t length)
+    : rel_path_(rel_path), offset_(offset), length_(length) {}
+#endif
+
 Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& input,
                                 std::unique_ptr<ExternalDataInfo>& external_data_info_result) {
   auto external_data_info = std::make_unique<ExternalDataInfo>();
   PrepackedInfos prepacked_infos;
+  bool has_location = false;
 
   const int input_size = input.size();
 
@@ -32,7 +40,11 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
     if (!stringmap.has_value())
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Need a value for the external data info");
 
-    if (stringmap.key() == "location" && !stringmap.value().empty()) {
+    if (stringmap.key() == "location") {
+      ORT_RETURN_IF(has_location,
+                    "model format error! TensorProto external data has duplicate 'location' entries");
+      has_location = true;
+      ORT_RETURN_IF(stringmap.value().empty(), "model format error! External data location cannot be empty");
       external_data_info->rel_path_ = ToWideString(stringmap.value());
     } else if (stringmap.key() == "offset" && !stringmap.value().empty()) {
       ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(stringmap.value(), external_data_info->offset_));
@@ -107,7 +119,7 @@ void ExternalDataInfo::SetExternalLocationToProto(const std::filesystem::path& e
 std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
     const PrepackedWeightsForGraph& prepacked_for_graph,
     const InlinedHashSet<std::string>& blob_keys, bool align,
-    int64_t align_threshold, int64_t allocation_granularity,
+    int64_t align_threshold, int64_t on_disk_alignment,
     std::ostream& os, int64_t& external_offset, ::ONNX_NAMESPACE::TensorProto& proto) {
   size_t key_count = 0;
   for (const auto& key : blob_keys) {
@@ -120,7 +132,7 @@ std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
       const auto size_in_bytes = prepacked_weights->buffer_sizes_[i];
       if (align && static_cast<int64_t>(size_in_bytes) > align_threshold) {
         // return early on error
-        if (!AlignAndPad(os, allocation_granularity, external_offset)) {
+        if (!AlignAndPad(os, on_disk_alignment, external_offset)) {
           return os;
         }
       }

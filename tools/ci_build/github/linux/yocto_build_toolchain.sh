@@ -57,7 +57,7 @@ IMAGE_INSTALL_append = " parted e2fsprogs e2fsprogs-resize2fs"
 
 TOOLCHAIN_HOST_TASK_append = " nativesdk-cmake nativesdk-make"
 
-IMAGE_INSTALL_append = " arm-compute-library armnn"
+IMAGE_INSTALL_append = " arm-compute-library"
 EOT419
 fi
 

@@ -19,11 +19,7 @@ __global__ void SoftmaxDropoutGradKernel(T* input_grad_data, const T* output_gra
   constexpr int kNextPowOfTwo = 1 << Log2Elements;
   constexpr int kWarpSize = kNextPowOfTwo < GPU_WARP_SIZE ? kNextPowOfTwo : GPU_WARP_SIZE;
   constexpr int kWarpIterations = kNextPowOfTwo / kWarpSize;
-#ifdef USE_ROCM
-  constexpr int kWarpBatch = 1;
-#else
   constexpr int kWarpBatch = (kNextPowOfTwo <= 128) ? 2 : 1;
-#endif
 
   int first_batch = (blockDim.y * blockIdx.x + threadIdx.y) * kWarpBatch;
   // last warp may have fewer batches.
@@ -146,13 +142,8 @@ Status SoftmaxDropoutGradImpl(cudaStream_t stream, cudnnHandle_t cudnn_handle, T
     int warp_size = std::min(next_power_of_two, GPU_WARP_SIZE_HOST);
 
     // This value must match the WARP_BATCH constexpr value computed inside softmax_warp_backward.
-#ifdef USE_ROCM
-    int batches_per_warp = 1;
-    constexpr int threads_per_block = 256;
-#else
     int batches_per_warp = (next_power_of_two <= 128) ? 2 : 1;
     constexpr int threads_per_block = 128;
-#endif
 
     constexpr int t_vec4_alignment = std::alignment_of<aligned_vector<T, 4>>::value;
     constexpr int mask_vec4_alignment = std::alignment_of<aligned_vector<bool, 4>>::value;

@@ -1,7 +1,7 @@
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/util/math.h"
-#include "core/framework/float8.h"
-#include "core/framework/float16.h"
+#include "core/common/float8.h"
+#include "core/common/float16.h"
 
 namespace ONNX_NAMESPACE {
 

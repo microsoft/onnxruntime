@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "migraphx_inc.h"
+#include "core/providers/migraphx/migraphx_inc.h"
 #include "core/framework/data_transfer.h"
 
 namespace onnxruntime {

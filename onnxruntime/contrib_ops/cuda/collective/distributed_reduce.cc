@@ -83,9 +83,11 @@ Status DistributedReduceBase<T>::ComputeInternal(OpKernelContext* context) const
     const bool enable_fast_but_non_deterministic_reduction = !context->GetUseDeterministicCompute();
     return onnxruntime::cuda::ReduceComputeCore<T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
         /* GPU allocator */ Info().GetAllocator(OrtMemType::OrtMemTypeDefault),
+        /* kernel */ this,
         *input_tensor, metadata, *output_tensor, cudnn_reduce_op_, axes_span,
         /* calculate_log */ false, /* calculate_sqt */ false, /* log_sum_exp_ */ false,
-        enable_fast_but_non_deterministic_reduction, context->GetComputeStream());
+        enable_fast_but_non_deterministic_reduction,
+        Stream(context), GetComputeStream(context), GetCudnnHandle(context));
   }
   return Status::OK();
 }

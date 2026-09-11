@@ -156,8 +156,7 @@ export class ExecutionPlan {
         if (outputIndex === 0) {
           await outputTensor.getData();
         } else {
-          // eslint-disable-next-line no-unused-expressions
-          outputTensor.data;
+          void outputTensor.data;
         }
         output.push(outputTensor);
       }

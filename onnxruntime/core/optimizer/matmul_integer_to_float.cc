@@ -114,7 +114,8 @@ MatMulIntegerToFloatFusion will fuse subgraph like below into MatMulIntegerToFlo
 Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
-  InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
+  InlinedVector<NodeIndex> nodes_to_remove;
+  InlinedHashSet<NodeIndex> node_indices_to_remove;
 
   for (auto node_index : node_topology_list) {
     auto* node_ptr = graph.GetNode(node_index);
@@ -149,6 +150,13 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     Node& cast_node = *graph.GetNode(p_cast_node->Index());
     Node& matmulinteger_node = *graph.GetNode(p_matmulinteger_node->Index());
     Node& mul_node_right = *graph.GetNode(p_mul_node_right->Index());
+
+    if (node_indices_to_remove.contains(matmulinteger_node.Index()) ||
+        node_indices_to_remove.contains(cast_node.Index()) ||
+        node_indices_to_remove.contains(mul_node_right.Index()) ||
+        node_indices_to_remove.contains(mul_node.Index())) {
+      continue;
+    }
 
     // Check Nodes' Edges count and Nodes' outputs are not in Graph output
     if (!optimizer_utils::CheckOutputEdges(graph, cast_node, 1) ||
@@ -222,20 +230,23 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     // Assign provider to this new node. Provider should be same as the provider for old node.
     fused_node.SetExecutionProviderType(mul_node.GetExecutionProviderType());
 
-    nodes_to_remove.push_back(matmulinteger_node);
-    nodes_to_remove.push_back(cast_node);
-    nodes_to_remove.push_back(mul_node_right);
-    nodes_to_remove.push_back(mul_node);
+    for (Node* node : {&matmulinteger_node, &cast_node, &mul_node_right, &mul_node}) {
+      nodes_to_remove.push_back(node->Index());
+      node_indices_to_remove.insert(node->Index());
+    }
     if (p_add_node != nullptr) {
-      nodes_to_remove.push_back(*p_add_node);
+      nodes_to_remove.push_back(p_add_node->Index());
+      node_indices_to_remove.insert(p_add_node->Index());
     }
   }
 
   modified = modified || !nodes_to_remove.empty();
 
-  for (const auto& node : nodes_to_remove) {
-    graph_utils::RemoveNodeOutputEdges(graph, node);
-    graph.RemoveNode(node.get().Index());
+  for (const auto node_index : nodes_to_remove) {
+    Node* node = graph.GetNode(node_index);
+    ORT_ENFORCE(node != nullptr, "Node scheduled for removal was already removed.");
+    graph_utils::RemoveNodeOutputEdges(graph, *node);
+    graph.RemoveNode(node_index);
   }
 
   return Status::OK();

@@ -1,0 +1,528 @@
+From 0e0d3fcf4a829391e4d06cf648fb2137816fa483 Mon Sep 17 00:00:00 2001
+From: Aleksei Nikiforov <aleksei.nikiforov@linux.ibm.com>
+Date: Wed, 30 Apr 2025 15:34:33 +0200
+Subject: [PATCH 1/6] Fix compilation of tests for s390x
+
+cmake command line is:
+cmake -DBUILD_TESTING=ON -DEIGEN_TEST_Z13=ON -DEIGEN_TEST_Z14=ON -DEIGEN_TEST_ZVECTOR=ON
+
+then:
+make && make check
+---
+ Eigen/src/Core/arch/ZVector/Complex.h       |  37 +++--
+ Eigen/src/Core/arch/ZVector/MathFunctions.h |  14 ++
+ Eigen/src/Core/arch/ZVector/PacketMath.h    | 162 ++++++++++++++++++--
+ 3 files changed, 183 insertions(+), 30 deletions(-)
+
+diff --git a/Eigen/src/Core/arch/ZVector/Complex.h b/Eigen/src/Core/arch/ZVector/Complex.h
+index a750b26b8..40e75d9f1 100644
+--- a/Eigen/src/Core/arch/ZVector/Complex.h
++++ b/Eigen/src/Core/arch/ZVector/Complex.h
+@@ -20,7 +20,7 @@ namespace internal {
+ 
+ #if !defined(__ARCH__) || (defined(__ARCH__) && __ARCH__ >= 12)
+ inline Packet4ui p4ui_CONJ_XOR() {
+-  return {0x00000000, 0x80000000, 0x00000000, 0x80000000};  // vec_mergeh((Packet4ui)p4i_ZERO, (Packet4ui)p4f_MZERO);
++  return (Packet4ui) {0x00000000, 0x80000000, 0x00000000, 0x80000000};  // vec_mergeh((Packet4ui)p4i_ZERO, (Packet4ui)p4f_MZERO);
+ }
+ #endif
+ 
+@@ -178,7 +178,7 @@ EIGEN_STRONG_INLINE Packet1cd pnegate(const Packet1cd& a) {
+ }
+ template <>
+ EIGEN_STRONG_INLINE Packet1cd pconj(const Packet1cd& a) {
+-  return Packet1cd((Packet2d)vec_xor((Packet2d)a.v, (Packet2d)p2ul_CONJ_XOR2));
++  return Packet1cd((Packet2d)vec_xor((Packet2d)a.v, (Packet2d)p2ul_CONJ_XOR2()));
+ }
+ template <>
+ EIGEN_STRONG_INLINE Packet1cd pmul<Packet1cd>(const Packet1cd& a, const Packet1cd& b) {
+@@ -257,8 +257,27 @@ EIGEN_STRONG_INLINE Packet1cd pdiv<Packet1cd>(const Packet1cd& a, const Packet1c
+ }
+ 
+ template <>
+-EIGEN_STRONG_INLINE Packet1cd plog<Packet1cd>(const Packet1cd& a, const Packet1cd& b) {
+-  return plog_complex(a, b);
++EIGEN_STRONG_INLINE Packet1cd psqrt<Packet1cd>(const Packet1cd& a) {
++  return psqrt_complex<Packet1cd>(a);
++}
++
++template <>
++EIGEN_STRONG_INLINE Packet2cf psqrt<Packet2cf>(const Packet2cf& a) {
++  return psqrt_complex<Packet2cf>(a);
++}
++
++template <>
++EIGEN_STRONG_INLINE Packet1cd plog<Packet1cd>(const Packet1cd& a) {
++  return plog_complex<Packet1cd>(a);
++}
++template <>
++EIGEN_STRONG_INLINE Packet2cf plog<Packet2cf>(const Packet2cf& a) {
++  return plog_complex<Packet2cf>(a);
++}
++
++template <>
++EIGEN_STRONG_INLINE Packet2cf pexp<Packet2cf>(const Packet2cf& a) {
++  return pexp_complex(a);
+ }
+ 
+ EIGEN_STRONG_INLINE Packet1cd pcplxflip /*<Packet1cd>*/ (const Packet1cd& x) {
+@@ -437,16 +456,6 @@ EIGEN_STRONG_INLINE Packet2cf pdiv<Packet2cf>(const Packet2cf& a, const Packet2c
+   return pdiv_complex(a, b);
+ }
+ 
+-template <>
+-EIGEN_STRONG_INLINE Packet2cf plog<Packet2cf>(const Packet2cf& a, const Packet2cf& b) {
+-  return plog_complex(a, b);
+-}
+-
+-template <>
+-EIGEN_STRONG_INLINE Packet2cf pexp<Packet2cf>(const Packet2cf& a, const Packet2cf& b) {
+-  return pexp_complex(a, b);
+-}
+-
+ EIGEN_STRONG_INLINE Packet2cf pcplxflip /*<Packet2cf>*/ (const Packet2cf& x) {
+   Packet2cf res;
+   res.cd[0] = pcplxflip(x.cd[0]);
+diff --git a/Eigen/src/Core/arch/ZVector/MathFunctions.h b/Eigen/src/Core/arch/ZVector/MathFunctions.h
+index 32e042554..683f6a3f9 100644
+--- a/Eigen/src/Core/arch/ZVector/MathFunctions.h
++++ b/Eigen/src/Core/arch/ZVector/MathFunctions.h
+@@ -23,6 +23,20 @@ namespace Eigen {
+ 
+ namespace internal {
+ 
++EIGEN_DOUBLE_PACKET_FUNCTION(atanh, Packet2d)
++EIGEN_DOUBLE_PACKET_FUNCTION(log, Packet2d)
++EIGEN_DOUBLE_PACKET_FUNCTION(log2, Packet2d)
++EIGEN_DOUBLE_PACKET_FUNCTION(tanh, Packet2d)
++
++EIGEN_FLOAT_PACKET_FUNCTION(atanh, Packet4f)
++EIGEN_FLOAT_PACKET_FUNCTION(log, Packet4f)
++EIGEN_FLOAT_PACKET_FUNCTION(log2, Packet4f)
++
++EIGEN_GENERIC_PACKET_FUNCTION(atan, Packet2d)
++EIGEN_GENERIC_PACKET_FUNCTION(atan, Packet4f)
++EIGEN_GENERIC_PACKET_FUNCTION(exp2, Packet2d)
++EIGEN_GENERIC_PACKET_FUNCTION(exp2, Packet4f)
++
+ #if !defined(__ARCH__) || (defined(__ARCH__) && __ARCH__ >= 12)
+ static EIGEN_DECLARE_CONST_Packet4f(1, 1.0f);
+ static EIGEN_DECLARE_CONST_Packet4f(half, 0.5f);
+diff --git a/Eigen/src/Core/arch/ZVector/PacketMath.h b/Eigen/src/Core/arch/ZVector/PacketMath.h
+index b45681320..286a53cf7 100644
+--- a/Eigen/src/Core/arch/ZVector/PacketMath.h
++++ b/Eigen/src/Core/arch/ZVector/PacketMath.h
+@@ -250,6 +250,7 @@ struct unpacket_traits<Packet4f> {
+     masked_store_available = false
+   };
+   typedef Packet4f half;
++  typedef Packet4i integer_packet;
+ };
+ template <>
+ struct unpacket_traits<Packet2d> {
+@@ -262,6 +263,7 @@ struct unpacket_traits<Packet2d> {
+     masked_store_available = false
+   };
+   typedef Packet2d half;
++  typedef Packet2l integer_packet;
+ };
+ 
+ /* Forward declaration */
+@@ -313,38 +315,36 @@ inline std::ostream& operator<<(std::ostream& s, const Packet4f& v) {
+ 
+ template <>
+ EIGEN_STRONG_INLINE Packet4i pload<Packet4i>(const int* from) {
+-  // FIXME: No intrinsic yet
+   EIGEN_DEBUG_ALIGNED_LOAD
+-  Packet* vfrom;
+-  vfrom = (Packet*)from;
+-  return vfrom->v4i;
++  return vec_xl(0, from);
+ }
+ 
+ template <>
+ EIGEN_STRONG_INLINE Packet2d pload<Packet2d>(const double* from) {
+-  // FIXME: No intrinsic yet
+   EIGEN_DEBUG_ALIGNED_LOAD
+-  Packet* vfrom;
+-  vfrom = (Packet*)from;
+-  return vfrom->v2d;
++  return vec_xl(0, from);
+ }
+ 
+ template <>
+ EIGEN_STRONG_INLINE void pstore<int>(int* to, const Packet4i& from) {
+-  // FIXME: No intrinsic yet
+   EIGEN_DEBUG_ALIGNED_STORE
+-  Packet* vto;
+-  vto = (Packet*)to;
+-  vto->v4i = from;
++  vec_xst(from, 0, to);
+ }
+ 
+ template <>
+ EIGEN_STRONG_INLINE void pstore<double>(double* to, const Packet2d& from) {
+-  // FIXME: No intrinsic yet
+   EIGEN_DEBUG_ALIGNED_STORE
+-  Packet* vto;
+-  vto = (Packet*)to;
+-  vto->v2d = from;
++  vec_xst(from, 0, to);
++}
++
++template <>
++EIGEN_STRONG_INLINE Packet4f pfrexp<Packet4f>(const Packet4f& a, Packet4f& exponent) {
++  return pfrexp_generic(a, exponent);
++}
++
++template <>
++EIGEN_STRONG_INLINE Packet2d pfrexp<Packet2d>(const Packet2d& a, Packet2d& exponent) {
++  return pfrexp_generic(a, exponent);
+ }
+ 
+ template <>
+@@ -590,6 +590,45 @@ EIGEN_STRONG_INLINE void prefetch<double>(const double* addr) {
+   EIGEN_ZVECTOR_PREFETCH(addr);
+ }
+ 
++template <int N>
++EIGEN_STRONG_INLINE Packet2l parithmetic_shift_right(const Packet2l& a) {
++  return Packet2l { parithmetic_shift_right<N>(a[0]), parithmetic_shift_right<N>(a[1]) };
++}
++template <int N>
++EIGEN_STRONG_INLINE Packet4i parithmetic_shift_right(const Packet4i& a) {
++  return Packet4i {
++    parithmetic_shift_right<N>(a[0]),
++    parithmetic_shift_right<N>(a[1]),
++    parithmetic_shift_right<N>(a[2]),
++    parithmetic_shift_right<N>(a[3]) };
++}
++
++template <int N>
++EIGEN_STRONG_INLINE Packet2l plogical_shift_right(const Packet2l& a) {
++  return Packet2l { plogical_shift_right<N>(a[0]), plogical_shift_right<N>(a[1]) };
++}
++template <int N>
++EIGEN_STRONG_INLINE Packet4i plogical_shift_right(const Packet4i& a) {
++  return Packet4i {
++    plogical_shift_right<N>(a[0]),
++    plogical_shift_right<N>(a[1]),
++    plogical_shift_right<N>(a[2]),
++    plogical_shift_right<N>(a[3]) };
++}
++
++template <int N>
++EIGEN_STRONG_INLINE Packet2l plogical_shift_left(const Packet2l& a) {
++  return Packet2l { plogical_shift_left<N>(a[0]), plogical_shift_left<N>(a[1]) };
++}
++template <int N>
++EIGEN_STRONG_INLINE Packet4i plogical_shift_left(const Packet4i& a) {
++  return Packet4i {
++    plogical_shift_left<N>(a[0]),
++    plogical_shift_left<N>(a[1]),
++    plogical_shift_left<N>(a[2]),
++    plogical_shift_left<N>(a[3]) };
++}
++
+ template <>
+ EIGEN_STRONG_INLINE int pfirst<Packet4i>(const Packet4i& a) {
+   EIGEN_ALIGN16 int x[4];
+@@ -1262,6 +1301,28 @@ EIGEN_STRONG_INLINE Packet4f pblend(const Selector<4>& ifPacket, const Packet4f&
+ 
+ #endif
+ 
++template <>
++EIGEN_STRONG_INLINE Packet4f pldexp<Packet4f>(const Packet4f& a, const Packet4f& exponent) {
++  return pldexp_generic(a, exponent);
++}
++
++template <>
++EIGEN_STRONG_INLINE Packet2d pldexp<Packet2d>(const Packet2d& a, const Packet2d& exponent) {
++  // Clamp exponent to [-2099, 2099]
++  const Packet2d max_exponent = pset1<Packet2d>(2099.0);
++  const Packet2l e = pcast<Packet2d, Packet2l>(pmin(pmax(exponent, pnegate(max_exponent)), max_exponent));
++
++  // Split 2^e into four factors and multiply:
++  const Packet2l bias = {1023, 1023};
++  Packet2l b = plogical_shift_right<2>(e);  // floor(e/4)
++  Packet2d c = reinterpret_cast<Packet2d>(plogical_shift_left<52>(b + bias));
++  Packet2d out = pmul(pmul(pmul(a, c), c), c);                        // a * 2^(3b)
++  b = psub(psub(psub(e, b), b), b);                                   // e - 3b
++  c = reinterpret_cast<Packet2d>(plogical_shift_left<52>(b + bias));  // 2^(e - 3b)
++  out = pmul(out, c);                                                 // a * 2^e
++  return out;
++}
++
+ template <>
+ EIGEN_STRONG_INLINE void prefetch<float>(const float* addr) {
+   EIGEN_ZVECTOR_PREFETCH(addr);
+@@ -1279,6 +1340,75 @@ EIGEN_STRONG_INLINE Packet4f plset<Packet4f>(const float& a) {
+   return padd<Packet4f>(pset1<Packet4f>(a), p4f_COUNTDOWN);
+ }
+ 
++#if !defined(vec_float) || !defined(__ARCH__) || (defined(__ARCH__) && __ARCH__ < 13)
++#warning \
++    "float->int and int->float conversion is simulated. compile for z15 for improved performance"
++template <>
++struct cast_impl<Packet4i, Packet4f> {
++  EIGEN_DEVICE_FUNC static inline Packet4f run(const Packet4i& a) {
++    return Packet4f{float(a[0]), float(a[1]), float(a[2]), float(a[3]) };
++  }
++};
++
++template <>
++struct cast_impl<Packet4f, Packet4i> {
++  EIGEN_DEVICE_FUNC static inline Packet4i run(const Packet4f& a) {
++    return Packet4i{int(a[0]), int(a[1]), int(a[2]), int(a[3]) };
++  }
++};
++
++template <>
++struct cast_impl<Packet2l, Packet2d> {
++  EIGEN_DEVICE_FUNC static inline Packet2d run(const Packet2l& a) {
++    return Packet2d{double(a[0]), double(a[1]) };
++  }
++};
++
++template <>
++struct cast_impl<Packet2d, Packet2l> {
++  EIGEN_DEVICE_FUNC static inline Packet2l run(const Packet2d& a) {
++    return Packet2l{(long long)(a[0]), (long long)(a[1]) };
++  }
++};
++#else
++template <>
++struct cast_impl<Packet4i, Packet4f> {
++  EIGEN_DEVICE_FUNC static inline Packet4f run(const Packet4i& a) {
++    return vec_float(a);
++  }
++};
++
++template <>
++struct cast_impl<Packet4f, Packet4i> {
++  EIGEN_DEVICE_FUNC static inline Packet4i run(const Packet4f& a) {
++    return vec_signed(a);
++  }
++};
++
++template <>
++struct cast_impl<Packet2l, Packet2d> {
++  EIGEN_DEVICE_FUNC static inline Packet2d run(const Packet2l& a) {
++    return vec_double(a);
++  }
++};
++
++template <>
++struct cast_impl<Packet2d, Packet2l> {
++  EIGEN_DEVICE_FUNC static inline Packet2l run(const Packet2d& a) {
++    return vec_signed(a);
++  }
++};
++#endif
++
++template <>
++EIGEN_STRONG_INLINE Packet4f pset1frombits<Packet4f>(uint32_t from) {
++  return pset1<Packet4f>(Eigen::numext::bit_cast<float>(from));
++}
++template <>
++EIGEN_STRONG_INLINE Packet2d pset1frombits<Packet2d>(uint64_t from) {
++  return pset1<Packet2d>(Eigen::numext::bit_cast<double>(from));
++}
++
+ }  // end namespace internal
+ 
+ }  // end namespace Eigen
+-- 
+2.43.5
+
+
+From ab2ca76bfa39a0c70504a8a453f32463d525e560 Mon Sep 17 00:00:00 2001
+From: Aleksei Nikiforov <aleksei.nikiforov@linux.ibm.com>
+Date: Mon, 5 May 2025 13:50:21 +0200
+Subject: [PATCH 2/6] Fix random generation for long double on big endian
+ systems
+
+This change fixes rand_3 test, and maybe some others as well.
+---
+ Eigen/src/Core/RandomImpl.h | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/Eigen/src/Core/RandomImpl.h b/Eigen/src/Core/RandomImpl.h
+index efba33680..1a82e6253 100644
+--- a/Eigen/src/Core/RandomImpl.h
++++ b/Eigen/src/Core/RandomImpl.h
+@@ -131,8 +131,15 @@ struct random_longdouble_impl {
+     uint64_t randomBits[2];
+     long double result = 2.0L;
+     memcpy(&randomBits, &result, Size);
++#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+     randomBits[0] |= getRandomBits<uint64_t>(numLowBits);
+     randomBits[1] |= getRandomBits<uint64_t>(numHighBits);
++#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++    randomBits[0] |= getRandomBits<uint64_t>(numHighBits);
++    randomBits[1] |= getRandomBits<uint64_t>(numLowBits);
++#else
++#error Unexpected or undefined __BYTE_ORDER__
++#endif
+     memcpy(&result, &randomBits, Size);
+     result -= 3.0L;
+     return result;
+-- 
+2.43.5
+
+
+From 255654a39e8f0fcea006652e5ef9b2e58c8e10e0 Mon Sep 17 00:00:00 2001
+From: Aleksei Nikiforov <aleksei.nikiforov@linux.ibm.com>
+Date: Tue, 10 Jun 2025 13:34:46 +0200
+Subject: [PATCH 3/6] Fix pround on s390x
+
+pround now rounds away from 0 instead of towards to even numbers.
+---
+ Eigen/src/Core/arch/ZVector/PacketMath.h | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/Eigen/src/Core/arch/ZVector/PacketMath.h b/Eigen/src/Core/arch/ZVector/PacketMath.h
+index 286a53cf7..9c3a37a90 100644
+--- a/Eigen/src/Core/arch/ZVector/PacketMath.h
++++ b/Eigen/src/Core/arch/ZVector/PacketMath.h
+@@ -540,7 +540,8 @@ EIGEN_STRONG_INLINE Packet2d pandnot<Packet2d>(const Packet2d& a, const Packet2d
+ 
+ template <>
+ EIGEN_STRONG_INLINE Packet2d pround<Packet2d>(const Packet2d& a) {
+-  return vec_round(a);
++  /* Uses non-default rounding for vec_round */
++  return __builtin_s390_vfidb(a, 0, 1);
+ }
+ template <>
+ EIGEN_STRONG_INLINE Packet2d pceil<Packet2d>(const Packet2d& a) {
+@@ -945,8 +946,8 @@ EIGEN_STRONG_INLINE Packet4f pandnot<Packet4f>(const Packet4f& a, const Packet4f
+ template <>
+ EIGEN_STRONG_INLINE Packet4f pround<Packet4f>(const Packet4f& a) {
+   Packet4f res;
+-  res.v4f[0] = vec_round(a.v4f[0]);
+-  res.v4f[1] = vec_round(a.v4f[1]);
++  res.v4f[0] = generic_round(a.v4f[0]);
++  res.v4f[1] = generic_round(a.v4f[1]);
+   return res;
+ }
+ 
+@@ -1210,7 +1211,8 @@ EIGEN_STRONG_INLINE Packet4f pandnot<Packet4f>(const Packet4f& a, const Packet4f
+ }
+ template <>
+ EIGEN_STRONG_INLINE Packet4f pround<Packet4f>(const Packet4f& a) {
+-  return vec_round(a);
++  /* Uses non-default rounding for vec_round */
++  return __builtin_s390_vfisb(a, 0, 1);
+ }
+ template <>
+ EIGEN_STRONG_INLINE Packet4f pceil<Packet4f>(const Packet4f& a) {
+-- 
+2.43.5
+
+
+From 30bffb05324439a1878a5c14b12f13bb723dabba Mon Sep 17 00:00:00 2001
+From: Aleksei Nikiforov <aleksei.nikiforov@linux.ibm.com>
+Date: Tue, 10 Jun 2025 13:47:49 +0200
+Subject: [PATCH 4/6] Use vec_xl and vec_xst for pload and pstore on s390x
+
+Fix two missed occurrences.
+---
+ Eigen/src/Core/arch/ZVector/PacketMath.h | 10 ++--------
+ 1 file changed, 2 insertions(+), 8 deletions(-)
+
+diff --git a/Eigen/src/Core/arch/ZVector/PacketMath.h b/Eigen/src/Core/arch/ZVector/PacketMath.h
+index 9c3a37a90..0e88e383e 100644
+--- a/Eigen/src/Core/arch/ZVector/PacketMath.h
++++ b/Eigen/src/Core/arch/ZVector/PacketMath.h
+@@ -1107,20 +1107,14 @@ Packet4f EIGEN_STRONG_INLINE pcmp_eq<Packet4f>(const Packet4f& a, const Packet4f
+ #else
+ template <>
+ EIGEN_STRONG_INLINE Packet4f pload<Packet4f>(const float* from) {
+-  // FIXME: No intrinsic yet
+   EIGEN_DEBUG_ALIGNED_LOAD
+-  Packet* vfrom;
+-  vfrom = (Packet*)from;
+-  return vfrom->v4f;
++  return vec_xl(0, from);
+ }
+ 
+ template <>
+ EIGEN_STRONG_INLINE void pstore<float>(float* to, const Packet4f& from) {
+-  // FIXME: No intrinsic yet
+   EIGEN_DEBUG_ALIGNED_STORE
+-  Packet* vto;
+-  vto = (Packet*)to;
+-  vto->v4f = from;
++  vec_xst(from, 0, to);
+ }
+ 
+ template <>
+-- 
+2.43.5
+
+
+From 0045fae6306a9a7846f4d5ecb4cfcfa3f8beafa9 Mon Sep 17 00:00:00 2001
+From: Aleksei Nikiforov <aleksei.nikiforov@linux.ibm.com>
+Date: Tue, 10 Jun 2025 13:48:32 +0200
+Subject: [PATCH 5/6] Update warning for march option on s390x
+
+---
+ Eigen/src/Core/arch/ZVector/PacketMath.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Eigen/src/Core/arch/ZVector/PacketMath.h b/Eigen/src/Core/arch/ZVector/PacketMath.h
+index 0e88e383e..e8eb1ff6d 100644
+--- a/Eigen/src/Core/arch/ZVector/PacketMath.h
++++ b/Eigen/src/Core/arch/ZVector/PacketMath.h
+@@ -1337,7 +1337,7 @@ EIGEN_STRONG_INLINE Packet4f plset<Packet4f>(const float& a) {
+ }
+ 
+ #if !defined(vec_float) || !defined(__ARCH__) || (defined(__ARCH__) && __ARCH__ < 13)
+-#warning \
++#pragma GCC warning \
+     "float->int and int->float conversion is simulated. compile for z15 for improved performance"
+ template <>
+ struct cast_impl<Packet4i, Packet4f> {
+-- 
+2.43.5
+
+
+From 9ef6acb9f880e805a86e7152211e7c67ffba58ca Mon Sep 17 00:00:00 2001
+From: Aleksei Nikiforov <aleksei.nikiforov@linux.ibm.com>
+Date: Tue, 10 Jun 2025 13:48:48 +0200
+Subject: [PATCH 6/6] Fix compound-literal warnings on s390x
+
+---
+ Eigen/src/Core/arch/ZVector/Complex.h       | 2 +-
+ Eigen/src/Core/arch/ZVector/MathFunctions.h | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/Eigen/src/Core/arch/ZVector/Complex.h b/Eigen/src/Core/arch/ZVector/Complex.h
+index 40e75d9f1..692f90f3e 100644
+--- a/Eigen/src/Core/arch/ZVector/Complex.h
++++ b/Eigen/src/Core/arch/ZVector/Complex.h
+@@ -20,7 +20,7 @@ namespace internal {
+ 
+ #if !defined(__ARCH__) || (defined(__ARCH__) && __ARCH__ >= 12)
+ inline Packet4ui p4ui_CONJ_XOR() {
+-  return (Packet4ui) {0x00000000, 0x80000000, 0x00000000, 0x80000000};  // vec_mergeh((Packet4ui)p4i_ZERO, (Packet4ui)p4f_MZERO);
++  return Packet4ui {0x00000000, 0x80000000, 0x00000000, 0x80000000};  // vec_mergeh((Packet4ui)p4i_ZERO, (Packet4ui)p4f_MZERO);
+ }
+ #endif
+ 
+diff --git a/Eigen/src/Core/arch/ZVector/MathFunctions.h b/Eigen/src/Core/arch/ZVector/MathFunctions.h
+index 683f6a3f9..348d643ac 100644
+--- a/Eigen/src/Core/arch/ZVector/MathFunctions.h
++++ b/Eigen/src/Core/arch/ZVector/MathFunctions.h
+@@ -184,7 +184,7 @@ EIGEN_DEFINE_FUNCTION_ALLOWING_MULTIPLE_DEFINITIONS Packet4f pexp<Packet4f>(cons
+   y = padd(y, p4f_1);
+ 
+   // build 2^n
+-  emm0 = (Packet4i){(int)fx[0], (int)fx[1], (int)fx[2], (int)fx[3]};
++  emm0 = Packet4i{(int)fx[0], (int)fx[1], (int)fx[2], (int)fx[3]};
+   emm0 = emm0 + p4i_0x7f;
+   emm0 = emm0 << reinterpret_cast<Packet4i>(p4i_23);
+ 
+-- 
+2.43.5
+

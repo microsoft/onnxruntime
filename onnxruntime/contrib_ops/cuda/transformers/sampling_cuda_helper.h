@@ -30,6 +30,14 @@ Status Sample(AllocatorPtr& allocator,
   ORT_UNUSED_PARAMETER(dumper);
   typedef typename ToCudaType<T>::MappedType CudaT;
 
+  // vocab_size is validated to be in [1, decoder-logits-width] before this point, but min_tokens_to_keep is
+  // copied verbatim from an untrusted graph attribute. The filter logits kernel gates its write with
+  // `idx + min_tokens_to_keep < vocab_size`; an out-of-range (huge or negative) value makes that signed
+  // comparison meaningless (and can overflow), so reject it here to keep behavior consistent with the CPU path.
+  ORT_RETURN_IF_NOT(parameters->min_tokens_to_keep >= 0 && parameters->min_tokens_to_keep < parameters->vocab_size,
+                    "Sampling: min_tokens_to_keep must be in [0, vocab_size), got ",
+                    parameters->min_tokens_to_keep, " with vocab_size ", parameters->vocab_size);
+
   auto cuda_stream = static_cast<cudaStream_t>(stream->GetHandle());
 
   gsl::span<int>& d_index_in = sampling_state->d_index_in;
@@ -93,7 +101,7 @@ Status Sample(AllocatorPtr& allocator,
 #endif
 
   gsl::span<float>& d_sorted_softmaxed_score = sampling_state->d_sorted_softmaxed_score;
-  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(stream,
+  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
                                                                                       d_sorted_softmaxed_score.data(),
                                                                                       reinterpret_cast<CudaT*>(d_sorted_score.data()),
                                                                                       parameters->vocab_size,
@@ -127,7 +135,7 @@ Status Sample(AllocatorPtr& allocator,
 #endif
 
   gsl::span<float>& d_softmaxed_score = sampling_state->d_softmaxed_score;
-  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(stream,
+  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
                                                                                       d_softmaxed_score.data(),
                                                                                       reinterpret_cast<CudaT*>(next_token_scores.data()),
                                                                                       parameters->vocab_size,

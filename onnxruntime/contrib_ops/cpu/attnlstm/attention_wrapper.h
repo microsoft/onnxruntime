@@ -9,6 +9,7 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
 #include "core/platform/threadpool.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -23,7 +24,8 @@ class AttentionWrapper {
                    int attn_layer_depth,
                    int inner_cell_hidden_size,
                    bool has_attn_layer,
-                   const IAttentionMechanism<T>& attention_mechanism, concurrency::ThreadPool* threadpool);
+                   const IAttentionMechanism<T>& attention_mechanism, concurrency::ThreadPool* threadpool,
+                   const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
   virtual ~AttentionWrapper() = default;
 
@@ -71,6 +73,8 @@ class AttentionWrapper {
 
   const IAttentionMechanism<T>& attention_mechanism_;
   concurrency::ThreadPool* ttp_;
+
+  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace contrib

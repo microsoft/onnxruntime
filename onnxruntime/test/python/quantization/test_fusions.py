@@ -34,8 +34,8 @@ class TestFusions(unittest.TestCase):
         for idx, expected_output in enumerate(orig_results):
             actual_output = fused_results[idx]
             np.testing.assert_allclose(
-                expected_output,
                 actual_output,
+                expected_output,
                 rtol=rtol,
                 atol=atol,
                 err_msg=f"Fused model output {idx} differs",

@@ -99,15 +99,15 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
   return true;
 }
 
-// Check if a single input's rank of an ONNX op is supported by corresponding WebNN op.
-bool IsInputRankSupported(const emscripten::val& wnn_limits,
-                          const std::string_view webnn_op_type,
-                          const std::string_view input_name,
-                          const size_t input_rank,
-                          const std::string_view node_name,
-                          const logging::Logger& logger) {
+// Check if a single input/output's rank of an ONNX op is supported by the corresponding WebNN op.
+bool IsRankSupportedByWebNNOp(const emscripten::val& wnn_limits,
+                              const std::string_view webnn_op_type,
+                              const std::string_view param_name,
+                              const size_t rank,
+                              const std::string_view node_name,
+                              const logging::Logger& logger) {
   const std::string webnn_op_type_str(webnn_op_type);
-  const std::string input_name_str(input_name);
+  const std::string param_name_str(param_name);
 
   if (wnn_limits[webnn_op_type_str].isUndefined()) {
     LOGS(logger, VERBOSE) << "WebNN op type: [" << webnn_op_type
@@ -115,20 +115,20 @@ bool IsInputRankSupported(const emscripten::val& wnn_limits,
     return false;
   }
 
-  const emscripten::val input_limits = wnn_limits[webnn_op_type_str][input_name_str];
+  const emscripten::val param_limits = wnn_limits[webnn_op_type_str][param_name_str];
 
-  if (input_limits.isUndefined()) {
+  if (param_limits.isUndefined()) {
     LOGS(logger, VERBOSE) << "Node name: [" << node_name
                           << "], WebNN op type: [" << webnn_op_type
-                          << "], input [" << input_name
+                          << "], parameter [" << param_name
                           << "]: limits are not defined in WebNN MLOpSupportLimits.";
     return false;
   }
 
-  const emscripten::val rank_range = input_limits["rankRange"];
+  const emscripten::val rank_range = param_limits["rankRange"];
   if (rank_range.isUndefined()) {
     LOGS(logger, VERBOSE) << "WebNN op type [" << webnn_op_type
-                          << "] input [" << input_name
+                          << "] parameter [" << param_name
                           << "]: missing 'rankRange' attribute.";
     return false;
   }
@@ -137,17 +137,17 @@ bool IsInputRankSupported(const emscripten::val& wnn_limits,
   const emscripten::val max_val = rank_range["max"];
   if (min_val.isUndefined() || max_val.isUndefined()) {
     LOGS(logger, VERBOSE) << "WebNN op type [" << webnn_op_type
-                          << "] input [" << input_name
+                          << "] parameter [" << param_name
                           << "]: its 'rankRange' limits is missing valid 'min' or 'max' attributes.";
     return false;
   }
 
   size_t min_rank = min_val.as<size_t>();
   size_t max_rank = max_val.as<size_t>();
-  if (input_rank < min_rank || input_rank > max_rank) {
+  if (rank < min_rank || rank > max_rank) {
     LOGS(logger, VERBOSE) << "Node name: [" << node_name
                           << "] WebNN op type [" << webnn_op_type
-                          << "] input [" << input_name << "] rank " << input_rank
+                          << "] parameter [" << param_name << "] rank " << rank
                           << " is not in supported range [" << min_rank << ", " << max_rank << "]";
     return false;
   }
@@ -179,14 +179,29 @@ bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limit
 
     std::vector<int64_t> shape;
     if (!GetShape(*input_defs[input.index], shape, logger) ||
-        !IsInputRankSupported(wnn_limits, webnn_op_type, input.name,
-                              shape.size(),
-                              node.Name(), logger)) {
+        !IsRankSupportedByWebNNOp(wnn_limits, webnn_op_type, input.name,
+                                  shape.size(),
+                                  node.Name(), logger)) {
       return false;
     }
   }
 
   return true;
+}
+
+// Check the rank of output 0 against the corresponding WebNN op's "output" parameter limits.
+// This covers the common single-output case; ops with multiple outputs or non-"output"
+// parameter names should call IsRankSupportedByWebNNOp directly with the proper name(s).
+bool IsOutputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limits,
+                               const logging::Logger& logger) {
+  std::vector<int64_t> shape;
+  if (!GetShape(*node.OutputDefs()[0], shape, logger)) {
+    return false;
+  }
+
+  const std::string_view webnn_op_type = GetWebNNOpType(node.OpType());
+  return IsRankSupportedByWebNNOp(wnn_limits, webnn_op_type, "output", shape.size(),
+                                  node.Name(), logger);
 }
 
 std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
@@ -226,12 +241,26 @@ bool AreDataTypesSame(const std::string_view op_type,
   return true;
 }
 
-bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types) {
+bool IsSupportedDataType(const int32_t onnx_data_type,
+                         const emscripten::val& wnn_limits,
+                         const std::string_view webnn_op_type,
+                         const std::string_view webnn_input_output_name) {
   auto it = onnx_to_webnn_data_type_map.find(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(onnx_data_type));
   if (it == onnx_to_webnn_data_type_map.end())
     return false;
 
   const std::string_view webnn_data_type = it->second;
+
+  // MLOpSupportLimits has different structure. Certain WebNN ops have input and output name,
+  // special cases like 'constant', 'input' and 'output' have no input or output name.
+  emscripten::val webnn_supported_data_types =
+      webnn_input_output_name.empty()
+          ? wnn_limits[std::string(webnn_op_type)]["dataTypes"]
+          : wnn_limits[std::string(webnn_op_type)][std::string(webnn_input_output_name)]["dataTypes"];
+
+  if (webnn_supported_data_types.isUndefined()) {
+    return false;
+  }
 
   // Check if WebNN supports the data type.
   bool is_supported = webnn_supported_data_types.call<emscripten::val>("includes",
@@ -240,7 +269,8 @@ bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& we
 
   if (webnn_data_type == "int64" &&
       !is_supported &&
-      webnn_supported_data_types.call<emscripten::val>("includes", emscripten::val("int32")).as<bool>()) {
+      webnn_supported_data_types.call<emscripten::val>("includes", emscripten::val("int32")).as<bool>() &&
+      !wnn_limits["constant"]["dataTypes"].call<emscripten::val>("includes", emscripten::val("int64")).as<bool>()) {
     // Current context doesn't support int64, but int32 is supported.
     // We can use int32 as a workaround.
     is_supported = true;
@@ -280,8 +310,7 @@ bool IsDataTypeSupportedByWebNNOp(const std::string_view onnx_op_type,
                           << webnn_input_output_name << "]";
     return false;
   }
-  if (!IsSupportedDataType(
-          onnx_data_type, wnn_limits[std::string(webnn_op_type)][std::string(webnn_input_output_name)]["dataTypes"])) {
+  if (!IsSupportedDataType(onnx_data_type, wnn_limits, webnn_op_type, webnn_input_output_name)) {
     LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] " << onnx_input_output_name << "'s data type: ["
                           << onnx_data_type << "] is not supported by WebNN op [" << webnn_op_type << "] for now";
     return false;
@@ -423,6 +452,17 @@ uint16_t PackFloat32ToUint16AsFloat16(float value) {
 
   // Combine sign, exponent, and mantissa into the final float16 representation
   return sign_float16 | (exponent_float16 << 10) | mantissa_float16;
+}
+
+// Check if it can fallback to int32 if the input of WebNN op doesn't support int64.
+bool CanFallbackInt64ToInt32(const emscripten::val& wnn_limits,
+                             const std::string& webnn_op_type,
+                             const std::string& input_name) {
+  emscripten::val supported_data_types = wnn_limits[webnn_op_type][input_name]["dataTypes"];
+
+  return !supported_data_types.isUndefined() &&
+         !supported_data_types.call<emscripten::val>("includes", emscripten::val("int64")).as<bool>() &&
+         supported_data_types.call<emscripten::val>("includes", emscripten::val("int32")).as<bool>();
 }
 
 }  // namespace webnn

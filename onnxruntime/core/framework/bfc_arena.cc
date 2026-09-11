@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/bfc_arena.h"
 #include <type_traits>
@@ -13,11 +14,10 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    int max_dead_bytes_per_chunk,
                    int initial_growth_chunk_size_bytes,
                    int64_t max_power_of_two_extend_bytes)
-    : IAllocator(OrtMemoryInfo(resource_allocator->Info().name,
-                               OrtAllocatorType::OrtArenaAllocator,
-                               resource_allocator->Info().device,
-                               resource_allocator->Info().mem_type)),
-      arena_type_(ArenaType::BaseArena),
+    : IArena(OrtMemoryInfo(resource_allocator->Info().name.c_str(),
+                           OrtAllocatorType::OrtArenaAllocator,
+                           resource_allocator->Info().device,
+                           resource_allocator->Info().mem_type)),
       device_allocator_(std::move(resource_allocator)),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1),
@@ -261,9 +261,9 @@ void BFCArena::DeallocateChunk(ChunkHandle h) {
 
 // static
 size_t BFCArena::RoundedBytes(size_t bytes) {
-  size_t rounded_bytes =
-      (kMinAllocationSize *
-       ((bytes + kMinAllocationSize - 1) / kMinAllocationSize));
+  SafeInt<size_t> rounded_bytes =
+      kMinAllocationSize *
+      ((SafeInt<size_t>(bytes) + kMinAllocationSize - 1) / kMinAllocationSize);
   ORT_ENFORCE(size_t{0} == rounded_bytes % kMinAllocationSize);
   return rounded_bytes;
 }
@@ -284,6 +284,7 @@ void* BFCArena::Reserve(size_t size) {
   ORT_ENFORCE(reserved_chunks_.find(ptr) == reserved_chunks_.end());
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
   stats_.bytes_in_use += size;
+  stats_.bytes_requested_in_use += size;
   stats_.num_reserves += 1;
   stats_.num_allocs += 1;
   stats_.max_alloc_size = std::max<size_t>(static_cast<size_t>(stats_.max_alloc_size), size);
@@ -389,6 +390,7 @@ BFCArena::Chunk* BFCArena::SplitFreeChunkFromBin(BFCArena::Bin::FreeChunkSet* fr
   // Update stats.
   ++stats_.num_allocs;
   stats_.bytes_in_use += chunk->size;
+  stats_.bytes_requested_in_use += num_bytes;
   stats_.max_bytes_in_use =
       std::max(stats_.max_bytes_in_use, stats_.bytes_in_use);
   stats_.max_alloc_size =
@@ -479,6 +481,7 @@ void BFCArena::Free(void* p) {
   if (it != reserved_chunks_.end()) {
     device_allocator_->Free(it->first);
     stats_.bytes_in_use -= it->second;
+    stats_.bytes_requested_in_use -= it->second;
     stats_.total_allocated_bytes -= it->second;
     reserved_chunks_.erase(it);
   } else {
@@ -636,6 +639,7 @@ void BFCArena::FreeAndMaybeCoalesce(BFCArena::ChunkHandle h) {
 
   // Updates the stats.
   stats_.bytes_in_use -= c->size;
+  stats_.bytes_requested_in_use -= c->requested_size;
 
   // This chunk is no longer in-use, consider coalescing the chunk
   // with adjacent chunks.
@@ -827,13 +831,13 @@ void BFCArena::ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_fla
   }
 }
 
-StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
-                                   size_t total_memory,
-                                   ArenaExtendStrategy arena_extend_strategy,
-                                   int initial_chunk_size_bytes,
-                                   int max_dead_bytes_per_chunk,
-                                   int initial_growth_chunk_size_bytes,
-                                   int64_t max_power_of_two_extend_bytes)
+StreamAwareBFCArena::StreamAwareBFCArena(std::unique_ptr<IAllocator> resource_allocator,
+                                         size_t total_memory,
+                                         ArenaExtendStrategy arena_extend_strategy,
+                                         int initial_chunk_size_bytes,
+                                         int max_dead_bytes_per_chunk,
+                                         int initial_growth_chunk_size_bytes,
+                                         int64_t max_power_of_two_extend_bytes)
     : BFCArena(std::move(resource_allocator),
                total_memory,
                arena_extend_strategy,
@@ -841,14 +845,13 @@ StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocato
                max_dead_bytes_per_chunk,
                initial_growth_chunk_size_bytes,
                max_power_of_two_extend_bytes) {
-  arena_type_ = ArenaType::StreamAwareArena;
 }
 
-void* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream) {
+void* StreamAwareBFCArena::AllocOnStream(size_t size, Stream* current_stream) {
   return AllocateRawInternal(size, false, current_stream);
 }
 
-void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
+void StreamAwareBFCArena::ReleaseStreamBuffers(Stream* stream) {
   // since chunks on target stream will be reset to nullptr, trigger coalesce to see whether we can get bigger chunk.
   ResetChunkOnTargetStream(stream, true);
 }

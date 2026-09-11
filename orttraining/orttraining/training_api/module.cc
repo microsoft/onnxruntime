@@ -266,7 +266,7 @@ Status Parameter::ResetGrad() {
   if (device.Type() == OrtDevice::CPU) {
     memset(p_tensor->MutableDataRaw(), 0, p_tensor->SizeInBytes());
   }
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
   else if (device.Type() == OrtDevice::GPU) {
     ORT_NOT_IMPLEMENTED("Not implemented.");
   }

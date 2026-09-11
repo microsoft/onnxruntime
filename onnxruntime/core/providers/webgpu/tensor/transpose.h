@@ -11,12 +11,28 @@
 namespace onnxruntime {
 namespace webgpu {
 
+// Transpose OIHW Weight to OHWI
+class OIHW2OHWIProgram final : public Program<OIHW2OHWIProgram> {
+ public:
+  OIHW2OHWIProgram() : Program("OIHW2OHWI") {}
+
+  Status GenerateShaderCode(ShaderHelper& shader) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"O", ProgramUniformVariableDataType::Uint32},
+      {"I", ProgramUniformVariableDataType::Uint32},
+      {"H", ProgramUniformVariableDataType::Uint32},
+      {"W", ProgramUniformVariableDataType::Uint32},
+      {"Ci_tiles", ProgramUniformVariableDataType::Uint32},
+      {"H_W_tiles", ProgramUniformVariableDataType::Uint32});
+};
+
 class Transpose final : public WebGpuKernel, public TransposeBase {
  public:
   Transpose(const OpKernelInfo& info) : WebGpuKernel{info}, TransposeBase{info} {
   }
   Status ComputeInternal(ComputeContext& context) const override;
-  static Status DoTranspose(onnxruntime::webgpu::ComputeContext& context, gsl::span<const size_t> permutations, const Tensor& input, Tensor& output);
+  static Status DoTranspose(onnxruntime::webgpu::ComputeContextBase& context, gsl::span<const size_t> permutations, const Tensor& input, Tensor& output);
 
   constexpr static uint32_t TILE_SIZE = 16;
 };

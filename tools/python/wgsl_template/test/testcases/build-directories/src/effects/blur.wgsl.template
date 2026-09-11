@@ -1,0 +1,4 @@
+// Blur effect functions
+fn blur_sample(tex: texture_2d<f32>, uv: vec2f) -> vec4f {
+    return textureSample(tex, samp, uv);
+}

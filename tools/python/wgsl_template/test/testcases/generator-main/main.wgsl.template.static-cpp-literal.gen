@@ -1,0 +1,4 @@
+MainFunctionStart();
+ss << "\n    let index = global_id.x;\n\n    output[index] = input[index] * 2.0;\n";
+MainFunctionEnd();
+ss << "\n";

@@ -23,7 +23,7 @@ inline void TensorShapeCopyDims(const TensorShape& shape, int64_t* dims, size_t 
 class MatMulComputeHelper {
  public:
   // fill_offsets is to control if to fill offsets here.
-  // For CUDA/ROCM kernel when we can use GemmStridedBatched, we don't need to fill the offsets.
+  // For CUDA kernel when we can use GemmStridedBatched, we don't need to fill the offsets.
   Status Compute(const TensorShape& orig_left_shape, const TensorShape& orig_right_shape,
                  bool transa = false, bool transb = false,
                  bool trans_batch_a = false, bool trans_batch_b = false,
@@ -168,6 +168,9 @@ class MatMulComputeHelper {
       if (num_output_dims == 0) {
         // for left and right being both vector, output is scalar thus no shape
         ORT_RETURN_IF_NOT(M_ == 1 && N_ == 1, "M_ == 1 && N_ == 1 was false");
+        ORT_RETURN_IF_NOT(K_ == right_shape[0],
+                          "MatMul dimension mismatch. Left vector K (",
+                          K_, ") != right vector K (", right_shape[0], ")");
       } else {
         if (left_num_dims == 1) {
           ORT_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims, "num_dims_with_pad - 1 != num_output_dims");

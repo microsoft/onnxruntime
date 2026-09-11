@@ -2175,6 +2175,20 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat32) {
   test.Run();
 }
 
+// When the optional update_signal is false, the kernel must pass old_sum through unchanged
+// and must not consume the value input.
+TEST(GradientUtilsTest, InPlaceAccumulatorFloat32_NoUpdate) {
+  OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
+  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
+  test.AddInput<bool>("update_signal", {1}, {false});
+
+  test.AddOutput<float>("new_sum", {3}, {1.f, 2.f, 3.f});
+
+  test.Run();
+}
+
 void TestInPlaceAccumulatorV2(
     const std::vector<int64_t>& tensor_dim,
     const std::unordered_set<std::string>& excluded_providers,
@@ -2230,8 +2244,60 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2Overwrite) {
   test.Run();
 }
 
+// Verify the kernel rejects mismatched shapes between accumulation_buffer and value
+// instead of performing an out-of-bounds copy. Exercises both overwrite and accumulate branches.
+static void RunInPlaceAccumulatorV2ShapeMismatch(bool overwrite_flag,
+                                                 std::unique_ptr<IExecutionProvider> provider) {
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
+  // value has more elements than old_sum; without validation the kernel would over-read/over-write.
+  test.AddInput<float>("value", {5}, {4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddInput<bool>("overwrite", {1}, {overwrite_flag});
+  test.AddOutput<bool>("updated", {1}, {true});
+  test.AddOutput<float>("new_sum", {3}, {0.f, 0.f, 0.f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(std::move(provider));
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "accumulation_buffer shape", {}, nullptr, &providers);
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_ShapeMismatch_Overwrite) {
+  RunInPlaceAccumulatorV2ShapeMismatch(/*overwrite_flag=*/true, DefaultCpuExecutionProvider());
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_ShapeMismatch_Accumulate) {
+  RunInPlaceAccumulatorV2ShapeMismatch(/*overwrite_flag=*/false, DefaultCpuExecutionProvider());
+}
+
 #if defined(USE_CUDA)
-// TODO: Add rocm kernel defs
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_ShapeMismatch_Overwrite_GPU) {
+  RunInPlaceAccumulatorV2ShapeMismatch(/*overwrite_flag=*/true, DefaultCudaExecutionProvider());
+}
+
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_ShapeMismatch_Accumulate_GPU) {
+  RunInPlaceAccumulatorV2ShapeMismatch(/*overwrite_flag=*/false, DefaultCudaExecutionProvider());
+}
+#endif
+
+// Exercise the path where the optional accumulation_buffer_out output is omitted.
+// The kernel must still update the in-place accumulation_buffer and produce updated_flag.
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_NoAccumulationOutput_CPU) {
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
+  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
+  test.AddInput<bool>("overwrite", {1}, {false});
+  test.AddOutput<bool>("updated", {1}, {true});
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+#if defined(USE_CUDA)
 TEST(GradientUtilsTest, InPlaceAccumulatorV2_GPU) {
   std::vector<std::vector<int64_t>> test_dims{
       {768},
@@ -2274,9 +2340,24 @@ TEST(GradientUtilsTest, InPlaceAccumulatorV2_Float16) {
   providers.emplace_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
+
+// CUDA-side coverage for the omitted optional accumulation_buffer_out output.
+TEST(GradientUtilsTest, InPlaceAccumulatorV2_NoAccumulationOutput_GPU) {
+  OpTester test("InPlaceAccumulatorV2", 1, onnxruntime::kMSDomain);
+
+  test.AddInput<float>("old_sum", {3}, {1.f, 2.f, 3.f});
+  test.AddInput<float>("value", {3}, {4.f, 5.f, 6.f});
+  test.AddInput<bool>("overwrite", {1}, {false});
+  test.AddOutput<bool>("updated", {1}, {true});
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.emplace_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   OpTester test("InPlaceAccumulator", 1, onnxruntime::kMSDomain);
 
@@ -2294,7 +2375,7 @@ TEST(GradientUtilsTest, InPlaceAccumulatorFloat16) {
   // Didn't implement mixed precision InPlaceAccumulator in CPU
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider});
 }
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA)
 
 TEST(GradientUtilsTest, ZeroGradientFloat32) {
   OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
@@ -2307,7 +2388,7 @@ TEST(GradientUtilsTest, ZeroGradientFloat32) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(GradientUtilsTest, ZeroGradientFloat16) {
   OpTester test("ZeroGradient", 1, onnxruntime::kMSDomain);
 
@@ -2327,7 +2408,7 @@ TEST(GradientUtilsTest, ZeroGradientFloat16) {
 
   test.Run();
 }
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA)
 
 TEST(GradientCheckerTest, WhereGrad) {
   float max_error;
@@ -3019,7 +3100,6 @@ TEST(GradientCheckerTest, TriluGrad) {
   }
 }
 
-// TODO (enable once found why it fails on ROCM)
 #if defined(USE_CUDA)
 TEST(GradientCheckerTest, PadAndUnflattenGrad) {
   float max_error;
@@ -3035,8 +3115,6 @@ TEST(GradientCheckerTest, PadAndUnflattenGrad) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, indices_info, shape_info},
@@ -3065,8 +3143,6 @@ TEST(GradientCheckerTest, ScaledSumGrad) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, y_info},
@@ -3097,8 +3173,6 @@ TEST(GradientCheckerTest, ScaledSumGrad) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
     execution_providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-    execution_providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
     ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info, y_info, z_info},
@@ -3318,7 +3392,6 @@ TEST(GradientCheckerTest, ConvTransposeGrad) {
   ConvTransposeGradientCheckerTest(&execution_providers);
 }
 
-// TODO: Enable test for ROCM
 TEST(GradientCheckerTest, ResizeGrad) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCudaExecutionProvider());

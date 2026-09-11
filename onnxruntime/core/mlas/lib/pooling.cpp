@@ -1199,6 +1199,11 @@ Return Value:
     }
 
     for (size_t dim = 0; dim < Dimensions; dim++) {
+        if (Padding != nullptr &&
+            (Padding[dim] < 0 || Padding[dim + Dimensions] < 0)) {
+            MLAS_THROW_EX(std::invalid_argument, "padding values must be non-negative");
+        }
+
         WorkBlock.InputShape[dim] = size_t(InputShape[dim]);
         WorkBlock.OutputShape[dim] = size_t(OutputShape[dim]);
 
@@ -1533,7 +1538,7 @@ Return Value:
             c -= 8;
         }
 
-#elif defined(MLAS_TARGET_POWER)
+#elif defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X)
 
         while (c >= 32) {
             auto MaximumVector0 = vec_splats(std::numeric_limits<T8Bits>::lowest());

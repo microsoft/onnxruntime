@@ -18,9 +18,8 @@
  * limitations under the License.
  */
 
-#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
-#include <cub/cub.cuh>
+#include "core/providers/cuda/cu_inc/common.cuh"
 
 using namespace onnxruntime::cuda;
 
@@ -56,7 +55,9 @@ __global__ void getTokenOffset(int* token_count_buffer,
   int index = 0;
   cumulated_token_count[0] = 0;
   for (int i = 0; i < batch_size; i++) {
-    const int count = sequence_token_count[i];
+    // token_offset holds exactly batch_size * sequence_length entries, so a per-row count outside
+    // [0, sequence_length] would drive both loops below past the end of the allocation.
+    const int count = min(max(sequence_token_count[i], 0), sequence_length);
     if (count > max_tokens) {
       max_tokens = count;
     }
@@ -71,7 +72,7 @@ __global__ void getTokenOffset(int* token_count_buffer,
 
   //  Offset of paddings
   for (int i = 0; i < batch_size; i++) {
-    const int count = sequence_token_count[i];
+    const int count = min(max(sequence_token_count[i], 0), sequence_length);
     for (int j = 0; j < sequence_length - count; j++) {
       token_offset[index] = i * sequence_length + count + j;
       index++;

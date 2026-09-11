@@ -17,14 +17,64 @@ namespace test {
 
 namespace mb = modelbuilder;
 
+constexpr bool TensorElementTypeConversionIsConstexpr() {
+  constexpr std::array<ONNXTensorElementDataType, ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE>
+      expected_types{
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT4E2M1,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,
+      };
+
+  for (size_t index = 0; index < expected_types.size(); ++index) {
+    if (type_info_internal::ToONNXTensorElementDataType(
+            static_cast<ONNX_NAMESPACE::TensorProto_DataType>(index)) != expected_types[index]) {
+      return false;
+    }
+  }
+
+  return type_info_internal::ToONNXTensorElementDataType(
+             static_cast<ONNX_NAMESPACE::TensorProto_DataType>(-1)) == ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED &&
+         type_info_internal::ToONNXTensorElementDataType(
+             static_cast<ONNX_NAMESPACE::TensorProto_DataType>(expected_types.size())) ==
+             ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+}
+
+static_assert(TensorElementTypeConversionIsConstexpr());
+
 TEST(TypeInfoTests, TensorProto) {
   mb::Type tensor_type = {1, 2, 3, 4};
 
   auto tensor_type_info = OrtTypeInfo::FromTypeProto(tensor_type.value);
   ASSERT_EQ(ONNX_TYPE_TENSOR, tensor_type_info->type);
   ASSERT_NE(nullptr, tensor_type_info->tensor_type_info);
-  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_type_info->tensor_type_info->type);
-  ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), tensor_type_info->tensor_type_info->shape.GetDims()));
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_type_info->tensor_type_info->GetElementType());
+  ASSERT_TRUE(tensor_type_info->tensor_type_info->HasShape());
+  const auto* shape = tensor_type_info->tensor_type_info->GetShape();
+  ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), shape->GetDims()));
 }
 
 TEST(TypeInfoTests, SequenceWithTensorElement) {
@@ -38,8 +88,9 @@ TEST(TypeInfoTests, SequenceWithTensorElement) {
 
   ASSERT_EQ(ONNX_TYPE_TENSOR, tensor_type_info.type);
   ASSERT_NE(nullptr, tensor_type_info.tensor_type_info);
-  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_type_info.tensor_type_info->type);
-  ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), tensor_type_info.tensor_type_info->shape.GetDims()));
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_type_info.tensor_type_info->GetElementType());
+  ASSERT_TRUE(tensor_type_info.tensor_type_info->HasShape());
+  ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), tensor_type_info.tensor_type_info->GetShape()->GetDims()));
 }
 
 TEST(TypeInfoTests, OptionalWithTensorProto) {
@@ -55,8 +106,9 @@ TEST(TypeInfoTests, OptionalWithTensorProto) {
   const auto& contained_type = *optional_type_info->optional_type_info->contained_type_;
   ASSERT_EQ(ONNX_TYPE_TENSOR, contained_type.type);
   ASSERT_NE(nullptr, contained_type.tensor_type_info);
-  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, contained_type.tensor_type_info->type);
-  ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), contained_type.tensor_type_info->shape.GetDims()));
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, contained_type.tensor_type_info->GetElementType());
+  ASSERT_TRUE(contained_type.tensor_type_info->HasShape());
+  ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), contained_type.tensor_type_info->GetShape()->GetDims()));
 }
 
 #if !defined(DISABLE_ML_OPS)
@@ -75,8 +127,9 @@ TEST(TypeInfoTests, MapWithTensorValue) {
 
   ASSERT_EQ(ONNX_TYPE_TENSOR, tensor_type_info.type);
   ASSERT_NE(nullptr, tensor_type_info.tensor_type_info);
-  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_type_info.tensor_type_info->type);
-  ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), tensor_type_info.tensor_type_info->shape.GetDims()));
+  ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, tensor_type_info.tensor_type_info->GetElementType());
+  ASSERT_TRUE(tensor_type_info.tensor_type_info->HasShape());
+  ASSERT_TRUE(SpanEq(AsSpan<int64_t>({1, 2, 3, 4}), tensor_type_info.tensor_type_info->GetShape()->GetDims()));
 }
 #endif
 

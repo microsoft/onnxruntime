@@ -410,10 +410,10 @@ impl Session {
     ///
     /// Note that ONNX models can have multiple inputs; a `Vec<_>` is thus
     /// used for the input data here.
-    pub fn run<'input, 'output>(
-        &'output self,
+    pub fn run<'input>(
+        &self,
         mut input_arrays: impl AsMut<[Box<dyn ConstructTensor + 'input>]> + 'input,
-    ) -> Result<Vec<OrtOutput<'output>>> {
+    ) -> Result<Vec<OrtOutput>> {
         let mut output_tensor_extractors_ptrs: Vec<*mut sys::OrtValue> =
             vec![std::ptr::null_mut(); self.outputs.len()];
 
@@ -632,6 +632,8 @@ unsafe fn get_tensor_dimensions(
 /// Those functions are only to be used from inside the
 /// `SessionBuilder::with_model_from_file()` method.
 mod dangerous {
+    use std::convert::TryFrom;
+
     use super::{
         assert_not_null_pointer, assert_null_pointer, char_p_to_string, get_tensor_dimensions,
         status_to_result, sys, Input, OrtApiError, OrtError, Output, Result, TensorElementDataType,
@@ -779,11 +781,7 @@ mod dangerous {
             env.env().api().GetTensorElementType.unwrap()(tensor_info_ptr, &mut type_sys)
         };
         status_to_result(status).map_err(OrtError::TensorElementType)?;
-        (type_sys != sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED)
-            .then_some(())
-            .ok_or(OrtError::UndefinedTensorElementType)?;
-        // This transmute should be safe since its value is read from GetTensorElementType which we must trust.
-        let io_type: TensorElementDataType = unsafe { std::mem::transmute(type_sys) };
+        let io_type = TensorElementDataType::try_from(type_sys)?;
 
         // info!("{} : type={}", i, type_);
 

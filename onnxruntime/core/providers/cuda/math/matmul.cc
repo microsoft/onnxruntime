@@ -3,12 +3,20 @@
 
 #include "core/providers/cuda/math/matmul.h"
 
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/math/matmul_small_n_gemv.h"
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "core/providers/cuda/tunable/math/matmul.h"
+#endif
 
 namespace onnxruntime {
 namespace cuda {
+
+bool SmallNGemvEnabledFromEnvironment() {
+  return ParseEnvironmentVariableWithDefault<bool>("ORT_ENABLE_SMALL_N_GEMV", false);
+}
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -121,9 +129,11 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
   if (GetTuningContext()->IsTunableOpEnabled()) {
     return tunable::TunableMatMul<T>(alpha_, trans_a, trans_b, trans_batch_a_, trans_batch_b_, helper, this, ctx);
   }
+#endif
 
   return ComputeDefault(ctx, helper);
 }
@@ -219,9 +229,9 @@ Status FuncMatMul(
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(A->Data<T>()), helper.LeftOffsets(), A_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(B->Data<T>()), helper.RightOffsets(), B_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->MutableData<T>()), helper.OutputOffsets(), Y_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(A_arrays.CopyToGpu(ctx->GetComputeStream()));
-  ORT_RETURN_IF_ERROR(B_arrays.CopyToGpu(ctx->GetComputeStream()));
-  ORT_RETURN_IF_ERROR(Y_arrays.CopyToGpu(ctx->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(A_arrays.CopyToGpu(cuda_kernel->GetComputeStream(ctx)));
+  ORT_RETURN_IF_ERROR(B_arrays.CopyToGpu(cuda_kernel->GetComputeStream(ctx)));
+  ORT_RETURN_IF_ERROR(Y_arrays.CopyToGpu(cuda_kernel->GetComputeStream(ctx)));
 
   // TF32 provides a huge performance gain for training and inference while preserving FP32 levels of accuracy.
   // It requires Ampere or newer GPU, and pointers of matrices shall be aligned (ideal alignment is 16-byte).
@@ -318,6 +328,27 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   auto& device_prop = GetDeviceProp();
 
   if (helper.OutputOffsets().size() == 1) {
+    if constexpr (std::is_same<T, MLFloat16>::value) {
+      // cuBLAS tiles this class of shape onto a handful of CTAs and spends
+      // several microseconds on a few hundred KiB of weights.
+      if (small_n_gemv_enabled_ && !transa && !transb && alpha_ == 1.0f &&
+          static_cast<int64_t>(lda) == helper.K() && static_cast<int64_t>(ldb) == helper.N() &&
+          static_cast<int64_t>(ldc) == helper.N() &&
+          CanUseSmallNGemv(helper.M(), helper.N(), helper.K(), left_X->DataRaw(), right_X->DataRaw(),
+                           Y->MutableDataRaw())) {
+        const int m = static_cast<int>(helper.M());
+        const int n = static_cast<int>(helper.N());
+        const int k = static_cast<int>(helper.K());
+        const size_t counter_elements = SmallNGemvCounterElements(n);
+        auto counter = GetScratchBuffer<unsigned int>(counter_elements, this->GetComputeStream(ctx));
+        auto workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), this->GetComputeStream(ctx));
+        return LaunchSmallNGemv(Stream(ctx),
+                                reinterpret_cast<const half*>(left_X->Data<T>()),
+                                reinterpret_cast<const half*>(right_X->Data<T>()),
+                                reinterpret_cast<half*>(Y->MutableData<T>()),
+                                m, n, k, workspace.get(), counter.get());
+      }
+    }
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         GetCublasHandle(ctx),
         transB,
@@ -370,9 +401,9 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(left_X->Data<T>()), helper.LeftOffsets(), left_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(right_X->Data<T>()), helper.RightOffsets(), right_arrays.CpuSpan());
   MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->MutableData<T>()), helper.OutputOffsets(), output_arrays.CpuSpan());
-  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(ctx->GetComputeStream()));
-  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(ctx->GetComputeStream()));
-  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(ctx->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(left_arrays.CopyToGpu(this->GetComputeStream(ctx)));
+  ORT_RETURN_IF_ERROR(right_arrays.CopyToGpu(this->GetComputeStream(ctx)));
+  ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(this->GetComputeStream(ctx)));
 
   // TF32 provides a huge performance gain for training and inference while preserving FP32 levels of accuracy.
   // It requires Ampere or newer GPU, and pointers of matrices shall be aligned (ideal alignment is 16-byte).

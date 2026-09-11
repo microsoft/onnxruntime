@@ -70,7 +70,18 @@ Status CheckTensorOrder(const Tensor& input_tensor, cublasLtOrder_t input_order,
   UpdateTileRequire(input_order, row_tile, col_tile);
   UpdateTileRequire(output_order, row_tile, col_tile);
   if (rows % row_tile != 0 || cols % col_tile != 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Shape not meet clean tile requirement!", dims);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Shape does not meet the clean tile requirement. "
+                           "rows: ",
+                           rows,
+                           ", cols: ",
+                           cols,
+                           ", row_tile: ",
+                           row_tile,
+                           ", col_tile: ",
+                           col_tile,
+                           ". Shape: ",
+                           input_tensor.Shape());
   }
   return Status::OK();
 }
@@ -127,7 +138,7 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
       input_tensor, (cublasLtOrder_t)order_input_, (cublasLtOrder_t)order_output_, rows, cols, batch, n));
   const float* scale = context->Input<Tensor>(1)->Data<float>();
   Tensor* output_tensor = context->Output(0, input_tensor.Shape());
-  cublasLtHandle_t cublasLt = CublasLtHandle();
+  cublasLtHandle_t cublasLt = this->GetCublasLtHandle(context);
   cudaStream_t stream = Stream(context);
   const auto& device_prop = GetDeviceProp();
 
@@ -143,7 +154,7 @@ Status QuantizeWithOrder::ComputeInternal(OpKernelContext* context) const {
           *scale, gsl::narrow<unsigned>(batch), gsl::narrow<unsigned>(rows), gsl::narrow<unsigned>(cols)));
     }
   } else {
-    auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n, context->GetComputeStream());
+    auto q8_buffer = GetScratchBuffer<int8_t>(order_input_ == order_output_ ? 0LL : n, GetComputeStream(context));
     int8_t* dst = (order_input_ == order_output_ ? output_tensor->MutableData<int8_t>() : q8_buffer.get());
     if (input_tensor.IsDataType<MLFloat16>()) {
       ORT_RETURN_IF_ERROR(QOrderQuantize_Strict(stream, device_prop, (const __half*)input_tensor.Data<MLFloat16>(), dst, *scale, n));

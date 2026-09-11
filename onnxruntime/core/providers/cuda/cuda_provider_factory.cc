@@ -181,7 +181,22 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
   }
 
   std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
-    return CUDAExecutionProvider::CreateCudaAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
+    CUDAExecutionProvider::CUDAAllocatorParams params{};
+    params.device_id = device_id;
+    params.cuda_mem_threshold = gpu_mem_limit;
+    params.arena_extend_strategy = arena_extend_strategy;
+    params.external_alloc_info = &external_allocator_info;
+    params.arena_cfg = default_memory_arena_cfg;
+    return CUDAExecutionProvider::CreateCudaAllocator(params);
+  }
+
+  std::shared_ptr<IAllocator> CreateCudaPinnedAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, const OrtArenaCfg* default_memory_arena_cfg) override {
+    CUDAExecutionProvider::CUDAAllocatorParams params{};
+    params.device_id = device_id;
+    params.cuda_mem_threshold = gpu_mem_limit;
+    params.arena_extend_strategy = arena_extend_strategy;
+    params.arena_cfg = default_memory_arena_cfg;
+    return CUDAExecutionProvider::CreateCudaPinnedAllocator(params);
   }
 } g_info;
 
@@ -227,7 +242,6 @@ struct CUDA_Provider : Provider {
     info.tunable_op.enable = params->tunable_op_enable;
     info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
     info.tunable_op.max_tuning_duration_ms = params->tunable_op_max_tuning_duration_ms;
-    info.enable_skip_layer_norm_strict_mode = params->enable_skip_layer_norm_strict_mode != 0;
     info.use_ep_level_unified_stream = params->use_ep_level_unified_stream != 0;
     info.use_tf32 = params->use_tf32 != 0;
     info.sdpa_kernel = params->sdpa_kernel;
@@ -261,7 +275,6 @@ struct CUDA_Provider : Provider {
     cuda_options.cudnn_conv_use_max_workspace = internal_options.cudnn_conv_use_max_workspace;
     cuda_options.enable_cuda_graph = internal_options.enable_cuda_graph;
     cuda_options.cudnn_conv1d_pad_to_nc1d = internal_options.cudnn_conv1d_pad_to_nc1d;
-    cuda_options.enable_skip_layer_norm_strict_mode = internal_options.enable_skip_layer_norm_strict_mode;
     cuda_options.prefer_nhwc = internal_options.prefer_nhwc;
     cuda_options.use_ep_level_unified_stream = internal_options.use_ep_level_unified_stream;
     cuda_options.use_tf32 = internal_options.use_tf32;
@@ -358,6 +371,7 @@ struct CudaOrtAllocator : OrtAllocator {
     Reserve = AllocImpl;      // no special behavior for Reserve so use AllocImpl
     GetStats = nullptr;       // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
     AllocOnStream = nullptr;  // TODO. Plugin EP arena to provide this.
+    Shrink = nullptr;
 
     const OrtEpApi& ep_api = *api.GetEpApi();
     const OrtMemoryDevice* mem_device = ep_api.MemoryInfo_GetMemoryDevice(mem_info);
@@ -586,7 +600,7 @@ struct CudaSyncNotificationImpl : OrtSyncNotificationImpl {
     Release = ReleaseImpl;
   }
 
-  cudaStream_t& stream_;
+  cudaStream_t stream_;
   cudaEvent_t event_;
 
   const OrtApi& ort_api;
@@ -632,9 +646,9 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
     *notification_impl = nullptr;
 
     std::unique_ptr<CudaSyncNotificationImpl> notification;
-    cudaStream_t* cuda_stream = static_cast<cudaStream_t*>(impl.stream_.GetHandle());
+    cudaStream_t cuda_stream = static_cast<cudaStream_t>(impl.stream_.GetHandle());
 
-    RETURN_IF_ERROR(CudaSyncNotificationImpl::Create(*cuda_stream, impl.ort_api, notification));
+    RETURN_IF_ERROR(CudaSyncNotificationImpl::Create(cuda_stream, impl.ort_api, notification));
     *notification_impl = notification.release();
 
     return nullptr;
@@ -667,8 +681,8 @@ struct CudaEpFactory : OrtEpFactory {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
 
   CudaEpFactory(const OrtApi& ort_api_in, const OrtLogger& default_logger_in) : ort_api{ort_api_in},
-                                                                                default_logger{default_logger_in},
                                                                                 ep_api{*ort_api_in.GetEpApi()},
+                                                                                default_logger{default_logger_in},
                                                                                 data_transfer_impl{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
@@ -733,6 +747,10 @@ struct CudaEpFactory : OrtEpFactory {
       }
     }
     */
+
+    // guard against bad device discovery. max devices we expect to add is num_cuda_devices. if we're attempting
+    // to add more than that we have duplicates in the `devices` array.
+    max_ep_devices = std::min(max_ep_devices, static_cast<size_t>(num_cuda_devices));
 
     int16_t device_id = 0;
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
@@ -927,8 +945,8 @@ struct CudaEpFactory : OrtEpFactory {
   CudaEpFactory(const CudaEpFactory&) = delete;
   CudaEpFactory& operator=(const CudaEpFactory&) = delete;
 
-  CudaEpFactory(CudaEpFactory&&) = default;
-  CudaEpFactory& operator=(CudaEpFactory&&) = default;
+  CudaEpFactory(CudaEpFactory&&) = delete;
+  CudaEpFactory& operator=(CudaEpFactory&&) = delete;
 };
 
 extern "C" {

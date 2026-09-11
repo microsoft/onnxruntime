@@ -13,7 +13,6 @@
 #endif
 using namespace std;
 namespace onnxruntime {
-
 #define REGISTER_UNARY_ELEMENTWISE_KERNEL(x, sinceVersion)                            \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                                     \
       x,                                                                              \
@@ -760,14 +759,10 @@ bool CommonFastReduceCopy(OpKernelContext* ctx, TensorShapeVector& input_axes, b
     } else {
       input_axes.clear();
     }
-
+    // noop_with_empty_axes is handled upstream by ApplyNoopEmptyAxesElementwise().
+    // Return false for clarity and to prevent unsafe memcpy fallback.
     if (input_axes.empty() && noop_with_empty_axes) {
-      const Tensor* input = ctx->Input<Tensor>(0);
-      auto* output = ctx->Output(0, input->Shape());
-      memcpy(output->MutableDataRaw(),
-             input->DataRaw(),
-             input->SizeInBytes());
-      return true;
+      return false;
     }
   }
   return false;
@@ -800,7 +795,6 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
   fast_kind = OptimizeShapeForFastReduce(
       reduced_dims, input_axes.empty() ? axes_ : input_axes,
       fast_shape, output_shape, fast_axes, keepdims_ != 0, noop_with_empty_axes);
-
   if (which_fast_reduce != FastReduceKind::kNone) {
     if (IsFastReduceKindAvailable(fast_kind, which_fast_reduce)) {
       Tensor* output = ctx->Output(0, output_shape);
@@ -891,9 +885,12 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
     ORT_ENFORCE(axes.empty(), "Axes input and attribute should not both be present for reduction.");
     // second input holds the axes.
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-    const auto* data = axes_tensor->Data<int64_t>();
-    input_axes.insert(input_axes.begin(), data, data + nDims);
+    if (axes_tensor != nullptr) {
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
+                  "An axes tensor must be a vector tensor.");
+      const auto axes_data = axes_tensor->DataAsSpan<int64_t>();
+      input_axes.assign(axes_data.begin(), axes_data.end());
+    }
   } else {
     input_axes.resize(axes.size());
     std::copy(axes.begin(), axes.end(), input_axes.begin());
@@ -920,10 +917,69 @@ bool check_and_reduce_empty_set_input(OpKernelContext* ctx, const gsl::span<cons
   return true;
 }
 
+// Handles the ONNX noop_with_empty_axes=1 behavior when axes=[] for reduction operators.
+// In this case no reduction is performed. Instead, for aggregators with element-wise
+// transforms (PreOp/PostOp), the transform is applied to each input element.
+// For identity aggregators, the input is copied directly to the output.
+template <typename AGG>
+inline void ApplyNoopEmptyAxesElementwise(OpKernelContext* ctx) {
+  const Tensor* X = ctx->Input<Tensor>(0);
+  const auto& shape = X->Shape();
+  Tensor* Y = ctx->Output(0, shape);
+
+  if constexpr (!ReduceAggTraits<AGG>::kHasPreOp && !ReduceAggTraits<AGG>::kHasPostOp) {
+    if (X->SizeInBytes() > 0) {
+      std::memcpy(Y->MutableDataRaw(), X->DataRaw(), X->SizeInBytes());
+    }
+
+  } else {
+    using Tin = typename AGG::input_type;
+    using Tacc = typename AGG::value_type;
+    const Tin* x = X->Data<Tin>();
+    Tacc* y = Y->MutableData<Tacc>();
+    const int64_t n = shape.Size();
+
+    for (int64_t i = 0; i < n; ++i) {
+      AGG agg(1, x[i]);
+      agg.update0(x[i]);
+      agg.update(x[i]);
+      y[i] = agg.get_value();
+    }
+  }
+}
+
+// Returns the effective reduction axes.
+// If an axes input tensor is provided, it takes precedence over the axes attribute.
+inline gsl::span<const int64_t> GetEffectiveAxes(
+    OpKernelContext* ctx,
+    const gsl::span<const int64_t> axes_attr,
+    TensorShapeVector& axes_from_input) {
+  axes_from_input.clear();
+
+  if (ctx->InputCount() > 1) {
+    const Tensor* axes_tensor = ctx->Input<Tensor>(1);
+    if (axes_tensor) {
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");
+      const auto span = axes_tensor->DataAsSpan<int64_t>();
+      axes_from_input.assign(span.begin(), span.end());
+      return gsl::make_span(axes_from_input);
+    }
+  }
+
+  return axes_attr;
+}
+
 template <typename AGG>
 void CommonReduce1Loop(OpKernelContext* ctx,
                        const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                        bool noop_with_empty_axes) {
+  TensorShapeVector tmp_axes;
+  auto effective_axes = GetEffectiveAxes(ctx, axes_, tmp_axes);
+  if (effective_axes.empty() && noop_with_empty_axes) {
+    ApplyNoopEmptyAxesElementwise<AGG>(ctx);
+    return;
+  }
+
   if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
     return;
   }
@@ -939,6 +995,7 @@ void CommonReduce1Loop(OpKernelContext* ctx,
 
   const Tensor* input = ctx->Input<Tensor>(0);
   Tensor* output = ctx->Output(0, output_shape);
+
   if (fast_kind == FastReduceKind::kEmpty) {
     const TensorShape& input_shape = input->Shape();
     if (input_shape.Size() == 1) {
@@ -961,6 +1018,13 @@ template <typename AGG>
 void CommonReduce2Loops(OpKernelContext* ctx,
                         const gsl::span<const int64_t>& axes_, int64_t keepdims_,
                         bool noop_with_empty_axes) {
+  TensorShapeVector tmp_axes;
+  auto effective_axes = GetEffectiveAxes(ctx, axes_, tmp_axes);
+  if (effective_axes.empty() && noop_with_empty_axes) {
+    ApplyNoopEmptyAxesElementwise<AGG>(ctx);
+    return;
+  }
+
   if (check_and_reduce_empty_set_input<AGG>(ctx, axes_, keepdims_ != 0)) {
     return;
   }
@@ -988,7 +1052,6 @@ void CommonReduce2Loops(OpKernelContext* ctx,
     }
     return;
   }
-
   ResultsNoTransposePrepareForReduce last_results;
   NoTransposeReduce2Loops<AGG>(output, fast_shape, *input, fast_axes, ctx->GetOperatorThreadPool(), last_results);
 }

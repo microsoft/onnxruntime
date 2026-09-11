@@ -3,8 +3,12 @@
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -12,23 +16,30 @@ namespace test {
 // Some of the tests can't run on TensorrtExecutionProvider because of unsupported data types.
 // Those tests will fallback to other EPs
 
-TEST(GatherOpTest, Gather_axis0) {
+template <typename T>
+class GatherOpTest : public ::testing::Test {
+};
+
+using GatherOpTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(GatherOpTest, GatherOpTestTypes);
+
+TYPED_TEST(GatherOpTest, Gather_axis0) {
   // To test for NNAPI EP, we need the indices to be initializers
   auto run_test = [](bool indices_is_initializer) {
     OpTester test("Gather");
     test.AddAttribute<int64_t>("axis", 0LL);
-    test.AddInput<float>("data", {2, 3, 4},
-                         {0.0f, 0.1f, 0.2f, 0.3f,
-                          1.0f, 1.1f, 1.2f, 1.3f,
-                          2.0f, 2.1f, 2.2f, 2.3f,
-                          10.0f, 10.1f, 10.2f, 10.3f,
-                          11.0f, 11.1f, 11.2f, 11.3f,
-                          12.0f, 12.1f, 12.2f, 12.3f});
+    test.AddInput<TypeParam>("data", {2, 3, 4},
+                             GetTypedArray<TypeParam>({0.0f, 0.1f, 0.2f, 0.3f,
+                                                       1.0f, 1.1f, 1.2f, 1.3f,
+                                                       2.0f, 2.1f, 2.2f, 2.3f,
+                                                       10.0f, 10.1f, 10.2f, 10.3f,
+                                                       11.0f, 11.1f, 11.2f, 11.3f,
+                                                       12.0f, 12.1f, 12.2f, 12.3f}));
     test.AddInput<int64_t>("indices", {1}, {1LL}, indices_is_initializer);
-    test.AddOutput<float>("output", {1, 3, 4},
-                          {10.0f, 10.1f, 10.2f, 10.3f,
-                           11.0f, 11.1f, 11.2f, 11.3f,
-                           12.0f, 12.1f, 12.2f, 12.3f});
+    test.AddOutput<TypeParam>("output", {1, 3, 4},
+                              GetTypedArray<TypeParam>({10.0f, 10.1f, 10.2f, 10.3f,
+                                                        11.0f, 11.1f, 11.2f, 11.3f,
+                                                        12.0f, 12.1f, 12.2f, 12.3f}));
     test.Run();
   };
 
@@ -36,23 +47,23 @@ TEST(GatherOpTest, Gather_axis0) {
   run_test(true);
 }
 
-TEST(GatherOpTest, Gather_negative_axis) {
+TYPED_TEST(GatherOpTest, Gather_negative_axis) {
   // To test for NNAPI EP, we need the indices to be initializers
   auto run_test = [](bool indices_is_initializer) {
     OpTester test("Gather");
     test.AddAttribute<int64_t>("axis", -3LL);
-    test.AddInput<float>("data", {2, 3, 4},
-                         {0.0f, 0.1f, 0.2f, 0.3f,
-                          1.0f, 1.1f, 1.2f, 1.3f,
-                          2.0f, 2.1f, 2.2f, 2.3f,
-                          10.0f, 10.1f, 10.2f, 10.3f,
-                          11.0f, 11.1f, 11.2f, 11.3f,
-                          12.0f, 12.1f, 12.2f, 12.3f});
+    test.AddInput<TypeParam>("data", {2, 3, 4},
+                             GetTypedArray<TypeParam>({0.0f, 0.1f, 0.2f, 0.3f,
+                                                       1.0f, 1.1f, 1.2f, 1.3f,
+                                                       2.0f, 2.1f, 2.2f, 2.3f,
+                                                       10.0f, 10.1f, 10.2f, 10.3f,
+                                                       11.0f, 11.1f, 11.2f, 11.3f,
+                                                       12.0f, 12.1f, 12.2f, 12.3f}));
     test.AddInput<int64_t>("indices", {1}, {1LL}, indices_is_initializer);
-    test.AddOutput<float>("output", {1, 3, 4},
-                          {10.0f, 10.1f, 10.2f, 10.3f,
-                           11.0f, 11.1f, 11.2f, 11.3f,
-                           12.0f, 12.1f, 12.2f, 12.3f});
+    test.AddOutput<TypeParam>("output", {1, 3, 4},
+                              GetTypedArray<TypeParam>({10.0f, 10.1f, 10.2f, 10.3f,
+                                                        11.0f, 11.1f, 11.2f, 11.3f,
+                                                        12.0f, 12.1f, 12.2f, 12.3f}));
     test.Run();
   };
 
@@ -107,7 +118,7 @@ TEST(GatherOpTest, Gather_invalid_index_cpu) {
       .RunWithConfig();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 TEST(GatherOpTest, Gather_invalid_index_gpu) {
   OpTester test("Gather");
   // Invalid index 3. data[3] does not exist.
@@ -126,8 +137,6 @@ TEST(GatherOpTest, Gather_invalid_index_gpu) {
   test
 #if defined(USE_CUDA)
       .ConfigEp(DefaultCudaExecutionProvider())
-#else
-      .ConfigEp(DefaultRocmExecutionProvider())
 #endif
       .RunWithConfig();
 }
@@ -208,23 +217,23 @@ TEST(GatherOpTest, Gather_axis0_indices2d) {
   run_test(true);
 }
 
-TEST(GatherOpTest, Gather_axis1_indices2d) {
+TYPED_TEST(GatherOpTest, Gather_axis1_indices2d) {
   // To test for NNAPI EP, we need the indices to be initializers
   auto run_test = [](bool indices_is_initializer) {
     OpTester test("Gather");
     test.AddAttribute<int64_t>("axis", 1LL);
-    test.AddInput<float>("data", {3, 3},
-                         {0.0f, 0.1f, 0.2f,
-                          1.0f, 1.1f, 1.2f,
-                          2.0f, 2.1f, 2.2f});
+    test.AddInput<TypeParam>("data", {3, 3},
+                             GetTypedArray<TypeParam>({0.0f, 0.1f, 0.2f,
+                                                       1.0f, 1.1f, 1.2f,
+                                                       2.0f, 2.1f, 2.2f}));
     test.AddInput<int64_t>("indices", {2LL, 2LL},
                            {1LL, 0LL,
                             2LL, 1LL},
                            indices_is_initializer);
-    test.AddOutput<float>("output", {3, 2, 2},
-                          {0.1f, 0.0f, 0.2f, 0.1f,
-                           1.1f, 1.0f, 1.2f, 1.1f,
-                           2.1f, 2.0f, 2.2f, 2.1f});
+    test.AddOutput<TypeParam>("output", {3, 2, 2},
+                              GetTypedArray<TypeParam>({0.1f, 0.0f, 0.2f, 0.1f,
+                                                        1.1f, 1.0f, 1.2f, 1.1f,
+                                                        2.1f, 2.0f, 2.2f, 2.1f}));
     test.Run();
   };
 
@@ -232,41 +241,39 @@ TEST(GatherOpTest, Gather_axis1_indices2d) {
   run_test(true);
 }
 
-TEST(GatherOpTest, Gather_axis0_indicesInt32) {
+TYPED_TEST(GatherOpTest, Gather_axis0_indicesInt32) {
   // NNAPI EP only supports float input data for now,
   // the following two test cases cover int32_t indices with float input other than int64_t type for Nnapi
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<float>("data", {2, 3, 4},
-                       {0.0f, 0.1f, 0.2f, 0.3f,
-                        1.0f, 1.1f, 1.2f, 1.3f,
-                        2.0f, 2.1f, 2.2f, 2.3f,
-                        10.0f, 10.1f, 10.2f, 10.3f,
-                        11.0f, 11.1f, 11.2f, 11.3f,
-                        12.0f, 12.1f, 12.2f, 12.3f});
+  test.AddInput<TypeParam>("data", {2, 3, 4},
+                           GetTypedArray<TypeParam>({0.0f, 0.1f, 0.2f, 0.3f,
+                                                     1.0f, 1.1f, 1.2f, 1.3f,
+                                                     2.0f, 2.1f, 2.2f, 2.3f,
+                                                     10.0f, 10.1f, 10.2f, 10.3f,
+                                                     11.0f, 11.1f, 11.2f, 11.3f,
+                                                     12.0f, 12.1f, 12.2f, 12.3f}));
   test.AddInput<int32_t>("indices", {1}, {1});
-  test.AddOutput<float>("output", {1, 3, 4},
-                        {10.0f, 10.1f, 10.2f, 10.3f,
-                         11.0f, 11.1f, 11.2f, 11.3f,
-                         12.0f, 12.1f, 12.2f, 12.3f});
-
+  test.AddOutput<TypeParam>("output", {1, 3, 4},
+                            GetTypedArray<TypeParam>({10.0f, 10.1f, 10.2f, 10.3f,
+                                                      11.0f, 11.1f, 11.2f, 11.3f,
+                                                      12.0f, 12.1f, 12.2f, 12.3f}));
   test.Run();
 }
 
-TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
+TYPED_TEST(GatherOpTest, Gather_axis0_indices2dInt32) {
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 0LL);
-  test.AddInput<float>("data", {3, 3},
-                       {0.0f, 0.1f, 0.2f,
-                        1.0f, 1.1f, 1.2f,
-                        2.0f, 2.1f, 2.2f});
+  test.AddInput<TypeParam>("data", {3, 3},
+                           GetTypedArray<TypeParam>({0.0f, 0.1f, 0.2f,
+                                                     1.0f, 1.1f, 1.2f,
+                                                     2.0f, 2.1f, 2.2f}));
   test.AddInput<int32_t>("indices", {2, 2},
                          {1, 0,
                           2, 1});
-  test.AddOutput<float>("output", {2, 2, 3},
-                        {1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
-                         2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f});
-
+  test.AddOutput<TypeParam>("output", {2, 2, 3},
+                            GetTypedArray<TypeParam>({1.0f, 1.1f, 1.2f, 0.0f, 0.1f, 0.2f,
+                                                      2.0f, 2.1f, 2.2f, 1.0f, 1.1f, 1.2f}));
   test.Run();
 }
 
@@ -337,6 +344,53 @@ TEST(GatherOpTest, Gather_axis1_indices2d_string) {
   test.Run();
 }
 
+TEST(GatherOpTest, Gather_overflow_check) {
+  // Skip on 32-bit platforms where allocating the full reference tensor is infeasible due
+  // to std::vector::max_size being limited to the size of ptrdiff_t (INT32_MAX on 32-bit).
+  // Also, peak memory usage for this test would be greater than what is addressable.
+#if SIZE_MAX <= UINT32_MAX
+  GTEST_SKIP() << "Gather_overflow_check skipped on 32-bit platforms.";
+#endif
+
+  // The test uses dimensions (46341, 2) and indices of length 46341, which produce an output
+  // shape of (46341, 46341).
+  //
+  // 46341 x 46341 = 2,147,488,281 which is just greater than the maximum value of a 32-bit integer (2,147,483,647).
+  //
+  // This test is to verify CPU implementation of the Gather operator doesn't overflow when calculating
+  // the output shape and generating the output tensor.
+
+  constexpr int64_t dim_val = 46341;
+
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 1LL);
+
+  // Setup test inputs and outputs in a separate scope to ensure the large `expected_output_values` array
+  // is destroyed before we run the test via `test.Run()`.
+  {
+    const std::vector<int64_t> data_dims{dim_val, 2};
+    const std::vector<int64_t> indices_dims{dim_val};
+    std::vector<uint8_t> data_values(static_cast<size_t>(data_dims[0] * data_dims[1]), 1);
+    std::vector<int64_t> indices_values(static_cast<size_t>(indices_dims[0]), 1);
+    std::vector<uint8_t> expected_output_values(static_cast<size_t>(dim_val) * static_cast<size_t>(dim_val), 1);
+
+    test.AddInput<uint8_t>("data", {dim_val, 2}, data_values);
+    test.AddInput<int64_t>("indices", {dim_val}, indices_values);
+
+    // Note: the large ~2GiB `expected_output_values` array is copied into the OpTester.
+    test.AddOutput<uint8_t>("output", {dim_val, dim_val}, expected_output_values);
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+
+  // Note: peak memory usage will be in the order of multiple GiB:
+  //  - OpTester holds expected outputs buffer of size ~2GiB
+  //  - The session state allocates a buffer for the output of size ~2GiB
+  //  - Other overhead and bookkeeping.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
   OpTester test("Gather");
   test.AddAttribute<int64_t>("axis", 1LL);
@@ -353,6 +407,109 @@ TEST(GatherOpTest, Gather_axis1_indices2d_bool) {
                         true, false, false, true});
   test.Run();
 }
+
+TEST(GatherOpTest, Gather_axis1_indices2d_uint8) {
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 1LL);
+  test.AddInput<uint8_t>("data", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<int32_t>("indices", {2, 2},
+                         {1, 0,
+                          2, 1});
+  test.AddOutput<uint8_t>("output", {3, 2, 2},
+                          {20, 10, 30, 20,
+                           50, 40, 60, 50,
+                           80, 70, 90, 80});
+  // int8 and uint8 are not supported by some EPs for Gather
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+#ifdef USE_WEBGPU
+// Validates the WebGPU Gather kernel's packed-byte path for uint8 (bit-shift/mask read,
+// OR-shift assembly write). Without this test, a non-WebGPU build would only exercise
+// the CPU EP path and miss shader regressions.
+TEST(GatherOpTest, Gather_axis1_indices2d_uint8_webgpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 1LL);
+  test.AddInput<uint8_t>("data", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  test.AddInput<int32_t>("indices", {2, 2},
+                         {1, 0,
+                          2, 1});
+  test.AddOutput<uint8_t>("output", {3, 2, 2},
+                          {20, 10, 30, 20,
+                           50, 40, 60, 50,
+                           80, 70, 90, 80});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Validates the WebGPU uint8 Gather kernel with output_size NOT a multiple of 4.
+// output shape {3,3} = 9 elements: the last packed u32 word holds only 1 valid byte,
+// with the remaining 3 bytes zero-padded (partial-thread boundary path).
+TEST(GatherOpTest, Gather_axis0_uint8_non_multiple_of_4_webgpu) {
+  if (DefaultWebGpuExecutionProvider().get() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 0LL);
+  // 3×3 input with byte-diverse values
+  test.AddInput<uint8_t>("data", {3, 3},
+                         {10, 20, 30,
+                          40, 50, 60,
+                          70, 80, 90});
+  // 1-D indices of length 3: gather rows 1, 2, 0
+  test.AddInput<int32_t>("indices", {3}, {1, 2, 0});
+  // output shape {3,3} = 9 bytes (not a multiple of 4)
+  test.AddOutput<uint8_t>("output", {3, 3},
+                          {40, 50, 60,
+                           70, 80, 90,
+                           10, 20, 30});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// int64 Gather is gated behind the enableInt64 provider option. Disable CPU-EP fallback so the
+// Gather node must run on the WebGPU kernel, and include values outside the int32 range (2^32,
+// 2^33+1, a large negative, INT64_MAX) to prove the full 64-bit value is preserved via a raw
+// vec2<u32> storage copy rather than truncated to i32.
+TEST(GatherOpTest, Gather_int64_webgpu) {
+  ConfigOptions provider_options{};
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(provider_options);
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 0LL);
+  test.AddInput<int64_t>("data", {3, 2},
+                         {1, 4294967296,                 // 1, 2^32
+                          8589934593, -4294967297,       // 2^33+1, -(2^32+1)
+                          100, 9223372036854775807LL});  // 100, INT64_MAX
+  test.AddInput<int32_t>("indices", {2}, {2, 0});
+  test.AddOutput<int64_t>("output", {2, 2},
+                          {100, 9223372036854775807LL,
+                           1, 4294967296});
+
+  // Disable CPU-EP fallback so the Gather node must run on the WebGPU kernel.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(so)
+      .ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif  // USE_WEBGPU
 
 TEST(GatherOpTest, Gather_perf) {
   OpTester test("Gather");
@@ -436,13 +593,12 @@ TEST(GatherOpTest, Gather_axis1_scalar_indices) {
 
 TEST(ShrunkenGatherOpTest, ShrunkenGather_PositiveAxis) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  // Add CUDA EP first so it gets tested before CPU EP
+  // (ConfigEps runs the first available EP for the operator)
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #endif
-#ifdef USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider());
-#endif
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
@@ -460,13 +616,12 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_PositiveAxis) {
 
 TEST(ShrunkenGatherOpTest, ShrunkenGather_NegativeAxis) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  // Add CUDA EP first so it gets tested before CPU EP
+  // (ConfigEps runs the first available EP for the operator)
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #endif
-#ifdef USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider());
-#endif
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", -1LL);
@@ -484,13 +639,12 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_NegativeAxis) {
 
 TEST(ShrunkenGatherOpTest, ShrunkenGather_InvalidIndicesRank) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  // Add CUDA EP first so it gets tested before CPU EP
+  // (ConfigEps runs the first available EP for the operator)
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #endif
-#ifdef USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider());
-#endif
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);
@@ -508,13 +662,12 @@ TEST(ShrunkenGatherOpTest, ShrunkenGather_InvalidIndicesRank) {
 
 TEST(ShrunkenGatherOpTest, ShrunkenGather_InvalidInputRank) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+  // Add CUDA EP first so it gets tested before CPU EP
+  // (ConfigEps runs the first available EP for the operator)
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
 #endif
-#ifdef USE_ROCM
-  execution_providers.emplace_back(DefaultRocmExecutionProvider());
-#endif
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
 
   OpTester test("ShrunkenGather", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("axis", 0LL);

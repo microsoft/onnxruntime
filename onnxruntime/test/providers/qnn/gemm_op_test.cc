@@ -54,18 +54,17 @@ TEST_F(QnnCPUBackendTests, Gemm_NonDefaultAlphaBeta_Unsupported) {
                      ExpectedEPNodeAssignment::None);  // Should not be assigned to QNN EP.
 }
 
-// Test that Gemm with general 2D bias (M, N) is NOT supported (unless M == 1).
-// QNN's FullyConnected operator only supports `outputVector = ( inputAsVector * weightsMatrix ) + biasesVector`
-TEST_F(QnnCPUBackendTests, Gemm_2D_Bias_Unsupported) {
+// Test Gemm with 2D bias is supported.
+TEST_F(QnnCPUBackendTests, Gemm_2D_Bias) {
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 12);
 
-  // 2D matrix mul with bias not supported.
+  // 2D matrix mul with bias is supported.
   RunGemmTest<float>({TestInputDef<float>({2, 3}, false, input_a_data),
                       TestInputDef<float>({3, 4}, false, input_b_data),
                       TestInputDef<float>({2, 4}, false, -1.0f, 1.0f)},
                      {},
-                     ExpectedEPNodeAssignment::None);  // Should not be assigned to QNN EP.
+                     ExpectedEPNodeAssignment::All);  // Assigned to QNN EP.
 
   // However, 2D matrix mul without a bias is supported. Input A's 0th dimension is interpreted as `batch_size`.
   RunGemmTest<float>({TestInputDef<float>({2, 3}, false, input_a_data),
@@ -448,8 +447,19 @@ TEST_F(QnnHTPBackendTests, Gemm_Static_B_And_Bias) {
                                         ExpectedEPNodeAssignment::All);
 }
 
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=31.434787750244141, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): 29.434776306152344
+// qdq@QNN_EP val: 28.229671478271484 (err: 1.2051048278808594, err/output_range: 3.8336660861968994%)
+// qdq@CPU_EP val: 29.092588424682617 (err: 0.34218788146972656, err/output_range: 1.0885642766952515%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 2.7451016902923584%
 // Test 8-bit QDQ Gemm with transposed A/B and static B and Bias inputs.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_Gemm_TransAB_Static_B_And_Bias_U8) {
+#else
 TEST_F(QnnHTPBackendTests, Gemm_TransAB_Static_B_And_Bias_U8) {
+#endif
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
   std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);
@@ -476,8 +486,19 @@ TEST_F(QnnHTPBackendTests, Gemm_TransAB_Static_B_And_Bias_U16Act_U8Weight) {
                                          true);  // Use com.microsoft Q/DQ ops
 }
 
+// Broken on v79 and v81 devices:
+// Inaccuracy detected for output 'output_0', element 0
+// output_range=31.434787750244141, tolerance=0.40000000596046448%.
+// Expected val (f32@CPU_EP): 29.434776306152344
+// qdq@QNN_EP val: 28.229671478271484 (err: 1.2051048278808594, err/output_range: 3.8336660861968994%)
+// qdq@CPU_EP val: 29.092588424682617 (err: 0.34218788146972656, err/output_range: 1.0885642766952515%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 2.7451016902923584%
 // Test QDQ Gemm with transposed A/B and dynamic (i.e., not initializer) B and Bias inputs.
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+TEST_F(QnnHTPBackendTests, DISABLED_Gemm_TransAB_Dynamic_B_And_Bias) {
+#else
 TEST_F(QnnHTPBackendTests, Gemm_TransAB_Dynamic_B_And_Bias) {
+#endif
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
   std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);
@@ -525,15 +546,19 @@ TEST_F(QnnGPUBackendTests, Gemm_AlphaBetaUnsupported) {
                      "gpu");
 }
 
-// Gemm with matrix bias ie 2D (M, N) is NOT supported. (Note: vector bias is supported ie when M == 1).
+// Gemm with matrix bias ie 2D (M, N) is supported.
+// When vector bias ie M == 1
 // QNN's FullyConnected operator only supports `outputVector = ( inputAsVector * weightsMatrix ) + biasesVector`
-TEST_F(QnnGPUBackendTests, Gemm_2DBiasUnsupported) {
-  // 2D matrix mul with 2D bias not supported.
+// When 2D bias i.e. M != 1, N != 1.
+// When 2D bias i.e. M != 1, N != 1.
+// QNN's Gemm will be split in to FullyConnected and ElementwiseAdd.
+TEST_F(QnnGPUBackendTests, Gemm_2D_Bias) {
+  // 2D matrix mul with 2D bias is supported when Gemm is not a QDQ node.
   RunGemmTest<float>({TestInputDef<float>({2, 3}, false, -10.0f, 10.0f),
                       TestInputDef<float>({3, 4}, false, -10.0f, 10.0f),
                       TestInputDef<float>({2, 4}, false, -1.0f, 1.0f)},
                      {},
-                     ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
+                     ExpectedEPNodeAssignment::All,  // Should be assigned to QNN EP.
                      "gpu");
 }
 

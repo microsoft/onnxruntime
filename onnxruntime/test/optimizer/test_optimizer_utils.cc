@@ -65,8 +65,6 @@ void RunModelWithData(const PathString& model_uri, const std::string session_log
     execution_provider = DefaultCpuExecutionProvider();
   else if (provider_type == onnxruntime::kCudaExecutionProvider)
     execution_provider = DefaultCudaExecutionProvider();
-  else if (provider_type == onnxruntime::kRocmExecutionProvider)
-    execution_provider = DefaultRocmExecutionProvider();
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
 
   Status st;

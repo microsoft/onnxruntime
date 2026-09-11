@@ -33,7 +33,7 @@ class OrtValueNameIdxMap {
   common::Status GetIdx(std::string_view name, int& idx) const {
     idx = -1;
 
-    auto it = map_.find(std::string(name));
+    auto it = map_.find(name);
     if (it == map_.end()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not find OrtValue with name '", name, "'");
     }

@@ -48,7 +48,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder()
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
+        .TypeConstraint("T2", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<int8_t>()})
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
     MatMulInteger);
 

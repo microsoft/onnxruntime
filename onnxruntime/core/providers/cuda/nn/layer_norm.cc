@@ -6,6 +6,7 @@
 #include "core/providers/cuda/nn/layer_norm_impl.h"
 #include "core/providers/cpu/nn/layer_norm_helper.h"
 #include "core/providers/cuda/cuda_common.h"
+#include <limits>
 
 namespace onnxruntime {
 namespace cuda {
@@ -87,6 +88,18 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   if (x_shape.Size() == 0) {
     return Status::OK();
   }
+
+  // Validate that norm_size won't cause integer overflow in host-side arithmetic.
+  // HostApplyLayerNorm computes: (n2 + 4 * warp_size - 1) where warp_size is typically 32.
+  // Maximum safe value: INT_MAX - (4 * max_warp_size) to prevent overflow.
+  // Using 256 as a conservative upper bound for 4 * warp_size.
+  constexpr int MAX_WARP_FACTOR = 256;
+  const int MAX_NORM_SIZE = std::numeric_limits<int>::max() - MAX_WARP_FACTOR;
+
+  ORT_RETURN_IF(params.num_rows > 0 &&
+                    (params.norm_size > MAX_NORM_SIZE ||
+                     params.norm_size > std::numeric_limits<int>::max() / params.num_rows),
+                "LayerNormalization input is too large for CUDA kernel indexing: norm_size exceeds safe limits or num_rows * norm_size exceeds INT_MAX");
 
   HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(
       GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data, X_data,

@@ -47,5 +47,9 @@ class Reshape final : public OpKernel {
   bool allow_zero_;
 };
 
+// Create Reshape kernel info with appropriate type constraints based on int64 support
+KernelCreateInfo CreateReshapeVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateReshapeKernelInfo(int since_version, bool enable_int64);
+
 }  // namespace webgpu
 }  // namespace onnxruntime

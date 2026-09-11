@@ -21,6 +21,8 @@ using Microsoft::WRL::ComPtr;
 #include <wil/wrl.h>
 #include <wil/result.h>
 
+#include "core/providers/dml/DmlExecutionProvider/src/SafeMakeOrThrow.h"
+
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #include "core/session/abi_session_options_impl.h"
@@ -65,6 +67,9 @@ struct DMLProviderFactory : IExecutionProviderFactory {
 
   void SetMetacommandsEnabled(bool metacommands_enabled);
 
+  IDMLDevice* GetDMLDevice();
+  ID3D12CommandQueue* GetDMLCommandQueue();
+
  private:
   ComPtr<IDMLDevice> dml_device_{};
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
@@ -86,11 +91,11 @@ std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
 
     // First, check if an I/O binding API that was used before this session or another session has already created a queue
     if (FAILED(d3d12_device->GetPrivateData(dml_execution_context_guid, &execution_context_ptr_size, execution_context.GetAddressOf()))) {
-      execution_context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), true, true);
+      execution_context = Dml::SafeMakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), true, true);
       ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_execution_context_guid, execution_context.Get()));
     }
   } else {
-    execution_context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), cpu_sync_spinning_enabled_, false);
+    execution_context = Dml::SafeMakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), cpu_sync_spinning_enabled_, false);
   }
 
   auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), execution_context.Get(), metacommands_enabled_, graph_capture_enabled_, cpu_sync_spinning_enabled_, disable_memory_arena_);
@@ -99,6 +104,14 @@ std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
 
 void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
   metacommands_enabled_ = metacommands_enabled;
+}
+
+IDMLDevice* DMLProviderFactory::GetDMLDevice() {
+  return dml_device_.Get();
+}
+
+ID3D12CommandQueue* DMLProviderFactory::GetDMLCommandQueue() {
+  return cmd_queue_.Get();
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(const ConfigOptions& config_options,
@@ -712,6 +725,40 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(GetDMLDevice, _In_ OrtSessionOptions* options, _Out_ IDMLDevice** dmlDevice) {
+  API_IMPL_BEGIN
+
+  *dmlDevice = nullptr;
+#ifdef USE_DML 
+  if (options) {
+    for (auto& factory : options->provider_factories) {
+      if (auto dml_provider_factory = static_cast<onnxruntime::DMLProviderFactory*>(factory.get())) {
+        *dmlDevice = dml_provider_factory->GetDMLDevice();
+      }
+    }
+  }
+#endif  // USE_DML
+  return nullptr;
+API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(GetDMLCommandQueue, _In_ OrtSessionOptions* options, _Out_ ID3D12CommandQueue** dmlCommandQ) {
+  API_IMPL_BEGIN
+
+  *dmlCommandQ = nullptr;
+#ifdef USE_DML 
+  if (options) {
+    for (auto& factory : options->provider_factories) {
+      if (auto dml_provider_factory = static_cast<onnxruntime::DMLProviderFactory*>(factory.get())) {
+        *dmlCommandQ = dml_provider_factory->GetDMLCommandQueue();
+      }
+    }
+  }
+#endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProvider_DML,
   &OrtSessionOptionsAppendExecutionProviderEx_DML,
@@ -719,6 +766,8 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &FreeGPUAllocation,
   &GetD3D12ResourceFromAllocation,
   &OrtSessionOptionsAppendExecutionProvider_DML2,
+  &GetDMLDevice,
+  &GetDMLCommandQueue,
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {

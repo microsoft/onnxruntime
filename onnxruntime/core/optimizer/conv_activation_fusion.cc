@@ -79,7 +79,7 @@ class ConvActivationSelector : public NodeSelector {
       return std::nullopt;
     }
 
-    auto is_supported_non_cuda_rocm_ep_activation = [&graph_viewer](const Node& activation_node) {
+    auto is_supported_non_cuda_ep_activation = [&graph_viewer](const Node& activation_node) {
       if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Relu", {6, 13, 14}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Sigmoid", {6, 13}) ||
           graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Tanh", {6, 13}) ||
@@ -98,6 +98,27 @@ class ConvActivationSelector : public NodeSelector {
       return false;
     };
 
+    // These activations are supported only for WebGPU internal NHWC Conv.
+    auto is_supported_webgpu_ep_activation = [&node](const Node& activation_node) {
+      if (node.Domain() != kMSInternalNHWCDomain) {
+        return false;
+      }
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "FastGelu", {1}, kMSDomain)) {
+        // A bias makes FastGelu non-elementwise. An absent optional input is either omitted from
+        // the node or serialized with an empty name, so test the NodeArg rather than the count.
+        const auto& activation_inputs = activation_node.InputDefs();
+        return activation_inputs.size() < 2 || !activation_inputs[1]->Exists();
+      }
+      return graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "QuickGelu", {1}, kMSDomain) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Gelu", {1}, kMSDomain) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "HardSwish", {14, 22}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Elu", {6, 22}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Gelu", {20}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Softplus", {1, 22}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "ThresholdedRelu", {10, 22}) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(activation_node, "Erf", {9, 13});
+    };
+
     if (!ConvFusionDataTypeCheck(node)) {
       return std::nullopt;
     }
@@ -105,17 +126,15 @@ class ConvActivationSelector : public NodeSelector {
     // check EP type and activation
     if (node_ep == kCudaExecutionProvider) {
       return std::nullopt;
-    } else if (node_ep == kRocmExecutionProvider) {
-      if (!graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Relu", {6, 13, 14})) {
-        return std::nullopt;
-      }
     } else if (node_ep.empty() || node_ep == kCpuExecutionProvider || node_ep == kJsExecutionProvider || node_ep == kWebGpuExecutionProvider) {
-      if (!is_supported_non_cuda_rocm_ep_activation(*next_node) &&
-          !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "HardSigmoid", {6})) {
+      const bool webgpu_activation =
+          node_ep == kWebGpuExecutionProvider && is_supported_webgpu_ep_activation(*next_node);
+      if (!webgpu_activation && !is_supported_non_cuda_ep_activation(*next_node) &&
+          !graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "HardSigmoid", {6, 22})) {
         return std::nullopt;
       }
     } else {
-      if (!is_supported_non_cuda_rocm_ep_activation(*next_node)) {
+      if (!is_supported_non_cuda_ep_activation(*next_node)) {
         return std::nullopt;
       }
     }
@@ -144,8 +163,11 @@ class FuseConvActivationAction : public ReplaceWithNew {
         return "FusedConv";
       }
     } else if (domain == kMSDomain) {
-      if (op_type == "NhwcConv") {
+      if (op_type == "NhwcConv" || op_type == "NhwcFusedConv") {
         return "NhwcFusedConv";
+      }
+      if (op_type == "FusedConv") {
+        return "FusedConv";
       }
     } else if (domain == kMSInternalNHWCDomain) {
       if (op_type == "Conv") {
@@ -185,6 +207,22 @@ class FuseConvActivationAction : public ReplaceWithNew {
       float beta = (beta_attr == nullptr ? 0.5f : beta_attr->f());
       activation_params.push_back(alpha);
       activation_params.push_back(beta);
+    } else if (activation_op_type == "QuickGelu") {
+      // com.microsoft.QuickGelu defaults alpha to 1.702 (the GELU approximation)
+      constexpr float kQuickGeluDefaultAlpha = 1.702f;
+      auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
+      activation_params.push_back(alpha_attr == nullptr ? kQuickGeluDefaultAlpha : alpha_attr->f());
+    } else if (activation_op_type == "Elu") {
+      auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
+      activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
+    } else if (activation_op_type == "ThresholdedRelu") {
+      auto* alpha_attr = graph_utils::GetNodeAttribute(*activation, "alpha");
+      activation_params.push_back(alpha_attr == nullptr ? 1.0f : alpha_attr->f());
+    } else if (activation_op_type == "Gelu") {
+      // Encode ONNX Gelu's approximation mode as 0 (erf) or 1 (tanh).
+      const auto* approximate_attr = graph_utils::GetNodeAttribute(*activation, "approximate");
+      const bool tanh_approximation = approximate_attr != nullptr && approximate_attr->s() == "tanh";
+      activation_params.push_back(tanh_approximation ? 1.0f : 0.0f);
     }
 
     if (!activation_params.empty()) {
@@ -216,7 +254,7 @@ void RegisterConvActivationFusionRules(SelectorActionRegistry& registry) {
   const std::string msDomainConv = SelectorActionRegistry::OpVersionsMapKey("NhwcConv", kMSDomain);
   auto selector = std::make_unique<selectors::ConvActivationSelector>();
 
-  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11}}, {msInternalNHWCDomainConv, {1, 11}}, {msDomainConv, {1}}},
+  registry.RegisterSelectorAndAction(name, {{"Conv", {1, 11, 22}}, {msInternalNHWCDomainConv, {1, 11, 22}}, {msDomainConv, {1}}},
                                      std::move(selector), std::move(action));
 #else
   registry.RegisterAction(name, std::move(action));

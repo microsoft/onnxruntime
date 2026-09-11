@@ -58,6 +58,14 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
       excluded_providers.insert(kQnnExecutionProvider);
     }
 #endif
+// Disabled because QNN SDK 2.17 Relu treats inf as FLT_MAX.
+// QNN lowers ThresholdedRelu to sub -> relu -> sign -> mul.
+#if defined(USE_QNN)
+    int thresholdedrelu = strcmp(szOp, "ThresholdedRelu");
+    if (thresholdedrelu == 0) {
+      excluded_providers.insert(kQnnExecutionProvider);
+    }
+#endif
 // Use relative error because of computation error for float::max
 #if defined(USE_DNNL)
     int gelu = strcmp(szOp, "Gelu");

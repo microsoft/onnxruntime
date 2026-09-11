@@ -48,6 +48,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _torch_load_weights_only(path, **kwargs):
+    try:
+        return torch.load(path, weights_only=True, **kwargs)
+    except TypeError:
+        logger.warning(
+            "Current PyTorch version does not support torch.load(..., weights_only=True); "
+            "falling back to default torch.load behavior for %s.",
+            path,
+        )
+        return torch.load(path, **kwargs)
+
+
 def create_pretraining_dataset(input_file, max_pred_length, shared_list, args):
     train_data = pretraining_dataset(input_file=input_file, max_pred_length=max_pred_length)
     train_sampler = RandomSampler(train_data)
@@ -271,7 +283,9 @@ def prepare_model_and_optimizer(args, device):
             args.resume_step = max([int(x.split(".pt")[0].split("_")[1].strip()) for x in model_names])
         global_step = args.resume_step
 
-        checkpoint = torch.load(os.path.join(args.output_dir, f"ckpt_{global_step}.pt"), map_location="cpu")
+        checkpoint = _torch_load_weights_only(
+            os.path.join(args.output_dir, f"ckpt_{global_step}.pt"), map_location="cpu"
+        )
         model.load_state_dict(checkpoint["model"], strict=False)
         if args.phase2:
             global_step -= args.phase1_end_step

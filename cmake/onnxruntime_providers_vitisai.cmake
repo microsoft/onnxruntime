@@ -19,7 +19,16 @@
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vitisai_cc_srcs})
-  onnxruntime_add_shared_library(onnxruntime_providers_vitisai ${onnxruntime_providers_vitisai_cc_srcs})
+  set(onnxruntime_providers_vitisai_all_srcs ${onnxruntime_providers_vitisai_cc_srcs})
+  if(WIN32)
+    # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
+    list(APPEND onnxruntime_providers_vitisai_all_srcs "${ONNXRUNTIME_ROOT}/core/providers/vitisai/onnxruntime_providers_vitisai.rc")
+  endif()
+  onnxruntime_add_shared_library(onnxruntime_providers_vitisai ${onnxruntime_providers_vitisai_all_srcs})
+  if(WIN32)
+    # FILE_NAME preprocessor definition is used in onnxruntime_providers_vitisai.rc
+    target_compile_definitions(onnxruntime_providers_vitisai PRIVATE FILE_NAME=\"onnxruntime_providers_vitisai.dll\")
+  endif()
   onnxruntime_add_include_to_target(onnxruntime_providers_vitisai ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} safeint_interface flatbuffers::flatbuffers  Boost::mp11)
   target_link_libraries(onnxruntime_providers_vitisai PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED} ${ABSEIL_LIBS})
   if(MSVC)

@@ -9,8 +9,6 @@
 
 /* Modifications Copyright (c) Microsoft. */
 
-#include <type_traits>
-
 #pragma once
 #include "onnxruntime_config.h"
 // build/external/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h:162:71:
@@ -39,6 +37,7 @@
 #pragma warning(disable : 4127)
 #pragma warning(disable : 4805)
 #endif
+#include <chrono>
 #include <memory>
 #include "unsupported/Eigen/CXX11/ThreadPool"
 
@@ -52,6 +51,13 @@
 #include "core/common/spin_pause.h"
 #include "core/platform/ort_spin_lock.h"
 #include "core/platform/Barrier.h"
+#include "core/platform/threadpool_config.h"
+#include "core/session/onnxruntime_c_api.h"
+
+// Forward declaration for callback policy types
+namespace onnxruntime {
+struct ThreadOptions;
+}  // namespace onnxruntime
 
 // ORT thread pool overview
 // ------------------------
@@ -338,6 +344,8 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
                              unsigned n, std::ptrdiff_t block_size) = 0;
   virtual void StartProfiling() = 0;
   virtual std::string StopProfiling() = 0;
+  virtual void EnableSpinning() = 0;
+  virtual void DisableSpinning() = 0;
 };
 
 class ThreadPoolParallelSection {
@@ -404,9 +412,92 @@ class ThreadPoolLoop {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolLoop);
 };
 
-template <typename Work, typename Tag, unsigned kSize>
+// Callback policy that does not invoke callbacks. Work = std::function<void()>.
+// All methods are trivial no-ops; the compiler eliminates them entirely.
+struct WorkNoCallbackPolicy {
+  using Task = std::function<void()>;
+  using Work = Task;
+
+  explicit WorkNoCallbackPolicy(const onnxruntime::ThreadOptions&) {}
+
+  Work MakeWork(Task fn) const { return fn; }
+
+  void Execute(const Work& w) const { w(); }
+
+  void OnAbandon(const Work&) const noexcept {}
+};
+
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+// Callback-aware policy that invokes user-supplied callbacks around work items.
+// Work = WorkItem, a struct bundling a task with opaque callback data.
+struct WorkWithCallbackPolicy {
+  using Task = std::function<void()>;
+
+  struct WorkItem {
+    Task task_;
+    void* enqueue_data_ = nullptr;
+
+    explicit WorkItem(Task t = {}, void* data = nullptr) : task_(std::move(t)), enqueue_data_(data) {}
+
+    explicit operator bool() const { return static_cast<bool>(task_); }
+  };
+
+  using Work = WorkItem;
+
+  explicit WorkWithCallbackPolicy(const onnxruntime::ThreadOptions& opts) {
+    if (opts.work_callbacks) {
+      callbacks_ = *opts.work_callbacks;
+    }
+  }
+
+  Work MakeWork(Task fn) const {
+    return Work(std::move(fn), OnEnqueue());
+  }
+
+  void Execute(const Work& w) const {
+    void* data = w.enqueue_data_;
+    if (callbacks_.on_start_work) {
+      callbacks_.on_start_work(callbacks_.user_context, data);
+    }
+    ORT_TRY {
+      w.task_();
+    }
+    ORT_CATCH(...) {
+      if (callbacks_.on_stop_work) {
+        callbacks_.on_stop_work(callbacks_.user_context, data);
+      }
+      ORT_RETHROW;
+    }
+    if (callbacks_.on_stop_work) {
+      callbacks_.on_stop_work(callbacks_.user_context, data);
+    }
+  }
+
+  void OnAbandon(const Work& w) const noexcept {
+    if (callbacks_.on_abandon) {
+      callbacks_.on_abandon(callbacks_.user_context, w.enqueue_data_);
+    }
+  }
+
+ private:
+  void* OnEnqueue() const noexcept {
+    if (callbacks_.on_enqueue) {
+      return callbacks_.on_enqueue(callbacks_.user_context);
+    }
+    return nullptr;
+  }
+
+  OrtThreadPoolCallbacksConfig callbacks_{};
+};
+#endif  // ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+
+template <typename CallbackPolicy, typename Tag, unsigned kSize>
 class RunQueue {
  public:
+  using Work = typename CallbackPolicy::Work;
+
+  void SetPolicy(CallbackPolicy* p) { policy_ = p; }
+
   RunQueue() : front_(0), back_(0) {
     // require power-of-two for fast masking
     assert((kSize & (kSize - 1)) == 0);
@@ -479,7 +570,7 @@ class RunQueue {
   // subsequent call to RevokeWithTag to remove the item from the queue in combination
   // with w_idx.  Typically the tag will be a per-thread ID to distinguish work
   // submitted from different threads.
-  PushResult PushBackWithTag(Work w, Tag tag, unsigned& w_idx) {
+  PushResult PushBackWithTag(Work& w, Tag tag, unsigned& w_idx) {
 #ifdef USE_LOCK_FREE_QUEUE
     std::lock_guard<OrtSpinLock> mtx(spin_lock_);
 #else
@@ -548,6 +639,9 @@ class RunQueue {
   // Return true iff the item is successfully revoked.  If the item is not revoked then
   // the caller must assume that it may still execute, for instance because it
   // has been pop'd from the queue concurrent with the revocation request.
+  //
+  // On successful revocation the queue calls the policy's OnAbandon callback
+  // to free any resources associated with the work item.
 
   bool RevokeWithTag(Tag tag, unsigned w_idx) {
     bool revoked = false;
@@ -568,6 +662,7 @@ class RunQueue {
       if (e.tag == tag) {
         unsigned back = back_.load(std::memory_order_relaxed);
         unsigned back_idx = back & kMask;
+        policy_->OnAbandon(e.w);
         if (back_idx != w_idx) {
           // Item is not at the back of the queue, mark it in-place as revoked
           e.tag = Tag();
@@ -626,6 +721,8 @@ class RunQueue {
     Tag tag;
     Work w;
   };
+
+  CallbackPolicy* policy_ = nullptr;
 
 #ifdef USE_LOCK_FREE_QUEUE
   OrtSpinLock spin_lock_;
@@ -694,7 +791,7 @@ class RunQueue {
 
 static std::atomic<uint32_t> next_tag{1};
 
-template <typename Environment>
+template <typename Environment, typename CallbackPolicy>
 class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInterface {
  private:
   struct PerThread;
@@ -764,15 +861,22 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   };
 
   typedef std::function<void()> Task;
-  typedef RunQueue<Task, Tag, 1024> Queue;
 
-  ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, bool allow_spinning, Environment& env,
-                  const ThreadOptions& thread_options)
+  using Work = typename CallbackPolicy::Work;
+
+  typedef RunQueue<CallbackPolicy, Tag, 1024> Queue;
+
+  ThreadPoolTempl(const CHAR_TYPE* name, int num_threads, int spin_duration_us,
+                  unsigned int spin_backoff_max,
+                  Environment& env, const ThreadOptions& thread_options)
       : profiler_(num_threads, name),
         env_(env),
         num_threads_(num_threads),
-        allow_spinning_(allow_spinning),
+        spin_backoff_max_(NormalizeBackoff(spin_backoff_max)),
+        spin_count_(ScaleSpinCountForBackoff(ComputeSpinCount(spin_duration_us), spin_backoff_max_)),
+        steal_interval_(std::max(spin_count_ / 100, 1)),
         set_denormal_as_zero_(thread_options.set_denormal_as_zero),
+        callback_policy_(thread_options),
         worker_data_(num_threads),
         all_coprimes_(num_threads),
         blocked_(0),
@@ -795,6 +899,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     ORT_TRY {
       worker_data_.resize(num_threads_);
       for (auto i = 0u; i < num_threads_; i++) {
+        worker_data_[i].queue.SetPolicy(&callback_policy_);
         worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
       }
     }
@@ -816,17 +921,19 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // reject work if the queue of pending work is full.
 
   void Schedule(std::function<void()> fn) override {
+    Work work_item = callback_policy_.MakeWork(std::move(fn));
+
     PerThread* pt = GetPerThread();
     int q_idx = Rand(&pt->rand) % num_threads_;
     WorkerData& td = worker_data_[q_idx];
     Queue& q = td.queue;
-    fn = q.PushBack(std::move(fn));
-    if (!fn) {
+    work_item = q.PushBack(std::move(work_item));
+    if (!work_item) {
       // The queue accepted the work; ensure that the thread will pick it up
       td.EnsureAwake();
     } else {
       // Run the work directly if the queue rejected the work
-      fn();
+      callback_policy_.Execute(work_item);
     }
   }
 
@@ -1098,15 +1205,14 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       Queue& q = td.queue;
       unsigned w_idx;
 
-      // Attempt to enqueue the task
-      auto push_status = q.PushBackWithTag([worker_fn, par_idx, &preferred_workers, &ps, this]() {
-        // Record the worker thread that actually runs this task.
-        // This will form the preferred worker for the next loop.
+      Work work_item = callback_policy_.MakeWork([worker_fn, par_idx, &preferred_workers, &ps, this]() {
         UpdatePreferredWorker(preferred_workers, par_idx);
         worker_fn(par_idx);
         ps.tasks_finished++;
-      },
-                                           pt.tag, w_idx);
+      });
+
+      // Attempt to enqueue the task
+      auto push_status = q.PushBackWithTag(work_item, pt.tag, w_idx);
 
       // Queue accepted the task; wake the thread that owns the queue.
       // In addition, if the queue was non-empty, attempt to wake
@@ -1117,6 +1223,8 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
         if (push_status == PushResult::ACCEPTED_BUSY) {
           worker_data_[Rand(&pt.rand) % num_threads_].EnsureAwake();
         }
+      } else {
+        callback_policy_.OnAbandon(work_item);
       }
     }
   }
@@ -1205,13 +1313,15 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           ps.work_done.store(true, std::memory_order_release);
         };
 
+        Work dispatch_work_item = callback_policy_.MakeWork(std::move(dispatch_task));
+
         profiler_.LogStart();
         ps.dispatch_q_idx = preferred_workers[current_dop] % num_threads_;
         WorkerData& dispatch_td = worker_data_[ps.dispatch_q_idx];
         Queue& dispatch_que = dispatch_td.queue;
 
         // assign dispatch task to selected dispatcher
-        auto push_status = dispatch_que.PushBackWithTag(dispatch_task, pt.tag, ps.dispatch_w_idx);
+        auto push_status = dispatch_que.PushBackWithTag(dispatch_work_item, pt.tag, ps.dispatch_w_idx);
         // Queue accepted the task; wake the thread that owns the queue.
         // In addition, if the queue was non-empty, attempt to wake
         // another thread (which may then steal the task).
@@ -1222,6 +1332,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           }
         } else {
           ps.dispatch_q_idx = -1;  // failed to enqueue dispatch_task
+          callback_policy_.OnAbandon(dispatch_work_item);
         }
         profiler_.LogEnd(ThreadPoolProfiler::DISTRIBUTION_ENQUEUE);
       } else {
@@ -1323,11 +1434,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     return -1;
   }
 
-  void EnableSpinning() {
+  void EnableSpinning() override {
     spin_loop_status_ = SpinLoopStatus::kBusy;
   }
 
-  void DisableSpinning() {
+  void DisableSpinning() override {
     spin_loop_status_ = SpinLoopStatus::kIdle;
   }
 
@@ -1492,10 +1603,91 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     std::condition_variable cv;
   };
 
+  // Measure the average duration of a single SpinPause() call in nanoseconds.
+  // Runs exactly once per process (thread-safe via function-local static init).
+  // The result is used to convert a user-specified spin duration in microseconds
+  // into an iteration count, avoiding clock reads in the hot spin loop.
+  static int CalibrateSpinPauseNs() {
+    return onnxruntime::concurrency::CalibrateSpinPauseNs();
+  }
+
+  // Convert spin_duration_us into an iteration count for the spin loop.
+  //   -1 (default): use the original fixed iteration count (1 << 20).
+  //    0: no spinning.
+  //   >0: calibrate SpinPause() latency and compute the corresponding count.
+  static int ComputeSpinCount(int spin_duration_us) {
+    if (spin_duration_us == 0) return 0;
+    if (spin_duration_us < 0) return 1 << 20;  // ~1M iterations (original default)
+    int ns_per_iter = CalibrateSpinPauseNs();
+    auto count = static_cast<int64_t>(spin_duration_us) * 1000 / ns_per_iter;
+    return static_cast<int>(std::min<int64_t>(count, 1 << 30));
+  }
+
+  // Clamp user-supplied backoff cap into a valid range. Any value < 1 is
+  // treated as 1 (no backoff, one SpinPause() per iteration), and very large
+  // values are capped so a single wait() cannot emit an excessive pause burst.
+  static unsigned int NormalizeBackoff(unsigned int spin_backoff_max) {
+    return std::min(std::max(spin_backoff_max, 1U), onnxruntime::concurrency::kSpinBackoffMaxLimit);
+  }
+
+  // With exponential backoff capped at M, ThreadPoolWaiter::wait() ramps up to
+  // M SpinPause() calls per iteration and then stays at M. To preserve the
+  // targeted spin budget, divide the iteration budget by M so that
+  // (iterations) x (steady-state pauses per iter) ~= original pause budget.
+  // For explicit spin_duration_us > 0 this keeps the wall-clock spin window
+  // close to the requested duration. For the legacy default path
+  // (spin_duration_us < 0), the original semantic was "spin for ~1M
+  // iterations", so this scaling intentionally preserves only an approximate
+  // pause budget rather than the historical outer-loop iteration count. The
+  // ramp-up phase is O(log M) iterations and is negligible for typical M
+  // (<=64).
+  static int ScaleSpinCountForBackoff(int spin_count, unsigned int spin_backoff_max) {
+    if (spin_count <= 0 || spin_backoff_max <= 1U) {
+      return spin_count;
+    }
+    const int divisor = static_cast<int>(spin_backoff_max);
+    return std::max(spin_count / divisor, 1);
+  }
+
+  // Exponential-backoff waiter adapted from the approach in
+  // https://github.com/microsoft/onnxruntime/pull/23278 and combined with the
+  // configurable spin-window in this PR. Each call to wait() emits a growing
+  // number of SpinPause() instructions (1, 2, 4, ... capped at max_backoff_),
+  // reducing CPU/power density during the spin window. The object must be reset
+  // between unrelated spin windows (cheap: just reconstruct).
+  class ThreadPoolWaiter {
+    unsigned pause_time_{0};
+    const unsigned max_backoff_;
+
+   public:
+    explicit ThreadPoolWaiter(unsigned max_backoff) : max_backoff_(max_backoff) {}
+
+    template <typename ShouldInterrupt>
+    bool wait(ShouldInterrupt should_interrupt) {
+      unsigned pause_count = 1U;
+      if (max_backoff_ > 1U) {
+        // Double pause_time_ each call (starting from 1) and cap at max_backoff_.
+        // Produces the sequence 1, 2, 4, ..., max_backoff_, max_backoff_, ...
+        pause_count = (pause_time_ == 0U) ? 1U : std::min(pause_time_ * 2U, max_backoff_);
+      }
+      pause_time_ = pause_count;
+      for (unsigned i = 0; i < pause_count; ++i) {
+        if (should_interrupt()) {
+          return true;
+        }
+        onnxruntime::concurrency::SpinPause();
+      }
+      return should_interrupt();
+    }
+  };
+
   Environment& env_;
   const unsigned num_threads_;
-  const bool allow_spinning_;
+  const unsigned int spin_backoff_max_;  // 1 = no backoff, >=2 exp-backoff cap
+  const int spin_count_;                 // Number of spin iterations before blocking (0 = no spin)
+  const int steal_interval_;             // Attempt work steal every steal_interval_ iterations
   const bool set_denormal_as_zero_;
+  CallbackPolicy callback_policy_;
   Eigen::MaxSizeVector<WorkerData> worker_data_;
   Eigen::MaxSizeVector<Eigen::MaxSizeVector<unsigned>> all_coprimes_;
   std::atomic<unsigned> blocked_;  // Count of blocked workers, used as a termination condition
@@ -1535,33 +1727,52 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
     assert(td.GetStatus() == WorkerData::ThreadStatus::Spinning);
 
-    constexpr int log2_spin = 20;
-    const int spin_count = allow_spinning_ ? (1ull << log2_spin) : 0;
-    const int steal_count = spin_count / 100;
-
     SetDenormalAsZero(set_denormal_as_zero_);
     profiler_.LogThreadId(thread_id);
 
     while (!should_exit) {
-      Task t = q.PopFront();
-      if (!t) {
-        // Spin waiting for work.
-        for (int i = 0; i < spin_count && !done_; i++) {
-          if (((i + 1) % steal_count == 0)) {
-            t = Steal(StealAttemptKind::TRY_ONE);
+      Work w = q.PopFront();
+      if (!w) {
+        // Spin waiting for work. spin_count_ is determined at construction:
+        //   default (-1): 1<<20 iterations (original behavior)
+        //   0: no spinning (skip loop entirely)
+        //   >0 us: iteration count derived from one-time SpinPause() calibration
+        // When spin_backoff_max_ > 1, ThreadPoolWaiter emits an exponentially
+        // growing number of SpinPause() calls per iteration to reduce pause
+        // density; spin_count_ has already been scaled to preserve the
+        // targeted wall-clock window.
+        // steal_interval_ = max(spin_count_/100, 1), yielding ~100 steal attempts per spin window.
+        // When backoff stretches each outer iteration, the wall-clock spacing
+        // between steal attempts also grows. We keep the same approximate
+        // number of steal attempts per spin window to preserve the legacy
+        // steal-vs-block trade-off.
+        ThreadPoolWaiter waiter{spin_backoff_max_};
+        int steal_countdown = steal_interval_;
+        for (int i = 0; i < spin_count_ && !done_; i++) {
+          if (--steal_countdown == 0) {
+            w = Steal(StealAttemptKind::TRY_ONE);
+            steal_countdown = steal_interval_;
           } else {
-            t = q.PopFront();
+            w = q.PopFront();
           }
-          if (t) break;
-
+          if (w) break;
           if (spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
             break;
           }
-          onnxruntime::concurrency::SpinPause();
+          if (waiter.wait([&]() {
+                if (done_.load(std::memory_order_relaxed) ||
+                    spin_loop_status_.load(std::memory_order_relaxed) == SpinLoopStatus::kIdle) {
+                  return true;
+                }
+                w = q.PopFront();
+                return static_cast<bool>(w);
+              })) {
+            break;
+          }
         }
 
         // Attempt to block
-        if (!t) {
+        if (!w) {
           if (!td.SetBlocked(  // Pre-block test
                   [&]() -> bool {
                     bool should_block = true;
@@ -1580,9 +1791,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
                     // If #A is before #2 then main sees worker blocked and wakes
                     //
                     // If #A if after #2 then #B will see #1, and we abandon blocking
-                    assert(!t);
-                    t = q.PopFront();
-                    if (t) {
+                    assert(!w);
+                    w = q.PopFront();
+                    if (w) {
                       should_block = false;
                     }
 
@@ -1625,14 +1836,14 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
           // Thread just unblocked.  Unless we picked up work while
           // blocking, or are exiting, then either work was pushed to
           // us, or it was pushed to an overloaded queue
-          if (!t) t = q.PopFront();
-          if (!t) t = Steal(StealAttemptKind::TRY_ALL);
+          if (!w) w = q.PopFront();
+          if (!w) w = Steal(StealAttemptKind::TRY_ALL);
         }
       }
 
-      if (t) {
+      if (w) {
         td.SetActive();
-        t();
+        callback_policy_.Execute(w);
         profiler_.LogRun(thread_id);
         td.SetSpinning();
       }
@@ -1652,7 +1863,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // "snatching" work from a thread which is just about to notice the
   // work itself.
 
-  Task Steal(StealAttemptKind steal_kind) {
+  Work Steal(StealAttemptKind steal_kind) {
     PerThread* pt = GetPerThread();
     unsigned size = num_threads_;
     unsigned num_attempts = (steal_kind == StealAttemptKind::TRY_ALL) ? size : 1;
@@ -1663,9 +1874,9 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     for (unsigned i = 0; i < num_attempts; i++) {
       assert(victim < size);
       if (worker_data_[victim].GetStatus() == WorkerData::ThreadStatus::Active) {
-        Task t = worker_data_[victim].queue.PopBack();
-        if (t) {
-          return t;
+        Work w = worker_data_[victim].queue.PopBack();
+        if (w) {
+          return w;
         }
       }
       victim += inc;
@@ -1674,7 +1885,7 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       }
     }
 
-    return Task();
+    return Work();
   }
 
   int NonEmptyQueueIndex() {

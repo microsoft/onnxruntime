@@ -159,10 +159,10 @@ LComputeErf4x8Loop:
         vmovups YMMWORD PTR ErfKernelFrame.ErfBuffer0[rsp+96],ymm7
 
         vbroadcastss ymm8,ErfConstants.ErfSMALL_P0[rax]
-        vminps  ymm0,ymm0,ymm14                 ; force abs value in range
-        vminps  ymm1,ymm1,ymm14
-        vminps  ymm2,ymm2,ymm14
-        vminps  ymm3,ymm3,ymm14
+        vminps  ymm0,ymm14,ymm0                 ; clamp abs value in range; input in src2 preserves NaN (issue #28462)
+        vminps  ymm1,ymm14,ymm1
+        vminps  ymm2,ymm14,ymm2
+        vminps  ymm3,ymm14,ymm3
         vmovaps ymm9,ymm8
         vmovaps ymm10,ymm8
         vmovaps ymm11,ymm8
@@ -427,7 +427,7 @@ LErfProcess1x8:
         vmovups YMMWORD PTR ErfKernelFrame.ErfBuffer0[rsp],ymm4
 
         vbroadcastss ymm8,ErfConstants.ErfSMALL_P0[rax]
-        vminps  ymm0,ymm0,ymm14                 ; force abs value in range
+        vminps  ymm0,ymm14,ymm0                 ; clamp abs value in range; input in src2 preserves NaN (issue #28462)
 
         vbroadcastss ymm15,ErfConstants.ErfSMALL_P1[rax]
         vmulps  ymm4,ymm0,ymm0                  ; vs0 (square)

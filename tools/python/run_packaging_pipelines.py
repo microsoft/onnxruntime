@@ -277,7 +277,9 @@ def filter_pipelines(pipelines: list[dict], token: str, branch: str, is_pr_build
             if result:
                 filtered_results.append(result)
 
-    print(f"\nFound {len(filtered_results)} pipelines to trigger.")
+    print(f"\nFound {len(filtered_results)} pipelines to trigger:")
+    for result in filtered_results:
+        print(f"  - {result['pipeline']['name']}")
     return filtered_results
 
 
@@ -444,19 +446,41 @@ def main():
             print(f"  - {result['pipeline']['name']} (ID: {result['pipeline']['id']})")
     else:
         print(f"\n--- Triggering {len(pipelines_to_trigger)} Pipelines on branch '{branch_for_trigger}' ---")
-        nightly_override = None
-        release_override = None
-        if args.build_mode == "nightly":
-            nightly_override = "1"
-            release_override = "false"
-        elif args.build_mode == "release":
-            nightly_override = "0"
-            release_override = "true"
+
+        # If pre-release flags are used, it implies a release build.
+        if args.pre_release_suffix_string:
+            print("Pre-release suffix provided. Forcing 'release' build mode.")
+            if args.build_mode and args.build_mode != "release":
+                print(f"Warning: --build-mode={args.build_mode} is overridden by pre-release flags.")
+
+        # If pre-release flags are used, it implies a release build.
+        if args.pre_release_suffix_string:
+            print("Pre-release suffix provided. Forcing 'release' build mode.")
+            if args.build_mode and args.build_mode != "release":
+                print(f"Warning: --build-mode={args.build_mode} is overridden by pre-release flags.")
 
         for result in pipelines_to_trigger:
             pipeline = result["pipeline"]
             packaging_type = result["packaging_type"]
             has_pre_release_params = result["has_pre_release_params"]
+
+            # Determine build mode based on flags
+            nightly_override = None
+            release_override = None
+            if args.build_mode == "nightly":
+                nightly_override = "1"
+                release_override = "false"
+            elif args.build_mode == "release":
+                nightly_override = "0"
+                release_override = "true"
+
+            # If pre-release flags are used AND the pipeline supports them, it implies a release build.
+            if args.pre_release_suffix_string and has_pre_release_params:
+                print(f"Pre-release flags used and supported by '{pipeline['name']}'. Forcing 'release' mode.")
+                if args.build_mode and args.build_mode != "release":
+                    print(f"  - Warning: --build-mode={args.build_mode} is overridden for this pipeline.")
+                nightly_override = "0"
+                release_override = "true"
 
             if not args.no_cancel_builds:
                 cancel_running_builds(pipeline["id"], branch_for_trigger, token, project)

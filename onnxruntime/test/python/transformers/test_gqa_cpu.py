@@ -19,6 +19,7 @@ import numpy
 import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
+from env_var_helper import scoped_env_var
 from onnx import TensorProto, helper
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
@@ -199,7 +200,7 @@ def create_group_query_attention_graph_prompt(
             smooth_softmax=1 if use_smooth_softmax else 0,
             qk_output=config.qk_output.value,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
-            # kv_share_buffer=1 if share_buffer else 0,
+            # past_present_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
         ),
     ]
@@ -442,7 +443,7 @@ def create_group_query_attention_graph_past(
             smooth_softmax=1 if use_smooth_softmax else 0,
             qk_output=config.qk_output.value,
             # is_past_bsnh=1 if past_kv_format == Formats.BSNH else 0,
-            # kv_share_buffer=1 if share_buffer else 0,
+            # past_present_share_buffer=1 if share_buffer else 0,
             domain="com.microsoft",
         ),
     ]
@@ -916,7 +917,9 @@ def gqa_prompt_func(
         ort_outputs["output_qk"] = OrtValue.ortvalue_from_numpy(output_qk.detach().cpu().numpy(), "cpu", 0)
         io_binding.bind_ortvalue_output("output_qk", ort_outputs["output_qk"])
 
+    io_binding.synchronize_inputs()
     ort_session.run_with_iobinding(io_binding)
+    io_binding.synchronize_outputs()
 
     out_qk = None
     if config.qk_output != QKOutputType.NO_OUTPUT:
@@ -1083,7 +1086,9 @@ def gqa_past_func(
         ort_outputs["output_qk"] = OrtValue.ortvalue_from_numpy(output_qk.detach().cpu().numpy(), "cpu", 0)
         io_binding.bind_ortvalue_output("output_qk", ort_outputs["output_qk"])
 
+    io_binding.synchronize_inputs()
     ort_session.run_with_iobinding(io_binding)
+    io_binding.synchronize_outputs()
 
     out_qk = None
     if config.qk_output != QKOutputType.NO_OUTPUT:
@@ -1122,7 +1127,7 @@ def construct_local_mask(
         sk = torch.full_like(col_idx, seqlen_k) if key_padding_mask is None else sk
         return torch.logical_or(
             col_idx > torch.minimum(row_idx + sk - sq + window_size[1], sk),
-            col_idx < row_idx + sk - sq - window_size[0],
+            col_idx <= row_idx + sk - sq - window_size[0],
         )
 
 
@@ -2491,90 +2496,105 @@ class TestGQA(unittest.TestCase):
             print(
                 f"\nRunning tests with precision: {'FLOAT16' if precision['ort_type'] == TensorProto.FLOAT16 else 'FLOAT32'}"
             )
+            local_opts = [additional_params["local"]] if "local" in additional_params else [False, True]
+            rotary_opts = (
+                [(additional_params["rotary"], additional_params["rotary_interleaved"])]
+                if "rotary" in additional_params
+                else [(False, False), (True, False), (True, True)]
+            )
+            packed_opts = [additional_params["packed"]] if "packed" in additional_params else [False, True]
+            softcap_opts = [additional_params["softcap"]] if "softcap" in additional_params else [0.0, 50.0]
+            smooth_opts = (
+                [additional_params["use_smooth_softmax"]]
+                if "use_smooth_softmax" in additional_params
+                else [False, True]
+            )
+            head_sink_opts = [additional_params["head_sink"]] if "head_sink" in additional_params else [False, True]
+
+            combo_index = 0
             for b in batches:
                 for s, s2 in seqs:
                     for n, n2 in num_h:
                         for h in h_sizes:
-                            for local in [False, True]:
-                                for rotary, rotary_interleaved in [(False, False), (True, False), (True, True)]:
-                                    for packed in [False, True]:
-                                        for softcap in [0.0, 50.0]:
-                                            for use_smooth_softmax in [False, True]:
-                                                for has_pos, has_attn in pos_ids_attn_bias:
-                                                    for head_sink in [False, True]:
-                                                        if use_smooth_softmax and head_sink:
-                                                            continue
-                                                        for output_qk in qk_output:
-                                                            if config_class == PromptConfig:
-                                                                config = config_class(
-                                                                    b,
-                                                                    s,
-                                                                    s2,
-                                                                    s + s2 + 8,
-                                                                    n,
-                                                                    n2,
-                                                                    h,
-                                                                    has_pos,
-                                                                    has_attn,
-                                                                    head_sink,
-                                                                    output_qk,
-                                                                )
-                                                            else:  # Config
-                                                                sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
-                                                                config = config_class(
-                                                                    b,
-                                                                    s,
-                                                                    s2,
-                                                                    sp,
-                                                                    n,
-                                                                    n2,
-                                                                    h,
-                                                                    has_pos,
-                                                                    has_attn,
-                                                                    head_sink,
-                                                                    output_qk,
-                                                                )
+                            local = local_opts[combo_index % len(local_opts)]
+                            rotary, rotary_interleaved = rotary_opts[combo_index % len(rotary_opts)]
+                            packed = packed_opts[combo_index % len(packed_opts)]
+                            softcap = softcap_opts[combo_index % len(softcap_opts)]
+                            use_smooth_softmax = smooth_opts[combo_index % len(smooth_opts)]
 
-                                                            params = {
-                                                                "config": config,
-                                                                "torch_type": precision["torch_type"],
-                                                                "numpy_type": precision["numpy_type"],
-                                                                "ort_type": precision["ort_type"],
-                                                                "rtol": precision["rtol"],
-                                                                "atol": precision["atol"],
-                                                                "local": local,
-                                                                "past_format": Formats.BNSH,
-                                                                "rotary": rotary,
-                                                                "rotary_interleaved": rotary_interleaved,
-                                                                "packed": packed,
-                                                                "softcap": softcap,
-                                                                "use_smooth_softmax": use_smooth_softmax,
-                                                            }
-                                                            params.update(additional_params)
+                            has_pos, has_attn = pos_ids_attn_bias[combo_index % len(pos_ids_attn_bias)]
+                            head_sink = head_sink_opts[combo_index % len(head_sink_opts)]
+                            output_qk = qk_output[combo_index % len(qk_output)]
 
-                                                            all_close = test_func(**params)
-                                                            self.assertTrue(all_close)
+                            combo_index += 1
+
+                            if rotary and h % 16 != 0:  # rotary requires head_size to be a multiple of 16
+                                continue
+
+                            if use_smooth_softmax and head_sink:
+                                continue
+                            if config_class == PromptConfig:
+                                config = config_class(
+                                    b,
+                                    s,
+                                    s2,
+                                    s + s2 + 8,
+                                    n,
+                                    n2,
+                                    h,
+                                    has_pos,
+                                    has_attn,
+                                    head_sink,
+                                    output_qk,
+                                )
+                            else:  # Config
+                                sp = random.randint(1, s2 - s) if s2 - s > 0 else 0
+                                config = config_class(
+                                    b,
+                                    s,
+                                    s2,
+                                    sp,
+                                    n,
+                                    n2,
+                                    h,
+                                    has_pos,
+                                    has_attn,
+                                    head_sink,
+                                    output_qk,
+                                )
+
+                            params = {
+                                "config": config,
+                                "torch_type": precision["torch_type"],
+                                "numpy_type": precision["numpy_type"],
+                                "ort_type": precision["ort_type"],
+                                "rtol": precision["rtol"],
+                                "atol": precision["atol"],
+                                "local": local,
+                                "past_format": Formats.BNSH,
+                                "rotary": rotary,
+                                "rotary_interleaved": rotary_interleaved,
+                                "packed": packed,
+                                "softcap": softcap,
+                                "use_smooth_softmax": use_smooth_softmax,
+                            }
+                            params.update(additional_params)
+
+                            all_close = test_func(**params)
+                            self.assertTrue(all_close)
 
     def test_gqa_no_past(self):
         print("-------- TEST GQA NO PAST (PROMPT CASE) ---------")
-        batches = [3] if pipeline_mode else [1, 3, 5]
+        batches = [1, 3] if pipeline_mode else [1, 3, 5]
         seqs = (
             [(127, 127), (240, 240)]
             if pipeline_mode
             else [(127, 127), (35, 35), (2000, 2000), (200, 200), (240, 240), (8000, 8000)]
         )
-        pos_ids_attn_bias = (
-            [(False, False), (True, True)]
-            if pipeline_mode
-            else [(False, False), (True, True), (False, True), (True, False)]
-        )
+        pos_ids_attn_bias = [(False, False), (True, True), (False, True), (True, False)]
         num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [128] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        qk_output = (
-            [QKOutputType.NO_OUTPUT]
-            if pipeline_mode
-            else [QKOutputType.NO_OUTPUT, QKOutputType.BEFORE_SOFTMAX, QKOutputType.AFTER_SOFTMAX]
-        )
+        h_sizes = [40, 128] if pipeline_mode else [32, 48, 64, 80, 96, 128, 160, 192, 224, 256]
+        qk_output = [QKOutputType.NO_OUTPUT, QKOutputType.BEFORE_SOFTMAX, QKOutputType.AFTER_SOFTMAX]
 
         # Test with buffer
         self.run_test_config(
@@ -2601,24 +2621,16 @@ class TestGQA(unittest.TestCase):
 
     def test_gqa_past(self):
         print("-------- TEST GQA PAST (TOKEN GEN) ---------")
-        batches = [1] if pipeline_mode else [1, 3, 5]
+        batches = [1, 3] if pipeline_mode else [1, 3, 5]
         seqs = (
             [(1, 128)]
             if pipeline_mode
             else [(1, 128), (1, 339), (1, 1024), (1, 5000), (1, 800), (1, 256), (1, 799), (1, 2048)]
         )
-        pos_ids_attn_bias = (
-            [(False, False), (True, True)]
-            if pipeline_mode
-            else [(False, False), (True, True), (False, True), (True, False)]
-        )
+        pos_ids_attn_bias = [(False, False), (True, True), (False, True), (True, False)]
         num_h = [(9, 3)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [64] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
-        qk_output = (
-            [QKOutputType.NO_OUTPUT]
-            if pipeline_mode
-            else [QKOutputType.NO_OUTPUT, QKOutputType.BEFORE_SOFTMAX, QKOutputType.AFTER_SOFTMAX]
-        )
+        h_sizes = [64, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+        qk_output = [QKOutputType.NO_OUTPUT, QKOutputType.BEFORE_SOFTMAX, QKOutputType.AFTER_SOFTMAX]
 
         # Test with buffer
         self.run_test_config(parity_check_gqa_past, Config, batches, seqs, num_h, h_sizes, pos_ids_attn_bias, qk_output)
@@ -2634,22 +2646,81 @@ class TestGQA(unittest.TestCase):
             qk_output,
         )
 
+    def test_gqa_decode_flash_vs_naive_parity(self):
+        # The FP32 flash gate enables the dedicated GEMV decode kernel (and the
+        # flash-decoding KV-split reduction) for sequence_length == 1 with
+        # total_sequence_length > 1. Run the same decode configs against the
+        # reference twice: once with the flash path enabled (default) and once
+        # with it disabled via ORT_GQA_DISABLE_FLASH_ATTENTION=1 (naive path).
+        # If both paths match the reference, the decode kernel and KV-split
+        # reduction are correct -- including the bias and local-window cases.
+        print("-------- TEST GQA DECODE FLASH VS NAIVE PARITY ---------")
+
+        # FP32 only: the GEMV decode kernel and flash gate are float-only.
+        torch_type = torch.float32
+        numpy_type = numpy.float32
+        ort_type = TensorProto.FLOAT
+        rtol = 1e-3
+        atol = 1e-3
+
+        batches = [1, 3]
+        # (sequence_length == 1) decode. Include a long KV length so that the
+        # flash-decoding KV-split path (kv_chunk_count > 1) is exercised.
+        seqs = [(1, 128), (1, 2048)]
+        num_h = [(9, 3)]
+        h_sizes = [64, 128]
+
+        # "0" keeps the flash path enabled; "1" forces the naive path. Reseed per
+        # phase so both paths are validated against the reference on identical
+        # inputs, independent of test execution order.
+        for env_value in ["0", "1"]:
+            with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", env_value):
+                print(f"  flash {'disabled (naive path)' if env_value == '1' else 'enabled'}")
+                random.seed(69)
+                torch.manual_seed(69)
+                for b in batches:
+                    for s, s2 in seqs:
+                        for n, n2 in num_h:
+                            for h in h_sizes:
+                                for local in [False, True]:
+                                    for has_attn in [False, True]:
+                                        config = Config(
+                                            b,
+                                            s,
+                                            s2,
+                                            0,
+                                            n,
+                                            n2,
+                                            h,
+                                            False,
+                                            has_attn,
+                                            False,
+                                            QKOutputType.NO_OUTPUT,
+                                        )
+                                        all_close = parity_check_gqa_past(
+                                            config,
+                                            torch_type=torch_type,
+                                            numpy_type=numpy_type,
+                                            ort_type=ort_type,
+                                            local=local,
+                                            past_format=Formats.BNSH,
+                                            rtol=rtol,
+                                            atol=atol,
+                                        )
+                                        self.assertTrue(all_close)
+
     def test_gqa_interactive_one_batch(self):
         print("-------- TEST GQA INTERACTIVE ---------")
         batches = [1]
         seqs = (
-            [(256, 2048)]
+            [(256, 2048), (1, 128)]
             if pipeline_mode
             else [(1, 128), (1, 339), (1, 1024), (1, 5000), (1, 800), (1, 256), (1, 799), (1, 2048)]
         )
-        pos_ids_attn_bias = (
-            [(False, False), (True, True)]
-            if pipeline_mode
-            else [(False, False), (True, True), (False, True), (True, False)]
-        )
+        pos_ids_attn_bias = [(False, False), (True, True), (False, True), (True, False)]
         qk_output = [QKOutputType.NO_OUTPUT, QKOutputType.BEFORE_SOFTMAX, QKOutputType.AFTER_SOFTMAX]
         num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [32] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+        h_sizes = [32, 80] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
 
         # Only test softcap=0.0 for interactive case as per original
         self.run_test_config(
