@@ -169,9 +169,11 @@ class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
 class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
  public:
   explicit AccountingNhwcTestExecutionProvider(
-      std::optional<NodeIndex> unassignable_capability_node_index = std::nullopt)
+      std::optional<NodeIndex> unassignable_capability_node_index = std::nullopt,
+      bool fuse_pass1_survivors_on_second_pass = false)
       : IExecutionProvider{kCudaExecutionProvider},
-        unassignable_capability_node_index_(unassignable_capability_node_index) {
+        unassignable_capability_node_index_(unassignable_capability_node_index),
+        fuse_pass1_survivors_on_second_pass_(fuse_pass1_survivors_on_second_pass) {
   }
 
   DataLayout GetPreferredLayout() const override {
@@ -203,10 +205,12 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
     };
 
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    std::vector<const Node*> fused_pass1_survivors;
     size_t consumed_memory = 0;
     size_t memory_threshold = std::numeric_limits<size_t>::max();
     if (resource_accountant != nullptr) {
       consumed_memory = std::get<size_t>(resource_accountant->GetConsumedAmount());
+      last_observed_consumed_ = consumed_memory;
       if (const auto threshold = resource_accountant->GetThreshold(); threshold.has_value()) {
         memory_threshold = std::get<size_t>(*threshold);
       }
@@ -228,7 +232,8 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
       // Drop LogSoftmax on the second pass to model the EP releasing a node that
       // it tentatively claimed on the first pass. Relu models a node that becomes
       // claimable only in pass 2.
-      if ((second_pass && is_log_softmax) || (!second_pass && is_relu)) {
+      if ((second_pass && is_log_softmax && !fuse_pass1_survivors_on_second_pass_) ||
+          (!second_pass && is_relu)) {
         continue;
       }
 
@@ -238,6 +243,12 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
       }
 
       const bool already_claimed = (assigned_ep == Type());
+
+      if (second_pass && fuse_pass1_survivors_on_second_pass_ &&
+          (is_conv || is_log_softmax)) {
+        fused_pass1_survivors.push_back(node);
+        continue;
+      }
 
       if (unassignable_capability_node_index_.has_value() && !second_pass && is_log_softmax) {
         auto sub_graph = std::make_unique<IndexedSubGraph>();
@@ -285,6 +296,12 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
       }
     }
 
+    if (!fused_pass1_survivors.empty() &&
+        (resource_accountant == nullptr || !resource_accountant->IsStopIssued())) {
+      capabilities.push_back(utils::MakeComputeCapability(
+          graph_viewer, fused_pass1_survivors, generate_metadef_name, Type(), false));
+    }
+
     return capabilities;
   }
 
@@ -307,10 +324,16 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
     return observed_accountant_;
   }
 
+  std::optional<size_t> last_observed_consumed() const {
+    return last_observed_consumed_;
+  }
+
  private:
   mutable ModelMetadefIdGenerator metadef_id_generator_;
   mutable IResourceAccountant* observed_accountant_ = nullptr;
+  mutable std::optional<size_t> last_observed_consumed_;
   std::optional<NodeIndex> unassignable_capability_node_index_;
+  bool fuse_pass1_survivors_on_second_pass_;
 };
 
 }  // namespace
@@ -470,9 +493,12 @@ TEST(InternalTestingEP, NhwcSecondPassDropFallsBackFromCpuKernelNode) {
 // second pass must NOT consume budget (no phantom), while a node that survives must be
 // committed exactly once (no double-count). A dropped pass-1 node must be rolled back before
 // final admission so it cannot block a pass-2-only node that fits with the actual survivors.
-TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRollback) {
+void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
+                                       bool fuse_pass1_survivors = false) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
-  Model model("NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRollback",
+  Model model(pass2_node_precedes_survivor
+                  ? "NhwcTwoPassAccountingPreservesLaterSurvivorReservation"
+                  : "NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRollback",
               false,
               ModelMetaData(),
               PathString(),
@@ -491,9 +517,18 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRol
   auto* relu_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
   auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
 
-  builder.AddConvNode(input, weights, conv_output);
-  builder.AddNode("Relu", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{relu_output});
-  builder.AddNode("LogSoftmax", std::vector<NodeArg*>{relu_output}, std::vector<NodeArg*>{output});
+  if (pass2_node_precedes_survivor) {
+    builder.AddNode("Relu", std::vector<NodeArg*>{input}, std::vector<NodeArg*>{relu_output});
+    builder.AddConvNode(relu_output, weights, conv_output);
+  } else {
+    builder.AddConvNode(input, weights, conv_output);
+    builder.AddNode("Relu", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{relu_output});
+  }
+  if (pass2_node_precedes_survivor) {
+    builder.AddNode("LogSoftmax", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{output});
+  } else {
+    builder.AddNode("LogSoftmax", std::vector<NodeArg*>{relu_output}, std::vector<NodeArg*>{output});
+  }
   builder.SetGraphOutputs();
 
   ASSERT_STATUS_OK(graph.Resolve());
@@ -554,16 +589,24 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRol
   ASSERT_GT(expected_conv_cost, 0u);
   ASSERT_GT(expected_relu_cost, 0u);
   ASSERT_GT(expected_log_softmax_cost, 0u);
-  constexpr size_t kBudgetBytes = 1075 * 1024;
-  ASSERT_LT(expected_conv_cost + expected_relu_cost, kBudgetBytes);
-  ASSERT_GT(expected_conv_cost + expected_log_softmax_cost + expected_relu_cost, kBudgetBytes);
+  const size_t budget_bytes = (pass2_node_precedes_survivor ? 1000 : 1075) * 1024;
+  ASSERT_LT(expected_conv_cost + expected_log_softmax_cost, budget_bytes);
+  if (pass2_node_precedes_survivor) {
+    const size_t survivor_cost =
+        expected_conv_cost + (fuse_pass1_survivors ? expected_log_softmax_cost : 0);
+    ASSERT_GT(survivor_cost + expected_relu_cost, budget_bytes);
+  } else {
+    ASSERT_LT(expected_conv_cost + expected_relu_cost, budget_bytes);
+    ASSERT_GT(expected_conv_cost + expected_log_softmax_cost + expected_relu_cost, budget_bytes);
+  }
 
   // Drive partitioning directly with the accounting-aware NHWC EP. The accountant is
   // created internally by GraphPartitioner from the config option below (keyed to
   // kCudaExecutionProvider, which matches the EP's type).
   ExecutionProviders execution_providers;
   auto& default_logger = DefaultLoggingManager().DefaultLogger();
-  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>();
+  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>(
+      std::nullopt, fuse_pass1_survivors);
   auto* ep_raw = ep.get();
   ep->SetLogger(&default_logger);
   ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(ep)));
@@ -572,8 +615,9 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRol
   ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
 
   SessionOptions sess_options;
+  const std::string partitioning_settings = std::to_string(budget_bytes / 1024) + ",";
   ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsResourceCudaPartitioningSettings, "1075,"));
+      kOrtSessionOptionsResourceCudaPartitioningSettings, partitioning_settings.c_str()));
 
   // The assignment callback runs before the current capability's cost is committed.
   // Capture the already-committed survivor state when the pass-2-only Relu is assigned.
@@ -583,10 +627,12 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRol
   std::optional<size_t> observed_initialization_scratch;
   std::optional<WorkspaceEstimateSourceCounts> observed_source_counts;
   bool pass2_only_relu_assigned = false;
+  bool fused_pass1_survivors_assigned = false;
   OnPartitionAssignmentFunction on_assignment =
       [&](const Graph& assignment_graph, const ComputeCapability& capability,
           const std::string& assigned_ep_type) {
         if (assigned_ep_type == kCudaExecutionProvider && ep_raw->observed_accountant() != nullptr) {
+          size_t survivor_count = 0;
           for (NodeIndex node_index : capability.sub_graph->nodes) {
             const Node* assigned_node = assignment_graph.GetNode(node_index);
             if (assigned_node != nullptr && assigned_node->OpType() == "Relu") {
@@ -600,6 +646,13 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRol
               observed_source_counts =
                   ep_raw->observed_accountant()->GetWorkspaceEstimateSourceCounts();
             }
+            if (assigned_node != nullptr &&
+                (assigned_node->OpType() == "Conv" || assigned_node->OpType() == "LogSoftmax")) {
+              ++survivor_count;
+            }
+          }
+          if (survivor_count == 2) {
+            fused_pass1_survivors_assigned = true;
           }
         }
       };
@@ -625,23 +678,52 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRol
                             epctx::ModelGenOptions{},
                             debug_graph_fn));
 
-  ASSERT_TRUE(observed_consumed.has_value())
-      << "Expected the pass-2-only Relu partition to be assigned to the EP.";
-  EXPECT_EQ(*observed_consumed, expected_conv_cost)
-      << "The Conv survivor should be reserved exactly once before Relu admission.";
-  EXPECT_NE(*observed_consumed, expected_conv_cost + expected_log_softmax_cost)
-      << "Dropped LogSoftmax must not consume budget.";
-  EXPECT_TRUE(pass2_only_relu_assigned)
-      << "Dropped LogSoftmax must not block the pass-2-only Relu that fits with the Conv survivor.";
-  ASSERT_TRUE(observed_workspace.has_value());
-  ASSERT_TRUE(observed_persistent_prepack.has_value());
-  ASSERT_TRUE(observed_initialization_scratch.has_value());
-  ASSERT_TRUE(observed_source_counts.has_value());
-  EXPECT_EQ(*observed_workspace, *conv_estimate.runtime_workspace_bytes);
-  EXPECT_EQ(*observed_persistent_prepack, conv_estimate.persistent_prepack_bytes);
-  EXPECT_EQ(*observed_initialization_scratch, conv_estimate.initialization_scratch_bytes);
-  EXPECT_EQ(observed_source_counts->estimator, size_t{1});
-  EXPECT_EQ(observed_source_counts->fallback, size_t{0});
+  if (pass2_node_precedes_survivor) {
+    EXPECT_FALSE(pass2_only_relu_assigned)
+        << "Relu must be rejected when the later Conv survivor reservation makes it exceed the budget.";
+    ASSERT_TRUE(ep_raw->last_observed_consumed().has_value());
+    const size_t expected_survivor_cost =
+        expected_conv_cost + (fuse_pass1_survivors ? expected_log_softmax_cost : 0);
+    EXPECT_EQ(*ep_raw->last_observed_consumed(), expected_survivor_cost)
+        << "The final admission pass must reserve all later survivors before evaluating Relu.";
+    EXPECT_TRUE(relu_node->GetExecutionProviderType().empty());
+    if (fuse_pass1_survivors) {
+      EXPECT_TRUE(fused_pass1_survivors_assigned)
+          << "The discovery capability for the fused pass-1 survivors must be preserved.";
+    } else {
+      EXPECT_EQ(conv_node->GetExecutionProviderType(), kCudaExecutionProvider);
+    }
+  } else {
+    ASSERT_TRUE(observed_consumed.has_value())
+        << "Expected the pass-2-only Relu partition to be assigned to the EP.";
+    EXPECT_EQ(*observed_consumed, expected_conv_cost)
+        << "The Conv survivor should be reserved exactly once before Relu admission.";
+    EXPECT_NE(*observed_consumed, expected_conv_cost + expected_log_softmax_cost)
+        << "Dropped LogSoftmax must not consume budget.";
+    EXPECT_TRUE(pass2_only_relu_assigned)
+        << "Dropped LogSoftmax must not block the pass-2-only Relu that fits with the Conv survivor.";
+    ASSERT_TRUE(observed_workspace.has_value());
+    ASSERT_TRUE(observed_persistent_prepack.has_value());
+    ASSERT_TRUE(observed_initialization_scratch.has_value());
+    ASSERT_TRUE(observed_source_counts.has_value());
+    EXPECT_EQ(*observed_workspace, *conv_estimate.runtime_workspace_bytes);
+    EXPECT_EQ(*observed_persistent_prepack, conv_estimate.persistent_prepack_bytes);
+    EXPECT_EQ(*observed_initialization_scratch, conv_estimate.initialization_scratch_bytes);
+    EXPECT_EQ(observed_source_counts->estimator, size_t{1});
+    EXPECT_EQ(observed_source_counts->fallback, size_t{0});
+  }
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRollback) {
+  RunNhwcTwoPassAccountingRetryTest(false);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingPreservesLaterSurvivorReservation) {
+  RunNhwcTwoPassAccountingRetryTest(true);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingPreservesLaterFusedSurvivorCapability) {
+  RunNhwcTwoPassAccountingRetryTest(true, true);
 }
 
 TEST(InternalTestingEP, NhwcTwoPassAccountingDoesNotReserveUnassignedCapability) {

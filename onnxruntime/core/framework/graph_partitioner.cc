@@ -489,11 +489,59 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
     // A dropped pass-1 node may have consumed enough provisional budget to reject a pass-2-only
     // candidate. Removing its cost after GetCapability is too late because rejected candidates are
-    // not reconsidered. If budget admission stopped, retry after rollback so only actual pass-1
-    // survivors reserve budget.
+    // not reconsidered. A stopped result is only a prefix, so first discover the complete pass-2
+    // survivor set without budget gating. Then reconcile the provisional reservations and retry the
+    // admission decision with exactly the pass-1 survivor costs reserved.
     if (removed_provisional_cost && params.resource_accountant->IsStopIssued()) {
       capabilities.clear();
 
+      std::unique_ptr<IndexedSubGraph> discovery_sub_graph_holder;
+      std::unique_ptr<GraphViewer> discovery_graph_viewer;
+      ORT_RETURN_IF_ERROR(create_graph_viewer(discovery_sub_graph_holder, discovery_graph_viewer));
+      params.resource_accountant->ResetForNewPass();
+      capabilities = get_capabilities(current_ep, *discovery_graph_viewer, kernel_lookup,
+                                      nullptr, graph_optimizer_registry);
+      reset_assignment_unclaimed_nodes();
+
+      if (params.check_load_cancellation_fn()) {
+        ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                               "GetCapabilities was canceled by user request");
+      }
+
+      const auto [discovered_pass2_nodes, unused_discovered_new_nodes] = collect_pass2_nodes();
+      ORT_UNUSED_PARAMETER(unused_discovered_new_nodes);
+      InlinedHashSet<NodeIndex> confirmed_pass1_survivors;
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        const auto cost_it = pass1_node_costs.find(node_index);
+        if (cost_it == pass1_node_costs.end()) {
+          continue;
+        }
+
+        if (discovered_pass2_nodes.contains(node_index)) {
+          confirmed_pass1_survivors.insert(node_index);
+          if (rolled_back_pass1_costs.erase(node_index) != 0) {
+            params.resource_accountant->AddConsumedAmount(cost_it->second);
+          }
+        } else if (!rolled_back_pass1_costs.contains(node_index)) {
+          params.resource_accountant->RemoveConsumedAmount(cost_it->second);
+          rolled_back_pass1_costs.insert(node_index);
+        }
+      }
+
+      std::vector<std::unique_ptr<ComputeCapability>> confirmed_survivor_capabilities;
+      for (auto& capability : capabilities) {
+        const auto& nodes = capability->sub_graph->nodes;
+        if (nodes.size() > 1 &&
+            std::all_of(nodes.begin(), nodes.end(),
+                        [&](NodeIndex node_index) {
+                          return confirmed_pass1_survivors.contains(node_index);
+                        })) {
+          confirmed_survivor_capabilities.push_back(std::move(capability));
+        }
+      }
+
+      capabilities.clear();
       std::unique_ptr<IndexedSubGraph> retry_sub_graph_holder;
       std::unique_ptr<GraphViewer> retry_graph_viewer;
       ORT_RETURN_IF_ERROR(create_graph_viewer(retry_sub_graph_holder, retry_graph_viewer));
@@ -507,8 +555,22 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
         return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                                "GetCapabilities was canceled by user request");
       }
-
       std::tie(pass2_node_indices, new_nodes_in_capabilities) = collect_pass2_nodes();
+      for (auto& survivor_capability : confirmed_survivor_capabilities) {
+        const auto& survivor_nodes = survivor_capability->sub_graph->nodes;
+        const bool overlaps_final_capabilities =
+            std::any_of(survivor_nodes.begin(), survivor_nodes.end(),
+                        [&](NodeIndex node_index) {
+                          return pass2_node_indices.contains(node_index);
+                        });
+        if (overlaps_final_capabilities) {
+          continue;
+        }
+
+        pass2_node_indices.insert(survivor_nodes.begin(), survivor_nodes.end());
+        capabilities.push_back(std::move(survivor_capability));
+      }
+      pass2_node_indices.insert(confirmed_pass1_survivors.begin(), confirmed_pass1_survivors.end());
     }
 
     // Clear temporary assignments that were not reclaimed by the final capability set.

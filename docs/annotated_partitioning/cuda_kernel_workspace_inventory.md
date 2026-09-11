@@ -392,9 +392,11 @@ formula was extracted and verified against the runtime value for MatMulNBits; se
 `DeclareWorkspaceRequirements`).
 
 The Level-1 estimate keeps runtime workspace, persistent prepack destinations, and initialization-only
-scratch (prepack conversion plus constructor-time tactic profiling) in separate fields. The current
-byte-count resource accountant conservatively charges all three, while Level 2 continues to declare only
-the runtime workspace slot.
+scratch (prepack conversion plus constructor-time tactic profiling) in separate fields. The byte-count
+resource accountant budgets the selected runtime workspace, including runtime-transient scratch via a
+maximum, and adds persistent prepack destinations. Initialization-only scratch is reported separately as
+the maximum across accepted nodes and is excluded from the hard partition budget. Level 2 continues to
+declare only the runtime workspace slot.
 Offline-prepacked CUDA weights remain in base initializer accounting and are not also charged as a
 persistent prepack destination because `PrePack_B()` reuses the device initializer in place.
 
