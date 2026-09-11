@@ -383,10 +383,14 @@ compiles and links cleanly, producing `ort-wasm-simd-threaded.asyncify.{mjs,wasm
 `static_plugin` is in fact the only plugin kind Emscripten supports — `cmake/onnxruntime_providers_webgpu.cmake`
 raises a `FATAL_ERROR` for `shared_lib` there, since there is no runtime library to load.
 
-No CI leg covers this yet. The WASM WebGPU jobs pass a bare `--use_webgpu`, which defaults to `static_lib`
-(`tools/ci_build/build_args.py` uses `const="static_lib"`), so they still build the internal EP. This change makes
-the configuration available to ORT Web; switching ORT Web over to it is separate work, and has prerequisites that
-this change does not address. See [ORT Web migration](#ort-web-migration).
+The WASM WebGPU jobs that produce the published artifacts pass a bare `--use_webgpu`, which defaults to
+`static_lib` (`tools/ci_build/build_args.py` uses `const="static_lib"`), so they still build the internal EP.
+`.github/workflows/web.yml` additionally runs a **build-only** `--use_webgpu static_plugin` leg in the
+`wasm_Release` job. It keeps the Emscripten registration path compiling, but deliberately publishes nothing: its
+output file names are identical to those of the published WebGPU build, and the ORT Web test harness selects the
+wasm binary by file name, so the two variants cannot ship side by side. Running the ORT Web suites against the
+plugin build therefore waits on switching ORT Web over to it, which is separate work with prerequisites that this
+change does not address. See [ORT Web migration](#ort-web-migration).
 
 A green build is *not* sufficient evidence that the registration is live. `CreateStaticPluginEpLibraries()` in
 `onnxruntime/core/session/plugin_ep/ep_static_plugins.cc` is guarded by
@@ -550,12 +554,14 @@ A workable order:
    construction, and no additional build define or runtime capability probe is needed. What is *not* safe is
    landing the JS change without the build change, since the two must move together.
 
-4. Flip the ORT Web WASM builds to `static_plugin` and add a CI leg. The two builds are
+4. Flip the ORT Web WASM builds to `static_plugin` and extend CI to *test* the result. The two builds are
    `Build (simd + threads + WebGPU experimental)` and its JSPI sibling in
    `.github/workflows/linux-wasm-ci-build-and-test-workflow.yml`, both of which pass a bare `--use_webgpu` and so
    get `static_lib` from `build_args.py`'s `const="static_lib"`. Neither uses `--minimal_build`, so the
-   minimal-build `FATAL_ERROR` guard does not stand in the way of this migration. No pipeline builds WASM with
-   `static_plugin` today, so without a leg this path stays validated at the symbol level only.
+   minimal-build `FATAL_ERROR` guard does not stand in the way of this migration. A build-only `static_plugin`
+   leg already runs (see [Emscripten and ORT Web](#emscripten-and-ort-web)), so this path is covered at compile
+   time; flipping these two builds is what gets it *executed*, because the published artifacts then become the
+   plugin build and the existing `web_Debug` / `web_Release` suites cover it with no parallel test lane.
 
    *Prototype note:* the `js/web` test runner cannot currently exercise this configuration end to end, because
    `script/test-runner-cli.ts` spawns `script/build` with only `--bundle-mode` and does not forward `--webgpu-ep`.
