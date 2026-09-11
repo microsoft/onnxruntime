@@ -18,9 +18,9 @@ Status ApplyTemplate<"nn/im2col_matmul.wgsl.template">(ShaderHelper& shader_help
   auto& __param_vec_size = params.param_vec_size;
 
   // Extract variables
-  auto& __var_output = *params.var_output;
-  auto& __var_src = *params.var_src;
-  auto& __var_weight = *params.var_weight;
+  auto* __var_output = params.var_output;
+  auto* __var_src = params.var_src;
+  auto* __var_weight = params.var_weight;
 
 //   1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //   2 | // Licensed under the MIT License.
@@ -111,7 +111,7 @@ ss << __str_246;
 ss << __str_247;
 //  54 |   return src.getByOffset(src_idx);
 ss << __str_248;
-ss << __var_src.GetByOffset(__str_223);
+ss << __var_src->GetByOffset(__str_223);
 ss << __str_192;
 //  55 | }
 ss << __str_249;
@@ -132,7 +132,7 @@ ss << __str_254;
 ss << __str_255;
 //  62 |     return weight.getByOffset(weight_idx);
 ss << __str_256;
-ss << __var_weight.GetByOffset(__str_224);
+ss << __var_weight->GetByOffset(__str_224);
 ss << __str_192;
 //  63 |   }
 ss << __str_222;
@@ -173,7 +173,7 @@ ss << __str_265;
 ss << __str_266;
 //  82 |     output.setByOffset(output_idx, value);
 ss << __str_267;
-ss << __var_output.SetByOffset(__str_225, __str_226);
+ss << __var_output->SetByOffset(__str_225, __str_226);
 ss << __str_192;
 //  83 |   }
 ss << __str_222;
