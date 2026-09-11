@@ -378,6 +378,29 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   GraphViewer viewer3(graph3);
   HashValue model_hash3 = TRTGenerateId(viewer3, trt_version, cuda_version);
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
+
+  // Models with the same name and graph structure, but different static input shapes, must not
+  // share an engine cache entry.
+  const PathString shape_test_model_path = ORT_TSTR("trt_model_id_shape_test.onnx");
+  const std::string shape_test_graph_name = "trt_model_id_shape_test";
+  CreateBaseModel(shape_test_model_path, shape_test_graph_name, {3, 3});
+
+  std::shared_ptr<Model> model_with_3x3_input;
+  ASSERT_TRUE(Model::Load(shape_test_model_path, model_with_3x3_input, nullptr,
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
+
+  CreateBaseModel(shape_test_model_path, shape_test_graph_name, {4, 4});
+
+  std::shared_ptr<Model> model_with_4x4_input;
+  ASSERT_TRUE(Model::Load(shape_test_model_path, model_with_4x4_input, nullptr,
+                          DefaultLoggingManager().DefaultLogger())
+                  .IsOK());
+
+  GraphViewer viewer_with_3x3_input(model_with_3x3_input->MainGraph());
+  GraphViewer viewer_with_4x4_input(model_with_4x4_input->MainGraph());
+  ASSERT_NE(TRTGenerateId(viewer_with_3x3_input, trt_version, cuda_version),
+            TRTGenerateId(viewer_with_4x4_input, trt_version, cuda_version));
 }
 
 TEST(TensorrtExecutionProviderTest, EPContextNode) {
