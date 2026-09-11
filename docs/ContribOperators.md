@@ -7454,9 +7454,18 @@ This version of the operator has been available since version 1 of the 'com.micr
   present_ids returns the ids to pass to the next call. Both have shape (batch_size, max_ngram_size -
   1) and are right-aligned, so the last slot is the most recent id, and are indexed by request
   (batch_size), not by position in the packed buffer. Positions before the start of a request's whole
-  sequence use pad_id. Running NGramHashMapping once per sequence and running this op once over those
+  sequence use pad_id, or eos_token_id when provided. Running NGramHashMapping once per sequence and running this op once over those
   sequences packed together (optionally split into packed chunks with present_ids threaded into
   past_ids) produce identical hash ids.
+  
+  Optional inputs add Qwen4-Exp-style n-gram embedding support:
+  
+  - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
+    boundaries. Missing history is also filled with eos_token_id.
+  - segment_ids, when provided, additionally resets causal history when adjacent tokens within one
+    packed request have different segment ids. Thread present_segment_ids into past_segment_ids on
+    subsequent calls to preserve boundaries across chunked prefill and decode calls.
+  - head_offsets, when provided, adds a fixed per-output-head offset after the modulo.
 
 #### Version
 
@@ -7471,30 +7480,42 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of hash heads emitted for each n-gram order.</dd>
 <dt><tt>pad_id</tt> : int (required)</dt>
 <dd>Compressed tokenizer id used to pad causal shifts before the beginning of a request's sequence.</dd>
+<dt><tt>reset_on_eos</tt> : int</dt>
+<dd>When non-zero and eos_token_id is provided, reset causal n-gram history at EOS boundaries. Default is 0.</dd>
 </dl>
 
-#### Inputs (4 - 5)
+#### Inputs (4 - 9)
 
 <dl>
 <dt><tt>input_ids</tt> : M</dt>
 <dd>Token-major packed compressed tokenizer ids with shape (total_tokens).</dd>
 <dt><tt>multipliers</tt> : M</dt>
-<dd>Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any value is accepted.</dd>
+<dd>Per-shift hash multipliers with at least max_ngram_size elements. Conventionally odd, but any value is accepted.</dd>
 <dt><tt>vocab_sizes</tt> : M</dt>
 <dd>Per-output-head vocabulary sizes, conventionally prime, with shape ((max_ngram_size - 1) * n_head_per_ngram). Every entry must be strictly positive. The CPU implementation rejects a non-positive entry; GPU implementations guard the modulo to avoid a device-side division by zero and emit a hash id of 0 for that head.</dd>
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>Device tensor with shape (batch_size + 1) giving the half-open packed token range of each request.</dd>
 <dt><tt>past_ids</tt> (optional) : M</dt>
-<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id, and indexed by request rather than by packed position. If omitted the history is pad_id.</dd>
+<dd>Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last slot is the most recent id, and indexed by request rather than by packed position. If omitted the history is pad_id, or eos_token_id when provided.</dd>
+<dt><tt>head_offsets</tt> (optional) : M</dt>
+<dd>Optional per-output-head additive offset with shape ((max_ngram_size - 1) * n_head_per_ngram), added after the modulo.</dd>
+<dt><tt>eos_token_id</tt> (optional) : M</dt>
+<dd>Optional scalar end-of-sequence token id. When provided it replaces pad_id for missing history and enables reset_on_eos.</dd>
+<dt><tt>segment_ids</tt> (optional) : tensor(int32)</dt>
+<dd>Optional token-major segment ids with shape (total_tokens), used to reset causal history at segment boundaries within each packed request.</dd>
+<dt><tt>past_segment_ids</tt> (optional) : S</dt>
+<dd>Optional segment ids corresponding to past_ids, with shape (batch_size, max_ngram_size - 1). Thread present_segment_ids from the previous call into this input to preserve segment boundaries across calls.</dd>
 </dl>
 
-#### Outputs (1 - 2)
+#### Outputs (1 - 3)
 
 <dl>
 <dt><tt>hash_ids</tt> : M</dt>
 <dd>Token-major packed hash ids with shape (total_tokens, (max_ngram_size - 1) * n_head_per_ngram).</dd>
 <dt><tt>present_ids</tt> (optional) : M</dt>
 <dd>Trailing max_ngram_size - 1 ids of past_ids followed by each request's own tokens, with shape (batch_size, max_ngram_size - 1). Feed this back as past_ids on the next call.</dd>
+<dt><tt>present_segment_ids</tt> (optional) : S</dt>
+<dd>Trailing max_ngram_size - 1 segment ids corresponding to present_ids, with shape (batch_size, max_ngram_size - 1). Feed this back as past_segment_ids on the next call.</dd>
 </dl>
 
 #### Type Constraints
@@ -7503,7 +7524,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>M</tt> : tensor(int32), tensor(int64)</dt>
 <dd>Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.</dd>
 <dt><tt>S</tt> : tensor(int32)</dt>
-<dd>Constrain cumulative_sequence_length to a device int32 tensor.</dd>
+<dd>Constrain cumulative_sequence_length and segment ids to device int32 tensors.</dd>
 </dl>
 
 
