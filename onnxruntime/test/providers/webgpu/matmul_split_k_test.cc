@@ -374,5 +374,79 @@ TEST(Gemm_SplitK, WithAndWithoutBias) {
   run_with_bias({M, 1}, 1.0f);
 }
 
+// Gemm is registered with `WebGpuSupportedNumberTypes()` (float, MLFloat16, int32_t, uint32_t), so
+// unlike MatMul (floats only) it can reach Split-K with an integer output. Nothing in the gate looks
+// at the data type: `is_vec4` is decided by shape alone (`a_shape[1] % 4 == 0 && b_shape[1] % 4 == 0`)
+// and `UseSplitK` keys only on vec4-ness, activation kind and dimensions, so the shape below takes the
+// same Split-K path as the float Gemm test above.
+//
+// Pass 1 accumulates in `vec4<output_element_t>`, so the per-split partials are already exact. Pass 2
+// is the step this guards: it used to widen every partial to f32 unconditionally, and f32 carries only
+// 24 mantissa bits, so a total of 2^24 + 1 came back as 2^24. The operands are chosen so the exact
+// result is exactly 16777217 and the running sum only becomes unrepresentable on the last split --
+// an f32 accumulator therefore returns 16777216 and fails this test.
+template <typename T>
+void RunIntegerGemmExactAbove2Pow24() {
+  auto make_ep = []() { return DefaultWebGpuExecutionProvider(); };
+  if (!make_ep()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  // Same shape as `Gemm_SplitK.WithAndWithoutBias`, which is known to satisfy the gate: K = 1024 is
+  // 4 splits of 256, and `dim_a_outer * dim_b_outer / dim_inner` stays far below the rate threshold.
+  constexpr int64_t M = 4;
+  constexpr int64_t K = 1024;
+  constexpr int64_t N = 64;
+
+  // 1023 * 16384 + 16385 == 16777217 == 2^24 + 1, the smallest integer f32 cannot represent.
+  constexpr T kBase = static_cast<T>(16384);
+  constexpr T kExpected = static_cast<T>(16777217);
+
+  const std::vector<int64_t> a_dims{M, K};
+  const std::vector<int64_t> b_dims{K, N};
+  const std::vector<int64_t> y_dims{M, N};
+
+  const std::vector<T> a_vals(static_cast<size_t>(M * K), static_cast<T>(1));
+  std::vector<T> b_vals(static_cast<size_t>(K * N), kBase);
+  // Row k = 0 falls in split 0, so the three later splits each add exactly 2^22 and the sum only
+  // crosses 2^24 on the final add.
+  for (int64_t n = 0; n < N; ++n) {
+    b_vals[static_cast<size_t>(n)] = static_cast<T>(kBase + static_cast<T>(1));
+  }
+
+  {
+    const std::vector<T> expected(static_cast<size_t>(M * N), kExpected);
+    OpTester test("Gemm", 13);
+    test.AddInput<T>("A", a_dims, a_vals);
+    test.AddInput<T>("B", b_dims, b_vals);
+    test.AddOutput<T>("Y", y_dims, expected);
+    test.ConfigEp(make_ep()).RunWithConfig();
+  }
+
+  // `beta * C` is applied by the reduction, after the accumulator is cast back to the output type.
+  // `beta` is an f32 uniform that the shader narrows with `output_element_t(uniforms.beta)`, so an
+  // integer bias has to survive that conversion too.
+  {
+    const std::vector<T> c_vals(static_cast<size_t>(N), static_cast<T>(1));
+    const std::vector<T> expected(static_cast<size_t>(M * N), static_cast<T>(kExpected + static_cast<T>(1)));
+
+    OpTester test("Gemm", 13);
+    test.AddAttribute("beta", 1.0f);
+    test.AddInput<T>("A", a_dims, a_vals);
+    test.AddInput<T>("B", b_dims, b_vals);
+    test.AddInput<T>("C", std::vector<int64_t>{N}, c_vals);
+    test.AddOutput<T>("Y", y_dims, expected);
+    test.ConfigEp(make_ep()).RunWithConfig();
+  }
+}
+
+TEST(Gemm_SplitK, Int32AccumulatesExactlyAbove2Pow24) {
+  RunIntegerGemmExactAbove2Pow24<int32_t>();
+}
+
+TEST(Gemm_SplitK, Uint32AccumulatesExactlyAbove2Pow24) {
+  RunIntegerGemmExactAbove2Pow24<uint32_t>();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

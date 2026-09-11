@@ -54,6 +54,46 @@ bool MatMulProgram::NeedSplitK() const {
   return split_dim_inner_ > 1;
 }
 
+namespace {
+
+// Scalar type the pass-2 reduction accumulates the per-split partials in.
+//
+// Integer outputs must accumulate in their own type. f32 has a 24-bit mantissa, so summing int32
+// partials in f32 silently rounds any value that needs more than 24 bits (16777217 becomes
+// 16777216); i32/u32 arithmetic keeps integer results exact.
+//
+// Float16 deliberately widens to f32 instead, so the running sum is not rounded back to f16 at every
+// step. The single narrowing conversion happens in the `output_value_t` cast at the write.
+Status GetSplitKAccumulatorElementType(ProgramVariableDataType output_var_type,
+                                       std::string& acc_element_type) {
+  switch (output_var_type) {
+    case ProgramVariableDataType::Float32:
+    case ProgramVariableDataType::Float32x2:
+    case ProgramVariableDataType::Float32x4:
+    case ProgramVariableDataType::Float16:
+    case ProgramVariableDataType::Float16x2:
+    case ProgramVariableDataType::Float16x4:
+      acc_element_type = "f32";
+      return Status::OK();
+    case ProgramVariableDataType::Int32:
+    case ProgramVariableDataType::Int32x2:
+    case ProgramVariableDataType::Int32x4:
+      acc_element_type = "i32";
+      return Status::OK();
+    case ProgramVariableDataType::Uint32:
+    case ProgramVariableDataType::Uint32x2:
+    case ProgramVariableDataType::Uint32x4:
+      acc_element_type = "u32";
+      return Status::OK();
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Split-K reduction does not support output variable type ",
+                             static_cast<int>(output_var_type));
+  }
+}
+
+}  // namespace
+
 Status MatMulSplitKReduceProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& partials = shader.AddInput("partials", ShaderUsage::UseUniform);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -93,10 +133,13 @@ Status MatMulSplitKReduceProgram::GenerateShaderCode(ShaderHelper& shader) const
   let output_col = remaining % dim_b_outer;
 )";
 
-  // Accumulating in f32 for f16 output avoids rounding the running sum at every step.
-  const std::string acc_type = MakeScalarOrVectorType(static_cast<int>(output_components_), "f32");
+  // The accumulator element type follows the output element type so integer results stay exact; see
+  // `GetSplitKAccumulatorElementType` for why f16 is the one case that deliberately widens.
+  std::string acc_element_type;
+  ORT_RETURN_IF_ERROR(GetSplitKAccumulatorElementType(Outputs()[0].var_type, acc_element_type));
+  const std::string acc_type = MakeScalarOrVectorType(static_cast<int>(output_components_), acc_element_type);
   shader.MainFunctionBody()
-      << "  var acc = " << acc_type << "(0.0);\n"
+      << "  var acc = " << acc_type << "(0);\n"
       << "  for (var s = 0; s < i32(uniforms.splits); s++) {\n"
       << "    acc += " << acc_type << "(" << partials.GetByOffset("u32(s * out_elems + output_id)") << ");\n"
       << "  }\n"
