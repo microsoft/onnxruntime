@@ -125,10 +125,10 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                WGSL_TEMPLATE_VARIABLE(a, a),
                                WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
                                WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
-                               WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
-                               WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(norm_scale, norm_scale),
                                WGSL_TEMPLATE_VARIABLE(output, output),
-                               WGSL_TEMPLATE_VARIABLE(skip, skip),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(skip, skip),
                                WGSL_TEMPLATE_VARIABLE(up_b, up_b),
                                WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
   }
