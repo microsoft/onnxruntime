@@ -47,17 +47,28 @@ enum class GQAPreprocessMode {
 // before windowed staging mutates the runtime parameters. It is not the window-only
 // GroupQueryAttentionParameters::kv_cache_capacity field.
 struct GQAWorkspaceProblem {
+  // Element widths for Q/K/V inputs and KV-cache storage.
   size_t qkv_element_size = 0;
   size_t cache_element_size = 0;
+
+  // Runtime tensor geometry.
   int64_t batch_size = 0;
   int64_t sequence_length = 0;
   int64_t num_heads = 0;
   int64_t kv_num_heads = 0;
   int64_t head_size = 0;
+
+  // Allocated present-cache capacity before any windowed staging adjustment.
   int64_t present_kv_cache_capacity = 0;
+
+  // Zero for unpacked storage, otherwise the packed KV-cache element width.
   int64_t kv_cache_bit_width = 0;
+
+  // Independent K/V scale granularities. Non-None values identify quantized cache storage.
   GQAKvQuantizationType k_quantization = GQAKvQuantizationType::None;
   GQAKvQuantizationType v_quantization = GQAKvQuantizationType::None;
+
+  // Runtime feature facts that affect preparation allocations.
   bool is_windowed_kv_cache = false;
   bool is_first_prompt = false;
   bool do_rotary = false;
@@ -66,7 +77,10 @@ struct GQAWorkspaceProblem {
 };
 
 struct GQAPreparationRoute {
+  // QKV preprocessing behavior of the backend route already selected by the runtime.
   GQAPreprocessMode preprocess_mode = GQAPreprocessMode::Fallback;
+
+  // True only for the Flash single-token fast-decode path.
   bool use_flash_attention_fast_decode = false;
 };
 
@@ -84,17 +98,21 @@ struct GQAPreparationRoute {
 struct GQAPreparationRecipe {
   // The original present-cache capacity, except windowed multi-token staging uses C + S.
   int64_t effective_kv_cache_capacity = 0;
+  // Bytes per cache row after applying the KV-cache packing width.
   size_t cache_row_bytes = 0;
 
+  // Windowed multi-token updates stage K and V in separate full-capacity regions.
   bool uses_staging = false;
   size_t staged_key_offset_bytes = 0;
   size_t staged_key_bytes = 0;
   size_t staged_value_offset_bytes = 0;
   size_t staged_value_bytes = 0;
 
+  // Windowed single-token updates compact K and V inside one combined allocation.
   bool uses_compaction = false;
   size_t compaction_offset_bytes = 0;
   size_t compaction_bytes = 0;
+  // Absolute K/V subregion offsets within the operator-owned root.
   size_t compaction_key_offset_bytes = 0;
   size_t compaction_key_bytes = 0;
   size_t compaction_value_offset_bytes = 0;
@@ -106,9 +124,11 @@ struct GQAPreparationRecipe {
   size_t sequence_lengths_offset_bytes = 0;
   size_t sequence_lengths_bytes = 0;
 
+  // Route-selected QKV materialization or conversion scratch.
   size_t qkv_preprocess_offset_bytes = 0;
   size_t qkv_preprocess_bytes = 0;
 
+  // End of the final region; the next composed region must align this value.
   size_t total_preparation_bytes = 0;
 };
 
