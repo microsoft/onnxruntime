@@ -455,9 +455,10 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     };
 
     InlinedHashSet<NodeIndex> confirmed_pass1_survivors;
+    InlinedHashSet<NodeIndex> independently_runnable_survivors;
+    InlinedHashSet<NodeIndex> pass1_nodes_to_reprobe;
     std::vector<std::unique_ptr<ComputeCapability>> confirmed_survivor_capabilities;
     if (params.resource_accountant) {
-      // The existing result is still valid when the layout transformer made no graph changes.
       if (modified) {
         ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *params.resource_accountant));
       }
@@ -484,16 +485,36 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
         }
       }
 
-      // Preserve every discovered survivor capability that must later be fused or compiled.
-      // A MetaDef, not the number of constituent nodes, determines whether PlaceNode is required.
+      // Re-probe a survivor when it is grouped with a pass-2-only node, or when its
+      // capability has optimization work but no MetaDef. In both cases the pass-1 tag
+      // would either hide its cost or prevent the capability from being processed.
       for (auto& capability : capabilities) {
         const auto& nodes = capability->sub_graph->nodes;
-        if (capability->sub_graph->GetMetaDef() != nullptr &&
-            std::all_of(nodes.begin(), nodes.end(),
-                        [&](NodeIndex node_index) {
-                          return confirmed_pass1_survivors.contains(node_index);
-                        })) {
+        const size_t confirmed_survivor_count =
+            static_cast<size_t>(std::count_if(
+                nodes.begin(), nodes.end(),
+                [&](NodeIndex node_index) {
+                  return confirmed_pass1_survivors.contains(node_index);
+                }));
+        if (confirmed_survivor_count == 0) {
+          continue;
+        }
+
+        if (confirmed_survivor_count != nodes.size()) {
+          for (NodeIndex node_index : nodes) {
+            if (confirmed_pass1_survivors.contains(node_index)) {
+              pass1_nodes_to_reprobe.insert(node_index);
+            }
+          }
+          continue;
+        }
+
+        if (capability->sub_graph->GetMetaDef() != nullptr) {
           confirmed_survivor_capabilities.push_back(std::move(capability));
+        } else if (nodes.size() == 1 && capability->nodes_to_optimize.empty()) {
+          independently_runnable_survivors.insert(nodes.front());
+        } else {
+          pass1_nodes_to_reprobe.insert(nodes.begin(), nodes.end());
         }
       }
 
@@ -509,6 +530,16 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
       params.resource_accountant->ResetForNewPass();
       for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
         if (!confirmed_pass1_survivors.contains(node_index)) {
+          continue;
+        }
+
+        if (pass1_nodes_to_reprobe.contains(node_index)) {
+          if (auto* node = graph.GetNode(node_index);
+              node != nullptr && node->GetExecutionProviderType() == ep_type) {
+            node->SetExecutionProviderType("");
+          }
+          pass1_workspace_estimates.erase(node_index);
+          pass1_node_costs.erase(node_index);
           continue;
         }
 
@@ -555,20 +586,73 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     auto [pass2_node_indices, new_nodes_in_capabilities] = collect_pass2_nodes(capabilities);
     for (auto& survivor_capability : confirmed_survivor_capabilities) {
       const auto& survivor_nodes = survivor_capability->sub_graph->nodes;
+      const InlinedHashSet<NodeIndex> survivor_node_set{
+          survivor_nodes.begin(), survivor_nodes.end()};
+      const bool covered_by_final_capability =
+          std::any_of(
+              capabilities.begin(), capabilities.end(),
+              [&](const std::unique_ptr<ComputeCapability>& capability) {
+                const auto& final_nodes = capability->sub_graph->nodes;
+                return std::all_of(
+                    survivor_nodes.begin(), survivor_nodes.end(),
+                    [&](NodeIndex survivor_node_index) {
+                      return std::find(final_nodes.begin(), final_nodes.end(),
+                                       survivor_node_index) != final_nodes.end();
+                    });
+              });
+      if (covered_by_final_capability) {
+        continue;
+      }
+
       const bool overlaps_final_capabilities =
           std::any_of(survivor_nodes.begin(), survivor_nodes.end(),
                       [&](NodeIndex node_index) {
                         return pass2_node_indices.contains(node_index);
                       });
       if (overlaps_final_capabilities) {
-        continue;
+        const bool can_replace_overlapping_capabilities =
+            std::all_of(
+                capabilities.begin(), capabilities.end(),
+                [&](const std::unique_ptr<ComputeCapability>& capability) {
+                  const auto& nodes = capability->sub_graph->nodes;
+                  const bool overlaps_survivor =
+                      std::any_of(
+                          nodes.begin(), nodes.end(),
+                          [&](NodeIndex node_index) {
+                            return survivor_node_set.contains(node_index);
+                          });
+                  return !overlaps_survivor ||
+                         (!capability->sub_graph->IsAccountingEnabled() &&
+                          std::all_of(nodes.begin(), nodes.end(),
+                                      [&](NodeIndex node_index) {
+                                        return confirmed_pass1_survivors.contains(node_index);
+                                      }));
+                });
+        if (!can_replace_overlapping_capabilities) {
+          continue;
+        }
+
+        capabilities.erase(
+            std::remove_if(
+                capabilities.begin(), capabilities.end(),
+                [&](const std::unique_ptr<ComputeCapability>& capability) {
+                  const auto& nodes = capability->sub_graph->nodes;
+                  return std::any_of(
+                      nodes.begin(), nodes.end(),
+                      [&](NodeIndex node_index) {
+                        return survivor_node_set.contains(node_index);
+                      });
+                }),
+            capabilities.end());
       }
 
-      pass2_node_indices.insert(survivor_nodes.begin(), survivor_nodes.end());
       capabilities.push_back(std::move(survivor_capability));
+      std::tie(pass2_node_indices, new_nodes_in_capabilities) =
+          collect_pass2_nodes(capabilities);
     }
-    pass2_node_indices.insert(confirmed_pass1_survivors.begin(), confirmed_pass1_survivors.end());
-    reset_assignment_unclaimed_nodes(&confirmed_pass1_survivors);
+    pass2_node_indices.insert(independently_runnable_survivors.begin(),
+                              independently_runnable_survivors.end());
+    reset_assignment_unclaimed_nodes(&pass2_node_indices);
 
     // Clear temporary assignments that were not reclaimed by the complete discovery pass.
     for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
