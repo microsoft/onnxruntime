@@ -160,6 +160,30 @@ GQAWorkspaceStatus ValidateProblem(const GQAWorkspaceProblem& problem,
     return Invalid("GQA Flash fast decode is incompatible with QK-Norm.");
   }
 
+  if (route.preprocess_mode == GQAPreprocessMode::Xqa) {
+    if (problem.is_first_prompt || problem.sequence_length != 1) {
+      return Invalid("GQA XQA preprocessing requires a single-token decode after the first prompt.");
+    }
+
+    const bool k_is_quantized = problem.k_quantization != GQAKvQuantizationType::None;
+    const bool v_is_quantized = problem.v_quantization != GQAKvQuantizationType::None;
+    if (k_is_quantized != v_is_quantized) {
+      return Invalid("GQA XQA preprocessing requires K and V to both be quantized or both be unquantized.");
+    }
+
+    if (k_is_quantized && problem.kv_cache_bit_width != 8) {
+      return Invalid("Quantized GQA XQA preprocessing requires eight-bit KV-cache storage.");
+    }
+
+    if (!k_is_quantized && problem.kv_cache_bit_width != 0) {
+      return Invalid("Unquantized GQA XQA preprocessing requires unpacked KV-cache storage.");
+    }
+
+    if (k_is_quantized && problem.use_qk_norm) {
+      return Invalid("Quantized GQA XQA preprocessing is incompatible with QK-Norm.");
+    }
+  }
+
   return Ok();
 }
 
