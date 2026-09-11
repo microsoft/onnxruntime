@@ -441,6 +441,23 @@ ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::pa
   return result;
 }
 
+common::Status Model::ToGraphProtoWithExternalInitializers(
+    const std::filesystem::path& external_file_name,
+    const ModelSavingOptions& model_saving_options,
+    std::ostream& external_stream,
+    ONNX_NAMESPACE::ModelProto& model_proto) const {
+  model_proto = model_proto_;
+  model_proto.clear_metadata_props();
+  for (const auto& metadata : model_metadata_) {
+    const gsl::not_null<StringStringEntryProto*> property{model_proto.add_metadata_props()};
+    property->set_key(metadata.first);
+    property->set_value(metadata.second);
+  }
+
+  return graph_->ToGraphProtoWithExternalInitializers(external_file_name, model_saving_options,
+                                                      external_stream, *model_proto.mutable_graph());
+}
+
 common::Status Model::ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocationFunc handle_initializer_func,
                                                                 void* state,
                                                                 /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) const {

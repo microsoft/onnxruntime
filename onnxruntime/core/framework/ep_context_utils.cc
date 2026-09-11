@@ -2,9 +2,12 @@
 // Licensed under the MIT License.
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include <cstring>
 #include <limits>
 #include <memory>
+#include <streambuf>
 #include <utility>
+#include "core/common/safeint.h"
 #include "core/framework/ep_context_utils.h"
 #include "core/framework/error_code_helper.h"
 #include "core/graph/model_saving_options.h"
@@ -14,6 +17,124 @@
 
 namespace onnxruntime {
 namespace epctx {
+
+namespace {
+
+class CountingStreamBuf final : public std::streambuf {
+ public:
+  size_t Size() const noexcept { return size_; }
+
+ protected:
+  std::streamsize xsputn(const char*, std::streamsize count) override {
+    if (count < 0 || static_cast<uintmax_t>(count) > std::numeric_limits<size_t>::max() - size_) {
+      return 0;
+    }
+
+    size_ += static_cast<size_t>(count);
+    return count;
+  }
+
+  int_type overflow(int_type value) override {
+    if (traits_type::eq_int_type(value, traits_type::eof())) {
+      return traits_type::not_eof(value);
+    }
+
+    if (size_ == std::numeric_limits<size_t>::max()) {
+      return traits_type::eof();
+    }
+
+    ++size_;
+    return value;
+  }
+
+ private:
+  size_t size_ = 0;
+};
+
+class FixedBufferStreamBuf final : public std::streambuf {
+ public:
+  FixedBufferStreamBuf(void* buffer, size_t size) : buffer_{static_cast<char*>(buffer)}, size_{size} {}
+
+ protected:
+  std::streamsize xsputn(const char* data, std::streamsize count) override {
+    if (count < 0 || static_cast<uintmax_t>(count) > size_ - position_) {
+      return 0;
+    }
+
+    std::memcpy(buffer_ + position_, data, static_cast<size_t>(count));
+    position_ += static_cast<size_t>(count);
+    return count;
+  }
+
+  int_type overflow(int_type value) override {
+    if (traits_type::eq_int_type(value, traits_type::eof())) {
+      return traits_type::not_eof(value);
+    }
+
+    if (position_ == size_) {
+      return traits_type::eof();
+    }
+
+    buffer_[position_++] = traits_type::to_char_type(value);
+    return value;
+  }
+
+ private:
+  char* buffer_;
+  size_t size_;
+  size_t position_ = 0;
+};
+
+void ApplyExternalInitializerAlignment(const ModelGenOptions& gen_options,
+                                       ModelSavingOptions& saving_options) {
+  const size_t alignment = gen_options.external_initializers_alignment;
+  saving_options.align_offset = alignment != 0;
+  if (alignment != 0) {
+    saving_options.on_disk_alignment = SafeInt<int64_t>(alignment);
+    saving_options.align_threshold = SafeInt<int64_t>(gen_options.external_initializers_alignment_threshold);
+  }
+}
+
+Status SerializeExternalInitializersToBuffer(const Model& model,
+                                             const ExternalInitializerBufferInfo& buffer_info,
+                                             const ModelGenOptions& gen_options,
+                                             ONNX_NAMESPACE::ModelProto& model_proto) {
+  ModelSavingOptions saving_options{buffer_info.size_threshold};
+  ApplyExternalInitializerAlignment(gen_options, saving_options);
+  const std::filesystem::path logical_file_name{buffer_info.logical_file_name};
+
+  CountingStreamBuf counting_buffer;
+  std::ostream counting_stream{&counting_buffer};
+  ONNX_NAMESPACE::ModelProto sizing_proto;
+  ORT_RETURN_IF_ERROR(model.ToGraphProtoWithExternalInitializers(logical_file_name, saving_options,
+                                                                 counting_stream, sizing_proto));
+  ORT_RETURN_IF_NOT(counting_stream.good(), "Failed to compute external initializer buffer size");
+
+  const size_t buffer_size = counting_buffer.Size();
+  if (buffer_size == 0) {
+    model_proto = std::move(sizing_proto);
+    *buffer_info.buffer_ptr = nullptr;
+    *buffer_info.buffer_size_ptr = 0;
+    return Status::OK();
+  }
+
+  IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(buffer_info.buffer_allocator, buffer_size);
+  ORT_RETURN_IF_NOT(buffer != nullptr, "Failed to allocate external initializer buffer");
+
+  FixedBufferStreamBuf output_buffer{buffer.get(), buffer_size};
+  std::ostream output_stream{&output_buffer};
+  ONNX_NAMESPACE::ModelProto output_proto;
+  ORT_RETURN_IF_ERROR(model.ToGraphProtoWithExternalInitializers(logical_file_name, saving_options,
+                                                                 output_stream, output_proto));
+  ORT_RETURN_IF_NOT(output_stream.good(), "Failed to serialize external initializers to buffer");
+
+  model_proto = std::move(output_proto);
+  *buffer_info.buffer_ptr = buffer.release();
+  *buffer_info.buffer_size_ptr = buffer_size;
+  return Status::OK();
+}
+
+}  // namespace
 
 // Serialize an EPContext model into a onnx::ModelProto.
 Status EpContextModelToProto(const onnxruntime::Model& ep_context_model,
@@ -37,11 +158,17 @@ Status EpContextModelToProto(const onnxruntime::Model& ep_context_model,
   if (const epctx::ExternalInitializerFileInfo* ext_info = ep_context_gen_options.TryGetExternalInitializerFileInfo();
       ext_info != nullptr) {
     ModelSavingOptions model_saving_options{ext_info->size_threshold};
+    ApplyExternalInitializerAlignment(ep_context_gen_options, model_saving_options);
 
     model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(ext_info->file_path,
                                                                         validated_model_path,
                                                                         model_saving_options);
     return Status::OK();
+  }
+
+  if (const auto* buffer_info = ep_context_gen_options.TryGetExternalInitializerBufferInfo()) {
+    return SerializeExternalInitializersToBuffer(ep_context_model, *buffer_info,
+                                                 ep_context_gen_options, model_proto);
   }
 
   // Handle case where user specified a custom handler function that determines how each initializer is saved.
@@ -180,9 +307,12 @@ Status BuildAndSaveOptimizedModel(const onnxruntime::Model& model,
   if (const epctx::ExternalInitializerFileInfo* ext_info = gen_options.TryGetExternalInitializerFileInfo();
       ext_info != nullptr) {
     ModelSavingOptions model_saving_options{ext_info->size_threshold};
+    ApplyExternalInitializerAlignment(gen_options, model_saving_options);
     model_proto = model.ToGraphProtoWithExternalInitializers(ext_info->file_path,
                                                              valid_output_model_path,
                                                              model_saving_options);
+  } else if (const auto* buffer_info = gen_options.TryGetExternalInitializerBufferInfo()) {
+    ORT_RETURN_IF_ERROR(SerializeExternalInitializersToBuffer(model, *buffer_info, gen_options, model_proto));
   } else if (const epctx::InitializerHandler* custom_handler = gen_options.TryGetInitializerHandler();
              custom_handler != nullptr) {
     ORT_RETURN_IF_ERROR(model.ToGraphProtoWithCustomInitializerHandling(

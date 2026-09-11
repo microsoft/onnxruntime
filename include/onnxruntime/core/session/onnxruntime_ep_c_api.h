@@ -2103,6 +2103,46 @@ struct OrtEpApi {
   ORT_API2_STATUS(SessionOptionsGetWeightlessSourceModelBuffer, _In_ const OrtSessionOptions* session_options,
                   _Outptr_result_maybenull_ const void** source_model_data,
                   _Out_ size_t* source_model_data_length);
+
+  /** \brief Copy EPContext callback configuration from session options into an owned handle.
+   *
+   * Call during OrtEpFactory::CreateEp and retain the handle while Compile may use the callback.
+   * \param[in] session_options Session options supplied to OrtEpFactory::CreateEp.
+   * \param[out] config Handle that must be released with ReleaseEpContextConfig.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(SessionOptionsGetEpContextConfig, _In_ const OrtSessionOptions* session_options,
+                  _Outptr_ OrtEpContextConfig** config);
+
+  /** \brief Release an OrtEpContextConfig handle. May be called with NULL.
+   * \since Version 1.30.
+   */
+  ORT_CLASS_RELEASE(EpContextConfig);
+
+  /** \brief Get the EPContext data read callback and application state.
+   *
+   * If no callback is configured, both outputs are set to NULL.
+   * \param[in] config EPContext configuration handle.
+   * \param[out] read_func Configured callback, or NULL.
+   * \param[out] state Configured application state, or NULL.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(EpContextConfigGetEpContextDataReadFunc, _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtReadNamedBufferFunc* read_func, _Out_ void** state);
+
+  /** \brief Get the EPContext data write callback and application state.
+   *
+   * If no callback is configured, both outputs are set to NULL.
+   * \param[in] config EPContext configuration handle.
+   * \param[out] write_func Configured callback, or NULL.
+   * \param[out] state Configured application state, or NULL.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(EpContextConfigGetEpContextDataWriteFunc, _In_ const OrtEpContextConfig* config,
+                  _Out_ OrtWriteNamedBufferFunc* write_func, _Out_ void** state);
 };
 
 /**
@@ -2156,6 +2196,22 @@ typedef enum OrtWeightlessSupport {
   /** EP supports weightless mode for all initializers (internal and external). */
   OrtWeightlessSupport_ALL = 2,
 } OrtWeightlessSupport;
+
+/** \brief Flags through which an EP advertises the EPContext data callback modes it supports.
+ *
+ * ORT uses these capabilities to validate configured callbacks before calling OrtEp::Compile. These flags do not
+ * configure or enable callbacks.
+ * \since Version 1.31.
+ */
+typedef enum OrtEpContextDataSupportFlags {
+  /** The EP does not support any EPContext data callback modes. */
+  OrtEpContextDataSupportFlags_NONE = 0,
+
+  /** The EP can write named EPContext data buffers through an OrtWriteNamedBufferFunc configured in the model
+   * compilation options. ORT requires this capability when an EPContext data write callback is configured.
+   */
+  OrtEpContextDataSupportFlags_WRITE = 1U << 0,
+} OrtEpContextDataSupportFlags;
 
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
@@ -2708,6 +2764,19 @@ struct OrtEp {
    * \since Version 1.29.
    */
   ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ OrtWeightlessSupport* support);
+
+  /** \brief Query the EP's support for EPContext data callbacks.
+   *
+   * ORT calls this function before Compile when an EPContext data callback is configured. The EP must set
+   * support_flags to a bitwise combination of OrtEpContextDataSupportFlags values.
+   *
+   * \note Implementation is optional when no EPContext data callback is configured.
+   * \param[in] this_ptr The EP instance.
+   * \param[out] support_flags The callback modes supported by the EP.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(GetEpContextDataSupport, _In_ const OrtEp* this_ptr, _Out_ uint32_t* support_flags);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

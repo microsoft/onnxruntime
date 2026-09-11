@@ -321,6 +321,7 @@ ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
+ORT_RUNTIME_CLASS(EpContextConfig);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
@@ -586,6 +587,42 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
 typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
                                                      _In_ const void* buffer,
                                                      _In_ size_t buffer_num_bytes);
+
+/** \brief Function called to write named binary data.
+ *
+ * Each invocation represents one complete write for `name`. ORT does not retain `buffer` after the callback returns
+ * and does not serialize calls made by different EP instances or worker threads.
+ *
+ * \param[in] state Application-owned state that remains valid while the callback may be invoked.
+ * \param[in] name Null-terminated UTF-8 logical data identifier.
+ * \param[in] buffer Data to write. May be NULL only when `buffer_num_bytes` is zero.
+ * \param[in] buffer_num_bytes Number of bytes in `buffer`.
+ * \return nullptr on success, or an OrtStatus* describing the failure.
+ * \since Version 1.30.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
+                                                          _In_ const char* name,
+                                                          _In_ const void* buffer,
+                                                          _In_ size_t buffer_num_bytes);
+
+/** \brief Function called to read named binary data.
+ *
+ * The callback must allocate the returned buffer with `allocator`. The consumer frees it with the same allocator.
+ * ORT does not serialize calls made by different EP instances or worker threads.
+ *
+ * \param[in] state Application-owned state that remains valid while the callback may be invoked.
+ * \param[in] name Null-terminated UTF-8 logical data identifier.
+ * \param[in] allocator Allocator that must be used for the returned buffer.
+ * \param[out] buffer Allocated buffer containing the data.
+ * \param[out] data_size Number of bytes in `buffer`.
+ * \return nullptr on success, or an OrtStatus* describing the failure.
+ * \since Version 1.30.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
+                                                         _In_ const char* name,
+                                                         _In_ OrtAllocator* allocator,
+                                                         _Outptr_ void** buffer,
+                                                         _Out_ size_t* data_size);
 
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
@@ -5299,14 +5336,18 @@ struct OrtApi {
    * external file names and the file content in memory. The API gets the external file name, offset, data length
    * from TensorProto, and locate the tensor data from the file in memory buffer.
    * It creates a Tensor to replace the existing Tensor in graph. The replacement
-   * will occur before any of the optimizations take place. The data will be copied into the graph
-   * since TensorProto can't refer to the user provided buffers.
+   * will occur before any of the optimizations take place. By default, the data is copied during session creation.
+   *
+   * If the session config `session.use_external_initializer_file_buffers_directly` is set to `"1"`, naturally aligned
+   * native-endian slices may be used directly. Other slices are copied. Every session created from these options may
+   * outlive the options, so the application must keep all supplied buffers unchanged and alive until all such sessions
+   * are released. If session creation fails, the buffers may be released after the call returns.
    *
    * \param[in] options
    * \param[in] external_initializer_file_names Array of null terminated UTF-8 encoded strings of the file names
    *            which holds the external initializers.
    * \param[in] external_initializer_file_buffer_array Array of pointers to the buffer of the file content.
-   *            The buffer can be freed after session creation.
+   *            The buffer can be freed after session creation unless direct-buffer mode is enabled as described above.
    * \param[in] external_initializer_file_lengths Array of size_t to indicate the length of file content
    * \param[in] num_external_initializer_files Number of external files
    *
@@ -8462,6 +8503,65 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessEnabled,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ bool use_weightless);
+
+  /** \brief Register a callback that receives external EPContext binary data during model compilation.
+   *
+   * Execution providers retrieve this callback from an OrtEpContextConfig. It is used only when EPContext data is not
+   * embedded in the generated model. Passing NULL clears the callback and state.
+   *
+   * \param[in] model_compile_options Model compilation options.
+   * \param[in] write_func Write callback, or NULL to clear a previously registered callback.
+   * \param[in] state Application-owned callback state. Ignored when `write_func` is NULL.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_opt_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state);
+
+  /** \brief Store external initializers for the compiled model in one caller-owned buffer.
+   *
+   * This destination replaces any external-initializer file or callback destination configured previously. The
+   * logical file name is recorded in each externalized TensorProto and must be a non-empty relative path. On success,
+   * the caller owns the allocated buffer and must release it with `allocator`. If no initializer meets the threshold,
+   * the output buffer is NULL and its size is zero. On failure, both outputs are unchanged.
+   *
+   * The output model may be written to a file, buffer, or write callback. When the output model is written to a file,
+   * the caller is responsible for persisting or otherwise supplying this buffer under `logical_file_name` when the
+   * model is loaded.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] logical_file_name Logical external-data file name stored in the model.
+   * \param[in] external_initializers_size_threshold Initializers at least this size are externalized.
+   * \param[in] allocator Allocator used to allocate the output buffer.
+   * \param[out] output_buffer_ptr Receives the allocated buffer, or NULL when no data is externalized.
+   * \param[out] output_buffer_size_ptr Receives the allocated buffer size.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelExternalInitializersBuffer,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* logical_file_name,
+                  size_t external_initializers_size_threshold,
+                  _Inout_ OrtAllocator* allocator,
+                  _Outptr_ void** output_buffer_ptr,
+                  _Out_ size_t* output_buffer_size_ptr);
+
+  /** \brief Configure additional alignment for externalized initializer offsets.
+   *
+   * Applies to file and buffer destinations for initializers at least `minimum_size` bytes. An alignment of zero
+   * disables the additional policy. Otherwise, alignment must be a power of two.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] alignment Required byte alignment, or zero to disable.
+   * \param[in] minimum_size Minimum initializer size at which alignment is applied.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.30.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelExternalInitializersAlignment,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  size_t alignment,
+                  size_t minimum_size);
 };
 
 /**

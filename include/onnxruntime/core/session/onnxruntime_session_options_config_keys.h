@@ -374,6 +374,13 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMin
 static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPath =
     "session.model_external_initializers_file_folder_path";
 
+// Use buffers supplied through AddExternalInitializersFromFilesInMemory directly for eligible initializers.
+// The application must keep each buffer unchanged and alive until all sessions created from the options are released.
+// "0": Copy initializer data during session creation. [DEFAULT]
+// "1": Borrow naturally aligned, native-endian initializer slices and copy other slices.
+static const char* const kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly =
+    "session.use_external_initializer_file_buffers_directly";
+
 // Use this config when saving pre-packed constant initializers to an external data file.
 // This allows you to memory map pre-packed initializers on model load and leave it to
 // to the OS the amount of memory consumed by the pre-packed initializers. Otherwise,

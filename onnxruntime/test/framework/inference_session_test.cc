@@ -3738,7 +3738,8 @@ static OrtStatus* ORT_API_CALL HandleCompileApiInitializer(
   return status.release();
 }
 
-static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_path, bool use_initializer) {
+static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_path, bool use_initializer,
+                                     int64_t tensor_size = 2, bool use_second_initializer = false) {
   ModelProto model_proto;
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto.add_opset_import()->set_version(17);
@@ -3746,11 +3747,11 @@ static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_p
   GraphProto& graph = *model_proto.mutable_graph();
   graph.set_name("compile_api_custom_initializer_graph");
 
-  auto add_value_info = [](ValueInfoProto& value_info, const char* name) {
+  auto add_value_info = [tensor_size](ValueInfoProto& value_info, const char* name) {
     value_info.set_name(name);
     auto& tensor_type = *value_info.mutable_type()->mutable_tensor_type();
     tensor_type.set_elem_type(TensorProto_DataType_FLOAT);
-    tensor_type.mutable_shape()->add_dim()->set_dim_value(2);
+    tensor_type.mutable_shape()->add_dim()->set_dim_value(tensor_size);
   };
 
   add_value_info(*graph.add_input(), "X");
@@ -3760,9 +3761,20 @@ static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_p
     TensorProto& initializer = *graph.add_initializer();
     initializer.set_name("Y");
     initializer.set_data_type(TensorProto_DataType_FLOAT);
-    initializer.add_dims(2);
-    initializer.add_float_data(3.0f);
-    initializer.add_float_data(4.0f);
+    initializer.add_dims(tensor_size);
+    for (int64_t i = 0; i < tensor_size; ++i) {
+      initializer.add_float_data(static_cast<float>(i + 3));
+    }
+
+    if (use_second_initializer) {
+      TensorProto& second_initializer = *graph.add_initializer();
+      second_initializer.set_name("W");
+      second_initializer.set_data_type(TensorProto_DataType_FLOAT);
+      second_initializer.add_dims(tensor_size);
+      for (int64_t i = 0; i < tensor_size; ++i) {
+        second_initializer.add_float_data(static_cast<float>(i + 5));
+      }
+    }
   }
   add_value_info(*graph.add_output(), "Z");
 
@@ -3771,7 +3783,16 @@ static void CreateCompileApiAddModel(const std::basic_string<ORTCHAR_T>& model_p
   node.set_op_type("Add");
   node.add_input("X");
   node.add_input("Y");
-  node.add_output("Z");
+  node.add_output(use_second_initializer ? "A" : "Z");
+
+  if (use_second_initializer) {
+    NodeProto& second_node = *graph.add_node();
+    second_node.set_name("second_add_node");
+    second_node.set_op_type("Add");
+    second_node.add_input("A");
+    second_node.add_input("W");
+    second_node.add_output("Z");
+  }
 
   std::ofstream output(model_path, std::ios::binary);
   ASSERT_TRUE(output.is_open());
@@ -4056,6 +4077,146 @@ TEST(InferenceSessionTests, CompileApiOutputsPlainOnnxToBuffer) {
   EXPECT_GT(counts.count("Mul") ? counts.at("Mul") : 0, 0);
 
   allocator.Free(output_buffer);
+}
+
+TEST(InferenceSessionTests, CompileApiWritesAndReloadsExternalInitializersBuffer) {
+  const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_external_buffer_input.onnx");
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> path;
+    ~RemoveOnExit() { std::filesystem::remove(path); }
+  } remove_on_exit{input_path};
+  CreateCompileApiAddModel(input_path, true, 64, true);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(input_path.c_str());
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* model_buffer = nullptr;
+  size_t model_size = 0;
+  void* external_buffer = nullptr;
+  size_t external_size = 0;
+  compile_options.SetOutputModelBuffer(allocator, &model_buffer, &model_size);
+  compile_options.SetOutputModelExternalInitializersBuffer(ORT_TSTR("weights.bin"), 0, allocator,
+                                                           &external_buffer, &external_size);
+  compile_options.SetOutputModelExternalInitializersAlignment(64, 0);
+
+  const Ort::Status compile_status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(compile_status.IsOK()) << compile_status.GetErrorMessage();
+  ASSERT_NE(model_buffer, nullptr);
+  ASSERT_NE(external_buffer, nullptr);
+  ASSERT_GT(external_size, 0u);
+
+  ModelProto model_proto;
+  ASSERT_TRUE(model_proto.ParseFromArray(model_buffer, static_cast<int>(model_size)));
+  ASSERT_EQ(model_proto.graph().initializer_size(), 2);
+  std::array<std::unique_ptr<ExternalDataInfo>, 2> external_infos;
+  for (int i = 0; i < model_proto.graph().initializer_size(); ++i) {
+    ASSERT_STATUS_OK(ExternalDataInfo::Create(model_proto.graph().initializer(i).external_data(), external_infos[i]));
+    EXPECT_EQ(external_infos[i]->GetRelPath(), ORT_TSTR("weights.bin"));
+    EXPECT_EQ(external_infos[i]->GetOffset() % 64, 0);
+    EXPECT_EQ(external_infos[i]->GetLength(), 64 * sizeof(float));
+  }
+  EXPECT_LT(external_infos[0]->GetOffset(), external_infos[1]->GetOffset());
+
+  const PathString logical_file_name = ORT_TSTR("weights.bin");
+  const InlinedHashMap<PathString, std::pair<char*, size_t>> external_files{
+      {logical_file_name, {static_cast<char*>(external_buffer), external_size}}};
+  const std::array<int64_t, 1> input_shape{64};
+  std::array<float, 64> input_data{};
+  std::fill(input_data.begin(), input_data.end(), 1.0f);
+  auto run_and_verify = [&](InferenceSessionWrapper& session) {
+    OrtValue input_value;
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape{input_shape}, input_data.data(),
+                         OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), input_value);
+    NameMLValMap feeds{{"X", input_value}};
+    const std::array<std::string, 1> output_names{"Z"};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, feeds, output_names, &fetches));
+    ASSERT_EQ(fetches.size(), 1);
+    const float* output = fetches[0].Get<Tensor>().Data<float>();
+    for (size_t i = 0; i < input_data.size(); ++i) {
+      EXPECT_EQ(output[i], static_cast<float>(2 * i + 9));
+    }
+  };
+
+  {
+    SessionOptions copy_options;
+    copy_options.external_initializer_files_mmap = external_files;
+    InferenceSessionWrapper copy_session{copy_options, GetEnvironment()};
+    ASSERT_STATUS_OK(copy_session.Load(model_buffer, static_cast<int>(model_size)));
+    ASSERT_STATUS_OK(copy_session.Initialize());
+    OrtValue copied_value;
+    EXPECT_FALSE(copy_session.GetGraph().GetOrtValueInitializer("Y", copied_value, false));
+    run_and_verify(copy_session);
+  }
+
+  {
+    SessionOptions direct_options;
+    direct_options.graph_optimization_level = TransformerLevel::Default;
+    direct_options.external_initializer_files_mmap = external_files;
+    ASSERT_STATUS_OK(direct_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigUseExternalInitializerFileBuffersDirectly, "1"));
+    InferenceSessionWrapper direct_session{direct_options, GetEnvironment()};
+    ASSERT_STATUS_OK(direct_session.Load(model_buffer, static_cast<int>(model_size)));
+    ASSERT_STATUS_OK(direct_session.Initialize());
+    for (size_t i = 0; i < external_infos.size(); ++i) {
+      const auto& initializer = model_proto.graph().initializer(static_cast<int>(i));
+      const auto* initializer_buffer = static_cast<char*>(external_buffer) + external_infos[i]->GetOffset();
+      int initializer_index;
+      ASSERT_STATUS_OK(
+          direct_session.GetSessionState().GetOrtValueNameIdxMap().GetIdx(initializer.name(), initializer_index));
+      EXPECT_EQ(direct_session.GetSessionState().GetInitializedTensors().at(initializer_index).Get<Tensor>().DataRaw(),
+                initializer_buffer);
+    }
+    run_and_verify(direct_session);
+  }
+
+  allocator.Free(external_buffer);
+  allocator.Free(model_buffer);
+}
+
+TEST(InferenceSessionTests, CompileApiWritesModelFileAndExternalInitializersBuffer) {
+  const std::basic_string<ORTCHAR_T> input_path = ORT_TSTR("compile_api_external_buffer_file_input.onnx");
+  const std::basic_string<ORTCHAR_T> output_path = ORT_TSTR("compile_api_external_buffer_file_output.onnx");
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> input_path;
+    std::basic_string<ORTCHAR_T> output_path;
+    ~RemoveOnExit() {
+      std::filesystem::remove(input_path);
+      std::filesystem::remove(output_path);
+    }
+  } remove_on_exit{input_path, output_path};
+  CreateCompileApiAddModel(input_path, true, 64);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetInputModelPath(input_path.c_str());
+  compile_options.SetOutputModelPath(output_path.c_str());
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* external_buffer = nullptr;
+  size_t external_size = 0;
+  compile_options.SetOutputModelExternalInitializersBuffer(ORT_TSTR("weights.bin"), 0, allocator,
+                                                           &external_buffer, &external_size);
+
+  const Ort::Status compile_status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(compile_status.IsOK()) << compile_status.GetErrorMessage();
+  ASSERT_TRUE(std::filesystem::exists(output_path));
+  ASSERT_NE(external_buffer, nullptr);
+  ASSERT_GT(external_size, 0u);
+
+  ModelProto model_proto;
+  std::ifstream model_stream{output_path, std::ios::binary};
+  ASSERT_TRUE(model_stream.is_open());
+  ASSERT_TRUE(model_proto.ParseFromIstream(&model_stream));
+  ASSERT_EQ(model_proto.graph().initializer_size(), 1);
+  std::unique_ptr<ExternalDataInfo> external_info;
+  ASSERT_STATUS_OK(ExternalDataInfo::Create(model_proto.graph().initializer(0).external_data(), external_info));
+  EXPECT_EQ(external_info->GetRelPath(), ORT_TSTR("weights.bin"));
+  EXPECT_EQ(external_info->GetLength(), 64 * sizeof(float));
+
+  allocator.Free(external_buffer);
 }
 
 // Public Compile API -> plain optimized ONNX through a user write function: no EPContext nodes.

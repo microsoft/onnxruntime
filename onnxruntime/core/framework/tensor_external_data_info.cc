@@ -130,7 +130,7 @@ std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
     prepacked_entry << key << "|";
     for (size_t i = 0, size = prepacked_weights->buffers_.size(); i < size; ++i) {
       const auto size_in_bytes = prepacked_weights->buffer_sizes_[i];
-      if (align && static_cast<int64_t>(size_in_bytes) > align_threshold) {
+      if (align && SafeInt<int64_t>(size_in_bytes) >= align_threshold) {
         // return early on error
         if (!AlignAndPad(os, on_disk_alignment, external_offset)) {
           return os;

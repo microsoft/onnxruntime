@@ -593,6 +593,13 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializersFromFilesInMemory, _In_ OrtS
                     size_t num_external_initializer_files) {
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
   API_IMPL_BEGIN
+  ORT_API_RETURN_IF(options == nullptr, ORT_INVALID_ARGUMENT, "Session options are null");
+  ORT_API_RETURN_IF(num_external_initializer_files != 0 && file_names == nullptr, ORT_INVALID_ARGUMENT,
+                    "External initializer file names are null");
+  ORT_API_RETURN_IF(num_external_initializer_files != 0 && buffer_array == nullptr, ORT_INVALID_ARGUMENT,
+                    "External initializer buffer array is null");
+  ORT_API_RETURN_IF(num_external_initializer_files != 0 && file_lengths == nullptr, ORT_INVALID_ARGUMENT,
+                    "External initializer file lengths are null");
   onnxruntime::InlinedVector<onnxruntime::PathString> names;
   onnxruntime::InlinedVector<std::pair<char*, const size_t>> buffers;
   onnxruntime::InlinedVector<size_t> lengths;
