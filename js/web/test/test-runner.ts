@@ -34,6 +34,10 @@ import { Test } from './test-types';
 // the threshold that used to compare 2 float numbers. See above for TensorResultValidator.floatEqual().
 const CPU_THRESHOLD_ABSOLUTE_ERROR = 1.0e-4;
 const CPU_THRESHOLD_RELATIVE_ERROR = 1.000001;
+// float16 has only 10 mantissa bits (~3.3 decimal digits precision), so 1-ULP differences are expected
+// between different compiled builds. Use wider thresholds for float16 data regardless of backend.
+const CPU_FLOAT16_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
+const CPU_FLOAT16_THRESHOLD_RELATIVE_ERROR = 1.001;
 const WEBGL_THRESHOLD_ABSOLUTE_ERROR = 1.0e-3;
 const WEBGL_THRESHOLD_RELATIVE_ERROR = 1.00001;
 const WEBGL_HALF_FLOAT_THRESHOLD_ABSOLUTE_ERROR = 0.1;
@@ -473,7 +477,12 @@ export class TensorResultValidator {
           new Float16ArrayPolyfill(expectedDataBuffer, expectedDataByteOffset, expectedDataLength),
         );
 
-        return this.floatEqual(actualDataFloat32Array, expectedDataFloat32Array);
+        return this.floatEqual(
+          actualDataFloat32Array,
+          expectedDataFloat32Array,
+          Math.max(this.absoluteThreshold, CPU_FLOAT16_THRESHOLD_ABSOLUTE_ERROR),
+          Math.max(this.relativeThreshold, CPU_FLOAT16_THRESHOLD_RELATIVE_ERROR),
+        );
       }
 
       case 'float32':
@@ -513,10 +522,15 @@ export class TensorResultValidator {
   floatEqual(
     actual: number[] | Float32Array | Float64Array,
     expected: number[] | Float32Array | Float64Array,
+    absoluteThresholdOverride?: number,
+    relativeThresholdOverride?: number,
   ): boolean {
     if (actual.length !== expected.length) {
       return false;
     }
+
+    const absThreshold = absoluteThresholdOverride ?? this.absoluteThreshold;
+    const relThreshold = relativeThresholdOverride ?? this.relativeThreshold;
 
     for (let i = actual.length - 1; i >= 0; i--) {
       const a = actual[i];
@@ -554,10 +568,10 @@ export class TensorResultValidator {
       //   test fail
       // endif
       //
-      if (Math.abs(actual[i] - expected[i]) < this.absoluteThreshold) {
+      if (Math.abs(actual[i] - expected[i]) < absThreshold) {
         continue; // absolute error check pass
       }
-      if (a !== 0 && b !== 0 && a / b < this.relativeThreshold && b / a < this.relativeThreshold) {
+      if (a !== 0 && b !== 0 && a / b < relThreshold && b / a < relThreshold) {
         continue; // relative error check pass
       }
 
