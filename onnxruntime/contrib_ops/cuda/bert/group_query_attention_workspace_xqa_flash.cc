@@ -101,14 +101,6 @@ GQAWorkspaceStatus CheckedCeilDivide(
   return Ok();
 }
 
-bool IsSupportedXqaGroup(size_t group_size, GQAXqaKvType kv_type) noexcept {
-  if (kv_type == GQAXqaKvType::None) {
-    return group_size == 1 || group_size == 2 || group_size == 4 || group_size == 5 ||
-           group_size == 8 || group_size == 16 || group_size == 32;
-  }
-  return group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32;
-}
-
 GQAWorkspaceStatus ValidateRange(
     size_t offset, size_t bytes, size_t total, const char* message) noexcept {
   if (bytes == 0) {
@@ -279,12 +271,13 @@ GQAXqaWorkspaceResult GetGQAXqaWorkspaceRecipe(
   }
 
   const size_t head_size = static_cast<size_t>(problem.head_size);
-  if (head_size != 64 && head_size != 128 && head_size != 256) {
+  if (!IsSupportedGQAXqaHeadSize(problem.head_size)) {
     result.status = Unavailable("XQA supports head sizes 64, 128, and 256.");
     return result;
   }
-  const size_t group_size = static_cast<size_t>(problem.num_heads / problem.kv_num_heads);
-  if (!IsSupportedXqaGroup(group_size, config.kv_type)) {
+  const int64_t group_size = problem.num_heads / problem.kv_num_heads;
+  if (!IsSupportedGQAXqaGroupSize(
+          group_size, /*is_quantized=*/config.kv_type != GQAXqaKvType::None)) {
     result.status = Unavailable("XQA does not support this query-to-KV head group.");
     return result;
   }
