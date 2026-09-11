@@ -32,17 +32,13 @@ class LinearAttentionGate final : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 };
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * activation(gate), where activation is
-// SiLU (gate * Sigmoid(gate)) or plain Sigmoid.
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate).
 class GatedRMSNormProgram final : public Program<GatedRMSNormProgram> {
  public:
-  GatedRMSNormProgram(bool use_sigmoid_activation) : Program{"GatedRMSNorm"}, use_sigmoid_activation_(use_sigmoid_activation) {}
+  GatedRMSNormProgram() : Program{"GatedRMSNorm"} {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"norm_size", ProgramUniformVariableDataType::Uint32},
                                           {"epsilon", ProgramUniformVariableDataType::Float32});
-
- private:
-  bool use_sigmoid_activation_;
 };
 
 class GatedRMSNorm final : public WebGpuKernel {
@@ -52,7 +48,6 @@ class GatedRMSNorm final : public WebGpuKernel {
 
  private:
   float epsilon_;
-  bool use_sigmoid_activation_;
 };
 
 }  // namespace webgpu

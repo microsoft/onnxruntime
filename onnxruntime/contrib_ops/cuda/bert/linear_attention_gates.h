@@ -18,8 +18,7 @@ class LinearAttentionGate final : public onnxruntime::cuda::CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 };
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * activation(gate), where activation is
-// SiLU (gate * Sigmoid(gate)) or plain Sigmoid.
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate).
 template <typename T>
 class GatedRMSNorm final : public onnxruntime::cuda::CudaKernel {
  public:
@@ -28,7 +27,6 @@ class GatedRMSNorm final : public onnxruntime::cuda::CudaKernel {
 
  private:
   float epsilon_;
-  bool use_sigmoid_activation_;
 };
 
 }  // namespace cuda

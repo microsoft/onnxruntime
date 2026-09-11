@@ -70,8 +70,7 @@ __global__ void GatedRMSNormKernel(
     const T* scale,
     const T* gate,
     int norm_size,
-    float epsilon,
-    bool use_sigmoid_activation) {
+    float epsilon) {
   const int64_t offset = static_cast<int64_t>(blockIdx.x) * norm_size;
   const T* x = input + offset;
   const T* g = gate + offset;
@@ -97,8 +96,7 @@ __global__ void GatedRMSNormKernel(
   for (int i = threadIdx.x; i < norm_size; i += kThreadsPerBlock) {
     const float z = to_float<T>(g[i]);
     const float normalized = to_float<T>(x[i]) * inv_rms * to_float<T>(scale[i]);
-    const float activated = use_sigmoid_activation ? SigmoidFloat(z) : (z * SigmoidFloat(z));
-    y[i] = from_float<T>(normalized * activated);
+    y[i] = from_float<T>(normalized * (z * SigmoidFloat(z)));
   }
 }
 
@@ -138,8 +136,7 @@ Status LaunchGatedRMSNormKernel(
     const T* gate,
     int64_t num_rows,
     int norm_size,
-    float epsilon,
-    bool use_sigmoid_activation) {
+    float epsilon) {
   if (num_rows == 0) {
     return Status::OK();
   }
@@ -149,7 +146,7 @@ Status LaunchGatedRMSNormKernel(
   const int blocks = static_cast<int>(num_rows);
 #define LAUNCH_GATED_RMS_NORM(threads)                            \
   GatedRMSNormKernel<T, threads><<<blocks, threads, 0, stream>>>( \
-      output, input, scale, gate, norm_size, epsilon, use_sigmoid_activation)
+      output, input, scale, gate, norm_size, epsilon)
 
   if (norm_size <= 64) {
     LAUNCH_GATED_RMS_NORM(64);
@@ -171,7 +168,7 @@ Status LaunchGatedRMSNormKernel(
   template Status LaunchLinearAttentionGateKernel<T>(cudaStream_t, T*, T*, const T*, const T*,  \
                                                      const float*, const float*, int64_t, int); \
   template Status LaunchGatedRMSNormKernel<T>(cudaStream_t, T*, const T*, const T*, const T*,   \
-                                              int64_t, int, float, bool);
+                                              int64_t, int, float);
 
 INSTANTIATE_LINEAR_ATTENTION_GATES(float)
 INSTANTIATE_LINEAR_ATTENTION_GATES(half)

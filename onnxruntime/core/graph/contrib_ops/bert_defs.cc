@@ -1653,13 +1653,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(3,
                "key_cache",
-               "Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in "
+               "Block-based key cache with shape (num_blocks, block_size, kv_num_heads, cache_head_size), where "
+               "cache_head_size is (head_size + 1) / 2 for packed INT4 and head_size otherwise. This is updated in "
                "place within the op. When 'kv_cache_layout' is 'LATENT' this is the only cache, and V is read from its "
                "leading v_head_size channels.",
                "T_CACHE")
         .Input(4,
                "value_cache",
-               "Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated "
+               "Block-based value cache with shape (num_blocks, block_size, kv_num_heads, cache_head_size), where "
+               "cache_head_size is (head_size + 1) / 2 for packed INT4 and head_size otherwise. This is updated "
                "in place within the op. This should be the same shape as key_cache. Must be absent when "
                "'kv_cache_layout' is 'LATENT'.",
                "T_CACHE",
@@ -1757,19 +1759,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "key_cache_out",
-                "Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always "
-                "the same tensor as key_cache.",
+                "Aliases key_cache with the same shape and element type, including its packed dimension for INT4.",
                 "T_CACHE",
                 OpSchema::Optional)
         .Output(2,
                 "value_cache_out",
-                "Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always "
-                "the same tensor as value_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.",
+                "Aliases value_cache with the same shape and element type, including its packed dimension for INT4. "
+                "Must be absent when 'kv_cache_layout' is 'LATENT'.",
                 "T_CACHE",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("T_CACHE",
-                        {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)", "tensor(float8e4m3fn)"},
+                        {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)", "tensor(float8e4m3fn)", "tensor(uint8)"},
                         "Constrain the KV cache to float or quantized tensors.")
         .TypeConstraint("T_KV_SCALE", {"tensor(float)"}, "Constrain KV cache scales to float tensors.")
         .TypeConstraint("S", {"tensor(int32)"}, "Constrain Positional inputs to int tensor.")
@@ -3697,20 +3698,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* GatedRMSNorm_ver1_doc = R"DOC(
-Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs, and by the
-Qwen4-Exp text QSA/PLE gated norms:
+Gated RMS normalization as used by Mamba2 / gated DeltaNet attention outputs:
 
-  Y = X * rsqrt(mean(X^2) + epsilon) * scale * activation(gate)
-
-where `activation` is SiLU by default (`Y = X * rsqrt(mean(X^2) + epsilon) * scale *
-gate * Sigmoid(gate)`) or plain Sigmoid when the `activation` attribute is set to
-`"sigmoid"` (`Y = X * rsqrt(mean(X^2) + epsilon) * scale * Sigmoid(gate)`).
+  Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate)
 
 The mean of squares is taken over the trailing `C` elements of each row, where `C` is the
 length of `scale`; the input's last dimension must be a multiple of `C`, which lets a
 per-head norm run on a packed (B, T, H * C) tensor without any surrounding Reshape.
-All arithmetic including the activation is done in float32 regardless of the tensor type,
-matching the reference implementation, so this replaces the exported
+All arithmetic including SiLU is done in float32 regardless of the tensor type, matching
+the reference implementation, so this replaces the exported
 SimplifiedLayerNormalization -> Cast -> Sigmoid -> Mul -> Cast -> Mul -> Cast chain with a
 single launch.
 )DOC";
@@ -3723,11 +3719,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Epsilon added to the mean of squares before the reciprocal square root.",
               AttributeProto::FLOAT,
               1e-5f)
-        .Attr("activation",
-              "Gate activation function. One of: 'silu', 'sigmoid'. Default is 'silu', which "
-              "preserves the original Y = ... * gate * Sigmoid(gate) behavior.",
-              AttributeProto::STRING,
-              std::string("silu"))
         .Input(0,
                "X",
                "Input tensor with shape (..., H * C). Normalization is applied over each "

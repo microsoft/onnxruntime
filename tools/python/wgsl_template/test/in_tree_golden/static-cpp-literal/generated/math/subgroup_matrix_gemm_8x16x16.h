@@ -21,7 +21,7 @@ Status ApplyTemplate<"math/subgroup_matrix_gemm_8x16x16.wgsl.template">(ShaderHe
   auto& __param_trans_b = params.param_trans_b;
 
   // Extract variables
-  auto& __var_output = *params.var_output;
+  auto* __var_output = params.var_output;
 
 //   1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //   2 | // Licensed under the MIT License.
@@ -1388,7 +1388,7 @@ ss << "                val += output_element_t(uniforms.beta) * input_c[c_offset
 }
 // 567 |                 output.setByOffset(out_base + i, val);
 ss << "                ";
-ss << __var_output.SetByOffset("out_base + i", "val");
+ss << __var_output->SetByOffset("out_base + i", "val");
 ss << ";\n";
 // 568 |             }
 ss << "            }\n";
