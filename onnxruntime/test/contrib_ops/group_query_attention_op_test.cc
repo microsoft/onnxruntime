@@ -421,6 +421,11 @@ TEST(GroupQueryAttentionTest, LocalWindowMultiToken_WebGPU) {
 }
 
 TEST(GroupQueryAttentionTest, LocalWindowPrefill_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+
   constexpr int sequence_length = 32;
   constexpr int head_size = 8;
   std::vector<float> value(sequence_length * head_size);
@@ -451,7 +456,7 @@ TEST(GroupQueryAttentionTest, LocalWindowPrefill_WebGPU) {
                           std::vector<float>(sequence_length * head_size, 0.0f));
   tester.AddOutput<float>("present_value", {1, 1, sequence_length, head_size}, value);
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  execution_providers.push_back(std::move(webgpu_ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
