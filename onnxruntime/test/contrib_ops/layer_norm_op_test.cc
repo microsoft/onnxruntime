@@ -855,6 +855,17 @@ TEST(LayerNormTest, LayerNorm_ZeroVariance) {
   test.Run();
 }
 
+TEST(LayerNormTest, LayerNorm_AxisExceedsRank) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<int64_t>("axis", 0xFFFFFFFFLL);
+  test.AddInput<float>("X", {1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("Scale", {2}, {1.0f, 1.0f});
+  test.AddOutput<float>("Y", {1, 2}, {0.0f, 0.0f});
+  test.AddOutput<float>("Mean", {1, 1}, {0.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Unexpected axis value");
+}
+
 // Edge case: constant weights (as in issue #20429)
 TEST(LayerNormTest, LayerNorm_ConstantWeights_LargeInput) {
   OpTester test("LayerNormalization", 17);
