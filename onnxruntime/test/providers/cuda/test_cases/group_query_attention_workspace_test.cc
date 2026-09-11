@@ -23,6 +23,8 @@ using contrib::cuda::GQAPreparationRoute;
 using contrib::cuda::GQAPreprocessMode;
 using contrib::cuda::GQAWorkspaceError;
 using contrib::cuda::GQAWorkspaceProblem;
+using contrib::cuda::IsSupportedGQAXqaGroupSize;
+using contrib::cuda::IsSupportedGQAXqaHeadSize;
 using contrib::cuda::kGQAPreparationAlignment;
 using contrib::cuda::ValidateGQAPreparationRecipe;
 
@@ -38,6 +40,19 @@ GQAWorkspaceProblem ValidProblem() {
   problem.kv_num_heads = 2;
   problem.head_size = 8;
   problem.present_kv_cache_capacity = 5;
+  return problem;
+}
+
+GQAWorkspaceProblem ValidXqaProblem(bool is_quantized = false) {
+  auto problem = ValidProblem();
+  problem.sequence_length = 1;
+  problem.num_heads = 4;
+  problem.kv_num_heads = 1;
+  problem.head_size = 64;
+  if (is_quantized) {
+    problem.cache_element_size = 1;
+    problem.kv_cache_bit_width = 8;
+  }
   return problem;
 }
 
@@ -244,21 +259,18 @@ class GroupQueryAttentionQkvPreprocessTest
 
 TEST_P(GroupQueryAttentionQkvPreprocessTest, MatchesHandCalculatedRuntimeFormula) {
   const auto& test_case = GetParam();
-  auto problem = ValidProblem();
-  if (test_case.mode == GQAPreprocessMode::Xqa) {
-    problem.sequence_length = 1;
-  }
+  const bool is_quantized_xqa =
+      test_case.mode == GQAPreprocessMode::Xqa &&
+      test_case.k_quantization != GQAKvQuantizationType::None;
+  auto problem = test_case.mode == GQAPreprocessMode::Xqa
+                     ? ValidXqaProblem(is_quantized_xqa)
+                     : ValidProblem();
   problem.is_first_prompt = test_case.is_first_prompt;
   problem.do_rotary = test_case.do_rotary;
   problem.is_packed_qkv = test_case.is_packed_qkv;
   problem.use_qk_norm = test_case.use_qk_norm;
   problem.k_quantization = test_case.k_quantization;
   problem.v_quantization = test_case.v_quantization;
-  if (test_case.mode == GQAPreprocessMode::Xqa &&
-      test_case.k_quantization != GQAKvQuantizationType::None) {
-    problem.cache_element_size = 1;
-    problem.kv_cache_bit_width = 8;
-  }
 
   GQAPreparationRecipe recipe;
   ASSERT_TRUE(BuildRecipe(problem, recipe, test_case.mode));
@@ -276,26 +288,27 @@ INSTANTIATE_TEST_SUITE_P(
     RuntimeModes,
     GroupQueryAttentionQkvPreprocessTest,
     testing::Values(
-        // XQA cases use S=1: Q=128 bytes. Other modes use S=3:
+        // XQA cases use B=2, S=1, N=4, Nk=1, H=64: Q=1024 bytes.
+        // Other modes use B=2, S=3, N=4, Nk=2, H=8:
         // Q=384 bytes and K=V=192 bytes.
         QkvPreprocessCase{"XqaNoMaterialization", GQAPreprocessMode::Xqa,
                           false, false, false, false,
                           GQAKvQuantizationType::PerTensor, GQAKvQuantizationType::PerTensor, 0},
         QkvPreprocessCase{"XqaRotaryQ", GQAPreprocessMode::Xqa,
                           false, true, false, false,
-                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 128},
+                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 1024},
         QkvPreprocessCase{"XqaPackedQ", GQAPreprocessMode::Xqa,
                           false, false, true, false,
-                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 128},
+                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 1024},
         QkvPreprocessCase{"XqaQkNormQ", GQAPreprocessMode::Xqa,
                           false, false, false, true,
-                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 128},
+                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 1024},
         QkvPreprocessCase{"XqaPerChannelKScaleQ", GQAPreprocessMode::Xqa,
                           false, false, false, false,
-                          GQAKvQuantizationType::PerChannel, GQAKvQuantizationType::PerTensor, 128},
+                          GQAKvQuantizationType::PerChannel, GQAKvQuantizationType::PerTensor, 1024},
         QkvPreprocessCase{"XqaCombinedReasonsStillOneQ", GQAPreprocessMode::Xqa,
                           false, true, true, true,
-                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 128},
+                          GQAKvQuantizationType::None, GQAKvQuantizationType::None, 1024},
         QkvPreprocessCase{"FlashQuantizedPromptQkv", GQAPreprocessMode::Flash,
                           true, false, false, false,
                           GQAKvQuantizationType::PerTensor, GQAKvQuantizationType::PerTensor, 768},
@@ -335,7 +348,7 @@ class GroupQueryAttentionXqaValidationTest
 
 TEST_P(GroupQueryAttentionXqaValidationTest, RejectsImpossibleRuntimeRouteFacts) {
   const auto& test_case = GetParam();
-  auto problem = ValidProblem();
+  auto problem = ValidXqaProblem();
   problem.sequence_length = test_case.sequence_length;
   problem.is_first_prompt = test_case.is_first_prompt;
   problem.k_quantization = test_case.k_quantization;
@@ -372,6 +385,56 @@ INSTANTIATE_TEST_SUITE_P(
     [](const testing::TestParamInfo<XqaContradictionCase>& info) {
       return std::string(info.param.name);
     });
+
+TEST(GroupQueryAttentionWorkspaceTest, RejectsUnsupportedXqaGeometry) {
+  const GQAPreparationRoute xqa_route{GQAPreprocessMode::Xqa, false};
+
+  auto problem = ValidXqaProblem();
+  problem.head_size = 8;
+  EXPECT_EQ(GetGQAPreparationRecipe(problem, xqa_route).status.error,
+            GQAWorkspaceError::InvalidArgument);
+
+  problem = ValidXqaProblem();
+  problem.cache_element_size = 1;
+  EXPECT_EQ(GetGQAPreparationRecipe(problem, xqa_route).status.error,
+            GQAWorkspaceError::InvalidArgument);
+
+  problem = ValidXqaProblem();
+  problem.num_heads = 6;
+  problem.kv_num_heads = 2;
+  EXPECT_EQ(GetGQAPreparationRecipe(problem, xqa_route).status.error,
+            GQAWorkspaceError::InvalidArgument);
+
+  problem = ValidXqaProblem(true);
+  problem.num_heads = 4;
+  problem.kv_num_heads = 2;
+  problem.k_quantization = GQAKvQuantizationType::PerTensor;
+  problem.v_quantization = GQAKvQuantizationType::PerTensor;
+  EXPECT_EQ(GetGQAPreparationRecipe(problem, xqa_route).status.error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionWorkspaceTest, XqaGeometryPredicatesCoverSupportedDomain) {
+  for (int64_t head_size : {64, 128, 256}) {
+    EXPECT_TRUE(IsSupportedGQAXqaHeadSize(head_size));
+  }
+  for (int64_t head_size : {8, 32, 96, 512}) {
+    EXPECT_FALSE(IsSupportedGQAXqaHeadSize(head_size));
+  }
+
+  for (int64_t group_size : {1, 2, 4, 5, 8, 16, 32}) {
+    EXPECT_TRUE(IsSupportedGQAXqaGroupSize(group_size, false));
+  }
+  for (int64_t group_size : {4, 8, 16, 32}) {
+    EXPECT_TRUE(IsSupportedGQAXqaGroupSize(group_size, true));
+  }
+  for (int64_t group_size : {3, 6, 64}) {
+    EXPECT_FALSE(IsSupportedGQAXqaGroupSize(group_size, false));
+  }
+  for (int64_t group_size : {1, 2, 3, 5, 64}) {
+    EXPECT_FALSE(IsSupportedGQAXqaGroupSize(group_size, true));
+  }
+}
 
 TEST(GroupQueryAttentionWorkspaceTest, QuantizedFlashWindowedDecodeUsesEffectiveCapacity) {
   GQAWorkspaceProblem problem;
