@@ -5086,6 +5086,58 @@ TEST_F(GraphTransformationTests, Gemm_Relu_three_input) {
   ASSERT_TRUE(op_to_count["Relu"] == 0);
 }
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+// GemmActivationFusion must only fuse FP16 Gemm+activation pairs that
+// ElementWiseRangedTransform<MLFloat16>::Create() can actually build. Fusing
+// anything else yields a FusedGemm<MLFloat16> that throws NOT_IMPLEMENTED when
+// the kernel is constructed, which surfaces as a session-initialization failure
+// rather than a graph error.
+static void RunGemmFp16ActivationFusionTest(const std::string& activation, bool expect_fused,
+                                            const logging::Logger& logger) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<MLFloat16>({{4, 8}});
+    auto* weight_arg = builder.MakeInitializer<MLFloat16>({8, 6}, MLFloat16(0.5f), MLFloat16(1.5f));
+    auto* gemm_out = builder.MakeIntermediate();
+    auto* act_out = builder.MakeOutput();
+    builder.AddNode("Gemm", {input_arg, weight_arg}, {gemm_out});
+    builder.AddNode(activation, {gemm_out}, {act_out});
+  };
+
+  auto post_graph_checker = [&](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (expect_fused) {
+      EXPECT_EQ(op_to_count["Gemm"], 0) << activation << ": Gemm should have been fused";
+      EXPECT_EQ(op_to_count[activation], 0) << activation << ": activation should have been fused";
+      EXPECT_EQ(op_to_count["com.microsoft.FusedGemm"], 1) << activation << ": expected a FusedGemm";
+    } else {
+      EXPECT_EQ(op_to_count["Gemm"], 1) << activation << ": Gemm must not be fused";
+      EXPECT_EQ(op_to_count[activation], 1) << activation << ": activation must not be fused";
+      EXPECT_EQ(op_to_count["com.microsoft.FusedGemm"], 0) << activation << ": must not produce FusedGemm";
+    }
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, logger,
+                                        std::make_unique<GemmActivationFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, GemmActivationFusion_Fp16_SupportedActivations) {
+  // These have MLFloat16 CPU kernels and an MLFloat16 factory entry.
+  for (const auto& act : {"Relu", "LeakyRelu", "Tanh"}) {
+    RunGemmFp16ActivationFusionTest(act, /*expect_fused=*/true, *logger_);
+  }
+}
+
+TEST_F(GraphTransformationTests, GemmActivationFusion_Fp16_UnsupportedActivationsNotFused) {
+  // IsFusableActivation() accepts these, but there is no MLFloat16 factory
+  // entry, so fusing them would break kernel construction.
+  for (const auto& act : {"Sigmoid", "Elu", "Softplus", "Softsign", "HardSigmoid", "Selu"}) {
+    RunGemmFp16ActivationFusionTest(act, /*expect_fused=*/false, *logger_);
+  }
+}
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
+
 TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/transpose_matmul_4d_fusion.onnx";
   std::shared_ptr<Model> p_model;

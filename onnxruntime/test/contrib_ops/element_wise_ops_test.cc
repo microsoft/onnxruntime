@@ -120,7 +120,7 @@ TEST(BiasGeluTest, ZeroLengthBiasIsNoOp) {
   tester.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_DML) || defined(USE_WEBGPU)
+#if defined(USE_CUDA) || defined(USE_DML) || defined(USE_WEBGPU) || defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 static void RunBiasGeluTestHalf(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims) {
   RandomValueGenerator random{2333};
   std::vector<float> input_data = random.Uniform<float>(input_dims, -1.0f, 1.0f);
@@ -156,7 +156,77 @@ TEST(BiasGeluTest, MLFloat16) {
   RunBiasGeluTestHalf({2, 2048}, {2048});
   RunBiasGeluTestHalf({2, 2333}, {2333});
 }
+
+// Empty input: the MLFloat16 Compute specialization must handle a zero-element
+// tensor without touching the temp buffer or the thread pool.
+TEST(BiasGeluTest, MLFloat16EmptyInput) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
 #endif
+  std::vector<MLFloat16> empty{};
+  std::vector<MLFloat16> bias_half(4);
+  std::vector<float> bias{0.1f, 0.2f, 0.3f, 0.4f};
+  ConvertFloatToMLFloat16(bias.data(), bias_half.data(), bias.size());
+
+  OpTester tester("BiasGelu", 1, onnxruntime::kMSDomain);
+  tester.AddInput<MLFloat16>("A", {0, 4}, empty);
+  tester.AddInput<MLFloat16>("B", {4}, bias_half);
+  tester.AddOutput<MLFloat16>("C", {0, 4}, empty);
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+#endif
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+// Execution-level guard for the FP16 Gemm+activation fusion. GemmActivationFusion
+// only fuses activations that ElementWiseRangedTransform<MLFloat16>::Create() can
+// build; if the two ever drift, FusedGemm<MLFloat16> construction throws
+// NOT_IMPLEMENTED and this test fails at session initialization rather than in
+// some downstream model.
+static void RunFusedGemmFp16Test(const std::string& activation,
+                                 const std::function<float(float)>& ref) {
+  constexpr int64_t M = 4, K = 8, N = 6;
+  std::vector<float> a(M * K), b(K * N);
+  for (int64_t i = 0; i < M * K; ++i) a[i] = static_cast<float>((i % 7) - 3) / 4.0f;
+  for (int64_t i = 0; i < K * N; ++i) b[i] = static_cast<float>((i % 5) - 2) / 4.0f;
+
+  std::vector<float> y(M * N);
+  for (int64_t m = 0; m < M; ++m) {
+    for (int64_t n = 0; n < N; ++n) {
+      float acc = 0.0f;
+      for (int64_t k = 0; k < K; ++k) acc += a[m * K + k] * b[k * N + n];
+      y[m * N + n] = ref(acc);
+    }
+  }
+
+  std::vector<MLFloat16> a_half(a.size()), b_half(b.size()), y_half(y.size());
+  ConvertFloatToMLFloat16(a.data(), a_half.data(), a.size());
+  ConvertFloatToMLFloat16(b.data(), b_half.data(), b.size());
+  ConvertFloatToMLFloat16(y.data(), y_half.data(), y.size());
+
+  OpTester test("FusedGemm", 1, onnxruntime::kMSDomain);
+  test.AddAttribute("activation", activation);
+  if (activation == "LeakyRelu") {
+    // FusedGemm forwards attributes prefixed with "activation_" to the
+    // activation functor; LeakyRelu::Init() requires alpha.
+    test.AddAttribute("activation_alpha", 0.01f);
+  }
+  test.AddInput<MLFloat16>("A", {M, K}, a_half);
+  test.AddInput<MLFloat16>("B", {K, N}, b_half);
+  test.AddOutput<MLFloat16>("Y", {M, N}, y_half);
+  test.SetOutputTolerance(0.005f);
+  test.Run();
+}
+
+TEST(FusedGemmTest, MLFloat16Activations) {
+  RunFusedGemmFp16Test("Relu", [](float v) { return std::max(v, 0.0f); });
+  RunFusedGemmFp16Test("Tanh", [](float v) { return std::tanh(v); });
+  RunFusedGemmFp16Test("LeakyRelu", [](float v) { return v >= 0.0f ? v : 0.01f * v; });
+}
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 #if defined(USE_CUDA) || defined(USE_DNNL)
 static void RunBiasGeluTestBFloat16(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims) {

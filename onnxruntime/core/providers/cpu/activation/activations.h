@@ -201,6 +201,12 @@ struct Tanh : public ElementWiseRangedTransform<T> {
 template <>
 void Tanh<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const;
 
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+template <>
+void Tanh<MLFloat16>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const;
+
+#endif
+
 template <typename T>
 struct ThresholdedRelu : public ElementWiseRangedTransform<T> {
   ORT_GET_FLOAT_ATTR_AND_RETURN(alpha);
