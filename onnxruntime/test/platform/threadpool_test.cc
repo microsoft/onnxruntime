@@ -15,6 +15,9 @@
 #include <algorithm>
 #include <memory>
 #include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -1100,5 +1103,257 @@ TEST(ThreadPoolTest, InvalidOrtEnvVarValueThrows) {
                OnnxRuntimeException);
 }
 #endif
+
+// -------------------------------------------------------------------
+// Accuracy guards for the intra-op threading tuning: the spin_backoff_max
+// default and the ParallelFor go/no-go cost scale.
+//
+// Neither knob is meant to change a single numeric result. The cost scale only
+// moves the point at which ParallelFor decides a loop is worth splitting (block
+// sizing keeps using the unscaled cost), and spin_backoff_max only changes how
+// an idle worker waits. Both, though, change *how* - and whether - a loop is
+// carved into blocks, so a loop body that is not invariant under
+// re-partitioning would start drifting silently. These tests pin that
+// invariance down across the whole space of partitionings ParallelFor can hand
+// out: thread count, dynamic_block_base_, per-iteration cost and backoff cap.
+//
+// Note on the cost scale itself: ParallelForCostScale() in threadpool.cc caches
+// the ORT_PARALLEL_COST_SCALE lookup in a function-local static, so its value is
+// fixed for the lifetime of the process and cannot be varied from inside a
+// single test binary. Rather than assert on one scale, these tests assert the
+// property that has to hold at *every* scale, and CostBasedSplitDecisionIsAThreshold
+// checks that the scale in force behaves as a clean threshold. Running the
+// binary a second time with ORT_PARALLEL_COST_SCALE=1 exercises the pre-change
+// decision point against the same assertions.
+// -------------------------------------------------------------------
+namespace {
+
+// Per-iteration body. Strongly index-dependent, so an index that is skipped,
+// visited twice, or handed to the wrong block shows up immediately - but built
+// only from exactly-representable float arithmetic (integers below 2^24 scaled
+// by powers of two), so every operation is exact. That keeps the expected
+// result independent of vectorization and of whether the compiler contracts a
+// multiply-add into an FMA, which would otherwise make a bitwise comparison
+// between the serial and parallel code paths flaky rather than meaningful.
+float ElementKernel(std::ptrdiff_t i) {
+  float acc = static_cast<float>(i % 97);
+  for (int k = 0; k < 8; ++k) {
+    acc = acc * 2.0f + static_cast<float>((i + k) % 13);
+  }
+  return acc * 0.25f;
+}
+
+std::vector<float> SerialReference(std::ptrdiff_t n) {
+  std::vector<float> out(static_cast<size_t>(n));
+  for (std::ptrdiff_t i = 0; i < n; ++i) {
+    out[static_cast<size_t>(i)] = ElementKernel(i);
+  }
+  return out;
+}
+
+using Block = std::pair<std::ptrdiff_t, std::ptrdiff_t>;
+
+// Runs the kernel over [0, n) through TryParallelFor with the given per-unit
+// cost, filling `out` and returning the block boundaries ParallelFor handed out,
+// sorted by start index.
+//
+// The blocks are recorded without a lock by giving each one a slot it owns
+// outright: its start index. There are at most n blocks and their starts are
+// distinct, so a vector sized n upfront gives every block a private destination
+// and no two threads ever touch the same element. A block's end index is never
+// negative, so kUnclaimed marks a slot no block wrote to. Compacting the
+// claimed slots in index order then yields exactly the sorted block list,
+// without a separate sort.
+std::vector<Block> RunElementwise(ThreadPool* tp, std::ptrdiff_t n,
+                                  const onnxruntime::TensorOpCost& cost,
+                                  std::vector<float>& out) {
+  constexpr std::ptrdiff_t kUnclaimed = -1;
+  out.assign(static_cast<size_t>(n), 0.0f);
+  std::vector<Block> blocks(static_cast<size_t>(n), Block{0, kUnclaimed});
+  ThreadPool::TryParallelFor(tp, n, cost, [&](std::ptrdiff_t first, std::ptrdiff_t last) {
+    for (std::ptrdiff_t i = first; i < last; ++i) {
+      out[static_cast<size_t>(i)] = ElementKernel(i);
+    }
+    blocks[static_cast<size_t>(first)] = Block{first, last};
+  });
+  // TryParallelFor joins every block before returning, so those writes are
+  // visible here.
+  size_t claimed = 0;
+  for (size_t i = 0; i < blocks.size(); ++i) {
+    if (blocks[i].second != kUnclaimed) {
+      blocks[claimed++] = blocks[i];
+    }
+  }
+  blocks.resize(claimed);
+  return blocks;
+}
+
+// The contract every ParallelFor caller relies on: the blocks tile [0, n)
+// exactly once, in increasing order, with no gap and no overlap.
+void ExpectBlocksTileRange(const std::vector<Block>& blocks, std::ptrdiff_t n,
+                           const std::string& context) {
+  ASSERT_FALSE(blocks.empty()) << context;
+  std::ptrdiff_t expected_start = 0;
+  for (const auto& block : blocks) {
+    ASSERT_EQ(block.first, expected_start) << context;
+    ASSERT_GT(block.second, block.first) << context;
+    expected_start = block.second;
+  }
+  ASSERT_EQ(expected_start, n) << context;
+}
+
+// Reports the first differing index rather than dumping both vectors, which
+// would be tens of thousands of values wide for the larger loop sizes.
+void ExpectSameValues(const std::vector<float>& actual, const std::vector<float>& expected,
+                      const std::string& context) {
+  ASSERT_EQ(actual.size(), expected.size()) << context;
+  size_t mismatches = 0;
+  size_t first_mismatch = 0;
+  for (size_t i = 0; i < actual.size(); ++i) {
+    if (actual[i] != expected[i]) {
+      if (mismatches == 0) {
+        first_mismatch = i;
+      }
+      ++mismatches;
+    }
+  }
+  ASSERT_EQ(mismatches, 0u) << context << ": " << mismatches << " of " << actual.size()
+                            << " values differ; first at index " << first_mismatch << " ("
+                            << actual[first_mismatch] << " vs " << expected[first_mismatch] << ")";
+}
+
+std::unique_ptr<ThreadPool> MakePool(int num_threads, int dynamic_block_base = 0,
+                                     unsigned int spin_backoff_max = 1U) {
+  if (num_threads <= 0) {
+    return nullptr;  // exercises the no-pool path
+  }
+  onnxruntime::ThreadOptions thread_options;
+  thread_options.dynamic_block_base_ = dynamic_block_base;
+  return std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+                                      thread_options,
+                                      nullptr,
+                                      num_threads,
+                                      onnxruntime::concurrency::kSpinDurationDefault,
+                                      /*force_hybrid*/ false,
+                                      spin_backoff_max);
+}
+
+// Per-iteration costs spanning both sides of Eigen's parallelization threshold
+// (kStartupCycles = 100000) for the loop sizes used below, at any cost scale
+// between 1 and a few hundred.
+const std::vector<double> kCostSweep{0.0, 1.0, 4.0, 16.0, 20.0, 64.0, 256.0,
+                                     1024.0, 4096.0, 16384.0, 262144.0};
+
+}  // namespace
+
+// The new default. Guards against a rebase or a merge quietly restoring 1.
+TEST(ThreadPoolTest, SpinBackoffMaxDefaultIsTwo) {
+  const OrtThreadPoolParams defaults;
+  EXPECT_EQ(defaults.spin_backoff_max, 2U);
+  EXPECT_LE(defaults.spin_backoff_max, concurrency::kSpinBackoffMaxLimit);
+}
+
+// Core accuracy guard for the cost-scale change: whatever the scale decides,
+// the values produced must be bit-identical to the serial computation. Sweeping
+// thread count x dynamic_block_base_ x per-iteration cost covers both the
+// "stayed serial" and the "got split" outcomes, and every block size the
+// scheduler can pick in between.
+TEST(ThreadPoolTest, ParallelForResultsAreBitIdenticalUnderAllPartitionings) {
+  for (std::ptrdiff_t n : {std::ptrdiff_t{1}, std::ptrdiff_t{2}, std::ptrdiff_t{97},
+                           std::ptrdiff_t{1024}, std::ptrdiff_t{4096}, std::ptrdiff_t{65537}}) {
+    const std::vector<float> reference = SerialReference(n);
+    for (int num_threads : {0, 1, 2, 4, 8}) {
+      for (int dynamic_block_base : {0, 1, 4}) {
+        auto tp = MakePool(num_threads, dynamic_block_base);
+        for (double compute_cycles : kCostSweep) {
+          const onnxruntime::TensorOpCost cost{0.0, 0.0, compute_cycles};
+          std::vector<float> actual;
+          const auto blocks = RunElementwise(tp.get(), n, cost, actual);
+
+          const std::string context = "n=" + std::to_string(n) +
+                                      " threads=" + std::to_string(num_threads) +
+                                      " dynamic_block_base=" + std::to_string(dynamic_block_base) +
+                                      " compute_cycles=" + std::to_string(compute_cycles);
+          ASSERT_NO_FATAL_FAILURE(ExpectBlocksTileRange(blocks, n, context));
+          // Bit-identical, not merely close: re-partitioning an elementwise loop
+          // must not perturb a single result.
+          ASSERT_NO_FATAL_FAILURE(ExpectSameValues(actual, reference, context));
+        }
+      }
+    }
+  }
+}
+
+// Same guard for the spin_backoff_max change. Backoff only affects how idle
+// workers wait, so results must be identical for every legal value, including
+// values above kSpinBackoffMaxLimit (which are clamped, not rejected).
+TEST(ThreadPoolTest, SpinBackoffDoesNotChangeParallelForResults) {
+  constexpr std::ptrdiff_t n = 4096;
+  const std::vector<float> reference = SerialReference(n);
+  for (unsigned int spin_backoff_max : {1U, 2U, 4U, 8U,
+                                        concurrency::kSpinBackoffMaxLimit,
+                                        concurrency::kSpinBackoffMaxLimit * 4U}) {
+    for (int num_threads : {1, 2, 4}) {
+      auto tp = MakePool(num_threads, /*dynamic_block_base*/ 0, spin_backoff_max);
+      for (double compute_cycles : {0.0, 20.0, 4096.0}) {
+        std::vector<float> actual;
+        const auto blocks = RunElementwise(tp.get(), n,
+                                           onnxruntime::TensorOpCost{0.0, 0.0, compute_cycles},
+                                           actual);
+        const std::string context = "spin_backoff_max=" + std::to_string(spin_backoff_max) +
+                                    " threads=" + std::to_string(num_threads) +
+                                    " compute_cycles=" + std::to_string(compute_cycles);
+        ASSERT_NO_FATAL_FAILURE(ExpectBlocksTileRange(blocks, n, context));
+        ASSERT_NO_FATAL_FAILURE(ExpectSameValues(actual, reference, context));
+      }
+    }
+  }
+}
+
+// The scaled cost is only allowed to move the go/no-go point, so the decision
+// must stay a monotone threshold in the per-iteration cost: once a loop of a
+// given size is worth splitting, a more expensive one is too. Holds at any
+// ORT_PARALLEL_COST_SCALE, and would catch the scale leaking into the block
+// sizing (which still uses the unscaled cost) as a non-monotone block count.
+TEST(ThreadPoolTest, CostBasedSplitDecisionIsAThreshold) {
+  constexpr std::ptrdiff_t n = 65537;
+  auto tp = MakePool(4);
+  bool seen_split = false;
+  for (double compute_cycles : kCostSweep) {
+    std::vector<float> actual;
+    const auto blocks = RunElementwise(tp.get(), n,
+                                       onnxruntime::TensorOpCost{0.0, 0.0, compute_cycles},
+                                       actual);
+    const bool split = blocks.size() > 1;
+    const std::string context = "compute_cycles=" + std::to_string(compute_cycles);
+    if (seen_split) {
+      EXPECT_TRUE(split) << "split decision is not monotone in cost at " << context;
+    }
+    seen_split = seen_split || split;
+  }
+  // The sweep spans several orders of magnitude either side of Eigen's
+  // threshold, so at least the top of it has to parallelize on a 4-thread pool.
+  EXPECT_TRUE(seen_split) << "no cost in the sweep parallelized; the cost model or "
+                             "ORT_PARALLEL_COST_SCALE is not doing anything";
+}
+
+// Pins ORT_DEFAULT_PARALLEL_COST_SCALE=8 and verifies it causes a different
+// split decision than scale=1 at a known boundary.
+//
+// With n=65537 and compute_cycles=1.0 on a 4-thread pool:
+//   scale=1 : n * cost =     65,537 < Eigen kStartupCycles (100,000) → serial
+//   scale=8 : n * cost * 8 = 524,296 > kStartupCycles               → split
+//
+// If this fails, ORT_DEFAULT_PARALLEL_COST_SCALE was reverted to 1 or the
+// scale is not reaching the split decision in ParallelFor.
+TEST(ThreadPoolTest, CostScaleDefaultSplitsAtKnownBoundary) {
+  constexpr std::ptrdiff_t n = 65537;
+  auto tp = MakePool(4);
+  std::vector<float> actual;
+  const auto blocks = RunElementwise(tp.get(), n, onnxruntime::TensorOpCost{0.0, 0.0, 1.0}, actual);
+  EXPECT_GT(blocks.size(), 1u)
+      << "n=" << n << " compute_cycles=1.0 must split at ORT_DEFAULT_PARALLEL_COST_SCALE=8 "
+         "(would stay serial at scale=1); constant was reverted or scale is being bypassed";
+}
 
 }  // namespace onnxruntime
