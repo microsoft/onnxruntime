@@ -17,6 +17,8 @@ using contrib::cuda::GQAPreparationRoute;
 using contrib::cuda::GQAWorkspaceProblem;
 using contrib::cuda::GQAWorkspaceStatus;
 using contrib::cuda::GQAXqaWorkspaceRecipe;
+using contrib::cuda::IsSupportedGQAXqaGroupSize;
+using contrib::cuda::IsSupportedGQAXqaHeadSize;
 
 static_assert(std::is_trivially_copyable_v<GQAWorkspaceProblem>);
 static_assert(std::is_trivially_copyable_v<GQAPreparationRoute>);
@@ -24,6 +26,10 @@ static_assert(std::is_trivially_copyable_v<GQAPreparationRecipe>);
 static_assert(std::is_trivially_copyable_v<GQAXqaWorkspaceRecipe>);
 static_assert(std::is_trivially_copyable_v<GQAFlashWorkspaceRecipe>);
 static_assert(std::is_trivially_copyable_v<GQAWorkspaceStatus>);
+static_assert(IsSupportedGQAXqaHeadSize(64));
+static_assert(!IsSupportedGQAXqaHeadSize(96));
+static_assert(IsSupportedGQAXqaGroupSize(5, false));
+static_assert(!IsSupportedGQAXqaGroupSize(5, true));
 
 void CompileGroupQueryAttentionWorkspaceHeaderInIsolation() {
   GQAWorkspaceProblem problem;
