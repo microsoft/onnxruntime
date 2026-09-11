@@ -1368,7 +1368,7 @@ static_assert(offsetof(OrtEpApi, SessionOptionsGetWeightlessSourceModelBuffer) /
               "Size of version 29 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.30.0",
+static_assert(std::string_view(ORT_VERSION) == "1.31.0",
               "ORT_Version change detected, please follow below steps to ensure OrtEpApi is updated properly");
 
 }  // namespace OrtExecutionProviderApi
