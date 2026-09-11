@@ -76,40 +76,84 @@ Two CUDA BFC allocators are relevant:
 | Decoder/model-session allocator | Owned by the real decoder `InferenceSession`; holds direct initializer reserves and graph activation/workspace regions |
 | ORT GenAI global device allocator | Obtained through GenAI's trivial CUDA session; used for GenAI-owned device inputs, outputs, scoring/sampling tensors, and KV-cache tensors |
 
-## Protocol-Matched Results
+## Three-Configuration Memory Summary
 
-### Default initializer placement
+The process rows below come from the primary paired protocol runs. The ORT
+allocator rows come from matched diagnostic repeats that captured
+`post_initialize` and the end-of-workload `before_shrink` state. llama.cpp
+does not use ORT's allocators, so allocator-specific rows are not available
+for that process.
 
-| Metric | llama.cpp Q4 | Foundry INT4 |
-|---|---:|---:|
-| Successful requests | 130 | 130 |
-| Average latency | 54.31 ms | 89.86 ms |
-| P50 / P90 | 53 / 67 ms | 85 / 121 ms |
-| Process CPU average | 3.76% | 3.66% |
-| Working-set maximum | 1505.88 MiB | 1107.62 MiB |
-| Private-memory maximum | 2251.24 MiB | 3637.15 MiB |
-| Process dedicated GPU maximum | 1616.16 MiB | 2380.14 MiB |
-| Process shared GPU maximum | 88.73 MiB | 76.73 MiB |
-| Heuristic quality score | 90.23 | 89.27 |
-
-All 130 Foundry requests succeeded with no empty output or Chinese leakage.
-
-### Device-allocator initializer A/B
-
-The only allocator change is:
+For Foundry, the only configuration difference is:
 
 ```text
-session.use_device_allocator_for_initializers=1
+Default BFC initializers:       session.use_device_allocator_for_initializers=0
+Device-allocator initializers:  session.use_device_allocator_for_initializers=1
 ```
 
-| Foundry metric | Default BFC initializers | Device-allocator initializers | Difference |
+| Metric | llama.cpp Q4 CUDA | Foundry default BFC initializers | Foundry device-allocator initializers |
 |---|---:|---:|---:|
-| Average latency | 89.86 ms | 89.60 ms | -0.26 ms |
-| P50 / P90 | 85 / 121 ms | 84 / 120 ms | -1 / -1 ms |
-| Working-set maximum | 1107.62 MiB | 1014.33 MiB | -93.29 MiB |
-| Private-memory maximum | 3637.15 MiB | 2854.38 MiB | -782.77 MiB |
-| Process dedicated GPU maximum | 2380.14 MiB | 1662.14 MiB | **-718.00 MiB** |
-| Heuristic quality score | 89.27 | 89.38 | +0.11 |
+| **Configuration and performance** |  |  |  |
+| Initializer/weight placement | llama.cpp native allocator | Decoder BFC arena | Direct CUDA reserves through `BFCArena::Reserve()` |
+| Successful measured requests | 130 | 130 | 130 |
+| Average latency | 54.31 ms | 89.86 ms | 89.60 ms |
+| P50 / P90 latency | 53 / 67 ms | 85 / 121 ms | 84 / 120 ms |
+| Heuristic quality score | 90.23 | 89.27 | 89.38 |
+| **Whole-process memory lifecycle** |  |  |  |
+| Pre-initialization dedicated GPU | 12.87 MiB | 12.87 MiB | 12.87 MiB |
+| Weights loaded / post-initialization dedicated GPU | **1582.16 MiB** | **2304.14 MiB** | **1428.13 MiB** |
+| Inference-time dedicated GPU growth | +34.00 MiB | +76.00 MiB | +234.01 MiB |
+| Final retained dedicated GPU after inference | **1616.16 MiB** | **2380.14 MiB** | **1662.14 MiB** |
+| Dedicated GPU peak | 1616.16 MiB | 2380.14 MiB | 1662.14 MiB |
+| Final dedicated GPU gap versus llama.cpp | baseline | +763.98 MiB | **+45.98 MiB** |
+| Shared GPU peak | 88.73 MiB | 76.73 MiB | 76.73 MiB |
+| Process working-set maximum | 1505.88 MiB | 1107.62 MiB | 1014.33 MiB |
+| Process private-memory maximum | 2251.24 MiB | 3637.15 MiB | 2854.38 MiB |
+| **ORT allocator state after model initialization** |  |  |  |
+| Direct initializer reserves | N/A - not ORT/BFC instrumented | 0 MiB | **1169.68 MiB** |
+| Decoder/model-session BFC capacity | N/A - not ORT/BFC instrumented | **2049.00 MiB** | 1.00 MiB |
+| ORT GenAI global allocator BFC capacity | N/A - not ORT/BFC instrumented | 0 MiB | 0 MiB |
+| Total ORT-tracked CUDA allocation | N/A - not ORT/BFC instrumented | **2049.00 MiB** | **1170.68 MiB** |
+| Other process-local dedicated GPU memory | N/A - allocator split unavailable | 255.14 MiB | 257.45 MiB |
+| **ORT allocator state after inference, before diagnostic shrink** |  |  |  |
+| Direct initializer reserves | N/A - not ORT/BFC instrumented | 0 MiB | **1169.68 MiB** |
+| Decoder/model-session BFC capacity | N/A - not ORT/BFC instrumented | **2049.00 MiB** | 169.00 MiB |
+| Decoder requested live memory | N/A - not ORT/BFC instrumented | **1169.71 MiB** | 0.03 MiB |
+| Decoder internal fragmentation | N/A - not ORT/BFC instrumented | 13.43 MiB | 0 MiB |
+| Decoder reusable BFC slack | N/A - not ORT/BFC instrumented | **865.86 MiB** | **168.97 MiB** |
+| Decoder capacity reclaimable as complete unused regions | N/A - not ORT/BFC instrumented | 0 MiB | **168.00 MiB** |
+| Largest decoder allocation observed | N/A - not ORT/BFC instrumented | 128.00 MiB | 128.00 MiB |
+| ORT GenAI global allocator BFC capacity | N/A - not ORT/BFC instrumented | 65.00 MiB | 65.00 MiB |
+| GenAI global allocator requested live memory | N/A - not ORT/BFC instrumented | 14.27 MiB | 14.27 MiB |
+| GenAI global allocator internal fragmentation | N/A - not ORT/BFC instrumented | 3.88 MiB | 3.88 MiB |
+| GenAI global allocator reusable BFC slack | N/A - not ORT/BFC instrumented | 46.85 MiB | 46.85 MiB |
+| Total ORT-tracked CUDA allocation | N/A - not ORT/BFC instrumented | **2114.00 MiB** | **1403.68 MiB** |
+| Other process-local dedicated GPU memory | N/A - allocator split unavailable | 266.14 MiB | 258.46 MiB |
+| ORT-tracked growth after initialization | N/A - not ORT/BFC instrumented | +65.00 MiB | +233.00 MiB |
+| Growth outside ORT-tracked allocators | N/A - allocator split unavailable | +11.00 MiB | +1.01 MiB |
+
+The post-initialization checkpoint is the closest process-level measurement
+to "weights loaded." It includes CUDA context and library state and, for
+Foundry, its internal model-load warmup; it is not a weights-only
+measurement.
+
+The "other process-local" rows are residuals calculated as whole-process
+WDDM dedicated memory minus the ORT allocator total from a matched diagnostic
+repeat. They include CUDA libraries, CUDA context state, Foundry Local Core,
+and normal run-to-run variation outside ORT's tracked allocators.
+
+Default BFC placement does not mean that 2049 MiB of model data is live. The
+decoder arena is already 2049 MiB after initialization and remains the same
+size through inference. At the final checkpoint it contains 1169.71 MiB of
+requested live allocations, 13.43 MiB of internal fragmentation, and
+865.86 MiB of reusable slack. Long-lived model allocations prevent
+`Shrink()` from releasing any complete region.
+
+Direct initializer allocations bypass normal BFC regions and bins while
+remaining tracked in `reserved_bytes`. This reduces the decoder arena from
+2049 MiB to 1 MiB after initialization. Generation later expands it to
+169 MiB, but 168 MiB is completely unused and reclaimable at the final
+checkpoint.
 
 Relative to llama.cpp:
 
@@ -119,40 +163,13 @@ Direct initializer gap:  1662.14 - 1616.16 =  45.98 MiB
 Gap reduction:                                    718.00 MiB
 ```
 
-Direct initializer allocations use `BFCArena::Reserve()`, which calls the
-underlying CUDA allocator directly. ORT tracks these allocations in
-`reserved_bytes`, but they bypass normal BFC regions and bins. They remain
-live for the model session and cannot be reused for transient requests.
-
-This separation prevents long-lived weights from pinning large BFC regions
-that are also expected to serve transient graph allocations.
-
-## Initialization Versus Inference-Time Growth
-
-| Dedicated GPU memory | llama.cpp | Foundry, default initializers | Foundry, device initializers |
-|---|---:|---:|---:|
-| Post-initialization | 1582.16 MiB | 2304.14 MiB | 1428.13 MiB |
-| Post-generation | 1616.16 MiB | 2380.14 MiB | 1662.14 MiB |
-| Growth after initialization | 34.00 MiB | 76.00 MiB | 234.01 MiB |
-
-With direct initializer allocation, Foundry starts 154.03 MiB below
-llama.cpp, grows 200.01 MiB more during the subsequent workload, and finishes
-45.98 MiB above llama.cpp.
-
-Both engines reach their final retained dedicated-memory level by measured
-request 1 and remain flat through request 130:
-
-| Request | llama.cpp | Foundry with device initializers |
-|---:|---:|---:|
-| 1 | 1616.16 MiB | 1662.14 MiB |
-| 10 | 1616.16 MiB | 1662.14 MiB |
-| 25 | 1616.16 MiB | 1662.14 MiB |
-| 50 | 1616.16 MiB | 1662.14 MiB |
-| 100 | 1616.16 MiB | 1662.14 MiB |
-| 130 | 1616.16 MiB | 1662.14 MiB |
-
-The 234.01 MiB therefore appears while establishing generation state and
-running the three warmups. It does not accumulate across measured requests.
+All configurations reach their final retained dedicated-memory level by
+measured request 1. llama.cpp and device-initializer Foundry remain exactly
+flat through request 130. Default-BFC Foundry is flat through request 100 and
+has the same value in the post-generation snapshot; its request-130 process
+sample raced process exit and is unavailable. The measured growth therefore
+establishes reusable generation state during the warmups and first request;
+it does not accumulate across the 130 requests.
 
 ## Allocation-Level Attribution of the 234.01 MiB
 
@@ -262,10 +279,12 @@ not materially change retained process memory for this workload.
    718 MiB without a measurable latency or quality regression.
 3. The remaining Foundry-versus-llama.cpp gap is 45.98 MiB.
 4. Foundry does not accumulate dedicated GPU memory across the 130 requests.
-5. The 234.01 MiB post-initialization growth consists of 168 MiB of free
-   decoder-arena regions, 65 MiB in the GenAI global allocator, and 1.01 MiB
-   outside ORT-tracked BFC allocators.
-6. The diagnostic shrink proves reclaimability but is not part of the selected
+5. Default BFC placement retains 865.86 MiB of reusable decoder-arena slack
+   because live model allocations prevent release of a complete region.
+6. The 234.01 MiB device-initializer post-initialization growth consists of
+   168 MiB of free decoder-arena regions, 65 MiB in the GenAI global
+   allocator, and 1.01 MiB outside ORT-tracked BFC allocators.
+7. The diagnostic shrink proves reclaimability but is not part of the selected
    benchmark measurement.
 
 ## Result Artifacts
@@ -282,6 +301,13 @@ Device-initializer protocol:
 ```text
 C:\Users\lochi\hy_mt2_wayne_repro\benchmark\translate_benchmark_results\
 REBASED_PROTOCOL_DEVICE_INITIALIZERS_WARMUP3_SAMPLE130_CORRECTED
+```
+
+Default-BFC end-of-workload allocator attribution:
+
+```text
+C:\Users\lochi\hy_mt2_wayne_repro\benchmark\translate_benchmark_results\
+LIFECYCLE_DEFAULT_BFC_ARENA_TRACE_REGISTERED_20260911
 ```
 
 Fresh device-initializer repeat:
