@@ -7,7 +7,10 @@
 #include "gtest/gtest.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #include "core/providers/migraphx/migraphx_execution_provider_utils.h"
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 
@@ -18,6 +21,21 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 
 namespace test {
+
+namespace {
+
+constexpr const char* kInt8EnableEnv = "ORT_MIGRAPHX_INT8_ENABLE";
+constexpr const char* kInt8CalibrationTableNameEnv = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME";
+constexpr const char* kInt8UseNativeCalibrationTableEnv = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE";
+constexpr const char* kInt8EnableOption = "migraphx_int8_enable";
+constexpr const char* kInt8CalibrationTableNameOption = "migraphx_int8_calibration_table_name";
+constexpr const char* kInt8UseNativeCalibrationTableOption = "migraphx_int8_use_native_calibration_table";
+
+std::unique_ptr<IExecutionProvider> CreateMIGraphXProvider(const ProviderOptions& options = {}) {
+  return MIGraphXProviderFactoryCreator::Create(options)->CreateProvider();
+}
+
+}  // namespace
 
 template <typename T>
 void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64_t>& expected_dims,
@@ -186,6 +204,125 @@ TEST(MIGraphXExecutionProviderTest, canEvalArgument) {
   const auto& node2 = gv.GetNode(3);
   std::vector<NodeIndex> input_nodes;
   ASSERT_EQ(canEvalNodeArgument(gv, node2, {1}, input_nodes), true);
+}
+
+class MIGraphXInt8CalibrationTableTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    calibration_table_path_ =
+        std::filesystem::path{testing::TempDir()} / "migraphx_int8_calibration_table_test.txt";
+    std::ofstream calibration_table{calibration_table_path_};
+    calibration_table << "TRT-8400-EntropyCalibration2\n"
+                      << "input: 3f800000\n";
+    ASSERT_TRUE(calibration_table.good());
+
+    missing_calibration_table_path_ = calibration_table_path_;
+    missing_calibration_table_path_ += ".missing";
+    std::error_code ec;
+    std::filesystem::remove(missing_calibration_table_path_, ec);
+  }
+
+  void TearDown() override {
+    std::error_code ec;
+    std::filesystem::remove(calibration_table_path_, ec);
+  }
+
+  EnvVarMap Int8Environment(optional<std::string> calibration_table_name) const {
+    return {
+        {kInt8EnableEnv, "1"},
+        {kInt8CalibrationTableNameEnv, std::move(calibration_table_name)},
+        {kInt8UseNativeCalibrationTableEnv, "1"},
+    };
+  }
+
+  EnvVarMap ClearedInt8Environment() const {
+    return {
+        {kInt8EnableEnv, nullopt},
+        {kInt8CalibrationTableNameEnv, nullopt},
+        {kInt8UseNativeCalibrationTableEnv, nullopt},
+    };
+  }
+
+  std::filesystem::path calibration_table_path_;
+  std::filesystem::path missing_calibration_table_path_;
+};
+
+TEST_F(MIGraphXInt8CalibrationTableTest, EnvironmentTableIsEffective) {
+  ScopedEnvironmentVariables environment{Int8Environment(calibration_table_path_.string())};
+
+  const auto provider = CreateMIGraphXProvider();
+  const auto options = provider->GetProviderOptions();
+
+  EXPECT_EQ(options.at(kInt8CalibrationTableNameOption), calibration_table_path_.string());
+}
+
+TEST_F(MIGraphXInt8CalibrationTableTest, EnvironmentTableOverridesProviderOption) {
+  ScopedEnvironmentVariables environment{Int8Environment(calibration_table_path_.string())};
+  const ProviderOptions provider_options{
+      {kInt8EnableOption, "1"},
+      {kInt8CalibrationTableNameOption, missing_calibration_table_path_.string()},
+      {kInt8UseNativeCalibrationTableOption, "1"},
+  };
+
+  const auto provider = CreateMIGraphXProvider(provider_options);
+  const auto options = provider->GetProviderOptions();
+
+  EXPECT_EQ(options.at(kInt8CalibrationTableNameOption), calibration_table_path_.string());
+}
+
+TEST_F(MIGraphXInt8CalibrationTableTest, ProviderOptionIsUsedWithoutEnvironmentTable) {
+  ScopedEnvironmentVariables environment{ClearedInt8Environment()};
+  const ProviderOptions provider_options{
+      {kInt8EnableOption, "1"},
+      {kInt8CalibrationTableNameOption, calibration_table_path_.string()},
+      {kInt8UseNativeCalibrationTableOption, "1"},
+  };
+
+  const auto provider = CreateMIGraphXProvider(provider_options);
+  const auto options = provider->GetProviderOptions();
+
+  EXPECT_EQ(options.at(kInt8CalibrationTableNameOption), calibration_table_path_.string());
+}
+
+TEST_F(MIGraphXInt8CalibrationTableTest, EmptyEnvironmentTableFallsBackToProviderOption) {
+  ScopedEnvironmentVariables environment{Int8Environment("")};
+  const ProviderOptions provider_options{
+      {kInt8EnableOption, "1"},
+      {kInt8CalibrationTableNameOption, calibration_table_path_.string()},
+      {kInt8UseNativeCalibrationTableOption, "1"},
+  };
+
+  const auto provider = CreateMIGraphXProvider(provider_options);
+  const auto options = provider->GetProviderOptions();
+
+  EXPECT_EQ(options.at(kInt8CalibrationTableNameOption), calibration_table_path_.string());
+}
+
+TEST_F(MIGraphXInt8CalibrationTableTest, EmptyTableWithoutEnvironmentDoesNotLoad) {
+  ScopedEnvironmentVariables environment{ClearedInt8Environment()};
+  const ProviderOptions provider_options{{kInt8EnableOption, "1"}};
+
+  const auto provider = CreateMIGraphXProvider(provider_options);
+  const auto options = provider->GetProviderOptions();
+
+  EXPECT_TRUE(options.at(kInt8CalibrationTableNameOption).empty());
+}
+
+TEST_F(MIGraphXInt8CalibrationTableTest, InvalidEnvironmentTablePathIsRejected) {
+  ScopedEnvironmentVariables environment{Int8Environment(missing_calibration_table_path_.string())};
+
+  EXPECT_THROW(CreateMIGraphXProvider(), std::runtime_error);
+}
+
+TEST_F(MIGraphXInt8CalibrationTableTest, InvalidProviderOptionTablePathIsRejected) {
+  ScopedEnvironmentVariables environment{ClearedInt8Environment()};
+  const ProviderOptions provider_options{
+      {kInt8EnableOption, "1"},
+      {kInt8CalibrationTableNameOption, missing_calibration_table_path_.string()},
+      {kInt8UseNativeCalibrationTableOption, "1"},
+  };
+
+  EXPECT_THROW(CreateMIGraphXProvider(provider_options), std::runtime_error);
 }
 
 #if defined(WIN32)
