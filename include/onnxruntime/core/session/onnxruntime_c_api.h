@@ -40,7 +40,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 30
+#define ORT_API_VERSION 31
 
 #ifdef __cplusplus
 extern "C" {
@@ -7596,13 +7596,14 @@ struct OrtApi {
   /** \brief Set the global random seed used by ONNX Runtime random operators.
    *
    * The seed is applied to ONNX Runtime's process-wide random generators. Operators with an explicit
-   * seed attribute continue to use that attribute value.
+   * seed attribute continue to use that attribute value. Set the seed before creating any sessions that
+   * should use it.
    *
    * \param[in] seed The random seed value to use.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.30.
+   * \since Version 1.31.
    */
   ORT_API2_STATUS(SetSeed, _In_ int64_t seed);
 };

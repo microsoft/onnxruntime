@@ -133,7 +133,7 @@ cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB GEMM CUDA k
 cmake_dependent_option(onnxruntime_USE_FPA_INTB_GEMM_FULL
   "Build all FpA IntB GEMM CUDA kernel variants instead of the compact FP16 INT4/INT8 set" OFF
   "onnxruntime_USE_CUDA;onnxruntime_USE_FPA_INTB_GEMM" OFF)
-option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
+option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" ON)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
 option(onnxruntime_QUICK_BUILD "Speed up build by skipping some kernels for faster development" OFF)
 # Raises the minimum driver to the CUDA 12.4 level (Linux >= 550.54.14, Windows >= 551.61); always on for CUDA >= 13.0.
@@ -207,6 +207,8 @@ cmake_dependent_option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handlin
 option(onnxruntime_DISABLE_ABSEIL "Do not use Abseil data structures in ONNX Runtime source code. Redefine Inlined containers to STD containers." OFF)
 
 option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with support for execution providers that compile kernels." OFF)
+cmake_dependent_option(onnxruntime_ENABLE_GQA_VALUE_LAYOUT "Enable GroupQueryAttention Value-cache layout conversion and validation" ON
+  "NOT onnxruntime_MINIMAL_BUILD;NOT onnxruntime_EXTENDED_MINIMAL_BUILD;NOT onnxruntime_DISABLE_CONTRIB_OPS" OFF)
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
@@ -1141,6 +1143,9 @@ function(onnxruntime_set_compile_flags target_name)
     if (onnxruntime_DISABLE_CONTRIB_OPS)
       target_compile_definitions(${target_name} PRIVATE DISABLE_CONTRIB_OPS)
     endif()
+    if (onnxruntime_ENABLE_GQA_VALUE_LAYOUT)
+      target_compile_definitions(${target_name} PRIVATE ORT_ENABLE_GQA_VALUE_LAYOUT)
+    endif()
 
     if (onnxruntime_DISABLE_ML_OPS)
       target_compile_definitions(${target_name} PRIVATE DISABLE_ML_OPS)
@@ -1508,7 +1513,7 @@ if (Git_FOUND)
   if (onnxruntime_QUICK_BUILD)
     string(APPEND ORT_BUILD_INFO "quick-build=1, ")
   endif()
-  if (onnxruntime_USE_INT4_KV_CACHE)
+  if (onnxruntime_USE_CUDA AND onnxruntime_USE_INT4_KV_CACHE)
     string(APPEND ORT_BUILD_INFO "int4-kv-cache=1, ")
   endif()
   if (onnxruntime_USE_FP8_KV_CACHE)

@@ -495,6 +495,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr SessionOptionsSetWeightlessSourceModelBuffer;
         // v1.30 APIs
         public IntPtr KernelContext_GetPreallocatedOutput;
+        // v1.31 APIs
         public IntPtr SetSeed;
     }
 

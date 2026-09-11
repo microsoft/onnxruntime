@@ -208,9 +208,10 @@ std::string GetBuildInfoString();
 /// <returns>vector of strings</returns>
 std::vector<std::string> GetAvailableProviders();
 
-/** rief Set the global random seed used by ONNX Runtime random operators.
+/** \brief Set the global random seed used by ONNX Runtime random operators.
  *
  * Wraps OrtApi::SetSeed.
+ * Set the seed before creating any sessions that should use it.
  *
  * \param[in] seed The random seed value to use.
  */
