@@ -4,6 +4,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 
 #include "core/framework/allocator.h"
 #include "core/framework/ortdevice.h"
@@ -12,6 +13,8 @@ namespace onnxruntime {
 namespace webgpu {
 
 class BufferManager;
+struct CommandRecordingState;
+class WebGpuContext;
 
 inline constexpr OrtDevice WebGpuDevice{OrtDevice::GPU,
                                         OrtDevice::MemType::DEFAULT,
@@ -24,6 +27,7 @@ class GpuBufferAllocator : public IAllocator {
   // BufferManager. This allows the EP to route allocations to different
   // buffer managers (e.g., per-graph) without explicit refresh calls.
   GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter,
+                     std::function<CommandRecordingState&()> recording_getter,
                      bool is_read_only_allocator,
                      std::function<bool()> should_submit_zero_initialize = {});
 
@@ -34,12 +38,16 @@ class GpuBufferAllocator : public IAllocator {
  private:
   AllocatorStats stats_;
   std::function<const BufferManager&()> buffer_manager_getter_;
+  std::function<CommandRecordingState&()> recording_getter_;
   std::function<bool()> should_submit_zero_initialize_;
   bool mapped_at_creation_;
   // Cached writable buffers are cleared explicitly by BufferManager::Create. Fresh buffers rely on Dawn's
   // "lazy_clear_resource_on_first_use" toggle, which is enabled by WebGpuContext.
   bool initialize_to_zero_;
 };
+
+// Environment-level cached allocator sharing the context's Env recording; callers serialize Env operations.
+AllocatorPtr CreateSharedWebGpuAllocator(std::shared_ptr<WebGpuContext> context);
 
 // No-op allocator used for the WebGPU device when the context has no Dawn device (a device-free /
 // "virtual device" context). A real GpuBufferAllocator cannot be constructed without a device (its ctor
@@ -59,6 +67,7 @@ class WebGpuNoOpAllocator : public IAllocator {
 // allocation ever happens.
 AllocatorPtr CreateWebGpuAllocator(bool device_free,
                                    std::function<const BufferManager&()> buffer_manager_getter,
+                                   std::function<CommandRecordingState&()> recording_getter,
                                    bool is_read_only_allocator,
                                    std::function<bool()> should_submit_zero_initialize = {});
 

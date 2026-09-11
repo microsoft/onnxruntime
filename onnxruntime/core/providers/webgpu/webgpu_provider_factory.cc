@@ -25,8 +25,12 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
       : context_id_{context_id}, context_{context}, config_{std::move(webgpu_ep_config)} {
   }
 
+  ~WebGpuProviderFactory() override {
+    WebGpuContextFactory::ReleaseContext(context_id_);
+  }
+
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
-    return std::make_unique<WebGpuExecutionProvider>(context_id_, context_, std::move(config_));
+    return std::make_unique<WebGpuExecutionProvider>(context_id_, context_, WebGpuExecutionProviderConfig{config_});
   }
 
  private:
@@ -358,12 +362,13 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
 
 // WebGPU DataTransfer implementation wrapper for the C API with lazy initialization
 struct WebGpuDataTransferImpl : OrtDataTransferImpl {
-  WebGpuDataTransferImpl(const OrtApi& ort_api_in, int context_id)
+  WebGpuDataTransferImpl(const OrtApi& ort_api_in, int context_id, WebGpuExecutionProvider* ep)
       : ort_api{ort_api_in},
         ep_api{*ort_api_in.GetEpApi()},
         data_transfer_{nullptr},
         context_id_{context_id},
-        init_mutex_{} {
+        init_mutex_{},
+        ep_{ep} {
     ort_version_supported = ORT_API_VERSION;
     CanCopy = CanCopyImpl;          // OrtDataTransferImpl::CanCopy callback
     CopyTensors = CopyTensorsImpl;  // OrtDataTransferImpl::CopyTensors callback
@@ -441,26 +446,31 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       return nullptr;
     }
 
-    // Lazy initialization: Use double-checked locking to avoid unnecessary lock operations
-    if (impl.data_transfer_ == nullptr) {
+    {
       std::lock_guard<std::mutex> lock(impl.init_mutex_);
-      if (impl.data_transfer_ == nullptr) {
-        // Always create a new context with context_id 0
-        if (impl.context_id_ != 0) {
-          return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Shared data transfer can only be created for the default device (0).");
+      if (impl.context_ == nullptr) {
+        if (impl.ep_ != nullptr) {
+          auto& context = WebGpuContextFactory::GetContext(impl.context_id_);
+          WebGpuContextFactory::RetainContext(impl.context_id_);
+          impl.context_ = &context;
+        } else {
+          if (impl.context_id_ != 0) {
+            return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, "Shared data transfer can only be created for the default device (0).");
+          }
+          impl.context_ = &WebGpuContextFactory::DefaultContext();
         }
-
-        auto& context = WebGpuContextFactory::DefaultContext();
-
-        // Create the DataTransferImpl instance
-        // Note: The DataTransferImpl holds a const reference to BufferManager. The BufferManager's lifecycle
-        // is managed by the WebGpuContext, which is stored in a static WebGpuContextFactory and persists
-        // for the lifetime of the application, ensuring the reference remains valid.
-        impl.data_transfer_ = std::make_unique<DataTransferImpl>(context.BufferManager());
+      }
+      if (impl.data_transfer_ == nullptr) {
+        impl.data_transfer_ = std::make_unique<DataTransferImpl>(impl.context_->BufferManager(),
+                                                                 impl.ep_ ? impl.ep_->Recording() : impl.context_->EnvironmentRecording());
       }
     }
 
-    // Now perform the actual tensor copy
+    auto& recording = impl.ep_ ? impl.ep_->Recording() : impl.context_->EnvironmentRecording();
+    auto& buffer_manager = impl.ep_ ? impl.ep_->BufferManager() : impl.context_->BufferManager();
+    // DataTransferImpl borrows the context's BufferManager. The retained context owns the Env recording;
+    // Session transfers depend on the owning EP's lifetime for their recording.
+
     for (size_t idx = 0; idx < num_tensors; ++idx) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
       Ort::ConstValue src_value{src_tensors[idx]};
@@ -481,15 +491,16 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
       void* dst_data = dst_tensor.MutableDataRaw();
       bool dst_is_gpu = dst_tensor.Location().device.Type() == OrtDevice::GPU;
 #endif
-      auto status = impl.data_transfer_->CopyTensor(src_data,
-                                                    src_is_gpu,
-                                                    dst_data,
-                                                    dst_is_gpu,
-                                                    size);
+      auto status = impl.data_transfer_->CopyTensor(src_data, src_is_gpu, dst_data, dst_is_gpu, size);
       if (!status.IsOK()) {
         return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, status.ErrorMessage().c_str());
       }
     }
+    // Flush GPU-to-GPU copies, which BufferManager::MemCpy only records. CPU/GPU transfers already handle
+    // any required submission in BufferManager. Submit before subsequent Session work uses the buffers.
+    // TODO: Only GPU-to-CPU downloads currently guarantee copy completion. Uploads and GPU-to-GPU copies
+    // only guarantee submission and may still be in flight on return; add completion guarantees for these paths.
+    ORT_THROW_IF_ERROR(impl.context_->Flush(buffer_manager, recording));
     return nullptr;
   }
 
@@ -500,7 +511,7 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
     bool data_transfer_initialized = false;
     {
       std::lock_guard<std::mutex> lock(p_impl->init_mutex_);
-      data_transfer_initialized = (p_impl->data_transfer_ != nullptr);
+      data_transfer_initialized = (p_impl->context_ != nullptr);
     }
     delete p_impl;
     if (data_transfer_initialized) {
@@ -513,11 +524,13 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
   std::unique_ptr<DataTransferImpl> data_transfer_;  // Lazy-initialized
   int context_id_;                                   // Track which context we're using
   std::mutex init_mutex_;                            // Protects lazy initialization
+  WebGpuExecutionProvider* const ep_;
+  WebGpuContext* context_ = nullptr;
 };
 
-OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {
+OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id, WebGpuExecutionProvider* ep) {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  return new WebGpuDataTransferImpl(onnxruntime::ep::Api().ort, context_id);
+  return new WebGpuDataTransferImpl(onnxruntime::ep::Api().ort, context_id, ep);
 #else
   // Validate API version is supported
   const OrtApi* api = OrtApis::GetApi(ORT_API_VERSION);
@@ -525,7 +538,7 @@ OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id /* = 0 */) {
     // API version not supported - return nullptr to indicate failure
     return nullptr;
   }
-  return new WebGpuDataTransferImpl(*api, context_id);
+  return new WebGpuDataTransferImpl(*api, context_id, ep);
 #endif
 }
 
