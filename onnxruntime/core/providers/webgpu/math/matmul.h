@@ -67,9 +67,11 @@ class MatMul final : public WebGpuKernel {
 
   Status ComputeInternal(ComputeContext& context) const override;
 
-  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
-  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
-  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
+  // Defaults for the packed MatMul workgroup. The y dimension is a default because
+  // ComputeMatMul can raise it to trade elements-per-thread for occupancy.
+  constexpr static uint32_t DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
+  constexpr static uint32_t DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
+  constexpr static uint32_t DEFAULT_MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 
  private:
   mutable MatMulOptImplCache compute_cache_;

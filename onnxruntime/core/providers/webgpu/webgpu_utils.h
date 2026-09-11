@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_shape.h"
@@ -30,6 +31,10 @@ inline int GetMaxComponents(int64_t size) {
     return 2;
   }
   return 1;
+}
+
+inline bool IsNvidiaAdapter(const wgpu::AdapterInfo& adapter_info) {
+  return adapter_info.vendor == std::string_view{"nvidia"};
 }
 
 /**
