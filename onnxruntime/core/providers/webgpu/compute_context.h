@@ -116,6 +116,13 @@ class ComputeContextBase {
   }
 
   //
+  // Get whether MatMulNBits dot products accumulate in f32 rather than in the output element type.
+  //
+  inline bool EnableMatmulFp32Accumulation() const {
+    return ep_.EnableMatmulFp32Accumulation();
+  }
+
+  //
   // Get the logger.
   //
   inline const logging::Logger& Logger() const {

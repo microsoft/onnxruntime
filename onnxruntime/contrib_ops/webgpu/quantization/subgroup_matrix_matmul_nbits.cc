@@ -275,6 +275,16 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
     return false;
   }
 
+  // Every fp16 config in supported_subgroup_matrix_configs has resultComponentType == F16, and
+  // the kernels declare subgroup_matrix_result<f16, ...> to match, so the accumulation inside
+  // subgroupMatrixMultiplyAccumulate is f16 and there is no variant of this kernel that can
+  // honour an f32 accumulator request. Decline the path instead of ignoring the option: the
+  // caller then falls through to a kernel that does honour it. Only fp16 outputs are affected;
+  // the fp32 config accumulates in f32 already.
+  if (is_fp16 && context.EnableMatmulFp32Accumulation()) {
+    return false;
+  }
+
   bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
   if (has_subgroup_matrix) {
     // Check if the adapter reports a subgroup matrix config we support.
