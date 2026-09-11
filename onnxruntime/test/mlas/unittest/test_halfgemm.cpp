@@ -286,6 +286,78 @@ void RunKleidiAIWithoutOutputProcessorCases(const HalfGemmCase* test_cases, size
 
 }  // namespace
 
+TEST(HalfGemmDecode, Avx2F16CLayoutsAndTileBoundaries) {
+  if (!MlasHalfGemmDecodeSupported(CblasNoTrans, CblasNoTrans) ||
+      !MlasHalfGemmDecodeSupported(CblasNoTrans, CblasTrans)) {
+    GTEST_SKIP() << "AVX2/F16C half GEMV is unavailable.";
+  }
+
+  constexpr size_t K = 33;
+  constexpr size_t BatchSize = 1;
+  constexpr std::array<size_t, 9> OutputSizes{1, 7, 8, 9, 63, 64, 65, 137, 2049};
+  const MLFp16 alpha(0.5f);
+  const MLFp16 beta(-0.25f);
+
+  for (CBLAS_TRANSPOSE trans_b : {CblasNoTrans, CblasTrans}) {
+    for (size_t N : OutputSizes) {
+      std::vector<MLFp16> A(BatchSize * K);
+      std::vector<MLFp16> B(BatchSize * K * N);
+      std::vector<MLFp16> C(BatchSize * N);
+      std::vector<MLFp16> CInitial;
+      std::vector<MLFp16> CReference(BatchSize * N);
+      SmallFloatFill(A.data(), A.size());
+      SmallFloatFill(B.data(), B.size());
+      SmallFloatFill(C.data(), C.size());
+      CInitial = C;
+      CReference = C;
+
+      std::array<MLAS_HGEMM_DATA_PARAMS, BatchSize> data{};
+      for (size_t batch = 0; batch < BatchSize; ++batch) {
+        data[batch].A = reinterpret_cast<const MLAS_FP16*>(A.data() + batch * K);
+        data[batch].lda = K;
+        data[batch].B = reinterpret_cast<const MLAS_FP16*>(B.data() + batch * K * N);
+        data[batch].ldb = trans_b == CblasNoTrans ? N : K;
+        data[batch].C = reinterpret_cast<MLAS_FP16*>(C.data() + batch * N);
+        data[batch].ldc = N;
+        data[batch].alpha = alpha.val;
+        data[batch].beta = beta.val;
+
+        for (size_t n = 0; n < N; ++n) {
+          float sum = 0.0f;
+          for (size_t k = 0; k < K; ++k) {
+            const size_t b_index = trans_b == CblasNoTrans ? k * N + n : n * K + k;
+            sum = std::fma(float(A[batch * K + k]),
+                           float(B[batch * K * N + b_index]), sum);
+          }
+          const size_t c_index = batch * N + n;
+          CReference[c_index] = MLFp16(
+              std::fma(float(beta), float(CReference[c_index]), float(alpha) * sum));
+        }
+      }
+
+      for (bool threaded : {false, true}) {
+        MLAS_THREADPOOL* thread_pool = threaded ? GetMlasThreadPool() : nullptr;
+        if (threaded && thread_pool == nullptr) {
+          continue;
+        }
+
+        C = CInitial;
+        for (size_t batch = 0; batch < BatchSize; ++batch) {
+          data[batch].C = reinterpret_cast<MLAS_FP16*>(C.data() + batch * N);
+        }
+        MlasGemmBatch(
+            CblasNoTrans, trans_b, 1, N, K, data.data(), BatchSize, thread_pool);
+
+        for (size_t i = 0; i < C.size(); ++i) {
+          ASSERT_TRUE(CloseEnough(float(C[i]), float(CReference[i])))
+              << "transB=" << (trans_b == CblasTrans) << " threaded=" << threaded
+              << " N=" << N << " index=" << i;
+        }
+      }
+    }
+  }
+}
+
 TEST(HalfGemm, ZeroKInitializesBiasAndRunsOutputProcessor) {
   constexpr size_t M = 3;
   constexpr size_t N = 4;
