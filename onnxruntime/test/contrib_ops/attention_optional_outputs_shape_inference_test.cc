@@ -55,6 +55,23 @@ void BuildResolveAndVerify(const std::function<void(ModelTestBuilder& builder)>&
   }
 }
 
+void BuildResolveAndExpectFailure(const std::function<void(ModelTestBuilder& builder)>& add_node,
+                                  const char* expected_error) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = kOnnxOpsetVersion;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("attention_shape_inference_failure", /*is_onnx_domain_only=*/false, ModelMetaData(),
+              PathString(), IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+
+  ModelTestBuilder builder(model.MainGraph());
+  add_node(builder);
+  builder.SetGraphOutputs();
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(model.MainGraph().Resolve(), expected_error);
+}
+
 // Asserts that the given output NodeArg received a tensor element type from shape inference.
 void ExpectInferredElemType(const NodeArg* output) {
   ASSERT_NE(output, nullptr);
@@ -84,6 +101,44 @@ TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionPresentValueO
     Node& node = builder.AddNode("MultiHeadAttention", inputs, {output, present_key}, kMSDomain);
     node.AddAttribute("num_heads", static_cast<int64_t>(2));
   });
+}
+
+TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionGroupedQueryOutput) {
+  NodeArg* output = nullptr;
+  BuildResolveAndVerify(
+      [&](ModelTestBuilder& builder) {
+        NodeArg* query = builder.MakeInput<float>(std::vector<int64_t>{2, 3, 32});
+        NodeArg* key = builder.MakeInput<float>(std::vector<int64_t>{2, 5, 16});
+        NodeArg* value = builder.MakeInput<float>(std::vector<int64_t>{2, 5, 12});
+        output = builder.MakeOutput<float>(std::nullopt);
+        Node& node = builder.AddNode("MultiHeadAttention", {query, key, value}, {output}, kMSDomain);
+        node.AddAttribute("num_heads", static_cast<int64_t>(4));
+        node.AddAttribute("kv_num_heads", static_cast<int64_t>(2));
+      },
+      [&](const Graph&) {
+        ASSERT_NE(output, nullptr);
+        const auto* type = output->TypeAsProto();
+        ASSERT_NE(type, nullptr);
+        const auto& shape = type->tensor_type().shape();
+        ASSERT_EQ(shape.dim_size(), 3);
+        EXPECT_EQ(shape.dim(0).dim_value(), 2);
+        EXPECT_EQ(shape.dim(1).dim_value(), 3);
+        EXPECT_EQ(shape.dim(2).dim_value(), 24);
+      });
+}
+
+TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionRejectsInvalidGroupedQueryHeadCount) {
+  BuildResolveAndExpectFailure(
+      [](ModelTestBuilder& builder) {
+        NodeArg* query = builder.MakeInput<float>(std::vector<int64_t>{2, 3, 32});
+        NodeArg* key = builder.MakeInput<float>(std::vector<int64_t>{2, 5, 24});
+        NodeArg* value = builder.MakeInput<float>(std::vector<int64_t>{2, 5, 24});
+        NodeArg* output = builder.MakeOutput<float>(std::nullopt);
+        Node& node = builder.AddNode("MultiHeadAttention", {query, key, value}, {output}, kMSDomain);
+        node.AddAttribute("num_heads", static_cast<int64_t>(4));
+        node.AddAttribute("kv_num_heads", static_cast<int64_t>(3));
+      },
+      "Number of query heads shall be a multiple of number of key/value heads");
 }
 
 // DecoderMaskedMultiHeadAttention with present_key kept and present_value omitted.

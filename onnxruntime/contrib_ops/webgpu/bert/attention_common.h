@@ -25,7 +25,7 @@ struct WebgpuAttentionParameters {
                                                                        input_hidden_size_(parameters.input_hidden_size),
                                                                        hidden_size_(parameters.hidden_size),
                                                                        head_size_(parameters.head_size),
-                                                                       v_hidden_size_(parameters.v_hidden_size),
+                                                                       v_hidden_size_(parameters.GetOutputHiddenSize()),
                                                                        v_head_size_(parameters.v_head_size),
                                                                        num_heads_(parameters.num_heads),
                                                                        is_unidirectional_(parameters.is_unidirectional),

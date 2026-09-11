@@ -102,7 +102,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(batch_size);
   output_shape[1] = static_cast<int64_t>(sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
+  output_shape[2] = static_cast<int64_t>(parameters.GetOutputHiddenSize());
   Tensor* output = context->Output(0, output_shape);
 
   // Present input will have the same shape as the past input
@@ -132,7 +132,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
 
   IAllocatorUniquePtr<T1> gemm_buffer;
   int m = batch_size * sequence_length;
-  int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
+  int n = (parameters.GetQueryHiddenSize() + parameters.GetKeyHiddenSize() + parameters.GetValueHiddenSize());
   int k = parameters.input_hidden_size;
   gemm_buffer = GetScratchBuffer<T1>(static_cast<size_t>(m) * n, GetComputeStream(context));
 

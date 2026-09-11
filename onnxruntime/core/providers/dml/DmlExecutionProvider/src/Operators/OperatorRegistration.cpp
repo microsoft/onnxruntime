@@ -553,6 +553,7 @@ DML_OP_EXTERN_QUERY_FUNCTION(SkipLayerNormalization);
 DML_OP_EXTERN_QUERY_FUNCTION(QLinearSigmoid);
 DML_OP_EXTERN_QUERY_FUNCTION(QAttention);
 DML_OP_EXTERN_QUERY_FUNCTION(Attention);
+DML_OP_EXTERN_QUERY_FUNCTION(MultiHeadAttention);
 DML_OP_EXTERN_QUERY_FUNCTION(MatMulNBits);
 
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
@@ -1135,7 +1136,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  QLinearSigmoid,                     typeNameListDefault,            supportedTypeListQLinearSigmoid,        DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryQLinearSigmoid)},
     {REG_INFO_MS(   1,  QAttention,                         typeNameListFour,               supportedTypeListQAttention,            DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryQAttention)},
     {REG_INFO_MS(   1,  Attention,                          typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryAttention)},
-    {REG_INFO_MS(   1,  MultiHeadAttention,                 typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported)},
+    {REG_INFO_MS(   1,  MultiHeadAttention,                 typeNameListAttention,          supportedTypeListAttention,             DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryMultiHeadAttention)},
     {REG_INFO_MS(   1,  RotaryEmbedding,                    typeNameListRotaryEmbedding,    supportedTypeListRotaryEmbedding,       DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QLinearConcat,                      typeNameListQLinearConcat,      supportedTypeListQLinearConcat,         DmlGraphSupport::Supported)},
 
