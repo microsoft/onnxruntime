@@ -36,9 +36,7 @@ stages:
     workspace:
       clean: all
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-feeds-and-python-steps.yml
       parameters:

@@ -25,7 +25,19 @@ from onnx import TensorProto, helper
 from packaging import version
 from parameterized import parameterized
 
-from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_available_providers
+from onnxruntime import (
+    GraphOptimizationLevel,
+    InferenceSession,
+    OrtValue,
+    SessionOptions,
+    get_available_providers,
+    get_ep_devices,
+    register_execution_provider_library,
+)
+
+_webgpu_plugin_path = os.environ.get("ORT_WEBGPU_PLUGIN_PATH")
+if _webgpu_plugin_path and "WebGpuExecutionProvider" not in get_available_providers():
+    register_execution_provider_library("webgpu_test", _webgpu_plugin_path)
 
 torch.manual_seed(0)
 
@@ -219,8 +231,9 @@ def create_paged_attention_graph(
     # built and their rejection tested.
     has_k_scale = config.k_quant_type != "NONE"
     has_v_scale = config.v_quant_type != "NONE"
-    # Optional host-side [max_query_len_bound, max_kv_len_bound]. When present the kernel can skip
-    # the device readback of the cumulative length arrays, so results must be identical either way.
+    # Optional host-side [max_query_len_bound, max_kv_len_bound, optional max_kv_len_lower_bound].
+    # When present the kernel can skip the device readback of the cumulative length arrays, so
+    # results must be identical either way.
     has_attention_metadata = getattr(config, "use_attention_metadata", False)
     quant_attrs = (
         {
@@ -400,7 +413,11 @@ def create_paged_attention_graph(
         ]
     if has_attention_metadata:
         graph_input += [
-            helper.make_tensor_value_info("attention_metadata", TensorProto.INT32, [2]),
+            helper.make_tensor_value_info(
+                "attention_metadata",
+                TensorProto.INT32,
+                getattr(config, "attention_metadata_shape", [2]),
+            ),
         ]
 
     graph_output = [
@@ -520,7 +537,14 @@ def paged_attention_func(
         ort_inputs["key_cache"] = OrtValue.ortvalue_from_numpy(key_cache_np, config.ort_device, 0)
         ort_inputs["value_cache"] = OrtValue.ortvalue_from_numpy(value_cache_np, config.ort_device, 0)
     sess_options = SessionOptions()
-    if sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
+    if config.ep == "WebGpuExecutionProvider":
+        sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
+        webgpu_devices = [device for device in get_ep_devices() if device.ep_name == config.ep]
+        if not webgpu_devices:
+            raise RuntimeError("No WebGPU EP device found.")
+        sess_options.add_provider_for_devices([webgpu_devices[0]], {})
+        providers = None
+    elif sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
         providers = [(config.ep, {"sdpa_kernel": str(sdpa_kernel)})]
     else:
         providers = [config.ep]
@@ -844,6 +868,8 @@ def parity_check_paged_attention(
     sdpa_kernel=0,
     new_seqlens_override=None,
     local_window_size_override=None,
+    past_seqlens_override=None,
+    k_scale_max_override=None,
 ):
     # Generate padded inputs
     q = torch.randn(
@@ -875,13 +901,19 @@ def parity_check_paged_attention(
     )
 
     # Generate random sequence lengths
-    past_seqlens = torch.randint(
-        0,
-        config.total_sequence_length - config.sequence_length + 1,  # one above highest integer to be drawn
-        (config.batch_size,),
-        dtype=torch.int32,
-        device=config.torch_device,
-    )
+    if past_seqlens_override is not None:
+        past_seqlens = past_seqlens_override.to(dtype=torch.int32, device=config.torch_device)
+        assert past_seqlens.shape == (config.batch_size,)
+        assert int(past_seqlens.min().item()) >= 0
+        assert int(past_seqlens.max().item()) <= config.total_sequence_length - config.sequence_length
+    else:
+        past_seqlens = torch.randint(
+            0,
+            config.total_sequence_length - config.sequence_length + 1,  # one above highest integer to be drawn
+            (config.batch_size,),
+            dtype=torch.int32,
+            device=config.torch_device,
+        )
     if new_seqlens_override is not None:
         new_seqlens = new_seqlens_override.to(dtype=torch.int32, device=config.torch_device)
         assert new_seqlens.shape == (config.batch_size,)
@@ -912,7 +944,7 @@ def parity_check_paged_attention(
     if config.use_head_sink:
         # Spread over [-2, 6]: exp(sink) then ranges from negligible to far larger than a typical
         # softmax denominator, so a kernel that ignored the sink could not pass within tolerance.
-        head_sink = (torch.rand(config.num_heads, device="cuda") * 8.0 - 2.0).to(dtype=torch.float16)
+        head_sink = (torch.rand(config.num_heads, device=config.torch_device) * 8.0 - 2.0).to(dtype=torch.float16)
 
     # Optional QK-Norm. The kernel applies RMSNorm to every Q and K head before rotary embedding,
     # so the reference has to normalize before computing q_ro / k_ro below, and the normalized +
@@ -920,8 +952,8 @@ def parity_check_paged_attention(
     q_norm_weight = None
     k_norm_weight = None
     if config.use_qk_norm:
-        q_norm_weight = torch.randn(config.head_size, device="cuda", dtype=torch.float16)
-        k_norm_weight = torch.randn(config.head_size, device="cuda", dtype=torch.float16)
+        q_norm_weight = torch.randn(config.head_size, device=config.torch_device, dtype=torch.float16)
+        k_norm_weight = torch.randn(config.head_size, device=config.torch_device, dtype=torch.float16)
         q = rms_norm_ref(q, q_norm_weight, config.qk_norm_epsilon)
         k_new = rms_norm_ref(k_new, k_norm_weight, config.qk_norm_epsilon)
 
@@ -942,8 +974,10 @@ def parity_check_paged_attention(
         left_window_size = (
             local_window_size_override
             if local_window_size_override is not None
-            else random.randint(1, config.total_sequence_length - 1)
+            else getattr(config, "local_window_size", None)
         )
+        if left_window_size is None:
+            left_window_size = random.randint(1, config.total_sequence_length - 1)
         assert 0 < left_window_size < config.total_sequence_length
         window_size = (left_window_size, right_window_size)
     else:
@@ -972,6 +1006,10 @@ def parity_check_paged_attention(
         k_scale = compute_kv_scale(
             [k_cache_paged, k_ro], config.k_quant_type, config.kv_cache_type, config.kv_num_heads, config.head_size
         )
+        if k_scale_max_override is not None:
+            assert config.k_quant_type == "PER_CHANNEL"
+            k_scale = (k_scale / k_scale.max()) * k_scale_max_override
+            assert torch.isfinite(k_scale).all()
         v_scale = compute_kv_scale(
             [v_cache_paged, v_new], config.v_quant_type, config.kv_cache_type, config.kv_num_heads, config.head_size
         )
@@ -1052,6 +1090,10 @@ def parity_check_paged_attention(
     out = torch.reshape(out, (num_tokens, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
+    if k_scale_max_override is not None:
+        assert numpy.isfinite(out_ref).all()
+        assert numpy.isfinite(out).all()
+
     err_msg = f" with {config}"
     # The updated cache is compared to the reference at one quantization step of slack: the host
     # computes rotary / RMSNorm slightly differently from the kernel, and a 1-ULP fp16 difference in
@@ -1079,7 +1121,7 @@ def parity_check_paged_attention(
             k_cache_ref[i, : total_seqlens[i]].detach().cpu().numpy(),
             rtol=cache_rtol,
             atol=cache_atol,
-            equal_nan=True,
+            equal_nan=k_scale_max_override is None,
             err_msg=err_msg,
         )
         numpy.testing.assert_allclose(
@@ -1087,13 +1129,15 @@ def parity_check_paged_attention(
             v_cache_ref[i, : total_seqlens[i]].detach().cpu().numpy(),
             rtol=cache_rtol,
             atol=cache_atol,
-            equal_nan=True,
+            equal_nan=k_scale_max_override is None,
             err_msg=err_msg,
         )
         new_seqlen = cum_seqlens[i + 1] - cum_seqlens[i]
         out_i = out[cum_seqlens[i] : cum_seqlens[i + 1]]
         out_ref_i = out_ref[i, :new_seqlen]
-        numpy.testing.assert_allclose(out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
+        numpy.testing.assert_allclose(
+            out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=k_scale_max_override is None, err_msg=err_msg
+        )
 
 
 def capture_native_stdout(run_func):
@@ -1176,13 +1220,11 @@ def has_webgpu_ep() -> bool:
 def _webgpu_supports_config(config: Config) -> bool:
     """Feature guard for the WebGPU PagedAttention op.
 
-    The WebGPU kernel is fp16-only and does not yet implement softcap or
-    sliding-window local attention. Rotary (interleaved and non-interleaved),
-    packed QKV, and GQA are supported.
+    The WebGPU kernel is fp16-only and does not yet implement softcap. Local
+    attention, rotary (interleaved and non-interleaved), packed QKV, GQA, and
+    learned attention sinks are supported.
     """
     if config.softcap != 0.0:
-        return False
-    if config.local:
         return False
     return True
 
@@ -1571,7 +1613,7 @@ def paged_attention_test_cases_webgpu():
                                     n2,
                                     h,
                                     block_size,
-                                    False,  # local - not supported on WebGPU
+                                    False,
                                     rotary,
                                     rotary_interleaved,
                                     packed,
@@ -1600,6 +1642,123 @@ class TestPagedAttentionWebGpu(unittest.TestCase):
         with self.assertRaises(Exception) as ctx:
             parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
         self.assertIn("PagedAttention (WebGPU): is_causal=0 is not supported yet", str(ctx.exception))
+
+    def test_paged_attention_webgpu_attention_metadata(self):
+        config = Config(
+            batch_size=2,
+            sequence_length=1,
+            total_sequence_length=64,
+            num_heads=8,
+            kv_num_heads=4,
+            head_size=128,
+            paged_kv_block_size=256,
+            local=False,
+            rotary=False,
+            rotary_interleaved=False,
+            packed=False,
+            softcap=0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        config.use_attention_metadata = True
+        config.attention_metadata_shape = [3]
+        config.attention_metadata_override = numpy.array([1, 64, 1], dtype=numpy.int32)
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+        ragged_config = Config(
+            batch_size=2,
+            sequence_length=2,
+            total_sequence_length=64,
+            num_heads=8,
+            kv_num_heads=4,
+            head_size=128,
+            paged_kv_block_size=256,
+            local=False,
+            rotary=False,
+            rotary_interleaved=False,
+            packed=False,
+            softcap=0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        ragged_config.use_attention_metadata = True
+        ragged_config.attention_metadata_shape = [3]
+        ragged_config.attention_metadata_override = numpy.array([2, 2, 0], dtype=numpy.int32)
+        parity_check_paged_attention(
+            ragged_config,
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([2, 0], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([0, 0], dtype=torch.int32),
+        )
+        parity_check_paged_attention(
+            ragged_config,
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([1, 2], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([0, 0], dtype=torch.int32),
+        )
+
+    def _gptoss_config(self, sequence_length, *, local=True, use_head_sink=True):
+        config = Config(
+            batch_size=2,
+            sequence_length=sequence_length,
+            total_sequence_length=256,
+            num_heads=64,
+            kv_num_heads=8,
+            head_size=64,
+            paged_kv_block_size=256,
+            local=local,
+            rotary=True,
+            rotary_interleaved=False,
+            packed=True,
+            softcap=0.0,
+            ep="WebGpuExecutionProvider",
+        )
+        config.local_window_size = 128
+        config.use_head_sink = use_head_sink
+        return config
+
+    def test_gptoss_local_window_head_sink_prefill(self):
+        parity_check_paged_attention(
+            self._gptoss_config(sequence_length=16),
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([16, 9], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([240, 192], dtype=torch.int32),
+        )
+
+    def test_gptoss_local_window_head_sink_decode(self):
+        parity_check_paged_attention(
+            self._gptoss_config(sequence_length=1),
+            rtol=5e-3,
+            atol=5e-3,
+            past_seqlens_override=torch.tensor([255, 192], dtype=torch.int32),
+        )
+
+    def test_local_window_short_history(self):
+        parity_check_paged_attention(
+            self._gptoss_config(sequence_length=4, use_head_sink=False),
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([4, 2], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([0, 4], dtype=torch.int32),
+        )
+
+    def test_head_sink_prefill_without_local_window(self):
+        parity_check_paged_attention(
+            self._gptoss_config(sequence_length=32, local=False),
+            rtol=5e-3,
+            atol=5e-3,
+            new_seqlens_override=torch.tensor([32, 17], dtype=torch.int32),
+            past_seqlens_override=torch.tensor([224, 100], dtype=torch.int32),
+        )
+
+    def test_head_sink_decode_without_local_window(self):
+        parity_check_paged_attention(
+            self._gptoss_config(sequence_length=1, local=False),
+            rtol=5e-3,
+            atol=5e-3,
+            past_seqlens_override=torch.tensor([255, 192], dtype=torch.int32),
+        )
 
 
 @unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")
@@ -2141,7 +2300,17 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
             setattr(config, key, value)
         return config
 
-    def _check_xqa(self, quant_type="PER_TENSOR", kv_cache_type="int8", rtol=5e-3, atol=5e-3, **overrides):
+    def _check_xqa(
+        self,
+        quant_type="PER_TENSOR",
+        kv_cache_type="int8",
+        rtol=5e-3,
+        atol=5e-3,
+        k_scale_max_override=None,
+        expect_xqa=None,
+        per_channel_xqa=None,
+        **overrides,
+    ):
         if kv_cache_type == "fp8":
             if not has_fp8_kv_cache():
                 self.skipTest("FP8 KV cache kernels are not built")
@@ -2154,7 +2323,22 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
             v_quant_type=quant_type,
             **overrides,
         )
-        parity_check_paged_attention(config, rtol=rtol, atol=atol)
+
+        def run():
+            parity_check_paged_attention(config, rtol=rtol, atol=atol, k_scale_max_override=k_scale_max_override)
+
+        if expect_xqa is None:
+            run()
+            return
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+        ):
+            debug_output = capture_native_stdout(run)
+        if expect_xqa:
+            self.assertIn("SdpaKernel=XQA", debug_output)
+        else:
+            self.assertNotIn("SdpaKernel=XQA", debug_output)
 
     def _capture_xqa_debug(self, config):
         with patch.dict(
@@ -2338,6 +2522,29 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
     def test_xqa_quant_type(self, _, kv_cache_type, quant_type):
         self._check_xqa(kv_cache_type=kv_cache_type, quant_type=quant_type)
 
+    @parameterized.expand([("int8", "int8"), ("fp8", "fp8")])
+    def test_xqa_large_per_channel_k_scale(self, _, kv_cache_type):
+        # Scaling the whole table up to FP32 max leaves its dynamic range intact, which is the shape
+        # a calibrated table has. The power-of-two normalizer keeps the fold in range, so this stays
+        # on XQA.
+        self._check_xqa(
+            kv_cache_type=kv_cache_type,
+            quant_type="PER_CHANNEL",
+            k_scale_max_override=torch.finfo(torch.float32).max,
+            expect_xqa=True,
+        )
+
+    @parameterized.expand([("int8", "int8"), ("fp8", "fp8")])
+    def test_per_channel_xqa_opt_out_uses_portable_kernel(self, _, kv_cache_type):
+        # ORT_ENABLE_XQA_PER_CHANNEL_KV=0 is the escape hatch for scale tables whose channel range
+        # exceeds what folding into an fp16 query can hold.
+        self._check_xqa(
+            kv_cache_type=kv_cache_type,
+            quant_type="PER_CHANNEL",
+            expect_xqa=False,
+            per_channel_xqa=False,
+        )
+
     def test_xqa_mixed_granularity(self):
         # k PER_CHANNEL folds into Q, v PER_TENSOR stays a kernel argument: the two scales take
         # different routes, so an asymmetric config catches a mix-up between them.
@@ -2379,12 +2586,217 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
         self._check_xqa(paged_kv_block_size=64)
 
     def test_multi_token_step_falls_back(self):
-        # More than one new token in a sequence: XQA emits one row per sequence, so this has to use
-        # a backend that handles a ragged step.
+        # More than one new token in a sequence: without 'attention_metadata' the speculative XQA
+        # specialization is not eligible, so this has to use a backend that handles a ragged step.
         config = self._config(
             sequence_length=2, kv_cache_type="int8", k_quant_type="PER_TENSOR", v_quant_type="PER_TENSOR"
         )
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+
+@unittest.skipIf(not has_xqa(), reason="XQA requires an SM80 or newer GPU")
+class TestPagedAttentionXqaSpeculative(unittest.TestCase):
+    """Coverage for the multi-token (speculative decoding) paged XQA specialization.
+
+    Head size 256 / group size 6 / 2..8 new tokens per sequence routes a speculative verification
+    step onto XQA with a packed lower-triangular mask instead of the ragged fallback. The mask is
+    the whole point of these tests: a kernel that ignores it lets a draft token attend to its own
+    future, which stays inside a loose tolerance when K and V barely vary with position.
+    `parity_check_paged_attention` uses random K/V and a torch reference, so a dropped mask shows
+    up as a large error on every row except the last."""
+
+    def setUp(self):
+        torch.manual_seed(0)
+
+    def _check(
+        self,
+        new_seqlens=None,
+        rtol=5e-3,
+        atol=5e-3,
+        expect_xqa=None,
+        local_window_size=None,
+        **overrides,
+    ):
+        kwargs = {
+            "batch_size": 4,
+            "sequence_length": 8,
+            "total_sequence_length": 1024,
+            "num_heads": 6,
+            "kv_num_heads": 1,
+            "head_size": 256,
+            "paged_kv_block_size": 256,
+            "local": False,
+            "rotary": False,
+            "rotary_interleaved": False,
+            "packed": False,
+            "softcap": 0.0,
+        }
+        features = {k: overrides.pop(k) for k in list(overrides) if k not in kwargs}
+        kwargs.update(overrides)
+        config = Config(**kwargs)
+        for key, value in {
+            "kv_cache_type": "int8",
+            "k_quant_type": "PER_TENSOR",
+            "v_quant_type": "PER_TENSOR",
+            "use_attention_metadata": True,
+            **features,
+        }.items():
+            setattr(config, key, value)
+        override = None
+        if new_seqlens is not None:
+            override = torch.tensor(new_seqlens, dtype=torch.int32)
+
+        def run():
+            parity_check_paged_attention(
+                config,
+                rtol=rtol,
+                atol=atol,
+                new_seqlens_override=override,
+                local_window_size_override=local_window_size,
+            )
+
+        # Output parity alone would still pass if a dispatch regression routed the case to the
+        # ragged fallback, leaving the mask, page-table and scale paths untested. Assert the
+        # selected backend wherever the case is meant to prove speculative XQA behavior.
+        if expect_xqa is None:
+            run()
+            return
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+        ):
+            debug_output = capture_native_stdout(run)
+        if expect_xqa:
+            self.assertIn("SdpaKernel=XQA", debug_output)
+        else:
+            self.assertNotIn("SdpaKernel=XQA", debug_output)
+
+    @parameterized.expand([(f"q{q}", q) for q in range(2, 9)])
+    def test_spec_dec_query_length(self, _, query_length):
+        self._check(sequence_length=query_length, new_seqlens=[query_length] * 4)
+
+    @parameterized.expand([("int8", "int8"), ("native_fp16", "float16")])
+    def test_spec_dec_dispatches_to_xqa(self, _, kv_cache_type):
+        is_native_cache = kv_cache_type == "float16"
+        quant = "NONE" if kv_cache_type == "float16" else "PER_TENSOR"
+        config = Config(4, 8, 1024, 6, 1, 256, 256, False, False, False, False, 0.0)
+        for key, value in {
+            "kv_cache_type": kv_cache_type,
+            "k_quant_type": quant,
+            "v_quant_type": quant,
+            "use_attention_metadata": True,
+        }.items():
+            setattr(config, key, value)
+        with patch.dict(
+            os.environ,
+            {
+                "ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1",
+                "ORT_ENABLE_XQA": "1",
+                "ORT_ENABLE_XQA_NATIVE_KV": "1" if is_native_cache else "0",
+            },
+        ):
+            debug_output = capture_native_stdout(
+                lambda: parity_check_paged_attention(
+                    config, rtol=5e-3, atol=5e-3, new_seqlens_override=torch.tensor([8, 8, 8, 8], dtype=torch.int32)
+                )
+            )
+        self.assertIn("SdpaKernel=XQA", debug_output)
+
+        if is_native_cache:
+            with patch.dict(
+                os.environ,
+                {
+                    "ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1",
+                    "ORT_ENABLE_XQA": "1",
+                    "ORT_ENABLE_XQA_NATIVE_KV": "0",
+                },
+            ):
+                debug_output = capture_native_stdout(
+                    lambda: parity_check_paged_attention(
+                        config,
+                        rtol=5e-3,
+                        atol=5e-3,
+                        new_seqlens_override=torch.tensor([8, 8, 8, 8], dtype=torch.int32),
+                    )
+                )
+            self.assertNotIn("SdpaKernel=XQA", debug_output)
+            self.assertIn("SdpaKernel=FLASH_ATTENTION", debug_output)
+
+    @parameterized.expand(
+        [
+            ("ragged", [1, 8, 3, 8]),
+            ("inactive", [0, 0, 0, 7]),
+            ("uniform2", [2, 2, 2, 2]),
+            # token_count (2) <= batch_size (4): the gate is the metadata query bound, not the
+            # aggregate token count, so this still routes to the speculative kernel.
+            ("fewer_tokens_than_sequences", [0, 0, 0, 2]),
+        ]
+    )
+    def test_spec_dec_ragged_batch(self, _, new_seqlens):
+        # A continuous-batching step mixes acceptance lengths, and a scheduled sequence may
+        # contribute no token at all.
+        self._check(new_seqlens=new_seqlens, expect_xqa=True)
+
+    @parameterized.expand([("64", 64), ("256", 256), ("1000", 1000), ("8192", 8192)])
+    def test_spec_dec_context_length(self, _, total_sequence_length):
+        # 8192 splits the sequence across CTAs and reduces through the XQA scratch; 1000 is not
+        # page aligned, so the masked tail straddles the last two tiles.
+        self._check(batch_size=2, total_sequence_length=total_sequence_length, new_seqlens=[8, 8], expect_xqa=True)
+
+    @parameterized.expand([("128", 128), ("512", 512)])
+    def test_spec_dec_block_size(self, _, block_size):
+        self._check(batch_size=2, paged_kv_block_size=block_size, new_seqlens=[8, 8], expect_xqa=True)
+
+    def test_spec_dec_per_channel_scales(self):
+        self._check(k_quant_type="PER_CHANNEL", v_quant_type="PER_CHANNEL", expect_xqa=True)
+
+    def test_spec_dec_batch_one(self):
+        self._check(batch_size=1, new_seqlens=[8], expect_xqa=True)
+
+    @parameterized.expand([(f"q{q}", q) for q in range(6, 9)])
+    def test_spec_dec_local_window(self, _, query_length):
+        # 6..8 query tokens with group size 6 spill past the 32-row tile, so the second tile has to
+        # derive each row's window from its own query position instead of the tile offset.
+        self._check(
+            batch_size=2,
+            sequence_length=query_length,
+            total_sequence_length=1024,
+            new_seqlens=[query_length, query_length],
+            local=True,
+            local_window_size=64,
+            expect_xqa=True,
+        )
+
+    @parameterized.expand([(f"q{q}", q) for q in range(6, 9)])
+    def test_spec_dec_head_sink(self, _, query_length):
+        # Rows are flattened (token, head) pairs here, so every row past the first tile must still
+        # pick up its own head's sink.
+        self._check(
+            batch_size=2,
+            sequence_length=query_length,
+            new_seqlens=[query_length, query_length],
+            use_head_sink=True,
+            expect_xqa=True,
+        )
+
+    def test_spec_dec_head_sink_and_local(self):
+        self._check(
+            batch_size=2,
+            new_seqlens=[8, 8],
+            use_head_sink=True,
+            local=True,
+            local_window_size=64,
+            expect_xqa=True,
+        )
+
+    def test_spec_dec_native_fp16_cache(self):
+        with patch.dict(os.environ, {"ORT_ENABLE_XQA_NATIVE_KV": "1"}):
+            self._check(kv_cache_type="float16", k_quant_type="NONE", v_quant_type="NONE", expect_xqa=True)
+
+    def test_bound_above_specialization_falls_back(self):
+        # A query bound of 9 is outside the 2..8 window, so this must land on the ragged backend
+        # and still be correct.
+        self._check(sequence_length=9, new_seqlens=[9] * 4, expect_xqa=False)
 
 
 @unittest.skipIf(not has_cuda_device(), reason="CUDA is not available, skipping tests.")

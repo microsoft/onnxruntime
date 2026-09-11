@@ -125,6 +125,10 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_MLFloat16, PagedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_BFloat16, PagedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_int8_t, PagedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_int8_t, PagedAttention);
+#ifdef USE_INT4_KV_CACHE
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_uint8_t, PagedAttention);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_uint8_t, PagedAttention);
+#endif
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, PagedAttention);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, PagedAttention);
@@ -168,6 +172,11 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, LinearAttentionGate);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedRMSNorm);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedRMSNorm);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, EngramGate);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, EngramGate);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, EngramGate);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, int32_t, NGramHashMapping);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, NGramHashMapping);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedAdd);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedAdd);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedAdd);
@@ -416,6 +425,10 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_BFloat16, PagedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_int8_t, PagedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_int8_t, PagedAttention)>,
+#ifdef USE_INT4_KV_CACHE
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_uint8_t, PagedAttention)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_uint8_t, PagedAttention)>,
+#endif
 #if defined(USE_FP8_KV_CACHE) && !defined(DISABLE_FLOAT8_TYPES)
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16_Float8E4M3FN, PagedAttention)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16_Float8E4M3FN, PagedAttention)>,
@@ -459,6 +472,11 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedRMSNorm)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedRMSNorm)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, EngramGate)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, EngramGate)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, EngramGate)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, int32_t, NGramHashMapping)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, int64_t, NGramHashMapping)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, GatedAdd)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, GatedAdd)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, GatedAdd)>,

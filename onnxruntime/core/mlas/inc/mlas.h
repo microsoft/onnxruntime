@@ -22,6 +22,10 @@ Abstract:
 #include <cstdint>
 #include <stdexcept>
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 //
 // Define the calling convention for Windows targets.
 //
@@ -90,6 +94,16 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
+// Runtime BF16 and SME2 capabilities are checked separately before selecting
+// an accelerated SBGEMM path.
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+#define MLAS_SBGEMM_AVAILABLE
+#elif defined(__APPLE__)
+#if defined(MLAS_TARGET_ARM64) && TARGET_OS_OSX
+#define MLAS_SBGEMM_AVAILABLE
+#endif
+#endif
+
 #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
 #if !defined(__APPLE__)
@@ -103,6 +117,14 @@ Abstract:
 #endif //
 #endif // ARM64
 #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
+
+//
+// Define whether an accelerated half-GEMM backend can be available for this build.
+//
+#if (defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)) || \
+    (defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)) || defined(MLAS_TARGET_RISCV64)
+#define MLAS_HALF_GEMM_ACCELERATION_POSSIBLE
+#endif
 
 //
 // Basic Linear Algebra Subprograms (BLAS) types.
@@ -1698,6 +1720,12 @@ MlasRotaryEmbedOneRow(
  *        Uses platform-optimized kernel if available, otherwise returns false.
  *        Any platform (AMD64/ARM64/RISC-V) can register a LayerNormF32Kernel.
  *
+ *        On x86 (32-bit and 64-bit), the AVX2 kernel declines small rows
+ *        (returns false): NormSize < 8 for LayerNorm, or NormSize < 16 for
+ *        RMSNorm, where SIMD setup exceeds the benefit.
+ *        Callers must provide their own scalar fallback for small-N on x86.
+ *        Other platforms (e.g. RISC-V RVV) dispatch for any NormSize.
+ *
  * @return true if an optimized kernel was used, false if caller should fall back
  */
 bool
@@ -1830,6 +1858,17 @@ MlasGemm(
 */
 bool MLASCALL
 MlasFp16AccelerationSupported();
+
+/**
+ * @brief Whether an accelerated HalfGemm backend is available with the given configuration.
+ *
+ * @param BackendKernelSelectorConfig Backend kernel selection configuration. A
+ *        null pointer enables the default backend configuration.
+ * @return True if HalfGemm can use an accelerated backend.
+ */
+bool MLASCALL
+MlasHalfGemmAccelerationSupported(
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 /**
  * @brief Interface for half gemm post processors.
@@ -2151,7 +2190,7 @@ MlasHalfGemmConvertPackB(
     void* PackedB
     );
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 /**
  * @brief Whether current CPU supports Bfloat16(bf16) acceleration.
  */
@@ -2309,7 +2348,7 @@ MlasSBGemmConvertPackB(
     void* PackedB,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
-#endif
+#endif  // MLAS_SBGEMM_AVAILABLE
 
 /**
  * @brief Indirect Depthwise convolution for fp16

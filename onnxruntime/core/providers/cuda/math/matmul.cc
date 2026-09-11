@@ -341,7 +341,6 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
         const int k = static_cast<int>(helper.K());
         const size_t counter_elements = SmallNGemvCounterElements(n);
         auto counter = GetScratchBuffer<unsigned int>(counter_elements, this->GetComputeStream(ctx));
-        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(counter.get(), 0, counter_elements * sizeof(unsigned int), Stream(ctx)));
         auto workspace = GetScratchBuffer<float>(SmallNGemvWorkspaceElements(m, n, k), this->GetComputeStream(ctx));
         return LaunchSmallNGemv(Stream(ctx),
                                 reinterpret_cast<const half*>(left_X->Data<T>()),
