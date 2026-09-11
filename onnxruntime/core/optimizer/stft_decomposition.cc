@@ -13,7 +13,6 @@
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/providers/common.h"
 #include <numbers>
 
 using namespace onnxruntime::common;
@@ -188,7 +187,8 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "STFT", {17}) ||
-        (!node->GetExecutionProviderType().empty() && !graph_utils::IsSupportedProvider(*node, compatible_eps))) {
+        (!node->GetExecutionProviderType().empty() &&
+         !graph_utils::IsSupportedProvider(*node, compatible_eps))) {
       continue;
     }
 
@@ -275,6 +275,13 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
+    const auto* window_shape = window->Exists() ? window->Shape() : nullptr;
+    if (window_shape != nullptr && window_shape->dim_size() == 1 &&
+        window_shape->dim(0).has_dim_value() &&
+        window_shape->dim(0).dim_value() != dft_size) {
+      continue;
+    }
+
     bool is_onesided = true;
     auto& attrs = stft.GetAttributes();
     if (attrs.find("onesided") != attrs.end()) {
@@ -324,7 +331,8 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
         for (size_t n = 0; n < dft_size_sz; n++) {
           auto real_index = k * dft_size_sz + n;
           auto imag_index = (dft_unique_bins_sz + k) * dft_size_sz + n;
-          auto theta = -2 * std::numbers::pi_v<float> * k * n / static_cast<float>(dft_size);
+          const double theta = -2.0 * std::numbers::pi_v<double> *
+                               static_cast<double>((k * n) % dft_size_sz) / static_cast<double>(dft_size);
           auto window_scale = window_data != nullptr ? window_data[n] : 1.0f;
           weights_data[real_index] = static_cast<float>(cos(theta)) * window_scale;
           weights_data[imag_index] = static_cast<float>(sin(theta)) * window_scale;
