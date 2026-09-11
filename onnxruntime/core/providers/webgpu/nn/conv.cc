@@ -31,20 +31,22 @@ template <bool is_channels_last, bool is_fused>
 Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context) const {
   bool has_bias = context.InputCount() > 2;
   const auto* input = context.Input<Tensor>(0);
-  const Tensor* kernel = nullptr;
-  bool kernel_is_prepacked = false;
-  if (transposed_kernel_) {
-    kernel = transposed_kernel_.get();
-    kernel_is_prepacked = true;
-  } else {
-    kernel = context.Input<Tensor>(1);
-  }
+  const Tensor* kernel = prepacked_kernel_ ? prepacked_kernel_.get() : context.Input<Tensor>(1);
   const auto* bias = has_bias ? context.Input<Tensor>(2) : nullptr;
   TensorShape input_shape = input->Shape();
   ORT_ENFORCE(kernel != nullptr, "Conv kernel tensor is required.");
-  TensorShape kernel_shape = kernel_is_prepacked
-                                 ? TensorShape(TensorShapeVector{kernel->Shape()[3], kernel->Shape()[2], kernel->Shape()[0], kernel->Shape()[1]})
-                                 : kernel->Shape();
+  // Prepacked kernels are stored permuted; recover the logical OIHW shape.
+  TensorShape kernel_shape = kernel->Shape();
+  switch (kernel_layout_) {
+    case KernelLayout::OIHW:
+      break;
+    case KernelLayout::HWIO:
+      kernel_shape = TensorShape(TensorShapeVector{kernel_shape[3], kernel_shape[2], kernel_shape[0], kernel_shape[1]});
+      break;
+    case KernelLayout::OHWI:
+      kernel_shape = TensorShape(TensorShapeVector{kernel_shape[0], kernel_shape[3], kernel_shape[1], kernel_shape[2]});
+      break;
+  }
   ConvAttributes::ConvPadVector local_pads(conv_attrs_.pads.begin(), conv_attrs_.pads.end());
   TensorShapeVector local_dilations(conv_attrs_.dilations.begin(), conv_attrs_.dilations.end());
   TensorShapeVector local_strides(conv_attrs_.strides.begin(), conv_attrs_.strides.end());
@@ -168,20 +170,37 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
                                   kernel_shape,
                                   onnxruntime::narrow<uint32_t>(conv_attrs_.group),
                                   kernel->DataType())) {
+    // A prepacked kernel must be OHWI here. If it were packed for another consumer, the
+    // argument below would be null and ApplyIm2ColMatMulProgram would fall back to
+    // transposing input 1 -- which PrePackInternal already had ORT release.
+    ORT_ENFORCE(!prepacked_kernel_ || kernel_layout_ == KernelLayout::OHWI,
+                "Im2ColMatMul path reached with a kernel prepacked for a different layout.");
     return ApplyIm2ColMatMulProgram(context,
                                     is_channels_last,
                                     activation_,
                                     dilations,
                                     pads,
                                     strides,
+                                    kernel_layout_ == KernelLayout::OHWI ? kernel : nullptr,
                                     output);
   }
+
+  // The OHWI layout is only understood by the im2col path above. Reaching here with it
+  // would mean PrePackInternal and ComputeInternal disagree on whether the im2col path
+  // applies, and the branches below -- which expect either OIHW or HWIO -- would
+  // silently misread the layout.
+  ORT_ENFORCE(kernel_layout_ != KernelLayout::OHWI,
+              "Kernel was prepacked as OHWI but the Im2ColMatMul path was not taken.");
+
+  // Every remaining consumer wants HWIO, so the kernel has to be transposed unless
+  // PrePackInternal already produced that layout.
+  const bool kernel_needs_transpose = kernel_layout_ != KernelLayout::HWIO;
 
   if (conv_attrs_.group > 1) {
     Tensor transposed_kernel;
     if (is_channels_last) {
       const Tensor* grouped_kernel = kernel;
-      if (!kernel_is_prepacked) {
+      if (kernel_needs_transpose) {
         ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
         grouped_kernel = &transposed_kernel;
       }
@@ -212,79 +231,49 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   const auto same_size = is_channels_last && input_height == kernel_height && input_width == kernel_width && pads[0] == 0 && pads[1] == 0;
   if (same_size || (kernel_height == 1 && kernel_width == 1 && pads[0] == 0 && pads[1] == 0 && strides[0] == 1 && strides[1] == 1)) {
     Tensor transposed_kernel;
-    TensorShape input_reshape;
-    TensorShape kernel_reshape;
-    TensorShape matmul_output_shape;
+    TensorShape matmul_a_shape;
+    TensorShape matmul_b_shape;
     std::vector<const Tensor*> matmul_inputs;
-    std::vector<TensorShape> matmul_input_reshapes;
     if (is_channels_last) {
       // Transpose weights
       const Tensor* matmul_kernel = kernel;
-      if (!kernel_is_prepacked) {
+      if (kernel_needs_transpose) {
         ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
         matmul_kernel = &transposed_kernel;
       }
       inputs[1] = matmul_kernel;
       if (same_size) {
         const auto shared_dim = input_height * input_width * input_channels;
-        input_reshape = TensorShape({1, batch, shared_dim});
-        kernel_reshape = TensorShape({1, shared_dim, output_channels});
-        matmul_output_shape = TensorShape({1, batch, output_channels});
+        matmul_a_shape = TensorShape({1, batch, shared_dim});
+        matmul_b_shape = TensorShape({shared_dim, output_channels});
       } else {
-        input_reshape = TensorShape({batch, input_height * input_width, input_channels});
-        kernel_reshape = TensorShape({1, input_channels, output_channels});
-        matmul_output_shape = TensorShape({batch, output_height * output_width, output_channels});
+        matmul_a_shape = TensorShape({batch, input_height * input_width, input_channels});
+        matmul_b_shape = TensorShape({input_channels, output_channels});
       }
       matmul_inputs.push_back(input);
       matmul_inputs.push_back(matmul_kernel);
-      matmul_input_reshapes.push_back(input_reshape);
-      matmul_input_reshapes.push_back(kernel_reshape);
     } else {
-      input_reshape = TensorShape({batch, input_channels, input_height * input_width});
-      kernel_reshape = TensorShape({1, output_channels, input_channels});
-      matmul_output_shape = TensorShape({batch, output_channels, output_height * output_width});
+      matmul_a_shape = TensorShape({1, output_channels, input_channels});
+      matmul_b_shape = TensorShape({batch, input_channels, input_height * input_width});
       matmul_inputs.push_back(kernel);
       matmul_inputs.push_back(input);
-      matmul_input_reshapes.push_back(kernel_reshape);
-      matmul_input_reshapes.push_back(input_reshape);
     }
+    const bool matmul_b_is_constant =
+        is_channels_last && prepacked_kernel_ != nullptr && matmul_inputs[1] == prepacked_kernel_.get();
+    Tensor matmul_a = CreateTensorView(*matmul_inputs[0], matmul_a_shape);
+    Tensor matmul_b = CreateTensorView(*matmul_inputs[1], matmul_b_shape);
+    matmul_inputs[0] = &matmul_a;
+    matmul_inputs[1] = &matmul_b;
     if (has_bias) {
       matmul_inputs.push_back(bias);
     }
-    auto N = matmul_output_shape[2];
-    auto matmul_first_input_numdims = matmul_input_reshapes[0].NumDimensions();
-    auto K = matmul_input_reshapes[0].GetDims()[matmul_first_input_numdims - 1];
-    if (N < 8 && K < 8) {
-      const auto components = GetMaxComponents(N);
-      const auto a_components = GetMaxComponents(K);
-      const auto output_number = GetMaxComponents(output_shape[1]);
-      uint32_t output_size = static_cast<uint32_t>(output_shape.Size() / components / output_number);
-      const size_t output_rank = matmul_output_shape.NumDimensions();
-      TensorShape outer_dims = output_rank > 2 ? matmul_output_shape.Slice(0, output_rank - 2) : TensorShape({});
-      MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias, is_channels_last);
-      program
-          .CacheHint(activation_.CacheKey(), std::to_string(components), std::to_string(a_components), std::to_string(output_number), std::to_string(is_channels_last))
-          .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[0], a_components), int(a_components)},
-                      {matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[1], components), int(components)}});
-      if (has_bias) {
-        program.AddInput({bias, ProgramTensorMetadataDependency::Rank, ReduceShapeByComponents(bias->Shape(), components), components});
-      }
-      program
-          .AddOutputs({{output, ProgramTensorMetadataDependency::None, ReduceShapeByComponents(matmul_output_shape, components), int(components)}})
-          .SetDispatchGroupSize(static_cast<uint32_t>((output_size + 63) / 64))
-          .AddIndices(outer_dims)
-          .AddUniformVariables({{output_size}, {static_cast<uint32_t>(matmul_output_shape[1])}, {static_cast<uint32_t>(matmul_output_shape[2])}, {static_cast<uint32_t>(K)}});
-      // Activation uniforms must remain last because definitions and values are matched by index.
-      AppendActivationUniformsData(activation_, program);
-      return context.RunProgram(program);
-    } else {
-      return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last, matmul_input_reshapes[0], matmul_input_reshapes[1]);
-    }
+    return ComputeMatMul(&context, activation_, matmul_inputs, output, is_channels_last,
+                         matmul_compute_cache_, matmul_b_is_constant);
   }
   // Transpose weights when necessary
   Tensor transposed_kernel;
   const Tensor* conv_kernel = kernel;
-  if (!kernel_is_prepacked) {
+  if (kernel_needs_transpose) {
     ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
     conv_kernel = &transposed_kernel;
   }
@@ -319,6 +308,30 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
     return Status::OK();
   }
 
+  // Im2ColMatMul path: transpose OIHW -> OHWI once here instead of on every inference.
+  //
+  // Placed before the auto_pad check below on purpose:
+  //   - Safe: CanApplyIm2ColMatMulProgram() only looks at the adapter, dtype, layout,
+  //     fusion, group and kernel H/W -- never at pads -- and ComputeInternal tests it
+  //     before every pads-dependent branch. So a true here means the im2col path is
+  //     taken at runtime no matter what the padding turns out to be.
+  //   - Necessary: otherwise every auto_pad != NOTSET model would bail out below and
+  //     keep paying for the transpose on every inference.
+  //
+  // This call and the one in ComputeInternal must stay in agreement: only the im2col
+  // path can read the OHWI layout, so a decision made here that ComputeInternal later
+  // reverses would corrupt the weights. If CanApplyIm2ColMatMulProgram() ever gains a
+  // condition that is not known at prepack time (pads, strides, input shape), this
+  // shortcut must go away. ComputeInternal ORT_ENFORCEs the invariant.
+  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_,
+                                  kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group),
+                                  tensor.DataType())) {
+    ORT_RETURN_IF_ERROR(PrePackIm2ColMatMulWeight(context, tensor, alloc, prepacked_kernel_));
+    kernel_layout_ = KernelLayout::OHWI;
+    is_packed = true;  // set this flag to true so that ORT will release the initializer tensor
+    return Status::OK();
+  }
+
   // Grouped convolution (group > 1):
   //   - Only transposes when is_channels_last
   //   - channels_first: no transpose
@@ -338,18 +351,9 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
     return Status::OK();
   }
 
-  // Im2ColMatMul path uses a different transpose (OIHW -> OHWI) and reads
-  // kernel directly from context.Input(1), ignoring prepacked weights.
-  // Skip prepacking when this path will be used at runtime.
-  if (CanApplyIm2ColMatMulProgram(context, is_channels_last, activation_,
-                                  kernel_shape, onnxruntime::narrow<uint32_t>(conv_attrs_.group),
-                                  tensor.DataType())) {
-    return Status::OK();
-  }
-
   // Analyze execution paths in ComputeInternal to determine if kernel transpose is needed:
   //
-  // 1. Im2ColMatMul path: handled above (skip prepacking)
+  // 1. Im2ColMatMul path: handled above (prepacked as OHWI)
   // 2. Grouped conv (group > 1): handled above (skip if !is_channels_last)
   // 3. MatMul optimization (same_size || is_1x1_conv):
   //    - is_channels_last: transposes
@@ -399,11 +403,12 @@ Status Conv<is_channels_last, is_fused>::PrePackInternal(ComputeContextBase& con
 
   // Create the transposed kernel tensor using the prepack allocator.
   // This allocator creates GPU buffers without mapping, suitable for GPU-based operations.
-  transposed_kernel_ = std::make_unique<Tensor>(tensor.DataType(), transposed_kernel_shape, alloc);
+  prepacked_kernel_ = std::make_unique<Tensor>(tensor.DataType(), transposed_kernel_shape, alloc);
 
   // Perform GPU-based transpose directly from the input GPU tensor
-  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, tensor, *transposed_kernel_));
+  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(context, perm, tensor, *prepacked_kernel_));
 
+  kernel_layout_ = KernelLayout::HWIO;
   is_packed = true;  // set this flag to true so that ORT will release the initializer tensor
 
   return Status::OK();

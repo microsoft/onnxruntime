@@ -369,6 +369,8 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMin
 // file path or from a memory buffer/stream. All external data files must be in the same folder.
 // Typical uses include loading models with external data from memory, sharing a weights file
 // across models, and weightless/cache models whose weights live outside the model directory.
+// For EPContext workflows, also set kOrtSessionOptionEpContextFilePath so the EPContext
+// model location remains available for resolving an external EP context binary.
 static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPath =
     "session.model_external_initializers_file_folder_path";
 
@@ -485,9 +487,14 @@ static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape
 // "1": enable.
 static const char* const kOrtSessionOptionEpContextEnable = "ep.context_enable";
 
-// Specify the file path for the Onnx model which has EP context.
-// Default to original_file_name_ctx.onnx if not specified
-// Folder is not a valid option
+// Specify the file path for the ONNX model containing EP context.
+// For EP context generation, defaults to original_file_name_ctx.onnx if not specified.
+// During inference, EPs use this path to resolve an external EP context binary whose
+// relative path is stored in an EPContext node's ep_cache_context attribute.
+// To resolve an external EP context binary, set this option when the model path is
+// unavailable or when kOrtSessionOptionsModelExternalInitializersFileFolderPath overrides
+// it with a different directory. Specifying both paths is recommended for EPContext workflows.
+// A folder is not a valid value.
 static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_path";
 
 // Flag to specify whether to dump the EP context into the Onnx model.
@@ -637,6 +644,64 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // \deprecated Since version 1.29. Use "ep.enable_weightless" instead, which covers all initializers
 // (internal and external) and works in both JIT and AOT flows.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
+
+// Layout of the Value KV-cache tensors that the application binds to the past_value input and
+// present_value output of com.microsoft.GroupQueryAttention. Applies to every GQA node in the
+// model. The Key cache (past_key/present_key) is not affected.
+//
+// Requires onnxruntime_ENABLE_GQA_VALUE_LAYOUT, enabled by default in normal builds and automatically
+// disabled in minimal, extended-minimal, and contrib-disabled builds. When disabled, setting this
+// option to any value fails session initialization with ORT_INVALID_ARGUMENT. Leave it unset to load
+// a model with a preconverted BNHS boundary; disabled builds do not validate or warn about its layout.
+//
+// Option values:
+// - "BNSH": (batch_size, num_heads, sequence_length, head_size). Matches the operator schema. [DEFAULT]
+// - "BNHS": (batch_size, num_heads, head_size, sequence_length).
+//
+// When "BNHS" is selected, ORT keeps the GQA node itself in BNSH and inserts a
+// Transpose(perm=[0,1,3,2]) between the past_value graph input and the node, and another between
+// the node and the present_value graph output. An EP that prefers BNHS is expected to fuse that
+// Transpose -> GroupQueryAttention -> Transpose sequence into a single operation; an EP that does
+// not will execute the transposes, which is correct but costs a full copy of the Value cache in
+// each direction per step. The application may still bind one buffer to both past_value and
+// present_value; what it loses is the GQA kernel's in-place update of that buffer, because the
+// kernel now reads and writes ORT-allocated BNSH intermediates instead.
+// Key buffers may remain aliased. CPU handles each cache's aliasing independently; CUDA stages the
+// aliased cache when only one pair is shared, adding a cache-sized copy and scratch allocation.
+// CUDA sliding-window caches still require both operator cache pairs to be shared, so they cannot
+// use this unfused conversion.
+//
+// Query an EP's preference via the "gqa_preferred_value_layout" OrtEpDevice metadata key
+// (kOrtEpDevice_EpMetadataKey_GqaPreferredValueLayout in onnxruntime_ep_device_ep_metadata_keys.h).
+//
+// Setting "BNSH" explicitly is a claim that the model's Value cache boundary is BNSH, and session
+// initialization fails if the model already carries the BNHS conversion (as one saved from a BNHS
+// session via "session.optimized_model_filepath" does). Leaving the option unset makes no claim: such
+// a model loads unchanged, with a warning, exactly as it did before this option existed.
+//
+// Scope: this option only describes Value caches that the application itself binds, that is, a
+// past_value that is a graph input and a present_value that is a graph output. A Value cache that
+// stays inside the graph keeps the BNSH layout, because the application never sees it; ORT logs a
+// warning naming the node in that case.
+//
+// Requesting "BNHS" fails session initialization when a cache is application visible but cannot be
+// converted, rather than silently leaving it BNSH and letting the application bind buffers in the
+// wrong layout. That happens when:
+// - a past_value graph input is read by more than one node, or a present_value graph output is also
+//   consumed inside the graph (the layout of a shared cache cannot be changed for one reader only);
+// - a node already has the layout applied to only one of past_value / present_value;
+// - the Value cache is 4-bit quantized (two values are packed per byte along head_size);
+// - a Value cache tensor is not rank 4;
+// - a Value cache tensor reaches the boundary through a device copy node, which the conversion cannot
+//   be inserted across;
+// - a GroupQueryAttention node is inside a subgraph (a Loop body or BeamSearch decoder), where the
+//   operator and its boundary are in different graphs and cannot be converted together;
+// - the model is in ORT format, which does not run the graph transform that applies this option.
+//   Note only "BNHS" is refused there; an explicit "BNSH" is still accepted and still checked.
+//
+// This option takes effect at all graph optimization levels, including ORT_DISABLE_ALL, because it
+// changes the layout the session expects at its inputs and outputs rather than optimizing the graph.
+static const char* const kOrtSessionOptionsGqaValueLayout = "session.gqa_value_layout";
 
 // Enable weightless mode for all initializers (internal and external).
 //

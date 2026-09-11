@@ -105,8 +105,22 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
       webgpu_ep_config.kv_cache_quantization_bits = 0;
     } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_4Bit) {
       webgpu_ep_config.kv_cache_quantization_bits = 4;
+    } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_8Bit) {
+      webgpu_ep_config.kv_cache_quantization_bits = 8;
     } else {
-      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str, ". Must be \"0\" or \"4\".");
+      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str,
+                ". Must be \"0\", \"4\", or \"8\".");
+    }
+  }
+
+  std::string enable_matmul_fp32_accumulation_str;
+  if (config_options.TryGetConfigEntry(kEnableMatmulFp32Accumulation, enable_matmul_fp32_accumulation_str)) {
+    if (enable_matmul_fp32_accumulation_str == kEnableMatmulFp32Accumulation_ON) {
+      webgpu_ep_config.enable_matmul_fp32_accumulation = true;
+    } else if (enable_matmul_fp32_accumulation_str == kEnableMatmulFp32Accumulation_OFF) {
+      webgpu_ep_config.enable_matmul_fp32_accumulation = false;
+    } else {
+      ORT_THROW("Invalid enableMatmulFp32Accumulation value: ", enable_matmul_fp32_accumulation_str, ". Must be \"0\" or \"1\".");
     }
   }
 
