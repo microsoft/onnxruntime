@@ -50,6 +50,74 @@ The generation settings are temperature 0.7, top-p 0.6, top-k 20, repetition
 penalty 1.05, and a 100-token maximum. Foundry also performs its internal
 model-load warmup before the harness records `post_initialize`.
 
+## Real Model Input Shapes
+
+The 130 measured Foundry requests do not use the synthetic sequence length 64
+from `hy_mt2_benchmark_test.cc`. Tokenizing the exact chat template,
+translation instruction, and source text with ORT GenAI's model tokenizer
+gives prompt lengths from 36 to 43 tokens:
+
+| Prompt tokens `P` | Sample count | Physical shape of each KV key/value tensor |
+|---:|---:|---|
+| 36 | 2 | `[1, 4, 136, 128]` |
+| 37 | 32 | `[1, 4, 137, 128]` |
+| 38 | 45 | `[1, 4, 138, 128]` |
+| 39 | 26 | `[1, 4, 139, 128]` |
+| 40 | 15 | `[1, 4, 140, 128]` |
+| 41 | 7 | `[1, 4, 141, 128]` |
+| 42 | 2 | `[1, 4, 142, 128]` |
+| 43 | 1 | `[1, 4, 143, 128]` |
+
+The mean prompt length is 38.42 tokens. These lengths include the complete
+Chinese translation instruction and the chat-template begin, user, and
+assistant tokens.
+
+Let `P` be the prompt length and `k` be a one-based decode model-call index.
+The real decoder inputs are:
+
+| Model tensor | Prefill model call | Decode model call `k` |
+|---|---|---|
+| `input_ids` INT64 | `[1, P]` | `[1, 1]` |
+| `attention_mask` INT64 | `[1, P]` | `[1, P + k]` |
+| Each past key/value FP16 tensor | `[1, 4, P + 100, 128]` | `[1, 4, P + 100, 128]` |
+| Logical past length represented in the shared KV buffer | 0 | `P + k - 1` |
+| `logits` FP16 output | `[1, P, 120818]` | `[1, 1, 120818]` |
+
+There are 32 layers and one key plus one value tensor per layer, for 64 KV
+input tensors. `past_present_share_buffer=true`, so the physical KV shape is
+allocated once to:
+
+```text
+P + max_completion_tokens = P + 100
+```
+
+The shape does not grow during decoding. Only the logical past length and
+attention-mask length advance. Present outputs alias the same shared backing
+buffers, so the past and present shapes must not be counted as separate KV
+allocations. Across these prompts, the complete 64-tensor FP16 KV allocation
+is approximately 8.50 to 8.94 MiB.
+
+A direct CUDA input trace for measured sample 1 (`P = 42`) confirmed:
+
+```text
+Prefill:
+  input_ids:            [1, 42]
+  attention_mask:       [1, 42]
+  each KV key/value:    [1, 4, 142, 128]
+
+First decode model call:
+  input_ids:            [1, 1]
+  attention_mask:       [1, 43]
+  each KV key/value:    [1, 4, 142, 128]
+```
+
+Re-encoding the stored translation text reconstructs 5 to 18 generated
+content tokens for the default-BFC run and 5 to 19 for the device-initializer
+run. These sampled output lengths change the number of decode model calls,
+but not the per-call tensor-shape rule above. The terminal EOS token is not
+included in the stored translation text. This ONNX graph does not expose a
+separate `position_ids` input.
+
 ## Memory Accounting
 
 All values use binary MiB (`1 MiB = 1,048,576 bytes`).
@@ -301,6 +369,14 @@ Device-initializer protocol:
 ```text
 C:\Users\lochi\hy_mt2_wayne_repro\benchmark\translate_benchmark_results\
 REBASED_PROTOCOL_DEVICE_INITIALIZERS_WARMUP3_SAMPLE130_CORRECTED
+```
+
+Per-sample Foundry input shapes:
+
+```text
+C:\Users\lochi\hy_mt2_wayne_repro\benchmark\translate_benchmark_results\
+REBASED_PROTOCOL_DEFAULT_INITIALIZERS_WARMUP3_SAMPLE130_VALID\
+hy_mt2_130_sample_model_input_shapes.csv
 ```
 
 Default-BFC end-of-workload allocator attribution:
