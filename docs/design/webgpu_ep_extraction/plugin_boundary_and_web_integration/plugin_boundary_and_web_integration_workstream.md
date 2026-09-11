@@ -121,9 +121,22 @@ Likely investigation areas include:
 - Setting EP default configuration before a session exists, equivalent to the existing `SetCurrentGpuDeviceId`.
 
 The adapter's own `Missing parts` section in `onnxruntime/core/providers/webgpu/ep/README.md` is authoritative input
-to this inventory rather than speculation. It records two gaps: WebGPU cleanup, which the process-global ownership
-and teardown work covers, and EP default configuration, which is missing for both static and shared library builds
-and sketches an `OrtApi` addition for it.
+to this inventory rather than speculation. It records two gaps, and both have moved since it was written.
+
+WebGPU cleanup is handled on the plugin path by `ReleaseEpFactory`, which clears the cached kernel registries and
+WebGPU contexts, with the legacy `OrtEnv` cleanup compiled out for adapter builds. Whether that survives unregister
+and re-register is untested, so it is a lifetime question for the process-global work rather than an API gap.
+
+EP default configuration is narrower than the README states, because the README predates
+`OrtApi::CreateEnvWithOptions` and `OrtEpApi::GetEnvConfigEntries`. A host that creates the environment can already
+pass EP-scoped entries using the documented `ep.<ep_name>.` prefix, and the factory can read them during
+`GetSupportedDevices`; the WebGPU factory already does this for `allow_virtual_devices`. What remains uncovered is a
+binding that never exposes environment creation. `OrtEnv` is a lazily created process singleton whose construction
+arguments are ignored once it exists, and the Python module builds it without config entries, so a Python caller has
+no way to supply them. That is what the `SetEpDefaultConfig(ep_name, key, value)` sketch is really for, and it is
+also why the WebGPU factory still reads `ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER` from the OS environment: an OS
+variable is the only channel that works no matter who created the singleton. Whether this is best resolved by a new
+API or by letting bindings configure the environment before first use is open; see work package 5.
 
 ## Browser/Wasm bridge
 
@@ -140,6 +153,22 @@ The provider repository should own WebGPU-specific behavior. The boundary must d
 - Compatibility with JavaScript and Emscripten changes.
 
 The bridge should not expose unrelated ORT private implementation details.
+
+A mechanism for the first two already exists and ships, and the decision is to keep it rather than design a
+replacement. A `GPUDevice` is imported by `webgpuRegisterDevice` in `onnxruntime/wasm/post-webgpu.js` and reaches
+the provider as an emdawnwebgpu handle in the `webgpuInstance` and `webgpuDevice` EP options. A `GPUBuffer` is
+imported by `webgpuRegisterBuffer` and travels as the tensor's data pointer, tagged by the
+`DATA_LOCATION_GPU_BUFFER` argument to `OrtCreateTensor`, which selects a `"WebGPU_Buf"` `OrtMemoryInfo`. Buffer
+ownership is reference counted in JavaScript, with a `NaN` count marking an ORT-created buffer that is released
+through `Tensor.dispose()` rather than by the bridge. The ORT Web prototype confirmed these reach the provider
+unchanged over the plugin path. The remaining work is to document these rules and to settle what the current
+mechanism does not address: threading and async behavior, device-loss propagation, validation and error reporting,
+and resilience to Emscripten changes.
+
+Handle identity is not a concern for a statically linked build. Under Emscripten the provider links
+`emdawnwebgpu_c`/`emdawnwebgpu_cpp`, whose handles index an object table owned by the Emscripten module's JavaScript
+glue, so one module means one table by construction. A WebGPU EP shared library is rejected outright on Emscripten
+by `cmake/onnxruntime_providers_webgpu.cmake`, so a second table cannot arise there.
 
 ## Work packages
 
@@ -170,10 +199,15 @@ Status reflects the state after static plugin EP registration landed (PR #32395)
    all passing. Productionizing that result is
    [ORT Web Static Plugin Migration](ort_web_static_plugin_migration.md), not this package.
 5. **Gap inventory triage** — *Not started.* Convert private-dependency findings into public API or provider-owned
-   actions. Input exists: `onnxruntime/core/providers/webgpu/ep/README.md` records WebGPU cleanup and EP default
-   configuration as gaps, and depends on the `provider-isolation` workstream for the rest.
-6. **Browser bridge** — *Not started.* Specify and prototype object and lifetime exchange. The representation
-   question is still open; see [Open questions](#open-questions).
+   actions. The working expectation is that few or no additions are needed; see
+   [Resolved decisions](#resolved-decisions). The one open candidate is reaching EP default configuration from a
+   language binding that does not expose environment creation, which may be resolved by letting such bindings
+   configure the environment before first use rather than by a new API. Depends on the `provider-isolation`
+   workstream for the remaining findings.
+6. **Browser bridge** — *Not started.* Specify and prototype object and lifetime exchange. The representation is
+   settled and kept as is, so the scope is documenting the existing ownership rules and addressing threading and
+   async behavior, device-loss propagation, validation and error reporting, and resilience to Emscripten changes.
+   See [Browser/Wasm bridge](#browserwasm-bridge).
 7. **Parity and retirement** — *In progress.* Run the existing suite through the plugin path and remove the legacy
    path. Native parity is demonstrated: zero status differences across the 5894 provider tests common to the static
    plugin and internal-EP builds. ORT Web parity depends on the migration above, and removing the legacy path is
@@ -223,23 +257,13 @@ that ships today.
 - Should static factories be registered before environment creation, or through environment construction options?
   Neither. ORT core registers them during `OrtEnv` creation, after the environment is constructed and published.
   See [Static Plugin EP Registration](static_plugin_ep_registration_design.md).
-
-## Open questions
-
-- Is the current JavaScript/Wasm object boundary the one an out-of-tree provider should depend on? The
-  representation itself is no longer unknown: `GPUDevice` and `GPUBuffer` already cross as Emscripten native
-  handles. `webgpuRegisterDevice` in `onnxruntime/wasm/post-webgpu.js` imports a device with
-  `WebGPU.importJsDevice`, pairs it with an instance from the `_OrtCreateWebGpuInstance` export, and passes both as
-  decimal strings in the `webgpuInstance` and `webgpuDevice` EP options; `webgpuRegisterBuffer` does the equivalent
-  for buffers and releases them with `_wgpuBufferRelease`. The prototype confirmed these options reach the provider
-  unchanged over the plugin path. What is unsettled is that this contract is spread across Emscripten's WebGPU
-  bindings, ORT-owned Wasm exports and stringified pointers in session options, none of which is a documented public
-  C API, and that ownership and device-loss rules are not written down anywhere.
-- Which remaining private-dependency findings require a public plugin EP API addition rather than a provider-owned
-  replacement? Of the two gaps recorded in `onnxruntime/core/providers/webgpu/ep/README.md`, one is now classified
-  and one is closed. EP default configuration still needs a public API addition, sketched there as
-  `SetEpDefaultConfig(ep_name, key, value)`, because it must be settable before a session exists. WebGPU cleanup is
-  handled on the plugin path by `ReleaseEpFactory`, which clears the kernel registries and WebGPU contexts, with the
-  legacy `OrtEnv` cleanup compiled out for adapter builds; whether that holds across unregister and re-register is
-  untested, and is tracked by work package 3 rather than as an API gap. The rest of the triage waits on
-  `provider-isolation` findings (work package 5).
+- Should JavaScript-owned WebGPU objects get a new representation at the C API boundary? No. The existing structure
+  is kept; see [Browser/Wasm bridge](#browserwasm-bridge) for what it is and what remains to be documented.
+- Do statically linked plugin EPs need additions to the plugin EP API? No additions were required. Static linking is
+  the configuration with the least room to work around a missing API, and it reaches the plugin path through the
+  unmodified `CreateEpFactories` and `ReleaseEpFactory` entry points, with no new ABI; D3 considered an optional
+  teardown hook and rejected it. Existing uses of ORT internals by the EP API adapters are not evidence of a gap,
+  since they are value types and logic that a provider can carry itself. A gap exists only where the provider must
+  observe or mutate state inside the running ORT instance, which duplication cannot supply. EP default configuration
+  from a language binding is the one such candidate identified so far; see
+  [Plugin API gap closure](#plugin-api-gap-closure). Confirming this across the full inventory is work package 5.
