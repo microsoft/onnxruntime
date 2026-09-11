@@ -4383,6 +4383,32 @@ TEST_F(GraphTransformationTests, WebGpuIm2ColConvClipFusionMatchesUnfusedResults
   };
   RunWebGpuIm2ColActivationParity(add_clip, "Clip", 17);
 }
+
+// Build the exporter pattern consumed by QuickGeluFusion: x * sigmoid(alpha * x).
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvQuickGeluFusionMatchesUnfusedResults) {
+  auto add_quick_gelu = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    // alpha must match the fp16 tensor type this path requires.
+    auto* alpha = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(1.4f));
+    auto* scaled = builder.MakeIntermediate();
+    auto* sigmoid_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {conv_out, alpha}, {scaled});
+    builder.AddNode("Sigmoid", {scaled}, {sigmoid_out});
+    builder.AddNode("Mul", {conv_out, sigmoid_out}, {output});
+  };
+  RunWebGpuIm2ColActivationParity(add_quick_gelu, "QuickGelu", 17);
+}
+
+// x * sigmoid(x) fuses to QuickGelu with alpha 1, which selects the shader variant that drops
+// both the multiply and activation_param_0. Without this case the alpha-1 template branch is
+// never compiled, so a stale uniform reference in it would not be caught.
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvQuickGeluUnitAlphaFusionMatchesUnfusedResults) {
+  auto add_silu = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    auto* sigmoid_out = builder.MakeIntermediate();
+    builder.AddNode("Sigmoid", {conv_out}, {sigmoid_out});
+    builder.AddNode("Mul", {conv_out, sigmoid_out}, {output});
+  };
+  RunWebGpuIm2ColActivationParity(add_silu, "QuickGelu", 17);
+}
 #endif  // defined(USE_WEBGPU)
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 

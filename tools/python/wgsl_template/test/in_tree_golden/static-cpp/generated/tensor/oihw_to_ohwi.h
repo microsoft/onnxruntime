@@ -19,40 +19,40 @@ Status ApplyTemplate<"tensor/oihw_to_ohwi.wgsl.template">(ShaderHelper& shader_h
 //  4 | #use .getByOffset .setByOffset
 //  5 | 
 //  6 | fn load_src(co : u32, ci : u32, h_w : u32) -> src_element_t {
-ss << __str_311;
-//  7 |   if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
-ss << __str_312;
-//  8 |     let offset = co * uniforms.I * uniforms.H * uniforms.W +
 ss << __str_313;
-//  9 |                  ci * uniforms.H * uniforms.W +
+//  7 |   if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
 ss << __str_314;
-// 10 |                  h_w;
+//  8 |     let offset = co * uniforms.I * uniforms.H * uniforms.W +
 ss << __str_315;
+//  9 |                  ci * uniforms.H * uniforms.W +
+ss << __str_316;
+// 10 |                  h_w;
+ss << __str_317;
 // 11 |     return src.getByOffset(offset);
 ss << __str_256;
-ss << __var_src.GetByOffset(__str_310);
+ss << __var_src.GetByOffset(__str_312);
 ss << __str_192;
 // 12 |   }
 ss << __str_222;
 // 13 |   return src_element_t();
-ss << __str_316;
+ss << __str_318;
 // 14 | }
 ss << __str_249;
 // 15 | 
 ss << __str_12;
 // 16 | fn write_output(co : u32, h_w : u32, ci : u32, value : output_element_t) {
-ss << __str_317;
-// 17 |   if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
-ss << __str_312;
-// 18 |     let offset = co * uniforms.H * uniforms.W * uniforms.I +
-ss << __str_318;
-// 19 |                  h_w * uniforms.I +
 ss << __str_319;
-// 20 |                  ci;
+// 17 |   if (co < uniforms.O && ci < uniforms.I && h_w < uniforms.H * uniforms.W) {
+ss << __str_314;
+// 18 |     let offset = co * uniforms.H * uniforms.W * uniforms.I +
 ss << __str_320;
+// 19 |                  h_w * uniforms.I +
+ss << __str_321;
+// 20 |                  ci;
+ss << __str_322;
 // 21 |     output.setByOffset(offset, value);
 ss << __str_267;
-ss << __var_output.SetByOffset(__str_310, __str_226);
+ss << __var_output.SetByOffset(__str_312, __str_226);
 ss << __str_192;
 // 22 |   }
 ss << __str_222;
@@ -61,44 +61,44 @@ ss << __str_249;
 // 24 | 
 ss << __str_12;
 // 25 | var<workgroup> data_cache : array<array<src_element_t, 64>, 4>;
-ss << __str_321;
+ss << __str_323;
 // 26 | 
 ss << __str_12;
 // 27 | $MAIN {
 MainFunctionStart();
 ss << __str_12;
 // 28 |   let group_co : u32 = workgroup_idx / uniforms.Ci_tiles;
-ss << __str_322;
+ss << __str_324;
 // 29 |   let group_ci : u32 = (workgroup_idx % uniforms.Ci_tiles) * 64;
-ss << __str_323;
+ss << __str_325;
 // 30 | 
 ss << __str_12;
 // 31 |   if (group_co >= uniforms.O || group_ci >= uniforms.I) {
-ss << __str_324;
+ss << __str_326;
 // 32 |     return;
-ss << __str_325;
+ss << __str_327;
 // 33 |   }
 ss << __str_222;
 // 34 | 
 ss << __str_12;
 // 35 |   for (var h_w_idx = 0u; h_w_idx < uniforms.H_W_tiles; h_w_idx++) {
-ss << __str_326;
+ss << __str_328;
 // 36 |     // load
 ss << __str_12;
 // 37 |     for (var ci_idx = 0u; ci_idx < 64u; ci_idx += 16u) {
-ss << __str_327;
-// 38 |       let load_ci_idx = ci_idx + local_idx / 4;
-ss << __str_328;
-// 39 |       let load_h_w_idx = local_idx % 4;
 ss << __str_329;
+// 38 |       let load_ci_idx = ci_idx + local_idx / 4;
+ss << __str_330;
+// 39 |       let load_h_w_idx = local_idx % 4;
+ss << __str_331;
 // 40 | 
 ss << __str_12;
 // 41 |       data_cache[load_h_w_idx][load_ci_idx] = load_src(group_co,
-ss << __str_330;
-// 42 |                                                        group_ci + load_ci_idx,
-ss << __str_331;
-// 43 |                                                        h_w_idx * 4 + load_h_w_idx);
 ss << __str_332;
+// 42 |                                                        group_ci + load_ci_idx,
+ss << __str_333;
+// 43 |                                                        h_w_idx * 4 + load_h_w_idx);
+ss << __str_334;
 // 44 |     }
 ss << __str_137;
 // 45 |     workgroupBarrier();
@@ -107,11 +107,11 @@ ss << __str_170;
 ss << __str_12;
 // 47 |     // store
 // 48 |     for (var local_h_w_idx = 0u; local_h_w_idx < 4u; local_h_w_idx++) {
-ss << __str_333;
-// 49 |       let output_data = data_cache[local_h_w_idx][local_idx];
-ss << __str_334;
-// 50 |       write_output(group_co, h_w_idx * 4 + local_h_w_idx, group_ci + local_idx, output_data);
 ss << __str_335;
+// 49 |       let output_data = data_cache[local_h_w_idx][local_idx];
+ss << __str_336;
+// 50 |       write_output(group_co, h_w_idx * 4 + local_h_w_idx, group_ci + local_idx, output_data);
+ss << __str_337;
 // 51 |     }
 ss << __str_137;
 // 52 |     workgroupBarrier();
