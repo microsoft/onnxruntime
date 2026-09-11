@@ -2539,9 +2539,20 @@ class TestMixedPrecisionGroupQueryAttention(unittest.TestCase):
         # silently dropped (which would forfeit the accuracy the rotation exists to provide).
         seq_len, num_heads, kv_num_heads, head_size, group_size = 8, 4, 2, 128, 64
         model = create_oscar2bit_mixed_rot_gqa_graph(
-            1, seq_len, seq_len, seq_len, 0, 0,
-            num_heads, kv_num_heads, head_size, group_size,
-            sink=0, recent=0, k_rho=1.0, v_rho=1.0,
+            1,
+            seq_len,
+            seq_len,
+            seq_len,
+            0,
+            0,
+            num_heads,
+            kv_num_heads,
+            head_size,
+            group_size,
+            sink=0,
+            recent=0,
+            k_rho=1.0,
+            v_rho=1.0,
         )
         phs = oscar2bit_packed_head_size(head_size, group_size)
         hidden_size = num_heads * head_size
