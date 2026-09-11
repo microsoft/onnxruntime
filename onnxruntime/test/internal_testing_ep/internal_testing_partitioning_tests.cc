@@ -170,10 +170,12 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
  public:
   explicit AccountingNhwcTestExecutionProvider(
       std::optional<NodeIndex> unassignable_capability_node_index = std::nullopt,
-      bool fuse_pass1_survivors_on_second_pass = false)
+      bool fuse_pass1_survivors_on_second_pass = false,
+      std::optional<NodeIndex> second_pass_dropped_node_index = std::nullopt)
       : IExecutionProvider{kCudaExecutionProvider},
         unassignable_capability_node_index_(unassignable_capability_node_index),
-        fuse_pass1_survivors_on_second_pass_(fuse_pass1_survivors_on_second_pass) {
+        fuse_pass1_survivors_on_second_pass_(fuse_pass1_survivors_on_second_pass),
+        second_pass_dropped_node_index_(second_pass_dropped_node_index) {
   }
 
   DataLayout GetPreferredLayout() const override {
@@ -225,7 +227,8 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
       const bool is_conv = node->OpType() == "Conv";
       const bool is_log_softmax = node->OpType() == "LogSoftmax";
       const bool is_relu = node->OpType() == "Relu";
-      if (!is_conv && !is_log_softmax && !is_relu) {
+      const bool is_add = node->OpType() == "Add";
+      if (!is_conv && !is_log_softmax && !is_relu && !is_add) {
         continue;
       }
 
@@ -233,7 +236,9 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
       // it tentatively claimed on the first pass. Relu models a node that becomes
       // claimable only in pass 2.
       if ((second_pass && is_log_softmax && !fuse_pass1_survivors_on_second_pass_) ||
-          (!second_pass && is_relu)) {
+          (!second_pass && is_relu) ||
+          (second_pass_dropped_node_index_.has_value() &&
+           second_pass && node_index == *second_pass_dropped_node_index_)) {
         continue;
       }
 
@@ -334,6 +339,7 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
   mutable std::optional<size_t> last_observed_consumed_;
   std::optional<NodeIndex> unassignable_capability_node_index_;
   bool fuse_pass1_survivors_on_second_pass_;
+  std::optional<NodeIndex> second_pass_dropped_node_index_;
 };
 
 }  // namespace
@@ -627,6 +633,7 @@ void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
   std::optional<size_t> observed_initialization_scratch;
   std::optional<WorkspaceEstimateSourceCounts> observed_source_counts;
   bool pass2_only_relu_assigned = false;
+  bool single_pass1_survivor_assigned = false;
   bool fused_pass1_survivors_assigned = false;
   OnPartitionAssignmentFunction on_assignment =
       [&](const Graph& assignment_graph, const ComputeCapability& capability,
@@ -653,6 +660,8 @@ void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
           }
           if (survivor_count == 2) {
             fused_pass1_survivors_assigned = true;
+          } else if (survivor_count == 1) {
+            single_pass1_survivor_assigned = true;
           }
         }
       };
@@ -691,7 +700,8 @@ void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
       EXPECT_TRUE(fused_pass1_survivors_assigned)
           << "The discovery capability for the fused pass-1 survivors must be preserved.";
     } else {
-      EXPECT_EQ(conv_node->GetExecutionProviderType(), kCudaExecutionProvider);
+      EXPECT_TRUE(single_pass1_survivor_assigned)
+          << "The single-node MetaDef capability for the later Conv survivor must be preserved.";
     }
   } else {
     ASSERT_TRUE(observed_consumed.has_value())
@@ -724,6 +734,97 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingPreservesLaterSurvivorReservation) 
 
 TEST(InternalTestingEP, NhwcTwoPassAccountingPreservesLaterFusedSurvivorCapability) {
   RunNhwcTwoPassAccountingRetryTest(true, true);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingReassignsSharedInitializerToSurvivor) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("NhwcTwoPassAccountingReassignsSharedInitializerToSurvivor",
+              false,
+              ModelMetaData(),
+              PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version,
+              {},
+              DefaultLoggingManager().DefaultLogger());
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  constexpr int64_t kElementCount = 16384;
+  const std::vector<int64_t> tensor_shape{kElementCount};
+  auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* shared_initializer = builder.MakeInitializer<float>(tensor_shape, -1.0f, 1.0f);
+  auto* first_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+
+  Node& dropped_node =
+      builder.AddNode("Add", std::vector<NodeArg*>{input, shared_initializer},
+                      std::vector<NodeArg*>{first_output});
+  Node& survivor_node =
+      builder.AddNode("Add", std::vector<NodeArg*>{first_output, shared_initializer},
+                      std::vector<NodeArg*>{output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ConfigOptions reference_config;
+  ASSERT_STATUS_OK(reference_config.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+  std::optional<ResourceAccountantMap> reference_accountants;
+  ASSERT_STATUS_OK(CreateAccountants(reference_config, PathString(), reference_accountants));
+  ASSERT_TRUE(reference_accountants.has_value());
+  auto reference_it = reference_accountants->find(kCudaExecutionProvider);
+  ASSERT_NE(reference_it, reference_accountants->end());
+  const size_t expected_survivor_cost = std::get<size_t>(
+      reference_it->second->ComputeResourceCount(
+          survivor_node, GetNhwcAccountingTestEstimate("Add")));
+
+  ExecutionProviders execution_providers;
+  auto& default_logger = DefaultLoggingManager().DefaultLogger();
+  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>(
+      std::nullopt, false, dropped_node.Index());
+  auto* ep_raw = ep.get();
+  ep->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(ep)));
+
+  KernelRegistryManager krm;
+  ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
+
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "4096,"));
+  std::optional<size_t> consumed_before_survivor_assignment;
+  OnPartitionAssignmentFunction on_assignment =
+      [&](const Graph&, const ComputeCapability& capability,
+          const std::string& assigned_ep_type) {
+        if (assigned_ep_type == kCudaExecutionProvider &&
+            std::find(capability.sub_graph->nodes.begin(), capability.sub_graph->nodes.end(),
+                      survivor_node.Index()) != capability.sub_graph->nodes.end()) {
+          consumed_before_survivor_assignment =
+              std::get<size_t>(ep_raw->observed_accountant()->GetConsumedAmount());
+        }
+      };
+
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(
+      &sess_options, nullptr /*cpu_ep*/, &default_logger);
+  GraphPartitioner partitioner(
+      krm, execution_providers, std::move(graph_optimizer_registry),
+      []() -> bool { return false; }, on_assignment);
+
+  layout_transformation::TransformLayoutFunction transform_layout_fn =
+      [](Graph&, bool& modified, const IExecutionProvider&,
+         const layout_transformation::DebugGraphFn&) -> Status {
+    modified = false;
+    return Status::OK();
+  };
+
+  FuncManager func_mgr;
+  ASSERT_STATUS_OK(
+      partitioner.Partition(graph, func_mgr, transform_layout_fn,
+                            sess_options.config_options, default_logger, nullptr /*layering_index*/));
+
+  ASSERT_TRUE(consumed_before_survivor_assignment.has_value());
+  EXPECT_EQ(*consumed_before_survivor_assignment, expected_survivor_cost)
+      << "The survivor must inherit the shared initializer charge when its original owner is dropped.";
 }
 
 TEST(InternalTestingEP, NhwcTwoPassAccountingDoesNotReserveUnassignedCapability) {

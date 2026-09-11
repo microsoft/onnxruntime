@@ -286,34 +286,38 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     return Status::OK();
   };
   // Helper to un-assign nodes that were assigned to this EP but not claimed by updated capabilities.
-  auto reset_assignment_unclaimed_nodes = [&]() {
+  auto reset_assignment_unclaimed_nodes =
+      [&](const InlinedHashSet<NodeIndex>* additionally_claimed_nodes = nullptr) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-    if (params.layering_index) {
-      auto rules_opt = params.layering_index->GetLayeringRulesForThisEp(ep_type);
-      if (rules_opt) {
-        const auto& ep_rules = rules_opt->get();
-        InlinedHashSet<NodeIndex> claimed;
-        for (const auto& cap : capabilities) {
-          if (cap && cap->sub_graph) {
-            for (auto idx : cap->sub_graph->nodes) claimed.insert(idx);
-          }
-        }
-
-        // Check if all assigned filtered-in nodes are claimed
-        // and if not make them available for subsequent EPs
-        for (auto& node_index : assigned_filtered_in_nodes) {
-          if (claimed.count(node_index) == 0) {
-            auto rule_idx_opt = params.layering_index->GetNodeAssignment(graph, node_index);
-            if (rule_idx_opt && ep_rules.count(*rule_idx_opt) > 0) {
-              params.layering_index->MakeNodeUnassigned(graph, node_index);
+        if (params.layering_index) {
+          auto rules_opt = params.layering_index->GetLayeringRulesForThisEp(ep_type);
+          if (rules_opt) {
+            const auto& ep_rules = rules_opt->get();
+            InlinedHashSet<NodeIndex> claimed;
+            for (const auto& cap : capabilities) {
+              if (cap && cap->sub_graph) {
+                for (auto idx : cap->sub_graph->nodes) claimed.insert(idx);
+              }
             }
+            if (additionally_claimed_nodes != nullptr) {
+              claimed.insert(additionally_claimed_nodes->begin(), additionally_claimed_nodes->end());
+            }
+
+            // Check if all assigned filtered-in nodes are claimed
+            // and if not make them available for subsequent EPs
+            for (auto& node_index : assigned_filtered_in_nodes) {
+              if (claimed.count(node_index) == 0) {
+                auto rule_idx_opt = params.layering_index->GetNodeAssignment(graph, node_index);
+                if (rule_idx_opt && ep_rules.count(*rule_idx_opt) > 0) {
+                  params.layering_index->MakeNodeUnassigned(graph, node_index);
+                }
+              }
+            }
+            assigned_filtered_in_nodes.clear();
           }
         }
-        assigned_filtered_in_nodes.clear();
-      }
-    }
 #endif
-  };
+      };
 
   {
     std::unique_ptr<IndexedSubGraph> sub_graph_holder;
@@ -436,28 +440,10 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     std::unique_ptr<GraphViewer> graph_viewer;
     ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
 
-    if (params.resource_accountant) {
-      // The existing result is still valid when the layout transformer made no graph changes.
-      if (modified) {
-        ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *params.resource_accountant));
-      }
-      params.resource_accountant->ResetForNewPass();
-    }
-    capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
-                                    graph_optimizer_registry);
-
-    reset_assignment_unclaimed_nodes();
-
-    if (params.check_load_cancellation_fn()) {
-      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
-      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
-                             "GetCapabilities was canceled by user request");
-    }
-
-    auto collect_pass2_nodes = [&]() {
+    auto collect_pass2_nodes = [&](const std::vector<std::unique_ptr<ComputeCapability>>& pass_capabilities) {
       std::pair<InlinedHashSet<NodeIndex>, InlinedHashSet<NodeIndex>> result;
       auto& [pass2_nodes, new_nodes] = result;
-      for (const auto& capability : capabilities) {
+      for (const auto& capability : pass_capabilities) {
         for (auto node_index : capability->sub_graph->nodes) {
           pass2_nodes.insert(node_index);
           if (node_index >= first_new_node) {
@@ -468,40 +454,20 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
       return result;
     };
 
-    auto [pass2_node_indices, new_nodes_in_capabilities] = collect_pass2_nodes();
-
-    // Roll back provisional costs for pass-1 nodes not reclaimed in pass 2.
-    // Keep their tags until final capability admission is complete.
-    bool removed_provisional_cost = false;
-    InlinedHashSet<NodeIndex> rolled_back_pass1_costs;
-    for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
-      if (pass2_node_indices.count(node_index) == 0) {
-        if (params.resource_accountant != nullptr) {
-          const auto cost_it = pass1_node_costs.find(node_index);
-          if (cost_it != pass1_node_costs.end()) {
-            params.resource_accountant->RemoveConsumedAmount(cost_it->second);
-            removed_provisional_cost = true;
-            rolled_back_pass1_costs.insert(node_index);
-          }
-        }
+    InlinedHashSet<NodeIndex> confirmed_pass1_survivors;
+    std::vector<std::unique_ptr<ComputeCapability>> confirmed_survivor_capabilities;
+    if (params.resource_accountant) {
+      // The existing result is still valid when the layout transformer made no graph changes.
+      if (modified) {
+        ORT_RETURN_IF_ERROR(RefreshMaxShapeInference(graph, *params.resource_accountant));
       }
-    }
 
-    // A dropped pass-1 node may have consumed enough provisional budget to reject a pass-2-only
-    // candidate. Removing its cost after GetCapability is too late because rejected candidates are
-    // not reconsidered. A stopped result is only a prefix, so first discover the complete pass-2
-    // survivor set without budget gating. Then reconcile the provisional reservations and retry the
-    // admission decision with exactly the pass-1 survivor costs reserved.
-    if (removed_provisional_cost && params.resource_accountant->IsStopIssued()) {
-      capabilities.clear();
-
-      std::unique_ptr<IndexedSubGraph> discovery_sub_graph_holder;
-      std::unique_ptr<GraphViewer> discovery_graph_viewer;
-      ORT_RETURN_IF_ERROR(create_graph_viewer(discovery_sub_graph_holder, discovery_graph_viewer));
+      // Discover the complete second-pass support set without budget gating. A budgeted
+      // GetCapability call can stop before visiting later pass-1 survivors, so absence from
+      // a truncated result does not prove that a provisional reservation should be removed.
       params.resource_accountant->ResetForNewPass();
-      capabilities = get_capabilities(current_ep, *discovery_graph_viewer, kernel_lookup,
+      capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
                                       nullptr, graph_optimizer_registry);
-      reset_assignment_unclaimed_nodes();
 
       if (params.check_load_cancellation_fn()) {
         ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
@@ -509,30 +475,20 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
                                "GetCapabilities was canceled by user request");
       }
 
-      const auto [discovered_pass2_nodes, unused_discovered_new_nodes] = collect_pass2_nodes();
+      const auto [discovered_pass2_nodes, unused_discovered_new_nodes] =
+          collect_pass2_nodes(capabilities);
       ORT_UNUSED_PARAMETER(unused_discovered_new_nodes);
-      InlinedHashSet<NodeIndex> confirmed_pass1_survivors;
       for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
-        const auto cost_it = pass1_node_costs.find(node_index);
-        if (cost_it == pass1_node_costs.end()) {
-          continue;
-        }
-
         if (discovered_pass2_nodes.contains(node_index)) {
           confirmed_pass1_survivors.insert(node_index);
-          if (rolled_back_pass1_costs.erase(node_index) != 0) {
-            params.resource_accountant->AddConsumedAmount(cost_it->second);
-          }
-        } else if (!rolled_back_pass1_costs.contains(node_index)) {
-          params.resource_accountant->RemoveConsumedAmount(cost_it->second);
-          rolled_back_pass1_costs.insert(node_index);
         }
       }
 
-      std::vector<std::unique_ptr<ComputeCapability>> confirmed_survivor_capabilities;
+      // Preserve every discovered survivor capability that must later be fused or compiled.
+      // A MetaDef, not the number of constituent nodes, determines whether PlaceNode is required.
       for (auto& capability : capabilities) {
         const auto& nodes = capability->sub_graph->nodes;
-        if (nodes.size() > 1 &&
+        if (capability->sub_graph->GetMetaDef() != nullptr &&
             std::all_of(nodes.begin(), nodes.end(),
                         [&](NodeIndex node_index) {
                           return confirmed_pass1_survivors.contains(node_index);
@@ -541,41 +497,80 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
         }
       }
 
-      capabilities.clear();
-      std::unique_ptr<IndexedSubGraph> retry_sub_graph_holder;
-      std::unique_ptr<GraphViewer> retry_graph_viewer;
-      ORT_RETURN_IF_ERROR(create_graph_viewer(retry_sub_graph_holder, retry_graph_viewer));
-      params.resource_accountant->ResetForNewPass();
-      capabilities = get_capabilities(current_ep, *retry_graph_viewer, kernel_lookup,
-                                      params.resource_accountant, graph_optimizer_registry);
-      reset_assignment_unclaimed_nodes();
-
-      if (params.check_load_cancellation_fn()) {
-        ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
-        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
-                               "GetCapabilities was canceled by user request");
+      // Rebuild survivor costs together so shared initializers are charged exactly once to
+      // the surviving set. Restoring old per-node scalars is unsafe because the node that
+      // originally owned a shared initializer charge may have been dropped.
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        const auto cost_it = pass1_node_costs.find(node_index);
+        if (cost_it != pass1_node_costs.end()) {
+          params.resource_accountant->RemoveConsumedAmount(cost_it->second);
+        }
       }
-      std::tie(pass2_node_indices, new_nodes_in_capabilities) = collect_pass2_nodes();
-      for (auto& survivor_capability : confirmed_survivor_capabilities) {
-        const auto& survivor_nodes = survivor_capability->sub_graph->nodes;
-        const bool overlaps_final_capabilities =
-            std::any_of(survivor_nodes.begin(), survivor_nodes.end(),
-                        [&](NodeIndex node_index) {
-                          return pass2_node_indices.contains(node_index);
-                        });
-        if (overlaps_final_capabilities) {
+      params.resource_accountant->ResetForNewPass();
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        if (!confirmed_pass1_survivors.contains(node_index)) {
           continue;
         }
 
-        pass2_node_indices.insert(survivor_nodes.begin(), survivor_nodes.end());
-        capabilities.push_back(std::move(survivor_capability));
+        const Node* node = graph.GetNode(node_index);
+        ORT_RETURN_IF_NOT(node != nullptr, "Pass-1 survivor node ", node_index, " no longer exists.");
+
+        std::optional<Level1MemoryEstimate> level1_memory_estimate;
+        const auto workspace_it = pass1_workspace_estimates.find(node_index);
+        if (workspace_it != pass1_workspace_estimates.end() &&
+            workspace_it->second.source != WorkspaceEstimateSource::kNone) {
+          const auto& selection = workspace_it->second;
+          Level1MemoryEstimate estimate;
+          if (selection.source == WorkspaceEstimateSource::kEstimator ||
+              selection.source == WorkspaceEstimateSource::kProfileAndEstimator) {
+            estimate.runtime_workspace_bytes = selection.level1_estimated_bytes;
+          } else {
+            estimate.runtime_transient_bytes = selection.level1_estimated_bytes;
+          }
+          estimate.persistent_prepack_bytes = selection.persistent_prepack_bytes;
+          estimate.initialization_scratch_bytes = selection.initialization_scratch_bytes;
+          level1_memory_estimate = estimate;
+        }
+
+        const ResourceCount recomputed_cost =
+            params.resource_accountant->ComputeResourceCount(*node, level1_memory_estimate);
+        pass1_node_costs.insert_or_assign(node_index, recomputed_cost);
+        params.resource_accountant->AddConsumedAmount(recomputed_cost);
       }
-      pass2_node_indices.insert(confirmed_pass1_survivors.begin(), confirmed_pass1_survivors.end());
+
+      capabilities.clear();
+      capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                      params.resource_accountant, graph_optimizer_registry);
+    } else {
+      capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                      nullptr, graph_optimizer_registry);
     }
 
-    // Clear temporary assignments that were not reclaimed by the final capability set.
-    // Keep all pass-1 tags through a retry so the repeated call retains second-pass semantics
-    // even if every pass-1 node was dropped by the first capability result.
+    if (params.check_load_cancellation_fn()) {
+      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "GetCapabilities was canceled by user request");
+    }
+
+    auto [pass2_node_indices, new_nodes_in_capabilities] = collect_pass2_nodes(capabilities);
+    for (auto& survivor_capability : confirmed_survivor_capabilities) {
+      const auto& survivor_nodes = survivor_capability->sub_graph->nodes;
+      const bool overlaps_final_capabilities =
+          std::any_of(survivor_nodes.begin(), survivor_nodes.end(),
+                      [&](NodeIndex node_index) {
+                        return pass2_node_indices.contains(node_index);
+                      });
+      if (overlaps_final_capabilities) {
+        continue;
+      }
+
+      pass2_node_indices.insert(survivor_nodes.begin(), survivor_nodes.end());
+      capabilities.push_back(std::move(survivor_capability));
+    }
+    pass2_node_indices.insert(confirmed_pass1_survivors.begin(), confirmed_pass1_survivors.end());
+    reset_assignment_unclaimed_nodes(&confirmed_pass1_survivors);
+
+    // Clear temporary assignments that were not reclaimed by the complete discovery pass.
     for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
       if (pass2_node_indices.count(node_index) != 0) continue;
 
@@ -583,48 +578,28 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
       if (node != nullptr && node->GetExecutionProviderType() == ep_type) {
         node->SetExecutionProviderType("");
       }
-
-      if (params.resource_accountant != nullptr) {
-        if (!rolled_back_pass1_costs.contains(node_index)) {
-          const auto cost_it = pass1_node_costs.find(node_index);
-          if (cost_it != pass1_node_costs.end()) {
-            params.resource_accountant->RemoveConsumedAmount(cost_it->second);
-            rolled_back_pass1_costs.insert(node_index);
-          }
-        }
-      }
     }
 
-    // Finalize the provisional pass-1 reservations. Survivor costs remain reserved and therefore
-    // are not added again. New nodes introduced for pass 2 carry their own costs and are accounted
-    // normally when their partitions are placed.
-    //
-    // Only the consumed total and captured workspace estimate are adjusted here. Per-node
-    // initializer tracking from CommitResourcesForNode is intentionally not replayed. The
-    // pending weight state computed in pass 1 is discarded by ResetForNewPass before pass 2
-    // and cannot be committed for survivors without re-probing, which pass 2 does not do for
-    // already-tagged nodes. Leaving those weights uncommitted is the safe direction: in ad-hoc
-    // accounting mode a shared initializer may be re-counted in a later partitioning iteration
-    // (a conservative over-estimate) but is never under-counted, so the configured budget can
-    // never be exceeded.
+    // Finalize the rebuilt pass-1 survivor reservations. New nodes introduced for pass 2
+    // carry their own costs and are accounted normally when their partitions are placed.
     if (params.resource_accountant != nullptr) {
       for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        if (!confirmed_pass1_survivors.contains(node_index)) {
+          continue;
+        }
+
         auto cost_it = pass1_node_costs.find(node_index);
         if (cost_it == pass1_node_costs.end()) {
           continue;
         }
 
-        if (pass2_node_indices.count(node_index) == 0) continue;
         const auto* node = graph.GetNode(node_index);
         if (node == nullptr || node->GetExecutionProviderType() != ep_type) {
           params.resource_accountant->RemoveConsumedAmount(cost_it->second);
           continue;
         }
 
-        auto workspace_it = pass1_workspace_estimates.find(node_index);
-        if (workspace_it != pass1_workspace_estimates.end()) {
-          params.resource_accountant->AddCommittedWorkspaceEstimate(workspace_it->second);
-        }
+        params.resource_accountant->CommitResourcesForNode(node_index);
       }
     }
 
