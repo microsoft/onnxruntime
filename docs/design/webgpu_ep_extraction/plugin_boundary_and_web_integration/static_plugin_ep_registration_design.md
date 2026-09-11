@@ -1,6 +1,7 @@
 # Static Plugin EP Registration
 
-Status: Detailed design supporting
+Status: Implemented in PR #32395. ORT Web's migration onto this path remains follow-up work; see
+[ORT Web migration](#ort-web-migration). Detailed design supporting
 [Plugin Boundary and Web/Wasm Integration](plugin_boundary_and_web_integration_workstream.md).
 
 ## Purpose
@@ -14,17 +15,18 @@ WebGPU is the first consumer. The immediate deliverable is to move the staticall
 
 ## Background
 
-ORT has two `EpLibrary` implementations today:
+Before this change, the two `EpLibrary` implementations relevant here were:
 
 - `EpLibraryPlugin` (`onnxruntime/core/session/plugin_ep/ep_library_plugin.cc`) loads a shared library, resolves the
   `CreateEpFactories` and `ReleaseEpFactory` symbols, and drives the factory lifecycle.
 - `EpLibraryInternal` (`onnxruntime/core/session/plugin_ep/ep_library_internal.cc`) wraps an in-tree
   `IExecutionProvider`, including `EpLibraryInternal::CreateWebGpuEp`.
 
-There is no `EpLibrary` that accepts factory entry points directly, so a provider compiled into the host cannot reach
-the plugin path.
+Neither accepted factory entry points directly, so a provider compiled into the host could not reach the plugin
+path. `EpLibraryStaticPlugin` (`onnxruntime/core/session/plugin_ep/ep_library_static_plugin.h`) is what this design
+adds to close that gap.
 
-This blocks ORT Web specifically. `cmake/onnxruntime_providers_webgpu.cmake` raises a `FATAL_ERROR` for the WebGPU
+This blocked ORT Web specifically. `cmake/onnxruntime_providers_webgpu.cmake` raises a `FATAL_ERROR` for the WebGPU
 shared-module build under Emscripten, so static linking is the only way a Wasm build can ever reach the plugin
 boundary.
 
@@ -35,7 +37,7 @@ boundary.
 - Present statically linked plugin code with the same runtime conditions as dynamically loaded plugin code.
 - Require no change to provider sources between the two linkage modes.
 - Avoid new host call sites for in-tree providers.
-- Keep the shared-library path byte-for-byte unchanged at runtime.
+- Keep the shared-library path's existing ABI and runtime behavior unchanged.
 
 ## Non-goals
 
@@ -75,7 +77,12 @@ The shared build must continue to export the unprefixed `CreateEpFactories` and 
 ### D3: No new EP library ABI hook for teardown
 
 All teardown remains in `ReleaseEpFactory`. Process-global shutdown that belongs to the host — currently
-`google::protobuf::ShutdownProtobufLibrary()` — is compiled out under `ORT_PLUGIN_EP_OWNS_PROCESS_GLOBALS`.
+`google::protobuf::ShutdownProtobufLibrary()` in `onnxruntime/core/providers/webgpu/ep/api.cc` — is guarded by
+`#if !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)`, so it is compiled **in** for the shared-library build and **out**
+for the statically linked build. The polarity follows ownership: a shared plugin module owns the process-global
+state it initialized and must tear it down, whereas a statically linked plugin shares protobuf with the host, which
+owns its lifetime and shuts it down itself. `ORT_PLUGIN_EP_STATICALLY_LINKED` is defined by the static plugin
+configuration only; see D7 for where it is defined and what else it controls.
 
 Rationale: a new optional entry point cannot be relied upon, because an older ORT would load a newer plugin and
 silently ignore it. Behavior that varies with the host version is worse than a compile-time decision.
@@ -276,11 +283,18 @@ configuration entry, which remain in use for dynamically registered plugin libra
   dedicated single-test process or a test that fully releases and recreates the environment.
 - Whether any shipped ORT Web configuration uses an extended-minimal build, which excludes plugin EP infrastructure
   entirely.
-- Whether any `std::condition_variable` is paired with `OrtEnv::m_`, which would require `condition_variable_any`
-  under a recursive mutex.
+- No `std::condition_variable` is paired with `OrtEnv::m_`, so making it recursive does not require
+  `condition_variable_any`. This is an invariant to preserve rather than an open question: `m_` is a private static
+  member of `OrtEnv`, so every use is confined to `onnxruntime/core/session/ort_env.cc`, and all of them are plain
+  `std::lock_guard` acquisitions. A future `std::condition_variable` waiting on `m_` would not compile against a
+  recursive mutex, so the constraint is enforced by the type system rather than by review.
 - The existing rejection of `onnxruntime_BUILD_DAWN_SHARED_LIBRARY` together with the adapters. Initially left
   rejecting both plugin kinds.
 - Binary size and dead-code elimination for statically linked providers, per the workstream completion criteria.
+- Validation with a non-WebGPU static plugin EP is deferred, not completed. `CreateStaticPluginEpLibraries()`
+  currently has exactly one entry, so the design is generic by construction but unexercised with more than one
+  provider. The specific untested contract is entry-point prefix uniqueness within a host binary (D2): with a
+  single provider a prefix collision cannot occur. This is a test gap, not a known defect.
 
 ## Validation status
 
@@ -773,8 +787,3 @@ the `_OrtAppendExecutionProviderV2` call and the EP-name lookup are free and the
 `static_plugin` wasm's per-kernel C++ path. **Where exactly is not yet attributed** — an `--enable_wasm_profiling`
 build would give named frames, and the native root cause recorded under
 [Native shared-library plugin performance](#native-shared-library-plugin-performance) is the leading candidate.
-
-> Should static factories be registered before environment creation or through environment construction options?
-
-Neither. They are registered by ORT core during `OrtEnv` creation, after the environment is constructed and
-published. See D6.

@@ -44,7 +44,8 @@ The design must address:
 - Dead-code elimination for statically linked providers.
 - Diagnostics for incompatible or duplicate registrations.
 
-The facility must be generic and validated with at least one non-WebGPU test plugin where practical.
+The facility must be generic. Validation with a non-WebGPU test plugin is deferred: WebGPU is currently the only
+statically linked plugin EP, so this is tracked as a test gap rather than a completed criterion.
 
 The detailed design is in [Static Plugin EP Registration](static_plugin_ep_registration_design.md).
 
@@ -182,9 +183,13 @@ the numbers can no longer be captured.
   the native shared-library plugin.
 - The direct `IExecutionProvider` WebGPU path is removed.
 
+## Resolved decisions
+
+- Should static factories be registered before environment creation, or through environment construction options?
+  Neither. ORT core registers them during `OrtEnv` creation, after the environment is constructed and published.
+  See [Static Plugin EP Registration](static_plugin_ep_registration_design.md).
+
 ## Open questions
 
-- Resolved: neither. ORT core registers static factories during `OrtEnv` creation, after the environment is
-  constructed and published. See [Static Plugin EP Registration](static_plugin_ep_registration_design.md).
 - What is the stable representation of JavaScript-owned WebGPU objects at the C API boundary?
 - Which private-dependency findings require a public plugin EP API addition rather than a provider-owned replacement?
