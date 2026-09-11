@@ -1,0 +1,102 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// SparsePagedAttention — merge the partial softmax states into one joint FP32
+// softmax and write the activation-typed output.
+//
+// Each partial state is (accumulator[head_size], running_max, running_sum) in
+// FP32. Merging two states with the standard online-softmax rule is exactly
+// equivalent to running one softmax over the union of their candidates, so the
+// main-cache and auxiliary-cache contributions compete in a single normalized
+// distribution rather than being averaged after two independent softmaxes.
+//
+// The optional head sink seeds the merge with (max = sink, sum = 1,
+// accumulator = 0), matching the CUDA kernel: the sink logit takes probability
+// mass away from the real keys but contributes no value vector.
+//
+// Layout:
+//   partial_main / partial_aux : (token_count, num_heads, head_size + 2)
+//   head_sink                  : (num_heads,)
+//   output                     : (token_count, num_heads * head_size)
+//
+// The partial and head-sink bindings are optional, so they are read with raw
+// indexing instead of the .getByOffset helper.
+
+#param has_main
+#param has_auxiliary
+#param has_head_sink
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .setByOffset
+
+const negative_infinity: f32 = -3.4028234663852886e38;
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  let dim_idx = global_idx % uniforms.head_size;
+  let head_idx = (global_idx / uniforms.head_size) % uniforms.num_heads;
+  let token_idx = global_idx / (uniforms.head_size * uniforms.num_heads);
+  let partial_base = (token_idx * uniforms.num_heads + head_idx) * (uniforms.head_size + 2u);
+
+  var running_max: f32 = negative_infinity;
+  var running_sum: f32 = 0.0;
+  var accumulator: f32 = 0.0;
+
+#if has_head_sink
+  running_max = f32(head_sink[head_idx]);
+  running_sum = 1.0;
+#endif
+
+#if has_main
+  {
+    let other_max = partial_main[partial_base + uniforms.head_size];
+    let other_sum = partial_main[partial_base + uniforms.head_size + 1u];
+    if (other_sum > 0.0) {
+      if (running_sum > 0.0) {
+        let merged_max = max(running_max, other_max);
+        let self_weight = exp(running_max - merged_max);
+        let other_weight = exp(other_max - merged_max);
+        accumulator = accumulator * self_weight +
+                      partial_main[partial_base + dim_idx] * other_weight;
+        running_sum = running_sum * self_weight + other_sum * other_weight;
+        running_max = merged_max;
+      } else {
+        accumulator = partial_main[partial_base + dim_idx];
+        running_sum = other_sum;
+        running_max = other_max;
+      }
+    }
+  }
+#endif
+
+#if has_auxiliary
+  {
+    let other_max = partial_auxiliary[partial_base + uniforms.head_size];
+    let other_sum = partial_auxiliary[partial_base + uniforms.head_size + 1u];
+    if (other_sum > 0.0) {
+      if (running_sum > 0.0) {
+        let merged_max = max(running_max, other_max);
+        let self_weight = exp(running_max - merged_max);
+        let other_weight = exp(other_max - merged_max);
+        accumulator = accumulator * self_weight +
+                      partial_auxiliary[partial_base + dim_idx] * other_weight;
+        running_sum = running_sum * self_weight + other_sum * other_weight;
+        running_max = merged_max;
+      } else {
+        accumulator = partial_auxiliary[partial_base + dim_idx];
+        running_sum = other_sum;
+        running_max = other_max;
+      }
+    }
+  }
+#endif
+
+  // A token with no valid candidate at all (and no sink) produces a zero row,
+  // matching the CUDA kernel instead of emitting NaN.
+  var result: f32 = 0.0;
+  if (running_sum > 0.0) {
+    result = accumulator / running_sum;
+  }
+  output.setByOffset(global_idx, output_value_t(result));
+}

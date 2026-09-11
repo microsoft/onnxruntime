@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "dgSpecHash": "1n2jJFyXFNY=",
+  "success": false,
+  "projectFilePath": "/home/runner/work/onnxruntime/onnxruntime/plugin-ep-cuda/csharp/test/CudaEpNuGetTest/CudaEpNuGetTest.csproj",
+  "expectedPackageFiles": [
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.ml.onnxruntime/1.30.0/microsoft.ml.onnxruntime.1.30.0.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.ml.onnxruntime.managed/1.30.0/microsoft.ml.onnxruntime.managed.1.30.0.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/system.memory/4.5.5/system.memory.4.5.5.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/system.numerics.tensors/9.0.0/system.numerics.tensors.9.0.0.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.netcore.app.ref/8.0.30/microsoft.netcore.app.ref.8.0.30.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.aspnetcore.app.ref/8.0.30/microsoft.aspnetcore.app.ref.8.0.30.nupkg.sha512",
+    "/tmp/codeql-scratch-4ff3bd8c1ca2e09f/dbs/csharp/working/packages/microsoft.netcore.app.host.linux-x64/8.0.30/microsoft.netcore.app.host.linux-x64.8.0.30.nupkg.sha512"
+  ],
+  "logs": [
+    {
+      "code": "NU1101",
+      "level": "Error",
+      "message": "Unable to find package Microsoft.ML.OnnxRuntime.EP.Cuda13.win-x64. No packages exist with this id in source(s): MAUI DeviceRunners, NuGet Official, XHarness",
+      "projectPath": "/home/runner/work/onnxruntime/onnxruntime/plugin-ep-cuda/csharp/test/CudaEpNuGetTest/CudaEpNuGetTest.csproj",
+      "filePath": "/home/runner/work/onnxruntime/onnxruntime/plugin-ep-cuda/csharp/test/CudaEpNuGetTest/CudaEpNuGetTest.csproj",
+      "libraryId": "Microsoft.ML.OnnxRuntime.EP.Cuda13.win-x64",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    }
+  ]
+}
