@@ -28,6 +28,18 @@ At a high level, the CPU kernel executes QMoE in five stages:
 
 The implementation keeps routing and accumulation shared across bit-widths. The main bit-width-specific differences are in how expert weights are prepared and how the FC1/FC2 GEMMs are executed.
 
+### Packed token inputs
+
+Both CPU `MoE` and `QMoE` accept token-major packed input with shape
+`(total_tokens, hidden_size)` and routing data with shape
+`(total_tokens, num_experts)`. Tokens from variable-length sequences can be
+concatenated without padding; sequence boundaries are not needed because each
+token is routed and processed independently. The output preserves the packed
+shape `(total_tokens, hidden_size)`.
+
+The existing padded shape `(batch_size, sequence_length, hidden_size)` remains
+supported. It is flattened internally to the same token-major representation.
+
 ## Supported Data Types and Weight Bit-Widths
 
 ### Activations and scales

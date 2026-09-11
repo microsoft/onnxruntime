@@ -561,6 +561,12 @@ bool fusedBuildExpertMapsSortFirstToken(const int* token_selected_experts, int* 
   // We need enough bits to represent [0, num_experts_per_node+1] (inclusive) i.e. num_experts_per_node + 2 values
   // This is floor(log2(num_experts_per_node+1)) + 1
   int expert_log = static_cast<int>(log2(num_experts_per_node + 1)) + 1;
+  if (expert_log == 10 && experts_per_token == 10) {
+    return fusedBuildExpertMapsSortFirstTokenBlockSize<10, 10>(
+        token_selected_experts, permuted_row_to_unpermuted_row, unpermuted_row_to_permuted_row,
+        permuted_token_selected_experts, expert_first_token_offset, num_tokens, num_experts_per_node,
+        experts_per_token, start_expert, end_expert, stream);
+  }
   if (expert_log <= 9) {
     auto funcs = std::array{&fusedBuildExpertMapsSortFirstTokenBlockSize<1>,
                             &fusedBuildExpertMapsSortFirstTokenBlockSize<2>, &fusedBuildExpertMapsSortFirstTokenBlockSize<3>,
