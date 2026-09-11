@@ -47,7 +47,9 @@ The design must address:
 The facility must be generic. Validation with a non-WebGPU test plugin is deferred: WebGPU is currently the only
 statically linked plugin EP, so this is tracked as a test gap rather than a completed criterion.
 
-The detailed design is in [Static Plugin EP Registration](static_plugin_ep_registration_design.md).
+The detailed design is in [Static Plugin EP Registration](static_plugin_ep_registration_design.md), with supporting
+evidence in [Static Plugin EP Registration: Validation](static_plugin_ep_registration_validation.md) and the ORT Web
+follow-up in [ORT Web Static Plugin Migration](ort_web_static_plugin_migration.md).
 
 ## Process-global ownership and teardown
 
