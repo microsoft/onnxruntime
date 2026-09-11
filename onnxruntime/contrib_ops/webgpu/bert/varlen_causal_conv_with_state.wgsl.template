@@ -18,13 +18,13 @@ $MAIN {
   let pad = uniforms.pad;
 
   // One invocation owns a single (request, channel) pair.
-  let first = cumulative_sequence_length[0];
-  let last = cumulative_sequence_length[uniforms.batch_size];
+  let first = cumulative_sequence_length.getByOffset(0u);
+  let last = cumulative_sequence_length.getByOffset(uniforms.batch_size);
   let b = global_idx / channels;
   let c = global_idx % channels;
 
-  let start_i = cumulative_sequence_length[b];
-  let end_i = cumulative_sequence_length[b + 1u];
+  let start_i = cumulative_sequence_length.getByOffset(b);
+  let end_i = cumulative_sequence_length.getByOffset(b + 1u);
   if (first != 0 || last != i32(uniforms.total_tokens) || start_i < 0 || start_i >= end_i ||
       end_i > i32(uniforms.total_tokens)) {
     return;
@@ -40,7 +40,7 @@ $MAIN {
 
   var bias_val: f32 = 0.0;
 #if has_bias
-  bias_val = f32(bias[c]);
+  bias_val = f32(bias.getByOffset(c));
 #endif
 
   // Depthwise causal convolution for every token of this request. The virtual input is
@@ -56,22 +56,22 @@ $MAIN {
 #if has_state
       if (lp < 0) {
 #if state_in_final_state
-  val = f32(final_state[state_base + u32(lp + i32(pad))]);
+    val = f32(final_state.getByOffset(state_base + u32(lp + i32(pad))));
 #else
-        val = f32(initial_state[state_base + u32(lp + i32(pad))]);
+    val = f32(initial_state.getByOffset(state_base + u32(lp + i32(pad))));
 #endif
       } else {
-        val = f32(input[(start + u32(lp)) * channels + c]);
+    val = f32(input.getByOffset((start + u32(lp)) * channels + c));
       }
 #else
-      val = f32(input[(start + u32(lp)) * channels + c]);
+  val = f32(input.getByOffset((start + u32(lp)) * channels + c));
 #endif
-      acc = acc + val * f32(weight[weight_base + k]);
+  acc = acc + val * f32(weight.getByOffset(weight_base + k));
     }
 #if use_silu
     acc = acc / (1.0 + exp(-acc));
 #endif
-    output[(start + t) * channels + c] = input_element_t(acc);
+    output.setByOffset((start + t) * channels + c, input_element_t(acc));
   }
 
 #if has_state
@@ -82,14 +82,14 @@ $MAIN {
     var val: f32 = 0.0;
     if (lp < 0) {
     #if state_in_final_state
-      val = f32(final_state[state_base + u32(lp + i32(pad))]);
+      val = f32(final_state.getByOffset(state_base + u32(lp + i32(pad))));
     #else
-      val = f32(initial_state[state_base + u32(lp + i32(pad))]);
+      val = f32(initial_state.getByOffset(state_base + u32(lp + i32(pad))));
     #endif
     } else {
-      val = f32(input[(start + u32(lp)) * channels + c]);
+      val = f32(input.getByOffset((start + u32(lp)) * channels + c));
     }
-    final_state[state_base + s] = input_element_t(val);
+    final_state.setByOffset(state_base + s, input_element_t(val));
   }
 #endif
 
@@ -98,7 +98,7 @@ $MAIN {
   // slot stays zero. captured = clamp(capture_count[b], 0, min(capacity, local_length)).
   let capacity = uniforms.state_update_capacity;
   var captured: u32 = 0u;
-  let raw = capture_count[b];
+  let raw = capture_count.getByOffset(b);
   if (raw > 0) {
     captured = u32(raw);
     let limit = min(capacity, local_length);
@@ -109,9 +109,9 @@ $MAIN {
   for (var slot: u32 = 0u; slot < capacity; slot = slot + 1u) {
     var v: input_element_t = input_element_t(0.0);
     if (slot < captured) {
-      v = input[(start + slot) * channels + c];
+      v = input.getByOffset((start + slot) * channels + c);
     }
-    state_update[(b * capacity + slot) * channels + c] = v;
+    state_update.setByOffset((b * capacity + slot) * channels + c, v);
   }
 #endif
 } // MAIN

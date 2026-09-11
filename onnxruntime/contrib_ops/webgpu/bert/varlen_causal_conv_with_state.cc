@@ -54,7 +54,7 @@ Status VarlenCausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader
 
   shader.AddOutput("output", ShaderUsage::UseUniform);
   if (has_state_) {
-    shader.AddOutput("final_state", ShaderUsage::UseUniform);
+    shader.AddOutput("final_state", ShaderUsage::UseUniform | ShaderUsage::UseGetByOffsetSegments);
   }
   if (has_state_update_ && has_capture_count_) {
     shader.AddOutput("state_update", ShaderUsage::UseUniform);
@@ -152,7 +152,6 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
                                            has_state_update, has_capture_count,
                                            activation_ == CausalConvActivation::Silu};
   program.CacheHint(has_bias, has_state, state_in_final_state, has_state_update, has_capture_count,
-                    static_cast<int>(kernel_size), dilation_,
                     activation_ == CausalConvActivation::Silu);
 
   const uint32_t num_invocations = static_cast<uint32_t>(batch_size * channels);
