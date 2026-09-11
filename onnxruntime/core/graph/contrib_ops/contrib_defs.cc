@@ -4153,14 +4153,33 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
 GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
   1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
      `block_size` must be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ...
+     For an FP8 or FP4 `data` type (see point 6 below), `block_size` may also be 0, meaning the entire `quantize_axis`
+     dimension forms a single block (i.e. one scale per row).
   2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
      If `zero_points` is not provided, the default value is 0 for int4/uint4, or 2^(bits-1) for uint8.
+     `zero_points` must not be provided when `data` is an FP8 or FP4 type: FP8/FP4 quantization is symmetric.
   3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
      to dequantize the output.
   4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
   5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
      for `bits` < 8 the values are packed along the last dimension (low-order bits first).
+  6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
+     (float4e2m1), rather than an integer block-quantized type. In that case `bits` is not applicable, there is
+     no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.
+     On any axis other than `quantize_axis`, the corresponding `scales` dimension must either equal `data`'s
+     dimension, or be 1, in which case the scale is broadcast along that axis (e.g. a single scale shared by
+     every row, as with a per-tensor scale applied to an entire embedding table).
 )DOC";
+
+  std::vector<std::string> gather_block_quantized_T1_types = {"tensor(int4)", "tensor(uint4)", "tensor(uint8)"};
+#if !defined(DISABLE_FLOAT8_TYPES)
+  gather_block_quantized_T1_types.insert(
+      gather_block_quantized_T1_types.end(),
+      {"tensor(float8e4m3fn)", "tensor(float8e4m3fnuz)", "tensor(float8e5m2)", "tensor(float8e5m2fnuz)"});
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+#if !defined(DISABLE_FLOAT4_TYPES)
+  gather_block_quantized_T1_types.push_back("tensor(float4e2m1)");
+#endif  // !defined(DISABLE_FLOAT4_TYPES)
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherBlockQuantized)
       .SetDomain(kMSDomain)
@@ -4175,11 +4194,14 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
             AttributeProto::INT, static_cast<int64_t>(1))
       .Attr("block_size",
-            "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.",
+            "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16, "
+            "or 0. A value of 0 is only valid for an FP8 or FP4 `data` type and means the entire `quantize_axis` "
+            "dimension forms a single block.",
             AttributeProto::INT,
             static_cast<int64_t>(128))
       .Attr("bits",
-            "Number of bits used for weight quantization. Must be 2, 4 or 8. ",
+            "Number of bits used for weight quantization. Must be 2, 4 or 8. Not applicable when `data` is an "
+            "FP8 or FP4 type.",
             AttributeProto::INT,
             static_cast<int64_t>(4))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
@@ -4188,10 +4210,16 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
              "Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] "
              "along axis of size s. It is an error if any of the index values are out of bounds.",
              "Tind")
-      .Input(2, "scales", "quantization scale", "T2")
-      .Input(3, "zero_points", "quantization zero points", "T1", OpSchema::Optional)
+      .Input(2, "scales",
+             "quantization scale. Same rank as data. On axes other than quantize_axis, a dimension of 1 broadcasts "
+             "the scale along that axis (e.g. a single per-tensor scale for the whole table); only applicable when "
+             "`data` is an FP8 or FP4 type.",
+             "T2")
+      .Input(3, "zero_points",
+             "quantization zero points. Must not be provided when `data` is an FP8 or FP4 type.",
+             "T1", OpSchema::Optional)
       .Output(0, "output", "Dequantized output tensor of rank q + (r - 1).", "T2")
-      .TypeConstraint("T1", {"tensor(int4)", "tensor(uint4)", "tensor(uint8)"}, "Constrain quantized types.")
+      .TypeConstraint("T1", gather_block_quantized_T1_types, "Constrain quantized types.")
       .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain dequantized types.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -4222,14 +4250,22 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         if (quantize_axis < -r || quantize_axis >= r) {
           fail_shape_inference("quantize_axis must be in [-r, r-1]");
         }
-        if (block_size < 0) {
-          fail_shape_inference("block_size must be non-negative");
+
+        const auto data_elem_type = ctx.getInputType(0)->tensor_type().elem_type();
+        const bool is_fp_quantized = data_elem_type == onnx::TensorProto_DataType_FLOAT8E4M3FN ||
+                                      data_elem_type == onnx::TensorProto_DataType_FLOAT8E4M3FNUZ ||
+                                      data_elem_type == onnx::TensorProto_DataType_FLOAT8E5M2 ||
+                                      data_elem_type == onnx::TensorProto_DataType_FLOAT8E5M2FNUZ ||
+                                      data_elem_type == onnx::TensorProto_DataType_FLOAT4E2M1;
+
+        if (block_size < 0 || (block_size == 0 && !is_fp_quantized)) {
+          fail_shape_inference("block_size must be a power of 2 and not smaller than 16, or 0 for FP8/FP4 data");
         }
 
         gather_axis = (gather_axis + r) % r;
         quantize_axis = (quantize_axis + r) % r;
 
-        if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) {
+        if (data_elem_type == onnx::TensorProto_DataType_UINT8) {
           if (gather_axis != 0) {
             fail_shape_inference("gather_axis must be 0, for uint8 data");
           }
@@ -4237,17 +4273,28 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
           // we are relaxing it in the spec and shape inference since other EP might not have such restriction.
         }
 
+        if (is_fp_quantized && ctx.hasInput(3)) {
+          fail_shape_inference("zero_points must not be provided when data is an FP8 or FP4 type");
+        }
+
         if (scales_shape.dim_size() != r) {
           fail_shape_inference("scales must have the same rank as data");
         }
 
-        uint32_t components = (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) ? (8 / bits) : 1;
+        uint32_t components = (data_elem_type == onnx::TensorProto_DataType_UINT8) ? (8 / bits) : 1;
         for (int i = 0; i < r; ++i) {
-          if (data_shape.dim(i).has_dim_value() &&
-              scales_shape.dim(i).has_dim_value() &&
-              ((i == quantize_axis && (data_shape.dim(i).dim_value() * components + block_size - 1) / block_size != scales_shape.dim(i).dim_value()) ||
-               (i != quantize_axis && data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()))) {
-            fail_shape_inference("data shape and scales shape do not match");
+          if (data_shape.dim(i).has_dim_value() && scales_shape.dim(i).has_dim_value()) {
+            if (i == quantize_axis) {
+              int64_t effective_block_size = block_size == 0 ? data_shape.dim(i).dim_value() : block_size;
+              if (effective_block_size > 0 &&
+                  (data_shape.dim(i).dim_value() * components + effective_block_size - 1) / effective_block_size !=
+                      scales_shape.dim(i).dim_value()) {
+                fail_shape_inference("data shape and scales shape do not match");
+              }
+            } else if (data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value() &&
+                       !(is_fp_quantized && scales_shape.dim(i).dim_value() == 1)) {
+              fail_shape_inference("data shape and scales shape do not match");
+            }
           }
         }
 
@@ -4265,7 +4312,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
           for (int i = 0; i < r; ++i) {
             if (!zp_shape.dim(i).has_dim_value() ||
                 zp_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()) {
-              if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 &&
+              if (data_elem_type == onnx::TensorProto_DataType_UINT8 &&
                   components > 1 &&
                   i == quantize_axis &&
                   zp_shape.dim(i).dim_value() == (scales_shape.dim(i).dim_value() + components - 1) / components) {
@@ -4301,141 +4348,6 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
           }
         }
       });
-
-#if !defined(DISABLE_FLOAT8_TYPES) || !defined(DISABLE_FLOAT4_TYPES)
-  static const char* GatherFpQuantized_ver1_doc = R"DOC(
-GatherFpQuantized is a Gather over a low-precision floating point (FP8 or FP4) quantized table with a
-per-block float scale factor, and no zero point (FP8/FP4 quantization is symmetric). It is similar to
-Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) and to
-com.microsoft.GatherBlockQuantized, with these differences:
-  1. Input `data` is a constant of an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz)
-     or an FP4 type (float4e2m1), rather than an integer block-quantized type. There is no `zero_points`
-     input: FP8/FP4 quantization is symmetric.
-  2. `data` is block-wise scaled along attribute `quantize_axis` with block size specified by attribute
-     `block_size`. `block_size` must be 0 (meaning the entire `quantize_axis` dimension forms a single
-     block, i.e. one scale per row) or a power of 2 and not smaller than 16.
-  3. Input `data`'s scale is specified by input `scales`, a constant tensor of the same rank as `data`
-     with one scale value per quantization block. On any axis other than `quantize_axis`, the
-     corresponding `scales` dimension must either equal `data`'s dimension, or be 1, in which case the
-     scale is broadcast along that axis (e.g. a single scale shared by every row, as with a per-tensor
-     scale applied to an entire embedding table).
-  4. During op execution, `data` and `indices` are first used to gather rows exactly as in Gather. Each
-     gathered FP8/FP4 element is then converted to its floating point value and multiplied by the scale of
-     the block it belongs to, i.e. `output[...] = float(data[...]) * scales[block_index(...)]`, with
-     broadcast axes of `scales` always contributing index 0.
-  5. The `output` and `scales` have the same type.
-)DOC";
-
-  std::vector<std::string> gather_fp_quantized_T1_types;
-#if !defined(DISABLE_FLOAT8_TYPES)
-  gather_fp_quantized_T1_types.insert(
-      gather_fp_quantized_T1_types.end(),
-      {"tensor(float8e4m3fn)", "tensor(float8e4m3fnuz)", "tensor(float8e5m2)", "tensor(float8e5m2fnuz)"});
-#endif  // !defined(DISABLE_FLOAT8_TYPES)
-#if !defined(DISABLE_FLOAT4_TYPES)
-  gather_fp_quantized_T1_types.push_back("tensor(float4e2m1)");
-#endif  // !defined(DISABLE_FLOAT4_TYPES)
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherFpQuantized)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(GatherFpQuantized_ver1_doc)
-      .Attr("gather_axis",
-            "(Optional) Which axis to gather on. Negative value means "
-            "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
-            AttributeProto::INT, static_cast<int64_t>(0))
-      .Attr("quantize_axis",
-            "(Optional) Which axis to block-wise scale. Negative value means "
-            "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
-            AttributeProto::INT, static_cast<int64_t>(1))
-      .Attr("block_size",
-            "(Optional) block size used for the scale granularity along quantize_axis. Must be 0 (the "
-            "whole quantize_axis dimension is a single block, i.e. one scale per row) or a power of 2 "
-            "and not smaller than 16.",
-            AttributeProto::INT,
-            static_cast<int64_t>(0))
-      .Input(0, "data", "Tensor of rank r > 1, FP8 or FP4 quantized, block-wise scaled.", "T1")
-      .Input(1,
-             "indices",
-             "Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] "
-             "along axis of size s. It is an error if any of the index values are out of bounds.",
-             "Tind")
-      .Input(2, "scales",
-             "Per-block scale, same rank as data. On axes other than quantize_axis, a dimension of 1 "
-             "broadcasts the scale along that axis (e.g. a single per-tensor scale for the whole table).",
-             "T2")
-      .Output(0, "output", "Dequantized output tensor of rank q + (r - 1).", "T2")
-      .TypeConstraint("T1", gather_fp_quantized_T1_types, "Constrain quantized data to FP8 or FP4 types.")
-      .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain dequantized types.")
-      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Type inference
-        propagateElemTypeFromInputToOutput(ctx, 2, 0);
-
-        // The first 3 inputs must have shape.
-        if (!hasNInputShapes(ctx, 3)) {
-          return;
-        }
-        const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
-        const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
-        const TensorShapeProto& scales_shape = ctx.getInputType(2)->tensor_type().shape();
-
-        int r = data_shape.dim_size();
-        if (r <= 1) {
-          fail_shape_inference("data tensor must have rank > 1");
-        }
-
-        int gather_axis = static_cast<int>(getAttribute(ctx, "gather_axis", 0));
-        int quantize_axis = static_cast<int>(getAttribute(ctx, "quantize_axis", 1));
-        auto block_size = getAttribute(ctx, "block_size", 0);
-
-        if (gather_axis < -r || gather_axis >= r) {
-          fail_shape_inference("gather_axis must be in [-r, r-1]");
-        }
-        if (quantize_axis < -r || quantize_axis >= r) {
-          fail_shape_inference("quantize_axis must be in [-r, r-1]");
-        }
-        if (block_size < 0 || (block_size != 0 && (block_size < 16 || (block_size & (block_size - 1)) != 0))) {
-          fail_shape_inference("block_size must be 0, or a power of 2 and not smaller than 16");
-        }
-
-        gather_axis = (gather_axis + r) % r;
-        quantize_axis = (quantize_axis + r) % r;
-
-        if (scales_shape.dim_size() != r) {
-          fail_shape_inference("scales must have the same rank as data");
-        }
-
-        for (int i = 0; i < r; ++i) {
-          if (data_shape.dim(i).has_dim_value() && scales_shape.dim(i).has_dim_value()) {
-            if (i == quantize_axis) {
-              int64_t effective_block_size = block_size == 0 ? data_shape.dim(i).dim_value() : block_size;
-              if (effective_block_size > 0 &&
-                  (data_shape.dim(i).dim_value() + effective_block_size - 1) / effective_block_size !=
-                      scales_shape.dim(i).dim_value()) {
-                fail_shape_inference("data shape and scales shape do not match");
-              }
-            } else if (data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value() &&
-                       scales_shape.dim(i).dim_value() != 1) {
-              fail_shape_inference("data shape and scales shape do not match");
-            }
-          }
-        }
-
-        int q = indices_shape.dim_size();
-        auto* output_shape = ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
-        output_shape->clear_dim();
-        for (int i = 0; i < gather_axis; ++i) {
-          *output_shape->add_dim() = data_shape.dim(i);
-        }
-        for (int i = 0; i < q; ++i) {
-          *output_shape->add_dim() = indices_shape.dim(i);
-        }
-        for (int i = gather_axis + 1; i < r; ++i) {
-          *output_shape->add_dim() = data_shape.dim(i);
-        }
-      });
-#endif  // !defined(DISABLE_FLOAT8_TYPES) || !defined(DISABLE_FLOAT4_TYPES)
 
 #ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
