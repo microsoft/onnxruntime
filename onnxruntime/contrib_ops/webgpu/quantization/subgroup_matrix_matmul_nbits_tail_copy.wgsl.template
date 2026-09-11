@@ -1,0 +1,15 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Crops the valid rows out of the padded tail-tile buffer written by the
+// subgroup-matrix matmul_nbits kernel's no-bias edge-tile fast path (see
+// `has_tail_buffer` in subgroup_matrix_matmul_nbits_8x16x16.wgsl.template) and
+// copies them into the real output tensor at the tail tile's row offset.
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .setByOffset
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
+  output.setByOffset(uniforms.row_offset * uniforms.N + global_idx, output_value_t(tail_input.getByOffset(global_idx)));
+}  // MAIN
