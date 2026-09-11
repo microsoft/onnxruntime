@@ -1,6 +1,8 @@
 # Workstream `plugin-boundary`: Plugin Boundary and Web/Wasm Integration
 
-Status: Working plan
+Status: In progress. Generic static plugin EP registration has landed and WebGPU uses it; ORT Web, the process-global
+lifetime contract, the plugin API gap inventory and the browser bridge are outstanding. Per-package status is under
+[Work packages](#work-packages).
 
 [WebGPU EP extraction overview](../webgpu_ep_extraction.md)
 
@@ -141,15 +143,41 @@ The bridge should not expose unrelated ORT private implementation details.
 
 ## Work packages
 
-1. **Size and latency baselines:** measure `onnxruntime-web` WebAssembly size and inference latency, and native
-   inference latency, on the non-plugin path while it still exists, since the size and latency completion criteria
-   compare the plugin path against those numbers.
-2. **Static registration core:** implement and contract-test generic static factory registration.
-3. **Global lifetime contract:** inventory process-global state and implement safe ownership and teardown rules.
-4. **Emscripten prototype:** compile the plugin path statically and run a small model.
-5. **Gap inventory triage:** convert private-dependency findings into public API or provider-owned actions.
-6. **Browser bridge:** specify and prototype object and lifetime exchange.
-7. **Parity and retirement:** run the existing suite through the plugin path and remove the legacy path.
+Status reflects the state after static plugin EP registration landed (PR #32395).
+
+1. **Size and latency baselines** — *In progress.* Measure `onnxruntime-web` WebAssembly size and inference latency,
+   and native inference latency, on the non-plugin path while it still exists, since the size and latency completion
+   criteria compare the plugin path against those numbers. Size has been measured, and latency has been measured for
+   both the web static plugin and the native shared library, but the latency figures are not reproducible: three
+   measurements of the same model disagree by roughly 3.7x and the baseline itself drifted between sessions. A
+   controlled re-measurement is outstanding. See
+   [Measured size comparison](ort_web_static_plugin_migration.md#measured-size-comparison) and
+   [Measured performance comparison](ort_web_static_plugin_migration.md#measured-performance-comparison) for the web
+   numbers, and [Native shared-library plugin
+   performance](static_plugin_ep_registration_validation.md#native-shared-library-plugin-performance) for native.
+2. **Static registration core** — *In progress.* Implement and contract-test generic static factory registration.
+   The facility is implemented and its test results are identical to the internal-EP build on Windows with a real
+   GPU. What remains is the generic contract test: WebGPU is the only static plugin, so D2's entry-point prefix
+   uniqueness is unexercised. See [Static Plugin EP Registration](static_plugin_ep_registration_design.md) and
+   [its validation](static_plugin_ep_registration_validation.md).
+3. **Global lifetime contract** — *In progress.* Inventory process-global state and implement safe ownership and
+   teardown rules. Protobuf ownership is resolved by build-time selection rather than a new ABI hook, and the
+   adapter's logger wrapper is released with the factory that owns it. The full classification of every subsystem
+   listed under [Process-global ownership and teardown](#process-global-ownership-and-teardown) is not done, and the
+   register/unregister/re-register regression is not yet reachable from the existing test binaries.
+4. **Emscripten prototype** — *Done.* Compile the plugin path statically and run a small model. A throwaway
+   prototype ran the full `js/web` WebGPU operator suite in Edge against a WASM `static_plugin` binary: 2152 tests,
+   all passing. Productionizing that result is
+   [ORT Web Static Plugin Migration](ort_web_static_plugin_migration.md), not this package.
+5. **Gap inventory triage** — *Not started.* Convert private-dependency findings into public API or provider-owned
+   actions. Input exists: `onnxruntime/core/providers/webgpu/ep/README.md` records WebGPU cleanup and EP default
+   configuration as gaps, and depends on the `provider-isolation` workstream for the rest.
+6. **Browser bridge** — *Not started.* Specify and prototype object and lifetime exchange. The representation
+   question is still open; see [Open questions](#open-questions).
+7. **Parity and retirement** — *In progress.* Run the existing suite through the plugin path and remove the legacy
+   path. Native parity is demonstrated: zero status differences across the 5894 provider tests common to the static
+   plugin and internal-EP builds. ORT Web parity depends on the migration above, and removing the legacy path is
+   explicitly a non-goal until parity is demonstrated there.
 
 Packages 1 through 6 can proceed largely in parallel, and legacy-path removal waits for their convergence. That
 ordering matters for the baselines in particular: the non-plugin path is the comparison, so once package 7 removes it
@@ -170,6 +198,11 @@ the numbers can no longer be captured.
 - Contract tests for generic plugin infrastructure remain in ORT.
 
 ## Completion criteria
+
+None of these are met yet; they describe the end state of the whole workstream, not the static-registration
+milestone. The criteria most affected by work so far are the two size and latency ones, which now have measurements
+but not reproducible ones, and the first, which holds for the `static_plugin` build but not for the ORT Web build
+that ships today.
 
 - Static and dynamic WebGPU builds use the same provider implementation and public API boundary.
 - Factory release and environment teardown cannot shut down process-global state still owned or used by ORT, another
