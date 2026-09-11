@@ -2521,6 +2521,51 @@ class TestMixedPrecisionGroupQueryAttention(unittest.TestCase):
         with self.assertRaises(Fail):
             InferenceSession(model, SessionOptions(), providers=["CPUExecutionProvider"])
 
+    def test_bad_quant_rho_rejected(self):
+        # k_quant_rho / v_quant_rho are documented as a percentile in (0, 1]; an out-of-range value
+        # (e.g. 96 instead of 0.96) must be rejected at session creation, not silently degrade.
+        for attr_name in ("k_quant_rho", "v_quant_rho"):
+            model = create_mixed_precision_gqa_graph(1, 8, 8, 8, 0, 4, 2, 2, 128, 64, sink=2, recent=2)
+            m = load_model_from_string(model)
+            for attr in m.graph.node[0].attribute:
+                if attr.name == attr_name:
+                    attr.f = 96.0
+            with self.assertRaises(Fail):
+                InferenceSession(m.SerializeToString(), SessionOptions(), providers=["CPUExecutionProvider"])
+
+    def test_rotation_without_window_rejected(self):
+        # OSCAR rotations are applied only on the mixed-precision path, so supplying
+        # oscar_rotation_k/v with sink_size == recent_size == 0 must be rejected rather than
+        # silently dropped (which would forfeit the accuracy the rotation exists to provide).
+        seq_len, num_heads, kv_num_heads, head_size, group_size = 8, 4, 2, 128, 64
+        model = create_oscar2bit_mixed_rot_gqa_graph(
+            1, seq_len, seq_len, seq_len, 0, 0,
+            num_heads, kv_num_heads, head_size, group_size,
+            sink=0, recent=0, k_rho=1.0, v_rho=1.0,
+        )
+        phs = oscar2bit_packed_head_size(head_size, group_size)
+        hidden_size = num_heads * head_size
+        kv_hidden_size = kv_num_heads * head_size
+        hp_empty = np.zeros((1, kv_num_heads, 0, head_size), dtype=np.float32)
+        sess = InferenceSession(model, SessionOptions(), providers=["CPUExecutionProvider"])
+        with self.assertRaises(Fail):
+            sess.run(
+                None,
+                {
+                    "query": np.zeros((1, seq_len, hidden_size), dtype=np.float32),
+                    "key": np.zeros((1, seq_len, kv_hidden_size), dtype=np.float32),
+                    "value": np.zeros((1, seq_len, kv_hidden_size), dtype=np.float32),
+                    "past_key": np.zeros((1, kv_num_heads, seq_len, phs), dtype=np.uint8),
+                    "past_value": np.zeros((1, kv_num_heads, seq_len, phs), dtype=np.uint8),
+                    "seqlens_k": np.array([seq_len - 1], dtype=np.int32),
+                    "total_sequence_length": np.array([seq_len], dtype=np.int32),
+                    "past_hp_key": hp_empty,
+                    "past_hp_value": hp_empty.copy(),
+                    "oscar_rotation_k": _make_rotation(kv_num_heads, head_size, seed=1),
+                    "oscar_rotation_v": _make_rotation(kv_num_heads, head_size, seed=2),
+                },
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

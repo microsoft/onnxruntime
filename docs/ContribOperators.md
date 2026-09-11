@@ -3816,6 +3816,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   
   **Window sizes:** sink_size and recent_size are node attributes (part of the model), so the cache
   partition is self-contained and shape inference does not depend on session configuration.
+  
+  See docs/oscar_onboarding_guide.md for the end-to-end model-preparation workflow (calibration,
+  graph surgery, and the decode-loop wiring).
 
 #### Version
 

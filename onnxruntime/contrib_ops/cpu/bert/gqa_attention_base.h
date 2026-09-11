@@ -106,14 +106,17 @@ inline size_t Oscar2BitPackedRowBytes(int head_size, int num_groups, bool meta_f
 // idx = int(rho * n), clamped to [0, n - 1]. rho <= 0 disables the clip (returns +inf).
 // Unlike torch.quantile there is no linear interpolation between order statistics.
 inline float Oscar2BitClipThreshold(const float* x, int n, float rho) {
-  if (!(rho > 0.0f)) {
+  // rho <= 0 disables the clip; rho >= 1 selects the row max, i.e. clipping at the maximum
+  // magnitude is a no-op. Both collapse to "no clip", so return +inf without touching the row.
+  // k_quant_rho / v_quant_rho default to 1.0, so this early-out skips the per-row selection
+  // (allocation + order statistic) on the common path — this runs once per KV row per head.
+  if (!(rho > 0.0f) || rho >= 1.0f) {
     return std::numeric_limits<float>::infinity();
   }
   std::vector<float> a(static_cast<size_t>(n));
   for (int i = 0; i < n; ++i) {
     a[static_cast<size_t>(i)] = std::fabs(x[i]);
   }
-  std::sort(a.begin(), a.end());
   int idx = static_cast<int>(rho * static_cast<float>(n));
   if (idx >= n) {
     idx = n - 1;
@@ -121,6 +124,9 @@ inline float Oscar2BitClipThreshold(const float* x, int n, float rho) {
   if (idx < 0) {
     idx = 0;
   }
+  // Only the order statistic at `idx` is needed, so nth_element (O(n)) suffices instead of a
+  // full O(n log n) sort.
+  std::nth_element(a.begin(), a.begin() + idx, a.end());
   return a[static_cast<size_t>(idx)];
 }
 
@@ -197,7 +203,13 @@ inline void Oscar2BitDequantizeRow(const uint8_t* src, float* dst, int head_size
   const int packed_bytes = head_size / 4;
   float scales[kOscar2BitMaxGroups];
   float zeros[kOscar2BitMaxGroups];
-  const int ng = std::min(num_groups, kOscar2BitMaxGroups);
+  // scales/zeros are fixed-size stack buffers, so num_groups must fit. GroupQueryAttention<T>::Compute
+  // rejects num_groups > kOscar2BitMaxGroups up front; assert the precondition here where it is relied
+  // on rather than silently clamping (which would read uninitialized stack for the trailing groups).
+  ORT_ENFORCE(num_groups <= kOscar2BitMaxGroups,
+              "Oscar2BitDequantizeRow: num_groups (", num_groups, ") exceeds kOscar2BitMaxGroups (",
+              kOscar2BitMaxGroups, ")");
+  const int ng = num_groups;
   if (meta_fp16) {
     const uint8_t* sptr = src + packed_bytes;
     const uint8_t* zptr = sptr + static_cast<size_t>(num_groups) * sizeof(uint16_t);
@@ -1261,6 +1273,19 @@ class GQAAttentionBase {
     const int hp_present_len = static_cast<int>(present_hp_key->Shape().GetDims()[2]);
     const int hp_past_len = past_hp_key != nullptr ? static_cast<int>(past_hp_key->Shape().GetDims()[2]) : 0;
 
+    // hp_past_len is only used as the per-head stride, so a short/absent past_hp (e.g. a graph that
+    // forgets to feed present_hp back into past_hp and leaves it 0-length while the history grows)
+    // would make BuildMixedHeadCache read through a short or null pointer. Validate that past_hp is
+    // large enough for the window this step actually needs. total_sequence_length is the batch max,
+    // so this is a conservative upper bound across ragged batches.
+    const int max_t_past = std::max(0, total_sequence_length - kv_sequence_length);
+    const int required_hp_past = std::min(sink + recent, max_t_past);
+    ORT_RETURN_IF(required_hp_past > 0 && (past_hp_key == nullptr || past_hp_value == nullptr),
+                  "past_hp_key/past_hp_value are required once the KV history exceeds the FP window");
+    ORT_RETURN_IF(hp_past_len < required_hp_past,
+                  "past_hp sequence length (", hp_past_len, ") is smaller than the required window (",
+                  required_hp_past, ")");
+
     size_t probs_bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length *
                          seqlen_present_kv_cache * sizeof(float);
     auto attention_probs_alloc = allocator->Alloc(probs_bytes);
@@ -1345,7 +1370,11 @@ class GQAAttentionBase {
           const size_t total_seqlen = SafeInt<size_t>(seqlens_k_data[batch_index]) + 1;
           const int Ti = static_cast<int>(total_seqlen);
           const int new_rows = kv_sequence_length;
-          const int T_past = Ti - new_rows;
+          // Clamp like ApplyAttentionQuantized2Bit: on a prompt there is no past, and on ragged
+          // (right-padded, multi-length) prompt batches a batch entry whose real length is shorter
+          // than the padded chunk would otherwise make T_past negative and drive BuildMixedHeadCache
+          // to read past the end of the new K chunk.
+          const int T_past = is_prompt ? 0 : std::max(0, Ti - new_rows);
 
           size_t causal_past_seqlen;
           if (past_key == nullptr) {
@@ -1549,7 +1578,9 @@ class GQAAttentionBase {
           const size_t total_seqlen = SafeInt<size_t>(seqlens_k_data[batch_index]) + 1;
           const int Ti = static_cast<int>(total_seqlen);
           const int new_rows = kv_sequence_length;
-          const int T_past = Ti - new_rows;
+          // Same clamp as the K loop above: keep T_past >= 0 (and 0 on a prompt) so ragged prompt
+          // batches don't walk past the new V chunk, and the K/V caches stay in sync.
+          const int T_past = is_prompt ? 0 : std::max(0, Ti - new_rows);
 
           const size_t kv_head_within_batch = head_index / kv_num_heads_factor;
           const std::ptrdiff_t kv_head_flat = static_cast<std::ptrdiff_t>(i / kv_num_heads_factor);

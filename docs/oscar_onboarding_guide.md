@@ -139,13 +139,18 @@ for i in range(L):
 ```
 
 For pure 2-bit (no mixed precision), leave `sink_size`/`recent_size` at `0`, omit all `*_hp_*`
-tensors, and just roll the uint8 `present`→`past`.
+tensors, and just roll the uint8 `present`→`past`. Note this excludes the spectral rotations of
+Step 5, which today require a non-zero window (see below).
 
 ## Step 5 — spectral rotations (optional)
 
 Inputs 18/19 `oscar_rotation_k` / `oscar_rotation_v`, shape `(H_kv, D, D)`, embedded as **constant
 initializers** (from Step 1a). The kernel rotates post-RoPE Q/K by `R_K` before quantization (QK
 scores are invariant to the shared orthogonal rotation) and un-rotates the value output by `R_Vᵀ`.
+
+Rotations are currently applied only on the mixed-precision path, so they require a **non-zero
+`sink_size` or `recent_size`**. Supplying `oscar_rotation_k`/`v` with `sink_size == recent_size == 0`
+is rejected (rather than silently ignored) — enable a high-precision window to use rotations.
 
 ## Notes / limitations
 

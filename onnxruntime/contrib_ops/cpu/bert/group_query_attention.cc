@@ -244,6 +244,16 @@ MixedPrecisionGroupQueryAttention<T>::MixedPrecisionGroupQueryAttention(const Op
               "MixedPrecisionGroupQueryAttention (CPU): metadata_type must be 'fp32' or 'fp16', got '",
               metadata_type, "'.");
   this->kv_quant_meta_fp16_ = (metadata_type == "fp16");
+
+  // k_quant_rho / v_quant_rho are documented as an outlier-clip percentile in (0, 1]. Reject
+  // out-of-range values here: rho <= 0 silently disables the clip and rho > 1 silently clamps to the
+  // row max, so a typo like 96 instead of 0.96 would degrade accuracy with no diagnostic.
+  ORT_ENFORCE(this->k_quant_rho_ > 0.0f && this->k_quant_rho_ <= 1.0f,
+              "MixedPrecisionGroupQueryAttention (CPU): k_quant_rho must be in (0, 1], got ",
+              this->k_quant_rho_);
+  ORT_ENFORCE(this->v_quant_rho_ > 0.0f && this->v_quant_rho_ <= 1.0f,
+              "MixedPrecisionGroupQueryAttention (CPU): v_quant_rho must be in (0, 1], got ",
+              this->v_quant_rho_);
 }
 
 template <typename T>
@@ -860,7 +870,12 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
           return Status::OK();
         }
 
-        // Non-mixed OSCAR path.
+        // Non-mixed OSCAR path (sink_size == recent_size == 0: the whole cache is 2-bit history).
+        // This path does not apply the OSCAR spectral rotations, so reject them rather than silently
+        // dropping the accuracy they provide. Rotations require a high-precision window today.
+        ORT_RETURN_IF(oscar_rotation_k != nullptr || oscar_rotation_v != nullptr,
+                      "MixedPrecisionGroupQueryAttention (CPU): oscar_rotation_k/v require a non-zero "
+                      "sink_size or recent_size.");
         ORT_RETURN_IF_ERROR(ApplyAttentionQuantized2Bit(
             q_f, k_f, v_f, head_sink_f,
             std::is_same_v<T, float> ? attention_bias : nullptr, past_key, past_value,

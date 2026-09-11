@@ -1416,6 +1416,9 @@ per-kv-head spectral rotation (oscar_rotation_k / oscar_rotation_v) is applied t
 
 **Window sizes:** sink_size and recent_size are node attributes (part of the model), so the cache
 partition is self-contained and shape inference does not depend on session configuration.
+
+See docs/oscar_onboarding_guide.md for the end-to-end model-preparation workflow (calibration,
+graph surgery, and the decode-loop wiring).
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
