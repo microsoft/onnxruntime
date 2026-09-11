@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an asymmetric CLIP uint16-activation DQ/MatMul/Q test model."""
+"""Generate a configurable CLIP uint16-activation DQ/MatMul/Q test model."""
 
 from __future__ import annotations
 
@@ -95,7 +95,26 @@ def parse_args() -> argparse.Namespace:
         "--weight-quantization",
         choices=("per-tensor", "per-channel", "blockwise"),
         default="per-tensor",
-        help="Asymmetric uint8 weight quantization mode; default: per-tensor.",
+        help="Weight quantization granularity; default: per-tensor.",
+    )
+    parser.add_argument(
+        "--weight-signedness",
+        choices=("unsigned", "signed"),
+        default="unsigned",
+        help="Quantized weight signedness; default: unsigned.",
+    )
+    parser.add_argument(
+        "--weight-bit-width",
+        type=int,
+        choices=(4, 8),
+        default=8,
+        help="Quantized weight bit width; default: 8.",
+    )
+    parser.add_argument(
+        "--weight-symmetry",
+        choices=("asymmetric", "symmetric"),
+        default="asymmetric",
+        help="Weight quantization scheme; default: asymmetric.",
     )
     parser.add_argument(
         "--qdq-profile",
@@ -170,29 +189,118 @@ def parse_args() -> argparse.Namespace:
 
 
 def asymmetric_params(
-    values: np.ndarray, axis: int
+    values: np.ndarray,
+    axis: int | tuple[int, ...],
+    quantized_dtype: np.dtype,
+    quantized_min: int,
+    quantized_max: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     minimum = np.minimum(np.min(values, axis=axis), 0.0)
     maximum = np.maximum(np.max(values, axis=axis), 0.0)
-    scale = np.maximum((maximum - minimum) / 255.0, 1e-8).astype(np.float32)
-    zero_point = np.clip(np.rint(-minimum / scale), 0, 255).astype(np.uint8)
+    scale = np.maximum(
+        (maximum - minimum) / (quantized_max - quantized_min), 1e-8
+    ).astype(np.float32)
+    zero_point = np.clip(
+        np.rint(quantized_min - minimum / scale),
+        quantized_min,
+        quantized_max,
+    ).astype(quantized_dtype)
     return scale, zero_point
+
+
+def symmetric_params(
+    values: np.ndarray,
+    axis: int | tuple[int, ...],
+    quantized_dtype: np.dtype,
+    quantized_max: int,
+    signedness: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    maximum_absolute = np.max(np.abs(values), axis=axis)
+    symmetric_max = quantized_max if signedness == "signed" else quantized_max // 2
+    scale = np.maximum(maximum_absolute / symmetric_max, 1e-8).astype(
+        np.float32
+    )
+    zero_point_value = 0 if signedness == "signed" else quantized_max // 2 + 1
+    zero_point = np.full(
+        scale.shape, zero_point_value, dtype=quantized_dtype
+    )
+    return scale, zero_point
+
+
+def calculate_params(
+    values: np.ndarray,
+    axis: int | tuple[int, ...],
+    quantized_dtype: np.dtype,
+    quantized_min: int,
+    quantized_max: int,
+    signedness: str,
+    symmetry: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    if symmetry == "symmetric":
+        return symmetric_params(
+            values, axis, quantized_dtype, quantized_max, signedness
+        )
+    return asymmetric_params(
+        values, axis, quantized_dtype, quantized_min, quantized_max
+    )
 
 
 def quantize_weight(
     values: np.ndarray,
     projection: Projection,
     mode: str,
+    signedness: str,
+    bit_width: int,
+    symmetry: str,
     block_size: int,
     block_axis: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, int]]:
     attributes: dict[str, int] = {}
+    tensor_dtype = {
+        ("signed", 4): TensorProto.INT4,
+        ("unsigned", 4): TensorProto.UINT4,
+        ("signed", 8): TensorProto.INT8,
+        ("unsigned", 8): TensorProto.UINT8,
+    }[(signedness, bit_width)]
+    quantized_dtype = np.dtype(
+        helper.tensor_dtype_to_np_dtype(tensor_dtype)
+    )
+    quantized_min = -(1 << (bit_width - 1)) if signedness == "signed" else 0
+    quantized_max = (
+        (1 << (bit_width - 1)) - 1
+        if signedness == "signed"
+        else (1 << bit_width) - 1
+    )
     if mode == "per-tensor":
-        scale = np.asarray(projection.weight_scale, dtype=np.float32)
-        zero_point = np.asarray(projection.weight_zero_point, dtype=np.uint8)
+        if symmetry == "asymmetric" and bit_width == 8:
+            scale = np.asarray(projection.weight_scale, dtype=np.float32)
+            zero_point_value = projection.weight_zero_point
+            if signedness == "signed":
+                zero_point_value -= 128
+            zero_point = np.asarray(
+                zero_point_value, dtype=quantized_dtype
+            )
+        else:
+            scale, zero_point = calculate_params(
+                values,
+                (0, 1),
+                quantized_dtype,
+                quantized_min,
+                quantized_max,
+                signedness,
+                symmetry,
+            )
         quantized = np.rint(values / scale) + zero_point
     elif mode == "per-channel":
-        scale, zero_point = asymmetric_params(values, axis=0)
+        scale, zero_point = calculate_params(
+            values,
+            0,
+            quantized_dtype,
+            quantized_min,
+            quantized_max,
+            signedness,
+            symmetry,
+        )
         quantized = np.rint(values / scale[None, :]) + zero_point[None, :]
         attributes["axis"] = 1
     else:
@@ -201,12 +309,20 @@ def quantize_weight(
         if block_axis == 0:
             block_count = (rows + block_size - 1) // block_size
             scale = np.empty((block_count, columns), dtype=np.float32)
-            zero_point = np.empty((block_count, columns), dtype=np.uint8)
+            zero_point = np.empty(
+                (block_count, columns), dtype=quantized_dtype
+            )
             for block_index in range(block_count):
                 start = block_index * block_size
                 end = min(start + block_size, rows)
-                block_scale, block_zero_point = asymmetric_params(
-                    values[start:end, :], axis=0
+                block_scale, block_zero_point = calculate_params(
+                    values[start:end, :],
+                    0,
+                    quantized_dtype,
+                    quantized_min,
+                    quantized_max,
+                    signedness,
+                    symmetry,
                 )
                 scale[block_index, :] = block_scale
                 zero_point[block_index, :] = block_zero_point
@@ -217,12 +333,20 @@ def quantize_weight(
         else:
             block_count = (columns + block_size - 1) // block_size
             scale = np.empty((rows, block_count), dtype=np.float32)
-            zero_point = np.empty((rows, block_count), dtype=np.uint8)
+            zero_point = np.empty(
+                (rows, block_count), dtype=quantized_dtype
+            )
             for block_index in range(block_count):
                 start = block_index * block_size
                 end = min(start + block_size, columns)
-                block_scale, block_zero_point = asymmetric_params(
-                    values[:, start:end], axis=1
+                block_scale, block_zero_point = calculate_params(
+                    values[:, start:end],
+                    1,
+                    quantized_dtype,
+                    quantized_min,
+                    quantized_max,
+                    signedness,
+                    symmetry,
                 )
                 scale[:, block_index] = block_scale
                 zero_point[:, block_index] = block_zero_point
@@ -233,7 +357,9 @@ def quantize_weight(
         attributes.update(axis=block_axis, block_size=block_size)
 
     return (
-        np.clip(quantized, 0, 255).astype(np.uint8),
+        np.clip(quantized, quantized_min, quantized_max).astype(
+            quantized_dtype
+        ),
         scale,
         zero_point,
         attributes,
@@ -261,6 +387,9 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
             weight,
             projection,
             args.weight_quantization,
+            args.weight_signedness,
+            args.weight_bit_width,
+            args.weight_symmetry,
             args.block_size,
             args.block_axis,
         )
@@ -411,6 +540,15 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
         key="weight_quantization", value=args.weight_quantization
     )
     model.metadata_props.add(
+        key="weight_signedness", value=args.weight_signedness
+    )
+    model.metadata_props.add(
+        key="weight_bit_width", value=str(args.weight_bit_width)
+    )
+    model.metadata_props.add(
+        key="weight_symmetry", value=args.weight_symmetry
+    )
+    model.metadata_props.add(
         key="weight_shape", value="x".join(str(dimension) for dimension in weight_shape)
     )
     if args.weight_quantization == "blockwise":
@@ -421,7 +559,10 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
             "architectures": "CLIPModel",
             "model_type": "clip",
             "activation_dtype": "QUInt16",
-            "weight_dtype": "QUInt8",
+            "weight_dtype": (
+                f"{'QInt' if args.weight_signedness == 'signed' else 'QUInt'}"
+                f"{args.weight_bit_width}"
+            ),
             "quant_type": "OnnxStaticQuantization",
         }
         for key, value in vitisai_metadata.items():

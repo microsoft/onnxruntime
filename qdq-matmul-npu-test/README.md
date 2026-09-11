@@ -22,7 +22,7 @@ python -m venv .venv-winml
 
 ## Generate the unit model
 
-`generate_qdq_matmul_model.py` creates a float32-input/output model with asymmetric uint16 activation QDQ, asymmetric uint8 constant-weight DQ, and MatMul. Weight quantization can be per-tensor, per-channel, or blockwise.
+`generate_qdq_matmul_model.py` creates a float32-input/output model with asymmetric uint16 activation QDQ, constant-weight DQ, and MatMul. Weights can be signed or unsigned, 4-bit or 8-bit, symmetric or asymmetric, and per-tensor, per-channel, or blockwise. The default is asymmetric per-tensor uint8.
 
 | QDQ profile | Standard opset | Q/DQ domain | Q/DQ opset |
 |---|---:|---|---:|
@@ -36,6 +36,9 @@ Add `--add-vitisai-metadata` to write the CLIP model identity and Vitis AI quant
 ```powershell
 .\.venv\Scripts\python.exe .\generate_qdq_matmul_model.py `
     --weight-quantization blockwise `
+    --weight-bit-width 4 `
+    --weight-signedness signed `
+    --weight-symmetry symmetric `
     --block-size 32
 ```
 
