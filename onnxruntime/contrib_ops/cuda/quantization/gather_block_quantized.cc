@@ -43,17 +43,52 @@ REGISTER_GATHERBLOCKQUANTIZED(uint8_t, BFloat16, int64_t);
 REGISTER_GATHERBLOCKQUANTIZED(Int4x2, BFloat16, int32_t);
 REGISTER_GATHERBLOCKQUANTIZED(Int4x2, BFloat16, int64_t);
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+#define REGISTER_GATHERBLOCKQUANTIZED_FP8(T1)                     \
+  REGISTER_GATHERBLOCKQUANTIZED(T1, float, int32_t);              \
+  REGISTER_GATHERBLOCKQUANTIZED(T1, float, int64_t);              \
+  REGISTER_GATHERBLOCKQUANTIZED(T1, MLFloat16, int32_t);          \
+  REGISTER_GATHERBLOCKQUANTIZED(T1, MLFloat16, int64_t);          \
+  REGISTER_GATHERBLOCKQUANTIZED(T1, BFloat16, int32_t);           \
+  REGISTER_GATHERBLOCKQUANTIZED(T1, BFloat16, int64_t);
+
+REGISTER_GATHERBLOCKQUANTIZED_FP8(Float8E4M3FN);
+REGISTER_GATHERBLOCKQUANTIZED_FP8(Float8E4M3FNUZ);
+REGISTER_GATHERBLOCKQUANTIZED_FP8(Float8E5M2);
+REGISTER_GATHERBLOCKQUANTIZED_FP8(Float8E5M2FNUZ);
+#undef REGISTER_GATHERBLOCKQUANTIZED_FP8
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+REGISTER_GATHERBLOCKQUANTIZED(Float4E2M1x2, float, int32_t);
+REGISTER_GATHERBLOCKQUANTIZED(Float4E2M1x2, float, int64_t);
+REGISTER_GATHERBLOCKQUANTIZED(Float4E2M1x2, MLFloat16, int32_t);
+REGISTER_GATHERBLOCKQUANTIZED(Float4E2M1x2, MLFloat16, int64_t);
+REGISTER_GATHERBLOCKQUANTIZED(Float4E2M1x2, BFloat16, int32_t);
+REGISTER_GATHERBLOCKQUANTIZED(Float4E2M1x2, BFloat16, int64_t);
+#endif  // !defined(DISABLE_FLOAT4_TYPES)
+
 template <typename T1, typename T2, typename Tind>
 GatherBlockQuantized<T1, T2, Tind>::GatherBlockQuantized(const OpKernelInfo& info) : CudaKernel(info) {
-  ORT_ENFORCE(info.GetAttr("bits", &bits_).IsOK());
+  if constexpr (IsFpQuantizedV<T1>) {
+    bits_ = 0;  // Not applicable for FP8/FP4 data.
+  } else {
+    ORT_ENFORCE(info.GetAttr("bits", &bits_).IsOK());
+  }
 
   block_size_ = info.GetAttrOrDefault<int64_t>("block_size", 0);
   gather_axis_ = info.GetAttrOrDefault<int64_t>("gather_axis", 0);
   quantize_axis_ = info.GetAttrOrDefault<int64_t>("quantize_axis", 0);
 
-  // If block size is set, it has to be no smaller than 16 and must be power of 2
-  // block_size_ & (block_size_ - 1) == 0 checks if block_size_ only has 1 bit set
-  ORT_ENFORCE(block_size_ == 0 || (block_size_ >= 16 && ((block_size_ & (block_size_ - 1)) == 0)));
+  // If block size is set, it has to be no smaller than 16 and must be power of 2.
+  // block_size_ & (block_size_ - 1) == 0 checks if block_size_ only has 1 bit set.
+  // block_size_ == 0 is only valid for FP8/FP4 data, meaning the whole quantize_axis dimension
+  // is a single block (one scale per row).
+  if (block_size_ == 0) {
+    ORT_ENFORCE(IsFpQuantizedV<T1>, "block_size must be a power of 2 and not smaller than 16.");
+  } else {
+    ORT_ENFORCE(block_size_ >= 16 && ((block_size_ & (block_size_ - 1)) == 0));
+  }
 }
 
 template <typename T1, typename T2, typename Tind>
@@ -116,6 +151,7 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   const auto* indices_ptr = indices->Data<Tind>();
   const T1* zero_points_ptr = nullptr;
   if (zero_points != nullptr) {
+    ORT_ENFORCE(!IsFpQuantizedV<T1>, "zero_points must not be provided when data is an FP8 or FP4 type.");
     zero_points_ptr = zero_points->Data<T1>();
   }
 
@@ -130,14 +166,18 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     }
   }
 
+  // block_size_ == 0 (FP8/FP4 only) means the whole quantize_axis dimension is a single block.
+  int64_t effective_block_size = block_size_ == 0 ? data_shape[quantize_axis_] : block_size_;
+
   GatherBlockQuantizedParam param;
   param.stream = Stream(ctx);
   param.after_gather_dim = after_gather_dim_unpacked;
   param.gather_axis_dim = data_shape[gather_axis_];
   param.ind_dim = ind_dim;
   param.bits = bits_;
-  param.block_size = block_size_;
+  param.block_size = effective_block_size;
   param.gather_axis = gather_axis_;
+  param.scale_size = scales->Shape().Size();
   param.N = N;
 
   const auto dequantized_type = scales->GetElementType();

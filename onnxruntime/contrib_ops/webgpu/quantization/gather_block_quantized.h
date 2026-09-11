@@ -16,15 +16,19 @@ using onnxruntime::webgpu::ComputeContext;
 class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedProgram> {
  public:
   GatherBlockQuantizedProgram(const bool is_signed, const bool is_uint8, size_t indices_rank, int gather_axis, int bits, bool has_zeropoint,
-                              TensorShape x_shape, TensorShape output_shape) : Program<GatherBlockQuantizedProgram>{"GatherBlockQuantized"},
-                                                                               is_signed_{is_signed},
-                                                                               is_uint8_{is_uint8},
-                                                                               indices_rank_{indices_rank},
-                                                                               gather_axis_{gather_axis},
-                                                                               bits_{bits},
-                                                                               has_zeropoint_{has_zeropoint},
-                                                                               x_shape_{x_shape},
-                                                                               output_shape_{output_shape} {}
+                              TensorShape x_shape, TensorShape output_shape, bool is_fp_quantized = false,
+                              int32_t fp_elem_type = 0)
+      : Program<GatherBlockQuantizedProgram>{"GatherBlockQuantized"},
+        is_signed_{is_signed},
+        is_uint8_{is_uint8},
+        indices_rank_{indices_rank},
+        gather_axis_{gather_axis},
+        bits_{bits},
+        has_zeropoint_{has_zeropoint},
+        x_shape_{x_shape},
+        output_shape_{output_shape},
+        is_fp_quantized_{is_fp_quantized},
+        fp_elem_type_{fp_elem_type} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -44,6 +48,12 @@ class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedPro
   bool has_zeropoint_;
   TensorShape x_shape_;
   TensorShape output_shape_;
+  // When true, `data` holds FP8 or FP4 codes (rather than integer block-quantized codes) and
+  // GenerateShaderCode emits a dequantization lookup table (indexed on the raw bit pattern)
+  // instead of the (code - zero_point) integer formula. `fp_elem_type_` is the
+  // ONNX_TENSOR_ELEMENT_DATA_TYPE_* value identifying which FP8/FP4 variant to build the table for.
+  bool is_fp_quantized_;
+  int32_t fp_elem_type_;
 };
 
 class GatherBlockQuantized final : public WebGpuKernel {
@@ -55,8 +65,10 @@ class GatherBlockQuantized final : public WebGpuKernel {
     bits_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("bits", 4));
 
     ORT_ENFORCE(bits_ == 2 || bits_ == 4 || bits_ == 8, "'bits' must be 2, 4 or 8.");
-    ORT_ENFORCE(block_size_ >= 16 && ((block_size_ - 1) & block_size_) == 0,
-                "'block_size' must be 2's power and not less than 16.");
+    // block_size == 0 is only valid for FP8/FP4 `data`, which is validated (against the actual
+    // input element type) in ComputeInternal, since the element type isn't known here.
+    ORT_ENFORCE(block_size_ == 0 || (block_size_ >= 16 && ((block_size_ - 1) & block_size_) == 0),
+                "'block_size' must be 0, or 2's power and not less than 16.");
   }
   Status ComputeInternal(ComputeContext& context) const override;
 
