@@ -111,11 +111,11 @@ class GeneratorIfTest(unittest.TestCase):
 class GeneratorPropertyTest(unittest.TestCase):
     def test_rank_property(self) -> None:
         out = _gen("#use .rank\nlet n = output.rank;\n")
-        self.assertIn("__var_output.Rank()", out)
+        self.assertIn("__var_output->Rank()", out)
 
     def test_method_call(self) -> None:
         out = _gen("#use .offsetToIndices\nlet i = output.offsetToIndices(j);\n")
-        self.assertIn("__var_output.OffsetToIndices", out)
+        self.assertIn("__var_output->OffsetToIndices", out)
 
 
 class GeneratorFunctionTest(unittest.TestCase):

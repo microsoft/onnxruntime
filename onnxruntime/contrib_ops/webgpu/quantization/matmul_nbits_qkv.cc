@@ -52,7 +52,7 @@ class MatMulNBitsQkvDecodeProgram final
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     const auto* skip = has_skip_input_ ? &shader.AddInput("skip", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias) : nullptr;
-    const auto* norm_scale_ptr = has_norm_ ? &shader.AddInput("norm_scale", ShaderUsage::UseValueTypeAlias) : nullptr;
+    const auto* norm_scale = has_norm_ ? &shader.AddInput("norm_scale", ShaderUsage::UseValueTypeAlias) : nullptr;
     const auto& q_b = shader.AddInput("q_b", ShaderUsage::UseValueTypeAlias);
     const auto& q_scales_b = shader.AddInput("q_scales_b");
     const auto& k_b = shader.AddInput("k_b");
@@ -69,10 +69,6 @@ class MatMulNBitsQkvDecodeProgram final
                                             ShaderUsage::UseValueTypeAlias |
                                                 ShaderUsage::UseElementTypeAlias);
     const auto* input_skip_bias_sum = has_skip_output_ ? &shader.AddOutput("input_skip_bias_sum", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias) : nullptr;
-    const auto& skip_var = skip != nullptr ? *skip : a;
-    const auto& norm_scale_var = norm_scale_ptr != nullptr ? *norm_scale_ptr : a;
-    const auto& input_skip_bias_sum_var = input_skip_bias_sum != nullptr ? *input_skip_bias_sum : q_output;
-
     const uint32_t components_a = a.NumComponents();
     const uint32_t components_b = q_b.NumComponents() / 4;
     const uint32_t tile_size_k_vec = tile_size_k_vec_;
@@ -97,15 +93,15 @@ class MatMulNBitsQkvDecodeProgram final
                                WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
                                WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
                                WGSL_TEMPLATE_VARIABLE(a, a),
-                               WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum_var),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
                                WGSL_TEMPLATE_VARIABLE(k_b, k_b),
                                WGSL_TEMPLATE_VARIABLE(k_output, k_output),
                                WGSL_TEMPLATE_VARIABLE(k_scales_b, k_scales_b),
-                               WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale_var),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(norm_scale, norm_scale),
                                WGSL_TEMPLATE_VARIABLE(q_b, q_b),
                                WGSL_TEMPLATE_VARIABLE(q_output, q_output),
                                WGSL_TEMPLATE_VARIABLE(q_scales_b, q_scales_b),
-                               WGSL_TEMPLATE_VARIABLE(skip, skip_var),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(skip, skip),
                                WGSL_TEMPLATE_VARIABLE(v_b, v_b),
                                WGSL_TEMPLATE_VARIABLE(v_output, v_output),
                                WGSL_TEMPLATE_VARIABLE(v_scales_b, v_scales_b));
