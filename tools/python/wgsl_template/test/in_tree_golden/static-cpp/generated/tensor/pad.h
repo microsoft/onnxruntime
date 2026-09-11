@@ -15,7 +15,7 @@ Status ApplyTemplate<"tensor/pad.wgsl.template">(ShaderHelper& shader_helper, Te
   auto& __param_pad_mode = params.param_pad_mode;
 
   // Extract variables
-  auto& __var_output = *params.var_output;
+  auto* __var_output = params.var_output;
 
 //  1 | #define PAD_MODE_CONSTANT 0
 //  2 | #define PAD_MODE_REFLECT 1
@@ -60,7 +60,7 @@ ss << __str_345;
 } else {
 // 27 |   let output_indices = output.offsetToIndices(global_idx);
 ss << __str_346;
-ss << __var_output.OffsetToIndices(__str_214);
+ss << __var_output->OffsetToIndices(__str_214);
 ss << __str_192;
 // 28 |   var input_index = u32(0);
 ss << __str_347;
@@ -72,19 +72,19 @@ ss << __str_349;
 ss << __str_12;
 // 32 |   for (var dim = 0; dim < output.rank && !use_pad_value; dim++) {
 ss << __str_350;
-ss << __var_output.Rank();
+ss << __var_output->Rank();
 ss << __str_351;
 // 33 |     let output_index = i32(getElementAt(output_indices, dim, output.rank));
 ss << __str_352;
-ss << GetElementAt(__str_336, __str_337, __var_output.Rank());
+ss << GetElementAt(__str_336, __str_337, __var_output->Rank());
 ss << __str_3;
 // 34 |     let lower_pads = getElementAt(uniforms.lower_pads, dim, output.rank);
 ss << __str_353;
-ss << GetElementAt(__str_338, __str_337, __var_output.Rank());
+ss << GetElementAt(__str_338, __str_337, __var_output->Rank());
 ss << __str_192;
 // 35 |     let data_shape = i32(getElementAt(uniforms.data_shape, dim, output.rank));
 ss << __str_354;
-ss << GetElementAt(__str_339, __str_337, __var_output.Rank());
+ss << GetElementAt(__str_339, __str_337, __var_output->Rank());
 ss << __str_3;
 // 36 | #if pad_mode == PAD_MODE_CONSTANT
 if (__param_pad_mode == 0) {
@@ -154,16 +154,16 @@ ss << __str_372;
 // 69 |     input_index += select(u32(in_coord)
 ss << __str_373;
 // 70 | #if output.rank > 1
-if (__var_output.Rank() > 1) {
+if (__var_output->Rank() > 1) {
 // 71 |         * getElementAt(uniforms.data_stride, dim, output.rank - 1)
 ss << __str_374;
-ss << GetElementAt(__str_340, __str_337, __var_output.Rank() - 1);
+ss << GetElementAt(__str_340, __str_337, __var_output->Rank() - 1);
 ss << __str_12;
 // 72 | #endif
 }
 // 73 |         , u32(in_coord), dim == output.rank - 1);
 ss << __str_375;
-ss << __var_output.Rank();
+ss << __var_output->Rank();
 ss << __str_376;
 // 74 |   }
 ss << __str_222;
@@ -171,7 +171,7 @@ ss << __str_222;
 ss << __str_12;
 // 76 |   output.setByOffset(global_idx, select(data[input_index], constant_value, use_pad_value));
 ss << __str_216;
-ss << __var_output.SetByOffset(__str_214, __str_341);
+ss << __var_output->SetByOffset(__str_214, __str_341);
 ss << __str_192;
 // 77 | #endif
 }

@@ -199,6 +199,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--use_vcpkg_ms_internal_asset_cache", action="store_true", help="[MS Internal] Use internal vcpkg asset cache."
     )
+    parser.add_argument("--terrapin_retrieval_tool_path", help="Path to TerrapinRetrievalTool binary.")
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
     parser.add_argument("--skip_pip_install", action="store_true", help="Skip 'pip install'.")
 

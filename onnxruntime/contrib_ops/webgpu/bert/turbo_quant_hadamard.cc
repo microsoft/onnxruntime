@@ -31,11 +31,8 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
   }
 
   // Past KV cache is already u32-packed — add as uniform only (no type aliases needed).
-  // The variable bindings are always passed to the template; when has_past_ is false the
-  // template never references them (guarded by #if has_past), so binding them to placeholder
-  // variables (key/value) is harmless and avoids passing a null variable pointer.
-  const ShaderVariableHelper* past_key = &key;
-  const ShaderVariableHelper* past_value = &value;
+  const ShaderVariableHelper* past_key = nullptr;
+  const ShaderVariableHelper* past_value = nullptr;
   if (has_past_) {
     past_key = &shader.AddInput("past_key", ShaderUsage::UseUniform);
     past_value = &shader.AddInput("past_value", ShaderUsage::UseUniform);
@@ -51,8 +48,8 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
                              WGSL_TEMPLATE_PARAMETER(prepare_indirect_dispatch, prepare_indirect_dispatch_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_VARIABLE(key, key),
-                             WGSL_TEMPLATE_VARIABLE(past_key, *past_key),
-                             WGSL_TEMPLATE_VARIABLE(past_value, *past_value),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_key, past_key),
+                             WGSL_TEMPLATE_OPTIONAL_VARIABLE(past_value, past_value),
                              WGSL_TEMPLATE_VARIABLE(present_key, present_key),
                              WGSL_TEMPLATE_VARIABLE(present_value, present_value),
                              WGSL_TEMPLATE_VARIABLE(value, value));

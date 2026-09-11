@@ -32,7 +32,8 @@ class MatMulNBitsQkvDecodeProgram final
                               uint32_t k_unroll_tiles,
                               bool has_norm,
                               bool has_skip_input,
-                              bool has_skip_output)
+                              bool has_skip_output,
+                              bool acc_f32)
       : Program{"MatMulNBitsQkvDecode"},
         tile_size_(tile_size),
         single_scale_weights_(single_scale_weights),
@@ -40,7 +41,8 @@ class MatMulNBitsQkvDecodeProgram final
         k_unroll_tiles_(k_unroll_tiles),
         has_norm_(has_norm),
         has_skip_input_(has_skip_input),
-        has_skip_output_(has_skip_output) {
+        has_skip_output_(has_skip_output),
+        acc_f32_(acc_f32) {
     // The no-norm variant runs against an already-normalized input tensor and therefore
     // never owns the residual skip path nor the residual passthrough output.
     ORT_ENFORCE(has_norm_ || (!has_skip_input_ && !has_skip_output_),
@@ -50,7 +52,7 @@ class MatMulNBitsQkvDecodeProgram final
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     const auto* skip = has_skip_input_ ? &shader.AddInput("skip", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias) : nullptr;
-    const auto* norm_scale_ptr = has_norm_ ? &shader.AddInput("norm_scale", ShaderUsage::UseValueTypeAlias) : nullptr;
+    const auto* norm_scale = has_norm_ ? &shader.AddInput("norm_scale", ShaderUsage::UseValueTypeAlias) : nullptr;
     const auto& q_b = shader.AddInput("q_b", ShaderUsage::UseValueTypeAlias);
     const auto& q_scales_b = shader.AddInput("q_scales_b");
     const auto& k_b = shader.AddInput("k_b");
@@ -67,10 +69,6 @@ class MatMulNBitsQkvDecodeProgram final
                                             ShaderUsage::UseValueTypeAlias |
                                                 ShaderUsage::UseElementTypeAlias);
     const auto* input_skip_bias_sum = has_skip_output_ ? &shader.AddOutput("input_skip_bias_sum", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias) : nullptr;
-    const auto& skip_var = skip != nullptr ? *skip : a;
-    const auto& norm_scale_var = norm_scale_ptr != nullptr ? *norm_scale_ptr : a;
-    const auto& input_skip_bias_sum_var = input_skip_bias_sum != nullptr ? *input_skip_bias_sum : q_output;
-
     const uint32_t components_a = a.NumComponents();
     const uint32_t components_b = q_b.NumComponents() / 4;
     const uint32_t tile_size_k_vec = tile_size_k_vec_;
@@ -81,6 +79,7 @@ class MatMulNBitsQkvDecodeProgram final
 
     return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_qkv.wgsl.template",
                                WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                               WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                                WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                                WGSL_TEMPLATE_PARAMETER(component_b, components_b),
                                WGSL_TEMPLATE_PARAMETER(elements_in_value_b, elements_in_value_b),
@@ -94,15 +93,15 @@ class MatMulNBitsQkvDecodeProgram final
                                WGSL_TEMPLATE_PARAMETER(tile_size_k, tile_size_k),
                                WGSL_TEMPLATE_PARAMETER(tile_size_k_vec, tile_size_k_vec),
                                WGSL_TEMPLATE_VARIABLE(a, a),
-                               WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum_var),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
                                WGSL_TEMPLATE_VARIABLE(k_b, k_b),
                                WGSL_TEMPLATE_VARIABLE(k_output, k_output),
                                WGSL_TEMPLATE_VARIABLE(k_scales_b, k_scales_b),
-                               WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale_var),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(norm_scale, norm_scale),
                                WGSL_TEMPLATE_VARIABLE(q_b, q_b),
                                WGSL_TEMPLATE_VARIABLE(q_output, q_output),
                                WGSL_TEMPLATE_VARIABLE(q_scales_b, q_scales_b),
-                               WGSL_TEMPLATE_VARIABLE(skip, skip_var),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(skip, skip),
                                WGSL_TEMPLATE_VARIABLE(v_b, v_b),
                                WGSL_TEMPLATE_VARIABLE(v_output, v_output),
                                WGSL_TEMPLATE_VARIABLE(v_scales_b, v_scales_b));
@@ -129,6 +128,7 @@ class MatMulNBitsQkvDecodeProgram final
   bool has_norm_;
   bool has_skip_input_;
   bool has_skip_output_;
+  bool acc_f32_;
 };
 
 }  // namespace
@@ -325,13 +325,15 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   }
 
   const uint32_t num_N_tile = CeilDiv(std::max(Nq, Nkv), tile_size);
+  const bool acc_f32 = context.EnableMatmulFp32Accumulation();
   MatMulNBitsQkvDecodeProgram program{tile_size,
                                       single_scale_weights,
                                       tile_size_k_vec,
                                       k_unroll_tiles,
                                       decode_has_norm,
                                       decode_has_skip_input,
-                                      decode_has_skip_output};
+                                      decode_has_skip_output,
+                                      acc_f32};
   program.SetWorkgroupSize(workgroup_size);
   program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
   program
@@ -373,6 +375,7 @@ Status MatMulNBitsQkv::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                  decode_has_norm,
                  decode_has_skip_input,
                  decode_has_skip_output,
+                 acc_f32,
                  "decode_qkv_sln");
   if (decode_has_skip_output) {
     program.AddOutput({decode_input_skip_bias_sum,
