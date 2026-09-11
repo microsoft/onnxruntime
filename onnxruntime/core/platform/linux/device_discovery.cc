@@ -17,6 +17,7 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
+#include "core/common/pci_vendor_ids.h"
 #include "core/common/string_utils.h"
 
 namespace fs = std::filesystem;
@@ -24,8 +25,6 @@ namespace fs = std::filesystem;
 namespace onnxruntime {
 
 namespace {
-
-constexpr uint16_t kNvidiaVendorId = 0x10de;
 
 Status ErrorCodeToStatus(const std::error_code& ec, const std::filesystem::path& path, const std::string_view context) {
   if (!ec) {
@@ -73,7 +72,7 @@ std::optional<bool> IsGpuDiscrete(uint16_t vendor_id, uint16_t device_id) {
 
   // Currently, we only assume that all Nvidia GPUs are discrete.
 
-  if (vendor_id == kNvidiaVendorId) {
+  if (vendor_id == pci_vendor_ids::kNvidia) {
     return true;
   }
 
@@ -175,7 +174,7 @@ Status GetGpuDeviceFromSysfs(const GpuSysfsPathInfo& path_info, OrtHardwareDevic
   OrtHardwareDevice gpu_device{};
   const auto& sysfs_path = path_info.path;
 
-  uint16_t vendor_id = kNvidiaVendorId;
+  uint16_t vendor_id = pci_vendor_ids::kNvidia;
   if (!path_info.is_nvidia_platform_gpu) {
     const auto vendor_id_path = sysfs_path / "device" / "vendor";
     ORT_RETURN_IF_ERROR(ReadValueFromFile(vendor_id_path, vendor_id));

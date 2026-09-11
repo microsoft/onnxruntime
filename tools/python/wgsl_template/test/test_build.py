@@ -57,6 +57,24 @@ def _walk_files(root: Path) -> list[str]:
 
 
 class BuildIdempotentWriteTest(unittest.TestCase):
+    def test_variable_dereference_is_deferred_until_use(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "src"
+            out = root / "out"
+            _write(
+                src / "conditional.wgsl.template",
+                "#use .rank\n#param has_output\n#if has_output\nlet rank = output.rank;\n#endif\n",
+            )
+
+            build(source_dirs=[src], out_dir=out, generator="static-cpp-literal")
+            generated = (out / "generated/conditional.h").read_text(encoding="utf-8")
+
+            self.assertIn("auto* __var_output = params.var_output;", generated)
+            self.assertNotIn("*params.var_output", generated)
+            self.assertIn("if (__param_has_output) {", generated)
+            self.assertIn("__var_output->Rank()", generated)
+
     def test_unchanged_file_is_not_rewritten(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
