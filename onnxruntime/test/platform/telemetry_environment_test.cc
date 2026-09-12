@@ -75,5 +75,86 @@ TEST(TelemetryEnvironmentTest, RunningUnitTestsSuppresses) {
   }
 }
 
+TEST(TelemetryEnvironmentTest, ClassifiesContainersAndVirtualMachines) {
+  using telemetry_detail::ClassifyHostEnvironment;
+  using telemetry_detail::HostEnvironmentEvidence;
+
+  {
+    HostEnvironmentEvidence evidence;
+    evidence.kubernetes = true;
+    const auto info = ClassifyHostEnvironment(evidence);
+    EXPECT_TRUE(info.is_container);
+    EXPECT_STREQ(info.container_type, "kubernetes");
+    EXPECT_STREQ(info.environment_class, "container");
+    EXPECT_STREQ(info.detection_confidence, "high");
+    EXPECT_STREQ(info.device_id_scope, "container");
+  }
+  {
+    HostEnvironmentEvidence evidence;
+    evidence.podman_marker = true;
+    evidence.dmi = "Amazon EC2";
+    const auto info = ClassifyHostEnvironment(evidence);
+    EXPECT_TRUE(info.is_container);
+    EXPECT_TRUE(info.is_virtual_machine);
+    EXPECT_STREQ(info.container_type, "podman");
+    EXPECT_STREQ(info.virtualization_type, "amazonEC2");
+    EXPECT_STREQ(info.environment_class, "containerOnVirtualMachine");
+  }
+  {
+    HostEnvironmentEvidence evidence;
+    evidence.cgroup = "0::/system.slice/docker-012345.scope";
+    const auto info = ClassifyHostEnvironment(evidence);
+    EXPECT_TRUE(info.is_container);
+    EXPECT_STREQ(info.container_type, "docker");
+  }
+  {
+    HostEnvironmentEvidence evidence;
+    evidence.aws_ecs = true;
+    const auto info = ClassifyHostEnvironment(evidence);
+    EXPECT_TRUE(info.is_container);
+    EXPECT_STREQ(info.container_type, "amazonECS");
+  }
+  {
+    HostEnvironmentEvidence evidence;
+    evidence.dmi = "Microsoft Corporation Virtual Machine";
+    const auto info = ClassifyHostEnvironment(evidence);
+    EXPECT_TRUE(info.is_virtual_machine);
+    EXPECT_STREQ(info.virtualization_type, "hyperV");
+    EXPECT_STREQ(info.environment_class, "virtualMachine");
+    EXPECT_STREQ(info.device_id_scope, "virtualMachine");
+  }
+  {
+    HostEnvironmentEvidence evidence;
+    evidence.kernel_release = "6.6.87.2-microsoft-standard-WSL2";
+    const auto info = ClassifyHostEnvironment(evidence);
+    EXPECT_TRUE(info.is_virtual_machine);
+    EXPECT_STREQ(info.virtualization_type, "wsl");
+  }
+}
+
+TEST(TelemetryEnvironmentTest, ClassifiesEmulatorAndUndetectedHostWithoutClaimingPhysicalDevice) {
+  using telemetry_detail::ClassifyHostEnvironment;
+  using telemetry_detail::HostEnvironmentEvidence;
+
+  {
+    HostEnvironmentEvidence evidence;
+    evidence.android_emulator = true;
+    const auto info = ClassifyHostEnvironment(evidence);
+    EXPECT_TRUE(info.is_virtual_machine);
+    EXPECT_TRUE(info.is_emulator);
+    EXPECT_STREQ(info.virtualization_type, "androidEmulator");
+    EXPECT_STREQ(info.environment_class, "emulator");
+  }
+  {
+    const auto info = ClassifyHostEnvironment(HostEnvironmentEvidence{});
+    EXPECT_FALSE(info.is_container);
+    EXPECT_FALSE(info.is_virtual_machine);
+    EXPECT_FALSE(info.is_emulator);
+    EXPECT_STREQ(info.environment_class, "undetected");
+    EXPECT_STREQ(info.detection_confidence, "none");
+    EXPECT_STREQ(info.device_id_scope, "installation");
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
