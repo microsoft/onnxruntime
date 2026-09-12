@@ -55,7 +55,8 @@ namespace Dml
         // for example, an allocation from BucketizedBufferAllocator attempts to queue a reference
         // to its underlying D3D resource when freed. Furthermore, these references are unnecessary
         // since Close() already blocks for scheduled GPU work before clearing m_queuedReferences.
-        if (!m_closing)
+        // If the CommandQueue is releasing completed references, we don't need to queue the reference up again.
+        if (!m_closing && !m_releasing)
         {
             QueuedReference queuedReference = {GetLastFenceValue(), object};
 
@@ -66,7 +67,13 @@ namespace Dml
                 ++queuedReference.fenceValue;
             }
 
-            m_queuedReferences.push_back(queuedReference);
+            // We don't need to queue references whose work has already completed on the GPU by the time the CPU queues
+            // the reference. Just let it go out of scope.
+            uint64_t completedValue = GetFence()->GetCompletedValue();
+            if (queuedReference.fenceValue > completedValue)
+            {
+                m_queuedReferences.push_back(queuedReference);
+            }
         }
     }
 
@@ -84,10 +91,12 @@ namespace Dml
     void CommandQueue::ReleaseCompletedReferences()
     {
         uint64_t completedValue = GetFence()->GetCompletedValue();
+        m_releasing = true;
         while (!m_queuedReferences.empty() && m_queuedReferences.front().fenceValue <= completedValue)
         {
             m_queuedReferences.pop_front();
         }
+        m_releasing = false;
     }
 
 } // namespace Dml
