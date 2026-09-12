@@ -9,9 +9,8 @@
 namespace onnxruntime::telemetry_internal {
 
 // These PAL-populated fields are not needed by ORT. ext.os.locale is not populated by this SDK path.
-inline constexpr std::array<const char*, 5> kSuppressedCommonContextFields{
+inline constexpr std::array<const char*, 4> kSuppressedCommonContextFields{
     "AppInfo.Language",
-    "AppInfo.Name",
     "UserInfo.Language",
     "UserInfo.TimeZone",
     "M365aInfo.EnrolledTenantId",
@@ -30,6 +29,13 @@ template <typename SemanticContext>
 void SuppressUnneededCommonContext(SemanticContext& context) {
   for (const char* field : kSuppressedCommonContextFields) {
     context.SetCommonField(field, std::string{});
+  }
+}
+
+template <typename SemanticContext>
+void SetApplicationNameFromProcessName(SemanticContext& context, const std::string& process_name) {
+  if (!process_name.empty()) {
+    context.SetCommonField("AppInfo.Name", process_name);
   }
 }
 

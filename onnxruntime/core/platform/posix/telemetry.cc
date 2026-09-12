@@ -398,6 +398,11 @@ int32_t GetProcessorCount() {
   return static_cast<int32_t>(n);
 }
 
+std::string GetFileName(std::string_view path) {
+  const size_t separator = path.find_last_of('/');
+  return std::string(path.substr(separator == std::string_view::npos ? 0 : separator + 1));
+}
+
 }  // namespace
 
 PosixTelemetry::PosixTelemetry() {
@@ -539,7 +544,10 @@ void PosixTelemetry::Initialize() {
   }
 
   (void)telemetry_internal::TryTelemetryOperationNoThrow([&]() {
-    telemetry_internal::SuppressUnneededCommonContext(*logger->GetSemanticContext());
+    auto& context = *logger->GetSemanticContext();
+    telemetry_internal::SuppressUnneededCommonContext(context);
+    telemetry_internal::SetApplicationNameFromProcessName(
+        context, ScrubStringForTelemetry(GetProcessName()));
   });
   bool network_context_suppressed = false;
   if (process_info_logged_.load(std::memory_order_acquire)) {
@@ -793,6 +801,29 @@ telemetry_detail::HostEnvironmentInfo PosixTelemetry::GetHostEnvironmentInfo() {
       is_virtual_machine != 0;
 #endif
   return telemetry_detail::ClassifyHostEnvironment(evidence);
+}
+
+std::string PosixTelemetry::GetProcessName() {
+#if defined(__APPLE__)
+  uint32_t path_size = 1024;
+  std::vector<char> path(path_size);
+  if (_NSGetExecutablePath(path.data(), &path_size) != 0) {
+    path.resize(path_size);
+    if (_NSGetExecutablePath(path.data(), &path_size) != 0) {
+      return {};
+    }
+  }
+  return GetFileName(path.data());
+#elif defined(__linux__) || defined(__ANDROID__)
+  std::ifstream cmdline("/proc/self/cmdline", std::ios::binary);
+  std::string first_argument;
+  if (cmdline && std::getline(cmdline, first_argument, '\0')) {
+    return GetFileName(first_argument);
+  }
+  return {};
+#else
+  return {};
+#endif
 }
 
 // Get the CPU architecture the binary was compiled for

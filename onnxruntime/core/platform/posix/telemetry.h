@@ -146,6 +146,7 @@ class PosixTelemetry : public Telemetry {
   std::string GetCpuModel() const;
   std::string GetDeviceClass() const;
   static telemetry_detail::HostEnvironmentInfo GetHostEnvironmentInfo();
+  static std::string GetProcessName();
   static std::string GetArchitecture();
   static int64_t GetTotalMemoryMB();
 
