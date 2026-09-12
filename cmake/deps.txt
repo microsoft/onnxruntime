@@ -34,10 +34,10 @@ microsoft_gsl;https://github.com/microsoft/GSL/archive/refs/tags/v4.2.1.zip;1094
 microsoft_wil;https://github.com/microsoft/wil/archive/refs/tags/v1.0.250325.1.zip;826c8bd47c2258ec61b8b218e031e5b33d27f761
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
-# ONNX pinned to the 1.22.0 final release (tag v1.22.0). rc2->final changed only CI
-# workflow yml + VERSION_NUMBER (no operator-schema, opset, or testdata change), so it is
-# pure version plumbing. The 7 CI requirements.txt files are pinned to onnx==1.22.0 (now on PyPI).
-onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.22.0.zip;2b2cd58ac7a26df5371266149e0c76776330cdf1
+# ONNX source VERSION_NUMBER=1.23.0 / opset 28 under development, pinned to the exact main commit.
+# ONNX_VERSION=1.23.0
+# The 7 CI requirements.txt files are pinned to onnx==1.23.0rc1.
+onnx;https://github.com/onnx/onnx/archive/c78026fa617f273fe5c685c74f9de3e6e96504ed.zip;c6db933eed488046fa0bdae215d84a9351715ee4
 # Use the latest commit of 10.9-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/d5dce67db7c2e64b07e055571f5ec06f7f254de2.zip;01114d3b67650857281fa50faa2e412130a63b69
 protobuf;https://github.com/protocolbuffers/protobuf/releases/download/v33.6/protobuf-33.6.tar.gz;051fee744fcca04dab37eb009d49aa3e9546acda

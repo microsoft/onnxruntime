@@ -47,6 +47,8 @@ constexpr bool TensorElementTypeConversionIsConstexpr() {
           ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0,
           ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT2,
           ONNX_TENSOR_ELEMENT_DATA_TYPE_INT2,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E2M3,
+          ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT6E3M2,
       };
 
   for (size_t index = 0; index < expected_types.size(); ++index) {
