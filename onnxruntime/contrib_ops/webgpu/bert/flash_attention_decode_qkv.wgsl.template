@@ -4,6 +4,7 @@
 #param bit_width
 #param compressed_head_size_u32
 #param has_attention_bias
+#param has_qkv_bias
 #param is_unidirectional
 #param m_tile
 #param q_BNSH
@@ -137,7 +138,11 @@ $MAIN {
                    head_idx * uniforms.head_size_vec;
 #endif
     for (var i = local_idx; i < v_head_size_vec; i += workgroup_size_x) {
+#if has_qkv_bias
+      all_q[m][i] = (q.getByOffset(q_offset + i) + qkv_bias[head_idx * v_head_size_vec + i]) * q_element_t(uniforms.alpha);
+#else
       all_q[m][i] = q.getByOffset(q_offset + i) * q_element_t(uniforms.alpha);
+#endif
     }
   }
   workgroupBarrier();
@@ -203,7 +208,12 @@ $MAIN {
                        q_idx * uniforms.num_heads * uniforms.head_size_vec +
                        head_idx * uniforms.head_size_vec;
 #endif
+#if has_qkv_bias
+        tile_q[m][local_idx] = q.getByOffset(q_offset + k + local_idx) +
+                               qkv_bias[head_idx * uniforms.head_size_vec + k + local_idx];
+#else
         tile_q[m][local_idx] = q.getByOffset(q_offset + k + local_idx);
+#endif
       }
     }
     workgroupBarrier();

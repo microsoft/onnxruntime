@@ -2,12 +2,16 @@
 // Licensed under the MIT License.
 
 #include "core/platform/env_var_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -680,6 +684,166 @@ TEST(MultiHeadAttentionTest, EmptyKeyValueSequence) {
   execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQkvBiasPrefill) {
+  constexpr int sequence_length = 32;
+  constexpr int head_size = 4;
+  constexpr float high_key_probability = 0.7310586f;
+
+  std::vector<float> query(sequence_length * head_size, 0.0f);
+  std::vector<float> key(sequence_length * head_size, 0.0f);
+  std::vector<float> value(sequence_length * head_size, 0.0f);
+  for (int sequence = sequence_length / 2; sequence < sequence_length; ++sequence) {
+    key[sequence * head_size] = 1.0f;
+    for (int hidden = 0; hidden < head_size; ++hidden) {
+      value[sequence * head_size + hidden] = static_cast<float>(hidden + 1);
+    }
+  }
+
+  const std::vector<float> bias = {
+      2.0f, 0.0f, 0.0f, 0.0f,
+      0.25f, 0.5f, 0.75f, 1.0f,
+      0.5f, 0.25f, -0.25f, -0.5f};
+  const std::vector<float> expected_token = {
+      high_key_probability + 0.5f,
+      2.0f * high_key_probability + 0.25f,
+      3.0f * high_key_probability - 0.25f,
+      4.0f * high_key_probability - 0.5f};
+
+  std::vector<float> expected_output;
+  std::vector<float> expected_present_key;
+  std::vector<float> expected_present_value;
+  expected_output.reserve(sequence_length * head_size);
+  expected_present_key.reserve(sequence_length * head_size);
+  expected_present_value.reserve(sequence_length * head_size);
+  for (int sequence = 0; sequence < sequence_length; ++sequence) {
+    expected_output.insert(expected_output.end(), expected_token.begin(), expected_token.end());
+    for (int hidden = 0; hidden < head_size; ++hidden) {
+      expected_present_key.push_back(key[sequence * head_size + hidden] + bias[head_size + hidden]);
+      expected_present_value.push_back(value[sequence * head_size + hidden] + bias[2 * head_size + hidden]);
+    }
+  }
+
+  auto execution_provider = DefaultWebGpuExecutionProvider();
+  if (execution_provider == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is unavailable.";
+  }
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+  tester.AddInput<float>("query", {1, sequence_length, head_size}, query);
+  tester.AddInput<float>("key", {1, sequence_length, head_size}, key);
+  tester.AddInput<float>("value", {1, sequence_length, head_size}, value);
+  tester.AddInput<float>("bias", {3 * head_size}, bias);
+  tester.AddOutput<float>("output", {1, sequence_length, head_size}, expected_output,
+                          false, 1e-4f, 1e-4f);
+  tester.AddOutput<float>("present_key", {1, 1, sequence_length, head_size}, expected_present_key);
+  tester.AddOutput<float>("present_value", {1, 1, sequence_length, head_size}, expected_present_value);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQBiasWithPrecomputedKv) {
+  constexpr int head_size = 4;
+  constexpr float high_key_probability = 0.7310586f;
+  const std::vector<float> bias = {
+      2.0f, 0.0f, 0.0f, 0.0f,
+      100.0f, 100.0f, 100.0f, 100.0f,
+      100.0f, 100.0f, 100.0f, 100.0f};
+  const std::vector<float> expected_output = {
+      high_key_probability,
+      2.0f * high_key_probability,
+      3.0f * high_key_probability,
+      4.0f * high_key_probability};
+
+  auto execution_provider = DefaultWebGpuExecutionProvider();
+  if (execution_provider == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is unavailable.";
+  }
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+  tester.AddInput<float>("query", {1, 1, head_size}, std::vector<float>(head_size, 0.0f));
+  tester.AddInput<float>("key", {1, 1, 2, head_size},
+                         {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
+  tester.AddInput<float>("value", {1, 1, 2, head_size},
+                         {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 4.0f});
+  tester.AddInput<float>("bias", {3 * head_size}, bias);
+  tester.AddOutput<float>("output", {1, 1, head_size}, expected_output,
+                          false, 1e-4f, 1e-4f);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+#ifdef USE_WEBGPU
+static void RunWebGpuFlashAttentionQkvBiasWithQuantizedKvCache(const char* quantization_bits) {
+  constexpr int sequence_length = 32;
+  constexpr int head_size = 128;
+  constexpr float high_key_probability = 0.8044297f;  // sigmoid(16 / sqrt(128))
+
+  std::vector<float> query(sequence_length * head_size, 0.0f);
+  std::vector<float> key(sequence_length * head_size, 0.0f);
+  std::vector<float> value(sequence_length * head_size, 0.0f);
+  for (int sequence = sequence_length / 2; sequence < sequence_length; ++sequence) {
+    key[sequence * head_size] = 4.0f;
+    value[sequence * head_size] = 4.0f;
+  }
+
+  std::vector<float> bias(3 * head_size, 0.0f);
+  bias[0] = 4.0f;
+  bias[head_size] = 1.0f;
+  bias[2 * head_size] = 1.0f;
+
+  std::vector<float> expected_output;
+  expected_output.reserve(sequence_length * head_size);
+  for (int sequence = 0; sequence < sequence_length; ++sequence) {
+    for (int hidden = 0; hidden < head_size; ++hidden) {
+      expected_output.push_back(hidden == 0 ? 1.0f + 4.0f * high_key_probability : 0.0f);
+    }
+  }
+
+  ConfigOptions config_options;
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kKvCacheQuantizationBits,
+                                                   quantization_bits));
+  auto execution_provider = WebGpuExecutionProviderWithOptions(config_options);
+  if (execution_provider == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is unavailable.";
+  }
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+  tester.AddInput<float>("query", {1, sequence_length, head_size}, query);
+  tester.AddInput<float>("key", {1, sequence_length, head_size}, key);
+  tester.AddInput<float>("value", {1, sequence_length, head_size}, value);
+  tester.AddInput<float>("bias", {3 * head_size}, bias);
+  tester.AddOutput<float>("output", {1, sequence_length, head_size}, expected_output,
+                          false, 0.1f, 0.4f);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(execution_provider));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQkvBiasWithTurboQuant) {
+  RunWebGpuFlashAttentionQkvBiasWithQuantizedKvCache(
+      webgpu::options::kKvCacheQuantizationBits_4Bit);
+}
+
+TEST(MultiHeadAttentionTest, WebGpuFlashAttentionQkvBiasWithBlockQuantInt8) {
+  RunWebGpuFlashAttentionQkvBiasWithQuantizedKvCache(
+      webgpu::options::kKvCacheQuantizationBits_8Bit);
+}
+#endif
 
 TEST(MultiHeadAttentionTest, CacheIndirectionBeamWidthOneInvalidIndex) {
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);

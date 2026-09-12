@@ -1020,7 +1020,7 @@ Status PagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
   Tensor* output_for_fa_tensor = skip_unpack_repack ? &output_view : &output_padded;
   ORT_RETURN_IF_ERROR(ApplyFlashAttention(
       q_for_fa_tensor,
-      /*K=*/nullptr, /*V=*/nullptr, /*attention_bias=*/nullptr,
+      /*K=*/nullptr, /*V=*/nullptr, /*attention_bias=*/nullptr, /*qkv_bias=*/nullptr,
       output_for_fa_tensor,
       /*past_key=*/use_direct_paged_attention ? key_cache_out : &k_padded, /*present_key=*/nullptr,
       /*past_value=*/use_direct_paged_attention ? value_cache_out : &v_padded, /*present_value=*/nullptr,

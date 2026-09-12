@@ -157,6 +157,7 @@ static_assert(SelectDecodeMTile(4, 64, 128 / 4, sizeof(float), 0, true, 16384) =
 
 FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
                                              bool has_attention_bias,
+                                             bool has_qkv_bias,
                                              bool is_qualcomm,
                                              bool is_fp16,
                                              int qkv_head_size,
@@ -174,6 +175,7 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
                                              bool use_seqlens_q)
     : Program{kernel_name},
       has_attention_bias_(has_attention_bias),
+      has_qkv_bias_(has_qkv_bias),
       is_qualcomm_(is_qualcomm),
       qkv_head_size_(qkv_head_size),
       qkv_num_heads_(qkv_num_heads),
@@ -234,6 +236,9 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   //  Attention bias is in BN(total_sequence_length)
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   shader.AddInput("value", ShaderUsage::UseUniform);
+  if (has_qkv_bias_) {
+    shader.AddInput("qkv_bias", ShaderUsage::UseUniform);
+  }
   const auto& present_key = shader.AddOutput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& present_value = shader.AddOutput("present_value", ShaderUsage::UseUniform);
   const auto& copy_kv_shape = shader.AddIndices("copy_kv_shape");
@@ -278,6 +283,12 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "  }\n\n";
   }
 
+  const std::string key_value = has_qkv_bias_
+                                    ? "key[offset] + qkv_bias[uniforms.key_bias_offset + offset % uniforms.key_bias_offset]"
+                                    : "key[offset]";
+  const std::string value_value = has_qkv_bias_
+                                      ? "value[offset] + qkv_bias[uniforms.value_bias_offset + offset % uniforms.key_bias_offset]"
+                                      : "value[offset]";
   if (has_past_) {
     const auto& past_key = shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
     shader.AddInput("past_value", ShaderUsage::UseUniform);
@@ -287,13 +298,13 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "  " << present_value.SetByOffset("present_offset", "past_value[pastOffset]") << ";\n"
                               << "} else {\n"
                               << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id - past_sequence_length, head_size_id)" : "key_indices_t(batch, sequence_id - past_sequence_length, num_head_id, head_size_id)") << ";\n"
-                              << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
-                              << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n"
+                              << "  " << present_key.SetByOffset("present_offset", key_value) << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", value_value) << ";\n"
                               << "}";
   } else {
     shader.MainFunctionBody() << "  let offset = " << key.IndicesToOffset(kv_BNSH_ ? "key_indices_t(batch, num_head_id, sequence_id, head_size_id)" : "key_indices_t(batch, sequence_id, num_head_id, head_size_id)") << ";\n"
-                              << "  " << present_key.SetByOffset("present_offset", "key[offset]") << ";\n"
-                              << "  " << present_value.SetByOffset("present_offset", "value[offset]") << ";\n";
+                              << "  " << present_key.SetByOffset("present_offset", key_value) << ";\n"
+                              << "  " << present_value.SetByOffset("present_offset", value_value) << ";\n";
   }
   return Status::OK();
 }
@@ -312,6 +323,7 @@ Status PrepareIndirectDispatchProgram::GenerateShaderCode(ShaderHelper& shader) 
 Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                    const Tensor* K, const Tensor* past_key, Tensor* present_key,
                    const Tensor* V, const Tensor* past_value, Tensor* present_value,
+                   const Tensor* qkv_bias,
                    uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer, uint32_t num_q_tiles,
                    const Tensor* total_seqlen) {
   // CopyKVCache takes past key/value and current key/value and copies them to present key and value.
@@ -333,7 +345,8 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   bool prepare_indirect_dispatch = (indirect_buffer != nullptr);
   bool use_seqlen_k = (seqlen_k != nullptr);
   bool kv_BNSH = parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH;
-  CopyKVCacheProgram program{"CopyKVCache", has_past, kv_BNSH, parameters.past_present_share_buffer_,
+  const bool has_qkv_bias = qkv_bias != nullptr && !kv_BNSH;
+  CopyKVCacheProgram program{"CopyKVCache", has_past, kv_BNSH, has_qkv_bias, parameters.past_present_share_buffer_,
                              prepare_indirect_dispatch, use_seqlen_k};
   if (kv_BNSH) {
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
@@ -344,6 +357,10 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
     TensorShape reshaped_KV_shape{parameters.batch_size_, parameters.kv_sequence_length_, num_heads, parameters.head_size_ / components};
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, reshaped_KV_shape, components}});
+  }
+
+  if (has_qkv_bias) {
+    program.AddInput({qkv_bias, ProgramTensorMetadataDependency::TypeAndRank, components});
   }
 
   if (use_seqlen_k) {
@@ -367,14 +384,16 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   program.AddIndices(std::move(copy_kv_shape));
   program.SetDispatchGroupSize(static_cast<uint32_t>((copy_size + 63) / 64))
       .SetWorkgroupSize(64)
-      .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_, prepare_indirect_dispatch, use_seqlen_k)
+      .CacheHint(has_past, parameters.qkv_format_, has_qkv_bias, parameters.past_present_share_buffer_, prepare_indirect_dispatch, use_seqlen_k)
       .AddUniformVariables({{static_cast<uint32_t>(copy_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {tile_size},
                             {static_cast<uint32_t>(parameters.num_heads_)},
                             {static_cast<uint32_t>(parameters.batch_size_)},
-                            {num_q_tiles}});
+                            {num_q_tiles},
+                            {static_cast<uint32_t>(has_qkv_bias ? parameters.hidden_size_ / components : 0)},
+                            {static_cast<uint32_t>(has_qkv_bias ? 2 * parameters.hidden_size_ / components : 0)}});
 
   return context.RunProgram(program);
 }
@@ -396,6 +415,9 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("present_key", ShaderUsage::UseUniform);
   shader.AddInput("present_value", ShaderUsage::UseUniform);
+  if (has_qkv_bias_) {
+    shader.AddInput("qkv_bias", ShaderUsage::UseUniform);
+  }
   if (has_attention_bias_) {
     shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
@@ -416,6 +438,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
                              WGSL_TEMPLATE_PARAMETER(has_local_window, has_local_window_),
+                             WGSL_TEMPLATE_PARAMETER(has_qkv_bias, has_qkv_bias_),
                              WGSL_TEMPLATE_PARAMETER(is_qualcomm, is_qualcomm_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
                              WGSL_TEMPLATE_PARAMETER(kv_cache_quantization, kv_cache_quantization_),
@@ -534,6 +557,9 @@ Status FlashAttentionDecodeQKVProgram::GenerateShaderCode(ShaderHelper& shader) 
   const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& present_value = shader.AddInput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  if (has_qkv_bias_) {
+    shader.AddInput("qkv_bias", ShaderUsage::UseUniform);
+  }
   if (use_seqlen_k_) {
     shader.AddInput("seqlens_k", ShaderUsage::None);
   }
@@ -562,6 +588,7 @@ Status FlashAttentionDecodeQKVProgram::GenerateShaderCode(ShaderHelper& shader) 
                              WGSL_TEMPLATE_PARAMETER(bit_width, kv_cache_quantization_bits_),
                              WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
+                             WGSL_TEMPLATE_PARAMETER(has_qkv_bias, has_qkv_bias_),
                              WGSL_TEMPLATE_PARAMETER(is_unidirectional, is_unidirectional_),
                              WGSL_TEMPLATE_PARAMETER(kv_cache_quantization, kv_cache_quantization_),
                              WGSL_TEMPLATE_PARAMETER(m_tile, m_tile_),
@@ -626,7 +653,8 @@ Status FlashAttentionPagedDecodeQKVProgram::GenerateShaderCode(ShaderHelper& sha
 }
 
 Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& context, const Tensor* Q,
-                                      const Tensor* attention_bias, Tensor* out_split_vx, Tensor* present_key, Tensor* present_value,
+                                      const Tensor* attention_bias, const Tensor* qkv_bias,
+                                      Tensor* out_split_vx, Tensor* present_key, Tensor* present_value,
                                       Tensor* metadata, const Tensor* seqlen_k,
                                       const WebgpuAttentionParameters& parameters, const Tensor* indirect_buffer, uint32_t num_total_seq_length_tile, uint32_t num_present_sequence_length_tile, uint32_t tile_size, bool use_indirect_dispatch, uint32_t present_sequence_length, uint32_t m_tile, bool use_seqlen_k, const Tensor* total_seqlen,
                                       uint32_t kv_cache_quantization_bits,
@@ -636,6 +664,7 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
                                                 : parameters.scale_;
 
   const bool has_attention_bias = attention_bias != nullptr;
+  const bool has_qkv_bias = qkv_bias != nullptr;
   const int components = 4;
   // Quantized cache tensor views use packed scalar u32 elements.
   const bool kv_cache_quantization = kv_cache_quantization_bits != 0;
@@ -645,12 +674,15 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
   bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
   bool is_unidirectional = parameters.is_unidirectional_;
   FlashAttentionDecodeQKVProgram program{
-      "FlashAttentionDecodeQKV", has_attention_bias, tile_size, head_size_vec,
+      "FlashAttentionDecodeQKV", has_attention_bias, has_qkv_bias, tile_size, head_size_vec,
       use_indirect_dispatch, q_BNSH, is_unidirectional, m_tile, use_seqlen_k,
       kv_cache_quantization_bits, compressed_head_size_u32, use_seqlens_q};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, kv_cache_components},
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, kv_cache_components}});
+  if (has_qkv_bias) {
+    program.AddInput({qkv_bias, ProgramTensorMetadataDependency::TypeAndRank, components});
+  }
   if (use_seqlen_k) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
@@ -688,7 +720,8 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
   // for decode, 64 threads with 8 vec4 K tiles for prefill.
   const uint32_t workgroup_size = (m_tile == 1u) ? 128u : 64u;
   program.SetWorkgroupSize(workgroup_size)
-      .CacheHint(tile_size, head_size_vec, has_attention_bias, use_indirect_dispatch, q_BNSH,
+      .CacheHint(tile_size, head_size_vec, has_attention_bias, has_qkv_bias,
+                 use_indirect_dispatch, q_BNSH,
                  is_unidirectional, m_tile, use_seqlen_k, kv_cache_quantization_bits,
                  compressed_head_size_u32, use_seqlens_q)
       .AddUniformVariables({{static_cast<uint32_t>(vectorized_head_size)},
@@ -920,6 +953,7 @@ Status ComputeFlashAttentionPagedDecodeVxReduce(onnxruntime::webgpu::ComputeCont
 }
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
+                           const Tensor* qkv_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k,
                            const Tensor* cos_cache, const Tensor* sin_cache, const Tensor* head_sink,
@@ -1166,18 +1200,20 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
       if (use_q4_turbo_quant) {
         ORT_RETURN_IF_ERROR(TurboQuantCopyToQuantizedKVCache(
             context, parameters, K, quantized_past_key, quantized_present_key,
-            V, quantized_past_value, quantized_present_value, tile_size,
+            V, quantized_past_value, quantized_present_value, qkv_bias, tile_size,
             use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles,
             total_seqlen));
       } else {
         ORT_RETURN_IF_ERROR(BlockQuantInt8CopyToKvCache(
             context, parameters, K, quantized_past_key, quantized_present_key,
-            V, quantized_past_value, quantized_present_value, tile_size,
+            V, quantized_past_value, quantized_present_value, qkv_bias, tile_size,
             use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles,
             total_seqlen));
       }
     } else {
-      ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles, total_seqlen));
+      ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value,
+                                      qkv_bias, tile_size, use_seqlen_k ? seqlen_k : nullptr,
+                                      indirect_buffer_ptr, num_q_tiles, total_seqlen));
     }
   }
 
@@ -1191,9 +1227,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Q4 stores Hadamard-rotated K/V, so rotate Q into the same basis. Q8 is vanilla INT8.
   if (use_q4_turbo_quant) {
     rotated_q = context.CreateGPUTensor(Q->DataType(), Q->Shape());
-    ORT_RETURN_IF_ERROR(ApplyHadamardTransform(context, Q, &rotated_q, parameters.head_size_));
+    ORT_RETURN_IF_ERROR(ApplyHadamardTransform(context, Q, &rotated_q, parameters.head_size_,
+                                               qkv_bias, parameters.hidden_size_));
     Q = &rotated_q;
   }
+  const Tensor* flash_qkv_bias = use_q4_turbo_quant ? nullptr : qkv_bias;
 
   // Q4 attention produces values in the Hadamard basis and needs an inverse transform.
   Tensor attn_output_temp;
@@ -1285,11 +1323,13 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
       }
       // Prefill path: FlashAttentionProgram (single kernel with subgroup shuffles)
       bool has_attention_bias = attention_bias != nullptr;
+      bool has_qkv_bias = flash_qkv_bias != nullptr;
       bool is_fp16 = is_fp16_q;
       bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
       bool has_head_sink = head_sink != nullptr;
       FlashAttentionProgram program{"FlashAttention",
                                     has_attention_bias,
+                                    has_qkv_bias,
                                     is_qualcomm,
                                     is_fp16,
                                     parameters.head_size_,
@@ -1315,6 +1355,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                           kv_cache_quantization_enabled ? 1 : 4},
                          {fa_present_value, ProgramTensorMetadataDependency::TypeAndRank,
                           kv_cache_quantization_enabled ? 1 : 4}});
+      if (has_qkv_bias) {
+        program.AddInput({flash_qkv_bias, ProgramTensorMetadataDependency::TypeAndRank, 4});
+      }
       if (has_attention_bias) {
         program.AddInputs({{attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
       }
@@ -1347,7 +1390,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
       program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
           .SetWorkgroupSize(prefill_tile_size)
-          .CacheHint(has_attention_bias, parameters.head_size_, parameters.num_heads_,
+          .CacheHint(has_attention_bias, has_qkv_bias, parameters.head_size_, parameters.num_heads_,
                      parameters.is_unidirectional_, is_qualcomm, is_nvidia, is_apple,
                      has_subgroups, q_BNSH, use_seqlen_k, has_head_sink, has_local_window,
                      kv_cache_quantization_bits,
@@ -1421,7 +1464,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                "or gate the feature off at the PagedAttention layer before "
                                "dispatching FA.");
       }
-      ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeQKV(context, Q, attention_bias, &out_split_vx, qkv_present_key, qkv_present_value,
+      ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeQKV(context, Q, attention_bias, flash_qkv_bias,
+                                                         &out_split_vx, qkv_present_key, qkv_present_value,
                                                          &metadata, seqlen_k,
                                                          parameters, indirect_buffer_ptr, num_total_seq_length_tile,
                                                          num_present_sequence_length_tile, tile_size, use_indirect_dispatch,
