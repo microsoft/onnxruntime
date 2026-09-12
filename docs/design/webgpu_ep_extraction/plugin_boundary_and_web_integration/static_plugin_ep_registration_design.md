@@ -1,16 +1,19 @@
 # Static Plugin EP Registration
 
-Status: Implemented in draft PR #32395. ORT Web's migration onto this path remains follow-up work. Detailed design
-supporting [Plugin Boundary and Web/Wasm Integration](plugin_boundary_and_web_integration_workstream.md).
+Status: Implemented in PR #32395. ORT Web's migration onto this path remains follow-up work. This design
+supports [Plugin Boundary and Web/Wasm Integration](plugin_boundary_and_web_integration_workstream.md).
 
-## Purpose
+## Context and scope
 
-Define how a plugin execution provider (EP) that is linked into the host binary is registered with ONNX Runtime, so
-that statically linked and dynamically loaded plugin EPs share one provider implementation and one public API
-boundary.
+A provider linked into the host could not previously use the plugin EP path. `EpLibraryPlugin` discovers factory
+entry points in a shared library, while `EpLibraryInternal` wraps an in-tree `IExecutionProvider`. Neither accepts
+linked factory entry points.
 
-WebGPU is the first consumer. This change adds a statically linked WebGPU configuration that uses the plugin EP path,
-alongside the existing static build that uses `EpLibraryInternal`.
+This design adds that missing discovery path. Static and dynamic plugins then share the same factory lifecycle and
+public API boundary. WebGPU is the first consumer because Emscripten cannot use its shared-module build.
+
+This design does not add a public static-registration API, support minimal builds, remove the EP API adapters, or
+remove WebGPU's existing `EpLibraryInternal` path. Those changes remain follow-up work.
 
 ## Decision summary
 
@@ -35,40 +38,6 @@ flowchart LR
     Factories --> Devices[Register factories and devices in Environment]
 ```
 
-## Background
-
-Before this change, the two `EpLibrary` implementations relevant here were:
-
-- `EpLibraryPlugin` (`onnxruntime/core/session/plugin_ep/ep_library_plugin.cc`) loads a shared library, resolves the
-  `CreateEpFactories` and `ReleaseEpFactory` symbols, and drives the factory lifecycle.
-- `EpLibraryInternal` (`onnxruntime/core/session/plugin_ep/ep_library_internal.cc`) wraps an in-tree
-  `IExecutionProvider`, including `EpLibraryInternal::CreateWebGpuEp`.
-
-Neither accepted factory entry points directly, so a provider compiled into the host could not reach the plugin
-path. `EpLibraryStaticPlugin` (`onnxruntime/core/session/plugin_ep/ep_library_static_plugin.h`) is what this design
-adds to close that gap.
-
-This blocked ORT Web specifically. `cmake/onnxruntime_providers_webgpu.cmake` raises a `FATAL_ERROR` for the WebGPU
-shared-module build under Emscripten, so static linking is the only way a Wasm build can ever reach the plugin
-boundary.
-
-## Goals
-
-- Register a plugin EP that is linked into the host, reusing the existing plugin registration path after the point
-  where symbol lookup would occur.
-- Present statically linked plugin code with the same runtime conditions as dynamically loaded plugin code.
-- Require no change to provider sources between the two linkage modes.
-- Avoid new host call sites for in-tree providers.
-- Keep the shared-library path's existing ABI and runtime behavior unchanged.
-
-## Non-goals
-
-- A public C API for registering static plugin EPs. Deferred until a provider is genuinely out-of-tree.
-- Removal of the EP API adapters. Tracked separately.
-- Removal of the direct `IExecutionProvider` WebGPU path. That is the final step of the workstream, not this change.
-- Support for static plugin EPs in minimal builds. `cmake/onnxruntime_session.cmake` excludes all of
-  `core/session/plugin_ep/` when `onnxruntime_MINIMAL_BUILD` is set.
-
 ## Static plugin contract
 
 - A statically linked provider exposes the standard `CreateEpFactories` and `ReleaseEpFactory` entry points under a
@@ -86,105 +55,69 @@ boundary.
   not release process-global state owned by the host.
 - Minimal builds reject static plugin EP configuration until the required plugin infrastructure is available there.
 
-### Failure behavior
+### Failure handling
 
-`EpLibraryStaticPlugin` releases any factories created before `CreateEpFactories` reports a failure. Duplicate
-registration names are rejected by the existing `Environment::RegisterExecutionProviderLibrary` path, and other
-factory or device-registration errors retain that path's diagnostics. If automatic static registration fails,
-`OrtEnv::GetOrCreateInstance` unpublishes and destroys the partially created singleton before returning the error, so
-another thread cannot observe an environment whose static registrations are incomplete.
+`EpLibraryStaticPlugin` releases factories created before `CreateEpFactories` reports a failure. Existing
+`Environment::RegisterExecutionProviderLibrary` diagnostics cover duplicate names and factory or device errors. If
+automatic registration fails, `OrtEnv::GetOrCreateInstance` unpublishes and destroys the partial singleton before
+returning the error. Other threads therefore cannot observe incomplete static registration.
 
 ## Decisions
 
 ### D1: Registration mechanism is a link-time registry in ORT core
 
-ORT core holds a hand-written, `#if`-guarded list of statically linked plugin EP entry points, mirroring the shape of
-`EpLibraryInternal::CreateInternalEps`. A new `EpLibraryStaticPlugin` accepts the entry points directly and reuses
-`EpLibraryPlugin`'s factory lifecycle logic without the dynamic-library load and unload steps.
-
-Rationale: every host — `onnxruntime_test_all`, the Python bindings, `onnxruntime.dll`, and Wasm — gets the provider
-with no per-host call site.
+ORT core holds a hand-written, `#if`-guarded list of linked factory entry points. `EpLibraryStaticPlugin` accepts
+those entry points directly and reuses `EpLibraryPlugin` after its library-loading and symbol-resolution steps.
+This gives every host the provider without adding a host-specific registration call.
 
 Alternatives considered:
 
-- CMake-generated registry using an X-macro. Rejected: added build-system machinery for generality that may never be
-  needed while providers remain in-tree.
-- A public `RegisterStaticExecutionProviderLibrary` C API called by each host. Rejected for now: it requires a call
-  site in every statically linked host and introduces a window in which `GetEpDevices` reports no devices. Revisit
-  when an out-of-tree provider needs static linking.
+- A CMake-generated registry adds machinery that is not justified while providers remain in-tree.
+- A public registration API requires every host to call it and creates a period in which `GetEpDevices` has no
+  static devices. Revisit this option when an out-of-tree provider needs static linking.
 
 ### D2: Entry point names depend on the linkage mode
 
-`onnxruntime/core/providers/webgpu/ep/api.cc` uses `ORT_PLUGIN_EP_STATICALLY_LINKED` to select the entry point names.
-
-The shared build must continue to export the unprefixed `CreateEpFactories` and `ReleaseEpFactory`, because
-`EpLibraryPlugin::Load` resolves those exact names. The static build emits prefixed variants, for example
-`WebGpu_CreateEpFactories`, so that multiple static plugins can coexist in one binary.
+Shared plugins continue to export `CreateEpFactories` and `ReleaseEpFactory`, the names resolved by
+`EpLibraryPlugin::Load`. Static plugins use provider-prefixed names such as `WebGpu_CreateEpFactories`, allowing
+multiple providers to coexist in one binary. `ORT_PLUGIN_EP_STATICALLY_LINKED` selects the names in provider code.
 
 ### D3: No new EP library ABI hook for teardown
 
-All teardown remains in `ReleaseEpFactory`. Process-global shutdown that belongs to the host — currently
-`google::protobuf::ShutdownProtobufLibrary()` in `onnxruntime/core/providers/webgpu/ep/api.cc` — is guarded by
-`#if !defined(ORT_PLUGIN_EP_STATICALLY_LINKED)`, so it is compiled **in** for the shared-library build and **out**
-for the statically linked build. The polarity follows ownership: a shared plugin module owns the process-global
-state it initialized and must tear it down, whereas a statically linked plugin shares protobuf with the host, which
-owns its lifetime and shuts it down itself. `ORT_PLUGIN_EP_STATICALLY_LINKED` is defined by the static plugin
-configuration only; see D7 for where it is defined and what else it controls.
+Factory teardown remains in `ReleaseEpFactory`. Host-owned process-global teardown, currently
+`google::protobuf::ShutdownProtobufLibrary()`, is compiled out when `ORT_PLUGIN_EP_STATICALLY_LINKED` is defined. A
+shared module owns the state it initializes; a static plugin shares that state with the host, which owns its lifetime.
 
-The legacy static WebGPU cleanup block in `onnxruntime/core/session/ort_env.cc` is already guarded by
-`defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)`. The static plugin configuration defines
-`ORT_USE_EP_API_ADAPTERS`, so the block compiles out on its own and needs no edit. It must be kept for the default
-internal-EP WebGPU build.
+The existing WebGPU cleanup in `ort_env.cc` remains for the internal-EP build. It already compiles out for the static
+plugin configuration because that configuration defines `ORT_USE_EP_API_ADAPTERS`.
 
-Consequence to test for: static linking has no library unload, so provider process-global state survives
-unregistration. Registering, running, unregistering, re-registering, and running again is the primary regression case.
+Static linking has no library unload, so process-global state survives unregistration. A complete regression test
+must register, run, tear down the environment, recreate it, and run again.
 
 ### D4: One new durable build option
 
-- `onnxruntime_USE_EP_API_ADAPTERS` is unchanged. It is transitional and is retired when WebGPU moves fully onto the
-  public plugin API.
-- `onnxruntime_WEBGPU_STATIC_PLUGIN` is new and durable. It selects linkage into the host rather than a loadable
-  module.
-- `onnxruntime_WEBGPU_LINKED_INTO_HOST` is derived and used at the linkage sites.
+`onnxruntime_WEBGPU_STATIC_PLUGIN` selects linked-in plugin mode, and `build.py` exposes it as
+`--use_webgpu static_plugin`. The derived `onnxruntime_WEBGPU_LINKED_INTO_HOST` controls linkage sites.
 
-`onnxruntime_USE_EP_API_ADAPTERS` currently conflates three meanings: compiling against the adapters, building a
-separate module, and registering by path in tests. The static plugin configuration answers the first yes and the
-other two no, so only the linkage and test sites move to the derived option. The global `add_compile_definitions` in
-`cmake/CMakeLists.txt` stays as-is, and no provider sources change.
+The option requires WebGPU and the EP API adapters. It rejects minimal builds because they exclude the plugin EP
+registration code while still linking the provider, which would otherwise create a binary in which WebGPU is present
+but never registered. Emscripten and build-cache restrictions continue to apply only to the shared-module mode.
 
-`cmake/onnxruntime_providers_webgpu.cmake` gains a third arm. The Emscripten and `onnxruntime_BUILD_CACHE`
-`FATAL_ERROR`s narrow to the shared-module case, which is what unblocks ORT Web.
-
-`build.py` gains `--use_webgpu static_plugin`.
-
-`onnxruntime_WEBGPU_STATIC_PLUGIN` validates its prerequisites at configure time and fails with `FATAL_ERROR` if
-they are not met: it requires `onnxruntime_USE_WEBGPU` and `onnxruntime_USE_EP_API_ADAPTERS`, and it rejects a
-minimal build. The last one is a temporary guard rather than a permanent restriction. A minimal build excludes
-`core/session/plugin_ep` from `onnxruntime_session_srcs`, and `Environment::CreateAndRegisterStaticPluginEps` is
-compiled out with it, but `cmake/onnxruntime_providers_webgpu.cmake` still builds and links the provider. The
-combination would therefore produce a binary containing the WebGPU EP that never registers it, with nothing
-reporting the problem at configure, build or run time. Allowing minimal builds to use a static plugin EP is
-worthwhile and needs the registration path to be available there first; the exclusion is currently justified by
-provider-bridge dependencies, and only two of the files under `plugin_ep` are provider-bridge, so the subset may be
-separable. Until then a loud configure error is preferable to a silently EP-less binary.
-
-The CUDA plugin is unaffected: it is gated by `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN` and sets
-`ORT_USE_EP_API_ADAPTERS` as a private target compile definition, never referencing the CMake option. CUDA's split
-between role (`BUILD_CUDA_EP_AS_PLUGIN`) and mechanism (`ORT_USE_EP_API_ADAPTERS`) is the in-tree template for
-WebGPU's eventual cleanup.
+`onnxruntime_USE_EP_API_ADAPTERS` remains transitional. Provider sources and the CUDA plugin configuration are
+unchanged.
 
 ### D5: Test infrastructure treats the library path as optional
 
-In `onnxruntime/test/unittest_util/test_dynamic_plugin_ep.cc`, `InitializationConfig::ep_library_path` becomes
-optional. When absent, library registration is skipped because ORT core has already performed it, and the RAII
-registration handle is left empty. The existing handle deleter already tolerates an empty handle. Device selection,
-de-duplication, and factory creation are unchanged.
+`InitializationConfig::ep_library_path` becomes optional. When it is absent, tests skip library registration because
+ORT core has already registered the static plugin. The existing RAII handle supports this empty state; device
+selection, de-duplication, and factory creation are unchanged.
 
 Virtual devices are enabled through the `allow_virtual_devices` environment configuration entry
 (`kOrtEnvAllowVirtualDevices`) supplied at environment creation, rather than the `.virtual` registration-name suffix.
 The suffix is unavailable because ORT core chooses the registration name for statically linked providers.
 
-The `dynamic_plugin_ep_infra` naming becomes inaccurate. Renaming is deferred to a separate mechanical change.
+A shared CMake helper applies the static-plugin test definitions to both `onnxruntime_test_all` and
+`onnxruntime_provider_test`, where the operator tests run.
 
 ### D6: Static plugin EPs are registered after the environment is published
 
@@ -204,118 +137,52 @@ OrtEnv::GetOrCreateInstance()
                 lock(m_)                            self-deadlock
 ```
 
-`Environment::CreateAndRegisterInternalEps` already documents this hazard, and the internal WebGPU factory avoids it
-by capturing `allow_virtual_devices` at construction. A plugin factory cannot use that workaround, because the public
-API is all it has.
-
-The problem is not confined to one function. Plugin EPs receive the full `OrtApi`, so any API that resolves the
-environment is affected, including `CreateEnv`, which re-enters `GetOrCreateInstance` and deadlocks on the same mutex.
+The internal WebGPU factory avoids this hazard by capturing configuration at construction. A plugin factory cannot:
+its only access is through `OrtApi`, and any environment-resolving API can re-enter the same mutex.
 
 **Decision.** `OrtEnv::GetOrCreateInstance` publishes `p_instance_` and takes its own reference *before* invoking
 `Environment::CreateAndRegisterStaticPluginEps`, and `OrtEnv::m_` becomes a `std::recursive_mutex`. Registration
 therefore runs against a fully constructed and published environment.
 
-Properties:
+Guarantees:
 
-- Environment-resolving `OrtApi` calls can safely re-enter on the creating thread. `TryGetInstance` finds a published
-  instance, and a re-entrant `CreateEnv` acquires the recursive lock and increments the reference count.
-- No new contract for provider authors, and nothing for a future API author to remember. The constraints that do
-  apply to `GetSupportedDevices` are the ones dynamic plugin EP registration already imposes, now documented on
-  `OrtEpFactory::GetSupportedDevices` in `onnxruntime_ep_c_api.h`.
-- No race. Other threads block on `m_` for the duration, which is already true across `Environment::Create`.
-- The reference count cannot reach zero mid-construction, because the creating thread's reference is taken first.
-- Provider sources need no conditional compilation for the two linkage modes.
+- Environment-resolving API calls can re-enter on the creating thread and find the published instance.
+- Other threads remain blocked until registration completes.
+- The creating thread's reference prevents destruction during registration.
+- Provider code and its `GetSupportedDevices` contract remain the same for both linkage modes.
 
 Costs and limits:
 
-- Failure during registration requires explicit teardown of the just-published instance.
-- A recursive mutex is normally undesirable. Here it states the actual invariant: the environment creation path can
-  legitimately re-enter the environment accessor on the same thread. Static plugin EP registration is the only reason
-  `OrtEnv::m_` is recursive; it was a `std::mutex` before this change and no other code path requires recursion.
-- A static plugin EP's `GetSupportedDevices` runs against an environment in which its own `OrtEpDevice` instances are
-  not yet registered, so `OrtApi::GetEpDevices` returns an incomplete list. This is not specific to static linking:
-  `EpInfo::Create` calls `GetSupportedDevices` before `RegisterExecutionProviderLibrary` appends to
-  `execution_devices_`, so a dynamically registered plugin EP sees the same thing. Registration also proceeds one
-  library at a time, so with more than one static plugin EP the Nth would observe the first N-1, making the visible
-  set depend on `CreateStaticPluginEpLibraries` ordering. Accepted as a side effect.
-- Callers of `onnxruntime::Environment::Create` do not get static plugin EPs. In the tree this is one production call
-  site plus tests and orttraining sample binaries.
+- Registration failure must explicitly tear down the published instance.
+- `OrtEnv::m_` becomes recursive solely to permit same-thread re-entry during static registration.
+- During `GetSupportedDevices`, `GetEpDevices` cannot include the current provider and can include only static
+  providers registered earlier. Dynamic registration has the same current-provider limitation.
+- Direct callers of `onnxruntime::Environment::Create` deliberately bypass singleton registration, often to control
+  logging or threading in tests, and do not receive static plugin EPs.
 - Provider code that starts a thread which calls `CreateEnv` and then joins it will deadlock. This is already true of
   any code running inside `Environment::Create`.
 
-The call to `Environment::CreateAndRegisterStaticPluginEps` therefore lives in `ort_env.cc`. Static plugin
-registration is a process-singleton concern tied to the `OrtEnv` lifetime, so the singleton wrapper is its correct
-home.
+`CreateAndRegisterStaticPluginEps` therefore runs from the `OrtEnv` singleton wrapper, not from
+`Environment::Initialize`. `CreateAndRegisterInternalEps` remains in `Environment::Initialize`, so directly created
+environments retain internal EP devices.
 
 Alternatives considered:
 
-- Thread-local pointer to the environment under construction, consulted by `GetEnvConfigEntries`. Rejected: it
-  addresses one function, while the reachable surface is the whole `OrtApi`.
-- Defer device enumeration until after environment creation. Rejected: lazy initialization moves registration
-  failures from environment creation to the first `GetEpDevices` call, which is a worse place to report them.
-- Register outside the lock after publishing. Rejected: another thread can observe a published environment whose
-  static EPs are not yet registered, and avoiding that requires a second lock and a completion barrier.
-
-`onnxruntime::Environment` remains directly constructible, and tests rely on that. `OrtEnv::GetOrCreateInstance`
-returns any existing instance and ignores the logging manager, threading options, and configuration entries passed by
-later callers, so a test needing specific threading or logging configuration must bypass it. Those tests are
-deliberately opting out of process-singleton semantics and should not receive static plugin EPs.
+- A thread-local environment pointer fixes only selected APIs, not the full `OrtApi` surface.
+- Deferred device enumeration reports registration failures from `GetEpDevices` instead of environment creation.
+- Registration outside the lock lets other threads observe incomplete registration unless another barrier is added.
 
 ### D7: The statically linked build does not use manual C++ API initialization
 
-`include/onnxruntime/ep/api.h` force-enables `ORT_API_MANUAL_INIT` around its include of `onnxruntime_cxx_api.h`, and
-`onnxruntime::ep::ApiInit` calls `Ort::InitApi(ort_api)`. That is required for a plugin EP shared library, which must
-not call `OrtGetApiBase()` itself.
+Shared plugins use `ORT_API_MANUAL_INIT` because they must initialize the C++ API from the host-supplied `OrtApi`.
+MSVC requires every translation unit in one binary to agree on that mode, so using it in a statically linked plugin
+causes `LNK2038` against ORT core and test code.
 
-`onnxruntime_cxx_api.h` emits `#pragma detect_mismatch("ORT_API_MANUAL_INIT", ...)` on MSVC, so every translation
-unit linked into one binary must agree. The statically linked plugin EP is linked with ORT core and with test code,
-neither of which uses manual initialization, so forcing it on produces `LNK2038` for every EP object file.
-
-The build therefore defines `ORT_PLUGIN_EP_STATICALLY_LINKED` on the statically linked plugin EP target. Under that
-macro `ep/api.h` includes `onnxruntime_cxx_api.h` unmodified and `ApiInit` skips `Ort::InitApi`. The C++ API then
-default-initializes from `OrtGetApiBase()->GetApi(ORT_API_VERSION)`, which resolves in-process and yields the same
-`OrtApi` that `ApiInit` would have installed, because the EP and ORT are the same binary and therefore the same
-version. `onnxruntime::ep::ApiPtrs` is still populated from the `OrtApiBase*` that ORT passes to `CreateEpFactories`,
-so the EP's own API access is unchanged.
+For a static plugin, `ORT_PLUGIN_EP_STATICALLY_LINKED` leaves `onnxruntime_cxx_api.h` in its normal mode and skips
+`Ort::InitApi`. `OrtGetApiBase()` resolves in the same binary and returns the same-version API. The EP-specific
+`ApiPtrs` are still populated from the `OrtApiBase*` passed to `CreateEpFactories`.
 
 The macro is generic rather than WebGPU-specific because `ep/api.h` is shared with the CUDA plugin EP.
-
-## Implementation map
-
-| Decision | Owning code |
-| --- | --- |
-| D1 static registry | `core/session/plugin_ep/ep_static_plugins.cc`, `ep_library_static_plugin.h` |
-| D1 shared factory lifecycle | `core/session/plugin_ep/ep_library_plugin.cc`, factored out for reuse |
-| D2 entry point prefixing | `core/providers/webgpu/ep/api.cc`, `include/onnxruntime/ep/api.h` |
-| D3 process-global ownership | `core/providers/webgpu/ep/api.cc` `ReleaseEpFactory` |
-| D4 build option | `cmake/CMakeLists.txt`, `cmake/onnxruntime_providers_webgpu.cmake`, `tools/ci_build/build.py` |
-| D5 optional library path | `test/unittest_util/test_dynamic_plugin_ep.cc` |
-| D6 registration timing | `core/session/ort_env.cc`, `Environment::CreateAndRegisterStaticPluginEps` |
-| D7 C++ API initialization | `include/onnxruntime/ep/api.h` |
-
-Test definitions are applied to `onnxruntime_provider_test` as well as `onnxruntime_test_all`, via a shared
-`onnxruntime_set_webgpu_plugin_ep_test_definitions` cmake function. `onnxruntime_provider_test` holds the operator
-tests, so without this the plugin path has no operator test coverage. It also needs
-`ORT_UNIT_TEST_HAS_WEBGPU_STATIC_PLUGIN_EP` in its own right, because that macro is what enables the
-`allow_virtual_devices` environment configuration entry at environment creation in `test_main.cc`.
-
-## Follow-up cleanup
-
-`Environment::CreateAndRegisterInternalEps` stays where it is, at the end of `Environment::Initialize`. Internal EP
-factories are ORT-core code that does not re-enter the `OrtEnv` singleton, so they are not subject to the constraint
-in D6. Moving them would also remove EP devices from every directly constructed `Environment`, and `InferenceSession`
-reads `Environment::GetOrtEpDevices` directly. For static plugin EPs the resulting gap is unimplemented new
-functionality; for internal EPs it would be a silent regression.
-
-The `allow_virtual_devices` parameter threaded through `EpLibraryInternal::CreateInternalEps` exists only for the
-internal WebGPU EP factory, which cannot query the environment at `GetSupportedDevices` time. The comment in
-`CreateAndRegisterInternalEps` documents that constraint. Both can be deleted once WebGPU is no longer an internal EP:
-the remaining internal EPs are CPU, kept deliberately as a special case, and DML, which is no longer maintained.
-Neither takes the parameter. In a build that defines `ORT_USE_EP_API_ADAPTERS` this is already true, since the
-internal WebGPU EP is compiled out and the parameter reaches `ORT_UNUSED_PARAMETER`.
-
-This does not affect the `.virtual` registration-name suffix or the `allow_virtual_devices` environment
-configuration entry, which remain in use for dynamically registered plugin libraries.
 
 ## Limitations and follow-ups
 
@@ -327,17 +194,30 @@ configuration entry, which remain in use for dynamically registered plugin libra
 | ORT Web production migration | Deferred. The shipping Wasm configuration still uses the internal EP path. |
 | Dawn shared-library mode | Remains incompatible with the EP API adapter configuration. |
 | Binary size and dead-code elimination | Deferred to ORT Web migration, where the shipped Wasm artifact can be measured. |
+| Internal WebGPU cleanup | Remove `allow_virtual_devices` plumbing from `CreateAndRegisterInternalEps` after retiring the internal WebGPU path. |
 
 ## Validation summary
 
 | Configuration | Result | Evidence and remaining gap |
 | --- | --- | --- |
-| Windows static plugin, real GPU | Build and tests pass | Zero status differences across the 5894 `onnxruntime_provider_test` cases common to the static-plugin and internal-EP builds. |
+| Windows static plugin, real GPU | Build and tests pass | The static-plugin and internal-EP builds have matching results for their common provider tests. |
 | Windows shared plugin | Build and tests pass | The DLL continues to export the unprefixed entry points required by `EpLibraryPlugin`. |
 | Linux static plugin, GCC | Build passes | Build-only CI covers GCC and Python wheel linkage; GPU execution is not exercised. |
-| Emscripten static plugin | Build passes | Build-only CI and symbol inspection verify linked entry points. A local prototype passed 2152 browser WebGPU tests, but the shipping artifacts and blocking CI still use the internal EP path. |
+| Emscripten static plugin | Build passes | Build-only CI and symbol inspection verify linked entry points. A local prototype passed the browser WebGPU suite, but shipping artifacts and blocking CI still use the internal EP path. |
 | Minimal build | Rejected at configure time | Prevents a provider from being linked into a binary that omits its registration infrastructure. |
 
-The adapter configuration excludes 12 operator cases that depend on internal WebGPU test infrastructure, in addition
-to white-box and disabled tests. Re-registration after complete `OrtEnv` teardown and registration of more than one
-static plugin EP also remain untested.
+The adapter configuration excludes operator cases that depend on internal WebGPU test infrastructure, in addition
+to white-box and disabled tests.
+
+## Appendix: implementation map
+
+| Decision | Owning code |
+| --- | --- |
+| D1 static registry | `core/session/plugin_ep/ep_static_plugins.cc`, `ep_library_static_plugin.h` |
+| D1 shared factory lifecycle | `core/session/plugin_ep/ep_library_plugin.cc` |
+| D2 entry point prefixing | `core/providers/webgpu/ep/api.cc`, `include/onnxruntime/ep/api.h` |
+| D3 process-global ownership | `core/providers/webgpu/ep/api.cc` `ReleaseEpFactory` |
+| D4 build option | `cmake/CMakeLists.txt`, `cmake/onnxruntime_providers_webgpu.cmake`, `tools/ci_build/build.py` |
+| D5 optional library path | `test/unittest_util/test_dynamic_plugin_ep.cc` |
+| D6 registration timing | `core/session/ort_env.cc`, `Environment::CreateAndRegisterStaticPluginEps` |
+| D7 C++ API initialization | `include/onnxruntime/ep/api.h` |
