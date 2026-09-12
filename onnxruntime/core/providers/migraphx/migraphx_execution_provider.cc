@@ -1554,18 +1554,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
           }
           // It is an output argument
           else {
-            auto compute_output_index = [](const std::string_view sv) -> int {
-              constexpr std::string_view out_name_prefix = "#output_";
-              const auto pos = sv.find(out_name_prefix);
-              if (pos == std::string_view::npos) {
-                return -1;
-              }
-
-              const auto index_str = sv.substr(pos + out_name_prefix.length());
-              return ToInteger(Trim(index_str, std::isdigit));
-            };
-
-            int output_index = compute_output_index(name);
+            int output_index = ParseOutputIndex(name);
             if (output_index != -1) {
               prog_output_indices.push_back(output_index);
               auto mgx_output_shape = prog_output_shapes[output_index];
