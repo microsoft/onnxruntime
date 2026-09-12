@@ -113,30 +113,67 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
       const char** strings = NULL;
       code = checkOrtStatus(jniEnv, api, api->AllocatorAlloc(allocator, sizeof(char*) * length, (void**)&strings));
 
+      if (code != ORT_OK) {
+        api->ReleaseValue(ortValue);
+        return (jlong) NULL;
+      }
+
+      // The allocator does not guarantee zero-initialized memory. Initialize the
+      // entries so cleanup can safely distinguish acquired UTF-8 strings from
+      // entries that failed before GetStringUTFChars returned.
+      for (jsize i = 0; i < length; i++) {
+        strings[i] = NULL;
+      }
+
+      jobject* javaStrings = (jobject*)calloc(length, sizeof(jobject));
+      if ((javaStrings == NULL) && (length != 0)) {
+        api->AllocatorFree(allocator, (void*)strings);
+        api->ReleaseValue(ortValue);
+        throwOrtException(jniEnv, 1, "Not enough memory");
+        return (jlong) NULL;
+      }
+
+      // Copy the java strings into the buffers
+      for (jsize i = 0; i < length; i++) {
+        javaStrings[i] = (*jniEnv)->GetObjectArrayElement(jniEnv, stringArr, i);
+        if (javaStrings[i] == NULL) {
+          code = ORT_FAIL;
+          if (!(*jniEnv)->ExceptionCheck(jniEnv)) {
+            throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "String tensor contains a null element");
+          }
+          break;
+        }
+
+        strings[i] = (*jniEnv)->GetStringUTFChars(jniEnv, javaStrings[i], NULL);
+        if (strings[i] == NULL) {
+          code = ORT_FAIL;
+          break;
+        }
+      }
+
+      // Assign the strings into the Tensor
       if (code == ORT_OK) {
-        // Copy the java strings into the buffers
-        for (jsize i = 0; i < length; i++) {
-            jobject javaString = (*jniEnv)->GetObjectArrayElement(jniEnv, stringArr, i);
-            strings[i] = (*jniEnv)->GetStringUTFChars(jniEnv, javaString, NULL);
-        }
-
-        // Assign the strings into the Tensor
         code = checkOrtStatus(jniEnv, api, api->FillStringTensor(ortValue, strings, length));
+      }
 
-        // Release the Java strings
-        for (int i = 0; i < length; i++) {
-            jobject javaString = (*jniEnv)->GetObjectArrayElement(jniEnv, stringArr, i);
-            (*jniEnv)->ReleaseStringUTFChars(jniEnv, javaString, strings[i]);
+      // Release the Java strings
+      for (jsize i = 0; i < length; i++) {
+        if (javaStrings[i] != NULL) {
+          if (strings[i] != NULL) {
+            (*jniEnv)->ReleaseStringUTFChars(jniEnv, javaStrings[i], strings[i]);
+          }
+          (*jniEnv)->DeleteLocalRef(jniEnv, javaStrings[i]);
         }
+      }
+      free(javaStrings);
 
-        // Release the buffers
-        OrtErrorCode freeCode = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)strings));
+      // Release the buffers
+      OrtErrorCode freeCode = checkOrtStatus(jniEnv, api, api->AllocatorFree(allocator, (void*)strings));
 
-        // Assignment failed, return null
-        if ((code != ORT_OK) || (freeCode != ORT_OK))  {
-          api->ReleaseValue(ortValue);
-          return (jlong) NULL;
-        }
+      // Assignment failed, return null
+      if ((code != ORT_OK) || (freeCode != ORT_OK))  {
+        api->ReleaseValue(ortValue);
+        return (jlong) NULL;
       }
     }
 
