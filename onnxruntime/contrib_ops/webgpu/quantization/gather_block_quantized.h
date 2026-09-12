@@ -17,7 +17,7 @@ class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedPro
  public:
   GatherBlockQuantizedProgram(const bool is_signed, const bool is_uint8, size_t indices_rank, int gather_axis, int bits, bool has_zeropoint,
                               TensorShape x_shape, TensorShape output_shape, bool is_fp_quantized = false,
-                              int32_t fp_elem_type = 0)
+                              int32_t fp_elem_type = 0, uint32_t scale_broadcast_axes_mask = 0)
       : Program<GatherBlockQuantizedProgram>{"GatherBlockQuantized"},
         is_signed_{is_signed},
         is_uint8_{is_uint8},
@@ -28,7 +28,8 @@ class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedPro
         x_shape_{x_shape},
         output_shape_{output_shape},
         is_fp_quantized_{is_fp_quantized},
-        fp_elem_type_{fp_elem_type} {}
+        fp_elem_type_{fp_elem_type},
+        scale_broadcast_axes_mask_{scale_broadcast_axes_mask} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -54,6 +55,10 @@ class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedPro
   // ONNX_TENSOR_ELEMENT_DATA_TYPE_* value identifying which FP8/FP4 variant to build the table for.
   bool is_fp_quantized_;
   int32_t fp_elem_type_;
+  // Bit `i` set means axis `i` of `scales` is broadcast (dim == 1 while `data`'s dim is > 1);
+  // only possible for FP8/FP4 data on axes other than quantize_axis. Rank is small in practice,
+  // so a bitmask is sufficient and keeps the cache hint compact.
+  uint32_t scale_broadcast_axes_mask_;
 };
 
 class GatherBlockQuantized final : public WebGpuKernel {

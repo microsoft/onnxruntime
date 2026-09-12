@@ -345,6 +345,27 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
     zero_points = zero_points_representation_4bit.has_value() ? &zero_points_representation_4bit.value() : zero_points;
   }
 
+  // The WebGPU program layer only knows how to derive a WGSL storage type for a fixed set of
+  // ONNX element types (see ToProgramVariableDataType in core/providers/webgpu/program.cc), which
+  // does not include the FP8/FP4 element types. The shader treats `x` as raw packed bytes/nibbles
+  // regardless (looking up dequantized values via `kFpDequantLut`), so reinterpret the tensor as
+  // the equivalent already-supported packed integer type (UInt4x2 for FP4, uint8_t for FP8)
+  // without changing its shape or underlying data.
+  std::optional<Tensor> data_representation_fp;
+  if (is_fp_quantized) {
+    MLDataType new_dtype = is_fp4 ? DataTypeImpl::GetType<UInt4x2>() : DataTypeImpl::GetType<uint8_t>();
+    auto memory_info = OrtMemoryInfo{
+        WEBGPU_BUFFER,
+        OrtDeviceAllocator,
+        OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0}};
+    data_representation_fp.emplace(
+        new_dtype,
+        x->Shape(),
+        const_cast<void*>(x->DataRaw()),
+        memory_info);
+    x = &data_representation_fp.value();
+  }
+
   const auto& x_shape_intrinsic = x->Shape();
   // For bits == 2 with uint8 storage we don't construct a packed-type reinterpret (no UInt2x4 type
   // exists). Instead, build a logical "dequantized" shape (last dim x4) and feed that to the shader
@@ -404,8 +425,8 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   const uint32_t zp_packed_qaxis_dim = (scale_qaxis_dim + 3) / 4;
 
   GatherBlockQuantizedProgram program{is_signed && !is_fp_quantized, is_int8, indices_rank, gather_axis, bits,
-                                       zero_points != nullptr, x_shape, output_shape, is_fp_quantized,
-                                       static_cast<int32_t>(x_dtype)};
+                                      zero_points != nullptr, x_shape, output_shape, is_fp_quantized,
+                                      static_cast<int32_t>(x_dtype)};
 
   program
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, (bits == 4) ? 8 : 4}})

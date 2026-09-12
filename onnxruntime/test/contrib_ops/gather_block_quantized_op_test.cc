@@ -1410,7 +1410,7 @@ TEST(GatherBlockQuantizedOpTest, FpInvalidOutOfRangeIndexThrows) {
       Float8E4M3FN(1.0f), Float8E4M3FN(1.0f), Float8E4M3FN(1.0f), Float8E4M3FN(1.0f),
       Float8E4M3FN(2.0f), Float8E4M3FN(2.0f), Float8E4M3FN(2.0f), Float8E4M3FN(2.0f)};
   std::vector<float> scales = {1.0f, 0.5f, 2.0f, 3.0f};  // shape [4, 1]
-  std::vector<int64_t> indices = {4};  // out of range for a dim of size 4 ([-4, 3])
+  std::vector<int64_t> indices = {4};                    // out of range for a dim of size 4 ([-4, 3])
 
   OpTester test("GatherBlockQuantized", 1, kMSDomain);
   test.AddAttribute<int64_t>("gather_axis", 0);
