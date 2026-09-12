@@ -1,0 +1,180 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param update_rule
+#param has_cu_seqlens
+#param has_initial_state
+#param initial_state_in_final_state
+#param output_final_state
+#param qwen_gate
+#param sigmoid_beta
+#param qk_l2_norm
+#param use_packed_params
+#param value_channels_per_workgroup
+#use .getByOffset .setByOffset
+
+const VALUE_CHANNELS_PER_WORKGROUP: u32 = value_channels_per_workgroup;
+var<workgroup> retrieved: array<f32, workgroup_size_x * VALUE_CHANNELS_PER_WORKGROUP>;
+var<workgroup> pre_output: array<f32, workgroup_size_x * VALUE_CHANNELS_PER_WORKGROUP>;
+var<workgroup> key_query: array<f32, workgroup_size_x>;
+#if qk_l2_norm
+var<workgroup> key_norm: array<f32, workgroup_size_x>;
+var<workgroup> query_norm: array<f32, workgroup_size_x>;
+#endif
+var<workgroup> delta: array<f32, VALUE_CHANNELS_PER_WORKGROUP>;
+
+fn gdn_softplus(x: f32) -> f32 {
+  if (x > 0.0) {
+    return x + log(1.0 + exp(-x));
+  }
+  return log(1.0 + exp(x));
+}
+
+fn gdn_sigmoid(x: f32) -> f32 {
+  if (x > 0.0) {
+    return 1.0 / (1.0 + exp(-x));
+  }
+  let e = exp(x);
+  return e / (1.0 + e);
+}
+
+$MAIN {
+  let workgroup = workgroup_idx;
+  let num_value_tiles = (uniforms.head_size_v + VALUE_CHANNELS_PER_WORKGROUP - 1u) / VALUE_CHANNELS_PER_WORKGROUP;
+  if (workgroup >= uniforms.batch_size * uniforms.num_heads_v * num_value_tiles) {
+    return;
+  }
+  let value_start = (workgroup % num_value_tiles) * VALUE_CHANNELS_PER_WORKGROUP;
+  let value_head = (workgroup / num_value_tiles) % uniforms.num_heads_v;
+  let batch = workgroup / (num_value_tiles * uniforms.num_heads_v);
+  let key_index = local_idx;
+  let query_head = value_head / (uniforms.num_heads_v / uniforms.num_heads_q);
+  var state: array<f32, VALUE_CHANNELS_PER_WORKGROUP>;
+  if (key_index < uniforms.head_size_qk) {
+#if has_initial_state
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let value_index = value_start + value_offset;
+      if (value_index < uniforms.head_size_v) {
+        let state_offset = (((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
+                            uniforms.head_size_qk + key_index);
+#if initial_state_in_final_state
+        state[value_offset] = f32(final_state.getByOffset(state_offset));
+#else
+        state[value_offset] = f32(initial_state.getByOffset(state_offset));
+#endif
+      }
+    }
+#endif
+  }
+
+  var first_token = batch * (uniforms.total_tokens / uniforms.batch_size);
+  var last_token = first_token + uniforms.total_tokens / uniforms.batch_size;
+#if has_cu_seqlens
+  first_token = u32(clamp(cu_seqlens.getByOffset(batch), 0, i32(uniforms.total_tokens)));
+  last_token = u32(clamp(cu_seqlens.getByOffset(batch + 1u), i32(first_token), i32(uniforms.total_tokens)));
+#endif
+  for (var token = first_token; token < last_token; token++) {
+    var key_value = 0.0;
+    var query_value = 0.0;
+    if (key_index < uniforms.head_size_qk) {
+      key_value = f32(key.getByOffset((token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index));
+      query_value = f32(query.getByOffset((token * uniforms.num_heads_q + query_head) * uniforms.head_size_qk + key_index));
+    }
+#if qk_l2_norm
+    key_norm[key_index] = key_value * key_value;
+    query_norm[key_index] = query_value * query_value;
+    workgroupBarrier();
+    for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
+      if (key_index < stride) {
+        key_norm[key_index] += key_norm[key_index + stride];
+        query_norm[key_index] += query_norm[key_index + stride];
+      }
+      workgroupBarrier();
+    }
+    key_value *= inverseSqrt(key_norm[0] + 1e-12);
+    query_value *= inverseSqrt(query_norm[0] + 1e-12);
+#endif
+#if update_rule == 1 || update_rule == 3
+#if use_packed_params
+    var gate = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u);
+#else
+    var gate = decay.getByOffset(token * uniforms.num_heads_v + value_head);
+#if qwen_gate
+    gate = -exp(a_log.getByOffset(value_head)) * gdn_softplus(gate + dt_bias.getByOffset(value_head));
+#endif
+#endif
+    let gate_scale = exp(gate);
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      state[value_offset] *= gate_scale;
+    }
+#endif
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let reduction_offset = value_offset * workgroup_size_x + key_index;
+      retrieved[reduction_offset] = state[value_offset] * key_value;
+      pre_output[reduction_offset] = state[value_offset] * query_value;
+    }
+    key_query[key_index] = key_value * query_value;
+    workgroupBarrier();
+    for (var stride = workgroup_size_x >> 1u; stride > 0u; stride = stride >> 1u) {
+      if (key_index < stride) {
+        for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+          let reduction_offset = value_offset * workgroup_size_x + key_index;
+          retrieved[reduction_offset] += retrieved[reduction_offset + stride];
+          pre_output[reduction_offset] += pre_output[reduction_offset + stride];
+        }
+        key_query[key_index] += key_query[key_index + stride];
+      }
+      workgroupBarrier();
+    }
+    if (key_index == 0u) {
+      var beta_value = 1.0;
+#if update_rule == 2 || update_rule == 3
+#if use_packed_params
+      beta_value = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u + 1u);
+#else
+      beta_value = beta.getByOffset(token * uniforms.num_heads_v + value_head);
+#if sigmoid_beta
+      beta_value = gdn_sigmoid(beta_value);
+#endif
+#endif
+#endif
+      for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+        let value_index = value_start + value_offset;
+        if (value_index < uniforms.head_size_v) {
+          var retrieved_value = 0.0;
+          let value_tensor_offset =
+              (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index;
+#if update_rule == 2 || update_rule == 3
+          retrieved_value = retrieved[value_offset * workgroup_size_x];
+#endif
+          delta[value_offset] = beta_value * (f32(value.getByOffset(value_tensor_offset)) - retrieved_value);
+          let output_tensor_offset =
+              (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index;
+          let output_value =
+              (pre_output[value_offset * workgroup_size_x] + delta[value_offset] * key_query[0]) * uniforms.scale;
+          output.setByOffset(output_tensor_offset, output_element_t(output_value));
+        } else {
+          delta[value_offset] = 0.0;
+        }
+      }
+    }
+    workgroupBarrier();
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      state[value_offset] += key_value * delta[value_offset];
+    }
+    workgroupBarrier();
+  }
+#if output_final_state
+  if (key_index < uniforms.head_size_qk) {
+    for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
+      let value_index = value_start + value_offset;
+      if (value_index < uniforms.head_size_v) {
+        let state_offset =
+            ((batch * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index) *
+            uniforms.head_size_qk + key_index;
+        final_state.setByOffset(state_offset, state[value_offset]);
+      }
+    }
+  }
+#endif
+}

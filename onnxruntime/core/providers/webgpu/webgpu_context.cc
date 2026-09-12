@@ -675,17 +675,26 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
-  const size_t total_buffer_count = inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0);
+  const size_t total_buffer_count =
+      std::count_if(inputs_segments.begin(), inputs_segments.end(), [](uint32_t segments) { return segments != 0; }) +
+      std::count_if(outputs_segments.begin(), outputs_segments.end(), [](uint32_t segments) { return segments != 0; }) +
+      (uniform_buffer ? 1 : 0);
 
   std::vector<WGPUBuffer> bind_buffers;
   std::vector<uint32_t> bind_buffers_segments;
   bind_buffers.reserve(total_buffer_count);
   bind_buffers_segments.reserve(total_buffer_count);
   for (size_t i = 0; i < inputs.size(); i++) {
+    if (inputs_segments[i] == 0) {
+      continue;
+    }
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(const_cast<void*>(inputs[i].tensor->DataRaw())));
     bind_buffers_segments.push_back(inputs_segments[i]);
   }
   for (size_t i = 0; i < outputs.size(); i++) {
+    if (outputs_segments[i] == 0) {
+      continue;
+    }
     bind_buffers.push_back(reinterpret_cast<WGPUBuffer>(outputs[i].tensor->MutableDataRaw()));
     bind_buffers_segments.push_back(outputs_segments[i]);
   }
