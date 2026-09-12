@@ -338,5 +338,8 @@
       "expirationDate": "2027-02-28 11:54:53Z",
       "justification": "This error is baselined with an expiration date of 180 days from 2026-09-11 11:54:53Z"
     }
+  },
+  "properties": {
+    "helpUri": "https://eng.ms/docs/microsoft-security/security/azure-security/cloudai-security-fundamentals-engineering/security-integration/guardian-wiki/microsoft-guardian/general/baselines"
   }
 }
