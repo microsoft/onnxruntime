@@ -835,4 +835,6 @@ ORT_API(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
 ORT_API_STATUS_IMPL(SessionOptionsSetWeightlessSourceModelBuffer, _Inout_ OrtSessionOptions* options,
                     _In_ const void* source_model_data, _In_ size_t source_model_data_length);
 
+ORT_API_STATUS_IMPL(SetSeed, _In_ int64_t seed);
+
 }  // namespace OrtApis

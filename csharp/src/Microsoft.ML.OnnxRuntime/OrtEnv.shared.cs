@@ -372,6 +372,17 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Set the global random seed used by ONNX Runtime random operators.
+        /// Operators with an explicit seed attribute continue to use that attribute value.
+        /// Set the seed before creating any InferenceSession instances that should use it.
+        /// </summary>
+        /// <param name="seed">The random seed value to use.</param>
+        public static void SetSeed(long seed)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSetSeed(seed));
+        }
+
+        /// <summary>
         /// Create and register an allocator to the OrtEnv instance.
         ///  This API enhance CreateAndRegisterAllocator that it can create an allocator with specific type, not just CPU allocator
         ///  Enables sharing the allocator between multiple sessions that use the same env instance.

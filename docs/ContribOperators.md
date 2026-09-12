@@ -2140,9 +2140,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 ### <a name="com.microsoft.GatedAdd"></a><a name="com.microsoft.gatedadd">**com.microsoft.GatedAdd**</a>
 
   Adds one tensor to another tensor scaled by a per-row gate:
-  
+
     output = X + round_to_T(Y * gate)
-  
+
   X and Y have shape (..., C), and gate has shape (..., 1). The gate is broadcast
   over C. For reduced-precision types, the product is rounded to T before the add,
   matching separate ONNX Mul and Add operators.
@@ -3299,7 +3299,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   MRotaryEmbedding is the fused implementation of Multimodal Rotary Positional Embeddings (M-RoPE) used by the
   Qwen family of vision-language models (Qwen2-VL, Qwen2.5-VL, Qwen3-VL, Qwen3-VL-MoE, Qwen3.5, Qwen3.5-MoE).
-  
+
   Unlike standard RoPE which uses a single 1D position per token, M-RoPE derives three positions per token
   (temporal T, height H, width W), each of which indexes into the same cos/sin cache. The half_rotary_embedding_dim
   axis of the cache is partitioned into 3 contiguous or interleaved sections (specified by `mrope_section`); each
@@ -3307,11 +3307,11 @@ This version of the operator has been available since version 1 of the 'com.micr
   are then concatenated (or interleaved) to produce a single per-token cos/sin vector of length
   half_rotary_embedding_dim. The standard RoPE rotation (as in RotaryEmbedding) is then applied using this
   combined vector.
-  
+
   For text-only tokens, T == H == W (all three position streams collapse to the ordinary sequential position),
   so this op is a strict superset of RotaryEmbedding: setting `mrope_section` to a single full-width section
   reduces this op to standard RoPE.
-  
+
   `mrope_layout` selects how the three sections are combined:
     - 0 (Sectioned / Chunked): the half_rotary_embedding_dim axis is split into 3 contiguous chunks according to
       `mrope_section` (i.e. [T]*section[0] + [H]*section[1] + [W]*section[2]). This is used by Qwen2-VL and
