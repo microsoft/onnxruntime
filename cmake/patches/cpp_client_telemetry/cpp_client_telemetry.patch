@@ -125,3 +125,69 @@
      return {EMPTY_GUID};
 +#endif
  }
+
+--- a/lib/offline/LogSessionDataProvider.cpp
++++ b/lib/offline/LogSessionDataProvider.cpp
+@@ -97,7 +97,8 @@
+ 
+     void LogSessionDataProvider::DeleteLogSessionDataFromFile()
+     {
+-        std::string sessionPath = m_cacheFilePath.empty() ? "" : (m_cacheFilePath + ".ses").c_str();
++        std::string sessionPath =
++            (m_cacheFilePath.empty() || m_cacheFilePath == ":memory:") ? "" : m_cacheFilePath + ".ses";
+         if (!sessionPath.empty() && MAT::FileExists(sessionPath.c_str()))
+         {
+             MAT::FileDelete(sessionPath.c_str());
+@@ -108,7 +109,8 @@
+     {
+         uint64_t sessionFirstTimeLaunch = 0;
+         std::string sessionSDKUid;
+-        std::string sessionPath = m_cacheFilePath.empty() ? "" : (m_cacheFilePath + ".ses").c_str();
++        std::string sessionPath =
++            (m_cacheFilePath.empty() || m_cacheFilePath == ":memory:") ? "" : m_cacheFilePath + ".ses";
+         if (!sessionPath.empty()) 
+         {
+             if (MAT::FileExists(sessionPath.c_str())) 
+--- a/tests/functests/LogSessionDataFuncTests.cpp
++++ b/tests/functests/LogSessionDataFuncTests.cpp
+@@ -14,14 +14,18 @@
+ 
+ const std::string SessionFileArgument = "test";
+ const char* const SessionFile = "test.ses";
++const char* const MemorySessionFile = ":memory:.ses";
+ 
+ class LogSessionDataFuncTests : public ::testing::Test
+ {
+     void CleanupLocalSessionFile()
+     {
+-        if (MAT::FileExists(SessionFile))
++        for (const auto* sessionFile : {SessionFile, MemorySessionFile})
+         {
+-            MAT::FileDelete(SessionFile);
++            if (MAT::FileExists(sessionFile))
++            {
++                MAT::FileDelete(sessionFile);
++            }
+         }
+     }
+ 
+@@ -76,6 +80,19 @@
+     ASSERT_TRUE(MAT::FileExists(SessionFile));
+ }
+ 
++TEST_F(LogSessionDataFuncTests, Constructor_InMemoryCache_NoSessionFileCreated)
++{
++    auto logSessionDataProvider = LogSessionDataProvider(":memory:");
++    logSessionDataProvider.CreateLogSessionData();
++    ASSERT_NE(logSessionDataProvider.GetLogSessionData(), nullptr);
++    EXPECT_FALSE(MAT::FileExists(MemorySessionFile));
++
++    logSessionDataProvider.ResetLogSessionData();
++    EXPECT_FALSE(MAT::FileExists(MemorySessionFile));
++    logSessionDataProvider.DeleteLogSessionData();
++    EXPECT_FALSE(MAT::FileExists(MemorySessionFile));
++}
++
+ TEST_F(LogSessionDataFuncTests, Constructor_ValidSessionFileExists_MembersSetToExistingFile)
+ {
+     const std::string validSessionFirstTime{ "123456" };
