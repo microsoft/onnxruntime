@@ -169,6 +169,24 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   // block_size_ == 0 (FP8/FP4 only) means the whole quantize_axis dimension is a single block.
   int64_t effective_block_size = block_size_ == 0 ? data_shape[quantize_axis_] : block_size_;
 
+  if constexpr (IsFpQuantizedV<T1>) {
+    // The CUDA kernel only supports two scale-broadcast shapes: (a) scales exactly matches
+    // data's block-shape (one scale per block, no broadcast), or (b) scales has exactly one
+    // element (a single global per-tensor scale). Partial broadcasting (e.g. broadcast on some
+    // non-quantize axis but not all) is not implemented here and would silently compute the
+    // wrong scale index, so reject it explicitly rather than let it fall through.
+    int64_t expected_num_blocks = 1;
+    for (int64_t i = 0; i < static_cast<int64_t>(data_rank); ++i) {
+      expected_num_blocks *= (i == quantize_axis_)
+                                 ? (data_shape[i] + effective_block_size - 1) / effective_block_size
+                                 : data_shape[i];
+    }
+    ORT_ENFORCE(scales->Shape().Size() == 1 || scales->Shape().Size() == expected_num_blocks,
+                "For FP8/FP4 data, 'scales' must either have exactly one element (a single global "
+                "per-tensor scale) or exactly one scale per block (no partial broadcasting is "
+                "supported on this execution provider).");
+  }
+
   GatherBlockQuantizedParam param;
   param.stream = Stream(ctx);
   param.after_gather_dim = after_gather_dim_unpacked;

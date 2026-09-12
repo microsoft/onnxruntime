@@ -7,6 +7,8 @@
 #include <memory>
 #include <utility>
 #include <sstream>
+#include <unordered_set>
+#include <string>
 
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
@@ -1230,7 +1232,7 @@ TEST(GatherBlockQuantizedOpTest, GatherAxisNoPadingUInt8) {
 // GatherBlockQuantized also supports gathering rows from an FP8 or FP4 block-scaled constant table
 // (no zero point, since FP8/FP4 quantization is symmetric) and dequantizing them:
 // output[...] = float(data[...]) * scales[block(...)].
-static const std::vector<std::string> kFpExcludedProviders = {
+static const std::unordered_set<std::string> kFpExcludedProviders = {
     kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
 
 #if !defined(DISABLE_FLOAT8_TYPES)
