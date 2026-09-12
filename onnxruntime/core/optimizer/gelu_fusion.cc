@@ -8,6 +8,7 @@
 #include "float.h"
 #include <deque>
 #include <numbers>
+#include <string_view>
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -23,6 +24,32 @@ static bool IsSupportedDataType(const Node& node) {
       return false;
     }
   }
+  return true;
+}
+
+static bool IsSupportedCpuGeluTargetDataType(const Node& node, std::string_view target_domain) {
+  const auto& provider_type = node.GetExecutionProviderType();
+  if (!provider_type.empty() && provider_type != kCpuExecutionProvider) {
+    return true;
+  }
+
+  const auto* input_type = node.InputDefs()[0]->Type();
+  if (input_type == nullptr) {
+    return false;
+  }
+
+  // An empty provider means Level 1 is running before partitioning, so preserve CPU fallback.
+  // com.microsoft.Gelu(1) has a CPU kernel only for float. The official ONNX Gelu(20)
+  // CPU kernel also supports float16. Explicitly assigned non-CPU providers retain their
+  // provider-specific dtype support.
+  if (target_domain == kMSDomain) {
+    return *input_type == "tensor(float)";
+  }
+
+  if (target_domain == kOnnxDomain) {
+    return *input_type == "tensor(float)" || *input_type == "tensor(float16)";
+  }
+
   return true;
 }
 /*
@@ -75,7 +102,8 @@ Status GeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, cons
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(div, "Div", {7, 13, 14}) ||
         !graph_utils::IsSupportedProvider(div, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, div, 1) ||
-        !IsSupportedDataType(div)) {
+        !IsSupportedDataType(div) ||
+        !IsSupportedCpuGeluTargetDataType(div, op_domain)) {
       continue;
     }
 
