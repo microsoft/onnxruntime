@@ -736,6 +736,14 @@ TEST(RealAccountantTest, Factory_NoLimitNoStats) {
   ASSERT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
   ASSERT_TRUE(acc_map.has_value());
   auto* accountant = acc_map->at(kCudaExecutionProvider).get();
+  const auto original_threshold = accountant->GetThreshold();
+  EXPECT_FALSE(original_threshold.has_value());
+
+  accountant->SetThreshold(ResourceCount{size_t{123}});
+  ASSERT_TRUE(accountant->GetThreshold().has_value());
+  EXPECT_EQ(GetSizeT(*accountant->GetThreshold()), size_t{123});
+
+  accountant->SetThreshold(original_threshold);
   EXPECT_FALSE(accountant->GetThreshold().has_value());
 }
 

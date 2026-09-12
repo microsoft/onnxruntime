@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <functional>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -316,6 +317,8 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
             assigned_filtered_in_nodes.clear();
           }
         }
+#else
+        ORT_UNUSED_PARAMETER(additionally_claimed_nodes);
 #endif
       };
 
@@ -457,6 +460,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     InlinedHashSet<NodeIndex> confirmed_pass1_survivors;
     InlinedHashSet<NodeIndex> independently_runnable_survivors;
     InlinedHashSet<NodeIndex> pass1_nodes_to_reprobe;
+    InlinedHashSet<NodeIndex> reserved_pass1_survivors;
     std::vector<std::unique_ptr<ComputeCapability>> confirmed_survivor_capabilities;
     if (params.resource_accountant) {
       if (modified) {
@@ -518,9 +522,8 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
         }
       }
 
-      // Rebuild survivor costs together so shared initializers are charged exactly once to
-      // the surviving set. Restoring old per-node scalars is unsafe because the node that
-      // originally owned a shared initializer charge may have been dropped.
+      // Remove the original provisional reservations. The exact retained survivor set is
+      // determined below using an accountant-aware capability pass without budget truncation.
       for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
         const auto cost_it = pass1_node_costs.find(node_index);
         if (cost_it != pass1_node_costs.end()) {
@@ -528,50 +531,236 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
         }
       }
       params.resource_accountant->ResetForNewPass();
-      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
-        if (!confirmed_pass1_survivors.contains(node_index)) {
-          continue;
+
+      for (NodeIndex node_index : pass1_nodes_to_reprobe) {
+        if (auto* node = graph.GetNode(node_index);
+            node != nullptr && node->GetExecutionProviderType() == ep_type) {
+          node->SetExecutionProviderType("");
         }
-
-        if (pass1_nodes_to_reprobe.contains(node_index)) {
-          if (auto* node = graph.GetNode(node_index);
-              node != nullptr && node->GetExecutionProviderType() == ep_type) {
-            node->SetExecutionProviderType("");
-          }
-          pass1_workspace_estimates.erase(node_index);
-          pass1_node_costs.erase(node_index);
-          continue;
-        }
-
-        const Node* node = graph.GetNode(node_index);
-        ORT_RETURN_IF_NOT(node != nullptr, "Pass-1 survivor node ", node_index, " no longer exists.");
-
-        std::optional<Level1MemoryEstimate> level1_memory_estimate;
-        const auto workspace_it = pass1_workspace_estimates.find(node_index);
-        if (workspace_it != pass1_workspace_estimates.end() &&
-            workspace_it->second.source != WorkspaceEstimateSource::kNone) {
-          const auto& selection = workspace_it->second;
-          Level1MemoryEstimate estimate;
-          if (selection.source == WorkspaceEstimateSource::kEstimator ||
-              selection.source == WorkspaceEstimateSource::kProfileAndEstimator) {
-            estimate.runtime_workspace_bytes = selection.level1_estimated_bytes;
-          } else {
-            estimate.runtime_transient_bytes = selection.level1_estimated_bytes;
-          }
-          estimate.persistent_prepack_bytes = selection.persistent_prepack_bytes;
-          estimate.initialization_scratch_bytes = selection.initialization_scratch_bytes;
-          level1_memory_estimate = estimate;
-        }
-
-        const ResourceCount recomputed_cost =
-            params.resource_accountant->ComputeResourceCount(*node, level1_memory_estimate);
-        pass1_node_costs.insert_or_assign(node_index, recomputed_cost);
-        params.resource_accountant->AddConsumedAmount(recomputed_cost);
+        pass1_workspace_estimates.erase(node_index);
+        pass1_node_costs.erase(node_index);
       }
 
-      capabilities.clear();
-      capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
-                                      params.resource_accountant, graph_optimizer_registry);
+      auto get_reconciled_capabilities =
+          [&](const std::vector<std::unique_ptr<ComputeCapability>>& pass_capabilities) {
+            InlinedVector<const ComputeCapability*> reconciled_capabilities;
+            reconciled_capabilities.reserve(
+                pass_capabilities.size() + confirmed_survivor_capabilities.size());
+            for (const auto& capability : pass_capabilities) {
+              reconciled_capabilities.push_back(capability.get());
+            }
+
+            for (const auto& survivor_capability : confirmed_survivor_capabilities) {
+              const auto& survivor_nodes = survivor_capability->sub_graph->nodes;
+              const InlinedHashSet<NodeIndex> survivor_node_set{
+                  survivor_nodes.begin(), survivor_nodes.end()};
+              const bool covered_by_final_capability =
+                  std::any_of(
+                      reconciled_capabilities.begin(), reconciled_capabilities.end(),
+                      [&](const ComputeCapability* capability) {
+                        const auto& final_nodes = capability->sub_graph->nodes;
+                        return std::all_of(
+                            survivor_nodes.begin(), survivor_nodes.end(),
+                            [&](NodeIndex survivor_node_index) {
+                              return std::find(final_nodes.begin(), final_nodes.end(),
+                                               survivor_node_index) != final_nodes.end();
+                            });
+                      });
+              if (covered_by_final_capability) {
+                continue;
+              }
+
+              const bool overlaps_final_capabilities =
+                  std::any_of(
+                      reconciled_capabilities.begin(), reconciled_capabilities.end(),
+                      [&](const ComputeCapability* capability) {
+                        const auto& nodes = capability->sub_graph->nodes;
+                        return std::any_of(
+                            nodes.begin(), nodes.end(),
+                            [&](NodeIndex node_index) {
+                              return survivor_node_set.contains(node_index);
+                            });
+                      });
+              if (overlaps_final_capabilities) {
+                const bool can_replace_overlapping_capabilities =
+                    std::all_of(
+                        reconciled_capabilities.begin(), reconciled_capabilities.end(),
+                        [&](const ComputeCapability* capability) {
+                          const auto& nodes = capability->sub_graph->nodes;
+                          const bool overlaps_survivor =
+                              std::any_of(
+                                  nodes.begin(), nodes.end(),
+                                  [&](NodeIndex node_index) {
+                                    return survivor_node_set.contains(node_index);
+                                  });
+                          return !overlaps_survivor ||
+                                 (!capability->sub_graph->IsAccountingEnabled() &&
+                                  std::all_of(nodes.begin(), nodes.end(),
+                                              [&](NodeIndex node_index) {
+                                                return confirmed_pass1_survivors.contains(node_index);
+                                              }));
+                        });
+                if (!can_replace_overlapping_capabilities) {
+                  continue;
+                }
+
+                reconciled_capabilities.erase(
+                    std::remove_if(
+                        reconciled_capabilities.begin(), reconciled_capabilities.end(),
+                        [&](const ComputeCapability* capability) {
+                          const auto& nodes = capability->sub_graph->nodes;
+                          return std::any_of(
+                              nodes.begin(), nodes.end(),
+                              [&](NodeIndex node_index) {
+                                return survivor_node_set.contains(node_index);
+                              });
+                        }),
+                    reconciled_capabilities.end());
+              }
+
+              reconciled_capabilities.push_back(survivor_capability.get());
+            }
+
+            return reconciled_capabilities;
+          };
+
+      auto collect_reconciled_pass2_nodes =
+          [&](const InlinedVector<const ComputeCapability*>& reconciled_capabilities) {
+            InlinedHashSet<NodeIndex> reconciled_nodes;
+            for (const ComputeCapability* capability : reconciled_capabilities) {
+              reconciled_nodes.insert(
+                  capability->sub_graph->nodes.begin(), capability->sub_graph->nodes.end());
+            }
+            reconciled_nodes.insert(independently_runnable_survivors.begin(),
+                                    independently_runnable_survivors.end());
+            return reconciled_nodes;
+          };
+
+      auto rebuild_survivor_reservations =
+          [&](const InlinedHashSet<NodeIndex>& retained_pass1_survivors) -> Status {
+        for (NodeIndex node_index : reserved_pass1_survivors) {
+          const auto cost_it = pass1_node_costs.find(node_index);
+          if (cost_it != pass1_node_costs.end()) {
+            params.resource_accountant->RemoveConsumedAmount(cost_it->second);
+          }
+        }
+        reserved_pass1_survivors.clear();
+        params.resource_accountant->ResetForNewPass();
+
+        // Recompute retained survivor costs together so shared initializers are charged
+        // exactly once to the finalized survivor set.
+        for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+          if (!retained_pass1_survivors.contains(node_index) ||
+              pass1_nodes_to_reprobe.contains(node_index)) {
+            continue;
+          }
+
+          const Node* node = graph.GetNode(node_index);
+          ORT_RETURN_IF_NOT(node != nullptr, "Pass-1 survivor node ", node_index, " no longer exists.");
+
+          std::optional<Level1MemoryEstimate> level1_memory_estimate;
+          const auto workspace_it = pass1_workspace_estimates.find(node_index);
+          if (workspace_it != pass1_workspace_estimates.end() &&
+              workspace_it->second.source != WorkspaceEstimateSource::kNone) {
+            const auto& selection = workspace_it->second;
+            Level1MemoryEstimate estimate;
+            if (selection.source == WorkspaceEstimateSource::kEstimator ||
+                selection.source == WorkspaceEstimateSource::kProfileAndEstimator) {
+              estimate.runtime_workspace_bytes = selection.level1_estimated_bytes;
+            } else {
+              estimate.runtime_transient_bytes = selection.level1_estimated_bytes;
+            }
+            estimate.persistent_prepack_bytes = selection.persistent_prepack_bytes;
+            estimate.initialization_scratch_bytes = selection.initialization_scratch_bytes;
+            level1_memory_estimate = estimate;
+          }
+
+          const ResourceCount recomputed_cost =
+              params.resource_accountant->ComputeResourceCount(*node, level1_memory_estimate);
+          pass1_node_costs.insert_or_assign(node_index, recomputed_cost);
+          params.resource_accountant->AddConsumedAmount(recomputed_cost);
+          reserved_pass1_survivors.insert(node_index);
+        }
+        return Status::OK();
+      };
+
+      if (confirmed_survivor_capabilities.empty()) {
+        ORT_RETURN_IF_ERROR(rebuild_survivor_reservations(confirmed_pass1_survivors));
+        capabilities.clear();
+        capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                        params.resource_accountant, graph_optimizer_registry);
+      } else {
+        // First obtain the complete accountant-aware capability grouping. This identifies
+        // survivor capabilities displaced by newly accounted overlaps without allowing stale
+        // survivor reservations to truncate the result.
+        const auto original_threshold = params.resource_accountant->GetThreshold();
+        params.resource_accountant->SetThreshold(
+            ResourceCount{std::numeric_limits<size_t>::max()});
+        capabilities.clear();
+        capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                        params.resource_accountant, graph_optimizer_registry);
+        params.resource_accountant->SetThreshold(original_threshold);
+
+        if (params.check_load_cancellation_fn()) {
+          ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+          return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                                 "GetCapabilities was canceled by user request");
+        }
+
+        auto expected_retained_nodes =
+            collect_reconciled_pass2_nodes(get_reconciled_capabilities(capabilities));
+        const size_t max_reconciliation_attempts = confirmed_pass1_survivors.size() + 2;
+        bool reconciliation_stable = false;
+        for (size_t attempt = 0; attempt < max_reconciliation_attempts; ++attempt) {
+          ORT_RETURN_IF_ERROR(rebuild_survivor_reservations(expected_retained_nodes));
+
+          capabilities.clear();
+          capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
+                                          params.resource_accountant, graph_optimizer_registry);
+
+          if (params.check_load_cancellation_fn()) {
+            ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+            return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                                   "GetCapabilities was canceled by user request");
+          }
+
+          auto actual_retained_nodes =
+              collect_reconciled_pass2_nodes(get_reconciled_capabilities(capabilities));
+          const bool retained_set_matches =
+              actual_retained_nodes.size() == expected_retained_nodes.size() &&
+              std::all_of(actual_retained_nodes.begin(), actual_retained_nodes.end(),
+                          [&](NodeIndex node_index) {
+                            return expected_retained_nodes.contains(node_index);
+                          });
+          if (retained_set_matches) {
+            reconciliation_stable = true;
+            break;
+          }
+
+          expected_retained_nodes = std::move(actual_retained_nodes);
+        }
+
+        ORT_RETURN_IF_NOT(
+            reconciliation_stable,
+            "NHWC capability/resource reconciliation did not converge for execution provider ",
+            ep_type, ".");
+
+        const auto reconciled_capabilities = get_reconciled_capabilities(capabilities);
+        const InlinedHashSet<const ComputeCapability*> retained_capabilities{
+            reconciled_capabilities.begin(), reconciled_capabilities.end()};
+        capabilities.erase(
+            std::remove_if(
+                capabilities.begin(), capabilities.end(),
+                [&](const std::unique_ptr<ComputeCapability>& capability) {
+                  return !retained_capabilities.contains(capability.get());
+                }),
+            capabilities.end());
+        for (auto& survivor_capability : confirmed_survivor_capabilities) {
+          if (retained_capabilities.contains(survivor_capability.get())) {
+            capabilities.push_back(std::move(survivor_capability));
+          }
+        }
+      }
     } else {
       capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup,
                                       nullptr, graph_optimizer_registry);
@@ -584,72 +773,6 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     }
 
     auto [pass2_node_indices, new_nodes_in_capabilities] = collect_pass2_nodes(capabilities);
-    for (auto& survivor_capability : confirmed_survivor_capabilities) {
-      const auto& survivor_nodes = survivor_capability->sub_graph->nodes;
-      const InlinedHashSet<NodeIndex> survivor_node_set{
-          survivor_nodes.begin(), survivor_nodes.end()};
-      const bool covered_by_final_capability =
-          std::any_of(
-              capabilities.begin(), capabilities.end(),
-              [&](const std::unique_ptr<ComputeCapability>& capability) {
-                const auto& final_nodes = capability->sub_graph->nodes;
-                return std::all_of(
-                    survivor_nodes.begin(), survivor_nodes.end(),
-                    [&](NodeIndex survivor_node_index) {
-                      return std::find(final_nodes.begin(), final_nodes.end(),
-                                       survivor_node_index) != final_nodes.end();
-                    });
-              });
-      if (covered_by_final_capability) {
-        continue;
-      }
-
-      const bool overlaps_final_capabilities =
-          std::any_of(survivor_nodes.begin(), survivor_nodes.end(),
-                      [&](NodeIndex node_index) {
-                        return pass2_node_indices.contains(node_index);
-                      });
-      if (overlaps_final_capabilities) {
-        const bool can_replace_overlapping_capabilities =
-            std::all_of(
-                capabilities.begin(), capabilities.end(),
-                [&](const std::unique_ptr<ComputeCapability>& capability) {
-                  const auto& nodes = capability->sub_graph->nodes;
-                  const bool overlaps_survivor =
-                      std::any_of(
-                          nodes.begin(), nodes.end(),
-                          [&](NodeIndex node_index) {
-                            return survivor_node_set.contains(node_index);
-                          });
-                  return !overlaps_survivor ||
-                         (!capability->sub_graph->IsAccountingEnabled() &&
-                          std::all_of(nodes.begin(), nodes.end(),
-                                      [&](NodeIndex node_index) {
-                                        return confirmed_pass1_survivors.contains(node_index);
-                                      }));
-                });
-        if (!can_replace_overlapping_capabilities) {
-          continue;
-        }
-
-        capabilities.erase(
-            std::remove_if(
-                capabilities.begin(), capabilities.end(),
-                [&](const std::unique_ptr<ComputeCapability>& capability) {
-                  const auto& nodes = capability->sub_graph->nodes;
-                  return std::any_of(
-                      nodes.begin(), nodes.end(),
-                      [&](NodeIndex node_index) {
-                        return survivor_node_set.contains(node_index);
-                      });
-                }),
-            capabilities.end());
-      }
-
-      capabilities.push_back(std::move(survivor_capability));
-      std::tie(pass2_node_indices, new_nodes_in_capabilities) =
-          collect_pass2_nodes(capabilities);
-    }
     pass2_node_indices.insert(independently_runnable_survivors.begin(),
                               independently_runnable_survivors.end());
     reset_assignment_unclaimed_nodes(&pass2_node_indices);
@@ -668,7 +791,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     // carry their own costs and are accounted normally when their partitions are placed.
     if (params.resource_accountant != nullptr) {
       for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
-        if (!confirmed_pass1_survivors.contains(node_index)) {
+        if (!reserved_pass1_survivors.contains(node_index)) {
           continue;
         }
 

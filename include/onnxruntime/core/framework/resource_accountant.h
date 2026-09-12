@@ -116,6 +116,10 @@ class IResourceAccountant {
     threshold_ = threshold;
   }
 
+  void SetThreshold(std::optional<ResourceCount> threshold) {
+    threshold_ = std::move(threshold);
+  }
+
   void SetStopAssignment() noexcept {
     stop_assignment_ = true;
   }

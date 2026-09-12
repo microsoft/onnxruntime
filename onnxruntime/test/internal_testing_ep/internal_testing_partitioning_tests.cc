@@ -181,11 +181,13 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
   explicit AccountingNhwcTestExecutionProvider(
       std::optional<NodeIndex> unassignable_capability_node_index = std::nullopt,
       SurvivorCapabilityMode survivor_capability_mode = SurvivorCapabilityMode::kSeparate,
-      std::optional<NodeIndex> second_pass_dropped_node_index = std::nullopt)
+      std::optional<NodeIndex> second_pass_dropped_node_index = std::nullopt,
+      std::optional<NodeIndex> accounted_overlap_dropped_node_index = std::nullopt)
       : IExecutionProvider{kCudaExecutionProvider},
         unassignable_capability_node_index_(unassignable_capability_node_index),
         survivor_capability_mode_(survivor_capability_mode),
-        second_pass_dropped_node_index_(second_pass_dropped_node_index) {
+        second_pass_dropped_node_index_(second_pass_dropped_node_index),
+        accounted_overlap_dropped_node_index_(accounted_overlap_dropped_node_index) {
   }
 
   DataLayout GetPreferredLayout() const override {
@@ -258,15 +260,27 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
         continue;
       }
 
-      // Drop LogSoftmax on the second pass to model the EP releasing a node that
-      // it tentatively claimed on the first pass. Relu models a node that becomes
-      // claimable only in pass 2.
+      const auto& assigned_ep = node->GetExecutionProviderType();
+      if (!assigned_ep.empty() && assigned_ep != Type()) {
+        continue;
+      }
+
+      const bool already_claimed = (assigned_ep == Type());
+      const bool drop_accounted_overlap_survivor =
+          second_pass &&
+          survivor_capability_mode_ == SurvivorCapabilityMode::kAccountedMixedOverlap &&
+          resource_accountant != nullptr &&
+          (is_log_softmax ||
+           (accounted_overlap_dropped_node_index_.has_value() &&
+            node_index == *accounted_overlap_dropped_node_index_));
+
+      // Drop a provisional survivor on the second pass to model the EP changing
+      // capability grouping. Relu models a node that becomes claimable only in pass 2.
       if ((second_pass && is_log_softmax &&
            (survivor_capability_mode_ == SurvivorCapabilityMode::kSeparate ||
             survivor_capability_mode_ == SurvivorCapabilityMode::kMixedWithPass2Node ||
-            survivor_capability_mode_ == SurvivorCapabilityMode::kOptimizationOnly ||
-            (survivor_capability_mode_ == SurvivorCapabilityMode::kAccountedMixedOverlap &&
-             resource_accountant != nullptr))) ||
+            survivor_capability_mode_ == SurvivorCapabilityMode::kOptimizationOnly)) ||
+          drop_accounted_overlap_survivor ||
           (!second_pass && is_relu) ||
           (second_pass && is_relu &&
            survivor_capability_mode_ == SurvivorCapabilityMode::kSplitCoverage) ||
@@ -274,13 +288,6 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
            second_pass && node_index == *second_pass_dropped_node_index_)) {
         continue;
       }
-
-      const auto& assigned_ep = node->GetExecutionProviderType();
-      if (!assigned_ep.empty() && assigned_ep != Type()) {
-        continue;
-      }
-
-      const bool already_claimed = (assigned_ep == Type());
 
       if (return_partial_survivor_overlap && is_conv) {
         continue;
@@ -301,9 +308,11 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
            resource_accountant != nullptr);
       const bool collect_for_fusion =
           collect_fused_survivors &&
-          (collect_mixed_capability
-               ? (is_conv || is_relu)
-               : (is_conv || is_log_softmax));
+          (survivor_capability_mode_ == SurvivorCapabilityMode::kAccountedMixedOverlap
+               ? (resource_accountant == nullptr ? already_claimed : (already_claimed || is_relu))
+               : (collect_mixed_capability
+                      ? (is_conv || is_relu)
+                      : (is_conv || is_log_softmax)));
       if (collect_for_fusion) {
         fused_pass1_survivors.push_back(node);
         continue;
@@ -442,6 +451,7 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
   std::optional<NodeIndex> unassignable_capability_node_index_;
   SurvivorCapabilityMode survivor_capability_mode_;
   std::optional<NodeIndex> second_pass_dropped_node_index_;
+  std::optional<NodeIndex> accounted_overlap_dropped_node_index_;
 };
 
 }  // namespace
@@ -698,16 +708,14 @@ void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
   ASSERT_GT(expected_conv_cost, 0u);
   ASSERT_GT(expected_relu_cost, 0u);
   ASSERT_GT(expected_log_softmax_cost, 0u);
-  const size_t budget_bytes =
-      (survivor_capability_mode == SurvivorCapabilityMode::kAccountedMixedOverlap
-           ? 2048
-           : (pass2_node_precedes_survivor ? 1000 : 1075)) *
-      1024;
+  const size_t budget_bytes = (pass2_node_precedes_survivor ? 1000 : 1075) * 1024;
   ASSERT_LT(expected_conv_cost + expected_log_softmax_cost, budget_bytes);
   const bool log_softmax_survives =
       survivor_capability_mode == SurvivorCapabilityMode::kFused ||
       survivor_capability_mode == SurvivorCapabilityMode::kPartialOverlap ||
-      survivor_capability_mode == SurvivorCapabilityMode::kSplitCoverage;
+      survivor_capability_mode == SurvivorCapabilityMode::kSplitCoverage ||
+      (survivor_capability_mode == SurvivorCapabilityMode::kAccountedMixedOverlap &&
+       pass2_node_precedes_survivor);
   const bool expect_relu_rejected =
       pass2_node_precedes_survivor ||
       survivor_capability_mode == SurvivorCapabilityMode::kPartialOverlap ||
@@ -716,11 +724,9 @@ void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
     const size_t survivor_cost =
         expected_conv_cost + (log_softmax_survives ? expected_log_softmax_cost : 0);
     ASSERT_GT(survivor_cost + expected_relu_cost, budget_bytes);
-  } else if (survivor_capability_mode != SurvivorCapabilityMode::kAccountedMixedOverlap) {
+  } else {
     ASSERT_LT(expected_conv_cost + expected_relu_cost, budget_bytes);
     ASSERT_GT(expected_conv_cost + expected_log_softmax_cost + expected_relu_cost, budget_bytes);
-  } else {
-    ASSERT_LT(expected_conv_cost + expected_log_softmax_cost + expected_relu_cost, budget_bytes);
   }
 
   // Drive partitioning directly with the accounting-aware NHWC EP. The accountant is
@@ -825,7 +831,8 @@ void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
                             epctx::ModelGenOptions{},
                             debug_graph_fn));
 
-  if (survivor_capability_mode == SurvivorCapabilityMode::kAccountedMixedOverlap) {
+  if (survivor_capability_mode == SurvivorCapabilityMode::kAccountedMixedOverlap &&
+      !expect_relu_rejected) {
     EXPECT_TRUE(mixed_survivor_capability_assigned);
     EXPECT_EQ(mixed_survivor_capability_cost, expected_relu_cost)
         << "The retained Conv reservation must not be duplicated by the mixed final capability.";
@@ -907,6 +914,10 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingReprobesMixedSurvivorCapability) {
 
 TEST(InternalTestingEP, NhwcTwoPassAccountingKeepsAccountedMixedOverlap) {
   RunNhwcTwoPassAccountingRetryTest(false, SurvivorCapabilityMode::kAccountedMixedOverlap);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingRestoresDisplacedSurvivorsWhenOverlapExceedsBudget) {
+  RunNhwcTwoPassAccountingRetryTest(true, SurvivorCapabilityMode::kAccountedMixedOverlap);
 }
 
 TEST(InternalTestingEP, NhwcTwoPassAccountingReprobesOptimizationOnlySurvivorCapability) {
@@ -1002,6 +1013,124 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingReassignsSharedInitializerToSurvivo
   ASSERT_TRUE(consumed_before_survivor_assignment.has_value());
   EXPECT_EQ(*consumed_before_survivor_assignment, expected_survivor_cost)
       << "The survivor must inherit the shared initializer charge when its original owner is dropped.";
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingReassignsSharedInitializerAfterOverlapDisplacement) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("NhwcTwoPassAccountingReassignsSharedInitializerAfterOverlapDisplacement",
+              false,
+              ModelMetaData(),
+              PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version,
+              {},
+              DefaultLoggingManager().DefaultLogger());
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  constexpr int64_t kElementCount = 16384;
+  const std::vector<int64_t> tensor_shape{kElementCount};
+  auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* shared_initializer = builder.MakeInitializer<float>(tensor_shape, -1.0f, 1.0f);
+  auto* first_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* second_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+
+  Node& displaced_node =
+      builder.AddNode("Add", std::vector<NodeArg*>{input, shared_initializer},
+                      std::vector<NodeArg*>{first_output});
+  Node& retained_node =
+      builder.AddNode("Add", std::vector<NodeArg*>{first_output, shared_initializer},
+                      std::vector<NodeArg*>{second_output});
+  Node& pass2_node =
+      builder.AddNode("Relu", std::vector<NodeArg*>{second_output},
+                      std::vector<NodeArg*>{output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ConfigOptions reference_config;
+  ASSERT_STATUS_OK(reference_config.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+  std::optional<ResourceAccountantMap> reference_accountants;
+  ASSERT_STATUS_OK(CreateAccountants(reference_config, PathString(), reference_accountants));
+  ASSERT_TRUE(reference_accountants.has_value());
+  auto reference_it = reference_accountants->find(kCudaExecutionProvider);
+  ASSERT_NE(reference_it, reference_accountants->end());
+  const size_t expected_retained_cost = std::get<size_t>(
+      reference_it->second->ComputeResourceCount(
+          retained_node, GetNhwcAccountingTestEstimate("Add")));
+
+  std::optional<ResourceAccountantMap> shared_reference_accountants;
+  ASSERT_STATUS_OK(CreateAccountants(
+      reference_config, PathString(), shared_reference_accountants));
+  ASSERT_TRUE(shared_reference_accountants.has_value());
+  auto shared_reference_it = shared_reference_accountants->find(kCudaExecutionProvider);
+  ASSERT_NE(shared_reference_it, shared_reference_accountants->end());
+  shared_reference_it->second->ComputeResourceCount(
+      displaced_node, GetNhwcAccountingTestEstimate("Add"));
+  const size_t retained_cost_without_shared_initializer = std::get<size_t>(
+      shared_reference_it->second->ComputeResourceCount(
+          retained_node, GetNhwcAccountingTestEstimate("Add")));
+  ASSERT_GT(expected_retained_cost, retained_cost_without_shared_initializer);
+
+  ExecutionProviders execution_providers;
+  auto& default_logger = DefaultLoggingManager().DefaultLogger();
+  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>(
+      std::nullopt, SurvivorCapabilityMode::kAccountedMixedOverlap,
+      std::nullopt, displaced_node.Index());
+  auto* ep_raw = ep.get();
+  ep->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(ep)));
+
+  KernelRegistryManager krm;
+  ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
+
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "4096,"));
+  std::optional<size_t> consumed_before_overlap_assignment;
+  OnPartitionAssignmentFunction on_assignment =
+      [&](const Graph&, const ComputeCapability& capability,
+          const std::string& assigned_ep_type) {
+        if (assigned_ep_type != kCudaExecutionProvider ||
+            ep_raw->observed_accountant() == nullptr) {
+          return;
+        }
+
+        const bool has_retained_node =
+            std::find(capability.sub_graph->nodes.begin(), capability.sub_graph->nodes.end(),
+                      retained_node.Index()) != capability.sub_graph->nodes.end();
+        const bool has_pass2_node =
+            std::find(capability.sub_graph->nodes.begin(), capability.sub_graph->nodes.end(),
+                      pass2_node.Index()) != capability.sub_graph->nodes.end();
+        if (has_retained_node && has_pass2_node) {
+          consumed_before_overlap_assignment =
+              std::get<size_t>(ep_raw->observed_accountant()->GetConsumedAmount());
+        }
+      };
+
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(
+      &sess_options, nullptr /*cpu_ep*/, &default_logger);
+  GraphPartitioner partitioner(
+      krm, execution_providers, std::move(graph_optimizer_registry),
+      []() -> bool { return false; }, on_assignment);
+
+  layout_transformation::TransformLayoutFunction transform_layout_fn =
+      [](Graph&, bool& modified, const IExecutionProvider&,
+         const layout_transformation::DebugGraphFn&) -> Status {
+    modified = false;
+    return Status::OK();
+  };
+
+  FuncManager func_mgr;
+  ASSERT_STATUS_OK(
+      partitioner.Partition(graph, func_mgr, transform_layout_fn,
+                            sess_options.config_options, default_logger, nullptr /*layering_index*/));
+
+  ASSERT_TRUE(consumed_before_overlap_assignment.has_value());
+  EXPECT_EQ(*consumed_before_overlap_assignment, expected_retained_cost)
+      << "The retained survivor must inherit a shared initializer owned by a displaced survivor.";
 }
 
 TEST(InternalTestingEP, NhwcTwoPassAccountingDoesNotReserveUnassignedCapability) {
