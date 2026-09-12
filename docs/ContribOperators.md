@@ -44,7 +44,6 @@ Do not modify directly.*
   * <a href="#com.microsoft.GatedRMSNorm">com.microsoft.GatedRMSNorm</a>
   * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherBlockQuantized">com.microsoft.GatherBlockQuantized</a>
-  * <a href="#com.microsoft.GatherFpQuantized">com.microsoft.GatherFpQuantized</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
   * <a href="#com.microsoft.GemmFastGelu">com.microsoft.GemmFastGelu</a>
@@ -2135,6 +2134,26 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.GatherBlockQuantized"></a><a name="com.microsoft.gatherblockquantized">**com.microsoft.GatherBlockQuantized**</a>
 
+  GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
+    1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
+       `block_size` must be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ...
+       For an FP8 or FP4 `data` type (see point 6 below), `block_size` may also be 0, meaning the entire `quantize_axis`
+       dimension forms a single block (i.e. one scale per row).
+    2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
+       If `zero_points` is not provided, the default value is 0 for int4/uint4, or 2^(bits-1) for uint8.
+       `zero_points` must not be provided when `data` is an FP8 or FP4 type: FP8/FP4 quantization is symmetric.
+    3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
+       to dequantize the output.
+    4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
+    5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
+       for `bits` < 8 the values are packed along the last dimension (low-order bits first).
+    6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
+       (float4e2m1), rather than an integer block-quantized type. In that case `bits` is not applicable, there is
+       no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.
+       On any axis other than `quantize_axis`, the corresponding `scales` dimension must either equal `data`'s
+       dimension, or be 1, in which case the scale is broadcast along that axis (e.g. a single scale shared by
+       every row, as with a per-tensor scale applied to an entire embedding table).
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
@@ -2143,9 +2162,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>bits</tt> : int</dt>
-<dd>Number of bits used for weight quantization. Must be 2, 4 or 8. </dd>
+<dd>Number of bits used for weight quantization. Must be 2, 4 or 8. Not applicable when `data` is an FP8 or FP4 type.</dd>
 <dt><tt>block_size</tt> : int</dt>
-<dd>(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
+<dd>(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16, or 0. A value of 0 is only valid for an FP8 or FP4 `data` type and means the entire `quantize_axis` dimension forms a single block.</dd>
 <dt><tt>gather_axis</tt> : int</dt>
 <dd>(Optional) Which axis to gather on. Negative value means counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).</dd>
 <dt><tt>quantize_axis</tt> : int</dt>
@@ -2160,9 +2179,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>indices</tt> : Tind</dt>
 <dd></dd>
 <dt><tt>scales</tt> : T2</dt>
-<dd></dd>
+<dd>quantization scale. Same rank as data. On axes other than quantize_axis, a dimension of 1 broadcasts the scale along that axis (e.g. a single per-tensor scale for the whole table); only applicable when `data` is an FP8 or FP4 type.</dd>
 <dt><tt>zero_points</tt> (optional) : T1</dt>
-<dd></dd>
+<dd>quantization zero points. Must not be provided when `data` is an FP8 or FP4 type.</dd>
 </dl>
 
 #### Outputs
@@ -2175,55 +2194,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(int4), tensor(uint4), tensor(uint8)</dt>
+<dt><tt>T1</tt> : tensor(int4), tensor(uint4), tensor(uint8), tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz), tensor(float4e2m1)</dt>
 <dd>Constrain quantized types.</dd>
-<dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
-<dd>Constrain dequantized types.</dd>
-<dt><tt>Tind</tt> : tensor(int32), tensor(int64)</dt>
-<dd>Constrain indices to integer types.</dd>
-</dl>
-
-
-### <a name="com.microsoft.GatherFpQuantized"></a><a name="com.microsoft.gatherfpquantized">**com.microsoft.GatherFpQuantized**</a>
-
-#### Version
-
-This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
-
-#### Attributes
-
-<dl>
-<dt><tt>block_size</tt> : int</dt>
-<dd>(Optional) block size used for the scale granularity along quantize_axis. Must be 0 (the whole quantize_axis dimension is a single block, i.e. one scale per row) or a power of 2 and not smaller than 16.</dd>
-<dt><tt>gather_axis</tt> : int</dt>
-<dd>(Optional) Which axis to gather on. Negative value means counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).</dd>
-<dt><tt>quantize_axis</tt> : int</dt>
-<dd>(Optional) Which axis to block-wise scale. Negative value means counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).</dd>
-</dl>
-
-#### Inputs
-
-<dl>
-<dt><tt>data</tt> : T1</dt>
-<dd></dd>
-<dt><tt>indices</tt> : Tind</dt>
-<dd></dd>
-<dt><tt>scales</tt> : T2</dt>
-<dd></dd>
-</dl>
-
-#### Outputs
-
-<dl>
-<dt><tt>output</tt> : T2</dt>
-<dd></dd>
-</dl>
-
-#### Type Constraints
-
-<dl>
-<dt><tt>T1</tt> : tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz), tensor(float4e2m1)</dt>
-<dd>Constrain quantized data to FP8 or FP4 types.</dd>
 <dt><tt>T2</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain dequantized types.</dd>
 <dt><tt>Tind</tt> : tensor(int32), tensor(int64)</dt>
