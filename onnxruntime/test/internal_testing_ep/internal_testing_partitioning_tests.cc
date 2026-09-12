@@ -686,6 +686,8 @@ void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
   ASSERT_NE(conv_node, nullptr);
   ASSERT_NE(relu_node, nullptr);
   ASSERT_NE(log_softmax_node, nullptr);
+  const NodeIndex relu_node_index = relu_node->Index();
+  const NodeIndex log_softmax_node_index = log_softmax_node->Index();
 
   std::optional<ResourceAccountantMap> ref_conv_map;
   std::optional<ResourceAccountantMap> ref_relu_map;
@@ -839,7 +841,9 @@ void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
     ASSERT_TRUE(mixed_consumed_before_assignment.has_value());
     EXPECT_EQ(*mixed_consumed_before_assignment, expected_conv_cost)
         << "The overlapping final capability must win without retaining the uncovered LogSoftmax.";
-    EXPECT_TRUE(log_softmax_node->GetExecutionProviderType().empty());
+    const Node* final_log_softmax_node = graph.GetNode(log_softmax_node_index);
+    EXPECT_TRUE(final_log_softmax_node == nullptr ||
+                final_log_softmax_node->GetExecutionProviderType().empty());
   } else if (survivor_capability_mode == SurvivorCapabilityMode::kMixedWithPass2Node) {
     EXPECT_TRUE(mixed_survivor_capability_assigned);
     EXPECT_EQ(mixed_survivor_capability_cost, expected_conv_cost + expected_relu_cost)
@@ -854,7 +858,9 @@ void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
         expected_conv_cost + (log_softmax_survives ? expected_log_softmax_cost : 0);
     EXPECT_EQ(*ep_raw->last_observed_consumed(), expected_survivor_cost)
         << "The final admission pass must reserve all later survivors before evaluating Relu.";
-    EXPECT_TRUE(relu_node->GetExecutionProviderType().empty());
+    const Node* final_relu_node = graph.GetNode(relu_node_index);
+    EXPECT_TRUE(final_relu_node == nullptr ||
+                final_relu_node->GetExecutionProviderType().empty());
     if (log_softmax_survives) {
       EXPECT_TRUE(fused_pass1_survivors_assigned)
           << "The discovery capability for the fused pass-1 survivors must be preserved.";
