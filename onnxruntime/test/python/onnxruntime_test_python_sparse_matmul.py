@@ -10,8 +10,8 @@ import unittest
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper
 from helper import get_name
+from onnx import TensorProto, helper
 
 import onnxruntime as onnxrt
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector, RunOptions
