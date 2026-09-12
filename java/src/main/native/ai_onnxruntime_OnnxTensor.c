@@ -118,6 +118,13 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxTensor_createStringTensor
         return (jlong) NULL;
       }
 
+      // The allocator does not guarantee zero-initialized memory. Initialize the
+      // entries so cleanup can safely distinguish acquired UTF-8 strings from
+      // entries that failed before GetStringUTFChars returned.
+      for (jsize i = 0; i < length; i++) {
+        strings[i] = NULL;
+      }
+
       jobject* javaStrings = (jobject*)calloc(length, sizeof(jobject));
       if ((javaStrings == NULL) && (length != 0)) {
         api->AllocatorFree(allocator, (void*)strings);
