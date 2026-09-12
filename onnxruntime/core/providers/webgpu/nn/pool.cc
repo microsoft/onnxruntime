@@ -6,6 +6,7 @@
 #include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/pool.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 #include <vector>
 
@@ -76,7 +77,9 @@ POOLING_KERNEL(GlobalMaxPool, kOnnxDomain, false, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, kMSInternalNHWCDomain, true, MaxPool<1>, 1)
 
 Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform);
+  // The value type carries the component count: for NHWC the channel is innermost and pooling
+  // never crosses it, so a thread can carry four channels through the same window arithmetic.
+  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
 
   // Declare and initialize the variables needed.
@@ -91,7 +94,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   constexpr const size_t kStringInitialSize = 128;
   if (is_max_pool_) {
     SS(var_decl_ss, kStringInitialSize);
-    var_decl_ss << "  var value = " << (is_float16_ ? "-65504.0h" : "-3.4028234663852886e+38f") << ";\n";
+    var_decl_ss << "  var value = input_value_t(" << (is_float16_ ? "-65504.0h" : "-3.4028234663852886e+38f") << ");\n";
     var_decl_code = SS_GET(var_decl_ss);
 
     sampling_code = "      value = max(value, x_val);\n";
@@ -100,7 +103,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   } else {
     SS(var_decl_ss, kStringInitialSize);
-    var_decl_ss << "  var value = " << (is_float16_ ? "f16(0)" : "f32(0)") << ";\n";
+    var_decl_ss << "  var value = input_value_t(0);\n";
     // count (the averaging divisor) is accumulated in the kernel loop for both modes. A fixed
     // kernel_size divisor would be wrong under count_include_pad + ceil_mode: ceil_mode can extend
     // the last window past the padded region, and those overflow cells must not be counted.
@@ -124,7 +127,7 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     } else {
       // Guard against an all-padding window (count == 0): leave value at 0 instead of dividing by zero.
       downsampling_ss << "  if (count > 0u) {\n"
-                      << "    value /= " << (is_float16_ ? "f16" : "f32") << "(count);\n"
+                      << "    value /= input_value_t(" << (is_float16_ ? "f16" : "f32") << "(count));\n"
                       << "  }\n";
     }
     downsampling_code = SS_GET(downsampling_ss);
@@ -334,18 +337,37 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   const auto strides_u32 = NarrowToU32(strides);
   const auto dilations_u32 = NarrowToU32(dilations);
 
-  const uint32_t serial_dispatch_groups = static_cast<uint32_t>((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  // NHWC keeps the channel innermost and pooling never mixes channels, so one thread can carry
+  // four of them through the same window loop. The window arithmetic, which is what this kernel
+  // spends its time on, is then paid once per four elements instead of once per element.
+  int components = (is_nhwc && (is_float16 || X->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
+                       ? GetMaxComponents(out_channel)
+                       : 1;
+
+  const uint32_t serial_dispatch_groups =
+      static_cast<uint32_t>((output_size / components + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   // The serial path gives each output element one thread that loops the whole window, so its
   // parallelism is output_size alone. The parallel path spends a workgroup per output element and
   // reduces the window across its threads. Select on whether the serial path fills the device, not
   // on output size: a small output with a large window holds plenty of work either way.
   const bool use_parallel_reduction =
       serial_dispatch_groups < kMinDispatchGroupsToFillDevice && kernel_size >= kParallelReductionWorkgroupSize;
+  if (use_parallel_reduction) {
+    // That path reduces one window across a workgroup, which the per-channel vectorization has
+    // nothing to fold into; leave it scalar.
+    components = 1;
+  }
+  output_size /= components;
+
   PoolProgram program{is_max_pool, is_nhwc, kernel_shape, is_float16, count_include_pad, use_parallel_reduction};
 
-  program.CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad, use_parallel_reduction)
-      .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank}})
-      .AddOutputs({{Y}})
+  program
+      .CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad, use_parallel_reduction,
+                 components)
+      .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(x_shape, components),
+                   components}})
+      .AddOutputs({{Y, ProgramTensorMetadataDependency::None, ReduceShapeByComponents(Y->Shape(), components),
+                    components}})
       .AddUniformVariables({output_size, kernel_size,
                             gsl::span<const uint32_t>(kernel_strides.data(), kernel_strides.size()),
                             gsl::span<const uint32_t>(pads_u32.data(), pads_u32.size()),

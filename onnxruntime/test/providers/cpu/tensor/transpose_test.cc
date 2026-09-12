@@ -739,6 +739,91 @@ TEST(TransposeOpTest, TransposeReshape) {
                 {kTensorrtExecutionProvider}, {7, 21});  // TensorRT: illegal error
 }
 
+// Every other 2D case here fits inside a single tile of a tiled implementation. This one does not:
+// both extents exceed 32 and neither is a multiple of it, so a tiled implementation has to run its
+// per-tile row loop to completion and handle a partial tile on both edges.
+TEST(TransposeOpTest, TwoDimLargerThanTile) {
+  constexpr int64_t kRows = 40;
+  constexpr int64_t kCols = 37;
+
+  std::vector<float> input_vals(kRows * kCols);
+  for (size_t i = 0; i < input_vals.size(); ++i) {
+    input_vals[i] = static_cast<float>(i);
+  }
+  std::vector<float> expected_vals(input_vals.size());
+  for (int64_t r = 0; r < kRows; ++r) {
+    for (int64_t c = 0; c < kCols; ++c) {
+      expected_vals[c * kRows + r] = input_vals[r * kCols + c];
+    }
+  }
+
+  std::vector<int64_t> input_shape({kRows, kCols});
+  std::vector<int64_t> perm = {1, 0};
+  std::vector<int64_t> expected_shape({kCols, kRows});
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider}, {7, 21});  // TensorRT: illegal error
+}
+
+// A permutation that leaves the innermost dimension innermost moves whole runs of it, so an
+// implementation may carry four elements per thread when that dimension is a multiple of four.
+TEST(TransposeOpTest, ThreeDimInnermostFixedFourAligned) {
+  std::vector<int64_t> input_shape({2, 3, 4});
+  std::vector<float> input_vals = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+
+      13.0f, 14.0f, 15.0f, 16.0f,
+      17.0f, 18.0f, 19.0f, 20.0f,
+      21.0f, 22.0f, 23.0f, 24.0f};
+
+  std::vector<int64_t> perm = {1, 0, 2};
+  std::vector<int64_t> expected_shape({3, 2, 4});
+  std::vector<float> expected_vals = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      13.0f, 14.0f, 15.0f, 16.0f,
+
+      5.0f, 6.0f, 7.0f, 8.0f,
+      17.0f, 18.0f, 19.0f, 20.0f,
+
+      9.0f, 10.0f, 11.0f, 12.0f,
+      21.0f, 22.0f, 23.0f, 24.0f};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider}, {7, 21});  // TensorRT: illegal error
+}
+
+// The innermost dimension is a multiple of four but the permutation moves it, so consecutive
+// output elements no longer come from consecutive input elements.
+TEST(TransposeOpTest, ThreeDimInnermostMovedFourAligned) {
+  std::vector<int64_t> input_shape({2, 3, 4});
+  std::vector<float> input_vals = {
+      1.0f, 2.0f, 3.0f, 4.0f,
+      5.0f, 6.0f, 7.0f, 8.0f,
+      9.0f, 10.0f, 11.0f, 12.0f,
+
+      13.0f, 14.0f, 15.0f, 16.0f,
+      17.0f, 18.0f, 19.0f, 20.0f,
+      21.0f, 22.0f, 23.0f, 24.0f};
+
+  std::vector<int64_t> perm = {0, 2, 1};
+  std::vector<int64_t> expected_shape({2, 4, 3});
+  std::vector<float> expected_vals = {
+      1.0f, 5.0f, 9.0f,
+      2.0f, 6.0f, 10.0f,
+      3.0f, 7.0f, 11.0f,
+      4.0f, 8.0f, 12.0f,
+
+      13.0f, 17.0f, 21.0f,
+      14.0f, 18.0f, 22.0f,
+      15.0f, 19.0f, 23.0f,
+      16.0f, 20.0f, 24.0f};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider}, {7, 21});  // TensorRT: illegal error
+}
+
 TEST(TransposeOpTest, ThreeDimStr) {
   std::vector<int64_t> input_shape({4, 2, 3});
   std::vector<std::string> input_vals = {

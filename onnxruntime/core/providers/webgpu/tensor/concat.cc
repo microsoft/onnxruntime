@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/providers/webgpu/tensor/concat.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -132,6 +133,31 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   uint32_t max_inputs_per_concat = context.DeviceLimits().maxStorageBuffersPerShaderStage - 1;
   bool is_int64 = prepare.output_tensor->DataType() == DataTypeImpl::GetType<int64_t>();
 
+  // Concat is pure data movement, and one thread per element leaves most of the memory bandwidth
+  // on the table. Handle four elements per thread whenever the innermost dimension allows it:
+  // every offset the shader works with is then expressed in those four-element units, so the
+  // index arithmetic is unchanged. A vec4 must not straddle two inputs, which is why
+  // concatenating along the innermost axis needs every input to be a multiple of four there, not
+  // just the output. int64 stays scalar - it is already stored as vec2<u32>.
+  const auto& out_shape = prepare.output_tensor->Shape();
+  const size_t rank = out_shape.NumDimensions();
+  int components = 1;
+  if (!is_int64 && rank > 0) {
+    bool divisible = out_shape[rank - 1] % 4 == 0;
+    if (divisible && axis + 1 == rank) {
+      for (const auto& input : prepare.inputs) {
+        const auto& shape = input.tensor->Shape();
+        if (shape.Size() != 0 && shape[rank - 1] % 4 != 0) {
+          divisible = false;
+          break;
+        }
+      }
+    }
+    components = divisible ? 4 : 1;
+  }
+  // Offsets along the concat axis only shrink when that axis is the vectorized one.
+  const uint32_t axis_divisor = (components > 1 && axis + 1 == rank) ? 4u : 1u;
+
   uint32_t input_index = 0;
   uint32_t cumulative_size_in_concat_axis = 0;
 
@@ -153,10 +179,11 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
       if (input.tensor->Shape().Size() == 0) {
         continue;
       }
-      program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank});
+      program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank,
+                        ReduceShapeByComponents(input.tensor->Shape(), components), components});
 
-      uint32_t size = onnxruntime::narrow<int32_t>(input.tensor->Shape().Size());
-      uint32_t axis_size = static_cast<uint32_t>(input.tensor->Shape()[axis]);
+      uint32_t size = onnxruntime::narrow<int32_t>(input.tensor->Shape().Size()) / components;
+      uint32_t axis_size = static_cast<uint32_t>(input.tensor->Shape()[axis]) / axis_divisor;
 
       output_size += size;
       offsets.push_back(output_size);
@@ -167,8 +194,9 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     offsets.pop_back();
     sizes_in_concat_axis.pop_back();
 
-    program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis), ","))
-        .AddOutputs({prepare.output_tensor})
+    program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis, components), ","))
+        .AddOutputs({{prepare.output_tensor, ProgramTensorMetadataDependency::None,
+                      ReduceShapeByComponents(out_shape, components), components}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({gsl::span<const uint32_t>(offsets.data(), offsets.size()), gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()), output_size});
     ORT_RETURN_IF_ERROR(context.RunProgram(program));
