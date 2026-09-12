@@ -58,10 +58,22 @@ class PagedAttention final : public CudaKernel {
   // Defaults on; ORT_ENABLE_XQA_PER_CHANNEL_KV=0 routes those steps to the portable FP32 kernel,
   // which resolves scale tables whose dynamic range exceeds what the fold can represent.
   bool enable_per_channel_xqa_;
+  // cuDNN paged SDPA (decode-only tier). Mirrors GroupQueryAttention: the standard sdpa_kernel bit
+  // and ORT_ENABLE_CUDNN_FLASH_ATTENTION opt users in explicitly, and sm>=90 gets it automatically
+  // via AllowCudnnFlashAttentionAuto(). ORT_ENABLE_CUDNN_FLASH_ATTENTION=0 is the shared kill switch
+  // for every cuDNN attention path in the CUDA EP.
+  bool enable_cudnn_paged_;
+  bool auto_enable_cudnn_paged_;
   // -1 = not yet resolved, 0 = the kernel needs more shared memory than this device allows,
   // 1 = it fits. Resolved once per node because it only depends on head_size / group size.
   mutable std::atomic<int> xqa_shared_memory_ok_{-1};
   mutable std::atomic<int> xqa_spec_dec_shared_memory_ok_{-1};
+  // No node-scalar latch for cuDNN paged: the graph cache in cudnn_flash_attention.cc is
+  // thread_local and keyed on the full PagedGraphParams (shape + handle), so buildability is a
+  // per-(thread, shape) property, not a per-node one. ComputeInternal calls try_build_paged_graph
+  // every Run with the current shape; that call is a cache-first read (~10 ns steady state) and
+  // folds the capture-mode check internally, so a shape change or a second worker thread cannot
+  // stale a global latch into a hard dispatch failure.
   const AttentionKernelOptions* kernel_options_;
 };
 

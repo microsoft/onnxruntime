@@ -32,6 +32,16 @@ Status LaunchUnpackQKVCumulative(const T* packed_qkv, T* unpacked_q, T* unpacked
 Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_t* cumulative_seqlens_q,
                                     const int32_t* past_seqlens, const int batch_size, cudaStream_t stream);
 
+// Produces per-batch KV lengths seqlens_kv[i] = past_seqlens[i] + (cumulative_seqlens_q[i+1] -
+// cumulative_seqlens_q[i]) for the cuDNN paged SDPA backend's padding-mask input. Deriving the
+// query count from cumulative_seqlens_q keeps the kernel correct if a caller ever routes a
+// multi-token step through this path -- the cuDNN paged tier is decode-only today, so
+// cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i] is 1 for every eligible step, but the
+// derivation avoids baking that invariant into a magic constant.
+Status LaunchGetSeqlensKV(int32_t* seqlens_kv, const int32_t* past_seqlens,
+                          const int32_t* cumulative_seqlens_q,
+                          const int batch_size, cudaStream_t stream);
+
 // Paged decode backend sizing helpers, used by paged_attention.cc to test eligibility (the kernel
 // needs more dynamic shared memory than the device provides for very wide heads) and to size the
 // split-KV workspaces.
