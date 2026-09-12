@@ -107,6 +107,20 @@ $MAIN {
   #else
   let total_sequence_length = global_total_sequence_length;
   #endif
+  // Tiles beyond this batch's logical sequence publish neutral metadata so VxReduce
+  // ignores them for every query row. This applies to both quantized and dense KV caches.
+  if (total_seq_offset >= total_sequence_length) {
+    if (local_idx == 0u) {
+      for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+        let q_idx_local = q_base + m;
+        let meta_offset = (batch_head_idx * uniforms.new_sequence_length + q_idx_local) *
+                          uniforms.num_present_sequence_length_tile +
+                          workgroup_idx % num_total_seq_length_tile;
+        metadata.setByOffset(meta_offset, metadata_value_t(-3.4028234663852886e+38f, 0.0f));
+      }
+    }
+    return;
+  }
 
 #if kv_cache_quantization
   let kv_head_offset = (batch_head_idx / uniforms.n_reps) * uniforms.present_sequence_length * COMPRESSED_HEAD_U32;
@@ -174,19 +188,6 @@ $MAIN {
   let present_key_offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * uniforms.head_size_vec;
   let present_value_offset = u32(batch_head_idx / uniforms.n_reps) * v_head_size_vec * uniforms.present_sequence_length;
 
-  // If this workgroup's tile lies entirely beyond this batch's per-batch total_sequence_length,
-  // write neutral metadata so VxReduce contributes nothing for these tiles, then exit early.
-  if (total_seq_offset >= total_sequence_length) {
-    if (local_idx == 0u) {
-      for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
-        let q_idx_local = q_base + m;
-        let meta_offset = (batch_head_idx * uniforms.new_sequence_length + q_idx_local) * uniforms.num_present_sequence_length_tile + workgroup_idx % num_total_seq_length_tile;
-        metadata.setByOffset(meta_offset, metadata_value_t(-3.4028234663852886e+38f, 0.0f));
-      }
-    }
-    return;
-  }
-
   // ============================================================
   // Phase 1: QK^T computation
   // ============================================================
@@ -248,6 +249,11 @@ $MAIN {
       if (total_seq_offset + local_idx > past_sequence_length + q_idx) {
         sum = f32(-3.4028234663852886e+38f);
       }
+      let causal_sequence_length = past_sequence_length + q_idx + 1u;
+      if (uniforms.local_window_size > 0u &&
+          total_seq_offset + local_idx + uniforms.local_window_size < causal_sequence_length) {
+        sum = f32(-3.4028234663852886e+38f);
+      }
 #endif
       tile_qk[m][local_idx] = sum;
     }
@@ -257,16 +263,24 @@ $MAIN {
     if (local_idx == 0u) {
 #if is_unidirectional
       let valid_key_end = min(total_sequence_length, past_sequence_length + q_idx + 1u);
+      let valid_key_start = select(0u, valid_key_end - uniforms.local_window_size,
+                                   uniforms.local_window_size > 0u &&
+                                       valid_key_end > uniforms.local_window_size);
 #else
       let valid_key_end = total_sequence_length;
+      let valid_key_start = 0u;
 #endif
       var l_max = f32(-3.4028234663852886e+38f);
       var l_sum = f32(0);
       for (var i = 0u; i < tile_size && (total_seq_offset + i) < valid_key_end; i++) {
-        l_max = max(l_max, f32(tile_qk[m][i]));
+        if (total_seq_offset + i >= valid_key_start) {
+          l_max = max(l_max, f32(tile_qk[m][i]));
+        }
       }
       for (var i = 0u; i < tile_size && (total_seq_offset + i) < valid_key_end; i++) {
-        l_sum += exp(f32(tile_qk[m][i]) - l_max);
+        if (total_seq_offset + i >= valid_key_start) {
+          l_sum += exp(f32(tile_qk[m][i]) - l_max);
+        }
       }
       tile_max[m] = l_max;
       tile_sum[m] = l_sum;
@@ -285,10 +299,15 @@ $MAIN {
     if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
 #if is_unidirectional
       let valid_key_end = min(total_sequence_length, past_sequence_length + q_base + m + 1u);
+      let valid_key_start = select(0u, valid_key_end - uniforms.local_window_size,
+                                   uniforms.local_window_size > 0u &&
+                                       valid_key_end > uniforms.local_window_size);
 #else
       let valid_key_end = total_sequence_length;
+      let valid_key_start = 0u;
 #endif
-      if (total_seq_offset + local_idx < valid_key_end && tile_sum[m] > 0.0f) {
+      if (total_seq_offset + local_idx >= valid_key_start &&
+          total_seq_offset + local_idx < valid_key_end && tile_sum[m] > 0.0f) {
         tile_qk[m][local_idx] = exp(f32(tile_qk[m][local_idx]) - tile_max[m]) / tile_sum[m];
       } else {
         tile_qk[m][local_idx] = 0;
