@@ -6,22 +6,23 @@ ARG BASEIMAGE=nvidia/cuda:12.8.1-cudnn-devel-ubi8
 
 FROM $BASEIMAGE
 ARG TRT_VERSION=10.14.1.48-1.cuda12.9
+ARG TRT_MAJOR_VERSION=10
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "${TRT_VERSION}" ]; then  \
     echo "TRT_VERSION is $TRT_VERSION" && \
     dnf -y install  \
-    libnvinfer10-${TRT_VERSION}  \
+    libnvinfer${TRT_MAJOR_VERSION}-${TRT_VERSION}  \
     libnvinfer-headers-devel-${TRT_VERSION}  \
     libnvinfer-devel-${TRT_VERSION}  \
-    libnvinfer-lean10-${TRT_VERSION}  \
-    libnvonnxparsers10-${TRT_VERSION}  \
+    libnvinfer-lean${TRT_MAJOR_VERSION}-${TRT_VERSION}  \
+    libnvonnxparsers${TRT_MAJOR_VERSION}-${TRT_VERSION}  \
     libnvonnxparsers-devel-${TRT_VERSION}  \
-    libnvinfer-dispatch10-${TRT_VERSION}  \
-    libnvinfer-plugin10-${TRT_VERSION}  \
-    libnvinfer-vc-plugin10-${TRT_VERSION}  \
+    libnvinfer-dispatch${TRT_MAJOR_VERSION}-${TRT_VERSION}  \
+    libnvinfer-plugin${TRT_MAJOR_VERSION}-${TRT_VERSION}  \
+    libnvinfer-vc-plugin${TRT_MAJOR_VERSION}-${TRT_VERSION}  \
     libnvinfer-bin-${TRT_VERSION}  \
-    libnvinfer-plugin10-${TRT_VERSION}  \
+    libnvinfer-plugin${TRT_MAJOR_VERSION}-${TRT_VERSION}  \
     libnvinfer-plugin-devel-${TRT_VERSION}  \
     libnvinfer-vc-plugin-devel-${TRT_VERSION}  \
     libnvinfer-lean-devel-${TRT_VERSION}  \
