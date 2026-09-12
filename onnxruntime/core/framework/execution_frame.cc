@@ -287,7 +287,8 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
   // This makes the ONNX Constant test (onnx\backend\test\data\node\test_constant) happy as that
   // involves a graph with a single Constant node.
 #if !defined(DISABLE_SPARSE_TENSORS)
-  const auto initialize_sparse_tensor = [&](const Tensor& src, OrtValue& dest) {
+  const auto initialize_sparse_tensor = [&](const Tensor& src, OrtValue& dest,
+                                            bool has_linear_coo_index) {
     if (!dest.IsAllocated()) {
       auto p_tensor = std::make_unique<SparseTensor>();
       auto ml_tensor = DataTypeImpl::GetType<SparseTensor>();
@@ -297,7 +298,6 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
     // Initializers are converted to dense tensors while the graph is loaded, so
     // materialize them as COO sparse tensors when they enter the execution frame.
     AllocatorPtr allocator = GetAllocator(src.Location().device);
-    constexpr bool has_linear_coo_index = true;
     ORT_THROW_IF_ERROR(sparse_utils::DenseTensorToSparseCoo(GetDataTransferManager(), src,
                                                             cpu_allocator, allocator, has_linear_coo_index,
                                                             *dest.GetMutable<SparseTensor>()));
@@ -330,7 +330,8 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
 
 #if !defined(DISABLE_SPARSE_TENSORS)
       if (is_sparse_initializer) {
-        initialize_sparse_tensor(src, dest);
+        // Preserve the existing linear COO representation for sparse output initializers.
+        initialize_sparse_tensor(src, dest, true);
       } else {
 #endif  //  !defined(DISABLE_SPARSE_TENSORS)
         if (!dest.IsAllocated()) {
@@ -347,7 +348,8 @@ void IExecutionFrame::Init(gsl::span<const int> feed_mlvalue_idxs, gsl::span<con
     } else {
 #if !defined(DISABLE_SPARSE_TENSORS)
       if (is_sparse_initializer) {
-        initialize_sparse_tensor(entry.second.Get<Tensor>(), all_values_[ort_value_index]);
+        // Sparse operator inputs use coordinate-pair COO indices.
+        initialize_sparse_tensor(entry.second.Get<Tensor>(), all_values_[ort_value_index], false);
       } else {
 #endif
         all_values_[ort_value_index] = entry.second;
