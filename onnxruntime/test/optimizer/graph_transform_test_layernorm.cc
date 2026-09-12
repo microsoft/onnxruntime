@@ -466,6 +466,61 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_9) {
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
+// Regression test for GitHub issue #30513. The Div output is rank-1 while the real Mul operand is 2-D,
+// so scale selection by rank used to pick the Div output as scale. Div is removed by the fusion, which
+// left the fused node with a dangling input and failed graph resolve. keepdims=1 shows the defect is
+// independent of the keepdims=0 mis-fusion issue.
+TEST_F(GraphTransformationTests, LayerNormFusionSkipsDivOutputAsScale) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{4}});
+    auto* mul_operand = builder.MakeInput<float>({{4, 1}});
+    auto* bias = builder.MakeInput<float>({{4}});
+    auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+
+    auto* reduce_mean_out = builder.MakeIntermediate();
+    auto* sub_out = builder.MakeIntermediate();
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean2_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* mul_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input}, {reduce_mean_out})
+        .AddAttribute("axes", std::vector<int64_t>{-1})
+        .AddAttribute("keepdims", static_cast<int64_t>(1));
+    builder.AddNode("Sub", {input, reduce_mean_out}, {sub_out});
+    builder.AddNode("Pow", {sub_out, pow_exponent}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean2_out})
+        .AddAttribute("axes", std::vector<int64_t>{-1})
+        .AddAttribute("keepdims", static_cast<int64_t>(1));
+    builder.AddNode("Add", {reduce_mean2_out, epsilon}, {add_out});
+    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+    builder.AddNode("Div", {sub_out, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, mul_operand}, {mul_out});
+    builder.AddNode("Add", {mul_out, bias}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["LayerNormalization"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Div"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Mul"] == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 17, *logger_, std::make_unique<LayerNormFusion>(),
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 14, *logger_,
+      std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level2),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_t5.onnx";
   std::shared_ptr<Model> p_model;
@@ -730,6 +785,49 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRequiresPowExponentTwo
         std::make_unique<SimplifiedLayerNormFusion>(),
         TransformerLevel::Level2, 1, nullptr, post_graph_checker));
   }
+}
+
+// Regression test for GitHub issue #30513. The Div output is rank-1 while the real Mul operand is 2-D,
+// so scale selection by rank used to pick the Div output as scale. Div is removed by the fusion, which
+// left the fused node with a dangling input and failed graph resolve. keepdims=1 shows the defect is
+// independent of the keepdims=0 mis-fusion issue.
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSkipsDivOutputAsScale) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{4}});
+    auto* mul_operand = builder.MakeInput<float>({{4, 1}});
+    auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+        .AddAttribute("axes", std::vector<int64_t>{-1})
+        .AddAttribute("keepdims", static_cast<int64_t>(1));
+    builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+    builder.AddNode("Div", {input, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, mul_operand}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    ORT_RETURN_IF_ERROR(graph.Resolve());
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["SimplifiedLayerNormalization"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Div"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Mul"] == 1);
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionOptimizationLoopSharedPowExponent) {
