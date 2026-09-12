@@ -17,10 +17,6 @@ limitations under the License.
 #include "core/platform/windows/env.h"
 
 #include "core/platform/env_var.h"
-#ifdef USE_1DS_TELEMETRY
-#include "core/platform/posix/telemetry.h"
-#endif
-
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -967,11 +963,7 @@ std::string WindowsEnv::FormatLibraryFileName(const std::string& name, const std
 
 // \brief returns a provider that will handle telemetry on the current platform
 const Telemetry& WindowsEnv::GetTelemetryProvider() const {
-#ifdef USE_WINDOWS_TELEMETRY
-  return windows_telemetry_provider_;
-#else
-  return *telemetry_provider_;
-#endif
+  return telemetry_provider_;
 }
 
 // \brief returns a value for the queried variable name (var_name)
@@ -991,12 +983,7 @@ ProcessorInfo WindowsEnv::GetProcessorAffinityMask(int global_processor_id) cons
   }
 }
 
-WindowsEnv::WindowsEnv()
-#ifdef USE_1DS_TELEMETRY
-    : telemetry_provider_(std::make_unique<PosixTelemetry>()) {
-#else
-    : telemetry_provider_(std::make_unique<Telemetry>()) {
-#endif
+WindowsEnv::WindowsEnv() {
   l2_cache_size_ = 0;
   InitializeCpuInfo();
 }

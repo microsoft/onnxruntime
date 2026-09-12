@@ -192,6 +192,11 @@ class EventBuilder {
     return *this;
   }
 
+  EventBuilder& AddStringAllowEmpty(const char* key, const std::string& value) {
+    props_.SetProperty(key, value);
+    return *this;
+  }
+
   EventBuilder& AddInt32(const char* key, int32_t value) {
     props_.SetProperty(key, static_cast<int64_t>(value));
     return *this;
@@ -984,10 +989,26 @@ void PosixTelemetry::LogProcessInfo() const {
   });
 }
 
+#ifdef _WIN32
 void PosixTelemetry::LogSessionCreationStart(uint32_t session_id) const {
-  // Start/stop markers are retained by TraceLogging. 1DS completion events carry local durations.
-  (void)session_id;
+  RunTelemetryOperation("LogSessionCreationStart", [&]() {
+    if (!IsEnabled()) {
+      return;
+    }
+
+    auto builder = EventBuilder("SessionCreationStart", EventPriority::CRITICAL);
+    if (!PrepareSampledEvent(builder, session_id)) {
+      return;
+    }
+    auto event = builder.AddUInt32("sessionId", session_id)
+                     .AddString("runtimeVersion", ORT_VERSION)
+                     .AddStringAllowEmpty("frameworkName", ORT_CALLER_FRAMEWORK)
+                     .Build();
+
+    LogEventAsync(std::move(event));
+  });
 }
+#endif
 
 void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
   // Per-run start/stop markers are useful for ETW tracing, but RuntimePerf already aggregates every
@@ -1234,6 +1255,31 @@ void PosixTelemetry::LogAutoEpSelection(
     LogEventAsync(std::move(event));
   });
 }
+
+#ifdef _WIN32
+void PosixTelemetry::LogProviderOptions(const std::string& provider_id,
+                                        const std::string& provider_options_string,
+                                        bool capture_state) const {
+  RunTelemetryOperation("LogProviderOptions", [&]() {
+    if (!IsEnabled()) {
+      return;
+    }
+
+    auto builder = EventBuilder(capture_state ? "ProviderOptions_CaptureState" : "ProviderOptions",
+                                EventPriority::NORMAL);
+    if (!PrepareProcessEvent(builder)) {
+      return;
+    }
+    auto event = builder.AddUInt32("schemaVersion", 0)
+                     .AddStringAllowEmpty("providerId", provider_id)
+                     .AddStringAllowEmpty("providerOptions", provider_options_string)
+                     .AddStringAllowEmpty("frameworkName", ORT_CALLER_FRAMEWORK)
+                     .Build();
+
+    LogEventAsync(std::move(event));
+  });
+}
+#endif
 
 void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
   (void)session_id;

@@ -49,7 +49,7 @@ if(WIN32)
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.h"
          "${ONNXRUNTIME_ROOT}/core/platform/windows/logging/*.cc"
     )
-    if(onnxruntime_USE_TELEMETRY AND NOT onnxruntime_USE_WINDOWS_TELEMETRY)
+    if(onnxruntime_USE_1DS_TELEMETRY)
         list(APPEND onnxruntime_common_src_patterns
              "${ONNXRUNTIME_ROOT}/core/platform/windows/device_id.cc"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
@@ -69,7 +69,7 @@ else()
     )
 
     # 1DS telemetry sources for non-Windows platforms.
-    if (onnxruntime_USE_TELEMETRY)
+    if(onnxruntime_USE_1DS_TELEMETRY)
         list(APPEND onnxruntime_common_src_patterns
              "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
              "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.cc"
@@ -173,7 +173,7 @@ if(WIN32)
       list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:shell32.dll")
     endif()
   endif()
-  if(onnxruntime_USE_TELEMETRY AND NOT onnxruntime_USE_WINDOWS_TELEMETRY)
+  if(onnxruntime_USE_1DS_TELEMETRY)
     target_link_libraries(onnxruntime_common PRIVATE iphlpapi psapi)
   endif()
 endif()
@@ -284,7 +284,7 @@ if(CPUINFO_SUPPORTED)
 endif()
 
 # Link the default 1DS telemetry backend.
-if(onnxruntime_USE_TELEMETRY AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY))
+if(onnxruntime_USE_1DS_TELEMETRY)
   if(onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE AND TARGET MSTelemetry::mat)
     # The vcpkg package target propagates its include
     # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no

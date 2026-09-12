@@ -176,6 +176,11 @@ endif()
 if(onnxruntime_USE_WINDOWS_TELEMETRY)
   set(onnxruntime_USE_TELEMETRY ON CACHE BOOL "Build with Telemetry" FORCE)
 endif()
+set(onnxruntime_USE_1DS_TELEMETRY
+    "${onnxruntime_USE_TELEMETRY}")
+if(WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY)
+  set(onnxruntime_USE_1DS_TELEMETRY OFF)
+endif()
 # Optional 1DS ingestion token. Leave empty to compile in the encoded
 # in-repo default from core/platform/posix/telemetry.cc; callers can override it at configure time.
 set(ONNXRUNTIME_TELEMETRY_TENANT_TOKEN "" CACHE STRING "Override the compiled-in 1DS telemetry ingestion token")
@@ -1973,15 +1978,12 @@ else()
         add_library(safeint_interface IMPORTED INTERFACE)\n\
         target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
         ")
-    if(onnxruntime_USE_TELEMETRY
-       AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY)
-       AND onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
+    if(onnxruntime_USE_1DS_TELEMETRY AND onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE)
       string(APPEND PROJECT_CONFIG_CONTENT
         "find_dependency(MSTelemetry CONFIG)\n\
         ")
     endif()
-    if(onnxruntime_USE_TELEMETRY
-       AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY)
+    if(onnxruntime_USE_1DS_TELEMETRY
        AND NOT onnxruntime_TELEMETRY_USES_EXTERNAL_PACKAGE
        AND NOT onnxruntime_BUILD_SHARED_LIB)
       string(APPEND PROJECT_CONFIG_CONTENT

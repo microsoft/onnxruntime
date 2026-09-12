@@ -464,7 +464,7 @@ if(WIN32)
   list(APPEND onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/platform/windows/*.cc"
     "${TEST_SRC_DIR}/platform/windows/logging/*.cc" )
-  if(onnxruntime_USE_TELEMETRY AND NOT onnxruntime_USE_WINDOWS_TELEMETRY)
+  if(onnxruntime_USE_1DS_TELEMETRY)
     list(APPEND onnxruntime_test_framework_src_patterns
       "${TEST_SRC_DIR}/platform/windows_telemetry/*.cc" )
   endif()
@@ -475,8 +475,7 @@ if(LINUX)
     "${TEST_SRC_DIR}/platform/linux/*.cc" )
 endif()
 
-if(onnxruntime_USE_TELEMETRY AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY)
-   AND NOT WIN32 AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(onnxruntime_USE_TELEMETRY AND NOT WIN32 AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
   list(APPEND onnxruntime_test_framework_src_patterns
     "${TEST_SRC_DIR}/platform/posix/device_id_test.cc")
 endif()

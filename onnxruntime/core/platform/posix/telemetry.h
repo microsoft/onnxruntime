@@ -47,7 +47,9 @@ class PosixTelemetry : public Telemetry {
   uint64_t Keyword() const override;
 
   void LogProcessInfo() const override;
+#ifdef _WIN32
   void LogSessionCreationStart(uint32_t session_id) const override;
+#endif
   void LogEvaluationStop(uint32_t session_id) const override;
   void LogEvaluationStart(uint32_t session_id) const override;
 
@@ -103,6 +105,12 @@ class PosixTelemetry : public Telemetry {
   void LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
                           const std::vector<std::string>& requested_execution_provider_ids,
                           const std::vector<std::string>& available_execution_provider_ids) const override;
+
+#ifdef _WIN32
+  void LogProviderOptions(const std::string& provider_id,
+                          const std::string& provider_options_string,
+                          bool capture_state) const override;
+#endif
 
   void LogModelLoadStart(uint32_t session_id) const override;
   void LogModelLoadEnd(uint32_t session_id, const common::Status& status,

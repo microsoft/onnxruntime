@@ -11,7 +11,7 @@ foreach(ONNXRUNTIME_DEP IN LISTS ONNXRUNTIME_DEPS_LIST)
   # cpp_client_telemetry is needed only when the 1DS backend is selected.
   if((NOT ONNXRUNTIME_DEP MATCHES "^#") AND
      ((NOT ONNXRUNTIME_DEP MATCHES "^cpp_client_telemetry") OR
-      (onnxruntime_USE_TELEMETRY AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY))))
+      onnxruntime_USE_1DS_TELEMETRY))
     # The first column is name
     list(POP_FRONT ONNXRUNTIME_DEP ONNXRUNTIME_DEP_NAME)
     # The second column is URL
@@ -983,7 +983,7 @@ if(onnxruntime_USE_SNPE)
 endif()
 
 # 1DS SDK (cpp_client_telemetry) is the default cross-platform telemetry backend.
-if(onnxruntime_USE_TELEMETRY AND NOT (WIN32 AND onnxruntime_USE_WINDOWS_TELEMETRY))
+if(onnxruntime_USE_1DS_TELEMETRY)
   if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     message(FATAL_ERROR "onnxruntime_USE_TELEMETRY is not supported for WebAssembly/Emscripten builds: "
                         "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
