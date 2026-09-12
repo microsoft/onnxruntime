@@ -385,6 +385,19 @@ static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPa
 static const char* const kOrtSessionOptionsSavePrePackedConstantInitializers =
     "session.save_external_prepacked_constant_initializers";
 
+// Enrolls every constant initializer handled by the CPU EP in the shared pre-packed weights
+// container attached to the session, not only the initializers registered via
+// OrtApi::AddInitializer. Sessions created over the same model with the same container then
+// reuse one pre-packed copy per weight. Has no effect unless a prepacked weights container
+// is attached. Kernels that pre-pack without producing shareable buffers keep their
+// kernel-owned result and do not participate in sharing.
+//
+// - "0": Default. Only AddInitializer-registered (or transformer-tagged) initializers share.
+// - "1": All constant initializers on the CPU EP enroll in the container.
+// Sample usage: sess_options.add_session_config_entry(kOrtSessionOptionsSharePrepackedWeightsForAllInitializers, "1")
+static const char* const kOrtSessionOptionsSharePrepackedWeightsForAllInitializers =
+    "session.share_prepacked_weights_for_all_initializers";
+
 // Use this config when you want to collect memory stats for each node in the graph.
 // The file format is a CSV file with the following columns:
 // The file will be created if it does not exist, and will be overwritten if it does.

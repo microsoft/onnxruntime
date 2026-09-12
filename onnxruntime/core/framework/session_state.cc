@@ -478,7 +478,14 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 Status SessionState::PrepackConstantInitializedTensors(
     InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
-  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
+  // Enrolls every constant initializer in the shared pre-packed weights container.
+  // See kOrtSessionOptionsSharePrepackedWeightsForAllInitializers.
+  const bool share_all_initializers =
+      sess_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsSharePrepackedWeightsForAllInitializers, "0") == "1";
+
+  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map,
+                                     share_all_initializers](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
     for (auto& node : GetGraphViewer().Nodes()) {
       if (sess_options_.IsLoadCancellationFlagSet()) {
@@ -513,7 +520,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                 // hash, never the tag value (see the rationale at the key computation).
                 const bool enroll_tagged_initializer =
                     (st->graph_.GetSharedPrepackInitializerId(input_name) != nullptr);
-                if ((is_shared_initializer || enroll_tagged_initializer) &&
+                if ((is_shared_initializer || enroll_tagged_initializer || share_all_initializers) &&
                     should_cache_prepacked_weights_for_shared_initializers &&
                     node.GetExecutionProviderType() == kCpuExecutionProvider) {
                   // caching of pre-packed weights' turned ON
@@ -535,13 +542,18 @@ Status SessionState::PrepackConstantInitializedTensors(
                   if (is_packed) {
                     // BUG CHECK: Ensure that a kernel either filled in the pre-packed weights
                     // to be cached, or explicitly marked the packed weights as kernel-owned.
+                    // Initializers that are only enrolled by the share-all option are exempt:
+                    // a kernel that keeps its packed data to itself without declaring so
+                    // (e.g. fp16 LayerNormalization) does not participate in sharing.
                     ORT_RETURN_IF_NOT(!weights_to_be_filled_in.buffers_.empty() ||
-                                          weights_to_be_filled_in.has_kernel_owned_packed_weights_,
+                                          weights_to_be_filled_in.has_kernel_owned_packed_weights_ ||
+                                          !(is_shared_initializer || enroll_tagged_initializer),
                                       "The kernel corresponding to the node ", node.Name(),
                                       " doesn't have an implementation that can cache computed pre-packed weights");
                   }
 
-                  if (is_packed && !weights_to_be_filled_in.has_kernel_owned_packed_weights_) {
+                  if (is_packed && !weights_to_be_filled_in.has_kernel_owned_packed_weights_ &&
+                      !weights_to_be_filled_in.buffers_.empty()) {
                     const auto& op_type = node.OpType();
 
                     // Sanity check

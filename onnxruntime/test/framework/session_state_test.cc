@@ -1313,6 +1313,122 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, BrokenKernelWithoutCache
       "doesn't have an implementation that can cache computed pre-packed weights");
 }
 
+// Pre-packing enabled + no shared initializers + pre-packed weights container +
+// share_prepacked_weights_for_all_initializers = "1" =
+// the model's own constant initializers enroll in the container, so their
+// pre-packed weights are shared across sessions.
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ShareAllInitializersSharesAcrossSessions) {
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
+  // Enable pre-packing
+  sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+  // Enroll all constant initializers in the shared pre-packed weights container
+  sess_options.config_options.configurations[kOrtSessionOptionsSharePrepackedWeightsForAllInitializers] = "1";
+
+  // Enable pre-packed weights container
+  PrepackedWeightsContainer prepacked_weights_container;
+
+  // First session/model
+  Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                DefaultLoggingManager().DefaultLogger());
+
+  CreateSimpleGraph(model_1.MainGraph());
+  PlaceAllNodesToCPUEP(model_1.MainGraph());
+  SessionState session_state_1(model_1.MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               sess_options,
+                               &prepacked_weights_container);
+
+  ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                        kernel_registry_manager));
+
+  const auto* kernel_1 = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
+  ASSERT_EQ(session_state_1.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
+  ASSERT_EQ(kernel_1->prepack_calls_count, 1);
+  // The kernel was handed a container-owned buffer
+  ASSERT_EQ(kernel_1->store_pre_packed_weight_calls_count, 1);
+  // The first session computed the pre-pack; nothing was cached yet
+  ASSERT_EQ(session_state_1.GetUsedSharedPrePackedWeightCounter(), static_cast<size_t>(0));
+
+  // Second session/model
+  Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                DefaultLoggingManager().DefaultLogger());
+
+  CreateSimpleGraph(model_2.MainGraph());
+  PlaceAllNodesToCPUEP(model_2.MainGraph());
+  SessionState session_state_2(model_2.MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               sess_options,
+                               &prepacked_weights_container);
+
+  ASSERT_STATUS_OK(session_state_2.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                        kernel_registry_manager));
+
+  const auto* kernel_2 = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
+  ASSERT_EQ(session_state_2.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
+  ASSERT_EQ(kernel_2->prepack_calls_count, 1);
+  ASSERT_EQ(kernel_2->store_pre_packed_weight_calls_count, 1);
+  // The second session reuses the pre-packed weight cached by the first one
+  ASSERT_EQ(session_state_2.GetUsedSharedPrePackedWeightCounter(), static_cast<size_t>(1));
+}
+
+// A kernel that pre-packs without producing cacheable buffers does not participate
+// in sharing under share_prepacked_weights_for_all_initializers; finalization
+// succeeds. An initializer registered via AddInitializer keeps the strict check
+// (see BrokenKernelWithoutCacheableBuffersFails).
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ShareAllInitializersSkipsKernelOwnedPrepacks) {
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = true;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = true;
+  sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+  sess_options.config_options.configurations[kOrtSessionOptionsSharePrepackedWeightsForAllInitializers] = "1";
+
+  PrepackedWeightsContainer prepacked_weights_container;
+
+  Model model("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+
+  CreateSimpleGraph(model.MainGraph(), "BrokenPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options,
+                             &prepacked_weights_container);
+
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                      kernel_registry_manager));
+
+  // The pre-pack ran, but nothing was cached or reused
+  ASSERT_EQ(session_state.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
+  ASSERT_EQ(session_state.GetUsedSharedPrePackedWeightCounter(), static_cast<size_t>(0));
+}
+
 // Pre-packing enabled + shared initializers +
 // pre-packed weights container + subgraphs =
 // caching enabled in pre-packed weights used in subgraphs
