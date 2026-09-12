@@ -1994,6 +1994,12 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
      * Bias must be nullptr, and OutputProcessor must be nullptr.
      */
     bool BIsBackendNativePacked = false;
+    /**
+     * Unpacked fp16 matrix B is stored as N x K instead of K x N.
+     * This cannot be combined with a packed B or BIsfp32 and requires a backend
+     * override that supports transposed RHS packing.
+     */
+    bool BIsTransposed = false;
 };
 
 /**
@@ -2001,6 +2007,7 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
  *        Either A or B can be fp32 or fp16.
  *        Backend-native packed B is a constrained direct-consumption layout
  *        and does not support runtime Bias or OutputProcessor.
+ *        Transposed unpacked B requires a supporting backend override.
  *
  * Uses MLAS_THROW_EX(std::runtime_error, ...) for contract violations that
  * cannot be safely ignored: non-empty work with null DataParams, malformed
@@ -2017,7 +2024,7 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
  * @param[inout]  DataParams  An array (size BatchN) of parameter blocks
  * @param[in]  ThreadPool
  * @return
-*/
+ */
 void
 MLASCALL
 MlasHalfGemmBatch(
@@ -2097,6 +2104,8 @@ MlasHalfGemmNativePackBSize(
  * transpose/shape/config. The resulting buffer must be passed to
  * MlasHalfGemmBatch with ldb set to 0, BIsBackendNativePacked set to true,
  * Bias set to nullptr, and OutputProcessor set to nullptr.
+ * For non-zero N and K, ldb must be at least N when TransB is CblasNoTrans
+ * and at least K when TransB is CblasTrans.
  */
 bool
 MLASCALL
