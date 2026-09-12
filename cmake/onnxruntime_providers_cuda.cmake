@@ -83,6 +83,9 @@
   onnxruntime_extract_flash_attention_sources(onnxruntime_cuda_contrib_ops_cu_srcs
     FLASH_SOURCES onnxruntime_cuda_flash_attention_srcs
   )
+  onnxruntime_extract_xqa_sources(onnxruntime_cuda_contrib_ops_cu_srcs
+    XQA_SOURCES onnxruntime_cuda_xqa_srcs
+  )
   onnxruntime_extract_llm_sources(onnxruntime_cuda_contrib_ops_cu_srcs
     LLM_SOURCES onnxruntime_cuda_llm_srcs
     LLM_SM90_SOURCES onnxruntime_cuda_llm_sm90_srcs
@@ -521,6 +524,22 @@
         # linker can find the host-side symbols referenced by flash_api.cc. The kernels
         # themselves will be empty stubs due to __CUDA_ARCH__ >= 800 guards.
         target_sources(onnxruntime_providers_cuda PRIVATE ${onnxruntime_cuda_flash_attention_srcs})
+      endif()
+    endif()
+
+    # XQA kernels require SM80+. Compiling them with mixed SM75/SM80+ architectures
+    # causes CUDA 13.3 to emit host references to kernels omitted from the SM75 pass.
+    if(onnxruntime_cuda_xqa_srcs)
+      onnxruntime_filter_cuda_archs(_ort_xqa_cuda_architectures MIN_SM 80)
+      if(_ort_xqa_cuda_architectures)
+        onnxruntime_add_cuda_object_library(
+          NAME onnxruntime_providers_cuda_xqa
+          PARENT onnxruntime_providers_cuda
+          CUDA_ARCHITECTURES "${_ort_xqa_cuda_architectures}"
+          NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+          SOURCES ${onnxruntime_cuda_xqa_srcs})
+      else()
+        target_sources(onnxruntime_providers_cuda PRIVATE ${onnxruntime_cuda_xqa_srcs})
       endif()
     endif()
 
