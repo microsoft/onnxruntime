@@ -75,8 +75,13 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // Get src desc
   auto src_md = sp.GetMemory(node.Input(IN_INPUT)).get_desc();
 
+  auto out_md = dnnl::memory::desc(src_md.get_dims(), node.Input(IN_INPUT).Type(), dnnl::memory::format_tag::any);
+
   // Init src mem
   dnnl::memory src_mem;
+
+  // Init out mem
+  dnnl::memory out_mem;
 
   // This contains the layer norm op and its parameters
   ln_components op_comps;
@@ -166,13 +171,14 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // Get epsilon to avoid zero division
   float epsilon = GetEpsilon(node);
   // Primitive desciptor
-  auto lnorm_pd = dnnl::layer_normalization_forward::primitive_desc(dnnl_engine, prop_kind, src_md, src_md, epsilon, op_flags);
+  auto lnorm_pd = dnnl::layer_normalization_forward::primitive_desc(dnnl_engine, prop_kind, src_md, out_md, epsilon, op_flags);
   // Primitive
   auto lnorm_prim = dnnl::layer_normalization_forward(lnorm_pd);
+  out_mem = dnnl::memory(lnorm_pd.dst_desc(), dnnl_engine);
 
   // Define primitive arguments
   std::unordered_map<int, dnnl::memory> lnorm_args = {{DNNL_ARG_SRC, src_mem},
-                                                      {DNNL_ARG_DST, src_mem}};
+                                                      {DNNL_ARG_DST, out_mem}};
   // Get gamma
   auto gamma_mem = sp.GetMemory(node.Input(scale_pos));
   gamma_mem = sp.GetMemoryAndReshape(node.Input(scale_pos), gamma_mem.get_desc(), dnnl_engine);
@@ -233,7 +239,7 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   sp.AddPrimitive(lnorm_prim, lnorm_args);
 
-  sp.SetMemory(node.Output(OUT_OUTPUT), src_mem, true);
+  sp.SetMemory(node.Output(OUT_OUTPUT), out_mem, true);
 }
 
 void DnnlLayerNorm::ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
