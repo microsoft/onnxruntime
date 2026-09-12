@@ -4031,6 +4031,12 @@ This version of the operator has been available since version 1 of the 'com.micr
         GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
         usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
   
+      A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+      different requests are concatenated along dimension 0 without padding. MoE is token-local,
+      so request boundaries do not affect the result and no cumulative sequence-length input is
+      required. A 3D input is the dense convenience form and is processed as batch_size *
+      sequence_length independent token rows. router_probs must contain one corresponding row per
+      token in either form.
         The SwiGLU (Swish-Gated Linear Unit) activation function is like:
            g = xW + b
            l = xV + c
@@ -4072,9 +4078,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>Packed 2D input tensor with shape (num_tokens, hidden_size), or dense 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>router_probs</tt> : T</dt>
-<dd>2D input tensor with shape (num_tokens, num_experts)</dd>
+<dd>2D input tensor with one row per input token and shape (num_tokens, num_experts)</dd>
 <dt><tt>fc1_experts_weights</tt> : T</dt>
 <dd>3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise</dd>
 <dt><tt>fc1_experts_bias</tt> (optional) : T</dt>
@@ -4093,7 +4099,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>output</tt> : T</dt>
-<dd>2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>Tensor with the same shape as input</dd>
 </dl>
 
 #### Type Constraints
@@ -5587,6 +5593,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Quantized mixture of experts (MoE).
   
+  A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+  different requests are concatenated along dimension 0 without padding. QMoE is token-local,
+  so request boundaries do not affect the result and no cumulative sequence-length input is
+  required. A 3D input is the dense convenience form and is processed as batch_size *
+  sequence_length independent token rows. router_probs and optional router_weights must contain
+  one corresponding row per token in either form.
         The quantized weights are stored in column major order per expert.
         The quantization block size can be specified. If not provided, column wise quantization is used.
   
@@ -5649,9 +5661,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>input</tt> : T</dt>
-<dd>2D tensor with shape (num_tokens, hidden_size), or 3D tensor with shape (batch_size, sequence_length, hidden_size)</dd>
+<dd>Packed 2D (num_tokens, hidden_size) or dense 3D (batch_size, sequence_length, hidden_size).</dd>
 <dt><tt>router_probs</tt> : T</dt>
-<dd>2D tensor with shape (num_tokens, num_experts)</dd>
+<dd>2D tensor with one row per input token: (num_tokens, num_experts).</dd>
 <dt><tt>fc1_experts_weights</tt> : T1</dt>
 <dd>3D tensor with shape (num_experts, fusion_size * inter_size, hidden_size / pack_size), The fusion_size is 2 for fused swiglu, or 1 otherwise. The pack_size is 8 / expert_weight_bits.</dd>
 <dt><tt>fc1_scales</tt> (optional) : T2</dt>

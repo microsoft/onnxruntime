@@ -1,0 +1,9 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.size);
+  output[global_idx] = 0u;
+} // MAIN
