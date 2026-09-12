@@ -174,11 +174,11 @@ template void LaunchGatherBlockQuantizedKernel<Int4x2, BFloat16, int32_t>(const 
 template void LaunchGatherBlockQuantizedKernel<Int4x2, BFloat16, int64_t>(const Int4x2*, const int64_t*, const BFloat16*, const Int4x2*, BFloat16*, GatherBlockQuantizedParam);
 
 #if !defined(DISABLE_FLOAT8_TYPES)
-#define INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_FP8(T1)                                                                                                       \
-  template void LaunchGatherBlockQuantizedKernel<T1, float, int32_t>(const T1*, const int32_t*, const float*, const T1*, float*, GatherBlockQuantizedParam);   \
-  template void LaunchGatherBlockQuantizedKernel<T1, float, int64_t>(const T1*, const int64_t*, const float*, const T1*, float*, GatherBlockQuantizedParam);   \
-  template void LaunchGatherBlockQuantizedKernel<T1, half, int32_t>(const T1*, const int32_t*, const half*, const T1*, half*, GatherBlockQuantizedParam);      \
-  template void LaunchGatherBlockQuantizedKernel<T1, half, int64_t>(const T1*, const int64_t*, const half*, const T1*, half*, GatherBlockQuantizedParam);      \
+#define INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_FP8(T1)                                                                                                               \
+  template void LaunchGatherBlockQuantizedKernel<T1, float, int32_t>(const T1*, const int32_t*, const float*, const T1*, float*, GatherBlockQuantizedParam);          \
+  template void LaunchGatherBlockQuantizedKernel<T1, float, int64_t>(const T1*, const int64_t*, const float*, const T1*, float*, GatherBlockQuantizedParam);          \
+  template void LaunchGatherBlockQuantizedKernel<T1, half, int32_t>(const T1*, const int32_t*, const half*, const T1*, half*, GatherBlockQuantizedParam);             \
+  template void LaunchGatherBlockQuantizedKernel<T1, half, int64_t>(const T1*, const int64_t*, const half*, const T1*, half*, GatherBlockQuantizedParam);             \
   template void LaunchGatherBlockQuantizedKernel<T1, BFloat16, int32_t>(const T1*, const int32_t*, const BFloat16*, const T1*, BFloat16*, GatherBlockQuantizedParam); \
   template void LaunchGatherBlockQuantizedKernel<T1, BFloat16, int64_t>(const T1*, const int64_t*, const BFloat16*, const T1*, BFloat16*, GatherBlockQuantizedParam);
 

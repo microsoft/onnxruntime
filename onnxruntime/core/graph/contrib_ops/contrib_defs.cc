@@ -2903,10 +2903,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 #define GEMM_FLOAT8_TYPES \
-  {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+  { "tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
 #else
 #define GEMM_FLOAT8_TYPES \
-  {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+  { "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
 #endif
 
 ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
@@ -4253,10 +4253,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
 
         const auto data_elem_type = ctx.getInputType(0)->tensor_type().elem_type();
         const bool is_fp_quantized = data_elem_type == onnx::TensorProto_DataType_FLOAT8E4M3FN ||
-                                      data_elem_type == onnx::TensorProto_DataType_FLOAT8E4M3FNUZ ||
-                                      data_elem_type == onnx::TensorProto_DataType_FLOAT8E5M2 ||
-                                      data_elem_type == onnx::TensorProto_DataType_FLOAT8E5M2FNUZ ||
-                                      data_elem_type == onnx::TensorProto_DataType_FLOAT4E2M1;
+                                     data_elem_type == onnx::TensorProto_DataType_FLOAT8E4M3FNUZ ||
+                                     data_elem_type == onnx::TensorProto_DataType_FLOAT8E5M2 ||
+                                     data_elem_type == onnx::TensorProto_DataType_FLOAT8E5M2FNUZ ||
+                                     data_elem_type == onnx::TensorProto_DataType_FLOAT4E2M1;
 
         if (block_size < 0 || (block_size == 0 && !is_fp_quantized)) {
           fail_shape_inference("block_size must be a power of 2 and not smaller than 16, or 0 for FP8/FP4 data");
