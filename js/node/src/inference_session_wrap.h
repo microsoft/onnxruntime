@@ -53,13 +53,27 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   Napi::Value GetMetadata(const Napi::CallbackInfo& info);
 
   /**
+   * [async] run the model.
+   * @param arg0 input object: keys present in the object that match model input names are forwarded; missing keys are
+   *             silently ignored (ORT will error if a required input is absent).
+   * @param arg1 output object: at least one key must match a model output name; values must be null (preallocated
+   *             output tensors are not supported for async run — use runSync() if preallocated outputs are needed).
+   * @param arg2 (optional) run options object
+   * @returns a Promise that resolves to an object where every requested output is present and value must be object.
+   *          The Promise rejects on inference error or invalid arguments detected after Promise creation.
+   *          Argument validation errors (wrong types, IO binding active) throw synchronously before the Promise is created.
+   * @note Callers must not mutate or transfer input/output ArrayBuffers while the Promise is pending.
+   */
+  Napi::Value Run(const Napi::CallbackInfo& info);
+
+  /**
    * [sync] run the model.
    * @param arg0 input object: all keys must present, value is object
    * @param arg1 output object: at least one key must present, value can be null.
    * @returns an object that every output specified will present and value must be object
    * @throw error if status code != 0
    */
-  Napi::Value Run(const Napi::CallbackInfo& info);
+  Napi::Value RunSync(const Napi::CallbackInfo& info);
 
   /**
    * [sync] dispose the session.
@@ -82,6 +96,7 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   // session objects
   bool initialized_;
   bool disposed_;
+  int inFlightCount_;
   std::unique_ptr<Ort::Session> session_;
 
   // input/output metadata
