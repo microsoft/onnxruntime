@@ -5195,6 +5195,15 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
     for (SubgraphWithMutableProto& subgraph_and_proto : subgraphs) {
       gsl::not_null<const Graph*> subgraph = subgraph_and_proto.subgraph;
       gsl::not_null<ONNX_NAMESPACE::GraphProto*> subgraph_proto = subgraph_and_proto.subgraph_proto;
+
+      // Clear pre-existing initializers from the subgraph proto. The subgraph proto was populated by
+      // Node::ToProto -> Graph::ToGraphProto() const, which already inlined in-memory data.
+      // The recursive Impl call below re-adds all initializers, so we must clear to avoid duplicates.
+      subgraph_proto->clear_initializer();
+#if !defined(DISABLE_SPARSE_TENSORS)
+      subgraph_proto->clear_sparse_initializer();
+#endif
+
       ORT_RETURN_IF_ERROR(subgraph->AddExternalInitializersToGraphProtoImpl(
           model_path, external_file_path,
           model_external_file_path, model_saving_options,
