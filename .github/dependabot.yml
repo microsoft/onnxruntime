@@ -20,3 +20,9 @@ updates:
     open-pull-requests-limit: 5
     cooldown:
       default-days: 7
+
+  - package-ecosystem: "npm"
+    directory: "/js/node"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
