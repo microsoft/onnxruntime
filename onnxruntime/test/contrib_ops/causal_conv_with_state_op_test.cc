@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <sstream>
 #include <type_traits>
@@ -1068,6 +1069,20 @@ TEST(CausalConvWithStateTest, DilationBelowOneIsRejected) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "dilation must be >= 1");
 }
 
+TEST(CausalConvWithStateTest, DilationAboveIntMaxIsRejected) {
+  OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute<std::string>("activation", "none");
+  test.AddAttribute<int64_t>("dilation", static_cast<int64_t>(std::numeric_limits<int>::max()) + 1);
+  test.AddInput<float>("input", {1, 1, 2}, {1.0f, 2.0f});
+  test.AddInput<float>("weight", {1, 1, 2}, {0.5f, 0.25f});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOutput<float>("output", {1, 1, 2}, {0.5f, 1.25f});
+  test.AddOutput<float>("present_state", {1, 1, 1}, {2.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "dilation must be <= INT_MAX");
+}
+
 // The state tensors grow linearly with state_window, so the schema caps it at 8.
 TEST(CausalConvWithStateTest, StateWindowAboveMaxIsRejected) {
   OpTester test("CausalConvWithState", 1, onnxruntime::kMSDomain);
@@ -1416,29 +1431,36 @@ TEST(ContribOpVarlenCausalConvWithStateTest, SchemaResolution) {
   EXPECT_EQ(schema->outputs()[2].GetTypes().count(bfloat16_type), 1u);
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 namespace {
 
-// Returns a CUDA EP with the VarlenCausalConvWithState kernel registered, or nullptr. Unlike the
-// dense op (also servable from WebGPU/CPU via GetEpsWithCausalConvWithState), Varlen* ops are
-// CUDA-only, so tests skip outright instead of falling back to another EP.
-std::unique_ptr<IExecutionProvider> TryGetCudaEpWithVarlenCausalConvWithState() {
-  auto ep = DefaultCudaExecutionProvider();
-  if (!ep) {
-    return nullptr;
-  }
-  auto kernel_registry = ep->GetKernelRegistry();
-  if (kernel_registry) {
+// Returns a locally available EP with the VarlenCausalConvWithState kernel registered, or nullptr.
+// CUDA is preferred when present; otherwise the WebGPU EP is used. Both share the same tests.
+std::unique_ptr<IExecutionProvider> TryGetEpWithVarlenCausalConvWithState() {
+  auto has_kernel = [](const IExecutionProvider& ep) {
+    auto kernel_registry = ep.GetKernelRegistry();
+    if (!kernel_registry) {
+      return false;
+    }
     const KernelCreateInfo* info = nullptr;
     KernelRegistry::TypeConstraintMap type_constraints;
     auto status = kernel_registry->TryFindKernel(
-        ep->Type(), "VarlenCausalConvWithState", kMSDomain, 1,
+        ep.Type(), "VarlenCausalConvWithState", kMSDomain, 1,
         type_constraints, DefaultLoggingManager().DefaultLogger(), &info);
-    if (!status.IsOK()) {
-      return nullptr;
-    }
+    return status.IsOK();
+  };
+
+#ifdef USE_CUDA
+  if (auto ep = DefaultCudaExecutionProvider(); ep && has_kernel(*ep)) {
+    return ep;
   }
-  return ep;
+#endif
+#ifdef USE_WEBGPU
+  if (auto ep = DefaultWebGpuExecutionProvider(); ep && has_kernel(*ep)) {
+    return ep;
+  }
+#endif
+  return nullptr;
 }
 
 // Transpose a single request's (channels, length) reference block to the token-major
@@ -1490,9 +1512,14 @@ struct VarlenCausalConvCase {
 };
 
 void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
-  auto ep = TryGetCudaEpWithVarlenCausalConvWithState();
+  auto ep = TryGetEpWithVarlenCausalConvWithState();
   if (!ep) {
     GTEST_SKIP() << "VarlenCausalConvWithState kernel not registered";
+    return;
+  }
+  // WGSL has no bfloat16 type, so the WebGPU kernel is float/float16 only.
+  if (c.use_bf16 && ep->Type() == kWebGpuExecutionProvider) {
+    GTEST_SKIP() << "WebGPU EP does not support bfloat16";
     return;
   }
 
@@ -1983,7 +2010,7 @@ TEST(ContribOpVarlenCausalConvWithStateTest, MultiCallStateCarry) {
   std::vector<float>* states[2] = {&state0, &state1};
 
   for (int call = 0; call < 2; call++) {
-    auto ep = TryGetCudaEpWithVarlenCausalConvWithState();
+    auto ep = TryGetEpWithVarlenCausalConvWithState();
     if (!ep) {
       GTEST_SKIP() << "VarlenCausalConvWithState kernel not registered";
       return;
@@ -2044,9 +2071,9 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     int kernel_size,
     const std::vector<float>& expected_output,
     const std::vector<float>& expected_state) {
-  auto ep = DefaultCudaExecutionProvider();
+  auto ep = TryGetEpWithVarlenCausalConvWithState();
   if (!ep) {
-    GTEST_SKIP() << "CUDA execution provider not available";
+    GTEST_SKIP() << "VarlenCausalConvWithState execution provider not available";
     return;
   }
   const int pad = kernel_size - 1;
@@ -2087,7 +2114,7 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
   std::vector<NodeArg*> outputs = {&output_arg, &final_arg};
   auto& node = graph.AddNode("varlen", "VarlenCausalConvWithState", "alias continuation",
                              inputs, outputs, nullptr, kMSDomain);
-  node.SetExecutionProviderType(kCudaExecutionProvider);
+  node.SetExecutionProviderType(ep->Type());
   ASSERT_STATUS_OK(graph.Resolve());
 
   std::string serialized;
@@ -2179,12 +2206,9 @@ TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize3TwoCallCont
   RunAliasedStateTwoCallContinuationIOBinding(1, 3, {2.0f}, {1.0f, 1.0f});
 }
 
-static void RunMalformedCuSeqlens(const std::vector<int32_t>& cu_seqlens, int total_tokens) {
-  auto ep = DefaultCudaExecutionProvider();
-  if (!ep) {
-    GTEST_SKIP() << "CUDA execution provider not available";
-    return;
-  }
+static void RunMalformedCuSeqlens(const std::vector<int32_t>& cu_seqlens, int total_tokens,
+                                  std::unique_ptr<IExecutionProvider> ep) {
+  ASSERT_NE(ep, nullptr);
   const int batch_size = static_cast<int>(cu_seqlens.size()) - 1;
   OpTester tester("VarlenCausalConvWithState", 1, kMSDomain);
   tester.AddInput<float>("input", {total_tokens, 1}, std::vector<float>(total_tokens, 1.0f));
@@ -2204,13 +2228,30 @@ static void RunMalformedCuSeqlens(const std::vector<int32_t>& cu_seqlens, int to
 }
 
 TEST(ContribOpVarlenCausalConvWithStateTest, MalformedOffsetsAreContained) {
-  RunMalformedCuSeqlens({0, -1, 3}, 3);
-  RunMalformedCuSeqlens({0, 2, 1, 3}, 3);
-  RunMalformedCuSeqlens({0, 1, 4}, 3);
-  RunMalformedCuSeqlens({1, 2, 3}, 3);
-  RunMalformedCuSeqlens({0, 1, 2}, 3);
-  RunMalformedCuSeqlens({0, 2, 1, 4}, 4);
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+  RunMalformedCuSeqlens({0, -1, 3}, 3, DefaultCudaExecutionProvider());
+  RunMalformedCuSeqlens({0, 2, 1, 3}, 3, DefaultCudaExecutionProvider());
+  RunMalformedCuSeqlens({0, 1, 4}, 3, DefaultCudaExecutionProvider());
+  RunMalformedCuSeqlens({1, 2, 3}, 3, DefaultCudaExecutionProvider());
+  RunMalformedCuSeqlens({0, 1, 2}, 3, DefaultCudaExecutionProvider());
+  RunMalformedCuSeqlens({0, 2, 1, 4}, 4, DefaultCudaExecutionProvider());
 }
+
+#ifdef USE_WEBGPU
+TEST(ContribOpVarlenCausalConvWithStateTest, MalformedOffsetsAreContainedWebGpu) {
+  if (!DefaultWebGpuExecutionProvider()) {
+    GTEST_SKIP() << "WebGPU execution provider not available";
+  }
+  RunMalformedCuSeqlens({0, -1, 3}, 3, DefaultWebGpuExecutionProvider());
+  RunMalformedCuSeqlens({0, 2, 1, 3}, 3, DefaultWebGpuExecutionProvider());
+  RunMalformedCuSeqlens({0, 1, 4}, 3, DefaultWebGpuExecutionProvider());
+  RunMalformedCuSeqlens({1, 2, 3}, 3, DefaultWebGpuExecutionProvider());
+  RunMalformedCuSeqlens({0, 1, 2}, 3, DefaultWebGpuExecutionProvider());
+  RunMalformedCuSeqlens({0, 2, 1, 4}, 4, DefaultWebGpuExecutionProvider());
+}
+#endif
 
 // Host-verifiable shape errors: these check rank/shape relationships computed purely from tensor
 // shape metadata. Device offset contents (including the final cumulative_sequence_length entry)
@@ -2373,7 +2414,33 @@ TEST(ContribOpVarlenCausalConvWithStateTest, StateUpdateCapacityIsBounded) {
   tester.AddOutput<float>("state_update", {1, 9, 1}, std::vector<float>(9, 0.0f));
   tester.Run(OpTester::ExpectResult::kExpectFailure, "state_update_capacity must be in [0, 8]");
 }
-#endif  // USE_CUDA
+
+#ifdef USE_WEBGPU
+TEST(ContribOpVarlenCausalConvWithStateTest, WebGpuRejectsPadAboveIntMax) {
+  auto ep = DefaultWebGpuExecutionProvider();
+  if (!ep) {
+    GTEST_SKIP() << "WebGPU execution provider not available";
+  }
+
+  OpTester tester("VarlenCausalConvWithState", 1, onnxruntime::kMSDomain);
+  tester.AddShapeToTensorData(false);
+  tester.AddAttribute<int64_t>("dilation", std::numeric_limits<int>::max());
+  tester.AddInput<float>("input", {1, 1}, {1.0f});
+  tester.AddInput<float>("weight", {1, 1, 3}, {1.0f, 1.0f, 1.0f});
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("initial_state", {1, 1, 1}, {0.0f});
+  tester.AddOutput<float>("output", {1, 1}, {0.0f});
+  tester.AddOutput<float>("final_state", {1, 1, 1}, {0.0f});
+  tester.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(ep));
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "pad is too large for WebGPU",
+             {}, nullptr, &execution_providers);
+}
+#endif
+#endif  // USE_CUDA || USE_WEBGPU
 
 }  // namespace test
 }  // namespace onnxruntime

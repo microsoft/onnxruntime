@@ -1,0 +1,117 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_bias
+#param has_state
+#param state_in_final_state
+#param has_state_update
+#param use_silu
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.num_invocations);
+
+  let channels = uniforms.channels;
+  let kernel_size = uniforms.kernel_size;
+  let dilation = uniforms.dilation;
+  let pad = uniforms.pad;
+
+  // One invocation owns a single (request, channel) pair.
+  let first = cumulative_sequence_length.getByOffset(0u);
+  let last = cumulative_sequence_length.getByOffset(uniforms.batch_size);
+  let b = global_idx / channels;
+  let c = global_idx % channels;
+
+  let start_i = cumulative_sequence_length.getByOffset(b);
+  let end_i = cumulative_sequence_length.getByOffset(b + 1u);
+  if (first != 0 || last != i32(uniforms.total_tokens) || start_i < 0 || start_i >= end_i ||
+      end_i > i32(uniforms.total_tokens)) {
+    return;
+  }
+  let start = u32(start_i);
+  let end = u32(end_i);
+  let local_length = end - start;
+
+  let weight_base = c * kernel_size;
+#if has_state
+  let state_base = (b * channels + c) * pad;
+#endif
+
+  var bias_val: f32 = 0.0;
+#if has_bias
+  bias_val = f32(bias.getByOffset(c));
+#endif
+
+  // Depthwise causal convolution for every token of this request. The virtual input is
+  // [initial_state (pad raw samples), this request's tokens]; a tap at local position < 0 reads
+  // the carry state and a tap >= 0 reads this request's own token, so a request never reads
+  // across its boundary into a neighbor. With pad == 0 there is no carry state and every tap is
+  // an in-range token.
+  for (var t: u32 = 0u; t < local_length; t = t + 1u) {
+    var acc: f32 = bias_val;
+    for (var k: u32 = 0u; k < kernel_size; k = k + 1u) {
+      let lp = i32(t) - i32(pad) + i32(k * dilation);
+      var val: f32 = 0.0;
+#if has_state
+      if (lp < 0) {
+#if state_in_final_state
+    val = f32(final_state.getByOffset(state_base + u32(lp + i32(pad))));
+#else
+    val = f32(initial_state.getByOffset(state_base + u32(lp + i32(pad))));
+#endif
+      } else {
+    val = f32(input.getByOffset((start + u32(lp)) * channels + c));
+      }
+#else
+  val = f32(input.getByOffset((start + u32(lp)) * channels + c));
+#endif
+  acc = acc + val * f32(weight.getByOffset(weight_base + k));
+    }
+#if use_silu
+    acc = acc / (1.0 + exp(-acc));
+#endif
+    output.setByOffset((start + t) * channels + c, input_element_t(acc));
+  }
+
+#if has_state
+  // final_state: the last pad raw samples of [initial_state, input], always fully written even
+  // when local_length < pad (the missing positions come from the carry state).
+  for (var s: u32 = 0u; s < pad; s = s + 1u) {
+    let lp = i32(local_length) - i32(pad) + i32(s);
+    var val: f32 = 0.0;
+    if (lp < 0) {
+    #if state_in_final_state
+      val = f32(final_state.getByOffset(state_base + u32(lp + i32(pad))));
+    #else
+      val = f32(initial_state.getByOffset(state_base + u32(lp + i32(pad))));
+    #endif
+    } else {
+      val = f32(input.getByOffset((start + u32(lp)) * channels + c));
+    }
+    final_state.setByOffset(state_base + s, input_element_t(val));
+  }
+#endif
+
+#if has_state_update
+  // Compact capture: slots [0, captured) hold this request's leading raw input tokens; every other
+  // slot stays zero. captured = clamp(capture_count[b], 0, min(capacity, local_length)).
+  let capacity = uniforms.state_update_capacity;
+  var captured: u32 = 0u;
+  let raw = capture_count.getByOffset(b);
+  if (raw > 0) {
+    captured = u32(raw);
+    let limit = min(capacity, local_length);
+    if (captured > limit) {
+      captured = limit;
+    }
+  }
+  for (var slot: u32 = 0u; slot < capacity; slot = slot + 1u) {
+    var v: input_element_t = input_element_t(0.0);
+    if (slot < captured) {
+      v = input.getByOffset((start + slot) * channels + c);
+    }
+    state_update.setByOffset((b * capacity + slot) * channels + c, v);
+  }
+#endif
+} // MAIN
