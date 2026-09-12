@@ -22,6 +22,7 @@
 #include "core/session/plugin_ep/ep_library_internal.h"
 #include "core/session/plugin_ep/ep_library_plugin.h"
 #include "core/session/plugin_ep/ep_library_provider_bridge.h"
+#include "core/session/plugin_ep/ep_static_plugins.h"
 #include "core/session/ort_apis.h"
 #include "core/session/utils.h"
 
@@ -631,8 +632,8 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 Status Environment::CreateAndRegisterInternalEps() {
   // Capture allow_virtual_devices here (lock-free) and pass it to the internal EP factories at
   // construction. The internal WebGPU EP factory needs it in GetSupportedDevices but cannot query the
-  // OrtEnv singleton there: internal EPs are registered while OrtEnv's creation mutex is already held on
-  // this thread, so the query would self-deadlock.
+  // OrtEnv singleton there: internal EPs are registered from Environment::Create, before OrtEnv
+  // publishes p_instance_, so there is no instance to find.
   const bool allow_virtual_devices = num_allow_virtual_device_uses_ > 0;
   auto internal_ep_libraries = EpLibraryInternal::CreateInternalEps(allow_virtual_devices);
   for (auto& ep_library : internal_ep_libraries) {
@@ -641,6 +642,19 @@ Status Environment::CreateAndRegisterInternalEps() {
     ORT_RETURN_IF_ERROR(RegisterExecutionProviderLibrary(internal_library_ptr->RegistrationName(),
                                                          std::move(ep_library),
                                                          {&internal_library_ptr->GetInternalFactory()}));
+  }
+
+  return Status::OK();
+}
+
+Status Environment::CreateAndRegisterStaticPluginEps(StaticPluginEpRegistrationToken) {
+  // Intentionally does not take mutex_. That is safe because the caller holds the OrtEnv creation mutex, so no other
+  // thread can obtain a reference to this Environment yet. Taking mutex_ here would deadlock if a plugin EP called an
+  // Environment API from its OrtEpFactory::GetSupportedDevices implementation.
+  auto static_plugin_ep_libraries = CreateStaticPluginEpLibraries();
+  for (auto& ep_library : static_plugin_ep_libraries) {
+    const std::string registration_name = ep_library->RegistrationName();
+    ORT_RETURN_IF_ERROR(RegisterExecutionProviderLibrary(registration_name, std::move(ep_library)));
   }
 
   return Status::OK();

@@ -16,6 +16,7 @@ WGPUDevice GetDevice(int);
 }  // namespace onnxruntime
 #endif
 
+#include <cstring>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -178,6 +179,24 @@ int OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
                                const char* const* provider_options_values,
                                size_t num_keys) {
   return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, provider_options_keys, provider_options_values, num_keys);
+}
+
+int OrtGetEpDevices(const ort_ep_device_handle_t** ep_devices, size_t* num_ep_devices) {
+  return CHECK_STATUS(GetEpDevices, g_env, ep_devices, num_ep_devices);
+}
+
+const char* OrtEpDevice_EpName(ort_ep_device_handle_t ep_device) {
+  return Ort::GetApi().EpDevice_EpName(ep_device);
+}
+
+int OrtAppendExecutionProviderV2(ort_session_options_handle_t session_options,
+                                 ort_ep_device_handle_t* ep_devices,
+                                 size_t num_ep_devices,
+                                 const char* const* provider_options_keys,
+                                 const char* const* provider_options_values,
+                                 size_t num_keys) {
+  return CHECK_STATUS(SessionOptionsAppendExecutionProvider_V2, session_options, g_env,
+                      ep_devices, num_ep_devices, provider_options_keys, provider_options_values, num_keys);
 }
 
 int OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,

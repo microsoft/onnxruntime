@@ -10,11 +10,26 @@
 #include <string>
 #include <tuple>
 
+// Users of this header can explicitly define ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT to skip manual ORT C++ API
+// initialization.
+//
+// A plugin EP built as its own shared library must not call OrtGetApiBase() itself. It receives the OrtApiBase* from
+// ORT and initializes the C++ API manually, so ORT_API_MANUAL_INIT is forced on for onnxruntime_cxx_api.h. This is
+// the default because it is the safe choice for a separately built plugin.
+//
+// A build that links the plugin EP into the ORT binary defines ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT: OrtGetApiBase() is
+// then available in-process and the rest of the binary is compiled without ORT_API_MANUAL_INIT. MSVC's detect_mismatch
+// guard in onnxruntime_cxx_api.h requires every translation unit in a binary to agree on ORT_API_MANUAL_INIT, so in
+// that case leave it alone and let the C++ API initialize itself.
+#if !defined(ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT)
 #pragma push_macro("ORT_API_MANUAL_INIT")
 #undef ORT_API_MANUAL_INIT
 #define ORT_API_MANUAL_INIT
 #include "onnxruntime_cxx_api.h"
 #pragma pop_macro("ORT_API_MANUAL_INIT")
+#else
+#include "onnxruntime_cxx_api.h"
+#endif
 
 namespace onnxruntime {
 namespace ep {
@@ -141,8 +156,11 @@ inline void ApiInit(const OrtApiBase* ort_api_base, const char* min_ort_version 
       throw std::runtime_error("Failed to initialize EP API: GetEpApi or GetModelEditorApi returned null.");
     }
 
-    // Manual init for the C++ API
+#if !defined(ORT_PLUGIN_EP_SKIP_API_MANUAL_INIT)
+    // Manual init for the C++ API. When the EP is linked into the ORT binary, the C++ API initializes itself from
+    // OrtGetApiBase() with ORT_API_VERSION, which is the same API pointer because the EP and ORT are the same binary.
     Ort::InitApi(ort_api);
+#endif
 
     // Initialize globals
     detail::g_api_ptrs.emplace(*ort_api, *ep_api, *model_editor_api);

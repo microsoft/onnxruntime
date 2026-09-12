@@ -34,6 +34,10 @@ on:
         required: false
         type: boolean
         default: false
+      build_webgpu_static_plugin:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-wasm:
@@ -156,6 +160,24 @@ jobs:
             --use_webnn \
             --enable_wasm_jspi \
             --target onnxruntime_webassembly \
+            ${{ env.reduced_size_build_args }} \
+            --skip_tests
+        working-directory: ${{ github.workspace }}
+
+      # Build-only coverage for registering the WebGPU EP as a statically linked plugin EP under Emscripten.
+      # The output is deliberately not published: it has the same file names as the published WebGPU build, and
+      # the ORT Web test harness selects the wasm binary by file name, so both variants cannot ship together.
+      # This leg becomes redundant once the published WebGPU wasm build switches over to the plugin EP.
+      - name: Build (simd + threads + WebGPU experimental, static plugin EP)
+        if: ${{ inputs.build_webgpu_static_plugin == true }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu_static_plugin \
+            --use_webgpu static_plugin \
+            --use_webnn \
+            --target onnxruntime_webassembly \
+            ${{ inputs.build_config == 'Release' && '--enable_wasm_api_exception_catching' || '' }} \
             ${{ env.reduced_size_build_args }} \
             --skip_tests
         working-directory: ${{ github.workspace }}
