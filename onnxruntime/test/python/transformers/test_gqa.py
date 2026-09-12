@@ -4539,7 +4539,7 @@ class TestGQAWindowedKvCache(unittest.TestCase):
         # only when there is no slack above the window, so C > W is rejected.
         self._require_ep()
 
-        with self.assertRaisesRegex(Exception, "sliding_window_cache"):
+        with self.assertRaisesRegex(Exception, "requires the KV cache capacity.*to equal local_window_size"):
             self._check_parity(
                 self._base_config(batch_size=1),
                 step_lengths=[32, 1, 1],
