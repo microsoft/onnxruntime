@@ -1040,8 +1040,11 @@ void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionPr
   auto& final_state_arg = graph.GetOrCreateNodeArg(
       "final_state", tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                  {1, geometry.hv, geometry.dv, geometry.dk}));
+  const bool needs_decay = options.update_rule == "gated" || options.update_rule == "gated_delta";
+  const bool needs_beta = options.update_rule == "delta" || options.update_rule == "gated_delta";
   std::vector<NodeArg*> node_inputs = {
-      &query_arg, &key_arg, &value_arg, &empty, &decay_arg, &beta_arg, &state_arg};
+      &query_arg, &key_arg, &value_arg, &empty, needs_decay ? &decay_arg : &empty,
+      needs_beta ? &beta_arg : &empty, &state_arg};
   std::vector<NodeArg*> node_outputs = {&output_arg, &final_state_arg};
   auto& node = graph.AddNode("gdn", "GatedDeltaNet", "aliased recurrent state",
                              node_inputs, node_outputs, nullptr, kMSDomain);
@@ -1103,8 +1106,12 @@ void RunAliasedStateIoBindingCase(int total_tokens, std::unique_ptr<IExecutionPr
   ASSERT_STATUS_OK(binding->BindInput("query", query_value));
   ASSERT_STATUS_OK(binding->BindInput("key", key_value));
   ASSERT_STATUS_OK(binding->BindInput("value", value_value));
-  ASSERT_STATUS_OK(binding->BindInput("decay", decay_value));
-  ASSERT_STATUS_OK(binding->BindInput("beta", beta_value));
+  if (needs_decay) {
+    ASSERT_STATUS_OK(binding->BindInput("decay", decay_value));
+  }
+  if (needs_beta) {
+    ASSERT_STATUS_OK(binding->BindInput("beta", beta_value));
+  }
   ASSERT_STATUS_OK(binding->BindInput("initial_state", state_value));
   ASSERT_STATUS_OK(binding->BindOutput("output", output_value));
   ASSERT_STATUS_OK(binding->BindOutput("final_state", state_value));
