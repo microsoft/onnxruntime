@@ -45,6 +45,9 @@ class EpLibraryInternal : public EpLibrary {
 
  private:
   static std::unique_ptr<EpLibraryInternal> CreateCpuEp();
+#if defined(USE_COREML) && defined(__APPLE__)
+  static std::unique_ptr<EpLibraryInternal> CreateCoreMLEp();
+#endif
 #if defined(USE_DML)
   static std::unique_ptr<EpLibraryInternal> CreateDmlEp();
 #endif
