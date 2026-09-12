@@ -327,28 +327,23 @@ inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {
   return std::string{s.data(), ptr};
 }
 
-inline std::string_view TrimLeft(std::string_view sv, int (*fn)(int) = std::isspace) {
-  return sv.substr(0, sv.end() - std::find_if(sv.begin(), sv.end(), [fn](int ch) {
-                        return fn(ch);
-                      }));
-}
-
-inline std::string_view TrimRight(std::string_view sv, int (*fn)(int) = std::isspace) {
-  return sv.substr(sv.end() - std::find_if(sv.rbegin(), sv.rend(), [fn](int ch) {
-                                return fn(ch);
-                              }).base());
-}
-
-inline std::string_view Trim(std::string_view sv, int (*fn)(int) = std::isspace) {
-  return TrimRight(TrimLeft(sv, fn), fn);
-}
-
 inline int ToInteger(const std::string_view sv) {
   int result = 0;
   if (auto [_, ec] = std::from_chars(sv.data(), sv.data() + sv.length(), result); ec == std::errc()) {
     return result;
   }
   ORT_THROW("invalid input for conversion to integer");
+}
+
+// MIGraphX names outputs "<module>:#output_<i>"; from i = 10 the index is ':' plus zero-padded digits.
+inline int ParseOutputIndex(std::string_view name) {
+  constexpr std::string_view prefix = "#output_";
+  const auto pos = name.find(prefix);
+  if (pos == std::string_view::npos) {
+    return -1;
+  }
+  const auto digits = name.find_first_of("0123456789", pos + prefix.length());
+  return ToInteger(digits == std::string_view::npos ? std::string_view{} : name.substr(digits));
 }
 
 }  // namespace onnxruntime
