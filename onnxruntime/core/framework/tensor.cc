@@ -96,6 +96,18 @@ Tensor::Tensor(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IA
   Init(elt_type, shape, p_data, std::move(allocator), 0L);
 }
 
+Tensor::Tensor(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, Stream* stream)
+    : alloc_info_(allocator->Info()) {
+  ORT_ENFORCE(elt_type != nullptr);
+  size_t len = Tensor::CalculateTensorStorageSize(elt_type, shape);
+
+  void* p_data = nullptr;
+  if (len > 0) {
+    p_data = AllocateBufferWithOptions(*allocator, len, /*use_reserve*/ false, stream);
+  }
+  Init(elt_type, shape, p_data, std::move(allocator), 0L);
+}
+
 Tensor::Tensor(MLDataType elt_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
                ptrdiff_t offset, gsl::span<const int64_t> strides)
     : alloc_info_(deleter->Info()) {

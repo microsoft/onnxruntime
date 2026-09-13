@@ -45,17 +45,27 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
   auto ort_stream = GetOrtStream(context);
   EinsumOp::EinsumCudaAssets einsum_cuda_assets(
       ort_stream,
+      GetAllocationStream(context),
       GetDeviceProp(),
       GetCublasHandle(context),
       GetCudnnHandle(context),
       allocator,
       UseTF32());
 
+  // `CreateTensor` in the shared device helper interface cannot take the assets (its signature is
+  // part of the CPU provider bridge), so bind them here - the CUDA implementation needs them to
+  // allocate the intermediate on the stream that will use it.
+  EinsumOp::DeviceHelpers::CreateTensor create_tensor_func =
+      [&einsum_cuda_assets](const DataTypeImpl* type, const TensorShape& shape, AllocatorPtr allocator_ptr) {
+        return EinsumOp::DeviceHelpers::CudaDeviceHelpers::CreateTensor(type, shape, std::move(allocator_ptr),
+                                                                        &einsum_cuda_assets);
+      };
+
   EinsumComputePreprocessor einsum_compute_preprocessor(einsum_equation_preprocessor, inputs, allocator,
                                                         &einsum_cuda_assets);
   einsum_compute_preprocessor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Diagonal,
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
-                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::CreateTensor);
+                                               create_tensor_func);
 
   ORT_RETURN_IF_ERROR(einsum_compute_preprocessor.Run());
 
@@ -68,7 +78,7 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer,
-                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::CreateTensor);
+                                              create_tensor_func);
     return einsum_compute_processor.Run();
 
   } else if (first_input_tensor->IsDataType<double>()) {
@@ -78,7 +88,7 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer,
-                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::CreateTensor);
+                                              create_tensor_func);
     return einsum_compute_processor.Run();
 
   } else if (first_input_tensor->IsDataType<MLFloat16>()) {
@@ -88,7 +98,7 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::DataCopy,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer,
-                                              EinsumOp::DeviceHelpers::CudaDeviceHelpers::CreateTensor);
+                                              create_tensor_func);
     return einsum_compute_processor.Run();
 
   } else {
