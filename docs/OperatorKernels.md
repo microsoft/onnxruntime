@@ -590,7 +590,7 @@ The **OpSet Version** column uses the following notation:
 |FusedMatMul|*in* A:**T**<br> *in* B:**T**<br> *out* Y:**T**|1+|**T** = tensor(double), tensor(float)|
 |GatedAdd|*in* X:**T**<br> *in* Y:**T**<br> *in* gate:**T**<br> *out* output:**T**|1+|**T** = tensor(float), tensor(float16)|
 |GatedRMSNorm|*in* X:**T**<br> *in* scale:**T**<br> *in* gate:**T**<br> *out* Y:**T**|1+|**T** = tensor(float), tensor(float16)|
-|GatherBlockQuantized|*in* data:**T1**<br> *in* indices:**Tind**<br> *in* scales:**T2**<br> *in* zero_points:**T1**<br> *out* output:**T2**|1+|**T1** = tensor(int4), tensor(uint4), tensor(uint8)<br/> **T2** = tensor(float), tensor(float16)<br/> **Tind** = tensor(int32), tensor(int64)|
+|GatherBlockQuantized|*in* data:**T1**<br> *in* indices:**Tind**<br> *in* scales:**T2**<br> *in* zero_points:**T1**<br> *out* output:**T2**|1+|**T1** = tensor(float4e2m1), tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz), tensor(int4), tensor(uint4), tensor(uint8)<br/> **T2** = tensor(float), tensor(float16)<br/> **Tind** = tensor(int32), tensor(int64)|
 |GatherND|*in* data:**T**<br> *in* indices:**Tind**<br> *out* output:**T**|1+|**T** = tensor(bfloat16), tensor(bool), tensor(double), tensor(float), tensor(float16), tensor(int16), tensor(int32), tensor(int64), tensor(int8), tensor(string), tensor(uint16), tensor(uint32), tensor(uint64), tensor(uint8)<br/> **Tind** = tensor(int32), tensor(int64)|
 |Gelu|*in* X:**T**<br> *out* Y:**T**|1+|**T** = tensor(float)|
 |GreedySearch|*in* input_ids:**I**<br> *in* max_length:**I**<br> *in* min_length:**I**<br> *in* repetition_penalty:**T**<br> *in* vocab_mask:**I**<br> *in* prefix_vocab_mask:**I**<br> *in* attention_mask:**I**<br> *out* sequences:**I**|1+|**T** = tensor(float)|

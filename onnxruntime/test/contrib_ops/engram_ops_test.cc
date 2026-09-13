@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <memory>
+#include <optional>
 
 #include "gtest/gtest.h"
 #include "core/framework/execution_provider.h"
@@ -294,19 +295,21 @@ std::vector<T> NGramHashMappingReference(const std::vector<T>& ids,
                                          const std::vector<T>& history,
                                          const std::vector<T>& multipliers,
                                          const std::vector<T>& vocab_sizes,
-                                         int64_t pad_id = kPadId) {
+                                         int64_t pad_id = kPadId,
+                                         std::optional<int64_t> eos_token_id = std::nullopt) {
   const int64_t sequence_length = static_cast<int64_t>(ids.size());
   const int64_t state_length = kMaxNGramSize - 1;
   const int64_t num_heads = state_length * kHeadsPerNGram;
   std::vector<T> output(static_cast<size_t>(sequence_length * num_heads));
 
+  const T missing_history_value = eos_token_id.has_value() ? static_cast<T>(*eos_token_id) : static_cast<T>(pad_id);
   auto id_at = [&](int64_t t) -> T {
     if (t >= 0) {
       return ids[static_cast<size_t>(t)];
     }
     const int64_t slot = state_length + t;
     if (history.empty() || slot < 0) {
-      return static_cast<T>(pad_id);
+      return missing_history_value;
     }
     return history[static_cast<size_t>(slot)];
   };
@@ -314,10 +317,21 @@ std::vector<T> NGramHashMappingReference(const std::vector<T>& ids,
   for (int64_t t = 0; t < sequence_length; ++t) {
     for (int64_t n = 2; n <= kMaxNGramSize; ++n) {
       T mix = 0;
+      // Once an eos_token_id is seen at or after some shift, every larger shift in this same n-gram
+      // window has crossed a segment boundary and must be masked to the missing-history value too,
+      // mirroring the kernel's boundary reset (which substitutes eos_value, not pad_id).
+      bool saw_eos = false;
       for (int64_t k = 0; k < n; ++k) {
+        T token = id_at(t - k);
+        if (k > 0 && eos_token_id.has_value()) {
+          saw_eos = saw_eos || token == static_cast<T>(*eos_token_id);
+          if (saw_eos) {
+            token = missing_history_value;
+          }
+        }
         // Multiplication wraps on overflow, matching the kernel's unsigned arithmetic.
         using U = std::make_unsigned_t<T>;
-        const T product = static_cast<T>(static_cast<U>(id_at(t - k)) *
+        const T product = static_cast<T>(static_cast<U>(token) *
                                          static_cast<U>(multipliers[static_cast<size_t>(k)]));
         mix = k == 0 ? product : static_cast<T>(mix ^ product);
       }
@@ -526,6 +540,55 @@ void RunNGramHashMappingChunkedTest() {
             {ids[1], ids[2]});
 
   // Decode token 3 with the history returned by the previous step.
+  run_chunk({ids[3]}, {ids[1], ids[2]}, std::vector<T>(full.begin() + 12, full.end()),
+            {ids[2], ids[3]});
+}
+
+constexpr int64_t kEosTokenId = 7;
+
+// The eos boundary must be honored across calls too: an eos token carried in via past_ids from a
+// previous chunk must still reset the n-gram context for windows in the current chunk that reach
+// back across it, and running in one call or as chunks with present_ids threaded through must agree.
+// Uses the input-based eos_token_id + reset_on_eos attribute, matching the current schema.
+template <typename T>
+void RunNGramHashMappingEosAcrossChunksTest() {
+  const std::vector<T> ids{3, static_cast<T>(kEosTokenId), 5, 6};
+  const std::vector<T> multipliers{11, 13, 17};
+  const std::vector<T> vocab_sizes{101, 103, 107, 109};
+  const std::vector<T> full =
+      NGramHashMappingReference<T>(ids, {}, multipliers, vocab_sizes, kPadId, kEosTokenId);
+
+  auto run_chunk = [&](const std::vector<T>& chunk, const std::vector<T>& past,
+                       const std::vector<T>& expected_hash_ids, const std::vector<T>& expected_present) {
+    OpTester test("NGramHashMapping", 1, kMSDomain);
+    test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+    test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+    test.AddAttribute<int64_t>("pad_id", kPadId);
+    test.AddAttribute<int64_t>("reset_on_eos", 1);
+    test.AddInput<T>("input_ids", {1, static_cast<int64_t>(chunk.size())}, chunk);
+    test.AddInput<T>("multipliers", {3}, multipliers);
+    test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
+    if (past.empty()) {
+      test.AddOptionalInputEdge<T>();
+    } else {
+      test.AddInput<T>("past_ids", {1, 2}, past);
+    }
+    test.AddOptionalInputEdge<T>();  // head_offsets
+    test.AddInput<T>("eos_token_id", {}, {static_cast<T>(kEosTokenId)});
+    test.AddOutput<T>("hash_ids", {1, static_cast<int64_t>(chunk.size()), 4}, expected_hash_ids);
+    test.AddOutput<T>("present_ids", {1, 2}, expected_present);
+    test.Run();
+  };
+
+  // Prefill carries the eos token itself into present_ids.
+  const std::vector<T> prefill{ids[0], ids[1]};
+  run_chunk(prefill, {}, std::vector<T>(full.begin(), full.begin() + 8), {ids[0], ids[1]});
+
+  // Decode token 2: its 3-gram window reaches back across the eos token carried in past_ids.
+  run_chunk({ids[2]}, {ids[0], ids[1]}, std::vector<T>(full.begin() + 8, full.begin() + 12),
+            {ids[1], ids[2]});
+
+  // Decode token 3: only its 3-gram window reaches back across the eos token, now itself in past_ids.
   run_chunk({ids[3]}, {ids[1], ids[2]}, std::vector<T>(full.begin() + 12, full.end()),
             {ids[2], ids[3]});
 }
@@ -762,6 +825,14 @@ TEST(EngramOpsTest, NGramHashMappingEosResetInt64) {
 
 TEST(EngramOpsTest, NGramHashMappingEosResetInt32) {
   RunNGramHashMappingEosResetTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosAcrossChunksInt64) {
+  RunNGramHashMappingEosAcrossChunksTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosAcrossChunksInt32) {
+  RunNGramHashMappingEosAcrossChunksTest<int32_t>();
 }
 
 TEST(EngramOpsTest, NGramHashMappingSegmentIdsInt64) {
