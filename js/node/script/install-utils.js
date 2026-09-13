@@ -4,82 +4,124 @@
 'use strict';
 
 const fs = require('fs');
+const http = require('http');
 const https = require('https');
 const { execFileSync } = require('child_process');
 const path = require('path');
 const os = require('os');
 const AdmZip = require('adm-zip'); // Use adm-zip instead of spawn
 
-async function downloadFile(url, dest) {
+const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
+const MAX_REDIRECTS = 5;
+
+function requestWithRedirects(url, redirectCount = 0) {
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(dest);
-    https
-      .get(url, (res) => {
-        if (res.statusCode !== 200) {
-          file.close();
-          fs.unlinkSync(dest);
-          reject(new Error(`Failed to download from ${url}. HTTP status code = ${res.statusCode}`));
+    const parsedUrl = new URL(url);
+    const transport = parsedUrl.protocol === 'http:' ? http : parsedUrl.protocol === 'https:' ? https : null;
+    if (!transport) {
+      reject(new Error(`Unsupported URL protocol: ${parsedUrl.protocol}`));
+      return;
+    }
+
+    transport
+      .get(parsedUrl, (res) => {
+        if (!REDIRECT_STATUS_CODES.has(res.statusCode)) {
+          resolve(res);
           return;
         }
 
-        res.pipe(file);
-        file.on('finish', () => {
-          file.close();
-          resolve();
-        });
-        file.on('error', (err) => {
-          fs.unlinkSync(dest);
+        const location = res.headers.location;
+        res.resume();
+        if (!location) {
+          reject(new Error(`Redirect response from ${url} did not include a Location header`));
+          return;
+        }
+        if (redirectCount >= MAX_REDIRECTS) {
+          reject(new Error(`Too many redirects while downloading ${url}`));
+          return;
+        }
+
+        let redirectUrl;
+        try {
+          redirectUrl = new URL(location, parsedUrl).toString();
+        } catch (err) {
           reject(err);
-        });
+          return;
+        }
+
+        requestWithRedirects(redirectUrl, redirectCount + 1).then(resolve, reject);
       })
-      .on('error', (err) => {
-        fs.unlinkSync(dest);
-        reject(err);
-      });
+      .on('error', reject);
   });
 }
 
-async function downloadJson(url) {
-  return new Promise((resolve, reject) => {
-    https
-      .get(url, (res) => {
-        const { statusCode } = res;
-        const contentType = res.headers['content-type'];
+function removeFileIfPresent(filepath) {
+  try {
+    fs.rmSync(filepath, { force: true });
+  } catch {
+    // Preserve the original download error if cleanup also fails.
+  }
+}
 
-        if (!statusCode) {
-          reject(new Error('No response statud code from server.'));
-          return;
-        }
-        if (statusCode >= 400 && statusCode < 500) {
-          resolve(null);
-          return;
-        } else if (statusCode !== 200) {
-          reject(new Error(`Failed to download build list. HTTP status code = ${statusCode}`));
-          return;
-        }
-        if (!contentType || !/^application\/json/.test(contentType)) {
-          reject(new Error(`unexpected content type: ${contentType}`));
-          return;
-        }
-        res.setEncoding('utf8');
-        let rawData = '';
-        res.on('data', (chunk) => {
-          rawData += chunk;
-        });
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(rawData));
-          } catch (e) {
-            reject(e);
-          }
-        });
-        res.on('error', (err) => {
-          reject(err);
-        });
-      })
-      .on('error', (err) => {
-        reject(err);
-      });
+async function downloadFile(url, dest) {
+  let res;
+  try {
+    res = await requestWithRedirects(url);
+    if (res.statusCode !== 200) {
+      res.resume();
+      throw new Error(`Failed to download from ${url}. HTTP status code = ${res.statusCode}`);
+    }
+
+    await new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(dest);
+      res.pipe(file);
+      file.on('finish', () => file.close(resolve));
+      file.on('error', reject);
+      res.on('error', reject);
+    });
+  } catch (err) {
+    removeFileIfPresent(dest);
+    throw err;
+  }
+}
+
+async function downloadJson(url) {
+  const res = await requestWithRedirects(url);
+  const { statusCode } = res;
+
+  if (!statusCode) {
+    res.resume();
+    throw new Error('No response status code from server.');
+  }
+  if (statusCode >= 400 && statusCode < 500) {
+    res.resume();
+    return null;
+  }
+  if (statusCode !== 200) {
+    res.resume();
+    throw new Error(`Failed to download build list. HTTP status code = ${statusCode}`);
+  }
+
+  const contentType = res.headers['content-type'];
+  if (!contentType || !/^application\/json/.test(contentType)) {
+    res.resume();
+    throw new Error(`unexpected content type: ${contentType}`);
+  }
+
+  return new Promise((resolve, reject) => {
+    res.setEncoding('utf8');
+    let rawData = '';
+    res.on('data', (chunk) => {
+      rawData += chunk;
+    });
+    res.on('end', () => {
+      try {
+        resolve(JSON.parse(rawData));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    res.on('error', reject);
   });
 }
 
@@ -301,6 +343,8 @@ function parseInstallCudaFlag() {
 }
 
 module.exports = {
+  downloadFile,
+  downloadJson,
   installPackages,
   parseInstallFlag,
 };
