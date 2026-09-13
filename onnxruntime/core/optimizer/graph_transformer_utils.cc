@@ -88,6 +88,7 @@
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/slice_concat_to_space_to_depth_fusion.h"
+#include "core/optimizer/stft_decomposition.h"
 #include "core/optimizer/transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #ifdef ENABLE_TRAINING
@@ -220,8 +221,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
   const bool enable_cast_chain_elimination =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableCastChainElimination, "0") == "1";
-#ifndef DISABLE_CONTRIB_OPS
   const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
+#ifndef DISABLE_CONTRIB_OPS
   const InlinedHashSet<std::string_view> cpu_acl_eps = {onnxruntime::kCpuExecutionProvider,
                                                         onnxruntime::kAclExecutionProvider};
 #endif
@@ -328,6 +329,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // we run TransposeOptimizer again in Level2 for some CPU EP specific optimizations that can only be
       // applied once nodes are assigned to the CPU EP (which happens between level 1 and level 2).
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator), kCpuExecutionProvider));
+      transformers.emplace_back(std::make_unique<STFTDecomposition>(cpu_ep));
 
       const bool enable_quant_qdq_cleanup =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
