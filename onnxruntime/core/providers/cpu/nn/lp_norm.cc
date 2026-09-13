@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include <core/common/safeint.h>
 #include "core/providers/cpu/nn/lp_norm.h"
 #include "core/util/math_cpuonly.h"
@@ -32,8 +34,8 @@ using StridedVec = Eigen::Map<Eigen::Matrix<T, 1, Eigen::Dynamic>, 0, InnerStrid
 template <typename T>
 using ConstStridedVec = Eigen::Map<const Eigen::Matrix<T, 1, Eigen::Dynamic>, 0, InnerStride>;
 
-template <typename T>
-void DoNormalizeP2(
+template <typename T, int P>
+void DoNormalize(
     const T* xData,
     T* yData,
     const int64_t m,
@@ -44,34 +46,19 @@ void DoNormalizeP2(
     ConstStridedVec<T> xVec(xData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
     StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
 
-    auto norm = xVec.template lpNorm<2>();
-    if (norm != 0) {
-      yVec = xVec / norm;
-    } else {
-      // norm is zero, so set the result to zero
+    const auto scale = xVec.cwiseAbs().maxCoeff();
+    if (scale == 0) {
       yVec.setZero();
-    }
-  }
-};
-
-template <typename T>
-void DoNormalizeP1(
-    const T* xData,
-    T* yData,
-    const int64_t m,
-    const int64_t n,
-    const int64_t sf) {
-  for (int i = 0; i < n; ++i) {
-    auto base = (i / sf) * sf * m + (i % sf);
-    ConstStridedVec<T> xVec(xData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
-    StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
-
-    auto norm = xVec.template lpNorm<1>();
-    if (norm != 0) {
-      yVec = xVec / norm;
+    } else if (std::isfinite(scale)) {
+      // Normalize in a scale-free range so that finite inputs cannot overflow
+      // or underflow while forming the norm.
+      yVec = xVec / scale;
+      const auto scaled_norm = yVec.template lpNorm<P>();
+      yVec /= scaled_norm;
     } else {
-      // norm is zero - set the result to zero
-      yVec.setZero();
+      // Preserve the existing behavior for inputs containing infinities or NaNs.
+      const auto norm = xVec.template lpNorm<P>();
+      yVec = xVec / norm;
     }
   }
 };
@@ -92,9 +79,9 @@ Status LpNorm<T>::Compute(OpKernelContext* p_op_kernel_context) const {
   const int64_t sf = input_shape.SizeFromDimension(SafeInt<size_t>(canonical_axis) + 1);
 
   if (p_ == 1) {
-    DoNormalizeP1(input->Data<T>(), output->MutableData<T>(), m, n, sf);
+    DoNormalize<T, 1>(input->Data<T>(), output->MutableData<T>(), m, n, sf);
   } else if (p_ == 2) {
-    DoNormalizeP2(input->Data<T>(), output->MutableData<T>(), m, n, sf);
+    DoNormalize<T, 2>(input->Data<T>(), output->MutableData<T>(), m, n, sf);
   }
 
   return Status::OK();
