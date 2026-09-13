@@ -117,15 +117,9 @@ onnxruntime_extract_sm_specific_cuda_sources(CUDA_PLUGIN_EP_CU_SRCS
   SM90_SOURCES _cuda_plugin_sm90_tma_srcs
   SM120_SOURCES _cuda_plugin_sm120_tma_srcs
 )
-if (onnxruntime_USE_FLASH_ATTENTION)
-  onnxruntime_extract_flash_attention_sources(CUDA_PLUGIN_EP_CU_SRCS
-    FLASH_SOURCES _cuda_plugin_flash_attention_srcs
-  )
-else()
-  # Flash Attention kernel sources are dead code when USE_FLASH_ATTENTION is not defined,
-  # so exclude them from compilation entirely instead of building unused .cu files.
-  list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX "/bert/flash_attention/.*\\.cu$")
-endif()
+onnxruntime_extract_flash_attention_sources(CUDA_PLUGIN_EP_CU_SRCS
+  FLASH_SOURCES _cuda_plugin_flash_attention_srcs
+)
 onnxruntime_extract_llm_sources(CUDA_PLUGIN_EP_CU_SRCS
   LLM_SOURCES _cuda_plugin_llm_srcs
   LLM_SM90_SOURCES _cuda_plugin_llm_sm90_srcs

@@ -122,6 +122,11 @@ endfunction()
 #   1. Restricting CUDA_ARCHITECTURES to SM80+ (skip dead pre-Ampere passes)
 #   2. Using --threads 1 (memory-intensive) while other targets use higher parallelism
 #
+# When onnxruntime_USE_FLASH_ATTENTION is OFF, the sources are dropped entirely instead
+# of being returned via FLASH_SOURCES: flash_api.cc and the ONNX domain Attention op's
+# flash attention branch are both fully `#if USE_FLASH_ATTENTION` guarded, so the kernels
+# would otherwise be dead code compiled for every requested SM architecture.
+#
 # Usage:
 #   onnxruntime_extract_flash_attention_sources(<cu_src_list_var>
 #       FLASH_SOURCES <output_var>)
@@ -137,6 +142,10 @@ function(onnxruntime_extract_flash_attention_sources CU_SRC_LIST)
   endforeach()
   if(_flash_srcs)
     list(REMOVE_ITEM _list ${_flash_srcs})
+  endif()
+
+  if(NOT onnxruntime_USE_FLASH_ATTENTION)
+    set(_flash_srcs)
   endif()
 
   set("${CU_SRC_LIST}" "${_list}" PARENT_SCOPE)
