@@ -3,6 +3,19 @@
 
 'use strict';
 
+// Fix: follow HTTP 3xx redirects in the download helpers.
+//
+// Node's native `https.get()` does NOT follow redirects, and the previous code
+// rejected any non-200 status. Feeds such as NuGet / GitHub release CDN return
+// 302 redirects (e.g. to release-assets.githubusercontent.com or Azure blob
+// endpoints), which made postinstall fail with:
+//
+//   Error: Failed to download build list. HTTP status code = 302
+//
+// This patch adds a small `getWithRedirects` helper used by both `downloadFile`
+// and `downloadJson`. It caps the hop count to avoid redirect loops and keeps
+// behavior identical otherwise.
+
 const fs = require('fs');
 const https = require('https');
 const { execFileSync } = require('child_process');
@@ -10,11 +23,39 @@ const path = require('path');
 const os = require('os');
 const AdmZip = require('adm-zip'); // Use adm-zip instead of spawn
 
+const MAX_REDIRECTS = 5;
+
+/**
+ * Performs an HTTPS GET, following up to MAX_REDIRECTS 3xx redirects.
+ * Rejects on a non-2xx final status.
+ */
+function getWithRedirects(url, redirectsLeft = MAX_REDIRECTS) {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, (res) => {
+        const { statusCode } = res;
+        if (statusCode >= 300 && statusCode < 400 && res.headers.location) {
+          // Consume and close the response to free the socket.
+          res.resume();
+          if (redirectsLeft <= 0) {
+            reject(new Error(`Too many redirects while downloading ${url}`));
+            return;
+          }
+          const nextUrl = new URL(res.headers.location, url).toString();
+          getWithRedirects(nextUrl, redirectsLeft - 1).then(resolve, reject);
+          return;
+        }
+        resolve(res);
+      })
+      .on('error', reject);
+  });
+}
+
 async function downloadFile(url, dest) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
-    https
-      .get(url, (res) => {
+    getWithRedirects(url)
+      .then((res) => {
         if (res.statusCode !== 200) {
           file.close();
           fs.unlinkSync(dest);
@@ -32,8 +73,13 @@ async function downloadFile(url, dest) {
           reject(err);
         });
       })
-      .on('error', (err) => {
-        fs.unlinkSync(dest);
+      .catch((err) => {
+        file.close();
+        try {
+          fs.unlinkSync(dest);
+        } catch (e) {
+          // ignore
+        }
         reject(err);
       });
   });
@@ -41,8 +87,8 @@ async function downloadFile(url, dest) {
 
 async function downloadJson(url) {
   return new Promise((resolve, reject) => {
-    https
-      .get(url, (res) => {
+    getWithRedirects(url)
+      .then((res) => {
         const { statusCode } = res;
         const contentType = res.headers['content-type'];
 
@@ -51,13 +97,16 @@ async function downloadJson(url) {
           return;
         }
         if (statusCode >= 400 && statusCode < 500) {
+          res.resume();
           resolve(null);
           return;
         } else if (statusCode !== 200) {
+          res.resume();
           reject(new Error(`Failed to download build list. HTTP status code = ${statusCode}`));
           return;
         }
         if (!contentType || !/^application\/json/.test(contentType)) {
+          res.resume();
           reject(new Error(`unexpected content type: ${contentType}`));
           return;
         }
@@ -77,9 +126,7 @@ async function downloadJson(url) {
           reject(err);
         });
       })
-      .on('error', (err) => {
-        reject(err);
-      });
+      .catch(reject);
   });
 }
 
