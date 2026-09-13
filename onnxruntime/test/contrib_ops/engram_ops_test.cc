@@ -147,6 +147,74 @@ void RunEngramGateTest(float tolerance) {
   RunOnSupportedProviders<T>(test);
 }
 
+// Verifies gated_value_normed: RMSNorm is applied independently to each hyper-connection branch
+// (each hidden_size-sized slice), not over the concatenated hc_mult * hidden_size dimension.
+template <typename T>
+void RunEngramGateNormedTest(float tolerance) {
+  if (!IsTypeSupported<T>()) {
+    GTEST_SKIP() << "No execution provider available for this type";
+  }
+  constexpr int64_t hc_mult = 2;
+  constexpr int64_t hidden_size = 2;
+  const std::vector<float> key{0.5f, 1.0f, -0.25f, 0.75f};
+  const std::vector<float> query{3.0f, 4.0f, -1.0f, 2.0f};
+  const std::vector<float> value{2.0f, -1.5f};
+  const std::vector<float> key_scale{1.0f, 1.0f, 1.5f, 0.5f};
+  const std::vector<float> query_scale{1.0f, 1.0f, 1.0f, 2.0f};
+  const std::vector<float> conv_scale{1.0f, 2.0f, 0.5f, 1.0f};
+
+  std::vector<float> gated_value(static_cast<size_t>(hc_mult * hidden_size));
+  for (int64_t g = 0; g < hc_mult; ++g) {
+    float key_sum_sq = 0.0f;
+    float query_sum_sq = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      key_sum_sq += key[static_cast<size_t>(g * hidden_size + c)] * key[static_cast<size_t>(g * hidden_size + c)];
+      query_sum_sq +=
+          query[static_cast<size_t>(g * hidden_size + c)] * query[static_cast<size_t>(g * hidden_size + c)];
+    }
+    const float key_inv = 1.0f / std::sqrt(key_sum_sq / static_cast<float>(hidden_size) + kEpsilon);
+    const float query_inv = 1.0f / std::sqrt(query_sum_sq / static_cast<float>(hidden_size) + kEpsilon);
+    float dot = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      const size_t i = static_cast<size_t>(g * hidden_size + c);
+      dot += key[i] * key_inv * key_scale[i] * query[i] * query_inv * query_scale[i];
+    }
+    dot /= std::sqrt(static_cast<float>(hidden_size));
+    const float gate = Sigmoid(GateArg(dot));
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      gated_value[static_cast<size_t>(g * hidden_size + c)] = gate * value[static_cast<size_t>(c)];
+    }
+  }
+
+  std::vector<float> expected_normed(static_cast<size_t>(hc_mult * hidden_size));
+  for (int64_t g = 0; g < hc_mult; ++g) {
+    float sum_sq = 0.0f;
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      const float gated = gated_value[static_cast<size_t>(g * hidden_size + c)];
+      sum_sq += gated * gated;
+    }
+    const float inv_rms = 1.0f / std::sqrt(sum_sq / static_cast<float>(hidden_size) + kEpsilon);
+    for (int64_t c = 0; c < hidden_size; ++c) {
+      const size_t i = static_cast<size_t>(g * hidden_size + c);
+      expected_normed[i] = gated_value[i] * inv_rms * conv_scale[i];
+    }
+  }
+
+  OpTester test("EngramGate", 1, kMSDomain);
+  test.AddAttribute<float>("epsilon", kEpsilon);
+  test.AddInput<T>("key", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(key));
+  test.AddInput<T>("query", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(query));
+  test.AddInput<T>("value", {1, 1, hidden_size}, ToTensorType<T>(value));
+  test.AddInput<T>("key_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(key_scale));
+  test.AddInput<T>("query_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(query_scale));
+  test.AddInput<T>("conv_norm_scale", {hc_mult, hidden_size}, ToTensorType<T>(conv_scale));
+  test.AddOutput<T>("output", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(gated_value), false, tolerance,
+                    tolerance);
+  test.AddOutput<T>("gated_value_normed", {1, 1, hc_mult, hidden_size}, ToTensorType<T>(expected_normed), false,
+                    tolerance, tolerance);
+  RunOnSupportedProviders<T>(test);
+}
+
 // Exercises hc_mult > 1 and non-unit norm scales for an arbitrary hidden_size. hidden_size == 4
 // selects the WebGPU vec4 component path through the gate reduction and the broadcast pass, and
 // hc_mult > 1 makes a per-row rather than per-token scale lookup observable.
@@ -299,6 +367,73 @@ void RunNGramHashMappingNegativeIdsTest() {
   test.AddOptionalInputEdge<T>();
   test.AddOutput<T>("hash_ids", {1, 4, 4}, expected);
   test.AddOutput<T>("present_ids", {1, 2}, {ids[2], ids[3]});
+  test.Run();
+}
+
+// Verifies head_offsets is applied as a fixed additive offset after the modulo, per output head.
+template <typename T>
+void RunNGramHashMappingHeadOffsetsTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
+  test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
+  test.AddAttribute<int64_t>("pad_id", kPadId);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 4, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {4}, {101, 103, 107, 109});
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("head_offsets", {4}, {1000, 2000, 3000, 4000});
+  test.AddOutput<T>("hash_ids", {1, 4, 4},
+                    {1084, 2084, 3098, 4096,
+                     1011, 2011, 3039, 4037,
+                     1003, 2003, 3048, 4048,
+                     1003, 2003, 3071, 4071});
+  test.AddOutput<T>("present_ids", {1, 2}, {5, 6});
+  test.Run();
+}
+
+// Verifies reset_on_eos substitutes eos_token_id for shifts crossing an EOS boundary.
+template <typename T>
+void RunNGramHashMappingEosResetTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", 0);
+  test.AddAttribute<int64_t>("reset_on_eos", 1);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 9, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {2}, {101, 103});
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("eos_token_id", {}, {9});
+  test.AddOutput<T>("hash_ids", {1, 4, 2},
+                    {84, 102,
+                     68, 15,
+                     66, 13,
+                     3, 51});
+  test.AddOutput<T>("present_ids", {1, 2}, {5, 6});
+  test.Run();
+}
+
+// Verifies segment_ids resets causal history at packed-sequence boundaries within input_ids.
+template <typename T>
+void RunNGramHashMappingSegmentIdsTest() {
+  OpTester test("NGramHashMapping", 1, kMSDomain);
+  test.AddAttribute<int64_t>("max_ngram_size", 3);
+  test.AddAttribute<int64_t>("n_head_per_ngram", 1);
+  test.AddAttribute<int64_t>("pad_id", 0);
+  test.AddInput<T>("input_ids", {1, 4}, {3, 4, 5, 6});
+  test.AddInput<T>("multipliers", {3}, {11, 13, 17});
+  test.AddInput<T>("vocab_sizes", {2}, {101, 103});
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<int32_t>("segment_ids", {1, 4}, {0, 0, 1, 1});
+  test.AddOutput<T>("hash_ids", {1, 4, 2},
+                    {33, 33,
+                     11, 11,
+                     55, 55,
+                     3, 3});
+  test.AddOutput<T>("present_ids", {1, 2}, {5, 6});
   test.Run();
 }
 
@@ -613,6 +748,30 @@ TEST(EngramOpsTest, NGramHashMappingChunkedMatchesFullSequenceInt32) {
   RunNGramHashMappingChunkedTest<int32_t>();
 }
 
+TEST(EngramOpsTest, NGramHashMappingHeadOffsetsInt64) {
+  RunNGramHashMappingHeadOffsetsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingHeadOffsetsInt32) {
+  RunNGramHashMappingHeadOffsetsTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosResetInt64) {
+  RunNGramHashMappingEosResetTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingEosResetInt32) {
+  RunNGramHashMappingEosResetTest<int32_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingSegmentIdsInt64) {
+  RunNGramHashMappingSegmentIdsTest<int64_t>();
+}
+
+TEST(EngramOpsTest, NGramHashMappingSegmentIdsInt32) {
+  RunNGramHashMappingSegmentIdsTest<int32_t>();
+}
+
 TEST(EngramOpsTest, NGramHashMappingNegativeIdsInt64) {
   RunNGramHashMappingNegativeIdsTest<int64_t>();
 }
@@ -694,6 +853,18 @@ TEST(EngramOpsTest, EngramGateMultiIterationReductionFloat16) {
 
 TEST(EngramOpsTest, EngramGateBFloat16) {
   RunEngramGateTest<BFloat16>(2e-2f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedFloat) {
+  RunEngramGateNormedTest<float>(1e-4f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedFloat16) {
+  RunEngramGateNormedTest<MLFloat16>(2e-3f);
+}
+
+TEST(EngramOpsTest, EngramGateNormedBFloat16) {
+  RunEngramGateNormedTest<BFloat16>(2e-2f);
 }
 
 // A zero dot product must produce a gate of exactly 0.5 on every EP. Orthogonal key/query rows make
