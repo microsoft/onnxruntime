@@ -1844,26 +1844,42 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // DeclareWorkspaceRequirements() on each kernel with positional input presence/shape metadata.
   // Static graph shapes remain usable when no max-shape inference result is available.
   // This collects workspace slot requirements for future offset planning.
-  for (const auto& node : graph_viewer_->Nodes()) {
-    auto* kernel = GetMutableKernel(node.Index());
-    if (kernel == nullptr) continue;
+  // Requirements are reported per graph but are not yet persisted in a workspace plan.
+  {
+    SafeInt<size_t> aggregate_declared_workspace_bytes = 0;
+    size_t nodes_with_workspace = 0;
+    for (const auto& node : graph_viewer_->Nodes()) {
+      auto* kernel = GetMutableKernel(node.Index());
+      if (kernel == nullptr) continue;
 
-    auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
+      auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
 
-    InlinedVector<WorkspaceRequirement> requirements;
-    ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
-        gsl::make_span(resolved), requirements));
+      InlinedVector<WorkspaceRequirement> requirements;
+      ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
+          gsl::make_span(resolved), requirements));
 
-    if (!requirements.empty()) {
-      LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
-                             << "' declared " << requirements.size() << " workspace slot(s)";
-      // TODO: Store requirements in WorkspacePattern for offset planning.
-      // For now, log the declarations so we can verify the wiring works.
-      for (const auto& req : requirements) {
-        LOGS(logger_, VERBOSE) << "  slot_id=" << req.slot_id
-                               << " size=" << req.size_bytes << " bytes"
-                               << " alignment=" << req.alignment_bytes << " bytes";
+      if (!requirements.empty()) {
+        SafeInt<size_t> node_workspace = 0;
+        for (const auto& req : requirements) {
+          node_workspace += req.size_bytes;
+          LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
+                                 << "' slot_id=" << req.slot_id
+                                 << " size=" << req.size_bytes << " bytes"
+                                 << " alignment=" << req.alignment_bytes << " bytes";
+        }
+        aggregate_declared_workspace_bytes += node_workspace;
+        ++nodes_with_workspace;
+        LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
+                               << "' (" << node.OpType() << "): " << requirements.size()
+                               << " slot(s), " << static_cast<size_t>(node_workspace) << " bytes total";
       }
+    }
+    if (aggregate_declared_workspace_bytes > 0) {
+      LOGS(logger_, INFO) << "Level-2 workspace declaration summary for graph '"
+                          << graph_viewer_->Name() << "': "
+                          << nodes_with_workspace << " kernel(s) declared workspace, "
+                          << "aggregate declared workspace bytes: "
+                          << static_cast<size_t>(aggregate_declared_workspace_bytes);
     }
   }
 

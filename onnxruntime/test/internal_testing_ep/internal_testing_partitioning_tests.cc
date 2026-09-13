@@ -34,6 +34,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
+#include <limits>
 #include <queue>
 
 using namespace ONNX_NAMESPACE;
@@ -52,6 +53,26 @@ using namespace onnxruntime::internal_testing_ep;
 // (Conv, LogSoftmax) and core framework utilities, so they are intentionally not
 // guarded by DISABLE_CONTRIB_OPS and provide regression coverage in contrib-disabled builds.
 namespace {
+
+constexpr size_t kNhwcSurvivorWorkspaceBytes = 700 * 1024;
+constexpr size_t kNhwcDroppedWorkspaceBytes = 50 * 1024;
+constexpr size_t kNhwcPass2OnlyWorkspaceBytes = 350 * 1024;
+
+Level1MemoryEstimate GetNhwcAccountingTestEstimate(const std::string& op_type) {
+  if (op_type == "Conv") {
+    return {/*runtime_workspace_bytes=*/kNhwcSurvivorWorkspaceBytes,
+            /*persistent_prepack_bytes=*/102,
+            /*initialization_scratch_bytes=*/103};
+  }
+  if (op_type == "Relu") {
+    return {/*runtime_workspace_bytes=*/kNhwcPass2OnlyWorkspaceBytes,
+            /*persistent_prepack_bytes=*/302,
+            /*initialization_scratch_bytes=*/303};
+  }
+  return {/*runtime_workspace_bytes=*/kNhwcDroppedWorkspaceBytes,
+          /*persistent_prepack_bytes=*/202,
+          /*initialization_scratch_bytes=*/203};
+}
 
 class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
  public:
@@ -139,16 +160,34 @@ class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
 // Variant of the two-pass NHWC EP used to validate that the resource accountant
 // is updated correctly across the NHWC two-pass partitioning flow.
 //
-// It reports kCudaExecutionProvider as its type so that the SizeBasedStatsAccountant
+// It reports kCudaExecutionProvider as its type so that the SizeBasedResourceAccountant
 // (which CreateAccountants registers under kCudaExecutionProvider) is wired to it,
 // mirroring the real in-tree CUDA EP. Like the CUDA EP, it attaches accounting costs
-// only to first-pass (newly claimed) capabilities. Second-pass survivors are already
-// tagged with this EP and take the "previously assigned" branch, so they carry no
-// cost and rely on the partitioner's deferred commit (using the captured first-pass
-// costs) for their budget. Dropped nodes therefore never leak budget.
+// only to newly claimed capabilities. Independently runnable second-pass survivors keep
+// their provisional reservation; survivors grouped with new nodes are re-probed and carry
+// the complete capability cost. Dropped nodes therefore never leak budget.
+enum class SurvivorCapabilityMode {
+  kSeparate,
+  kFused,
+  kPartialOverlap,
+  kSplitCoverage,
+  kMixedWithPass2Node,
+  kAccountedMixedOverlap,
+  kOptimizationOnly,
+};
+
 class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
  public:
-  AccountingNhwcTestExecutionProvider() : IExecutionProvider{kCudaExecutionProvider} {
+  explicit AccountingNhwcTestExecutionProvider(
+      std::optional<NodeIndex> unassignable_capability_node_index = std::nullopt,
+      SurvivorCapabilityMode survivor_capability_mode = SurvivorCapabilityMode::kSeparate,
+      std::optional<NodeIndex> second_pass_dropped_node_index = std::nullopt,
+      std::optional<NodeIndex> accounted_overlap_dropped_node_index = std::nullopt)
+      : IExecutionProvider{kCudaExecutionProvider},
+        unassignable_capability_node_index_(unassignable_capability_node_index),
+        survivor_capability_mode_(survivor_capability_mode),
+        second_pass_dropped_node_index_(second_pass_dropped_node_index),
+        accounted_overlap_dropped_node_index_(accounted_overlap_dropped_node_index) {
   }
 
   DataLayout GetPreferredLayout() const override {
@@ -180,6 +219,33 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
     };
 
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    std::vector<const Node*> fused_pass1_survivors;
+    const bool return_partial_survivor_overlap =
+        second_pass &&
+        survivor_capability_mode_ == SurvivorCapabilityMode::kPartialOverlap &&
+        resource_accountant != nullptr;
+    if (return_partial_survivor_overlap) {
+      for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+        const Node* node = graph_viewer.GetNode(node_index);
+        if (node != nullptr && node->OpType() == "Conv") {
+          capabilities.push_back(utils::MakeComputeCapability(
+              graph_viewer, std::vector<const Node*>{node},
+              generate_metadef_name, Type(), false));
+          break;
+        }
+      }
+    }
+
+    size_t consumed_memory = 0;
+    size_t memory_threshold = std::numeric_limits<size_t>::max();
+    if (resource_accountant != nullptr) {
+      consumed_memory = std::get<size_t>(resource_accountant->GetConsumedAmount());
+      last_observed_consumed_ = consumed_memory;
+      if (const auto threshold = resource_accountant->GetThreshold(); threshold.has_value()) {
+        memory_threshold = std::get<size_t>(*threshold);
+      }
+    }
+
     for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
       const Node* node = graph_viewer.GetNode(node_index);
       if (node == nullptr) {
@@ -188,13 +254,9 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
 
       const bool is_conv = node->OpType() == "Conv";
       const bool is_log_softmax = node->OpType() == "LogSoftmax";
-      if (!is_conv && !is_log_softmax) {
-        continue;
-      }
-
-      // Drop LogSoftmax on the second pass to model the EP releasing a node that
-      // it tentatively claimed on the first pass.
-      if (second_pass && is_log_softmax) {
+      const bool is_relu = node->OpType() == "Relu";
+      const bool is_add = node->OpType() == "Add";
+      if (!is_conv && !is_log_softmax && !is_relu && !is_add) {
         continue;
       }
 
@@ -204,25 +266,151 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
       }
 
       const bool already_claimed = (assigned_ep == Type());
+      const bool drop_accounted_overlap_survivor =
+          second_pass &&
+          survivor_capability_mode_ == SurvivorCapabilityMode::kAccountedMixedOverlap &&
+          resource_accountant != nullptr &&
+          (is_log_softmax ||
+           (accounted_overlap_dropped_node_index_.has_value() &&
+            node_index == *accounted_overlap_dropped_node_index_));
 
-      auto capability = utils::MakeComputeCapability(graph_viewer,
-                                                     std::vector<const Node*>{node},
-                                                     generate_metadef_name,
-                                                     Type(),
-                                                     false);
+      // Drop a provisional survivor on the second pass to model the EP changing
+      // capability grouping. Relu models a node that becomes claimable only in pass 2.
+      if ((second_pass && is_log_softmax &&
+           (survivor_capability_mode_ == SurvivorCapabilityMode::kSeparate ||
+            survivor_capability_mode_ == SurvivorCapabilityMode::kMixedWithPass2Node ||
+            survivor_capability_mode_ == SurvivorCapabilityMode::kOptimizationOnly)) ||
+          drop_accounted_overlap_survivor ||
+          (!second_pass && is_relu) ||
+          (second_pass && is_relu &&
+           survivor_capability_mode_ == SurvivorCapabilityMode::kSplitCoverage) ||
+          (second_pass_dropped_node_index_.has_value() &&
+           second_pass && node_index == *second_pass_dropped_node_index_)) {
+        continue;
+      }
 
-      // Mirror the in-tree CUDA EP: only newly-claimed (first-pass) capabilities carry
-      // accounting costs. Already-tagged second-pass survivors take the "previously
-      // assigned" branch and carry no cost.
+      if (return_partial_survivor_overlap && is_conv) {
+        continue;
+      }
+
+      const bool collect_fused_survivors =
+          second_pass &&
+          (survivor_capability_mode_ == SurvivorCapabilityMode::kFused ||
+           (survivor_capability_mode_ == SurvivorCapabilityMode::kPartialOverlap &&
+            resource_accountant == nullptr) ||
+           (survivor_capability_mode_ == SurvivorCapabilityMode::kSplitCoverage &&
+            resource_accountant == nullptr) ||
+           survivor_capability_mode_ == SurvivorCapabilityMode::kMixedWithPass2Node ||
+           survivor_capability_mode_ == SurvivorCapabilityMode::kAccountedMixedOverlap);
+      const bool collect_mixed_capability =
+          survivor_capability_mode_ == SurvivorCapabilityMode::kMixedWithPass2Node ||
+          (survivor_capability_mode_ == SurvivorCapabilityMode::kAccountedMixedOverlap &&
+           resource_accountant != nullptr);
+      const bool collect_for_fusion =
+          collect_fused_survivors &&
+          (survivor_capability_mode_ == SurvivorCapabilityMode::kAccountedMixedOverlap
+               ? (resource_accountant == nullptr ? already_claimed : (already_claimed || is_relu))
+               : (collect_mixed_capability
+                      ? (is_conv || is_relu)
+                      : (is_conv || is_log_softmax)));
+      if (collect_for_fusion) {
+        fused_pass1_survivors.push_back(node);
+        continue;
+      }
+
+      if (unassignable_capability_node_index_.has_value() && !second_pass && is_log_softmax) {
+        auto sub_graph = std::make_unique<IndexedSubGraph>();
+        sub_graph->SetAccountant(resource_accountant);
+        sub_graph->nodes.push_back(node->Index());
+        sub_graph->nodes.push_back(*unassignable_capability_node_index_);
+        sub_graph->AppendNodeCost(resource_accountant->ComputeResourceCount(
+            *node, GetNhwcAccountingTestEstimate(node->OpType())));
+        sub_graph->AppendNodeCost(ResourceCount{size_t{0}});
+        capabilities.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+        continue;
+      }
+
+      std::unique_ptr<ComputeCapability> capability;
+      if (second_pass && is_conv &&
+          survivor_capability_mode_ == SurvivorCapabilityMode::kOptimizationOnly) {
+        auto sub_graph = std::make_unique<IndexedSubGraph>();
+        sub_graph->nodes.push_back(node_index);
+        capability = std::make_unique<ComputeCapability>(std::move(sub_graph));
+
+        auto optimization_sub_graph = std::make_unique<IndexedSubGraph>();
+        optimization_sub_graph->nodes.push_back(node_index);
+        auto optimization_capability =
+            std::make_unique<ComputeCapability>(std::move(optimization_sub_graph));
+        optimization_capability->optimization_func =
+            [this](Graph&, const ComputeCapability&, ComputeCapability&,
+                   const GraphOptimizerRegistry&) {
+              optimization_invoked_ = true;
+              return Status::OK();
+            };
+        capability->nodes_to_optimize.push_back(std::move(optimization_capability));
+      } else {
+        capability = utils::MakeComputeCapability(graph_viewer,
+                                                  std::vector<const Node*>{node},
+                                                  generate_metadef_name,
+                                                  Type(),
+                                                  false);
+      }
+
+      // Mirror the in-tree CUDA EP: only newly claimed capabilities carry accounting
+      // costs. Already-tagged second-pass survivors take the "previously assigned"
+      // branch and carry no cost.
       if (resource_accountant != nullptr && !already_claimed) {
         capability->sub_graph->SetAccountant(resource_accountant);
         for (auto cost_node_index : capability->sub_graph->nodes) {
           const Node* cost_node = graph_viewer.GetNode(cost_node_index);
-          capability->sub_graph->AppendNodeCost(resource_accountant->ComputeResourceCount(*cost_node));
+          const ResourceCount cost = resource_accountant->ComputeResourceCount(
+              *cost_node, GetNhwcAccountingTestEstimate(cost_node->OpType()));
+          const size_t cost_bytes = std::get<size_t>(cost);
+          if (consumed_memory > memory_threshold ||
+              cost_bytes > memory_threshold - consumed_memory) {
+            resource_accountant->SetStopAssignment();
+            capability.reset();
+            break;
+          }
+          consumed_memory += cost_bytes;
+          capability->sub_graph->AppendNodeCost(cost);
         }
       }
 
-      capabilities.push_back(std::move(capability));
+      if (capability != nullptr) {
+        capabilities.push_back(std::move(capability));
+      } else {
+        break;
+      }
+    }
+
+    if (!fused_pass1_survivors.empty() &&
+        (resource_accountant == nullptr || !resource_accountant->IsStopIssued())) {
+      auto capability = utils::MakeComputeCapability(
+          graph_viewer, fused_pass1_survivors, generate_metadef_name, Type(), false);
+      if (resource_accountant != nullptr) {
+        capability->sub_graph->SetAccountant(resource_accountant);
+        for (NodeIndex node_index : capability->sub_graph->nodes) {
+          const Node* node = graph_viewer.GetNode(node_index);
+          const ResourceCount cost =
+              node != nullptr && node->GetExecutionProviderType().empty()
+                  ? resource_accountant->ComputeResourceCount(
+                        *node, GetNhwcAccountingTestEstimate(node->OpType()))
+                  : ResourceCount{size_t{0}};
+          const size_t cost_bytes = std::get<size_t>(cost);
+          if (consumed_memory > memory_threshold ||
+              cost_bytes > memory_threshold - consumed_memory) {
+            resource_accountant->SetStopAssignment();
+            capability.reset();
+            break;
+          }
+          consumed_memory += cost_bytes;
+          capability->sub_graph->AppendNodeCost(cost);
+        }
+      }
+      if (capability != nullptr) {
+        capabilities.push_back(std::move(capability));
+      }
     }
 
     return capabilities;
@@ -247,9 +435,23 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
     return observed_accountant_;
   }
 
+  std::optional<size_t> last_observed_consumed() const {
+    return last_observed_consumed_;
+  }
+
+  bool optimization_invoked() const {
+    return optimization_invoked_;
+  }
+
  private:
   mutable ModelMetadefIdGenerator metadef_id_generator_;
   mutable IResourceAccountant* observed_accountant_ = nullptr;
+  mutable std::optional<size_t> last_observed_consumed_;
+  mutable bool optimization_invoked_ = false;
+  std::optional<NodeIndex> unassignable_capability_node_index_;
+  SurvivorCapabilityMode survivor_capability_mode_;
+  std::optional<NodeIndex> second_pass_dropped_node_index_;
+  std::optional<NodeIndex> accounted_overlap_dropped_node_index_;
 };
 
 }  // namespace
@@ -407,11 +609,15 @@ TEST(InternalTestingEP, NhwcSecondPassDropFallsBackFromCpuKernelNode) {
 // Validates that the resource accountant is updated correctly across the NHWC two-pass
 // partitioning flow: a node tentatively claimed on the first pass but dropped on the
 // second pass must NOT consume budget (no phantom), while a node that survives must be
-// committed exactly once (no double-count). This guards the fix where first-pass NHWC
-// tags are tentative and budget is committed only for second-pass survivors.
-TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
+// committed exactly once (no double-count). A dropped pass-1 node must be rolled back before
+// final admission so it cannot block a pass-2-only node that fits with the actual survivors.
+void RunNhwcTwoPassAccountingRetryTest(bool pass2_node_precedes_survivor,
+                                       SurvivorCapabilityMode survivor_capability_mode =
+                                           SurvivorCapabilityMode::kSeparate) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
-  Model model("NhwcTwoPassAccountingCommitsOnlySurvivors",
+  Model model(pass2_node_precedes_survivor
+                  ? "NhwcTwoPassAccountingPreservesLaterSurvivorReservation"
+                  : "NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRollback",
               false,
               ModelMetaData(),
               PathString(),
@@ -427,10 +633,21 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
   auto* weights = builder.MakeInitializer<float>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<float>{1.0f});
   auto* conv_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* relu_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
   auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
 
-  builder.AddConvNode(input, weights, conv_output);
-  builder.AddNode("LogSoftmax", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{output});
+  if (pass2_node_precedes_survivor) {
+    builder.AddNode("Relu", std::vector<NodeArg*>{input}, std::vector<NodeArg*>{relu_output});
+    builder.AddConvNode(relu_output, weights, conv_output);
+  } else {
+    builder.AddConvNode(input, weights, conv_output);
+    builder.AddNode("Relu", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{relu_output});
+  }
+  if (pass2_node_precedes_survivor) {
+    builder.AddNode("LogSoftmax", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{output});
+  } else {
+    builder.AddNode("LogSoftmax", std::vector<NodeArg*>{relu_output}, std::vector<NodeArg*>{output});
+  }
   builder.SetGraphOutputs();
 
   ASSERT_STATUS_OK(graph.Resolve());
@@ -445,7 +662,7 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   // Build a fresh ad-hoc accountant (no stats file) via the real factory.
   auto make_accountant = [](std::optional<ResourceAccountantMap>& acc_map) -> IResourceAccountant* {
     ConfigOptions config;
-    // Large memory limit so nothing is offloaded; empty stats file => ad-hoc cost mode.
+    // Large memory limit so reference costs are always available; empty stats file => ad-hoc mode.
     EXPECT_STATUS_OK(config.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
     EXPECT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
     EXPECT_TRUE(acc_map.has_value());
@@ -455,34 +672,72 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
 
   // Reference per-node costs computed independently on fresh accountants.
   const Node* conv_node = nullptr;
+  const Node* relu_node = nullptr;
   const Node* log_softmax_node = nullptr;
   for (const auto& node : graph.Nodes()) {
     if (node.OpType() == "Conv") {
       conv_node = &node;
+    } else if (node.OpType() == "Relu") {
+      relu_node = &node;
     } else if (node.OpType() == "LogSoftmax") {
       log_softmax_node = &node;
     }
   }
   ASSERT_NE(conv_node, nullptr);
+  ASSERT_NE(relu_node, nullptr);
   ASSERT_NE(log_softmax_node, nullptr);
+  const NodeIndex relu_node_index = relu_node->Index();
+  const NodeIndex log_softmax_node_index = log_softmax_node->Index();
 
   std::optional<ResourceAccountantMap> ref_conv_map;
+  std::optional<ResourceAccountantMap> ref_relu_map;
   std::optional<ResourceAccountantMap> ref_ls_map;
   IResourceAccountant* ref_conv_acc = make_accountant(ref_conv_map);
+  IResourceAccountant* ref_relu_acc = make_accountant(ref_relu_map);
   IResourceAccountant* ref_ls_acc = make_accountant(ref_ls_map);
   ASSERT_NE(ref_conv_acc, nullptr);
+  ASSERT_NE(ref_relu_acc, nullptr);
   ASSERT_NE(ref_ls_acc, nullptr);
-  const size_t expected_conv_cost = get_size(ref_conv_acc->ComputeResourceCount(*conv_node));
-  const size_t expected_log_softmax_cost = get_size(ref_ls_acc->ComputeResourceCount(*log_softmax_node));
+  const Level1MemoryEstimate conv_estimate = GetNhwcAccountingTestEstimate("Conv");
+  const Level1MemoryEstimate relu_estimate = GetNhwcAccountingTestEstimate("Relu");
+  const Level1MemoryEstimate log_softmax_estimate = GetNhwcAccountingTestEstimate("LogSoftmax");
+  const size_t expected_conv_cost =
+      get_size(ref_conv_acc->ComputeResourceCount(*conv_node, conv_estimate));
+  const size_t expected_relu_cost =
+      get_size(ref_relu_acc->ComputeResourceCount(*relu_node, relu_estimate));
+  const size_t expected_log_softmax_cost =
+      get_size(ref_ls_acc->ComputeResourceCount(*log_softmax_node, log_softmax_estimate));
   ASSERT_GT(expected_conv_cost, 0u);
+  ASSERT_GT(expected_relu_cost, 0u);
   ASSERT_GT(expected_log_softmax_cost, 0u);
+  const size_t budget_bytes = (pass2_node_precedes_survivor ? 1000 : 1075) * 1024;
+  ASSERT_LT(expected_conv_cost + expected_log_softmax_cost, budget_bytes);
+  const bool log_softmax_survives =
+      survivor_capability_mode == SurvivorCapabilityMode::kFused ||
+      survivor_capability_mode == SurvivorCapabilityMode::kPartialOverlap ||
+      survivor_capability_mode == SurvivorCapabilityMode::kSplitCoverage ||
+      (survivor_capability_mode == SurvivorCapabilityMode::kAccountedMixedOverlap &&
+       pass2_node_precedes_survivor);
+  const bool expect_relu_rejected =
+      pass2_node_precedes_survivor ||
+      survivor_capability_mode == SurvivorCapabilityMode::kPartialOverlap ||
+      survivor_capability_mode == SurvivorCapabilityMode::kSplitCoverage;
+  if (expect_relu_rejected) {
+    const size_t survivor_cost =
+        expected_conv_cost + (log_softmax_survives ? expected_log_softmax_cost : 0);
+    ASSERT_GT(survivor_cost + expected_relu_cost, budget_bytes);
+  } else {
+    ASSERT_LT(expected_conv_cost + expected_relu_cost, budget_bytes);
+    ASSERT_GT(expected_conv_cost + expected_log_softmax_cost + expected_relu_cost, budget_bytes);
+  }
 
   // Drive partitioning directly with the accounting-aware NHWC EP. The accountant is
   // created internally by GraphPartitioner from the config option below (keyed to
   // kCudaExecutionProvider, which matches the EP's type).
   ExecutionProviders execution_providers;
   auto& default_logger = DefaultLoggingManager().DefaultLogger();
-  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>();
+  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>(
+      std::nullopt, survivor_capability_mode);
   auto* ep_raw = ep.get();
   ep->SetLogger(&default_logger);
   ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(ep)));
@@ -491,17 +746,69 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
 
   SessionOptions sess_options;
+  const std::string partitioning_settings = std::to_string(budget_bytes / 1024) + ",";
   ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+      kOrtSessionOptionsResourceCudaPartitioningSettings, partitioning_settings.c_str()));
 
-  // Capture the accountant's consumed amount when the survivor partition is assigned.
-  // on_partition_assignment_fn runs after GetCapabilityForEP completes (and therefore
-  // after the deferred commit), but before PlaceNode adds any further cost.
+  // The assignment callback runs before the current capability's cost is committed.
+  // Capture the already-committed survivor state when the pass-2-only Relu is assigned.
   std::optional<size_t> observed_consumed;
+  std::optional<size_t> observed_workspace;
+  std::optional<size_t> observed_persistent_prepack;
+  std::optional<size_t> observed_initialization_scratch;
+  std::optional<WorkspaceEstimateSourceCounts> observed_source_counts;
+  bool pass2_only_relu_assigned = false;
+  bool conv_survivor_capability_assigned = false;
+  bool fused_pass1_survivors_assigned = false;
+  bool mixed_survivor_capability_assigned = false;
+  size_t mixed_survivor_capability_cost = 0;
+  std::optional<size_t> mixed_consumed_before_assignment;
   OnPartitionAssignmentFunction on_assignment =
-      [&](const Graph&, const ComputeCapability&, const std::string& assigned_ep_type) {
+      [&](const Graph& assignment_graph, const ComputeCapability& capability,
+          const std::string& assigned_ep_type) {
         if (assigned_ep_type == kCudaExecutionProvider && ep_raw->observed_accountant() != nullptr) {
-          observed_consumed = get_size(ep_raw->observed_accountant()->GetConsumedAmount());
+          size_t survivor_count = 0;
+          bool capability_has_relu = false;
+          bool capability_has_conv = false;
+          for (NodeIndex node_index : capability.sub_graph->nodes) {
+            const Node* assigned_node = assignment_graph.GetNode(node_index);
+            if (assigned_node != nullptr && assigned_node->OpType() == "Relu") {
+              capability_has_relu = true;
+              pass2_only_relu_assigned = true;
+              observed_consumed = get_size(ep_raw->observed_accountant()->GetConsumedAmount());
+              observed_workspace = ep_raw->observed_accountant()->GetCommittedWorkspaceEstimate();
+              observed_persistent_prepack =
+                  ep_raw->observed_accountant()->GetCommittedPersistentPrepackEstimate();
+              observed_initialization_scratch =
+                  ep_raw->observed_accountant()->GetCommittedInitializationScratchEstimate();
+              observed_source_counts =
+                  ep_raw->observed_accountant()->GetWorkspaceEstimateSourceCounts();
+            }
+            if (assigned_node != nullptr &&
+                (assigned_node->OpType() == "Conv" || assigned_node->OpType() == "LogSoftmax")) {
+              ++survivor_count;
+            }
+            if (assigned_node != nullptr && assigned_node->OpType() == "Conv") {
+              capability_has_conv = true;
+              conv_survivor_capability_assigned = true;
+            }
+          }
+          if (survivor_count == 2) {
+            fused_pass1_survivors_assigned = true;
+          }
+          if (capability.sub_graph->nodes.size() == 2 && capability_has_relu && capability_has_conv) {
+            mixed_survivor_capability_assigned = true;
+            if (!mixed_consumed_before_assignment.has_value()) {
+              mixed_consumed_before_assignment =
+                  get_size(ep_raw->observed_accountant()->GetConsumedAmount());
+            }
+            if (capability.sub_graph->IsAccountingEnabled()) {
+              for (size_t i = 0; i < capability.sub_graph->nodes.size(); ++i) {
+                mixed_survivor_capability_cost +=
+                    get_size(capability.sub_graph->GetNodeCost(i));
+              }
+            }
+          }
         }
       };
 
@@ -526,14 +833,429 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
                             epctx::ModelGenOptions{},
                             debug_graph_fn));
 
-  ASSERT_TRUE(observed_consumed.has_value())
-      << "Expected the surviving Conv partition to be assigned to the EP.";
-  // Conv survived: committed exactly once.
-  EXPECT_EQ(*observed_consumed, expected_conv_cost)
-      << "Survivor Conv should be committed exactly once.";
-  // LogSoftmax was dropped on the second pass: its cost must not leak (no phantom budget).
-  EXPECT_NE(*observed_consumed, expected_conv_cost + expected_log_softmax_cost)
-      << "Dropped LogSoftmax must not consume budget.";
+  if (survivor_capability_mode == SurvivorCapabilityMode::kAccountedMixedOverlap &&
+      !expect_relu_rejected) {
+    EXPECT_TRUE(mixed_survivor_capability_assigned);
+    EXPECT_EQ(mixed_survivor_capability_cost, expected_relu_cost)
+        << "The retained Conv reservation must not be duplicated by the mixed final capability.";
+    ASSERT_TRUE(mixed_consumed_before_assignment.has_value());
+    EXPECT_EQ(*mixed_consumed_before_assignment, expected_conv_cost)
+        << "The overlapping final capability must win without retaining the uncovered LogSoftmax.";
+    const Node* final_log_softmax_node = graph.GetNode(log_softmax_node_index);
+    EXPECT_TRUE(final_log_softmax_node == nullptr ||
+                final_log_softmax_node->GetExecutionProviderType().empty());
+  } else if (survivor_capability_mode == SurvivorCapabilityMode::kMixedWithPass2Node) {
+    EXPECT_TRUE(mixed_survivor_capability_assigned);
+    EXPECT_EQ(mixed_survivor_capability_cost, expected_conv_cost + expected_relu_cost)
+        << "The pass-1 Conv must be re-probed and priced with the pass-2 Relu capability.";
+    ASSERT_TRUE(mixed_consumed_before_assignment.has_value());
+    EXPECT_EQ(*mixed_consumed_before_assignment, size_t{0});
+  } else if (expect_relu_rejected) {
+    EXPECT_FALSE(pass2_only_relu_assigned)
+        << "Relu must be rejected when the survivor reservations make it exceed the budget.";
+    ASSERT_TRUE(ep_raw->last_observed_consumed().has_value());
+    const size_t expected_survivor_cost =
+        expected_conv_cost + (log_softmax_survives ? expected_log_softmax_cost : 0);
+    EXPECT_EQ(*ep_raw->last_observed_consumed(), expected_survivor_cost)
+        << "The final admission pass must reserve all later survivors before evaluating Relu.";
+    const Node* final_relu_node = graph.GetNode(relu_node_index);
+    EXPECT_TRUE(final_relu_node == nullptr ||
+                final_relu_node->GetExecutionProviderType().empty());
+    if (log_softmax_survives) {
+      EXPECT_TRUE(fused_pass1_survivors_assigned)
+          << "The discovery capability for the fused pass-1 survivors must be preserved.";
+    } else {
+      EXPECT_TRUE(conv_survivor_capability_assigned)
+          << "The single-node discovery capability must be preserved when it carries a MetaDef.";
+    }
+  } else {
+    ASSERT_TRUE(observed_consumed.has_value())
+        << "Expected the pass-2-only Relu partition to be assigned to the EP.";
+    EXPECT_EQ(*observed_consumed, expected_conv_cost)
+        << "The Conv survivor should be reserved exactly once before Relu admission.";
+    EXPECT_NE(*observed_consumed, expected_conv_cost + expected_log_softmax_cost)
+        << "Dropped LogSoftmax must not consume budget.";
+    EXPECT_TRUE(pass2_only_relu_assigned)
+        << "Dropped LogSoftmax must not block the pass-2-only Relu that fits with the Conv survivor.";
+    ASSERT_TRUE(observed_workspace.has_value());
+    ASSERT_TRUE(observed_persistent_prepack.has_value());
+    ASSERT_TRUE(observed_initialization_scratch.has_value());
+    ASSERT_TRUE(observed_source_counts.has_value());
+    EXPECT_EQ(*observed_workspace, *conv_estimate.runtime_workspace_bytes);
+    EXPECT_EQ(*observed_persistent_prepack, conv_estimate.persistent_prepack_bytes);
+    EXPECT_EQ(*observed_initialization_scratch, conv_estimate.initialization_scratch_bytes);
+    EXPECT_EQ(observed_source_counts->estimator, size_t{1});
+    EXPECT_EQ(observed_source_counts->fallback, size_t{0});
+  }
+
+  if (survivor_capability_mode == SurvivorCapabilityMode::kOptimizationOnly) {
+    EXPECT_TRUE(ep_raw->optimization_invoked())
+        << "A single-node survivor capability with optimization work must be re-probed and processed.";
+  }
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingRetriesAdmissionAfterDroppedCostRollback) {
+  RunNhwcTwoPassAccountingRetryTest(false);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingPreservesLaterSurvivorReservation) {
+  RunNhwcTwoPassAccountingRetryTest(true);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingPreservesLaterFusedSurvivorCapability) {
+  RunNhwcTwoPassAccountingRetryTest(true, SurvivorCapabilityMode::kFused);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingReplacesPartialSurvivorOverlap) {
+  RunNhwcTwoPassAccountingRetryTest(true, SurvivorCapabilityMode::kPartialOverlap);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingPreservesSurvivorCapabilityGrouping) {
+  RunNhwcTwoPassAccountingRetryTest(true, SurvivorCapabilityMode::kSplitCoverage);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingReprobesMixedSurvivorCapability) {
+  RunNhwcTwoPassAccountingRetryTest(false, SurvivorCapabilityMode::kMixedWithPass2Node);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingKeepsAccountedMixedOverlap) {
+  RunNhwcTwoPassAccountingRetryTest(false, SurvivorCapabilityMode::kAccountedMixedOverlap);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingRestoresDisplacedSurvivorsWhenOverlapExceedsBudget) {
+  RunNhwcTwoPassAccountingRetryTest(true, SurvivorCapabilityMode::kAccountedMixedOverlap);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingReprobesOptimizationOnlySurvivorCapability) {
+  RunNhwcTwoPassAccountingRetryTest(false, SurvivorCapabilityMode::kOptimizationOnly);
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingReassignsSharedInitializerToSurvivor) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("NhwcTwoPassAccountingReassignsSharedInitializerToSurvivor",
+              false,
+              ModelMetaData(),
+              PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version,
+              {},
+              DefaultLoggingManager().DefaultLogger());
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  constexpr int64_t kElementCount = 16384;
+  const std::vector<int64_t> tensor_shape{kElementCount};
+  auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* shared_initializer = builder.MakeInitializer<float>(tensor_shape, -1.0f, 1.0f);
+  auto* first_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+
+  Node& dropped_node =
+      builder.AddNode("Add", std::vector<NodeArg*>{input, shared_initializer},
+                      std::vector<NodeArg*>{first_output});
+  Node& survivor_node =
+      builder.AddNode("Add", std::vector<NodeArg*>{first_output, shared_initializer},
+                      std::vector<NodeArg*>{output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ConfigOptions reference_config;
+  ASSERT_STATUS_OK(reference_config.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+  std::optional<ResourceAccountantMap> reference_accountants;
+  ASSERT_STATUS_OK(CreateAccountants(reference_config, PathString(), reference_accountants));
+  ASSERT_TRUE(reference_accountants.has_value());
+  auto reference_it = reference_accountants->find(kCudaExecutionProvider);
+  ASSERT_NE(reference_it, reference_accountants->end());
+  const size_t expected_survivor_cost = std::get<size_t>(
+      reference_it->second->ComputeResourceCount(
+          survivor_node, GetNhwcAccountingTestEstimate("Add")));
+
+  ExecutionProviders execution_providers;
+  auto& default_logger = DefaultLoggingManager().DefaultLogger();
+  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>(
+      std::nullopt, SurvivorCapabilityMode::kSeparate, dropped_node.Index());
+  auto* ep_raw = ep.get();
+  ep->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(ep)));
+
+  KernelRegistryManager krm;
+  ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
+
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "4096,"));
+  std::optional<size_t> consumed_before_survivor_assignment;
+  OnPartitionAssignmentFunction on_assignment =
+      [&](const Graph&, const ComputeCapability& capability,
+          const std::string& assigned_ep_type) {
+        if (assigned_ep_type == kCudaExecutionProvider &&
+            std::find(capability.sub_graph->nodes.begin(), capability.sub_graph->nodes.end(),
+                      survivor_node.Index()) != capability.sub_graph->nodes.end()) {
+          consumed_before_survivor_assignment =
+              std::get<size_t>(ep_raw->observed_accountant()->GetConsumedAmount());
+        }
+      };
+
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(
+      &sess_options, nullptr /*cpu_ep*/, &default_logger);
+  GraphPartitioner partitioner(
+      krm, execution_providers, std::move(graph_optimizer_registry),
+      []() -> bool { return false; }, on_assignment);
+
+  layout_transformation::TransformLayoutFunction transform_layout_fn =
+      [](Graph&, bool& modified, const IExecutionProvider&,
+         const layout_transformation::DebugGraphFn&) -> Status {
+    modified = false;
+    return Status::OK();
+  };
+
+  FuncManager func_mgr;
+  ASSERT_STATUS_OK(
+      partitioner.Partition(graph, func_mgr, transform_layout_fn,
+                            sess_options.config_options, default_logger, nullptr /*layering_index*/));
+
+  ASSERT_TRUE(consumed_before_survivor_assignment.has_value());
+  EXPECT_EQ(*consumed_before_survivor_assignment, expected_survivor_cost)
+      << "The survivor must inherit the shared initializer charge when its original owner is dropped.";
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingReassignsSharedInitializerAfterOverlapDisplacement) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("NhwcTwoPassAccountingReassignsSharedInitializerAfterOverlapDisplacement",
+              false,
+              ModelMetaData(),
+              PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version,
+              {},
+              DefaultLoggingManager().DefaultLogger());
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  constexpr int64_t kElementCount = 16384;
+  const std::vector<int64_t> tensor_shape{kElementCount};
+  auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* shared_initializer = builder.MakeInitializer<float>(tensor_shape, -1.0f, 1.0f);
+  auto* first_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* second_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+
+  Node& displaced_node =
+      builder.AddNode("Add", std::vector<NodeArg*>{input, shared_initializer},
+                      std::vector<NodeArg*>{first_output});
+  Node& retained_node =
+      builder.AddNode("Add", std::vector<NodeArg*>{first_output, shared_initializer},
+                      std::vector<NodeArg*>{second_output});
+  Node& pass2_node =
+      builder.AddNode("Relu", std::vector<NodeArg*>{second_output},
+                      std::vector<NodeArg*>{output});
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ConfigOptions reference_config;
+  ASSERT_STATUS_OK(reference_config.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+  std::optional<ResourceAccountantMap> reference_accountants;
+  ASSERT_STATUS_OK(CreateAccountants(reference_config, PathString(), reference_accountants));
+  ASSERT_TRUE(reference_accountants.has_value());
+  auto reference_it = reference_accountants->find(kCudaExecutionProvider);
+  ASSERT_NE(reference_it, reference_accountants->end());
+  const size_t expected_retained_cost = std::get<size_t>(
+      reference_it->second->ComputeResourceCount(
+          retained_node, GetNhwcAccountingTestEstimate("Add")));
+
+  std::optional<ResourceAccountantMap> shared_reference_accountants;
+  ASSERT_STATUS_OK(CreateAccountants(
+      reference_config, PathString(), shared_reference_accountants));
+  ASSERT_TRUE(shared_reference_accountants.has_value());
+  auto shared_reference_it = shared_reference_accountants->find(kCudaExecutionProvider);
+  ASSERT_NE(shared_reference_it, shared_reference_accountants->end());
+  shared_reference_it->second->ComputeResourceCount(
+      displaced_node, GetNhwcAccountingTestEstimate("Add"));
+  const size_t retained_cost_without_shared_initializer = std::get<size_t>(
+      shared_reference_it->second->ComputeResourceCount(
+          retained_node, GetNhwcAccountingTestEstimate("Add")));
+  ASSERT_GT(expected_retained_cost, retained_cost_without_shared_initializer);
+
+  ExecutionProviders execution_providers;
+  auto& default_logger = DefaultLoggingManager().DefaultLogger();
+  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>(
+      std::nullopt, SurvivorCapabilityMode::kAccountedMixedOverlap,
+      std::nullopt, displaced_node.Index());
+  auto* ep_raw = ep.get();
+  ep->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(ep)));
+
+  KernelRegistryManager krm;
+  ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
+
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "4096,"));
+  std::optional<size_t> consumed_before_overlap_assignment;
+  OnPartitionAssignmentFunction on_assignment =
+      [&](const Graph&, const ComputeCapability& capability,
+          const std::string& assigned_ep_type) {
+        if (assigned_ep_type != kCudaExecutionProvider ||
+            ep_raw->observed_accountant() == nullptr) {
+          return;
+        }
+
+        const bool has_retained_node =
+            std::find(capability.sub_graph->nodes.begin(), capability.sub_graph->nodes.end(),
+                      retained_node.Index()) != capability.sub_graph->nodes.end();
+        const bool has_pass2_node =
+            std::find(capability.sub_graph->nodes.begin(), capability.sub_graph->nodes.end(),
+                      pass2_node.Index()) != capability.sub_graph->nodes.end();
+        if (has_retained_node && has_pass2_node) {
+          consumed_before_overlap_assignment =
+              std::get<size_t>(ep_raw->observed_accountant()->GetConsumedAmount());
+        }
+      };
+
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(
+      &sess_options, nullptr /*cpu_ep*/, &default_logger);
+  GraphPartitioner partitioner(
+      krm, execution_providers, std::move(graph_optimizer_registry),
+      []() -> bool { return false; }, on_assignment);
+
+  layout_transformation::TransformLayoutFunction transform_layout_fn =
+      [](Graph&, bool& modified, const IExecutionProvider&,
+         const layout_transformation::DebugGraphFn&) -> Status {
+    modified = false;
+    return Status::OK();
+  };
+
+  FuncManager func_mgr;
+  ASSERT_STATUS_OK(
+      partitioner.Partition(graph, func_mgr, transform_layout_fn,
+                            sess_options.config_options, default_logger, nullptr /*layering_index*/));
+
+  ASSERT_TRUE(consumed_before_overlap_assignment.has_value());
+  EXPECT_EQ(*consumed_before_overlap_assignment, expected_retained_cost)
+      << "The retained survivor must inherit a shared initializer owned by a displaced survivor.";
+}
+
+TEST(InternalTestingEP, NhwcTwoPassAccountingDoesNotReserveUnassignedCapability) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("NhwcTwoPassAccountingDoesNotReserveUnassignedCapability",
+              false,
+              ModelMetaData(),
+              PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version,
+              {},
+              DefaultLoggingManager().DefaultLogger());
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  const std::vector<int64_t> tensor_shape{1, 1, 3, 3};
+  auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* weights = builder.MakeInitializer<float>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<float>{1.0f});
+  auto* conv_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* log_softmax_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* removed_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+
+  builder.AddConvNode(input, weights, conv_output);
+  builder.AddNode(
+      "LogSoftmax", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{log_softmax_output});
+  builder.AddNode("Relu", std::vector<NodeArg*>{log_softmax_output}, std::vector<NodeArg*>{output});
+  Node& removed_node = builder.AddNode(
+      "Identity", std::vector<NodeArg*>{input}, std::vector<NodeArg*>{removed_output});
+  const NodeIndex removed_node_index = removed_node.Index();
+  graph.RemoveNode(removed_node_index);
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  Node* conv_node = nullptr;
+  Node* log_softmax_node = nullptr;
+  Node* relu_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      conv_node = &node;
+    } else if (node.OpType() == "LogSoftmax") {
+      log_softmax_node = &node;
+    } else if (node.OpType() == "Relu") {
+      relu_node = &node;
+    }
+  }
+  ASSERT_NE(conv_node, nullptr);
+  ASSERT_NE(log_softmax_node, nullptr);
+  ASSERT_NE(relu_node, nullptr);
+
+  ConfigOptions reference_config;
+  ASSERT_STATUS_OK(reference_config.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+  std::optional<ResourceAccountantMap> reference_accountants;
+  ASSERT_STATUS_OK(CreateAccountants(reference_config, PathString(), reference_accountants));
+  ASSERT_TRUE(reference_accountants.has_value());
+  auto* reference_accountant = reference_accountants->at(kCudaExecutionProvider).get();
+  const size_t expected_conv_cost = std::get<size_t>(reference_accountant->ComputeResourceCount(
+      *conv_node, GetNhwcAccountingTestEstimate("Conv")));
+  const size_t conflicting_cost = std::get<size_t>(reference_accountant->ComputeResourceCount(
+      *log_softmax_node, GetNhwcAccountingTestEstimate("LogSoftmax")));
+  const size_t expected_relu_cost = std::get<size_t>(reference_accountant->ComputeResourceCount(
+      *relu_node, GetNhwcAccountingTestEstimate("Relu")));
+
+  ExecutionProviders execution_providers;
+  auto& default_logger = DefaultLoggingManager().DefaultLogger();
+  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>(removed_node_index);
+  ep->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(ep)));
+
+  KernelRegistryManager krm;
+  ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
+
+  SessionOptions sess_options;
+  const size_t memory_threshold = expected_conv_cost + expected_relu_cost;
+  const std::string partitioning_settings = std::to_string(memory_threshold) + ",";
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings,
+      partitioning_settings.c_str()));
+  bool pass2_only_relu_assigned = false;
+  OnPartitionAssignmentFunction on_assignment =
+      [&](const Graph& assignment_graph, const ComputeCapability& capability,
+          const std::string& assigned_ep_type) {
+        if (assigned_ep_type != kCudaExecutionProvider) {
+          return;
+        }
+
+        for (NodeIndex node_index : capability.sub_graph->nodes) {
+          const Node* assigned_node = assignment_graph.GetNode(node_index);
+          if (assigned_node != nullptr && assigned_node->OpType() == "Relu") {
+            pass2_only_relu_assigned = true;
+          }
+        }
+      };
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(
+      &sess_options, nullptr /*cpu_ep*/, &default_logger);
+  GraphPartitioner partitioner(
+      krm, execution_providers, std::move(graph_optimizer_registry),
+      []() -> bool { return false; }, on_assignment);
+
+  layout_transformation::TransformLayoutFunction transform_layout_fn =
+      [](Graph&, bool& modified, const IExecutionProvider&,
+         const layout_transformation::DebugGraphFn&) -> Status {
+    modified = false;
+    return Status::OK();
+  };
+  layout_transformation::DebugGraphFn debug_graph_fn;
+  FuncManager func_mgr;
+  ASSERT_STATUS_OK(
+      partitioner.Partition(graph, func_mgr, transform_layout_fn,
+                            sess_options.config_options, default_logger, nullptr /*layering_index*/,
+                            GraphPartitioner::Mode::kNormal,
+                            epctx::ModelGenOptions{},
+                            debug_graph_fn));
+
+  EXPECT_TRUE(pass2_only_relu_assigned)
+      << "The pass-2 Relu must fit when the rejected LogSoftmax capability is not reserved.";
+  EXPECT_GT(conflicting_cost, size_t{0});
 }
 
 // Infrastructure that was used to check NNAPI coverage.
