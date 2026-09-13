@@ -162,13 +162,18 @@ Status GatedRMSNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "    let z = f32(" << gate.GetByOffset("base + i") << ");\n"
       << "    let normalized = f32(" << input.GetByOffset("base + i") << ") * inv_rms * f32("
       << scale.GetByOffset("i") << ");\n"
-      << "    " << output.SetByOffset("base + i", "output_element_t(normalized * (z * stable_sigmoid(z)))") << "\n"
+      << "    "
+      << output.SetByOffset("base + i", std::string("output_element_t(normalized * ") +
+                                            (activation_ == GatedRMSNormActivation::kSilu ? "(z * stable_sigmoid(z))" : "stable_sigmoid(z)") +
+                                            ")")
+      << "\n"
       << "  }\n";
 
   return Status::OK();
 }
 
 GatedRMSNorm::GatedRMSNorm(const OpKernelInfo& info) : WebGpuKernel(info) {
+  activation_ = ParseGatedRMSNormActivationOrThrow(info.GetAttrOrDefault<std::string>("activation", "silu"));
   epsilon_ = info.GetAttrOrDefault<float>("epsilon", 1e-5f);
 }
 
@@ -199,7 +204,8 @@ Status GatedRMSNorm::ComputeInternal(ComputeContext& context) const {
                                   : norm_size <= 128 ? 128
                                                      : 256;
 
-  GatedRMSNormProgram program{};
+  GatedRMSNormProgram program{activation_};
+  program.CacheHint(static_cast<int>(activation_));
   program.AddInputs({{input, ProgramTensorMetadataDependency::Type},
                      {scale, ProgramTensorMetadataDependency::Type},
                      {gate, ProgramTensorMetadataDependency::Type}})

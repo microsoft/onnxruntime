@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cuda_fp16.h>
+#include "contrib_ops/bert/linear_attention_gates_common.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -24,7 +25,7 @@ Status LaunchLinearAttentionGateKernel(
     int64_t num_tokens,
     int num_heads);
 
-// Y = X * rsqrt(mean(X^2) + epsilon) * scale * SiLU(gate), reduced over groups of
+// Y = X * rsqrt(mean(X^2) + epsilon) * scale * gate_activation(gate), reduced over groups of
 // `norm_size` contiguous elements, with all arithmetic in float32.
 template <typename T>
 Status LaunchGatedRMSNormKernel(
@@ -35,7 +36,9 @@ Status LaunchGatedRMSNormKernel(
     const T* gate,
     int64_t num_rows,
     int norm_size,
-    float epsilon);
+    float epsilon,
+    GatedRMSNormActivation activation,
+    int max_threads_per_block);
 
 }  // namespace cuda
 }  // namespace contrib
