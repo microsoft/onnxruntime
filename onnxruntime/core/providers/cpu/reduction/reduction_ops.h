@@ -516,6 +516,58 @@ class ReduceAggregatorSumSquare : public ReduceAggregator<T, TVAL> {
 
 template <typename T>
 class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
+  static constexpr bool kUseFiniteRangeMean = std::is_same_v<T, float> || std::is_same_v<T, double>;
+  static constexpr bool kUsePromotedMean = kUseFiniteRangeMean && std::is_same_v<T, float>;
+  static constexpr bool kUseScaledMean = kUseFiniteRangeMean && std::is_same_v<T, double>;
+
+  // float sums are promoted to double. double uses a dynamically scaled sum,
+  // because it has no wider portable accumulator type.
+  double floating_scale_ = 0.0;
+  double floating_scaled_sum_ = 0.0;
+  bool floating_has_positive_infinity_ = false;
+  bool floating_has_negative_infinity_ = false;
+  bool floating_has_nan_ = false;
+
+  inline void update_scaled_sum(const double value) {
+    if (std::isnan(value)) {
+      floating_has_nan_ = true;
+      return;
+    }
+    if (std::isinf(value)) {
+      if (value > 0) {
+        floating_has_positive_infinity_ = true;
+      } else {
+        floating_has_negative_infinity_ = true;
+      }
+      return;
+    }
+
+    const double magnitude = std::abs(value);
+    if (magnitude == 0.0) {
+      return;
+    }
+    if (floating_scale_ < magnitude) {
+      floating_scaled_sum_ = floating_scaled_sum_ * (floating_scale_ / magnitude) + value / magnitude;
+      floating_scale_ = magnitude;
+    } else {
+      floating_scaled_sum_ += value / floating_scale_;
+    }
+  }
+
+  inline T get_scaled_mean() const {
+    if (floating_has_nan_ ||
+        (floating_has_positive_infinity_ && floating_has_negative_infinity_)) {
+      return std::numeric_limits<T>::quiet_NaN();
+    }
+    if (floating_has_positive_infinity_) {
+      return std::numeric_limits<T>::infinity();
+    }
+    if (floating_has_negative_infinity_) {
+      return -std::numeric_limits<T>::infinity();
+    }
+    return static_cast<T>(floating_scale_ * (floating_scaled_sum_ / static_cast<double>(this->N_)));
+  }
+
  public:
   inline ReduceAggregatorMean(int64_t N, const T&) : ReduceAggregatorSum<T>(N, 0) {}
   static T aggall(const T* from_data, int64_t size) {
@@ -541,6 +593,18 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
       if (result >= t_max) return std::numeric_limits<T>::max();
       if (result <= t_min) return std::numeric_limits<T>::min();
       return static_cast<T>(result);
+    } else if constexpr (kUsePromotedMean) {
+      double sum = 0.0;
+      for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
+        sum += static_cast<double>(from_data[i]);
+      }
+      return static_cast<T>(sum / static_cast<double>(size));
+    } else if constexpr (kUseScaledMean) {
+      ReduceAggregatorMean<T> accumulator(size, 0);
+      for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
+        accumulator.update(from_data[i]);
+      }
+      return accumulator.get_value();
     } else {
       return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(
                  from_data, onnxruntime::narrow<size_t>(size))
@@ -550,6 +614,15 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
   inline T aggall(const T* from_data) {
     return aggall(from_data, this->N_);
   }
+  inline void update(const T& v) {
+    if constexpr (kUsePromotedMean) {
+      this->double_accumulator_ += static_cast<double>(v);
+    } else if constexpr (kUseScaledMean) {
+      update_scaled_sum(v);
+    } else {
+      ReduceAggregatorSum<T>::update(v);
+    }
+  }
   inline T get_value() {
     if constexpr (std::is_integral_v<T>) {
       double result = this->double_accumulator_ / static_cast<double>(this->N_);
@@ -558,6 +631,10 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
       if (result >= t_max) return std::numeric_limits<T>::max();
       if (result <= t_min) return std::numeric_limits<T>::min();
       return static_cast<T>(result);
+    } else if constexpr (kUsePromotedMean) {
+      return static_cast<T>(this->double_accumulator_ / static_cast<double>(this->N_));
+    } else if constexpr (kUseScaledMean) {
+      return get_scaled_mean();
     } else {
       return this->accumulator_ / static_cast<T>(this->N_);
     }
@@ -592,6 +669,18 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
                 out[d] = std::numeric_limits<T>::lowest();
               else
                 out[d] = static_cast<T>(result);
+            }
+          });
+    } else if constexpr (kUseFiniteRangeMean) {
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      const int64_t stride = fast_shape[1];
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(fast_shape[0]),
+          ParallelReduceFastCost(1, stride, sizeof(T), 6),
+          [data, out, stride](ptrdiff_t first, ptrdiff_t last) {
+            for (ptrdiff_t row = first; row < last; ++row) {
+              out[row] = aggall(data + row * stride, stride);
             }
           });
     } else {
@@ -633,6 +722,23 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
                 out[col] = static_cast<T>(result);
             }
           });
+    } else if constexpr (kUseFiniteRangeMean) {
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      const int64_t columns = fast_shape[1];
+      const int64_t rows = fast_shape[0];
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(columns),
+          ParallelReduceFastCost(1, rows, sizeof(T), 6),
+          [data, out, columns, rows](ptrdiff_t first, ptrdiff_t last) {
+            for (ptrdiff_t column = first; column < last; ++column) {
+              ReduceAggregatorMean<T> accumulator(rows, data[column]);
+              for (int64_t row = 0; row < rows; ++row) {
+                accumulator.update(data[row * columns + column]);
+              }
+              out[column] = accumulator.get_value();
+            }
+          });
     } else {
       ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
       T* out = output.MutableData<T>();
@@ -672,6 +778,26 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
                   out[strideo * d + col] = std::numeric_limits<T>::lowest();
                 else
                   out[strideo * d + col] = static_cast<T>(result);
+              }
+            }
+          });
+    } else if constexpr (kUseFiniteRangeMean) {
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      const int64_t columns = fast_shape[2];
+      const int64_t rows = fast_shape[1];
+      const int64_t input_stride = rows * columns;
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]),
+          ParallelReduceFastCost(rows, columns, sizeof(T), 6),
+          [data, out, columns, rows, input_stride](ptrdiff_t first, ptrdiff_t last) {
+            for (ptrdiff_t block = first; block < last; ++block) {
+              for (int64_t column = 0; column < columns; ++column) {
+                ReduceAggregatorMean<T> accumulator(rows, data[block * input_stride + column]);
+                for (int64_t row = 0; row < rows; ++row) {
+                  accumulator.update(data[block * input_stride + row * columns + column]);
+                }
+                out[block * columns + column] = accumulator.get_value();
               }
             }
           });
@@ -723,6 +849,29 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
                 out[d] = std::numeric_limits<T>::lowest();
               else
                 out[d] = static_cast<T>(result);
+            }
+          });
+    } else if constexpr (kUseFiniteRangeMean) {
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      const int64_t reduced_blocks = fast_shape[0];
+      const int64_t outputs = fast_shape[1];
+      const int64_t block_width = fast_shape[2];
+      const int64_t input_stride = outputs * block_width;
+      const int64_t count = reduced_blocks * block_width;
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(outputs),
+          ParallelReduceFastCost(outputs, count, sizeof(T), 6),
+          [data, out, reduced_blocks, block_width, input_stride, count](ptrdiff_t first, ptrdiff_t last) {
+            for (ptrdiff_t output_index = first; output_index < last; ++output_index) {
+              ReduceAggregatorMean<T> accumulator(count, data[output_index * block_width]);
+              const T* block = data + output_index * block_width;
+              for (int64_t outer = 0; outer < reduced_blocks; ++outer, block += input_stride) {
+                for (int64_t inner = 0; inner < block_width; ++inner) {
+                  accumulator.update(block[inner]);
+                }
+              }
+              out[output_index] = accumulator.get_value();
             }
           });
     } else {
