@@ -26,6 +26,15 @@ TEST(Einsum, ExplicitEinsumAsIdentity_1D_input) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
+TEST(Einsum, RepeatedLabelDimensionsMustMatchForEmptyInput) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ii->i");
+  test.AddInput<float>("x", {0, 1}, {});
+  test.AddOutput<float>("y", {0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Einsum repeated labels within one input must have equal dimensions");
+}
+
 // Implicit
 TEST(Einsum, ImplicitEinsumAsIdentity_1D_input) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);

@@ -460,6 +460,39 @@ inline std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandPr
     current_subscript_order.insert(current_subscript_order.end(), ro.begin(), ro.end());
   }
 
+  if (is_final_pair) {
+    const auto& label_to_output_axis =
+        einsum_compute_preprocessor_.GetMappedSubscriptIndicesToOutputindices();
+    size_t next_output_axis = 0;
+    bool can_write_output_directly = true;
+    for (const int64_t label : current_subscript_order) {
+      const int64_t output_axis = label_to_output_axis[onnxruntime::narrow<size_t>(label)];
+      if (output_axis >= 0 && output_axis != onnxruntime::narrow<int64_t>(next_output_axis++)) {
+        can_write_output_directly = false;
+        break;
+      }
+    }
+
+    if (can_write_output_directly) {
+      Tensor& final_output = *context_->Output(0, einsum_compute_preprocessor_.GetOutputDims());
+      ORT_ENFORCE(final_output.Shape().Size() == lro_size * lo_size * ro_size);
+      auto status = device_matmul_func_(
+          (current_left ? *current_left : left).Data<T>(),
+          (current_right ? *current_right : right).Data<T>(),
+          final_output.MutableData<T>(),
+          onnxruntime::narrow<size_t>(lo_size * reduced_size),
+          onnxruntime::narrow<size_t>(reduced_size * ro_size),
+          onnxruntime::narrow<size_t>(lo_size * ro_size),
+          onnxruntime::narrow<size_t>(lro_size),
+          onnxruntime::narrow<size_t>(lo_size),
+          onnxruntime::narrow<size_t>(reduced_size),
+          onnxruntime::narrow<size_t>(ro_size),
+          tp_, mlas_backend_config_, einsum_ep_assets_);
+      ORT_ENFORCE(status.IsOK(), "Einsum op: Exception during MatMul operation: ", status.ErrorMessage());
+      return nullptr;
+    }
+  }
+
   // Multiply the mutated inputs
   auto output = EinsumOp::MatMul<T>(current_left ? *current_left : left, TensorShapeVector{lro_size, lo_size, reduced_size},
                                     current_right ? *current_right : right, TensorShapeVector{lro_size, reduced_size, ro_size},
@@ -529,7 +562,8 @@ inline Status EinsumTypedComputeProcessor<T>::Run() {
     all_dims.reserve(num_subscript_labels);  // num_subscript_labels is the number of elements
 
     for (size_t i = 0; i < num_subscript_labels; ++i) {
-      if (mapped_indices_to_last_input_index[i] == 0) {
+      if (mapped_indices_to_last_input_index[i] == 0 &&
+          homogenized_input_dims[0][i] != 1) {
         reduced_dims.push_back(i);
       }
 
@@ -567,8 +601,11 @@ inline Status EinsumTypedComputeProcessor<T>::Run() {
     for (int input = 1; input < num_inputs; ++input) {
       TensorShapeVector reduced_dims;
       reduced_dims.reserve(num_subscript_labels);  // num_subscript_labels is the upper bound. No harm in over-reserving by a small margin.
+      const auto& left_dims = result ? result->Shape().GetDims() : homogenized_input_dims[0].GetDims();
+      const auto& right_dims = homogenized_input_dims[onnxruntime::narrow<size_t>(input)].GetDims();
       for (size_t dim = 0; dim < num_subscript_labels; ++dim) {
-        if (mapped_indices_to_last_input_index[dim] == input) {
+        if (mapped_indices_to_last_input_index[dim] == input &&
+            (left_dims[dim] != 1 || right_dims[dim] != 1)) {
           // This is the last input we are seeing this dimension (and it doesn't occur in the output), so reduce along the dimension
           reduced_dims.push_back(dim);
         }
