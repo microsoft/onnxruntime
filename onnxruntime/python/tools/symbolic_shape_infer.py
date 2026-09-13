@@ -204,6 +204,7 @@ class SymbolicShapeInference:
             "BiasSplitGelu": self._infer_BiasSplitGelu,
             "DecoderMaskedMultiHeadAttention": self._infer_DecoderMaskedMultiHeadAttention,
             "DequantizeLinear": self._infer_DequantizeLinear,
+            "DynamicSparseAttention": self._infer_DynamicSparseAttention,
             "DynamicTimeWarping": self._infer_DynamicTimeWarping,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
@@ -470,6 +471,7 @@ class SymbolicShapeInference:
             "BiasGelu",
             "BiasSplitGelu",
             "DequantizeLinear",
+            "DynamicSparseAttention",
             "DynamicTimeWarping",
             "EmbedLayerNormalization",
             "FastGelu",
@@ -2622,6 +2624,39 @@ class SymbolicShapeInference:
                     query_shape[2] = num_heads * head_size
                     vi = self.known_vi_[node.output[0]]
                     vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, query_shape))
+
+    def _infer_DynamicSparseAttention(self, node):  # noqa: N802
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        query_shape = self._get_shape(node, 0)
+        if query_shape is not None:
+            output_shape = query_shape.copy()
+            if node.input[1] == "" and node.input[2] == "" and isinstance(output_shape[2], int):
+                num_heads = get_attribute(node, "num_heads")
+                kv_num_heads = get_attribute(node, "kv_num_heads")
+                head_size = output_shape[2] // (num_heads + 2 * kv_num_heads)
+                output_shape[2] = num_heads * head_size
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
+        past_shape = self._try_get_shape(node, 3)
+        cache_shape = past_shape
+        if cache_shape is None and query_shape is not None and isinstance(query_shape[2], int):
+            num_heads = get_attribute(node, "num_heads")
+            kv_num_heads = get_attribute(node, "kv_num_heads")
+            packed = node.input[1] == "" and node.input[2] == ""
+            head_size = query_shape[2] // ((num_heads + 2 * kv_num_heads) if packed else num_heads)
+            total_length = self._try_get_value(node, 10)
+            cache_length = (
+                as_scalar(total_length)
+                if total_length is not None
+                else str(self._new_symbolic_dim_from_output(node, 1, 2))
+            )
+            cache_shape = [query_shape[0], kv_num_heads, cache_length, head_size]
+
+        for output_index in (1, 2):
+            if len(node.output) > output_index and node.output[output_index]:
+                vi = self.known_vi_[node.output[output_index]]
+                vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, cache_shape))
 
     def _infer_SparseAttention(self, node):  # noqa: N802
         self._infer_GroupQueryAttention(node)
