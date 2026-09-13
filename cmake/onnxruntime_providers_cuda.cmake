@@ -80,9 +80,17 @@
     SM90_SOURCES onnxruntime_cuda_sm90_tma_srcs
     SM120_SOURCES onnxruntime_cuda_sm120_tma_srcs
   )
-  onnxruntime_extract_flash_attention_sources(onnxruntime_cuda_contrib_ops_cu_srcs
-    FLASH_SOURCES onnxruntime_cuda_flash_attention_srcs
-  )
+  if (onnxruntime_USE_FLASH_ATTENTION)
+    onnxruntime_extract_flash_attention_sources(onnxruntime_cuda_contrib_ops_cu_srcs
+      FLASH_SOURCES onnxruntime_cuda_flash_attention_srcs
+    )
+  else()
+    # Flash Attention kernel sources are dead code when USE_FLASH_ATTENTION is not defined
+    # (flash_api.cc and the ONNX domain Attention op are both fully #if USE_FLASH_ATTENTION
+    # guarded), so exclude them from compilation entirely instead of building 48 unused .cu
+    # files across every requested SM architecture.
+    list(FILTER onnxruntime_cuda_contrib_ops_cu_srcs EXCLUDE REGEX "/bert/flash_attention/.*\\.cu$")
+  endif()
   onnxruntime_extract_llm_sources(onnxruntime_cuda_contrib_ops_cu_srcs
     LLM_SOURCES onnxruntime_cuda_llm_srcs
     LLM_SM90_SOURCES onnxruntime_cuda_llm_sm90_srcs
@@ -505,6 +513,8 @@
     # Isolating them allows the rest of the build to use higher --threads without OOM.
     # Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
     # kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
+    # onnxruntime_cuda_flash_attention_srcs is only populated when onnxruntime_USE_FLASH_ATTENTION
+    # is ON; otherwise the .cu sources are excluded from the build entirely (see extraction above).
     set(onnxruntime_FLASH_NVCC_THREADS "1" CACHE STRING
         "Number of NVCC threads for Flash Attention compilation (memory-intensive, keep low).")
     if(onnxruntime_cuda_flash_attention_srcs)

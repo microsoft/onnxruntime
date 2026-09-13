@@ -117,9 +117,15 @@ onnxruntime_extract_sm_specific_cuda_sources(CUDA_PLUGIN_EP_CU_SRCS
   SM90_SOURCES _cuda_plugin_sm90_tma_srcs
   SM120_SOURCES _cuda_plugin_sm120_tma_srcs
 )
-onnxruntime_extract_flash_attention_sources(CUDA_PLUGIN_EP_CU_SRCS
-  FLASH_SOURCES _cuda_plugin_flash_attention_srcs
-)
+if (onnxruntime_USE_FLASH_ATTENTION)
+  onnxruntime_extract_flash_attention_sources(CUDA_PLUGIN_EP_CU_SRCS
+    FLASH_SOURCES _cuda_plugin_flash_attention_srcs
+  )
+else()
+  # Flash Attention kernel sources are dead code when USE_FLASH_ATTENTION is not defined,
+  # so exclude them from compilation entirely instead of building unused .cu files.
+  list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX "/bert/flash_attention/.*\\.cu$")
+endif()
 onnxruntime_extract_llm_sources(CUDA_PLUGIN_EP_CU_SRCS
   LLM_SOURCES _cuda_plugin_llm_srcs
   LLM_SM90_SOURCES _cuda_plugin_llm_sm90_srcs
@@ -327,13 +333,12 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
 )
 
 # SM-specific OBJECT libraries — compiled with restricted CUDA architectures.
-# Flash Attention is also used by the ONNX domain Attention op, so it is always included.
 # SM90/SM120 TMA and LLM contain MoE and MatMulNBits kernels (contrib ops only).
 
 # Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
 # Flash Attention V2 kernels require SM80 and are memory-intensive to compile.
-# Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
-# kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
+# _cuda_plugin_flash_attention_srcs is only populated when onnxruntime_USE_FLASH_ATTENTION
+# is ON; otherwise the .cu sources are excluded from the build entirely (see extraction above).
 if(NOT DEFINED onnxruntime_FLASH_NVCC_THREADS)
   set(onnxruntime_FLASH_NVCC_THREADS "1")
 endif()
