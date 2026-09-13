@@ -25,6 +25,7 @@ parameters:
   values:
     - 12.8
     - 13.0
+    - 13.3
 
 - name: cmake_build_type
   type: string
@@ -39,6 +40,14 @@ parameters:
 - name: use_tensorrt
   type: boolean
   default: false
+
+- name: TensorRTFolder
+  type: string
+  default: ''
+
+- name: TensorRTMajorVersion
+  type: string
+  default: ''
 
 stages:
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
@@ -76,9 +85,11 @@ stages:
       - name: CUDA_MODULE_LOADING
         value: 'LAZY'
       - name: win_trt_folder
-        ${{ if eq(parameters.CudaVersion, '12.8') }}:
+        ${{ if ne(parameters.TensorRTFolder, '') }}:
+          value: ${{ parameters.TensorRTFolder }}
+        ${{ if and(eq(parameters.TensorRTFolder, ''), eq(parameters.CudaVersion, '12.8')) }}:
           value: ${{ variables.win_trt_folder_cuda12 }}
-        ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        ${{ if and(eq(parameters.TensorRTFolder, ''), eq(parameters.CudaVersion, '13.0')) }}:
           value: ${{ variables.win_trt_folder_cuda13 }}
       - name: trt_build_flag
         ${{ if eq(parameters.use_tensorrt, true) }}:
@@ -104,6 +115,7 @@ stages:
           ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
             DownloadCUDA: true
           DownloadTRT: ${{ parameters.use_tensorrt }}
+          TensorRTFolder: ${{ parameters.TensorRTFolder }}
 
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
@@ -180,6 +192,40 @@ stages:
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
         displayName: 'unzip the package'
 
+      - ${{ if and(eq(parameters.use_tensorrt, true), ne(parameters.TensorRTMajorVersion, '')) }}:
+        - powershell: |
+            $ErrorActionPreference = "Stop"
+            $provider = Get-ChildItem -Path . -Recurse -Filter onnxruntime_providers_tensorrt.dll | Select-Object -First 1
+            if ($null -eq $provider) {
+              throw "onnxruntime_providers_tensorrt.dll was not found in the wheel"
+            }
+
+            $dependencies = & dumpbin.exe /dependents $provider.FullName
+            if ($LASTEXITCODE -ne 0) {
+              throw "dumpbin.exe failed with exit code $LASTEXITCODE"
+            }
+            $dependencyText = $dependencies -join "`n"
+            Write-Host $dependencyText
+
+            $expectedMajor = "${{ parameters.TensorRTMajorVersion }}"
+            foreach ($library in @("nvinfer", "nvonnxparser")) {
+              $expectedDependency = "${library}_${expectedMajor}.dll"
+              $expectedPattern = '(?im)^\s*' + [regex]::Escape($expectedDependency) + '\s*$'
+              if ($dependencyText -notmatch $expectedPattern) {
+                throw "Missing $expectedDependency dependency"
+              }
+            }
+
+            $unexpectedDependencies = @([regex]::Matches(
+              $dependencyText,
+              '(?im)^\s*(?:nvinfer|nvonnxparser)_(\d+)\.dll\s*$'
+            ) | Where-Object { $_.Groups[1].Value -ne $expectedMajor })
+            if ($unexpectedDependencies.Count -ne 0) {
+              throw "Unexpected TensorRT dependencies: $($unexpectedDependencies.Value -join ', ')"
+            }
+          workingDirectory: '$(Build.ArtifactStagingDirectory)'
+          displayName: 'Verify TensorRT wheel dependencies'
+
 
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
     dependsOn: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
@@ -209,6 +255,7 @@ stages:
             ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
               DownloadCUDA: true
             DownloadTRT: ${{ parameters.use_tensorrt }}
+            TensorRTFolder: ${{ parameters.TensorRTFolder }}
 
         - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\windows\python\requirements.txt
           env:
@@ -228,3 +275,11 @@ stages:
             python onnx_backend_test_series.py
           workingDirectory: '$(Build.sourcesDirectory)'
           displayName: 'Run Python Tests'
+
+        - ${{ if eq(parameters.use_tensorrt, true) }}:
+          - powershell: |
+              $ErrorActionPreference = "Stop"
+              python -c "import onnxruntime as ort; providers = ort.get_available_providers(); assert 'TensorrtExecutionProvider' in providers, providers"
+              python -m unittest onnxruntime_test_python.TestInferenceSession.test_tensorrt_inference_without_cpu_fallback
+            workingDirectory: '$(Build.sourcesDirectory)\onnxruntime\test\python'
+            displayName: 'Run TensorRT inference without CPU fallback'
