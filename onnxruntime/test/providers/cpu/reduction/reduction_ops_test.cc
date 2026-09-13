@@ -2000,6 +2000,41 @@ TEST(ReductionOpTest, ReduceMean_keepdims_double) {
   test.Run();
 }
 
+template <typename T>
+void RunReduceMeanFiniteRangeTests(T magnitude, float relative_error) {
+  const auto run_case = [magnitude, relative_error](
+                            const TensorShapeVector& input_shape,
+                            const std::vector<int64_t>& axes,
+                            const TensorShapeVector& output_shape) {
+    const size_t input_size = onnxruntime::narrow<size_t>(TensorShape(input_shape).Size());
+    const size_t output_size = onnxruntime::narrow<size_t>(TensorShape(output_shape).Size());
+    OpTester test("ReduceMean");
+    test.AddAttribute("axes", axes);
+    test.AddAttribute("keepdims", static_cast<int64_t>(0));
+    test.AddInput<T>("data", input_shape, std::vector<T>(input_size, magnitude));
+    test.AddOutput<T>("reduced", output_shape, std::vector<T>(output_size, magnitude));
+    test.SetOutputAbsErr("reduced", 0.0f);
+    test.SetOutputRelErr("reduced", relative_error);
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  };
+
+  // Cover the contiguous, row, column, middle-axis, and outer-plus-inner
+  // reduction layouts used by the CPU implementation.
+  run_case({2}, {0}, {});
+  run_case({2, 2}, {1}, {2});
+  run_case({5000, 2}, {0}, {2});
+  run_case({128, 2, 2}, {1}, {128, 2});
+  run_case({2, 128, 2}, {0, 2}, {128});
+}
+
+TEST(ReductionOpTest, ReduceMean_float_preserves_finite_range) {
+  RunReduceMeanFiniteRangeTests(3.0e38f, 1.0e-5f);
+}
+
+TEST(ReductionOpTest, ReduceMean_double_preserves_finite_range) {
+  RunReduceMeanFiniteRangeTests(1.0e308, 1.0e-12f);
+}
+
 TEST(ReductionOpTest, ReduceMean) {
   OpTester test("ReduceMean");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
