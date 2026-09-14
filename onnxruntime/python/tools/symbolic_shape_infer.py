@@ -1591,7 +1591,7 @@ class SymbolicShapeInference:
 
     def _infer_Range(self, node):  # noqa: N802
         vi = self.known_vi_[node.output[0]]
-        input_data = self._get_int_or_float_values(node)
+        input_data = self._get_int_or_float_values(node, allow_float_values=True)
         if all(i is not None for i in input_data):
             start = as_scalar(input_data[0])
             limit = as_scalar(input_data[1])
