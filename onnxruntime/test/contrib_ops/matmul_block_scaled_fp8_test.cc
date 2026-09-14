@@ -87,22 +87,38 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreKSplitSelection) {
       {16368, 1, 80, 48, 12, 1, 8},
       {16384, 1, 79, 48, 12, 1, 8},
       {5105, 1, 128, 48, 12, 1, 32},
-      {5104, 1, 128, 48, 12, 1, 16},
-      {5120, 1, 127, 48, 12, 1, 16},
+      // The four cases below sit above 2 * 48 output blocks without qualifying for the SM121
+      // KSplit 32 override, so the residency rule now gives them KSplit 8 where they used to
+      // take 16. Only the H200 boundary further down is measured; these encode the rule.
+      {5104, 1, 128, 48, 12, 1, 8},
+      {5120, 1, 127, 48, 12, 1, 8},
+      {7168, 8, 80, 48, 12, 1, 8},
+      {5120, 9, 128, 48, 12, 1, 8},
       {32768, 1, 80, 48, 12, 1, 32},
       {32769, 1, 80, 48, 12, 1, 32},
       {65536, 1, 80, 48, 12, 1, 32},
       {131072, 1, 80, 48, 12, 1, 32},
       {248320, 1, 80, 48, 12, 1, 32},
       {1024, 4, 80, 48, 12, 1, 16},
-      {7168, 8, 80, 48, 12, 1, 16},
       {16384, 9, 80, 48, 12, 1, 8},
-      {5120, 9, 128, 48, 12, 1, 16},
       {16384, 16, 80, 48, 12, 1, 8},
       {16384, 1, 80, 47, 12, 1, 8},
       {16384, 1, 80, 49, 12, 1, 8},
       {16384, 1, 80, 48, 12, 0, 8},
       {16384, 1, 80, 48, 9, 0, 8},
+
+      // H200 (132 SMs, boundary at 264 output blocks). These are the measured points.
+      {4224, 8, 80, 132, 9, 0, 16},  // exactly 264 blocks, still one residency round
+      {4240, 8, 80, 132, 9, 0, 8},   // 265 blocks, the first shape that needs a second
+      {4240, 1, 80, 132, 9, 0, 8},   // the boundary does not move with M
+      {5120, 8, 96, 132, 9, 0, 8},   // Qwen3.8-27B GDN out projection, 320 blocks
+      {6144, 8, 80, 132, 9, 0, 8},   // Qwen3.8-27B QKV projection, 384 blocks
+      {7920, 8, 80, 132, 9, 0, 8},   // 495 blocks, top of the measured band
+      {8192, 8, 80, 132, 9, 0, 8},   // unchanged: N >= 8192 already selected 8
+      {1024, 8, 80, 132, 9, 0, 16},  // 64 blocks, far below the boundary, stays 16
+      // The reduction is too short to feed 16 warps, so the window clamp still wins.
+      {6144, 8, 12, 132, 9, 0, 8},
+      {6144, 8, 4, 132, 9, 0, 4},
   };
 
   for (const Case& c : cases) {
@@ -650,7 +666,7 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidencyBoundarie
 // Runs the residency-hinted kernel. It is a second instantiation of the same body, so what is
 // under test is the dispatch: nothing above reaches it, because which N selects it depends on the
 // device's SM count.
-TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidency) {
+TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreResidencyBoundary) {
   constexpr const char* kChildProcessVariable = "ORT_FP8_GEMV_PINNED_TEST_CHILD";
   const bool is_child_process = !Env::Default().GetEnvironmentVar(kChildProcessVariable).empty();
   if (!HasCudaEnvironment(800)) {
@@ -670,7 +686,7 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidency) {
   if (!is_child_process) {
     const std::string command =
         "\"" + CurrentExecutablePath() +
-        "\" --gtest_filter=MatMulBlockQuantizedFp8WeightOpTest.GemvTensorCorePinnedResidency --gtest_color=no";
+        "\" --gtest_filter=MatMulBlockQuantizedFp8WeightOpTest.GemvTensorCoreResidencyBoundary --gtest_color=no";
     ASSERT_EQ(std::system(command.c_str()), 0);
     return;
   }
@@ -687,8 +703,10 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidency) {
   constexpr int64_t k = 1024;  // 16 K windows, so KSplit stays at its full 16
   constexpr int64_t block_size = 256;
   constexpr int64_t k_blocks = k / block_size;
-  // Narrowest N above 2 blocks per SM. Past N = 8192 the launcher drops to 8 warps per block and
-  // stops hinting at all, so a device that large has no shape to test here.
+  // Narrowest N above 2 blocks per SM. The residency rule now routes this window to plain
+  // KSplit 8, which is faster than the hinted KSplit 16 it replaces, so the hint no longer
+  // fires here. The shape is still worth exercising: it is the first one that needs a second
+  // KSplit 16 residency round, and its last 16-column tile can fall partly out of range.
   const int64_t n_pinned = 16 * (2 * sm_count + 1);
   if (n_pinned >= 8192) {
     GTEST_SKIP() << "Device has " << sm_count << " SMs; the hinted window is above N = 8192.";
@@ -700,9 +718,11 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidency) {
   for (const int64_t n : {n_pinned, n_pinned + 5}) {
     const int k_split = onnxruntime::contrib::cuda::PickFp8MmaKSplit(
         static_cast<int>(n), 1, static_cast<int>(k / 64), sm_count, device_prop.major, device_prop.minor);
-    ASSERT_TRUE(onnxruntime::contrib::cuda::Fp8MmaGemvPinsResidency(
+    ASSERT_EQ(k_split, 8)
+        << "N = " << n << " is above 2 blocks per SM and should take plain KSplit 8";
+    ASSERT_FALSE(onnxruntime::contrib::cuda::Fp8MmaGemvPinsResidency(
         static_cast<int>(n), k_split, 1, sm_count, device_prop.major, device_prop.minor))
-        << "N = " << n << " should take the hinted entry point on this device";
+        << "N = " << n << " no longer reaches the hinted entry point";
 
     std::vector<Float8E4M3FN> b(static_cast<size_t>(n * k));
     std::vector<float> b_scale(static_cast<size_t>(n * k_blocks));

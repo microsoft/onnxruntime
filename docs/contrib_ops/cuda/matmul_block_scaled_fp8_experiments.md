@@ -304,8 +304,29 @@ steps.
 16 columns per warp gives about 8x fewer warps than the FMA kernel, which alone
 costs more in lost memory-level parallelism than the instruction saving is worth.
 `KSplit` warps per block therefore take a strided share of the K windows and are
-reduced through shared memory at the end. `KSplit = 8` for `N >= 8192` (the
-column count already fills the grid) and 16 otherwise.
+reduced through shared memory at the end. `KSplit = 8` once the grid exceeds
+`2 * sm_count` output blocks and 16 otherwise: KSplit 16 is 512 threads at 48
+registers and only two of its blocks fit one SM's register file, so a wider grid
+costs it a second residency round that KSplit 8, at 256 threads and five blocks
+per SM, clears in one. Measured on H200 (132 SMs, so the boundary is 264 output
+blocks) at boost clocks, forced plain KSplit 8 against the shipped choice:
+
+| output blocks | blocks/SM | shipped us | KSplit 8 us | shipped / KSplit 8 |
+| --- | --- | --- | --- | --- |
+| 262 | 1.985 | 6.592 | 7.296 | 0.904 |
+| 264 | 2.000 | 6.784 | 7.328 | 0.928 |
+| 265 | 2.008 | 9.072 | 8.288 | **1.096** |
+| 320 | 2.424 | 9.296 | 8.640 | **1.076** |
+| 384 | 2.909 | 9.456 | 8.720 | **1.083** |
+| 429 | 3.250 | 12.000 | 10.624 | **1.130** |
+| 495 | 3.750 | 12.496 | 11.392 | **1.098** |
+| 512 | 3.879 | 11.744 | 11.712 | 0.996 (already KSplit 8) |
+
+The boundary tracks `2 * sm_count` rather than any particular N, and holds for
+`K = 2560`, `5120` and `6144` (windows 40, 80 and 96) and for both `M = 1` and
+`M = 8`. At `M = 16` two row tiles cost 72 registers, which drops KSplit 16 to a
+single block per SM, and KSplit 8 wins at every width measured (1.23-1.43x); the
+selector does not yet act on that.
 
 Preconditions: SM80+, `K % 64 == 0`, `K >= 256`, `block_size % 64 == 0`, `M <= 8`.
 Otherwise the FMA kernel runs unchanged. `ORT_FP8_GEMV_MMA=0` forces the FMA
