@@ -32,7 +32,20 @@ class MatMulBlockQuantizedFp8Weight final : public onnxruntime::cuda::CudaKernel
 
   int64_t block_size_;
   size_t max_dequant_scratch_bytes_;
+  bool enable_deep_gemm_;
 };
+
+#if defined(USE_DEEP_GEMM)
+Status LaunchPrepareMatMulFp8DeepGemm(void* a_quant, float* a_scales, const void* a,
+                                      const float* a_scale, int m, int k, int aligned_m,
+                                      bool is_bf16, cudaStream_t stream);
+
+Status LaunchMatMulFp8DeepGemm(void* y, const void* a_quant, const float* a_scales,
+                               const void* b, const float* b_scales, const void* bias,
+                               float* packed_b_scales, float* accum, int m, int n, int k,
+                               int aligned_m, int output_stride, bool is_bf16,
+                               int sm_count, cudaStream_t stream);
+#endif
 
 // Dequantizes FP8 (E4M3) weights with per-block FP32 scales into FP16/BF16. b_fp8 is [N, K]
 // row-major FP8 E4M3, weight_scale is [N, ceil(K/block_size)] fp32. Output b_dequant is [N, K]
