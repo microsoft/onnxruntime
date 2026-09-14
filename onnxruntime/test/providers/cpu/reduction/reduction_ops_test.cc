@@ -661,6 +661,57 @@ TEST(ReductionOpTest, ReduceL2_double) {
   test.Run();
 }
 
+TEST(ReductionOpTest, ReduceL2_float_preserves_finite_range) {
+  const float sqrt_two = std::sqrt(2.0f);
+
+  // Reducing one axis exercises the incremental aggregation path. Both
+  // results are representable even though squaring the inputs is not.
+  {
+    OpTester test("ReduceL2");
+    test.AddAttribute("axes", std::vector<int64_t>{1});
+    test.AddAttribute("keepdims", static_cast<int64_t>(0));
+    test.AddInput<float>("data", {2, 2}, {1.0e30f, 1.0e30f, 1.0e-30f, 1.0e-30f});
+    test.AddOutput<float>("reduced", {2}, {sqrt_two * 1.0e30f, sqrt_two * 1.0e-30f});
+    test.SetOutputAbsErr("reduced", 0.0f);
+    test.SetOutputRelErr("reduced", 1.0e-5f);
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+
+  // Reducing all axes uses the contiguous aggregation path.
+  {
+    OpTester test("ReduceL2");
+    test.AddAttribute("keepdims", static_cast<int64_t>(0));
+    test.AddInput<float>("data", {2}, {1.0e30f, 1.0e30f});
+    test.AddOutput<float>("reduced", {}, {sqrt_two * 1.0e30f});
+    test.SetOutputRelErr("reduced", 1.0e-5f);
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
+TEST(ReductionOpTest, ReduceL2_double_preserves_finite_range) {
+  const double sqrt_two = std::sqrt(2.0);
+
+  {
+    OpTester test("ReduceL2");
+    test.AddAttribute("axes", std::vector<int64_t>{1});
+    test.AddAttribute("keepdims", static_cast<int64_t>(0));
+    test.AddInput<double>("data", {2, 2}, {1.0e200, 1.0e200, 1.0e-200, 1.0e-200});
+    test.AddOutput<double>("reduced", {2}, {sqrt_two * 1.0e200, sqrt_two * 1.0e-200});
+    test.SetOutputAbsErr("reduced", 0.0f);
+    test.SetOutputRelErr("reduced", 1.0e-12f);
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+
+  {
+    OpTester test("ReduceL2");
+    test.AddAttribute("keepdims", static_cast<int64_t>(0));
+    test.AddInput<double>("data", {2}, {1.0e200, 1.0e200});
+    test.AddOutput<double>("reduced", {}, {sqrt_two * 1.0e200});
+    test.SetOutputRelErr("reduced", 1.0e-12f);
+    test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
+  }
+}
+
 #if defined(USE_DNNL)
 TEST(ReductionOpTest, ReduceL2_bfloat16) {
 #ifdef USE_DNNL
