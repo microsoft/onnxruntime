@@ -446,7 +446,6 @@ TEST_F(WebGpuConcurrentContextTest, ColdAndWarmSessionsRunConcurrently) {
             << " ms over " << contended_ms.size() << " runs\n"
             << "[ WebGPU  ] warm-session throughput efficiency while cold session warmed up: "
             << throughput_efficiency << std::endl;
-
 }
 
 // Case F: the public session allocator wraps this same internal allocator. Allocations made
@@ -542,9 +541,9 @@ TEST_F(WebGpuConcurrentContextTest, SharedDataTransferMultiThreadCopy) {
       try {
         for (int i = 0; i < kIters && !sink.Failed(); ++i) {
           ORT_THROW_IF_ERROR(data_transfer.CopyTensor(input.data(), false, gpu_buffers[t].Get(), true,
-                                input.size() * sizeof(float)));
+                                                      input.size() * sizeof(float)));
           ORT_THROW_IF_ERROR(data_transfer.CopyTensor(gpu_buffers[t].Get(), true, output.data(), false,
-                                output.size() * sizeof(float)));
+                                                      output.size() * sizeof(float)));
           if (!std::all_of(output.begin(), output.end(), [&](float value) { return value == input[0]; })) {
             sink.Record("H.thread" + std::to_string(t) + " copied incorrect data");
           }
@@ -589,9 +588,9 @@ TEST_F(WebGpuConcurrentContextTest, IndependentDataTransfersMultiThreadCopy) {
       try {
         for (int i = 0; i < kIters && !sink.Failed(); ++i) {
           ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(input.data(), false, gpu_buffers[t].Get(), true,
-                                   input.size() * sizeof(float)));
+                                                           input.size() * sizeof(float)));
           ORT_THROW_IF_ERROR(data_transfers[t]->CopyTensor(gpu_buffers[t].Get(), true, output.data(), false,
-                                   output.size() * sizeof(float)));
+                                                           output.size() * sizeof(float)));
           if (!std::all_of(output.begin(), output.end(), [&](float value) { return value == input[0]; })) {
             sink.Record("I.thread" + std::to_string(t) + " copied incorrect data");
           }

@@ -4804,9 +4804,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (num_tokens, kv_hidden_size). Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 <dt><tt>key_cache</tt> : T_CACHE</dt>
-<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. When 'kv_cache_layout' is 'LATENT' this is the only cache, and V is read from its leading v_head_size channels.</dd>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, cache_head_size), where cache_head_size is (head_size + 1) / 2 for packed INT4 and head_size otherwise. This is updated in place within the op. When 'kv_cache_layout' is 'LATENT' this is the only cache, and V is read from its leading v_head_size channels.</dd>
 <dt><tt>value_cache</tt> (optional) : T_CACHE</dt>
-<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, cache_head_size), where cache_head_size is (head_size + 1) / 2 for packed INT4 and head_size otherwise. This is updated in place within the op. This should be the same shape as key_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
 <dt><tt>past_seqlens</tt> : S</dt>
@@ -4839,9 +4839,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>output</tt> : T</dt>
 <dd>2D output tensor with shape (num_tokens, num_heads * v_head_size), which is (num_tokens, hidden_size) unless 'kv_cache_layout' is 'LATENT' with a narrower v_head_size.</dd>
 <dt><tt>key_cache_out</tt> (optional) : T_CACHE</dt>
-<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as key_cache.</dd>
+<dd>Aliases key_cache with the same shape and element type, including its packed dimension for INT4.</dd>
 <dt><tt>value_cache_out</tt> (optional) : T_CACHE</dt>
-<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
+<dd>Aliases value_cache with the same shape and element type, including its packed dimension for INT4. Must be absent when 'kv_cache_layout' is 'LATENT'.</dd>
 </dl>
 
 #### Type Constraints
@@ -4849,7 +4849,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output to float tensors.</dd>
-<dt><tt>T_CACHE</tt> : tensor(float16), tensor(bfloat16), tensor(int8), tensor(float8e4m3fn)</dt>
+<dt><tt>T_CACHE</tt> : tensor(float16), tensor(bfloat16), tensor(int8), tensor(float8e4m3fn), tensor(uint8)</dt>
 <dd>Constrain the KV cache to float or quantized tensors.</dd>
 <dt><tt>T_KV_SCALE</tt> : tensor(float)</dt>
 <dd>Constrain KV cache scales to float tensors.</dd>

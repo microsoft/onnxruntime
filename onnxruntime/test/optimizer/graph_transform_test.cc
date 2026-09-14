@@ -4383,6 +4383,32 @@ TEST_F(GraphTransformationTests, WebGpuIm2ColConvClipFusionMatchesUnfusedResults
   };
   RunWebGpuIm2ColActivationParity(add_clip, "Clip", 17);
 }
+
+// Build the exporter pattern consumed by QuickGeluFusion: x * sigmoid(alpha * x).
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvQuickGeluFusionMatchesUnfusedResults) {
+  auto add_quick_gelu = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    // alpha must match the fp16 tensor type this path requires.
+    auto* alpha = builder.MakeScalarInitializer<MLFloat16>(MLFloat16(1.4f));
+    auto* scaled = builder.MakeIntermediate();
+    auto* sigmoid_out = builder.MakeIntermediate();
+    builder.AddNode("Mul", {conv_out, alpha}, {scaled});
+    builder.AddNode("Sigmoid", {scaled}, {sigmoid_out});
+    builder.AddNode("Mul", {conv_out, sigmoid_out}, {output});
+  };
+  RunWebGpuIm2ColActivationParity(add_quick_gelu, "QuickGelu", 17);
+}
+
+// x * sigmoid(x) fuses to QuickGelu with alpha 1, which selects the shader variant that drops
+// both the multiply and activation_param_0. Without this case the alpha-1 template branch is
+// never compiled, so a stale uniform reference in it would not be caught.
+TEST_F(GraphTransformationTests, WebGpuIm2ColConvQuickGeluUnitAlphaFusionMatchesUnfusedResults) {
+  auto add_silu = [](ModelTestBuilder& builder, NodeArg* conv_out, NodeArg* output) {
+    auto* sigmoid_out = builder.MakeIntermediate();
+    builder.AddNode("Sigmoid", {conv_out}, {sigmoid_out});
+    builder.AddNode("Mul", {conv_out, sigmoid_out}, {output});
+  };
+  RunWebGpuIm2ColActivationParity(add_silu, "QuickGelu", 17);
+}
 #endif  // defined(USE_WEBGPU)
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
@@ -5410,6 +5436,122 @@ TEST_F(GraphTransformationTests, GemmTransposeFusion2Inputs) {
   auto new_input_defs = node.InputDefs();
   ASSERT_TRUE(new_input_defs[0]->Name() == "A");
   ASSERT_TRUE(new_input_defs[1]->Name() == "B");
+}
+
+TEST_F(GraphTransformationTests, GemmTransposeFusionDoesNotFuseIdentityTranspose) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{3, 4}});
+    auto* weight = builder.MakeInput<float>({{4, 5}});
+    auto* transposed_weight = builder.MakeIntermediate<float>(std::vector<int64_t>{4, 5});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
+
+    builder.AddNode("Transpose", {weight}, {transposed_weight}).AddAttribute("perm", std::vector<int64_t>{0, 1});
+    auto& gemm = builder.AddNode("Gemm", {input, transposed_weight}, {output});
+    gemm.AddAttribute("transA", int64_t{0});
+    gemm.AddAttribute("transB", int64_t{0});
+    gemm.AddAttribute("alpha", 1.0f);
+    gemm.AddAttribute("beta", 1.0f);
+  };
+
+  auto check_graph = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gemm"] == 1);
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1,
+                                        1, check_graph, check_graph));
+}
+
+TEST_F(GraphTransformationTests, GemmTransposeFusionDoesNotFuseIdentityTransposeAtOutput) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{4, 3}}, "A");
+    auto* weight = builder.MakeInput<float>({{4, 5}}, "B");
+    auto* gemm_output = builder.MakeIntermediate<float>(std::vector<int64_t>{3, 5});
+    auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
+
+    auto& gemm = builder.AddNode("Gemm", {input, weight}, {gemm_output});
+    gemm.AddAttribute("transA", int64_t{1});
+    gemm.AddAttribute("transB", int64_t{0});
+    gemm.AddAttribute("alpha", 2.0f);
+    gemm.AddAttribute("beta", 3.0f);
+    builder.AddNode("Transpose", {gemm_output}, {output}).AddAttribute("perm", std::vector<int64_t>{0, 1});
+  };
+
+  auto check_graph = [](Graph& graph) {
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 1);
+    TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gemm"] == 1);
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Gemm") {
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("transA").i() == 1);
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("transB").i() == 0);
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("alpha").f() == 2.0f);
+        TEST_RETURN_IF_NOT(node.GetAttributes().at("beta").f() == 3.0f);
+        TEST_RETURN_IF_NOT(node.InputDefs()[0]->Name() == "A");
+        TEST_RETURN_IF_NOT(node.InputDefs()[1]->Name() == "B");
+      }
+    }
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer), TransformerLevel::Level1,
+                                        1, check_graph, check_graph));
+}
+
+TEST_F(GraphTransformationTests, GemmTransposeFusionPreservesIdentityOutputWhenFusingInput) {
+  for (bool transpose_input_b : {false, true}) {
+    SCOPED_TRACE(transpose_input_b);
+    auto build_test_case = [transpose_input_b](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>(transpose_input_b ? std::vector<int64_t>{3, 4}
+                                                               : std::vector<int64_t>{4, 3},
+                                             "A");
+      auto* weight = builder.MakeInput<float>(transpose_input_b ? std::vector<int64_t>{5, 4}
+                                                                : std::vector<int64_t>{4, 5},
+                                              "B");
+      auto* transposed_input = builder.MakeIntermediate();
+      auto* gemm_output = builder.MakeIntermediate<float>(std::vector<int64_t>{3, 5});
+      auto* output = builder.MakeOutput<float>(std::vector<int64_t>{3, 5});
+
+      builder.AddNode("Transpose", {transpose_input_b ? weight : input}, {transposed_input})
+          .AddAttribute("perm", std::vector<int64_t>{1, 0});
+      auto& gemm = builder.AddNode("Gemm", {transpose_input_b ? input : transposed_input, transpose_input_b ? transposed_input : weight},
+                                   {gemm_output});
+      gemm.AddAttribute("transA", int64_t{0});
+      gemm.AddAttribute("transB", int64_t{0});
+      gemm.AddAttribute("alpha", 2.0f);
+      gemm.AddAttribute("beta", 3.0f);
+      builder.AddNode("Transpose", {gemm_output}, {output}).AddAttribute("perm", std::vector<int64_t>{0, 1});
+    };
+
+    auto check_graph = [transpose_input_b](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Transpose"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gemm"] == 1);
+      for (const auto& node : graph.Nodes()) {
+        if (node.OpType() == "Gemm") {
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("transA").i() == (transpose_input_b ? 0 : 1));
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("transB").i() == (transpose_input_b ? 1 : 0));
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("alpha").f() == 2.0f);
+          TEST_RETURN_IF_NOT(node.GetAttributes().at("beta").f() == 3.0f);
+          TEST_RETURN_IF_NOT(node.InputDefs()[0]->Name() == "A");
+          TEST_RETURN_IF_NOT(node.InputDefs()[1]->Name() == "B");
+        } else if (node.OpType() == "Transpose") {
+          const auto perm = RetrieveValues<int64_t>(node.GetAttributes().at("perm"));
+          TEST_RETURN_IF_NOT(perm == std::vector<int64_t>({0, 1}));
+          TEST_RETURN_IF_NOT(graph.NodeProducesGraphOutput(node));
+        }
+      }
+      return Status::OK();
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<GemmTransposeFusion>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 13, *logger_, std::move(rule_transformer),
+                                          TransformerLevel::Level1, 1, nullptr, check_graph));
+  }
 }
 
 // (A')'B' = AB' where transpose has multiple consumers
@@ -8588,6 +8730,53 @@ TEST_F(GraphTransformationTests, BiasGeluFusionWebGpu) {
   }
   ASSERT_NE(bias_gelu_node, nullptr);
   EXPECT_EQ(bias_gelu_node->GetExecutionProviderType(), expected_ep);
+}
+
+// Regression test for the WebGPU entry added to the Level-2 LayerNormFusion
+// allowlist (cpu_acl_cuda_dml_webgpu_eps in graph_transformer_utils.cc).
+// The other LayerNorm fusion tests construct the transformer directly with an
+// unrestricted provider set, so they pass regardless of that allowlist; this one
+// goes through GenerateTransformers so the registration is actually exercised.
+TEST_F(GraphTransformationTests, LayerNormFusionWebGpu) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_fp16.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kWebGpuExecutionProvider);
+  }
+
+  SessionOptions session_options;
+  auto cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  const InlinedHashSet<std::string> layer_norm_transformer_names = {"LayerNormFusionL1", "LayerNormFusionL2"};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  for (auto level : {TransformerLevel::Level1, TransformerLevel::Level2}) {
+    for (auto& transformer : optimizer_utils::GenerateTransformers(level, session_options, *cpu_ep, *logger_, {})) {
+      if (layer_norm_transformer_names.count(transformer->Name()) != 0) {
+        ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), level));
+      }
+    }
+  }
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["LayerNormalization"], 1);
+  ASSERT_EQ(op_to_count["ReduceMean"], 0);
+  ASSERT_EQ(op_to_count["Pow"], 0);
+  ASSERT_EQ(op_to_count["Sqrt"], 0);
+  ASSERT_EQ(op_to_count["Div"], 0);
+
+  const Node* layer_norm_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "LayerNormalization") {
+      layer_norm_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(layer_norm_node, nullptr);
+  EXPECT_EQ(layer_norm_node->GetExecutionProviderType(), kWebGpuExecutionProvider);
+  EXPECT_FLOAT_EQ(layer_norm_node->GetAttributes().at("epsilon").f(), static_cast<float>(MLFloat16(1e-4f)));
 }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 

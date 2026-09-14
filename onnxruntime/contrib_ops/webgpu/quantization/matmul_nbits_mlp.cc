@@ -60,7 +60,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                               bool single_scale_weights,
                               uint32_t tile_size_k_vec,
                               uint32_t k_unroll_tiles,
-                              MlpActivationKind activation_kind)
+                              MlpActivationKind activation_kind,
+                              bool acc_f32)
       : Program{"MatMulNBitsMlpDecode"},
         tile_size_(tile_size),
         has_gate_bias_(has_gate_bias),
@@ -71,7 +72,8 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
         single_scale_weights_(single_scale_weights),
         tile_size_k_vec_(tile_size_k_vec),
         k_unroll_tiles_(k_unroll_tiles),
-        activation_kind_(activation_kind) {}
+        activation_kind_(activation_kind),
+        acc_f32_(acc_f32) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override {
     const auto& a = shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -94,10 +96,6 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                                               ShaderUsage::UseValueTypeAlias |
                                                                   ShaderUsage::UseElementTypeAlias)
                                           : nullptr;
-    const auto& skip_var = skip != nullptr ? *skip : a;
-    const auto& norm_scale_var = norm_scale != nullptr ? *norm_scale : a;
-    const auto& input_skip_bias_sum_var = input_skip_bias_sum != nullptr ? *input_skip_bias_sum : output;
-
     const uint32_t components_a = a.NumComponents();
     const uint32_t components_b = gate_b.NumComponents() / 4;
     const uint32_t tile_size_k_vec = tile_size_k_vec_;
@@ -111,6 +109,7 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
     // The template's own #if directives select the appropriate code paths.
     return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_mlp.wgsl.template",
                                WGSL_TEMPLATE_PARAMETER(a_length_per_tile, a_length_per_tile),
+                               WGSL_TEMPLATE_PARAMETER(acc_f32, acc_f32_),
                                WGSL_TEMPLATE_PARAMETER(activation_kind, static_cast<uint32_t>(activation_kind_)),
                                WGSL_TEMPLATE_PARAMETER(component_a, components_a),
                                WGSL_TEMPLATE_PARAMETER(component_b, components_b),
@@ -129,10 +128,10 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
                                WGSL_TEMPLATE_VARIABLE(a, a),
                                WGSL_TEMPLATE_VARIABLE(gate_b, gate_b),
                                WGSL_TEMPLATE_VARIABLE(gate_scales_b, gate_scales_b),
-                               WGSL_TEMPLATE_VARIABLE(input_skip_bias_sum, input_skip_bias_sum_var),
-                               WGSL_TEMPLATE_VARIABLE(norm_scale, norm_scale_var),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(input_skip_bias_sum, input_skip_bias_sum),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(norm_scale, norm_scale),
                                WGSL_TEMPLATE_VARIABLE(output, output),
-                               WGSL_TEMPLATE_VARIABLE(skip, skip_var),
+                               WGSL_TEMPLATE_OPTIONAL_VARIABLE(skip, skip),
                                WGSL_TEMPLATE_VARIABLE(up_b, up_b),
                                WGSL_TEMPLATE_VARIABLE(up_scales_b, up_scales_b));
   }
@@ -160,6 +159,7 @@ class MatMulNBitsMlpDecodeProgram final : public Program<MatMulNBitsMlpDecodePro
   uint32_t tile_size_k_vec_;
   uint32_t k_unroll_tiles_;
   MlpActivationKind activation_kind_;
+  bool acc_f32_;
 };
 
 class MatMulNBitsMlpProgram final : public Program<MatMulNBitsMlpProgram> {
@@ -408,6 +408,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
     }
 
     const uint32_t num_N_tile = CeilDiv(N, tile_size);
+    const bool acc_f32 = context.EnableMatmulFp32Accumulation();
 
     MatMulNBitsMlpDecodeProgram program{tile_size,
                                         has_gate_bias,
@@ -418,7 +419,8 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                         single_scale_weights,
                                         tile_size_k_vec,
                                         k_unroll_tiles,
-                                        activation_kind_};
+                                        activation_kind_,
+                                        acc_f32};
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, 1, batch_count);
     program.AddInput({decode_a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)});
@@ -453,6 +455,7 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                    tile_size_k_vec,
                    k_unroll_tiles,
                    static_cast<uint32_t>(activation_kind_),
+                   acc_f32,
                    "decode_4bit");
     if (decode_has_skip_output) {
       program.AddOutput({input_skip_bias_sum,
