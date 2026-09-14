@@ -10,6 +10,8 @@
 #include <unordered_set>
 #include <variant>
 
+#include <gsl/gsl>
+
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/level1_memory_estimate.h"
@@ -154,6 +156,11 @@ class IResourceAccountant {
   virtual void AddCommittedWorkspaceEstimate(
       const void* /*graph_identity*/, size_t /*node_index*/,
       WorkspaceEstimateSelection /*selection*/) {}
+
+  // Consolidates committed reservations for constituent nodes onto their surviving fused node.
+  virtual void ConsolidateCommittedWorkspaceReservations(
+      const void* /*graph_identity*/, gsl::span<const size_t> /*source_node_indices*/,
+      size_t /*destination_node_index*/) {}
 
   static std::string MakeUniqueNodeName(const Node& node);
 

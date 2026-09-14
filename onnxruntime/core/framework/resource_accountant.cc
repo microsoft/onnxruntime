@@ -279,6 +279,54 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     CommitWorkspaceEstimate(graph_identity, node_index, selection);
   }
 
+  void ConsolidateCommittedWorkspaceReservations(
+      const void* graph_identity, gsl::span<const size_t> source_node_indices,
+      size_t destination_node_index) override {
+    auto graph_it = committed_workspace_reservations_.find(graph_identity);
+    if (graph_it == committed_workspace_reservations_.end()) {
+      return;
+    }
+
+    WorkspaceEstimateSelection aggregate;
+    bool has_reservation = false;
+    InlinedVector<size_t> matched_node_indices;
+    for (size_t node_index : source_node_indices) {
+      const auto reservation_it = graph_it->second.find(node_index);
+      if (reservation_it == graph_it->second.end()) {
+        continue;
+      }
+
+      const auto& reservation = reservation_it->second;
+      aggregate.bytes =
+          static_cast<size_t>(SafeInt<size_t>(aggregate.bytes) + reservation.bytes);
+      aggregate.profiled_bytes =
+          static_cast<size_t>(SafeInt<size_t>(aggregate.profiled_bytes) + reservation.profiled_bytes);
+      aggregate.level1_estimated_bytes =
+          static_cast<size_t>(SafeInt<size_t>(aggregate.level1_estimated_bytes) +
+                              reservation.level1_estimated_bytes);
+      aggregate.persistent_prepack_bytes =
+          static_cast<size_t>(SafeInt<size_t>(aggregate.persistent_prepack_bytes) +
+                              reservation.persistent_prepack_bytes);
+      aggregate.initialization_scratch_bytes =
+          std::max(aggregate.initialization_scratch_bytes, reservation.initialization_scratch_bytes);
+      aggregate.source =
+          !has_reservation || aggregate.source == reservation.source
+              ? reservation.source
+              : WorkspaceEstimateSource::kNone;
+      has_reservation = true;
+      matched_node_indices.push_back(node_index);
+    }
+
+    if (!has_reservation) {
+      return;
+    }
+
+    for (size_t node_index : matched_node_indices) {
+      graph_it->second.erase(node_index);
+    }
+    graph_it->second.insert_or_assign(destination_node_index, aggregate);
+  }
+
   WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const override {
     return workspace_source_counts_;
   }

@@ -944,7 +944,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         // Computing the cost for the newly created fused node would undercount
         // because the fused node often doesn't expose all original initializers,
         // and would commit weights for the wrong node index.
-        capability.AccountForAllNodes();
+        capability.AccountForAllNodes(fused_node->GetContainingGraph(), fused_node->Index());
       }
       result = fused_node;
     } else {
@@ -1655,7 +1655,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       Node& fused_node = graph.BeginFuseSubGraph(indexed_sub_graph, node_name);
       fused_node.SetExecutionProviderType(type);
       if (indexed_sub_graph.IsAccountingEnabled()) {
-        indexed_sub_graph.AccountForAllNodes();
+        indexed_sub_graph.AccountForAllNodes(fused_node.GetContainingGraph(), fused_node.Index());
       }
 
       // create filtered graph viewer for this set of nodes

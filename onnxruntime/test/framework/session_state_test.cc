@@ -165,7 +165,8 @@ class WorkspaceVerificationTestKernel final : public OpKernel {
   }
 };
 
-static Status FinalizeWorkspaceVerificationTestSession(std::optional<size_t> reservation_bytes) {
+static Status FinalizeWorkspaceVerificationTestSession(
+    std::optional<size_t> reservation_bytes, bool strict_verification = true) {
   Model model("workspace_verification", false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
 
@@ -186,8 +187,10 @@ static Status FinalizeWorkspaceVerificationTestSession(std::optional<size_t> res
   ExternalDataLoaderManager external_data_loader_manager;
   profiling::Profiler profiler;
   SessionOptions session_options;
-  ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(
-      kOrtSessionOptionsStrictWorkspaceVerification, "1"));
+  if (strict_verification) {
+    ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsStrictWorkspaceVerification, "1"));
+  }
   SessionState session_state(graph, execution_providers, nullptr, nullptr, data_transfer_manager,
                              external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
                              profiler, session_options);
@@ -261,6 +264,10 @@ TEST(OpKernelTest, DefaultDeclareWorkspaceRequirementsClearsOutput) {
   requirements.push_back(WorkspaceRequirement{123, /*slot_id=*/7, /*alignment_bytes=*/0});
   ASSERT_STATUS_OK(kernel.DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
   EXPECT_TRUE(requirements.empty());
+}
+
+TEST(SessionStateTest, WorkspaceVerificationAllowsOverrunByDefault) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(size_t{64}, false));
 }
 
 TEST(SessionStateTest, StrictWorkspaceVerificationOnlyRejectsOverrun) {

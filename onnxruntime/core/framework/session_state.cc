@@ -1912,9 +1912,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       const size_t declared_bytes = static_cast<size_t>(node_workspace);
       aggregate_declared_workspace_bytes += node_workspace;
       ++nodes_with_workspace;
-      LOGS(logger_, INFO) << "Level-2 workspace: node '" << node.Name()
-                          << "' (" << node.OpType() << "): " << requirements.size()
-                          << " slot(s), " << declared_bytes << " bytes total";
+      LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
+                             << "' (" << node.OpType() << "): " << requirements.size()
+                             << " slot(s), " << declared_bytes << " bytes total";
 
       if (reservation == nullptr) {
         ++missing_reservation;
