@@ -15,14 +15,9 @@ $MAIN {
     let token_idx = hiddenstate_for_expert[expert_base + workgroup_idx];
     tokens[workgroup_idx] = token_idx;
 
-    // copy hidden state for this token
-    let step = (uniforms.hidden_size + workgroup_size_x  - 1) / workgroup_size_x;
-    let wg_offset = local_idx * step;
-    let src_offset = token_idx * uniforms.hidden_size + wg_offset;
-    let dst_offset = workgroup_idx * uniforms.hidden_size + wg_offset;
-
-    for (var i = 0u; i < step; i++) {
-        let src = hidden_state[src_offset + i];
-        new_hidden_state[dst_offset + i] = src;
+    let src_offset = token_idx * uniforms.hidden_size;
+    let dst_offset = workgroup_idx * uniforms.hidden_size;
+    for (var i = local_idx; i < uniforms.hidden_size; i += workgroup_size_x) {
+        new_hidden_state[dst_offset + i] = hidden_state[src_offset + i];
     }
 } // MAIN

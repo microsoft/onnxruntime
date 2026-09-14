@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
+
 #include "gtest/gtest.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -1494,6 +1496,92 @@ TEST(MoETest, QMoETest_Mixtral_Int4) {
 }
 
 #if defined(USE_WEBGPU)
+// Packed QMoE does not need cumulative sequence lengths: every token is routed and evaluated
+// independently. This fixture represents three requests of lengths [2, 1, 2] concatenated into a
+// single 2D token-major input. Distinct token values and nonzero weights make each output depend on
+// the corresponding hidden-state row, while expert-specific biases expose the selected expert.
+TEST(MoETest, QMoETest_WebGPU_PackedRaggedBatch) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+
+  constexpr int num_rows = 5;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = 64;
+  constexpr int inter_size = 64;
+
+  const std::array<float, num_rows> token_values = {0.05f, 0.1f, -0.05f, 0.2f, -0.1f};
+  std::vector<float> input;
+  input.reserve(num_rows * hidden_size);
+  for (float token_value : token_values) {
+    input.insert(input.end(), hidden_size, token_value);
+  }
+  const std::vector<float> router_probs = {
+      10.0f,
+      0.0f,
+      0.0f,
+      10.0f,
+      0.0f,
+      10.0f,
+      10.0f,
+      0.0f,
+      0.0f,
+      10.0f,
+  };
+
+  // 0x99 encodes two INT4 values one above the default zero point, so both projections are nonzero.
+  std::vector<uint8_t> fc1_experts_weights(num_experts * 2 * inter_size * hidden_size / 2, 0x99);
+  std::vector<uint8_t> fc2_experts_weights(num_experts * hidden_size * inter_size / 2, 0x99);
+  std::vector<float> fc1_scales(num_experts * 2 * inter_size, 0.01f);
+  std::vector<float> fc2_scales(num_experts * hidden_size, 0.01f);
+  std::vector<float> fc2_bias(hidden_size, 1.0f);
+  fc2_bias.insert(fc2_bias.end(), hidden_size, 2.0f);
+
+  std::vector<float> expected_output;
+  expected_output.reserve(num_rows * hidden_size);
+  const std::array<float, num_rows> expert_biases = {1.0f, 2.0f, 2.0f, 1.0f, 2.0f};
+  for (int row = 0; row < num_rows; ++row) {
+    const float projection = hidden_size * token_values[row] * 0.01f;
+    const float swiglu = projection / (1.0f + std::exp(-projection)) * projection;
+    const float expert_output = inter_size * swiglu * 0.01f + expert_biases[row];
+    expected_output.insert(expected_output.end(), hidden_size, expert_output);
+  }
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "swiglu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("swiglu_fusion", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+
+  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
+  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
+  tester.AddInput<uint8_t>("fc1_experts_weights",
+                           {num_experts, 2 * inter_size, hidden_size / 2},
+                           fc1_experts_weights);
+  tester.AddInput<MLFloat16>("fc1_scales",
+                             {num_experts, 2 * inter_size},
+                             ToFloat16(fc1_scales));
+  tester.AddOptionalInputEdge<MLFloat16>();  // fc1_experts_bias
+  tester.AddInput<uint8_t>("fc2_experts_weights",
+                           {num_experts, hidden_size, inter_size / 2},
+                           fc2_experts_weights);
+  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size}, ToFloat16(fc2_scales));
+  tester.AddInput<MLFloat16>("fc2_experts_bias", {num_experts, hidden_size}, ToFloat16(fc2_bias));
+  tester.AddOptionalInputEdge<uint8_t>();    // fc3_experts_weights
+  tester.AddOptionalInputEdge<MLFloat16>();  // fc3_scales
+  tester.AddOptionalInputEdge<MLFloat16>();  // fc3_experts_bias
+  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected_output));
+  tester.SetOutputTolerance(0.01f);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // Test QMoE with num_rows=1 on WebGPU to exercise the fused 1-token decode path.
 // Uses SwiGLU activation without FC3 (2-gate fused in FC1), which is the configuration
 // used by real MoE models on WebGPU (e.g., gpt-oss-20b).
@@ -1620,6 +1708,272 @@ TEST(MoETest, QMoETest_WebGPU_SingleToken_LargeLogits) {
   std::vector<std::unique_ptr<IExecutionProvider>> webgpu_execution_providers;
   webgpu_execution_providers.push_back(DefaultWebGpuExecutionProvider());
   webgpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &webgpu_execution_providers);
+}
+
+TEST(MoETest, MoETest_WebGPU_PackedDenseActivationsAndFusion) {
+  constexpr int num_rows = 2;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = 8;
+  constexpr int inter_size = 8;
+
+  const std::vector<float> input(num_rows * hidden_size, 0.25f);
+  const std::vector<float> router_probs = {10.0f, 0.0f, 0.0f, 10.0f};
+  std::vector<float> fc2_bias(hidden_size, 1.0f);
+  fc2_bias.insert(fc2_bias.end(), hidden_size, 2.0f);
+  std::vector<float> expected(hidden_size, 1.0f);
+  expected.insert(expected.end(), hidden_size, 2.0f);
+
+  const auto run_case = [&](const std::string& activation_type, int64_t swiglu_fusion,
+                            bool has_fc3, bool use_fp16, bool dense_3d) {
+    const int fc1_size = activation_type == "swiglu" && !has_fc3 ? 2 * inter_size : inter_size;
+    const std::vector<float> fc1_weights(num_experts * fc1_size * hidden_size, 0.0f);
+    const std::vector<float> fc2_weights(num_experts * hidden_size * inter_size, 0.0f);
+    const std::vector<float> fc3_weights(num_experts * inter_size * hidden_size, 0.0f);
+    const std::vector<int64_t> input_dims = dense_3d ? std::vector<int64_t>{1, num_rows, hidden_size}
+                                                     : std::vector<int64_t>{num_rows, hidden_size};
+
+    OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("k", 1);
+    tester.AddAttribute<std::string>("activation_type", activation_type);
+    tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+    tester.AddAttribute<int64_t>("swiglu_fusion", swiglu_fusion);
+    if (use_fp16) {
+      tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+      tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
+      tester.AddInput<MLFloat16>("fc1_experts_weights", {num_experts, fc1_size, hidden_size},
+                                 ToFloat16(fc1_weights));
+      tester.AddOptionalInputEdge<MLFloat16>();
+      tester.AddInput<MLFloat16>("fc2_experts_weights", {num_experts, hidden_size, inter_size},
+                                 ToFloat16(fc2_weights));
+      tester.AddInput<MLFloat16>("fc2_experts_bias", {num_experts, hidden_size}, ToFloat16(fc2_bias));
+      if (has_fc3) {
+        tester.AddInput<MLFloat16>("fc3_experts_weights", {num_experts, inter_size, hidden_size},
+                                   ToFloat16(fc3_weights));
+      } else {
+        tester.AddOptionalInputEdge<MLFloat16>();
+      }
+      tester.AddOptionalInputEdge<MLFloat16>();
+      tester.AddOutput<MLFloat16>("output", input_dims, ToFloat16(expected));
+      tester.SetOutputTolerance(0.01f);
+    } else {
+      tester.AddInput<float>("input", input_dims, input);
+      tester.AddInput<float>("router_probs", {num_rows, num_experts}, router_probs);
+      tester.AddInput<float>("fc1_experts_weights", {num_experts, fc1_size, hidden_size}, fc1_weights);
+      tester.AddOptionalInputEdge<float>();
+      tester.AddInput<float>("fc2_experts_weights", {num_experts, hidden_size, inter_size}, fc2_weights);
+      tester.AddInput<float>("fc2_experts_bias", {num_experts, hidden_size}, fc2_bias);
+      if (has_fc3) {
+        tester.AddInput<float>("fc3_experts_weights", {num_experts, inter_size, hidden_size}, fc3_weights);
+      } else {
+        tester.AddOptionalInputEdge<float>();
+      }
+      tester.AddOptionalInputEdge<float>();
+      tester.AddOutput<float>("output", input_dims, expected);
+      tester.SetOutputTolerance(0.001f);
+    }
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultWebGpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  };
+
+  run_case("relu", 0, false, false, false);
+  run_case("gelu", 0, false, true, true);
+  run_case("silu", 0, true, true, false);
+  run_case("identity", 0, false, false, false);
+  run_case("swiglu", 0, true, true, false);
+  run_case("swiglu", 1, false, true, false);
+  run_case("swiglu", 2, false, true, false);
+}
+
+TEST(MoETest, MoETest_WebGPU_NonzeroExpertMatMuls) {
+  constexpr int hidden_size = 8;
+  constexpr int inter_size = 8;
+  const std::vector<float> input = {1.0f, -2.0f, 3.0f, -4.0f, 5.0f, -6.0f, 7.0f, -8.0f};
+  std::vector<float> identity(hidden_size * hidden_size, 0.0f);
+  for (int i = 0; i < hidden_size; ++i) {
+    identity[i * hidden_size + i] = 1.0f;
+  }
+
+  OpTester tester("MoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "identity");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddInput<float>("input", {1, hidden_size}, input);
+  tester.AddInput<float>("router_probs", {1, 1}, {0.0f});
+  tester.AddInput<float>("fc1_experts_weights", {1, inter_size, hidden_size}, identity);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<float>("fc2_experts_weights", {1, hidden_size, inter_size}, identity);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOutput<float>("output", {1, hidden_size}, input);
+  tester.SetOutputTolerance(0.001f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultWebGpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(MoETest, QMoETest_WebGPU_ZeroPointsAndFC3) {
+  constexpr int num_rows = 2;
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = 64;
+  constexpr int inter_size = 64;
+  constexpr int pack_size = 2;
+
+  const std::vector<float> input(num_rows * hidden_size, 0.25f);
+  const std::vector<float> router_probs = {10.0f, 0.0f, 0.0f, 10.0f};
+  const std::vector<uint8_t> fc1_weights(num_experts * inter_size * hidden_size / pack_size, 0x99);
+  const std::vector<uint8_t> fc2_weights(num_experts * hidden_size * inter_size / pack_size, 0x99);
+  const std::vector<uint8_t> fc3_weights(num_experts * inter_size * hidden_size / pack_size, 0x99);
+  const std::vector<float> fc1_scales(num_experts * inter_size * 2, 0.1f);
+  const std::vector<float> fc2_scales(num_experts * hidden_size * 2, 0.1f);
+  const std::vector<float> fc3_scales(num_experts * inter_size * 2, 0.1f);
+  const std::vector<uint8_t> fc1_zero_points(num_experts * inter_size, 0x08);
+  const std::vector<uint8_t> fc2_zero_points(num_experts * hidden_size, 0x08);
+  const std::vector<uint8_t> fc3_zero_points(num_experts * inter_size, 0x08);
+  const std::vector<float> fc2_bias(num_experts * hidden_size, 0.0f);
+  const float projection = hidden_size * 0.25f * 0.1f;
+  const float activated = projection / (1.0f + std::exp(-projection)) * projection;
+  const std::vector<float> expected(num_rows * hidden_size, inter_size * activated * 0.1f);
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 1);
+  tester.AddAttribute<std::string>("activation_type", "silu");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+  tester.AddAttribute<int64_t>("block_size", 32);
+  tester.AddAttribute<int64_t>("weights_prepacked", 0);
+  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
+  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, inter_size, hidden_size / pack_size}, fc1_weights);
+  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, inter_size, 2}, ToFloat16(fc1_scales));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, inter_size / pack_size}, fc2_weights);
+  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size, 2}, ToFloat16(fc2_scales));
+  tester.AddInput<MLFloat16>("fc2_experts_bias", {num_experts, hidden_size}, ToFloat16(fc2_bias));
+  tester.AddInput<uint8_t>("fc3_experts_weights", {num_experts, inter_size, hidden_size / pack_size}, fc3_weights);
+  tester.AddInput<MLFloat16>("fc3_scales", {num_experts, inter_size, 2}, ToFloat16(fc3_scales));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<uint8_t>("fc1_zero_points", {num_experts, inter_size, 1}, fc1_zero_points);
+  tester.AddInput<uint8_t>("fc2_zero_points", {num_experts, hidden_size, 1}, fc2_zero_points);
+  tester.AddInput<uint8_t>("fc3_zero_points", {num_experts, inter_size, 1}, fc3_zero_points);
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+  tester.SetOutputTolerance(0.05f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultWebGpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+static void RunQMoEWebGpuNormalizedRouterWeightsTest(int64_t num_rows) {
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = 64;
+  constexpr int inter_size = 64;
+  constexpr int pack_size = 2;
+
+  const std::vector<uint8_t> fc1_weights(num_experts * inter_size * hidden_size / pack_size, 0x99);
+  const std::vector<uint8_t> fc2_weights(num_experts * hidden_size * inter_size / pack_size, 0x99);
+  const std::vector<float> fc1_scales(num_experts * inter_size, 0.1f);
+  const std::vector<float> fc2_scales(num_experts * hidden_size, 0.1f);
+
+  const std::vector<float> input(static_cast<size_t>(num_rows * hidden_size), 0.25f);
+  std::vector<float> router_probs;
+  std::vector<float> router_weights;
+  for (int64_t row = 0; row < num_rows; ++row) {
+    router_probs.insert(router_probs.end(), {10.0f, 0.0f});
+    router_weights.insert(router_weights.end(), {3.0f, 1.0f});
+  }
+  const float fc1_output = hidden_size * 0.25f * 0.1f;
+  const float fc2_output = inter_size * fc1_output * 0.1f;
+  const std::vector<float> expected(static_cast<size_t>(num_rows * hidden_size), fc2_output);
+
+  OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("k", 2);
+  tester.AddAttribute<std::string>("activation_type", "identity");
+  tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size}, ToFloat16(input));
+  tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts}, ToFloat16(router_probs));
+  tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, inter_size, hidden_size / pack_size}, fc1_weights);
+  tester.AddInput<MLFloat16>("fc1_scales", {num_experts, inter_size}, ToFloat16(fc1_scales));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, inter_size / pack_size}, fc2_weights);
+  tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size}, ToFloat16(fc2_scales));
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<uint8_t>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<uint8_t>();
+  tester.AddOptionalInputEdge<uint8_t>();
+  tester.AddOptionalInputEdge<uint8_t>();
+  tester.AddInput<MLFloat16>("router_weights", {num_rows, num_experts}, ToFloat16(router_weights));
+  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
+  tester.SetOutputTolerance(0.02f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> providers;
+  providers.push_back(DefaultWebGpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+}
+
+TEST(MoETest, QMoETest_WebGPU_RouterWeights_SingleToken) {
+  RunQMoEWebGpuNormalizedRouterWeightsTest(1);
+}
+
+TEST(MoETest, QMoETest_WebGPU_RouterWeights_MultiToken) {
+  RunQMoEWebGpuNormalizedRouterWeightsTest(2);
+}
+
+TEST(MoETest, QMoETest_WebGPU_ActivationsAndSwiGLUFusion) {
+  constexpr int num_experts = 2;
+  constexpr int hidden_size = 64;
+  constexpr int inter_size = 64;
+  constexpr int pack_size = 2;
+  const std::vector<float> input(hidden_size, 0.25f);
+  const std::vector<float> router_probs = {10.0f, 0.0f};
+  std::vector<float> fc2_bias(hidden_size, 1.0f);
+  fc2_bias.insert(fc2_bias.end(), hidden_size, 2.0f);
+  const std::vector<float> expected(hidden_size, 1.0f);
+
+  const auto run_case = [&](const std::string& activation_type, int64_t swiglu_fusion) {
+    const int fc1_size = activation_type == "swiglu" ? 2 * inter_size : inter_size;
+    const std::vector<uint8_t> fc1_weights(num_experts * fc1_size * hidden_size / pack_size, 0x88);
+    const std::vector<uint8_t> fc2_weights(num_experts * hidden_size * inter_size / pack_size, 0x88);
+    const std::vector<float> fc1_scales(num_experts * fc1_size, 0.1f);
+    const std::vector<float> fc2_scales(num_experts * hidden_size, 0.1f);
+
+    OpTester tester("QMoE", 1, onnxruntime::kMSDomain);
+    tester.AddAttribute<int64_t>("k", 1);
+    tester.AddAttribute<std::string>("activation_type", activation_type);
+    tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+    tester.AddAttribute<int64_t>("swiglu_fusion", swiglu_fusion);
+    tester.AddAttribute<int64_t>("expert_weight_bits", 4);
+    tester.AddAttribute<int64_t>("weights_prepacked", 0);
+    tester.AddInput<MLFloat16>("input", {1, hidden_size}, ToFloat16(input));
+    tester.AddInput<MLFloat16>("router_probs", {1, num_experts}, ToFloat16(router_probs));
+    tester.AddInput<uint8_t>("fc1_experts_weights", {num_experts, fc1_size, hidden_size / pack_size}, fc1_weights);
+    tester.AddInput<MLFloat16>("fc1_scales", {num_experts, fc1_size}, ToFloat16(fc1_scales));
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddInput<uint8_t>("fc2_experts_weights", {num_experts, hidden_size, inter_size / pack_size}, fc2_weights);
+    tester.AddInput<MLFloat16>("fc2_scales", {num_experts, hidden_size}, ToFloat16(fc2_scales));
+    tester.AddInput<MLFloat16>("fc2_experts_bias", {num_experts, hidden_size}, ToFloat16(fc2_bias));
+    tester.AddOptionalInputEdge<uint8_t>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOptionalInputEdge<MLFloat16>();
+    tester.AddOutput<MLFloat16>("output", {1, hidden_size}, ToFloat16(expected));
+    tester.SetOutputTolerance(0.01f);
+    std::vector<std::unique_ptr<IExecutionProvider>> providers;
+    providers.push_back(DefaultWebGpuExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
+  };
+
+  run_case("relu", 0);
+  run_case("gelu", 0);
+  run_case("silu", 0);
+  run_case("identity", 0);
+  run_case("swiglu", 1);
+  run_case("swiglu", 2);
 }
 #endif
 
