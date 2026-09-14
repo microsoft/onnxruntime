@@ -31,6 +31,7 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"And", {0, 1}},
         {"BatchNormalization", {3, 4}},
         {"BatchNormInternal", {3, 4}},
+        {"CastLike", {1}},
         {"Or", {0, 1}},
         {"Xor", {0, 1}},
         {"Equal", {0, 1}},
