@@ -229,9 +229,7 @@ jobs:
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxil.dll
 
   # Same plugin EP sources as webgpu_plugin_build_x64_RelWithDebInfo, but linked into the ORT binary
-  # instead of built as a separate shared library. Registered by ORT core at environment creation.
-  # See docs/design/webgpu_ep_extraction/plugin_boundary_and_web_integration/
-  # static_plugin_ep_registration_design.md
+  # instead of built as a separate shared library.
   webgpu_static_plugin_build_x64_RelWithDebInfo:
     runs-on: [
       "self-hosted",
