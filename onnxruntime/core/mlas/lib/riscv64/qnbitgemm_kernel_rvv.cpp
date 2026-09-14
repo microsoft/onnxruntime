@@ -193,6 +193,19 @@ RvvQ8BitGemmPackQuantBDataSize(
     return PackedQuantBDataSize;
 }
 
+// dst[i] = src[i] ^ 0x80 for i < count: recenters uint8 weights to int8.
+MLAS_FORCEINLINE void
+CenterCopy(std::byte* dst, const std::byte* src, size_t count)
+{
+    const uint8_t* s = reinterpret_cast<const uint8_t*>(src);
+    uint8_t* d = reinterpret_cast<uint8_t*>(dst);
+    for (size_t i = 0; i < count;) {
+        const size_t vl = __riscv_vsetvl_e8m4(count - i);
+        __riscv_vse8_v_u8m4(d + i, __riscv_vxor_vx_u8m4(__riscv_vle8_v_u8m4(s + i, vl), 0x80, vl), vl);
+        i += vl;
+    }
+}
+
 // Pack 8-bit B and compute per-block sums. The packed data, scales and
 // block-sums are private to the RVV dispatch: the data uses the chunked,
 // column-tiled layout described at CompInt8Geometry, scales and block-sums
@@ -239,20 +252,22 @@ RvvSQ8BitGemmPackQuantBDataAndBlkSum(
                 const size_t tile = static_cast<size_t>(n) / CompInt8ColTile;
                 const size_t col = static_cast<size_t>(n) % CompInt8ColTile;
                 const size_t width = std::min(CompInt8ColTile, N - tile * CompInt8ColTile);
+                // Segments are consecutive SegLen-byte runs of the source column.
                 const std::byte* src = QuantBDataBegin + static_cast<size_t>(n) * DataBytesPerCol;
                 std::byte* PackedTile = PackedData + tile * CompInt8ColTile * DataBytesPerCol;
-                const size_t SegsPerBlock = BlkLen / Geom.SegLen;
                 for (size_t chunk = 0; chunk < Geom.ChunkCount; ++chunk) {
                     const size_t segs = Geom.SegsInChunk(chunk);
                     std::byte* dst = PackedTile + (chunk * Geom.ChunkElems) * width + col * (segs * Geom.SegLen);
-                    for (size_t t = 0; t < segs; ++t) {
-                        const size_t seg = chunk * Geom.SegsPerChunk + t;
-                        const std::byte* s0 = src + (seg / SegsPerBlock) * BlkLen + (seg % SegsPerBlock) * Geom.SegLen;
-                        for (size_t i = 0; i < Geom.SegHalf; ++i) {
-                            dst[t * Geom.SegHalf + i] = s0[i] ^ std::byte{0x80};
-                            dst[segs * Geom.SegHalf + t * Geom.SegHalf + i] = s0[Geom.SegHalf + i] ^ std::byte{0x80};
+                    if (segs == 1) {
+                        // One segment: its halves are adjacent in the packed chunk too.
+                        CenterCopy(dst, src, Geom.SegLen);
+                    } else {
+                        for (size_t t = 0; t < segs; ++t) {
+                            CenterCopy(dst + t * Geom.SegHalf, src + t * Geom.SegLen, Geom.SegHalf);
+                            CenterCopy(dst + (segs + t) * Geom.SegHalf, src + t * Geom.SegLen + Geom.SegHalf, Geom.SegHalf);
                         }
                     }
+                    src += segs * Geom.SegLen;
                 }
             }
 
