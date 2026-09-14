@@ -508,7 +508,20 @@ class SymbolicShapeInference:
             # (2) opset version >= 9. In older version, initializer is required in graph input by onnx spec.
             # (3) The initializer is not in graph input. The means the node input is "constant" in inference.
             initializers = []
-            if (get_opset(self.out_mp_) >= 9) and node.op_type in ["Unsqueeze"]:
+            if (get_opset(self.out_mp_) >= 9) and node.op_type in [
+                "Unsqueeze",
+                # Since opset 18 the reduction operators take axes as an input rather
+                # than an attribute. Without the axes value onnx shape inference cannot
+                # compute the output shape and returns nothing.
+                "ReduceL1",
+                "ReduceL2",
+                "ReduceLogSum",
+                "ReduceLogSumExp",
+                "ReduceMax",
+                "ReduceMin",
+                "ReduceProd",
+                "ReduceSumSquare",
+            ]:
                 initializers = [
                     self.initializers_[name]
                     for name in node.input
@@ -1627,6 +1640,9 @@ class SymbolicShapeInference:
                 shape = self._get_shape(node, 0)
                 output_shape = []
                 axes = [handle_negative_axis(a, len(shape)) for a in axes]
+                if not axes and not get_attribute(node, "noop_with_empty_axes", 0):
+                    # An empty axes input reduces every axis unless noop_with_empty_axes is set.
+                    axes = list(range(len(shape)))
                 for i, d in enumerate(shape):
                     if i in axes:
                         if keep_dims:
