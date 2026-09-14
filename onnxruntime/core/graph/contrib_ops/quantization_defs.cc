@@ -946,6 +946,127 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputShape(ctx, 0, {first_input_shape.dim(transA ? 1 : 0), second_input_shape.dim(transB ? 0 : 1)});
           }
         }));
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DynamicQuantMatMulFp8, 1,
+    OpSchema()
+        .SetDoc("Symmetric quantized MatMul for fp8 weights (with optional prepack conversion from "
+                "float16/bfloat16/float) and dynamic runtime quantization of activations to fp8 using "
+                "internally computed block-wise scales. All zero-point inputs, when provided, must encode 0.0. "
+                "Optional trailing inputs may be omitted, but intermediate optional inputs must use an empty "
+                "input name to keep later input positions.")
+        .Input(0, "A", "Input tensor A.", "TA")
+        .Input(1, "B",
+               "Input tensor B. FP8 B may be provided at runtime. Float, float16, and bfloat16 B are only "
+               "supported when B is a constant initializer that can be quantized during prepack.",
+               "TB")
+        .Input(2, "B_scale",
+               "Scale of FP8 input 'B'. Must be a block-wise tensor with shape "
+               "(N / block_size_n, K / block_size_k). Required when B is already FP8. Ignored for non-FP8 "
+               "constant B, where scales are computed during prepack.",
+               "TS", OpSchema::Optional)
+        .Input(3, "B_zero_point",
+               "Zero point tensor for input 'B'. Must have the same shape as B_scale and all values must encode 0.0.",
+               "TZ", OpSchema::Optional)
+        .Input(4, "Y_scale", "Scale of output 'Y'. Must be a scalar when provided.", "TS",
+               OpSchema::Optional)
+        .Input(5, "Y_zero_point",
+               "Zero point tensor for output 'Y'. Must be a scalar encoding 0.0 when provided. "
+               "May be provided without Y_scale; only Y_scale changes the floating-point output values.",
+               "TZ", OpSchema::Optional)
+        .Output(0, "Y", "Output tensor of shape (..., M, N).", "TY")
+        .Attr("block_size_k", "Block size along K for A and B block-wise scales.", AttributeProto::INT,
+              static_cast<int64_t>(128))
+        .Attr("block_size_n", "Block size along N for B block-wise scales.", AttributeProto::INT,
+              static_cast<int64_t>(128))
+        .Attr("fp8_type",
+              "FP8 TensorProto data type used when non-FP8 constant B is dynamically quantized during prepack. "
+              "Defaults to FLOAT8E4M3FN.",
+              AttributeProto::INT,
+              static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN))
+        .TypeConstraint("TA", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain input A type to float16, bfloat16, or float.")
+        .TypeConstraint("TB",
+                        {"tensor(float16)", "tensor(bfloat16)", "tensor(float)",
+                         "tensor(float8e4m3fn)", "tensor(float8e4m3fnuz)",
+                         "tensor(float8e5m2)", "tensor(float8e5m2fnuz)"},
+                        "Constrain input B type to fp8, or to float16, bfloat16, or float for constant initializers.")
+        .TypeConstraint("TZ", {"tensor(float8e4m3fn)", "tensor(float8e4m3fnuz)", "tensor(float8e5m2)", "tensor(float8e5m2fnuz)"},
+                        "Constrain zero point types to fp8. Only zero-valued zero points are supported.")
+        // Scale tensors are upcast to float by the CPU kernel before compute.
+        .TypeConstraint("TS", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
+                        "Constrain scale types to float, float16, or bfloat16.")
+        .TypeConstraint("TY", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"},
+                        "Constrain output type to float16, bfloat16, or float.")
+        .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          const int64_t block_size_k = getAttribute(ctx, "block_size_k", static_cast<int64_t>(128));
+          const int64_t block_size_n = getAttribute(ctx, "block_size_n", static_cast<int64_t>(128));
+          if (block_size_k <= 0 || block_size_n <= 0) {
+            fail_type_inference("block_size_k and block_size_n must be greater than zero.");
+          }
+          if (hasInputShape(ctx, 1)) {
+            auto& b_shape = getInputShape(ctx, 1);
+            if (b_shape.dim_size() != 2) {
+              fail_type_inference("B must be 2D.");
+            }
+          }
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
+            ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
+          }
+          if (hasInputShape(ctx, 4)) {
+            auto shape = ctx.getInputType(4)->tensor_type().shape();
+            if (shape.dim_size() != 0) {
+              fail_type_inference("Y scale input must be a scalar.");
+            }
+          }
+          if (hasInputShape(ctx, 5)) {
+            auto shape = ctx.getInputType(5)->tensor_type().shape();
+            if (shape.dim_size() != 0) {
+              fail_type_inference("Y zero point input must be a scalar.");
+            }
+          }
+          if (hasInputShape(ctx, 1) && hasInputShape(ctx, 2)) {
+            auto& b_shape = getInputShape(ctx, 1);
+            auto& b_scale_shape = getInputShape(ctx, 2);
+            if (b_scale_shape.dim_size() != 2) {
+              fail_type_inference("B scale must be 2D.");
+            }
+            if (b_shape.dim(1).has_dim_value() && b_scale_shape.dim(0).has_dim_value()) {
+              const auto n = b_shape.dim(1).dim_value();
+              if ((n % block_size_n) != 0 || b_scale_shape.dim(0).dim_value() != (n / block_size_n)) {
+                fail_type_inference("B scale first dimension must be N / block_size_n.");
+              }
+            }
+            if (b_shape.dim(0).has_dim_value() && b_scale_shape.dim(1).has_dim_value()) {
+              const auto k = b_shape.dim(0).dim_value();
+              if ((k % block_size_k) != 0 || b_scale_shape.dim(1).dim_value() != (k / block_size_k)) {
+                fail_type_inference("B scale last dimension must be K / block_size_k.");
+              }
+            }
+          }
+          if (hasInputShape(ctx, 1) && hasInputShape(ctx, 3)) {
+            auto& b_shape = getInputShape(ctx, 1);
+            auto& b_zp_shape = getInputShape(ctx, 3);
+            if (b_zp_shape.dim_size() != 2) {
+              fail_type_inference("B zero point must be 2D.");
+            }
+            if (b_shape.dim(1).has_dim_value() && b_zp_shape.dim(0).has_dim_value()) {
+              const auto n = b_shape.dim(1).dim_value();
+              if ((n % block_size_n) != 0 || b_zp_shape.dim(0).dim_value() != (n / block_size_n)) {
+                fail_type_inference("B zero point first dimension must be N / block_size_n.");
+              }
+            }
+            if (b_shape.dim(0).has_dim_value() && b_zp_shape.dim(1).has_dim_value()) {
+              const auto k = b_shape.dim(0).dim_value();
+              if ((k % block_size_k) != 0 || b_zp_shape.dim(1).dim_value() != (k / block_size_k)) {
+                fail_type_inference("B zero point last dimension must be K / block_size_k.");
+              }
+            }
+          }
+        }));
+
+#endif
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QAttention, 1,
     OpSchema()
