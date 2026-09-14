@@ -321,14 +321,45 @@ TEST(ResourceAccountantTest, CommittedWorkspaceRejectsOverflow) {
   ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
 
   accountant->AddCommittedWorkspaceEstimate(
+      nullptr, 0,
       {std::numeric_limits<size_t>::max(), WorkspaceEstimateSource::kFallback});
   EXPECT_ANY_THROW(accountant->AddCommittedWorkspaceEstimate(
+      nullptr, 1,
       {size_t{1}, WorkspaceEstimateSource::kEstimator}));
 
   EXPECT_EQ(accountant->GetCommittedWorkspaceEstimate(), std::numeric_limits<size_t>::max());
   const auto source_counts = accountant->GetWorkspaceEstimateSourceCounts();
   EXPECT_EQ(source_counts.fallback, size_t{1});
   EXPECT_EQ(source_counts.estimator, size_t{0});
+}
+
+TEST(ResourceAccountantTest, FusedNodeConsolidatesConstituentWorkspaceReservations) {
+  SharedWeightGraph h;
+  ASSERT_NO_FATAL_FAILURE(SharedWeightGraph::Create(h));
+  std::optional<ResourceAccountantMap> acc_map;
+  IResourceAccountant* accountant = nullptr;
+  ASSERT_NO_FATAL_FAILURE(CreateAdHocAccountant(/*limit_kb=*/100, PathString(), acc_map, accountant));
+
+  const auto cost_a = accountant->ComputeResourceCount(
+      *h.node_a, Level1MemoryEstimate{/*runtime_workspace_bytes=*/400});
+  const auto cost_b = accountant->ComputeResourceCount(
+      *h.node_b, Level1MemoryEstimate{/*runtime_workspace_bytes=*/800});
+
+  IndexedSubGraph sub_graph;
+  sub_graph.nodes.push_back(h.node_a->Index());
+  sub_graph.nodes.push_back(h.node_b->Index());
+  sub_graph.SetAccountant(accountant);
+  sub_graph.AppendNodeCost(cost_a);
+  sub_graph.AppendNodeCost(cost_b);
+  constexpr NodeIndex fused_node_index = 42;
+  sub_graph.AccountForAllNodes(h.graph, fused_node_index);
+
+  const auto reservations = accountant->GetCommittedWorkspaceReservations();
+  ASSERT_EQ(reservations.size(), size_t{1});
+  const auto& graph_reservations = reservations.at(h.graph);
+  ASSERT_EQ(graph_reservations.size(), size_t{1});
+  EXPECT_EQ(graph_reservations.at(fused_node_index).bytes, size_t{1200});
+  EXPECT_EQ(graph_reservations.at(fused_node_index).source, WorkspaceEstimateSource::kEstimator);
 }
 
 TEST(ResourceAccountantTest, ConsumedAmountRejectsOverflowAndUnderflow) {
@@ -665,6 +696,14 @@ TEST(RealAccountantTest, StatsPath_Level1EstimateUsesMaximumWorkspace) {
   EXPECT_EQ(transient_comparison.estimator_larger, size_t{1});
   EXPECT_EQ(transient_comparison.profiled_bytes, size_t{400});
   EXPECT_EQ(transient_comparison.level1_estimated_bytes, size_t{800});
+
+  const auto reservations = accountant->GetCommittedWorkspaceReservations();
+  ASSERT_EQ(reservations.size(), size_t{1});
+  const auto& graph_reservations = reservations.at(h.graph);
+  EXPECT_EQ(graph_reservations.at(h.node_a->Index()).bytes, size_t{400});
+  EXPECT_EQ(graph_reservations.at(h.node_a->Index()).source,
+            WorkspaceEstimateSource::kProfileAndEstimator);
+  EXPECT_EQ(graph_reservations.at(h.node_b->Index()).bytes, size_t{800});
 }
 
 // A stats file may have incomplete coverage. Preserve the historical behavior

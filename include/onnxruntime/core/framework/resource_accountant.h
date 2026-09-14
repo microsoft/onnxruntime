@@ -10,6 +10,8 @@
 #include <unordered_set>
 #include <variant>
 
+#include <gsl/gsl>
+
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/framework/level1_memory_estimate.h"
@@ -65,6 +67,9 @@ struct WorkspaceEstimatorConfig {
   std::optional<std::string> cuda_fpa_intb_gemm;
   std::optional<std::string> cuda_fpa_intb_profile_m;
 };
+
+using NodeWorkspaceReservationMap = InlinedHashMap<size_t, WorkspaceEstimateSelection>;
+using WorkspaceReservationMap = InlinedHashMap<const void*, NodeWorkspaceReservationMap>;
 
 // Type-erased arithmetic for ResourceCount values.
 // Implementations use std::visit so the compiler enforces exhaustive handling
@@ -148,7 +153,14 @@ class IResourceAccountant {
 
   // Commits a workspace estimate whose original pending state is no longer available.
   // Used for nodes that survive a layout-transformation second pass.
-  virtual void AddCommittedWorkspaceEstimate(WorkspaceEstimateSelection /*selection*/) {}
+  virtual void AddCommittedWorkspaceEstimate(
+      const void* /*graph_identity*/, size_t /*node_index*/,
+      WorkspaceEstimateSelection /*selection*/) {}
+
+  // Consolidates committed reservations for constituent nodes onto their surviving fused node.
+  virtual void ConsolidateCommittedWorkspaceReservations(
+      const void* /*graph_identity*/, gsl::span<const size_t> /*source_node_indices*/,
+      size_t /*destination_node_index*/) {}
 
   static std::string MakeUniqueNodeName(const Node& node);
 
@@ -193,6 +205,9 @@ class IResourceAccountant {
 
   /// Compares profile and estimator workspace values for accepted nodes where both were available.
   virtual WorkspaceEstimateComparisonSummary GetWorkspaceEstimateComparisonSummary() const { return {}; }
+
+  /// Returns selected workspace reservations for accepted nodes, keyed by graph identity and node index.
+  virtual WorkspaceReservationMap GetCommittedWorkspaceReservations() const { return {}; }
 
  protected:
   // Override to discard per-pass state for capabilities that were only probed.
