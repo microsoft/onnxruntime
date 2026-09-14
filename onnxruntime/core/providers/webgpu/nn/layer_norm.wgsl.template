@@ -1,0 +1,158 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_bias
+#param simplified
+#param has_mean_output
+#param has_inv_std_dev_output
+#param split_norm_dim
+#param components
+
+#if split_norm_dim
+
+var<workgroup> sum_shared : array<f32, workgroup_size_x>;
+var<workgroup> sum_squared_shared : array<f32, workgroup_size_x>;
+
+#else
+
+#if components == 4
+alias f32_val_t = vec4<f32>;
+fn SumVector(v: f32_val_t) -> f32 {
+    return v.x + v.y + v.z + v.w;
+}
+#elif components == 2
+alias f32_val_t = vec2<f32>;
+fn SumVector(v: f32_val_t) -> f32 {
+    return v.x + v.y;
+}
+#else
+alias f32_val_t = f32;
+fn SumVector(v: f32_val_t) -> f32 {
+    return v;
+}
+#endif
+
+var<workgroup> sum_shared : array<f32_val_t, workgroup_size_x>;
+var<workgroup> sum_squared_shared : array<f32_val_t, workgroup_size_x>;
+
+#endif
+
+$MAIN {
+    let norm_size : f32 = f32(uniforms.norm_size);
+#if split_norm_dim
+    var sum_vec4 = vec4<f32>(0);
+    var sum_squared_vec4 = vec4<f32>(0);
+    var cur_input = x_value_t(0);
+    for (var i: u32 = 0; i < uniforms.norm_size / (workgroup_size_x * 4); i++) {
+        let input_offset = i * workgroup_size_x + local_idx;
+        let input_value = x[input_offset];
+        if (i == workgroup_idx) {
+            cur_input = input_value;
+        }
+        let f32_value = vec4<f32>(input_value);
+        sum_vec4 += f32_value;
+        sum_squared_vec4 += f32_value * f32_value;
+    }
+    var sum = (sum_vec4.x + sum_vec4.y + sum_vec4.z + sum_vec4.w);
+    var sum_squared = (sum_squared_vec4.x + sum_squared_vec4.y + sum_squared_vec4.z + sum_squared_vec4.w);
+    sum_shared[local_idx] = sum;
+    sum_squared_shared[local_idx] = sum_squared;
+    workgroupBarrier();
+    var reduce_size : u32 = workgroup_size_x;
+    for (var curr_size = reduce_size >> 1;  curr_size > 0; curr_size = reduce_size >> 1) {
+        reduce_size = curr_size + (reduce_size & 1);
+        if (local_idx < curr_size) {
+            sum_shared[local_idx] += sum_shared[local_idx + reduce_size];
+            sum_squared_shared[local_idx] += sum_squared_shared[local_idx + reduce_size];
+        }
+        workgroupBarrier();
+    }
+    let mean = sum_shared[0] / norm_size;
+    let offset = workgroup_idx * workgroup_size_x + local_idx;
+#if has_bias
+    let bias_value = bias[offset];
+#else
+    const bias_value = x_element_t(0.0);
+#endif
+#if simplified
+    let inv_std_dev = inverseSqrt(sum_squared_shared[0] / norm_size + uniforms.epsilon);
+    y[offset] = ((cur_input) * x_element_t(inv_std_dev) * scale[offset] + bias_value);
+#else
+    let inv_std_dev = inverseSqrt(sum_squared_shared[0] / norm_size - mean * mean + uniforms.epsilon);
+    y[offset] = ((cur_input - x_element_t(mean)) * x_element_t(inv_std_dev) * scale[offset] + bias_value);
+#endif
+#if has_mean_output
+    if (local_idx == 0 && workgroup_idx == 0) {
+        mean_output[global_idx / uniforms.norm_size] = mean;
+    }
+#endif
+#if has_inv_std_dev_output
+    if (local_idx == 0 && workgroup_idx == 0) {
+        inv_std_dev_output[global_idx / uniforms.norm_size] = inv_std_dev;
+    }
+#endif
+
+#else
+
+    let ix = local_idx;
+    let iy = global_idx / workgroup_size_x;
+    let norm_size_vectorized: u32 = uniforms.norm_size / components;
+    var stride = norm_size_vectorized / workgroup_size_x;
+    let offset = ix * stride + iy * norm_size_vectorized;
+    let offset1d = stride * ix;
+    sum_shared[ix] = f32_val_t(0);
+    sum_squared_shared[ix] = f32_val_t(0);
+    if (ix == workgroup_size_x - 1) {
+        stride = norm_size_vectorized - stride * ix;
+    }
+    for (var i: u32 = 0; i < stride; i++) {
+        let input_value = x[offset + i];
+        y[offset + i] = input_value;
+        let f32_value = f32_val_t(input_value);
+        sum_shared[ix] += f32_value;
+        sum_squared_shared[ix] += f32_value * f32_value;
+    }
+    workgroupBarrier();
+    var reduce_size : u32 = workgroup_size_x;
+    for (var curr_size = reduce_size >> 1;  curr_size > 0; curr_size = reduce_size >> 1) {
+        reduce_size = curr_size + (reduce_size & 1);
+        if (ix < curr_size) {
+            sum_shared[ix] += sum_shared[ix + reduce_size];
+            sum_squared_shared[ix] += sum_squared_shared[ix + reduce_size];
+        }
+        workgroupBarrier();
+    }
+    let sum = sum_shared[0];
+    let square_sum = sum_squared_shared[0];
+    let mean = SumVector(sum) / norm_size;
+#if simplified
+    let inv_std_dev = inverseSqrt(SumVector(square_sum) / norm_size + uniforms.epsilon);
+#else
+    let inv_std_dev = inverseSqrt(SumVector(square_sum) / norm_size - mean * mean + uniforms.epsilon);
+#endif
+
+    for (var i: u32 = 0; i < stride; i++) {
+#if has_bias
+        let bias_value = bias[offset1d + i];
+#else
+        const bias_value = x_element_t(0.0);
+#endif
+#if simplified
+        y[offset + i] = (y[offset + i]) * x_element_t(inv_std_dev) * scale[offset1d + i] + bias_value;
+#else
+        y[offset + i] = (y[offset + i] - x_element_t(mean)) * x_element_t(inv_std_dev) * scale[offset1d + i] + bias_value;
+#endif
+    };
+#if has_mean_output
+    if (ix == 0) {
+        mean_output[iy] = mean;
+    }
+#endif
+#if has_inv_std_dev_output
+    if (ix == 0) {
+        inv_std_dev_output[iy] = inv_std_dev;
+    }
+#endif
+
+#endif
+} // MAIN
