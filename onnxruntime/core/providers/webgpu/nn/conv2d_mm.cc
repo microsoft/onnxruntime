@@ -5,6 +5,7 @@
 #include <iterator>
 #include <algorithm>
 #include "core/providers/webgpu/nn/conv2d_mm.h"
+#include "core/providers/webgpu/nn/conv2d_mm_workgroup_config.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/nn/activation_util.h"
@@ -168,7 +169,65 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
                   : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0);
 }
 
-Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes) {
+namespace {
+
+// The Conv2dMM workgroup is kConv2dMMWorkgroupSizeX x <y> x 1, where y defaults to
+// kDefaultConv2dMMWorkgroupSizeY.
+constexpr uint32_t kConv2dMMWorkgroupSizeX = 8;
+constexpr uint32_t kDefaultConv2dMMWorkgroupSizeY = 8;
+constexpr uint32_t kConv2dMMWorkgroupSizeZ = 1;
+
+}  // namespace
+
+void SelectConv2dMMWorkgroupConfig(uint32_t subgroup_min_size,
+                                   uint32_t max_compute_workgroup_size_y,
+                                   uint32_t max_compute_invocations_per_workgroup,
+                                   bool is_nvidia,
+                                   uint32_t target_workgroup_size,
+                                   bool is_vec4,
+                                   int64_t in_channels,
+                                   uint32_t dim_a_outer,
+                                   uint32_t& workgroup_size_y,
+                                   int64_t& elements_per_thread_y) {
+  constexpr uint32_t kTileRows = 32;
+
+  // Start with the existing configuration as the fallback.
+  workgroup_size_y = kDefaultConv2dMMWorkgroupSizeY;
+  elements_per_thread_y = kTileRows / kDefaultConv2dMMWorkgroupSizeY;
+
+  // Narrow outputs use one row per thread.
+  if (dim_a_outer <= kDefaultConv2dMMWorkgroupSizeY) {
+    elements_per_thread_y = 1;
+    return;
+  }
+
+  // Four-wide channels are required to preserve this packed tile geometry.
+  if (!is_vec4 || in_channels % 4 != 0 || !is_nvidia || subgroup_min_size == 0) {
+    return;
+  }
+
+  // The requested workgroup must contain whole subgroups and whole X rows.
+  if (target_workgroup_size % subgroup_min_size != 0 ||
+      target_workgroup_size % kConv2dMMWorkgroupSizeX != 0 ||
+      target_workgroup_size > max_compute_invocations_per_workgroup) {
+    return;
+  }
+
+  const uint32_t subgroups_per_workgroup = target_workgroup_size / subgroup_min_size;
+  const uint32_t candidate_workgroup_size_y =
+      subgroup_min_size * subgroups_per_workgroup / kConv2dMMWorkgroupSizeX;
+
+  // Preserve the 32-row tile so the dispatch grid remains unchanged.
+  if (candidate_workgroup_size_y > max_compute_workgroup_size_y ||
+      kTileRows % candidate_workgroup_size_y != 0) {
+    return;
+  }
+
+  workgroup_size_y = candidate_workgroup_size_y;
+  elements_per_thread_y = kTileRows / candidate_workgroup_size_y;
+}
+
+Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const wgpu::AdapterInfo& adapter_info, const wgpu::Limits& limits, const std::vector<TensorShape>& input_output_shapes) {
   const auto* input = inputs[0];
   const auto* weight = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -186,8 +245,16 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   // TODO: fine tune size
   const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;
   const auto dispatch_y = is_channels_last ? output_width * output_height : output_channels;
-  std::vector<uint32_t> workgroup_size = {8, 8, 1};
-  InlinedVector<int64_t> elements_per_thread = {4, static_cast<int64_t>(dim_a_outer <= 8 ? 1 : 4), 1};
+  // 32 subgroup lanes x 4 NVIDIA warp schedulers, so every scheduler on an SM gets a warp.
+  constexpr uint32_t kTargetWorkgroupSize = 128;
+  uint32_t workgroup_size_y = 0;
+  int64_t elements_per_thread_y = 0;
+  SelectConv2dMMWorkgroupConfig(adapter_info.subgroupMinSize, limits.maxComputeWorkgroupSizeY,
+                                limits.maxComputeInvocationsPerWorkgroup, IsNvidiaAdapter(adapter_info),
+                                kTargetWorkgroupSize, is_vec4, in_channels, dim_a_outer,
+                                workgroup_size_y, elements_per_thread_y);
+  std::vector<uint32_t> workgroup_size = {kConv2dMMWorkgroupSizeX, workgroup_size_y, kConv2dMMWorkgroupSizeZ};
+  InlinedVector<int64_t> elements_per_thread = {4, elements_per_thread_y, 1};
   auto integer_ceil = [](int64_t a, int64_t b) -> int64_t { return (a + b - 1) / b; };
 
   const std::vector<uint32_t> dispatch = {
