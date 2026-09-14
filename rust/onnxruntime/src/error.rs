@@ -80,6 +80,21 @@ pub enum OrtError {
     /// Error occurred when extracting data from an ONNXRuntime tensor into an C array to be used as an `ndarray::ArrayView`
     #[error("Failed to get tensor data: {0}")]
     GetTensorMutableData(OrtApiError),
+    /// Error occurred when getting the total byte length of a string tensor
+    #[error("Failed to get string tensor data length: {0}")]
+    GetStringTensorDataLength(OrtApiError),
+    /// Error occurred when extracting string tensor content
+    #[error("Failed to get string tensor content: {0}")]
+    GetStringTensorContent(OrtApiError),
+    /// String tensors must use the dedicated string extraction APIs
+    #[error("String tensors cannot be accessed through GetTensorMutableData")]
+    StringTensorMutableData,
+    /// String tensor offsets did not describe the returned content buffer
+    #[error("String tensor content contains invalid offsets")]
+    InvalidStringTensorOffsets,
+    /// String tensor content was not valid UTF-8
+    #[error("String tensor content is not valid UTF-8: {0}")]
+    StringTensorUtf8(#[from] std::string::FromUtf8Error),
 
     /// Error occurred when downloading a pre-trained ONNX model from the [ONNX Model Zoo](https://github.com/onnx/models)
     #[error("Failed to download ONNX model: {0}")]
@@ -115,6 +130,9 @@ pub enum OrtError {
     /// The runtime type was undefined
     #[error("Undefined Tensor Element Type")]
     UndefinedTensorElementType,
+    /// The runtime tensor element type is not supported by this binding
+    #[error("Unsupported Tensor Element Type: {0}")]
+    UnsupportedTensorElementType(i64),
     /// Error occurred when checking if ONNXRuntime tensor was properly initialized
     #[error("Failed to check if tensor")]
     IsTensorCheck,

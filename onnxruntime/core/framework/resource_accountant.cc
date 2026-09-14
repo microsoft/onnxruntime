@@ -17,6 +17,7 @@
 #include "core/graph/graph.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
+#include <algorithm>
 #include <fstream>
 #include <optional>
 
@@ -70,13 +71,13 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   // Initializer bytes are charged separately, so persistent prepack estimates
   // must include only additional allocations, not storage reused directly from
   // an initializer (for example, an offline-prepacked weight). Persistent
-  // prepack and initialization-scratch estimates are additional conservative
-  // charges in both paths. MatMulNBits tactic profiling runs synchronously while
+  // prepack estimates are additional conservative charges in both paths.
+  // Initialization scratch remains diagnostic rather than part of the additive
+  // hard budget. MatMulNBits tactic profiling runs synchronously while
   // each kernel is constructed, and PrePack() calls run sequentially after
   // kernel creation; their scratch buffers are therefore created and released
-  // one at a time. Their true session-wide requirement is a peak rather than the
-  // sum charged here. Exact peak modeling requires tracking persistent memory
-  // and initialization scratch headroom separately.
+  // one at a time. Their true session-wide requirement is a peak, which cannot
+  // be represented by the reversible per-node ResourceCount scalar.
   //
   // GetCapability may probe nodes that are not ultimately assigned to this EP,
   // so per-node weights and workspace remain pending. CommitResourcesForNode()
@@ -89,20 +90,23 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
       auto hit = node_stats_->find(node_name);
       if (hit != node_stats_->end()) {
         const auto& stats = hit->second;
-        size_t level1_workspace_bytes = 0;
-        bool has_estimator = false;
-        if (level1_memory_estimate.has_value() &&
-            level1_memory_estimate->runtime_workspace_bytes.has_value()) {
-          level1_workspace_bytes = *level1_memory_estimate->runtime_workspace_bytes;
-          has_estimator = true;
-        }
+        const bool has_runtime_workspace_estimator =
+            level1_memory_estimate.has_value() &&
+            level1_memory_estimate->runtime_workspace_bytes.has_value();
+        const size_t runtime_transient_bytes =
+            level1_memory_estimate.has_value() ? level1_memory_estimate->runtime_transient_bytes : 0;
+        const size_t level1_workspace_bytes =
+            std::max(level1_memory_estimate.has_value()
+                         ? level1_memory_estimate->runtime_workspace_bytes.value_or(0)
+                         : 0,
+                     runtime_transient_bytes);
+        const bool has_estimator = has_runtime_workspace_estimator || runtime_transient_bytes > 0;
         const size_t selected_workspace =
-            has_estimator ? std::max(stats.total_temp_allocations, level1_workspace_bytes)
-                          : stats.total_temp_allocations;
+            std::max(stats.total_temp_allocations, level1_workspace_bytes);
         const size_t persistent_prepack_bytes =
             level1_memory_estimate.has_value() ? level1_memory_estimate->persistent_prepack_bytes : 0;
-        const size_t temporary_prepack_bytes =
-            level1_memory_estimate.has_value() ? level1_memory_estimate->temporary_prepack_bytes : 0;
+        const size_t initialization_scratch_bytes =
+            level1_memory_estimate.has_value() ? level1_memory_estimate->initialization_scratch_bytes : 0;
         pending_workspace_selection_by_node_.insert_or_assign(
             node.Index(),
             PendingWorkspaceEstimate{
@@ -114,11 +118,11 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
                     stats.total_temp_allocations,
                     level1_workspace_bytes,
                     persistent_prepack_bytes,
-                    temporary_prepack_bytes}});
+                    initialization_scratch_bytes}});
         const SafeInt<size_t> resource_count =
             SafeInt<size_t>(stats.input_sizes) + stats.initializers_sizes +
             stats.total_dynamic_sizes + selected_workspace +
-            persistent_prepack_bytes + temporary_prepack_bytes;
+            persistent_prepack_bytes;
         return static_cast<size_t>(resource_count);
       }
 
@@ -168,7 +172,6 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     // Otherwise, GetSizeInBytesFromTensorTypeProto will only succeed when all dims
     // are known (static shape).
     SafeInt<size_t> output_size = 0;
-    const auto* graph_for_shapes = node.GetContainingGraph();
     for (const auto* output_def : node.OutputDefs()) {
       if (!output_def->Exists() || !output_def->HasTensorOrScalarShape()) continue;
       const auto* type_proto = output_def->TypeAsProto();
@@ -176,9 +179,9 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
 
       size_t size = 0;
       // Try max-shape inference first for dynamic outputs
-      if (graph_for_shapes != nullptr && !max_shapes.Empty()) {
+      if (!max_shapes.Empty()) {
         if (const TensorShape* max_shape =
-                max_shapes.GetShape(graph_for_shapes, output_def->Name())) {
+                max_shapes.GetShape(graph, output_def->Name())) {
           const auto& tensor_type = type_proto->tensor_type();
           if (tensor_type.has_elem_type()) {
             const SafeInt<size_t> inferred_size =
@@ -190,8 +193,9 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
         }
       }
       // Fall back to static shape
-      if (size == 0) {
-        utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK();
+      if (size == 0 &&
+          !utils::GetSizeInBytesFromTensorTypeProto<0>(type_proto->tensor_type(), &size).IsOK()) {
+        continue;
       }
       output_size += size;
     }
@@ -203,19 +207,26 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     SafeInt<size_t> estimated = total_size + output_size;
     const size_t fallback_workspace =
         static_cast<size_t>(estimated * (kAdHocSafetyMultiplierPercent - 100) / 100);
-    size_t level1_workspace_bytes = 0;
-    bool has_estimator = false;
-    if (level1_memory_estimate.has_value() &&
-        level1_memory_estimate->runtime_workspace_bytes.has_value()) {
-      level1_workspace_bytes = *level1_memory_estimate->runtime_workspace_bytes;
-      has_estimator = true;
-    }
+    const bool has_runtime_workspace_estimator =
+        level1_memory_estimate.has_value() &&
+        level1_memory_estimate->runtime_workspace_bytes.has_value();
+    const size_t runtime_transient_bytes =
+        level1_memory_estimate.has_value() ? level1_memory_estimate->runtime_transient_bytes : 0;
+    const size_t level1_workspace_bytes =
+        std::max(level1_memory_estimate.has_value()
+                     ? level1_memory_estimate->runtime_workspace_bytes.value_or(0)
+                     : 0,
+                 runtime_transient_bytes);
     const size_t selected_workspace =
-        has_estimator ? level1_workspace_bytes : fallback_workspace;
+        has_runtime_workspace_estimator
+            ? level1_workspace_bytes
+            : std::max(fallback_workspace, runtime_transient_bytes);
+    const bool has_estimator =
+        has_runtime_workspace_estimator || runtime_transient_bytes > fallback_workspace;
     const size_t persistent_prepack_bytes =
         level1_memory_estimate.has_value() ? level1_memory_estimate->persistent_prepack_bytes : 0;
-    const size_t temporary_prepack_bytes =
-        level1_memory_estimate.has_value() ? level1_memory_estimate->temporary_prepack_bytes : 0;
+    const size_t initialization_scratch_bytes =
+        level1_memory_estimate.has_value() ? level1_memory_estimate->initialization_scratch_bytes : 0;
     pending_workspace_selection_by_node_.insert_or_assign(
         node.Index(),
         PendingWorkspaceEstimate{
@@ -227,9 +238,9 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
                 0,
                 level1_workspace_bytes,
                 persistent_prepack_bytes,
-                temporary_prepack_bytes}});
+                initialization_scratch_bytes}});
     return static_cast<size_t>(estimated + selected_workspace +
-                               persistent_prepack_bytes + temporary_prepack_bytes);
+                               persistent_prepack_bytes);
   }
 
   void ResetPendingResourcesImpl() override {
@@ -288,8 +299,8 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     return committed_persistent_prepack_estimate_;
   }
 
-  size_t GetCommittedTemporaryPrepackEstimate() const override {
-    return committed_temporary_prepack_estimate_;
+  size_t GetCommittedInitializationScratchEstimate() const override {
+    return committed_initialization_scratch_estimate_;
   }
 
  private:
@@ -300,13 +311,14 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
     const size_t new_persistent_prepack_estimate =
         static_cast<size_t>(SafeInt<size_t>(committed_persistent_prepack_estimate_) +
                             selection.persistent_prepack_bytes);
-    const size_t new_temporary_prepack_estimate =
-        static_cast<size_t>(SafeInt<size_t>(committed_temporary_prepack_estimate_) +
-                            selection.temporary_prepack_bytes);
+    // Kernel construction and PrePack() are sequential today, so committed
+    // initialization scratch is a session-wide peak rather than a sum.
+    const size_t new_initialization_scratch_estimate =
+        std::max(committed_initialization_scratch_estimate_, selection.initialization_scratch_bytes);
 
     committed_workspace_estimate_ = new_workspace_estimate;
     committed_persistent_prepack_estimate_ = new_persistent_prepack_estimate;
-    committed_temporary_prepack_estimate_ = new_temporary_prepack_estimate;
+    committed_initialization_scratch_estimate_ = new_initialization_scratch_estimate;
     committed_workspace_reservations_[graph_identity].insert_or_assign(node_index, selection);
     switch (selection.source) {
       case WorkspaceEstimateSource::kFallback:
@@ -361,7 +373,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
   // Workspace total and source counts for nodes ultimately accepted by the EP.
   size_t committed_workspace_estimate_ = 0;
   size_t committed_persistent_prepack_estimate_ = 0;
-  size_t committed_temporary_prepack_estimate_ = 0;
+  size_t committed_initialization_scratch_estimate_ = 0;
   WorkspaceEstimateSourceCounts workspace_source_counts_;
   WorkspaceEstimateComparisonSummary workspace_estimate_comparison_;
   WorkspaceReservationMap committed_workspace_reservations_;
@@ -508,9 +520,12 @@ Status CreateAccountants(
   }
 
   if (result.has_value()) {
+    WorkspaceEstimatorConfig estimator_config{
+        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm),
+        config_options.GetConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM)};
     for (auto& [ep_type, accountant] : *result) {
       ORT_UNUSED_PARAMETER(ep_type);
-      accountant->SetSessionConfigOptions(config_options.GetConfigOptionsMap());
+      accountant->SetWorkspaceEstimatorConfig(estimator_config);
     }
   }
 

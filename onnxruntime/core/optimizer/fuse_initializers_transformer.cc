@@ -57,8 +57,8 @@ static bool IsNodeValidForFusion(const Graph& graph,
                                  const Node& node,
                                  const onnxruntime::MLDataType tensor_type,
                                  const onnxruntime::MLDataType output_type) {
-  // Node must have initialized tensor
-  if (!(graph.IsInitializedTensor(node.InputDefs()[0]->Name()))) return false;
+  // Node input must be a constant initializer. Initializers that are also graph inputs can be overridden.
+  if (graph_utils::GetConstantInitializer(graph, node.InputDefs()[0]->Name()) == nullptr) return false;
 
   // Initialzed tensor must be of tensor_type
   if (!(DataTypeImpl::TypeFromProto(*(node.InputDefs()[0]->TypeAsProto())) == tensor_type)) return false;
@@ -107,13 +107,18 @@ static void FuseInitializerWithNode(Graph& graph,
   // Get next node
   Node& next_node = *graph.GetNode(node.OutputNodesBegin()->Index());
 
-  // Get the index in next node at which the initializer must be replaced
+  // Get the index in next node at which the initializer must be replaced. Node names and
+  // output value names are independent in ONNX, so match the consumer input against the
+  // Cast output value rather than the Cast node name.
+  const std::string& output_name = node.OutputDefs()[0]->Name();
   NodeIndex next_node_arg_index = 0;
   for (; next_node_arg_index < next_node.InputDefs().size(); ++next_node_arg_index) {
-    if (node.Name() == next_node.InputDefs()[next_node_arg_index]->Name()) {
+    if (output_name == next_node.InputDefs()[next_node_arg_index]->Name()) {
       break;
     }
   }
+  ORT_ENFORCE(next_node_arg_index < next_node.InputDefs().size(),
+              "Could not find Cast output '", output_name, "' in consumer node inputs.");
 
   // Get the src initialized tensor at input def index 0
   const auto* constant_initializer_tensor = graph_utils::GetConstantInitializer(graph, node.InputDefs()[0]->Name());

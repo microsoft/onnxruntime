@@ -52,20 +52,27 @@ using onnxruntime::contrib::cuda::MatMulNBits;
 using onnxruntime::llm::kernels::cutlass_kernels::ComputeFpAIntBGemmWorkspaceSize;
 using onnxruntime::llm::kernels::weight_only::ComputeWeightOnlyGemmProfilerScratchSize;
 using onnxruntime::llm::kernels::weight_only::RoundUpProfileM;
+using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 
 namespace {
 constexpr int32_t kFp16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
 constexpr int32_t kBf16 = ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 constexpr int32_t kFp32 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+#if USE_COMPACT_FPA_INTB_GEMM
+constexpr int64_t kDefaultBits = 8;
+#else
+constexpr int64_t kDefaultBits = 4;
+#endif
 
-// A representative eligible configuration: fp16, int4, block_size 32, aligned N/K, unprepacked,
+// A representative eligible configuration: fp16, block_size 32, aligned N/K, unprepacked,
 // fpA_intB option ON, SM80. Returns true iff the node is fpA_intB-eligible.
 bool CheckDefault(int32_t elem_type = kFp16, int64_t N = 256, int64_t K = 1024,
-                  int64_t nbits = 4, int64_t block_size = 32,
+                  int64_t nbits = kDefaultBits, int64_t block_size = 32,
                   int64_t weight_prepacked = kMatMulNBitsWeightNotPrepacked,
-                  bool has_g_idx = false, int device_sm = 80, int option = 1) {
-  return CheckFpAIntBEligibility(elem_type, N, K, nbits, block_size, weight_prepacked, has_g_idx,
-                                 device_sm, option);
+                  bool has_g_idx = false, int device_sm = 80, int option = 1,
+                  bool has_zero_points = false, bool has_bias = false) {
+  return CheckFpAIntBEligibility(elem_type, N, K, nbits, block_size, weight_prepacked,
+                                 has_zero_points, has_g_idx, has_bias, device_sm, option);
 }
 }  // namespace
 
@@ -105,11 +112,29 @@ TEST(MatMulNBitsWorkspace, FormulaSm90DependsOnMultiProcessorCount) {
   EXPECT_EQ(ComputeFpAIntBGemmWorkspaceSize(1, 1, 0, 90, 20),
             ComputeFpAIntBGemmWorkspaceSize(9999, 9999, 0, 90, 20));
 }
+
 #endif
+
+TEST(MatMulNBitsWorkspace, FormulaEmptyOutputIsZeroBeforeSm90Math) {
+  // The native SM90 formula normally depends only on the SM count. Empty output must be handled
+  // first so it cannot reserve the multi-megabyte stream-K workspace. Keep this test enabled when
+  // SM90 kernels are excluded: the shared early guard is intentionally architecture-independent.
+  EXPECT_EQ(ComputeFpAIntBGemmWorkspaceSize(/*m=*/0, /*n=*/256, /*k=*/1024,
+                                            /*sm=*/90, /*mpc=*/132),
+            std::optional<size_t>{0});
+  EXPECT_EQ(ComputeFpAIntBGemmWorkspaceSize(/*m=*/256, /*n=*/0, /*k=*/1024,
+                                            /*sm=*/90, /*mpc=*/132),
+            std::optional<size_t>{0});
+}
 
 TEST(MatMulNBitsWorkspace, FormulaReturnsNulloptOnInvalidNegativeDim) {
   // A negative dimension cannot be represented as an unsigned size and must yield nullopt (not throw).
   EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(-1, 64, 0, 80, 100).has_value());
+  EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(64, -1, 0, 80, 100).has_value());
+#ifndef EXCLUDE_SM_90
+  EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(-1, 64, 0, 90, 100).has_value());
+  EXPECT_FALSE(ComputeFpAIntBGemmWorkspaceSize(64, -1, 0, 90, 100).has_value());
+#endif
 }
 
 TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
@@ -121,7 +146,7 @@ TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
   ASSERT_TRUE(estimate.has_value());
   EXPECT_FALSE(estimate->runtime_workspace_bytes.has_value());
   EXPECT_EQ(estimate->persistent_prepack_bytes, size_t{131072 + 16384});
-  EXPECT_EQ(estimate->temporary_prepack_bytes, size_t{131072 + 32 * sizeof(int32_t)});
+  EXPECT_EQ(estimate->initialization_scratch_bytes, size_t{131072 + 32 * sizeof(int32_t)});
 
   const auto with_zero_points = ComputeMatMulNBitsPrepackMemoryEstimate(
       /*n=*/256, /*k=*/1024, /*nbits=*/4, /*block_size=*/32,
@@ -136,7 +161,7 @@ TEST(MatMulNBitsWorkspace, PrepackMemorySeparatesPersistentAndTemporaryBytes) {
   // The CUDA initializer already holds the offline-prepacked weight and is
   // reused in place. Only the transposed scale destination is newly allocated.
   EXPECT_EQ(offline_prepacked->persistent_prepack_bytes, size_t{16384});
-  EXPECT_EQ(offline_prepacked->temporary_prepack_bytes, size_t{0});
+  EXPECT_EQ(offline_prepacked->initialization_scratch_bytes, size_t{0});
 }
 
 TEST(MatMulNBitsWorkspace, PrepackMemoryRejectsInvalidMetadata) {
@@ -171,6 +196,15 @@ TEST(MatMulNBitsWorkspace, TacticProfilerMaxMRoundingMatchesRuntime) {
   EXPECT_EQ(RoundUpProfileM(std::numeric_limits<int>::max(), 8192), 8192);
 }
 
+TEST(MatMulNBitsWorkspace, InitialProfileBucketsMatchOverrideAndDefaultRules) {
+  EXPECT_EQ(WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+                /*min_m=*/1, /*max_m=*/256, {}),
+            (std::vector<int>{1, 2, 4, 8, 16, 32, 64, 128, 256}));
+  EXPECT_EQ(WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+                /*min_m=*/1, /*max_m=*/256, {8, 64}),
+            (std::vector<int>{1, 8, 64, 256}));
+}
+
 // ---------------------------------------------------------------------------
 // Test A: EffectiveFpAIntBWorkspaceSm drift guard.
 // Native SM90 arch only when device is SM90 AND weights were prepacked for the Hopper layout.
@@ -181,6 +215,10 @@ TEST(MatMulNBitsWorkspace, EffectiveArchSelection) {
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(90, kMatMulNBitsWeightNotPrepacked), 80);
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(80, kMatMulNBitsWeightPrepackedSm90), 80);
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(80, kMatMulNBitsWeightNotPrepacked), 80);
+  EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(86, kMatMulNBitsWeightNotPrepacked), 80);
+  EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(89, kMatMulNBitsWeightNotPrepacked), 80);
+  EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(100, kMatMulNBitsWeightNotPrepacked), 80);
+  EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(120, kMatMulNBitsWeightNotPrepacked), 80);
   EXPECT_EQ(EffectiveFpAIntBWorkspaceSm(75, kMatMulNBitsWeightNotPrepacked), 80);
 }
 
@@ -189,7 +227,11 @@ TEST(MatMulNBitsWorkspace, EffectiveArchSelection) {
 // ---------------------------------------------------------------------------
 TEST(MatMulNBitsWorkspace, EligibilityBasic) {
   EXPECT_TRUE(CheckDefault());
+#if USE_COMPACT_FPA_INTB_GEMM
+  EXPECT_FALSE(CheckDefault(kBf16));
+#else
   EXPECT_TRUE(CheckDefault(kBf16));
+#endif
 }
 
 TEST(MatMulNBitsWorkspace, EligibilityRejectsFp32) {
@@ -199,9 +241,11 @@ TEST(MatMulNBitsWorkspace, EligibilityRejectsFp32) {
 
 TEST(MatMulNBitsWorkspace, EligibilityOptionGate) {
   // Unprepacked + option OFF -> not eligible.
-  EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 4, 32, kMatMulNBitsWeightNotPrepacked, false, 80, 0));
+  EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, kDefaultBits, 32,
+                            kMatMulNBitsWeightNotPrepacked, false, 80, 0));
   // Prepacked weights force the path ON regardless of the option.
-  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 4, 64, kMatMulNBitsWeightPrepackedSm80, false, 80, 0));
+  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, kDefaultBits, 32,
+                           kMatMulNBitsWeightPrepackedSm80, false, 80, 0));
 }
 
 TEST(MatMulNBitsWorkspace, EligibilityRejectsUnsupportedShapesAndAttrs) {
@@ -222,6 +266,27 @@ TEST(MatMulNBitsWorkspace, EligibilityInt8Alignment) {
   EXPECT_FALSE(CheckDefault(kFp16, /*N*/ 16, 1024, /*nbits*/ 8, 32));
 }
 
+#if USE_COMPACT_FPA_INTB_GEMM
+TEST(MatMulNBitsWorkspace, CompactEligibilityMatchesRcContract) {
+  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 4));
+  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 8));
+  EXPECT_FALSE(CheckDefault(kBf16));
+  EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, /*nbits*/ 8, /*block_size*/ 64));
+  EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightPrepackedSm90));
+  EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
+                            false, 80, 1, /*zero_points*/ true));
+  EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
+                            false, 80, 1, false, /*bias*/ true));
+  EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
+                            false, /*sm*/ 70));
+  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
+                           false, /*sm*/ 75));
+  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
+                           false, /*sm*/ 100));
+  EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 8, 32, kMatMulNBitsWeightNotPrepacked,
+                           false, /*sm*/ 120));
+}
+#else
 TEST(MatMulNBitsWorkspace, EligibilitySm90PrepackedConstraints) {
   // weight_prepacked=2 requires an SM90 device and block_size in {64,128}.
   EXPECT_FALSE(CheckDefault(kFp16, 256, 1024, 4, 64, kMatMulNBitsWeightPrepackedSm90, false, /*sm*/ 80));
@@ -229,6 +294,7 @@ TEST(MatMulNBitsWorkspace, EligibilitySm90PrepackedConstraints) {
   EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 4, /*block*/ 64, kMatMulNBitsWeightPrepackedSm90, false, 90));
   EXPECT_TRUE(CheckDefault(kFp16, 256, 1024, 4, /*block*/ 128, kMatMulNBitsWeightPrepackedSm90, false, 90));
 }
+#endif
 
 // ---------------------------------------------------------------------------
 // Provider-world probe (Major 1). The end-to-end test that proves Level 1 == Level 2 == runtime

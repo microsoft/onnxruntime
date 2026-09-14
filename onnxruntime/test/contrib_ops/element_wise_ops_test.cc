@@ -109,6 +109,17 @@ TEST(BiasGeluTest, Float) {
   RunBiasGeluTestFloat({2, 2333}, {2333});
 }
 
+// An empty input (with a correspondingly empty bias) is a legal degenerate case per the ONNX
+// shape model. The CPU/CUDA kernels must treat it as a no-op rather than divide the (zero) input
+// element count by the (zero) bias length.
+TEST(BiasGeluTest, ZeroLengthBiasIsNoOp) {
+  OpTester tester("BiasGelu", 1, onnxruntime::kMSDomain);
+  tester.AddInput<float>("A", {2, 0}, {});
+  tester.AddInput<float>("B", {0}, {});
+  tester.AddOutput<float>("C", {2, 0}, {});
+  tester.Run();
+}
+
 #if defined(USE_CUDA) || defined(USE_DML) || defined(USE_WEBGPU)
 static void RunBiasGeluTestHalf(const std::vector<int64_t>& input_dims, const std::vector<int64_t>& bias_dims) {
   RandomValueGenerator random{2333};

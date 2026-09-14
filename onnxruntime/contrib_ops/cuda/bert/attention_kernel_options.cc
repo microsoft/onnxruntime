@@ -151,7 +151,9 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
   }
 
   sstream << " SdpaKernel=";
-  if (use_xqa.has_value() && use_xqa.value()) {
+  if (use_latent_attention.has_value() && use_latent_attention.value()) {
+    sstream << "LATENT_ATTENTION";
+  } else if (use_xqa.has_value() && use_xqa.value()) {
     sstream << "XQA";
   } else if (use_flash_attention.has_value() && use_flash_attention.value()) {
     sstream << "FLASH_ATTENTION";
@@ -173,6 +175,19 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
     sstream << "DECODER_ATTENTION";
   } else {
     sstream << "MATH";
+  }
+
+  if (num_splits.has_value()) {
+    sstream << " NumSplits=" << num_splits.value();
+  }
+  if (gqa_group_size.has_value()) {
+    sstream << " GqaGroupSize=" << gqa_group_size.value();
+  }
+  if (effective_kv_length_bound.has_value()) {
+    sstream << " EffectiveKvLengthBound=" << effective_kv_length_bound.value();
+  }
+  if (xqa_page_table_expanded.has_value()) {
+    sstream << " XqaPageTable=" << (xqa_page_table_expanded.value() ? "expanded" : "native");
   }
 
   // Output text in Cyan color to make it easier to spot.

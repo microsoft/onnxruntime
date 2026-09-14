@@ -3,6 +3,9 @@
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -474,6 +477,37 @@ TEST(GatherOpTest, Gather_axis0_uint8_non_multiple_of_4_webgpu) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultWebGpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// int64 Gather is gated behind the enableInt64 provider option. Disable CPU-EP fallback so the
+// Gather node must run on the WebGPU kernel, and include values outside the int32 range (2^32,
+// 2^33+1, a large negative, INT64_MAX) to prove the full 64-bit value is preserved via a raw
+// vec2<u32> storage copy rather than truncated to i32.
+TEST(GatherOpTest, Gather_int64_webgpu) {
+  ConfigOptions provider_options{};
+  ASSERT_STATUS_OK(provider_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(provider_options);
+  if (provider == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available";
+  }
+
+  OpTester test("Gather");
+  test.AddAttribute<int64_t>("axis", 0LL);
+  test.AddInput<int64_t>("data", {3, 2},
+                         {1, 4294967296,                 // 1, 2^32
+                          8589934593, -4294967297,       // 2^33+1, -(2^32+1)
+                          100, 9223372036854775807LL});  // 100, INT64_MAX
+  test.AddInput<int32_t>("indices", {2}, {2, 0});
+  test.AddOutput<int64_t>("output", {2, 2},
+                          {100, 9223372036854775807LL,
+                           1, 4294967296});
+
+  // Disable CPU-EP fallback so the Gather node must run on the WebGPU kernel.
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+  test.Config(so)
+      .ConfigEp(std::move(provider))
+      .RunWithConfig();
 }
 #endif  // USE_WEBGPU
 

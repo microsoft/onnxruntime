@@ -2192,7 +2192,8 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
  * @param input_bshape_idx    points to the shape tensor of the right hand side matrix
  */
 static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input_a_idx, int input_b_idx, int input_bshape_idx, MLAS_BLK_QUANT_TYPE blk_quant_type) {
-  if (!hasInputShape(ctx, input_a_idx) || !hasInputShape(ctx, input_b_idx)) {
+  if (!hasInputShape(ctx, input_a_idx) || !hasInputShape(ctx, input_b_idx) ||
+      !hasInputShape(ctx, input_bshape_idx)) {
     return;
   }
 
@@ -2202,9 +2203,15 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
   }
 
   const auto& blob_shape = ctx.getInputType(input_b_idx)->tensor_type().shape();
+  if (blob_shape.dim_size() != 1 ||
+      (blob_shape.dim(0).has_dim_value() && blob_shape.dim(0).dim_value() < 0)) {
+    fail_shape_inference("B input for MatMulFpQ4 must be a 1-D tensor.");
+  }
+
   const auto& shape_shape = ctx.getInputType(input_bshape_idx)->tensor_type().shape();
-  if (shape_shape.dim_size() != 1 && shape_shape.dim(0).dim_value() != 2) {
-    fail_shape_inference("B input for MatMul must be a 2-D matrix!");
+  if (shape_shape.dim_size() != 1 ||
+      (shape_shape.dim(0).has_dim_value() && shape_shape.dim(0).dim_value() != 2)) {
+    fail_shape_inference("B_shape input for MatMulFpQ4 must be a 1-D int64 tensor of length 2.");
   }
 
   const TensorProto* b_shape_tensor = ctx.getInputData(input_bshape_idx);
@@ -2216,6 +2223,12 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
   ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
 
   std::vector<int64_t> shape_r_data = ParseData<int64_t>(b_shape_tensor);
+  if (shape_r_data.size() != 2) {
+    fail_shape_inference("B_shape initializer for MatMulFpQ4 must contain exactly 2 int64 values.");
+  }
+  if (shape_r_data[0] < 0 || shape_r_data[1] < 0) {
+    fail_shape_inference("B_shape initializer for MatMulFpQ4 must contain non-negative dimensions.");
+  }
   for (int d = 0; d < 2; d++) {
     shapeR.add_dim()->set_dim_value(shape_r_data[d]);
   }
@@ -2238,7 +2251,8 @@ static void matmulQ4ShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int in
   if (expectedPackSize == 0) {
     fail_shape_inference("4b quantization not yet supported on this hardware platform!");
   }
-  if (blob_shape.dim_size() != 1 && (size_t)blob_shape.dim(0).dim_value() != expectedPackSize) {
+  if (blob_shape.dim(0).has_dim_value() &&
+      static_cast<size_t>(blob_shape.dim(0).dim_value()) != expectedPackSize) {
     fail_shape_inference("Input q4 tensors of wrong size!");
   }
 

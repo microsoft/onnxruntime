@@ -580,9 +580,8 @@ Status SessionState::PrepackConstantInitializedTensors(
 
                       // Write references to what is stored in the shared container
                       // and release memory mapped entries this container may have loaded from disk
-                      std::ignore = prepacked_for_graph->ReplaceWithReferenceIfSaving(input_name,
-                                                                                      prepacked_weights_container_key,
-                                                                                      prepacked_shared);
+                      prepacked_for_graph->DiscardAndReplaceWithReferenceIfSaving(
+                          input_name, prepacked_weights_container_key, prepacked_shared);
 
                     } else {
                       // container doesn't contain the pre-packed weight - so write into it for sharing across
@@ -1842,7 +1841,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   }
 
   // Level-2 workspace declaration: after kernels are created and PrePack'd, call
-  // DeclareWorkspaceRequirements() on each kernel whose input shapes can be resolved.
+  // DeclareWorkspaceRequirements() on each kernel with positional input presence/shape metadata.
   // Static graph shapes remain usable when no max-shape inference result is available.
   // This collects workspace slot requirements for future offset planning.
   // Requirements are reported per graph but are not yet persisted in a workspace plan.
@@ -1890,16 +1889,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       }
 
       auto resolved = ResolveNodeInputShapes(node, &graph_, max_shape_inference_result);
-      if (!resolved.has_value()) {
-        if (reservation != nullptr) {
-          ++missing_declaration;
-        }
-        continue;
-      }
 
       InlinedVector<WorkspaceRequirement> requirements;
       ORT_RETURN_IF_ERROR(kernel->DeclareWorkspaceRequirements(
-          gsl::make_span(resolved->data(), resolved->size()), requirements));
+          gsl::make_span(resolved), requirements));
 
       if (requirements.empty()) {
         if (reservation != nullptr) {
@@ -1913,7 +1906,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         node_workspace += req.size_bytes;
         LOGS(logger_, VERBOSE) << "Level-2 workspace: node '" << node.Name()
                                << "' slot_id=" << req.slot_id
-                               << " size=" << req.size_bytes << " bytes";
+                               << " size=" << req.size_bytes << " bytes"
+                               << " alignment=" << req.alignment_bytes << " bytes";
       }
       const size_t declared_bytes = static_cast<size_t>(node_workspace);
       aggregate_declared_workspace_bytes += node_workspace;

@@ -7,7 +7,6 @@
 #include <iosfwd>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <variant>
 
@@ -43,7 +42,7 @@ struct WorkspaceEstimateSelection {
   size_t profiled_bytes = 0;
   size_t level1_estimated_bytes = 0;
   size_t persistent_prepack_bytes = 0;
-  size_t temporary_prepack_bytes = 0;
+  size_t initialization_scratch_bytes = 0;
 };
 
 struct WorkspaceEstimateSourceCounts {
@@ -60,6 +59,11 @@ struct WorkspaceEstimateComparisonSummary {
   size_t equal = 0;
   size_t profiled_bytes = 0;
   size_t level1_estimated_bytes = 0;
+};
+
+struct WorkspaceEstimatorConfig {
+  std::optional<std::string> cuda_fpa_intb_gemm;
+  std::optional<std::string> cuda_fpa_intb_profile_m;
 };
 
 using NodeWorkspaceReservationMap = InlinedHashMap<size_t, WorkspaceEstimateSelection>;
@@ -101,7 +105,11 @@ class IResourceAccountant {
   // Level-1 estimate contributes prepack memory and uses its runtime workspace
   // instead of fallback workspace, or maximizes it with profiled workspace.
   virtual ResourceCount ComputeResourceCount(
-      const Node& node, std::optional<Level1MemoryEstimate> level1_memory_estimate = std::nullopt) = 0;
+      const Node& node, std::optional<Level1MemoryEstimate> level1_memory_estimate) = 0;
+
+  ResourceCount ComputeResourceCount(const Node& node) {
+    return ComputeResourceCount(node, std::nullopt);
+  }
 
   std::optional<ResourceCount> GetThreshold() const {
     return threshold_;
@@ -109,6 +117,10 @@ class IResourceAccountant {
 
   void SetThreshold(const ResourceCount& threshold) {
     threshold_ = threshold;
+  }
+
+  void SetThreshold(std::optional<ResourceCount> threshold) {
+    threshold_ = std::move(threshold);
   }
 
   void SetStopAssignment() noexcept {
@@ -163,18 +175,12 @@ class IResourceAccountant {
     return max_shape_inference_result_;
   }
 
-  void SetSessionConfigOptions(const std::unordered_map<std::string, std::string>& config_options) {
-    session_config_options_.clear();
-    session_config_options_.reserve(config_options.size());
-    for (const auto& [key, value] : config_options) {
-      session_config_options_.insert_or_assign(key, value);
-    }
+  void SetWorkspaceEstimatorConfig(WorkspaceEstimatorConfig config) {
+    workspace_estimator_config_ = std::move(config);
   }
 
-  std::optional<std::string> GetSessionConfigEntry(const std::string& key) const {
-    const auto it = session_config_options_.find(key);
-    return it == session_config_options_.end() ? std::nullopt
-                                               : std::optional<std::string>{it->second};
+  const WorkspaceEstimatorConfig& GetWorkspaceEstimatorConfig() const {
+    return workspace_estimator_config_;
   }
 
   /// Returns workspace for nodes that were accepted and committed by partitioning.
@@ -183,8 +189,9 @@ class IResourceAccountant {
   /// Returns persistent prepack memory conservatively charged for accepted nodes.
   virtual size_t GetCommittedPersistentPrepackEstimate() const { return 0; }
 
-  /// Returns temporary prepack memory conservatively charged for accepted nodes.
-  virtual size_t GetCommittedTemporaryPrepackEstimate() const { return 0; }
+  /// Returns the peak initialization scratch estimate across accepted nodes.
+  /// This diagnostic is not included in the additive partitioning budget.
+  virtual size_t GetCommittedInitializationScratchEstimate() const { return 0; }
 
   /// Returns accepted-node counts grouped by the workspace source used for budgeting.
   virtual WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const { return {}; }
@@ -204,7 +211,7 @@ class IResourceAccountant {
   std::optional<ResourceCount> threshold_;
   MaxShapeOverrideMap max_shape_overrides_;
   MaxShapeInferenceResult max_shape_inference_result_;
-  InlinedHashMap<std::string, std::string> session_config_options_;
+  WorkspaceEstimatorConfig workspace_estimator_config_;
 };
 
 // A map of Ep Type to a resource accountant for this EP
