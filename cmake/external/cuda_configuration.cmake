@@ -172,7 +172,9 @@ macro(setup_cuda_architectures)
     endif()
   endforeach()
   list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES_CLEAN)
-  set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES_CLEAN})
+  # Keep the normal variable defined when the input contains only a virtual architecture.
+  # Otherwise, the original cache value becomes visible again and is normalized as a real architecture.
+  set(CMAKE_CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES_CLEAN}")
 
   # CMAKE_CUDA_ARCHITECTURES_ORIG contains all architectures enabled, without automatically added -real or -a suffix.
   set(CMAKE_CUDA_ARCHITECTURES_ORIG "${CMAKE_CUDA_ARCHITECTURES}")
