@@ -68,9 +68,9 @@ struct GatherBlockQuantizedParam {
   // (i.e. its dim is 1 while the corresponding data/block dim is not).
   int32_t rank;
   int64_t quantize_axis;
-  TArray<int64_t> data_dims;
-  TArray<int64_t> scale_strides;
-  TArray<int64_t> scale_broadcast_axis;
+  onnxruntime::cuda::TArray<int64_t> data_dims;
+  onnxruntime::cuda::TArray<int64_t> scale_strides;
+  onnxruntime::cuda::TArray<int64_t> scale_broadcast_axis;
 };
 
 template <typename T1, typename T2, typename Tind>
