@@ -364,11 +364,11 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
   return true;
 }
 
-std::vector<int> toVector(const ONNX_NAMESPACE::int64s& nums) {
-  std::vector<int> result;
-  int num = nums.size();
-  for (int i = 0; i < num; ++i) {
-    result.push_back(static_cast<int>(nums[i]));
+std::vector<int64_t> toVector(const ONNX_NAMESPACE::int64s& nums) {
+  std::vector<int64_t> result;
+  size_t num = nums.size();
+  for (size_t i = 0; i < num; ++i) {
+    result.push_back(nums[i]);
   }
 
   return result;
@@ -541,6 +541,7 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     if (attributes.count("starts") > 0 && attributes.count("ends") > 0) {
       auto starts = toVector((*attributes.find("starts")).second.ints());
       auto ends = toVector((*attributes.find("ends")).second.ints());
+
       for (std::size_t i = 0; i < starts.size(); ++i) {
         if (starts.at(i) > ends.at(i)) {
           return true;
