@@ -102,11 +102,14 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
 
   auto data_shape = data->Shape().GetDims();
   int64_t data_rank = data->Shape().NumDimensions();
+  const int64_t gather_axis = HandleNegativeAxis(gather_axis_, data_rank);
+  const int64_t quantize_axis = HandleNegativeAxis(quantize_axis_, data_rank);
 
   auto indices_shape = indices->Shape().GetDims();
   int64_t indices_rank = static_cast<int64_t>(indices->Shape().NumDimensions());
 
-  ORT_ENFORCE(quantize_axis_ == static_cast<int64_t>(data_rank) - 1);
+  ORT_ENFORCE(quantize_axis == data_rank - 1,
+              "GatherBlockQuantized CUDA requires quantize_axis to be the last axis.");
 
   TensorShapeVector output_shape;
   output_shape.reserve(data_rank - 1 + indices_rank);
@@ -118,7 +121,7 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   int64_t ind_dim = 1;
 
   // 1) dims before gather_axis
-  for (int64_t i = 0; i < gather_axis_; ++i) {
+  for (int64_t i = 0; i < gather_axis; ++i) {
     output_shape.push_back(data_shape[i]);
   }
 
@@ -129,7 +132,7 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   }
 
   // 3) dims after gather_axis
-  for (int64_t i = gather_axis_ + 1; i < static_cast<int64_t>(data_rank); ++i) {
+  for (int64_t i = gather_axis + 1; i < static_cast<int64_t>(data_rank); ++i) {
     output_shape.push_back(data_shape[i]);
     after_gather_dim *= data_shape[i];
   }
@@ -147,6 +150,9 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   int64_t N = 1;
   for (auto dim : output_shape) {
     N *= dim;
+  }
+  if (N == 0) {
+    return Status::OK();
   }
 
   const auto* data_ptr = data->Data<T1>();
@@ -171,18 +177,18 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   // block_size_ == 0 (FP8/FP4 only) means the whole quantize_axis dimension is a single block.
   // Clamp to at least 1 so an empty (0-sized) quantize axis doesn't divide by zero below.
   int64_t effective_block_size =
-      block_size_ == 0 ? std::max<int64_t>(data_shape[quantize_axis_], 1) : block_size_;
+      block_size_ == 0 ? std::max<int64_t>(data_shape[quantize_axis], 1) : block_size_;
 
   GatherBlockQuantizedParam param;
   param.stream = Stream(ctx);
   param.after_gather_dim = after_gather_dim_unpacked;
-  param.gather_axis_dim = data_shape[gather_axis_];
+  param.gather_axis_dim = data_shape[gather_axis];
   param.ind_dim = ind_dim;
   param.bits = bits_;
   param.block_size = effective_block_size;
-  param.gather_axis = gather_axis_;
-  param.scale_size = scales->Shape().Size();
+  param.gather_axis = gather_axis;
   param.N = N;
+  param.max_blocks_per_grid = GetDeviceProp().maxGridSize[0];
 
   if constexpr (IsFpQuantizedV<T1>) {
     // Build a generic per-axis description of `scales` so the kernel can (a) reset the block
@@ -192,6 +198,8 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     const auto scales_shape = scales->Shape().GetDims();
     ORT_ENFORCE(static_cast<int64_t>(scales_shape.size()) == data_rank,
                 "'scales' must have the same rank as 'data'.");
+    ORT_RETURN_IF_NOT(data_rank <= 8,
+                      "GatherBlockQuantized CUDA supports FP8/FP4 data with rank at most 8.");
 
     TArray<int64_t> data_dims(static_cast<int32_t>(data_rank));
     TArray<int64_t> scale_strides(static_cast<int32_t>(data_rank));
@@ -201,11 +209,11 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     for (int64_t i = data_rank - 1; i >= 0; --i) {
       data_dims[static_cast<int32_t>(i)] = data_shape[i];
 
-      const int64_t expected_dim = (i == quantize_axis_)
+      const int64_t expected_dim = (i == quantize_axis)
                                        ? (data_shape[i] + effective_block_size - 1) / effective_block_size
                                        : data_shape[i];
       const int64_t actual_dim = scales_shape[i];
-      const bool is_broadcast = actual_dim == 1 && actual_dim != expected_dim;
+      const bool is_broadcast = i != quantize_axis && actual_dim == 1 && actual_dim != expected_dim;
       ORT_ENFORCE(is_broadcast || actual_dim == expected_dim,
                   "'scales' shape does not match 'data' shape (and is not broadcastable) at axis ", i, ".");
 
@@ -215,7 +223,7 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     }
 
     param.rank = static_cast<int32_t>(data_rank);
-    param.quantize_axis = quantize_axis_;
+    param.quantize_axis = quantize_axis;
     param.data_dims = data_dims;
     param.scale_strides = scale_strides;
     param.scale_broadcast_axis = scale_broadcast_axis;
@@ -225,15 +233,18 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   if (dequantized_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     const auto* scales_ptr = static_cast<const float*>(scales->DataRaw());
     auto* output_ptr = static_cast<float*>(output->MutableDataRaw());
-    LaunchGatherBlockQuantizedKernel(data_ptr, indices_ptr, scales_ptr, zero_points_ptr, output_ptr, param);
+    ORT_RETURN_IF_ERROR(
+        LaunchGatherBlockQuantizedKernel(data_ptr, indices_ptr, scales_ptr, zero_points_ptr, output_ptr, param));
   } else if (dequantized_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     const auto* scales_ptr = static_cast<const half*>(scales->DataRaw());
     auto* output_ptr = static_cast<half*>(output->MutableDataRaw());
-    LaunchGatherBlockQuantizedKernel(data_ptr, indices_ptr, scales_ptr, zero_points_ptr, output_ptr, param);
+    ORT_RETURN_IF_ERROR(
+        LaunchGatherBlockQuantizedKernel(data_ptr, indices_ptr, scales_ptr, zero_points_ptr, output_ptr, param));
   } else if (dequantized_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
     const auto* scales_ptr = static_cast<const BFloat16*>(scales->DataRaw());
     auto* output_ptr = static_cast<BFloat16*>(output->MutableDataRaw());
-    LaunchGatherBlockQuantizedKernel(data_ptr, indices_ptr, scales_ptr, zero_points_ptr, output_ptr, param);
+    ORT_RETURN_IF_ERROR(
+        LaunchGatherBlockQuantizedKernel(data_ptr, indices_ptr, scales_ptr, zero_points_ptr, output_ptr, param));
   }
 
   return Status::OK();

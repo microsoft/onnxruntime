@@ -150,72 +150,66 @@ __global__ void GatherBlockQuantizedKernel(
 }
 
 template <typename T1, typename T2, typename Tind>
-void LaunchGatherBlockQuantizedKernel(const T1* data,
-                                      const Tind* indices,
-                                      const T2* scales,
-                                      const T1* zero_points,
-                                      T2* output,
-                                      GatherBlockQuantizedParam param) {
-  // Require quant_axis is last dim
-  int blocksPerGrid = (int)(ceil(static_cast<float>(param.N) / GridDim::maxThreadsPerBlock));
+Status LaunchGatherBlockQuantizedKernel(const T1* data,
+                                        const Tind* indices,
+                                        const T2* scales,
+                                        const T1* zero_points,
+                                        T2* output,
+                                        GatherBlockQuantizedParam param) {
+  if (param.N == 0) {
+    return Status::OK();
+  }
+
+  const int64_t blocks = (param.N - 1) / GridDim::maxThreadsPerBlock + 1;
+  ORT_RETURN_IF_NOT(blocks <= param.max_blocks_per_grid,
+                    "GatherBlockQuantized output is too large for a CUDA grid.");
+  const int blocks_per_grid = static_cast<int>(blocks);
 
   if constexpr (IsFpQuantizedV<T1>) {
-    GatherBlockQuantizedFpKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(
+    GatherBlockQuantizedFpKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(
         data, indices, scales, output,
         param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.block_size, param.N,
         param.rank, param.quantize_axis, param.data_dims, param.scale_strides, param.scale_broadcast_axis);
   } else {
     bool sign = std::is_same<T1, Int4x2>::value;
-    GatherBlockQuantizedKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(data, indices, scales, zero_points, output,
-                                                                                                param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.bits, param.block_size, param.gather_axis, param.N, sign);
+    GatherBlockQuantizedKernel<<<blocks_per_grid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(
+        data, indices, scales, zero_points, output,
+        param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.bits,
+        param.block_size, param.gather_axis, param.N, sign);
   }
+
+  return CUDA_CALL(cudaGetLastError());
 }
 
-template void LaunchGatherBlockQuantizedKernel<uint8_t, float, int32_t>(const uint8_t*, const int32_t*, const float*, const uint8_t*, float*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<uint8_t, float, int64_t>(const uint8_t*, const int64_t*, const float*, const uint8_t*, float*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<UInt4x2, float, int32_t>(const UInt4x2*, const int32_t*, const float*, const UInt4x2*, float*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<UInt4x2, float, int64_t>(const UInt4x2*, const int64_t*, const float*, const UInt4x2*, float*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Int4x2, float, int32_t>(const Int4x2*, const int32_t*, const float*, const Int4x2*, float*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Int4x2, float, int64_t>(const Int4x2*, const int64_t*, const float*, const Int4x2*, float*, GatherBlockQuantizedParam);
+#define INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED(T1, T2, Tind)     \
+  template Status LaunchGatherBlockQuantizedKernel<T1, T2, Tind>( \
+      const T1*, const Tind*, const T2*, const T1*, T2*, GatherBlockQuantizedParam);
 
-template void LaunchGatherBlockQuantizedKernel<uint8_t, half, int32_t>(const uint8_t*, const int32_t*, const half*, const uint8_t*, half*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<uint8_t, half, int64_t>(const uint8_t*, const int64_t*, const half*, const uint8_t*, half*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<UInt4x2, half, int32_t>(const UInt4x2*, const int32_t*, const half*, const UInt4x2*, half*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<UInt4x2, half, int64_t>(const UInt4x2*, const int64_t*, const half*, const UInt4x2*, half*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Int4x2, half, int32_t>(const Int4x2*, const int32_t*, const half*, const Int4x2*, half*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Int4x2, half, int64_t>(const Int4x2*, const int64_t*, const half*, const Int4x2*, half*, GatherBlockQuantizedParam);
+#define INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_TYPES(T1)        \
+  INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED(T1, float, int32_t)    \
+  INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED(T1, float, int64_t)    \
+  INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED(T1, half, int32_t)     \
+  INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED(T1, half, int64_t)     \
+  INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED(T1, BFloat16, int32_t) \
+  INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED(T1, BFloat16, int64_t)
 
-template void LaunchGatherBlockQuantizedKernel<uint8_t, BFloat16, int32_t>(const uint8_t*, const int32_t*, const BFloat16*, const uint8_t*, BFloat16*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<uint8_t, BFloat16, int64_t>(const uint8_t*, const int64_t*, const BFloat16*, const uint8_t*, BFloat16*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<UInt4x2, BFloat16, int32_t>(const UInt4x2*, const int32_t*, const BFloat16*, const UInt4x2*, BFloat16*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<UInt4x2, BFloat16, int64_t>(const UInt4x2*, const int64_t*, const BFloat16*, const UInt4x2*, BFloat16*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Int4x2, BFloat16, int32_t>(const Int4x2*, const int32_t*, const BFloat16*, const Int4x2*, BFloat16*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Int4x2, BFloat16, int64_t>(const Int4x2*, const int64_t*, const BFloat16*, const Int4x2*, BFloat16*, GatherBlockQuantizedParam);
+INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_TYPES(uint8_t)
+INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_TYPES(UInt4x2)
+INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_TYPES(Int4x2)
 
 #if !defined(DISABLE_FLOAT8_TYPES)
-#define INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_FP8(T1)                                                                                                               \
-  template void LaunchGatherBlockQuantizedKernel<T1, float, int32_t>(const T1*, const int32_t*, const float*, const T1*, float*, GatherBlockQuantizedParam);          \
-  template void LaunchGatherBlockQuantizedKernel<T1, float, int64_t>(const T1*, const int64_t*, const float*, const T1*, float*, GatherBlockQuantizedParam);          \
-  template void LaunchGatherBlockQuantizedKernel<T1, half, int32_t>(const T1*, const int32_t*, const half*, const T1*, half*, GatherBlockQuantizedParam);             \
-  template void LaunchGatherBlockQuantizedKernel<T1, half, int64_t>(const T1*, const int64_t*, const half*, const T1*, half*, GatherBlockQuantizedParam);             \
-  template void LaunchGatherBlockQuantizedKernel<T1, BFloat16, int32_t>(const T1*, const int32_t*, const BFloat16*, const T1*, BFloat16*, GatherBlockQuantizedParam); \
-  template void LaunchGatherBlockQuantizedKernel<T1, BFloat16, int64_t>(const T1*, const int64_t*, const BFloat16*, const T1*, BFloat16*, GatherBlockQuantizedParam);
-
-INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_FP8(Float8E4M3FN);
-INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_FP8(Float8E4M3FNUZ);
-INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_FP8(Float8E5M2);
-INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_FP8(Float8E5M2FNUZ);
-#undef INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_FP8
+INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_TYPES(Float8E4M3FN)
+INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_TYPES(Float8E4M3FNUZ)
+INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_TYPES(Float8E5M2)
+INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_TYPES(Float8E5M2FNUZ)
 #endif  // !defined(DISABLE_FLOAT8_TYPES)
 
 #if !defined(DISABLE_FLOAT4_TYPES)
-template void LaunchGatherBlockQuantizedKernel<Float4E2M1x2, float, int32_t>(const Float4E2M1x2*, const int32_t*, const float*, const Float4E2M1x2*, float*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Float4E2M1x2, float, int64_t>(const Float4E2M1x2*, const int64_t*, const float*, const Float4E2M1x2*, float*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Float4E2M1x2, half, int32_t>(const Float4E2M1x2*, const int32_t*, const half*, const Float4E2M1x2*, half*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Float4E2M1x2, half, int64_t>(const Float4E2M1x2*, const int64_t*, const half*, const Float4E2M1x2*, half*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Float4E2M1x2, BFloat16, int32_t>(const Float4E2M1x2*, const int32_t*, const BFloat16*, const Float4E2M1x2*, BFloat16*, GatherBlockQuantizedParam);
-template void LaunchGatherBlockQuantizedKernel<Float4E2M1x2, BFloat16, int64_t>(const Float4E2M1x2*, const int64_t*, const BFloat16*, const Float4E2M1x2*, BFloat16*, GatherBlockQuantizedParam);
+INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_TYPES(Float4E2M1x2)
 #endif  // !defined(DISABLE_FLOAT4_TYPES)
+
+#undef INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED_TYPES
+#undef INSTANTIATE_LAUNCH_GATHERBLOCKQUANTIZED
 
 }  // namespace cuda
 }  // namespace contrib

@@ -2903,10 +2903,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 #define GEMM_FLOAT8_TYPES \
-  {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+  { "tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
 #else
 #define GEMM_FLOAT8_TYPES \
-  {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+  { "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
 #endif
 
 ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
@@ -4164,7 +4164,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
   5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
      for `bits` < 8 the values are packed along the last dimension (low-order bits first).
   6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
-     (float4e2m1), rather than an integer block-quantized type. In that case `bits` is not applicable, there is
+     (float4e2m1), rather than an integer block-quantized type. In that case `bits` is ignored, there is
      no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.
      On any axis other than `quantize_axis`, the corresponding `scales` dimension must either equal `data`'s
      dimension, or be 1, in which case the scale is broadcast along that axis (e.g. a single scale shared by
@@ -4200,15 +4200,15 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             AttributeProto::INT,
             static_cast<int64_t>(128))
       .Attr("bits",
-            "Number of bits used for weight quantization. Must be 2, 4 or 8. Not applicable when `data` is an "
-            "FP8 or FP4 type.",
+            "Number of bits used for weight quantization. Must be 2, 4 or 8. Ignored when `data` is an FP8 or "
+            "FP4 type.",
             AttributeProto::INT,
             static_cast<int64_t>(4))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
       .Input(1,
              "indices",
-             "Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] "
-             "along axis of size s. It is an error if any of the index values are out of bounds.",
+             "Tensor of int32/int64 indices, of any rank q. Values in [-s, s-1] select elements along an axis of "
+             "size s. An out-of-range index produces zeros for the corresponding output slice.",
              "Tind")
       .Input(2, "scales",
              "quantization scale. Same rank as data. On axes other than quantize_axis, a dimension of 1 broadcasts "
