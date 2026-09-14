@@ -8,6 +8,7 @@
 #include <iosfwd>
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #include <gsl/gsl>
 #include "core/common/inlined_containers_fwd.h"
