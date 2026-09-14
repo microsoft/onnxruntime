@@ -3,6 +3,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/activation/activations.h"
+#include "core/providers/cpu/activation/activation_fp16_support.h"
 #include "core/providers/cpu/fp16/fp16_activations.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #ifndef DISABLE_CONTRIB_OPS
@@ -66,6 +67,10 @@ REGISTER_VERSIONED_UNARY_ELEMENTWISE_KERNEL(Softsign, 1, 21);
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Softsign, 22);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 6, 12, float);
 REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 6, 12, double);
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+REGISTER_VERSIONED_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 6, 12, MLFloat16);
+REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 13, MLFloat16);
+#endif
 REGISTER_UNARY_ELEMENTWISE_KERNEL(Celu, 12);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 13, float);
 REGISTER_UNARY_ELEMENTWISE_TYPED_KERNEL(Tanh, 13, double);
@@ -110,6 +115,39 @@ Status ElementWiseRangedTransform<T>::Create(const std::string& type, const Node
 
 template Status ElementWiseRangedTransform<float>::Create(const std::string& type, const NodeAttributes& attributes,
                                                           std::unique_ptr<ElementWiseRangedTransform<float>>& out);
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+// The MLFloat16 factory only covers the activations that have an MLFloat16
+// CPU kernel (see the REGISTER_*_TYPED_KERNEL(..., MLFloat16) list above).
+// GemmActivationFusion must not fuse anything outside this set, or FusedGemm
+// construction fails at session initialization. IsFp16FusableActivation()
+// below is the single source of truth shared by both.
+bool IsFp16FusableActivation(const std::string& type) {
+  return type == "Relu" || type == "LeakyRelu" || type == "Tanh";
+}
+
+template <>
+Status ElementWiseRangedTransform<MLFloat16>::Create(
+    const std::string& type,
+    const NodeAttributes& attributes,
+    std::unique_ptr<ElementWiseRangedTransform<MLFloat16>>& out) {
+#define CREATE_ELE_KERNEL_FP16(X)                        \
+  if (type == #X) {                                      \
+    auto p = std::make_unique<functors::X<MLFloat16>>(); \
+    ORT_RETURN_IF_ERROR(p->Init(attributes));            \
+    out = std::move(p);                                  \
+    return Status::OK();                                 \
+  }
+
+  CREATE_ELE_KERNEL_FP16(Relu);
+  CREATE_ELE_KERNEL_FP16(LeakyRelu);
+  CREATE_ELE_KERNEL_FP16(Tanh);
+
+#undef CREATE_ELE_KERNEL_FP16
+
+  return Status(ONNXRUNTIME, NOT_IMPLEMENTED,
+                "ElementWiseRangedTransform<MLFloat16> supports only Relu, LeakyRelu and Tanh, got " + type);
+}
+#endif
 }  // namespace functors
 
 namespace functors {
@@ -126,6 +164,16 @@ void Tanh<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
   float* output_ptr = output + first;
   MlasComputeTanh(input + first, output_ptr, static_cast<size_t>(len));
 }
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+template <>
+void Tanh<MLFloat16>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
+  ptrdiff_t len = last - first;
+  MLFloat16* output_ptr = output + first;
+  // MlasComputeTanh<T> is templated — MLFloat16 specialization exists
+  // in tanh_kernel_neon_fp16.cpp, runs native FP16 NEON on Graviton3
+  MlasComputeTanh(input + first, output_ptr, static_cast<size_t>(len));
+}
+#endif
 }  // namespace functors
 
 }  // namespace onnxruntime

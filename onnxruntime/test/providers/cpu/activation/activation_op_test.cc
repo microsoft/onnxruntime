@@ -176,7 +176,7 @@ TEST_F(ActivationOpTest, Relu) {
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 }
 
-#if defined(USE_CUDA) || defined(USE_COREML)
+#if defined(USE_CUDA) || defined(USE_COREML) || defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 TEST_F(ActivationOpTest, Sigmoid_fp16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
