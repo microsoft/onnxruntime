@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <limits>
+#include <optional>
 
 #include "core/optimizer/stft_decomposition.h"
 #include "core/optimizer/initializer.h"
@@ -17,6 +18,32 @@
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
+namespace {
+
+constexpr size_t kMaxSTFTConvWeightSizeInBytes = 64 * 1024 * 1024;
+
+std::optional<int64_t> ReadScalarIntegerInitializer(const Graph& graph,
+                                                    const ONNX_NAMESPACE::TensorProto* initializer) {
+  if (initializer == nullptr) {
+    return std::nullopt;
+  }
+
+  const Initializer tensor(*initializer, graph.ModelPath());
+  if (tensor.size() != 1) {
+    return std::nullopt;
+  }
+
+  switch (initializer->data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      return static_cast<int64_t>(*tensor.data<int32_t>());
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      return *tensor.data<int64_t>();
+    default:
+      return std::nullopt;
+  }
+}
+
+}  // namespace
 
 STFTDecomposition::STFTDecomposition(const InlinedHashSet<std::string_view>& compatible_execution_providers) noexcept
     : GraphTransformer("STFTDecomposition", compatible_execution_providers) {
@@ -124,22 +151,17 @@ std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in,
               [root]--(window)------------------+||
               [root]--(frame_length) ----------+|||
                                                ||||
-                                               vvvv
+                                              vvvv
                                               [STFT]--(output)-->
-    After Fusion:
-              [root]--(signal)-------------------------+
-              [root]                                   |
-              [root]--(window)--+                      |
-              [root]            |                      |
-                                v                      v
-         (only for non-fp32) [Cast]             +--[Reshape]
-                                |               |      |
-                                v               |      v
-                            [Reshape]-->[Mul]---|-->[Conv]-------+
-                                |               |                |
-                                |               +-----|          |
-                                |                     v          v
-                                +------>[Mul]------>[Conv]-->[Concat]-->[Reshape]-->[Transpose]--(output)-->
+    After Fusion when the window is folded into the Conv weights:
+              [root]--(signal)-->[Reshape]-->[Conv]-->[Reshape]-->[Transpose]--(output)-->
+
+    After Fusion when the window remains a graph input:
+              [root]--(signal)------------------>[Reshape]------—----+
+              [root]--(window)-->[optional Cast]-->[Reshape]-->[Mul]-+
+                                                                     |
+                                                                     v
+                                                                    [Conv]-->[Reshape]-->[Transpose]--(output)-->
 
 
     Subgraph pattern 2: STFT without optional Window parameter set
@@ -151,71 +173,112 @@ std::pair<Node*, NodeArg*> AddNodeCast(Graph& graph, NodeArg* in,
                                                vvv
                                               [STFT]--(output)-->
     After Fusion:
-              [root]--(signal)-->[Reshape]-->[Conv]
-              [root]                 |         |
-              [root]                 |         v
-              [root]                 +------>[Conv]-->[Concat]-->[Reshape]-->[Transpose]--(output)-->
+              [root]--(signal)-->[Reshape]-->[Conv]-->[Reshape]-->[Transpose]--(output)-->
 */
 Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
+  const auto& compatible_eps = GetCompatibleExecutionProviders();
+  const bool may_run_on_cpu = compatible_eps.empty() || compatible_eps.find(kCpuExecutionProvider) != compatible_eps.end();
 
   for (NodeIndex i : order) {
     auto node = graph.GetNode(i);
     CONTINUE_IF_NULL(node);
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
-    if (node->OpType() != "STFT") {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(*node, "STFT", {17}) ||
+        (!node->GetExecutionProviderType().empty() &&
+         !graph_utils::IsSupportedProvider(*node, compatible_eps))) {
       continue;
     }
 
     Node& stft = *node;
+    if (stft.InputDefs().size() < 4 || stft.OutputDefs().empty()) {
+      continue;
+    }
+
     auto signal = stft.MutableInputDefs()[0];
     auto frame_step = stft.MutableInputDefs()[1];
     auto window = stft.MutableInputDefs()[2];
     auto frame_length = stft.MutableInputDefs()[3];
 
-    // If the signal has free dimensions, do not transform...
-    auto batch_size_dim = signal->Shape()->dim(0);
-    auto signal_length_dim = signal->Shape()->dim(1);
-    auto signal_components_dim = signal->Shape()->dim(2);
+    const auto* signal_type = signal->TypeAsProto();
+    if (signal_type == nullptr || !signal_type->has_tensor_type()) {
+      continue;
+    }
+
+    const auto* signal_shape = signal->Shape();
+    if (signal_shape == nullptr || signal_shape->dim_size() < 2 || signal_shape->dim_size() > 3) {
+      continue;
+    }
+
+    auto batch_size_dim = signal_shape->dim(0);
+    auto signal_length_dim = signal_shape->dim(1);
     CONTINUE_IF_NO_DIM_VALUE(signal_length_dim);
-    CONTINUE_IF_NO_DIM_VALUE(signal_components_dim);
 
     auto batch_size = batch_size_dim.has_dim_value() ? batch_size_dim.dim_value() : static_cast<int64_t>(-1);
     auto signal_length = signal_length_dim.dim_value();
-    auto is_real = signal_components_dim.dim_value() == 1;
-    auto data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(signal->TypeAsProto()->tensor_type().elem_type());
+    auto is_real = signal_shape->dim_size() == 2 ||
+                   (signal_shape->dim_size() == 3 &&
+                    signal_shape->dim(2).has_dim_value() &&
+                    signal_shape->dim(2).dim_value() == 1);
+    auto data_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(signal_type->tensor_type().elem_type());
+    if (!is_real || (may_run_on_cpu && data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
+      continue;
+    }
 
     auto frame_step_initializer = graph_utils::GetConstantInitializer(graph, frame_step->Name());
-    auto window_initializer = graph_utils::GetConstantInitializer(graph, window->Name());
-    auto frame_length_initializer = graph_utils::GetConstantInitializer(graph, frame_length->Name());
+    auto window_initializer = window->Exists() ? graph_utils::GetConstantInitializer(graph, window->Name()) : nullptr;
+    auto frame_length_initializer = frame_length->Exists() ? graph_utils::GetConstantInitializer(graph, frame_length->Name()) : nullptr;
     CONTINUE_IF_NULL(frame_step_initializer);
+    const auto* window_type = window->Exists() ? window->TypeAsProto() : nullptr;
+    if (window->Exists() && (window_type == nullptr || !window_type->has_tensor_type())) {
+      continue;
+    }
     if (!frame_length_initializer && !window_initializer) {
       continue;
     }
 
-    auto read_int64_initializer = [](Graph& graph, const ONNX_NAMESPACE::TensorProto* initializer) {
-      return *Initializer(*initializer, graph.ModelPath()).data<int64_t>();
-    };
-    auto frame_step_value = read_int64_initializer(graph, frame_step_initializer);
+    auto frame_step_value = ReadScalarIntegerInitializer(graph, frame_step_initializer);
+    if (!frame_step_value.has_value()) {
+      continue;
+    }
 
     // Get DFT Size
     int64_t dft_size = 0;
     if (frame_length_initializer) {
-      dft_size = read_int64_initializer(graph, frame_length_initializer);
+      auto frame_length_value = ReadScalarIntegerInitializer(graph, frame_length_initializer);
+      if (!frame_length_value.has_value()) {
+        continue;
+      }
+      dft_size = *frame_length_value;
     }
-    if (dft_size == 0 && window_initializer) {
-      auto window_length_dim = window->Shape()->dim(0);
+    if (!frame_length_initializer && window_initializer) {
+      const auto* window_shape = window->Shape();
+      if (window_shape == nullptr || window_shape->dim_size() != 1) {
+        continue;
+      }
+      auto window_length_dim = window_shape->dim(0);
       CONTINUE_IF_NO_DIM_VALUE(window_length_dim);
       dft_size = window_length_dim.dim_value();
     }
 
     // Validate model-provided scalar values before using them in size calculations.
     // These come from untrusted model initializers/shapes and must be positive.
-    if (dft_size <= 0 || frame_step_value <= 0) {
+    if (dft_size <= 0 || *frame_step_value <= 0) {
       LOGS(logger, WARNING) << "STFT decomposition skipped: invalid dft_size (" << dft_size
-                            << ") or frame_step_value (" << frame_step_value << ")";
+                            << ") or frame_step_value (" << *frame_step_value << ")";
+      continue;
+    }
+
+    if (dft_size > signal_length) {
+      continue;
+    }
+
+    const auto* window_shape = window->Exists() ? window->Shape() : nullptr;
+    if (window_shape != nullptr && window_shape->dim_size() == 1 &&
+        window_shape->dim(0).has_dim_value() &&
+        window_shape->dim(0).dim_value() != dft_size) {
       continue;
     }
 
@@ -228,45 +291,62 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       }
     }
 
+    const int64_t output_num_frames = ((signal_length - dft_size) / *frame_step_value) + 1;
     auto dft_unique_bins = is_onesided ? ((dft_size >> 1) + 1) : dft_size;
 
     Node* signal_recipient = nullptr;
     Node* window_recipient = nullptr;
     Node* stft_producer = nullptr;
     if (is_real) {
-      auto output_num_frames = stft.MutableOutputDefs()[0]->Shape()->dim(1).dim_value();
-      auto output_frame_length = stft.MutableOutputDefs()[0]->Shape()->dim(2).dim_value();
-
-      size_t dft_size_sz, dft_unique_bins_sz, weight_size;
+      size_t dft_size_sz, dft_unique_bins_sz, weight_size, conv_channels, weight_size_in_bytes;
       if (!SafeCast(dft_unique_bins, dft_unique_bins_sz) ||
           !SafeCast(dft_size, dft_size_sz) ||
-          !SafeMultiply(dft_unique_bins_sz, dft_size_sz, weight_size)) {
+          !SafeMultiply(dft_unique_bins_sz, static_cast<size_t>(2), conv_channels) ||
+          !SafeMultiply(conv_channels, dft_size_sz, weight_size) ||
+          !SafeMultiply(weight_size, sizeof(float), weight_size_in_bytes)) {
         LOGS(logger, WARNING) << "STFT decomposition skipped: weight size overflow";
         continue;
       }
+      if (weight_size_in_bytes > kMaxSTFTConvWeightSizeInBytes) {
+        LOGS(logger, VERBOSE) << "STFT decomposition skipped: generated Conv weights would require "
+                              << weight_size_in_bytes << " bytes";
+        continue;
+      }
 
-      auto real_weights_data = std::vector<float>(weight_size);
-      auto imag_weights_data = std::vector<float>(weight_size);
+      auto weights_data = std::vector<float>(weight_size);
+      const float* window_data = nullptr;
+      std::unique_ptr<Initializer> window_tensor;
+      if (window_initializer != nullptr && data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        if (window_initializer->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+            window_initializer->dims_size() != 1 ||
+            window_initializer->dims(0) != dft_size) {
+          continue;
+        }
+        window_tensor = std::make_unique<Initializer>(*window_initializer, graph.ModelPath());
+        window_data = window_tensor->data<float>();
+      }
 
       // Populate weights
       for (size_t k = 0; k < dft_unique_bins_sz; k++) {
         for (size_t n = 0; n < dft_size_sz; n++) {
-          auto index = k * dft_size_sz + n;
-          auto theta = -2 * std::numbers::pi_v<float> * k * n / static_cast<float>(dft_size);
-          real_weights_data[index] = static_cast<float>(cos(theta));
-          imag_weights_data[index] = static_cast<float>(sin(theta));
+          auto real_index = k * dft_size_sz + n;
+          auto imag_index = (dft_unique_bins_sz + k) * dft_size_sz + n;
+          const double theta = -2.0 * std::numbers::pi_v<double> *
+                               static_cast<double>((k * n) % dft_size_sz) / static_cast<double>(dft_size);
+          auto window_scale = window_data != nullptr ? window_data[n] : 1.0f;
+          weights_data[real_index] = static_cast<float>(cos(theta)) * window_scale;
+          weights_data[imag_index] = static_cast<float>(sin(theta)) * window_scale;
         }
       }
 
-      const int64_t weight_shape[] = {dft_unique_bins, 1, 1, dft_size};
-      auto* real_weights = AddInitializer<float>(graph, "stft_real_conv_weights", weight_shape, real_weights_data.data());
-      auto* imaginary_weights = AddInitializer<float>(graph, "stft_imaginary_conv_weights", weight_shape, imag_weights_data.data());
+      const int64_t weight_shape[] = {2 * dft_unique_bins, 1, 1, dft_size};
+      auto* weights = AddInitializer<float>(graph, "stft_conv_weights", weight_shape, weights_data.data());
 
       const int64_t signal_reshaped[] = {batch_size, 1, 1, signal_length};
       auto signal_shape = AddShapeInitializer(graph, "stft_signal_shape", signal_reshaped);
 
-      const int64_t unsqueezed_output_shape[] = {2, batch_size, output_frame_length, output_num_frames};
-      auto unsqueezed_shape = AddShapeInitializer(graph, "stft_output_reshaped", unsqueezed_output_shape);
+      const int64_t output_reshape_shape[] = {batch_size, 2, dft_unique_bins, output_num_frames};
+      auto output_shape = AddShapeInitializer(graph, "stft_output_reshaped", output_reshape_shape);
 
       NodeArg* signal_reshaped_inputs[] = {signal, signal_shape};
       Node* reshape_signal_node = nullptr;
@@ -274,25 +354,13 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       std::tie(reshape_signal_node, reshape_output) =
           AddNode(graph, "Reshape", stft.GetExecutionProviderType(), signal_reshaped_inputs, &stft);
 
-      NodeArg* real_weights_final = real_weights;
-      NodeArg* imag_weights_final = imaginary_weights;
-      if (!window->Exists()) {
-        // When we are missing a window function
-        if (real_weights_final->TypeAsProto()->tensor_type().elem_type() != data_type) {
-          std::tie(std::ignore, real_weights_final) =
-              AddNodeCast(graph, real_weights_final, data_type, &stft);
-        }
-        if (imag_weights_final->TypeAsProto()->tensor_type().elem_type() != data_type) {
-          std::tie(std::ignore, imag_weights_final) =
-              AddNodeCast(graph, imag_weights_final, data_type, &stft);
-        }
-      } else {
-        // When we have a window function
+      NodeArg* weights_final = weights;
+      if (window->Exists() && window_data == nullptr) {
         const int64_t window_reshaped_shape[] = {1, 1, 1, dft_size};
         auto window_shape = AddShapeInitializer(graph, "stft_window_shape", window_reshaped_shape);
 
         auto window_final = window;
-        if (window->TypeAsProto()->tensor_type().elem_type() != GetDataType<float>()) {
+        if (window_type->tensor_type().elem_type() != GetDataType<float>()) {
           Node* window_cast_node = nullptr;
           std::tie(window_cast_node, window_final) =
               AddNodeCast(graph, window, GetDataType<float>(), &stft);
@@ -308,59 +376,37 @@ Status STFTDecomposition::ApplyImpl(Graph& graph, bool& modified, int graph_leve
           window_recipient = window_reshape_node;
         }
 
-        NodeArg* scale_real_weights_inputs[] = {real_weights, window_reshaped};
-        NodeArg* windowed_real_weights_output = nullptr;
-        std::tie(std::ignore, windowed_real_weights_output) =
-            AddNode(graph, "Mul", kCpuExecutionProvider, scale_real_weights_inputs, &stft);
+        NodeArg* scale_weights_inputs[] = {weights, window_reshaped};
+        NodeArg* windowed_weights_output = nullptr;
+        std::tie(std::ignore, windowed_weights_output) =
+            AddNode(graph, "Mul", kCpuExecutionProvider, scale_weights_inputs, &stft);
 
-        NodeArg* scale_imag_weights_inputs[] = {imaginary_weights, window_reshaped};
-        NodeArg* windowed_imag_weights_output = nullptr;
-        std::tie(std::ignore, windowed_imag_weights_output) =
-            AddNode(graph, "Mul", kCpuExecutionProvider, scale_imag_weights_inputs, &stft);
-
-        std::tie(std::ignore, real_weights_final) =
-            AddNodeCast(graph, windowed_real_weights_output, data_type, &stft);
-        std::tie(std::ignore, imag_weights_final) =
-            AddNodeCast(graph, windowed_imag_weights_output, data_type, &stft);
+        weights_final = windowed_weights_output;
       }
 
-      // Add Convolution (reals)
-      NodeArg* conv_real_inputs[] = {reshape_output, real_weights_final};
-      Node* real_conv_node = nullptr;
-      NodeArg* real_conv_output = nullptr;
-      std::tie(real_conv_node, real_conv_output) =
-          AddNode(graph, "Conv", stft.GetExecutionProviderType(), conv_real_inputs, &stft);
-      real_conv_node->AddAttribute("strides", std::vector<int64_t>{1, frame_step_value});
+      if (data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        std::tie(std::ignore, weights_final) =
+            AddNodeCast(graph, weights_final, data_type, &stft);
+      }
 
-      // Add Convolution (imaginary)
-      NodeArg* conv_imag_inputs[] = {reshape_output, imag_weights_final};
-      Node* imag_conv_node = nullptr;
-      NodeArg* imag_conv_output = nullptr;
-      std::tie(imag_conv_node, imag_conv_output) =
-          AddNode(graph, "Conv", stft.GetExecutionProviderType(), conv_imag_inputs, &stft);
-      imag_conv_node->AddAttribute("strides", std::vector<int64_t>{1, frame_step_value});
+      NodeArg* conv_inputs[] = {reshape_output, weights_final};
+      Node* conv_node = nullptr;
+      NodeArg* conv_output = nullptr;
+      std::tie(conv_node, conv_output) =
+          AddNode(graph, "Conv", stft.GetExecutionProviderType(), conv_inputs, &stft);
+      conv_node->AddAttribute("strides", std::vector<int64_t>{1, *frame_step_value});
 
-      // Concatenate
-      NodeArg* concatenate_inputs[] = {real_conv_output, imag_conv_output};
-      Node* concat_node = nullptr;
-      NodeArg* concatenated_conv_output = nullptr;
-      std::tie(concat_node, concatenated_conv_output) =
-          AddNode(graph, "Concat", stft.GetExecutionProviderType(), concatenate_inputs, &stft);
-      concat_node->AddAttribute("axis", static_cast<int64_t>(0));
+      NodeArg* output_reshape_inputs[] = {conv_output, output_shape};
+      NodeArg* reshaped_output = nullptr;
+      std::tie(std::ignore, reshaped_output) =
+          AddNode(graph, "Reshape", stft.GetExecutionProviderType(), output_reshape_inputs, &stft);
 
-      // Unsqueeze Reshape
-      NodeArg* unsqueeze_reshape_inputs[] = {concatenated_conv_output, unsqueezed_shape};
-      NodeArg* unsqueezed_output = nullptr;
-      std::tie(std::ignore, unsqueezed_output) =
-          AddNode(graph, "Reshape", stft.GetExecutionProviderType(), unsqueeze_reshape_inputs, &stft);
-
-      // Transpose
-      NodeArg* transpose_inputs[] = {unsqueezed_output};
+      NodeArg* transpose_inputs[] = {reshaped_output};
       Node* transpose_node = nullptr;
       NodeArg* transpose_output = nullptr;
       std::tie(transpose_node, transpose_output) =
           AddNode(graph, "Transpose", stft.GetExecutionProviderType(), transpose_inputs, &stft);
-      transpose_node->AddAttribute("perm", std::vector<int64_t>{1, 3, 2, 0});
+      transpose_node->AddAttribute("perm", std::vector<int64_t>{0, 3, 2, 1});
 
       signal_recipient = reshape_signal_node;
       stft_producer = transpose_node;
