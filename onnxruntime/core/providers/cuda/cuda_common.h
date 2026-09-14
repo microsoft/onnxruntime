@@ -5,10 +5,12 @@
 
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
 
-// The following three lines were copied from ABSL
+// The following lines were copied from ABSL
 // cutlass needs them, because cutlass uses "and"/"or" keywords
 #ifdef __cplusplus
+#if defined(_MSVC_LANG) || (__cplusplus < 202002L)
 #include <ciso646>
+#endif
 #endif
 
 #if defined(ENABLE_FP4) && !defined(DISABLE_FLOAT4_TYPES)
