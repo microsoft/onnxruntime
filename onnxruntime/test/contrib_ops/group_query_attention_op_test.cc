@@ -3957,7 +3957,7 @@ TEST(GroupQueryAttentionTest, FlashDecodeSplitKvCudaGraphReplay) {
   for (int s = 0; s < cache_capacity; ++s) {
     for (int h = 0; h < kv_num_heads; ++h) {
       for (int d = 0; d < head_size; ++d) {
-        past_value_data[(s * kv_num_heads + h) * head_size + d] =
+        past_value_data[(h * cache_capacity + s) * head_size + d] =
             MLFloat16(0.01f + 0.0001f * static_cast<float>((s + h + d) % cache_capacity));
       }
     }
@@ -4009,7 +4009,7 @@ TEST(GroupQueryAttentionTest, FlashDecodeSplitKvCudaGraphReplay) {
     const int appended_position = live_sequence_length - 1;
     for (int h = 0; h < kv_num_heads; ++h) {
       for (int d = 0; d < head_size; ++d) {
-        past_value_data[(appended_position * kv_num_heads + h) * head_size + d] =
+        past_value_data[(h * cache_capacity + appended_position) * head_size + d] =
             value_data[h * head_size + d];
       }
     }
@@ -4022,7 +4022,7 @@ TEST(GroupQueryAttentionTest, FlashDecodeSplitKvCudaGraphReplay) {
       for (int d = 0; d < head_size; ++d) {
         float expected = 0.0f;
         for (int s = 0; s < live_sequence_length; ++s) {
-          expected += past_value_data[(s * kv_num_heads + kv_head) * head_size + d].ToFloat();
+          expected += past_value_data[(kv_head * cache_capacity + s) * head_size + d].ToFloat();
         }
         expected /= static_cast<float>(live_sequence_length);
         EXPECT_NEAR(cpu_output.Data<MLFloat16>()[h * head_size + d].ToFloat(), expected, 2e-3f)
