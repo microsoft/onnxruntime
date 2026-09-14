@@ -71,6 +71,21 @@ RvvQ4BitGemmPackQuantBDataSize(
     return PackedQuantBDataSize;
 }
 
+// CompInt8 packed-B layout (private to this dispatch, 4-bit and 8-bit alike):
+// columns are grouped in tiles of CompInt8ColTile; within a tile the K-blocks
+// are outermost, then the block's CompInt8SubBlkLen-element sub-blocks, then
+// the tile's columns, then the sub-block's bytes:
+//   tile t at (t * CompInt8ColTile) * ldb: [BlockCountK][SubBlkCount][width][SubBlkBytes]
+// where width = min(CompInt8ColTile, N - t * CompInt8ColTile). A full tile
+// therefore occupies the same bytes as its columns would in a plain [N][ldb]
+// layout, so the driver's "QuantBData + n * ldb" addressing (n a multiple of
+// the tile width) still lands on the tile. The point is that a kernel walking
+// a tile down K, one sub-block of every column at a time, reads one strictly
+// sequential stream instead of one strided stream per column, which on this
+// hardware is the difference between ~9 and ~2.5 GB/s.
+constexpr size_t CompInt8ColTile = 8;
+constexpr size_t CompInt8SubBlkLen = 32;
+
 // SQ8 (8-bit weight) CompInt8 packed-B workspace sizing. The workspace holds
 // the packed 8-bit B data, then the per-(N,block) B block-sums, then the B
 // scales (matching PackedQuantBDataStruct's signed-QuantA layout). Sizes and
@@ -104,9 +119,11 @@ RvvQ8BitGemmPackQuantBDataSize(
 }
 
 // Pack 8-bit B and compute per-block sums. The packed data, scales and
-// block-sums are private to the RVV dispatch, so plain [N][BlockCountK] layouts
-// are used. QuantBBlkSum[n][b] = bScale * bZeroPoint (bZeroPoint defaults to
-// 128 when zero points are absent); the kernel subtracts ABlockSum * this.
+// block-sums are private to the RVV dispatch: the data uses the column-tiled
+// layout described at CompInt8ColTile, scales and block-sums plain
+// [N][BlockCountK]. B is stored centered (raw - 128, as int8) and
+// QuantBBlkSum[n][b] = bScale * (bZeroPoint - 128) (bZeroPoint defaults to 128
+// when zero points are absent); the kernel subtracts ABlockSum * this.
 void
 RvvSQ8BitGemmPackQuantBDataAndBlkSum(
     size_t N,
@@ -139,8 +156,26 @@ RvvSQ8BitGemmPackQuantBDataAndBlkSum(
         [&](ptrdiff_t n) {
             const size_t row = static_cast<size_t>(n) * BlockCountK;
 
+            // B is stored centered by 128 (int8 = raw ^ 0x80) so the kernel can
+            // accumulate two int8 x int8 products in int16; the 128 is folded
+            // into the block sum: BlkSum = bScale * (bZeroPoint - 128).
             if (QuantBDataBegin != nullptr) {
-                std::memcpy(PackedData + static_cast<size_t>(n) * DataBytesPerCol, QuantBDataBegin + static_cast<size_t>(n) * DataBytesPerCol, DataBytesPerCol);
+                const size_t tile = static_cast<size_t>(n) / CompInt8ColTile;
+                const size_t col = static_cast<size_t>(n) % CompInt8ColTile;
+                const size_t width = std::min(CompInt8ColTile, N - tile * CompInt8ColTile);
+                const std::byte* src = QuantBDataBegin + static_cast<size_t>(n) * DataBytesPerCol;
+                std::byte* PackedTile = PackedData + tile * CompInt8ColTile * DataBytesPerCol;
+                const size_t SubLen = std::min(CompInt8SubBlkLen, BlkLen);
+                const size_t SubCount = BlkLen / SubLen;
+                for (size_t b = 0; b < BlockCountK; ++b) {
+                    for (size_t sub = 0; sub < SubCount; ++sub) {
+                        std::byte* dst = PackedTile + ((b * SubCount + sub) * width + col) * SubLen;
+                        const std::byte* s0 = src + b * BlkLen + sub * SubLen;
+                        for (size_t i = 0; i < SubLen; ++i) {
+                            dst[i] = s0[i] ^ std::byte{0x80};
+                        }
+                    }
+                }
             }
 
             if (QuantBScaleBegin != nullptr) {
@@ -148,7 +183,7 @@ RvvSQ8BitGemmPackQuantBDataAndBlkSum(
                     const float scale = QuantBScaleBegin[row + b];
                     PackedScale[row + b] = scale;
                     if (!HasZeroPoint) {
-                        BlkSum[row + b] = scale * 128.0f;
+                        BlkSum[row + b] = 0.0f;
                     }
                 }
             }
@@ -156,7 +191,7 @@ RvvSQ8BitGemmPackQuantBDataAndBlkSum(
             if (QuantBZPBegin != nullptr) {
                 for (size_t b = 0; b < BlockCountK; ++b) {
                     const float zp = static_cast<float>(std::to_integer<uint8_t>(QuantBZPBegin[row + b]));
-                    BlkSum[row + b] = PackedScale[row + b] * zp;
+                    BlkSum[row + b] = PackedScale[row + b] * (zp - 128.0f);
                 }
             }
         }
@@ -209,15 +244,53 @@ RvvSQ4BitGemmPackQuantBData(
         return;
     }
 
-    MLAS_UNREFERENCED_PARAMETER(ComputeType);
-
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t BlkDataSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t Iterations = N * BlockCountK;  // one iteration per block
 
-    // This packed layout is private to the RVV dispatch (produced here, consumed
-    // only by the RVV compute kernels), so a single SubBlkLen == 16 layout is
-    // used for both the CompFp32 and CompInt8 paths.
+    // The packed layouts are private to the RVV dispatch (produced here,
+    // consumed only by the RVV compute kernels).
+    //
+    // CompInt8 uses the column-tiled layout described at CompInt8ColTile, and
+    // within a sub-block a half-split nibble order: byte i holds element i in
+    // its low nibble and element (i + SubLen/2) in its high nibble, so a run
+    // of bytes unpacks into two contiguous runs of elements that pair with two
+    // contiguous runs of the int8 A block.
+    if (ComputeType == SQNBIT_CompInt8) {
+        const size_t SubLen = std::min(CompInt8SubBlkLen, BlkLen);
+        const size_t SubHalf = SubLen / 2;  // bytes per sub-block
+        const size_t SubCount = BlkLen / SubLen;
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(N),
+            [&](ptrdiff_t tid) {
+                const size_t n = static_cast<size_t>(tid);
+                const size_t tile = n / CompInt8ColTile;
+                const size_t col = n % CompInt8ColTile;
+                const size_t width = std::min(CompInt8ColTile, N - tile * CompInt8ColTile);
+
+                const std::byte* QuantBData = QuantBDataBegin + n * BlockCountK * BlkDataSize;
+                std::byte* PackedTile = PackedQuantBDataBegin + tile * CompInt8ColTile * BlockCountK * BlkDataSize;
+
+                for (size_t k_blk = 0; k_blk < BlockCountK; ++k_blk) {
+                    for (size_t sub = 0; sub < SubCount; ++sub) {
+                        // source: byte e/2 holds element e in nibble (e & 1)
+                        const std::byte* src = QuantBData + k_blk * BlkDataSize + sub * SubHalf;
+                        std::byte* dst = PackedTile + ((k_blk * SubCount + sub) * width + col) * SubHalf;
+                        for (size_t i = 0; i < SubHalf; ++i) {
+                            const std::byte lo_src = src[i / 2];
+                            const std::byte hi_src = src[(i + SubHalf) / 2];
+                            const std::byte lo = (i & 1) ? (lo_src >> 4) : (lo_src & std::byte{0x0F});
+                            const std::byte hi = ((i + SubHalf) & 1) ? (hi_src >> 4) : (hi_src & std::byte{0x0F});
+                            dst[i] = lo | (hi << 4);
+                        }
+                    }
+                }
+            }
+        );
+        return;
+    }
+
+    // CompFp32 / CompFp16: SubBlkLen == 16 interleaved layout.
     const size_t SubBlkLen = 16;
 
     const size_t SubBlkDataSize = SubBlkLen / 2;
@@ -559,31 +632,6 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
 // (a_scale * b_scale) and accumulated across blocks.
 //
 
-// Unpack `len` (<=16) 4-bit weights of one sub-block into centered int8
-// (nibble - offset) in natural order.
-MLAS_FORCEINLINE void
-UnpackQbCentered(const uint8_t* packed, size_t len, int8_t offset, int8_t* out)
-{
-    const size_t low_count = std::min(len, SubBlkLen / 2);
-    {
-        const size_t vl = __riscv_vsetvl_e8m1(low_count);
-        const vuint8m1_t b = __riscv_vle8_v_u8m1(packed, vl);
-        const vuint8m1_t nib = __riscv_vand_vx_u8m1(b, 0x0F, vl);
-        vint8m1_t q = __riscv_vreinterpret_v_u8m1_i8m1(nib);
-        q = __riscv_vsub_vx_i8m1(q, offset, vl);
-        __riscv_vse8_v_i8m1(out, q, vl);
-    }
-    if (len > SubBlkLen / 2) {
-        const size_t high_count = len - SubBlkLen / 2;
-        const size_t vl = __riscv_vsetvl_e8m1(high_count);
-        const vuint8m1_t b = __riscv_vle8_v_u8m1(packed, vl);
-        const vuint8m1_t nib = __riscv_vsrl_vx_u8m1(b, 4, vl);
-        vint8m1_t q = __riscv_vreinterpret_v_u8m1_i8m1(nib);
-        q = __riscv_vsub_vx_i8m1(q, offset, vl);
-        __riscv_vse8_v_i8m1(out + SubBlkLen / 2, q, vl);
-    }
-}
-
 void
 RvvQuantizeARow_CompInt8_Impl(size_t BlkLen, const float* A, size_t CountK, std::byte* QuantA)
 {
@@ -631,6 +679,212 @@ RvvQuantizeARow_CompInt8_Impl(size_t BlkLen, const float* A, size_t CountK, std:
     }
 }
 
+//
+// CompInt8 tile helpers.
+//
+// The K-reduction of one block runs in int16 lanes: each chunk of the block
+// is two 'vl'-element halves, multiplied int8 x int8 and accumulated with a
+// widening multiply-add. The int16 partial is widened to float once per block
+// and folded into a float vector accumulator with the block's combined scale.
+// A single vfredusum per output then finishes the row, instead of one vwredsum
+// per (row, block).
+//
+// int16 is safe because the operands are bounded: 4-bit B is centered to
+// [-8, 7] so |a*b| <= 1016 and a whole block of up to 256 elements fits; 8-bit
+// B is stored centered to [-128, 127] so |a*b| <= 16256 and one pair fits,
+// which is exactly one chunk.
+//
+// The MTILE x NTILE tile gives the core independent accumulator chains and
+// shares the B unpack across rows and the A loads across columns. Tile slots
+// past the valid row/column count alias slot 0 and are not stored, so one body
+// serves the full tile and the remainder. Chunks run at e8mf2 so the int16
+// partials stay at m1 and the float accumulators at m2.
+//
+// A blocks are zero-padded to BlkLen by the quantizer, so a chunk can always
+// run at its full width: lanes past CountK multiply zero.
+//
+
+#define MLAS_UNROLL_LOOP _Pragma("GCC unroll 8")
+#define MLAS_SCHED_BARRIER asm volatile("" ::: "memory");
+
+MLAS_FORCEINLINE float
+ReduceSumF32M2(vfloat32m2_t v, size_t vl)
+{
+    const vfloat32m1_t z = __riscv_vfmv_s_f_f32m1(0.0f, 1);
+    return __riscv_vfmv_f_s_f32m1_f32(__riscv_vfredusum_vs_f32m2_f32m1(v, z, vl));
+}
+
+// acc += scale * (float)part, lane-wise.
+#define QI8_FOLD(acc, part, scale, vl) \
+    (acc) = __riscv_vfmacc_vf_f32m2_tu((acc), (scale), __riscv_vfwcvt_f_x_v_f32m2((part), (vl)), (vl))
+
+// MTILE rows x NTILE columns of the SQ4 CompInt8 GEMM. Columns >= n_cols alias column 0.
+template <bool HasZeroPoint, size_t MTILE, size_t NTILE>
+MLAS_FORCEINLINE void
+SQ4BitGemmKernel_CompInt8_Tile(
+    size_t BlkLen,
+    size_t BlockCountK,
+    const std::byte* QuantA,  // first row of the tile
+    size_t lda,
+    const uint8_t* QuantBData,         // block 0 of the tile's first column
+    size_t Width,                      // columns interleaved in the packed tile
+    const float* QuantBScale,          // first column
+    const std::byte* QuantBZeroPoint,  // first column, or nullptr
+    size_t StrideQuantBZeroPoint,
+    size_t n_cols,
+    float* C,  // C[row 0][col 0]
+    size_t ldc,
+    const float* Bias  // Bias[col 0], or nullptr
+)
+{
+    static_assert(MTILE == 1 || MTILE == 2, "unsupported MTILE");
+    static_assert(NTILE == 4 || NTILE == 8, "unsupported NTILE");
+    static_assert(MTILE * NTILE <= 8, "too many accumulators");
+    const size_t Q8Sz = Q8BlkSize(BlkLen);
+    const size_t accvl = __riscv_vsetvlmax_e32m2();
+    const size_t partvl = __riscv_vsetvlmax_e16m1();
+
+    const size_t SubLen = std::min(CompInt8SubBlkLen, BlkLen);
+    const size_t SubHalf = SubLen / 2;  // bytes per sub-block of one column
+    const size_t SubCount = BlkLen / SubLen;
+    const size_t SubStride = Width * SubHalf;  // bytes between consecutive sub-blocks of a column
+
+    const uint8_t* b_data[NTILE];  // adjacent columns of a sub-block are SubHalf apart
+    const float* b_scale[NTILE];
+    const std::byte* b_zp[NTILE];
+    for (size_t c = 0; c < NTILE; ++c) {
+        const size_t cc = (c < n_cols) ? c : 0;
+        b_data[c] = QuantBData + cc * SubHalf;
+        b_scale[c] = QuantBScale + cc * BlockCountK;
+        b_zp[c] = HasZeroPoint ? QuantBZeroPoint + cc * StrideQuantBZeroPoint : nullptr;
+    }
+
+    vfloat32m2_t acc0 = __riscv_vfmv_v_f_f32m2(0.0f, accvl);
+    vfloat32m2_t acc1 = acc0, acc2 = acc0, acc3 = acc0, acc4 = acc0, acc5 = acc0, acc6 = acc0, acc7 = acc0;
+
+    for (size_t b = 0; b < BlockCountK; ++b) {
+        const std::byte* a_blk0 = QuantA + b * Q8Sz;
+        const int8_t* qa0 = Q8BlkData(a_blk0);
+        const float as0 = Q8BlkScale(a_blk0);
+        const int8_t* qa1 = qa0;
+        float as1 = as0;
+        if constexpr (MTILE > 1) {
+            const std::byte* a_blk1 = QuantA + lda + b * Q8Sz;
+            qa1 = Q8BlkData(a_blk1);
+            as1 = Q8BlkScale(a_blk1);
+        }
+
+        int8_t offset[NTILE];
+        const uint8_t* qb[NTILE];
+        float s0[NTILE], s1[NTILE];
+        MLAS_UNROLL_LOOP
+        for (size_t c = 0; c < NTILE; ++c) {
+            offset[c] = static_cast<int8_t>(HasZeroPoint ? static_cast<int>(DequantOffset(b_zp[c], b, true)) : 8);
+            qb[c] = b_data[c] + b * SubCount * SubStride;
+            s0[c] = as0 * b_scale[c][b];
+            s1[c] = as1 * b_scale[c][b];
+        }
+
+        // int16 partials, one per tile slot, accumulated over the block's chunks.
+        vint16m1_t p0 = __riscv_vmv_v_x_i16m1(0, partvl);
+        vint16m1_t p1 = p0, p2 = p0, p3 = p0, p4 = p0, p5 = p0, p6 = p0, p7 = p0;
+
+        for (size_t sub = 0; sub < SubCount; ++sub) {
+            const size_t sb = sub * SubStride;  // sub-block offset within the packed block
+            const size_t sa = sub * SubLen;     // sub-block offset within the A block
+            for (size_t k = 0; k < SubHalf;) {
+                const size_t vl = __riscv_vsetvl_e8mf2(SubHalf - k);
+
+                const vint8mf2_t a0_lo = __riscv_vle8_v_i8mf2(qa0 + sa + k, vl);
+                const vint8mf2_t a0_hi = __riscv_vle8_v_i8mf2(qa0 + sa + SubHalf + k, vl);
+                vint8mf2_t a1_lo = a0_lo, a1_hi = a0_hi;
+                if constexpr (MTILE > 1) {
+                    a1_lo = __riscv_vle8_v_i8mf2(qa1 + sa + k, vl);
+                    a1_hi = __riscv_vle8_v_i8mf2(qa1 + sa + SubHalf + k, vl);
+                }
+
+#define SQ4_COL(c, p_r0, p_r1)                                                                         \
+    if constexpr ((c) < NTILE) {                                                                       \
+        const vuint8mf2_t packed = __riscv_vle8_v_u8mf2(qb[c] + sb + k, vl);                           \
+        const vint8mf2_t b_lo = __riscv_vsub_vx_i8mf2(                                                 \
+            __riscv_vreinterpret_v_u8mf2_i8mf2(__riscv_vand_vx_u8mf2(packed, 0x0F, vl)), offset[c], vl \
+        );                                                                                             \
+        const vint8mf2_t b_hi = __riscv_vsub_vx_i8mf2(                                                 \
+            __riscv_vreinterpret_v_u8mf2_i8mf2(__riscv_vsrl_vx_u8mf2(packed, 4, vl)), offset[c], vl    \
+        );                                                                                             \
+        p_r0 = __riscv_vwmacc_vv_i16m1_tu(p_r0, a0_lo, b_lo, vl);                                      \
+        p_r0 = __riscv_vwmacc_vv_i16m1_tu(p_r0, a0_hi, b_hi, vl);                                      \
+        if constexpr (MTILE > 1) {                                                                     \
+            p_r1 = __riscv_vwmacc_vv_i16m1_tu(p_r1, a1_lo, b_lo, vl);                                  \
+            p_r1 = __riscv_vwmacc_vv_i16m1_tu(p_r1, a1_hi, b_hi, vl);                                  \
+        }                                                                                              \
+    }
+
+                if constexpr (MTILE == 1) {
+                    SQ4_COL(0, p0, p0)
+                    SQ4_COL(1, p1, p1) SQ4_COL(2, p2, p2) SQ4_COL(3, p3, p3)
+                        SQ4_COL(4, p4, p4) SQ4_COL(5, p5, p5) SQ4_COL(6, p6, p6) SQ4_COL(7, p7, p7)
+                } else {
+                    SQ4_COL(0, p0, p4)
+                    SQ4_COL(1, p1, p5) SQ4_COL(2, p2, p6) SQ4_COL(3, p3, p7)
+                }
+#undef SQ4_COL
+
+                k += vl;
+            }
+        }
+
+        if constexpr (MTILE == 1) {
+            QI8_FOLD(acc0, p0, s0[0], partvl);
+            QI8_FOLD(acc1, p1, s0[1], partvl);
+            QI8_FOLD(acc2, p2, s0[2], partvl);
+            QI8_FOLD(acc3, p3, s0[3], partvl);
+            if constexpr (NTILE == 8) {
+                QI8_FOLD(acc4, p4, s0[4], partvl);
+                QI8_FOLD(acc5, p5, s0[5], partvl);
+                QI8_FOLD(acc6, p6, s0[6], partvl);
+                QI8_FOLD(acc7, p7, s0[7], partvl);
+            }
+        } else {
+            QI8_FOLD(acc0, p0, s0[0], partvl);
+            QI8_FOLD(acc1, p1, s0[1], partvl);
+            QI8_FOLD(acc2, p2, s0[2], partvl);
+            QI8_FOLD(acc3, p3, s0[3], partvl);
+            QI8_FOLD(acc4, p4, s1[0], partvl);
+            QI8_FOLD(acc5, p5, s1[1], partvl);
+            QI8_FOLD(acc6, p6, s1[2], partvl);
+            QI8_FOLD(acc7, p7, s1[3], partvl);
+        }
+    }
+
+    auto store = [&](size_t r, size_t c, vfloat32m2_t acc) {
+        if (c < n_cols) {
+            C[r * ldc + c] = ReduceSumF32M2(acc, accvl) + (Bias ? Bias[c] : 0.0f);
+        }
+    };
+    if constexpr (MTILE == 1) {
+        store(0, 0, acc0);
+        store(0, 1, acc1);
+        store(0, 2, acc2);
+        store(0, 3, acc3);
+        if constexpr (NTILE == 8) {
+            store(0, 4, acc4);
+            store(0, 5, acc5);
+            store(0, 6, acc6);
+            store(0, 7, acc7);
+        }
+    } else {
+        store(0, 0, acc0);
+        store(0, 1, acc1);
+        store(0, 2, acc2);
+        store(0, 3, acc3);
+        store(1, 0, acc4);
+        store(1, 1, acc5);
+        store(1, 2, acc6);
+        store(1, 3, acc7);
+    }
+}
+
 template <bool HasZeroPoint>
 size_t
 SQ4BitGemmKernel_CompInt8_Impl(
@@ -649,72 +903,53 @@ SQ4BitGemmKernel_CompInt8_Impl(
 )
 {
     constexpr size_t BlkBitWidth = 4;
-
-    // Each B block is unpacked (nibbles -> centered int8) once into a scratch
-    // buffer and reused across an MTILE-row tile; the per-row K-reduction then
-    // runs at LMUL=4 over the whole block. This is far faster than reducing each
-    // 16-element sub-block separately (which is dominated by tiny reductions).
-    constexpr size_t MTILE = 8;
-    constexpr size_t UNPACK_CHUNK = 128;  // <= e8m4 VLMAX at VLEN>=256; bounds the scratch buffer
+    MLAS_UNREFERENCED_PARAMETER(CountK);
 
     const size_t lda = BlockCountK * Q8BlkSize(BlkLen);
     const size_t ldb = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t Q8Sz = Q8BlkSize(BlkLen);
     const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
+    const uint8_t* b_data = reinterpret_cast<const uint8_t*>(QuantBData);
 
-    int8_t qbc[UNPACK_CHUNK];
-
-    for (size_t nn = 0; nn < CountN; ++nn) {
-        const uint8_t* b_data = reinterpret_cast<const uint8_t*>(QuantBData) + nn * ldb;
+    // Walk the column tiles of the packed layout (see CompInt8ColTile). The
+    // driver always hands us a tile-aligned start, and a tile narrower than
+    // CompInt8ColTile can only be the last one of the matrix.
+    for (size_t nn = 0; nn < CountN; nn += CompInt8ColTile) {
+        const size_t width = std::min(CompInt8ColTile, CountN - nn);
+        const uint8_t* b_tile = b_data + nn * ldb;
         const float* b_scale = QuantBScale + nn * BlockCountK;
         const std::byte* b_zp = HasZeroPoint ? QuantBZeroPoint + nn * StrideQuantBZeroPoint : nullptr;
-        const float bias = (Bias != nullptr) ? Bias[nn] : 0.0f;
+        const float* bias = Bias ? Bias + nn : nullptr;
 
-        for (size_t m0 = 0; m0 < CountM; m0 += MTILE) {
-            const size_t mc = std::min(MTILE, CountM - m0);
-            float acc[MTILE] = {};
+        if (CountM == 1) {
+            SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 1, CompInt8ColTile>(
+                BlkLen, BlockCountK, QuantA, lda, b_tile, width, b_scale, b_zp,
+                StrideQuantBZeroPoint, width, C + nn, ldc, bias
+            );
+            continue;
+        }
 
-            for (size_t b = 0; b < BlockCountK; ++b) {
-                const size_t k0 = b * BlkLen;
-                const size_t len = std::min(BlkLen, CountK - k0);
-                const int8_t offset = static_cast<int8_t>(
-                    HasZeroPoint ? static_cast<int>(DequantOffset(b_zp, b, true)) : 8
+        // 2 x 4 sub-tiles over the tile's columns; the tile's B stays cached
+        // across the row pairs.
+        const size_t SubHalf = std::min(CompInt8SubBlkLen, BlkLen) / 2;
+        for (size_t c0 = 0; c0 < width; c0 += 4) {
+            const size_t n_cols = std::min<size_t>(4, width - c0);
+            const uint8_t* b_sub = b_tile + c0 * SubHalf;
+            const float* sub_scale = b_scale + c0 * BlockCountK;
+            const std::byte* sub_zp = HasZeroPoint ? b_zp + c0 * StrideQuantBZeroPoint : nullptr;
+            const float* sub_bias = bias ? bias + c0 : nullptr;
+
+            size_t m = 0;
+            for (; m + 2 <= CountM; m += 2) {
+                SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 2, 4>(
+                    BlkLen, BlockCountK, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
+                    StrideQuantBZeroPoint, n_cols, C + m * ldc + nn + c0, ldc, sub_bias
                 );
-                const uint8_t* qb = b_data + b * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-
-                int32_t isum[MTILE] = {};
-                for (size_t c0 = 0; c0 < len; c0 += UNPACK_CHUNK) {
-                    const size_t clen = std::min(len - c0, UNPACK_CHUNK);
-
-                    // Unpack this chunk of B once (centered int8), reused across the tile.
-                    for (size_t kk = 0; kk < clen; kk += SubBlkLen) {
-                        UnpackQbCentered(qb + (c0 + kk) / 2, std::min(clen - kk, SubBlkLen), offset, qbc + kk);
-                    }
-
-                    for (size_t mi = 0; mi < mc; ++mi) {
-                        const int8_t* qa = Q8BlkData(QuantA + (m0 + mi) * lda + b * Q8Sz) + c0;
-                        vint32m1_t is = __riscv_vmv_s_x_i32m1(0, 1);
-                        for (size_t off = 0; off < clen;) {
-                            const size_t vl = __riscv_vsetvl_e8m4(clen - off);
-                            const vint16m8_t prod = __riscv_vwmul_vv_i16m8(
-                                __riscv_vle8_v_i8m4(qa + off, vl), __riscv_vle8_v_i8m4(qbc + off, vl), vl
-                            );
-                            is = __riscv_vwredsum_vs_i16m8_i32m1(prod, is, vl);
-                            off += vl;
-                        }
-                        isum[mi] += __riscv_vmv_x_s_i32m1_i32(is);
-                    }
-                }
-
-                const float bs = b_scale[b];
-                for (size_t mi = 0; mi < mc; ++mi) {
-                    const float a_scale = Q8BlkScale(QuantA + (m0 + mi) * lda + b * Q8Sz);
-                    acc[mi] += a_scale * bs * static_cast<float>(isum[mi]);
-                }
             }
-
-            for (size_t mi = 0; mi < mc; ++mi) {
-                C[(m0 + mi) * ldc + nn] = acc[mi] + bias;
+            if (m < CountM) {
+                SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 1, 4>(
+                    BlkLen, BlockCountK, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
+                    StrideQuantBZeroPoint, n_cols, C + m * ldc + nn + c0, ldc, sub_bias
+                );
             }
         }
     }
@@ -786,6 +1021,160 @@ RvvQuantizeARowComputeBlkSum_CompInt8_Impl(
     }
 }
 
+// MTILE rows x NTILE columns of the SQ8 BlkSum CompInt8 GEMM. Columns >= n_cols alias column 0.
+template <size_t MTILE, size_t NTILE>
+MLAS_FORCEINLINE void
+SQ8BitGemmKernel_BlkSum_CompInt8_Tile(
+    size_t BlkLen,
+    size_t BlockCountK,
+    const int8_t* a_data,  // first row
+    const float* a_scale,  // first row
+    const float* a_sum,    // first row
+    size_t lda,
+    const int8_t* b_data,  // block 0 of the tile's first column (centered int8)
+    size_t Width,          // columns interleaved in the packed tile
+    const float* b_scale,  // first column
+    const float* b_sum,    // first column
+    size_t n_cols,
+    float* C,
+    size_t ldc,
+    const float* Bias
+)
+{
+    static_assert(MTILE == 1 || MTILE == 2, "unsupported MTILE");
+    static_assert(NTILE == 4 || NTILE == 8, "unsupported NTILE");
+    static_assert(MTILE * NTILE <= 8, "too many accumulators");
+    const size_t accvl = __riscv_vsetvlmax_e32m2();
+    const size_t SubLen = std::min(CompInt8SubBlkLen, BlkLen);
+    const size_t SubHalf = SubLen / 2;
+    const size_t SubCount = BlkLen / SubLen;
+    const size_t SubStride = Width * SubLen;  // bytes between consecutive sub-blocks of a column
+
+    const int8_t* qb[NTILE];  // adjacent columns of a sub-block are SubLen apart
+    const float* bsc[NTILE];
+    const float* bsum[NTILE];
+    for (size_t c = 0; c < NTILE; ++c) {
+        const size_t cc = (c < n_cols) ? c : 0;
+        qb[c] = b_data + cc * SubLen;
+        bsc[c] = b_scale + cc * BlockCountK;
+        bsum[c] = b_sum + cc * BlockCountK;
+    }
+
+    vfloat32m2_t acc0 = __riscv_vfmv_v_f_f32m2(0.0f, accvl);
+    vfloat32m2_t acc1 = acc0, acc2 = acc0, acc3 = acc0, acc4 = acc0, acc5 = acc0, acc6 = acc0, acc7 = acc0;
+
+    for (size_t b = 0; b < BlockCountK; ++b) {
+        const size_t k0 = b * BlkLen;
+        const size_t b0 = b * SubCount * SubStride;
+        const int8_t* qa0 = a_data + k0;
+        const int8_t* qa1 = qa0 + (MTILE > 1 ? lda : 0);
+        const float as0 = a_scale[b];
+        const float as1 = a_scale[(MTILE > 1 ? BlockCountK : 0) + b];
+
+        float s0[NTILE], s1[NTILE];
+        MLAS_UNROLL_LOOP
+        for (size_t c = 0; c < NTILE; ++c) {
+            s0[c] = as0 * bsc[c][b];
+            s1[c] = as1 * bsc[c][b];
+        }
+
+        // One chunk (two halves of 'vl' elements) per int16 partial: the sum of
+        // two 8-bit products is the int16 limit, so widen after every chunk.
+        for (size_t sub = 0; sub < SubCount; ++sub) {
+            const size_t sb = b0 + sub * SubStride;  // sub-block offset within the packed tile
+            const size_t sa = sub * SubLen;          // sub-block offset within the A block
+            for (size_t k = 0; k < SubHalf;) {
+                const size_t vl = __riscv_vsetvl_e8mf2(SubHalf - k);
+
+                const vint8mf2_t a0_lo = __riscv_vle8_v_i8mf2(qa0 + sa + k, vl);
+                const vint8mf2_t a0_hi = __riscv_vle8_v_i8mf2(qa0 + sa + SubHalf + k, vl);
+                vint8mf2_t a1_lo = a0_lo, a1_hi = a0_hi;
+                if constexpr (MTILE > 1) {
+                    a1_lo = __riscv_vle8_v_i8mf2(qa1 + sa + k, vl);
+                    a1_hi = __riscv_vle8_v_i8mf2(qa1 + sa + SubHalf + k, vl);
+                }
+
+#define SQ8_COL(c, acc_r0, acc_r1)                                                  \
+    if constexpr ((c) < NTILE) {                                                    \
+        const vint8mf2_t b_lo = __riscv_vle8_v_i8mf2(qb[c] + sb + k, vl);           \
+        const vint8mf2_t b_hi = __riscv_vle8_v_i8mf2(qb[c] + sb + SubHalf + k, vl); \
+        {                                                                           \
+            vint16m1_t p_ = __riscv_vwmul_vv_i16m1(a0_lo, b_lo, vl);                \
+            p_ = __riscv_vwmacc_vv_i16m1(p_, a0_hi, b_hi, vl);                      \
+            QI8_FOLD(acc_r0, p_, s0[c], vl);                                        \
+        }                                                                           \
+        if constexpr (MTILE > 1) {                                                  \
+            vint16m1_t p_ = __riscv_vwmul_vv_i16m1(a1_lo, b_lo, vl);                \
+            p_ = __riscv_vwmacc_vv_i16m1(p_, a1_hi, b_hi, vl);                      \
+            QI8_FOLD(acc_r1, p_, s1[c], vl);                                        \
+        }                                                                           \
+    }
+
+                // The barriers keep the compiler from hoisting every column's
+                // loads and products to the top of the body, which would need
+                // more than the 32 vector registers and spill an accumulator.
+                if constexpr (MTILE == 1) {
+                    SQ8_COL(0, acc0, acc0)
+                    SQ8_COL(1, acc1, acc1)
+                        MLAS_SCHED_BARRIER
+                            SQ8_COL(2, acc2, acc2) SQ8_COL(3, acc3, acc3)
+                                MLAS_SCHED_BARRIER
+                                    SQ8_COL(4, acc4, acc4) SQ8_COL(5, acc5, acc5)
+                                        MLAS_SCHED_BARRIER
+                                            SQ8_COL(6, acc6, acc6) SQ8_COL(7, acc7, acc7)
+                } else {
+                    SQ8_COL(0, acc0, acc4)
+                    SQ8_COL(1, acc1, acc5)
+                        MLAS_SCHED_BARRIER
+                            SQ8_COL(2, acc2, acc6) SQ8_COL(3, acc3, acc7)
+                }
+#undef SQ8_COL
+
+                k += vl;
+            }
+        }
+    }
+
+    // Zero-point correction: C -= sum_b ABlockSum[b] * QuantBBlkSum[b], one
+    // vector dot over the blocks per output.
+    auto correction = [&](const float* asum, const float* bs) -> float {
+        vfloat32m2_t v = __riscv_vfmv_v_f_f32m2(0.0f, accvl);
+        for (size_t b = 0; b < BlockCountK;) {
+            const size_t vl = __riscv_vsetvl_e32m2(BlockCountK - b);
+            v = __riscv_vfmacc_vv_f32m2_tu(v, __riscv_vle32_v_f32m2(asum + b, vl), __riscv_vle32_v_f32m2(bs + b, vl), vl);
+            b += vl;
+        }
+        return ReduceSumF32M2(v, accvl);
+    };
+
+    auto store = [&](size_t r, size_t c, vfloat32m2_t acc) {
+        if (c < n_cols) {
+            C[r * ldc + c] = ReduceSumF32M2(acc, accvl) - correction(a_sum + r * BlockCountK, bsum[c]) + (Bias ? Bias[c] : 0.0f);
+        }
+    };
+    if constexpr (MTILE == 1) {
+        store(0, 0, acc0);
+        store(0, 1, acc1);
+        store(0, 2, acc2);
+        store(0, 3, acc3);
+        if constexpr (NTILE == 8) {
+            store(0, 4, acc4);
+            store(0, 5, acc5);
+            store(0, 6, acc6);
+            store(0, 7, acc7);
+        }
+    } else {
+        store(0, 0, acc0);
+        store(0, 1, acc1);
+        store(0, 2, acc2);
+        store(0, 3, acc3);
+        store(1, 0, acc4);
+        store(1, 1, acc5);
+        store(1, 2, acc6);
+        store(1, 3, acc7);
+    }
+}
+
 size_t
 SQ8BitGemmKernel_BlkSum_CompInt8_Impl(
     size_t BlkLen,
@@ -804,50 +1193,63 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Impl(
     const float* QuantBBlkSum
 )
 {
-    // int8(A) x uint8(B) block-sum kernel. The K-reduction runs at LMUL=4
-    // (128 int8 elems per vwmulsu), which measurably beats LMUL=1 + row tiling
-    // on this hardware: the kernel is bound by the widening-multiply throughput,
-    // so cutting per-chunk instruction/loop overhead is the effective lever.
+    // int8(A) x uint8(B) block-sum kernel. Per block:
+    //   C += aScale*bScale*sum_i(qa_i * qbRaw_i)  -  ABlockSum * (bScale*bZeroPoint)
+    MLAS_UNREFERENCED_PARAMETER(CountK);
     const size_t lda = BlockCountK * BlkLen;  // int8 A data per row
     const size_t ldb = BlockCountK * BlkLen;  // uint8 B data per column
 
     const int8_t* a_data = reinterpret_cast<const int8_t*>(QuantA);
-    const uint8_t* b_data = reinterpret_cast<const uint8_t*>(QuantBData);
+    const int8_t* b_data = reinterpret_cast<const int8_t*>(QuantBData);
 
-    for (size_t cc = 0; cc < CountN; ++cc) {
-        const uint8_t* qb_col = b_data + cc * ldb;
-        const float* bscale_col = QuantBScale + cc * BlockCountK;
-        const float* bblksum_col = QuantBBlkSum + cc * BlockCountK;
-        const float bias = (Bias != nullptr) ? Bias[cc] : 0.0f;
+    // Walk the column tiles of the packed layout (see CompInt8ColTile).
+    for (size_t nn = 0; nn < CountN; nn += CompInt8ColTile) {
+        const size_t width = std::min(CompInt8ColTile, CountN - nn);
+        const int8_t* b_tile = b_data + nn * ldb;
+        const float* b_scale = QuantBScale + nn * BlockCountK;
+        const float* b_sum = QuantBBlkSum + nn * BlockCountK;
+        const float* bias = Bias ? Bias + nn : nullptr;
 
-        for (size_t mm = 0; mm < CountM; ++mm) {
-            const int8_t* qa_row = a_data + mm * lda;
-            const float* ascale_row = QuantAScale + mm * BlockCountK;
-            const float* asum_row = ABlockSum + mm * BlockCountK;
+        if (CountM == 1) {
+            SQ8BitGemmKernel_BlkSum_CompInt8_Tile<1, CompInt8ColTile>(
+                BlkLen, BlockCountK, a_data, QuantAScale, ABlockSum, lda, b_tile, width,
+                b_scale, b_sum, width, C + nn, ldc, bias
+            );
+            continue;
+        }
 
-            float acc = 0.0f;
-            for (size_t b = 0; b < BlockCountK; ++b) {
-                const size_t len = std::min(BlkLen, CountK - b * BlkLen);
-                const uint8_t* qb = qb_col + b * BlkLen;
-                const int8_t* qa = qa_row + b * BlkLen;
+        const size_t SubLen = std::min(CompInt8SubBlkLen, BlkLen);
+        for (size_t c0 = 0; c0 < width; c0 += 4) {
+            const size_t n_cols = std::min<size_t>(4, width - c0);
+            const int8_t* b_sub = b_tile + c0 * SubLen;
+            const float* sub_scale = b_scale + c0 * BlockCountK;
+            const float* sub_sum = b_sum + c0 * BlockCountK;
+            const float* sub_bias = bias ? bias + c0 : nullptr;
 
-                vint32m1_t is = __riscv_vmv_s_x_i32m1(0, 1);
-                for (size_t off = 0; off < len;) {
-                    const size_t vl = __riscv_vsetvl_e8m4(len - off);
-                    const vint16m8_t prod = __riscv_vwmulsu_vv_i16m8(
-                        __riscv_vle8_v_i8m4(qa + off, vl), __riscv_vle8_v_u8m4(qb + off, vl), vl
-                    );
-                    is = __riscv_vwredsum_vs_i16m8_i32m1(prod, is, vl);
-                    off += vl;
-                }
-                acc += ascale_row[b] * bscale_col[b] * static_cast<float>(__riscv_vmv_x_s_i32m1_i32(is)) - asum_row[b] * bblksum_col[b];
+            size_t m = 0;
+            for (; m + 2 <= CountM; m += 2) {
+                SQ8BitGemmKernel_BlkSum_CompInt8_Tile<2, 4>(
+                    BlkLen, BlockCountK, a_data + m * lda, QuantAScale + m * BlockCountK,
+                    ABlockSum + m * BlockCountK, lda, b_sub, width, sub_scale, sub_sum, n_cols,
+                    C + m * ldc + nn + c0, ldc, sub_bias
+                );
             }
-            C[mm * ldc + cc] = acc + bias;
+            if (m < CountM) {
+                SQ8BitGemmKernel_BlkSum_CompInt8_Tile<1, 4>(
+                    BlkLen, BlockCountK, a_data + m * lda, QuantAScale + m * BlockCountK,
+                    ABlockSum + m * BlockCountK, lda, b_sub, width, sub_scale, sub_sum, n_cols,
+                    C + m * ldc + nn + c0, ldc, sub_bias
+                );
+            }
         }
     }
 
     return CountM;
 }
+
+#undef QI8_FOLD
+#undef MLAS_UNROLL_LOOP
+#undef MLAS_SCHED_BARRIER
 
 #endif  // MLAS_USE_RVV
 

@@ -177,17 +177,35 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     }
   }
 #elif defined(MLAS_TARGET_RISCV64)
-  // The RVV dispatch uses a plain layout private to itself: weights [N][ldb],
-  // scales [N][BlockCountK], block-sums [N][BlockCountK] with block-sum =
-  // scale * zeroPoint (zeroPoint defaults to 128). These references mirror that
-  // layout so the prepack self-consistency check matches what the RVV kernels
-  // consume. End-to-end correctness is covered separately by SQ8BitGemmKernel.
+  // The RVV dispatch uses a layout private to itself: weights are centered to
+  // int8 (raw ^ 0x80) and stored in column tiles of 8, K-blocks outermost, then
+  // 32-element sub-blocks, then the tile's columns interleaved
+  // ([tile][BlockCountK][SubBlkCount][width][SubBlkLen], the last tile narrower
+  // when N % 8 != 0); scales [N][BlockCountK]; block-sums
+  // [N][BlockCountK] with block-sum = scale * (zeroPoint - 128) (zeroPoint
+  // defaults to 128). These references mirror that layout so the prepack
+  // self-consistency check matches what the RVV kernels consume. End-to-end
+  // correctness is covered separately by SQ8BitGemmKernel.
+  static constexpr size_t kRvvColTile = 8;
+  static constexpr size_t kRvvSubBlkLen = 32;
+
+  template <size_t K, size_t N, size_t BlkLen>
+  static size_t RvvPackedIndex(size_t n, size_t k) {
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    constexpr size_t SubLen = std::min(kRvvSubBlkLen, BlkLen);
+    constexpr size_t SubCount = BlkLen / SubLen;
+    const size_t tile = n / kRvvColTile, col = n % kRvvColTile;
+    const size_t width = std::min(kRvvColTile, N - tile * kRvvColTile);
+    const size_t b = k / BlkLen, sub = (k % BlkLen) / SubLen, i = k % SubLen;
+    return tile * kRvvColTile * BlkCount * BlkLen + ((b * SubCount + sub) * width + col) * SubLen + i;
+  }
+
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
   void PrepackB(const uint8_t* src, uint8_t* dst, float* /*blkUnsignedQuantAZeroPointCorrection*/) {
     constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
     for (size_t n = 0; n < N; ++n) {
       for (size_t k = 0; k < K; ++k) {
-        dst[n * ldb + k] = src[n * ldb + k];
+        dst[RvvPackedIndex<K, N, BlkLen>(n, k)] = src[n * ldb + k] ^ 0x80;
       }
     }
   }
@@ -200,17 +218,17 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         const size_t idx = n * BlkCount + k;
         const float zpv = zp ? static_cast<float>(zp[idx]) : 128.f;
         packedScale[idx] = scale[idx];
-        blkSum[idx] = scale[idx] * zpv;
+        blkSum[idx] = scale[idx] * (zpv - 128.f);
       }
     }
   }
 
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
   void CheckB(const uint8_t* packedB, const uint8_t* refB) {
-    constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
     for (size_t n = 0; n < N; ++n) {
       for (size_t k = 0; k < K; ++k) {
-        ASSERT_EQ(packedB[n * ldb + k], refB[n * ldb + k]) << " at n=" << n << " k=" << k;
+        const size_t idx = RvvPackedIndex<K, N, BlkLen>(n, k);
+        ASSERT_EQ(packedB[idx], refB[idx]) << " at n=" << n << " k=" << k;
       }
     }
   }
