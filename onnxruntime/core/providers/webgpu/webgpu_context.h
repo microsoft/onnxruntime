@@ -371,7 +371,7 @@ class WebGpuContext final {
         query_type_{TimestampQueryType::None},
         preserve_device_{preserve_device},
         max_storage_buffer_binding_size_{ResolveMaxStorageBufferBindingSize(
-          max_storage_buffer_binding_size, test_only_max_storage_buffer_binding_size)} {}
+            max_storage_buffer_binding_size, test_only_max_storage_buffer_binding_size)} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   void Initialize(const WebGpuContextConfig& config);
