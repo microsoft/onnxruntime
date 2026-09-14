@@ -21,21 +21,66 @@ constexpr GQAWorkspaceStatus Unavailable(const char* message) noexcept {
   return {GQAWorkspaceError::Unavailable, message};
 }
 
-bool IsZero(const GQAXqaWorkspaceRecipe& recipe) noexcept {
-  return recipe.total_backend_bytes == 0;
+bool IsDefault(const GQAXqaWorkspaceRecipe& recipe) noexcept {
+  return recipe.sequence_count == 0 &&
+         recipe.subsequences_per_sequence == 0 &&
+         recipe.subsequence_count == 0 &&
+         recipe.m_tile_size == 0 &&
+         recipe.semaphore_offset_bytes == 0 &&
+         recipe.semaphore_bytes == 0 &&
+         recipe.semaphore_aligned_bytes == 0 &&
+         recipe.row_max_offset_bytes == 0 &&
+         recipe.row_max_bytes == 0 &&
+         recipe.row_sum_offset_bytes == 0 &&
+         recipe.row_sum_bytes == 0 &&
+         recipe.output_accumulator_offset_bytes == 0 &&
+         recipe.output_accumulator_bytes == 0 &&
+         recipe.internal_scratch_bytes == 0 &&
+         recipe.rotary_q_offset_bytes == 0 &&
+         recipe.rotary_q_bytes == 0 &&
+         recipe.rotary_k_offset_bytes == 0 &&
+         recipe.rotary_k_bytes == 0 &&
+         recipe.dynamic_head_sink_offset_bytes == 0 &&
+         recipe.dynamic_head_sink_bytes == 0 &&
+         recipe.total_backend_bytes == 0;
 }
 
-bool IsZero(const GQAFlashWorkspaceRecipe& recipe) noexcept {
-  return recipe.total_backend_bytes == 0;
+bool IsDefault(const GQAFlashWorkspaceRecipe& recipe) noexcept {
+  return recipe.split_heuristic_head_count == 0 &&
+         recipe.split_heuristic_kv_length == 0 &&
+         recipe.selected_split_count == 1 &&
+         recipe.runtime_num_splits == 0 &&
+         recipe.rounded_head_size == 0 &&
+         recipe.softmax_lse_offset_bytes == 0 &&
+         recipe.softmax_lse_bytes == 0 &&
+         recipe.softmax_lse_accumulator_offset_bytes == 0 &&
+         recipe.softmax_lse_accumulator_bytes == 0 &&
+         recipe.output_accumulator_offset_bytes == 0 &&
+         recipe.output_accumulator_bytes == 0 &&
+         recipe.total_backend_bytes == 0;
 }
 
-bool IsZero(const GQAMemoryEfficientWorkspaceRecipe& recipe) noexcept {
-  return recipe.total_backend_bytes == 0 &&
-         recipe.effective_kv_cache_capacity == 0;
+bool IsDefault(const GQAMemoryEfficientWorkspaceRecipe& recipe) noexcept {
+  return recipe.effective_kv_cache_capacity == 0 &&
+         recipe.expanded_key_offset_bytes == 0 &&
+         recipe.expanded_key_bytes == 0 &&
+         recipe.expanded_value_offset_bytes == 0 &&
+         recipe.expanded_value_bytes == 0 &&
+         recipe.output_accumulator_offset_bytes == 0 &&
+         recipe.output_accumulator_bytes == 0 &&
+         recipe.total_backend_bytes == 0;
 }
 
-bool IsZero(const GQAUnfusedWorkspaceRecipe& recipe) noexcept {
-  return recipe.total_backend_bytes == 0;
+bool IsDefault(const GQAUnfusedWorkspaceRecipe& recipe) noexcept {
+  return recipe.q_bnsh_offset_bytes == 0 &&
+         recipe.q_bnsh_bytes == 0 &&
+         recipe.y_bnsh_offset_bytes == 0 &&
+         recipe.y_bnsh_bytes == 0 &&
+         recipe.qk_offset_bytes == 0 &&
+         recipe.qk_bytes == 0 &&
+         recipe.softmax_offset_bytes == 0 &&
+         recipe.softmax_bytes == 0 &&
+         recipe.total_backend_bytes == 0;
 }
 
 }  // namespace
@@ -109,8 +154,10 @@ GQACompleteWorkspaceResult GetGQACompleteWorkspaceRecipe(
       break;
     }
     case GQABackend::Cudnn:
-    default:
       result.status = Unavailable("The selected GQA backend has no graph-free recipe.");
+      return result;
+    default:
+      result.status = Invalid("The selected GQA backend is invalid.");
       return result;
   }
 
@@ -140,36 +187,37 @@ GQAWorkspaceStatus ValidateGQACompleteWorkspaceRecipe(
   size_t selected_backend_bytes = 0;
   switch (recipe.backend) {
     case GQABackend::Xqa:
-      if (!IsZero(recipe.flash) || !IsZero(recipe.memory_efficient) || !IsZero(recipe.unfused)) {
+      if (!IsDefault(recipe.flash) || !IsDefault(recipe.memory_efficient) || !IsDefault(recipe.unfused)) {
         return Invalid("A complete XQA recipe exposes another backend recipe.");
       }
       status = ValidateGQAXqaWorkspaceRecipe(recipe.xqa);
       selected_backend_bytes = recipe.xqa.total_backend_bytes;
       break;
     case GQABackend::Flash:
-      if (!IsZero(recipe.xqa) || !IsZero(recipe.memory_efficient) || !IsZero(recipe.unfused)) {
+      if (!IsDefault(recipe.xqa) || !IsDefault(recipe.memory_efficient) || !IsDefault(recipe.unfused)) {
         return Invalid("A complete Flash recipe exposes another backend recipe.");
       }
       status = ValidateGQAFlashWorkspaceRecipe(recipe.flash);
       selected_backend_bytes = recipe.flash.total_backend_bytes;
       break;
     case GQABackend::MemoryEfficient:
-      if (!IsZero(recipe.xqa) || !IsZero(recipe.flash) || !IsZero(recipe.unfused)) {
+      if (!IsDefault(recipe.xqa) || !IsDefault(recipe.flash) || !IsDefault(recipe.unfused)) {
         return Invalid("A complete MEA recipe exposes another backend recipe.");
       }
       status = ValidateGQAMemoryEfficientWorkspaceRecipe(recipe.memory_efficient);
       selected_backend_bytes = recipe.memory_efficient.total_backend_bytes;
       break;
     case GQABackend::Unfused:
-      if (!IsZero(recipe.xqa) || !IsZero(recipe.flash) || !IsZero(recipe.memory_efficient)) {
+      if (!IsDefault(recipe.xqa) || !IsDefault(recipe.flash) || !IsDefault(recipe.memory_efficient)) {
         return Invalid("A complete unfused recipe exposes another backend recipe.");
       }
       status = ValidateGQAUnfusedWorkspaceRecipe(recipe.unfused);
       selected_backend_bytes = recipe.unfused.total_backend_bytes;
       break;
     case GQABackend::Cudnn:
-    default:
       return Unavailable("A complete cuDNN GQA workspace recipe is unavailable.");
+    default:
+      return Invalid("The complete GQA backend is invalid.");
   }
   if (!status.IsOK()) return status;
   if (selected_backend_bytes != recipe.backend_bytes) {

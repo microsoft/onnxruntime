@@ -315,7 +315,7 @@ struct GQACompleteWorkspaceRecipe {
   GQAPreparationRecipe preparation;
   size_t backend_offset_bytes = 0;
   size_t backend_bytes = 0;
-  // Only the recipe matching backend is populated; all others remain zero.
+  // Only the recipe matching backend is populated; all others remain default-initialized.
   GQAXqaWorkspaceRecipe xqa;
   GQAFlashWorkspaceRecipe flash;
   GQAMemoryEfficientWorkspaceRecipe memory_efficient;
