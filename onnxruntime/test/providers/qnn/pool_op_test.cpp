@@ -118,7 +118,7 @@ TEST_F(QnnCPUBackendTests, MaxPool_Large_Input) {
                 ExpectedEPNodeAssignment::All);
 }
 
-// Fails on QNN v2.17, QNN.graphAddNode() failed for node `MaxPool` of type `PoolMax2d` with error code 6000
+// QNN CPU doesn't support ceil rounding mode. Enable this UT when QNN CPU support this case.
 TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Ceil) {
   RunPoolOpTest("MaxPool",
                 TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
@@ -132,7 +132,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Ceil) {
                 ExpectedEPNodeAssignment::All);
 }
 
-// Fails on QNN v2.17, QNN.graphAddNode() failed for node `MaxPool` of type `PoolMax2d` with error code 6000
+// QNN CPU doesn't support ceil rounding mode. Enable this UT when QNN CPU support this case.
 TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Large_Input2_Ceil) {
   RunPoolOpTest("MaxPool",
                 TestInputDef<float>({1, 128, 16, 113}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
