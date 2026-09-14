@@ -1464,6 +1464,15 @@ constexpr const char* qMoE_ver1_doc = R"DOC(
       When swiglu_fusion=0, two GEMMs are not fused, and they are FC1 and FC3 in the inputs.
       When swiglu_fusion=1, two GEMMs are fused so that g and l are computed in a single GEMM (FC1), and g and l are interleaved on each row of size 2 * inter_size.
       When swiglu_fusion=2, two GEMMs are fused, and g and l are concatenated on each row.
+
+      The GeGLU (GELU-Gated Linear Unit) activation function is like SwiGLU but uses a GELU gate instead of Swish:
+         g = xW + b
+         l = xV + c
+         G = clamp(g, max=limit)
+         L = clamp(l, min=-limit, max=limit)
+         geglu = gelu(alpha * G) * (L + beta)
+      where gelu is the tanh approximation gelu(z) = 0.5 * z * (1 + tanh(0.7978845608 * (z + 0.044715 * z^3))), matching HF gelu_pytorch_tanh.
+      GeGLU on CPU QMoE is only supported with the interleaved fused layout, so swiglu_fusion=1 is required: g and l are interleaved on each row of size 2 * inter_size (g at even positions, l at odd positions). The swiglu_limit attribute is reused as the clamp limit for GeGLU.
       )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -1471,7 +1480,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(qMoE_ver1_doc)
         .Attr("activation_type",
-              "Activation function to use. Choose from relu, gelu, silu, swiglu and identity. Default is relu",
+              "Activation function to use. Choose from relu, gelu, silu, swiglu, geglu and identity. Default is relu",
               AttributeProto::STRING,
               std::string("relu"))
         .Attr("k",

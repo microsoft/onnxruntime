@@ -867,8 +867,8 @@ template <typename T>
 QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info),
       MoEBaseCPU(op_kernel_info) {
-  ORT_ENFORCE(activation_type_ != ActivationType::SwiGLU || swiglu_fusion_ == 1,
-              "CPU QMoE only supports interleaved SwiGLU format. Please set swiglu_fusion=1.");
+  ORT_ENFORCE((activation_type_ != ActivationType::SwiGLU && activation_type_ != ActivationType::GeGLU) || swiglu_fusion_ == 1,
+              "CPU QMoE only supports interleaved SwiGLU/GeGLU format. Please set swiglu_fusion=1.");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "Attribute 'expert_weight_bits' must be 2, 4, or 8.");
@@ -925,7 +925,7 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       fc2_shape_ptr, inputs.fc2_experts_bias, inputs.fc2_scales, inputs.fc2_zero_points,
       fc3_shape_ptr, inputs.fc3_experts_bias, inputs.fc3_scales, inputs.fc3_zero_points,
       8 / expert_weight_bits_,
-      activation_type_ == ActivationType::SwiGLU,
+      (activation_type_ == ActivationType::SwiGLU || activation_type_ == ActivationType::GeGLU),
       block_size_));
 
   if (fc3_shape_ptr || inputs.fc3_experts_bias || inputs.fc3_scales || inputs.fc3_zero_points) {
@@ -1594,7 +1594,14 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
 
     fc1_gemm_done:
 
-      if (activation_type_ == ActivationType::SwiGLU) {
+      auto apply_gated_activation = [&](const float* in_row, float* out_row) {
+        if (activation_type_ == ActivationType::GeGLU) {
+          ApplyGeGLUActivation(in_row, out_row, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+        } else {
+          ApplySwiGLUActivation(in_row, out_row, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+        }
+      };
+      if (activation_type_ == ActivationType::SwiGLU || activation_type_ == ActivationType::GeGLU) {
         const int64_t activation_threshold = std::max(int64_t{4}, 256 / std::max(int64_t{1}, inter_size));
         if (num_expert_tokens >= activation_threshold && inner_tp != nullptr) {
           const int64_t activation_block_size = std::max(int64_t{1}, std::min(int64_t{64}, activation_threshold));
@@ -1608,21 +1615,21 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
               for (int64_t i = start_token; i < end_token; ++i) {
                 const float* C1_token = C1 + i * fc1_out_features;
                 float* A2_token = A2 + i * inter_size;
-                ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+                apply_gated_activation(C1_token, A2_token);
               }
             });
           } else {
             for (int64_t i = 0; i < num_expert_tokens; ++i) {
               const float* C1_token = C1 + i * fc1_out_features;
               float* A2_token = A2 + i * inter_size;
-              ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+              apply_gated_activation(C1_token, A2_token);
             }
           }
         } else {
           for (int64_t i = 0; i < num_expert_tokens; ++i) {
             const float* C1_token = C1 + i * fc1_out_features;
             float* A2_token = A2 + i * inter_size;
-            ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+            apply_gated_activation(C1_token, A2_token);
           }
         }
       } else {
