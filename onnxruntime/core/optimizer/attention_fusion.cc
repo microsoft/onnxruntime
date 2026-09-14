@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/narrow.h"
 #include "core/graph/graph_utils.h"
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
@@ -749,25 +750,25 @@ static NodeArg& MergeQkvWeights(Graph& graph, int64_t hidden_size,
     const float* k_weight = k_initializer.data<float>();
     const float* v_weight = v_initializer.data<float>();
     std::vector<float> result;
-    result.reserve(gsl::narrow<size_t>(element_count));
+    result.reserve(narrow<size_t>(element_count));
     if (is_matmul) {
       optimizer_utils::MergeMatMulWeightsByRow<float>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size, hidden_size);
     } else {
       optimizer_utils::MergeWeights1d<float>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size);
     }
-    utils::SetRawDataInTensorProto(initializer, result.data(), gsl::narrow<size_t>(element_count) * sizeof(float));
+    utils::SetRawDataInTensorProto(initializer, result.data(), narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* q_weight = q_initializer.data<MLFloat16>();
     const MLFloat16* k_weight = k_initializer.data<MLFloat16>();
     const MLFloat16* v_weight = v_initializer.data<MLFloat16>();
     std::vector<MLFloat16> result;
-    result.reserve(gsl::narrow<size_t>(element_count));
+    result.reserve(narrow<size_t>(element_count));
     if (is_matmul) {
       optimizer_utils::MergeMatMulWeightsByRow<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size, hidden_size);
     } else {
       optimizer_utils::MergeWeights1d<MLFloat16>(q_weight, k_weight, v_weight, result, hidden_size, hidden_size);
     }
-    utils::SetRawDataInTensorProto(initializer, result.data(), gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
+    utils::SetRawDataInTensorProto(initializer, result.data(), narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   return graph_utils::AddInitializerWithOrtValue(graph, initializer);

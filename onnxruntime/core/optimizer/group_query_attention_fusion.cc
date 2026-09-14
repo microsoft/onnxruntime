@@ -4,6 +4,7 @@
 #include <array>
 #include <limits>
 
+#include "core/common/narrow.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/group_query_attention_fusion.h"
 #include "core/graph/graph_utils.h"
@@ -45,7 +46,7 @@ static NodeArg& MergeQkvWeightsForMatMul(Graph& graph,
 
   int64_t element_count = input_hidden_size * output_hidden_size;
   std::vector<MLFloat16> merged_qkv_weight;
-  merged_qkv_weight.reserve(gsl::narrow<size_t>(element_count));
+  merged_qkv_weight.reserve(narrow<size_t>(element_count));
 
   optimizer_utils::MergeMatMulWeightsByRow(q_data, k_data, v_data, merged_qkv_weight, input_hidden_size, q_hidden_size, kv_hidden_size);
   utils::SetRawDataInTensorProto(qkv_weight_initializer, merged_qkv_weight.data(), element_count * sizeof(MLFloat16));
@@ -120,11 +121,11 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
 
   int64_t element_count = output_hidden_size * blocks * block_size;
   std::vector<uint8_t> merged_qkv_weight;
-  merged_qkv_weight.reserve(gsl::narrow<size_t>(element_count));
+  merged_qkv_weight.reserve(narrow<size_t>(element_count));
 
   int64_t scale_elements_count = output_hidden_size * blocks;
   std::vector<MLFloat16> merged_qkv_scale;
-  merged_qkv_scale.reserve(gsl::narrow<size_t>(scale_elements_count));
+  merged_qkv_scale.reserve(narrow<size_t>(scale_elements_count));
 
   optimizer_utils::MergeMatMulWeightsByBlocks(q_data, k_data, v_data, merged_qkv_weight, q_hidden_size, kv_hidden_size, blocks, block_size);
   optimizer_utils::MergeMatMulWeightsByBlocks(q_scale_data, k_scale_data, v_scale_data, merged_qkv_scale, q_hidden_size, kv_hidden_size, blocks, 1);
@@ -157,7 +158,7 @@ static std::vector<NodeArg*> MergeQkvWeightsForMatMulNBits(
     qkv_zp_initializer.set_data_type(q_zero_point_tensor->data_type());
 
     std::vector<uint8_t> merged_qkv_zp;
-    merged_qkv_zp.reserve(gsl::narrow<size_t>(zp_elements_count));
+    merged_qkv_zp.reserve(narrow<size_t>(zp_elements_count));
 
     optimizer_utils::MergeMatMulWeightsByBlocks(q_zero_points_data, k_zero_points_data, v_zero_points_data,
                                                 merged_qkv_zp, q_hidden_size, kv_hidden_size, zero_point_blocks, 1);
