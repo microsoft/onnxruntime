@@ -2799,9 +2799,8 @@ struct OrtEpFactory {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \remarks Called during execution provider library registration. The OrtEpDevice instances returned are added to
-   *          the environment after this returns, so an implementation must not depend on the environment's registered
-   *          execution provider devices. OrtApi::GetEpDevices will not include this factory's devices, and whether it
-   *          includes devices from other libraries depends on registration order.
+   *          the environment after this returns. An implementation should not depend on other OrtEpDevices returned by
+   *          OrtApi::GetEpDevices since those depend on the execution provider library registration order.
    *
    *          Environment configuration entries are populated before any library is registered, so
    *          OrtEpApi::GetEnvConfigEntries may be called from this function.
