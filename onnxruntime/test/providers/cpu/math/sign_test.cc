@@ -143,6 +143,17 @@ TEST(MathOpTest, Sign_int64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
+// Regression test for a broken SSE2 int64 less-than compare in Eigen that made Sign
+// return the wrong result for values above INT32_MAX (e.g. 2147483649 == 2^31 + 1).
+TEST(MathOpTest, Sign_int64_above_int32_max) {
+  OpTester test("Sign", 13);
+
+  std::vector<int64_t> input_dims{2};
+  test.AddInput<int64_t>("input", input_dims, {2147483649, 2147483649});
+  test.AddOutput<int64_t>("output", input_dims, {1, 1});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+}
+
 TEST(MathOpTest, Sign_float) {
   using namespace test_sign_internal;
   OpTester test("Sign", 13);
