@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <cmath>
 #include <cstring>
+#include <algorithm>
 
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -403,11 +404,12 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   int quantize_axis = (quantize_axis_ >= 0) ? quantize_axis_ : quantize_axis_ + x_rank;
 
   // block_size == 0 (only valid for FP8/FP4 data) means the whole quantize_axis dimension is a
-  // single block, i.e. one scale per row.
+  // single block, i.e. one scale per row. Clamp to at least 1 so an empty (0-sized) quantize
+  // axis doesn't cause a divide-by-zero below.
   int64_t effective_block_size = block_size_;
   if (effective_block_size == 0) {
     ORT_RETURN_IF_NOT(is_fp_quantized, "block_size=0 is only valid for FP8/FP4 data.");
-    effective_block_size = x_shape[quantize_axis];
+    effective_block_size = std::max<int64_t>(x_shape[quantize_axis], 1);
   }
 
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() == scales_rank,
@@ -497,15 +499,12 @@ const std::vector<MLDataType>& GatherBlockQuantizedT1Constraint() {
         DataTypeImpl::GetTensorType<Int4x2>(),
         DataTypeImpl::GetTensorType<UInt4x2>(),
         DataTypeImpl::GetTensorType<uint8_t>()};
-#if !defined(DISABLE_FLOAT8_TYPES)
-    t.push_back(DataTypeImpl::GetTensorType<Float8E4M3FN>());
-    t.push_back(DataTypeImpl::GetTensorType<Float8E4M3FNUZ>());
-    t.push_back(DataTypeImpl::GetTensorType<Float8E5M2>());
-    t.push_back(DataTypeImpl::GetTensorType<Float8E5M2FNUZ>());
-#endif  // !defined(DISABLE_FLOAT8_TYPES)
-#if !defined(DISABLE_FLOAT4_TYPES)
-    t.push_back(DataTypeImpl::GetTensorType<Float4E2M1x2>());
-#endif  // !defined(DISABLE_FLOAT4_TYPES)
+    // NOTE: FP8/FP4 types are intentionally not registered here yet. The dequantization LUT and
+    // reinterpret-as-packed-integer plumbing above are already in place, but the shader path for
+    // these types has not been validated on real WebGPU hardware; GatherBlockQuantizedOpTest
+    // deliberately excludes this EP (kFpExcludedProviders) for its FP8/FP4 cases. Once the shader
+    // path is verified, add DataTypeImpl::GetTensorType<Float8E4M3FN/.../Float4E2M1x2>() here and
+    // remove the corresponding test exclusions.
     return t;
   }();
   return types;
