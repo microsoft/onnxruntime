@@ -108,6 +108,146 @@ def update_init_py(file_path: Path, new_version: str):
         print("Version is already up to date.")
 
 
+def _insert_end_of_version_marker(
+    file_path: Path, struct_var_regex: str, old_api_ver: int, end_marker_suffix: str = "",
+):
+    """Inserts an 'End of Version N' marker before the struct's closing };."""
+    content = file_path.read_text()
+    name = file_path.name
+
+    struct_match = re.search(struct_var_regex, content)
+    if not struct_match:
+        print(f"  [{name}] Could not find struct declaration. Skipping.")
+        return
+
+    close_match = re.search(r"^};", content[struct_match.start():], re.MULTILINE)
+    if not close_match:
+        print(f"  [{name}] Could not find struct closing " + "'};'. Skipping.")
+        return
+
+    struct_body = content[struct_match.start():struct_match.start() + close_match.start()]
+
+    markers = list(re.finditer(r"//\s*End of Version (\d+)", struct_body))
+    if not markers:
+        print(f"  [{name}] No 'End of Version' markers found. Skipping.")
+        return
+
+    last_marker_ver = int(markers[-1].group(1))
+    if last_marker_ver >= old_api_ver:
+        print(f"  [{name}] Version {old_api_ver} already finalized (last marker: v{last_marker_ver}).")
+        return
+
+    new_entries = re.findall(r"&\w+::(\w+)", struct_body[markers[-1].end():])
+    if not new_entries:
+        print(f"  [{name}] No new entries after 'End of Version {last_marker_ver}'. Skipping.")
+        return
+
+    print(f"  [{name}] Capping {len(new_entries)} new entries as version {old_api_ver}.")
+    marker_line = f"    // End of Version {old_api_ver} - DO NOT MODIFY ABOVE{end_marker_suffix}\n"
+    close_abs_pos = struct_match.start() + close_match.start()
+    content = content[:close_abs_pos] + marker_line + content[close_abs_pos:]
+    file_path.write_text(content)
+
+
+def _insert_api_size_assert(file_path: Path, struct_type: str, struct_var_regex: str, old_api_ver: int):
+    """Counts all API entries in the struct and adds a static_assert for the version size."""
+    content = file_path.read_text()
+    name = file_path.name
+
+    struct_match = re.search(struct_var_regex, content)
+    if not struct_match:
+        return
+
+    close_match = re.search(r"^};", content[struct_match.start():], re.MULTILINE)
+    if not close_match:
+        return
+
+    struct_body = content[struct_match.start():struct_match.start() + close_match.start()]
+
+    marker = re.search(rf"//\s*End of Version {old_api_ver}\b", struct_body)
+    if not marker:
+        return
+
+    all_entries = re.findall(r"&\w+::(\w+)", struct_body[:marker.start()])
+    if not all_entries:
+        return
+
+    last_entry_name = all_entries[-1]
+    last_offset = len(all_entries) - 1
+
+    assert_matches = list(re.finditer(
+        rf"static_assert\(offsetof\({re.escape(struct_type)},.*?;\n", content, re.DOTALL,
+    ))
+    if assert_matches:
+        insert_pos = assert_matches[-1].end()
+        assert_text = (
+            f"static_assert(offsetof({struct_type}, {last_entry_name})"
+            f" / sizeof(void*) == {last_offset},\n"
+            f'              "Size of version {old_api_ver} API cannot change");\n'
+        )
+        print(f"  [{name}] Inserting static_assert for {last_entry_name} at offset {last_offset}.")
+        content = content[:insert_pos] + assert_text + content[insert_pos:]
+        file_path.write_text(content)
+    else:
+        print(f"  [{name}] Warning: No existing static_assert for {struct_type}. Skipping.")
+
+
+def update_onnxruntime_c_api_cc(file_path: Path, new_version: str):
+    """Updates version references in onnxruntime_c_api.cc."""
+    print(f"\nChecking for version updates...")
+    if not file_path.exists():
+        print(f"Warning: File not found at '{file_path}'. Skipping.")
+        return
+    content = file_path.read_text()
+    new_api_ver = new_version.split(".")[1]
+    old_api_ver = int(new_api_ver) - 1
+
+    # Rename ort_api_1_to_XX to match the new version
+    decl_match = re.search(r"static constexpr OrtApi ort_api_1_to_(\d+)\b", content)
+    if decl_match:
+        print(f"Renaming 'ort_api_1_to_{decl_match.group(1)}' -> 'ort_api_1_to_{new_api_ver}'...")
+        content = re.sub(rf"\bort_api_1_to_{decl_match.group(1)}\b", f"ort_api_1_to_{new_api_ver}", content)
+
+    print(f"Updating ORT_VERSION static_assert to '{new_version}'...")
+    content = re.sub(
+        r'(static_assert\(std::string_view\(ORT_VERSION\) == )"[\d.]+"',
+        rf'\g<1>"{new_version}"',
+        content,
+    )
+
+    file_path.write_text(content)
+
+    ort_api_regex = r"static constexpr OrtApi ort_api_1_to_\d+\s*=\s*\{"
+    _insert_end_of_version_marker(file_path, ort_api_regex, old_api_ver, " (see above text for more information)")
+    _insert_api_size_assert(file_path, "OrtApi", ort_api_regex, old_api_ver)
+
+    print("Update complete.")
+
+
+def update_cpp_api_files(repo_dir: Path, new_version: str):
+    """Updates all C++ API struct files for the version bump."""
+    old_api_ver = int(new_version.split(".")[1]) - 1
+    session_dir = repo_dir / "onnxruntime" / "core" / "session"
+
+    print("\nUpdating C++ API files...")
+
+    update_onnxruntime_c_api_cc(session_dir / "onnxruntime_c_api.cc", new_version)
+
+    api_files = [
+        (session_dir / "plugin_ep" / "ep_api.cc", "OrtEpApi", r"static constexpr OrtEpApi \w+\s*=\s*\{"),
+        (session_dir / "compile_api.cc", "OrtCompileApi", r"static constexpr OrtCompileApi \w+\s*=\s*\{"),
+        (session_dir / "interop_api.cc", "OrtInteropApi", r"static constexpr OrtInteropApi \w+\s*=\s*\{"),
+        (session_dir / "model_editor_c_api.cc", "OrtModelEditorApi", r"static constexpr OrtModelEditorApi \w+\s*=\s*\{"),
+    ]
+
+    for file_path, struct_type, pattern in api_files:
+        if not file_path.exists():
+            print(f"  Warning: {file_path.name} not found. Skipping.")
+            continue
+        _insert_end_of_version_marker(file_path, pattern, old_api_ver)
+        _insert_api_size_assert(file_path, struct_type, pattern, old_api_ver)
+
+
 def update_npm_packages(js_root: Path, new_version: str):
     """Updates versions for all NPM packages in the js directory."""
     print("\nUpdating NPM package versions...")
@@ -209,6 +349,9 @@ def update_version():
     update_versioning_md(REPO_DIR / "docs" / "Versioning.md", new_version)
     update_readme_rst(REPO_DIR / "docs" / "python" / "README.rst", new_version)
     update_init_py(REPO_DIR / "onnxruntime" / "__init__.py", new_version)
+
+    # Update C++ API files
+    update_cpp_api_files(REPO_DIR, new_version)
 
     # Update all NPM packages
     update_npm_packages(REPO_DIR / "js", new_version)
