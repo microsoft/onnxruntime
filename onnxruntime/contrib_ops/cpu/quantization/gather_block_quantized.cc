@@ -14,7 +14,6 @@
 #include "core/framework/tensor_shape.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
-#include "core/mlas/inc/mlas.h"
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 #include "core/common/float8.h"
@@ -46,30 +45,6 @@ int32_t Get2BitElementUint8(const uint8_t* data_ptr, int64_t data_idx) {
   const uint8_t data_val_u8 = data_ptr[data_idx >> 2];
   const int shift = static_cast<int>((data_idx & 3) * 2);
   return static_cast<int32_t>((data_val_u8 >> shift) & 0x03);
-}
-
-// Max number of elements processed per SIMD batch call in the uint8_t data fast path below. Bounds
-// the size of the on-stack unpack buffer; larger runs are simply split into several batches, which is
-// harmless because scale/zero-point are already known to be constant across the whole run.
-constexpr int64_t kUint8DequantBatch = 256;
-
-// Unpacks `count` (<= kUint8DequantBatch) consecutive bits_-wide elements, starting at element index
-// `data_idx`, from packed uint8_t storage into `out`, one code (0..255) per output byte. For bits_==8
-// this is a no-op copy (the codes are already unpacked bytes); for bits_==2/4 it expands the packed
-// nibbles/crumbs so the resulting buffer can be fed to a single SIMD dequantization call.
-void UnpackUint8Elements(const uint8_t* data_ptr, int64_t data_idx, int64_t count, int64_t bits,
-                         uint8_t* out) {
-  if (bits == 8) {
-    memcpy(out, data_ptr + data_idx, narrow<size_t>(count));
-  } else if (bits == 4) {
-    for (int64_t i = 0; i < count; ++i) {
-      out[i] = static_cast<uint8_t>(Get4BitElement(data_ptr, data_idx + i));
-    }
-  } else {  // bits == 2
-    for (int64_t i = 0; i < count; ++i) {
-      out[i] = static_cast<uint8_t>(Get2BitElementUint8(data_ptr, data_idx + i));
-    }
-  }
 }
 
 // Trait identifying the FP8/FP4 data types supported by GatherBlockQuantized. Unlike the integer
@@ -348,40 +323,78 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
     const int64_t rank = static_cast<int64_t>(p.data_strides.size());
     const int64_t effective_block_size = p.effective_block_size;
     const int64_t quantize_axis = p.quantize_axis;
+    const auto& data_shape = p.data_tensor->Shape();
 
-    auto lambda = [&](int64_t gather_MN_idx) {
+    auto lambda = [&](int64_t gather_MN_idx, std::unordered_map<int64_t, int64_t>& cache) {
       int64_t gather_M_idx = gather_MN_idx / gather_N;
       int64_t gather_N_idx = gather_MN_idx % gather_N;
 
       int64_t indices_val = static_cast<int64_t>(indices_ptr[gather_N_idx]);
-      ORT_ENFORCE(indices_val >= -gather_axis_dim && indices_val < gather_axis_dim,
-                  "indices element out of data bounds, idx=", indices_val,
-                  " must be within the inclusive range [", -gather_axis_dim, ",", gather_axis_dim - 1, "]");
+      int64_t output_idx_base = gather_MN_idx * gather_block;
+      if (indices_val < -gather_axis_dim || indices_val >= gather_axis_dim) {
+        memset(output_ptr + output_idx_base, 0, narrow<size_t>(gather_block * sizeof(T2)));
+        return;
+      }
 
       indices_val = indices_val < 0 ? indices_val + gather_axis_dim : indices_val;
-      int64_t output_idx_base = gather_MN_idx * gather_block;
       int64_t data_idx_base = gather_M_idx * data_full_block + indices_val * gather_block;
+
+      if (auto it = cache.find(data_idx_base); it != cache.end()) {
+        memcpy(output_ptr + output_idx_base, output_ptr + it->second,
+               narrow<size_t>(gather_block * sizeof(T2)));
+        return;
+      }
+
+      InlinedVector<int64_t> axis_indices(narrow<size_t>(rank));
+      int64_t remaining = data_idx_base;
+      int64_t scale_idx = 0;
+      for (int64_t axis = 0; axis < rank; ++axis) {
+        const size_t axis_u = narrow<size_t>(axis);
+        axis_indices[axis_u] = remaining / p.data_strides[axis_u];
+        remaining -= axis_indices[axis_u] * p.data_strides[axis_u];
+        const int64_t contribution =
+            axis == quantize_axis
+                ? axis_indices[axis_u] / effective_block_size
+                : (p.scale_broadcast_axis[axis_u] ? 0 : axis_indices[axis_u]);
+        scale_idx += contribution * p.scale_strides[axis_u];
+      }
 
       int64_t output_idx = output_idx_base;
       int64_t data_idx = data_idx_base;
       for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
         const float data_val = DequantizedFpElem(data_ptr, data_idx);
-
-        int64_t remaining = data_idx;
-        int64_t scale_idx = 0;
-        for (int64_t axis = 0; axis < rank; ++axis) {
-          const size_t axis_u = narrow<size_t>(axis);
-          int64_t axis_idx = remaining / p.data_strides[axis_u];
-          remaining -= axis_idx * p.data_strides[axis_u];
-          int64_t contribution = axis == quantize_axis
-                                     ? axis_idx / effective_block_size
-                                     : (p.scale_broadcast_axis[axis_u] ? 0 : axis_idx);
-          scale_idx += contribution * p.scale_strides[axis_u];
-        }
         const float scale_val = static_cast<float>(scales_ptr[scale_idx]);
-
         output_ptr[output_idx] = static_cast<T2>(data_val * scale_val);
+
+        if (i + 1 == gather_block) {
+          continue;
+        }
+
+        for (int64_t axis = rank - 1; axis >= 0; --axis) {
+          const size_t axis_u = narrow<size_t>(axis);
+          const int64_t old_axis_idx = axis_indices[axis_u]++;
+          if (axis == quantize_axis) {
+            if (axis_indices[axis_u] == data_shape[axis_u]) {
+              scale_idx -= (old_axis_idx / effective_block_size) * p.scale_strides[axis_u];
+            } else if (axis_indices[axis_u] % effective_block_size == 0) {
+              scale_idx += p.scale_strides[axis_u];
+            }
+          } else if (!p.scale_broadcast_axis[axis_u]) {
+            scale_idx += p.scale_strides[axis_u];
+          }
+
+          if (axis_indices[axis_u] < data_shape[axis_u]) {
+            break;
+          }
+
+          axis_indices[axis_u] = 0;
+          if (axis != quantize_axis && !p.scale_broadcast_axis[axis_u]) {
+            scale_idx -= data_shape[axis_u] * p.scale_strides[axis_u];
+          }
+        }
       }
+
+      cache[data_idx_base] = output_idx_base;
     };
 
     concurrency::ThreadPool::TryParallelFor(
@@ -389,10 +402,11 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
         SafeInt<ptrdiff_t>(gather_M) * gather_N,
         static_cast<double>(gather_block * 2),
         [&lambda](ptrdiff_t first, ptrdiff_t last) {
+          std::unordered_map<int64_t, int64_t> cache;
           for (auto index = static_cast<int64_t>(first), end = static_cast<int64_t>(last);
                index < end;
                ++index) {
-            lambda(index);
+            lambda(index, cache);
           }
         });
 
@@ -406,12 +420,13 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       int64_t gather_N_idx = gather_MN_idx % gather_N;
 
       int64_t indices_val = static_cast<int64_t>(indices_ptr[gather_N_idx]);
-      ORT_ENFORCE(indices_val >= -gather_axis_dim && indices_val < gather_axis_dim,
-                  "indices element out of data bounds, idx=", indices_val,
-                  " must be within the inclusive range [", -gather_axis_dim, ",", gather_axis_dim - 1, "]");
+      int64_t output_idx_base = gather_MN_idx * gather_block;
+      if (indices_val < -gather_axis_dim || indices_val >= gather_axis_dim) {
+        memset(output_ptr + output_idx_base, 0, narrow<size_t>(gather_block * sizeof(T2)));
+        return;
+      }
 
       indices_val = indices_val < 0 ? indices_val + gather_axis_dim : indices_val;
-      int64_t output_idx_base = gather_MN_idx * gather_block;
       int64_t data_idx_base = gather_M_idx * data_full_block + indices_val * gather_block;
 
       if (auto it = cache.find(data_idx_base); it != cache.end()) {
@@ -420,37 +435,29 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
         return;
       }
 
-      if constexpr (std::is_same_v<T1, uint8_t>) {
-        // Fast path: uint8_t-packed data (bits_ == 2, 4, or 8). Since quantize_axis is enforced to be
-        // the last dimension for uint8_t data, quantize_N == 1, so scale/zero-point only change every
-        // `block_size_` elements (or at a quantize-axis-dim boundary, whichever comes first) along the
-        // contiguous `gather_block` run being produced here. Rather than recomputing scale_idx/zp_val
-        // and doing a scalar multiply-subtract per element, batch each constant-scale run through
-        // MlasDequantizeLinear, which is SIMD-optimized (AVX2/AVX512/NEON) for uint8_t input.
-        uint8_t unpacked[kUint8DequantBatch];
-        float dequantized[kUint8DequantBatch];
+      int64_t output_idx = output_idx_base;
+      int64_t data_idx = data_idx_base;
+      for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
+        int32_t data_val;
+        if constexpr (!std::is_same_v<T1, uint8_t>) {
+          data_val = Get4BitElement(data_ptr, data_idx);
+        } else if (bits_ == 2) {
+          data_val = Get2BitElementUint8(data_ptr, data_idx);
+        } else if (bits_ == 4) {
+          data_val = Get4BitElement(data_ptr, data_idx);
+        } else {
+          data_val = static_cast<int32_t>(data_ptr[data_idx]);
+        }
 
-        int64_t output_idx = output_idx_base;
-        int64_t data_idx = data_idx_base;
-        int64_t i = 0;
-        while (i < gather_block) {
-          const int64_t y = data_idx % quantize_full_block;  // quantize_N == 1, so z == 0 always.
-          const int64_t scale_idx = data_idx / quantize_full_block * scale_full_block + y / block_size_;
-          // Bound the run so it neither crosses into the next scale block nor past the end of the
-          // current quantize-axis span (a partial last block when quantize_axis_dim isn't a multiple
-          // of block_size_), then cap it to the SIMD batch buffer size.
-          int64_t run_len = std::min(block_size_ - y % block_size_, quantize_full_block - y);
-          run_len = std::min({run_len, gather_block - i, kUint8DequantBatch});
+        int64_t x = data_idx / quantize_full_block;
+        int64_t y = data_idx % quantize_full_block / quantize_N;
+        int64_t z = data_idx % quantize_N;
+        int64_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
+        auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
+        int32_t zp_val;
 
-          const auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
-          int32_t zp_val;
+        if constexpr (std::is_same_v<T1, uint8_t>) {
           if (zero_points_ptr) {
-            // For uint8 we enforce quantize_axis == last dim, which makes quantize_N == 1
-            // and scale_full_block == scale_qaxis_dim. Zero points are packed only along
-            // the quantize axis, so the packed byte must be addressed using the scale row
-            // index and the within-row quantize-axis index, not the flat scale_idx; the
-            // latter crosses row boundaries when scale_qaxis_dim is not a multiple of the
-            // packing factor.
             const int64_t scale_qaxis_dim = scale_full_block;
             const int64_t scale_row = scale_idx / scale_qaxis_dim;
             const int64_t q_in_row = scale_idx % scale_qaxis_dim;
@@ -462,47 +469,22 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
             } else if (bits_ == 4) {
               const int64_t packed_zp_qaxis_dim = (scale_qaxis_dim + 1) / 2;
               const int64_t byte_idx = scale_row * packed_zp_qaxis_dim + (q_in_row >> 1);
-              uint8_t packed = zero_points_ptr[byte_idx];
+              const uint8_t packed = zero_points_ptr[byte_idx];
               zp_val = static_cast<int32_t>((q_in_row & 1) ? ((packed >> 4) & 0x0F) : (packed & 0x0F));
-            } else {  // bits_ == 8
+            } else {
               zp_val = static_cast<int32_t>(zero_points_ptr[scale_idx]);
             }
           } else {
-            // Default zero point is 2^(bits-1): 2 for 2-bit, 8 for 4-bit, 128 for 8-bit.
             zp_val = 1 << (static_cast<int>(bits_) - 1);
           }
-
-          UnpackUint8Elements(data_ptr, data_idx, run_len, bits_, unpacked);
-          if constexpr (std::is_same_v<T2, float>) {
-            MlasDequantizeLinear(unpacked, output_ptr + output_idx, narrow<size_t>(run_len), scale_val,
-                                 static_cast<uint8_t>(zp_val));
-          } else {
-            MlasDequantizeLinear(unpacked, dequantized, narrow<size_t>(run_len), scale_val,
-                                 static_cast<uint8_t>(zp_val));
-            MlasConvertFloatToHalfBuffer(dequantized, output_ptr + output_idx, narrow<size_t>(run_len));
-          }
-
-          i += run_len;
-          output_idx += run_len;
-          data_idx += run_len;
+        } else {
+          zp_val = zero_points_ptr
+                       ? static_cast<int32_t>(
+                             zero_points_ptr[scale_idx >> 1].GetElem(narrow<size_t>(scale_idx & 1)))
+                       : 0;
         }
-      } else {
-        int64_t output_idx = output_idx_base;
-        int64_t data_idx = data_idx_base;
-        for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
-          int32_t data_val = Get4BitElement(data_ptr, data_idx);
 
-          int64_t x = data_idx / quantize_full_block;
-          int64_t y = data_idx % quantize_full_block / quantize_N;
-          int64_t z = data_idx % quantize_N;
-          int64_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
-          auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
-          int32_t zp_val = zero_points_ptr
-                               ? static_cast<int32_t>(zero_points_ptr[scale_idx >> 1].GetElem(narrow<size_t>(scale_idx & 1)))
-                               : 0;
-
-          output_ptr[output_idx] = static_cast<T2>(static_cast<float>(data_val - zp_val) * scale_val);
-        }
+        output_ptr[output_idx] = static_cast<T2>(static_cast<float>(data_val - zp_val) * scale_val);
       }
 
       cache[data_idx_base] = output_idx_base;

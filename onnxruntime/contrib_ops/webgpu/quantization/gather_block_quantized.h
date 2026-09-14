@@ -69,7 +69,6 @@ class GatherBlockQuantized final : public WebGpuKernel {
     quantize_axis_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("quantize_axis", 1));
     bits_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("bits", 4));
 
-    ORT_ENFORCE(bits_ == 2 || bits_ == 4 || bits_ == 8, "'bits' must be 2, 4 or 8.");
     // block_size == 0 is only valid for FP8/FP4 `data`, which is validated (against the actual
     // input element type) in ComputeInternal, since the element type isn't known here.
     ORT_ENFORCE(block_size_ == 0 || (block_size_ >= 16 && ((block_size_ - 1) & block_size_) == 0),

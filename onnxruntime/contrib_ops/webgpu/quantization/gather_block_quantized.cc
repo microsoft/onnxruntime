@@ -3,6 +3,7 @@
 
 #include <sstream>
 #include <iomanip>
+#include <locale>
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -70,6 +71,7 @@ std::string BuildFpDequantLutWgsl(int32_t fp_elem_type) {
 #endif  // !defined(DISABLE_FLOAT4_TYPES)
 
   std::ostringstream oss;
+  oss.imbue(std::locale::classic());
   oss << std::setprecision(9);
   oss << "const kFpDequantLut = array<f32, " << table.size() << ">(";
   for (size_t i = 0; i < table.size(); ++i) {
@@ -499,12 +501,15 @@ const std::vector<MLDataType>& GatherBlockQuantizedT1Constraint() {
         DataTypeImpl::GetTensorType<Int4x2>(),
         DataTypeImpl::GetTensorType<UInt4x2>(),
         DataTypeImpl::GetTensorType<uint8_t>()};
-    // NOTE: FP8/FP4 types are intentionally not registered here yet. The dequantization LUT and
-    // reinterpret-as-packed-integer plumbing above are already in place, but the shader path for
-    // these types has not been validated on real WebGPU hardware; GatherBlockQuantizedOpTest
-    // deliberately excludes this EP (kFpExcludedProviders) for its FP8/FP4 cases. Once the shader
-    // path is verified, add DataTypeImpl::GetTensorType<Float8E4M3FN/.../Float4E2M1x2>() here and
-    // remove the corresponding test exclusions.
+#if !defined(DISABLE_FLOAT8_TYPES)
+    t.push_back(DataTypeImpl::GetTensorType<Float8E4M3FN>());
+    t.push_back(DataTypeImpl::GetTensorType<Float8E4M3FNUZ>());
+    t.push_back(DataTypeImpl::GetTensorType<Float8E5M2>());
+    t.push_back(DataTypeImpl::GetTensorType<Float8E5M2FNUZ>());
+#endif
+#if !defined(DISABLE_FLOAT4_TYPES)
+    t.push_back(DataTypeImpl::GetTensorType<Float4E2M1x2>());
+#endif
     return t;
   }();
   return types;

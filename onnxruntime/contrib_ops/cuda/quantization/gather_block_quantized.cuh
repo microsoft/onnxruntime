@@ -54,18 +54,15 @@ struct GatherBlockQuantizedParam {
   int64_t block_size;
   int64_t gather_axis;
   int64_t N;
-  // Total number of elements in `scales`. When this is 1, every output element is dequantized
-  // with the single (broadcast) scale value, regardless of block_id.
-  int64_t scale_size;
+  int32_t max_blocks_per_grid;
 
   // The following fields are only populated (and only used) for FP8/FP4 data, to support
   // per-axis scale broadcasting and to correctly reset the block index at quantize-axis row
   // boundaries (data_dims[quantize_axis] need not be a multiple of block_size).
   //
-  // data_dims holds data's full shape (rank == data_rank); quantize_axis is always the last
-  // axis (data_rank - 1). scale_strides holds the row-major strides of the *actual* `scales`
-  // tensor shape, and scale_broadcast_axis[i] is true when axis i of `scales` is broadcast
-  // (i.e. its dim is 1 while the corresponding data/block dim is not).
+  // data_dims holds data's full shape (rank == data_rank). ComputeInternal currently enforces
+  // quantize_axis as the last axis. scale_strides holds the row-major strides of the actual
+  // `scales` shape, and scale_broadcast_axis[i] is true when that axis is broadcast.
   int32_t rank;
   int64_t quantize_axis;
   onnxruntime::cuda::TArray<int64_t> data_dims;
@@ -74,12 +71,12 @@ struct GatherBlockQuantizedParam {
 };
 
 template <typename T1, typename T2, typename Tind>
-void LaunchGatherBlockQuantizedKernel(const T1* data,
-                                      const Tind* indices,
-                                      const T2* scales,
-                                      const T1* zero_points,
-                                      T2* output,
-                                      GatherBlockQuantizedParam param);
+Status LaunchGatherBlockQuantizedKernel(const T1* data,
+                                        const Tind* indices,
+                                        const T2* scales,
+                                        const T1* zero_points,
+                                        T2* output,
+                                        GatherBlockQuantizedParam param);
 
 }  // namespace cuda
 }  // namespace contrib

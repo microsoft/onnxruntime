@@ -2148,7 +2148,7 @@ This version of the operator has been available since version 1 of the 'com.micr
     5. For uint8 data, the `gather_axis` must be 0. The supported `bits` values for uint8 data are 2, 4, and 8;
        for `bits` < 8 the values are packed along the last dimension (low-order bits first).
     6. `data` may also be an FP8 type (float8e4m3fn, float8e4m3fnuz, float8e5m2 or float8e5m2fnuz) or an FP4 type
-       (float4e2m1), rather than an integer block-quantized type. In that case `bits` is not applicable, there is
+       (float4e2m1), rather than an integer block-quantized type. In that case `bits` is ignored, there is
        no `zero_points` input, and dequantization is simply `output[...] = float(data[...]) * scales[block_index(...)]`.
        On any axis other than `quantize_axis`, the corresponding `scales` dimension must either equal `data`'s
        dimension, or be 1, in which case the scale is broadcast along that axis (e.g. a single scale shared by
@@ -2162,7 +2162,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>bits</tt> : int</dt>
-<dd>Number of bits used for weight quantization. Must be 2, 4 or 8. Not applicable when `data` is an FP8 or FP4 type.</dd>
+<dd>Number of bits used for weight quantization. Must be 2, 4 or 8. Ignored when `data` is an FP8 or FP4 type.</dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16, or 0. A value of 0 is only valid for an FP8 or FP4 `data` type and means the entire `quantize_axis` dimension forms a single block.</dd>
 <dt><tt>gather_axis</tt> : int</dt>
@@ -2177,7 +2177,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>data</tt> : T1</dt>
 <dd></dd>
 <dt><tt>indices</tt> : Tind</dt>
-<dd></dd>
+<dd>Tensor of int32/int64 indices, of any rank q. Values in [-s, s-1] select elements along an axis of size s. An out-of-range index produces zeros for the corresponding output slice.</dd>
 <dt><tt>scales</tt> : T2</dt>
 <dd>quantization scale. Same rank as data. On axes other than quantize_axis, a dimension of 1 broadcasts the scale along that axis (e.g. a single per-tensor scale for the whole table); only applicable when `data` is an FP8 or FP4 type.</dd>
 <dt><tt>zero_points</tt> (optional) : T1</dt>
@@ -6886,5 +6886,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-
