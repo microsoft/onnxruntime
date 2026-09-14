@@ -4290,9 +4290,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   Running the op once over a full sequence and running it over consecutive chunks while threading
   present_ids into past_ids produce identical hash ids. When past_ids is omitted the missing history is
   pad_id, or eos_token_id when it is provided.
-  
+
   Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
-  
+
   - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
     boundaries: any shifted position at or before the most recent EOS strictly before the current
     position is replaced with eos_token_id instead of the real token.
