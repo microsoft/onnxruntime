@@ -71,20 +71,95 @@ RvvQ4BitGemmPackQuantBDataSize(
     return PackedQuantBDataSize;
 }
 
-// CompInt8 packed-B layout (private to this dispatch, 4-bit and 8-bit alike):
-// columns are grouped in tiles of CompInt8ColTile; within a tile the K-blocks
-// are outermost, then the block's CompInt8SubBlkLen-element sub-blocks, then
-// the tile's columns, then the sub-block's bytes:
-//   tile t at (t * CompInt8ColTile) * ldb: [BlockCountK][SubBlkCount][width][SubBlkBytes]
+// CompInt8 packed layouts (private to this dispatch, 4-bit and 8-bit alike).
+//
+// The layouts follow the vector length of the core that packs, so the kernels
+// can fill their registers on any VLEN: the K dimension of every column is
+// cut into chunks of ChunkElems = min(VLENB, 128) elements, which is exactly
+// the number of int8 x int8 products two e8mf2 registers deliver into one
+// e16m1 register. A chunk holds SegsPerChunk "segments": whole blocks when
+// BlkLen <= ChunkElems, or the ChunkElems-wide slice of one block otherwise.
+// Within a chunk the segments' first halves are stored back to back, then
+// their second halves, so lane i of the int16 partial always pairs element i
+// with element (i + SegHalf) of the same segment, and the lanes of segment t
+// are [t * SegHalf, (t + 1) * SegHalf). The last chunk of a column may hold
+// fewer segments.
+//
+// Columns are grouped in tiles of CompInt8ColTile; within a tile the chunks
+// are outermost and the tile's columns are interleaved per chunk:
+//   tile t at (t * CompInt8ColTile) * ldb: [ChunkCount][width][chunk bytes]
 // where width = min(CompInt8ColTile, N - t * CompInt8ColTile). A full tile
 // therefore occupies the same bytes as its columns would in a plain [N][ldb]
 // layout, so the driver's "QuantBData + n * ldb" addressing (n a multiple of
-// the tile width) still lands on the tile. The point is that a kernel walking
-// a tile down K, one sub-block of every column at a time, reads one strictly
-// sequential stream instead of one strided stream per column, which on this
-// hardware is the difference between ~9 and ~2.5 GB/s.
+// the tile width) still lands on the tile, and a kernel walking a tile down K
+// reads one sequential stream.
+//
+// The quantized A rows use the same chunk order for their data (4-bit rows
+// keep the block scales first, then the data; 8-bit rows are data only), so
+// a chunk of A and a chunk of B line up lane for lane. On VLEN = 256 every
+// layout coincides with a plain per-block one for BlkLen >= 32.
+//
+// The VLENB is read once and cached: a process that packs on one core and
+// computes on a core with a different VLEN would otherwise disagree on the
+// layout.
 constexpr size_t CompInt8ColTile = 8;
-constexpr size_t CompInt8SubBlkLen = 32;
+constexpr size_t CompInt8MaxChunkElems = 128;
+constexpr size_t CompInt8MaxBlkLen = 256;  // keeps SegsPerChunk <= 8 (masks and scales per chunk)
+
+MLAS_FORCEINLINE size_t
+CompInt8ChunkElems()
+{
+    static const size_t ChunkElems = std::min<size_t>(__riscv_vlenb(), CompInt8MaxChunkElems);
+    return ChunkElems;
+}
+
+struct CompInt8Geometry {
+    size_t BlkLen;
+    size_t BlockCountK;
+    size_t ChunkElems;      // elements of one column per full chunk
+    size_t SegLen;          // min(BlkLen, ChunkElems)
+    size_t SegHalf;         // SegLen / 2: lanes per segment
+    size_t SegsPerChunk;    // ChunkElems / SegLen
+    size_t ChunksPerBlock;  // BlkLen / ChunkElems, or 1
+    size_t SegCount;        // segments per column
+    size_t ChunkCount;      // chunks per column
+
+    CompInt8Geometry(size_t blk_len, size_t block_count_k)
+        : BlkLen(blk_len), BlockCountK(block_count_k), ChunkElems(CompInt8ChunkElems())
+    {
+        SegLen = std::min(BlkLen, ChunkElems);
+        SegHalf = SegLen / 2;
+        SegsPerChunk = ChunkElems / SegLen;
+        ChunksPerBlock = std::max<size_t>(BlkLen / ChunkElems, 1);
+        SegCount = BlockCountK * (BlkLen / SegLen);
+        ChunkCount = MlasDivRoundup(SegCount, SegsPerChunk);
+    }
+
+    size_t SegsInChunk(size_t chunk) const
+    {
+        return std::min(SegsPerChunk, SegCount - chunk * SegsPerChunk);
+    }
+
+    // Offset of (block, element) within a column's dense int8 data (A rows,
+    // and the per-column element order of B).
+    size_t ElementOffset(size_t block, size_t element) const
+    {
+        const size_t seg = block * (BlkLen / SegLen) + element / SegLen;
+        const size_t e = element % SegLen;
+        const size_t chunk = seg / SegsPerChunk;
+        const size_t t = seg % SegsPerChunk;
+        const size_t segs = SegsInChunk(chunk);
+        return chunk * ChunkElems + (e / SegHalf) * (segs * SegHalf) + t * SegHalf + (e % SegHalf);
+    }
+
+    // The first half of segment 'seg' of a column starts here; the second
+    // half is 'SegsInChunk(chunk) * SegHalf' further on.
+    size_t SegmentOffset(size_t seg) const
+    {
+        const size_t chunk = seg / SegsPerChunk;
+        return chunk * ChunkElems + (seg % SegsPerChunk) * SegHalf;
+    }
+};
 
 // SQ8 (8-bit weight) CompInt8 packed-B workspace sizing. The workspace holds
 // the packed 8-bit B data, then the per-(N,block) B block-sums, then the B
@@ -119,9 +194,9 @@ RvvQ8BitGemmPackQuantBDataSize(
 }
 
 // Pack 8-bit B and compute per-block sums. The packed data, scales and
-// block-sums are private to the RVV dispatch: the data uses the column-tiled
-// layout described at CompInt8ColTile, scales and block-sums plain
-// [N][BlockCountK]. B is stored centered (raw - 128, as int8) and
+// block-sums are private to the RVV dispatch: the data uses the chunked,
+// column-tiled layout described at CompInt8Geometry, scales and block-sums
+// plain [N][BlockCountK]. B is stored centered (raw - 128, as int8) and
 // QuantBBlkSum[n][b] = bScale * (bZeroPoint - 128) (bZeroPoint defaults to 128
 // when zero points are absent); the kernel subtracts ABlockSum * this.
 void
@@ -141,6 +216,7 @@ RvvSQ8BitGemmPackQuantBDataAndBlkSum(
 {
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t DataBytesPerCol = BlockCountK * BlkLen;  // 8-bit: one byte per weight
+    const CompInt8Geometry Geom(BlkLen, BlockCountK);
 
     std::byte* PackedData = PackedQuantB.PackedQuantBData;
     float* PackedScale = PackedQuantB.PackedQuantBScale;
@@ -165,14 +241,16 @@ RvvSQ8BitGemmPackQuantBDataAndBlkSum(
                 const size_t width = std::min(CompInt8ColTile, N - tile * CompInt8ColTile);
                 const std::byte* src = QuantBDataBegin + static_cast<size_t>(n) * DataBytesPerCol;
                 std::byte* PackedTile = PackedData + tile * CompInt8ColTile * DataBytesPerCol;
-                const size_t SubLen = std::min(CompInt8SubBlkLen, BlkLen);
-                const size_t SubCount = BlkLen / SubLen;
-                for (size_t b = 0; b < BlockCountK; ++b) {
-                    for (size_t sub = 0; sub < SubCount; ++sub) {
-                        std::byte* dst = PackedTile + ((b * SubCount + sub) * width + col) * SubLen;
-                        const std::byte* s0 = src + b * BlkLen + sub * SubLen;
-                        for (size_t i = 0; i < SubLen; ++i) {
-                            dst[i] = s0[i] ^ std::byte{0x80};
+                const size_t SegsPerBlock = BlkLen / Geom.SegLen;
+                for (size_t chunk = 0; chunk < Geom.ChunkCount; ++chunk) {
+                    const size_t segs = Geom.SegsInChunk(chunk);
+                    std::byte* dst = PackedTile + (chunk * Geom.ChunkElems) * width + col * (segs * Geom.SegLen);
+                    for (size_t t = 0; t < segs; ++t) {
+                        const size_t seg = chunk * Geom.SegsPerChunk + t;
+                        const std::byte* s0 = src + (seg / SegsPerBlock) * BlkLen + (seg % SegsPerBlock) * Geom.SegLen;
+                        for (size_t i = 0; i < Geom.SegHalf; ++i) {
+                            dst[t * Geom.SegHalf + i] = s0[i] ^ std::byte{0x80};
+                            dst[segs * Geom.SegHalf + t * Geom.SegHalf + i] = s0[Geom.SegHalf + i] ^ std::byte{0x80};
                         }
                     }
                 }
@@ -251,15 +329,14 @@ RvvSQ4BitGemmPackQuantBData(
     // The packed layouts are private to the RVV dispatch (produced here,
     // consumed only by the RVV compute kernels).
     //
-    // CompInt8 uses the column-tiled layout described at CompInt8ColTile, and
-    // within a sub-block a half-split nibble order: byte i holds element i in
-    // its low nibble and element (i + SubLen/2) in its high nibble, so a run
-    // of bytes unpacks into two contiguous runs of elements that pair with two
-    // contiguous runs of the int8 A block.
+    // CompInt8 uses the chunked, column-tiled layout described at
+    // CompInt8Geometry, with a half-split nibble order within each segment:
+    // byte i holds element i in its low nibble and element (i + SegHalf) in
+    // its high nibble, so a run of bytes unpacks into two runs of elements
+    // that pair with the two halves of the int8 A chunk.
     if (ComputeType == SQNBIT_CompInt8) {
-        const size_t SubLen = std::min(CompInt8SubBlkLen, BlkLen);
-        const size_t SubHalf = SubLen / 2;  // bytes per sub-block
-        const size_t SubCount = BlkLen / SubLen;
+        const CompInt8Geometry Geom(BlkLen, BlockCountK);
+        const size_t SegsPerBlock = BlkLen / Geom.SegLen;
         MlasTrySimpleParallel(
             ThreadPool, static_cast<ptrdiff_t>(N),
             [&](ptrdiff_t tid) {
@@ -271,17 +348,21 @@ RvvSQ4BitGemmPackQuantBData(
                 const std::byte* QuantBData = QuantBDataBegin + n * BlockCountK * BlkDataSize;
                 std::byte* PackedTile = PackedQuantBDataBegin + tile * CompInt8ColTile * BlockCountK * BlkDataSize;
 
-                for (size_t k_blk = 0; k_blk < BlockCountK; ++k_blk) {
-                    for (size_t sub = 0; sub < SubCount; ++sub) {
-                        // source: byte e/2 holds element e in nibble (e & 1)
-                        const std::byte* src = QuantBData + k_blk * BlkDataSize + sub * SubHalf;
-                        std::byte* dst = PackedTile + ((k_blk * SubCount + sub) * width + col) * SubHalf;
-                        for (size_t i = 0; i < SubHalf; ++i) {
-                            const std::byte lo_src = src[i / 2];
-                            const std::byte hi_src = src[(i + SubHalf) / 2];
-                            const std::byte lo = (i & 1) ? (lo_src >> 4) : (lo_src & std::byte{0x0F});
-                            const std::byte hi = ((i + SubHalf) & 1) ? (hi_src >> 4) : (hi_src & std::byte{0x0F});
-                            dst[i] = lo | (hi << 4);
+                // source: byte e/2 holds element e in nibble (e & 1)
+                auto nibble = [](const std::byte* blk, size_t e) {
+                    return (e & 1) ? (blk[e / 2] >> 4) : (blk[e / 2] & std::byte{0x0F});
+                };
+
+                for (size_t chunk = 0; chunk < Geom.ChunkCount; ++chunk) {
+                    const size_t segs = Geom.SegsInChunk(chunk);
+                    std::byte* dst = PackedTile + (chunk * Geom.ChunkElems / 2) * width + col * (segs * Geom.SegHalf);
+                    for (size_t t = 0; t < segs; ++t) {
+                        const size_t seg = chunk * Geom.SegsPerChunk + t;
+                        const std::byte* blk = QuantBData + (seg / SegsPerBlock) * BlkDataSize;
+                        const size_t e0 = (seg % SegsPerBlock) * Geom.SegLen;
+                        // byte i of the segment: element (e0 + i) low, element (e0 + SegHalf + i) high
+                        for (size_t i = 0; i < Geom.SegHalf; ++i) {
+                            dst[t * Geom.SegHalf + i] = nibble(blk, e0 + i) | (nibble(blk, e0 + Geom.SegHalf + i) << 4);
                         }
                     }
                 }
@@ -626,56 +707,77 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
 //
 // SQNBIT_CompInt8 kernels for 4-bit weights.
 //
-// A is block-quantized to int8 (Q8 blocks: [float scale][BlkLen int8]); B is
-// the same packed 4-bit layout as above. For each block the integer dot
+// A is block-quantized to int8 (row: [BlockCountK scales][data in chunk
+// order], see RvvQuantizeARow_CompInt8_Impl); B is the packed 4-bit layout
+// above. For each block the integer dot
 // sum_i qa_i * (qb_i - offset) is computed exactly, then scaled by
 // (a_scale * b_scale) and accumulated across blocks.
 //
 
+// Quantize one block of A to int8 into 'out' (zero-padded to BlkLen) and
+// return its scale (amax / 127).
+MLAS_FORCEINLINE float
+QuantizeABlock(const float* a_ptr, size_t len, size_t BlkLen, int8_t* out)
+{
+    vfloat32m1_t vmax = __riscv_vfmv_s_f_f32m1(0.0f, 1);
+    for (size_t off = 0; off < len;) {
+        const size_t vl = __riscv_vsetvl_e32m1(len - off);
+        const vfloat32m1_t v = __riscv_vfabs_v_f32m1(__riscv_vle32_v_f32m1(a_ptr + off, vl), vl);
+        vmax = __riscv_vfredmax_vs_f32m1_f32m1(v, vmax, vl);
+        off += vl;
+    }
+    const float amax = __riscv_vfmv_f_s_f32m1_f32(vmax);
+    const float scale = amax / 127.0f;
+    const float inv_scale = (amax != 0.0f) ? (127.0f / amax) : 0.0f;
+
+    // q = clamp(round(a * inv_scale), -127, 127)
+    for (size_t off = 0; off < len;) {
+        const size_t vl = __riscv_vsetvl_e32m4(len - off);
+        vfloat32m4_t v = __riscv_vfmul_vf_f32m4(__riscv_vle32_v_f32m4(a_ptr + off, vl), inv_scale, vl);
+        vint32m4_t iv = __riscv_vfcvt_x_f_v_i32m4(v, vl);
+        iv = __riscv_vmax_vx_i32m4(iv, -127, vl);
+        iv = __riscv_vmin_vx_i32m4(iv, 127, vl);
+        const vint16m2_t i16 = __riscv_vncvt_x_x_w_i16m2(iv, vl);
+        __riscv_vse8_v_i8m1(out + off, __riscv_vncvt_x_x_w_i8m1(i16, vl), vl);
+        off += vl;
+    }
+    for (size_t i = len; i < BlkLen; ++i) {
+        out[i] = 0;
+    }
+    return scale;
+}
+
+// Store a quantized block into a row's data area in the chunk order described
+// at CompInt8Geometry: each segment's first half, then (after the chunk's
+// other first halves) its second half.
+MLAS_FORCEINLINE void
+StoreABlock(const CompInt8Geometry& Geom, size_t block, const int8_t* q, int8_t* data)
+{
+    const size_t SegsPerBlock = Geom.BlkLen / Geom.SegLen;
+    for (size_t s = 0; s < SegsPerBlock; ++s) {
+        const size_t seg = block * SegsPerBlock + s;
+        const size_t off = Geom.SegmentOffset(seg);
+        const size_t segs = Geom.SegsInChunk(seg / Geom.SegsPerChunk);
+        std::memcpy(data + off, q + s * Geom.SegLen, Geom.SegHalf);
+        std::memcpy(data + off + segs * Geom.SegHalf, q + s * Geom.SegLen + Geom.SegHalf, Geom.SegHalf);
+    }
+}
+
+// 4-bit path A row: [BlockCountK float scales][BlockCountK * BlkLen int8 in chunk order];
+// the same bytes as BlockCountK Q8 blocks, which is the driver's row stride.
 void
 RvvQuantizeARow_CompInt8_Impl(size_t BlkLen, const float* A, size_t CountK, std::byte* QuantA)
 {
     const size_t BlockCountK = MlasDivRoundup(CountK, BlkLen);
+    const CompInt8Geometry Geom(BlkLen, BlockCountK);
+    float* scales = reinterpret_cast<float*>(QuantA);
+    int8_t* data = reinterpret_cast<int8_t*>(QuantA + BlockCountK * sizeof(float));
 
-    std::byte* blk = QuantA;
-    for (size_t b = 0; b < BlockCountK; ++b, blk += Q8BlkSize(BlkLen)) {
+    int8_t q[CompInt8MaxBlkLen];
+    for (size_t b = 0; b < BlockCountK; ++b) {
         const size_t k0 = b * BlkLen;
-        const size_t len = std::min(BlkLen, CountK - k0);
-        const float* a_ptr = A + k0;
-
-        // amax over the block
-        vfloat32m1_t vmax = __riscv_vfmv_s_f_f32m1(0.0f, 1);
-        for (size_t off = 0; off < len;) {
-            const size_t vl = __riscv_vsetvl_e32m1(len - off);
-            const vfloat32m1_t v = __riscv_vfabs_v_f32m1(__riscv_vle32_v_f32m1(a_ptr + off, vl), vl);
-            vmax = __riscv_vfredmax_vs_f32m1_f32m1(v, vmax, vl);
-            off += vl;
-        }
-        const float amax = __riscv_vfmv_f_s_f32m1_f32(vmax);
-        const float scale = amax / 127.0f;
-        const float inv_scale = (scale != 0.0f) ? (1.0f / scale) : 0.0f;
-
-        Q8BlkScale(blk) = scale;
-        int8_t* qd = Q8BlkData(blk);
-
-        // quantize block: q = clamp(round(a * inv_scale), -127, 127)
-        for (size_t off = 0; off < len;) {
-            const size_t vl = __riscv_vsetvl_e32m4(len - off);
-            vfloat32m4_t v = __riscv_vle32_v_f32m4(a_ptr + off, vl);
-            v = __riscv_vfmul_vf_f32m4(v, inv_scale, vl);
-            vint32m4_t iv = __riscv_vfcvt_x_f_v_i32m4(v, vl);
-            iv = __riscv_vmax_vx_i32m4(iv, -127, vl);
-            iv = __riscv_vmin_vx_i32m4(iv, 127, vl);
-            const vint16m2_t i16 = __riscv_vncvt_x_x_w_i16m2(iv, vl);
-            const vint8m1_t i8 = __riscv_vncvt_x_x_w_i8m1(i16, vl);
-            __riscv_vse8_v_i8m1(qd + off, i8, vl);
-            off += vl;
-        }
-
-        // zero-pad the remainder of the block
-        for (size_t i = len; i < BlkLen; ++i) {
-            qd[i] = 0;
-        }
+        scales[b] = QuantizeABlock(A + k0, std::min(BlkLen, CountK - k0), BlkLen, q);
+        StoreABlock(Geom, b, q, data);
     }
 }
 
@@ -694,14 +796,16 @@ RvvQuantizeARow_CompInt8_Impl(size_t BlkLen, const float* A, size_t CountK, std:
 // B is stored centered to [-128, 127] so |a*b| <= 16256 and one pair fits,
 // which is exactly one chunk.
 //
-// The MTILE x NTILE tile gives the core independent accumulator chains and
-// shares the B unpack across rows and the A loads across columns. Tile slots
-// past the valid row/column count alias slot 0 and are not stored, so one body
-// serves the full tile and the remainder. Chunks run at e8mf2 so the int16
-// partials stay at m1 and the float accumulators at m2.
-//
-// A blocks are zero-padded to BlkLen by the quantizer, so a chunk can always
-// run at its full width: lanes past CountK multiply zero.
+// Two tile shapes cover the two chunk regimes of CompInt8Geometry:
+//  - BlkLen >= ChunkElems (one segment per chunk): MTILE x NTILE tiles share
+//    the B unpack across rows and the A loads across columns, and fold with a
+//    scalar scale.
+//  - BlkLen < ChunkElems (several blocks per chunk): a 1 x 4 tile folds each
+//    chunk with one masked vfmacc per block, the mask selecting the block's
+//    lanes. That is what lets a wide register carry several small blocks.
+// Tile slots past the valid row/column count alias slot 0 and are not stored,
+// so one body serves the full tile and the remainder. A blocks are zero-padded
+// to BlkLen by the quantizer, so a chunk can always run at its full width.
 //
 
 #define MLAS_UNROLL_LOOP _Pragma("GCC unroll 8")
@@ -718,15 +822,65 @@ ReduceSumF32M2(vfloat32m2_t v, size_t vl)
 #define QI8_FOLD(acc, part, scale, vl) \
     (acc) = __riscv_vfmacc_vf_f32m2_tu((acc), (scale), __riscv_vfwcvt_f_x_v_f32m2((part), (vl)), (vl))
 
-// MTILE rows x NTILE columns of the SQ4 CompInt8 GEMM. Columns >= n_cols alias column 0.
+// Multi-block fold. seg_id holds each lane's segment index (lane / SegHalf);
+// the mask of segment g is one compare away, which is cheaper than holding
+// eight masks: v0 is the only mask register, and moving a mask into it costs
+// as much as the compare on this hardware.
+#define QI8_SEG_ID(seg_id, SegHalf, vl) \
+    const vuint16m1_t seg_id = __riscv_vsrl_vx_u16m1(__riscv_vid_v_u16m1((vl)), __builtin_ctzl(SegHalf), (vl))
+
+// acc_c += (as[b0 + g] * bs_c[b0 + g]) * f_c on the lanes of segment g, for
+// four columns at once: one mask per segment, four independent chains.
+#define QI8_FOLD_SEG4(g, seg_id, A0, A1, A2, A3, F0, F1, F2, F3, S0, S1, S2, S3) \
+    if (segs > (g)) {                                                            \
+        const vbool16_t m_ = __riscv_vmseq_vx_u16m1_b16(seg_id, (g), vl);        \
+        const float a_ = as[b0 + (g)];                                           \
+        A0 = __riscv_vfmacc_vf_f32m2_tumu(m_, A0, a_ * S0[b0 + (g)], F0, vl);    \
+        A1 = __riscv_vfmacc_vf_f32m2_tumu(m_, A1, a_ * S1[b0 + (g)], F1, vl);    \
+        A2 = __riscv_vfmacc_vf_f32m2_tumu(m_, A2, a_ * S2[b0 + (g)], F2, vl);    \
+        A3 = __riscv_vfmacc_vf_f32m2_tumu(m_, A3, a_ * S3[b0 + (g)], F3, vl);    \
+    }
+#define QI8_FOLD_SEGS4(seg_id, A0, A1, A2, A3, F0, F1, F2, F3, S0, S1, S2, S3) \
+    QI8_FOLD_SEG4(0, seg_id, A0, A1, A2, A3, F0, F1, F2, F3, S0, S1, S2, S3)   \
+    QI8_FOLD_SEG4(1, seg_id, A0, A1, A2, A3, F0, F1, F2, F3, S0, S1, S2, S3)   \
+    QI8_FOLD_SEG4(2, seg_id, A0, A1, A2, A3, F0, F1, F2, F3, S0, S1, S2, S3)   \
+    QI8_FOLD_SEG4(3, seg_id, A0, A1, A2, A3, F0, F1, F2, F3, S0, S1, S2, S3)   \
+    QI8_FOLD_SEG4(4, seg_id, A0, A1, A2, A3, F0, F1, F2, F3, S0, S1, S2, S3)   \
+    QI8_FOLD_SEG4(5, seg_id, A0, A1, A2, A3, F0, F1, F2, F3, S0, S1, S2, S3)   \
+    QI8_FOLD_SEG4(6, seg_id, A0, A1, A2, A3, F0, F1, F2, F3, S0, S1, S2, S3)   \
+    QI8_FOLD_SEG4(7, seg_id, A0, A1, A2, A3, F0, F1, F2, F3, S0, S1, S2, S3)
+
+// v = per-lane 4-bit zero-point offsets for a chunk holding 'segs' blocks.
+#define QI8_SEG_OFFSETS(v, offset, segs, seg_id, vl)                                                               \
+    do {                                                                                                           \
+        (v) = __riscv_vmv_v_x_i8mf2((offset)[0], (vl));                                                            \
+        for (size_t g_ = 1; g_ < (segs); ++g_) {                                                                   \
+            (v) = __riscv_vmerge_vxm_i8mf2((v), (offset)[g_], __riscv_vmseq_vx_u16m1_b16(seg_id, g_, (vl)), (vl)); \
+        }                                                                                                          \
+    } while (0)
+
+// 4-bit A row accessors (see RvvQuantizeARow_CompInt8_Impl).
+MLAS_FORCEINLINE const float*
+QuantARowScales(const std::byte* row)
+{
+    return reinterpret_cast<const float*>(row);
+}
+
+MLAS_FORCEINLINE const int8_t*
+QuantARowData(const std::byte* row, size_t BlockCountK)
+{
+    return reinterpret_cast<const int8_t*>(row + BlockCountK * sizeof(float));
+}
+
+// MTILE rows x NTILE columns of the SQ4 CompInt8 GEMM, BlkLen >= ChunkElems.
+// Columns >= n_cols alias column 0.
 template <bool HasZeroPoint, size_t MTILE, size_t NTILE>
 MLAS_FORCEINLINE void
 SQ4BitGemmKernel_CompInt8_Tile(
-    size_t BlkLen,
-    size_t BlockCountK,
+    const CompInt8Geometry& Geom,
     const std::byte* QuantA,  // first row of the tile
     size_t lda,
-    const uint8_t* QuantBData,         // block 0 of the tile's first column
+    const uint8_t* QuantBData,         // chunk 0 of the tile's first column
     size_t Width,                      // columns interleaved in the packed tile
     const float* QuantBScale,          // first column
     const std::byte* QuantBZeroPoint,  // first column, or nullptr
@@ -740,47 +894,44 @@ SQ4BitGemmKernel_CompInt8_Tile(
     static_assert(MTILE == 1 || MTILE == 2, "unsupported MTILE");
     static_assert(NTILE == 4 || NTILE == 8, "unsupported NTILE");
     static_assert(MTILE * NTILE <= 8, "too many accumulators");
-    const size_t Q8Sz = Q8BlkSize(BlkLen);
+    const size_t BlockCountK = Geom.BlockCountK;
+    const size_t SegHalf = Geom.SegHalf;  // == ChunkElems / 2 in this regime
+    const size_t ChunksPerBlock = Geom.ChunksPerBlock;
+    const size_t ChunkStride = Width * SegHalf;  // packed bytes per chunk of the tile
     const size_t accvl = __riscv_vsetvlmax_e32m2();
     const size_t partvl = __riscv_vsetvlmax_e16m1();
 
-    const size_t SubLen = std::min(CompInt8SubBlkLen, BlkLen);
-    const size_t SubHalf = SubLen / 2;  // bytes per sub-block of one column
-    const size_t SubCount = BlkLen / SubLen;
-    const size_t SubStride = Width * SubHalf;  // bytes between consecutive sub-blocks of a column
-
-    const uint8_t* b_data[NTILE];  // adjacent columns of a sub-block are SubHalf apart
+    const uint8_t* b_data[NTILE];  // adjacent columns of a chunk are SegHalf apart
     const float* b_scale[NTILE];
     const std::byte* b_zp[NTILE];
     for (size_t c = 0; c < NTILE; ++c) {
         const size_t cc = (c < n_cols) ? c : 0;
-        b_data[c] = QuantBData + cc * SubHalf;
+        b_data[c] = QuantBData + cc * SegHalf;
         b_scale[c] = QuantBScale + cc * BlockCountK;
         b_zp[c] = HasZeroPoint ? QuantBZeroPoint + cc * StrideQuantBZeroPoint : nullptr;
+    }
+
+    const float* as_row0 = QuantARowScales(QuantA);
+    const int8_t* qa_row0 = QuantARowData(QuantA, BlockCountK);
+    const float* as_row1 = as_row0;
+    const int8_t* qa_row1 = qa_row0;
+    if constexpr (MTILE > 1) {
+        as_row1 = QuantARowScales(QuantA + lda);
+        qa_row1 = QuantARowData(QuantA + lda, BlockCountK);
     }
 
     vfloat32m2_t acc0 = __riscv_vfmv_v_f_f32m2(0.0f, accvl);
     vfloat32m2_t acc1 = acc0, acc2 = acc0, acc3 = acc0, acc4 = acc0, acc5 = acc0, acc6 = acc0, acc7 = acc0;
 
     for (size_t b = 0; b < BlockCountK; ++b) {
-        const std::byte* a_blk0 = QuantA + b * Q8Sz;
-        const int8_t* qa0 = Q8BlkData(a_blk0);
-        const float as0 = Q8BlkScale(a_blk0);
-        const int8_t* qa1 = qa0;
-        float as1 = as0;
-        if constexpr (MTILE > 1) {
-            const std::byte* a_blk1 = QuantA + lda + b * Q8Sz;
-            qa1 = Q8BlkData(a_blk1);
-            as1 = Q8BlkScale(a_blk1);
-        }
+        const float as0 = as_row0[b];
+        const float as1 = as_row1[b];
 
         int8_t offset[NTILE];
-        const uint8_t* qb[NTILE];
         float s0[NTILE], s1[NTILE];
         MLAS_UNROLL_LOOP
         for (size_t c = 0; c < NTILE; ++c) {
             offset[c] = static_cast<int8_t>(HasZeroPoint ? static_cast<int>(DequantOffset(b_zp[c], b, true)) : 8);
-            qb[c] = b_data[c] + b * SubCount * SubStride;
             s0[c] = as0 * b_scale[c][b];
             s1[c] = as1 * b_scale[c][b];
         }
@@ -789,23 +940,24 @@ SQ4BitGemmKernel_CompInt8_Tile(
         vint16m1_t p0 = __riscv_vmv_v_x_i16m1(0, partvl);
         vint16m1_t p1 = p0, p2 = p0, p3 = p0, p4 = p0, p5 = p0, p6 = p0, p7 = p0;
 
-        for (size_t sub = 0; sub < SubCount; ++sub) {
-            const size_t sb = sub * SubStride;  // sub-block offset within the packed block
-            const size_t sa = sub * SubLen;     // sub-block offset within the A block
-            for (size_t k = 0; k < SubHalf;) {
-                const size_t vl = __riscv_vsetvl_e8mf2(SubHalf - k);
+        for (size_t sub = 0; sub < ChunksPerBlock; ++sub) {
+            const size_t chunk = b * ChunksPerBlock + sub;
+            const size_t sb = chunk * ChunkStride;      // chunk offset within the packed tile
+            const size_t sa = chunk * Geom.ChunkElems;  // chunk offset within the A row data
+            for (size_t k = 0; k < SegHalf;) {
+                const size_t vl = __riscv_vsetvl_e8mf2(SegHalf - k);
 
-                const vint8mf2_t a0_lo = __riscv_vle8_v_i8mf2(qa0 + sa + k, vl);
-                const vint8mf2_t a0_hi = __riscv_vle8_v_i8mf2(qa0 + sa + SubHalf + k, vl);
+                const vint8mf2_t a0_lo = __riscv_vle8_v_i8mf2(qa_row0 + sa + k, vl);
+                const vint8mf2_t a0_hi = __riscv_vle8_v_i8mf2(qa_row0 + sa + SegHalf + k, vl);
                 vint8mf2_t a1_lo = a0_lo, a1_hi = a0_hi;
                 if constexpr (MTILE > 1) {
-                    a1_lo = __riscv_vle8_v_i8mf2(qa1 + sa + k, vl);
-                    a1_hi = __riscv_vle8_v_i8mf2(qa1 + sa + SubHalf + k, vl);
+                    a1_lo = __riscv_vle8_v_i8mf2(qa_row1 + sa + k, vl);
+                    a1_hi = __riscv_vle8_v_i8mf2(qa_row1 + sa + SegHalf + k, vl);
                 }
 
 #define SQ4_COL(c, p_r0, p_r1)                                                                         \
     if constexpr ((c) < NTILE) {                                                                       \
-        const vuint8mf2_t packed = __riscv_vle8_v_u8mf2(qb[c] + sb + k, vl);                           \
+        const vuint8mf2_t packed = __riscv_vle8_v_u8mf2(b_data[c] + sb + k, vl);                       \
         const vint8mf2_t b_lo = __riscv_vsub_vx_i8mf2(                                                 \
             __riscv_vreinterpret_v_u8mf2_i8mf2(__riscv_vand_vx_u8mf2(packed, 0x0F, vl)), offset[c], vl \
         );                                                                                             \
@@ -885,6 +1037,111 @@ SQ4BitGemmKernel_CompInt8_Tile(
     }
 }
 
+// One row x 8 columns (a whole packed tile) of the SQ4 CompInt8 GEMM,
+// BlkLen < ChunkElems: every chunk holds SegsPerChunk blocks and is folded
+// with one masked vfmacc per block and column. The tile is walked in one
+// sequential pass; the columns are processed in two groups of four so the
+// float partials fit the register file. Columns >= n_cols alias column 0.
+template <bool HasZeroPoint>
+MLAS_FORCEINLINE void
+SQ4BitGemmKernel_CompInt8_MultiBlockTile(
+    const CompInt8Geometry& Geom,
+    const std::byte* QuantA,
+    const uint8_t* QuantBData,         // chunk 0 of the packed tile
+    size_t Width,                      // columns interleaved in the packed tile
+    const float* QuantBScale,          // first column
+    const std::byte* QuantBZeroPoint,  // first column, or nullptr
+    size_t StrideQuantBZeroPoint,
+    size_t n_cols,
+    float* C,
+    const float* Bias
+)
+{
+    constexpr size_t NTILE = CompInt8ColTile;
+    const size_t BlockCountK = Geom.BlockCountK;
+    const size_t SegHalf = Geom.SegHalf;  // BlkLen / 2
+    const size_t ChunkStride = Width * Geom.ChunkElems / 2;
+    const size_t accvl = __riscv_vsetvlmax_e32m2();
+    QI8_SEG_ID(seg_id, SegHalf, accvl);
+
+    size_t b_col[NTILE];  // column index within the packed tile
+    const float* bs[NTILE];
+    const std::byte* b_zp[NTILE];
+    for (size_t c = 0; c < NTILE; ++c) {
+        const size_t cc = (c < n_cols) ? c : 0;
+        b_col[c] = cc;
+        bs[c] = QuantBScale + cc * BlockCountK;
+        b_zp[c] = HasZeroPoint ? QuantBZeroPoint + cc * StrideQuantBZeroPoint : nullptr;
+    }
+    const float* as = QuantARowScales(QuantA);
+    const int8_t* qa = QuantARowData(QuantA, BlockCountK);
+
+    vfloat32m2_t acc0 = __riscv_vfmv_v_f_f32m2(0.0f, accvl);
+    vfloat32m2_t acc1 = acc0, acc2 = acc0, acc3 = acc0, acc4 = acc0, acc5 = acc0, acc6 = acc0, acc7 = acc0;
+
+    for (size_t chunk = 0; chunk < Geom.ChunkCount; ++chunk) {
+        const size_t segs = Geom.SegsInChunk(chunk);
+        const size_t b0 = chunk * Geom.SegsPerChunk;  // first block of the chunk
+        const size_t vl = __riscv_vsetvl_e8mf2(segs * SegHalf);
+        const uint8_t* b_chunk = QuantBData + chunk * ChunkStride;
+        const int8_t* a_chunk = qa + chunk * Geom.ChunkElems;
+
+        const vint8mf2_t a_lo = __riscv_vle8_v_i8mf2(a_chunk, vl);
+        const vint8mf2_t a_hi = __riscv_vle8_v_i8mf2(a_chunk + vl, vl);
+
+        // Unscaled float partial of the chunk for column c.
+#define SQ4_MBCOL(c, f)                                                                                      \
+    vfloat32m2_t f;                                                                                          \
+    {                                                                                                        \
+        const vuint8mf2_t packed = __riscv_vle8_v_u8mf2(b_chunk + b_col[c] * vl, vl);                        \
+        const vint8mf2_t n_lo = __riscv_vreinterpret_v_u8mf2_i8mf2(__riscv_vand_vx_u8mf2(packed, 0x0F, vl)); \
+        const vint8mf2_t n_hi = __riscv_vreinterpret_v_u8mf2_i8mf2(__riscv_vsrl_vx_u8mf2(packed, 4, vl));    \
+        vint8mf2_t b_lo, b_hi;                                                                               \
+        if constexpr (HasZeroPoint) {                                                                        \
+            int8_t offset[8] = {};                                                                           \
+            for (size_t g = 0; g < segs; ++g) {                                                              \
+                offset[g] = static_cast<int8_t>(static_cast<int>(DequantOffset(b_zp[c], b0 + g, true)));     \
+            }                                                                                                \
+            vint8mf2_t offv;                                                                                 \
+            QI8_SEG_OFFSETS(offv, offset, segs, seg_id, vl);                                                 \
+            b_lo = __riscv_vsub_vv_i8mf2(n_lo, offv, vl);                                                    \
+            b_hi = __riscv_vsub_vv_i8mf2(n_hi, offv, vl);                                                    \
+        } else {                                                                                             \
+            b_lo = __riscv_vsub_vx_i8mf2(n_lo, 8, vl);                                                       \
+            b_hi = __riscv_vsub_vx_i8mf2(n_hi, 8, vl);                                                       \
+        }                                                                                                    \
+        vint16m1_t p = __riscv_vwmul_vv_i16m1(a_lo, b_lo, vl);                                               \
+        p = __riscv_vwmacc_vv_i16m1(p, a_hi, b_hi, vl);                                                      \
+        f = __riscv_vfwcvt_f_x_v_f32m2(p, vl);                                                               \
+    }
+        {
+            SQ4_MBCOL(0, f0)
+            SQ4_MBCOL(1, f1) SQ4_MBCOL(2, f2) SQ4_MBCOL(3, f3)
+                QI8_FOLD_SEGS4(seg_id, acc0, acc1, acc2, acc3, f0, f1, f2, f3, bs[0], bs[1], bs[2], bs[3])
+        }
+        {
+            SQ4_MBCOL(4, f4)
+            SQ4_MBCOL(5, f5) SQ4_MBCOL(6, f6) SQ4_MBCOL(7, f7)
+                QI8_FOLD_SEGS4(seg_id, acc4, acc5, acc6, acc7, f4, f5, f6, f7, bs[4], bs[5], bs[6], bs[7])
+        }
+#undef SQ4_MBCOL
+    }
+
+    auto store = [&](size_t c, vfloat32m2_t acc) {
+        if (c < n_cols) {
+            C[c] = ReduceSumF32M2(acc, accvl) + (Bias ? Bias[c] : 0.0f);
+        }
+    };
+    store(0, acc0);
+    store(1, acc1);
+    store(2, acc2);
+    store(3, acc3);
+    store(4, acc4);
+    store(5, acc5);
+    store(6, acc6);
+    store(7, acc7);
+}
+
 template <bool HasZeroPoint>
 size_t
 SQ4BitGemmKernel_CompInt8_Impl(
@@ -905,6 +1162,7 @@ SQ4BitGemmKernel_CompInt8_Impl(
     constexpr size_t BlkBitWidth = 4;
     MLAS_UNREFERENCED_PARAMETER(CountK);
 
+    const CompInt8Geometry Geom(BlkLen, BlockCountK);
     const size_t lda = BlockCountK * Q8BlkSize(BlkLen);
     const size_t ldb = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
@@ -920,9 +1178,21 @@ SQ4BitGemmKernel_CompInt8_Impl(
         const std::byte* b_zp = HasZeroPoint ? QuantBZeroPoint + nn * StrideQuantBZeroPoint : nullptr;
         const float* bias = Bias ? Bias + nn : nullptr;
 
+        if (Geom.SegsPerChunk > 1) {
+            // Several blocks per chunk: the multi-block tile covers the whole
+            // packed tile, one row at a time.
+            for (size_t m = 0; m < CountM; ++m) {
+                SQ4BitGemmKernel_CompInt8_MultiBlockTile<HasZeroPoint>(
+                    Geom, QuantA + m * lda, b_tile, width, b_scale, b_zp, StrideQuantBZeroPoint,
+                    width, C + m * ldc + nn, bias
+                );
+            }
+            continue;
+        }
+
         if (CountM == 1) {
             SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 1, CompInt8ColTile>(
-                BlkLen, BlockCountK, QuantA, lda, b_tile, width, b_scale, b_zp,
+                Geom, QuantA, lda, b_tile, width, b_scale, b_zp,
                 StrideQuantBZeroPoint, width, C + nn, ldc, bias
             );
             continue;
@@ -930,10 +1200,9 @@ SQ4BitGemmKernel_CompInt8_Impl(
 
         // 2 x 4 sub-tiles over the tile's columns; the tile's B stays cached
         // across the row pairs.
-        const size_t SubHalf = std::min(CompInt8SubBlkLen, BlkLen) / 2;
         for (size_t c0 = 0; c0 < width; c0 += 4) {
             const size_t n_cols = std::min<size_t>(4, width - c0);
-            const uint8_t* b_sub = b_tile + c0 * SubHalf;
+            const uint8_t* b_sub = b_tile + c0 * Geom.SegHalf;
             const float* sub_scale = b_scale + c0 * BlockCountK;
             const std::byte* sub_zp = HasZeroPoint ? b_zp + c0 * StrideQuantBZeroPoint : nullptr;
             const float* sub_bias = bias ? bias + c0 : nullptr;
@@ -941,13 +1210,13 @@ SQ4BitGemmKernel_CompInt8_Impl(
             size_t m = 0;
             for (; m + 2 <= CountM; m += 2) {
                 SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 2, 4>(
-                    BlkLen, BlockCountK, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
+                    Geom, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
                     StrideQuantBZeroPoint, n_cols, C + m * ldc + nn + c0, ldc, sub_bias
                 );
             }
             if (m < CountM) {
                 SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 1, 4>(
-                    BlkLen, BlockCountK, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
+                    Geom, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
                     StrideQuantBZeroPoint, n_cols, C + m * ldc + nn + c0, ldc, sub_bias
                 );
             }
@@ -978,60 +1247,40 @@ RvvQuantizeARowComputeBlkSum_CompInt8_Impl(
 )
 {
     const size_t BlockCountK = MlasDivRoundup(CountK, BlkLen);
+    const CompInt8Geometry Geom(BlkLen, BlockCountK);
     int8_t* qdata = reinterpret_cast<int8_t*>(QuantA);
 
+    int8_t q[CompInt8MaxBlkLen];
     for (size_t b = 0; b < BlockCountK; ++b) {
         const size_t k0 = b * BlkLen;
         const size_t len = std::min(BlkLen, CountK - k0);
-        const float* a_ptr = A + k0;
-
-        vfloat32m1_t vmax = __riscv_vfmv_s_f_f32m1(0.0f, 1);
-        for (size_t off = 0; off < len;) {
-            const size_t vl = __riscv_vsetvl_e32m1(len - off);
-            const vfloat32m1_t v = __riscv_vfabs_v_f32m1(__riscv_vle32_v_f32m1(a_ptr + off, vl), vl);
-            vmax = __riscv_vfredmax_vs_f32m1_f32m1(v, vmax, vl);
-            off += vl;
-        }
-        const float amax = __riscv_vfmv_f_s_f32m1_f32(vmax);
-        const float scale = amax / 127.0f;
-        const float inv_scale = (amax != 0.0f) ? (127.0f / amax) : 0.0f;
+        const float scale = QuantizeABlock(A + k0, len, BlkLen, q);
         QuantAScale[b] = scale;
 
-        int8_t* qd = qdata + b * BlkLen;
         vint32m1_t isum = __riscv_vmv_s_x_i32m1(0, 1);
         for (size_t off = 0; off < len;) {
-            const size_t vl = __riscv_vsetvl_e32m4(len - off);
-            vfloat32m4_t v = __riscv_vfmul_vf_f32m4(__riscv_vle32_v_f32m4(a_ptr + off, vl), inv_scale, vl);
-            vint32m4_t iv = __riscv_vfcvt_x_f_v_i32m4(v, vl);
-            iv = __riscv_vmax_vx_i32m4(iv, -127, vl);
-            iv = __riscv_vmin_vx_i32m4(iv, 127, vl);
-            const vint16m2_t i16 = __riscv_vncvt_x_x_w_i16m2(iv, vl);
-            const vint8m1_t i8 = __riscv_vncvt_x_x_w_i8m1(i16, vl);
-            __riscv_vse8_v_i8m1(qd + off, i8, vl);
-            const vint16m2_t w16 = __riscv_vsext_vf2_i16m2(i8, vl);
+            const size_t vl = __riscv_vsetvl_e8m1(len - off);
+            const vint16m2_t w16 = __riscv_vsext_vf2_i16m2(__riscv_vle8_v_i8m1(q + off, vl), vl);
             isum = __riscv_vwredsum_vs_i16m2_i32m1(w16, isum, vl);
             off += vl;
         }
-        const int32_t qsum = __riscv_vmv_x_s_i32m1_i32(isum);
-        AScaledBlkSum[b] = scale * static_cast<float>(qsum);
+        AScaledBlkSum[b] = scale * static_cast<float>(__riscv_vmv_x_s_i32m1_i32(isum));
 
-        for (size_t i = len; i < BlkLen; ++i) {
-            qd[i] = 0;
-        }
+        StoreABlock(Geom, b, q, qdata);
     }
 }
 
-// MTILE rows x NTILE columns of the SQ8 BlkSum CompInt8 GEMM. Columns >= n_cols alias column 0.
+// MTILE rows x NTILE columns of the SQ8 BlkSum CompInt8 GEMM, BlkLen >= ChunkElems.
+// Columns >= n_cols alias column 0.
 template <size_t MTILE, size_t NTILE>
 MLAS_FORCEINLINE void
 SQ8BitGemmKernel_BlkSum_CompInt8_Tile(
-    size_t BlkLen,
-    size_t BlockCountK,
+    const CompInt8Geometry& Geom,
     const int8_t* a_data,  // first row
     const float* a_scale,  // first row
     const float* a_sum,    // first row
     size_t lda,
-    const int8_t* b_data,  // block 0 of the tile's first column (centered int8)
+    const int8_t* b_data,  // chunk 0 of the tile's first column (centered int8)
     size_t Width,          // columns interleaved in the packed tile
     const float* b_scale,  // first column
     const float* b_sum,    // first column
@@ -1044,18 +1293,19 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Tile(
     static_assert(MTILE == 1 || MTILE == 2, "unsupported MTILE");
     static_assert(NTILE == 4 || NTILE == 8, "unsupported NTILE");
     static_assert(MTILE * NTILE <= 8, "too many accumulators");
+    const size_t BlockCountK = Geom.BlockCountK;
+    const size_t SegLen = Geom.SegLen;  // == ChunkElems in this regime
+    const size_t SegHalf = Geom.SegHalf;
+    const size_t ChunksPerBlock = Geom.ChunksPerBlock;
+    const size_t ChunkStride = Width * SegLen;  // packed bytes per chunk of the tile
     const size_t accvl = __riscv_vsetvlmax_e32m2();
-    const size_t SubLen = std::min(CompInt8SubBlkLen, BlkLen);
-    const size_t SubHalf = SubLen / 2;
-    const size_t SubCount = BlkLen / SubLen;
-    const size_t SubStride = Width * SubLen;  // bytes between consecutive sub-blocks of a column
 
-    const int8_t* qb[NTILE];  // adjacent columns of a sub-block are SubLen apart
+    const int8_t* qb[NTILE];  // adjacent columns of a chunk are SegLen apart
     const float* bsc[NTILE];
     const float* bsum[NTILE];
     for (size_t c = 0; c < NTILE; ++c) {
         const size_t cc = (c < n_cols) ? c : 0;
-        qb[c] = b_data + cc * SubLen;
+        qb[c] = b_data + cc * SegLen;
         bsc[c] = b_scale + cc * BlockCountK;
         bsum[c] = b_sum + cc * BlockCountK;
     }
@@ -1064,10 +1314,6 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Tile(
     vfloat32m2_t acc1 = acc0, acc2 = acc0, acc3 = acc0, acc4 = acc0, acc5 = acc0, acc6 = acc0, acc7 = acc0;
 
     for (size_t b = 0; b < BlockCountK; ++b) {
-        const size_t k0 = b * BlkLen;
-        const size_t b0 = b * SubCount * SubStride;
-        const int8_t* qa0 = a_data + k0;
-        const int8_t* qa1 = qa0 + (MTILE > 1 ? lda : 0);
         const float as0 = a_scale[b];
         const float as1 = a_scale[(MTILE > 1 ? BlockCountK : 0) + b];
 
@@ -1080,24 +1326,25 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Tile(
 
         // One chunk (two halves of 'vl' elements) per int16 partial: the sum of
         // two 8-bit products is the int16 limit, so widen after every chunk.
-        for (size_t sub = 0; sub < SubCount; ++sub) {
-            const size_t sb = b0 + sub * SubStride;  // sub-block offset within the packed tile
-            const size_t sa = sub * SubLen;          // sub-block offset within the A block
-            for (size_t k = 0; k < SubHalf;) {
-                const size_t vl = __riscv_vsetvl_e8mf2(SubHalf - k);
+        for (size_t sub = 0; sub < ChunksPerBlock; ++sub) {
+            const size_t chunk = b * ChunksPerBlock + sub;
+            const size_t sb = chunk * ChunkStride;      // chunk offset within the packed tile
+            const size_t sa = chunk * Geom.ChunkElems;  // chunk offset within the A row
+            for (size_t k = 0; k < SegHalf;) {
+                const size_t vl = __riscv_vsetvl_e8mf2(SegHalf - k);
 
-                const vint8mf2_t a0_lo = __riscv_vle8_v_i8mf2(qa0 + sa + k, vl);
-                const vint8mf2_t a0_hi = __riscv_vle8_v_i8mf2(qa0 + sa + SubHalf + k, vl);
+                const vint8mf2_t a0_lo = __riscv_vle8_v_i8mf2(a_data + sa + k, vl);
+                const vint8mf2_t a0_hi = __riscv_vle8_v_i8mf2(a_data + sa + SegHalf + k, vl);
                 vint8mf2_t a1_lo = a0_lo, a1_hi = a0_hi;
                 if constexpr (MTILE > 1) {
-                    a1_lo = __riscv_vle8_v_i8mf2(qa1 + sa + k, vl);
-                    a1_hi = __riscv_vle8_v_i8mf2(qa1 + sa + SubHalf + k, vl);
+                    a1_lo = __riscv_vle8_v_i8mf2(a_data + lda + sa + k, vl);
+                    a1_hi = __riscv_vle8_v_i8mf2(a_data + lda + sa + SegHalf + k, vl);
                 }
 
 #define SQ8_COL(c, acc_r0, acc_r1)                                                  \
     if constexpr ((c) < NTILE) {                                                    \
         const vint8mf2_t b_lo = __riscv_vle8_v_i8mf2(qb[c] + sb + k, vl);           \
-        const vint8mf2_t b_hi = __riscv_vle8_v_i8mf2(qb[c] + sb + SubHalf + k, vl); \
+        const vint8mf2_t b_hi = __riscv_vle8_v_i8mf2(qb[c] + sb + SegHalf + k, vl); \
         {                                                                           \
             vint16m1_t p_ = __riscv_vwmul_vv_i16m1(a0_lo, b_lo, vl);                \
             p_ = __riscv_vwmacc_vv_i16m1(p_, a0_hi, b_hi, vl);                      \
@@ -1175,6 +1422,102 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Tile(
     }
 }
 
+// One row x 8 columns (a whole packed tile) of the SQ8 BlkSum CompInt8 GEMM,
+// BlkLen < ChunkElems: see the 4-bit multi-block tile. Columns >= n_cols
+// alias column 0.
+MLAS_FORCEINLINE void
+SQ8BitGemmKernel_BlkSum_CompInt8_MultiBlockTile(
+    const CompInt8Geometry& Geom,
+    const int8_t* a_data,
+    const float* a_scale,
+    const float* a_sum,
+    const int8_t* b_data,  // chunk 0 of the packed tile
+    size_t Width,
+    const float* b_scale,  // first column
+    const float* b_sum,    // first column
+    size_t n_cols,
+    float* C,
+    const float* Bias
+)
+{
+    constexpr size_t NTILE = CompInt8ColTile;
+    const size_t BlockCountK = Geom.BlockCountK;
+    const size_t SegHalf = Geom.SegHalf;  // BlkLen / 2
+    const size_t ChunkStride = Width * Geom.ChunkElems;
+    const size_t accvl = __riscv_vsetvlmax_e32m2();
+    QI8_SEG_ID(seg_id, SegHalf, accvl);
+
+    const float* bs[NTILE];
+    const float* bsum[NTILE];
+    size_t b_col[NTILE];
+    for (size_t c = 0; c < NTILE; ++c) {
+        const size_t cc = (c < n_cols) ? c : 0;
+        b_col[c] = cc;
+        bs[c] = b_scale + cc * BlockCountK;
+        bsum[c] = b_sum + cc * BlockCountK;
+    }
+    const float* as = a_scale;
+
+    vfloat32m2_t acc0 = __riscv_vfmv_v_f_f32m2(0.0f, accvl);
+    vfloat32m2_t acc1 = acc0, acc2 = acc0, acc3 = acc0, acc4 = acc0, acc5 = acc0, acc6 = acc0, acc7 = acc0;
+
+    for (size_t chunk = 0; chunk < Geom.ChunkCount; ++chunk) {
+        const size_t segs = Geom.SegsInChunk(chunk);
+        const size_t b0 = chunk * Geom.SegsPerChunk;
+        const size_t vl = __riscv_vsetvl_e8mf2(segs * SegHalf);
+        const int8_t* b_chunk = b_data + chunk * ChunkStride;
+        const int8_t* a_chunk = a_data + chunk * Geom.ChunkElems;
+
+        const vint8mf2_t a_lo = __riscv_vle8_v_i8mf2(a_chunk, vl);
+        const vint8mf2_t a_hi = __riscv_vle8_v_i8mf2(a_chunk + vl, vl);
+
+#define SQ8_MBCOL(c, f)                                            \
+    vfloat32m2_t f;                                                \
+    {                                                              \
+        const int8_t* bc = b_chunk + b_col[c] * (2 * vl);          \
+        const vint8mf2_t b_lo = __riscv_vle8_v_i8mf2(bc, vl);      \
+        const vint8mf2_t b_hi = __riscv_vle8_v_i8mf2(bc + vl, vl); \
+        vint16m1_t p = __riscv_vwmul_vv_i16m1(a_lo, b_lo, vl);     \
+        p = __riscv_vwmacc_vv_i16m1(p, a_hi, b_hi, vl);            \
+        f = __riscv_vfwcvt_f_x_v_f32m2(p, vl);                     \
+    }
+        {
+            SQ8_MBCOL(0, f0)
+            SQ8_MBCOL(1, f1) SQ8_MBCOL(2, f2) SQ8_MBCOL(3, f3)
+                QI8_FOLD_SEGS4(seg_id, acc0, acc1, acc2, acc3, f0, f1, f2, f3, bs[0], bs[1], bs[2], bs[3])
+        }
+        {
+            SQ8_MBCOL(4, f4)
+            SQ8_MBCOL(5, f5) SQ8_MBCOL(6, f6) SQ8_MBCOL(7, f7)
+                QI8_FOLD_SEGS4(seg_id, acc4, acc5, acc6, acc7, f4, f5, f6, f7, bs[4], bs[5], bs[6], bs[7])
+        }
+#undef SQ8_MBCOL
+    }
+
+    auto correction = [&](const float* bsc) -> float {
+        vfloat32m2_t v = __riscv_vfmv_v_f_f32m2(0.0f, accvl);
+        for (size_t b = 0; b < BlockCountK;) {
+            const size_t vl = __riscv_vsetvl_e32m2(BlockCountK - b);
+            v = __riscv_vfmacc_vv_f32m2_tu(v, __riscv_vle32_v_f32m2(a_sum + b, vl), __riscv_vle32_v_f32m2(bsc + b, vl), vl);
+            b += vl;
+        }
+        return ReduceSumF32M2(v, accvl);
+    };
+    auto store = [&](size_t c, vfloat32m2_t acc) {
+        if (c < n_cols) {
+            C[c] = ReduceSumF32M2(acc, accvl) - correction(bsum[c]) + (Bias ? Bias[c] : 0.0f);
+        }
+    };
+    store(0, acc0);
+    store(1, acc1);
+    store(2, acc2);
+    store(3, acc3);
+    store(4, acc4);
+    store(5, acc5);
+    store(6, acc6);
+    store(7, acc7);
+}
+
 size_t
 SQ8BitGemmKernel_BlkSum_CompInt8_Impl(
     size_t BlkLen,
@@ -1193,11 +1536,12 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Impl(
     const float* QuantBBlkSum
 )
 {
-    // int8(A) x uint8(B) block-sum kernel. Per block:
-    //   C += aScale*bScale*sum_i(qa_i * qbRaw_i)  -  ABlockSum * (bScale*bZeroPoint)
+    // int8(A) x int8(B - 128) block-sum kernel. Per block:
+    //   C += aScale*bScale*sum_i(qa_i * qb_i)  -  ABlockSum * (bScale*(bZeroPoint - 128))
     MLAS_UNREFERENCED_PARAMETER(CountK);
+    const CompInt8Geometry Geom(BlkLen, BlockCountK);
     const size_t lda = BlockCountK * BlkLen;  // int8 A data per row
-    const size_t ldb = BlockCountK * BlkLen;  // uint8 B data per column
+    const size_t ldb = BlockCountK * BlkLen;  // int8 B data per column
 
     const int8_t* a_data = reinterpret_cast<const int8_t*>(QuantA);
     const int8_t* b_data = reinterpret_cast<const int8_t*>(QuantBData);
@@ -1210,18 +1554,27 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Impl(
         const float* b_sum = QuantBBlkSum + nn * BlockCountK;
         const float* bias = Bias ? Bias + nn : nullptr;
 
+        if (Geom.SegsPerChunk > 1) {
+            for (size_t m = 0; m < CountM; ++m) {
+                SQ8BitGemmKernel_BlkSum_CompInt8_MultiBlockTile(
+                    Geom, a_data + m * lda, QuantAScale + m * BlockCountK, ABlockSum + m * BlockCountK,
+                    b_tile, width, b_scale, b_sum, width, C + m * ldc + nn, bias
+                );
+            }
+            continue;
+        }
+
         if (CountM == 1) {
             SQ8BitGemmKernel_BlkSum_CompInt8_Tile<1, CompInt8ColTile>(
-                BlkLen, BlockCountK, a_data, QuantAScale, ABlockSum, lda, b_tile, width,
+                Geom, a_data, QuantAScale, ABlockSum, lda, b_tile, width,
                 b_scale, b_sum, width, C + nn, ldc, bias
             );
             continue;
         }
 
-        const size_t SubLen = std::min(CompInt8SubBlkLen, BlkLen);
         for (size_t c0 = 0; c0 < width; c0 += 4) {
             const size_t n_cols = std::min<size_t>(4, width - c0);
-            const int8_t* b_sub = b_tile + c0 * SubLen;
+            const int8_t* b_sub = b_tile + c0 * Geom.SegLen;
             const float* sub_scale = b_scale + c0 * BlockCountK;
             const float* sub_sum = b_sum + c0 * BlockCountK;
             const float* sub_bias = bias ? bias + c0 : nullptr;
@@ -1229,14 +1582,14 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Impl(
             size_t m = 0;
             for (; m + 2 <= CountM; m += 2) {
                 SQ8BitGemmKernel_BlkSum_CompInt8_Tile<2, 4>(
-                    BlkLen, BlockCountK, a_data + m * lda, QuantAScale + m * BlockCountK,
+                    Geom, a_data + m * lda, QuantAScale + m * BlockCountK,
                     ABlockSum + m * BlockCountK, lda, b_sub, width, sub_scale, sub_sum, n_cols,
                     C + m * ldc + nn + c0, ldc, sub_bias
                 );
             }
             if (m < CountM) {
                 SQ8BitGemmKernel_BlkSum_CompInt8_Tile<1, 4>(
-                    BlkLen, BlockCountK, a_data + m * lda, QuantAScale + m * BlockCountK,
+                    Geom, a_data + m * lda, QuantAScale + m * BlockCountK,
                     ABlockSum + m * BlockCountK, lda, b_sub, width, sub_scale, sub_sum, n_cols,
                     C + m * ldc + nn + c0, ldc, sub_bias
                 );
@@ -1248,6 +1601,10 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Impl(
 }
 
 #undef QI8_FOLD
+#undef QI8_SEG_ID
+#undef QI8_FOLD_SEG4
+#undef QI8_FOLD_SEGS4
+#undef QI8_SEG_OFFSETS
 #undef MLAS_UNROLL_LOOP
 #undef MLAS_SCHED_BARRIER
 
