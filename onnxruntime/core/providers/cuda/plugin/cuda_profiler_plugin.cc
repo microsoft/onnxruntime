@@ -6,7 +6,10 @@
 #if defined(ENABLE_CUDA_PROFILING)
 
 #include <map>
+#include <mutex>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace onnxruntime {
@@ -87,13 +90,58 @@ OrtStatus* ORT_API_CALL CudaPluginEpProfiler::StartEventImpl(
 
 /*static*/
 OrtStatus* ORT_API_CALL CudaPluginEpProfiler::StopEventImpl(
-    OrtEpProfilerImpl* /*this_ptr*/,
-    uint64_t /*ort_event_correlation_id*/,
-    const OrtProfilingEvent* /*ort_event*/) noexcept {
+    OrtEpProfilerImpl* this_ptr,
+    uint64_t ort_event_correlation_id,
+    const OrtProfilingEvent* ort_event) noexcept {
   EXCEPTION_TO_STATUS_BEGIN
+  auto* self = static_cast<CudaPluginEpProfiler*>(this_ptr);
 
+  // Always pop the CUPTI external correlation push performed in StartEvent,
+  // regardless of category — even if metadata extraction below partially fails.
   auto& manager = profiling::CUPTIManager::GetInstance();
   manager.PopCorrelation();
+
+  // For NODE_EVENT events, capture the originating node's identity now so that
+  // EndProfiling can annotate the GPU kernel/memcpy events produced under this
+  // correlation ID. Accessor failures are non-fatal: we simply skip annotation
+  // for this event and rely on ort_correlation_id alone for linkage.
+  if (ort_event != nullptr) {
+    const auto& api = self->ep_api;
+
+    OrtProfilingEventCategory category = OrtProfilingEventCategory_KERNEL;
+    if (OrtStatus* s = api.ProfilingEvent_GetCategory(ort_event, &category); s != nullptr) {
+      Ort::GetApi().ReleaseStatus(s);
+      return nullptr;
+    }
+
+    if (category == OrtProfilingEventCategory_NODE) {
+      OrtNodeInfo info;
+
+      const char* event_name = nullptr;
+      if (OrtStatus* s = api.ProfilingEvent_GetName(ort_event, &event_name); s != nullptr) {
+        Ort::GetApi().ReleaseStatus(s);
+      } else if (event_name != nullptr) {
+        info.event_name = event_name;
+      }
+
+      const char* op_name = nullptr;
+      if (OrtStatus* s = api.ProfilingEvent_GetArgValue(ort_event, "op_name", &op_name); s != nullptr) {
+        Ort::GetApi().ReleaseStatus(s);
+      } else if (op_name != nullptr) {
+        info.op_name = op_name;
+      }
+
+      const char* node_index = nullptr;
+      if (OrtStatus* s = api.ProfilingEvent_GetArgValue(ort_event, "node_index", &node_index); s != nullptr) {
+        Ort::GetApi().ReleaseStatus(s);
+      } else if (node_index != nullptr) {
+        info.node_index = node_index;
+      }
+
+      std::lock_guard<std::mutex> lock(self->node_info_mutex_);
+      self->correlation_to_node_[ort_event_correlation_id] = std::move(info);
+    }
+  }
 
   return nullptr;
   EXCEPTION_TO_STATUS_END
@@ -113,20 +161,68 @@ OrtStatus* ORT_API_CALL CudaPluginEpProfiler::EndProfilingImpl(
   std::map<uint64_t, profiling::Events> event_map;
   manager.Consume(self->client_handle_, self->ort_profiling_start_, event_map);
 
+  // Snapshot the correlation→node map under lock and clear it; subsequent
+  // lookups can then run lock-free for the duration of event flattening.
+  std::unordered_map<uint64_t, OrtNodeInfo> node_info;
+  {
+    std::lock_guard<std::mutex> lock(self->node_info_mutex_);
+    node_info.swap(self->correlation_to_node_);
+  }
+
   // Flatten all GPU events and convert to OrtProfilingEvent.
   std::vector<Ort::ProfilingEvent> events;
   for (auto& kv : event_map) {
+    const uint64_t correlation_id = kv.first;
     auto& event_list = kv.second;
+
+    // Resolve ORT-side attribution for this correlation ID (if any).
+    const OrtNodeInfo* info = nullptr;
+    if (auto it = node_info.find(correlation_id); it != node_info.end()) {
+      info = &it->second;
+    }
+
+    // Stringify correlation ID once per outer iteration; storage must outlive
+    // every Ort::ProfilingEvent constructor call below. The constructor copies
+    // these strings into the container (see ProfilingEventsContainer_AddEvents),
+    // so per-record local storage would also work, but lifting it here avoids
+    // redundant work.
+    const std::string correlation_id_str = std::to_string(correlation_id);
+
     for (const auto& record : event_list) {
       // Build parallel key/value arrays to use the raw-pointer ProfilingEvent
       // constructor, avoiding a copy from InlinedHashMap to std::unordered_map.
+      // Reserve enough headroom for the CUPTI args plus up to 4 ORT annotations
+      // (ort_correlation_id always; ort_event_name / ort_op_name / ort_node_index
+      // when ORT-side metadata is available).
       InlinedVector<const char*> arg_keys;
       InlinedVector<const char*> arg_values;
-      arg_keys.reserve(record.args.size());
-      arg_values.reserve(record.args.size());
+      arg_keys.reserve(record.args.size() + 4);
+      arg_values.reserve(record.args.size() + 4);
       for (const auto& [k, v] : record.args) {
         arg_keys.push_back(k.c_str());
         arg_values.push_back(v.c_str());
+      }
+
+      // Always emit ort_correlation_id so consumers can join GPU events back
+      // to ORT events even when per-node attribution wasn't captured (e.g. the
+      // event came from a non-NODE category, or StopEvent ran before the GPU
+      // activity was finalized).
+      arg_keys.push_back("ort_correlation_id");
+      arg_values.push_back(correlation_id_str.c_str());
+
+      if (info != nullptr) {
+        if (!info->event_name.empty()) {
+          arg_keys.push_back("ort_event_name");
+          arg_values.push_back(info->event_name.c_str());
+        }
+        if (!info->op_name.empty()) {
+          arg_keys.push_back("ort_op_name");
+          arg_values.push_back(info->op_name.c_str());
+        }
+        if (!info->node_index.empty()) {
+          arg_keys.push_back("ort_node_index");
+          arg_values.push_back(info->node_index.c_str());
+        }
       }
 
       events.emplace_back(
