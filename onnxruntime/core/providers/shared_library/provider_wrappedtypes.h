@@ -1297,6 +1297,37 @@ class Initializer {
   Initializer* this_ptr_;
 };
 
+class RunInstrumentationContext final {
+ public:
+  const std::string& RequestId() const { return g_host->RunInstrumentationContext__RequestId(this); }
+  TimePoint StartProfiling() const { return g_host->RunInstrumentationContext__StartProfiling(this); }
+  uint64_t ProfilerStartTimeNs() const { return g_host->RunInstrumentationContext__ProfilerStartTimeNs(this); }
+  void AddDeferredRecord(std::unique_ptr<DeferredRunInstrumentationRecord> record) const {
+    g_host->RunInstrumentationContext__AddDeferredRecord(this, std::move(record));
+  }
+  bool TryReserveMoeRoutingRecord(size_t element_count) const {
+    return g_host->RunInstrumentationContext__TryReserveMoeRoutingRecord(this, element_count);
+  }
+  void RecordMoeRoutingEvent(const TimePoint& start_time,
+                             const TimePoint& end_time,
+                             const std::string& node_name,
+                             NodeIndex node_index,
+                             std::string expert_ids_json,
+                             std::string router_weights_json,
+                             int64_t num_rows,
+                             int64_t top_k,
+                             int execution_device_id,
+                             int64_t completion_ns,
+                             const std::string& completion_timestamp_source) const {
+    g_host->RunInstrumentationContext__RecordMoeRoutingEvent(
+        this, start_time, end_time, node_name, node_index,
+        std::move(expert_ids_json), std::move(router_weights_json),
+        num_rows, top_k, execution_device_id, completion_ns, completion_timestamp_source);
+  }
+
+  PROVIDER_DISALLOW_ALL(RunInstrumentationContext)
+};
+
 struct OpKernelContext final {
   template <typename T>
   const T& RequiredInput(int index) const;
@@ -1326,6 +1357,9 @@ struct OpKernelContext final {
   bool TryGetInferredOutputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredOutputShape(this, index, shape); }
   bool TryGetInferredInputShape(int index, TensorShape& shape) const { return g_host->OpKernelContext__TryGetInferredInputShape(this, index, shape); }
   Stream* GetComputeStream() const { return g_host->OpKernelContext__GetComputeStream(this); }
+  const RunInstrumentationContext* GetRunInstrumentationContext() const {
+    return g_host->OpKernelContext__GetRunInstrumentationContext(this);
+  }
 
   PROVIDER_DISALLOW_ALL(OpKernelContext)
 };

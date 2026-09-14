@@ -4,6 +4,15 @@
 #pragma once
 
 #include <functional>
+#if !defined(ORT_MINIMAL_BUILD)
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <string>
+
+#include "core/common/json_utils.h"
+#include "core/framework/run_instrumentation.h"
+#endif
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -15,6 +24,131 @@ namespace onnxruntime {
 class SessionState;
 class ExecutionFrame;
 
+#if !defined(ORT_MINIMAL_BUILD)
+// Holds per-run state for collecting MoE routing data without synchronizing after each kernel.
+//
+// A CUDA MoE kernel enqueues device-to-host copies of its routing outputs on the same stream
+// that produced them, followed by a completion event. Stream ordering guarantees that the copies
+// finish before the device scratch buffers can be reused by later work on that stream. The pinned
+// host buffers and their CUDA events are owned by deferred records stored here, so they remain
+// alive after the kernel returns.
+//
+// InferenceSession flushes the records after execution-provider OnRunEnd() performs the normal
+// end-of-run synchronization. Each record also checks its completion event and synchronizes that
+// event as a safety fallback before reading the host buffers and logging the routing decision.
+//
+// CUDA pinned allocations are arena-backed, but they cannot be returned to the arena while their
+// copies are in flight. The routing record and element limits therefore bound the live pinned
+// memory retained until the run is flushed.
+class RunInstrumentationContext {
+ public:
+  static constexpr size_t kMaxMoeRoutingRecordsPerRun = 1024;
+  static constexpr size_t kMaxMoeRoutingElementsPerRun = 2'000'000;
+
+  RunInstrumentationContext(std::string request_id, const logging::Logger& logger)
+      : request_id_(std::move(request_id)),
+        logger_(logger),
+        start_time_ns_(static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::high_resolution_clock::now().time_since_epoch())
+                .count())) {}
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RunInstrumentationContext);
+
+  const std::string& RequestId() const noexcept { return request_id_; }
+  TimePoint StartProfiling() const { return std::chrono::high_resolution_clock::now(); }
+  uint64_t ProfilerStartTimeNs() const noexcept { return start_time_ns_; }
+
+  void RecordMoeRoutingEvent(const TimePoint&,
+                             const TimePoint&,
+                             std::string_view node_name,
+                             NodeIndex node_index,
+                             std::string expert_ids_json,
+                             std::string router_weights_json,
+                             int64_t num_rows,
+                             int64_t top_k,
+                             int execution_device_id,
+                             int64_t,
+                             std::string_view) const {
+    std::ostringstream event;
+    event << "{\"request_id\":";
+    common::WriteJsonString(event, request_id_);
+    event << ",\"node_name\":";
+    common::WriteJsonString(event, node_name);
+    event << ",\"node_index\":" << node_index
+          << ",\"expert_ids\":" << expert_ids_json
+          << ",\"router_weights\":" << router_weights_json
+          << ",\"num_rows\":" << num_rows
+          << ",\"top_k\":" << top_k
+          << ",\"execution_device_id\":" << execution_device_id
+          << "}";
+    LOGS(logger_, INFO) << "moe_routing " << event.str();
+  }
+
+  void AddDeferredRecord(std::unique_ptr<DeferredRunInstrumentationRecord> record) const {
+    std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+    deferred_records_.push_back(std::move(record));
+  }
+
+  bool TryReserveMoeRoutingRecord(size_t element_count) const {
+    std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+    if (moe_routing_record_count_ >= kMaxMoeRoutingRecordsPerRun ||
+        element_count > kMaxMoeRoutingElementsPerRun - moe_routing_element_count_) {
+      ++dropped_moe_routing_record_count_;
+      dropped_moe_routing_element_count_ += element_count;
+      return false;
+    }
+
+    ++moe_routing_record_count_;
+    moe_routing_element_count_ += element_count;
+    return true;
+  }
+
+  void LogMoeStatisticsTruncation() const {
+    std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+    if (dropped_moe_routing_record_count_ == 0) {
+      return;
+    }
+
+    LOGS(logger_, WARNING)
+        << "moe_routing_truncated {\"dropped_records\":"
+        << dropped_moe_routing_record_count_
+        << ",\"dropped_routing_elements\":" << dropped_moe_routing_element_count_
+        << ",\"max_records_per_run\":" << kMaxMoeRoutingRecordsPerRun
+        << ",\"max_routing_elements_per_run\":" << kMaxMoeRoutingElementsPerRun
+        << "}";
+  }
+
+  Status FlushDeferredRecords() {
+    InlinedVector<std::unique_ptr<DeferredRunInstrumentationRecord>> records;
+    {
+      std::lock_guard<std::mutex> lock(deferred_records_mutex_);
+      records = std::move(deferred_records_);
+    }
+
+    Status status = Status::OK();
+    for (auto& record : records) {
+      const std::string error_message = record->Emit();
+      if (status.IsOK() && !error_message.empty()) {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, error_message);
+      }
+    }
+    return status;
+  }
+
+ private:
+  std::string request_id_;
+  const logging::Logger& logger_;
+  uint64_t start_time_ns_;
+  mutable std::mutex deferred_records_mutex_;
+  mutable InlinedVector<std::unique_ptr<DeferredRunInstrumentationRecord>> deferred_records_;
+  mutable size_t moe_routing_record_count_{0};
+  mutable size_t moe_routing_element_count_{0};
+  mutable size_t dropped_moe_routing_record_count_{0};
+  mutable size_t dropped_moe_routing_element_count_{0};
+};
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 class OpKernelContextInternal : public OpKernelContext {
  public:
   explicit OpKernelContextInternal(const SessionState& session_state,
@@ -23,8 +157,20 @@ class OpKernelContextInternal : public OpKernelContext {
                                    const logging::Logger& logger,
                                    const bool& terminate_flag,
                                    Stream* stream,
-                                   profiling::Profiler* run_profiler = nullptr)
-      : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger),
+                                   profiling::Profiler* run_profiler = nullptr
+#if !defined(ORT_MINIMAL_BUILD)
+                                   ,
+                                   const RunInstrumentationContext* run_instrumentation_context = nullptr)
+#else
+                                   )
+#endif
+      : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger
+#if !defined(ORT_MINIMAL_BUILD)
+                        ,
+                        run_instrumentation_context),
+#else
+                        ),
+#endif
         session_state_(session_state),
         terminate_flag_(terminate_flag),
         run_profiler_(run_profiler) {
