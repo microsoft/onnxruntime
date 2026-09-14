@@ -260,7 +260,8 @@ struct OpKernelInfo {
   }
 
   static Status GetAttrsImpl(const OrtKernelInfo* info, const char* name, std::vector<std::string>& out) {
-    Ort::AllocatorWithDefaultOptions allocator;
+    OrtAllocator* allocator = nullptr;
+    ORT_RETURN_IF_ERROR(ToStatus(Ort::GetApi().GetAllocatorWithDefaultOptions(&allocator)));
     size_t size = 0;
     ORT_RETURN_IF_ERROR(
         ToStatus(Ort::GetApi().KernelInfoGetAttributeArray_string(info, name, allocator, nullptr, &size)));
@@ -276,14 +277,13 @@ struct OpKernelInfo {
     // The allocator owns both the array and every string in it, so release them on all exit paths: constructing the
     // std::string copies below can throw. Free through the OrtAllocator function pointer rather than
     // Ort::AllocatorWithDefaultOptions::Free(), which throws on failure and so must not run in this deleter.
-    OrtAllocator* raw_allocator = allocator;
-    auto free_raw_values = [raw_allocator, size](char** values_to_free) {
+    auto free_raw_values = [allocator, size](char** values_to_free) {
       for (size_t i = 0; i < size; ++i) {
         if (values_to_free[i] != nullptr) {
-          raw_allocator->Free(raw_allocator, values_to_free[i]);
+          allocator->Free(allocator, values_to_free[i]);
         }
       }
-      raw_allocator->Free(raw_allocator, values_to_free);
+      allocator->Free(allocator, values_to_free);
     };
     std::unique_ptr<char*, decltype(free_raw_values)> raw_values_guard{raw_values, std::move(free_raw_values)};
 

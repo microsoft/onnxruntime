@@ -648,9 +648,10 @@ Status Environment::CreateAndRegisterInternalEps() {
 }
 
 Status Environment::CreateAndRegisterStaticPluginEps(StaticPluginEpRegistrationToken) {
-  // Intentionally does not take mutex_. That is safe because the caller holds the OrtEnv creation mutex, so no other
-  // thread can obtain a reference to this Environment yet. Taking mutex_ here would deadlock if a plugin EP called an
-  // Environment API from its OrtEpFactory::GetSupportedDevices implementation.
+  // Intentionally does not take mutex_ and calls the private, non-locking RegisterExecutionProviderLibrary overload.
+  // This is safe because the caller holds the OrtEnv creation mutex, so no other thread can obtain a reference to this
+  // Environment yet. Taking mutex_ here would deadlock if a plugin EP called a locking Environment API from
+  // OrtEpFactory::GetSupportedDevices.
   auto static_plugin_ep_libraries = CreateStaticPluginEpLibraries();
   for (auto& ep_library : static_plugin_ep_libraries) {
     const std::string registration_name = ep_library->RegistrationName();
