@@ -989,11 +989,18 @@ SQ4BitGemmKernel_CompInt8_Tile(
 
                 if constexpr (MTILE == 1) {
                     SQ4_COL(0, p0, p0)
-                    SQ4_COL(1, p1, p1) SQ4_COL(2, p2, p2) SQ4_COL(3, p3, p3)
-                        SQ4_COL(4, p4, p4) SQ4_COL(5, p5, p5) SQ4_COL(6, p6, p6) SQ4_COL(7, p7, p7)
+                    SQ4_COL(1, p1, p1)
+                    SQ4_COL(2, p2, p2)
+                    SQ4_COL(3, p3, p3)
+                    SQ4_COL(4, p4, p4)
+                    SQ4_COL(5, p5, p5)
+                    SQ4_COL(6, p6, p6)
+                    SQ4_COL(7, p7, p7)
                 } else {
                     SQ4_COL(0, p0, p4)
-                    SQ4_COL(1, p1, p5) SQ4_COL(2, p2, p6) SQ4_COL(3, p3, p7)
+                    SQ4_COL(1, p1, p5)
+                    SQ4_COL(2, p2, p6)
+                    SQ4_COL(3, p3, p7)
                 }
 #undef SQ4_COL
 
@@ -1131,13 +1138,17 @@ SQ4BitGemmKernel_CompInt8_MultiBlockTile(
     }
         {
             SQ4_MBCOL(0, f0)
-            SQ4_MBCOL(1, f1) SQ4_MBCOL(2, f2) SQ4_MBCOL(3, f3)
-                QI8_FOLD_SEGS4(seg_id, acc0, acc1, acc2, acc3, f0, f1, f2, f3, bs[0], bs[1], bs[2], bs[3])
+            SQ4_MBCOL(1, f1)
+            SQ4_MBCOL(2, f2)
+            SQ4_MBCOL(3, f3)
+            QI8_FOLD_SEGS4(seg_id, acc0, acc1, acc2, acc3, f0, f1, f2, f3, bs[0], bs[1], bs[2], bs[3])
         }
         {
             SQ4_MBCOL(4, f4)
-            SQ4_MBCOL(5, f5) SQ4_MBCOL(6, f6) SQ4_MBCOL(7, f7)
-                QI8_FOLD_SEGS4(seg_id, acc4, acc5, acc6, acc7, f4, f5, f6, f7, bs[4], bs[5], bs[6], bs[7])
+            SQ4_MBCOL(5, f5)
+            SQ4_MBCOL(6, f6)
+            SQ4_MBCOL(7, f7)
+            QI8_FOLD_SEGS4(seg_id, acc4, acc5, acc6, acc7, f4, f5, f6, f7, bs[4], bs[5], bs[6], bs[7])
         }
 #undef SQ4_MBCOL
     }
@@ -1378,17 +1389,21 @@ SQ8BitGemmKernel_BlkSum_CompInt8_Tile(
                 if constexpr (MTILE == 1) {
                     SQ8_COL(0, acc0, acc0)
                     SQ8_COL(1, acc1, acc1)
-                        MLAS_SCHED_BARRIER
-                            SQ8_COL(2, acc2, acc2) SQ8_COL(3, acc3, acc3)
-                                MLAS_SCHED_BARRIER
-                                    SQ8_COL(4, acc4, acc4) SQ8_COL(5, acc5, acc5)
-                                        MLAS_SCHED_BARRIER
-                                            SQ8_COL(6, acc6, acc6) SQ8_COL(7, acc7, acc7)
+                    MLAS_SCHED_BARRIER
+                    SQ8_COL(2, acc2, acc2)
+                    SQ8_COL(3, acc3, acc3)
+                    MLAS_SCHED_BARRIER
+                    SQ8_COL(4, acc4, acc4)
+                    SQ8_COL(5, acc5, acc5)
+                    MLAS_SCHED_BARRIER
+                    SQ8_COL(6, acc6, acc6)
+                    SQ8_COL(7, acc7, acc7)
                 } else {
                     SQ8_COL(0, acc0, acc4)
                     SQ8_COL(1, acc1, acc5)
-                        MLAS_SCHED_BARRIER
-                            SQ8_COL(2, acc2, acc6) SQ8_COL(3, acc3, acc7)
+                    MLAS_SCHED_BARRIER
+                    SQ8_COL(2, acc2, acc6)
+                    SQ8_COL(3, acc3, acc7)
                 }
 #undef SQ8_COL
 
@@ -1498,13 +1513,17 @@ SQ8BitGemmKernel_BlkSum_CompInt8_MultiBlockTile(
     }
         {
             SQ8_MBCOL(0, f0)
-            SQ8_MBCOL(1, f1) SQ8_MBCOL(2, f2) SQ8_MBCOL(3, f3)
-                QI8_FOLD_SEGS4(seg_id, acc0, acc1, acc2, acc3, f0, f1, f2, f3, bs[0], bs[1], bs[2], bs[3])
+            SQ8_MBCOL(1, f1)
+            SQ8_MBCOL(2, f2)
+            SQ8_MBCOL(3, f3)
+            QI8_FOLD_SEGS4(seg_id, acc0, acc1, acc2, acc3, f0, f1, f2, f3, bs[0], bs[1], bs[2], bs[3])
         }
         {
             SQ8_MBCOL(4, f4)
-            SQ8_MBCOL(5, f5) SQ8_MBCOL(6, f6) SQ8_MBCOL(7, f7)
-                QI8_FOLD_SEGS4(seg_id, acc4, acc5, acc6, acc7, f4, f5, f6, f7, bs[4], bs[5], bs[6], bs[7])
+            SQ8_MBCOL(5, f5)
+            SQ8_MBCOL(6, f6)
+            SQ8_MBCOL(7, f7)
+            QI8_FOLD_SEGS4(seg_id, acc4, acc5, acc6, acc7, f4, f5, f6, f7, bs[4], bs[5], bs[6], bs[7])
         }
 #undef SQ8_MBCOL
     }
