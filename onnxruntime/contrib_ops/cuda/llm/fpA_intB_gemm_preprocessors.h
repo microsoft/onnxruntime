@@ -28,6 +28,7 @@ namespace weight_only {
 enum class QuantType {
   W8_A16,
   W4_A16,
+  W2_A16,
   W4_AFP8
 };
 
