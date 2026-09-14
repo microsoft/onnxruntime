@@ -2165,15 +2165,17 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   const auto* fbs_ort_model_version = fbs_session->ort_version();
   ORT_RETURN_IF(fbs_ort_model_version == nullptr, "Serialized version info is null. Invalid ORT format model.");
 
-  int model_version = 0;
+  int model_version = -1;
   const std::string_view model_version_string = fbs_ort_model_version->string_view();
+  int parsed_model_version = 0;
   const auto [model_version_end, model_version_error] =
       std::from_chars(model_version_string.data(),
                       model_version_string.data() + model_version_string.size(),
-                      model_version);
-  ORT_RETURN_IF(model_version_error != std::errc{} ||
-                    model_version_end != model_version_string.data() + model_version_string.size(),
-                "Invalid ORT format model version [", model_version_string, "].");
+                      parsed_model_version);
+  if (model_version_error == std::errc{} &&
+      model_version_end == model_version_string.data() + model_version_string.size()) {
+    model_version = parsed_model_version;
+  }
   const bool is_supported = IsOrtModelVersionSupported(model_version);
 
   OrtFormatLoadOptions load_options{};
