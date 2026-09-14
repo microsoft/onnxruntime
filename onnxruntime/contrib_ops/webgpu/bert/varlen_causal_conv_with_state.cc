@@ -197,7 +197,7 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
                 "batch_size * channels is too large for WebGPU");
   const uint32_t num_invocations = static_cast<uint32_t>(num_invocations_64);
   const uint32_t dispatch_groups =
-      num_invocations / WORKGROUP_SIZE + (num_invocations % WORKGROUP_SIZE != 0);
+      num_invocations / WORKGROUP_SIZE + static_cast<uint32_t>(num_invocations % WORKGROUP_SIZE != 0);
 
   program.AddInput({input, ProgramTensorMetadataDependency::Type})
       .AddInput({weight, ProgramTensorMetadataDependency::None})
