@@ -4259,8 +4259,8 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
                                      data_elem_type == onnx::TensorProto_DataType_FLOAT4E2M1;
 
         const bool block_size_valid = block_size == 0
-                                           ? is_fp_quantized
-                                           : (block_size >= 16 && (block_size & (block_size - 1)) == 0);
+                                          ? is_fp_quantized
+                                          : (block_size >= 16 && (block_size & (block_size - 1)) == 0);
         if (!block_size_valid) {
           fail_shape_inference("block_size must be a power of 2 and not smaller than 16, or 0 for FP8/FP4 data");
         }
@@ -4291,7 +4291,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
               int64_t effective_block_size =
                   block_size == 0 ? std::max<int64_t>(data_shape.dim(i).dim_value(), 1) : block_size;
               if ((data_shape.dim(i).dim_value() * components + effective_block_size - 1) / effective_block_size !=
-                      scales_shape.dim(i).dim_value()) {
+                  scales_shape.dim(i).dim_value()) {
                 fail_shape_inference("data shape and scales shape do not match");
               }
             } else if (data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value() &&

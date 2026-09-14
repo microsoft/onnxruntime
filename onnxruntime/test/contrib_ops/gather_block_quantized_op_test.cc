@@ -1232,13 +1232,14 @@ TEST(GatherBlockQuantizedOpTest, GatherAxisNoPadingUInt8) {
 // GatherBlockQuantized also supports gathering rows from an FP8 or FP4 block-scaled constant table
 // (no zero point, since FP8/FP4 quantization is symmetric) and dequantizing them:
 // output[...] = float(data[...]) * scales[block(...)].
-// CUDA/TensorRT/OpenVINO don't register FP8/FP4 kernels for this op at all (see
-// cuda_contrib_kernels.cc), so those EPs correctly fall back to CPU. WebGpu does register FP8/FP4
-// kernels, but its dequantization lookup-table shader path is not yet functional for these inputs
-// (fails with an internal error at run time), so it is excluded here as well until that is fixed.
+// TensorRT/OpenVINO don't register FP8/FP4 kernels for this op at all, so those EPs correctly
+// fall back to CPU. WebGpu's dequantization lookup-table shader path is implemented but not yet
+// validated on real hardware, so its FP8/FP4 type registration is withheld (see
+// GatherBlockQuantizedT1Constraint in contrib_ops/webgpu/quantization/gather_block_quantized.cc)
+// and it is excluded here too. CUDA registers and is expected to correctly run these kernels, so
+// it is intentionally not excluded below.
 static const std::unordered_set<std::string> kFpExcludedProviders = {
-    kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider,
-    kWebGpuExecutionProvider};
+    kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kWebGpuExecutionProvider};
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 TEST(GatherBlockQuantizedOpTest, FpBasicPerRowScale) {
@@ -1425,7 +1426,14 @@ TEST(GatherBlockQuantizedOpTest, FpInvalidOutOfRangeIndexThrows) {
   test.AddInput<int64_t>("indices", {1}, indices);
   test.AddInput<float>("scales", {4, 1}, scales);
   test.AddOutput<float>("output", {1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "", kFpExcludedProviders);
+  // Unlike CPU (which throws for an out-of-range index), CUDA safely zero-fills the output for
+  // out-of-range indices (see GatherBlockQuantizedFpKernel in gather_block_quantized.cu), matching
+  // the existing int4/uint8 CUDA kernel's behavior (see InvalidIndicesSafelyHandled_Cuda above).
+  // So CUDA must not be included in a "this should throw" run.
+  auto excluded_providers = kFpExcludedProviders;
+  excluded_providers.insert(kCudaExecutionProvider);
+  excluded_providers.insert(kCudaNHWCExecutionProvider);
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", excluded_providers);
 }
 #endif  // !defined(DISABLE_FLOAT8_TYPES)
 

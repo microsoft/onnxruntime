@@ -202,8 +202,8 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
       data_dims[static_cast<int32_t>(i)] = data_shape[i];
 
       const int64_t expected_dim = (i == quantize_axis_)
-                                        ? (data_shape[i] + effective_block_size - 1) / effective_block_size
-                                        : data_shape[i];
+                                       ? (data_shape[i] + effective_block_size - 1) / effective_block_size
+                                       : data_shape[i];
       const int64_t actual_dim = scales_shape[i];
       const bool is_broadcast = actual_dim == 1 && actual_dim != expected_dim;
       ORT_ENFORCE(is_broadcast || actual_dim == expected_dim,
