@@ -32,8 +32,7 @@ class SubgroupMatrixMatMulNBitsProgram final : public Program<SubgroupMatrixMatM
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
-      {"weight_idx", ProgramUniformVariableDataType::Uint32},
-      {"m_tiles_per_wg", ProgramUniformVariableDataType::Uint32});
+      {"weight_idx", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t nbits_;
@@ -67,7 +66,8 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        bool is_fp16,
                                        int32_t& config_index,
                                        uint32_t M = std::numeric_limits<uint32_t>::max(),
-                                       bool has_weight_idx_indirect = false);
+                                       bool has_weight_idx_indirect = false,
+                                       bool has_bias = false);
 
 }  // namespace webgpu
 }  // namespace contrib

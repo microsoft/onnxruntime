@@ -308,7 +308,9 @@ Status MatMulNBitsMlp::ComputeInternal(onnxruntime::webgpu::ComputeContext& cont
                                         static_cast<uint32_t>(bits_),
                                         y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
                                         subgroup_matrix_config_index,
-                                        M);
+                                        M,
+                                        /*has_weight_idx_indirect=*/false,
+                                        /*has_bias=*/gate_bias != nullptr || up_bias != nullptr);
   const bool would_use_dp4a_unfused =
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, N, K, components_a,
                                     M, /*has_weight_idx_indirect=*/false, y);
