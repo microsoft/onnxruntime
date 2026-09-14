@@ -133,6 +133,15 @@ if(onnxruntime_BUILD_SHARED_LIB)
       endif()
     endif()
 
+    # Static frameworks do not retain target_link_libraries metadata, so expose Accelerate
+    # to package consumers through framework_info.json and the generated podspec.
+    if(onnxruntime_USE_APPLE_ACCELERATE)
+      if(APPLE_SYSTEM_FRAMEWORKS)
+        string(APPEND APPLE_SYSTEM_FRAMEWORKS ", ")
+      endif()
+      string(APPEND APPLE_SYSTEM_FRAMEWORKS "\\\"Accelerate\\\"")
+    endif()
+
     set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
     configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
     configure_file(
