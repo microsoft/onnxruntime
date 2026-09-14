@@ -20,6 +20,7 @@ Related documentation:
 5. [Decode GEMV - Memory-Level Parallelism](#5-decode-gemv---memory-level-parallelism)
 6. [Decode GEMV - Tensor Cores](#6-decode-gemv---tensor-cores)
   - [RTX 4090 Split-K Qualification and Dispatch Refinement](#65-rtx-4090-split-k-qualification-and-dispatch-refinement)
+  - [RTX 5060 Ti and RTX 3060 Split-K Validation](#66-rtx-5060-ti-and-rtx-3060-split-k-validation)
 7. [Benchmark Commands](#7-benchmark-commands)
 8. [Lessons](#8-lessons)
 
@@ -306,7 +307,7 @@ steps.
 costs more in lost memory-level parallelism than the instruction saving is worth.
 `KSplit` warps per block therefore take a strided share of the K windows and are
 reduced through shared memory at the end. The generic policy uses `KSplit = 8`
-for `N >= 8192` and 16 otherwise, subject to the short-K window clamp. Two
+for `N >= 8192` and 16 otherwise, subject to the short-K window clamp. Three
 qualified low-M configurations select 8 earlier:
 
 - SM90 with 132 SMs (measured on H200), `M <= 8`: more than `2 * sm_count`
@@ -315,6 +316,8 @@ qualified low-M configurations select 8 earlier:
   more than `3 * sm_count` output blocks. This preserves the pinned KS16 window
   and changes only `6144 < N < 8192`, `1024 <= K <= 6144` relative to the
   generic policy.
+- SM120 with 36 SMs (measured on RTX 5060 Ti), `M <= 8`, `40 <= K/64 <= 96`:
+  more than `2 * sm_count` output blocks.
 
 Other configurations retain the generic policy and the existing SM121 KS32
 override. The residency hint remains active where the selected KS16 qualifies.
@@ -342,6 +345,13 @@ selector does not act on that.
 
 The RTX 4090 experiments and the rationale for its narrower qualification are
 recorded in [section 6.5](#65-rtx-4090-split-k-qualification-and-dispatch-refinement).
+
+Cross-device validation used CUDA graph replay and Nsight Systems kernel timing.
+On an RTX 5060 Ti (SM120, 36 SMs), the crossover lands at 72/73 output blocks and
+KSplit 8 improves `M=4, N=5120, K=6144` by 9.5%. On an RTX 3060 (SM86, 28 SMs),
+KSplit 8 regresses `M=1, N=897, K=5120` by 12.1% and `N=2048, K=5120` by about
+8%, while results at larger widths are mixed. The SM86 configuration therefore
+retains the generic policy.
 
 Preconditions: SM80+, `K % 64 == 0`, `K >= 256`, `block_size % 64 == 0`, `M <= 8`.
 Otherwise the FMA kernel runs unchanged. `ORT_FP8_GEMV_MMA=0` forces the FMA
@@ -541,6 +551,110 @@ against the edited production header passed 192 FP16/BF16 GPU correctness/dispat
 cases and the extracted host selector/residency-boundary tests. The production
 CUDA translation unit also compiled separately. These checks do not establish
 full-provider test coverage or end-to-end model speedup.
+
+### 6.6 RTX 5060 Ti and RTX 3060 Split-K Validation
+
+#### Environment and Method
+
+Measured on September 14, 2026 while evaluating the Split-K dispatch change:
+
+- RTX 5060 Ti, SM120, 36 SMs, about 448 GB/s memory bandwidth.
+- RTX 3060, SM86, 28 SMs.
+- CUDA 13.0, Visual Studio 2022, Release build containing both KSplit 8 and
+  KSplit 16 kernel instantiations.
+- FP8 E4M3 weights, FP32 scales, block size 128, and FP16 activations and
+  outputs. The focused cases used no bias or activation QDQ.
+- A NumPy/ORT harness allocated CUDA `OrtValue`s, captured the operator in a
+  CUDA graph, warmed it up, and replayed it hundreds of times. Nsight Systems
+  2026.3.2 CUDA graph-node traces supplied kernel durations. The final A/B used
+  one freshly built binary and `ORT_FP8_GEMV_KSPLIT` to force each choice, which
+  avoids compiler or binary differences between the two arms.
+- The final fresh-binary cases ran an exact output check after replay. Separate
+  selector tests checked the default route, including the short-K clamp and
+  device qualification.
+
+The numbers below are median microseconds per CUDA graph kernel node. Speedup is
+`KSplit 16 / KSplit 8`, so values above 1 favor KSplit 8.
+
+#### RTX 5060 Ti: Residency Boundary Holds
+
+With 36 SMs, two output blocks per SM is 72 blocks. Since the MMA kernel emits
+one block per 16 output columns, the boundary lies between `N=1152` and the next
+block at `N=1153..1168`. An exploratory same-binary forced-kernel sweep at the
+full-block endpoints showed a sharp crossover:
+
+| M | N | K | output blocks | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 8 | 1152 | 5120 | 72 | **6.720 us** | 7.583 us | 0.886x |
+| 8 | 1168 | 5120 | 73 | 9.248 us | **8.288 us** | 1.116x |
+
+The exploratory sweep also found that the first block above the boundary favored
+KSplit 8 at `M=1` over each tested reduction length:
+
+| M | N | K | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1168 | 2560 | 4.512 us | **3.904 us** | 1.156x |
+| 1 | 1168 | 5120 | 7.104 us | **6.624 us** | 1.072x |
+| 1 | 1168 | 6144 | 8.096 us | **7.680 us** | 1.054x |
+
+The final fresh-binary confirmation used a model projection shape. KSplit 8
+reduced the median from 28.512 us to 26.047 us, a 1.095x speedup:
+
+| M | N | K | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 5120 | 6144 | 28.512 us | **26.047 us** | **1.095x** |
+
+Nsight reported 54 registers per thread for both variants in this Windows
+SM120 build. A KSplit 16 block has 512 threads and fits two blocks per SM by the
+register limit, while a KSplit 8 block has 256 threads and fits four. The exact
+72/73-block timing discontinuity, rather than an assumed cross-architecture
+register count, is the evidence for the retained `2 * sm_count` boundary.
+
+#### RTX 3060: Residency Alone Does Not Predict the Choice
+
+The analogous two-block boundary on the 28-SM RTX 3060 is 56 output blocks.
+The final fresh-binary test at the first ragged width in block 57 showed the
+opposite result from SM120:
+
+| M | N | K | output blocks | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 897 | 5120 | 57 | **42.879 us** | 48.063 us | **0.892x** |
+
+KSplit 8 was therefore 12.1% slower at the exact proposed dispatch boundary.
+An exploratory reduction sweep showed that the result also depends on K: at the
+nearby full-block width `N=912`, KSplit 8 slightly won for `K=2560` but lost for
+the longer reductions.
+
+| M | N | K | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 912 | 2560 | 20.320 us | **20.064 us** | 1.013x |
+| 1 | 912 | 5120 | **37.600 us** | 38.688 us | 0.972x |
+| 1 | 912 | 6144 | **44.480 us** | 45.760 us | 0.972x |
+
+Nor was there a monotonic width threshold. At `M=1, K=5120`, KSplit 8 was about
+8% slower at `N=2048`, slightly faster at `N=3072`, and approximately tied again
+at `N=4096`. At larger `M=8` model projections it produced modest gains: 1.022x
+at `N=5120, K=6144` and 1.035x at `N=6144, K=5120`. A single occupancy-derived
+rule would therefore trade regressions in some decode shapes for gains in others.
+
+Nsight reported 56 registers per thread for both plain variants on SM86, again
+giving approximately two resident KSplit 16 blocks versus four KSplit 8 blocks
+by the register limit. SM86 does not have native FP8 tensor-core instructions,
+but that fact is not by itself the explanation: this kernel converts E4M3
+weights to FP16/BF16 fragments and issues FP16/BF16 MMA instructions on every
+supported architecture. Differences in memory behavior, scheduling, and the
+cost of the split reduction still make the best KSplit architecture- and
+shape-dependent.
+
+#### Dispatch Decision
+
+The retained selector consequently qualifies the measured RTX 5060 Ti
+configuration (`SM120`, 36 SMs, `M <= 8`, and `40 <= K/64 <= 96`) for KSplit 8
+above `2 * sm_count` output blocks. The RTX 3060 and other unqualified devices
+keep the legacy `N >= 8192` crossover. The final default-route traces confirmed
+KSplit 8 on the RTX 5060 Ti boundary case and KSplit 16 on the RTX 3060 boundary
+case. These results do not justify extending either decision to unmeasured RTX
+40- or RTX 50-series configurations solely from compute capability.
 
 ---
 

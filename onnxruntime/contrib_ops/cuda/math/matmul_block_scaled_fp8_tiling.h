@@ -20,7 +20,10 @@ inline int PickGenericFp8MmaKSplit(int n, int m, int windows, int sm_count,
   const bool qualified_rtx4090 = compute_capability_major == 8 && compute_capability_minor == 9 &&
                                  sm_count == 128 && m <= 8 && windows >= 16 && windows <= 96 &&
                                  output_blocks > 3 * sm_count;
-  if (qualified_h200 || qualified_rtx4090) {
+  const bool qualified_rtx5060ti = compute_capability_major == 12 && compute_capability_minor == 0 &&
+                                   sm_count == 36 && m <= 8 && windows >= 40 && windows <= 96 &&
+                                   output_blocks > 2 * sm_count;
+  if (qualified_h200 || qualified_rtx4090 || qualified_rtx5060ti) {
     k_split = 8;
   }
   if (windows < k_split) {

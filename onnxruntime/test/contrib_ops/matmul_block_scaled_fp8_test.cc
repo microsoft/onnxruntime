@@ -141,6 +141,21 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreKSplitSelection) {
       {7168, 8, 80, 128, 12, 0, 16},
       {8191, 8, 80, 128, 8, 9, 8},
       {8192, 9, 128, 128, 8, 9, 8},
+
+      // RTX 5060 Ti (SM120, 36 SMs): the measured crossover is 72/73 output blocks.
+      {1152, 1, 80, 36, 12, 0, 16},
+      {1153, 1, 80, 36, 12, 0, 8},
+      {5120, 4, 96, 36, 12, 0, 8},
+      {1153, 1, 39, 36, 12, 0, 16},
+      {1153, 1, 97, 36, 12, 0, 16},
+      {1153, 9, 80, 36, 12, 0, 16},
+      {1153, 1, 80, 35, 12, 0, 16},
+      {1153, 1, 80, 36, 12, 1, 16},
+      // RTX 3060 (SM86, 28 SMs): measured regressions retain the legacy N threshold.
+      {897, 1, 80, 28, 8, 6, 16},
+      {2048, 1, 80, 28, 8, 6, 16},
+      {8191, 1, 80, 28, 8, 6, 16},
+      {8192, 1, 80, 28, 8, 6, 8},
   };
 
   for (const Case& c : cases) {
@@ -685,6 +700,7 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCorePinnedResidencyBoundarie
       16 * 300, 16, 4, sm_count, compute_capability_major, compute_capability_minor));
 }
 
+// Exercises the first shape beyond two blocks per SM and its ragged-width variant.
 TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreResidencyBoundary) {
   constexpr const char* kChildProcessVariable = "ORT_FP8_GEMV_PINNED_TEST_CHILD";
   const bool is_child_process = !Env::Default().GetEnvironmentVar(kChildProcessVariable).empty();
@@ -733,11 +749,13 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreResidencyBoundary) {
   for (const int64_t n : {n_pinned, n_pinned + 5}) {
     const int k_split = onnxruntime::contrib::cuda::PickFp8MmaKSplit(
         static_cast<int>(n), 1, static_cast<int>(k / 64), sm_count, device_prop.major, device_prop.minor);
-    const bool qualified_h200 = device_prop.major == 9 && device_prop.minor == 0 && sm_count == 132;
-    ASSERT_EQ(k_split, qualified_h200 ? 8 : 16);
+    const bool qualified_plain_ks8 =
+        (device_prop.major == 9 && device_prop.minor == 0 && sm_count == 132) ||
+        (device_prop.major == 12 && device_prop.minor == 0 && sm_count == 36);
+    ASSERT_EQ(k_split, qualified_plain_ks8 ? 8 : 16);
     ASSERT_EQ(onnxruntime::contrib::cuda::Fp8MmaGemvPinsResidency(
                   static_cast<int>(n), k_split, 1, sm_count, device_prop.major, device_prop.minor),
-              !qualified_h200);
+              !qualified_plain_ks8);
 
     std::vector<Float8E4M3FN> b(static_cast<size_t>(n * k));
     std::vector<float> b_scale(static_cast<size_t>(n * k_blocks));
