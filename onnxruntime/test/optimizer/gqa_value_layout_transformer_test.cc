@@ -1,0 +1,2558 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <memory>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
+
+#include "core/framework/execution_providers.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_registry_manager.h"
+#include "core/graph/model.h"
+#include "onnx/defs/schema.h"
+#include "core/optimizer/gqa_value_layout_transformer.h"
+#include "core/optimizer/transformer_memcpy.h"
+#include "core/session/IOBinding.h"
+#include "core/session/environment.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+
+#include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
+#include "test/util/include/capturing_sink.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/scoped_env_vars.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#include "test/optimizer/graph_transform_test_fixture.h"
+
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+
+namespace onnxruntime {
+namespace test {
+
+#if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
+
+namespace {
+
+class LocalDeviceExecutionProvider final : public IExecutionProvider {
+ public:
+  static constexpr const char* kType = "LocalGqaMemcpyTestExecutionProvider";
+
+  LocalDeviceExecutionProvider()
+      : IExecutionProvider(kType,
+                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                                     OrtDevice::VendorIds::NONE, 0)) {
+  }
+};
+
+// Geometry kept small, but with max_sequence_length != head_size so that a transpose which fails to
+// swap the last two dimensions is caught by the shape assertions rather than passing silently.
+constexpr int64_t kBatch = 1;
+constexpr int64_t kSeq = 1;
+constexpr int64_t kNumHeads = 2;
+constexpr int64_t kKvNumHeads = 1;
+constexpr int64_t kHeadSize = 16;
+constexpr int64_t kMaxSeq = 8;
+constexpr int64_t kPastSeq = 3;  // valid entries in the past cache when live_past_cache is set
+constexpr int64_t kQHidden = kNumHeads * kHeadSize;
+constexpr int64_t kKvHidden = kKvNumHeads * kHeadSize;
+
+// A pattern that varies along both of the swapped dimensions, so transposing it is observable.
+std::vector<MLFloat16> CachePattern(int64_t seq_len, int64_t head_size, float offset) {
+  std::vector<MLFloat16> data(static_cast<size_t>(seq_len * head_size));
+  for (int64_t s = 0; s < seq_len; ++s) {
+    for (int64_t h = 0; h < head_size; ++h) {
+      data[static_cast<size_t>(s * head_size + h)] =
+          MLFloat16(offset + static_cast<float>(s) * 0.25f - static_cast<float>(h) * 0.03125f);
+    }
+  }
+  return data;
+}
+
+struct BuildOptions {
+  // Feed past_value through an Identity so it is no longer a graph input.
+  bool past_value_behind_identity = false;
+  // Route present_value through an Identity so it is no longer a graph output.
+  bool present_value_behind_identity = false;
+  // Omit the past cache inputs entirely (prefill-only model). GQA type inference requires past_key
+  // and past_value to be present or absent together, so both are dropped.
+  bool no_past_kv = false;
+  // Omit the present_value output entirely.
+  bool no_present_value = false;
+  // Configure a 4-bit quantized Value cache, which cannot be transposed byte-wise.
+  bool four_bit_value_cache = false;
+  // Add a second GQA node that consumes the same past_key/past_value graph inputs. Transforming
+  // either node would mutate a boundary NodeArg the other still reads as BNSH.
+  bool second_gqa_sharing_past_kv = false;
+  // Keep present_value as a graph output but also feed it to an Identity inside the graph. That
+  // internal consumer expects BNSH and would silently receive BNHS.
+  bool present_value_also_consumed_internally = false;
+  // Feed past_value through a value-layout Transpose from a BNHS graph input while leaving
+  // present_value as a plain BNSH graph output, i.e. a half-converted node.
+  bool partially_transformed = false;
+  // Wire both Value operands through value-layout Transposes to BNHS graph boundaries, i.e. a model
+  // that already carries the conversion, as one saved via session.optimized_model_filepath would.
+  bool already_transformed = false;
+  // Declare the past_value graph input with a rank-3 shape. GQA shape inference checks past_key's
+  // rank but does not independently reject past_value's, so this reaches the transformer.
+  bool past_value_rank3 = false;
+  // Splice MemcpyFromHost / MemcpyToHost between the BNHS boundaries and the Transposes, as a model
+  // saved from a non-CPU session carries. Only meaningful with already_transformed.
+  bool device_copies_at_boundaries = false;
+  // Splice device copies between the BNSH boundaries and an *unconverted* GQA node, which is what a
+  // model saved from a non-CPU session without the option looks like.
+  bool device_copies_without_conversion = false;
+  // Bind one graph input to both past_key and past_value. Graph::GetConsumerNodes() de-duplicates by
+  // node index, so the boundary still looks singly consumed even though two inputs read it.
+  bool past_key_and_value_shared = false;
+  // With already_transformed: give the internal BNSH present_value a second, unrelated consumer. The
+  // conversion is still in place and must be recognized despite the extra reader.
+  bool extra_internal_present_consumer = false;
+  // Keep present_value as a graph output and also transpose it to a second graph output. The operand
+  // is application visible and unconverted, so it must not be mistaken for an already converted node.
+  bool present_value_also_transposed_to_output = false;
+
+  bool TransposedPastValue() const { return partially_transformed || already_transformed; }
+
+  // Fill the past caches with a pattern that varies along both sequence_length and head_size, and
+  // set the sequence lengths so the kernel actually reads them. Without this the caches are zero and
+  // unread, which would make a numerical parity test pass even with a broken transpose.
+  bool live_past_cache = false;
+
+  int32_t SeqLensK() const { return live_past_cache ? kPastSeq : 0; }
+  int32_t TotalSequenceLength() const { return live_past_cache ? static_cast<int32_t>(kPastSeq + kSeq) : 1; }
+
+  // Length of the present cache. With a past cache the model shares one max_sequence_length buffer;
+  // without one, GQA infers a present cache holding just the new tokens.
+  int64_t PresentCacheLength() const { return no_past_kv ? kSeq : kMaxSeq; }
+};
+
+void BuildGqaModel(ModelTestBuilder& builder, const BuildOptions& opts) {
+  NodeArg& empty_arg = builder.graph_.GetOrCreateNodeArg("", nullptr);
+
+  NodeArg* query = builder.MakeInput<MLFloat16>(
+      std::vector<int64_t>{kBatch, kSeq, kQHidden}, MLFloat16(-1.0f), MLFloat16(1.0f));
+  NodeArg* key = builder.MakeInput<MLFloat16>(
+      std::vector<int64_t>{kBatch, kSeq, kKvHidden}, MLFloat16(-1.0f), MLFloat16(1.0f));
+  NodeArg* value = builder.MakeInput<MLFloat16>(
+      std::vector<int64_t>{kBatch, kSeq, kKvHidden}, MLFloat16(-1.0f), MLFloat16(1.0f));
+
+  NodeArg* past_key = &empty_arg;
+  NodeArg* past_value = &empty_arg;
+  if (!opts.no_past_kv) {
+    const std::vector<int64_t> cache_shape{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
+    if (opts.live_past_cache) {
+      past_key = builder.MakeInput<MLFloat16>(cache_shape, CachePattern(kMaxSeq, kHeadSize, 0.5f));
+      past_value = builder.MakeInput<MLFloat16>(cache_shape, CachePattern(kMaxSeq, kHeadSize, -0.25f));
+    } else {
+      past_key = builder.MakeInput<MLFloat16>(cache_shape, MLFloat16(0.0f), MLFloat16(0.0f));
+      past_value = builder.MakeInput<MLFloat16>(cache_shape, MLFloat16(0.0f), MLFloat16(0.0f));
+    }
+
+    if (opts.past_value_rank3) {
+      past_value = builder.MakeInput<MLFloat16>(std::vector<int64_t>{kBatch, kMaxSeq, kHeadSize},
+                                                MLFloat16(0.0f), MLFloat16(0.0f));
+    }
+
+    if (opts.past_key_and_value_shared) {
+      past_value = past_key;
+    }
+
+    if (opts.device_copies_without_conversion) {
+      NodeArg* copied = builder.MakeIntermediate<MLFloat16>(cache_shape);
+      builder.AddNode("MemcpyFromHost", {past_value}, {copied});
+      past_value = copied;
+    }
+
+    if (opts.past_value_behind_identity) {
+      NodeArg* forwarded = builder.MakeIntermediate<MLFloat16>(
+          std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize});
+      builder.AddNode("Identity", {past_value}, {forwarded});
+      past_value = forwarded;
+    }
+
+    if (opts.TransposedPastValue()) {
+      // past_value already arrives BNHS through a value-layout Transpose. With
+      // already_transformed the present side is converted to match; with partially_transformed it
+      // is left as a plain BNSH graph output, giving a half-converted node. The original past_value
+      // graph input is left dangling, which is legal and irrelevant here.
+      NodeArg* bnhs_input = builder.MakeInput<MLFloat16>(
+          std::vector<int64_t>{kBatch, kKvNumHeads, kHeadSize, kMaxSeq}, MLFloat16(0.0f), MLFloat16(0.0f));
+
+      NodeArg* transpose_source = bnhs_input;
+      if (opts.device_copies_at_boundaries) {
+        NodeArg* copied = builder.MakeIntermediate<MLFloat16>(
+            std::vector<int64_t>{kBatch, kKvNumHeads, kHeadSize, kMaxSeq});
+        builder.AddNode("MemcpyFromHost", {bnhs_input}, {copied});
+        transpose_source = copied;
+      }
+
+      NodeArg* bnsh = builder.MakeIntermediate<MLFloat16>(cache_shape);
+      Node& transpose = builder.AddNode("Transpose", {transpose_source}, {bnsh});
+      transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+      past_value = bnsh;
+    }
+  }
+
+  NodeArg* seqlens_k =
+      builder.MakeInput<int32_t>(std::vector<int64_t>{kBatch}, std::vector<int32_t>{opts.SeqLensK()});
+  NodeArg* total_seq_len =
+      builder.MakeInput<int32_t>(std::vector<int64_t>{1}, std::vector<int32_t>{opts.TotalSequenceLength()});
+
+  const std::vector<int64_t> present_shape{kBatch, kKvNumHeads, opts.PresentCacheLength(), kHeadSize};
+
+  NodeArg* gqa_out = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{kBatch, kSeq, kQHidden});
+  NodeArg* present_key = builder.MakeOutput<MLFloat16>(present_shape);
+
+  // present_value is either the graph output directly, or an intermediate that an Identity forwards
+  // to the graph output.
+  NodeArg* present_value = &empty_arg;
+  NodeArg* identity_target = nullptr;
+  NodeArg* bnhs_present_target = nullptr;
+  if (!opts.no_present_value) {
+    if (opts.present_value_behind_identity) {
+      present_value = builder.MakeIntermediate<MLFloat16>(present_shape);
+      identity_target = builder.MakeOutput<MLFloat16>(present_shape);
+    } else if (opts.already_transformed) {
+      present_value = builder.MakeIntermediate<MLFloat16>(present_shape);
+      bnhs_present_target = builder.MakeOutput<MLFloat16>(
+          std::vector<int64_t>{kBatch, kKvNumHeads, kHeadSize, opts.PresentCacheLength()});
+    } else if (opts.device_copies_without_conversion) {
+      present_value = builder.MakeIntermediate<MLFloat16>(present_shape);
+      NodeArg* host_output = builder.MakeOutput<MLFloat16>(present_shape);
+      builder.AddNode("MemcpyToHost", {present_value}, {host_output});
+    } else {
+      present_value = builder.MakeOutput<MLFloat16>(present_shape);
+    }
+  }
+
+  std::vector<NodeArg*> gqa_inputs{query, key, value, past_key, past_value, seqlens_k, total_seq_len};
+
+  Node& gqa = builder.AddNode("GroupQueryAttention",
+                              gqa_inputs,
+                              {gqa_out, present_key, present_value},
+                              kMSDomain);
+  gqa.AddAttribute("num_heads", static_cast<int64_t>(kNumHeads));
+  gqa.AddAttribute("kv_num_heads", static_cast<int64_t>(kKvNumHeads));
+
+  if (opts.four_bit_value_cache) {
+    gqa.AddAttribute("v_quant_type", std::string("PER_CHANNEL"));
+    gqa.AddAttribute("kv_cache_bit_width", static_cast<int64_t>(4));
+  }
+
+  if (bnhs_present_target != nullptr) {
+    const std::vector<int64_t> bnhs_present{kBatch, kKvNumHeads, kHeadSize, opts.PresentCacheLength()};
+    NodeArg* transpose_target = bnhs_present_target;
+    if (opts.device_copies_at_boundaries) {
+      transpose_target = builder.MakeIntermediate<MLFloat16>(bnhs_present);
+      builder.AddNode("MemcpyToHost", {transpose_target}, {bnhs_present_target});
+    }
+
+    Node& transpose = builder.AddNode("Transpose", {present_value}, {transpose_target});
+    transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+  }
+
+  if (opts.extra_internal_present_consumer) {
+    NodeArg* extra_output = builder.MakeOutput<MLFloat16>(present_shape);
+    builder.AddNode("Identity", {present_value}, {extra_output});
+  }
+
+  if (opts.present_value_also_transposed_to_output) {
+    NodeArg* transposed_output = builder.MakeOutput<MLFloat16>(
+        std::vector<int64_t>{kBatch, kKvNumHeads, kHeadSize, opts.PresentCacheLength()});
+    Node& transpose = builder.AddNode("Transpose", {present_value}, {transposed_output});
+    transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+  }
+
+  if (opts.present_value_also_consumed_internally) {
+    NodeArg* extra_output = builder.MakeOutput<MLFloat16>(present_shape);
+    builder.AddNode("Identity", {present_value}, {extra_output});
+  }
+
+  if (opts.second_gqa_sharing_past_kv) {
+    NodeArg* second_out = builder.MakeOutput<MLFloat16>(std::vector<int64_t>{kBatch, kSeq, kQHidden});
+    NodeArg* second_present_key = builder.MakeOutput<MLFloat16>(present_shape);
+    NodeArg* second_present_value = builder.MakeOutput<MLFloat16>(present_shape);
+
+    Node& second_gqa = builder.AddNode("GroupQueryAttention",
+                                       gqa_inputs,
+                                       {second_out, second_present_key, second_present_value},
+                                       kMSDomain);
+    second_gqa.AddAttribute("num_heads", static_cast<int64_t>(kNumHeads));
+    second_gqa.AddAttribute("kv_num_heads", static_cast<int64_t>(kKvNumHeads));
+  }
+
+  if (identity_target != nullptr) {
+    builder.AddNode("Identity", {present_value}, {identity_target});
+  }
+}
+
+// A minimal GQA model with a bfloat16 KV cache, for exercising the opset-dependent type support of
+// the inserted Transpose. Kept separate from BuildGqaModel because only the cache dtype differs and
+// templating the whole builder would obscure every other test.
+void BuildBFloat16GqaModel(ModelTestBuilder& builder) {
+  const std::vector<int64_t> cache_shape{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
+
+  NodeArg* query = builder.MakeInput<BFloat16>(
+      std::vector<int64_t>{kBatch, kSeq, kQHidden}, BFloat16(0.0f), BFloat16(0.0f));
+  NodeArg* key = builder.MakeInput<BFloat16>(
+      std::vector<int64_t>{kBatch, kSeq, kKvHidden}, BFloat16(0.0f), BFloat16(0.0f));
+  NodeArg* value = builder.MakeInput<BFloat16>(
+      std::vector<int64_t>{kBatch, kSeq, kKvHidden}, BFloat16(0.0f), BFloat16(0.0f));
+  NodeArg* past_key = builder.MakeInput<BFloat16>(cache_shape, BFloat16(0.0f), BFloat16(0.0f));
+  NodeArg* past_value = builder.MakeInput<BFloat16>(cache_shape, BFloat16(0.0f), BFloat16(0.0f));
+  NodeArg* seqlens_k = builder.MakeInput<int32_t>(std::vector<int64_t>{kBatch}, std::vector<int32_t>{0});
+  NodeArg* total_seq_len = builder.MakeInput<int32_t>(std::vector<int64_t>{1}, std::vector<int32_t>{1});
+
+  NodeArg* gqa_out = builder.MakeOutput<BFloat16>(std::vector<int64_t>{kBatch, kSeq, kQHidden});
+  NodeArg* present_key = builder.MakeOutput<BFloat16>(cache_shape);
+  NodeArg* present_value = builder.MakeOutput<BFloat16>(cache_shape);
+
+  Node& gqa = builder.AddNode("GroupQueryAttention",
+                              {query, key, value, past_key, past_value, seqlens_k, total_seq_len},
+                              {gqa_out, present_key, present_value},
+                              kMSDomain);
+  gqa.AddAttribute("num_heads", static_cast<int64_t>(kNumHeads));
+  gqa.AddAttribute("kv_num_heads", static_cast<int64_t>(kKvNumHeads));
+}
+
+ONNX_NAMESPACE::TypeProto MakeTensorType(int32_t elem_type, const std::vector<int64_t>& dims) {
+  ONNX_NAMESPACE::TypeProto type;
+  type.mutable_tensor_type()->set_elem_type(elem_type);
+  auto* shape = type.mutable_tensor_type()->mutable_shape();
+  for (const int64_t dim : dims) {
+    shape->add_dim()->set_dim_value(dim);
+  }
+  return type;
+}
+
+// A model whose only GroupQueryAttention lives inside a Loop body, while the Value cache boundary the
+// application binds -- past_value in, present_value out -- is on the main graph, carried in and out of
+// the Loop. This is the shape a decoder with an in-graph generation loop takes, and the case the
+// transformer cannot reach: it walks the main graph only, so it finds no GQA node here at all.
+Status BuildSubgraphOnlyGqaModel(const logging::Logger& logger, std::string& model_bytes,
+                                 bool add_main_graph_gqa = false) {
+  const std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 21}, {kMSDomain, 1}};
+
+  const auto cache_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                         {kBatch, kKvNumHeads, kMaxSeq, kHeadSize});
+  const auto qkv_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {kBatch, kSeq, kKvHidden});
+  const auto query_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {kBatch, kSeq, kQHidden});
+  const auto seqlens_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_INT32, {kBatch});
+  const auto total_len_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_INT32, {1});
+  const auto iter_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_INT64, {});
+  const auto cond_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_BOOL, {});
+
+  // Names shared between the body's outer-scope references and the main graph.
+  const std::array<const char*, 6> outer_scope{"query", "key", "value", "past_key", "seqlens_k", "total_seq_len"};
+
+  ONNX_NAMESPACE::GraphProto body_proto;
+  {
+    Model body_model("gqa_loop_body", false, ModelMetaData(), PathString(),
+                     IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+    Graph& body = body_model.MainGraph();
+
+    auto& iter_num = body.GetOrCreateNodeArg("iter_num", &iter_type);
+    auto& cond_in = body.GetOrCreateNodeArg("cond_in", &cond_type);
+    auto& cond_out = body.GetOrCreateNodeArg("cond_out", &cond_type);
+    auto& body_past_value = body.GetOrCreateNodeArg("body_past_value", &cache_type);
+    auto& body_present_value = body.GetOrCreateNodeArg("body_present_value", &cache_type);
+
+    // Everything except the loop-carried cache comes from the enclosing graph.
+    auto& query = body.GetOrCreateNodeArg(outer_scope[0], &query_type);
+    auto& key = body.GetOrCreateNodeArg(outer_scope[1], &qkv_type);
+    auto& value = body.GetOrCreateNodeArg(outer_scope[2], &qkv_type);
+    auto& past_key = body.GetOrCreateNodeArg(outer_scope[3], &cache_type);
+    auto& seqlens_k = body.GetOrCreateNodeArg(outer_scope[4], &seqlens_type);
+    auto& total_seq_len = body.GetOrCreateNodeArg(outer_scope[5], &total_len_type);
+    for (const char* name : outer_scope) {
+      body.AddOuterScopeNodeArg(name);
+    }
+
+    body.AddNode("cond_passthrough", "Identity", "", {&cond_in}, {&cond_out});
+
+    auto& attention_out = body.GetOrCreateNodeArg("body_attention_out", &query_type);
+    auto& present_key = body.GetOrCreateNodeArg("body_present_key", &cache_type);
+    Node& gqa = body.AddNode("gqa", "GroupQueryAttention", "",
+                             {&query, &key, &value, &past_key, &body_past_value, &seqlens_k, &total_seq_len},
+                             {&attention_out, &present_key, &body_present_value}, nullptr, kMSDomain);
+    gqa.AddAttribute("num_heads", static_cast<int64_t>(kNumHeads));
+    gqa.AddAttribute("kv_num_heads", static_cast<int64_t>(kKvNumHeads));
+
+    body.SetInputs({&iter_num, &cond_in, &body_past_value});
+    body.SetOutputs({&cond_out, &body_present_value});
+    ORT_RETURN_IF_ERROR(body.Resolve());
+    body_proto = body.ToGraphProto();
+  }
+
+  Model model("gqa_subgraph_only", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+
+  auto& query = graph.GetOrCreateNodeArg(outer_scope[0], &query_type);
+  auto& key = graph.GetOrCreateNodeArg(outer_scope[1], &qkv_type);
+  auto& value = graph.GetOrCreateNodeArg(outer_scope[2], &qkv_type);
+  auto& past_key = graph.GetOrCreateNodeArg(outer_scope[3], &cache_type);
+  auto& seqlens_k = graph.GetOrCreateNodeArg(outer_scope[4], &seqlens_type);
+  auto& total_seq_len = graph.GetOrCreateNodeArg(outer_scope[5], &total_len_type);
+
+  auto& trip_count = graph.GetOrCreateNodeArg("trip_count", &iter_type);
+  auto& cond = graph.GetOrCreateNodeArg("cond", &cond_type);
+
+  // The application-visible KV boundary, on the main graph.
+  auto& past_value = graph.GetOrCreateNodeArg("past_value", &cache_type);
+  auto& present_value = graph.GetOrCreateNodeArg("present_value", &cache_type);
+
+  Node& loop = graph.AddNode("loop", "Loop", "", {&trip_count, &cond, &past_value}, {&present_value});
+  loop.AddAttribute("body", body_proto);
+
+  std::vector<const NodeArg*> graph_inputs{&query, &key, &value, &past_key, &past_value, &seqlens_k,
+                                           &total_seq_len, &trip_count, &cond};
+  std::vector<const NodeArg*> graph_outputs{&present_value};
+
+  if (add_main_graph_gqa) {
+    // A second, convertible cache entirely in the main graph, so the model is mixed: one boundary this
+    // option can honour and one it cannot.
+    auto& main_past_value = graph.GetOrCreateNodeArg("main_past_value", &cache_type);
+    auto& main_present_value = graph.GetOrCreateNodeArg("main_present_value", &cache_type);
+    auto& main_past_key = graph.GetOrCreateNodeArg("main_past_key", &cache_type);
+    auto& main_attention_out = graph.GetOrCreateNodeArg("main_attention_out", &query_type);
+    auto& main_present_key = graph.GetOrCreateNodeArg("main_present_key", &cache_type);
+
+    Node& main_gqa = graph.AddNode("main_gqa", "GroupQueryAttention", "",
+                                   {&query, &key, &value, &main_past_key, &main_past_value, &seqlens_k,
+                                    &total_seq_len},
+                                   {&main_attention_out, &main_present_key, &main_present_value},
+                                   nullptr, kMSDomain);
+    main_gqa.AddAttribute("num_heads", static_cast<int64_t>(kNumHeads));
+    main_gqa.AddAttribute("kv_num_heads", static_cast<int64_t>(kKvNumHeads));
+
+    graph_inputs.push_back(&main_past_key);
+    graph_inputs.push_back(&main_past_value);
+    graph_outputs.push_back(&main_attention_out);
+    graph_outputs.push_back(&main_present_key);
+    graph_outputs.push_back(&main_present_value);
+  }
+
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+
+  ORT_RETURN_IF_NOT(model.ToProto().SerializeToString(&model_bytes), "Failed to serialize the test model.");
+  return Status::OK();
+}
+
+std::unique_ptr<GraphTransformer> MakeTransformer() {
+  return std::make_unique<GqaValueLayoutTransformer>();
+}
+
+const std::vector<int64_t> kBnsh{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
+const std::vector<int64_t> kBnhs{kBatch, kKvNumHeads, kHeadSize, kMaxSeq};
+
+// ModelTestBuilder generates positional names ("input_3", "output_2"), so the checkers navigate the
+// graph structurally instead of by name.
+const Node* FindGqa(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "GroupQueryAttention" && node.Domain() == kMSDomain) {
+      return &node;
+    }
+  }
+  return nullptr;
+}
+
+Status ExpectShape(const NodeArg* arg, const std::vector<int64_t>& expected, const std::string& what) {
+  ORT_RETURN_IF(arg == nullptr, what, " not found.");
+
+  const auto* shape = arg->Shape();
+  ORT_RETURN_IF(shape == nullptr, what, " ('", arg->Name(), "') has no shape.");
+  ORT_RETURN_IF_NOT(static_cast<size_t>(shape->dim_size()) == expected.size(),
+                    what, " ('", arg->Name(), "') has rank ", shape->dim_size(), ", expected ", expected.size(), ".");
+
+  for (size_t i = 0; i < expected.size(); ++i) {
+    const auto& dim = shape->dim(static_cast<int>(i));
+    ORT_RETURN_IF_NOT(dim.has_dim_value() && dim.dim_value() == expected[i],
+                      what, " ('", arg->Name(), "') dimension ", i, " is ",
+                      dim.has_dim_value() ? std::to_string(dim.dim_value()) : dim.dim_param(),
+                      ", expected ", expected[i], ".");
+  }
+
+  return Status::OK();
+}
+
+Status ExpectTransposeCount(const Graph& graph, int expected, int expected_gqa = 1) {
+  const auto op_to_count = CountOpsInGraph(graph);
+  const int actual = OpCount(op_to_count, "Transpose");
+  ORT_RETURN_IF_NOT(actual == expected, "Expected ", expected, " Transpose nodes, found ", actual, ".");
+
+  const int actual_gqa = OpCount(op_to_count, "com.microsoft.GroupQueryAttention");
+  ORT_RETURN_IF_NOT(actual_gqa == expected_gqa,
+                    "Expected ", expected_gqa, " GroupQueryAttention nodes to be preserved, found ", actual_gqa, ".");
+  return Status::OK();
+}
+
+Status ExpectNoTransposes(const Graph& graph, int expected_gqa = 1) {
+  return ExpectTransposeCount(graph, 0, expected_gqa);
+}
+
+// Walks GQA input 4 back through the inserted Transpose to the graph input, asserting the operand
+// stayed BNSH and the boundary became BNHS.
+Status ExpectBnhsPastValue(const Graph& graph, const Node& gqa) {
+  const NodeArg* operand = gqa.InputDefs()[4];
+  ORT_RETURN_IF_ERROR(ExpectShape(operand, kBnsh, "GQA past_value operand"));
+
+  const Node* transpose = graph.GetProducerNode(operand->Name());
+  ORT_RETURN_IF(transpose == nullptr || !IsGqaValueLayoutTranspose(*transpose),
+                "GQA past_value is not produced by a Transpose(perm=[0,1,3,2]).");
+
+  const NodeArg* boundary = transpose->InputDefs()[0];
+  ORT_RETURN_IF_NOT(graph.IsInputsIncludingInitializers(boundary),
+                    "past_value ('", boundary->Name(), "') must remain a graph input.");
+  return ExpectShape(boundary, kBnhs, "past_value graph input");
+}
+
+// Mirror of the above for GQA output 2. cache_len differs from kMaxSeq for a prefill-only model,
+// where GQA infers a present cache holding just the new tokens.
+Status ExpectBnhsPresentValue(const Graph& graph, const Node& gqa, int64_t cache_len = kMaxSeq) {
+  const std::vector<int64_t> bnsh{kBatch, kKvNumHeads, cache_len, kHeadSize};
+  const std::vector<int64_t> bnhs{kBatch, kKvNumHeads, kHeadSize, cache_len};
+
+  const NodeArg* operand = gqa.OutputDefs()[2];
+  ORT_RETURN_IF_ERROR(ExpectShape(operand, bnsh, "GQA present_value operand"));
+
+  const auto consumers = graph.GetConsumerNodes(operand->Name());
+  ORT_RETURN_IF(consumers.size() != 1 || consumers[0] == nullptr || !IsGqaValueLayoutTranspose(*consumers[0]),
+                "GQA present_value is not consumed by exactly one Transpose(perm=[0,1,3,2]).");
+
+  const NodeArg* boundary = consumers[0]->OutputDefs()[0];
+  ORT_RETURN_IF_NOT(graph.IsOutput(boundary),
+                    "present_value ('", boundary->Name(), "') must remain a graph output.");
+  return ExpectShape(boundary, bnhs, "present_value graph output");
+}
+
+Status ExpectBnhsBoundary(Graph& graph) {
+  ORT_RETURN_IF_ERROR(ExpectTransposeCount(graph, 2));
+
+  const Node* gqa = FindGqa(graph);
+  ORT_RETURN_IF(gqa == nullptr, "GroupQueryAttention node is missing.");
+
+  ORT_RETURN_IF_ERROR(ExpectBnhsPastValue(graph, *gqa));
+  ORT_RETURN_IF_ERROR(ExpectBnhsPresentValue(graph, *gqa));
+
+  // The Key cache must be untouched: still wired straight to the graph boundary, still BNSH.
+  ORT_RETURN_IF_NOT(graph.IsInputsIncludingInitializers(gqa->InputDefs()[3]),
+                    "past_key must remain wired directly to the graph input.");
+  ORT_RETURN_IF_ERROR(ExpectShape(gqa->InputDefs()[3], kBnsh, "past_key graph input"));
+  ORT_RETURN_IF_NOT(graph.IsOutput(gqa->OutputDefs()[1]),
+                    "present_key must remain wired directly to the graph output.");
+  ORT_RETURN_IF_ERROR(ExpectShape(gqa->OutputDefs()[1], kBnsh, "present_key graph output"));
+
+  return Status::OK();
+}
+
+// Serializes the default GQA model so an InferenceSession can load it, which is the only way to
+// exercise the session option plumbing and the optimization-level behaviour.
+Status BuildSerializedGqaModel(const logging::Logger& logger, std::string& model_bytes) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, BuildOptions{});
+  helper.SetGraphOutputs();
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+
+  ORT_RETURN_IF_NOT(model.ToProto().SerializeToString(&model_bytes), "Failed to serialize the test model.");
+  return Status::OK();
+}
+
+// Everything the runtime tests need to drive a session: the serialized model, a full set of BNSH
+// feeds, and the boundary tensor names (which ModelTestBuilder generates, so they are read back off
+// the built graph rather than assumed).
+struct RuntimeGqaModel {
+  std::string bytes;
+  NameMLValMap bnsh_feeds;
+  std::string past_value_name;
+  std::string present_value_name;
+  std::string attention_output_name;
+  std::vector<std::string> output_names;
+};
+
+Status BuildRuntimeGqaModel(const logging::Logger& logger, RuntimeGqaModel& out) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutRuntimeTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.live_past_cache = true;
+
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+
+  const Node* gqa = FindGqa(graph);
+  ORT_RETURN_IF(gqa == nullptr, "GroupQueryAttention node is missing.");
+
+  out.past_value_name = gqa->InputDefs()[4]->Name();
+  out.present_value_name = gqa->OutputDefs()[2]->Name();
+  out.attention_output_name = gqa->OutputDefs()[0]->Name();
+  out.bnsh_feeds = helper.feeds_;
+  for (const auto* output : graph.GetOutputs()) {
+    out.output_names.push_back(output->Name());
+  }
+
+  ORT_RETURN_IF_NOT(model.ToProto().SerializeToString(&out.bytes), "Failed to serialize the test model.");
+  return Status::OK();
+}
+
+AllocatorPtr CpuAllocator() {
+  return TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+}
+
+// Physically transposes the last two dimensions of a rank-4 tensor. Used to convert the
+// BNSH feed into the BNHS one, and to convert a BNHS result back for comparison.
+template <typename CacheT = MLFloat16>
+Status TransposeLastTwoDims(const OrtValue& src, OrtValue& dst) {
+  const Tensor& src_tensor = src.Get<Tensor>();
+  const auto& src_dims = src_tensor.Shape().GetDims();
+  ORT_RETURN_IF_NOT(src_dims.size() == 4, "Expected a rank-4 tensor, got rank ", src_dims.size(), ".");
+
+  const int64_t outer = src_dims[0] * src_dims[1];
+  const int64_t rows = src_dims[2];
+  const int64_t cols = src_dims[3];
+
+  const std::vector<int64_t> dst_dims{src_dims[0], src_dims[1], cols, rows};
+  std::vector<CacheT> dst_data(static_cast<size_t>(outer * rows * cols));
+
+  const CacheT* src_data = src_tensor.Data<CacheT>();
+  for (int64_t o = 0; o < outer; ++o) {
+    for (int64_t r = 0; r < rows; ++r) {
+      for (int64_t c = 0; c < cols; ++c) {
+        dst_data[static_cast<size_t>((o * cols + c) * rows + r)] =
+            src_data[static_cast<size_t>((o * rows + r) * cols + c)];
+      }
+    }
+  }
+
+  CreateMLValue<CacheT>(CpuAllocator(), dst_dims, dst_data, &dst);
+  return Status::OK();
+}
+
+template <typename CacheT = MLFloat16>
+OrtValue CloneTensor(const OrtValue& src) {
+  const Tensor& src_tensor = src.Get<Tensor>();
+  const std::vector<int64_t> dims{src_tensor.Shape().GetDims().begin(), src_tensor.Shape().GetDims().end()};
+  const std::vector<CacheT> data{src_tensor.Data<CacheT>(),
+                                 src_tensor.Data<CacheT>() + src_tensor.Shape().Size()};
+  OrtValue copy;
+  CreateMLValue<CacheT>(CpuAllocator(), dims, data, &copy);
+  return copy;
+}
+
+// Bit-exact comparison. Both sessions run the same kernel over the same values; the only difference
+// is a permutation applied before and after, so any discrepancy is a real defect rather than drift.
+Status ExpectTensorsEqual(const OrtValue& expected, const OrtValue& actual, const std::string& what) {
+  const Tensor& e = expected.Get<Tensor>();
+  const Tensor& a = actual.Get<Tensor>();
+
+  ORT_RETURN_IF_NOT(e.Shape() == a.Shape(), what, ": shape mismatch, expected ", e.Shape().ToString(),
+                    " got ", a.Shape().ToString(), ".");
+
+  const MLFloat16* e_data = e.Data<MLFloat16>();
+  const MLFloat16* a_data = a.Data<MLFloat16>();
+  for (int64_t i = 0; i < e.Shape().Size(); ++i) {
+    ORT_RETURN_IF_NOT(e_data[i].val == a_data[i].val, what, ": element ", i, " differs (expected ",
+                      e_data[i].ToFloat(), ", got ", a_data[i].ToFloat(), ").");
+  }
+  return Status::OK();
+}
+
+// Compares two BNSH caches over the region the operator defines. Entries past
+// total_sequence_length are unspecified: the shared-buffer path leaves the caller's stale data
+// there, while a freshly allocated present_value need not.
+template <typename CacheT = MLFloat16>
+Status ExpectCacheRegionEqual(const OrtValue& expected, const OrtValue& actual, int64_t valid_seq,
+                              const std::string& what) {
+  const Tensor& e = expected.Get<Tensor>();
+  const Tensor& a = actual.Get<Tensor>();
+  ORT_RETURN_IF_NOT(e.Shape() == a.Shape(), what, ": shape mismatch, expected ", e.Shape().ToString(),
+                    " got ", a.Shape().ToString(), ".");
+
+  const auto& dims = e.Shape().GetDims();
+  ORT_RETURN_IF_NOT(dims.size() == 4, what, ": expected a rank-4 tensor.");
+  const int64_t outer = dims[0] * dims[1];
+  const int64_t seq = dims[2];
+  const int64_t head_size = dims[3];
+  ORT_RETURN_IF_NOT(valid_seq <= seq, what, ": valid_seq ", valid_seq, " exceeds the cache length ", seq, ".");
+
+  const CacheT* e_data = e.Data<CacheT>();
+  const CacheT* a_data = a.Data<CacheT>();
+  for (int64_t o = 0; o < outer; ++o) {
+    for (int64_t s = 0; s < valid_seq; ++s) {
+      for (int64_t h = 0; h < head_size; ++h) {
+        const size_t i = static_cast<size_t>((o * seq + s) * head_size + h);
+        ORT_RETURN_IF_NOT(std::memcmp(e_data + i, a_data + i, sizeof(CacheT)) == 0,
+                          what, ": entry (", o, ", ", s, ", ", h, ") differs.");
+      }
+    }
+  }
+  return Status::OK();
+}
+
+// Do two tensors hold the same elements in the same memory order, ignoring shape? Used to assert
+// that a transpose actually rearranges data. Comparing with shapes included would be useless here:
+// the two tensors are deliberately BNSH [1,1,8,16] against BNHS [1,1,16,8], so a shape-aware
+// comparison always reports a difference and establishes nothing about the data.
+bool FlatDataIsIdentical(const OrtValue& a, const OrtValue& b) {
+  const Tensor& ta = a.Get<Tensor>();
+  const Tensor& tb = b.Get<Tensor>();
+  if (ta.Shape().Size() != tb.Shape().Size()) {
+    return false;
+  }
+
+  const MLFloat16* a_data = ta.Data<MLFloat16>();
+  const MLFloat16* b_data = tb.Data<MLFloat16>();
+  for (int64_t i = 0; i < ta.Shape().Size(); ++i) {
+    if (a_data[i].val != b_data[i].val) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Guards against a parity test that would pass on degenerate data: if a tensor were all zeros, or
+// identical under a transpose, comparing it would prove nothing about the layout conversion.
+Status ExpectNonDegenerate(const OrtValue& value, const std::string& what) {
+  const Tensor& tensor = value.Get<Tensor>();
+  const MLFloat16* data = tensor.Data<MLFloat16>();
+  const int64_t count = tensor.Shape().Size();
+
+  bool any_nonzero = false;
+  bool any_variation = false;
+  for (int64_t i = 0; i < count; ++i) {
+    any_nonzero = any_nonzero || data[i].ToFloat() != 0.0f;
+    any_variation = any_variation || data[i].val != data[0].val;
+  }
+
+  ORT_RETURN_IF_NOT(any_nonzero, what, " is all zeros, so comparing it proves nothing.");
+  ORT_RETURN_IF_NOT(any_variation, what, " is constant, so comparing it proves nothing.");
+  return Status::OK();
+}
+
+size_t IndexOfOutput(const RuntimeGqaModel& model, const std::string& name) {
+  for (size_t i = 0; i < model.output_names.size(); ++i) {
+    if (model.output_names[i] == name) {
+      return i;
+    }
+  }
+  return model.output_names.size();
+}
+
+// Runs a session over `model_bytes` with the given layout, capturing its log so the diagnostic can be
+// asserted rather than merely assumed. Returns the captured messages joined together.
+Status RunSessionCapturingLog(const std::string& model_bytes, const char* value_layout, std::string& log) {
+  SessionOptions session_options;
+  session_options.session_logid = "GqaValueLayoutLogCapture";
+  session_options.use_per_session_threads = false;
+  if (value_layout != nullptr) {
+    ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(kOrtSessionOptionsGqaValueLayout, value_layout));
+  }
+
+  // The LoggingManager owns the sink; the raw pointer stays valid for as long as it does.
+  auto* capturing_sink = new CapturingSink();
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::unique_ptr<logging::ISink>(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+
+  OrtThreadingOptions threading_options;
+  threading_options.intra_op_thread_pool_params.thread_pool_size = 1;
+  threading_options.inter_op_thread_pool_params.thread_pool_size = 1;
+  std::unique_ptr<Environment> env;
+  ORT_RETURN_IF_ERROR(Environment::Create(std::move(logging_manager), env, &threading_options, true));
+
+  InferenceSession session{session_options, *env};
+  ORT_RETURN_IF_ERROR(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ORT_RETURN_IF_ERROR(session.Initialize());
+
+  log.clear();
+  for (const auto& message : capturing_sink->Messages()) {
+    log += message;
+    log += "\n";
+  }
+  return Status::OK();
+}
+
+SessionOptions MakeSessionOptions(const char* value_layout) {
+  SessionOptions session_options;
+  session_options.session_logid = "GqaValueLayoutTransformerTest";
+  if (value_layout != nullptr) {
+    ORT_ENFORCE(session_options.config_options.AddConfigEntry(kOrtSessionOptionsGqaValueLayout, value_layout).IsOK());
+  }
+  return session_options;
+}
+
+}  // namespace
+
+class GqaValueLayoutTransformerTest : public GraphTransformationTests {};
+
+TEST_F(GqaValueLayoutTransformerTest, BooleanBoundaryDetectionMatchesCollector) {
+  const std::vector<std::pair<BuildOptions, bool>> cases{
+      {BuildOptions{}, false},
+      {BuildOptions{.no_past_kv = true, .no_present_value = true}, false},
+      {BuildOptions{.partially_transformed = true}, true},
+      {BuildOptions{.already_transformed = true}, true},
+      {BuildOptions{.no_past_kv = true, .already_transformed = true}, true},
+      {BuildOptions{.no_present_value = true, .already_transformed = true}, true},
+      {BuildOptions{.no_past_kv = true, .no_present_value = true, .already_transformed = true}, false},
+      {BuildOptions{.already_transformed = true, .device_copies_at_boundaries = true}, true},
+      {BuildOptions{.no_past_kv = true, .already_transformed = true, .device_copies_at_boundaries = true}, true},
+      {BuildOptions{.device_copies_without_conversion = true}, false},
+      {BuildOptions{.no_past_kv = true, .already_transformed = true, .extra_internal_present_consumer = true}, true},
+      {BuildOptions{.present_value_also_transposed_to_output = true}, false},
+  };
+
+  for (size_t index = 0; index < cases.size(); ++index) {
+    SCOPED_TRACE(index);
+    Model model("GqaBooleanBoundaries", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, *logger_);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    BuildGqaModel(helper, cases[index].first);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    const bool has_boundaries = HasConvertedGqaValueLayoutBoundaries(graph);
+    EXPECT_EQ(has_boundaries, cases[index].second);
+    EXPECT_EQ(has_boundaries, !FindConvertedGqaValueLayoutBoundaries(graph).Empty());
+  }
+}
+
+TEST_F(GqaValueLayoutTransformerTest, BooleanBoundaryDetectionSearchesCopyBranchesWithinHopLimit) {
+  for (int before_hops : {0, 4, 5}) {
+    for (int after_hops : {0, 4, 5}) {
+      for (bool dead_branches_first : {false, true}) {
+        SCOPED_TRACE(MakeString(before_hops, ",", after_hops, ",", dead_branches_first));
+        Model model("GqaBooleanCopyBranches", false, ModelMetaData(), PathString(),
+                    IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 21}, {kMSDomain, 1}}, {}, *logger_);
+        Graph& graph = model.MainGraph();
+        ModelTestBuilder helper(graph);
+        BuildGqaModel(helper, BuildOptions{.no_past_kv = true, .already_transformed = true});
+
+        Node* transpose = nullptr;
+        for (auto& node : graph.Nodes()) {
+          if (IsGqaValueLayoutTranspose(node)) {
+            transpose = &node;
+            break;
+          }
+        }
+        ASSERT_NE(transpose, nullptr);
+        NodeArg* source = transpose->MutableInputDefs()[0];
+        const auto add_dead_branches = [&]() {
+          for (int branch = 0; branch < 9; ++branch) {
+            auto* copied = helper.MakeIntermediate<MLFloat16>(std::nullopt);
+            helper.AddNode("MemcpyToHost", {source}, {copied});
+            auto* output = helper.MakeOutput<MLFloat16>(std::nullopt);
+            helper.AddNode("Identity", {copied}, {output});
+          }
+        };
+        if (dead_branches_first) {
+          add_dead_branches();
+        }
+        NodeArg* current = source;
+        for (int hop = 0; hop < before_hops; ++hop) {
+          auto* copied = helper.MakeIntermediate<MLFloat16>(std::nullopt);
+          helper.AddNode("MemcpyToHost", {current}, {copied});
+          current = copied;
+        }
+        transpose->MutableInputDefs()[0] = current;
+
+        NodeArg* boundary = transpose->MutableOutputDefs()[0];
+        for (int hop = 0; hop < after_hops; ++hop) {
+          auto* copied = helper.MakeIntermediate<MLFloat16>(std::nullopt);
+          if (hop == 0) {
+            transpose->MutableOutputDefs()[0] = copied;
+          } else {
+            helper.AddNode("MemcpyFromHost", {current}, {copied});
+          }
+          current = copied;
+        }
+        if (after_hops != 0) {
+          helper.AddNode("MemcpyFromHost", {current}, {boundary});
+        }
+        if (!dead_branches_first) {
+          add_dead_branches();
+        }
+        helper.SetGraphOutputs();
+        ASSERT_STATUS_OK(graph.Resolve());
+        const bool expected = before_hops <= 4 && after_hops <= 4;
+        EXPECT_EQ(HasConvertedGqaValueLayoutBoundaries(graph), expected);
+        EXPECT_EQ(!FindConvertedGqaValueLayoutBoundaries(graph).Empty(), expected);
+      }
+    }
+  }
+}
+
+TEST_F(GqaValueLayoutTransformerTest, InsertsTransposesAndSwapsBoundaryShapes) {
+  auto build = [](ModelTestBuilder& builder) { BuildGqaModel(builder, BuildOptions{}); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/1,
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) { return ExpectBnhsBoundary(graph); }));
+}
+
+TEST_F(GqaValueLayoutTransformerTest, IsIdempotent) {
+  auto build = [](ModelTestBuilder& builder) { BuildGqaModel(builder, BuildOptions{}); };
+
+  // steps=2 runs the transformer twice. A second insertion would produce four Transposes and swap
+  // the boundary shapes back to BNSH, so ExpectBnhsBoundary catches a missing idempotency guard.
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/2,
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) { return ExpectBnhsBoundary(graph); }));
+}
+
+TEST_F(GqaValueLayoutTransformerTest, OutputSideOnlyWhenPastValueIsAbsent) {
+  BuildOptions opts;
+  opts.no_past_kv = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/1,
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) {
+        ORT_RETURN_IF_ERROR(ExpectTransposeCount(graph, 1));
+        const Node* gqa = FindGqa(graph);
+        ORT_RETURN_IF(gqa == nullptr, "GroupQueryAttention node is missing.");
+        return ExpectBnhsPresentValue(graph, *gqa, /*cache_len=*/kSeq);
+      }));
+}
+
+TEST_F(GqaValueLayoutTransformerTest, InputSideOnlyWhenPresentValueIsAbsent) {
+  BuildOptions opts;
+  opts.no_present_value = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/1,
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) {
+        ORT_RETURN_IF_ERROR(ExpectTransposeCount(graph, 1));
+        const Node* gqa = FindGqa(graph);
+        ORT_RETURN_IF(gqa == nullptr, "GroupQueryAttention node is missing.");
+        return ExpectBnhsPastValue(graph, *gqa);
+      }));
+}
+
+// The two operands are in scope independently. past_value arrives from an Identity, so it is not
+// application bound and keeps BNSH; present_value is still a graph output, so it must be converted.
+// Skipping the whole node would leave an application-visible output in BNSH after the session
+// accepted BNHS.
+TEST_F(GqaValueLayoutTransformerTest, ConvertsPresentValueWhenOnlyPastValueIsInternal) {
+  BuildOptions opts;
+  opts.past_value_behind_identity = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/2,  // twice: the mixed case must stay idempotent
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) {
+        ORT_RETURN_IF_ERROR(ExpectTransposeCount(graph, 1));
+        const Node* gqa = FindGqa(graph);
+        ORT_RETURN_IF(gqa == nullptr, "GroupQueryAttention node is missing.");
+        // The internal past_value operand is untouched and still BNSH.
+        ORT_RETURN_IF_ERROR(ExpectShape(gqa->InputDefs()[4], kBnsh, "GQA past_value operand"));
+        return ExpectBnhsPresentValue(graph, *gqa);
+      }));
+}
+
+// Mirror image: present_value is consumed by an Identity so it is not application read, while
+// past_value is still a graph input and must be converted.
+TEST_F(GqaValueLayoutTransformerTest, ConvertsPastValueWhenOnlyPresentValueIsInternal) {
+  BuildOptions opts;
+  opts.present_value_behind_identity = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/2,  // twice: the mixed case must stay idempotent
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) {
+        ORT_RETURN_IF_ERROR(ExpectTransposeCount(graph, 1));
+        const Node* gqa = FindGqa(graph);
+        ORT_RETURN_IF(gqa == nullptr, "GroupQueryAttention node is missing.");
+        // The internal present_value operand is untouched and still BNSH.
+        ORT_RETURN_IF_ERROR(ExpectShape(gqa->OutputDefs()[2], kBnsh, "GQA present_value operand"));
+        return ExpectBnhsPastValue(graph, *gqa);
+      }));
+}
+
+// A past_value that is neither a graph input nor bindable at all: nothing to convert on that side,
+// and present_value is absent, so the node is left alone.
+TEST_F(GqaValueLayoutTransformerTest, SkipsWhenNeitherOperandIsApplicationVisible) {
+  BuildOptions opts;
+  opts.past_value_behind_identity = true;
+  opts.no_present_value = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/1,
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) { return ExpectNoTransposes(graph); }));
+}
+
+// Boundary NodeArgs are shared. Swapping a shared past_value's declared shape while rewiring only
+// one of its consumers would leave the other reading a BNHS tensor as BNSH, and processing the
+// second node would swap the declared shape back to BNSH and undo the first. The boundary is
+// application visible, so the option cannot be honored and initialization must fail.
+TEST_F(GqaValueLayoutTransformerTest, RejectsPastValueSharedByTwoGqaNodes) {
+  BuildOptions opts;
+  opts.second_gqa_sharing_past_kv = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "requires this node to be its only consumer");
+}
+
+// An internal consumer of the present_value graph output expects BNSH, so retargeting the GQA
+// output through a Transpose would silently hand it BNHS.
+TEST_F(GqaValueLayoutTransformerTest, RejectsPresentValueAlsoConsumedInternally) {
+  BuildOptions opts;
+  opts.present_value_also_consumed_internally = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "requires it to have no internal consumers");
+}
+
+// An initializer that is also a graph input can be overridden by a feed, so the application may bind
+// it, but its baked-in data stays BNSH no matter what happens to the declared shape. Swapping the
+// shape alone would either fail Graph::Resolve on the mismatch or, when the feed is omitted, hand the
+// default BNSH buffer to a Transpose that reads it as BNHS.
+TEST_F(GqaValueLayoutTransformerTest, RejectsOverridableInitializerPastValue) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutOverridableInitializer", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, BuildOptions{});
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const Node* gqa = FindGqa(graph);
+  ASSERT_NE(gqa, nullptr);
+  const std::string past_value_name = gqa->InputDefs()[4]->Name();
+
+  // Back past_value with an initializer while keeping it in the declared input list. That
+  // combination is what ORT reports as an overridable initializer.
+  const std::vector<const NodeArg*> declared_inputs = graph.GetInputsIncludingInitializers();
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  initializer.set_name(past_value_name);
+  initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  for (const int64_t dim : {kBatch, kKvNumHeads, kMaxSeq, kHeadSize}) {
+    initializer.add_dims(dim);
+  }
+  // FLOAT16 initializer data lives in int32_data, two bytes per element.
+  initializer.mutable_int32_data()->Resize(static_cast<int>(kBatch * kKvNumHeads * kMaxSeq * kHeadSize), 0);
+  graph.AddInitializedTensor(initializer);
+
+  graph.SetInputs(declared_inputs);
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_FALSE(graph.GetOverridableInitializers().empty()) << "test setup did not produce an overridable initializer";
+
+  GqaValueLayoutTransformer transformer;
+  bool modified = false;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(transformer.Apply(graph, modified, *logger_),
+                                      "overridable initializer");
+  EXPECT_FALSE(modified);
+}
+
+// A rejection must leave the graph exactly as it was loaded. Each model here holds two independent
+// GQA nodes, one convertible and one with an internally consumed present_value that fails
+// validation. A transformer that converted as it walked the graph would rewire the convertible node
+// before reaching the other one, leaving a half-converted, unresolved graph behind.
+//
+// Both build orders are covered because GetNodesInTopologicalOrder() does not necessarily follow
+// insertion order for independent nodes: whichever way it sorts, one of these two models presents
+// the convertible node first and so catches a transformer that mutates as it validates.
+TEST_F(GqaValueLayoutTransformerTest, LeavesTheGraphUntouchedWhenValidationFails) {
+  for (const bool convertible_first : {true, false}) {
+    SCOPED_TRACE(convertible_first ? "convertible node built first" : "invalid node built first");
+
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 21;
+    domain_to_version[kMSDomain] = 1;
+
+    Model model("GqaValueLayoutValidationFailure", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+    Graph& graph = model.MainGraph();
+
+    BuildOptions invalid;
+    invalid.present_value_also_consumed_internally = true;
+
+    ModelTestBuilder helper(graph);
+    if (convertible_first) {
+      BuildGqaModel(helper, BuildOptions{});
+      BuildGqaModel(helper, invalid);
+    } else {
+      BuildGqaModel(helper, invalid);
+      BuildGqaModel(helper, BuildOptions{});
+    }
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    GqaValueLayoutTransformer transformer;
+    bool modified = false;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(transformer.Apply(graph, modified, *logger_),
+                                        "requires it to have no internal consumers");
+
+    EXPECT_FALSE(modified);
+    ASSERT_STATUS_OK(ExpectNoTransposes(graph, /*expected_gqa=*/2));
+  }
+}
+
+// The transformer converts both operands together, so a node with only one side converted means the
+// graph was edited by hand. Converting the rest cannot repair it, so fail rather than proceed.
+TEST_F(GqaValueLayoutTransformerTest, RejectsPartiallyTransformedNode) {
+  BuildOptions opts;
+  opts.partially_transformed = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "applied to only one of past_value / present_value");
+}
+
+// A model saved after the transform was applied is left alone on reload.
+TEST_F(GqaValueLayoutTransformerTest, SkipsAnAlreadyTransformedModel) {
+  BuildOptions opts;
+  opts.already_transformed = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/1,
+      [](Graph& graph) { return ExpectTransposeCount(graph, 2); },
+      // Still exactly the two Transposes the model arrived with: no second pair was added.
+      [](Graph& graph) { return ExpectBnhsBoundary(graph); }));
+}
+
+TEST_F(GqaValueLayoutTransformerTest, RejectsFourBitValueCache) {
+  BuildOptions opts;
+  opts.four_bit_value_cache = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  // Two 4-bit values are packed per byte along head_size, so a byte-wise Transpose cannot express
+  // the layout change. Failing loudly beats silently producing wrong results on a non-fusing EP.
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "4-bit quantized Value cache");
+}
+
+// Graph::GetConsumerNodes() de-duplicates by node index, so a tensor bound to both past_key and
+// past_value still reports a single consumer. Converting it would rewire past_value alone and leave
+// past_key reading the now-BNHS tensor as BNSH, so the repeat use has to be detected separately.
+TEST_F(GqaValueLayoutTransformerTest, RejectsPastValueAlsoBoundToPastKey) {
+  BuildOptions opts;
+  opts.past_key_and_value_shared = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "requires past_value to be its only use");
+}
+
+// Reloading a model that already carries the conversion must still populate the boundary list, or
+// the post-partition diagnostic is silently disabled for exactly the case where the Transposes are
+// present and may still be executing.
+TEST_F(GqaValueLayoutTransformerTest, RecordsBoundariesForAnAlreadyTransformedModel) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutAlreadyTransformed", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  GqaValueLayoutBoundaries boundaries;
+  GqaValueLayoutTransformer transformer{&boundaries};
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, *logger_));
+
+  // Nothing to do, but the boundaries must still be reported so the diagnostic can run.
+  EXPECT_FALSE(modified);
+  EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
+  EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
+
+  // And the diagnostic must then flag them, because the Transposes are still in the graph.
+  const auto unfused = ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_);
+  EXPECT_EQ(unfused.size(), 2u);
+}
+
+// The BNSH result of an already converted node may legitimately feed other internal BNSH readers
+// besides the boundary Transpose. Treating that as out of scope would drop the boundary from the
+// post-partition diagnostic and log a misleading warning for an operand that is in fact converted.
+TEST_F(GqaValueLayoutTransformerTest, RecognizesConversionWhenPresentValueHasExtraInternalConsumers) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutExtraPresentConsumer", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  opts.extra_internal_present_consumer = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const Node* gqa = FindGqa(graph);
+  ASSERT_NE(gqa, nullptr);
+  ASSERT_EQ(graph.GetConsumerNodes(gqa->OutputDefs()[2]->Name()).size(), 2u)
+      << "fixture must give present_value a second consumer";
+
+  GqaValueLayoutBoundaries boundaries;
+  GqaValueLayoutTransformer transformer{&boundaries};
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, *logger_));
+
+  EXPECT_FALSE(modified);
+  EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
+  EXPECT_EQ(FindConvertedGqaValueLayoutBoundaries(graph).present_value_outputs.size(), 1u);
+}
+
+// The mirror image: a present_value that is itself a graph output has not been converted, however it
+// is consumed downstream. Mistaking it for the intermediate of an already converted node would leave
+// an application-visible output in BNSH after the session accepted BNHS.
+TEST_F(GqaValueLayoutTransformerTest, DoesNotMistakeAGraphOutputPresentValueForAConvertedOne) {
+  BuildOptions opts;
+  opts.present_value_also_transposed_to_output = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  // Classified convertible, then rejected because converting it would hand the internal Transpose
+  // BNHS data where it expects BNSH. Silently skipping it would be the real bug.
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "requires it to have no internal consumers");
+}
+
+// An ORT format model converted after the transform was applied is loaded without the option, so
+// nothing records its boundaries. They have to be detected from the graph instead, or such a model
+// silently pays the full-cache copies with nothing in the logs.
+TEST_F(GqaValueLayoutTransformerTest, FindsBoundariesOfAnAlreadyConvertedGraph) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutFindBoundaries", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  const GqaValueLayoutBoundaries boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+  EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
+  EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
+  EXPECT_EQ(ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_).size(), 2u);
+}
+
+// A boundary that was converted offline may be initializer-backed, and its baked-in data is already
+// BNHS, so the conversion is real. Detection must therefore consider all declared graph inputs, not
+// just the non-initializer ones: missing it would let an explicit BNSH request through and feed BNSH
+// data into a Transpose expecting BNHS. This is the mirror of refusing to convert an
+// initializer-backed boundary in the first place, which stays rejected.
+TEST_F(GqaValueLayoutTransformerTest, DetectsConversionWhenTheBnhsBoundaryIsAnOverridableInitializer) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutInitializerBoundary", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // The BNHS boundary is the Transpose's own input, not the GQA operand.
+  const Node* gqa = FindGqa(graph);
+  ASSERT_NE(gqa, nullptr);
+  const Node* transpose = graph.GetProducerNode(gqa->InputDefs()[4]->Name());
+  ASSERT_NE(transpose, nullptr);
+  const std::string boundary = transpose->InputDefs()[0]->Name();
+
+  // Back that boundary with a BNHS initializer while keeping it a declared input, which is what makes
+  // it overridable.
+  const std::vector<const NodeArg*> declared_inputs = graph.GetInputsIncludingInitializers();
+
+  ONNX_NAMESPACE::TensorProto initializer;
+  initializer.set_name(boundary);
+  initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  for (const int64_t dim : {kBatch, kKvNumHeads, kHeadSize, kMaxSeq}) {
+    initializer.add_dims(dim);
+  }
+  initializer.mutable_int32_data()->Resize(static_cast<int>(kBatch * kKvNumHeads * kHeadSize * kMaxSeq), 0);
+  graph.AddInitializedTensor(initializer);
+
+  graph.SetInputs(declared_inputs);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // The fixture must actually exercise the distinction between the two input sets.
+  const auto contains = [&boundary](const std::vector<const NodeArg*>& args) {
+    return std::any_of(args.begin(), args.end(),
+                       [&boundary](const NodeArg* arg) { return arg != nullptr && arg->Name() == boundary; });
+  };
+  ASSERT_FALSE(contains(graph.GetInputs())) << "boundary should have become initializer-backed";
+  ASSERT_TRUE(contains(graph.GetInputsIncludingInitializers()));
+
+  // Detected despite being initializer-backed, so an explicit BNSH request would be caught.
+  const GqaValueLayoutBoundaries boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+  EXPECT_EQ(HasConvertedGqaValueLayoutBoundaries(graph), !boundaries.Empty());
+  EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
+  EXPECT_EQ(boundaries.past_value_inputs.empty() ? std::string{} : boundaries.past_value_inputs[0], boundary);
+
+  // And the transformer leaves the already-converted node alone rather than converting it twice.
+  GqaValueLayoutTransformer transformer;
+  bool modified = false;
+  ASSERT_STATUS_OK(transformer.Apply(graph, modified, *logger_));
+  EXPECT_FALSE(modified);
+}
+
+// MemcpyTransformer runs inside TransformGraph, before the optimized model is serialized, so a model
+// saved from a non-CPU session can have device copies spliced between the boundaries and the
+// provider-side nodes: graph input -> MemcpyFromHost -> Transpose -> GQA, and
+// GQA -> Transpose -> MemcpyToHost -> graph output. Detection must trace through them, or an explicit
+// BNSH request would be accepted against a model whose boundary is really BNHS.
+//
+// The copies are built directly rather than by running a non-CPU EP, which is not available here.
+TEST_F(GqaValueLayoutTransformerTest, DetectsConversionThroughDeviceCopyNodes) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutDeviceCopies", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  opts.device_copies_at_boundaries = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // The fixture must really be non-adjacent, otherwise it proves nothing.
+  const Node* gqa = FindGqa(graph);
+  ASSERT_NE(gqa, nullptr);
+  const Node* in_transpose = graph.GetProducerNode(gqa->InputDefs()[4]->Name());
+  ASSERT_NE(in_transpose, nullptr);
+  ASSERT_FALSE(IsGqaDeclaredGraphInput(graph, in_transpose->InputDefs()[0]))
+      << "the Transpose should sit behind a copy node, not directly on the graph input";
+
+  const GqaValueLayoutBoundaries boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+  EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
+  EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
+
+  // The post-partition diagnostic has to see through the copies too. Detection and reporting each do
+  // their own walk from the boundary, in opposite directions, so fixing one does not fix the other:
+  // the Transposes here are unfused and really will execute, and must be reported as such.
+  EXPECT_NE(FindValueLayoutTransposeAfterGraphInput(graph, boundaries.past_value_inputs[0]), nullptr);
+  EXPECT_NE(FindValueLayoutTransposeBeforeGraphOutput(graph, boundaries.present_value_outputs[0]), nullptr);
+
+  const auto unfused = ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_);
+  EXPECT_THAT(unfused, ::testing::UnorderedElementsAre(boundaries.past_value_inputs[0],
+                                                       boundaries.present_value_outputs[0]));
+}
+
+TEST_F(GqaValueLayoutTransformerTest, MemcpyNodesDoNotHideConvertedBoundaries) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutMemcpyRepro", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  auto device_ep = std::make_unique<LocalDeviceExecutionProvider>();
+  const std::string device_ep_type = device_ep->Type();
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(node.OpType() == "GroupQueryAttention"
+                                      ? device_ep_type
+                                      : kCpuExecutionProvider);
+  }
+
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(device_ep_type, std::move(device_ep)));
+  ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, DefaultCpuExecutionProvider()));
+
+  KernelRegistryManager kernel_registry_manager;
+  ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
+  auto device_registry = std::make_shared<KernelRegistry>();
+  KernelDefBuilder device_kernel_def;
+  device_kernel_def.SetName("GroupQueryAttention")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Provider(device_ep_type);
+  ASSERT_STATUS_OK(device_registry->Register(
+      device_kernel_def,
+      [](FuncManager&, const OpKernelInfo&, std::unique_ptr<OpKernel>&) { return Status::OK(); }));
+  kernel_registry_manager.RegisterKernelRegistry(std::move(device_registry));
+
+  InlinedVector<gsl::not_null<const IExecutionProvider*>> providers;
+  for (const auto& provider : execution_providers) {
+    providers.push_back(provider.get());
+  }
+
+  MemcpyTransformer memcpy_transformer{std::move(providers), kernel_registry_manager};
+  bool modified = false;
+  ASSERT_STATUS_OK(memcpy_transformer.Apply(graph, modified, *logger_));
+  ASSERT_TRUE(modified);
+
+  const Node* gqa = FindGqa(graph);
+  ASSERT_NE(gqa, nullptr);
+  const Node* past_copy = graph.GetProducerNode(gqa->InputDefs()[4]->Name());
+  ASSERT_NE(past_copy, nullptr);
+  EXPECT_EQ(past_copy->OpType(), "MemcpyFromHost");
+  const Node* past_transpose = graph.GetProducerNode(past_copy->InputDefs()[0]->Name());
+  ASSERT_NE(past_transpose, nullptr);
+  EXPECT_TRUE(IsGqaValueLayoutTranspose(*past_transpose));
+
+  const auto present_consumers = graph.GetConsumerNodes(gqa->OutputDefs()[2]->Name());
+  ASSERT_EQ(present_consumers.size(), 1u);
+  ASSERT_NE(present_consumers[0], nullptr);
+  EXPECT_EQ(present_consumers[0]->OpType(), "MemcpyToHost");
+  const auto transpose_consumers = graph.GetConsumerNodes(present_consumers[0]->OutputDefs()[0]->Name());
+  ASSERT_EQ(transpose_consumers.size(), 1u);
+  ASSERT_NE(transpose_consumers[0], nullptr);
+  EXPECT_TRUE(IsGqaValueLayoutTranspose(*transpose_consumers[0]));
+
+  ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
+  std::shared_ptr<Model> reloaded_model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), PathString(), reloaded_model, nullptr, *logger_));
+
+  const GqaValueLayoutBoundaries boundaries =
+      FindConvertedGqaValueLayoutBoundaries(reloaded_model->MainGraph());
+  EXPECT_EQ(boundaries.past_value_inputs.size(), 1u);
+  EXPECT_EQ(boundaries.present_value_outputs.size(), 1u);
+}
+
+// The mirror of DetectsConversionThroughDeviceCopyNodes: an *unconverted* boundary behind a device
+// copy is still one the application binds, so calling it out of scope would silently leave it BNSH
+// after the caller asked for BNHS. It cannot be converted either -- the Transpose would have to be
+// placed across a copy node that MemcpyTransformer positioned for a specific device -- so it fails.
+TEST_F(GqaValueLayoutTransformerTest, RejectsAnUnconvertedBoundaryBehindADeviceCopy) {
+  BuildOptions opts;
+  opts.device_copies_without_conversion = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "through a device copy node");
+}
+
+TEST_F(GqaValueLayoutTransformerTest, RejectsConvertedValueWithAnUnconvertedCopyOutput) {
+  for (bool exported_copy_first : {false, true}) {
+    SCOPED_TRACE(exported_copy_first);
+    std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 21}, {kMSDomain, 1}};
+    Model model("MixedValueBoundaries", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder builder(graph);
+    BuildOptions opts;
+    opts.already_transformed = true;
+    BuildGqaModel(builder, opts);
+
+    const Node* gqa = FindGqa(graph);
+    ASSERT_NE(gqa, nullptr);
+    NodeArg* present_value = graph.GetNode(gqa->Index())->MutableOutputDefs()[2];
+    const std::vector<int64_t> shape{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
+    NodeArg* exposed_bnsh = builder.MakeOutput<MLFloat16>(shape);
+    NodeArg* internal_copy = builder.MakeIntermediate<MLFloat16>(shape);
+    NodeArg* internal_output = builder.MakeOutput<MLFloat16>(shape);
+    for (bool exported : {exported_copy_first, !exported_copy_first}) {
+      builder.AddNode("MemcpyToHost", {present_value}, {exported ? exposed_bnsh : internal_copy});
+    }
+    builder.AddNode("Neg", {internal_copy}, {internal_output});
+    builder.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    EXPECT_EQ(TraceGqaBoundaryForwardThroughDeviceCopies(graph, present_value), exposed_bnsh);
+    std::string converted_boundary;
+    EXPECT_TRUE(FindConvertedPresentValueBoundary(graph, *gqa, converted_boundary));
+    bool modified = false;
+    GqaValueLayoutTransformer transformer;
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(transformer.Apply(graph, modified, *logger_),
+                                        "through a device copy node");
+    EXPECT_FALSE(modified);
+    ASSERT_STATUS_OK(ExpectShape(exposed_bnsh, shape, "unconverted output"));
+  }
+}
+
+// The end-to-end version of DetectsConversionThroughDeviceCopyNodes: instead of building the copy
+// nodes by hand, save an optimized model through a real non-CPU EP so MemcpyTransformer inserts them
+// itself, then reload it. Graph inputs and outputs count as non-provider references, so a device
+// assigned GQA gets MemcpyFromHost ahead of the past_value Transpose and MemcpyToHost after the
+// present_value one -- exactly the shape that used to defeat detection.
+//
+// Skipped where no such EP is built, which includes the usual CPU-only developer build.
+TEST_F(GqaValueLayoutTransformerTest, RejectsADeviceOptimizedBnhsModelWhenBnshIsRequested) {
+  if (!DefaultCudaExecutionProvider()) {
+    GTEST_SKIP() << "No non-CPU EP available in this build, so MemcpyTransformer inserts no copies.";
+  }
+
+  const auto optimized_model = ORT_TSTR("gqa_value_layout_device_optimized.test_output.onnx");
+
+  std::string model_bytes;
+  ASSERT_STATUS_OK(BuildSerializedGqaModel(*logger_, model_bytes));
+
+  // Convert to BNHS on the device EP and save the result, copies and all.
+  {
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+    session_options.optimized_model_filepath = optimized_model;
+
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+  }
+
+  // The saved model must retain detectable BNHS boundaries. Copy placement is EP-dependent: a copy
+  // may sit on either side of the Transpose, or be unnecessary when both nodes use the same device.
+  {
+    std::shared_ptr<Model> saved;
+    ASSERT_STATUS_OK(Model::Load(optimized_model, saved, nullptr, *logger_));
+    const Graph& graph = saved->MainGraph();
+
+    const Node* gqa = FindGqa(graph);
+    ASSERT_NE(gqa, nullptr);
+    EXPECT_FALSE(FindConvertedGqaValueLayoutBoundaries(graph).Empty());
+  }
+
+  // Explicit BNSH contradicts the boundary the saved model carries.
+  {
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNSH);
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(optimized_model));
+
+    const Status status = session.Initialize();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already carries the BNHS"));
+  }
+
+  std::remove(ToUTF8String(optimized_model).c_str());
+}
+
+// An unconverted graph has no boundaries to find.
+TEST_F(GqaValueLayoutTransformerTest, FindsNoBoundariesInAnUnconvertedGraph) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutFindNoBoundaries", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, BuildOptions{});
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  EXPECT_TRUE(FindConvertedGqaValueLayoutBoundaries(graph).Empty());
+}
+
+// GQA is a com.microsoft op whose T_CACHE admits bfloat16 and float8e4m3fn regardless of the ONNX
+// opset, but the inserted Transpose is an ONNX op that resolves against the model's imported opset:
+// bfloat16 needs 13, float8e4m3fn needs 21. Without an up-front check the graph is mutated and then
+// fails Graph::Resolve() with an opaque type-constraint error.
+TEST_F(GqaValueLayoutTransformerTest, RejectsCacheTypeTheImportedTransposeSchemaCannotHandle) {
+  // Sanity-check the premise rather than assuming it: opset 12's Transpose must not accept bfloat16
+  // while opset 13's does. If ONNX ever backports it, this test should be retired, not "fixed".
+  const auto transpose_accepts_bfloat16 = [](int opset) {
+    const auto* schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema("Transpose", opset, kOnnxDomain);
+    EXPECT_NE(schema, nullptr) << "no Transpose schema for opset " << opset;
+    const auto& constraints = schema->typeConstraintMap();
+    const auto it = constraints.find(schema->inputs()[0].GetTypeStr());
+    EXPECT_NE(it, constraints.end());
+    return it->second.first.count(ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("tensor(bfloat16)")) != 0;
+  };
+  ASSERT_FALSE(transpose_accepts_bfloat16(12));
+  ASSERT_TRUE(transpose_accepts_bfloat16(13));
+
+  auto build = [](ModelTestBuilder& builder) { BuildBFloat16GqaModel(builder); };
+
+  // Opset 12: rejected up front, naming the type and the opset.
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/12, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "does not accept");
+
+  // Opset 13: the same model converts normally, so the check is about the opset and not the type.
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/13, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/1,
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) { return ExpectTransposeCount(graph, 2); }));
+}
+
+// Only a rank-4 declared shape can be reinterpreted between BNSH and BNHS. GQA shape inference
+// validates past_key's rank but not past_value's, so a rank-3 past_value reaches the transformer and
+// has to be rejected there. Shape inference is relaxed for this fixture so the malformed model
+// survives Graph::Resolve and the transformer is the thing under test.
+TEST_F(GqaValueLayoutTransformerTest, RejectsNonRank4PastValue) {
+  BuildOptions opts;
+  opts.past_value_rank3 = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr,
+                           ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}),
+      "must be rank 4");
+}
+
+// ...but only for a node the option actually touches. A GQA node whose Value caches are entirely
+// internal is out of scope, so no Transpose is inserted and its cache format is irrelevant. Rejecting
+// it would contradict the per-boundary scope and stop an otherwise fine BNSH cache from running.
+TEST_F(GqaValueLayoutTransformerTest, AllowsFourBitValueCacheWhenBothOperandsAreInternal) {
+  BuildOptions opts;
+  opts.four_bit_value_cache = true;
+  opts.past_value_behind_identity = true;
+  opts.present_value_behind_identity = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeTransformer(),
+      TransformerLevel::Level1, /*steps=*/1,
+      [](Graph& graph) { return ExpectNoTransposes(graph); },
+      [](Graph& graph) { return ExpectNoTransposes(graph); }));
+}
+
+// The same rejection must apply to a model that already carries the Transposes. Classifying it as
+// already-converted and returning early would let a 4-bit model initialize and then execute the
+// invalid byte-wise transpose on any EP that does not fuse it.
+TEST_F(GqaValueLayoutTransformerTest, RejectsFourBitValueCacheOnAnAlreadyTransformedModel) {
+  BuildOptions opts;
+  opts.four_bit_value_cache = true;
+  opts.already_transformed = true;
+  auto build = [opts](ModelTestBuilder& builder) { BuildGqaModel(builder, opts); };
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      TestGraphTransformer(build, /*opset_version=*/21, *logger_, MakeTransformer(),
+                           TransformerLevel::Level1, /*steps=*/1, nullptr, nullptr),
+      "4-bit quantized Value cache");
+}
+
+// The transform changes the layout the session expects at its own inputs and outputs, so it is
+// applied directly by TransformGraph rather than registered as a level 1 optimizer. This test pins
+// that down: registered optimizers are skipped entirely at ORT_DISABLE_ALL.
+TEST_F(GqaValueLayoutTransformerTest, AppliedWhenOptimizationsAreDisabled) {
+  std::string model_bytes;
+  ASSERT_STATUS_OK(BuildSerializedGqaModel(*logger_, model_bytes));
+
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Default;  // ORT_DISABLE_ALL
+  session_options.session_logid = "GqaValueLayoutTransformerTest";
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsGqaValueLayout, "BNHS"));
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  ASSERT_STATUS_OK(ExpectBnhsBoundary(session.GetMutableGraph()));
+}
+
+TEST_F(GqaValueLayoutTransformerTest, NotAppliedForTheDefaultLayout) {
+  std::string model_bytes;
+  ASSERT_STATUS_OK(BuildSerializedGqaModel(*logger_, model_bytes));
+
+  SessionOptions session_options;
+  session_options.session_logid = "GqaValueLayoutTransformerTest";
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsGqaValueLayout, "BNSH"));
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  ASSERT_STATUS_OK(ExpectNoTransposes(session.GetGraph()));
+}
+
+// BNSH is a claim about the boundary, not merely the absence of a request. A model saved from a BNHS
+// session still carries the Transposes and BNHS boundary shapes, so loading it as BNSH would have the
+// application bind BNSH buffers to a BNHS boundary.
+TEST_F(GqaValueLayoutTransformerTest, RejectsABnhsConvertedModelWhenBnshIsExplicitlyRequested) {
+  std::string model_bytes;
+  {
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 21;
+    domain_to_version[kMSDomain] = 1;
+
+    Model model("GqaValueLayoutConvertedModel", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+    Graph& graph = model.MainGraph();
+
+    BuildOptions opts;
+    opts.already_transformed = true;
+    ModelTestBuilder helper(graph);
+    BuildGqaModel(helper, opts);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(graph.Resolve());
+    ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+  }
+
+  // Explicit BNSH is a claim about the boundary, and this model contradicts it.
+  {
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNSH);
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+
+    const Status status = session.Initialize();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already carries the BNHS"));
+  }
+
+  // The same model loads when the option agrees with it.
+  {
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(ExpectBnhsBoundary(session.GetMutableGraph()));
+  }
+}
+
+// ...but an absent option is not a BNSH claim, it is no claim at all. A model whose Value cache
+// already surfaces through boundary Transposes loads and runs today; rejecting it when the option is
+// unset would be a compatibility break on the default path rather than an opt-in behaviour change.
+// It gets a warning instead, and the graph is left exactly as it was.
+TEST_F(GqaValueLayoutTransformerTest, LoadsABnhsConvertedModelWhenNoLayoutIsRequested) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+
+  Model model("GqaValueLayoutConvertedModelDefaultLoad", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  BuildOptions opts;
+  opts.already_transformed = true;
+  ModelTestBuilder helper(graph);
+  BuildGqaModel(helper, opts);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_bytes;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+
+  SessionOptions session_options;  // no gqa_value_layout entry at all
+  session_options.session_logid = "GqaValueLayoutTransformerTest";
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Untouched: the model's own Transposes are still there and nothing was added.
+  ASSERT_STATUS_OK(ExpectTransposeCount(session.GetGraph(), 2));
+}
+
+// Requesting BNHS for a model with no main-graph GroupQueryAttention converts nothing. That is
+// legitimate for a model with no GQA at all, and it is also what a model whose GQA lives only inside
+// a subgraph looks like from here, since the transformer walks the main graph only. ORT cannot tell
+// those apart without recursing, so it succeeds and warns rather than failing.
+TEST_F(GqaValueLayoutTransformerTest, SucceedsWhenThereIsNoMainGraphGqaToConvert) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+
+  Model model("GqaValueLayoutNoGqa", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  ModelTestBuilder helper(graph);
+  NodeArg* in = helper.MakeInput<MLFloat16>(std::vector<int64_t>{kBatch, kSeq, kQHidden},
+                                            MLFloat16(0.0f), MLFloat16(0.0f));
+  NodeArg* out = helper.MakeOutput<MLFloat16>(std::vector<int64_t>{kBatch, kSeq, kQHidden});
+  helper.AddNode("Identity", {in}, {out});
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_bytes;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+
+  SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  // Nothing converted, and nothing broken.
+  ASSERT_STATUS_OK(ExpectNoTransposes(session.GetGraph(), /*expected_gqa=*/0));
+  EXPECT_TRUE(FindConvertedGqaValueLayoutBoundaries(session.GetGraph()).Empty());
+}
+
+// The subgraph-only case: the KV boundary is on the main graph, but the GroupQueryAttention that
+// consumes it lives inside a Loop body, carried in and out as loop state. The operator and the
+// boundary are in different graphs, so there is nothing this transformer can rewire -- and a warning
+// would not preserve the option contract, because the application would bind BNHS buffers to a
+// boundary that is still BNSH, which passes input validation whenever the trailing dimensions are
+// dynamic or equal. So it fails initialization.
+TEST_F(GqaValueLayoutTransformerTest, RejectsAModelWhoseGqaLivesOnlyInASubgraph) {
+  std::string model_bytes;
+  ASSERT_STATUS_OK(BuildSubgraphOnlyGqaModel(*logger_, model_bytes));
+
+  // The fixture must really put GQA out of reach, otherwise it proves nothing.
+  {
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::LoadFromBytes(static_cast<int>(model_bytes.size()), model_bytes.data(), model,
+                                          nullptr, *logger_));
+    const GqaNodeCounts counts = CountGqaNodes(model->MainGraph());
+    ASSERT_EQ(counts.in_main_graph, 0u) << "GQA must not be in the main graph";
+    ASSERT_EQ(counts.in_subgraphs, 1u) << "the Loop body must contain the GQA node";
+  }
+
+  SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("are inside a subgraph"));
+
+  // BNSH loads the same model unchanged, since nothing was ever converted.
+  SessionOptions bnsh_options = MakeSessionOptions(kGqaValueLayoutBNSH);
+  InferenceSessionWrapper bnsh_session{bnsh_options, GetEnvironment()};
+  ASSERT_STATUS_OK(bnsh_session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(bnsh_session.Initialize());
+  ASSERT_STATUS_OK(ExpectNoTransposes(bnsh_session.GetGraph(), /*expected_gqa=*/1));
+}
+
+// A subgraph GQA must be caught even when a main-graph cache did convert. Gating the check on
+// "nothing converted" let a mixed model through on the strength of the part that worked.
+TEST_F(GqaValueLayoutTransformerTest, RejectsASubgraphGqaEvenWhenAMainGraphCacheConverts) {
+  std::string model_bytes;
+  ASSERT_STATUS_OK(BuildSubgraphOnlyGqaModel(*logger_, model_bytes, /*add_main_graph_gqa=*/true));
+
+  {
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::LoadFromBytes(static_cast<int>(model_bytes.size()), model_bytes.data(), model,
+                                          nullptr, *logger_));
+    const GqaNodeCounts counts = CountGqaNodes(model->MainGraph());
+    ASSERT_EQ(counts.in_main_graph, 1u) << "fixture needs a convertible main-graph GQA";
+    ASSERT_EQ(counts.in_subgraphs, 1u) << "fixture needs an unreachable subgraph GQA";
+  }
+
+  SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("are inside a subgraph"));
+}
+
+// Converting nothing is still reported for the two cases that are not errors, and the message says
+// which occurred. Asserting the text, not just that something was logged, since the point is that it
+// identifies the case. The subgraph case fails initialization instead, covered above.
+TEST_F(GqaValueLayoutTransformerTest, ExplainsWhyNothingWasConvertedForAModelWithNoGqa) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+
+  Model model("GqaValueLayoutNoGqaLog", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+  Graph& graph = model.MainGraph();
+
+  ModelTestBuilder helper(graph);
+  NodeArg* in = helper.MakeInput<MLFloat16>(std::vector<int64_t>{kBatch, kSeq, kQHidden},
+                                            MLFloat16(0.0f), MLFloat16(0.0f));
+  NodeArg* out = helper.MakeOutput<MLFloat16>(std::vector<int64_t>{kBatch, kSeq, kQHidden});
+  helper.AddNode("Identity", {in}, {out});
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_bytes;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_bytes));
+
+  std::string log;
+  ASSERT_STATUS_OK(RunSessionCapturingLog(model_bytes, kGqaValueLayoutBNHS, log));
+
+  EXPECT_THAT(log, ::testing::HasSubstr("contains no GroupQueryAttention node"));
+  EXPECT_THAT(log, ::testing::Not(::testing::HasSubstr("inside a subgraph")));
+}
+
+// A model that converts normally must not be told anything went unconverted.
+TEST_F(GqaValueLayoutTransformerTest, SaysNothingWhenTheConversionSucceeds) {
+  std::string model_bytes;
+  ASSERT_STATUS_OK(BuildSerializedGqaModel(*logger_, model_bytes));
+
+  std::string log;
+  ASSERT_STATUS_OK(RunSessionCapturingLog(model_bytes, kGqaValueLayoutBNHS, log));
+
+  EXPECT_THAT(log, ::testing::Not(::testing::HasSubstr("no Value cache boundary was converted")));
+  EXPECT_THAT(log, ::testing::Not(::testing::HasSubstr("contains no GroupQueryAttention node")));
+}
+
+// The counter behind those messages, exercised directly on each shape.
+TEST_F(GqaValueLayoutTransformerTest, CountsGqaNodesAcrossSubgraphs) {
+  {
+    std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 21}, {kMSDomain, 1}};
+    Model model("GqaValueLayoutCountMain", false, ModelMetaData(), PathString(),
+                IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, *logger_);
+    ModelTestBuilder helper(model.MainGraph());
+    BuildGqaModel(helper, BuildOptions{});
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+    const GqaNodeCounts counts = CountGqaNodes(model.MainGraph());
+    EXPECT_EQ(counts.in_main_graph, 1u);
+    EXPECT_EQ(counts.in_subgraphs, 0u);
+  }
+
+  {
+    std::string model_bytes;
+    ASSERT_STATUS_OK(BuildSubgraphOnlyGqaModel(*logger_, model_bytes));
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::LoadFromBytes(static_cast<int>(model_bytes.size()), model_bytes.data(), model,
+                                          nullptr, *logger_));
+
+    const GqaNodeCounts counts = CountGqaNodes(model->MainGraph());
+    EXPECT_EQ(counts.in_main_graph, 0u);
+    EXPECT_EQ(counts.in_subgraphs, 1u);
+  }
+}
+
+TEST_F(GqaValueLayoutTransformerTest, RejectsAnInvalidLayoutValue) {
+  std::string model_bytes;
+  ASSERT_STATUS_OK(BuildSerializedGqaModel(*logger_, model_bytes));
+
+  SessionOptions session_options;
+  session_options.session_logid = "GqaValueLayoutTransformerTest";
+  ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsGqaValueLayout, "NHWC"));
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+
+  // An unrecognized option value is a caller error, so the code must be INVALID_ARGUMENT rather than
+  // the generic FAIL. A model that cannot satisfy a recognized value reports FAIL instead, and
+  // applications distinguish the two to decide whether falling back to BNSH is worth trying.
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT) << status.ErrorMessage();
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Invalid value for session option"));
+}
+
+namespace {
+
+// Builds boundary -> Transpose -> Identity -> Transpose -> boundary, i.e. the shape the graph is left
+// in when a compiling EP claims the GroupQueryAttention node and leaves the flanking Transposes
+// behind. Identity stands in for the EP's fused node. With keep_transposes=false the boundaries
+// connect straight to Identity, which is what fusing the whole sequence looks like.
+Status BuildPostPartitionGraph(Graph& graph, bool keep_transposes, GqaValueLayoutBoundaries& boundaries) {
+  const std::vector<int64_t> bnhs{kBatch, kKvNumHeads, kHeadSize, kMaxSeq};
+  const std::vector<int64_t> bnsh{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
+
+  // Both boundaries are BNHS either way; only what sits between them changes.
+  ModelTestBuilder builder(graph);
+  NodeArg* boundary_in = builder.MakeInput<MLFloat16>(bnhs, MLFloat16(0.0f), MLFloat16(0.0f));
+  NodeArg* boundary_out = builder.MakeOutput<MLFloat16>(bnhs);
+
+  if (keep_transposes) {
+    NodeArg* fused_in = builder.MakeIntermediate<MLFloat16>(bnsh);
+    NodeArg* fused_out = builder.MakeIntermediate<MLFloat16>(bnsh);
+
+    Node& in_transpose = builder.AddNode("Transpose", {boundary_in}, {fused_in});
+    in_transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+
+    builder.AddNode("Identity", {fused_in}, {fused_out});
+
+    Node& out_transpose = builder.AddNode("Transpose", {fused_out}, {boundary_out});
+    out_transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+  } else {
+    builder.AddNode("Identity", {boundary_in}, {boundary_out});
+  }
+
+  builder.SetGraphOutputs();
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+
+  boundaries.past_value_inputs.push_back(boundary_in->Name());
+  boundaries.present_value_outputs.push_back(boundary_out->Name());
+  return Status::OK();
+}
+
+Model MakePostPartitionModel(const logging::Logger& logger) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+  return Model("GqaValueLayoutPostPartition", false, ModelMetaData(), PathString(),
+               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {}, logger);
+}
+
+}  // namespace
+
+// A compiling EP may claim the GQA node and replace it with a fused node while leaving the flanking
+// Transposes in the graph. Both full-cache copies still execute, so the diagnostic must not depend on
+// finding a GroupQueryAttention node to search from.
+TEST_F(GqaValueLayoutTransformerTest, ReportsUnfusedTransposesWhenTheGqaNodeWasReplaced) {
+  Model model = MakePostPartitionModel(*logger_);
+  GqaValueLayoutBoundaries boundaries;
+  ASSERT_STATUS_OK(BuildPostPartitionGraph(model.MainGraph(), /*keep_transposes=*/true, boundaries));
+
+  ASSERT_EQ(FindGqa(model.MainGraph()), nullptr)
+      << "the fixture must not contain a GQA node, otherwise it cannot catch the regression";
+
+  const auto unfused = ReportUnfusedGqaValueLayoutTransposes(model.MainGraph(), boundaries, *logger_);
+  EXPECT_THAT(unfused, ::testing::UnorderedElementsAre(boundaries.past_value_inputs[0],
+                                                       boundaries.present_value_outputs[0]));
+}
+
+// A BNHS boundary may legitimately feed other BNHS readers besides the Transpose. Requiring sole
+// consumership here would suppress the warning while the Transpose is still in the graph and still
+// copying the whole cache every step.
+TEST_F(GqaValueLayoutTransformerTest, ReportsUnfusedTransposeWhenTheBoundaryHasOtherConsumers) {
+  Model model = MakePostPartitionModel(*logger_);
+  Graph& graph = model.MainGraph();
+
+  const std::vector<int64_t> bnhs{kBatch, kKvNumHeads, kHeadSize, kMaxSeq};
+  const std::vector<int64_t> bnsh{kBatch, kKvNumHeads, kMaxSeq, kHeadSize};
+
+  ModelTestBuilder builder(graph);
+  NodeArg* boundary_in = builder.MakeInput<MLFloat16>(bnhs, MLFloat16(0.0f), MLFloat16(0.0f));
+  NodeArg* fused_in = builder.MakeIntermediate<MLFloat16>(bnsh);
+  NodeArg* fused_out = builder.MakeIntermediate<MLFloat16>(bnsh);
+  NodeArg* boundary_out = builder.MakeOutput<MLFloat16>(bnhs);
+
+  Node& in_transpose = builder.AddNode("Transpose", {boundary_in}, {fused_in});
+  in_transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+  builder.AddNode("Identity", {fused_in}, {fused_out});
+  Node& out_transpose = builder.AddNode("Transpose", {fused_out}, {boundary_out});
+  out_transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+
+  // A second, unrelated BNHS reader of the same boundary.
+  NodeArg* extra_output = builder.MakeOutput<MLFloat16>(bnhs);
+  builder.AddNode("Identity", {boundary_in}, {extra_output});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+  ASSERT_EQ(graph.GetConsumerNodes(boundary_in->Name()).size(), 2u) << "fixture must have two consumers";
+
+  GqaValueLayoutBoundaries boundaries;
+  boundaries.past_value_inputs.push_back(boundary_in->Name());
+  boundaries.present_value_outputs.push_back(boundary_out->Name());
+
+  const auto unfused = ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_);
+  EXPECT_THAT(unfused, ::testing::UnorderedElementsAre(boundary_in->Name(), boundary_out->Name()));
+}
+
+TEST_F(GqaValueLayoutTransformerTest, ReportsUnfusedTransposeAcrossCopyBranchesWithinHopLimit) {
+  for (int copy_hops : {0, 4, 5}) {
+    for (bool dead_branches_first : {false, true}) {
+      SCOPED_TRACE(MakeString(copy_hops, ",", dead_branches_first));
+      Model model = MakePostPartitionModel(*logger_);
+      Graph& graph = model.MainGraph();
+      ModelTestBuilder builder(graph);
+      const std::vector<int64_t> bnhs{kBatch, kKvNumHeads, kHeadSize, kMaxSeq};
+      auto* boundary = builder.MakeInput<MLFloat16>(bnhs, MLFloat16(0.0f), MLFloat16(0.0f));
+      const auto add_dead_branches = [&]() {
+        for (int branch = 0; branch < 2; ++branch) {
+          auto* copied = builder.MakeIntermediate<MLFloat16>(bnhs);
+          builder.AddNode("MemcpyToHost", {boundary}, {copied});
+          auto* output = builder.MakeOutput<MLFloat16>(bnhs);
+          builder.AddNode("Identity", {copied}, {output});
+        }
+      };
+      if (dead_branches_first) {
+        add_dead_branches();
+      }
+      NodeArg* current = boundary;
+      Node* first_live_consumer = nullptr;
+      for (int hop = 0; hop < copy_hops; ++hop) {
+        auto* copied = builder.MakeIntermediate<MLFloat16>(bnhs);
+        auto& copy = builder.AddNode("MemcpyFromHost", {current}, {copied});
+        if (hop == 0) {
+          first_live_consumer = &copy;
+        }
+        current = copied;
+      }
+      auto* output = builder.MakeOutput<MLFloat16>(
+          std::vector<int64_t>{kBatch, kKvNumHeads, kMaxSeq, kHeadSize});
+      auto& transpose = builder.AddNode("Transpose", {current}, {output});
+      transpose.AddAttribute("perm", std::vector<int64_t>{0, 1, 3, 2});
+      if (copy_hops == 0) {
+        first_live_consumer = &transpose;
+      }
+      if (!dead_branches_first) {
+        add_dead_branches();
+      }
+      builder.SetGraphOutputs();
+      ASSERT_STATUS_OK(graph.Resolve());
+      const auto consumers = graph.GetMutableConsumerNodes(boundary->Name());
+      ASSERT_EQ(consumers.size(), 3u);
+      if (copy_hops != 0) {
+        Node* selected = dead_branches_first ? consumers.back() : consumers.front();
+        if (selected != first_live_consumer) {
+          std::swap(selected->MutableOutputDefs()[0], first_live_consumer->MutableOutputDefs()[0]);
+          ASSERT_STATUS_OK(graph.Resolve());
+        }
+        const auto ordered_consumers = graph.GetConsumerNodes(boundary->Name());
+        ASSERT_EQ(dead_branches_first ? ordered_consumers.back() : ordered_consumers.front(), selected);
+      }
+      EXPECT_EQ(FindValueLayoutTransposeAfterGraphInput(graph, boundary->Name()),
+                copy_hops <= 4 ? &transpose : nullptr);
+
+      GqaValueLayoutBoundaries boundaries;
+      boundaries.past_value_inputs.push_back(boundary->Name());
+      const auto unfused = ReportUnfusedGqaValueLayoutTransposes(graph, boundaries, *logger_);
+      if (copy_hops <= 4) {
+        EXPECT_THAT(unfused, ::testing::ElementsAre(boundary->Name()));
+      } else {
+        EXPECT_TRUE(unfused.empty());
+      }
+    }
+  }
+}
+
+// The other half of the contract: when the provider did absorb the Transposes, nothing is reported.
+TEST_F(GqaValueLayoutTransformerTest, ReportsNothingWhenTheTransposesWereFused) {
+  Model model = MakePostPartitionModel(*logger_);
+  GqaValueLayoutBoundaries boundaries;
+  ASSERT_STATUS_OK(BuildPostPartitionGraph(model.MainGraph(), /*keep_transposes=*/false, boundaries));
+
+  const auto unfused = ReportUnfusedGqaValueLayoutTransposes(model.MainGraph(), boundaries, *logger_);
+  EXPECT_TRUE(unfused.empty());
+}
+
+// The design accepts that a non-fusing EP executes the inserted transposes. That fallback is only
+// acceptable if it is numerically correct, so verify it on the CPU EP rather than only checking
+// graph structure: the BNHS session fed a transposed cache must match the BNSH session exactly.
+TEST_F(GqaValueLayoutTransformerTest, BnhsMatchesBnshOnCpu) {
+  RuntimeGqaModel model;
+  ASSERT_STATUS_OK(BuildRuntimeGqaModel(*logger_, model));
+
+  const size_t present_value_index = IndexOfOutput(model, model.present_value_name);
+  const size_t attention_output_index = IndexOfOutput(model, model.attention_output_name);
+  ASSERT_LT(present_value_index, model.output_names.size());
+  ASSERT_LT(attention_output_index, model.output_names.size());
+
+  // Baseline: the default BNSH layout, no transposes in the graph.
+  std::vector<OrtValue> bnsh_fetches;
+  {
+    SessionOptions session_options = MakeSessionOptions(nullptr);
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model.bytes.data(), static_cast<int>(model.bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(ExpectNoTransposes(session.GetGraph()));
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, model.bnsh_feeds, model.output_names, &bnsh_fetches));
+  }
+
+  // BNHS: same model, same values, but the Value cache is handed over transposed.
+  std::vector<OrtValue> bnhs_fetches;
+  {
+    NameMLValMap bnhs_feeds = model.bnsh_feeds;
+    OrtValue past_value_bnhs;
+    ASSERT_STATUS_OK(TransposeLastTwoDims(model.bnsh_feeds.at(model.past_value_name), past_value_bnhs));
+    bnhs_feeds[model.past_value_name] = past_value_bnhs;
+
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model.bytes.data(), static_cast<int>(model.bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(ExpectBnhsBoundary(session.GetMutableGraph()));
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, bnhs_feeds, model.output_names, &bnhs_fetches));
+  }
+
+  // Confirm the comparison is meaningful before making it.
+  ASSERT_STATUS_OK(ExpectNonDegenerate(bnsh_fetches[attention_output_index], "attention output"));
+  ASSERT_STATUS_OK(ExpectNonDegenerate(bnsh_fetches[present_value_index], "present_value"));
+  ASSERT_STATUS_OK(ExpectNonDegenerate(bnhs_fetches[present_value_index], "BNHS present_value"));
+  // A transpose-invariant present_value would hide a broken conversion. Compare the raw element
+  // sequences, ignoring the (deliberately different) shapes.
+  ASSERT_FALSE(FlatDataIsIdentical(bnsh_fetches[present_value_index], bnhs_fetches[present_value_index]))
+      << "BNSH and BNHS present_value hold the same elements in the same order, so the transpose moved "
+         "nothing and this test cannot detect a layout bug.";
+
+  // The attention output is layout independent and must match directly.
+  ASSERT_STATUS_OK(ExpectTensorsEqual(bnsh_fetches[attention_output_index],
+                                      bnhs_fetches[attention_output_index], "attention output"));
+
+  // present_value comes back BNHS; transposing it must reproduce the BNSH result exactly.
+  OrtValue present_value_bnsh;
+  ASSERT_STATUS_OK(TransposeLastTwoDims(bnhs_fetches[present_value_index], present_value_bnsh));
+  ASSERT_STATUS_OK(ExpectTensorsEqual(bnsh_fetches[present_value_index], present_value_bnsh, "present_value"));
+}
+
+// The same check with one buffer bound to both past_value and present_value, which is how a decode
+// loop actually drives the model. The two inserted transposes decouple the aliased boundary buffer
+// from the GQA operands, so the data dependency Transpose -> GQA -> Transpose keeps this well
+// defined even though the CPU EP does not fuse them.
+//
+// The reference here is the same BNHS model driven with separate input and output buffers, not the
+// BNSH session. Binding one buffer to both sides in BNSH hands the CPU kernel an aliased past and
+// present, so it takes its shared-buffer path; under BNHS the operands are the transpose
+// intermediates, so it cannot. Comparing across those two paths would be comparing two different
+// kernel implementations. BnhsMatchesBnshOnCpu already establishes that BNHS with separate buffers
+// matches BNSH exactly, so chaining the two tests covers the whole claim.
+TEST_F(GqaValueLayoutTransformerTest, BnhsWithAliasedCacheBufferMatchesSeparateBuffersOnCpu) {
+  RuntimeGqaModel model;
+  ASSERT_STATUS_OK(BuildRuntimeGqaModel(*logger_, model));
+
+  const size_t attention_output_index = IndexOfOutput(model, model.attention_output_name);
+  const size_t present_value_index = IndexOfOutput(model, model.present_value_name);
+  ASSERT_LT(attention_output_index, model.output_names.size());
+  ASSERT_LT(present_value_index, model.output_names.size());
+
+  OrtValue past_value_bnhs;
+  ASSERT_STATUS_OK(TransposeLastTwoDims(model.bnsh_feeds.at(model.past_value_name), past_value_bnhs));
+
+  // Reference: separate buffers.
+  std::vector<OrtValue> reference_fetches;
+  {
+    NameMLValMap bnhs_feeds = model.bnsh_feeds;
+    bnhs_feeds[model.past_value_name] = past_value_bnhs;
+
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model.bytes.data(), static_cast<int>(model.bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, bnhs_feeds, model.output_names, &reference_fetches));
+  }
+
+  // Aliased: one buffer bound to both past_value and present_value, as a decode loop would.
+  OrtValue cache = CloneTensor(past_value_bnhs);
+  OrtValue aliased_attention_output;
+  {
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model.bytes.data(), static_cast<int>(model.bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(ExpectBnhsBoundary(session.GetMutableGraph()));
+
+    std::unique_ptr<IOBinding> binding;
+    ASSERT_STATUS_OK(session.NewIOBinding(&binding));
+
+    for (const auto& [name, value] : model.bnsh_feeds) {
+      if (name != model.past_value_name) {
+        ASSERT_STATUS_OK(binding->BindInput(name, value));
+      }
+    }
+    ASSERT_STATUS_OK(binding->BindInput(model.past_value_name, cache));
+
+    for (const auto& name : model.output_names) {
+      if (name == model.present_value_name) {
+        ASSERT_STATUS_OK(binding->BindOutput(name, cache));
+      } else {
+        ASSERT_STATUS_OK(binding->BindOutput(name));
+      }
+    }
+
+    ASSERT_STATUS_OK(session.Run(RunOptions{}, *binding));
+
+    const auto& outputs = binding->GetOutputs();
+    for (size_t i = 0; i < model.output_names.size(); ++i) {
+      if (model.output_names[i] == model.attention_output_name) {
+        aliased_attention_output = outputs[i];
+      }
+    }
+  }
+
+  ASSERT_STATUS_OK(ExpectNonDegenerate(aliased_attention_output, "attention output"));
+  ASSERT_STATUS_OK(ExpectNonDegenerate(cache, "aliased cache buffer"));
+
+  // The session wrote the caller's buffer rather than leaving the input untouched.
+  ASSERT_FALSE(ExpectTensorsEqual(past_value_bnhs, cache, "aliased cache buffer").IsOK())
+      << "The aliased buffer is unchanged, so this test is not exercising the in-place update.";
+
+  ASSERT_STATUS_OK(ExpectTensorsEqual(reference_fetches[attention_output_index], aliased_attention_output,
+                                      "attention output, aliased vs separate buffers"));
+
+  // The buffer holds BNHS, so transpose both sides into BNSH before comparing the defined region.
+  OrtValue cache_as_bnsh;
+  OrtValue reference_present_as_bnsh;
+  ASSERT_STATUS_OK(TransposeLastTwoDims(cache, cache_as_bnsh));
+  ASSERT_STATUS_OK(TransposeLastTwoDims(reference_fetches[present_value_index], reference_present_as_bnsh));
+  ASSERT_STATUS_OK(ExpectCacheRegionEqual(reference_present_as_bnsh, cache_as_bnsh, kPastSeq + kSeq,
+                                          "aliased cache buffer"));
+}
+
+namespace {
+
+template <typename CacheT = MLFloat16>
+void RunBothCachesAliasedDecodeTest(const logging::Logger& logger, bool disable_flash = false) {
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_GQA_DISABLE_FLASH_ATTENTION", disable_flash ? "1" : "0"}}};
+  RuntimeGqaModel model;
+  ASSERT_STATUS_OK(BuildRuntimeGqaModel(logger, model));
+  ONNX_NAMESPACE::ModelProto proto;
+  ASSERT_TRUE(proto.ParseFromString(model.bytes));
+  ASSERT_EQ(proto.graph().node_size(), 1);
+  auto& gqa = *proto.mutable_graph()->mutable_node(0);
+  if constexpr (std::is_same_v<CacheT, int8_t>) {
+    for (int index = gqa.attribute_size() - 1; index >= 0; --index) {
+      const auto& name = gqa.attribute(index).name();
+      if (name == "k_quant_type" || name == "v_quant_type" || name == "kv_cache_bit_width") {
+        gqa.mutable_attribute()->DeleteSubrange(index, 1);
+      }
+    }
+    for (auto* definitions : {proto.mutable_graph()->mutable_input(), proto.mutable_graph()->mutable_output()}) {
+      for (auto& definition : *definitions) {
+        if (definition.name() == gqa.input(3) || definition.name() == gqa.input(4) ||
+            definition.name() == gqa.output(1) || definition.name() == gqa.output(2)) {
+          definition.mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT8);
+        }
+      }
+    }
+    while (gqa.input_size() < 12) {
+      gqa.add_input("");
+    }
+    for (int cache_index = 0; cache_index < 2; ++cache_index) {
+      const float scale = cache_index == 0 ? 0.03125f : 0.0625f;
+      auto& cache = model.bnsh_feeds.at(gqa.input(3 + cache_index));
+      const auto& tensor = cache.Get<Tensor>();
+      std::vector<int8_t> data;
+      data.reserve(static_cast<size_t>(tensor.Shape().Size()));
+      for (int64_t index = 0; index < tensor.Shape().Size(); ++index) {
+        data.push_back(static_cast<int8_t>(std::round(tensor.Data<MLFloat16>()[index].ToFloat() / scale)));
+      }
+      OrtValue quantized;
+      CreateMLValue<int8_t>(CpuAllocator(), kBnsh, data, &quantized);
+      cache = quantized;
+      auto* scale_initializer = proto.mutable_graph()->add_initializer();
+      scale_initializer->set_name(cache_index == 0 ? "k_scale" : "v_scale");
+      scale_initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      scale_initializer->add_dims(1);
+      scale_initializer->add_float_data(scale);
+      gqa.add_input(scale_initializer->name());
+      auto* attribute = gqa.add_attribute();
+      attribute->set_name(cache_index == 0 ? "k_quant_type" : "v_quant_type");
+      attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_STRING);
+      attribute->set_s("PER_TENSOR");
+    }
+    auto* bit_width = gqa.add_attribute();
+    bit_width->set_name("kv_cache_bit_width");
+    bit_width->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    bit_width->set_i(8);
+    ASSERT_TRUE(proto.SerializeToString(&model.bytes));
+  }
+  const std::string past_key_name = gqa.input(3);
+  const std::string present_key_name = gqa.output(1);
+  const size_t key_index = IndexOfOutput(model, present_key_name);
+  const size_t value_index = IndexOfOutput(model, model.present_value_name);
+  const size_t attention_index = IndexOfOutput(model, model.attention_output_name);
+  ASSERT_LT(key_index, model.output_names.size());
+  ASSERT_LT(value_index, model.output_names.size());
+  ASSERT_LT(attention_index, model.output_names.size());
+
+  InferenceSessionWrapper reference{MakeSessionOptions(kGqaValueLayoutBNSH), GetEnvironment()};
+  InferenceSessionWrapper aliased{MakeSessionOptions(kGqaValueLayoutBNHS), GetEnvironment()};
+  for (auto* session : {&reference, &aliased}) {
+    ASSERT_STATUS_OK(session->Load(model.bytes.data(), static_cast<int>(model.bytes.size())));
+    ASSERT_STATUS_OK(session->Initialize());
+  }
+  ASSERT_STATUS_OK(ExpectBnhsBoundary(aliased.GetMutableGraph()));
+
+  NameMLValMap reference_feeds = model.bnsh_feeds;
+  OrtValue key_cache = CloneTensor<CacheT>(model.bnsh_feeds.at(past_key_name));
+  OrtValue value_cache;
+  ASSERT_STATUS_OK(TransposeLastTwoDims<CacheT>(model.bnsh_feeds.at(model.past_value_name), value_cache));
+
+  for (int32_t step = 0; step < 2; ++step) {
+    SCOPED_TRACE(step);
+    const int32_t total_sequence_length = static_cast<int32_t>(kPastSeq + kSeq) + step;
+    OrtValue seqlens_k;
+    OrtValue total_seq_len;
+    CreateMLValue<int32_t>(CpuAllocator(), {kBatch}, {total_sequence_length - 1}, &seqlens_k);
+    CreateMLValue<int32_t>(CpuAllocator(), {1}, {total_sequence_length}, &total_seq_len);
+    reference_feeds[gqa.input(5)] = seqlens_k;
+    reference_feeds[gqa.input(6)] = total_seq_len;
+
+    std::vector<OrtValue> reference_outputs;
+    ASSERT_STATUS_OK(reference.Run(RunOptions{}, reference_feeds, model.output_names, &reference_outputs));
+
+    std::unique_ptr<IOBinding> binding;
+    ASSERT_STATUS_OK(aliased.NewIOBinding(&binding));
+    for (const auto& [name, value] : reference_feeds) {
+      const OrtValue& input = name == past_key_name ? key_cache : name == model.past_value_name ? value_cache
+                                                                                                : value;
+      ASSERT_STATUS_OK(binding->BindInput(name, input));
+    }
+    for (const auto& name : model.output_names) {
+      if (name == present_key_name) {
+        ASSERT_STATUS_OK(binding->BindOutput(name, key_cache));
+      } else if (name == model.present_value_name) {
+        ASSERT_STATUS_OK(binding->BindOutput(name, value_cache));
+      } else {
+        ASSERT_STATUS_OK(binding->BindOutput(name));
+      }
+    }
+    ASSERT_STATUS_OK(aliased.Run(RunOptions{}, *binding));
+    ASSERT_EQ(binding->GetOutputs()[key_index].Get<Tensor>().DataRaw(), key_cache.Get<Tensor>().DataRaw());
+    ASSERT_EQ(binding->GetOutputs()[value_index].Get<Tensor>().DataRaw(), value_cache.Get<Tensor>().DataRaw());
+    ASSERT_STATUS_OK(ExpectNonDegenerate(reference_outputs[attention_index], "attention output"));
+    ASSERT_STATUS_OK(ExpectTensorsEqual(reference_outputs[attention_index], binding->GetOutputs()[attention_index],
+                                        "attention output"));
+    ASSERT_STATUS_OK(ExpectCacheRegionEqual<CacheT>(reference_outputs[key_index], key_cache, total_sequence_length,
+                                                    "aliased Key cache"));
+    OrtValue value_as_bnsh;
+    ASSERT_STATUS_OK(TransposeLastTwoDims<CacheT>(value_cache, value_as_bnsh));
+    ASSERT_STATUS_OK(ExpectCacheRegionEqual<CacheT>(reference_outputs[value_index], value_as_bnsh, total_sequence_length,
+                                                    "aliased Value cache"));
+    reference_feeds[past_key_name] = reference_outputs[key_index];
+    reference_feeds[model.past_value_name] = reference_outputs[value_index];
+  }
+}
+
+}  // namespace
+
+TEST_F(GqaValueLayoutTransformerTest, BnhsWithBothCachesAliasedMatchesBnshAcrossDecodeStepsOnCpu) {
+  RunBothCachesAliasedDecodeTest(*logger_);
+}
+
+TEST_F(GqaValueLayoutTransformerTest, Int8BnhsWithBothCachesAliasedMatchesBnshAcrossDecodeStepsOnCpuFlash) {
+  RunBothCachesAliasedDecodeTest<int8_t>(*logger_, false);
+}
+
+TEST_F(GqaValueLayoutTransformerTest, Int8BnhsWithBothCachesAliasedMatchesBnshAcrossDecodeStepsOnCpuNoFlash) {
+  RunBothCachesAliasedDecodeTest<int8_t>(*logger_, true);
+}
+
+// The ORT format load path does not run TransformGraph, so the option cannot be honored there.
+// Silently ignoring it would leave the session expecting BNSH while the application supplies BNHS.
+TEST_F(GqaValueLayoutTransformerTest, RejectsOrtFormatModel) {
+  SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+
+  // Also a caller error: the option is valid, but not for this model format.
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT) << status.ErrorMessage();
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("is not supported for ORT format models"));
+}
+
+// An unrecognized value is a bad argument whatever the model format. Applying the ORT format
+// restriction first would report a typo as a format limitation and never name the accepted values.
+TEST_F(GqaValueLayoutTransformerTest, RejectsAnInvalidLayoutValueOnAnOrtFormatModel) {
+  SessionOptions session_options = MakeSessionOptions("NHWC");
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+
+  const Status status = session.Initialize();
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT) << status.ErrorMessage();
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Invalid value for session option"));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::Not(::testing::HasSubstr("ORT format models")));
+}
+
+// An explicit BNSH request is a claim about the boundary on the ORT format path too. Leaving the
+// option unset is the documented way to load a BNHS-converted ORT model, so only the explicit request
+// conflicts when layout support is enabled. Disabled builds reject every explicit layout option.
+TEST_F(GqaValueLayoutTransformerTest, RejectsAnOrtFormatModelWithBnhsBoundariesWhenBnshIsRequested) {
+  const auto ort_model = ORT_TSTR("gqa_value_layout_bnhs.test_output.ort");
+
+  // Convert a BNHS model to ORT format, which preserves the Transposes and BNHS boundary shapes.
+  {
+    std::string model_bytes;
+    ASSERT_STATUS_OK(BuildSerializedGqaModel(*logger_, model_bytes));
+
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNHS);
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT"));
+    session_options.optimized_model_filepath = ort_model;
+
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(ExpectBnhsBoundary(session.GetMutableGraph()));
+  }
+
+  // Explicit BNSH contradicts what the model carries.
+  {
+    SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNSH);
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ort_model));
+
+    const Status status = session.Initialize();
+    ASSERT_FALSE(status.IsOK());
+    EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("already carries the BNHS"));
+  }
+
+  // No option: the documented way to use BNHS with an ORT format model, so it still loads.
+  {
+    SessionOptions session_options;
+    session_options.session_logid = "GqaValueLayoutTransformerTest";
+    InferenceSessionWrapper session{session_options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ort_model));
+    ASSERT_STATUS_OK(session.Initialize());
+  }
+
+  std::remove(ToUTF8String(ort_model).c_str());
+}
+
+TEST_F(GqaValueLayoutTransformerTest, AllowsOrtFormatModelWithTheDefaultLayout) {
+  SessionOptions session_options = MakeSessionOptions(kGqaValueLayoutBNSH);
+
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+  ASSERT_STATUS_OK(session.Initialize());
+}
+
+#endif  // defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
+
+}  // namespace test
+}  // namespace onnxruntime

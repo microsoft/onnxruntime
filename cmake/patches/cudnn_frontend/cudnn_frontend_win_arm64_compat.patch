@@ -1,0 +1,12 @@
+--- a/include/cudnn_frontend_Tensor.h
++++ b/include/cudnn_frontend_Tensor.h
+@@ -507,7 +507,8 @@
+             [[maybe_unused]] auto ragged_offset_multiplier_cudnn_ver_error =
+                 "CUDNN_BACKEND_TENSOR_DESCRIPTOR: SetAttribute "
+                 "CUDNN_ATTR_TENSOR_RAGGED_OFFSET_MULTIPLIER requires cudnn version 9.24.0";
+-#if (CUDNN_VERSION >= 92400)
++            // The Windows ARM64 cuDNN 9.24.0.17 headers do not declare this attribute.
++#if (CUDNN_VERSION >= 92400) && !(defined(_WIN32) && defined(_M_ARM64))
+             NV_CUDNN_FE_DYNAMIC_CHECK_BACKEND_DESCRIPTOR(92400, m_tensor, ragged_offset_multiplier_cudnn_ver_error);
+             if (m_tensor.raggedOffset == nullptr) {
+                 set_error_and_throw_exception(

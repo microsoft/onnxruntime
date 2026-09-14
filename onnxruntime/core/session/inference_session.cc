@@ -12,6 +12,7 @@
 #include <thread>
 #include <queue>
 #include <iomanip>
+#include <gsl/gsl>
 
 #include "core/common/denormal.h"
 #include "core/common/logging/isink.h"
@@ -50,6 +51,9 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/graph_optimizer_registry.h"
+#if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
+#include "core/optimizer/gqa_value_layout_transformer.h"
+#endif
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
@@ -1050,14 +1054,6 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
-  auto p_external_data_loader = p_exec_provider->GetExternalDataLoader();
-  if (p_external_data_loader) {
-    auto st = external_data_loader_mgr_.RegisterExternalDataLoader(std::move(p_external_data_loader));
-    if (!st.IsOK()) {
-      return st;
-    }
-  }
-
   p_exec_provider->SetLogger(session_logger_);
   session_profiler_.AddEpProfilers(p_exec_provider->GetProfiler());
   return execution_providers_.Add(provider_type, p_exec_provider);
@@ -1329,6 +1325,33 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "ONNX format model is not supported in this build.");
 #endif
 }
+
+#if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
+namespace {
+// Validates the GroupQueryAttention Value layout session option and returns the requested layout.
+//
+// An unrecognized value is a caller mistake regardless of model format, so this has to run before any
+// format-specific restriction; otherwise a typo like "NHWC" would be reported as an ORT format
+// limitation instead of naming the bad value and the accepted ones.
+//
+// Shared by the ONNX and ORT format load paths when layout support is enabled.
+Status GetGqaValueLayout(const ConfigOptions& config_options, std::string& layout, bool& explicitly_set) {
+  explicitly_set = config_options.TryGetConfigEntry(kOrtSessionOptionsGqaValueLayout, layout);
+  if (!explicitly_set) {
+    layout = kGqaValueLayoutBNSH;
+  }
+
+  if (layout != kGqaValueLayoutBNSH && layout != kGqaValueLayoutBNHS) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid value for session option 'session.gqa_value_layout': '", layout,
+                           "'. Expected 'BNSH' or 'BNHS'.");
+  }
+
+  return Status::OK();
+}
+}  // namespace
+
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -1628,6 +1651,112 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Default, *session_logger_));
   ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
 
+#if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
+  // adapt GroupQueryAttention to a BNHS Value KV-cache if the application asked for one.
+  // this is applied here rather than being registered as a level 1 optimizer for two reasons:
+  //   - it changes the layout the session expects at its inputs and outputs, so it must run even
+  //     when optimizations are disabled. AddPredefinedTransformers only registers level 1 and above
+  //     when graph_optimization_level >= level.
+  //   - it must run after the level 1 TransposeOptimizer, which moves, merges and cancels Transpose
+  //     nodes, so that the Transpose -> GQA -> Transpose sequence reaches GetCapability intact for
+  //     an EP that fuses it.
+  // Builds without layout support reject an explicit option in Initialize().
+  // An unrecognized value is the caller passing a bad argument, so GetGqaValueLayout() reports
+  // INVALID_ARGUMENT. A recognized value that this particular model cannot satisfy is reported as
+  // FAIL by the transformer, which keeps the two situations distinguishable to an application that
+  // wants to fall back to BNSH.
+  std::string gqa_value_layout;
+  bool gqa_value_layout_explicitly_set = false;
+  ORT_RETURN_IF_ERROR_SESSIONID_(
+      GetGqaValueLayout(session_options_.config_options, gqa_value_layout, gqa_value_layout_explicitly_set));
+
+  GqaValueLayoutBoundaries converted_gqa_value_boundaries;
+  if (gqa_value_layout != kGqaValueLayoutBNSH) {
+    GqaValueLayoutTransformer gqa_value_layout_transformer{&converted_gqa_value_boundaries};
+    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(gqa_value_layout_transformer, *session_logger_, graph));
+
+    // A GroupQueryAttention inside a subgraph cannot be converted: its Value cache boundary may be
+    // carried in and out of the main graph, so the operator and the boundary live in different graphs
+    // and there is nothing to rewire from here. A warning does not preserve the option contract --
+    // the application would bind BNHS buffers to a boundary that is still BNSH, which passes input
+    // validation whenever the trailing dimensions are dynamic or equal -- so this fails.
+    //
+    // Checked whatever else happened, not only when nothing converted: a model with a convertible
+    // main-graph cache *and* a subgraph one would otherwise slip through on the strength of the part
+    // that did convert.
+    const GqaNodeCounts gqa_nodes = CountGqaNodes(graph);
+    if (gqa_nodes.in_subgraphs != 0) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "'", kOrtSessionOptionsGqaValueLayout, "' was set to '", kGqaValueLayoutBNHS, "' but ",
+          gqa_nodes.in_subgraphs,
+          " GroupQueryAttention node(s) are inside a subgraph (a Loop body or BeamSearch "
+          "decoder), which this option cannot reach. Their Value cache boundary would stay BNSH while the "
+          "application supplied BNHS. Use '",
+          kGqaValueLayoutBNSH,
+          "', or a model whose GroupQueryAttention "
+          "nodes are in the main graph."));
+    }
+
+    if (converted_gqa_value_boundaries.Empty()) {
+      if (gqa_nodes.in_main_graph != 0) {
+        // GQA is present and reachable, so the per-node warnings from the transformer already said
+        // why each operand was left alone. Summarize rather than repeat.
+        LOGS(*session_logger_, WARNING)
+            << "'" << kOrtSessionOptionsGqaValueLayout << "' was set to '" << kGqaValueLayoutBNHS
+            << "' but none of the " << gqa_nodes.in_main_graph
+            << " GroupQueryAttention node(s) had a Value cache boundary in scope; see the warnings above. Value "
+               "cache buffers bound to this session are still BNSH.";
+      } else {
+        // Harmless: nothing in this model uses a GQA Value cache, so there is nothing to bind.
+        LOGS(*session_logger_, WARNING)
+            << "'" << kOrtSessionOptionsGqaValueLayout << "' was set to '" << kGqaValueLayoutBNHS
+            << "' but the model contains no GroupQueryAttention node, so the option has no effect.";
+      }
+    }
+  } else if (gqa_value_layout_explicitly_set) {
+    // An explicit BNSH request is a claim about the boundary, so it has to be enforced rather than
+    // merely not acted on. A model saved from a BNHS session (via session.optimized_model_filepath)
+    // still carries the Transposes and BNHS boundary shapes; honouring a BNSH request over it would
+    // have the application bind BNSH buffers to a BNHS boundary, which is a shape error at best and a
+    // silent misread when the dimensions are dynamic or happen to be square.
+    //
+    // Deliberately gated on the option being set rather than on its effective value. Defaulting to
+    // BNSH and enforcing that would reject models whose Value cache already surfaces through boundary
+    // Transposes -- which load and run correctly today -- and that is a compatibility break on the
+    // default path, not an opt-in behaviour change. Such a model gets a warning below instead.
+    //
+    // Not applied on the ORT format path either: there the option is forced to BNSH and a converted
+    // model is the documented way to use BNHS, so the same check would reject the supported workflow.
+    const GqaValueLayoutBoundaries existing = FindConvertedGqaValueLayoutBoundaries(graph);
+    if (!existing.Empty()) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "This model already carries the BNHS GroupQueryAttention Value layout: ",
+          existing.past_value_inputs.size() + existing.present_value_outputs.size(),
+          " boundary tensor(s) are declared BNHS. It cannot be loaded with '", kOrtSessionOptionsGqaValueLayout,
+          "' set to '", kGqaValueLayoutBNSH,
+          "', because the application would bind BNSH buffers to a BNHS "
+          "boundary. Set '",
+          kOrtSessionOptionsGqaValueLayout, "' to '", kGqaValueLayoutBNHS,
+          "', or load a model whose Value cache boundary is BNSH."));
+    }
+  } else {
+    // No layout requested, so ORT has no claim to enforce and the model keeps working exactly as it
+    // did before this option existed. Still worth surfacing: the application has to bind BNHS buffers
+    // to these boundaries, and saying so explicitly makes the contract checkable.
+    const GqaValueLayoutBoundaries existing = FindConvertedGqaValueLayoutBoundaries(graph);
+    if (!existing.Empty()) {
+      LOGS(*session_logger_, WARNING)
+          << "This model carries the BNHS GroupQueryAttention Value layout: "
+          << (existing.past_value_inputs.size() + existing.present_value_outputs.size())
+          << " boundary tensor(s) are declared BNHS, so the application must bind BNHS Value cache buffers. Set '"
+          << kOrtSessionOptionsGqaValueLayout << "' to '" << kGqaValueLayoutBNHS
+          << "' to state that explicitly and have ORT check it.";
+    }
+  }
+#endif
+
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
   // we do this to preserve the original nodes in the model but prevent optimizers from changing them.
   // at runtime, the ORT format model will re-do the partitioning/compilation of these nodes, which may change
@@ -1715,6 +1844,19 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_, layering_index,
                                                        mode, ep_context_gen_options, debug_graph_fn));
+
+#if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
+  // an EP that prefers BNHS is expected to fuse the Transpose nodes inserted above into its GQA
+  // implementation. Report the ones that survived so the resulting cost is diagnosable.
+  //
+  // Skipped when saving an ORT format model: that runs the partitioner in kAssignOnly mode, which
+  // deliberately leaves the original nodes in place instead of compiling or fusing them, so every
+  // boundary would be reported as unfused even though the EP will fuse the pattern when the saved
+  // model is loaded.
+  if (!saving_model_in_ort_format && !converted_gqa_value_boundaries.Empty()) {
+    ReportUnfusedGqaValueLayoutTransposes(graph, converted_gqa_value_boundaries, *session_logger_);
+  }
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   if (layering_index) {
@@ -2296,6 +2438,50 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                SessionState& session_state,
                                const SessionOptions& sess_options,
                                const logging::Logger& logger) {
+#if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
+  // The BNHS GroupQueryAttention Value layout is applied by TransformGraph, which the ORT format
+  // load path does not run. Silently ignoring the option would leave the session expecting BNSH
+  // while the application supplies BNHS: with dynamic or coincidentally square cache dimensions
+  // that passes input validation and produces wrong results. Reject it instead.
+  // An ORT format model that already had the transform applied at conversion time carries the BNHS
+  // boundary shapes in the model itself and must be loaded without setting this option.
+  //
+  // Validate the value before applying the format restriction, so that a typo is reported as a bad
+  // option value naming the accepted ones, rather than as an ORT format limitation.
+  std::string gqa_value_layout;
+  bool gqa_value_layout_explicitly_set = false;
+  ORT_RETURN_IF_ERROR(GetGqaValueLayout(sess_options.config_options, gqa_value_layout,
+                                        gqa_value_layout_explicitly_set));
+  if (gqa_value_layout != kGqaValueLayoutBNSH) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Session option 'session.gqa_value_layout' is not supported for ORT format models. "
+                           "Apply the Value layout transform when "
+                           "converting the model to ORT format and load it without setting this option, or load the "
+                           "ONNX model instead.");
+  }
+
+  // Detected before partitioning, while the GQA nodes are still there to anchor on. A model converted
+  // to ORT format after the transform was applied carries the Transposes and the BNHS boundary shapes.
+  //
+  // The diagnostic at the end of this function wants them whether or not the option was set, so that
+  // a BNHS-converted model loaded without it is still reported.
+  const auto converted_gqa_value_boundaries = FindConvertedGqaValueLayoutBoundaries(graph);
+  const bool has_converted_gqa_value_boundaries = !converted_gqa_value_boundaries.Empty();
+
+  // An explicit BNSH request is a claim about the boundary and has to hold here too, or an
+  // application trusting the option would bind BNSH buffers against a BNHS boundary. An absent option
+  // makes no claim: loading a converted model without setting anything is the documented way to use
+  // BNHS with ORT format, so it stays allowed.
+  if (gqa_value_layout_explicitly_set && has_converted_gqa_value_boundaries) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL,
+        "This ORT format model already carries the BNHS GroupQueryAttention Value layout. "
+        "It cannot be loaded with 'session.gqa_value_layout' set to 'BNSH', because the application "
+        "would bind BNSH buffers to a BNHS boundary. "
+        "Leave the option unset and bind BNHS buffers, or load a model whose Value cache boundary is BNSH.");
+  }
+#endif
+
   layout_transformation::TransformLayoutFunction transform_layout_fn = nullptr;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -2326,6 +2512,14 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                             logger,
                                             nullptr /*layering_index*/,
                                             GraphPartitioner::Mode::kOrtFormatLoad));
+
+#if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
+  // kOrtFormatLoad does compile and fuse, unlike the kAssignOnly pass used when writing an ORT format
+  // model, so a surviving Transpose here really will execute.
+  if (!converted_gqa_value_boundaries.Empty()) {
+    ReportUnfusedGqaValueLayoutTransposes(graph, converted_gqa_value_boundaries, logger);
+  }
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // a compiling EP (e.g. CoreML) may copy initializers to its own memory. run the cleanup of unused initializers
@@ -2432,6 +2626,15 @@ common::Status InferenceSession::Initialize() {
         return common::Status::OK();
       }
 
+#if !defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
+      for (const auto& [key, value] : session_options_.config_options.GetConfigOptionsMap()) {
+        if (key == kOrtSessionOptionsGqaValueLayout) {
+          return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                        "GQA layout disabled");
+        }
+      }
+#endif
+
       have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
     }
 
@@ -2465,6 +2668,13 @@ common::Status InferenceSession::Initialize() {
 
     // re-acquire mutex
     std::lock_guard<std::mutex> l(session_mutex_);
+
+    auto clear_external_data_loaders = gsl::finally([this] { external_data_loader_mgr_.Clear(); });
+    for (const auto& provider : execution_providers_) {
+      if (auto loader = provider->GetExternalDataLoader()) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(external_data_loader_mgr_.RegisterExternalDataLoader(std::move(loader)));
+      }
+    }
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
     if (!session_options_.external_initializers.empty()) {

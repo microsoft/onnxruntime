@@ -129,13 +129,16 @@ Status CumSum::ComputeInternal(OpKernelContext* ctx) const {
                exclusive_,
                reverse_);
   } else if (input->IsDataType<int64_t>()) {
-    CumSumImpl(Stream(ctx), reinterpret_cast<const typename ToCudaType<int64_t>::MappedType*>(input->Data<int64_t>()),
-               fast_divmod_input_dim_along_axis,
-               fast_divmod_input_stride_along_axis,
-               reinterpret_cast<typename ToCudaType<int64_t>::MappedType*>(output.MutableData<int64_t>()),
-               output_shape.Size(),
-               exclusive_,
-               reverse_);
+    ORT_RETURN_IF_ERROR(CumSumInt64Impl(
+        Stream(ctx),
+        reinterpret_cast<const typename ToCudaType<int64_t>::MappedType*>(input->Data<int64_t>()),
+        fast_divmod_input_dim_along_axis,
+        fast_divmod_input_stride_along_axis,
+        reinterpret_cast<typename ToCudaType<int64_t>::MappedType*>(output.MutableData<int64_t>()),
+        output_shape.Size(),
+        exclusive_,
+        reverse_,
+        GetDeviceProp().multiProcessorCount));
   } else if (input->IsDataType<uint32_t>()) {
     CumSumImpl(Stream(ctx), reinterpret_cast<const typename ToCudaType<uint32_t>::MappedType*>(input->Data<uint32_t>()),
                fast_divmod_input_dim_along_axis,

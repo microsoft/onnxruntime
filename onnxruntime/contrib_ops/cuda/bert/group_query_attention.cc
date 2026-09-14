@@ -12,6 +12,7 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
+#include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
@@ -495,14 +496,29 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
   bool past_key_shared = (data.past_key != nullptr && data.past_key == data.present_key);
   bool past_value_shared = (data.past_value != nullptr && data.past_value == data.present_value);
-  ORT_ENFORCE(past_key_shared == past_value_shared,
-              "past_key/present_key and past_value/present_value must be both shared or both separate.");
-  parameters.past_present_share_buffer = past_key_shared;
+  parameters.past_present_share_buffer = past_key_shared && past_value_shared;
 
   // Eviction rewrites the cache in place, so past and present must be the same buffer.
   ORT_RETURN_IF(parameters.is_windowed_kv_cache && !parameters.past_present_share_buffer,
                 "sliding_window_cache=1 requires past_key/present_key and past_value/present_value "
                 "to share the same buffer.");
+
+  IAllocatorUniquePtr<CudaU> separate_past_buffer;
+  if (past_key_shared != past_value_shared) {
+    // Nonshared preprocessing overwrites present KV, so preserve the aliased past cache first.
+    const Tensor* shared_past = past_key_shared ? past_key : past_value;
+    const size_t past_bytes = shared_past->SizeInBytes();
+    separate_past_buffer = GetScratchBuffer<CudaU>(past_bytes / sizeof(CudaU), GetComputeStream(context));
+    if (past_bytes != 0) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(separate_past_buffer.get(), shared_past->DataRaw(), past_bytes,
+                                           cudaMemcpyDeviceToDevice, Stream(context)));
+    }
+    if (past_key_shared) {
+      data.past_key = separate_past_buffer.get();
+    } else {
+      data.past_value = separate_past_buffer.get();
+    }
+  }
 
   // The capacity C of a windowed cache is only guaranteed to cover the attention window, so a step
   // that appends S > 1 tokens can transiently need min(P, C) + S entries: the earliest queries of
@@ -610,24 +626,23 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     bool is_int8_quantized_supported = is_int8 &&
                                        (is_supported_quant_type(k_quant_type_) &&
                                         is_supported_quant_type(v_quant_type_) &&
-                                        (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
-                                        (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32));
+                                        IsSupportedGQAXqaHeadSize(parameters.head_size) &&
+                                        IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/true));
 
 #ifdef USE_FP8_KV_CACHE
     bool is_fp8_quantized_supported = is_fp8 &&
                                       (is_supported_quant_type(k_quant_type_) &&
                                        is_supported_quant_type(v_quant_type_) &&
-                                       (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
-                                       (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32) &&
+                                       IsSupportedGQAXqaHeadSize(parameters.head_size) &&
+                                       IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/true) &&
                                        (device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));  // FP8 requires SM89+ (Ada Lovelace)
 #else
     constexpr bool is_fp8_quantized_supported = false;
 #endif
 
     bool is_non_quantized_supported = !is_inputs_quantized &&
-                                      (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
-                                      (group_size == 1 || group_size == 2 || group_size == 4 || group_size == 5 ||
-                                       group_size == 8 || group_size == 16 || group_size == 32);
+                                      IsSupportedGQAXqaHeadSize(parameters.head_size) &&
+                                      IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/false);
 
     data.use_xqa = (is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported);
 
