@@ -16,9 +16,9 @@ using contrib::cuda::GQAPreparationRecipe;
 using contrib::cuda::GQAPreparationRoute;
 using contrib::cuda::GQAWorkspaceProblem;
 using contrib::cuda::GQAWorkspaceStatus;
+using contrib::cuda::GQAXqaWorkspaceRecipe;
 using contrib::cuda::IsSupportedGQAXqaGroupSize;
 using contrib::cuda::IsSupportedGQAXqaHeadSize;
-using contrib::cuda::GQAXqaWorkspaceRecipe;
 
 static_assert(std::is_trivially_copyable_v<GQAWorkspaceProblem>);
 static_assert(std::is_trivially_copyable_v<GQAPreparationRoute>);

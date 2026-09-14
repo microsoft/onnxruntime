@@ -215,8 +215,10 @@ struct GQAFlashConfig {
   int64_t total_sequence_length = 0;
   int64_t local_window_size = -1;
   int64_t multi_processor_count = 0;
-  // Standalone Flash recipes need this selected runtime fact. When composed
-  // into a complete route, it must equal the authoritative preparation value.
+  // Standalone Flash recipes treat this as the authoritative final selected-route
+  // fact for runtime conditions not represented by GQAWorkspaceProblem, such as
+  // past/present aliasing and kv_sequence_length. When composed into a complete
+  // route, it must equal the authoritative preparation value.
   bool fast_decode = false;
 };
 

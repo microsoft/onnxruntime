@@ -205,6 +205,15 @@ GQAXqaWorkspaceResult GetGQAXqaWorkspaceRecipe(
     result.status = Invalid("A selected XQA route cannot be the first prompt.");
     return result;
   }
+  constexpr int64_t kMaxXqaGridDimensionYZ = 65535;
+  if (problem.kv_num_heads > kMaxXqaGridDimensionYZ) {
+    result.status = Unavailable("XQA KV head count exceeds the CUDA grid y-dimension limit.");
+    return result;
+  }
+  if (problem.batch_size > kMaxXqaGridDimensionYZ) {
+    result.status = Unavailable("XQA batch size exceeds the CUDA grid z-dimension limit.");
+    return result;
+  }
 
   if (config.device_major < 8) {
     result.status = Unavailable("XQA requires device major version 8 or newer.");
@@ -263,6 +272,12 @@ GQAXqaWorkspaceResult GetGQAXqaWorkspaceRecipe(
     result.status = Unavailable("FP8 XQA requires SM89 or device major version 9 or newer.");
     return result;
   }
+#if !defined(USE_FP8_KV_CACHE)
+  if (config.kv_type == GQAXqaKvType::Fp8) {
+    result.status = Unavailable("FP8 XQA is not enabled in this build.");
+    return result;
+  }
+#endif
   if (config.head_sink_storage != GQAXqaHeadSinkStorage::None &&
       config.head_sink_storage != GQAXqaHeadSinkStorage::PrepackedFp32 &&
       config.head_sink_storage != GQAXqaHeadSinkStorage::DynamicConversion) {
@@ -431,6 +446,24 @@ GQAFlashWorkspaceResult GetGQAFlashWorkspaceRecipe(
       (config.local_window_size <= 0 ||
        config.local_window_size > std::numeric_limits<int32_t>::max())) {
     result.status = Invalid("Flash local window size must be -1 or a positive int32.");
+    return result;
+  }
+  if (config.fast_decode && problem.is_first_prompt) {
+    result.status = Invalid("A selected Flash fast-decode route cannot be the first prompt.");
+    return result;
+  }
+  if (config.fast_decode && problem.is_windowed_kv_cache) {
+    result.status = Invalid("A selected Flash fast-decode route cannot use a windowed KV cache.");
+    return result;
+  }
+  if (config.fast_decode &&
+      (problem.k_quantization != GQAKvQuantizationType::None ||
+       problem.v_quantization != GQAKvQuantizationType::None)) {
+    result.status = Invalid("A selected Flash fast-decode route requires unquantized K and V.");
+    return result;
+  }
+  if (config.fast_decode && problem.use_qk_norm) {
+    result.status = Invalid("A selected Flash fast-decode route cannot use QK-Norm.");
     return result;
   }
   if (problem.head_size > 256 || problem.head_size % 8 != 0) {

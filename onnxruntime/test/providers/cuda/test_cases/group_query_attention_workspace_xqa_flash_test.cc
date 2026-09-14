@@ -137,7 +137,12 @@ TEST(GroupQueryAttentionXqaWorkspaceTest, MatchesLegacyHelperAcrossSupportedFini
   const int capacities[] = {1, 255, 256, 257, 4096};
   const int sm_counts[] = {1, 16, 80, 132};
   const GQAXqaKvType kv_types[] = {
-      GQAXqaKvType::None, GQAXqaKvType::Int8, GQAXqaKvType::Fp8};
+      GQAXqaKvType::None,
+      GQAXqaKvType::Int8,
+#if defined(USE_FP8_KV_CACHE)
+      GQAXqaKvType::Fp8,
+#endif
+  };
 
   for (int head_size : head_sizes) {
     for (int group : groups) {
@@ -219,12 +224,32 @@ TEST(GroupQueryAttentionXqaWorkspaceTest, RejectsUnsupportedAndOverflowingConfig
   EXPECT_EQ(GetGQAXqaWorkspaceRecipe(problem, config).status.error,
             GQAWorkspaceError::Unavailable);
 
-  problem.batch_size = std::numeric_limits<int32_t>::max();
-  problem.kv_num_heads = std::numeric_limits<int32_t>::max();
-  problem.num_heads = problem.kv_num_heads;
+  problem.batch_size = std::numeric_limits<int64_t>::max();
   config.kv_type = GQAXqaKvType::None;
   EXPECT_EQ(GetGQAXqaWorkspaceRecipe(problem, config).status.error,
             GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionXqaWorkspaceTest, EnforcesCudaGridYZDimensionBoundaries) {
+  auto problem = XqaProblem();
+  const auto config = XqaConfig();
+
+  problem.kv_num_heads = 65535;
+  problem.num_heads = 65535;
+  EXPECT_TRUE(GetGQAXqaWorkspaceRecipe(problem, config).status.IsOK());
+
+  problem.kv_num_heads = 65536;
+  problem.num_heads = 65536;
+  EXPECT_EQ(GetGQAXqaWorkspaceRecipe(problem, config).status.error,
+            GQAWorkspaceError::Unavailable);
+
+  problem = XqaProblem();
+  problem.batch_size = 65535;
+  EXPECT_TRUE(GetGQAXqaWorkspaceRecipe(problem, config).status.IsOK());
+
+  problem.batch_size = 65536;
+  EXPECT_EQ(GetGQAXqaWorkspaceRecipe(problem, config).status.error,
+            GQAWorkspaceError::Unavailable);
 }
 
 TEST(GroupQueryAttentionXqaWorkspaceTest, RejectsFactsOutsideSelectedRuntimeDomain) {
@@ -276,6 +301,7 @@ TEST(GroupQueryAttentionXqaWorkspaceTest, Fp8GateMatchesExactRuntimeArchitecture
   config.kv_type = GQAXqaKvType::Fp8;
   config.device_minor = 9;
 
+#if defined(USE_FP8_KV_CACHE)
   EXPECT_TRUE(GetGQAXqaWorkspaceRecipe(problem, config).status.IsOK());
 
   config.device_minor = 10;
@@ -285,6 +311,10 @@ TEST(GroupQueryAttentionXqaWorkspaceTest, Fp8GateMatchesExactRuntimeArchitecture
   config.device_major = 9;
   config.device_minor = 0;
   EXPECT_TRUE(GetGQAXqaWorkspaceRecipe(problem, config).status.IsOK());
+#else
+  EXPECT_EQ(GetGQAXqaWorkspaceRecipe(problem, config).status.error,
+            GQAWorkspaceError::Unavailable);
+#endif
 }
 
 TEST(GroupQueryAttentionXqaWorkspaceTest, ValidatorRejectsMalformedInternalScratchOrderAndTerminal) {
@@ -371,6 +401,54 @@ TEST(GroupQueryAttentionFlashWorkspaceTest, FastDecodeUsesKvHeadsAndWindowForSpl
   EXPECT_EQ(result.recipe.selected_split_count, 1U);
   EXPECT_EQ(result.recipe.softmax_lse_accumulator_bytes, 0U);
   EXPECT_EQ(result.recipe.output_accumulator_bytes, 0U);
+}
+
+TEST(GroupQueryAttentionFlashWorkspaceTest, FastDecodeRejectsContradictoryAvailableFacts) {
+  GQAFlashConfig config;
+  config.total_sequence_length = 4096;
+  config.multi_processor_count = 108;
+  config.fast_decode = true;
+
+  auto problem = FlashProblem();
+  problem.is_first_prompt = true;
+  EXPECT_EQ(GetGQAFlashWorkspaceRecipe(problem, config).status.error,
+            GQAWorkspaceError::InvalidArgument);
+
+  problem = FlashProblem();
+  problem.is_windowed_kv_cache = true;
+  EXPECT_EQ(GetGQAFlashWorkspaceRecipe(problem, config).status.error,
+            GQAWorkspaceError::InvalidArgument);
+
+  problem = FlashProblem();
+  problem.k_quantization = GQAKvQuantizationType::PerTensor;
+  EXPECT_EQ(GetGQAFlashWorkspaceRecipe(problem, config).status.error,
+            GQAWorkspaceError::InvalidArgument);
+
+  problem = FlashProblem();
+  problem.v_quantization = GQAKvQuantizationType::PerChannel;
+  EXPECT_EQ(GetGQAFlashWorkspaceRecipe(problem, config).status.error,
+            GQAWorkspaceError::InvalidArgument);
+
+  problem = FlashProblem();
+  problem.use_qk_norm = true;
+  EXPECT_EQ(GetGQAFlashWorkspaceRecipe(problem, config).status.error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionFlashWorkspaceTest, RegularFlashAcceptsFastDecodeContradictionFacts) {
+  GQAFlashConfig config;
+  config.total_sequence_length = 128;
+  config.multi_processor_count = 24;
+
+  auto problem = FlashProblem();
+  problem.is_first_prompt = true;
+  problem.is_windowed_kv_cache = true;
+  problem.k_quantization = GQAKvQuantizationType::PerTensor;
+  problem.v_quantization = GQAKvQuantizationType::PerChannel;
+  problem.use_qk_norm = true;
+
+  const auto result = GetGQAFlashWorkspaceRecipe(problem, config);
+  EXPECT_TRUE(result.status.IsOK()) << result.status.message;
 }
 
 TEST(GroupQueryAttentionFlashWorkspaceTest, RoundedHeadSizeControlsOutputAccumulator) {
