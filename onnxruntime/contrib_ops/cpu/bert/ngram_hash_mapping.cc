@@ -5,9 +5,9 @@
 
 #include <cstdint>
 #include <limits>
-#include <vector>
 
 #include "contrib_ops/cpu/bert/engram_helper.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
@@ -73,7 +73,7 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "input_ids must have rank 2");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
                         multipliers->Shape()[0] >= max_ngram_size_,
-                    "multipliers must have shape (max_ngram_size)");
+                    "multipliers must have shape at least (max_ngram_size)");
   const int64_t num_heads = (max_ngram_size_ - 1) * n_head_per_ngram_;
   ORT_RETURN_IF_NOT(vocab_sizes->Shape().NumDimensions() == 1 && vocab_sizes->Shape()[0] == num_heads,
                     "vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
@@ -90,7 +90,7 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
                       "head_offsets must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
   }
   if (eos_token_id != nullptr) {
-    ORT_RETURN_IF_NOT(eos_token_id->Shape().Size() == 1, "eos_token_id must be a scalar");
+    ORT_RETURN_IF_NOT(eos_token_id->Shape().NumDimensions() == 0, "eos_token_id must be a scalar");
   }
   if (segment_ids != nullptr) {
     ORT_RETURN_IF_NOT(segment_ids->Shape() == TensorShape({batch_size, sequence_length}),
@@ -110,62 +110,69 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
   for (int64_t h = 0; h < num_heads; ++h) {
     ORT_RETURN_IF_NOT(vocab_data[h] > 0,
                       "vocab_sizes must be positive; entry ", h, " is ", static_cast<int64_t>(vocab_data[h]));
+    if (offset_data != nullptr) {
+      ORT_RETURN_IF_NOT(offset_data[h] >= 0,
+                        "head_offsets must be non-negative; entry ", h, " is ",
+                        static_cast<int64_t>(offset_data[h]));
+      ORT_RETURN_IF_NOT(offset_data[h] <= std::numeric_limits<T>::max() - vocab_data[h],
+                        "head_offsets plus vocab_sizes must fit in the id type; entry ", h,
+                        " has offset ", static_cast<int64_t>(offset_data[h]), " and vocab size ",
+                        static_cast<int64_t>(vocab_data[h]));
+    }
   }
 
   const bool has_eos = eos_token_id != nullptr;
   const T eos_value = has_eos ? eos_token_id->Data<T>()[0] : pad_id_;
   const bool do_reset = reset_on_eos_ != 0 && has_eos;
-  const int64_t combined_length = state_length + sequence_length;
 
   if (input_shape.Size() != 0) {
     T* output_data = output->MutableData<T>();
     ThreadPool::TryParallelFor(
-        context->GetOperatorThreadPool(), narrow<ptrdiff_t>(batch_size),
-        static_cast<double>(combined_length * max_ngram_size_),
+        context->GetOperatorThreadPool(), narrow<ptrdiff_t>(input_shape.Size()),
+        static_cast<double>(max_ngram_size_ * n_head_per_ngram_),
         [&](ptrdiff_t begin, ptrdiff_t end) {
-          std::vector<T> combined(static_cast<size_t>(combined_length));
-          for (int64_t b = begin; b < end; ++b) {
-            for (int64_t i = 0; i < state_length; ++i) {
-              combined[static_cast<size_t>(i)] = HistoryId(past_data, b, i, state_length, eos_value);
-            }
-            for (int64_t t = 0; t < sequence_length; ++t) {
-              combined[static_cast<size_t>(state_length + t)] = input_data[b * sequence_length + t];
-            }
-
-            int64_t last_reset = -1;
-            for (int64_t idx = state_length; idx < combined_length; ++idx) {
-              const int64_t t = idx - state_length;
-              if (idx > 0) {
-                const int64_t previous = idx - 1;
-                bool boundary = do_reset && combined[static_cast<size_t>(previous)] == eos_value;
-                if (segment_data != nullptr && t > 0 &&
-                    segment_data[b * sequence_length + t] != segment_data[b * sequence_length + t - 1]) {
+          const auto combined_value = [&](int64_t b, int64_t input_base, int64_t idx) {
+            return idx < state_length ? HistoryId(past_data, b, idx, state_length, eos_value)
+                                      : input_data[input_base + idx - state_length];
+          };
+          for (int64_t linear = begin; linear < end; ++linear) {
+            const int64_t t = linear % sequence_length;
+            const int64_t b = linear / sequence_length;
+            const int64_t input_base = b * sequence_length;
+            const int64_t idx = state_length + t;
+            int64_t last_reset = -(state_length + 2);
+            for (int64_t j = idx - 1; j >= idx - state_length && j >= 0; --j) {
+              bool boundary = do_reset && combined_value(b, input_base, j) == eos_value;
+              if (!boundary && segment_data != nullptr && j >= state_length) {
+                const int64_t tj = j - state_length;
+                if (segment_data[input_base + tj] != segment_data[input_base + tj + 1]) {
                   boundary = true;
                 }
-                if (boundary) {
-                  last_reset = previous;
-                }
+              }
+              if (boundary) {
+                last_reset = j;
+                break;
+              }
+            }
+
+            const int64_t output_base = linear * num_heads;
+            for (int64_t n = 2; n <= max_ngram_size_; ++n) {
+              T mix = 0;
+              for (int64_t k = 0; k < n; ++k) {
+                const int64_t source = idx - k;
+                const T token = (last_reset >= source) ? eos_value : combined_value(b, input_base, source);
+                const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
+                mix = k == 0 ? product : static_cast<T>(mix ^ product);
               }
 
-              const int64_t output_base = (b * sequence_length + t) * num_heads;
-              for (int64_t n = 2; n <= max_ngram_size_; ++n) {
-                T mix = 0;
-                for (int64_t k = 0; k < n; ++k) {
-                  const int64_t source = idx - k;
-                  const T token = (last_reset >= source) ? eos_value : combined[static_cast<size_t>(source)];
-                  const T product = engram_helper::WrappedMultiply(token, multiplier_data[k]);
-                  mix = k == 0 ? product : static_cast<T>(mix ^ product);
+              const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
+              for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
+                const int64_t out_h = ngram_offset + h;
+                T result = engram_helper::PositiveMod(mix, vocab_data[out_h]);
+                if (offset_data != nullptr) {
+                  result = engram_helper::WrappedAdd(result, offset_data[out_h]);
                 }
-
-                const int64_t ngram_offset = (n - 2) * n_head_per_ngram_;
-                for (int64_t h = 0; h < n_head_per_ngram_; ++h) {
-                  const int64_t out_h = ngram_offset + h;
-                  T result = engram_helper::PositiveMod(mix, vocab_data[out_h]);
-                  if (offset_data != nullptr) {
-                    result = static_cast<T>(result + offset_data[out_h]);
-                  }
-                  output_data[output_base + out_h] = result;
-                }
+                output_data[output_base + out_h] = result;
               }
             }
           }
@@ -175,15 +182,11 @@ Status NGramHashMapping<T>::Compute(OpKernelContext* context) const {
   if (present_ids != nullptr) {
     T* present_data = present_ids->MutableData<T>();
     for (int64_t b = 0; b < batch_size; ++b) {
-      std::vector<T> present_row(static_cast<size_t>(state_length));
       for (int64_t j = 0; j < state_length; ++j) {
         const int64_t source_t = sequence_length - state_length + j;
-        present_row[static_cast<size_t>(j)] =
+        present_data[b * state_length + j] =
             source_t >= 0 ? input_data[b * sequence_length + source_t]
                           : HistoryId(past_data, b, state_length + source_t, state_length, eos_value);
-      }
-      for (int64_t j = 0; j < state_length; ++j) {
-        present_data[b * state_length + j] = present_row[static_cast<size_t>(j)];
       }
     }
   }

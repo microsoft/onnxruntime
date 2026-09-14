@@ -67,25 +67,18 @@ __global__ void EngramGateKernel(
     float gated_sum_sq = 0.0f;
     for (int64_t c = threadIdx.x; c < hidden_size; c += blockDim.x) {
       const float gated_value = gate * to_float<T>(value_row[c]);
-      gated_sum_sq += gated_value * gated_value;
       output_row[c] = from_float<T>(gated_value);
+      const float rounded_gated_value = to_float<T>(output_row[c]);
+      gated_sum_sq += rounded_gated_value * rounded_gated_value;
     }
 
     if (output_normed != nullptr) {
-      shared[threadIdx.x] = gated_sum_sq;
-      __syncthreads();
-      for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-        if (threadIdx.x < stride) {
-          shared[threadIdx.x] += shared[threadIdx.x + stride];
-        }
-        __syncthreads();
-      }
-      const float normed_inv_rms = rsqrtf(shared[0] / static_cast<float>(hidden_size) + epsilon);
+      engram_helper::BlockSum1(&gated_sum_sq, shared);
+      const float normed_inv_rms = rsqrtf(gated_sum_sq / static_cast<float>(hidden_size) + epsilon);
       T* output_normed_row = output_normed + row * hidden_size;
       for (int64_t c = threadIdx.x; c < hidden_size; c += blockDim.x) {
         output_normed_row[c] = from_float<T>(to_float<T>(output_row[c]) * normed_inv_rms * to_float<T>(conv_scale_g[c]));
       }
-      __syncthreads();
     }
   }
 }

@@ -121,7 +121,10 @@ Status NGramHashMappingProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "        result = positive_mod(mix, mod_value);\n"
       << "      }\n";
   if (has_head_offsets_) {
-    shader.MainFunctionBody() << "      result = result + " << head_offsets->GetByOffset("out_h") << ";\n";
+    shader.MainFunctionBody()
+        << "      if (mod_value > 0i) {\n"
+        << "        result = result + " << head_offsets->GetByOffset("out_h") << ";\n"
+        << "      }\n";
   }
   shader.MainFunctionBody()
       << "      " << output.SetByOffset("output_base + i32(out_h)", "result") << "\n"
@@ -208,7 +211,7 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
   const auto& input_shape = input_ids->Shape();
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "input_ids must have rank 2");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 && multipliers->Shape()[0] >= max_ngram_size_,
-                    "multipliers must have shape (max_ngram_size)");
+                    "multipliers must have shape at least (max_ngram_size)");
   const int64_t num_heads = (max_ngram_size_ - 1) * n_head_per_ngram_;
   ORT_RETURN_IF_NOT(vocab_sizes->Shape() == TensorShape({num_heads}),
                     "vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
@@ -226,7 +229,7 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
                       "head_offsets must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
   }
   if (eos_token_id != nullptr) {
-    ORT_RETURN_IF_NOT(eos_token_id->Shape().Size() == 1, "eos_token_id must be a scalar");
+    ORT_RETURN_IF_NOT(eos_token_id->Shape().NumDimensions() == 0, "eos_token_id must be a scalar");
   }
   if (segment_ids != nullptr) {
     ORT_RETURN_IF_NOT(segment_ids->Shape() == TensorShape({batch_size, sequence_length}),
@@ -270,7 +273,10 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
   }
 
   if (present_ids != nullptr && batch_size * state_length > 0) {
+    // input_ids is not bound for empty sequences because WebGPU rejects zero-sized storage buffers.
     const bool has_input_ids = sequence_length > 0;
+    // If past_ids and present_ids alias via MayInplace, do not bind the same buffer as both
+    // read-only and read-write storage in one dispatch; read history through present_ids instead.
     const bool past_aliases_present = has_past_ids && past_ids->DataRaw() == present_ids->DataRaw();
     NGramPresentIdsProgram present_program{has_input_ids, has_past_ids, has_eos_token_id, past_aliases_present};
     present_program.CacheHint(has_input_ids, has_past_ids, has_eos_token_id, past_aliases_present);
@@ -283,7 +289,9 @@ Status NGramHashMapping::ComputeInternal(ComputeContext& context) const {
     if (has_eos_token_id) {
       present_program.AddInput({eos_token_id, ProgramTensorMetadataDependency::None});
     }
+    // One workgroup owns one batch row, which keeps the chunk-level workgroupBarrier() calls legal.
     present_program.AddOutput({present_ids, ProgramTensorMetadataDependency::None})
+        // NormalizeDispatchGroupSize can pad dispatches, so the shader guards b >= batch_size.
         .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(batch_size))
         .AddUniformVariables({{onnxruntime::narrow<uint32_t>(batch_size)},
                               {onnxruntime::narrow<uint32_t>(sequence_length)},
