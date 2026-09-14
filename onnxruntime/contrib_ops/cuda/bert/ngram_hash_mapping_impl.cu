@@ -117,8 +117,8 @@ __global__ void NGramHashMappingKernel(
         const int64_t out_h = ngram_offset + h;
         const T mod = vocab_table[out_h];
         T result = mod <= 0 ? T{} : engram_helper::PositiveMod(mix, mod);
-        if (head_offsets != nullptr) {
-          result = static_cast<T>(result + head_offsets[out_h]);
+        if (head_offsets != nullptr && mod > 0) {
+          result = engram_helper::WrappedAdd(result, head_offsets[out_h]);
         }
         output[output_base + out_h] = result;
       }

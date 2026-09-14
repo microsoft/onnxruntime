@@ -60,7 +60,7 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(input_shape.NumDimensions() == 2, "input_ids must have rank 2");
   ORT_RETURN_IF_NOT(multipliers->Shape().NumDimensions() == 1 &&
                         multipliers->Shape()[0] >= max_ngram_size_,
-                    "multipliers must have shape (max_ngram_size)");
+                    "multipliers must have shape at least (max_ngram_size)");
   const int64_t num_heads = (max_ngram_size_ - 1) * n_head_per_ngram_;
   ORT_RETURN_IF_NOT(vocab_sizes->Shape().NumDimensions() == 1 && vocab_sizes->Shape()[0] == num_heads,
                     "vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
@@ -77,7 +77,7 @@ Status NGramHashMapping<T>::ComputeInternal(OpKernelContext* context) const {
                       "head_offsets must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
   }
   if (eos_token_id != nullptr) {
-    ORT_RETURN_IF_NOT(eos_token_id->Shape().Size() == 1, "eos_token_id must be a scalar");
+    ORT_RETURN_IF_NOT(eos_token_id->Shape().NumDimensions() == 0, "eos_token_id must be a scalar");
   }
   if (segment_ids != nullptr) {
     ORT_RETURN_IF_NOT(segment_ids->Shape() == TensorShape({batch_size, sequence_length}),

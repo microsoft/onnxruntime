@@ -2607,8 +2607,13 @@ those preceding ids and present_ids returns the ids to pass to the next call. Bo
 (batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
 Positions before the start of the whole sequence use pad_id, or eos_token_id when it is provided.
 Running the op once over a full sequence and running it over consecutive chunks while threading
-present_ids into past_ids produce identical hash ids. When past_ids is omitted the missing history is
-pad_id, or eos_token_id when it is provided.
+present_ids into past_ids produce identical hash ids, including when reset_on_eos is enabled. When
+segment_ids is used, segment boundaries are applied only within the current input_ids chunk and are
+not inferred from past_ids. When past_ids is omitted the missing history is pad_id, or eos_token_id
+when it is provided.
+past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
+only when the whole operator call is unconditionally committed; a caller that may select a prefix or
+roll back must preserve past_ids.
 
 Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
 
@@ -2729,6 +2734,29 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               *present_shape.add_dim() = input_shape.dim(0);
               present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
               updateOutputShape(ctx, 1, present_shape);
+            }
+          }
+          if (hasInputShape(ctx, 1)) {
+            const auto& multipliers_shape = getInputShape(ctx, 1);
+            if (multipliers_shape.dim_size() != 1 ||
+                (multipliers_shape.dim(0).has_dim_value() &&
+                 multipliers_shape.dim(0).dim_value() < max_ngram_size)) {
+              fail_shape_inference("NGramHashMapping: multipliers must have shape at least (max_ngram_size)");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& vocab_sizes_shape = getInputShape(ctx, 2);
+            if (vocab_sizes_shape.dim_size() != 1 ||
+                (vocab_sizes_shape.dim(0).has_dim_value() &&
+                 vocab_sizes_shape.dim(0).dim_value() != (max_ngram_size - 1) * n_head_per_ngram)) {
+              fail_shape_inference(
+                  "NGramHashMapping: vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
+            }
+          }
+          if (hasInputShape(ctx, 5)) {
+            const auto& eos_token_id_shape = getInputShape(ctx, 5);
+            if (eos_token_id_shape.dim_size() != 0) {
+              fail_shape_inference("NGramHashMapping: eos_token_id must be a scalar");
             }
           }
         }));
