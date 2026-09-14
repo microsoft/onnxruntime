@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <charconv>
 #include <cstring>
 #include <fstream>
 #include <set>
@@ -99,11 +100,9 @@ ModelPackageStatus* ReadFileToString(const fs::path& path, std::string* out) {
 ModelPackageStatus* ParseJsonFile(const fs::path& path, ordered_json* out) {
   std::string contents;
   if (auto* s = ReadFileToString(path, &contents)) return s;
-  try {
-    *out = ordered_json::parse(contents);
-  } catch (const ordered_json::parse_error& e) {
+  if (const std::string err = ParseJsonNoThrow(contents, *out); !err.empty()) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                      "Failed to parse JSON at '" + path.string() + "': " + e.what());
+                      "Failed to parse JSON at '" + path.string() + "': " + err);
   }
   return nullptr;
 }
@@ -450,12 +449,9 @@ ModelPackageStatus* ParseSchemaVersion(ModelPackage* pkg) {
     const std::string minor_str = (dot == std::string::npos) ? std::string("0") : sv.substr(dot + 1);
     auto parse_part = [](const std::string& s, int64_t* out) -> bool {
       if (s.empty() || s.find_first_not_of("0123456789") != std::string::npos) return false;
-      try {
-        *out = std::stoll(s);
-      } catch (const std::exception&) {
-        return false;
-      }
-      return true;
+      const char* const end = s.data() + s.size();
+      const auto res = std::from_chars(s.data(), end, *out);
+      return res.ec == std::errc{} && res.ptr == end;
     };
     if (dot != std::string::npos && minor_str.find('.') != std::string::npos) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
@@ -628,13 +624,11 @@ ModelPackageStatus* ResolveExecutorInfoEntry(const ModelPackage* pkg,
     std::ostringstream buf;
     buf << f.rdbuf();
     std::string contents = buf.str();
-    try {
-      auto _ = ordered_json::parse(contents);
-      (void)_;
-    } catch (const std::exception& e) {
+    ordered_json ignored;
+    if (const std::string err = ParseJsonNoThrow(contents, ignored); !err.empty()) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         std::string("Failed to parse executor_info JSON at '") +
-                            resolved.string() + "': " + e.what());
+                            resolved.string() + "': " + err);
     }
     *dst_json = std::move(contents);
     return nullptr;

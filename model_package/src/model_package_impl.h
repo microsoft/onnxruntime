@@ -28,6 +28,22 @@ namespace model_package {
 
 using ordered_json = nlohmann::ordered_json;
 
+/// Parse without letting an exception escape; returns the parser's message or empty on success.
+/// Mirrors nlohmann's JSON_THROW gate, whose throwing parse aborts under -fno-exceptions.
+inline std::string ParseJsonNoThrow(const std::string& text, ordered_json& out) {
+#if (defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)) && !defined(JSON_NOEXCEPTION)
+  try {
+    out = ordered_json::parse(text);
+    return {};
+  } catch (const ordered_json::exception& e) {
+    return e.what();
+  }
+#else
+  out = ordered_json::parse(text, nullptr, /*allow_exceptions=*/false);
+  return out.is_discarded() ? std::string("invalid JSON") : std::string();
+#endif
+}
+
 /// How the component's body is stored on disk relative to the manifest.
 enum class ComponentStorage {
   kInline,    ///< body lives directly inside the manifest as an object
