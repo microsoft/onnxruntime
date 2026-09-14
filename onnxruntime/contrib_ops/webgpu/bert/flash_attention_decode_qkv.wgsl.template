@@ -107,9 +107,29 @@ $MAIN {
   #else
   let total_sequence_length = global_total_sequence_length;
   #endif
-  // Tiles beyond this batch's logical sequence publish neutral metadata so VxReduce
-  // ignores them for every query row. This applies to both quantized and dense KV caches.
-  if (total_seq_offset >= total_sequence_length) {
+#if is_unidirectional
+#if use_seqlens_q
+  // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b.
+  let q_len_b = u32(seqlens_q[batch_idx]);
+  let past_sequence_length = total_sequence_length - q_len_b;
+#else
+  let past_sequence_length = select(total_sequence_length - uniforms.new_sequence_length,
+                                    0u,
+                                    total_sequence_length <= uniforms.new_sequence_length);
+#endif
+  // q_base is the earliest query row in this workgroup and therefore has the earliest
+  // window start. A tile older than that start is excluded by every row in the workgroup.
+  let first_query_key_end = min(total_sequence_length, past_sequence_length + q_base + 1u);
+  let first_query_window_start = select(0u, first_query_key_end - uniforms.local_window_size,
+                                        uniforms.local_window_size > 0u &&
+                                            first_query_key_end > uniforms.local_window_size);
+  let tile_excluded_by_window = total_seq_offset + tile_size <= first_query_window_start;
+#else
+  let tile_excluded_by_window = false;
+#endif
+  // Tiles outside every query row publish neutral metadata so VxReduce ignores them.
+  // Returning here avoids K/V loads for both quantized and dense KV caches.
+  if (total_seq_offset >= total_sequence_length || tile_excluded_by_window) {
     if (local_idx == 0u) {
       for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
         let q_idx_local = q_base + m;
@@ -225,17 +245,6 @@ $MAIN {
 #endif
 
   // Reduce inner_qk_values to tile_qk, apply attention bias and causal mask
-#if is_unidirectional
-#if use_seqlens_q
-  // LEFT-aligned per-batch Q length: past_len_b = total_kv_b - q_len_b.
-  let q_len_b = u32(seqlens_q[batch_idx]);
-  let past_sequence_length = total_sequence_length - q_len_b;
-#else
-  let past_sequence_length = select(total_sequence_length - uniforms.new_sequence_length,
-                                    0u,
-                                    total_sequence_length <= uniforms.new_sequence_length);
-#endif
-#endif
   for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
     let q_idx = q_base + m;
     if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
