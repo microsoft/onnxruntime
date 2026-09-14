@@ -3657,6 +3657,35 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.NGramHashMapping"></a><a name="com.microsoft.ngramhashmapping">**com.microsoft.NGramHashMapping**</a>
 
+  Computes Engram n-gram hash ids from pre-compressed tokenizer ids.
+
+  For n in [2, max_ngram_size], the op creates causal shifts of input_ids, padding positions before the
+  sequence with pad_id, and computes
+  mix = shifted_0 * multipliers[0] xor ... xor shifted_(n-1) * multipliers[n-1].
+  For every head of that n-gram order it emits mix modulo the corresponding head vocabulary size.
+  The output layout is (batch_size, sequence_length, (max_ngram_size - 1) * n_head_per_ngram), with
+  heads for n=2 first, then n=3, and so on.
+
+  An n-gram window reaches max_ngram_size - 1 positions before the current token. To keep the op causal
+  across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
+  those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
+  (batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
+  Positions before the start of the whole sequence use pad_id, or eos_token_id when it is provided.
+  Running the op once over a full sequence and running it over consecutive chunks while threading
+  present_ids into past_ids produce identical hash ids. When past_ids is omitted the missing history is
+  pad_id, or eos_token_id when it is provided.
+
+  Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
+
+  - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
+    boundaries: any shifted position at or before the most recent EOS strictly before the current
+    position is replaced with eos_token_id instead of the real token.
+  - segment_ids, when provided, additionally resets causal history at any position whose segment id
+    differs from the immediately preceding position's segment id within input_ids. Segment boundaries
+    are not checked against past_ids history.
+  - head_offsets, when provided, adds a fixed per-output-head offset after the modulo by the head's
+    vocabulary size, letting all heads across all n-gram orders share one flat embedding table.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
