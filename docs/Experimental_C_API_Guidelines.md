@@ -59,7 +59,7 @@ The `<TargetStruct>` prefix (for example, `OrtApi`, `OrtEpApi`, or `OrtCompileAp
 
 The `_SinceV<Version>` suffix records the ORT API version in which the experimental function first appeared and guarantees the name is unique by construction. This suffix is automatically appended via the `ORT_EXPERIMENTAL_API` X-macro.
 
-At promotion, using the placeholders above, the `<TargetStruct>` struct gets a new function, `<FunctionName>`, appended to it, and the `_SinceV<Version>` suffix is dropped.
+At promotion, using the placeholders above, the `<TargetStruct>` struct gets a new function, `<FunctionName>`, appended to it.
 
 ### Place auxiliary types in the appropriate header
 
@@ -82,7 +82,7 @@ Add test coverage for new experimental functions, exercising both the lookup mec
 1. **Add.** Add one experimental API entry with the current ORT API version and implement the function.
 2. **Update.** A backward-compatible fix or behavioral extension may retain the existing name. For a signature change or an incompatible ABI or behavioral-contract change, introduce a new experimental API entry at the current ORT API version — which produces a new lookup name — rather than modifying the existing one. The old and new entries may coexist. Never reuse a name.
 3. **Promote or remove.**
-   - **Promote:** Add the function to the stable API struct (append-only, dropping the `_SinceV<Version>` suffix) and remove the experimental entry.
+   - **Promote:** Add the function to the stable API struct (append-only, dropping the `<TargetStruct>_` prefix and the `_SinceV<Version>` suffix from the name) and remove the experimental entry.
    - **Remove:** Delete the experimental entry. Because the versioned name is unique and never reused, no separate retirement tracking is needed.
 
 ## References
