@@ -12,10 +12,25 @@ limitations under the License.
 // Modifications Copyright (c) Microsoft.
 
 #include "core/common/status.h"
+
+#include <cerrno>
+
 #include "core/common/common.h"
 
 namespace onnxruntime {
 namespace common {
+
+StatusCode StatusCodeFromSystemErrno(int errno_value) noexcept {
+  switch (errno_value) {
+    case ENOENT:
+      return StatusCode::NO_SUCHFILE;
+    case EINVAL:
+      return StatusCode::INVALID_ARGUMENT;
+    default:
+      return StatusCode::FAIL;
+  }
+}
+
 Status::Status(StatusCategory category, int code, const std::string& msg) {
   // state_ will be allocated here causing the status to be treated as a failure
   ORT_ENFORCE(code != static_cast<int>(common::OK));
@@ -56,7 +71,7 @@ std::string Status::ToString() const {
   if (common::SYSTEM == state_->category) {
     result += "SystemError";
     result += " : ";
-    result += std::to_string(errno);
+    result += std::to_string(Code());
   } else if (common::ONNXRUNTIME == state_->category) {
     result += "[ONNXRuntimeError]";
     result += " : ";

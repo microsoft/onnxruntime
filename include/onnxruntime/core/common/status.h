@@ -137,6 +137,13 @@ constexpr HRESULT StatusCodeToHRESULT(StatusCode status) noexcept {
 }
 #endif
 
+/**
+ * Maps an OS errno value (as carried by a SYSTEM-category Status) to the closest StatusCode.
+ * Translates SYSTEM-category statuses into ONNXRUNTIME-category codes (and OrtErrorCode at the C API boundary).
+ * Unrecognized values map to FAIL.
+ */
+StatusCode StatusCodeFromSystemErrno(int errno_value) noexcept;
+
 class [[nodiscard]] Status {
  public:
   Status() noexcept = default;
