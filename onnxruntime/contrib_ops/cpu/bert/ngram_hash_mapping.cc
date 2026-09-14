@@ -7,7 +7,6 @@
 #include <limits>
 
 #include "contrib_ops/cpu/bert/engram_helper.h"
-#include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
 #include "core/platform/threadpool.h"
 
