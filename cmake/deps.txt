@@ -10,7 +10,7 @@
 #not affect built binaries.
 #
 abseil_cpp;https://github.com/abseil/abseil-cpp/archive/refs/tags/20250814.0.zip;a9eb1d648cbca4d4d788737e971a6a7a63726b07
-coremltools;https://github.com/apple/coremltools/archive/refs/tags/7.1.zip;f1bab0f30966f2e217d8e01207d518f230a1641a
+coremltools;https://github.com/apple/coremltools/archive/refs/tags/9.0.zip;0e9b1a9a9a9fe283ac1a0c9261420075d5574dd1
 cxxopts;https://github.com/jarro2783/cxxopts/archive/3c73d91c0b04e2b59462f0a741be8c07024c1bc0.zip;6c6ca7f8480b26c8d00476e0e24b7184717fe4f0
 date;https://github.com/HowardHinnant/date/archive/refs/tags/v3.0.1.zip;2dac0c81dc54ebdd8f8d073a75c053b04b56e159
 dlpack;https://github.com/dmlc/dlpack/archive/5c210da409e7f1e51ddf445134a4376fdbd70d7d.zip;e499c86e4e5c5268a87661d7ea39c27fae10907c

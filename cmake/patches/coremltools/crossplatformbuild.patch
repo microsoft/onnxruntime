@@ -168,17 +168,3 @@ index 8fee56b9..5508e316 100644
  }
  
  std::string ModelPackage::setRootModel(const std::string& path, const std::string& name, const std::string& author, const std::string& description)
-diff --git a/modelpackage/src/utils/JsonMap.hpp b/modelpackage/src/utils/JsonMap.hpp
-index 0d7dc3f4..b700cfd5 100644
---- a/modelpackage/src/utils/JsonMap.hpp
-+++ b/modelpackage/src/utils/JsonMap.hpp
-@@ -10,7 +10,8 @@
- #include <iostream>
- #include <vector>
- #include <string>
--
-+// ORT_EDIT: add missing header
-+#include <memory>
- class JsonMapImpl;
- 
- class JsonMap {
