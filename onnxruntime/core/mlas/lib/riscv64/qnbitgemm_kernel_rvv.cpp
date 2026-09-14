@@ -806,10 +806,13 @@ RvvQuantizeARow_CompInt8_Impl(size_t BlkLen, const float* A, size_t CountK, std:
 // A single vfredusum per output then finishes the row, instead of one vwredsum
 // per (row, block).
 //
-// int16 is safe because the operands are bounded: 4-bit B is centered to
-// [-8, 7] so |a*b| <= 1016 and a whole block of up to 256 elements fits; 8-bit
-// B is stored centered to [-128, 127] so |a*b| <= 16256 and one pair fits,
-// which is exactly one chunk.
+// int16 is safe because the operands are bounded. 8-bit B is stored centered
+// to [-128, 127] so |a*b| <= 16256 and one pair fits, which is exactly one
+// chunk. 4-bit B is (nibble - zero point): [-8, 7] without zero points, so
+// |a*b| <= 1016 and 16 pairs fit; up to [-15, 15] with them, so |a*b| <= 1905
+// and 8 pairs fit. A lane collects one pair per chunk and a block has at most
+// 16 chunks (BlkLen 256 on VLEN 128), so only the zero-point case with more
+// than kMidFoldChunks chunks per block needs a fold inside the block.
 //
 // Two tile shapes cover the two chunk regimes of CompInt8Geometry:
 //  - BlkLen >= ChunkElems (one segment per chunk): MTILE x NTILE tiles share
@@ -822,6 +825,8 @@ RvvQuantizeARow_CompInt8_Impl(size_t BlkLen, const float* A, size_t CountK, std:
 // so one body serves the full tile and the remainder. A blocks are zero-padded
 // to BlkLen by the quantizer, so a chunk can always run at its full width.
 //
+
+constexpr size_t kMidFoldChunks = 8;
 
 #define MLAS_UNROLL_LOOP _Pragma("GCC unroll 8")
 #define MLAS_SCHED_BARRIER asm volatile("" ::: "memory");
@@ -841,8 +846,13 @@ ReduceSumF32M2(vfloat32m2_t v, size_t vl)
 // the mask of segment g is one compare away, which is cheaper than holding
 // eight masks: v0 is the only mask register, and moving a mask into it costs
 // as much as the compare on this hardware.
-#define QI8_SEG_ID(seg_id, SegHalf, vl) \
-    const vuint16m1_t seg_id = __riscv_vsrl_vx_u16m1(__riscv_vid_v_u16m1((vl)), __builtin_ctzl(SegHalf), (vl))
+// 'k' is the logical lane of the piece's first lane: a chunk half wider than
+// the register (a layout packed for a wider core) is walked in pieces.
+#define QI8_SEG_ID(seg_id, SegHalf, k, vl)                                                \
+    const vuint16m1_t seg_id = __riscv_vsrl_vx_u16m1(                                     \
+        __riscv_vadd_vx_u16m1(__riscv_vid_v_u16m1((vl)), static_cast<uint16_t>(k), (vl)), \
+        __builtin_ctzl(SegHalf), (vl)                                                     \
+    )
 
 // acc_c += (as[b0 + g] * bs_c[b0 + g]) * f_c on the lanes of segment g, for
 // four columns at once: one mask per segment, four independent chains.
@@ -888,8 +898,10 @@ QuantARowData(const std::byte* row, size_t BlockCountK)
 }
 
 // MTILE rows x NTILE columns of the SQ4 CompInt8 GEMM, BlkLen >= ChunkElems.
-// Columns >= n_cols alias column 0.
-template <bool HasZeroPoint, size_t MTILE, size_t NTILE>
+// Columns >= n_cols alias column 0. MidFold folds the int16 partials every
+// kMidFoldChunks chunks within a block (see the int16 bound above); the
+// driver only asks for it when a block has more chunks than that.
+template <bool HasZeroPoint, size_t MTILE, size_t NTILE, bool MidFold>
 MLAS_FORCEINLINE void
 SQ4BitGemmKernel_CompInt8_Tile(
     const CompInt8Geometry& Geom,
@@ -955,20 +967,47 @@ SQ4BitGemmKernel_CompInt8_Tile(
         vint16m1_t p0 = __riscv_vmv_v_x_i16m1(0, partvl);
         vint16m1_t p1 = p0, p2 = p0, p3 = p0, p4 = p0, p5 = p0, p6 = p0, p7 = p0;
 
-        for (size_t sub = 0; sub < ChunksPerBlock; ++sub) {
-            const size_t chunk = b * ChunksPerBlock + sub;
-            const size_t sb = chunk * ChunkStride;      // chunk offset within the packed tile
-            const size_t sa = chunk * Geom.ChunkElems;  // chunk offset within the A row data
-            for (size_t k = 0; k < SegHalf;) {
-                const size_t vl = __riscv_vsetvl_e8mf2(SegHalf - k);
+        // Fold the partials into the float accumulators (and clear them).
+#define SQ4_FOLD_PARTIALS()                        \
+    do {                                           \
+        if constexpr (MTILE == 1) {                \
+            QI8_FOLD(acc0, p0, s0[0], partvl);     \
+            QI8_FOLD(acc1, p1, s0[1], partvl);     \
+            QI8_FOLD(acc2, p2, s0[2], partvl);     \
+            QI8_FOLD(acc3, p3, s0[3], partvl);     \
+            if constexpr (NTILE == 8) {            \
+                QI8_FOLD(acc4, p4, s0[4], partvl); \
+                QI8_FOLD(acc5, p5, s0[5], partvl); \
+                QI8_FOLD(acc6, p6, s0[6], partvl); \
+                QI8_FOLD(acc7, p7, s0[7], partvl); \
+            }                                      \
+        } else {                                   \
+            QI8_FOLD(acc0, p0, s0[0], partvl);     \
+            QI8_FOLD(acc1, p1, s0[1], partvl);     \
+            QI8_FOLD(acc2, p2, s0[2], partvl);     \
+            QI8_FOLD(acc3, p3, s0[3], partvl);     \
+            QI8_FOLD(acc4, p4, s1[0], partvl);     \
+            QI8_FOLD(acc5, p5, s1[1], partvl);     \
+            QI8_FOLD(acc6, p6, s1[2], partvl);     \
+            QI8_FOLD(acc7, p7, s1[3], partvl);     \
+        }                                          \
+    } while (0)
 
-                const vint8mf2_t a0_lo = __riscv_vle8_v_i8mf2(qa_row0 + sa + k, vl);
-                const vint8mf2_t a0_hi = __riscv_vle8_v_i8mf2(qa_row0 + sa + SegHalf + k, vl);
-                vint8mf2_t a1_lo = a0_lo, a1_hi = a0_hi;
-                if constexpr (MTILE > 1) {
-                    a1_lo = __riscv_vle8_v_i8mf2(qa_row1 + sa + k, vl);
-                    a1_hi = __riscv_vle8_v_i8mf2(qa_row1 + sa + SegHalf + k, vl);
-                }
+        for (size_t sub = 0; sub < ChunksPerBlock; ++sub) {
+            {
+                const size_t chunk = b * ChunksPerBlock + sub;
+                const size_t sb = chunk * ChunkStride;      // chunk offset within the packed tile
+                const size_t sa = chunk * Geom.ChunkElems;  // chunk offset within the A row data
+                for (size_t k = 0; k < SegHalf;) {
+                    const size_t vl = __riscv_vsetvl_e8mf2(SegHalf - k);
+
+                    const vint8mf2_t a0_lo = __riscv_vle8_v_i8mf2(qa_row0 + sa + k, vl);
+                    const vint8mf2_t a0_hi = __riscv_vle8_v_i8mf2(qa_row0 + sa + SegHalf + k, vl);
+                    vint8mf2_t a1_lo = a0_lo, a1_hi = a0_hi;
+                    if constexpr (MTILE > 1) {
+                        a1_lo = __riscv_vle8_v_i8mf2(qa_row1 + sa + k, vl);
+                        a1_hi = __riscv_vle8_v_i8mf2(qa_row1 + sa + SegHalf + k, vl);
+                    }
 
 #define SQ4_COL(c, p_r0, p_r1)                                                                         \
     if constexpr ((c) < NTILE) {                                                                       \
@@ -987,48 +1026,44 @@ SQ4BitGemmKernel_CompInt8_Tile(
         }                                                                                              \
     }
 
-                if constexpr (MTILE == 1) {
-                    SQ4_COL(0, p0, p0)
-                    SQ4_COL(1, p1, p1)
-                    SQ4_COL(2, p2, p2)
-                    SQ4_COL(3, p3, p3)
-                    SQ4_COL(4, p4, p4)
-                    SQ4_COL(5, p5, p5)
-                    SQ4_COL(6, p6, p6)
-                    SQ4_COL(7, p7, p7)
-                } else {
-                    SQ4_COL(0, p0, p4)
-                    SQ4_COL(1, p1, p5)
-                    SQ4_COL(2, p2, p6)
-                    SQ4_COL(3, p3, p7)
-                }
+                    if constexpr (MTILE == 1) {
+                        SQ4_COL(0, p0, p0)
+                        SQ4_COL(1, p1, p1)
+                        SQ4_COL(2, p2, p2)
+                        SQ4_COL(3, p3, p3)
+                        SQ4_COL(4, p4, p4)
+                        SQ4_COL(5, p5, p5)
+                        SQ4_COL(6, p6, p6)
+                        SQ4_COL(7, p7, p7)
+                    } else {
+                        SQ4_COL(0, p0, p4)
+                        SQ4_COL(1, p1, p5)
+                        SQ4_COL(2, p2, p6)
+                        SQ4_COL(3, p3, p7)
+                    }
 #undef SQ4_COL
 
-                k += vl;
+                    k += vl;
+                }
+            }
+
+            if constexpr (MidFold) {
+                if ((sub + 1) % kMidFoldChunks == 0 && sub + 1 < ChunksPerBlock) {
+                    SQ4_FOLD_PARTIALS();
+                    p0 = __riscv_vmv_v_x_i16m1(0, partvl);
+                    p1 = p0;
+                    p2 = p0;
+                    p3 = p0;
+                    p4 = p0;
+                    p5 = p0;
+                    p6 = p0;
+                    p7 = p0;
+                }
             }
         }
 
-        if constexpr (MTILE == 1) {
-            QI8_FOLD(acc0, p0, s0[0], partvl);
-            QI8_FOLD(acc1, p1, s0[1], partvl);
-            QI8_FOLD(acc2, p2, s0[2], partvl);
-            QI8_FOLD(acc3, p3, s0[3], partvl);
-            if constexpr (NTILE == 8) {
-                QI8_FOLD(acc4, p4, s0[4], partvl);
-                QI8_FOLD(acc5, p5, s0[5], partvl);
-                QI8_FOLD(acc6, p6, s0[6], partvl);
-                QI8_FOLD(acc7, p7, s0[7], partvl);
-            }
-        } else {
-            QI8_FOLD(acc0, p0, s0[0], partvl);
-            QI8_FOLD(acc1, p1, s0[1], partvl);
-            QI8_FOLD(acc2, p2, s0[2], partvl);
-            QI8_FOLD(acc3, p3, s0[3], partvl);
-            QI8_FOLD(acc4, p4, s1[0], partvl);
-            QI8_FOLD(acc5, p5, s1[1], partvl);
-            QI8_FOLD(acc6, p6, s1[2], partvl);
-            QI8_FOLD(acc7, p7, s1[3], partvl);
-        }
+        SQ4_FOLD_PARTIALS();
+#undef SQ4_FOLD_PARTIALS
     }
 
     auto store = [&](size_t r, size_t c, vfloat32m2_t acc) {
@@ -1084,7 +1119,6 @@ SQ4BitGemmKernel_CompInt8_MultiBlockTile(
     const size_t SegHalf = Geom.SegHalf;  // BlkLen / 2
     const size_t ChunkStride = Width * Geom.ChunkElems / 2;
     const size_t accvl = __riscv_vsetvlmax_e32m2();
-    QI8_SEG_ID(seg_id, SegHalf, accvl);
 
     size_t b_col[NTILE];  // column index within the packed tile
     const float* bs[NTILE];
@@ -1101,21 +1135,11 @@ SQ4BitGemmKernel_CompInt8_MultiBlockTile(
     vfloat32m2_t acc0 = __riscv_vfmv_v_f_f32m2(0.0f, accvl);
     vfloat32m2_t acc1 = acc0, acc2 = acc0, acc3 = acc0, acc4 = acc0, acc5 = acc0, acc6 = acc0, acc7 = acc0;
 
-    for (size_t chunk = 0; chunk < Geom.ChunkCount; ++chunk) {
-        const size_t segs = Geom.SegsInChunk(chunk);
-        const size_t b0 = chunk * Geom.SegsPerChunk;  // first block of the chunk
-        const size_t vl = __riscv_vsetvl_e8mf2(segs * SegHalf);
-        const uint8_t* b_chunk = QuantBData + chunk * ChunkStride;
-        const int8_t* a_chunk = qa + chunk * Geom.ChunkElems;
-
-        const vint8mf2_t a_lo = __riscv_vle8_v_i8mf2(a_chunk, vl);
-        const vint8mf2_t a_hi = __riscv_vle8_v_i8mf2(a_chunk + vl, vl);
-
-        // Unscaled float partial of the chunk for column c.
+    // Unscaled float partial of the piece for column c.
 #define SQ4_MBCOL(c, f)                                                                                      \
     vfloat32m2_t f;                                                                                          \
     {                                                                                                        \
-        const vuint8mf2_t packed = __riscv_vle8_v_u8mf2(b_chunk + b_col[c] * vl, vl);                        \
+        const vuint8mf2_t packed = __riscv_vle8_v_u8mf2(b_chunk + b_col[c] * half + k, vl);                  \
         const vint8mf2_t n_lo = __riscv_vreinterpret_v_u8mf2_i8mf2(__riscv_vand_vx_u8mf2(packed, 0x0F, vl)); \
         const vint8mf2_t n_hi = __riscv_vreinterpret_v_u8mf2_i8mf2(__riscv_vsrl_vx_u8mf2(packed, 4, vl));    \
         vint8mf2_t b_lo, b_hi;                                                                               \
@@ -1125,7 +1149,7 @@ SQ4BitGemmKernel_CompInt8_MultiBlockTile(
                 offset[g] = static_cast<int8_t>(static_cast<int>(DequantOffset(b_zp[c], b0 + g, true)));     \
             }                                                                                                \
             vint8mf2_t offv;                                                                                 \
-            QI8_SEG_OFFSETS(offv, offset, segs, seg_id, vl);                                                 \
+            QI8_SEG_OFFSETS(offv, offset, segs, piece_seg_id, vl);                                           \
             b_lo = __riscv_vsub_vv_i8mf2(n_lo, offv, vl);                                                    \
             b_hi = __riscv_vsub_vv_i8mf2(n_hi, offv, vl);                                                    \
         } else {                                                                                             \
@@ -1136,22 +1160,57 @@ SQ4BitGemmKernel_CompInt8_MultiBlockTile(
         p = __riscv_vwmacc_vv_i16m1(p, a_hi, b_hi, vl);                                                      \
         f = __riscv_vfwcvt_f_x_v_f32m2(p, vl);                                                               \
     }
-        {
-            SQ4_MBCOL(0, f0)
-            SQ4_MBCOL(1, f1)
-            SQ4_MBCOL(2, f2)
-            SQ4_MBCOL(3, f3)
-            QI8_FOLD_SEGS4(seg_id, acc0, acc1, acc2, acc3, f0, f1, f2, f3, bs[0], bs[1], bs[2], bs[3])
-        }
-        {
-            SQ4_MBCOL(4, f4)
-            SQ4_MBCOL(5, f5)
-            SQ4_MBCOL(6, f6)
-            SQ4_MBCOL(7, f7)
-            QI8_FOLD_SEGS4(seg_id, acc4, acc5, acc6, acc7, f4, f5, f6, f7, bs[4], bs[5], bs[6], bs[7])
-        }
-#undef SQ4_MBCOL
+
+    // One register-wide piece of a chunk: logical lanes [k, k + vl) of its
+    // halves, for all eight columns in two groups of four.
+#define SQ4_MB_PIECE(k, vl, seg_id)                                                                     \
+    {                                                                                                   \
+        const vuint16m1_t piece_seg_id = (seg_id);                                                      \
+        const vint8mf2_t a_lo = __riscv_vle8_v_i8mf2(a_chunk + (k), (vl));                              \
+        const vint8mf2_t a_hi = __riscv_vle8_v_i8mf2(a_chunk + half + (k), (vl));                       \
+        {                                                                                               \
+            SQ4_MBCOL(0, f0);                                                                           \
+            SQ4_MBCOL(1, f1);                                                                           \
+            SQ4_MBCOL(2, f2);                                                                           \
+            SQ4_MBCOL(3, f3);                                                                           \
+            QI8_FOLD_SEGS4(seg_id, acc0, acc1, acc2, acc3, f0, f1, f2, f3, bs[0], bs[1], bs[2], bs[3]); \
+        }                                                                                               \
+        {                                                                                               \
+            SQ4_MBCOL(4, f4);                                                                           \
+            SQ4_MBCOL(5, f5);                                                                           \
+            SQ4_MBCOL(6, f6);                                                                           \
+            SQ4_MBCOL(7, f7);                                                                           \
+            QI8_FOLD_SEGS4(seg_id, acc4, acc5, acc6, acc7, f4, f5, f6, f7, bs[4], bs[5], bs[6], bs[7]); \
+        }                                                                                               \
     }
+
+    const size_t vlmax = __riscv_vsetvlmax_e8mf2();
+    QI8_SEG_ID(seg_id0, SegHalf, 0, accvl);
+
+    for (size_t chunk = 0; chunk < Geom.ChunkCount; ++chunk) {
+        const size_t segs = Geom.SegsInChunk(chunk);
+        const size_t b0 = chunk * Geom.SegsPerChunk;  // first block of the chunk
+        const size_t half = segs * SegHalf;           // bytes per column half in this chunk
+        const uint8_t* b_chunk = QuantBData + chunk * ChunkStride;
+        const int8_t* a_chunk = qa + chunk * Geom.ChunkElems;
+
+        if (half <= vlmax) {
+            // One piece: the layout was packed for this register width.
+            const size_t vl = __riscv_vsetvl_e8mf2(half);
+            const size_t k = 0;
+            SQ4_MB_PIECE(k, vl, seg_id0);
+        } else {
+            // The layout was packed for a wider core: walk the halves in pieces.
+            for (size_t k = 0; k < half;) {
+                const size_t vl = __riscv_vsetvl_e8mf2(half - k);
+                QI8_SEG_ID(seg_id, SegHalf, k, vl);
+                SQ4_MB_PIECE(k, vl, seg_id);
+                k += vl;
+            }
+        }
+    }
+#undef SQ4_MB_PIECE
+#undef SQ4_MBCOL
 
     auto store = [&](size_t c, vfloat32m2_t acc) {
         if (c < n_cols) {
@@ -1189,6 +1248,8 @@ SQ4BitGemmKernel_CompInt8_Impl(
     MLAS_UNREFERENCED_PARAMETER(CountK);
 
     const CompInt8Geometry Geom(BlkLen, BlockCountK);
+    // With zero points the int16 partials hold at most kMidFoldChunks chunks.
+    const bool MidFold = HasZeroPoint && Geom.ChunksPerBlock > kMidFoldChunks;
     const size_t lda = BlockCountK * Q8BlkSize(BlkLen);
     const size_t ldb = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t StrideQuantBZeroPoint = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(BlockCountK);
@@ -1217,10 +1278,17 @@ SQ4BitGemmKernel_CompInt8_Impl(
         }
 
         if (CountM == 1) {
-            SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 1, CompInt8ColTile>(
-                Geom, QuantA, lda, b_tile, width, b_scale, b_zp,
-                StrideQuantBZeroPoint, width, C + nn, ldc, bias
-            );
+            if (MidFold) {
+                SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 1, CompInt8ColTile, true>(
+                    Geom, QuantA, lda, b_tile, width, b_scale, b_zp,
+                    StrideQuantBZeroPoint, width, C + nn, ldc, bias
+                );
+            } else {
+                SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 1, CompInt8ColTile, false>(
+                    Geom, QuantA, lda, b_tile, width, b_scale, b_zp,
+                    StrideQuantBZeroPoint, width, C + nn, ldc, bias
+                );
+            }
             continue;
         }
 
@@ -1235,16 +1303,30 @@ SQ4BitGemmKernel_CompInt8_Impl(
 
             size_t m = 0;
             for (; m + 2 <= CountM; m += 2) {
-                SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 2, 4>(
-                    Geom, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
-                    StrideQuantBZeroPoint, n_cols, C + m * ldc + nn + c0, ldc, sub_bias
-                );
+                if (MidFold) {
+                    SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 2, 4, true>(
+                        Geom, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
+                        StrideQuantBZeroPoint, n_cols, C + m * ldc + nn + c0, ldc, sub_bias
+                    );
+                } else {
+                    SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 2, 4, false>(
+                        Geom, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
+                        StrideQuantBZeroPoint, n_cols, C + m * ldc + nn + c0, ldc, sub_bias
+                    );
+                }
             }
             if (m < CountM) {
-                SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 1, 4>(
-                    Geom, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
-                    StrideQuantBZeroPoint, n_cols, C + m * ldc + nn + c0, ldc, sub_bias
-                );
+                if (MidFold) {
+                    SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 1, 4, true>(
+                        Geom, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
+                        StrideQuantBZeroPoint, n_cols, C + m * ldc + nn + c0, ldc, sub_bias
+                    );
+                } else {
+                    SQ4BitGemmKernel_CompInt8_Tile<HasZeroPoint, 1, 4, false>(
+                        Geom, QuantA + m * lda, lda, b_sub, width, sub_scale, sub_zp,
+                        StrideQuantBZeroPoint, n_cols, C + m * ldc + nn + c0, ldc, sub_bias
+                    );
+                }
             }
         }
     }
@@ -1475,7 +1557,6 @@ SQ8BitGemmKernel_BlkSum_CompInt8_MultiBlockTile(
     const size_t SegHalf = Geom.SegHalf;  // BlkLen / 2
     const size_t ChunkStride = Width * Geom.ChunkElems;
     const size_t accvl = __riscv_vsetvlmax_e32m2();
-    QI8_SEG_ID(seg_id, SegHalf, accvl);
 
     const float* bs[NTILE];
     const float* bsum[NTILE];
@@ -1491,42 +1572,62 @@ SQ8BitGemmKernel_BlkSum_CompInt8_MultiBlockTile(
     vfloat32m2_t acc0 = __riscv_vfmv_v_f_f32m2(0.0f, accvl);
     vfloat32m2_t acc1 = acc0, acc2 = acc0, acc3 = acc0, acc4 = acc0, acc5 = acc0, acc6 = acc0, acc7 = acc0;
 
+#define SQ8_MBCOL(c, f)                                              \
+    vfloat32m2_t f;                                                  \
+    {                                                                \
+        const int8_t* bc = b_chunk + b_col[c] * (2 * half) + k;      \
+        const vint8mf2_t b_lo = __riscv_vle8_v_i8mf2(bc, vl);        \
+        const vint8mf2_t b_hi = __riscv_vle8_v_i8mf2(bc + half, vl); \
+        vint16m1_t p = __riscv_vwmul_vv_i16m1(a_lo, b_lo, vl);       \
+        p = __riscv_vwmacc_vv_i16m1(p, a_hi, b_hi, vl);              \
+        f = __riscv_vfwcvt_f_x_v_f32m2(p, vl);                       \
+    }
+
+#define SQ8_MB_PIECE(k, vl, seg_id)                                                                     \
+    {                                                                                                   \
+        const vint8mf2_t a_lo = __riscv_vle8_v_i8mf2(a_chunk + (k), (vl));                              \
+        const vint8mf2_t a_hi = __riscv_vle8_v_i8mf2(a_chunk + half + (k), (vl));                       \
+        {                                                                                               \
+            SQ8_MBCOL(0, f0);                                                                           \
+            SQ8_MBCOL(1, f1);                                                                           \
+            SQ8_MBCOL(2, f2);                                                                           \
+            SQ8_MBCOL(3, f3);                                                                           \
+            QI8_FOLD_SEGS4(seg_id, acc0, acc1, acc2, acc3, f0, f1, f2, f3, bs[0], bs[1], bs[2], bs[3]); \
+        }                                                                                               \
+        {                                                                                               \
+            SQ8_MBCOL(4, f4);                                                                           \
+            SQ8_MBCOL(5, f5);                                                                           \
+            SQ8_MBCOL(6, f6);                                                                           \
+            SQ8_MBCOL(7, f7);                                                                           \
+            QI8_FOLD_SEGS4(seg_id, acc4, acc5, acc6, acc7, f4, f5, f6, f7, bs[4], bs[5], bs[6], bs[7]); \
+        }                                                                                               \
+    }
+
+    const size_t vlmax = __riscv_vsetvlmax_e8mf2();
+    QI8_SEG_ID(seg_id0, SegHalf, 0, accvl);
+
     for (size_t chunk = 0; chunk < Geom.ChunkCount; ++chunk) {
         const size_t segs = Geom.SegsInChunk(chunk);
         const size_t b0 = chunk * Geom.SegsPerChunk;
-        const size_t vl = __riscv_vsetvl_e8mf2(segs * SegHalf);
+        const size_t half = segs * SegHalf;
         const int8_t* b_chunk = b_data + chunk * ChunkStride;
         const int8_t* a_chunk = a_data + chunk * Geom.ChunkElems;
 
-        const vint8mf2_t a_lo = __riscv_vle8_v_i8mf2(a_chunk, vl);
-        const vint8mf2_t a_hi = __riscv_vle8_v_i8mf2(a_chunk + vl, vl);
-
-#define SQ8_MBCOL(c, f)                                            \
-    vfloat32m2_t f;                                                \
-    {                                                              \
-        const int8_t* bc = b_chunk + b_col[c] * (2 * vl);          \
-        const vint8mf2_t b_lo = __riscv_vle8_v_i8mf2(bc, vl);      \
-        const vint8mf2_t b_hi = __riscv_vle8_v_i8mf2(bc + vl, vl); \
-        vint16m1_t p = __riscv_vwmul_vv_i16m1(a_lo, b_lo, vl);     \
-        p = __riscv_vwmacc_vv_i16m1(p, a_hi, b_hi, vl);            \
-        f = __riscv_vfwcvt_f_x_v_f32m2(p, vl);                     \
+        if (half <= vlmax) {
+            const size_t vl = __riscv_vsetvl_e8mf2(half);
+            const size_t k = 0;
+            SQ8_MB_PIECE(k, vl, seg_id0);
+        } else {
+            for (size_t k = 0; k < half;) {
+                const size_t vl = __riscv_vsetvl_e8mf2(half - k);
+                QI8_SEG_ID(seg_id, SegHalf, k, vl);
+                SQ8_MB_PIECE(k, vl, seg_id);
+                k += vl;
+            }
+        }
     }
-        {
-            SQ8_MBCOL(0, f0)
-            SQ8_MBCOL(1, f1)
-            SQ8_MBCOL(2, f2)
-            SQ8_MBCOL(3, f3)
-            QI8_FOLD_SEGS4(seg_id, acc0, acc1, acc2, acc3, f0, f1, f2, f3, bs[0], bs[1], bs[2], bs[3])
-        }
-        {
-            SQ8_MBCOL(4, f4)
-            SQ8_MBCOL(5, f5)
-            SQ8_MBCOL(6, f6)
-            SQ8_MBCOL(7, f7)
-            QI8_FOLD_SEGS4(seg_id, acc4, acc5, acc6, acc7, f4, f5, f6, f7, bs[4], bs[5], bs[6], bs[7])
-        }
+#undef SQ8_MB_PIECE
 #undef SQ8_MBCOL
-    }
 
     auto correction = [&](const float* bsc) -> float {
         vfloat32m2_t v = __riscv_vfmv_v_f_f32m2(0.0f, accvl);
