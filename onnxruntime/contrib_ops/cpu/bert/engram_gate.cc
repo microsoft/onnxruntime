@@ -118,8 +118,9 @@ Status EngramGate<T>::Compute(OpKernelContext* context) const {
           float gated_sum_sq = 0.0f;
           for (int64_t c = 0; c < hidden_size; ++c) {
             const float gated_value = gate * static_cast<float>(value_row[c]);
-            gated_sum_sq += gated_value * gated_value;
             output_row[c] = static_cast<T>(gated_value);
+            const float rounded_gated_value = static_cast<float>(output_row[c]);
+            gated_sum_sq += rounded_gated_value * rounded_gated_value;
           }
 
           if (output_normed_data != nullptr) {
