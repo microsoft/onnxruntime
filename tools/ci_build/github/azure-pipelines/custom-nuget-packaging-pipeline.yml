@@ -12,8 +12,6 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - alpha
-  - beta
   - rc
   - none
   default: none
@@ -21,7 +19,7 @@ parameters:
 - name: PreReleaseVersionSuffixNumber
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
-  default: 0
+  default: 1
 
 variables:
   - template: templates/common-variables.yml

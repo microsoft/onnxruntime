@@ -432,14 +432,29 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
   bool past_key_shared = (data.past_key != nullptr && data.past_key == data.present_key);
   bool past_value_shared = (data.past_value != nullptr && data.past_value == data.present_value);
-  ORT_ENFORCE(past_key_shared == past_value_shared,
-              "past_key/present_key and past_value/present_value must be both shared or both separate.");
-  parameters.past_present_share_buffer = past_key_shared;
+  parameters.past_present_share_buffer = past_key_shared && past_value_shared;
 
   // Eviction rewrites the cache in place, so past and present must be the same buffer.
   ORT_RETURN_IF(parameters.is_windowed_kv_cache && !parameters.past_present_share_buffer,
                 "sliding_window_cache=1 requires past_key/present_key and past_value/present_value "
                 "to share the same buffer.");
+
+  IAllocatorUniquePtr<CudaU> separate_past_buffer;
+  if (past_key_shared != past_value_shared) {
+    // Nonshared preprocessing overwrites present KV, so preserve the aliased past cache first.
+    const Tensor* shared_past = past_key_shared ? past_key : past_value;
+    const size_t past_bytes = shared_past->SizeInBytes();
+    separate_past_buffer = GetScratchBuffer<CudaU>(past_bytes / sizeof(CudaU), GetComputeStream(context));
+    if (past_bytes != 0) {
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(separate_past_buffer.get(), shared_past->DataRaw(), past_bytes,
+                                           cudaMemcpyDeviceToDevice, Stream(context)));
+    }
+    if (past_key_shared) {
+      data.past_key = separate_past_buffer.get();
+    } else {
+      data.past_value = separate_past_buffer.get();
+    }
+  }
 
   // The capacity C of a windowed cache is only guaranteed to cover the attention window, so a step
   // that appends S > 1 tokens can transiently need min(P, C) + S entries: the earliest queries of

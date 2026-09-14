@@ -22,6 +22,10 @@ Abstract:
 #include <cstdint>
 #include <stdexcept>
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 //
 // Define the calling convention for Windows targets.
 //
@@ -88,6 +92,16 @@ Abstract:
 
 #if defined(MLAS_TARGET_AMD64) || defined (MLAS_TARGET_POWER) || defined (MLAS_TARGET_ZVECTOR)
 #define MLAS_SUPPORTS_GEMM_DOUBLE
+#endif
+
+// Runtime BF16 and SME2 capabilities are checked separately before selecting
+// an accelerated SBGEMM path.
+#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+#define MLAS_SBGEMM_AVAILABLE
+#elif defined(__APPLE__)
+#if defined(MLAS_TARGET_ARM64) && TARGET_OS_OSX
+#define MLAS_SBGEMM_AVAILABLE
+#endif
 #endif
 
 #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
@@ -1706,6 +1720,12 @@ MlasRotaryEmbedOneRow(
  *        Uses platform-optimized kernel if available, otherwise returns false.
  *        Any platform (AMD64/ARM64/RISC-V) can register a LayerNormF32Kernel.
  *
+ *        On x86 (32-bit and 64-bit), the AVX2 kernel declines small rows
+ *        (returns false): NormSize < 8 for LayerNorm, or NormSize < 16 for
+ *        RMSNorm, where SIMD setup exceeds the benefit.
+ *        Callers must provide their own scalar fallback for small-N on x86.
+ *        Other platforms (e.g. RISC-V RVV) dispatch for any NormSize.
+ *
  * @return true if an optimized kernel was used, false if caller should fall back
  */
 bool
@@ -2170,7 +2190,7 @@ MlasHalfGemmConvertPackB(
     void* PackedB
     );
 
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(MLAS_SBGEMM_AVAILABLE)
 /**
  * @brief Whether current CPU supports Bfloat16(bf16) acceleration.
  */
@@ -2328,7 +2348,7 @@ MlasSBGemmConvertPackB(
     void* PackedB,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
-#endif
+#endif  // MLAS_SBGEMM_AVAILABLE
 
 /**
  * @brief Indirect Depthwise convolution for fp16

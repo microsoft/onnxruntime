@@ -320,15 +320,18 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 #ifdef USE_DML
       dml::RegisterDmlSchemas();
 #endif
-      RegisterOnnxOperatorSetSchema();
+      // ONNX registers these schemas automatically unless static registration was disabled at build time.
+      if (ONNX_NAMESPACE::IsOnnxStaticRegistrationDisabled()) {
+        RegisterOnnxOperatorSetSchema();
 
 #ifndef DISABLE_ML_OPS
-      RegisterOnnxMLOperatorSetSchema();
+        RegisterOnnxMLOperatorSetSchema();
 #endif
 
 #if defined(ENABLE_TRAINING_OPS)
-      RegisterOnnxTrainingOperatorSetSchema();
+        RegisterOnnxTrainingOperatorSetSchema();
 #endif
+      }
 
 #if defined(ENABLE_TRAINING_OPS)
       // preserve this order until <training schemas>: this depends on operatorsetschema registration.
