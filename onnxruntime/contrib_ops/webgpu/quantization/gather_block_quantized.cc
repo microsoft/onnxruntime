@@ -185,12 +185,12 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "  let quantize_axis_index = " << scales.IndicesGet("data_indices", "uniforms.quantize_axis") << "/ uniforms.block_size;\n  "
       << scales.IndicesSet("scale_indices", "uniforms.quantize_axis", "quantize_axis_index") << ";\n";
 
-  if (is_fp_quantized_ && scale_broadcast_axes_mask_ != 0) {
+  if (is_fp_quantized_ && scale_broadcast_axes_.find('1') != std::string::npos) {
     // Broadcast axes (scales dim == 1) always index 0 along that axis, regardless of the
     // corresponding data index. The set of broadcast axes is fixed per-kernel-instance (part of
     // the cache hint), so unroll this at shader-generation time rather than at shader run time.
     for (size_t axis = 0; axis < x_shape_.NumDimensions(); ++axis) {
-      if ((scale_broadcast_axes_mask_ & (1u << axis)) != 0) {
+      if (scale_broadcast_axes_[axis] == '1') {
         shader.MainFunctionBody()
             << "  " << scales.IndicesSet("scale_indices", axis, "0u") << ";\n";
       }
@@ -419,7 +419,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   // On axes other than quantize_axis, a scales dimension of 1 broadcasts along that axis (e.g. a
   // single global per-tensor scale) when data is FP8/FP4 quantized; this mirrors the CPU kernel's
   // support for HuggingFace-style single-scalar `weight_scale` embeddings.
-  uint32_t scale_broadcast_axes_mask = 0;
+  std::string scale_broadcast_axes(x_shape.NumDimensions(), '0');
   for (size_t i = 0; i < x_shape.NumDimensions(); ++i) {
     bool dims_match = (i == static_cast<size_t>(quantize_axis))
                           ? (x_shape[i] + effective_block_size - 1) / effective_block_size == scales_shape[i]
@@ -427,7 +427,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
     bool broadcastable = is_fp_quantized && i != static_cast<size_t>(quantize_axis) && scales_shape[i] == 1;
     ORT_RETURN_IF_NOT(dims_match || broadcastable, "data and scales do not match shapes.");
     if (broadcastable && !dims_match) {
-      scale_broadcast_axes_mask |= (1u << i);
+      scale_broadcast_axes[i] = '1';
     }
   }
 
@@ -452,7 +452,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
 
   GatherBlockQuantizedProgram program{is_signed && !is_fp_quantized, is_int8, indices_rank, gather_axis, bits,
                                       zero_points != nullptr, x_shape, output_shape, is_fp_quantized,
-                                      static_cast<int32_t>(x_dtype), scale_broadcast_axes_mask};
+                                      static_cast<int32_t>(x_dtype), scale_broadcast_axes};
 
   program
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, (bits == 4) ? 8 : 4}})
@@ -469,7 +469,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariables({{zp_packed_qaxis_dim}})
       .CacheHint(std::to_string(bits), std::to_string(gather_axis), std::to_string(quantize_axis),
                  std::to_string(effective_block_size), std::to_string(x_dtype),
-                 std::to_string(scale_broadcast_axes_mask));
+                 scale_broadcast_axes);
 
   if (zero_points != nullptr) {
     if (bits == 2 && is_uint8) {

@@ -313,6 +313,10 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
                                                              const int64_t quantize_N,
                                                              const Prepare& p,
                                                              concurrency::ThreadPool* tp) const {
+  if (gather_M == 0 || gather_N == 0 || gather_block == 0) {
+    return Status::OK();
+  }
+
   auto data_full_block = gather_axis_dim * gather_block;
 
   if constexpr (IsFpQuantizedV<T1>) {
