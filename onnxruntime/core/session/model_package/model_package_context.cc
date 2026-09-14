@@ -417,11 +417,14 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
       if (const ::ModelExecutorInfoEntry* ei =
               ::ModelVariantInfo_FindExecutorInfo(variant, "ort")) {
         if (ei->json != nullptr && ei->json[0] != '\0') {
-          try {
+          ORT_TRY {
             ort_obj = json::parse(ei->json);
-          } catch (const std::exception& e) {
-            ORT_THROW("Failed to parse executor_info[\"ort\"] JSON for variant '",
-                      ort_variant.variant_name, "' in component '", component_name, "': ", e.what());
+          }
+          ORT_CATCH(const std::exception& e) {
+            ORT_HANDLE_EXCEPTION([&]() {
+              ORT_THROW("Failed to parse executor_info[\"ort\"] JSON for variant '",
+                        ort_variant.variant_name, "' in component '", component_name, "': ", e.what());
+            });
           }
         }
       }
@@ -505,11 +508,14 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
 
       // Variant-scope additional_metadata.
       if (variant->additional_metadata_json != nullptr) {
-        try {
+        ORT_TRY {
           ort_variant.consumer_metadata = json::parse(variant->additional_metadata_json);
-        } catch (const std::exception& e) {
-          ORT_THROW("Failed to parse additional_metadata JSON for variant '", ort_variant.variant_name,
-                    "' in component '", component_name, "': ", e.what());
+        }
+        ORT_CATCH(const std::exception& e) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            ORT_THROW("Failed to parse additional_metadata JSON for variant '", ort_variant.variant_name,
+                      "' in component '", component_name, "': ", e.what());
+          });
         }
       }
 
