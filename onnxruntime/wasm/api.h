@@ -57,6 +57,24 @@ int EMSCRIPTEN_KEEPALIVE OrtInit(int num_threads, int logging_level);
 int EMSCRIPTEN_KEEPALIVE OrtGetLastError(int* error_code, const char** error_message);
 
 /**
+ * get the list of execution providers that this build was compiled with.
+ * @param out_ptr [out] a pointer to accept the buffer of provider names. The buffer contains `providers_length`
+ *                      C-style string pointers, followed by the string data they point into. Caller must release it
+ *                      after use by calling OrtReleaseAvailableProviders().
+ * @param providers_length [out] a pointer to accept the number of provider names.
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtGetAvailableProviders(char*** out_ptr, int* providers_length);
+
+/**
+ * release the buffer returned by OrtGetAvailableProviders().
+ * @param ptr the buffer returned as `out_ptr` by OrtGetAvailableProviders().
+ * @param providers_length the count returned as `providers_length` by OrtGetAvailableProviders().
+ * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
+ */
+int EMSCRIPTEN_KEEPALIVE OrtReleaseAvailableProviders(char** ptr, int providers_length);
+
+/**
  * create an instance of ORT session options.
  * assume that all enum type parameters, such as graph_optimization_level, execution_mode, and log_severity_level,
  * are checked and set properly at JavaScript.
