@@ -7,7 +7,6 @@ steps:
   displayName: 'Read CUDA plugin metadata'
   inputs:
     targetType: inline
-    pwsh: true
     script: |
       $ErrorActionPreference = 'Stop'
 
@@ -19,6 +18,10 @@ steps:
       $metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
 
       $requiredProperties = @(
+        'build_windows_x64',
+        'build_windows_arm64',
+        'build_linux_x64',
+        'build_linux_aarch64',
         'cuda_version',
         'cuda_version_no_dot',
         'cuda_version_win_x64',
@@ -38,7 +41,12 @@ steps:
       )
 
       foreach ($property in $requiredProperties) {
-        if (-not $metadata.PSObject.Properties.Name.Contains($property) -or [string]::IsNullOrWhiteSpace($metadata.$property)) {
+        if (-not $metadata.PSObject.Properties.Name.Contains($property)) {
+          throw "CUDA plugin metadata is missing required property '$property'."
+        }
+
+        $value = $metadata.$property
+        if ($null -eq $value -or ($value -is [string] -and [string]::IsNullOrWhiteSpace($value))) {
           throw "CUDA plugin metadata is missing required property '$property'."
         }
       }
@@ -48,6 +56,10 @@ steps:
       Write-Host "Windows x64 Python artifact: $($metadata.python_artifact_win_x64)"
       Write-Host "Windows ARM64 Python artifact: $($metadata.python_artifact_win_arm64)"
 
+      Write-Host "##vso[task.setvariable variable=CudaPluginBuiltWindowsX64]$($metadata.build_windows_x64.ToString().ToLowerInvariant())"
+      Write-Host "##vso[task.setvariable variable=CudaPluginBuiltWindowsArm64]$($metadata.build_windows_arm64.ToString().ToLowerInvariant())"
+      Write-Host "##vso[task.setvariable variable=CudaPluginBuiltLinuxX64]$($metadata.build_linux_x64.ToString().ToLowerInvariant())"
+      Write-Host "##vso[task.setvariable variable=CudaPluginBuiltLinuxArm64]$($metadata.build_linux_aarch64.ToString().ToLowerInvariant())"
       Write-Host "##vso[task.setvariable variable=CudaVersion]$($metadata.cuda_version)"
       Write-Host "##vso[task.setvariable variable=CudaVersionNoDot]$($metadata.cuda_version_no_dot)"
       Write-Host "##vso[task.setvariable variable=CudaVersionWinX64]$($metadata.cuda_version_win_x64)"
