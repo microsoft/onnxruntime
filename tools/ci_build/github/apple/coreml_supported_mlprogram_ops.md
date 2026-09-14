@@ -17,6 +17,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Ceil||
 |ai.onnx:Div||
 |ai.onnx:Elu||
+|ai.onnx:Equal|Inputs must share dtype (fp32/fp16/int32/bool); output is bool. MLProgram only.|
 |ai.onnx:Erf||
 |ai.onnx:Exp||
 |ai.onnx:GatherND|batch_dims must be 0.|
