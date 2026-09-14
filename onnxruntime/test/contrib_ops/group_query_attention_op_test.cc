@@ -3428,7 +3428,7 @@ static void RunGQACudaCacheAliasingTest(bool use_flash, bool sliding_window_cach
   node.AddAttribute("kv_num_heads", static_cast<int64_t>(kv_num_heads));
   if (sliding_window_cache) {
     node.AddAttribute("sliding_window_cache", int64_t{1});
-    node.AddAttribute("local_window_size", int64_t{cache_capacity - 1});
+    node.AddAttribute("local_window_size", int64_t{cache_capacity});
   }
   ASSERT_STATUS_OK(graph.Resolve());
   std::string model_data;
