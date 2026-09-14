@@ -2,11 +2,11 @@
 
 ## Overview
 
-ONNX Runtime (ORT) provides a mechanism for exposing experimental C API functions. Experimental APIs are a proving ground for new functionality that is subject to change and carries no stability guarantees. An experimental API may eventually be promoted to the stable ORT API or abandoned.
+ONNX Runtime (ORT) provides a mechanism for exposing experimental C API functions. Experimental APIs are a proving ground for new functionality. They may eventually be promoted to the stable ORT API or abandoned, so their availability is not guaranteed across releases. While an experimental function is available under a given name, however, its signature does not change, and its ABI-relevant types and behavioral contract remain backward compatible.
 
 Experimental functions are not part of the stable `OrtApi` struct. Instead, they are resolved by name at runtime through the stable C API [`OrtApi::GetExperimentalFunction`](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#ace33338eb9175cdc92b52f61c9aff9a6), which was introduced in ORT 1.28. Given a name, it returns a generic function pointer, or `NULL` if the named function is not available in the running ORT. A non-null result means the function is present and can be used; a null result means it is absent and the caller must fall back or fail gracefully. This keeps experimental functions off the stable ABI while still making them reachable from any ORT build that supports them.
 
-Every experimental function has a name that ends in a `_SinceV<N>` suffix, where `N` is the ORT API version in which that function was first introduced (for example, `OrtApi_ExperimentalApiTest_SinceV28`). The suffix is part of the identity of the function: it makes each name unique across API versions (which correspond to ORT minor releases). For an experimental function with a given name, the behavior should remain stable. Updating the experimental function's behavior requires introducing a new name.
+Every experimental function has a name that ends in a `_SinceV<N>` suffix, where `N` is the ORT API version in which that function was first introduced (for example, `OrtApi_ExperimentalApiTest_SinceV28`). The suffix is part of the identity of the function: it makes each name unique across API versions (which correspond to ORT minor releases). Backward-compatible fixes and behavioral extensions may retain the existing name; a signature change or an incompatible ABI or behavioral-contract change requires a new name.
 
 The lookup names, the function-signature typedefs, and any auxiliary types the experimental functions require are provided by a companion C header, [onnxruntime_experimental_c_api.h](../include/onnxruntime/core/session/onnxruntime_experimental_c_api.h). C++ consumers should instead use the companion C++ header, [onnxruntime_experimental_cxx_api.h](../include/onnxruntime/core/session/onnxruntime_experimental_cxx_api.h), which builds on the C header and adds typed accessors in the `Ort::Experimental` namespace.
 
@@ -14,9 +14,9 @@ The lookup names, the function-signature typedefs, and any auxiliary types the e
 
 These guidelines are for consumers who want to *call* experimental functions.
 
-### Do not expect stability
+### Expect availability to vary
 
-An experimental function with a given name has stable behavior *if it is available*. Beyond that, there are no guarantees. In particular, there is no promise that the function will exist in any future (or past) version of ORT. By choosing to use an experimental API, you are committing to adapting your code later — either following the function to its stable replacement after promotion, or accounting for its removal. Do not build code that assumes an experimental function will always be present.
+There is no promise that an experimental function will exist in any future (or past) version of ORT. A newer experimental header may also remove its typedef and name constant. By choosing to use an experimental API, you are committing to adapting your code when updating the header — either following the function to its stable replacement after promotion, or accounting for its removal. At runtime, do not assume that a function declared by the header used to build your application is present in the loaded ORT library.
 
 ### Check availability at runtime
 
@@ -32,7 +32,7 @@ Do not hard-code experimental function names or re-declare their signatures by h
 - The C header supplies, for each experimental function, a function-pointer typedef (`OrtExperimental_<Name>_Fn`) and a name constant (`kOrtExperimental_<Name>_FnName`). Look the function up with the name constant, then cast the returned generic pointer to the matching typedef before calling it. Calling through any other type is undefined behavior.
 - The C++ header wraps this pattern in the typed `Ort::Experimental` accessors described above, so you get the correct type without a manual cast, plus any C++ wrapper types associated with the experimental functions.
 
-The headers provide the known function names and their signatures; the runtime you are calling into will either have a given function or not, which is exactly what the runtime lookup tells you. For worked examples of both the C-style lookup and the C++ accessors, see the shared library test at [test_experimental_api.cc](../onnxruntime/test/shared_lib/test_experimental_api.cc).
+The headers provide the known function names and their signatures; the runtime you are calling into will either have a given function or not, which is exactly what the runtime lookup tells you. For C and C++ usage examples, see [onnxruntime_experimental_c_api.h](../include/onnxruntime/core/session/onnxruntime_experimental_c_api.h).
 
 ## Implementer Guidelines
 
@@ -69,9 +69,9 @@ If an experimental function needs a new auxiliary type, declare it alongside the
 
 Document the expected promotion or abandonment timeline in the new API's documentation. E.g., "Promotion to stable API expected by version X." This is an expectation, not a contract, and it can be updated as plans change.
 
-### Keep behavior stable for a given experimental API name
+### Keep a given experimental API name backward compatible
 
-Because an experimental API name may be valid across more than one ORT release while consumers fetch the function by name, an experimental function must stay stable for the lifetime of its name. "Stability" here covers the signature, any auxiliary types the function uses, and the function's actual runtime behavior. To make a breaking change, introduce a *new* name rather than altering an existing one. This should be straightforward to do in a later API version, since the introducing API version is baked into the name.
+Because an experimental API name may be available across more than one ORT release while consumers fetch the function by name, its signature must not change, and its ABI-relevant auxiliary types and behavioral contract must remain backward compatible for the lifetime of that name. Compatible bug fixes and behavioral extensions are allowed. For a signature change or an incompatible ABI or behavioral-contract change, introduce a *new* name rather than altering the existing one. This should be straightforward to do in a later API version, since the introducing API version is baked into the name.
 
 ### Add tests
 
@@ -80,7 +80,7 @@ Add test coverage for new experimental functions, exercising both the lookup mec
 ## Experimental API Lifecycle
 
 1. **Add.** Add one experimental API entry with the current ORT API version and implement the function.
-2. **Update.** To change behavior or signature, introduce a new experimental API entry at the current ORT API version — which produces a new lookup name — rather than modifying the existing one. The old and new entries may coexist. Never reuse a name.
+2. **Update.** A backward-compatible fix or behavioral extension may retain the existing name. For a signature change or an incompatible ABI or behavioral-contract change, introduce a new experimental API entry at the current ORT API version — which produces a new lookup name — rather than modifying the existing one. The old and new entries may coexist. Never reuse a name.
 3. **Promote or remove.**
    - **Promote:** Add the function to the stable API struct (append-only, dropping the `_SinceV<Version>` suffix) and remove the experimental entry.
    - **Remove:** Delete the experimental entry. Because the versioned name is unique and never reused, no separate retirement tracking is needed.
@@ -89,4 +89,4 @@ Add test coverage for new experimental functions, exercising both the lookup mec
 
 - [onnxruntime_experimental_c_api.h](../include/onnxruntime/core/session/onnxruntime_experimental_c_api.h) — C names, typedefs, and auxiliary type declarations.
 - [onnxruntime_experimental_cxx_api.h](../include/onnxruntime/core/session/onnxruntime_experimental_cxx_api.h) — C++ `Ort::Experimental` accessors and wrapper types.
-- [test_experimental_api.cc](../onnxruntime/test/shared_lib/test_experimental_api.cc) — example usage of the C lookup and the C++ accessors.
+- [test_experimental_api.cc](../onnxruntime/test/shared_lib/test_experimental_api.cc) — test coverage and example usage for experimental API function lookup and the C++ accessors.
