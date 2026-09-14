@@ -521,7 +521,8 @@ class KernelTestFixture : public ::testing::Test {
                                                          reinterpret_cast<const AType*>(d_scales_->data()),
                                                          static_cast<const uint8_t*>(d_uint8_zeros.data()),
                                                          static_cast<const AType*>(nullptr),
-                                                         m_, n_, k_, block_size_, device_prop_.sharedMemPerBlock, s_);
+                                                         m_, n_, k_, block_size_, device_prop_.sharedMemPerBlock,
+                                                         device_prop_.multiProcessorCount, s_);
             },
             warmup_, repeats_, s_);
       }
