@@ -169,7 +169,7 @@ class PluginExecutionProvider : public IExecutionProvider {
     std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;
   };
 
-  UniqueOrtEp ort_ep_;
+  std::shared_ptr<OrtEp> ort_ep_;
   OrtEpFactory& ep_factory_;
   std::vector<const OrtEpDevice*> ep_devices_;
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;

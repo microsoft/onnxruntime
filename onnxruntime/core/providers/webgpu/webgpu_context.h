@@ -240,6 +240,7 @@ class WebGpuContextFactory {
 class WebGpuContext final {
  public:
   Status Wait(wgpu::Future f);
+  Status WaitForSubmittedWork();
 
   const wgpu::Instance& Instance() const { return instance_; }
   const wgpu::Device& Device() const { return device_; }

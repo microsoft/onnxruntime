@@ -92,6 +92,7 @@ class ProgramManager {
                                             wgpu::BindGroupLayout& bind_group_layout) const;
 
   mutable std::mutex programs_mutex_;
+  mutable std::mutex shader_dump_mutex_;
   std::unordered_map<std::string, ProgramArtifact> programs_;
   WebGpuContext& webgpu_context_;
 

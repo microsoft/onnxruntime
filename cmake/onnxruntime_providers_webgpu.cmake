@@ -86,6 +86,7 @@
     # plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION) into the EP DLL so it can be enforced at runtime.
     # Format is strict "MAJOR.MINOR.PATCH".
     set(_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE "${REPO_ROOT}/plugin-ep-webgpu/MIN_ONNXRUNTIME_VERSION")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}")
     file(STRINGS "${_ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION LIMIT_COUNT 1)
     if(NOT _ORT_PLUGIN_EP_WEBGPU_MIN_ORT_VERSION)
       message(FATAL_ERROR "WebGPU plugin EP minimum ORT version file is missing or empty: "

@@ -15,9 +15,12 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <gsl/gsl>
 
+#include "core/common/logging/logging.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/autoep/test_autoep_utils.h"
@@ -300,6 +303,75 @@ TEST_F(PluginEpWebGpuConcurrency, EnvironmentCopiesBeforeAndAfterSerialSessionCr
   RunWithCpuInputAndOutput(*session, 5.0f);
 }
 
+TEST_F(PluginEpWebGpuConcurrency, SessionTransfersDoNotDependOnFactoryCallOrderOrThread) {
+  const auto& device = *static_cast<const OrtEpDevice*>(Device());
+  auto& factory = *device.GetMutableFactory();
+  Ort::SessionOptions options;
+  const OrtHardwareDevice* hardware_device = device.device;
+  const OrtKeyValuePairs* metadata = &device.ep_metadata;
+  std::array<OrtEp*, kThreads> eps{};
+  auto release_eps = gsl::finally([&] {
+    for (auto* ep : eps) {
+      if (ep != nullptr) {
+        factory.ReleaseEp(&factory, ep);
+      }
+    }
+  });
+
+  // Create all instances on one thread before requesting any instance transfers.
+  for (auto& ep : eps) {
+    ThrowOnError(factory.CreateEp(&factory, &hardware_device, &metadata, 1, options,
+                                  logging::LoggingManager::DefaultLogger().ToExternal(), &ep));
+    ASSERT_NE(ep, nullptr);
+    ASSERT_NE(ep->CreateDataTransfer, nullptr);
+  }
+
+  OrtDataTransferImpl* env_transfer = nullptr;
+  ThrowOnError(factory.CreateDataTransfer(&factory, &env_transfer));
+  auto release_env_transfer = gsl::finally([&] {
+    if (env_transfer != nullptr) {
+      env_transfer->Release(env_transfer);
+    }
+  });
+  ASSERT_NE(env_transfer, nullptr);
+
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    auto* ep = eps[thread_id];
+    OrtAllocator* allocator = nullptr;
+    ThrowOnError(ep->CreateAllocator(ep, device.device_memory_info, &allocator));
+    auto release_allocator = gsl::finally([&] { factory.ReleaseAllocator(&factory, allocator); });
+    Ort::UnownedAllocator device_allocator{allocator};
+    const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    std::array<float, kElements> input_data{};
+    std::array<float, kElements> output_data{};
+    input_data.fill(static_cast<float>(thread_id + 1));
+    auto input = Ort::Value::CreateTensor<float>(
+        cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+    auto output = Ort::Value::CreateTensor<float>(
+        cpu_memory, output_data.data(), output_data.size(), kShape.data(), kShape.size());
+    auto gpu_value = Ort::Value::CreateTensor<float>(device_allocator, kShape.data(), kShape.size());
+
+    // More than one transfer can be requested for the same instance, from a different thread.
+    for (int copy = 0; copy < 2; ++copy) {
+      OrtDataTransferImpl* transfer = nullptr;
+      ThrowOnError(ep->CreateDataTransfer(ep, &transfer));
+      auto release_transfer = gsl::finally([&] {
+        if (transfer != nullptr) {
+          transfer->Release(transfer);
+        }
+      });
+      ORT_ENFORCE(transfer != nullptr);
+      const OrtValue* sources[]{input, gpu_value};
+      OrtValue* destinations[]{gpu_value, output};
+      ThrowOnError(transfer->CopyTensors(transfer, sources, destinations, nullptr, 2));
+      ORT_ENFORCE(output_data == input_data, "Instance transfer returned another Session's data");
+      output_data.fill(0.0f);
+    }
+  });
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
 TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsCreateConcurrently) {
   std::array<std::unique_ptr<Ort::Session>, kThreads> sessions;
   FirstError error;
@@ -370,8 +442,7 @@ TEST_F(PluginEpWebGpuConcurrency, DISABLED_DifferentSessionsRunConcurrently) {
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
-// Future support: GPU tensors are allocated serially, but Env uploads and downloads overlap.
-TEST_F(PluginEpWebGpuConcurrency, DISABLED_DifferentSessionsGraphCaptureAndReplayConcurrently) {
+TEST_F(PluginEpWebGpuConcurrency, DifferentSessionsGraphCaptureAndReplayConcurrently) {
   std::array<std::atomic<int>, kThreads> replay_counts{};
   std::array<std::unique_ptr<Ort::Session>, kThreads> sessions;
   auto allocator = CreateSharedAllocator();
@@ -400,6 +471,7 @@ TEST_F(PluginEpWebGpuConcurrency, DISABLED_DifferentSessionsGraphCaptureAndRepla
   }
 
   FirstError error;
+  std::mutex env_copy_mutex;
   std::barrier run_start{kThreads};
   RunWorkers(error, [&](int thread_id) {
     try {
@@ -416,12 +488,18 @@ TEST_F(PluginEpWebGpuConcurrency, DISABLED_DifferentSessionsGraphCaptureAndRepla
         const float value = static_cast<float>(thread_id * kIterations + iteration + 1);
         input_data.fill(value);
         output_data.fill(-1.0f);
-        ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_inputs[thread_id], nullptr));
+        {
+          std::lock_guard<std::mutex> lock{env_copy_mutex};
+          ThrowOnError(ort_env->CopyTensor(cpu_input, gpu_inputs[thread_id], nullptr));
+        }
         binding.SynchronizeInputs();
         run_start.arrive_and_wait();
         sessions[thread_id]->Run(run_options, binding);
         binding.SynchronizeOutputs();
-        ThrowOnError(ort_env->CopyTensor(gpu_outputs[thread_id], cpu_output, nullptr));
+        {
+          std::lock_guard<std::mutex> lock{env_copy_mutex};
+          ThrowOnError(ort_env->CopyTensor(gpu_outputs[thread_id], cpu_output, nullptr));
+        }
         VerifyOutput(output_data, value);
       }
     } catch (...) {

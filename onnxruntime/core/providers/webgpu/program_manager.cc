@@ -191,6 +191,7 @@ Status ProgramManager::Build(const ProgramBase& program,
     };
 
     if (shader_dump_fn_) {
+      std::lock_guard<std::mutex> lock(shader_dump_mutex_);
       shader_dump_fn_(shader_content());
     } else {
       LOGS_DEFAULT(VERBOSE) << shader_content();

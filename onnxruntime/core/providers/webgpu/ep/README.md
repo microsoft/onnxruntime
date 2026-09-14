@@ -18,25 +18,20 @@ To ensure both static library and dynamic library builds work, we need to make a
 
 ### Session and environment isolation
 
-Different Sessions can be created, initialized, and run concurrently, including creation while
-another Session runs. Each Session owns a `CommandRecordingState` used by its kernels and copies.
+With GPU profiling disabled, different Sessions can be created, initialized, and run concurrently,
+including creation while another Session runs. Each Session owns a `CommandRecordingState` used by
+its kernels and copies.
 The device, buffer caches, and pipeline cache remain shared and synchronized. Released buffers
 remain with their recording until its commands have been submitted.
-
-The plugin binds Session transfers during creation without new EP APIs or stream routing. This
-relies on the current ORT calling sequence, not an API guarantee: the first successful factory
-`CreateDataTransfer` call is for the Env; later calls run on the thread that created the awaiting
-EP. There may be only one unbound EP per factory/thread. Binding removes the pending entry, and
-the Session can subsequently run on another thread. The factory lock does not cover creation or Run.
 
 Env and Session operations reuse `GpuBufferAllocator` and `DataTransferImpl`. Env allocators and
 transfers share one context-owned recording, separate from every Session's recording. Cached-buffer
 clears are submitted before Env allocation returns. Session allocations submit clears outside Run
 and batch them during Run.
-`CopyTensors` submits pending commands before returning; downloads wait for readback, but uploads and
-device copies do not wait for GPU completion. The existing gap against the no-stream synchronous-copy
-contract is left as a TODO for separate work. Ordinary Run and graph replay submit commands without
-an additional completion wait; `OrtEp::Sync` remains a no-op.
+The plugin `CopyTensors` callback submits the associated recording and waits for copy completion,
+including uploads and device copies, as required by the no-stream synchronous-copy contract.
+Ordinary Run and graph replay submit commands without an additional completion wait;
+`OrtEp::Sync` remains a no-op.
 I/O Binding synchronization calls do not guarantee GPU completion; output downloads wait for readback.
 
 There is no recording mutex. Applications must serialize same-Session allocator operations,
@@ -44,16 +39,29 @@ copies, tensor destruction, graph replay, and graph release with that Session's 
 ordinary same-Session Run lock does not cover these external operations. All Env copies and allocator
 operations on the same context, including Free/GetStats and tensor destruction, require caller
 serialization. Explicit concurrent calls to Env or Session allocator APIs, concurrent Env copies,
-concurrent profiling, and cross-device transfers are outside this PR's supported scope. Internal
-allocation and copies during independent Session creation and Run remain part of the supported path.
+and cross-device transfers are outside this PR's supported scope. Internal allocation and copies
+during independent Session creation and Run are supported in both native and plugin builds.
 
-Enabled `PluginEpWebGpuConcurrency` tests cover concurrent Session creation/Run with CPU I/O and
-sequential external allocation/copy operations. `CpuPartitionBetweenGpuKernels` verifies both the CPU
-intermediate and final GPU result across a forced GPU/CPU/GPU partition. The GPU-I/O concurrent Run,
-capture/replay, and Session allocator tests remain disabled because they also call Env copies or
-external allocators concurrently. The 12-/16-thread mixed targets and the other shared allocator or
-recording targets also remain disabled. These tests retain their original concurrent operations,
-without test-side copy locks, for future support.
+Session transfers are created by the optional `OrtEp::CreateDataTransfer` callback and share the
+EP's recording with kernel-internal transfers. Each copy uses the EP's current buffer manager,
+including during graph capture. ORT owns and releases the ABI wrapper before releasing the EP.
+Factory-created transfers remain independent and serve Env copies; no callback ordering or thread
+affinity is assumed. Other plugins can leave the new callback null and retain the factory behavior.
+This WebGPU plugin requires ORT 1.31.0 or newer, which supports the instance-level callback. The
+minimum runtime version is enforced at library registration rather than silently using an unbound
+Session transfer on an older runtime.
+
+Dawn native advertises the software feature `ImplicitDeviceSynchronization` on all adapters, and ORT
+requests it when creating a device. An externally supplied native device must also have enabled it
+in `DeviceDescriptor.requiredFeatures`; otherwise context creation fails with an explicit error.
+The pinned Dawn native implementation keeps an error-scope stack per calling thread
+(`DeviceBase::GetErrorScopeStack`), so validation scopes in
+different Session threads do not require a context-wide Run mutex. Each push/pop pair must stay on
+the same thread.
+
+GPU profiling state remains context-wide. Concurrent use of a shared context while profiling is
+enabled is not supported by this change; applications must serialize those operations. Recording-local
+profiling is deferred to a separate change.
 
 ### Missing parts
 

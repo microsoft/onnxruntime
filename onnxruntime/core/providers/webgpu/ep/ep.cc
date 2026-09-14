@@ -10,6 +10,7 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/plugin_ep/ep_kernel_registration.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
+#include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 
 #include "ep/get_capability_utils.h"
 
@@ -37,6 +38,7 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   OnRunStart = OnRunStartImpl;
   OnRunEnd = OnRunEndImpl;
   CreateAllocator = CreateAllocatorImpl;
+  CreateDataTransfer = CreateDataTransferImpl;
   CreateSyncStreamForDevice = nullptr;          // Not stream aware
   GetCompiledModelCompatibilityInfo = nullptr;  // Not a compiled EP
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
@@ -45,6 +47,15 @@ Ep::Ep(std::unique_ptr<IExecutionProvider> impl, Factory& factory, const OrtLogg
   ReplayGraph = ReplayGraphImpl;
   ReleaseCapturedGraph = ReleaseCapturedGraphImpl;
   GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+}
+
+OrtStatus* ORT_API_CALL Ep::CreateDataTransferImpl(
+    OrtEp* this_ptr, OrtDataTransferImpl** data_transfer) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
+  auto& ep = *static_cast<WebGpuExecutionProvider*>(static_cast<Ep*>(this_ptr)->EpImpl());
+  *data_transfer = OrtWebGpuCreateDataTransfer(ep.GetDeviceId(), &ep);
+  return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 // OrtEp interface implementations

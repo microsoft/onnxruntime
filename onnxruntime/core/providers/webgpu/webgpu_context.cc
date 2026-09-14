@@ -229,14 +229,15 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_features_.insert(supported_features.features[i]);
     }
 #if !defined(__wasm__)
-    // Without this feature Dawn's device-level entry points (buffer creation, Queue::Submit,
-    // WriteBuffer) are not thread-safe, so sessions sharing this context on different threads
-    // can corrupt Dawn's internal state. Per-session command recording alone does not cover it.
-    if (!DeviceHasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization)) {
-      LOGS_DEFAULT(WARNING) << "WebGPU: ImplicitDeviceSynchronization is not available on this "
-                               "device. Using multiple inference sessions concurrently from "
-                               "different threads is not safe.";
-    }
+    // Dawn native advertises this software feature on all adapters, and ORT requests it when
+    // creating a device. An externally supplied device must have requested it too: per-session
+    // encoders do not protect shared device entry points such as buffer creation and Queue::Submit.
+    ORT_ENFORCE(DeviceHasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization),
+                config.device != nullptr
+                    ? "WebGPU: an externally supplied native device must enable ImplicitDeviceSynchronization "
+                      "in DeviceDescriptor.requiredFeatures when it is created."
+                    : "WebGPU: the internally created native device is missing the required "
+                      "ImplicitDeviceSynchronization feature.");
 #endif
     // cache adapter info
     if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
@@ -306,6 +307,19 @@ Status WebGpuContext::Wait(wgpu::Future f) {
     return Status::OK();
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
+}
+
+Status WebGpuContext::WaitForSubmittedWork() {
+  // The callback can outlive a failed WaitAny, so do not capture stack storage.
+  auto completion = std::make_shared<wgpu::QueueWorkDoneStatus>(wgpu::QueueWorkDoneStatus::Error);
+  ORT_RETURN_IF_ERROR(Wait(device_.GetQueue().OnSubmittedWorkDone(
+      wgpu::CallbackMode::WaitAnyOnly,
+      [completion](wgpu::QueueWorkDoneStatus status, wgpu::StringView /*message*/) noexcept {
+        *completion = status;
+      })));
+  ORT_RETURN_IF_NOT(*completion == wgpu::QueueWorkDoneStatus::Success,
+                    "WebGPU queue completion failed: ", static_cast<uint32_t>(*completion));
+  return Status::OK();
 }
 
 PendingPipelineBuild* WebGpuContext::FindPendingPipelineBuild(CommandRecordingState& recording,

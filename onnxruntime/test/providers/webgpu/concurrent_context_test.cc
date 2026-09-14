@@ -33,6 +33,9 @@
 #include <array>
 #include <atomic>
 #include <barrier>
+#include <filesystem>
+#include <fstream>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -53,6 +56,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/test_environment.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
@@ -188,20 +192,35 @@ class WebGpuConcurrentContextTest : public ::testing::Test {
     keepalive_ = MakeSession();
   }
 
-  std::unique_ptr<IExecutionProvider> MakeProvider() const {
+  std::unique_ptr<IExecutionProvider> MakeProvider(int context_id = 0) const {
     ConfigOptions config_options;
     ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
                                                      webgpu::options::kBufferCacheMode_Bucket));
+    if (context_id != 0) {
+      const auto& default_context = webgpu::WebGpuContextFactory::GetContext(0);
+      ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kDeviceId,
+                                                       std::to_string(context_id).c_str()));
+      ORT_THROW_IF_ERROR(config_options.AddConfigEntry(
+          webgpu::options::kWebGpuInstance,
+          std::to_string(reinterpret_cast<uintptr_t>(default_context.Instance().Get())).c_str()));
+      ORT_THROW_IF_ERROR(config_options.AddConfigEntry(
+          webgpu::options::kWebGpuDevice,
+          std::to_string(reinterpret_cast<uintptr_t>(default_context.Device().Get())).c_str()));
+    }
     return WebGpuExecutionProviderWithOptions(config_options);
   }
 
   std::unique_ptr<InferenceSession> MakeSession() {
+    return MakeSession(model_bytes_);
+  }
+
+  std::unique_ptr<InferenceSession> MakeSession(const std::string& model_bytes, int context_id = 0) {
     SessionOptions so;
     so.session_logid = "webgpu_concurrent_ctx";
     ORT_THROW_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
     auto session = std::make_unique<InferenceSession>(so, GetEnvironment());
-    ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(MakeProvider()));
-    ORT_THROW_IF_ERROR(session->Load(model_bytes_.data(), static_cast<int>(model_bytes_.size())));
+    ORT_THROW_IF_ERROR(session->RegisterExecutionProvider(MakeProvider(context_id)));
+    ORT_THROW_IF_ERROR(session->Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     ORT_THROW_IF_ERROR(session->Initialize());
     return session;
   }
@@ -406,6 +425,75 @@ TEST_F(WebGpuConcurrentContextTest, ColdAndWarmSessionsRunConcurrently) {
   builder.join();
 
   ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+}
+
+TEST_F(WebGpuConcurrentContextTest, ConcurrentShaderDumpWritesCompleteBlocks) {
+  constexpr int kContextId = 29852;
+  const std::filesystem::path dump_path = "webgpu_concurrent_shader_dump.wgsl";
+  std::error_code ec;
+  std::filesystem::remove(dump_path, ec);
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{"ORT_WEBGPU_EP_SHADER_DUMP_FILE", dump_path.string()}}};
+
+  std::string cold_model_bytes;
+  ASSERT_NO_FATAL_FAILURE(BuildUnaryFanOutModel(kNumElements, cold_model_bytes));
+  auto first_session = MakeSession(cold_model_bytes, kContextId);
+  auto second_session = MakeSession(cold_model_bytes, kContextId);
+
+  ErrorSink sink;
+  std::barrier start{2};
+  auto run_cold_session = [&](InferenceSession& session, const std::string& tag) {
+    start.arrive_and_wait();
+    try {
+      std::vector<std::string> output_names;
+      output_names.reserve(std::size(kUnaryOps));
+      for (size_t i = 0; i < std::size(kUnaryOps); ++i) {
+        output_names.push_back("Y" + std::to_string(i));
+      }
+      std::vector<OrtValue> fetches;
+      ORT_THROW_IF_ERROR(session.Run(RunOptions{}, MakeFeeds(), output_names, &fetches));
+    } catch (const std::exception& e) {
+      sink.Record(tag + " threw: " + e.what());
+    }
+  };
+
+  std::thread first_runner(run_cold_session, std::ref(*first_session), "shader.first");
+  std::thread second_runner(run_cold_session, std::ref(*second_session), "shader.second");
+  first_runner.join();
+  second_runner.join();
+  first_session.reset();
+  second_session.reset();
+
+  std::ifstream dump_file(dump_path);
+  const std::string dump_contents{std::istreambuf_iterator<char>{dump_file},
+                                  std::istreambuf_iterator<char>{}};
+  dump_file.close();
+  std::filesystem::remove(dump_path, ec);
+
+  ASSERT_FALSE(sink.Failed()) << sink.FirstError();
+  size_t position = 0;
+  bool block_open = false;
+  size_t completed_blocks = 0;
+  while (position < dump_contents.size()) {
+    const size_t next_start = dump_contents.find("] Start ===", position);
+    const size_t next_end = dump_contents.find("] End ===", position);
+    if (next_start == std::string::npos && next_end == std::string::npos) {
+      break;
+    }
+
+    if (next_start < next_end) {
+      EXPECT_FALSE(block_open);
+      block_open = true;
+      position = next_start + 1;
+    } else {
+      EXPECT_TRUE(block_open);
+      block_open = false;
+      ++completed_blocks;
+      position = next_end + 1;
+    }
+  }
+  EXPECT_FALSE(block_open);
+  EXPECT_GE(completed_blocks, std::size(kUnaryOps));
 }
 
 // Case F (future support): the public session allocator shares Run's recording. Concurrent access

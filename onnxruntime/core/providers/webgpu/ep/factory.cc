@@ -165,14 +165,6 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
     const OrtLogger* logger,
     OrtEp** ep) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  auto* factory = static_cast<Factory*>(this_ptr);
-  const auto thread_id = std::this_thread::get_id();
-  {
-    std::lock_guard<std::mutex> lock{factory->creation_mutex_};
-    ORT_ENFORCE(factory->env_transfer_created_, "Create the WebGPU environment data transfer before creating Sessions.");
-    ORT_ENFORCE(!factory->pending_eps_.contains(thread_id),
-                "A WebGPU EP on this thread is still awaiting its Session data transfer.");
-  }
   if (num_devices != 1) {
     return Api().ort.CreateStatus(ORT_INVALID_ARGUMENT,
                                   "WebGPU EP factory currently only supports one device at a time.");
@@ -212,6 +204,7 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(config_options);
   auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
   static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
+  auto* factory = static_cast<Factory*>(this_ptr);
   const int context_id = webgpu_ep->GetDeviceId();
   auto* webgpu_ep_ptr = static_cast<WebGpuExecutionProvider*>(webgpu_ep.get());
   // A device-free context (compile-only session) gets a no-op allocator: a real GpuBufferAllocator
@@ -234,27 +227,12 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
           [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
           true),  // initializer device allocator
   };
-  auto created_ep = std::make_unique<Ep>(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
-  {
-    std::lock_guard<std::mutex> lock{factory->creation_mutex_};
-    ORT_ENFORCE(factory->pending_eps_.try_emplace(thread_id, created_ep.get()).second,
-                "A WebGPU EP on this thread is still awaiting its Session data transfer.");
-  }
-  *ep = created_ep.release();
+  *ep = new Ep(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 
-void ORT_API_CALL Factory::ReleaseEpImpl(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
-  auto* factory = static_cast<Factory*>(this_ptr);
-  {
-    std::lock_guard<std::mutex> lock{factory->creation_mutex_};
-    auto pending_ep = std::find_if(factory->pending_eps_.begin(), factory->pending_eps_.end(),
-                                   [ep](const auto& entry) { return entry.second == ep; });
-    if (pending_ep != factory->pending_eps_.end()) {
-      factory->pending_eps_.erase(pending_ep);
-    }
-  }
+void ORT_API_CALL Factory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
   delete static_cast<Ep*>(ep);
 }
 
@@ -293,26 +271,10 @@ void ORT_API_CALL Factory::ReleaseAllocatorImpl(OrtEpFactory* /*this_ptr*/, OrtA
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateDataTransferImpl(
-    OrtEpFactory* this_ptr,
+    OrtEpFactory* /*this_ptr*/,
     OrtDataTransferImpl** data_transfer) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  auto* factory = static_cast<Factory*>(this_ptr);
-  std::lock_guard<std::mutex> lock{factory->creation_mutex_};
-  // ORT currently creates the Env transfer first for each factory. This ordering is not an
-  // EP API guarantee; the Env transfer uses the context's Env recording and is not bound to a Session.
-  if (!factory->env_transfer_created_) {
-    *data_transfer = OrtWebGpuCreateDataTransfer();
-    factory->env_transfer_created_ = true;
-  } else {
-    // Session creation calls both callbacks on the same thread. Bind once to the owning EP;
-    // subsequent copies use its recording regardless of which thread runs the Session.
-    auto pending_ep = factory->pending_eps_.find(std::this_thread::get_id());
-    ORT_ENFORCE(pending_ep != factory->pending_eps_.end(),
-                "Create the WebGPU Session data transfer on the same thread that created its EP.");
-    auto* ep = static_cast<WebGpuExecutionProvider*>(pending_ep->second->EpImpl());
-    *data_transfer = OrtWebGpuCreateDataTransfer(ep->GetDeviceId(), ep);
-    factory->pending_eps_.erase(pending_ep);
-  }
+  *data_transfer = OrtWebGpuCreateDataTransfer();
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
