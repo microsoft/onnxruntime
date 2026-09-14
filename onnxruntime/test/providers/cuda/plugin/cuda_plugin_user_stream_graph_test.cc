@@ -26,7 +26,9 @@
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
 
+#include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/file_util.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
@@ -86,6 +88,41 @@ Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
     }
   }
   return Ort::ConstEpDevice{nullptr};
+}
+
+std::string BuildGatherNDModel() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* opset = model.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("gather_nd");
+  auto add_value_info = [graph](const char* name, int32_t element_type,
+                                std::initializer_list<int64_t> shape, bool is_input) {
+    auto* value_info = is_input ? graph->add_input() : graph->add_output();
+    value_info->set_name(name);
+    auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(element_type);
+    for (const auto dim : shape) {
+      tensor_type->mutable_shape()->add_dim()->set_dim_value(dim);
+    }
+  };
+  add_value_info("data", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2, 2}, true);
+  add_value_info("indices", ONNX_NAMESPACE::TensorProto_DataType_INT64, {1, 1}, true);
+  add_value_info("output", ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {1, 2}, false);
+
+  auto* node = graph->add_node();
+  node->set_name("gather_nd");
+  node->set_op_type("GatherND");
+  node->add_input("data");
+  node->add_input("indices");
+  node->add_output("output");
+
+  std::string serialized;
+  ORT_ENFORCE(model.SerializeToString(&serialized));
+  return serialized;
 }
 
 // Dummy external allocator callbacks. They are only used to make the external-allocator
@@ -218,6 +255,65 @@ TEST_F(CudaPluginUserStreamGraphTest, SessionCreatesWithUserStreamAndCudaGraph) 
   }
 
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
+}
+
+TEST_F(CudaPluginUserStreamGraphTest, RejectsGatherNDWithCudaGraph) {
+  Ort::SessionOptions so;
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, {{"enable_cuda_graph", "1"}});
+  const auto model = BuildGatherNDModel();
+
+  try {
+    Ort::Session session(*ort_env, model.data(), model.size(), so);
+    FAIL() << "Expected CUDA graph capture with GatherND to be rejected";
+  } catch (const Ort::Exception& error) {
+    EXPECT_EQ(error.GetOrtErrorCode(), ORT_FAIL);
+    EXPECT_NE(std::string(error.what()).find("CUDA graph capture does not support GatherND because runtime index validation "
+                                             "requires host-visible error reporting"),
+              std::string::npos);
+  }
+}
+
+TEST_F(CudaPluginUserStreamGraphTest, GatherNDValidatesIndices) {
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, {});
+  const auto model = BuildGatherNDModel();
+  Ort::Session session(*ort_env, model.data(), model.size(), so);
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  const std::array<int64_t, 2> data_shape{2, 2};
+  const std::array<int64_t, 2> indices_shape{1, 1};
+  std::array<float, 4> data{1.0f, 2.0f, 3.0f, 4.0f};
+  std::array<int64_t, 1> indices{1};
+  std::array<const char*, 2> input_names{"data", "indices"};
+  std::array<const char*, 1> output_names{"output"};
+
+  auto make_inputs = [&]() {
+    std::vector<Ort::Value> inputs;
+    inputs.push_back(Ort::Value::CreateTensor<float>(
+        memory_info, data.data(), data.size(), data_shape.data(), data_shape.size()));
+    inputs.push_back(Ort::Value::CreateTensor<int64_t>(
+        memory_info, indices.data(), indices.size(), indices_shape.data(), indices_shape.size()));
+    return inputs;
+  };
+
+  auto inputs = make_inputs();
+  auto outputs = session.Run(Ort::RunOptions{}, input_names.data(), inputs.data(), inputs.size(),
+                             output_names.data(), output_names.size());
+  const auto* output = outputs.front().GetTensorData<float>();
+  EXPECT_FLOAT_EQ(output[0], 3.0f);
+  EXPECT_FLOAT_EQ(output[1], 4.0f);
+
+  indices[0] = 2;
+  inputs = make_inputs();
+  try {
+    ORT_IGNORE_RETURN_VALUE(session.Run(Ort::RunOptions{}, input_names.data(), inputs.data(), inputs.size(),
+                                        output_names.data(), output_names.size()));
+    FAIL() << "Expected out-of-bounds GatherND index to be rejected";
+  } catch (const Ort::Exception& error) {
+    EXPECT_EQ(error.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+    EXPECT_NE(std::string(error.what()).find("invalid index found, index = 2"), std::string::npos);
+  }
 }
 
 // Full capture + replay on the user stream, including replay after an in-place input
