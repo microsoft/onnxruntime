@@ -52,9 +52,13 @@ import onnxruntime_ep_webgpu as webgpu_ep
 
 ort.register_execution_provider_library("webgpu", webgpu_ep.get_library_path())
 
-devices = [d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()]
+# The WebGPU EP currently accepts one EP device and selects the physical GPU independently.
+webgpu_ep_device = next((d for d in ort.get_ep_devices() if d.ep_name == webgpu_ep.get_ep_name()), None)
+if webgpu_ep_device is None:
+    raise RuntimeError("No WebGPU EP device found.")
+
 sess_options = ort.SessionOptions()
-sess_options.add_provider_for_devices(devices, {})
+sess_options.add_provider_for_devices([webgpu_ep_device], {})
 session = ort.InferenceSession("model.onnx", sess_options=sess_options)
 ```
 

@@ -105,8 +105,22 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
       webgpu_ep_config.kv_cache_quantization_bits = 0;
     } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_4Bit) {
       webgpu_ep_config.kv_cache_quantization_bits = 4;
+    } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_8Bit) {
+      webgpu_ep_config.kv_cache_quantization_bits = 8;
     } else {
-      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str, ". Must be \"0\" or \"4\".");
+      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str,
+                ". Must be \"0\", \"4\", or \"8\".");
+    }
+  }
+
+  std::string enable_matmul_fp32_accumulation_str;
+  if (config_options.TryGetConfigEntry(kEnableMatmulFp32Accumulation, enable_matmul_fp32_accumulation_str)) {
+    if (enable_matmul_fp32_accumulation_str == kEnableMatmulFp32Accumulation_ON) {
+      webgpu_ep_config.enable_matmul_fp32_accumulation = true;
+    } else if (enable_matmul_fp32_accumulation_str == kEnableMatmulFp32Accumulation_OFF) {
+      webgpu_ep_config.enable_matmul_fp32_accumulation = false;
+    } else {
+      ORT_THROW("Invalid enableMatmulFp32Accumulation value: ", enable_matmul_fp32_accumulation_str, ". Must be \"0\" or \"1\".");
     }
   }
 
@@ -203,6 +217,18 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
     }
   }
 
+  if (std::string enable_robustness_str;
+      config_options.TryGetConfigEntry(kEnableRobustness, enable_robustness_str)) {
+    config.enable_robustness_explicitly_set = true;
+    if (enable_robustness_str == kEnableRobustness_ON) {
+      config.enable_robustness = true;
+    } else if (enable_robustness_str == kEnableRobustness_OFF) {
+      config.enable_robustness = false;
+    } else {
+      ORT_THROW("Invalid enableRobustness value: ", enable_robustness_str, ". Must be \"0\" or \"1\".");
+    }
+  }
+
   if (std::string preserve_device_str;
       config_options.TryGetConfigEntry(kPreserveDevice, preserve_device_str)) {
     if (preserve_device_str == kPreserveDevice_ON) {
@@ -259,6 +285,7 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUDevice: " << reinterpret_cast<size_t>(config.device);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << reinterpret_cast<size_t>(config.dawn_proc_table);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << config.validation_mode;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable robustness: " << config.enable_robustness;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << config.preserve_device;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP CompileOnly: " << config.compile_only;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << config.max_storage_buffer_binding_size;
@@ -399,12 +426,26 @@ struct WebGpuDataTransferImpl : OrtDataTransferImpl {
            (src_type == OrtMemoryInfoDeviceType_CPU && dst_type == OrtMemoryInfoDeviceType_GPU);
   }
 
+  // BufferManager::MemCpy reports misuse by throwing (ORT_ENFORCE), not by returning a Status.
+  // This callback crosses the C ABI and is noexcept, so an escaping exception would terminate the
+  // process. Convert throws to an OrtStatus.
   static OrtStatus* ORT_API_CALL CopyTensorsImpl(
       OrtDataTransferImpl* this_ptr,
       const OrtValue** src_tensors,
       OrtValue** dst_tensors,
-      OrtSyncStream** /*streams*/,
+      OrtSyncStream** streams,
       size_t num_tensors) noexcept {
+    API_IMPL_BEGIN
+    return CopyTensorsOrThrow(this_ptr, src_tensors, dst_tensors, streams, num_tensors);
+    API_IMPL_END
+  }
+
+  static OrtStatus* CopyTensorsOrThrow(
+      OrtDataTransferImpl* this_ptr,
+      const OrtValue** src_tensors,
+      OrtValue** dst_tensors,
+      OrtSyncStream** /*streams*/,
+      size_t num_tensors) {
     auto& impl = *static_cast<WebGpuDataTransferImpl*>(this_ptr);
 
     if (num_tensors == 0) {

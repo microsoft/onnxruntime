@@ -18,9 +18,18 @@
         "maven": {
           "GroupId": "com.google.protobuf",
           "ArtifactId": "protobuf-java",
-          "Version": "3.25.5"
+          "Version": "4.33.6"
         },
         "DevelopmentDependency": true
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "559d79fb6994a58b8a15b4b93bf13ccc16edf247",
+          "repositoryUrl": "https://github.com/deepseek-ai/DeepGEMM.git"
+        }
       }
     },
     {

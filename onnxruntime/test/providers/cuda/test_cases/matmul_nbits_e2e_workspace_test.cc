@@ -37,6 +37,7 @@
 #include <array>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -47,10 +48,12 @@
 #include "core/common/span_utils.h"
 #include "core/framework/allocator.h"
 #include "core/framework/allocator_stats.h"
+#include "core/framework/max_shape_inference.h"
+#include "core/framework/max_shape_override.h"
+#include "core/framework/node_shape_resolver.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensor_shape.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/framework/workspace_requirement.h"
 #include "core/graph/graph.h"
 #include "core/graph/onnx_protobuf.h"
@@ -131,6 +134,15 @@ void AddMatMulNBitsNode(ONNX_NAMESPACE::GraphProto* graph, const std::string& no
   }
   *scales->mutable_raw_data() = std::move(scale_raw);
 
+#if !USE_COMPACT_FPA_INTB_GEMM
+  const std::string bias_name = node_name + "_bias";
+  auto* bias = graph->add_initializer();
+  bias->set_name(bias_name);
+  bias->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  bias->add_dims(n);
+  bias->mutable_raw_data()->assign(static_cast<size_t>(n * sizeof(uint16_t)), '\0');
+#endif
+
   auto* node = graph->add_node();
   node->set_op_type("MatMulNBits");
   node->set_domain("com.microsoft");
@@ -138,6 +150,13 @@ void AddMatMulNBitsNode(ONNX_NAMESPACE::GraphProto* graph, const std::string& no
   node->add_input(input_name);
   node->add_input(weight_name);
   node->add_input(scales_name);
+  node->add_input("");
+  node->add_input("");
+#if USE_COMPACT_FPA_INTB_GEMM
+  node->add_input("");
+#else
+  node->add_input(bias_name);
+#endif
   node->add_output(output_name);
   auto add_int_attr = [node](const char* name, int64_t value) {
     auto* attr = node->add_attribute();
@@ -155,8 +174,9 @@ void AddMatMulNBitsNode(ONNX_NAMESPACE::GraphProto* graph, const std::string& no
   }
 }
 
-// Builds a minimal single-node MatMulNBits model (A[M,K] fp16, B int4 initializer, scales fp16
-// initializer, Y[M,N] fp16) and returns its serialized ModelProto bytes.
+// Builds a minimal single-node MatMulNBits model and returns its serialized ModelProto bytes.
+// The compact fpA_intB path does not support bias. Other builds use the valid optional-input
+// layout [A, B, scales, "", "", bias] to exercise positional Level-2 shape resolution.
 //
 // When `m_dim_param` is null (default), input A's leading dimension is the fully-static value
 // `static_m` (a concrete dim_value). When `m_dim_param` is non-null, that leading dimension is instead
@@ -371,6 +391,41 @@ const Node* FindNodeByOpType(const Graph& graph, const std::string& op_type) {
   return nullptr;
 }
 
+std::optional<size_t> EstimateWorkspaceFromGraphProtoShape(
+    gsl::span<const int64_t> input_a_shape) {
+  ONNX_NAMESPACE::TypeProto input_type;
+  auto* tensor_type = input_type.mutable_tensor_type();
+  tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  auto* shape = tensor_type->mutable_shape();
+  for (const int64_t dimension : input_a_shape) {
+    shape->add_dim()->set_dim_value(dimension);
+  }
+  NodeArg input_a{"A", &input_type};
+
+  NodeAttributes attributes;
+  auto add_int_attribute = [&attributes](const char* name, int64_t value) {
+    ONNX_NAMESPACE::AttributeProto attribute;
+    attribute.set_name(name);
+    attribute.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attribute.set_i(value);
+    attributes.emplace(name, std::move(attribute));
+  };
+  add_int_attribute("N", kE2eN);
+  add_int_attribute("K", kE2eK);
+  add_int_attribute("block_size", kE2eBlockSize);
+  add_int_attribute("bits", kE2eBits);
+
+  const std::vector<NodeArg*> inputs{&input_a};
+  const std::vector<NodeArg*> outputs;
+  Node node{"matmul_nbits", "MatMulNBits", "", inputs, outputs, &attributes, "com.microsoft"};
+
+  cudaDeviceProp device_prop{};
+  device_prop.major = 8;
+  device_prop.minor = 0;
+  device_prop.multiProcessorCount = 100;
+  return onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(node, device_prop);
+}
+
 std::vector<const Node*> FindNodesByOpType(const Graph& graph, const std::string& op_type) {
   std::vector<const Node*> nodes;
   for (const auto& node : graph.Nodes()) {
@@ -471,7 +526,7 @@ ArenaMeasurement MeasureArenaAllocation(const std::string& model_bytes,
 
 }  // namespace
 
-TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
+TEST(MatMulNBitsWorkspace, GetCapabilityBudgetChargesLazyProfileScratch) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
   if (device_sm < 0) {
     GTEST_SKIP() << "No CUDA device available; skipping budget integration test.";
@@ -488,11 +543,9 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
                 {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"2048"}}});
   const std::string model_bytes = BuildMatMulNBitsModelBytes();
 
-  // For this model the legacy 1.5x fallback is below 700 KiB, while the
-  // structured Level-1 total (runtime workspace + persistent/temporary
-  // initialization memory, including tactic-profiler scratch) is above
-  // 700 KiB and below 720 KiB. The two budgets
-  // therefore prove that CUDA GetCapability applies the estimator result.
+  // profile_m=1 limits constructor profiling to M=1. The first M=256 run therefore performs lazy
+  // profiling. Its scratch is runtime transient memory and must be included in the hard budget,
+  // while constructor-profile and PrePack_B scratch remain a non-additive initialization peak.
   {
     SessionOptions so;
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
@@ -500,7 +553,44 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
         kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsResourceCudaPartitioningSettings, "720,"));
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "2048,"));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(mm_node, nullptr);
+    EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
+
+    const auto estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
+        *mm_node, cuda_ep->GetDeviceProp(),
+        {/*fpa_intb_gemm=*/std::string_view{"1"}, /*profile_m=*/std::string_view{"1"}});
+    ASSERT_TRUE(estimate.has_value());
+    ASSERT_TRUE(estimate->runtime_workspace_bytes.has_value());
+    EXPECT_GT(estimate->runtime_transient_bytes, *estimate->runtime_workspace_bytes);
+    EXPECT_GT(estimate->runtime_transient_bytes, estimate->initialization_scratch_bytes);
+
+    std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.0f));
+    OrtValue a_value;
+    CreateMLValue<MLFloat16>(std::array<int64_t, 2>{kE2eM, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
+    NameMLValMap feeds;
+    feeds.emplace("A", a_value);
+    const std::vector<std::string> output_names{"Y"};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  // This budget admitted the node before lazy-profile scratch was charged.
+  {
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "430,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
@@ -509,17 +599,78 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetUsesLevel1Estimate) {
 
     const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
     ASSERT_NE(mm_node, nullptr);
+    EXPECT_NE(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
+  }
+}
+
+TEST(MatMulNBitsWorkspace, MaxShapeBudgetChargesMissingSmallerProfileBucket) {
+  const int device_sm = CudaDeviceComputeCapabilityOrNegative();
+  if (device_sm < 0) {
+    GTEST_SKIP() << "No CUDA device available; skipping budget integration test.";
+  }
+  if (device_sm < kMinFpAIntBSm) {
+    GTEST_SKIP() << "Device compute capability " << device_sm << " < " << kMinFpAIntBSm
+                 << "; MatMulNBits fpA_intB path is not eligible.";
+  }
+
+  ScopedEnvironmentVariables scoped_env(
+      EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"0"}},
+                {"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"2048"}}});
+  const std::string model_bytes = BuildMatMulNBitsModelBytes("seq");
+
+  // Construction profiles only {1, 256}. The maximum-shape hint is a planning bound, not an exact
+  // runtime shape, so M=64 remains valid and must reserve lazy-profile scratch in the hard budget.
+  {
+    SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM, "256"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMaxShapeOverride, "A:[256,1024]"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "1024,"));
+    InferenceSessionWrapper session(so, GetEnvironment());
+    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* mm_node = FindNodeByOpType(session.GetGraph(), "MatMulNBits");
+    ASSERT_NE(mm_node, nullptr);
     EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
+
+    const TensorShape planning_shape({256, kE2eK});
+    const auto estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
+        *mm_node, planning_shape.GetDims(), cuda_ep->GetDeviceProp(),
+        {/*fpa_intb_gemm=*/std::string_view{"1"},
+         /*profile_m=*/std::string_view{"256"},
+         /*input_shape_is_upper_bound=*/true});
+    ASSERT_TRUE(estimate.has_value());
+    const TensorShape missing_bucket_shape({128, kE2eK});
+    const auto missing_bucket_estimate = onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
+        *mm_node, missing_bucket_shape.GetDims(), cuda_ep->GetDeviceProp(),
+        {/*fpa_intb_gemm=*/std::string_view{"1"},
+         /*profile_m=*/std::string_view{"256"}});
+    ASSERT_TRUE(missing_bucket_estimate.has_value());
+    EXPECT_EQ(estimate->runtime_transient_bytes, missing_bucket_estimate->runtime_transient_bytes);
+    EXPECT_GT(estimate->runtime_transient_bytes, size_t{0});
+
+    constexpr int64_t runtime_m = 64;
+    std::vector<MLFloat16> a_data(static_cast<size_t>(runtime_m * kE2eK), MLFloat16(0.0f));
+    OrtValue a_value;
+    CreateMLValue<MLFloat16>(std::array<int64_t, 2>{runtime_m, kE2eK}, a_data.data(), OrtMemoryInfo(), &a_value);
+    NameMLValMap feeds;
+    feeds.emplace("A", a_value);
+    const std::vector<std::string> output_names{"Y"};
+    std::vector<OrtValue> fetches;
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
   }
 
   {
     SessionOptions so;
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBGemm, "1"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsCudaFpAIntBProfileM, "256"));
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsMaxShapeOverride, "A:[256,1024]"));
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsCudaFpAIntBGemm, "1"));
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsCudaFpAIntBProfileM, "1"));
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
-        kOrtSessionOptionsResourceCudaPartitioningSettings, "700,"));
+        kOrtSessionOptionsResourceCudaPartitioningSettings, "430,"));
     InferenceSessionWrapper session(so, GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{})));
@@ -546,12 +697,13 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetDoesNotDuplicateOfflinePrepackedGp
       BuildMatMulNBitsModelBytes(nullptr, kE2eM, kWeightPrepackedSm80);
 
   ScopedEnvironmentVariables scoped_env(
-      EnvVarMap{{"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"1"}}});
+      EnvVarMap{{"ORT_FPA_INTB_PROFILE_M", optional<std::string>{"256"}}});
 
-  // The 500 KiB budget is above initializer + output + scale destination +
-  // runtime workspace + tactic-profiler scratch, but below that value plus a
-  // duplicate packed-weight destination. CUDA must accept the node because
-  // PrePack_B reuses the already GPU-resident offline-prepacked initializer.
+  // Profile the static M=256 bucket up front so lazy-profile scratch does not
+  // affect this threshold. The 500 KiB budget is above initializer + output +
+  // scale destination + runtime workspace, but below that value plus a duplicate
+  // packed-weight destination. CUDA must accept the node because PrePack_B reuses
+  // the already GPU-resident offline-prepacked initializer.
   SessionOptions so;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(
       kOrtSessionOptionsResourceCudaPartitioningSettings, "500,"));
@@ -566,6 +718,50 @@ TEST(MatMulNBitsWorkspace, GetCapabilityBudgetDoesNotDuplicateOfflinePrepackedGp
   EXPECT_EQ(mm_node->GetExecutionProviderType(), kCudaExecutionProvider);
 }
 
+TEST(MatMulNBitsWorkspace, KnownZeroPartialLeadingShapesLevel1GraphProto) {
+  ScopedEnvironmentVariables scoped_env(EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}}});
+
+  const std::vector<TensorShapeVector> known_zero_shapes{
+      {0, -1, kE2eK},
+      {-1, 0, kE2eK},
+      {std::numeric_limits<int64_t>::max(), 2, 0, kE2eK},
+  };
+  for (const auto& shape : known_zero_shapes) {
+    SCOPED_TRACE(TensorShape{shape}.ToString());
+    EXPECT_EQ(EstimateWorkspaceFromGraphProtoShape(shape), std::optional<size_t>{0});
+  }
+
+  const TensorShapeVector unknown_shape{-1, 2, kE2eK};
+  EXPECT_FALSE(EstimateWorkspaceFromGraphProtoShape(unknown_shape).has_value());
+  const TensorShapeVector overflowing_shape{
+      std::numeric_limits<int64_t>::max(), 2, kE2eK};
+  EXPECT_FALSE(EstimateWorkspaceFromGraphProtoShape(overflowing_shape).has_value());
+}
+
+TEST(MatMulNBitsWorkspace, KnownZeroPartialLeadingShapesLevel2TensorShape) {
+  const std::vector<TensorShapeVector> known_zero_shapes{
+      {0, -1, kE2eK},
+      {-1, 0, kE2eK},
+      {std::numeric_limits<int64_t>::max(), 2, 0, kE2eK},
+  };
+  for (const auto& dimensions : known_zero_shapes) {
+    const TensorShape shape{dimensions};
+    SCOPED_TRACE(shape.ToString());
+    EXPECT_EQ(onnxruntime::contrib::cuda::ComputeMatMulNBitsLeadingDimProduct(shape.GetDims()),
+              std::optional<int64_t>{0});
+  }
+
+  const TensorShape unknown_shape({-1, 2, kE2eK});
+  EXPECT_FALSE(onnxruntime::contrib::cuda::ComputeMatMulNBitsLeadingDimProduct(
+                   unknown_shape.GetDims())
+                   .has_value());
+  const TensorShape overflowing_shape(
+      {std::numeric_limits<int64_t>::max(), 2, kE2eK});
+  EXPECT_FALSE(onnxruntime::contrib::cuda::ComputeMatMulNBitsLeadingDimProduct(
+                   overflowing_shape.GetDims())
+                   .has_value());
+}
+
 TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   const int device_sm = CudaDeviceComputeCapabilityOrNegative();
   if (device_sm < 0) {
@@ -577,12 +773,13 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
                     "cannot hold. Skipping.";
   }
 
-  // Enable the fpA_intB path via the ENV var (not the session config) so that BOTH Level 1 - which
-  // can only read the env var (see the Major-2 known limitation in EstimateMatMulNBitsMemory) -
-  // and the kernel constructor observe it enabled, keeping the two eligibility decisions in sync.
+  // Enable the fpA_intB path via the environment so the direct Level-1 estimate and
+  // the kernel constructor observe the same eligibility setting.
   ScopedEnvironmentVariables scoped_env(EnvVarMap{{"ORT_FPA_INTB_GEMM", optional<std::string>{"1"}}});
 
-  const std::string model_bytes = BuildMatMulNBitsModelBytes();
+  // Keep M dynamic so the same session and kernel instance can execute both the ordinary and
+  // empty-output cases.
+  const std::string model_bytes = BuildMatMulNBitsModelBytes("seq");
 
   SessionOptions so;
   so.session_logid = "MatMulNBitsWorkspaceE2E";
@@ -593,6 +790,21 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   auto cuda_ep = std::make_shared<CUDAExecutionProvider>(CUDAExecutionProviderInfo{});
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+
+  // Production computes estimation-only shadow shapes before initialization can prepack and remove
+  // initializer data from the executable graph. Do the same for the ordinary and empty shapes.
+  const TensorShape positive_a_shape({kE2eM, kE2eK});
+  MaxShapeOverrideMap positive_shape_override;
+  positive_shape_override.emplace("A", positive_a_shape);
+  MaxShapeInferenceResult positive_inferred_shapes;
+  ASSERT_STATUS_OK(InferMaxShapes(session.GetGraph(), positive_shape_override, positive_inferred_shapes));
+
+  const TensorShape zero_m_a_shape({0, kE2eK});
+  MaxShapeOverrideMap zero_m_shape_override;
+  zero_m_shape_override.emplace("A", zero_m_a_shape);
+  MaxShapeInferenceResult zero_m_inferred_shapes;
+  ASSERT_STATUS_OK(InferMaxShapes(session.GetGraph(), zero_m_shape_override, zero_m_inferred_shapes));
+
   ASSERT_STATUS_OK(session.Initialize());
 
   // Locate the MatMulNBits node and confirm it was assigned to the CUDA EP (fpA_intB eligible).
@@ -603,25 +815,99 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
       << "MatMulNBits node was not assigned to the CUDA EP.";
 
   // ---- Level 1: the estimator function GetCapability() uses, invoked directly on the node + device
-  //      properties (this is not a full GetCapability()-driven partition-time run). ----
+  //      properties and the concrete estimation shape for this run. ----
   const std::optional<Level1MemoryEstimate> level1 =
-      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(*mm_node, cuda_ep->GetDeviceProp());
+      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
+          *mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp());
   ASSERT_TRUE(level1.has_value()) << "Level-1 estimate returned nullopt for an eligible node.";
+  const auto static_shape_with_bound_option =
+      onnxruntime::contrib::cuda::EstimateMatMulNBitsMemory(
+          *mm_node, positive_a_shape.GetDims(), cuda_ep->GetDeviceProp(),
+          {/*fpa_intb_gemm=*/std::string_view{"1"},
+           /*profile_m=*/std::string_view{"256"},
+           /*input_shape_is_upper_bound=*/true});
+  ASSERT_TRUE(static_shape_with_bound_option.has_value());
+  // The initial profile set is {1, 256}; an upper bound of M=256 must reserve
+  // lazy-profile scratch for the largest missing rounded bucket, M=128.
+  EXPECT_EQ(static_shape_with_bound_option->runtime_transient_bytes, size_t{492928});
   ASSERT_TRUE(level1->runtime_workspace_bytes.has_value())
       << "Level-1 runtime workspace was not estimable for a static input shape.";
   const size_t level1_runtime_workspace = *level1->runtime_workspace_bytes;
+  EXPECT_EQ(level1_runtime_workspace, 1792u);
 
-  // ---- Level 2: instance-level estimate from the constructed kernel + static input shape. ----
+  // ---- Level 2: instance-level estimate from the constructed kernel and production positional
+  //      shape resolver. The two internal missing inputs must not prevent the override from being
+  //      reached, and the known bias after those holes must retain index 5. ----
   const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
   ASSERT_NE(op_kernel, nullptr) << "No kernel constructed for the MatMulNBits node.";
 
-  const std::vector<TensorShape> input_shapes{TensorShape({kE2eM, kE2eK})};
+  const auto input_shapes =
+      ResolveNodeInputShapes(*mm_node, &graph, positive_inferred_shapes);
+  ASSERT_NE(input_shapes[0].GetShape(), nullptr);
+  EXPECT_EQ(*input_shapes[0].GetShape(), TensorShape({kE2eM, kE2eK}));
+  ASSERT_EQ(input_shapes.size(), 6u);
+  EXPECT_EQ(input_shapes[3].GetState(), WorkspaceInputShapeState::Missing);
+  EXPECT_EQ(input_shapes[4].GetState(), WorkspaceInputShapeState::Missing);
+#if USE_COMPACT_FPA_INTB_GEMM
+  EXPECT_EQ(input_shapes[5].GetState(), WorkspaceInputShapeState::Missing);
+#else
+  EXPECT_EQ(input_shapes[5].GetState(), WorkspaceInputShapeState::PresentWithShape);
+#endif
   InlinedVector<WorkspaceRequirement> requirements;
   // DeclareWorkspaceRequirements is virtual on OpKernel; this dispatches into the MatMulNBits override.
-  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
   ASSERT_EQ(requirements.size(), static_cast<size_t>(1))
       << "Level-2 DeclareWorkspaceRequirements did not report exactly one workspace slot.";
   const size_t level2 = requirements[0].size_bytes;
+  EXPECT_EQ(level2, 1792u);
+
+  auto shapeless_optional_shapes = input_shapes;
+  shapeless_optional_shapes[3] = WorkspaceInputShape::PresentWithoutShape();
+  InlinedVector<WorkspaceRequirement> shapeless_optional_requirements;
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(shapeless_optional_shapes), shapeless_optional_requirements));
+  ASSERT_EQ(shapeless_optional_requirements.size(), 1u);
+  EXPECT_EQ(shapeless_optional_requirements[0].size_bytes, level2);
+
+  // K comes from the kernel attribute, so a partial input-A shape with an unknown final K dimension
+  // remains estimable as long as every leading dimension is known.
+  const std::array<WorkspaceInputShape, 1> unknown_k_shapes{
+      WorkspaceInputShape::PresentWithShape(TensorShape({4, -1}))};
+  InlinedVector<WorkspaceRequirement> unknown_k_requirements;
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(unknown_k_shapes), unknown_k_requirements));
+  ASSERT_EQ(unknown_k_requirements.size(), 1u);
+  EXPECT_GT(unknown_k_requirements[0].size_bytes, 0u);
+
+  // A zero in any leading dimension proves m == 0 even if another leading dimension is unknown
+  // or a huge earlier prefix would overflow. Level 2 omits zero-sized slots by contract.
+  const std::vector<TensorShapeVector> known_zero_partial_shapes{
+      {0, -1, kE2eK},
+      {-1, 0, kE2eK},
+      {std::numeric_limits<int64_t>::max(), 2, 0, kE2eK},
+  };
+  for (const auto& dimensions : known_zero_partial_shapes) {
+    SCOPED_TRACE(TensorShape{dimensions}.ToString());
+    const std::array<WorkspaceInputShape, 1> shapes{
+        WorkspaceInputShape::PresentWithShape(TensorShape{dimensions})};
+    InlinedVector<WorkspaceRequirement> known_zero_requirements;
+    ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(
+        gsl::make_span(shapes), known_zero_requirements));
+    EXPECT_TRUE(known_zero_requirements.empty());
+  }
+
+  const std::array<WorkspaceInputShape, 1> shapeless_a{
+      WorkspaceInputShape::PresentWithoutShape()};
+  InlinedVector<WorkspaceRequirement> shapeless_a_requirements;
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(shapeless_a), shapeless_a_requirements));
+  EXPECT_TRUE(shapeless_a_requirements.empty());
+
+  const std::array<WorkspaceInputShape, 1> missing_a{WorkspaceInputShape{}};
+  InlinedVector<WorkspaceRequirement> missing_a_requirements;
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(missing_a), missing_a_requirements));
+  EXPECT_TRUE(missing_a_requirements.empty());
 
   // ---- Runtime: run once and read the workspace size the CUTLASS runner actually requested. ----
   std::vector<MLFloat16> a_data(static_cast<size_t>(kE2eM * kE2eK), MLFloat16(0.25f));
@@ -644,8 +930,9 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
       << "The cached memory pattern did not supply the Level-2 workspace slot.";
 
   std::cout << "[ WORKSPACE ] Level1(runtime)=" << level1_runtime_workspace
+            << " bytes, Level1(runtime transient)=" << level1->runtime_transient_bytes
             << " bytes, Level1(persistent prepack)=" << level1->persistent_prepack_bytes
-            << " bytes, Level1(temporary prepack)=" << level1->temporary_prepack_bytes
+            << " bytes, Level1(initialization scratch)=" << level1->initialization_scratch_bytes
             << " bytes, Level2(declare)=" << level2
             << " bytes, runtime(request)=" << runtime << " bytes" << std::endl;
 
@@ -664,6 +951,52 @@ TEST(MatMulNBitsWorkspace, EndToEndWorkspaceAgreement) {
   EXPECT_EQ(level1_runtime_workspace, runtime)
       << "Level 1 runtime workspace (" << level1_runtime_workspace
       << ") != runtime request (" << runtime << ")";
+
+  // ---- Empty-output parity on the same dynamic-shape session and kernel. ----
+  // Level 1 knows that m == 0 and must return a known zero, including for native SM90.
+  const std::optional<size_t> zero_m_level1 =
+      onnxruntime::contrib::cuda::EstimateMatMulNBitsWorkspace(
+          *mm_node, zero_m_a_shape.GetDims(), cuda_ep->GetDeviceProp());
+  ASSERT_TRUE(zero_m_level1.has_value());
+  EXPECT_EQ(*zero_m_level1, 0u);
+
+  // Resolve the concrete empty shape through the same production shadow-inference and positional
+  // resolver used for shape hints. The two optional holes and the bias must retain their positions.
+  const auto zero_m_input_shapes =
+      ResolveNodeInputShapes(*mm_node, &graph, zero_m_inferred_shapes);
+  ASSERT_NE(zero_m_input_shapes[0].GetShape(), nullptr);
+  EXPECT_EQ(*zero_m_input_shapes[0].GetShape(), zero_m_a_shape);
+  ASSERT_EQ(zero_m_input_shapes.size(), 6u);
+  EXPECT_EQ(zero_m_input_shapes[3].GetState(), WorkspaceInputShapeState::Missing);
+  EXPECT_EQ(zero_m_input_shapes[4].GetState(), WorkspaceInputShapeState::Missing);
+#if USE_COMPACT_FPA_INTB_GEMM
+  EXPECT_EQ(zero_m_input_shapes[5].GetState(), WorkspaceInputShapeState::Missing);
+#else
+  EXPECT_EQ(zero_m_input_shapes[5].GetState(), WorkspaceInputShapeState::PresentWithShape);
+#endif
+
+  InlinedVector<WorkspaceRequirement> zero_m_requirements;
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(zero_m_input_shapes), zero_m_requirements));
+  EXPECT_TRUE(zero_m_requirements.empty());
+
+  MLFloat16 unused_zero_m_storage{};
+  OrtValue zero_m_a_value;
+  CreateMLValue<MLFloat16>(std::array<int64_t, 2>{0, kE2eK}, &unused_zero_m_storage,
+                           OrtMemoryInfo(), &zero_m_a_value);
+  NameMLValMap zero_m_feeds;
+  zero_m_feeds.emplace("A", zero_m_a_value);
+  std::vector<OrtValue> zero_m_fetches;
+  ASSERT_STATUS_OK(session.Run(zero_m_feeds, output_names, &zero_m_fetches));
+  ASSERT_EQ(zero_m_fetches.size(), 1u);
+  ASSERT_TRUE(zero_m_fetches[0].IsTensor());
+  EXPECT_EQ(zero_m_fetches[0].Get<Tensor>().Shape(), TensorShape({0, kE2eN}));
+
+  const size_t zero_m_runtime = GetMatMulNBitsLastComputeWorkspaceBytes(op_kernel);
+  std::cout << "[ WORKSPACE ZERO-M ] Level1=" << *zero_m_level1
+            << " bytes, Level2=empty, runtime(request)=" << zero_m_runtime << " bytes" << std::endl;
+  EXPECT_EQ(zero_m_runtime, 0u)
+      << "The same kernel must replace its prior positive capture with zero for an m == 0 run.";
 }
 
 TEST(MatMulNBitsWorkspace, StaticSmallMDeclarationMatchesProfiledTactic) {
@@ -1014,18 +1347,20 @@ TEST(MatMulNBitsWorkspace, FixedShapeViaFreeDimensionOverride) {
   ASSERT_TRUE(level1->runtime_workspace_bytes.has_value());
   const size_t level1_runtime_workspace = *level1->runtime_workspace_bytes;
 
-  // ---- Level 2: constructed-kernel estimate for the same fixed shape. Derive the TensorShape from
-  //      the actual (overridden) NodeArg proto via the SAME production converter Level-2 wiring would
-  //      use, so this exercises the real TensorShapeProto -> TensorShape path (not a hand-built copy).
+  // ---- Level 2: constructed-kernel estimate for the same fixed shape, using the production
+  //      positional shape resolver.
   const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
   ASSERT_NE(op_kernel, nullptr) << "No kernel constructed for the MatMulNBits node.";
-  const TensorShape a_tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*a_shape);
-  ASSERT_EQ(a_tensor_shape.NumDimensions(), static_cast<size_t>(2));
-  ASSERT_EQ(a_tensor_shape[0], kOverrideM)
+  MaxShapeInferenceResult inferred_shapes;
+  const auto input_shapes = ResolveNodeInputShapes(*mm_node, &graph, inferred_shapes);
+  ASSERT_FALSE(input_shapes.empty());
+  const TensorShape* resolved_a_shape = input_shapes[0].GetShape();
+  ASSERT_NE(resolved_a_shape, nullptr);
+  ASSERT_EQ(resolved_a_shape->NumDimensions(), static_cast<size_t>(2));
+  ASSERT_EQ((*resolved_a_shape)[0], kOverrideM)
       << "Overridden NodeArg leading dim did not convert to the fixed value " << kOverrideM << ".";
-  const std::vector<TensorShape> input_shapes{a_tensor_shape};
   InlinedVector<WorkspaceRequirement> requirements;
-  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
   ASSERT_EQ(requirements.size(), static_cast<size_t>(1))
       << "Level-2 DeclareWorkspaceRequirements did not report exactly one workspace slot.";
   // MatMulNBits::DeclareWorkspaceRequirements assigns the single split-K workspace slot_id 0.
@@ -1112,7 +1447,8 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
   EXPECT_FALSE(level1->runtime_workspace_bytes.has_value())
       << "Level-1 runtime workspace must be unknown for a dynamic (symbolic) leading dim.";
   EXPECT_GT(level1->persistent_prepack_bytes, size_t{0});
-  EXPECT_GT(level1->temporary_prepack_bytes, size_t{0});
+  EXPECT_GT(level1->initialization_scratch_bytes, size_t{0});
+  EXPECT_GT(level1->runtime_transient_bytes, size_t{0});
 
   // A separately inferred maximum shape makes the same dynamic node estimable without
   // modifying its canonical shape metadata.
@@ -1123,18 +1459,22 @@ TEST(MatMulNBitsWorkspace, DynamicShapeNoOverrideFallsBack) {
   ASSERT_TRUE(bounded_level1.has_value());
   EXPECT_TRUE(bounded_level1->runtime_workspace_bytes.has_value());
 
-  // ---- Level 2: derive the TensorShape from the actual NodeArg proto via the SAME production
-  //      converter Level-2 wiring would use. A symbolic dim must convert to a negative extent (-1),
-  //      which drives the dynamic fallback -> empty requirements. ----
+  // ---- Level 2: the production resolver preserves rank and converts the symbolic leading
+  //      dimension to -1, which drives the dynamic fallback -> empty requirements. ----
   const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
   ASSERT_NE(op_kernel, nullptr) << "No kernel constructed for the MatMulNBits node.";
-  const TensorShape a_tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*a_shape);
-  ASSERT_EQ(a_tensor_shape.NumDimensions(), static_cast<size_t>(2));
-  ASSERT_LT(a_tensor_shape[0], 0)
+  MaxShapeInferenceResult inferred_shapes;
+  const auto input_shapes = ResolveNodeInputShapes(*mm_node, &graph, inferred_shapes);
+  ASSERT_FALSE(input_shapes.empty());
+  EXPECT_EQ(input_shapes[0].GetState(), WorkspaceInputShapeState::PresentWithShape);
+  const TensorShape* resolved_a_shape = input_shapes[0].GetShape();
+  ASSERT_NE(resolved_a_shape, nullptr);
+  ASSERT_EQ(resolved_a_shape->NumDimensions(), static_cast<size_t>(2));
+  ASSERT_LT((*resolved_a_shape)[0], 0)
       << "Symbolic NodeArg leading dim did not convert to a negative (unknown) extent.";
-  const std::vector<TensorShape> input_shapes{a_tensor_shape};
+  EXPECT_EQ((*resolved_a_shape)[1], kE2eK);
   InlinedVector<WorkspaceRequirement> requirements;
-  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
   EXPECT_TRUE(requirements.empty())
       << "Level-2 DeclareWorkspaceRequirements must be empty for an unknown (symbolic) leading dim.";
 
@@ -1194,11 +1534,13 @@ TEST(MatMulNBitsWorkspace, NonMatMulNBitsKernelDeclaresNoWorkspace) {
   ASSERT_NE(op_kernel, nullptr) << "No kernel constructed for the Add node.";
 
   // Add does not override DeclareWorkspaceRequirements -> base-class no-op: OK() + empty output.
-  const std::vector<TensorShape> input_shapes{TensorShape({kAddM, kAddN}), TensorShape({kAddM, kAddN})};
+  MaxShapeInferenceResult inferred_shapes;
+  const auto input_shapes = ResolveNodeInputShapes(*add_node, &graph, inferred_shapes);
+  ASSERT_EQ(input_shapes.size(), 2u);
   InlinedVector<WorkspaceRequirement> requirements;
   // Pre-populate to prove the no-op default clears rather than appends.
   requirements.push_back(WorkspaceRequirement{123, /*slot_id=*/7, /*alignment_bytes=*/0});
-  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
   EXPECT_TRUE(requirements.empty())
       << "A kernel that does not override DeclareWorkspaceRequirements must report no workspace.";
 }

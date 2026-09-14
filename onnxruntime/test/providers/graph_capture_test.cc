@@ -3,7 +3,10 @@
 
 #ifdef USE_WEBGPU
 
+#include <filesystem>
 #include <numeric>
+
+#include <gsl/gsl>
 
 #include "gtest/gtest.h"
 
@@ -86,6 +89,78 @@ static Model CreateMatMulReluMatMulModel() {
   Model model(opsets);
   model.AddGraph(graph);
   return model;
+}
+
+TEST(WebGpuDispatchBatchingTests, ProfilingDispatchCountStaysBoundedAcrossAllocatorClears) {
+  Env& env = *ort_env;
+
+  SessionOptions session_options;
+  session_options.DisableMemPattern();
+  session_options.EnableProfiling(ORT_TSTR("webgpu_dispatch_batching_profiling_test"));
+
+  std::unordered_map<std::string, std::string> provider_options;
+  provider_options["maxNumPendingDispatches"] = "2";
+  provider_options["validationMode"] = "full";
+  AppendWebGpuEp(env, session_options, provider_options);
+
+  auto model = CreateMatMulReluMatMulModel();
+  Session session(env, model, session_options);
+
+  MemoryInfo cpu_mem_info = MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+
+  std::vector<int64_t> dims_a = {3, 4};
+  std::vector<int64_t> dims_b = {4, 3};
+  std::vector<int64_t> dims_c = {3, 2};
+  std::vector<int64_t> dims_y = {3, 2};
+  std::vector<float> values_a(12, 1.0f);
+  std::vector<float> values_b(12, 1.0f);
+  std::vector<float> values_c(6, 1.0f);
+  std::vector<float> values_y(6, 0.0f);
+
+  std::vector<Value> inputs;
+  inputs.emplace_back(Value::CreateTensor<float>(cpu_mem_info, values_a.data(), values_a.size(),
+                                                 dims_a.data(), dims_a.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(cpu_mem_info, values_b.data(), values_b.size(),
+                                                 dims_b.data(), dims_b.size()));
+  inputs.emplace_back(Value::CreateTensor<float>(cpu_mem_info, values_c.data(), values_c.size(),
+                                                 dims_c.data(), dims_c.size()));
+  Value output = Value::CreateTensor<float>(cpu_mem_info, values_y.data(), values_y.size(),
+                                            dims_y.data(), dims_y.size());
+  std::vector<const char*> input_names = {"A", "B", "C"};
+  std::vector<const char*> output_names = {"Y"};
+
+  std::string run_error;
+  std::vector<float> warm_output;
+  std::vector<float> second_output;
+  try {
+    session.Run(RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+                output_names.data(), &output, 1);
+    warm_output = values_y;
+
+    std::fill(values_y.begin(), values_y.end(), 0.0f);
+    session.Run(RunOptions{nullptr}, input_names.data(), inputs.data(), inputs.size(),
+                output_names.data(), &output, 1);
+    second_output = values_y;
+  } catch (const std::exception& ex) {
+    run_error = ex.what();
+  }
+
+  AllocatorWithDefaultOptions allocator;
+  auto profile_file = session.EndProfilingAllocated(allocator);
+  std::filesystem::path profile_file_path = profile_file.get();
+  auto cleanup_profile = gsl::finally([&profile_file_path] {
+    std::error_code ec;
+    std::filesystem::remove(profile_file_path, ec);
+  });
+
+  ASSERT_TRUE(run_error.empty()) << run_error;
+  const std::vector<float> expected_output(6, 12.0f);
+  ASSERT_EQ(warm_output.size(), expected_output.size());
+  ASSERT_EQ(second_output.size(), expected_output.size());
+  for (size_t i = 0; i < expected_output.size(); ++i) {
+    EXPECT_FLOAT_EQ(warm_output[i], expected_output[i]) << "Warm run output mismatch at index " << i;
+    EXPECT_FLOAT_EQ(second_output[i], expected_output[i]) << "Second run output mismatch at index " << i;
+  }
 }
 
 TEST(GraphCaptureTests, TestReleaseCapturedGraph) {

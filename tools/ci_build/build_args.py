@@ -199,6 +199,7 @@ def add_cmake_build_config_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--use_vcpkg_ms_internal_asset_cache", action="store_true", help="[MS Internal] Use internal vcpkg asset cache."
     )
+    parser.add_argument("--terrapin_retrieval_tool_path", help="Path to TerrapinRetrievalTool binary.")
     parser.add_argument("--skip_submodule_sync", action="store_true", help="Skip 'git submodule update'.")
     parser.add_argument("--skip_pip_install", action="store_true", help="Skip 'pip install'.")
 
@@ -827,6 +828,15 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
+    )
+    webgpu_group.add_argument(
+        "--use_dawn_agility_sdk",
+        action="store_true",
+        help=(
+            "Build Dawn's D3D12 backend with the Agility SDK for local development "
+            "(Windows desktop x86, x64, or ARM64 only; static library build only; "
+            "packaging and plugin EP builds unsupported)."
+        ),
     )
     webgpu_group.add_argument(
         "--wgsl_template",

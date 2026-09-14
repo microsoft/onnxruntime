@@ -2196,7 +2196,8 @@ static bool HandleSlice(HandlerArgs& args) {
     const std::optional<std::vector<int64_t>> starts_shape = starts_value_info->Shape();
     api::DataType int_dtype = starts_value_info->DType();
 
-    if (starts_shape == std::nullopt || starts_shape->size() != 1 || (*starts_shape)[0] < 0) {
+    if (starts_shape == std::nullopt || starts_shape->size() != 1 ||
+        (*starts_shape)[0] < 0 || static_cast<uint64_t>((*starts_shape)[0]) > rank) {
       return false;
     }
 
@@ -2290,11 +2291,27 @@ static bool HandleTile(HandlerArgs& args) {
   size_t rank = args.perm.size();
   std::vector<int64_t> perm_shape{gsl::narrow_cast<int64_t>(rank)};
 
-  std::string_view repeats_inp = args.node.Inputs()[1];
+  // Tile has 2 required inputs ('input' and 'repeats') per the ONNX spec; this is normally
+  // guaranteed by schema validation during Graph::Resolve, but that validation can be skipped
+  // for some build configurations (e.g. ORT-format models), so check explicitly here too, as
+  // the sibling Gather handler above does for its own required second input.
+  auto tile_inputs = args.node.Inputs();
+  if (tile_inputs.size() < 2) {
+    return false;
+  }
+  std::string_view repeats_inp = tile_inputs[1];
   std::unique_ptr<api::TensorRef> repeats_const = args.ctx.graph.GetConstant(repeats_inp);
   if (repeats_const != nullptr) {
     // Case 1: Repeats is constant. Shuffle order.
     const std::vector<int64_t>& repeats = DataInt64(*repeats_const);
+    // 'repeats' is required by the Tile spec to have one entry per dimension of the preceding
+    // Transpose's input, i.e. the same length as 'rank' derived from that Transpose's 'perm'. That
+    // isn't necessarily verified ahead of this point (e.g. shape inference may not have been able to
+    // validate it if the data input's rank wasn't statically known), so re-check it here before using
+    // values from 'perm_inv' (which are all < rank) to index into 'repeats'.
+    if (repeats.size() != rank) {
+      return false;
+    }
     std::vector<int64_t> new_repeats;
     new_repeats.reserve(rank);
     for (int64_t p : args.perm_inv) {
@@ -2769,6 +2786,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Softsign", simple_node_handler},
     {"ThresholdedRelu", simple_node_handler},
     {"Celu", simple_node_handler},
+    {"Elu", simple_node_handler},
     {"HardSwish", simple_node_handler},
 
     {"Sin", simple_node_handler},

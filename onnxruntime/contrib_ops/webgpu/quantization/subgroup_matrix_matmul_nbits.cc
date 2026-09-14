@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(__wasm__)
-
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
@@ -214,6 +212,13 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
   SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
   mul_program.SetWorkgroupSize(work_group_size);
+
+  // On Intel, use a fixed subgroup size of 32 for better performance.
+  if (context.AdapterInfo().vendor == std::string_view{"intel"} &&
+      context.HasFeature(wgpu::FeatureName::SubgroupSizeControl)) {
+    mul_program.SetSubgroupSize(32);
+  }
+
   uint32_t dispatch_x = (N + tile_size_b - 1) / tile_size_b;
   uint32_t num_m_tiles = (M + tile_size_a - 1) / tile_size_a;
   uint32_t dispatch_y = num_m_tiles;
@@ -270,6 +275,16 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
     return false;
   }
 
+  // Every fp16 config in supported_subgroup_matrix_configs has resultComponentType == F16, and
+  // the kernels declare subgroup_matrix_result<f16, ...> to match, so the accumulation inside
+  // subgroupMatrixMultiplyAccumulate is f16 and there is no variant of this kernel that can
+  // honour an f32 accumulator request. Decline the path instead of ignoring the option: the
+  // caller then falls through to a kernel that does honour it. Only fp16 outputs are affected;
+  // the fp32 config accumulates in f32 already.
+  if (is_fp16 && context.EnableMatmulFp32Accumulation()) {
+    return false;
+  }
+
   bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
   if (has_subgroup_matrix) {
     // Check if the adapter reports a subgroup matrix config we support.
@@ -294,5 +309,3 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif

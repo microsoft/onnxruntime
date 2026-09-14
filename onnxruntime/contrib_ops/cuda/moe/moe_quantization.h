@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "contrib_ops/cuda/moe/moe_base.h"
+#include "contrib_ops/cuda/moe/qmoe_row_tiling.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv_fp4.h"
@@ -18,6 +19,10 @@ namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
+
+constexpr const char* kEnableQMoEKernelDebugInfo = "ORT_ENABLE_QMOE_KERNEL_DEBUG_INFO";
+constexpr const char* kQMoERowTileSize = "ORT_QMOE_ROW_TILE_SIZE";
+constexpr const char* kQMoERowTileSizeConfig = "ep.cuda.qmoe_row_tile_size";
 
 class QMoE final : public CudaKernel, public MoEBase {
  public:
@@ -53,6 +58,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // to GPU. Order-independent: invoked from both PrePack handlers; the call that completes
   // the pair performs the combine. No-op unless the fused FP4 GEMV path is enabled.
   void TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc);
+  void TryBuildFp4DeepGemmWeights(int fc, cudaStream_t stream, AllocatorPtr alloc);
   // Prepacks int4/int8 expert weights into the CUTLASS fpA_intB layout so the
   // QMoE runner can consume them directly. Mirrors what MatMulNBits.PrePack
   // does, looped over the E expert dimension. ``tensor`` is the 3-D
@@ -96,6 +102,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   // dequantize MXFP4 weights to FP16/BF16 and run the dense A16 MoE runner.
   bool use_wfp4afp8_dequant_fallback_ = false;
   std::string quant_type_;  // "int", "fp4", "nvfp4", "fp8", or "wfp4afp8"
+  bool enable_kernel_debug_info_ = false;
+  int64_t row_tile_size_ = qmoe::kDisabledRowTileSize;
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 
@@ -144,6 +152,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   // session-scoped configuration model as the other FP4 GEMV environment options.
   bool fp4_gemv_skip_expand_ = true;
   bool enable_fp4_cutlass_gemm_ = false;
+  bool enable_fp4_deep_gemm_ = false;
+  // Per-rank expert count DeepGEMM was built for (32); 0 when the static shapes rule it out.
+  int fp4_deep_gemm_num_experts_ = 0;
   // Native block-scaled CUTLASS FP4xFP4 grouped GEMM for NVFP4 (e2m1 weight + e2m1 activation,
   // block size 16, E4M3 block scales). Blackwell SM120+. When enabled, prefill routes through the
   // native FP4xFP4 runner (m_moe_runner) and decode/oversized shapes fall back to the fused GEMV
@@ -208,6 +219,15 @@ class QMoE final : public CudaKernel, public MoEBase {
   // regime, where TryBuildGemvFp4Scales reads packed_fp4_*_block_scales_ directly.
   IAllocatorUniquePtr<void> gemv_fp4_fc1_block_raw_;
   IAllocatorUniquePtr<void> gemv_fp4_fc2_block_raw_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc1_staged_weights_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc2_staged_weights_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc1_staged_block_scales_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc2_staged_block_scales_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc1_weights_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc2_weights_;
+  // fp32 per-[128 N, 128 K] block scales for the e4m3 weights above, [E, N/128, K/128].
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc1_weight_scales_;
+  IAllocatorUniquePtr<void> fp4_deep_gemm_fc2_weight_scales_;
   // Block-scale dimensions captured at PrePack time so TryBuildGemvFp4Scales can size and
   // launch the combine kernel once the global scale also arrives. [E, n, k_blocks].
   int64_t gemv_fp4_fc1_scale_e_ = 0;

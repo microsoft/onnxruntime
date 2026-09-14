@@ -115,6 +115,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
 }
 
 size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
+  maxM = std::max<size_t>(1, maxM);
   const int original_n =
       static_cast<int>(mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO);
   const auto scratch_size = ComputeWeightOnlyGemmProfilerScratchSize(
@@ -159,13 +160,18 @@ std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(c
 
 std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
     int minM, int maxM, bool /*hasWeightOnlyCudaKernel*/) const {
-  int const lo = std::max(1, minM);
-  int const hi = std::max(lo, maxM);
+  return GetInitialProfileMBuckets(minM, maxM, mProfileMOverride);
+}
+
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::GetInitialProfileMBuckets(
+    int min_m, int max_m, const std::vector<int>& profile_m_override) {
+  int const lo = std::max(1, min_m);
+  int const hi = std::max(lo, max_m);
 
   std::set<int> buckets;
 
-  if (!mProfileMOverride.empty()) {
-    for (int m : mProfileMOverride) {
+  if (!profile_m_override.empty()) {
+    for (int m : profile_m_override) {
       buckets.insert(std::min(std::max(lo, m), hi));
     }
   } else {

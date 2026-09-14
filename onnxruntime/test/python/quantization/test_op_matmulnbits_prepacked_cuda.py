@@ -134,7 +134,13 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
 
         with set_env("ORT_FPA_INTB_GEMM", "1"):
             raw_output = self._run_model(raw_model, a)
-            prepacked_output = self._run_model(prepacked_model, a)
+            try:
+                prepacked_output = self._run_model(prepacked_model, a)
+            except Exception as exc:
+                outside_compact_contract = block_size != 32 or has_bias or weight_prepacked != 1
+                if outside_compact_contract and "compact fpA_intB build supports prepacked weights only" in str(exc):
+                    self.skipTest("case is outside the compact fpA_intB build contract")
+                raise
 
         np.testing.assert_allclose(prepacked_output, raw_output, rtol=1e-3, atol=1e-3)
 
@@ -144,12 +150,18 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
 
     def test_int4_bs32_sm80_prepacked_weight_matches_runtime_prepack(self):
         # Production rc2/rc3 models use block_size=32 (SM80/Ampere layout, weight_prepacked=1).
-        self._check_prepacked_parity(bits=4, block_size=32, m=1)
-        self._check_prepacked_parity(bits=4, block_size=32, m=32)
+        for m in (1, 15, 16, 32, 128, 512):
+            with self.subTest(m=m):
+                self._check_prepacked_parity(bits=4, block_size=32, m=m)
 
     def test_int8_sm80_prepacked_weight_matches_runtime_prepack(self):
         self._check_prepacked_parity(bits=8, block_size=64, m=1)
         self._check_prepacked_parity(bits=8, block_size=128, m=32)
+
+    def test_int8_bs32_sm80_prepacked_weight_matches_runtime_prepack(self):
+        for m in (1, 15, 16, 32, 128, 512):
+            with self.subTest(m=m):
+                self._check_prepacked_parity(bits=8, block_size=32, m=m)
 
     def test_int4_sm80_prepacked_weight_with_bias_matches_runtime_prepack(self):
         self._check_prepacked_parity(bits=4, block_size=64, m=1, has_bias=True)
@@ -273,7 +285,7 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
         sess = ort.InferenceSession(model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
         return sess.run(None, {"A": a})[0]
 
-    def _make_int4_case(self, m=32, k=256, n=512, block_size=64):
+    def _make_int4_case(self, m=32, k=256, n=512, block_size=32):
         rng = np.random.default_rng(2024)
         a = rng.normal(0.0, 0.25, size=(m, k)).astype(np.float16)
         weight = rng.normal(0.0, 0.25, size=(k, n)).astype(np.float16)

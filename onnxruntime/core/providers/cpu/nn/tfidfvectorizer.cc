@@ -259,7 +259,7 @@ TfIdfVectorizer::~TfIdfVectorizer() = default;
 
 void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrdiff_t row_num, size_t row_size,
                                   bool is_input_string, gsl::span<float> output_data,
-                                  std::function<void(size_t, gsl::span<float>&)>& fn_weight) const {
+                                  std::function<void(size_t, size_t, gsl::span<float>&)>& fn_weight) const {
   const void* const row_begin = AdvanceElementPtr(x_data_raw, row_num * row_size, elem_size);
   const void* const row_end = AdvanceElementPtr(row_begin, row_size, elem_size);
 
@@ -294,8 +294,9 @@ void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrd
             break;
           }
           if (ngram_size >= start_ngram_size && hit->second->id_ != 0) {
-            output_idx = impl.OutputIdToIncrement(hit->second->id_);
-            fn_weight(output_idx, output_data);
+            const size_t ngram_id = hit->second->id_;
+            output_idx = impl.OutputIdToIncrement(ngram_id);
+            fn_weight(ngram_id - 1, output_idx, output_data);
           }
           str_map = &hit->second->leafs_;
         }
@@ -312,8 +313,9 @@ void TfIdfVectorizer::ComputeImpl(const void* x_data_raw, size_t elem_size, ptrd
             break;
           }
           if (ngram_size >= start_ngram_size && hit->second->id_ != 0) {
-            output_idx = impl.OutputIdToIncrement(hit->second->id_);
-            fn_weight(output_idx, output_data);
+            const size_t ngram_id = hit->second->id_;
+            output_idx = impl.OutputIdToIncrement(ngram_id);
+            fn_weight(ngram_id - 1, output_idx, output_data);
           }
           int_map = &hit->second->leafs_;
         }
@@ -391,24 +393,24 @@ Status TfIdfVectorizer::Compute(OpKernelContext* ctx) const {
   int32_t num_batches = std::min<int32_t>(concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 2, num_rows);
 
   const auto& w = impl.weights_;
-  std::function<void(size_t, gsl::span<float>&)> fn_weight;
+  std::function<void(size_t, size_t, gsl::span<float>&)> fn_weight;
 
   switch (impl.weighting_criteria_) {
     case kTF:
-      fn_weight = [](size_t i, gsl::span<float>& out) { out[i] += 1.0f; };
+      fn_weight = [](size_t /*pool_idx*/, size_t out_idx, gsl::span<float>& out) { out[out_idx] += 1.0f; };
       break;
     case kIDF:
       if (!w.empty()) {
-        fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] = w[i]; };
+        fn_weight = [&w](size_t pool_idx, size_t out_idx, gsl::span<float>& out) { out[out_idx] = w[pool_idx]; };
       } else {
-        fn_weight = [](size_t i, gsl::span<float>& out) { out[i] = 1.0f; };
+        fn_weight = [](size_t /*pool_idx*/, size_t out_idx, gsl::span<float>& out) { out[out_idx] = 1.0f; };
       }
       break;
     case kTFIDF:
       if (!w.empty()) {
-        fn_weight = [&w](size_t i, gsl::span<float>& out) { out[i] += w[i]; };
+        fn_weight = [&w](size_t pool_idx, size_t out_idx, gsl::span<float>& out) { out[out_idx] += w[pool_idx]; };
       } else {
-        fn_weight = [](size_t i, gsl::span<float>& out) { out[i] += 1.0f; };
+        fn_weight = [](size_t /*pool_idx*/, size_t out_idx, gsl::span<float>& out) { out[out_idx] += 1.0f; };
       }
       break;
     case kNone:  // fall-through
