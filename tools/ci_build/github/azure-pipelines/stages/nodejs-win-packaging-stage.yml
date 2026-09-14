@@ -32,7 +32,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: onnxruntime-Win-CPU-VS2022
+      name: onnxruntime-Win-CPU-2022
       os: windows
     templateContext:
       sdl:
