@@ -39,25 +39,32 @@ VarlenCausalConvWithState::VarlenCausalConvWithState(const OpKernelInfo& info)
 }
 
 Status VarlenCausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("weight", ShaderUsage::UseUniform);
-  shader.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
+  const auto& input = shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
+  const auto& weight = shader.AddInput("weight", ShaderUsage::UseUniform);
+  const auto& cumulative_sequence_length =
+      shader.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* bias = &input;
   if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
+    bias = &shader.AddInput("bias", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* initial_state = &input;
   if (has_state_ && !state_in_final_state_) {
-    shader.AddInput("initial_state", ShaderUsage::UseUniform);
+    initial_state = &shader.AddInput("initial_state", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* capture_count = &cumulative_sequence_length;
   if (has_capture_count_) {
-    shader.AddInput("capture_count", ShaderUsage::UseUniform);
+    capture_count = &shader.AddInput("capture_count", ShaderUsage::UseUniform);
   }
 
-  shader.AddOutput("output", ShaderUsage::UseUniform);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* final_state = &output;
   if (has_state_) {
-    shader.AddOutput("final_state", ShaderUsage::UseUniform | ShaderUsage::UseGetByOffsetSegments);
+    final_state = &shader.AddOutput(
+        "final_state", ShaderUsage::UseUniform | ShaderUsage::UseGetByOffsetSegments);
   }
+  const ShaderVariableHelper* state_update = &output;
   if (has_state_update_ && has_capture_count_) {
-    shader.AddOutput("state_update", ShaderUsage::UseUniform);
+    state_update = &shader.AddOutput("state_update", ShaderUsage::UseUniform);
   }
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/varlen_causal_conv_with_state.wgsl.template",
@@ -65,7 +72,16 @@ Status VarlenCausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader
                              WGSL_TEMPLATE_PARAMETER(has_state, has_state_),
                              WGSL_TEMPLATE_PARAMETER(has_state_update, has_state_update_ && has_capture_count_),
                              WGSL_TEMPLATE_PARAMETER(state_in_final_state, state_in_final_state_),
-                             WGSL_TEMPLATE_PARAMETER(use_silu, use_silu_));
+                             WGSL_TEMPLATE_PARAMETER(use_silu, use_silu_),
+                             WGSL_TEMPLATE_VARIABLE(bias, *bias),
+                             WGSL_TEMPLATE_VARIABLE(capture_count, *capture_count),
+                             WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
+                             WGSL_TEMPLATE_VARIABLE(final_state, *final_state),
+                             WGSL_TEMPLATE_VARIABLE(initial_state, *initial_state),
+                             WGSL_TEMPLATE_VARIABLE(input, input),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(state_update, *state_update),
+                             WGSL_TEMPLATE_VARIABLE(weight, weight));
 }
 
 Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const {

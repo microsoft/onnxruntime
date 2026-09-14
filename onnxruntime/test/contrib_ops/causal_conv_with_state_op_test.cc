@@ -24,6 +24,9 @@
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/test_environment.h"
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_context.h"
+#endif
 namespace onnxruntime {
 namespace test {
 
@@ -1463,6 +1466,10 @@ std::unique_ptr<IExecutionProvider> TryGetEpWithVarlenCausalConvWithState() {
   return nullptr;
 }
 
+std::unique_ptr<IExecutionProvider> GetWebGpuEpWithTestStorageBufferBindingSize(uint64_t max_size) {
+  return WebGpuExecutionProviderWithTestStorageBufferBindingSize(max_size);
+}
+
 // Transpose a single request's (channels, length) reference block to the token-major
 // (length, channels) layout the packed op expects.
 std::vector<float> TransposeDL_to_LD(const std::vector<float>& data, int D, int L) {
@@ -1505,6 +1512,7 @@ struct VarlenCausalConvCase {
   bool verify_compact_replay = false;
   bool use_fp16 = false;
   bool use_bf16 = false;
+  uint64_t max_storage_buffer_binding_size = 0;
   // When true, every request is filled with one large constant value of alternating sign instead
   // of a smooth per-request waveform, so any accidental cross-request boundary read produces an
   // unmistakably large mismatch instead of a subtle one.
@@ -1512,7 +1520,9 @@ struct VarlenCausalConvCase {
 };
 
 void RunVarlenCausalConvCase(const VarlenCausalConvCase& c) {
-  auto ep = TryGetEpWithVarlenCausalConvWithState();
+  auto ep = c.max_storage_buffer_binding_size == 0
+                ? TryGetEpWithVarlenCausalConvWithState()
+                : GetWebGpuEpWithTestStorageBufferBindingSize(c.max_storage_buffer_binding_size);
   if (!ep) {
     GTEST_SKIP() << "VarlenCausalConvWithState kernel not registered";
     return;
@@ -2070,8 +2080,11 @@ static void RunAliasedStateTwoCallContinuationIOBinding(
     int total_tokens,
     int kernel_size,
     const std::vector<float>& expected_output,
-    const std::vector<float>& expected_state) {
-  auto ep = TryGetEpWithVarlenCausalConvWithState();
+    const std::vector<float>& expected_state,
+    uint64_t max_storage_buffer_binding_size = 0) {
+  auto ep = max_storage_buffer_binding_size == 0
+                ? TryGetEpWithVarlenCausalConvWithState()
+                : GetWebGpuEpWithTestStorageBufferBindingSize(max_storage_buffer_binding_size);
   if (!ep) {
     GTEST_SKIP() << "VarlenCausalConvWithState execution provider not available";
     return;
@@ -2204,6 +2217,38 @@ TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize2TwoCallCont
 
 TEST(ContribOpVarlenCausalConvWithStateTest, AliasedDecodeKernelSize3TwoCallContinuation) {
   RunAliasedStateTwoCallContinuationIOBinding(1, 3, {2.0f}, {1.0f, 1.0f});
+}
+
+TEST(ContribOpVarlenCausalConvWithStateTest, WebGpuSegmentedBuffers) {
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+  constexpr uint64_t limit = WebGpuContext::kMinConfigurableStorageBufferBindingSize;
+
+  VarlenCausalConvCase output_case;
+  output_case.seq_lens = {1, 1};
+  output_case.channels = 33;
+  output_case.kernel_size = 1;
+  output_case.with_bias = false;
+  output_case.max_storage_buffer_binding_size = limit;
+  RunVarlenCausalConvCase(output_case);
+
+  VarlenCausalConvCase state_update_case;
+  state_update_case.seq_lens = {1, 1};
+  state_update_case.channels = 5;
+  state_update_case.kernel_size = 1;
+  state_update_case.with_bias = false;
+  state_update_case.state_update_capacity = 8;
+  state_update_case.capture_count = {1, 1};
+  state_update_case.max_storage_buffer_binding_size = limit;
+  RunVarlenCausalConvCase(state_update_case);
+
+  std::vector<float> expected_aliased_state(65, 0.0f);
+  expected_aliased_state[63] = 1.0f;
+  expected_aliased_state[64] = 1.0f;
+  RunAliasedStateTwoCallContinuationIOBinding(
+      1, 66, {2.0f}, expected_aliased_state, limit);
+#else
+  GTEST_SKIP() << "Internal WebGPU test provider is not available";
+#endif
 }
 
 static void RunMalformedCuSeqlens(const std::vector<int32_t>& cu_seqlens, int total_tokens,

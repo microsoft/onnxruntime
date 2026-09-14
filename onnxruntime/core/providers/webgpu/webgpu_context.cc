@@ -1262,7 +1262,8 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                                                     config.validation_mode,
                                                                     config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
-                                                                    config.max_storage_buffer_binding_size));
+                                                                    config.max_storage_buffer_binding_size,
+                                                                    config.test_only_max_storage_buffer_binding_size));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&

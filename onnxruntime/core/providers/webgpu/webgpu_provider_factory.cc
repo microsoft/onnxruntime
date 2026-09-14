@@ -339,18 +339,29 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
 
 }  // namespace
 
-std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(const ConfigOptions& config_options) {
+static std::shared_ptr<IExecutionProviderFactory> CreateWebGpuProviderFactory(
+    const ConfigOptions& config_options, uint64_t test_only_max_storage_buffer_binding_size) {
   // prepare WebGpuExecutionProviderConfig
   WebGpuExecutionProviderConfig webgpu_ep_config = ParseEpConfig(config_options);
 
   // prepare WebGpuContextConfig
   WebGpuContextConfig config = ParseWebGpuContextConfig(config_options);
+  config.test_only_max_storage_buffer_binding_size = test_only_max_storage_buffer_binding_size;
 
   // Load the Dawn library and create the WebGPU instance.
   auto& context = WebGpuContextFactory::CreateContext(config);
 
   // Create WebGPU EP factory.
   return std::make_shared<WebGpuProviderFactory>(config.context_id, context, std::move(webgpu_ep_config));
+}
+
+std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(const ConfigOptions& config_options) {
+  return CreateWebGpuProviderFactory(config_options, 0);
+}
+
+std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::CreateForTesting(
+    const ConfigOptions& config_options, uint64_t max_storage_buffer_binding_size) {
+  return CreateWebGpuProviderFactory(config_options, max_storage_buffer_binding_size);
 }
 
 // WebGPU DataTransfer implementation wrapper for the C API with lazy initialization
