@@ -87,6 +87,16 @@ NS_ASSUME_NONNULL_BEGIN
   return runOptions;
 }
 
++ (NSDictionary<NSString*, ORTValue*>*)makeTestInput {
+  NSMutableData* aData = [ORTSessionTest dataWithScalarFloat:1.0f];
+  NSMutableData* bData = [ORTSessionTest dataWithScalarFloat:2.0f];
+
+  ORTValue* a = [ORTSessionTest ortValueWithScalarFloatData:aData];
+  ORTValue* b = [ORTSessionTest ortValueWithScalarFloatData:bData];
+
+  return @{@"A" : a, @"B" : b};
+}
+
 - (void)testInitAndRunWithPreallocatedOutputOk {
   NSMutableData* aData = [ORTSessionTest dataWithScalarFloat:1.0f];
   NSMutableData* bData = [ORTSessionTest dataWithScalarFloat:2.0f];
@@ -341,6 +351,114 @@ static OrtStatus* _Nullable DummyRegisterCustomOpsFn(OrtSessionOptions* /*sessio
   env = nil;
   // ORTSession should keep a strong reference to it.
   XCTAssertNotNil(envWeak);
+}
+
+- (void)testProfilingWithPrefixOk {
+  // Absolute path with file prefix in a temporary directory
+  NSString* prefix = [NSTemporaryDirectory() stringByAppendingPathComponent:@"profile"];
+
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  BOOL enableResult = [sessionOptions enableProfilingWithFilePrefix:prefix error:&err];
+  ORTAssertBoolResultSuccessful(enableResult, err);
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:sessionOptions
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+
+  NSDictionary<NSString*, ORTValue*>* outputs =
+      [session runWithInputs:[ORTSessionTest makeTestInput]
+                 outputNames:[NSSet setWithArray:@[ @"C" ]]
+                  runOptions:[ORTSessionTest makeRunOptions]
+                       error:&err];
+  ORTAssertNullableResultSuccessful(outputs, err);
+
+  NSString* path = [session endProfilingWithError:&err];
+  ORTAssertNullableResultSuccessful(path, err);
+  XCTAssert([path hasPrefix:prefix]);
+  XCTAssert([path hasSuffix:@".json"]);
+
+  NSFileManager* fileManager = [NSFileManager defaultManager];
+  XCTAssert([fileManager fileExistsAtPath:path]);
+  // Try cleaning up generated files after test has passed
+  [fileManager removeItemAtPath:path error:nil];
+}
+
+- (void)testProfilingWithEmptyPrefixOk {
+  // Relative path without prefix. Resolved relative to working directory (e.g. build/Debug)
+  NSString* prefix = @"";
+
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  BOOL enableResult = [sessionOptions enableProfilingWithFilePrefix:prefix error:&err];
+  ORTAssertBoolResultSuccessful(enableResult, err);
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:sessionOptions
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+
+  NSDictionary<NSString*, ORTValue*>* outputs =
+      [session runWithInputs:[ORTSessionTest makeTestInput]
+                 outputNames:[NSSet setWithArray:@[ @"C" ]]
+                  runOptions:[ORTSessionTest makeRunOptions]
+                       error:&err];
+  ORTAssertNullableResultSuccessful(outputs, err);
+
+  NSString* path = [session endProfilingWithError:&err];
+  ORTAssertNullableResultSuccessful(path, err);
+  XCTAssert([path hasSuffix:@".json"]);
+
+  NSFileManager* fileManager = [NSFileManager defaultManager];
+  XCTAssert([fileManager fileExistsAtPath:path]);
+  // Try cleaning up generated files after test has passed
+  [fileManager removeItemAtPath:path error:&err];
+}
+
+- (void)testDisableProfilingStopsProfilingInFutureSessions {
+  NSError* err = nil;
+
+  NSFileManager* fileManager = [NSFileManager defaultManager];
+  NSString* tmpFolder = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSUUID UUID].UUIDString];
+  BOOL createdTmpFolder = [fileManager createDirectoryAtPath:tmpFolder
+                                 withIntermediateDirectories:NO
+                                                  attributes:nil
+                                                       error:&err];
+  ORTAssertBoolResultSuccessful(createdTmpFolder, err);
+  NSString* prefix = [tmpFolder stringByAppendingPathComponent:@"profile"];
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+
+  BOOL enableResult = [sessionOptions enableProfilingWithFilePrefix:prefix error:&err];
+  ORTAssertBoolResultSuccessful(enableResult, err);
+  BOOL disableResult = [sessionOptions disableProfilingWithError:&err];
+  ORTAssertBoolResultSuccessful(disableResult, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:sessionOptions
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+
+  NSDictionary<NSString*, ORTValue*>* outputs =
+      [session runWithInputs:[ORTSessionTest makeTestInput]
+                 outputNames:[NSSet setWithArray:@[ @"C" ]]
+                  runOptions:[ORTSessionTest makeRunOptions]
+                       error:&err];
+  ORTAssertNullableResultSuccessful(outputs, err);
+
+  NSString* path = [session endProfilingWithError:&err];
+  ORTAssertNullableResultSuccessful(path, err);
+  XCTAssert([path isEqual:@""]);
+
+  // Check no profile json files were created in folder
+  NSArray<NSString*>* tmpFiles = [fileManager contentsOfDirectoryAtPath:tmpFolder error:&err];
+  ORTAssertNullableResultSuccessful(tmpFiles, err);
+  for (NSString* filename in tmpFiles) {
+    XCTAssertFalse([filename hasSuffix:@".json"]);
+  }
+  // Try cleaning up created directory after test has passed
+  [fileManager removeItemAtPath:tmpFolder error:nil];
 }
 
 @end
