@@ -18,9 +18,8 @@ namespace {
 // also the same signal ORT Web itself uses to decide whether WebGPU is usable (see initEp() in
 // js/web/lib/wasm/wasm-core-impl.ts).
 //
-// navigator is defined in both window and worker scopes, so this works on either. Node.js has no native WebGPU
-// implementation (nodejs/node#42896 was closed as not planned), but the userland Dawn based packages install their
-// GPU object onto globalThis, so this check picks those up too. Where neither is present no GPU is reported.
+// navigator is defined in both window and worker scopes, so this works on either. Hosts without navigator.gpu,
+// including Node.js by default, report no GPU.
 bool IsWebGpuAvailable() {
   // clang-format off
   // The body below is JavaScript, not C++; clang-format would otherwise rewrite `!==` as `!= =`.
