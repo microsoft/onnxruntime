@@ -62,6 +62,11 @@
 
 #define MINIMUM_COREML_VERSION 5  // first version we support
 
+// Core ML 6 (iOS 16 / macOS 13) introduced MLComputeUnitsCPUAndNeuralEngine, the only compute-units mode that
+// enables the Neural Engine without also enabling the GPU. Earlier versions cannot honor a Neural-Engine-only
+// request, so device-based EP selection does not offer the Neural Engine below this version.
+#define MINIMUM_COREML_VERSION_FOR_NEURAL_ENGINE_SELECTION 6
+
 namespace onnxruntime {
 namespace coreml {
 namespace util {

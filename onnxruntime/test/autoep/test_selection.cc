@@ -11,6 +11,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test_allocator.h"
 #include "test/autoep/test_autoep_utils.h"
@@ -74,8 +75,20 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           // auto select using policy
                           std::optional<OrtExecutionProviderDevicePolicy> policy = std::nullopt,
                           std::optional<EpSelectionDelegate> delegate = std::nullopt,
-                          bool test_session_creation_only = false) {
+                          bool test_session_creation_only = false,
+                          // If true, disables fallback of unsupported graph nodes to the ORT CPU
+                          // EP. Session creation fails unless the selected non-CPU EP supports the
+                          // entire graph. Setting this to true while explicitly selecting the ORT
+                          // CPU EP is invalid and causes session creation to fail.
+                          bool disable_cpu_ep_fallback = false,
+                          // Optional callback invoked after session creation and before inference,
+                          // for example to verify the session's EP assignment.
+                          const std::function<void(Ort::Session&)>& session_checker = nullptr) {
   Ort::SessionOptions session_options;
+
+  if (disable_cpu_ep_fallback) {
+    session_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  }
 
   if (library_path && IsRegistered(ep_to_select) == false) {
     ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(env, ep_to_select.c_str(),
@@ -125,6 +138,11 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   // if session creation passes, model loads fine
   Ort::Session session(env, model_uri.c_str(), session_options);
 
+  if (session_checker) {
+    // Stop this helper if session_checker reports a fatal assertion, rather than continuing to RunSession.
+    ASSERT_NO_FATAL_FAILURE(session_checker(session));
+  }
+
   // caller wants to test running the model (not just loading the model)
   if (!test_session_creation_only) {
     auto default_allocator = std::make_unique<MockedOrtAllocator>();
@@ -138,10 +156,12 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   }
 }
 
-namespace {
 void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::path> library_path,
-                  const Ort::KeyValuePairs& provider_options = Ort::KeyValuePairs{},
-                  const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices = nullptr) {
+                  const Ort::KeyValuePairs& provider_options,
+                  const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices,
+                  bool test_auto_select,
+                  const std::function<void(Ort::Session&)>& v2_session_checker,
+                  bool disable_cpu_ep_fallback) {
   const auto run_test = [&](bool auto_select) {
     std::vector<Input<float>> inputs(1);
     auto& input = inputs.back();
@@ -160,13 +180,20 @@ void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::pat
                          expected_dims_y,
                          expected_values_y,
                          auto_select,
-                         select_devices);
+                         select_devices,
+                         /*policy*/ std::nullopt,
+                         /*delegate*/ std::nullopt,
+                         /*test_session_creation_only*/ false,
+                         disable_cpu_ep_fallback,
+                         auto_select ? nullptr : v2_session_checker);
   };
 
-  run_test(true);   // auto ep selection after session creation
+  if (test_auto_select) {
+    run_test(true);  // auto ep selection after session creation
+  }
+
   run_test(false);  // SessionOptionsAppendExecutionProvider_V2
 }
-}  // namespace
 
 TEST(AutoEpSelection, CpuEP) {
   RunBasicTest(kCpuExecutionProvider, std::nullopt);
