@@ -4831,6 +4831,20 @@ TEST(ModOpTest, Mod_int32_by_zero_constant_initializer) {
            {}, nullptr, &execution_providers);
 }
 
+#ifdef USE_CUDA
+TEST(ModOpTest, Mod_int64_by_zero_CUDA) {
+  OpTester test("Mod", ModOp_ver);
+  test.AddInput<int64_t>("X", {3}, {-3, 4, 7});
+  test.AddInput<int64_t>("Y", {3}, {0, 2, 3});
+  test.AddOutput<int64_t>("Z", {3}, {0, 0, 0});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Integer modulo by zero",
+           {}, nullptr, &execution_providers);
+}
+#endif
+
 TEST(BitShiftOpTest, SimpleLeft) {
   OpTester test("BitShift", 11);
   test.AddAttribute("direction", "LEFT");
