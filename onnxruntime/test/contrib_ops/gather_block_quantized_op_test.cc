@@ -1298,6 +1298,18 @@ TEST(GatherBlockQuantizedOpTest, FpGlobalPerTensorScale) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", kFpExcludedProviders);
 }
 
+TEST(GatherBlockQuantizedOpTest, FpEmptyTrailingDimension) {
+  OpTester test("GatherBlockQuantized", 1, kMSDomain);
+  test.AddAttribute<int64_t>("gather_axis", 1);
+  test.AddAttribute<int64_t>("quantize_axis", 2);
+  test.AddAttribute<int64_t>("block_size", 0);
+  test.AddInput<Float8E4M3FN>("data", {2, 3, 0}, {});
+  test.AddInput<int64_t>("indices", {1}, {0});
+  test.AddInput<float>("scales", {2, 3, 0}, {});
+  test.AddOutput<float>("output", {2, 1, 0}, {});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kFpExcludedProviders);
+}
+
 TEST(GatherBlockQuantizedOpTest, FpSubRowBlockScale) {
   // data: [1, 32] FP8 E4M3FN, block_size = 16 -> 2 blocks of 16 elements each along quantize_axis = 1.
   // (block_size must be 0 or a power of 2 >= 16, per the operator contract.)
