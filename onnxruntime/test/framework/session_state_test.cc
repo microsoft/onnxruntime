@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <optional>
 #include <absl/base/config.h>
 
 #include "asserts.h"
@@ -141,6 +142,83 @@ class TestOpKernel : public OpKernel {
   }
 };
 
+ONNX_OPERATOR_SCHEMA(WorkspaceVerificationTestOp)
+    .SetDoc("Test operator for Level-2 workspace verification.")
+    .Output(0, "output", "Test output.", "tensor(int32)");
+
+class WorkspaceVerificationTestKernel final : public OpKernel {
+ public:
+  explicit WorkspaceVerificationTestKernel(const OpKernelInfo& info) : OpKernel(info) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status DeclareWorkspaceRequirements(
+      gsl::span<const WorkspaceInputShape> input_shapes,
+      InlinedVector<WorkspaceRequirement>& requirements) const override {
+    ORT_UNUSED_PARAMETER(input_shapes);
+    requirements.clear();
+    requirements.push_back(WorkspaceRequirement{128, /*slot_id=*/0, /*alignment_bytes=*/0});
+    return Status::OK();
+  }
+};
+
+static Status FinalizeWorkspaceVerificationTestSession(std::optional<size_t> reservation_bytes) {
+  Model model("workspace_verification", false, DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  TypeProto output_type;
+  output_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+  NodeArg output_arg("output", &output_type);
+  Node& node = graph.AddNode("workspace_node", "WorkspaceVerificationTestOp", "", {}, {&output_arg});
+  ORT_RETURN_IF_ERROR(graph.Resolve());
+  node.SetExecutionProviderType(kCpuExecutionProvider);
+
+  ExecutionProviders execution_providers;
+  ORT_RETURN_IF_ERROR(execution_providers.Add(
+      kCpuExecutionProvider,
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false))));
+
+  DataTransferManager data_transfer_manager;
+  ExternalDataLoaderManager external_data_loader_manager;
+  profiling::Profiler profiler;
+  SessionOptions session_options;
+  ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsStrictWorkspaceVerification, "1"));
+  SessionState session_state(graph, execution_providers, nullptr, nullptr, data_transfer_manager,
+                             external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
+                             profiler, session_options);
+
+  if (reservation_bytes.has_value()) {
+    WorkspaceReservationMap reservations;
+    reservations[&graph].insert_or_assign(
+        node.Index(),
+        WorkspaceEstimateSelection{*reservation_bytes, WorkspaceEstimateSource::kEstimator});
+    session_state.SetWorkspaceReservations(std::move(reservations));
+  }
+
+  KernelRegistryManager kernel_registry_manager;
+  ORT_RETURN_IF_ERROR(kernel_registry_manager.RegisterKernels(execution_providers));
+  auto kernel_registry = std::make_shared<KernelRegistry>();
+  auto kernel_def = KernelDefBuilder()
+                        .SetName("WorkspaceVerificationTestOp")
+                        .Provider(kCpuExecutionProvider)
+                        .SinceVersion(1)
+                        .Build();
+  ORT_RETURN_IF_ERROR(kernel_registry->Register(
+      KernelCreateInfo(std::move(kernel_def),
+                       [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                         out = std::make_unique<WorkspaceVerificationTestKernel>(info);
+                         return Status::OK();
+                       })));
+  kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
+
+  return session_state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager);
+}
+
 TEST(OpKernelTest, DefaultDeclareWorkspaceRequirementsClearsOutput) {
   Model model("default_workspace_declaration", false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
@@ -183,6 +261,15 @@ TEST(OpKernelTest, DefaultDeclareWorkspaceRequirementsClearsOutput) {
   requirements.push_back(WorkspaceRequirement{123, /*slot_id=*/7, /*alignment_bytes=*/0});
   ASSERT_STATUS_OK(kernel.DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
   EXPECT_TRUE(requirements.empty());
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationOnlyRejectsOverrun) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(std::nullopt));
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(size_t{128}));
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(size_t{256}));
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      FinalizeWorkspaceVerificationTestSession(size_t{64}),
+      "declarations exceed the workspace reserved during graph partitioning");
 }
 
 class SessionStateAddGetKernelTest : public testing::TestWithParam<int> {};

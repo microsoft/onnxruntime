@@ -1918,7 +1918,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
       if (reservation == nullptr) {
         ++missing_reservation;
-        strict_verification_failed = strict_verification_failed || strict_workspace_verification;
         continue;
       }
 
