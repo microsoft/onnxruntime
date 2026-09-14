@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/providers/webgpu/tensor/concat.h"
-#include "core/providers/webgpu/webgpu_utils.h"
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -179,8 +178,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
       if (input.tensor->Shape().Size() == 0) {
         continue;
       }
-      program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank,
-                        ReduceShapeByComponents(input.tensor->Shape(), components), components});
+      program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank, components});
 
       uint32_t size = onnxruntime::narrow<int32_t>(input.tensor->Shape().Size()) / components;
       uint32_t axis_size = static_cast<uint32_t>(input.tensor->Shape()[axis]) / axis_divisor;
@@ -195,8 +193,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     sizes_in_concat_axis.pop_back();
 
     program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis, components), ","))
-        .AddOutputs({{prepare.output_tensor, ProgramTensorMetadataDependency::None,
-                      ReduceShapeByComponents(out_shape, components), components}})
+        .AddOutputs({{prepare.output_tensor, ProgramTensorMetadataDependency::None, components}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({gsl::span<const uint32_t>(offsets.data(), offsets.size()), gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()), output_size});
     ORT_RETURN_IF_ERROR(context.RunProgram(program));

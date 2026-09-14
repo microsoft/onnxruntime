@@ -824,6 +824,37 @@ TEST(TransposeOpTest, ThreeDimInnermostMovedFourAligned) {
                 {kTensorrtExecutionProvider}, {7, 21});  // TensorRT: illegal error
 }
 
+// Same shape and permutation as ThreeDimInnermostFixedFourAligned, but an integer element type:
+// an implementation that carries several elements per thread must do so for every type it accepts,
+// not only the floating-point ones. The existing TwoDim_int32 case does not cover this - a 2D
+// transpose takes the tiled path, where no such grouping applies.
+TEST(TransposeOpTest, ThreeDimInnermostFixedFourAligned_int32) {
+  std::vector<int64_t> input_shape({2, 3, 4});
+  std::vector<int32_t> input_vals = {
+      1, 2, 3, 4,
+      5, 6, 7, 8,
+      9, 10, 11, 12,
+
+      13, 14, 15, 16,
+      17, 18, 19, 20,
+      21, 22, 23, 24};
+
+  std::vector<int64_t> perm = {1, 0, 2};
+  std::vector<int64_t> expected_shape({3, 2, 4});
+  std::vector<int32_t> expected_vals = {
+      1, 2, 3, 4,
+      13, 14, 15, 16,
+
+      5, 6, 7, 8,
+      17, 18, 19, 20,
+
+      9, 10, 11, 12,
+      21, 22, 23, 24};
+
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals,
+                {kTensorrtExecutionProvider}, {7, 21});  // TensorRT: illegal error
+}
+
 TEST(TransposeOpTest, ThreeDimStr) {
   std::vector<int64_t> input_shape({4, 2, 3});
   std::vector<std::string> input_vals = {

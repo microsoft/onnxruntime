@@ -213,8 +213,7 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
   // which is otherwise one 2-byte copy per thread.
   int components = 1;
   if (!use_shared && rank > 1 && permutations[rank - 1] == static_cast<size_t>(rank - 1) &&
-      input_dims[rank - 1] % 4 == 0 &&
-      (input.IsDataType<MLFloat16>() || input.IsDataType<float>())) {
+      input_dims[rank - 1] % 4 == 0) {
     components = 4;
     new_input_shape = ReduceShapeByComponents(new_input_shape, components);
     output_shape = ReduceShapeByComponents(output_shape, components);

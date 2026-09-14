@@ -3,7 +3,6 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/tensor/slice.h"
-#include "core/providers/webgpu/webgpu_utils.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -277,16 +276,14 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
     components = 4;
   }
   if (components > 1) {
-    starts_reordered[last] /= 4;
-    output_size /= 4;
+    starts_reordered[last] /= components;
+    output_size /= components;
   }
 
   SliceProgram program{};
   program
-      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank,
-                   ReduceShapeByComponents(in_shape, components), components}})
-      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank,
-                    ReduceShapeByComponents(output_shape, components), components}})
+      .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::TypeAndRank, components}})
       .CacheHint(std::to_string(components))
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{output_size}, {starts_reordered}, {steps_reordered}, {signs_reordered}});

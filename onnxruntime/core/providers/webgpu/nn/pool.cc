@@ -340,9 +340,7 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   // NHWC keeps the channel innermost and pooling never mixes channels, so one thread can carry
   // four of them through the same window loop. The window arithmetic, which is what this kernel
   // spends its time on, is then paid once per four elements instead of once per element.
-  int components = (is_nhwc && (is_float16 || X->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
-                       ? GetMaxComponents(out_channel)
-                       : 1;
+  int components = is_nhwc ? GetMaxComponents(out_channel) : 1;
 
   const uint32_t serial_dispatch_groups =
       static_cast<uint32_t>((output_size / components + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
@@ -364,10 +362,8 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   program
       .CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad, use_parallel_reduction,
                  components)
-      .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(x_shape, components),
-                   components}})
-      .AddOutputs({{Y, ProgramTensorMetadataDependency::None, ReduceShapeByComponents(Y->Shape(), components),
-                    components}})
+      .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank, components}})
+      .AddOutputs({{Y, ProgramTensorMetadataDependency::None, components}})
       .AddUniformVariables({output_size, kernel_size,
                             gsl::span<const uint32_t>(kernel_strides.data(), kernel_strides.size()),
                             gsl::span<const uint32_t>(pads_u32.data(), pads_u32.size()),
