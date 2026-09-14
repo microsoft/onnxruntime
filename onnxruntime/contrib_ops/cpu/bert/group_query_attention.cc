@@ -816,6 +816,14 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
           Tensor* present_hp_k = context->Output(4, present_hp_shape);
           Tensor* present_hp_v = context->Output(5, present_hp_shape);
 
+          // present_hp_key/present_hp_value are optional in the schema, so Output(4/5) returns nullptr
+          // when the graph omits them. The fp16 bridge below dereferences their Shape() before calling
+          // the kernel, so validate presence here (matching the null guard inside the float kernel) to
+          // return a clean error on either dtype instead of crashing.
+          ORT_RETURN_IF(present_hp_k == nullptr || present_hp_v == nullptr,
+                        "MixedPrecisionGroupQueryAttention (CPU): present_hp_key/present_hp_value "
+                        "outputs are required when sink_size or recent_size is non-zero.");
+
           if constexpr (std::is_same_v<T, float>) {
             ORT_RETURN_IF_ERROR(ApplyAttentionQuantized2BitMixed(
                 q_f, k_f, v_f, head_sink_f,

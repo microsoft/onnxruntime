@@ -135,8 +135,14 @@ inline void Oscar2BitQuantizeRow(const float* src, uint8_t* dst, int head_size,
                                  int group_size, int num_groups, float rho, bool meta_fp16) {
   const int packed_bytes = head_size / 4;
   std::vector<uint8_t> codes(static_cast<size_t>(head_size), 0);
-  std::vector<float> scales(static_cast<size_t>(num_groups));
-  std::vector<float> zeros(static_cast<size_t>(num_groups));
+  // scales/zeros (and their fp16 twins below) are bounded by kOscar2BitMaxGroups, so keep them in
+  // fixed stack storage instead of heap vectors: this runs once per KV row per head, and the caller
+  // (GroupQueryAttention<T>::Compute) already rejects num_groups > kOscar2BitMaxGroups up front.
+  ORT_ENFORCE(num_groups <= kOscar2BitMaxGroups,
+              "Oscar2BitQuantizeRow: num_groups (", num_groups, ") exceeds kOscar2BitMaxGroups (",
+              kOscar2BitMaxGroups, ")");
+  float scales[kOscar2BitMaxGroups];
+  float zeros[kOscar2BitMaxGroups];
 
   // OSCAR clips per row over the full head_size (on the rotated row) before the per-group
   // asymmetric quantization, so the threshold is shared by every group in this row.
@@ -181,19 +187,19 @@ inline void Oscar2BitQuantizeRow(const float* src, uint8_t* dst, int head_size,
   }
   // Store metadata via memcpy to avoid alignment assumptions. fp16 halves the metadata bytes.
   if (meta_fp16) {
-    std::vector<uint16_t> scales16(static_cast<size_t>(num_groups));
-    std::vector<uint16_t> zeros16(static_cast<size_t>(num_groups));
+    uint16_t scales16[kOscar2BitMaxGroups];
+    uint16_t zeros16[kOscar2BitMaxGroups];
     for (int g = 0; g < num_groups; ++g) {
       scales16[static_cast<size_t>(g)] = MLFloat16(scales[g]).val;
       zeros16[static_cast<size_t>(g)] = MLFloat16(zeros[g]).val;
     }
     const size_t block = static_cast<size_t>(num_groups) * sizeof(uint16_t);
-    std::memcpy(dst + packed_bytes, scales16.data(), block);
-    std::memcpy(dst + packed_bytes + block, zeros16.data(), block);
+    std::memcpy(dst + packed_bytes, scales16, block);
+    std::memcpy(dst + packed_bytes + block, zeros16, block);
   } else {
     const size_t block = static_cast<size_t>(num_groups) * sizeof(float);
-    std::memcpy(dst + packed_bytes, scales.data(), block);
-    std::memcpy(dst + packed_bytes + block, zeros.data(), block);
+    std::memcpy(dst + packed_bytes, scales, block);
+    std::memcpy(dst + packed_bytes + block, zeros, block);
   }
 }
 
@@ -1009,7 +1015,10 @@ class GQAAttentionBase {
           float* sm = probs;
           for (size_t seq = 0; seq < static_cast<size_t>(sequence_length); seq++) {
             size_t seq_causal_length = causal_past_seqlen + seq + 1;
-            const size_t effective_causal_length = std::min(seq_causal_length, total_seqlen);
+            // Honor causal=0 (bidirectional): every query attends to the full sequence. Mirrors the
+            // non-quantized path above so a two-token noncausal prompt sees both keys, not just past+seq+1.
+            const size_t effective_causal_length =
+                is_unidirectional_ ? std::min(seq_causal_length, total_seqlen) : total_seqlen;
 
             const bool apply_local = local_window_size_ >= 0 &&
                                      effective_causal_length > static_cast<size_t>(local_window_size_);
@@ -1271,13 +1280,38 @@ class GQAAttentionBase {
     }
     int seqlen_present_kv_cache = static_cast<int>(present_key->Shape().GetDims()[2]);
     const int hp_present_len = static_cast<int>(present_hp_key->Shape().GetDims()[2]);
-    const int hp_past_len = past_hp_key != nullptr ? static_cast<int>(past_hp_key->Shape().GetDims()[2]) : 0;
 
-    // hp_past_len is only used as the per-head stride, so a short/absent past_hp (e.g. a graph that
-    // forgets to feed present_hp back into past_hp and leaves it 0-length while the history grows)
-    // would make BuildMixedHeadCache read through a short or null pointer. Validate that past_hp is
-    // large enough for the window this step actually needs. total_sequence_length is the batch max,
-    // so this is a conservative upper bound across ragged batches.
+    // hp_past_len becomes the shared per-head stride for BOTH the key and value HP caches, and
+    // BuildMixedHeadCache dereferences past_hp unconditionally for every row < T_past. A past_hp that
+    // is absent, the wrong rank, or shaped inconsistently between key and value (e.g. a graph that
+    // forgets to feed present_hp back into past_hp, or feeds a 0-length value cache) would make
+    // BuildMixedHeadCache read through a short or null pointer. Validate the full
+    // [batch, kv_num_heads, seq, head_size] shape of both tensors before using their sequence length.
+    int hp_past_len = 0;
+    if (past_hp_key != nullptr || past_hp_value != nullptr) {
+      ORT_RETURN_IF(past_hp_key == nullptr || past_hp_value == nullptr,
+                    "past_hp_key and past_hp_value must both be present or both absent");
+      const auto k_dims = past_hp_key->Shape().GetDims();
+      const auto v_dims = past_hp_value->Shape().GetDims();
+      ORT_RETURN_IF(k_dims.size() != 4 || v_dims.size() != 4,
+                    "past_hp_key/past_hp_value must be rank-4 [batch, kv_num_heads, seq, head_size]");
+      ORT_RETURN_IF(k_dims[0] != static_cast<int64_t>(batch_size) ||
+                        v_dims[0] != static_cast<int64_t>(batch_size),
+                    "past_hp_key/past_hp_value batch dimension does not match the request");
+      ORT_RETURN_IF(k_dims[1] != static_cast<int64_t>(kv_num_heads_) ||
+                        v_dims[1] != static_cast<int64_t>(kv_num_heads_),
+                    "past_hp_key/past_hp_value kv_num_heads dimension does not match the request");
+      ORT_RETURN_IF(k_dims[3] != static_cast<int64_t>(head_size) ||
+                        v_dims[3] != static_cast<int64_t>(head_size),
+                    "past_hp_key/past_hp_value head_size dimension does not match the request");
+      ORT_RETURN_IF(k_dims[2] != v_dims[2],
+                    "past_hp_key and past_hp_value must share the same sequence length; got key (",
+                    k_dims[2], ") vs value (", v_dims[2], ")");
+      hp_past_len = static_cast<int>(k_dims[2]);
+    }
+
+    // Validate that past_hp is large enough for the window this step actually needs.
+    // total_sequence_length is the batch max, so this is a conservative upper bound across ragged batches.
     const int max_t_past = std::max(0, total_sequence_length - kv_sequence_length);
     const int required_hp_past = std::min(sink + recent, max_t_past);
     ORT_RETURN_IF(required_hp_past > 0 && (past_hp_key == nullptr || past_hp_value == nullptr),
@@ -1486,7 +1520,10 @@ class GQAAttentionBase {
           float* sm = probs;
           for (size_t seq = 0; seq < static_cast<size_t>(sequence_length); seq++) {
             size_t seq_causal_length = causal_past_seqlen + seq + 1;
-            const size_t effective_causal_length = std::min(seq_causal_length, total_seqlen);
+            // Honor causal=0 (bidirectional): every query attends to the full sequence. Mirrors the
+            // non-quantized path above so a two-token noncausal prompt sees both keys, not just past+seq+1.
+            const size_t effective_causal_length =
+                is_unidirectional_ ? std::min(seq_causal_length, total_seqlen) : total_seqlen;
 
             const bool apply_local = local_window_size_ >= 0 &&
                                      effective_causal_length > static_cast<size_t>(local_window_size_);

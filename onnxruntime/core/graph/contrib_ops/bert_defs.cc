@@ -1630,6 +1630,45 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           int qk_output_index = ctx.getNumOutputs() > 3 ? 3 : -1;
           GroupQueryAttentionTypeAndShapeInference(ctx, 3, qk_output_index);
+
+          // The present KV cache for this operator is ALWAYS packed 2-bit uint8, independent of whether
+          // the optional past_key/past_value (inputs 3/4) are supplied. The shared helper above, on a
+          // prefill that omits the past inputs, instead propagates the query's float/float16 type to
+          // present_key/present_value and infers an unpacked head_size row width. Fix both here so
+          // model-load type inference succeeds and the packed row width is correct even without a past.
+          if (ctx.getNumOutputs() >= 3 && hasInputShape(ctx, 0)) {
+            const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+            const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
+            auto& query_dims = getInputShape(ctx, 0).dim();
+            if (num_heads > 0 && kv_num_heads > 0 && query_dims.size() == 3 && query_dims[2].has_dim_value()) {
+              const int64_t hidden_size = query_dims[2].dim_value();
+              // When input 2 (value) is present the layout is unpacked Q/K/V; otherwise Q packs QKV.
+              const int64_t denom = hasInputShape(ctx, 2) ? num_heads : (num_heads + 2 * kv_num_heads);
+              if (denom > 0 && hidden_size % denom == 0) {
+                const int64_t head_size = hidden_size / denom;
+                const int64_t group_size_attr = getAttribute(ctx, "kv_quant_group_size", 0);
+                const int64_t group_size = group_size_attr > 0 ? group_size_attr : head_size;
+                if (head_size % 4 == 0 && group_size > 0 && head_size % group_size == 0) {
+                  const int64_t num_groups = head_size / group_size;
+                  const std::string metadata_type = getAttribute(ctx, "metadata_type", std::string("fp32"));
+                  const int64_t meta_bytes = metadata_type == "fp16" ? 2 : 4;
+                  // Mirrors the runtime packed_head_size in group_query_attention.cc.
+                  const int64_t packed_head_size = head_size / 4 + num_groups * 2 * meta_bytes;
+                  for (int out_idx : {1, 2}) {
+                    auto* out_type = ctx.getOutputType(out_idx);
+                    if (out_type == nullptr) {
+                      continue;
+                    }
+                    updateOutputElemType(ctx, out_idx, ONNX_NAMESPACE::TensorProto::UINT8);
+                    auto* shape = out_type->mutable_tensor_type()->mutable_shape();
+                    if (shape->dim_size() == 4) {
+                      shape->mutable_dim(3)->set_dim_value(packed_head_size);
+                    }
+                  }
+                }
+              }
+            }
+          }
         }));
 
 constexpr const char* PagedAttention_ver1_doc = R"DOC(

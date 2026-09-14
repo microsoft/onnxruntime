@@ -2578,5 +2578,253 @@ class TestMixedPrecisionGroupQueryAttention(unittest.TestCase):
             )
 
 
+def _set_node_attr_int(model_proto, name, value):
+    """Add or overwrite an INT attribute on the single node of a MixedPrecisionGQA test graph."""
+    node = model_proto.graph.node[0]
+    for a in node.attribute:
+        if a.name == name:
+            a.i = int(value)
+            return
+    node.attribute.append(helper.make_attribute(name, int(value)))
+
+
+class TestMixedPrecisionGQAEdgeCases(unittest.TestCase):
+    """Edge cases surfaced in review of PR #31726: bidirectional attention (causal=0) on both INT2
+    paths, a prefill that omits the optional past caches, and memory-safety validation of the
+    high-precision past_hp_{key,value} shapes."""
+
+    def _causal0_expect_ones(self, model_bytes, seq_len, num_heads, kv_num_heads, head_size, group_size, extra_feeds):
+        # Zero Q/K make every QK score 0, so softmax is uniform over the visible keys. With V rows
+        # [0..0] and [2..2] a bidirectional (causal=0) prompt averages to 1 for BOTH queries; the
+        # causal path would let query 0 see only key 0 and return 0.
+        m = load_model_from_string(model_bytes)
+        _set_node_attr_int(m, "causal", 0)
+        sess = InferenceSession(m.SerializeToString(), SessionOptions(), providers=["CPUExecutionProvider"])
+        phs = oscar2bit_packed_head_size(head_size, group_size)
+        kv_hidden = kv_num_heads * head_size
+        value = np.zeros((1, seq_len, kv_hidden), dtype=np.float32)
+        value[0, 1, :] = 2.0
+        feeds = {
+            "query": np.zeros((1, seq_len, num_heads * head_size), dtype=np.float32),
+            "key": np.zeros((1, seq_len, kv_hidden), dtype=np.float32),
+            "value": value,
+            "past_key": np.zeros((1, kv_num_heads, seq_len, phs), dtype=np.uint8),
+            "past_value": np.zeros((1, kv_num_heads, seq_len, phs), dtype=np.uint8),
+            "seqlens_k": np.array([seq_len - 1], dtype=np.int32),
+            "total_sequence_length": np.array([seq_len], dtype=np.int32),
+        }
+        feeds.update(extra_feeds)
+        out = sess.run(None, feeds)[0]
+        np.testing.assert_allclose(out, np.ones_like(out), atol=1e-4)
+
+    def test_causal0_bidirectional_pure_int2(self):
+        seq_len, num_heads, kv_num_heads, head_size, group_size = 2, 1, 1, 8, 8
+        model = create_oscar2bit_gqa_graph(
+            1, seq_len, seq_len, seq_len, num_heads, kv_num_heads, head_size, group_size, 1.0, 1.0
+        )
+        self._causal0_expect_ones(model, seq_len, num_heads, kv_num_heads, head_size, group_size, {})
+
+    def test_causal0_bidirectional_mixed_int2(self):
+        seq_len, num_heads, kv_num_heads, head_size, group_size = 2, 1, 1, 8, 8
+        sink, recent = 0, 2  # recent covers both tokens -> all high-precision, still noncausal.
+        hp_present_len = min(seq_len, sink + recent)
+        model = create_mixed_precision_gqa_graph(
+            1,
+            seq_len,
+            seq_len,
+            seq_len,
+            0,
+            hp_present_len,
+            num_heads,
+            kv_num_heads,
+            head_size,
+            group_size,
+            sink,
+            recent,
+        )
+        hp_empty = np.zeros((1, kv_num_heads, 0, head_size), dtype=np.float32)
+        self._causal0_expect_ones(
+            model,
+            seq_len,
+            num_heads,
+            kv_num_heads,
+            head_size,
+            group_size,
+            {"past_hp_key": hp_empty, "past_hp_value": hp_empty.copy()},
+        )
+
+    def test_prefill_omitting_past_inputs(self):
+        # P2: a prefill/first invocation may omit the optional past_key/past_value (inputs 3/4) and
+        # connect only the present caches. Type inference must still infer packed uint8 present caches
+        # (not the query float type) so the model loads, and the result must match the equivalent
+        # graph that passes empty (0-length) uint8 past caches.
+        np.random.seed(7)
+        seq_len, num_heads, kv_num_heads, head_size, group_size = 6, 2, 1, 8, 8
+        hidden = num_heads * head_size
+        kv_hidden = kv_num_heads * head_size
+        phs = oscar2bit_packed_head_size(head_size, group_size)
+
+        with_past = create_oscar2bit_gqa_graph(
+            1, seq_len, seq_len, seq_len, num_heads, kv_num_heads, head_size, group_size, 1.0, 1.0
+        )
+        # Drop the optional past inputs to exercise the no-past inference/runtime path.
+        m = load_model_from_string(with_past)
+        node = m.graph.node[0]
+        node.input[3] = ""
+        node.input[4] = ""
+        keep = [vi for vi in m.graph.input if vi.name not in ("past_key", "past_value")]
+        del m.graph.input[:]
+        m.graph.input.extend(keep)
+        no_past = m.SerializeToString()
+
+        # Before the inference fix this raised a type-inference / load error.
+        sess_np = InferenceSession(no_past, SessionOptions(), providers=["CPUExecutionProvider"])
+        out_meta = {o.name: o.type for o in sess_np.get_outputs()}
+        self.assertEqual(out_meta["present_key"], "tensor(uint8)")
+        self.assertEqual(out_meta["present_value"], "tensor(uint8)")
+
+        query = np.random.uniform(-0.5, 0.5, (1, seq_len, hidden)).astype(np.float32)
+        key = np.random.uniform(-0.5, 0.5, (1, seq_len, kv_hidden)).astype(np.float32)
+        value = np.random.uniform(-0.5, 0.5, (1, seq_len, kv_hidden)).astype(np.float32)
+        seqlens_k = np.array([seq_len - 1], dtype=np.int32)
+        total = np.array([seq_len], dtype=np.int32)
+
+        out_np = sess_np.run(
+            None,
+            {"query": query, "key": key, "value": value, "seqlens_k": seqlens_k, "total_sequence_length": total},
+        )
+        sess_wp = InferenceSession(with_past, SessionOptions(), providers=["CPUExecutionProvider"])
+        out_wp = sess_wp.run(
+            None,
+            {
+                "query": query,
+                "key": key,
+                "value": value,
+                "past_key": np.zeros((1, kv_num_heads, seq_len, phs), dtype=np.uint8),
+                "past_value": np.zeros((1, kv_num_heads, seq_len, phs), dtype=np.uint8),
+                "seqlens_k": seqlens_k,
+                "total_sequence_length": total,
+            },
+        )
+        for a, b in zip(out_np, out_wp, strict=True):
+            np.testing.assert_allclose(a.astype(np.float32), b.astype(np.float32), atol=1e-5)
+
+    def _decode_mixed_graph_and_feeds(self, head_size=8, group_size=8, hp_past_len=2):
+        # A decode step (q_len=1) whose KV history (2 tokens) fits entirely in the sink+recent window,
+        # so past_hp carries real rows. batch=kv_num_heads=1 matches the reviewer's repro.
+        num_heads = kv_num_heads = 1
+        total_seq = 3
+        phs = oscar2bit_packed_head_size(head_size, group_size)
+        model = create_mixed_precision_gqa_graph(
+            1,
+            1,
+            total_seq,
+            total_seq,
+            hp_past_len,
+            2,
+            num_heads,
+            kv_num_heads,
+            head_size,
+            group_size,
+            sink=1,
+            recent=1,
+        )
+        feeds = {
+            "query": np.zeros((1, 1, num_heads * head_size), dtype=np.float32),
+            "key": np.zeros((1, 1, kv_num_heads * head_size), dtype=np.float32),
+            "value": np.zeros((1, 1, kv_num_heads * head_size), dtype=np.float32),
+            "past_key": np.zeros((1, kv_num_heads, total_seq, phs), dtype=np.uint8),
+            "past_value": np.zeros((1, kv_num_heads, total_seq, phs), dtype=np.uint8),
+            "seqlens_k": np.array([total_seq - 1], dtype=np.int32),
+            "total_sequence_length": np.array([total_seq], dtype=np.int32),
+            "past_hp_key": np.zeros((1, kv_num_heads, hp_past_len, head_size), dtype=np.float32),
+            "past_hp_value": np.zeros((1, kv_num_heads, hp_past_len, head_size), dtype=np.float32),
+        }
+        return model, feeds, head_size, kv_num_heads
+
+    def test_hp_value_shorter_than_key_rejected(self):
+        # Memory safety: past_hp_value must not be shorter than past_hp_key, whose sequence length is
+        # used as the shared per-head stride for BOTH caches. A [1,1,0,H] value cache alongside a
+        # [1,1,2,H] key cache previously read the sink row from the empty value tensor.
+        model, feeds, head_size, kv_num_heads = self._decode_mixed_graph_and_feeds()
+        m = load_model_from_string(model)
+        for vi in m.graph.input:
+            if vi.name == "past_hp_value":
+                vi.type.tensor_type.shape.dim[2].dim_value = 0
+        feeds["past_hp_value"] = np.zeros((1, kv_num_heads, 0, head_size), dtype=np.float32)
+        sess = InferenceSession(m.SerializeToString(), SessionOptions(), providers=["CPUExecutionProvider"])
+        with self.assertRaises(Fail):
+            sess.run(None, feeds)
+
+    def test_hp_past_wrong_rank_rejected(self):
+        # Memory safety: a past_hp cache that is not rank-4 [B, N_kv, L, H] must be rejected before its
+        # dims are indexed as a stride.
+        model, feeds, head_size, kv_num_heads = self._decode_mixed_graph_and_feeds()
+        m = load_model_from_string(model)
+        for vi in m.graph.input:
+            if vi.name == "past_hp_key":
+                del vi.type.tensor_type.shape.dim[:]
+                for d in (1, kv_num_heads, head_size):
+                    vi.type.tensor_type.shape.dim.add().dim_value = d
+        feeds["past_hp_key"] = np.zeros((1, kv_num_heads, head_size), dtype=np.float32)
+        sess = InferenceSession(m.SerializeToString(), SessionOptions(), providers=["CPUExecutionProvider"])
+        with self.assertRaises(Fail):
+            sess.run(None, feeds)
+
+    def _run_missing_hp_outputs(self, io_fp16):
+        # P1: present_hp_key/present_hp_value (outputs 4/5) are optional, so a node that omits them must
+        # return a clean error on either dtype, not dereference a null Output(4/5) (the fp16 bridge did).
+        seq_len, num_heads, kv_num_heads, head_size, group_size = 4, 2, 1, 8, 8
+        sink, recent = 1, 1
+        hp_present_len = min(seq_len, sink + recent)
+        io_np = np.float16 if io_fp16 else np.float32
+        model = create_mixed_precision_gqa_graph(
+            1,
+            seq_len,
+            seq_len,
+            seq_len,
+            0,
+            hp_present_len,
+            num_heads,
+            kv_num_heads,
+            head_size,
+            group_size,
+            sink,
+            recent,
+            io_fp16=io_fp16,
+        )
+        m = load_model_from_string(model)
+        node = m.graph.node[0]
+        node.output[4] = ""
+        node.output[5] = ""
+        keep = [o for o in m.graph.output if o.name not in ("present_hp_key", "present_hp_value")]
+        del m.graph.output[:]
+        m.graph.output.extend(keep)
+        phs = oscar2bit_packed_head_size(head_size, group_size)
+        hp_empty = np.zeros((1, kv_num_heads, 0, head_size), dtype=io_np)
+        sess = InferenceSession(m.SerializeToString(), SessionOptions(), providers=["CPUExecutionProvider"])
+        with self.assertRaises(Fail):
+            sess.run(
+                None,
+                {
+                    "query": np.zeros((1, seq_len, num_heads * head_size), dtype=io_np),
+                    "key": np.zeros((1, seq_len, kv_num_heads * head_size), dtype=io_np),
+                    "value": np.zeros((1, seq_len, kv_num_heads * head_size), dtype=io_np),
+                    "past_key": np.zeros((1, kv_num_heads, seq_len, phs), dtype=np.uint8),
+                    "past_value": np.zeros((1, kv_num_heads, seq_len, phs), dtype=np.uint8),
+                    "seqlens_k": np.array([seq_len - 1], dtype=np.int32),
+                    "total_sequence_length": np.array([seq_len], dtype=np.int32),
+                    "past_hp_key": hp_empty,
+                    "past_hp_value": hp_empty.copy(),
+                },
+            )
+
+    def test_missing_hp_outputs_rejected_fp32(self):
+        self._run_missing_hp_outputs(io_fp16=False)
+
+    def test_missing_hp_outputs_rejected_fp16(self):
+        self._run_missing_hp_outputs(io_fp16=True)
+
+
 if __name__ == "__main__":
     unittest.main()
