@@ -40,9 +40,9 @@ from typing import Any
 import numpy as np
 import torch
 from onnx import TensorProto, helper
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail as OrtFail
 
 import onnxruntime
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail as OrtFail
 
 _TRANSFORMERS_TEST_DIR = Path(__file__).resolve().parents[1] / "transformers"
 sys.path.insert(0, str(_TRANSFORMERS_TEST_DIR))

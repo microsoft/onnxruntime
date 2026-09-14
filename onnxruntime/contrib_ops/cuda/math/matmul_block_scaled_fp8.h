@@ -11,15 +11,15 @@ namespace onnxruntime::contrib::cuda {
 
 // Weight-only block-scaled FP8 (E4M3) matrix multiplication.
 //
-// The weight tensor B is FP8 E4M3 of shape [N, K] with one FP32 scale per block_size consecutive
-// K values (b_scale of shape [N, ceil(K/block_size)]). The weight is dequantized to the
-// activation type (FP16/BF16) and multiplied with the FP16/BF16 activation A via cuBLAS. This path
-// works on any CUDA architecture (SM80+): it does not rely on native FP8 block-scaled tensor cores.
+// B has shape [N, K] with one FP32 scale per row and block_size consecutive K values.
+// By default, weights are dequantized to the activation type (FP16/BF16). When a_scale
+// is present, A is quantized to FP8 E4M3 and dequantized back before multiplication;
+// without a_scale, A retains its full FP16/BF16 precision.
 //
-// When the optional a_scale (a single fp32 scalar) is provided, the activation A is statically
-// quantized to FP8 E4M3 and dequantized back (a_deq = fp8_e4m3(A / a_scale) * a_scale) before the
-// matmul. This realizes W8A8 activation numerics while keeping the GEMM in the activation type, so
-// the result matches native W8A8 execution modulo the FP8 activation rounding error.
+// ORT_FP8_MATMUL_DEEPGEMM enables native FP8 multiplication for supported SM90 shapes
+// with a_scale present and block_size=128. Scales are applied to FP32 block partial
+// sums, so intermediate rounding differs from the default path. The result is
+// converted to the activation type before adding bias. Other cases keep the default path.
 class MatMulBlockQuantizedFp8Weight final : public onnxruntime::cuda::CudaKernel {
  public:
   explicit MatMulBlockQuantizedFp8Weight(const OpKernelInfo& info);
