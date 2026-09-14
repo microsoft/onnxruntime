@@ -8,6 +8,7 @@
 #param use_silu
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .setByOffset
 
 $MAIN {
   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.num_invocations);
