@@ -9,6 +9,8 @@
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/util/include/default_providers.h"
 
+#include <cmath>
+
 namespace onnxruntime {
 namespace test {
 
@@ -1715,6 +1717,45 @@ TEST(GemmOpTest, GemmTransB_f16_32x32x128) {
   test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
       .Config(run_with_tunable_op)
       .RunWithConfig();
+}
+
+TEST(GemmOpTest, GemmFloat16CpuDecodeTransB) {
+  constexpr int64_t K = 33;
+  constexpr int64_t N = 65;
+  const MLFloat16 alpha(0.5f);
+  const MLFloat16 beta(-0.25f);
+  std::vector<MLFloat16> a(K);
+  std::vector<MLFloat16> b(N * K);
+  std::vector<MLFloat16> bias(N);
+  for (int64_t k = 0; k < K; ++k) {
+    a[k] = MLFloat16(static_cast<float>((k % 7) - 3) * 0.125f);
+  }
+  for (int64_t n = 0; n < N; ++n) {
+    bias[n] = MLFloat16(static_cast<float>((n % 5) - 2) * 0.25f);
+    for (int64_t k = 0; k < K; ++k) {
+      b[n * K + k] = MLFloat16(static_cast<float>(((k + n) % 11) - 5) * 0.0625f);
+    }
+  }
+
+  std::vector<MLFloat16> expected(N);
+  for (int64_t n = 0; n < N; ++n) {
+    float sum = 0.0f;
+    for (int64_t k = 0; k < K; ++k) {
+      sum = std::fma(float(a[k]), float(b[n * K + k]), sum);
+    }
+    expected[n] = MLFloat16(std::fma(float(beta), float(bias[n]), float(alpha) * sum));
+  }
+
+  OpTester test("Gemm", 13);
+  test.AddAttribute("transB", int64_t{1});
+  test.AddAttribute("alpha", float(alpha));
+  test.AddAttribute("beta", float(beta));
+  test.AddInput<MLFloat16>("A", {1, K}, a);
+  test.AddInput<MLFloat16>("B", {N, K}, b);
+  test.AddInput<MLFloat16>("C", {N}, bias);
+  test.AddOutput<MLFloat16>("Y", {1, N}, expected);
+  test.SetOutputTolerance(0.005f);
+  test.ConfigEp(DefaultCpuExecutionProvider()).RunWithConfig();
 }
 
 }  // namespace test

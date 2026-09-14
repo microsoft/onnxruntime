@@ -566,6 +566,7 @@ Return Value:
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
                 this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx2;
+                this->HalfGemmDecodeSupported_ = (Cpuid1[2] & (1u << 29)) != 0;  // F16C
                 this->KVQuantGemmFp16Supported_ = (Cpuid1[2] & (1u << 29)) != 0;  // F16C
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
