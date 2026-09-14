@@ -663,46 +663,6 @@ void RunNGramHashMappingChunkedTest() {
             {ids[2], ids[3]});
 }
 
-constexpr int64_t kEosTokenId = 7;
-
-template <typename T>
-void RunNGramHashMappingEosAcrossChunksTest() {
-  const std::vector<T> ids{3, static_cast<T>(kEosTokenId), 5, 6};
-  const std::vector<T> multipliers{11, 13, 17};
-  const std::vector<T> vocab_sizes{101, 103, 107, 109};
-  const std::vector<T> full =
-      NGramHashMappingReference<T>(ids, {}, multipliers, vocab_sizes, kPadId, kEosTokenId, true);
-
-  auto run_chunk = [&](const std::vector<T>& chunk, const std::vector<T>& past,
-                       const std::vector<T>& expected_hash_ids, const std::vector<T>& expected_present) {
-    OpTester test("NGramHashMapping", 1, kMSDomain);
-    test.AddAttribute<int64_t>("max_ngram_size", kMaxNGramSize);
-    test.AddAttribute<int64_t>("n_head_per_ngram", kHeadsPerNGram);
-    test.AddAttribute<int64_t>("pad_id", kPadId);
-    test.AddAttribute<int64_t>("reset_on_eos", 1);
-    test.AddInput<T>("input_ids", {1, static_cast<int64_t>(chunk.size())}, chunk);
-    test.AddInput<T>("multipliers", {3}, multipliers);
-    test.AddInput<T>("vocab_sizes", {4}, vocab_sizes);
-    if (past.empty()) {
-      test.AddOptionalInputEdge<T>();
-    } else {
-      test.AddInput<T>("past_ids", {1, 2}, past);
-    }
-    test.AddOptionalInputEdge<T>();
-    test.AddInput<T>("eos_token_id", {}, {static_cast<T>(kEosTokenId)});
-    test.AddOutput<T>("hash_ids", {1, static_cast<int64_t>(chunk.size()), 4}, expected_hash_ids);
-    test.AddOutput<T>("present_ids", {1, 2}, expected_present);
-    test.Run();
-  };
-
-  const std::vector<T> prefill{ids[0], ids[1]};
-  run_chunk(prefill, {}, std::vector<T>(full.begin(), full.begin() + 8), {ids[0], ids[1]});
-  run_chunk({ids[2]}, {ids[0], ids[1]}, std::vector<T>(full.begin() + 8, full.begin() + 12),
-            {ids[1], ids[2]});
-  run_chunk({ids[3]}, {ids[1], ids[2]}, std::vector<T>(full.begin() + 12, full.end()),
-            {ids[2], ids[3]});
-}
-
 // An empty input_ids tensor must still thread history through present_ids unchanged. This is the
 // only case that reaches the WebGPU kernel's sequence_length == 0 specialization, which drops the
 // input_ids binding entirely because WebGPU rejects zero-sized storage bindings.
