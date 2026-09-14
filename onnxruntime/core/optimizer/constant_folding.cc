@@ -504,12 +504,12 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                 << " bytes) exceeds the limit (" << max_output_size << " bytes).";
           continue;
         }
-        if (estimated_size < 0) {
-          LOGS(logger, INFO) << "Skipping constant folding for " << node->OpType()
-                             << " node '" << node->Name()
-                             << "' because output size could not be estimated before execution.";
-          continue;
-        }
+        // A negative estimate means the output size could not be determined
+        // ahead of time (e.g. an op with no type-and-shape inference function,
+        // such as GreaterOrEqual/LessOrEqual below opset 16). Do not skip these
+        // nodes here: fold them and let the post-execution actual-size check
+        // below bound the result, so small foldable nodes are not dropped while
+        // the output-size limit is still enforced.
       }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
