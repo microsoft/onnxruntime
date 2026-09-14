@@ -149,6 +149,27 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
 
   const int capacity = (capture_count != nullptr) ? state_update_capacity_ : 0;
 
+  const auto validate_flattened_size = [](const char* name,
+                                          std::initializer_list<int64_t> dimensions) -> Status {
+    uint64_t size = 1;
+    for (const int64_t dimension : dimensions) {
+      const uint64_t unsigned_dimension = static_cast<uint64_t>(dimension);
+      ORT_RETURN_IF(unsigned_dimension != 0 &&
+                        size > std::numeric_limits<uint64_t>::max() / unsigned_dimension,
+                    name, " overflows uint64_t");
+      size *= unsigned_dimension;
+    }
+    ORT_RETURN_IF(size > std::numeric_limits<uint32_t>::max(),
+                  name, " is too large for WebGPU");
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(validate_flattened_size("total_tokens * channels", {total_tokens, channels}));
+  ORT_RETURN_IF_ERROR(validate_flattened_size("channels * kernel_size", {channels, kernel_size}));
+  ORT_RETURN_IF_ERROR(validate_flattened_size("batch_size * channels * pad", {batch_size, channels, pad}));
+  ORT_RETURN_IF_ERROR(validate_flattened_size("batch_size * state_update_capacity * channels",
+                                              {batch_size, state_update_capacity_, channels}));
+
   Tensor* output = context.Output(0, input_shape);
   Tensor* final_state = context.Output(1, state_shape);
   const TensorShape state_update_shape({batch_size, static_cast<int64_t>(state_update_capacity_), channels});
@@ -170,7 +191,13 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
   program.CacheHint(has_bias, has_state, state_in_final_state, has_state_update, has_capture_count,
                     activation_ == CausalConvActivation::Silu);
 
-  const uint32_t num_invocations = static_cast<uint32_t>(batch_size * channels);
+  const uint64_t num_invocations_64 =
+      static_cast<uint64_t>(batch_size) * static_cast<uint64_t>(channels);
+  ORT_RETURN_IF(num_invocations_64 > std::numeric_limits<uint32_t>::max(),
+                "batch_size * channels is too large for WebGPU");
+  const uint32_t num_invocations = static_cast<uint32_t>(num_invocations_64);
+  const uint32_t dispatch_groups =
+      num_invocations / WORKGROUP_SIZE + (num_invocations % WORKGROUP_SIZE != 0);
 
   program.AddInput({input, ProgramTensorMetadataDependency::Type})
       .AddInput({weight, ProgramTensorMetadataDependency::None})
@@ -193,7 +220,7 @@ Status VarlenCausalConvWithState::ComputeInternal(ComputeContext& context) const
     program.AddOutput({state_update, ProgramTensorMetadataDependency::None});
   }
 
-  program.SetDispatchGroupSize((num_invocations + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+  program.SetDispatchGroupSize(dispatch_groups)
       .AddUniformVariable({static_cast<uint32_t>(channels)})
       .AddUniformVariable({static_cast<uint32_t>(kernel_size)})
       .AddUniformVariable({static_cast<uint32_t>(dilation_)})
