@@ -974,7 +974,8 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
         enable_gb10_ksplit32 && Fp8MmaGb10TuningEnabled()
             ? PickFp8MmaKSplit(n, m, windows, device_prop.multiProcessorCount,
                                device_prop.major, device_prop.minor)
-            : PickGenericFp8MmaKSplit(n, windows, device_prop.multiProcessorCount);
+            : PickGenericFp8MmaKSplit(n, m, windows, device_prop.multiProcessorCount,
+                                      device_prop.major, device_prop.minor);
     const int k_split = ApplyFp8MmaKSplitOverride(selected_k_split, m, n, k);
     const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);
     const dim3 mma_blocks{static_cast<unsigned int>((n + 15) / 16)};

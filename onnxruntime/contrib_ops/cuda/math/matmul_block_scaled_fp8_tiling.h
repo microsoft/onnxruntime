@@ -11,20 +11,18 @@ inline int Fp8MmaOutputBlocks(int n) {
   return (n + kFp8MmaOutputColumnsPerBlock - 1) / kFp8MmaOutputColumnsPerBlock;
 }
 
-// Chooses how many warps split the K reduction.
-//
-// KSplit 16 is 512 threads at 48 registers, so only two of its blocks fit one SM's 64 KB register
-// file; KSplit 8 halves the block to 256 threads and fits five. A grid wider than 2 * sm_count
-// output blocks therefore costs KSplit 16 a second residency round that KSplit 8 clears in one,
-// and the crossover sits exactly on that boundary rather than on any particular N.
-//
-// Measured on H200 (132 SMs, 264 blocks) at boost clocks, forced plain KSplit 8 against the
-// shipped choice, four launches per point: KSplit 8 loses below the boundary (0.90-0.93x at 262,
-// 263 and 264 blocks) and wins above it continuously from 265 to 495 blocks (1.09-1.13x), where
-// N >= 8192 already selected it. The boundary and the win hold for K = 2560, 5120 and 6144
-// (windows 40, 80, 96) and for both M = 1 and M = 8.
-inline int PickGenericFp8MmaKSplit(int n, int windows, int sm_count) {
-  int k_split = Fp8MmaOutputBlocks(n) > 2 * sm_count ? 8 : 16;
+inline int PickGenericFp8MmaKSplit(int n, int m, int windows, int sm_count,
+                                   int compute_capability_major, int compute_capability_minor) {
+  int k_split = (n >= 8192) ? 8 : 16;
+  const int output_blocks = Fp8MmaOutputBlocks(n);
+  const bool qualified_h200 = compute_capability_major == 9 && compute_capability_minor == 0 &&
+                              sm_count == 132 && m <= 8 && output_blocks > 2 * sm_count;
+  const bool qualified_rtx4090 = compute_capability_major == 8 && compute_capability_minor == 9 &&
+                                 sm_count == 128 && m <= 8 && windows >= 16 && windows <= 96 &&
+                                 output_blocks > 3 * sm_count;
+  if (qualified_h200 || qualified_rtx4090) {
+    k_split = 8;
+  }
   if (windows < k_split) {
     k_split = (windows >= 8) ? 8 : 4;
   }
@@ -33,7 +31,8 @@ inline int PickGenericFp8MmaKSplit(int n, int windows, int sm_count) {
 
 inline int PickFp8MmaKSplit(int n, int m, int windows, int sm_count,
                             int compute_capability_major, int compute_capability_minor) {
-  int k_split = PickGenericFp8MmaKSplit(n, windows, sm_count);
+  int k_split = PickGenericFp8MmaKSplit(n, m, windows, sm_count,
+                                        compute_capability_major, compute_capability_minor);
 
   constexpr int kWideOutputMinBlocks = 1024;
   constexpr int kLongReductionMinBlocks = 320;
@@ -58,13 +57,6 @@ inline int PickFp8MmaKSplit(int n, int m, int windows, int sm_count,
 }
 
 // True when the tensor-core GEMV should launch the entry point that carries a residency hint.
-//
-// NOTE: PickGenericFp8MmaKSplit now selects KSplit 8 for every grid wider than 2 * sm_count
-// output blocks, which is a superset of the window below, so this predicate no longer fires for
-// any shape the selector produces. Plain KSplit 8 is the faster of the two in that window on
-// H200 (8.672 us against 9.344 us pinned at N = 5120), so the hint is superseded rather than
-// merely bypassed. It is kept for now so the selector change can be reverted in one line while
-// other architectures are measured; remove it once they confirm.
 //
 // The mma grid is ceil(N / 16) blocks. A 16-warp block only fits twice per SM, so N just above
 // 32 * sm_count spills into a second, nearly empty wave: on H200 N = 5120 launches 1.21 waves
