@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <optional>
+#include <type_traits>
 
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
@@ -29,6 +30,8 @@ namespace coreml {
 
 namespace {
 
+constexpr int64_t kWeightFileElementThreshold = 10;
+
 // Should the initializer be written to file or kept as an immediate value
 bool ShouldWriteInitializerToWeightsFile(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   // https://github.com/apple/coremltools/blob/dbb0094fd0cb936469e35320bf37e866ef7a1da4/coremltools/converters/mil/backend/mil/load.py#L51-L57
@@ -41,7 +44,7 @@ bool ShouldWriteInitializerToWeightsFile(const ONNX_NAMESPACE::TensorProto& tens
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
       auto num_elements = TensorShape(utils::GetTensorShapeFromTensorProto(tensor_proto)).Size();
-      use_weight_file = num_elements >= 10;
+      use_weight_file = num_elements >= kWeightFileElementThreshold;
       break;
     }
     default:
@@ -407,6 +410,43 @@ MILSpec::Value OnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tenso
   return value;
 }
 
+template <typename T, typename StorageT = T>
+MILSpec::Value CreateTensorValueWithWeightsFile(gsl::span<const T> data,
+                                                std::optional<gsl::span<const int64_t>> shape,
+                                                MILBlob::Blob::StorageWriter& weights_file_writer) {
+  // Keep generated float tensors on the same storage path as initializers so large constants are not inlined.
+  if (data.size() < static_cast<size_t>(kWeightFileElementThreshold)) {
+    return CreateTensorValue<T>(data, shape);
+  }
+
+  static_assert(sizeof(T) == sizeof(StorageT), "Storage and source data sizes must match");
+  static_assert(alignof(T) >= alignof(StorageT), "Storage data must not require stricter alignment");
+  static_assert(std::is_trivially_copyable_v<T> && std::is_trivially_copyable_v<StorageT>,
+                "Storage and source data must be trivially copyable");
+
+  MILSpec::Value value;
+  auto& tensor_type = *value.mutable_type()->mutable_tensortype();
+
+  std::vector<int64_t> inferred_shape;
+  gsl::span<const int64_t> tensor_shape;
+  if (shape) {
+    tensor_shape = *shape;
+  } else {
+    inferred_shape.push_back(narrow<int64_t>(data.size()));
+    tensor_shape = inferred_shape;
+  }
+  SetTensorTypeInfo(tensor_type, DataTypeToMILSpec<T>(), tensor_shape);
+
+  // StorageWriter uses StorageT to select the blob metadata type and writes the underlying bytes.
+  MILBlob::Util::Span<const StorageT> storage_data(reinterpret_cast<const StorageT*>(data.data()), data.size());
+  const uint64_t offset = weights_file_writer.WriteData(storage_data);
+  auto* file_value = value.mutable_blobfilevalue();
+  file_value->set_filename("@model_path/weights/weight.bin");
+  file_value->set_offset(offset);
+
+  return value;
+}
+
 void CreateEmptyFile(const std::string& filename) {
   std::ofstream file(filename, std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(file.is_open(), "Failed to open file ", filename);
@@ -715,7 +755,7 @@ template <>
 std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
                                                gsl::span<const float> value,
                                                std::optional<gsl::span<const int64_t>> shape) {
-  auto input_value = CreateTensorValue<float>(value, shape);
+  auto input_value = CreateTensorValueWithWeightsFile<float>(value, shape, *weights_file_writer_);
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
@@ -723,7 +763,8 @@ template <>
 std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::string_view value_type,
                                                gsl::span<const MLFloat16> value,
                                                std::optional<gsl::span<const int64_t>> shape) {
-  auto input_value = CreateTensorValue<MLFloat16>(value, shape);
+  auto input_value =
+      CreateTensorValueWithWeightsFile<MLFloat16, MILBlob::Fp16>(value, shape, *weights_file_writer_);
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
