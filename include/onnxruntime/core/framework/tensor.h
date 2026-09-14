@@ -51,6 +51,12 @@ class Tensor final {
                                         std::shared_ptr<IAllocator> allocator) {
     return std::make_unique<Tensor>(elt_type, shape, std::move(allocator));
   }
+
+  /// As above, but allocated on `stream`. See the matching constructor.
+  static std::unique_ptr<Tensor> Create(MLDataType elt_type, const TensorShape& shape,
+                                        std::shared_ptr<IAllocator> allocator, Stream* stream) {
+    return std::make_unique<Tensor>(elt_type, shape, std::move(allocator), stream);
+  }
 #endif
 
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
@@ -91,6 +97,22 @@ class Tensor final {
   /// <param name="shape">Tensor shape.</param>
   /// <param name="allocator">Allocator to use to create and free buffer.</param>
   Tensor(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator);
+
+  /**
+   * Create tensor with given type and shape, allocating the buffer on `stream`.
+   *
+   * A stream aware allocator only associates a buffer with a stream when it is told which one, and
+   * an unassociated buffer may be handed straight to another stream once this tensor is released.
+   * That is unsafe for an intermediate tensor whose producing or consuming work is still queued, so
+   * kernels that create one should pass the stream they queue that work on.
+   *
+   * Falls back to the plain allocation when \p stream is null or the allocator is not stream aware.
+   * \param elt_type Data type of the tensor elements.
+   * \param shape Shape of the tensor.
+   * \param allocator Allocator to use. Also used to free the buffer when the tensor is destructed.
+   * \param stream Stream the buffer will be used on. May be null.
+   */
+  Tensor(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, Stream* stream);
 
   ~Tensor();
 

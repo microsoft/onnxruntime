@@ -135,6 +135,15 @@ class CudaKernel : public OpKernel {
     return OrtStreamAdapter(GetComputeStream(ctx));
   }
 
+  // The stream an allocation may be tagged with when the buffer outlives the call that fills it
+  // (see Tensor's stream aware constructor). A stream aware arena keeps the pointer in the chunk
+  // and later queries sync ids through it, so it has to be the framework stream - here that is the
+  // compute stream itself. The plugin build returns null when its host cannot hand out a framework
+  // stream, so callers have to treat null as "allocate untagged".
+  inline onnxruntime::Stream* GetAllocationStream(OpKernelContext* ctx) const {
+    return GetComputeStream(ctx);
+  }
+
   inline cudaStream_t Stream(OpKernelContext* ctx) const {
     auto* stream = ctx->GetComputeStream();
     return stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;

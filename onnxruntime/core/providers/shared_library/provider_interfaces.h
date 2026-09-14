@@ -1422,6 +1422,9 @@ struct ProviderHost {
   virtual const Float8E8M0* Tensor__Data_Float8E8M0(const Tensor* p) = 0;
   virtual bool Tensor__IsDataType_Float8E8M0(const Tensor* p) noexcept = 0;
 #endif
+
+  // Stream aware Tensor allocation - appended at end to preserve vtable ABI compatibility
+  virtual std::unique_ptr<Tensor> Tensor__construct(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator, Stream* stream) = 0;
 };
 
 #if defined(_MSC_VER) && !defined(__clang__)
