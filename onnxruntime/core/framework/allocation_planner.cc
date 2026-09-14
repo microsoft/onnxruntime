@@ -549,9 +549,24 @@ class PlannerImpl {
     if ((!arg1.Exists()) || (!arg2.Exists())) return false;
     auto p_shape1 = context_->GetShape(arg1);
     auto p_shape2 = context_->GetShape(arg2);
-    // If the shapes are unknown, we conservatively assume they may be of different size.
-    if ((nullptr == p_shape1) || (nullptr == p_shape2)) return false;
-    return SameSize(*p_shape1, arg1, *p_shape2, arg2);
+    if ((nullptr != p_shape1) && (nullptr != p_shape2)) {
+      return SameSize(*p_shape1, arg1, *p_shape2, arg2);
+    }
+    if ((nullptr != p_shape1) || (nullptr != p_shape2)) {
+      return false;
+    }
+
+    // Fall back to NodeArg type metadata when the planning context doesn't have shape entries.
+    // This allows may-inplace reuse for symbolically-shaped tensors when both type-proto shapes match.
+    const auto* p_type1 = arg1.TypeAsProto();
+    const auto* p_type2 = arg2.TypeAsProto();
+    if (p_type1 == nullptr || p_type2 == nullptr ||
+        !utils::HasTensorType(*p_type1) || !utils::HasTensorType(*p_type2) ||
+        !utils::HasShape(p_type1->tensor_type()) || !utils::HasShape(p_type2->tensor_type())) {
+      return false;
+    }
+
+    return SameSize(p_type1->tensor_type().shape(), arg1, p_type2->tensor_type().shape(), arg2);
   }
 
   // Find if freelist contains a buffer of the same size as output_arg
