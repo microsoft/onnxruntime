@@ -16,7 +16,15 @@
  */
 #if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
+
+#include <algorithm>
+#include <set>
+#include <string>
+#include <vector>
+
 #include "contrib_ops/cuda/llm/common/workspace.h"
+#include "core/common/parse_string.h"
+#include "core/common/string_utils.h"
 
 using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
@@ -58,7 +66,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel
-    int const wsSize = mRunner->getWorkspaceSize(m, originalN, k);
+    int const wsSize = static_cast<int>(mRunner->getWorkspaceSize(m, originalN, k));
     if (mQuantBits == 8) {
       mRunner->gemm(actPtr, reinterpret_cast<int8_t*>(weightPtr), inputScalesPtr, zerosPtr, biasesPtr, outputPtr,
                     m, originalN, k, mGroupSize, tactic, workspacePtr, wsSize, stream);
@@ -71,17 +79,17 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
 
 size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
   // Quantized weights are packed in FP16 format (INT4*4 -> FP16, INT8*2 -> FP16)
-  int const originalN = mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO;
+  int const originalN = static_cast<int>(mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO);
   std::vector<size_t> workspaces = {
-      maxM * k * sizeof(half),                       // A
-      k * n * sizeof(half),                          // B
-      k * originalN * sizeof(half) / mGroupSize,     // scales
-      k * originalN * sizeof(half) / mGroupSize,     // zeros
-      originalN * sizeof(half),                      // biases
-      maxM * originalN * sizeof(half),               // C
-      mRunner->getWorkspaceSize(maxM, originalN, k)  // workspace
+      /* A */ maxM * k * sizeof(half),
+      /* B */ k * n * sizeof(half),
+      /* scales */ k * originalN * sizeof(half) / mGroupSize,
+      /* zeros */ k * originalN * sizeof(half) / mGroupSize,
+      /* biases */ originalN * sizeof(half),
+      /* C */ maxM * originalN * sizeof(half),
+      mRunner->getWorkspaceSize(static_cast<int>(maxM), originalN, static_cast<int>(k))  // workspace
   };
-  return calculateTotalWorkspaceSize(workspaces.data(), workspaces.size());
+  return calculateTotalWorkspaceSize(workspaces.data(), static_cast<int>(workspaces.size()));
 }
 
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(
@@ -95,6 +103,54 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, i
     return m < 16;
   }
   return true;
+}
+
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(const std::string& value) {
+  std::vector<int> result;
+  if (value.empty()) {
+    return result;
+  }
+  std::set<int> unique;
+  for (const auto token : onnxruntime::utils::SplitString(value, ",", true)) {
+    const std::string trimmed_token = onnxruntime::utils::TrimString(token);
+    if (trimmed_token.empty()) {
+      continue;
+    }
+    int m = 0;
+    if (TryParseStringWithClassicLocale(trimmed_token, m) && m > 0) {
+      unique.insert(m);
+    }
+  }
+  result.assign(unique.begin(), unique.end());
+  return result;
+}
+
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
+    int minM, int maxM, bool /*hasWeightOnlyCudaKernel*/) const {
+  int const lo = std::max(1, minM);
+  int const hi = std::max(lo, maxM);
+
+  std::set<int> buckets;
+
+  if (!mProfileMOverride.empty()) {
+    for (int m : mProfileMOverride) {
+      buckets.insert(std::min(std::max(lo, m), hi));
+    }
+  } else {
+    // Small default bucket set clamped to [lo, hi].
+    static const int kDefault[] = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048};
+    for (int m : kDefault) {
+      if (m >= lo && m <= hi) {
+        buckets.insert(m);
+      }
+    }
+  }
+
+  // Always include the decode bucket (M=1) and the top bucket so both extremes are tuned.
+  buckets.insert(lo);
+  buckets.insert(hi);
+
+  return std::vector<int>(buckets.begin(), buckets.end());
 }
 
 }  // namespace onnxruntime::llm::kernels::weight_only

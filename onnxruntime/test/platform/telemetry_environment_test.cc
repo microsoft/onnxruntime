@@ -1,0 +1,79 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/platform/telemetry_environment.h"
+#include "test/util/include/scoped_env_vars.h"
+
+#include "gtest/gtest.h"
+
+namespace onnxruntime {
+namespace test {
+
+TEST(TelemetryEnvironmentTest, IsTruthyCiValue) {
+  using telemetry_detail::IsTruthyCiValue;
+  // Any non-empty, non-falsey value counts as present.
+  EXPECT_TRUE(IsTruthyCiValue("1"));
+  EXPECT_TRUE(IsTruthyCiValue("true"));
+  EXPECT_TRUE(IsTruthyCiValue("TRUE"));
+  EXPECT_TRUE(IsTruthyCiValue("yes"));
+  EXPECT_TRUE(IsTruthyCiValue(" 1 "));
+  EXPECT_TRUE(IsTruthyCiValue("anything"));
+
+  EXPECT_FALSE(IsTruthyCiValue(""));
+  EXPECT_FALSE(IsTruthyCiValue("   "));
+  EXPECT_FALSE(IsTruthyCiValue("0"));
+  EXPECT_FALSE(IsTruthyCiValue("false"));
+  EXPECT_FALSE(IsTruthyCiValue("FALSE"));
+  EXPECT_FALSE(IsTruthyCiValue("no"));
+  EXPECT_FALSE(IsTruthyCiValue("off"));
+}
+
+TEST(TelemetryEnvironmentTest, EnvVarOptOut) {
+  {
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "1"}}};
+    EXPECT_TRUE(IsTelemetryDisabledByEnvironment());
+  }
+  {
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "TRUE"}}};
+    EXPECT_TRUE(IsTelemetryDisabledByEnvironment());
+  }
+  {
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "0"}}};
+    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
+  }
+  {
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", "random"}}};
+    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
+  }
+  {
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_DISABLE_TELEMETRY", nullopt}}};
+    EXPECT_FALSE(IsTelemetryDisabledByEnvironment());
+  }
+}
+
+TEST(TelemetryEnvironmentTest, CiDetectionSuppresses) {
+  // Only the positive direction is asserted so the test is deterministic whether or not it itself
+  // runs in a CI environment. APPVEYOR is not part of ORT's own CI, so save/restore stays clean.
+  ScopedEnvironmentVariables env_vars{EnvVarMap{{"APPVEYOR", "true"}}};
+  EXPECT_TRUE(IsRunningInCI());
+}
+
+TEST(TelemetryEnvironmentTest, RunningUnitTestsSuppresses) {
+  // The unit-test entry point sets ORT_RUNNING_UNIT_TESTS process-wide; save/restore so this test can
+  // exercise both directions without leaking state to siblings.
+  {
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", "1"}}};
+    EXPECT_TRUE(IsRunningUnitTests());
+  }
+  {
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", "0"}}};
+    EXPECT_FALSE(IsRunningUnitTests());
+  }
+  {
+    ScopedEnvironmentVariables env_vars{EnvVarMap{{"ORT_RUNNING_UNIT_TESTS", nullopt}}};
+    EXPECT_FALSE(IsRunningUnitTests());
+  }
+}
+
+}  // namespace test
+}  // namespace onnxruntime

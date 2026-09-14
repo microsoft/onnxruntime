@@ -89,6 +89,14 @@ constexpr size_t kBlockGroupBlks = 4;                                // 4 K-bloc
 constexpr size_t kBlockGroupBytes = kBlockGroupBlks * kBlkBytes;     // 64 bytes
 constexpr size_t kBlockGroupWeights = kBlockGroupBlks * kBlkLen;     // 256 weights
 
+// Effective (padded) BlockCountK of the packed layout: the dispatch tables
+// report the per-column K stride rounded up to a whole block-group.
+constexpr size_t
+Q2BitGemmEffectiveBlockCountK(size_t BlockCountK)
+{
+    return ((BlockCountK + kBlockGroupBlks - 1) / kBlockGroupBlks) * kBlockGroupBlks;
+}
+
 //
 // Extract a single 2-bit weight from a standard ONNX MatMulNBits packed byte
 // stream. `src` is the start of one block (kBlkBytes bytes). `i` is the

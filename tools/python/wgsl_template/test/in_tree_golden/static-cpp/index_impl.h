@@ -31,13 +31,16 @@ std::string pass_as_string(T&& v) {
 }
 }  // namespace wgsl_detail
 
-#include "wgsl_template_gen/string_table.h"  // fd21a84e13681c97e246eabaf5ca83c6687ba9da332980cda8aa246eee7390fe
+#include "wgsl_template_gen/string_table.h"  // d51983d119d3b947e9a2c0b40e11af364bd2c90b1bbf41252a06152069964f45
 
 // Include template implementations
 
-#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 2c4e959f73738f0507ad0df24eee5cc62c674bb45409f3e8eee738af6573bb48
-#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // ce8ad040ed278e6db07d7eefd7920831c05ee5ac8828f080fa0ecf67e53eb737
-#include "wgsl_template_gen/generated/tensor/pad.h"  // 6b454a17c508a7ef0b1df42c549a304719779242d6a76f63e9a3f5eceb19cb78
+#include "wgsl_template_gen/generated/math/subgroup_matrix_gemm_8x16x16.h"  // b924b0e7b6902b0a6786b9a536c68d3ffee9d8a1603da987abb89dcd82672156
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_8x16x16.h"  // 26616da09d38ec21713de728effdb3b9feb2340091724b4c321ece03188ae37a
+#include "wgsl_template_gen/generated/math/subgroup_matrix_matmul_pad_b.h"  // 4ed8f01f59daebbf590309462caaed6e2695d1355c940f85ce156d57badca705
+#include "wgsl_template_gen/generated/nn/im2col_matmul.h"  // 4439415afab81c066b38000959226ba926917a6e435f492193aa568d4887174f
+#include "wgsl_template_gen/generated/tensor/oihw_to_ohwi.h"  // 0f9aefd7fb118a8a4be8751f9bf70a2390ad04726c9fefb4db4ac0e553e3ae04
+#include "wgsl_template_gen/generated/tensor/pad.h"  // 9f2adcadbf2d8bc9ebb8f1893555eb2a209cdc2984b4f3d0f37bf8d91d40b1bd
 
 #pragma pop_macro("MainFunctionStart")
 #pragma pop_macro("MainFunctionEnd")

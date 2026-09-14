@@ -16,6 +16,10 @@ limitations under the License.
 
 #include "core/platform/env.h"
 
+#ifdef USE_POSIX_TELEMETRY
+#include "core/platform/posix/telemetry.h"
+#endif
+
 #include <assert.h>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -98,6 +102,72 @@ long int TempFailureRetry(TFunc retriable_operation, TFuncArgs&&... args) {
   } while (result == -1 && errno == EINTR);
   return result;
 }
+
+common::Status ReportSystemError(const char* operation_name, const std::string& path) {
+  auto [err_no, err_msg] = GetErrnoInfo();
+  std::ostringstream oss;
+  oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
+  return common::Status(common::SYSTEM, err_no, oss.str());
+}
+
+common::Status GetFileLength(int fd, size_t& file_size) {
+  if (fd < 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
+  }
+
+  struct stat buf;
+  if (TempFailureRetry(fstat, fd, &buf) < 0) {
+    return ReportSystemError("fstat", "");
+  }
+  if (buf.st_size < 0) {
+    return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
+  }
+  if (static_cast<uintmax_t>(buf.st_size) > std::numeric_limits<size_t>::max()) {
+    return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
+  }
+
+  file_size = static_cast<size_t>(buf.st_size);
+  return common::Status::OK();
+}
+
+class PosixRandomAccessFile final : public RandomAccessFile {
+ public:
+  PosixRandomAccessFile(ScopedFileDescriptor descriptor, std::string path)
+      : descriptor_(std::move(descriptor)), path_(std::move(path)) {}
+
+  common::Status GetLength(size_t& length) const override {
+    return GetFileLength(descriptor_.Get(), length);
+  }
+
+  common::Status Read(FileOffsetType offset, gsl::span<char> buffer) const override {
+    if (offset < 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RandomAccessFile::Read: offset must be nonnegative.");
+    }
+    if (static_cast<uintmax_t>(buffer.size()) >
+        static_cast<uintmax_t>(std::numeric_limits<FileOffsetType>::max() - offset)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "RandomAccessFile::Read: file range is not representable.");
+    }
+
+    size_t total_bytes_read = 0;
+    while (total_bytes_read < buffer.size()) {
+      constexpr size_t kMaxBytesToRead = 1 << 30;
+      const auto bytes_to_read = std::min(buffer.size() - total_bytes_read, kMaxBytesToRead);
+      const auto bytes_read = TempFailureRetry(pread, descriptor_.Get(), buffer.data() + total_bytes_read,
+                                               bytes_to_read, offset + static_cast<FileOffsetType>(total_bytes_read));
+      if (bytes_read < 0) {
+        return ReportSystemError("pread", path_);
+      }
+      ORT_RETURN_IF(bytes_read == 0, "RandomAccessFile::Read: unexpected end of file: ", path_);
+      total_bytes_read += static_cast<size_t>(bytes_read);
+    }
+    return common::Status::OK();
+  }
+
+ private:
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PosixRandomAccessFile);
+  ScopedFileDescriptor descriptor_;
+  const std::string path_;
+};
 
 // nftw() callback to remove a file
 int nftw_remove(
@@ -303,7 +373,26 @@ class PosixEnv : public Env {
 
   int GetL2CacheSize() const override {
 #ifdef _SC_LEVEL2_CACHE_SIZE
-    return static_cast<int>(sysconf(_SC_LEVEL2_CACHE_SIZE));
+    // Prefer sysconf where it is implemented (e.g. Linux/x86), so those
+    // platforms keep their existing, working values. glibc's aarch64 backend
+    // does not implement the cache-size queries, so sysconf(_SC_LEVEL2_CACHE_SIZE)
+    // returns 0 on Linux/aarch64, which silently disables cache-tiled kernels
+    // (e.g. CPU FlashAttention in MultiHeadAttention). Only when sysconf reports
+    // no L2 do we fall back to cpuinfo, which reads the sizes from sysfs
+    // cacheinfo and works across architectures.
+    const auto l2_cache_size = sysconf(_SC_LEVEL2_CACHE_SIZE);
+    if (l2_cache_size > 0) {
+      return narrow<int>(l2_cache_size);
+    }
+#ifdef ORT_USE_CPUINFO
+    if (cpuinfo_available_ && cpuinfo_get_l2_caches_count() > 0) {
+      const auto* l2_cache = cpuinfo_get_l2_cache(0);
+      if (l2_cache != nullptr && l2_cache->size > 0) {
+        return narrow<int>(l2_cache->size);
+      }
+    }
+#endif  // ORT_USE_CPUINFO
+    return narrow<int>(l2_cache_size);
 #else
     int value = 0;  // unknown
 #if (defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)) && defined(HW_L2CACHESIZE)
@@ -348,26 +437,30 @@ class PosixEnv : public Env {
   }
 
   common::Status GetFileLength(int fd, /*out*/ size_t& file_size) const override {
-    using namespace common;
-    if (fd < 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid fd was supplied: ", fd);
-    }
+    return onnxruntime::GetFileLength(fd, file_size);
+  }
 
-    struct stat buf;
-    int rc = fstat(fd, &buf);
-    if (rc < 0) {
-      return ReportSystemError("fstat", "");
+  common::Status OpenRandomAccessFile(const ORTCHAR_T* file_path,
+                                      std::unique_ptr<RandomAccessFile>& file) const override {
+    if (file_path == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "file_path == nullptr");
     }
-
-    if (buf.st_size < 0) {
-      return ORT_MAKE_STATUS(SYSTEM, FAIL, "Received negative size from stat call");
+    // Nonblocking open lets us reject FIFOs without waiting for a writer.
+    int flags = O_RDONLY | O_NONBLOCK;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    // Android's fortified open is overloaded; resolve the call inside a lambda.
+    ScopedFileDescriptor descriptor{static_cast<int>(TempFailureRetry([&] { return open(file_path, flags); }))};
+    if (!descriptor.IsValid()) {
+      return ReportSystemError("open", file_path);
     }
-
-    if (static_cast<unsigned long long>(buf.st_size) > std::numeric_limits<size_t>::max()) {
-      return ORT_MAKE_STATUS(SYSTEM, FAIL, "File is too large.");
+    struct stat info;
+    if (TempFailureRetry(fstat, descriptor.Get(), &info) < 0) {
+      return ReportSystemError("fstat", file_path);
     }
-
-    file_size = static_cast<size_t>(buf.st_size);
+    ORT_RETURN_IF_NOT(S_ISREG(info.st_mode), "Random-access reads require a regular file: ", file_path);
+    file = std::make_unique<PosixRandomAccessFile>(std::move(descriptor), file_path);
     return Status::OK();
   }
 
@@ -461,13 +554,6 @@ class PosixEnv : public Env {
                         }};
 
     return Status::OK();
-  }
-
-  static common::Status ReportSystemError(const char* operation_name, const std::string& path) {
-    auto [err_no, err_msg] = GetErrnoInfo();
-    std::ostringstream oss;
-    oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
-    return common::Status(common::SYSTEM, err_no, oss.str());
   }
 
   bool FolderExists(const std::string& path) const override {
@@ -639,7 +725,11 @@ class PosixEnv : public Env {
   }
 
  private:
+#ifdef USE_POSIX_TELEMETRY
+  PosixTelemetry telemetry_provider_;
+#else
   Telemetry telemetry_provider_;
+#endif
 #ifdef ORT_USE_CPUINFO
   PosixEnv() {
     cpuinfo_available_ = cpuinfo_initialize();

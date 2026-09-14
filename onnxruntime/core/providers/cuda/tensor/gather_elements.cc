@@ -3,6 +3,7 @@
 
 #include "core/providers/cuda/tensor/gather_elements.h"
 
+#include "core/providers/cuda/tensor/gather_elements_common.h"
 #include "core/providers/cuda/tensor/gather_elements_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
 
@@ -162,6 +163,8 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   // Validate input shapes and ranks (invoke the static method in the CPU GatherElements kernel that hosts the shared
   // checks)
   ORT_RETURN_IF_ERROR(onnxruntime::GatherElements::ValidateInputShapes(input_shape, indices_shape, axis));
+  ORT_RETURN_IF_NOT(IsGatherElementsElementCountSupported(indices_size),
+                    GatherElementsElementCountErrorMessage(indices_size));
 
   // create output tensor
   auto* output_tensor = context->Output(0, indices_shape);

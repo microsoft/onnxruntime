@@ -344,7 +344,6 @@ class NvExecutionProvider : public IExecutionProvider {
 
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
-                                    bool path_check,
                                     const void* onnx_model_bytestream,
                                     size_t onnx_model_bytestream_size,
                                     const void* onnx_external_data_bytestream,

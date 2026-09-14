@@ -459,12 +459,13 @@ static std::shared_ptr<const void*[]> GetOrCreateLhsPtrTableSme(const size_t ci,
         1, 1
     };
 
-    // Setting up LHS ptr cache and tracking value of last passed pad_ptr
+    // Cache of computed LHS pointer offsets. thread_local to prevent interference from parallel sessions.
+    // Entries include pointers to the pad buffer for out-of-bounds pixels; if the grow-only pad buffer
+    // reallocates, erase the old group so stale pointer tables cannot reference the previous allocation.
     using LhsPtrsCache = std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>>;
     thread_local std::unordered_map<const float*, LhsPtrsCache> lhs_ptrs_cache_by_pad;
     thread_local const float* last_pad_ptr = nullptr;
 
-    // If pad_ptr moved (vector reallocation), drop only the old group to avoid accumulating unreachable entries.
     const float* cur_pad_ptr = pad_ptr;
     if (last_pad_ptr != nullptr && last_pad_ptr != cur_pad_ptr) {
         lhs_ptrs_cache_by_pad.erase(last_pad_ptr);

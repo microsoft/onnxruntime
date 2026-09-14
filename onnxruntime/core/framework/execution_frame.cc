@@ -469,23 +469,15 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
 #endif
               // the memory pattern buffer will leave in the whole execution.
 #ifdef ORT_ENABLE_STREAM
+              // Allocate the memory-pattern buffer on the stream that will actually use it for this
+              // device (the user-provided override stream if present, otherwise the device's stream).
+              Stream* mem_pattern_stream = nullptr;
               if (alloc->IsStreamAware() && device_streams_) {
-                Stream* mem_pattern_stream = device_streams_->GetRootStream();
+                mem_pattern_stream = device_streams_->GetStreamForDevice(location);
+              }
 
+              if (mem_pattern_stream != nullptr) {
                 buffer = alloc->AllocOnStream(peak_size, mem_pattern_stream);
-
-                // this seems unnecessary. any memory pattern buffer would be in use for the entire inference, so
-                // there's no point at which another stream (as streams are per-inference) would be able to use it.
-                // given that, it's unclear why we need to update the sync id in all other streams to allow them
-                // to take this buffer if it was free.
-                //
-                // device_stream_collection calls ReleaseStreamBuffers for all streams including the root stream in
-                // CleanUp, so the chunk will become available to other streams at that point.
-                //
-                // Commenting out to verify.
-                // for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
-                //  stream_aware_arena->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j));
-                //}
               } else {
                 buffer = alloc->Alloc(peak_size);
               }

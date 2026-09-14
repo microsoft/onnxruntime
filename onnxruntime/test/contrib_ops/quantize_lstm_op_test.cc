@@ -364,6 +364,71 @@ TEST(DynamicQuantLSTMTest, LargeSize) {
   RunQuantLSTM<uint8_t>(12, 3, 278);
 }
 
+// Regression test: a DynamicQuantizeLSTM whose hidden_size attribute is inconsistent with the actual
+// W/R weight tensor shapes must be rejected cleanly. With per-tensor quantization the scale/zero-point
+// shape checks do not involve hidden_size, and ONNX shape inference does not verify the weight shapes,
+// so such a model would otherwise reach the compute path and cause an out-of-bounds access.
+TEST(DynamicQuantLSTMTest, MismatchedWeightShapeIsRejected) {
+  OpTester test("DynamicQuantizeLSTM", 1 /*opset_version*/, onnxruntime::kMSDomain /*domain*/);
+
+  constexpr int num_directions = 1;
+  constexpr int64_t seq_len = 1;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t input_size = 2;
+  constexpr int64_t actual_hidden = 2;  // the weights are sized for this hidden size
+  constexpr int64_t hidden_size = 3;    // bogus attribute value, inconsistent with the weights
+
+  test.AddAttribute<std::vector<std::string>>("activations", {"sigmoid", "tanh", "tanh"});
+  test.AddAttribute("direction", "forward");
+  test.AddAttribute("hidden_size", hidden_size);
+  test.AddAttribute<int64_t>("input_forget", 0);
+
+  // X
+  std::vector<int64_t> X_dims = {seq_len, batch_size, input_size};
+  std::vector<float> X_data(seq_len * batch_size * input_size, 0.1f);
+  test.AddInput<float>("X", X_dims, X_data);
+
+  // W: [num_directions, input_size, 4*actual_hidden] - inconsistent with the hidden_size attribute.
+  std::vector<int64_t> W_dims = {num_directions, input_size, 4 * actual_hidden};
+  std::vector<uint8_t> w_quant(num_directions * input_size * 4 * actual_hidden, 1);
+  test.AddInput<uint8_t>("W", W_dims, w_quant);
+
+  // R: [num_directions, actual_hidden, 4*actual_hidden]
+  std::vector<int64_t> R_dims = {num_directions, actual_hidden, 4 * actual_hidden};
+  std::vector<uint8_t> r_quant(num_directions * actual_hidden * 4 * actual_hidden, 1);
+  test.AddInput<uint8_t>("R", R_dims, r_quant);
+
+  // B, sequence_lens
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<int>();
+
+  // initial_h / initial_c (sized using the hidden_size attribute)
+  std::vector<int64_t> initial_dims = {num_directions, batch_size, hidden_size};
+  std::vector<float> initial_data(num_directions * batch_size * hidden_size, 0.0f);
+  test.AddInput<float>("initial_h", initial_dims, initial_data);
+  test.AddInput<float>("initial_c", initial_dims, initial_data);
+
+  // P
+  test.AddOptionalInputEdge<float>();
+
+  // Per-tensor quantization parameters (their shapes do not involve hidden_size).
+  std::vector<int64_t> per_tensor_dims = {num_directions};
+  test.AddInput<float>("W_scale", per_tensor_dims, std::vector<float>(num_directions, 1.0f));
+  test.AddInput<uint8_t>("W_zero_point", per_tensor_dims, std::vector<uint8_t>(num_directions, 0));
+  test.AddInput<float>("R_scale", per_tensor_dims, std::vector<float>(num_directions, 1.0f));
+  test.AddInput<uint8_t>("R_zero_point", per_tensor_dims, std::vector<uint8_t>(num_directions, 0));
+
+  // Outputs (sized using the hidden_size attribute); values are not checked because we expect failure.
+  std::vector<int64_t> Y_dims = {seq_len, num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y", Y_dims, std::vector<float>(seq_len * num_directions * batch_size * hidden_size, 0.0f));
+  std::vector<int64_t> Y_h_dims = {num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y_h", Y_h_dims, std::vector<float>(num_directions * batch_size * hidden_size, 0.0f));
+  std::vector<int64_t> Y_c_dims = {num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y_c", Y_c_dims, std::vector<float>(num_directions * batch_size * hidden_size, 0.0f));
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input W must have shape");
+}
+
 #ifndef ENABLE_TRAINING
 // Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {

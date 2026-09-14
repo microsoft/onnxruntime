@@ -12,6 +12,9 @@ namespace cuda {
 namespace detail {
 size_t compute_reduce_matrix_columns_intermediate_buffer_size(
     int element_size, int num_rows, int num_cols);
+
+size_t compute_arg_min_max_last_axis_intermediate_buffer_size(
+    int element_size, int num_rows, int num_cols);
 }  // namespace detail
 
 /**
@@ -102,6 +105,43 @@ Status reduce_matrix_rows(cudaStream_t stream, const TIn* input, TOut* output, i
  */
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size);
+
+/**
+ * Computes ReduceSum for an arbitrary set of axes. This is the general fallback
+ * for axis layouts that cannot be flattened into one of the optimized matrix
+ * reductions above.
+ */
+template <typename T>
+Status reduce_sum_nd(cudaStream_t stream, const T* input, T* output,
+                     gsl::span<const int64_t> dims, gsl::span<const int64_t> axes);
+
+/** Computes ArgMax/ArgMin indices over the last dimension in a row-major matrix.
+ *
+ * The reduction keeps the first occurrence of the extreme value, which matches the ONNX
+ * `select_last_index == 0` semantics (the CUDA EP falls back to CPU when it is 1).
+ *
+ * @param input The input data.
+ * @param output The output indices, one per row.
+ * @param m The number of matrix rows.
+ * @param n The number of matrix columns (the reduction length).
+ * @param buffer The intermediate buffer, may be nullptr if the required size is 0.
+ * @param buffer_size The size of the intermediate buffer in bytes.
+ */
+template <typename TIn, bool IsArgMax>
+Status arg_min_max_last_axis(cudaStream_t stream, const TIn* input, int64_t* output, int m, int n,
+                             void* buffer, size_t buffer_size);
+
+/**
+ * Computes the size in bytes of the intermediate buffer needed by arg_min_max_last_axis().
+ * @tparam TIn The input data type.
+ * @param m The number of matrix rows.
+ * @param n The number of matrix columns.
+ * @return The size of the intermediate buffer. Zero when no buffer is needed.
+ */
+template <typename TIn>
+size_t compute_arg_min_max_last_axis_buffer_size(int m, int n) {
+  return detail::compute_arg_min_max_last_axis_intermediate_buffer_size(sizeof(TIn), m, n);
+}
 
 /** Apply unary elementwise division. */
 template <typename T>

@@ -6,6 +6,10 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
@@ -24,6 +28,7 @@ class Tensor;
 namespace webgpu {
 class WebGpuContext;
 class ComputeContextBase;
+class ComputeContext;
 class ProgramBase;
 
 // PendingKernelInfo stores profiling information for a kernel execution
@@ -57,14 +62,48 @@ struct PendingKernelInfo {
   std::vector<TensorShape> output_shapes;
 };
 
-// Definition for CapturedCommandInfo in the webgpu namespace
+// State for one in-flight pipeline build. The compiled pipeline is written into
+// `callback_context->pipeline` by the async callback; only that heap-allocated callback context
+// must stay put until `future` completes, so this struct itself can be stored inline.
+struct PendingPipelineBuild {
+  std::string name;
+  std::vector<int> shape_uniform_ranks;
+  wgpu::BindGroupLayout bind_group_layout;
+  std::unique_ptr<PipelineCallbackContext> callback_context;
+  wgpu::Future future;
+};
+
+// Resources for one recorded dispatch. The pipeline fields represent these lifecycle states:
+//
+//                                 pending_build    compute_pipeline
+// 1. Program cache hit                 empty              set
+//    The pipeline was already available when the dispatch was recorded.
+//
+// 2. First cache miss for a key         set              empty
+//    This command owns the asynchronous build for its program key.
+//
+// 3. Later cache miss for the same key  empty            empty
+//    An earlier command in deferred_dispatches_ owns the build. This command keeps program_key so
+//    pipeline resolution can obtain the completed pipeline from the program cache.
+//
+// 4. Deferred pipeline resolved         empty             set
+//    WaitForDeferredPipelineBuilds() has waited for the owning build as needed, populated the
+//    program cache, and assigned a ready pipeline to every command before encoding starts.
+//
+// 5. Captured command / graph replay    empty             set
+//    The command was moved into captured graph storage after encoding and retains the ready
+//    pipeline and bind group for later replays. Replay never depends on pending_build.
+//
+// A command with both fields empty is therefore valid only in state 3 before deferred pipeline
+// resolution. DispatchCommand() requires compute_pipeline to be set.
 struct CapturedCommandInfo {
-  wgpu::ComputePipeline compute_pipeline;
-  WGPUBindGroup bind_group;
-  WGPUBindGroupLayout bind_group_layout;
-  std::array<uint32_t, 3> dispatch_group;
+  std::string program_key;
+  std::optional<PendingPipelineBuild> pending_build;
+  std::optional<wgpu::ComputePipeline> compute_pipeline;
+  wgpu::BindGroup bind_group;
+  std::array<uint32_t, 3> dispatch_group{1, 1, 1};
   // WGPUBuffer for indirect dispatch, nullptr if not using indirect dispatch
-  WGPUBuffer indirect_buffer;
+  WGPUBuffer indirect_buffer = nullptr;
   // Optional profiling data
   std::optional<PendingKernelInfo> pending_kernel_info;
 };
@@ -96,7 +135,18 @@ struct WebGpuContextConfig {
 #endif  // !NDEBUG
   };
   bool validation_mode_explicitly_set{false};
+  bool enable_robustness{
+#ifndef NDEBUG
+      true  // for debug builds, enable robust buffer access by default
+#else
+      false  // for release builds, disable robust buffer access for performance by default
+#endif
+  };
+  bool enable_robustness_explicitly_set{false};
   bool preserve_device{false};
+  // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
+  // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
+  bool compile_only{false};
   uint32_t max_num_pending_dispatches{16};
   uint64_t max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
@@ -168,14 +218,13 @@ class WebGpuContext final {
  public:
   Status Wait(wgpu::Future f);
 
+  const wgpu::Instance& Instance() const { return instance_; }
   const wgpu::Device& Device() const { return device_; }
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
   bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
-#if !defined(__wasm__)
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
-#endif
 
   const wgpu::CommandEncoder& GetCommandEncoder() {
     if (!current_command_encoder_) {
@@ -215,7 +264,7 @@ class WebGpuContext final {
   void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager);
   void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
 
-  void Flush(const webgpu::BufferManager& buffer_mgr);
+  Status Flush(const webgpu::BufferManager& buffer_mgr);
 
   /**
    * Get the buffer manager.
@@ -232,6 +281,10 @@ class WebGpuContext final {
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
   }
+
+  // False for a device-free ("virtual device") context, which has no Dawn device and can only run graph
+  // transformation. Used to hand out a no-op allocator instead of a real GpuBufferAllocator.
+  inline bool HasDevice() const { return device_ != nullptr; }
 
   //
   // Get Split-K configuration.
@@ -302,12 +355,12 @@ class WebGpuContext final {
 
   void Initialize(const WebGpuContextConfig& config);
 
-  void LaunchComputePipeline(const wgpu::ComputePassEncoder& compute_pass_encoder,
-                             const std::vector<WGPUBuffer>& bind_buffers,
-                             const std::vector<uint32_t>& bind_buffers_segments,
-                             const ProgramArtifact& program_artifact,
-                             uint32_t x, uint32_t y, uint32_t z,
-                             const Tensor* indirect_dispatch_tensor = nullptr);
+  wgpu::BindGroup CreateBindGroup(const std::vector<WGPUBuffer>& bind_buffers,
+                                  const std::vector<uint32_t>& bind_buffers_segments,
+                                  const wgpu::BindGroupLayout& bind_group_layout,
+                                  std::string_view label) const;
+  void DispatchCommand(const webgpu::CapturedCommandInfo& command);
+  Status EncodeDeferredDispatches();
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
@@ -328,6 +381,12 @@ class WebGpuContext final {
     wgpu::Buffer query_buffer;
   };
 
+  // Find the build owner for a cache key in the current deferred window.
+  PendingPipelineBuild* FindPendingPipelineBuild(std::string_view key);
+  Status WaitForDeferredPipelineBuilds();
+
+  friend class BufferManager;
+  friend class ComputeContext;
   friend class WebGpuContextFactory;
 
   std::once_flag init_flag_;
@@ -337,14 +396,13 @@ class WebGpuContext final {
 
   webgpu::ValidationMode validation_mode_;
   bool validation_mode_explicitly_set_;
+  bool enable_robustness_ = false;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;
   wgpu::Limits device_limits_;
   std::unordered_set<wgpu::FeatureName> device_features_;
-#if !defined(__wasm__)
   wgpu::AdapterPropertiesSubgroupMatrixConfigs subgroup_matrix_configs_;
-#endif
 
   wgpu::CommandEncoder current_command_encoder_;
   wgpu::ComputePassEncoder current_compute_pass_encoder_;
@@ -355,6 +413,9 @@ class WebGpuContext final {
 
   uint32_t num_pending_dispatches_ = 0;
   uint32_t max_num_pending_dispatches_ = 16;
+
+  // Owns the active dispatch window and the unique pending builds referenced within that window.
+  std::vector<webgpu::CapturedCommandInfo> deferred_dispatches_;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
 

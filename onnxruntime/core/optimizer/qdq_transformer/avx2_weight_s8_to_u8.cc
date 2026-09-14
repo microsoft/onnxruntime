@@ -19,17 +19,20 @@ struct OperatorWeightInfo {
   const size_t weight_zp_idx;
 };
 
-static const std::unordered_map<std::string, struct OperatorWeightInfo> s8_overflow_ops = {
-    {"QAttention", {{1}, kMSDomain, 1, 7}},
-    {"MatMulIntegerToFloat", {{1}, kMSDomain, 1, 5}},
-    {"DynamicQuantizeMatMul", {{1}, kMSDomain, 1, 3}},
-    {"QGemm", {{1}, kMSDomain, 3, 5}},
-    {"MatMulInteger", {{10}, kOnnxDomain, 1, 3}},
-    {"QLinearMatMul", {{10}, kOnnxDomain, 3, 5}},
-    {"QLinearConv", {{10}, kOnnxDomain, 3, 5}},
-    {"DequantizeLinear", {{10, 13}, kMSDomain, 0, 2}},  // already covered in QDQS8ToU8Transformer but does not hurt
-                                                        /* {"ConvInteger", {10}, kOnnxDomain, 1, 3},  // ConvInteger does not support int8_t weight at all */
-};
+static const std::unordered_map<std::string, OperatorWeightInfo>& GetS8OverflowOps() {
+  static const std::unordered_map<std::string, OperatorWeightInfo> s8_overflow_ops = {
+      {"QAttention", {{1}, kMSDomain, 1, 7}},
+      {"MatMulIntegerToFloat", {{1}, kMSDomain, 1, 5}},
+      {"DynamicQuantizeMatMul", {{1}, kMSDomain, 1, 3}},
+      {"QGemm", {{1}, kMSDomain, 3, 5}},
+      {"MatMulInteger", {{10}, kOnnxDomain, 1, 3}},
+      {"QLinearMatMul", {{10}, kOnnxDomain, 3, 5}},
+      {"QLinearConv", {{10}, kOnnxDomain, 3, 5}},
+      {"DequantizeLinear", {{10, 13}, kMSDomain, 0, 2}},  // already covered in QDQS8ToU8Transformer but does not hurt
+                                                          /* {"ConvInteger", {10}, kOnnxDomain, 1, 3},  // ConvInteger does not support int8_t weight at all */
+  };
+  return s8_overflow_ops;
+}
 
 static inline bool MatchesOpSinceVersion(
     const Node& node, const std::vector<ONNX_NAMESPACE::OperatorSetVersion>& versions) {
@@ -70,30 +73,31 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const log
 
   const ONNX_NAMESPACE::TensorProto* weight_zp_tensor_proto = nullptr;
   const auto* zp_def = input_defs.size() <= w_zp_idx ? nullptr : input_defs[w_zp_idx];
-  if (nullptr != zp_def) {
-    if (!graph_utils::NodeArgIsConstant(graph, *zp_def) ||
-        !graph.GetInitializedTensor(zp_def->Name(), weight_zp_tensor_proto) ||
-        weight_zp_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-      return false;
-    }
-    ORT_ENFORCE(nullptr != weight_zp_tensor_proto,
-                "Internal Error: weight zero point must be const int8 for Avx2WeightS8ToU8Transformer.");
+  if (nullptr == zp_def || !zp_def->Exists() ||
+      !graph_utils::NodeArgIsConstant(graph, *zp_def) ||
+      !graph.GetInitializedTensor(zp_def->Name(), weight_zp_tensor_proto) ||
+      weight_zp_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+    LOGS(logger, WARNING) << "Unable transforming DynamicQuantizeLSTM operator,"
+                          << " unable to locate required weight zero point of const int8 type,"
+                          << " int8 overflow might impact precision !";
+    return false;
   }
+  ORT_ENFORCE(nullptr != weight_zp_tensor_proto,
+              "Internal Error: weight zero point must be const int8 for Avx2WeightS8ToU8Transformer.");
 
   const ONNX_NAMESPACE::TensorProto* r_zp_tensor_proto = nullptr;
   const auto* rzp_def = input_defs.size() <= r_zp_idx ? nullptr : input_defs[r_zp_idx];
-  if (nullptr != rzp_def) {
-    if (!graph_utils::NodeArgIsConstant(graph, *input_defs[r_zp_idx]) ||
-        !graph.GetInitializedTensor(input_defs[r_zp_idx]->Name(), r_zp_tensor_proto) ||
-        r_zp_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
-      LOGS(logger, WARNING) << "Unable transforming DynamicQuantizeLSTM operator,"
-                            << " unable to locate recurrence tensor or its zero point value,"
-                            << " int8 overflow might impact precision !";
-      return false;
-    }
-    ORT_ENFORCE(nullptr != r_zp_tensor_proto,
-                "Internal Error: recurrence zero point must be const int8 for Avx2WeightS8ToU8Transformer.");
+  if (nullptr == rzp_def || !rzp_def->Exists() ||
+      !graph_utils::NodeArgIsConstant(graph, *rzp_def) ||
+      !graph.GetInitializedTensor(rzp_def->Name(), r_zp_tensor_proto) ||
+      r_zp_tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8) {
+    LOGS(logger, WARNING) << "Unable transforming DynamicQuantizeLSTM operator,"
+                          << " unable to locate required recurrence zero point of const int8 type,"
+                          << " int8 overflow might impact precision !";
+    return false;
   }
+  ORT_ENFORCE(nullptr != r_zp_tensor_proto,
+              "Internal Error: recurrence zero point must be const int8 for Avx2WeightS8ToU8Transformer.");
 
   bool should_convert = false;
   Initializer w_temp(graph, *weight_tensor_proto, graph.ModelPath());
@@ -130,22 +134,24 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const log
   weights_proto_u8.set_name(weight_tensor_proto->name() + "_s8_2_u8");
   weights_proto_u8.mutable_dims()->CopyFrom(weight_tensor_proto->dims());
   utils::SetRawDataInTensorProto(weights_proto_u8, w_temp.data<int8_t>(), static_cast<size_t>(w_temp.size()));
-  input_defs[w_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weights_proto_u8);
+  graph.SetGraphResolveNeeded().SetGraphProtoSyncNeeded();
+  auto& mutable_input_defs = op_node.MutableInputDefs();
+  mutable_input_defs[w_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weights_proto_u8);
 
   ONNX_NAMESPACE::TensorProto weight_zp_proto_u8;
   QDQ::Int8TensorProto2Uint8(weight_zp_tensor_proto, weight_zp_proto_u8, graph, true);
-  input_defs[w_zp_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weight_zp_proto_u8);
+  mutable_input_defs[w_zp_idx] = &graph_utils::AddInitializerWithOrtValue(graph, weight_zp_proto_u8);
 
   ONNX_NAMESPACE::TensorProto r_proto_u8;
   r_proto_u8.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
   r_proto_u8.set_name(r_tensor_proto->name() + "_s8_2_u8");
   r_proto_u8.mutable_dims()->CopyFrom(r_tensor_proto->dims());
   utils::SetRawDataInTensorProto(r_proto_u8, r_temp.data<int8_t>(), static_cast<size_t>(r_temp.size()));
-  input_defs[r_idx] = &graph_utils::AddInitializerWithOrtValue(graph, r_proto_u8);
+  mutable_input_defs[r_idx] = &graph_utils::AddInitializerWithOrtValue(graph, r_proto_u8);
 
   ONNX_NAMESPACE::TensorProto r_zp_proto_u8;
   QDQ::Int8TensorProto2Uint8(r_zp_tensor_proto, r_zp_proto_u8, graph, true);
-  input_defs[r_zp_idx] = &graph_utils::AddInitializerWithOrtValue(graph, r_zp_proto_u8);
+  mutable_input_defs[r_zp_idx] = &graph_utils::AddInitializerWithOrtValue(graph, r_zp_proto_u8);
 
   return true;
 }
@@ -153,6 +159,7 @@ static bool TryConvertDynamicQuantizeLSTM(Node& op_node, Graph& graph, const log
 // For QAttention operator, if the weight is const int8, convert it to const uint8
 Status Avx2WeightS8ToU8Transformer::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                               const logging::Logger& logger) const {
+  const auto& s8_overflow_ops = GetS8OverflowOps();
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 

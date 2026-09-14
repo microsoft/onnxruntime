@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cmath>
 #include <deque>
 #include "core/graph/graph_utils.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/mlas/inc/mlas.h"
@@ -129,6 +131,13 @@ class NchwcTransformerImpl {
   void TransformTransposeToNhwc(Node& node);
   void TransformResize(Node& node);
   void TrackTransposeFromNhwc(Node& node);
+
+  // Attempt to fuse the decomposed-HardSwish diamond Mul(x, HardSigmoid(x)) into
+  // the producing NCHWc conv as a HardSwish activation. `hardsigmoid` is the
+  // current activation node, `conv_output_arg` its original (pre-rewrite) input,
+  // and `nchwc_input` the NchwcArgument for that conv output. Returns true if the
+  // fusion was applied (and both the HardSigmoid and Mul were removed).
+  bool TryFuseNchwcHardSwish(Node& hardsigmoid, NodeArg* conv_output_arg, NchwcArgument& nchwc_input);
 
   Graph& graph_;
 
@@ -533,6 +542,31 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
     return;
   }
 
+  // Bail out for AveragePool with ceil_mode==1 && count_include_pad==1. The default float CPU
+  // AveragePool kernel was fixed (PR #29629) to divide the trailing ceil_mode window by its
+  // clamped size instead of the full kernel size. NchwcAveragePool routes to
+  // MlasAveragePoolingIncludePad, which still uses the full-kernel-size divisor and would
+  // silently reintroduce the wrong-average bug for optimized NCHWc graphs. Leaving this combo
+  // unconverted keeps it on the fixed CPU path; every other AveragePool (and all MaxPool /
+  // global pooling) conversion is unaffected, so there is no perf impact on the common case.
+  if (node.OpType() == "AveragePool") {
+    const NodeAttributes& attrs = node.GetAttributes();
+    const auto get_int_attr = [&attrs](const char* name) -> int64_t {
+      const auto it = attrs.find(name);
+      return (it != attrs.end() && it->second.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_INT)
+                 ? it->second.i()
+                 : 0;
+    };
+    // Gate count_include_pad as (!= 0) to match how PoolBase and the float (pool.cc) / fp16
+    // kernels treat it: any nonzero value enables include-pad. Using == 1 here would let an
+    // out-of-spec count_include_pad=2 model escape the bail-out, convert to NchwcAveragePool,
+    // and silently hit the buggy full-kernel divisor in the optimized graph. ceil_mode stays
+    // == 1 because the kernels gate the ceil-window fix on exactly ceil_mode == 1.
+    if (get_int_attr("ceil_mode") == 1 && get_int_attr("count_include_pad") != 0) {
+      return;
+    }
+  }
+
   const size_t nchwc_block_size = MlasNchwcGetBlockSize();
 
   const auto* input_type = input_defs[0]->TypeAsProto();
@@ -881,6 +915,86 @@ void NchwcTransformerImpl::TransformConcat(Node& node) {
   CreateNchwcArgument(node, node, total_channels, output_shape);
 }
 
+bool NchwcTransformerImpl::TryFuseNchwcHardSwish(Node& hardsigmoid,
+                                                 NodeArg* conv_output_arg,
+                                                 NchwcArgument& nchwc_input) {
+  // Only applies to a HardSigmoid whose gate params match HardSwish (alpha=1/6,
+  // beta=1/2), producing exactly one consumer.
+  if (hardsigmoid.OpType() != "HardSigmoid" || hardsigmoid.GetOutputEdgesCount() != 1) {
+    return false;
+  }
+  const auto* alpha_attr = graph_utils::GetNodeAttribute(hardsigmoid, "alpha");
+  const auto* beta_attr = graph_utils::GetNodeAttribute(hardsigmoid, "beta");
+  const float alpha = (alpha_attr != nullptr && utils::HasFloat(*alpha_attr)) ? alpha_attr->f() : 0.2f;
+  const float beta = (beta_attr != nullptr && utils::HasFloat(*beta_attr)) ? beta_attr->f() : 0.5f;
+  if (!std::isfinite(alpha) || !std::isfinite(beta) ||
+      std::abs(alpha - (1.0f / 6.0f)) > 1e-6f || std::abs(beta - 0.5f) > 1e-6f) {
+    return false;
+  }
+
+  // The producing conv must be a single-activation NCHWc Conv whose output feeds
+  // exactly two consumers (this HardSigmoid and one Mul).
+  auto& nchwc_node = nchwc_input.output_node_;
+  if (nchwc_node.OpType() != "Conv" || nchwc_node.Domain() != kMSNchwcDomain) {
+    return false;
+  }
+  if (nchwc_input.starting_original_uses_ != 2) {
+    return false;
+  }
+  if (graph_utils::GetNodeAttribute(nchwc_node, "activation") != nullptr) {
+    return false;
+  }
+
+  // Find the sibling Mul that consumes both the conv output and the HardSigmoid
+  // output (the HardSwish elementwise multiply).
+  const NodeArg* hardsigmoid_out = hardsigmoid.OutputDefs()[0];
+  Node* mul_node = nullptr;
+  const auto consumers = graph_.GetConsumerNodes(conv_output_arg->Name());
+  for (const Node* consumer : consumers) {
+    if (consumer == &hardsigmoid) {
+      continue;
+    }
+    Node* candidate = graph_.GetNode(consumer->Index());
+    if (candidate == nullptr || candidate->OpType() != "Mul" ||
+        candidate->Domain() != kOnnxDomain ||
+        candidate->GetExecutionProviderType() != hardsigmoid.GetExecutionProviderType() ||
+        candidate->InputDefs().size() != 2) {
+      return false;
+    }
+    // The Mul must consume the conv output and the HardSigmoid output.
+    const auto& mul_inputs = candidate->InputDefs();
+    const bool consumes_conv = (mul_inputs[0] == conv_output_arg) || (mul_inputs[1] == conv_output_arg);
+    const bool consumes_hs = (mul_inputs[0] == hardsigmoid_out) || (mul_inputs[1] == hardsigmoid_out);
+    if (!consumes_conv || !consumes_hs) {
+      return false;
+    }
+    mul_node = candidate;
+  }
+  if (mul_node == nullptr) {
+    return false;
+  }
+  if (graph_.NodeProducesGraphOutput(hardsigmoid) || graph_.NodeProducesGraphOutput(*mul_node)) {
+    return false;
+  }
+
+  // Apply: mark the conv as HardSwish and route the Mul's output onto the conv's
+  // NCHWc argument. Both the HardSigmoid and the Mul consumed one use each of the
+  // conv output; account for both and remove them.
+  nchwc_node.AddAttribute("activation", std::string("HardSwish"));
+
+  // HardSigmoid use of the conv output.
+  nchwc_input.remaining_original_uses_--;
+  // Mul use of the conv output.
+  nchwc_input.remaining_original_uses_--;
+
+  graph_utils::RemoveNodeOutputEdges(graph_, hardsigmoid);
+  removed_nodes_.push_front(hardsigmoid.Index());
+
+  FuseNchwcArgument(*mul_node, nchwc_input);
+  removed_nodes_.push_front(mul_node->Index());
+  return true;
+}
+
 // After doing a Conv/Add fusion, there may be an activation node that could now
 // be fused into the Conv node as well. Otherwise, this is an elementwise
 // operation that can directly use the NCHWc input.
@@ -889,6 +1003,23 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
 
   auto* nchwc_input = LookupNchwcArgument(input_defs[0]);
   if (nchwc_input != nullptr) {
+    // Capture the original (pre-rewrite) input NodeArg so we can match the
+    // HardSwish diamond pattern below.
+    NodeArg* orig_input_arg = input_defs[0];
+
+    // HardSwish diamond: ONNX decomposes HardSwish(x) into Mul(x, HardSigmoid(x)).
+    // When this activation node is that HardSigmoid and it (a) uses the HardSwish
+    // gate params alpha=1/6,beta=1/2, (b) reads a single-conv NCHWc output that is
+    // used by exactly this HardSigmoid and one Mul, and (c) that Mul's other input
+    // is the same conv output, then fuse the whole thing into the conv as a
+    // HardSwish activation and drop both the HardSigmoid and the Mul.
+    // On failure (pattern does not match, e.g. alpha/beta are not HardSwish values,
+    // or no sibling Mul exists), fall through to the standard activation-fusion
+    // path below, which handles HardSigmoid as a standalone activation.
+    if (TryFuseNchwcHardSwish(node, orig_input_arg, *nchwc_input)) {
+      return;
+    }
+
     input_defs[0] = nchwc_input->nchwc_arg_;
     nchwc_input->remaining_original_uses_--;
 
