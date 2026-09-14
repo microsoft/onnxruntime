@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <mutex>
 #include "GpuEvent.h"
 #include "core/providers/dml/DmlExecutionProvider/src/External/D3DX12/d3dx12.h"
 
@@ -79,6 +80,8 @@ namespace Dml
         uint32_t GetTotalCapacity() const;
 
     private:
+        mutable std::mutex m_mutex;
+
         Microsoft::WRL::ComPtr<ID3D12Device> m_device;
         std::vector<DescriptorHeap> m_heaps;
         const uint32_t m_initialHeapCapacity;
