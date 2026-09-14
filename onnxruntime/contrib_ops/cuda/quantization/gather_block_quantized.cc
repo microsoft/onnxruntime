@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/gather_block_quantized.h"
 #include "contrib_ops/cuda/quantization/gather_block_quantized.cuh"
@@ -76,9 +78,9 @@ GatherBlockQuantized<T1, T2, Tind>::GatherBlockQuantized(const OpKernelInfo& inf
     ORT_ENFORCE(info.GetAttr("bits", &bits_).IsOK());
   }
 
-  block_size_ = info.GetAttrOrDefault<int64_t>("block_size", 0);
+  block_size_ = info.GetAttrOrDefault<int64_t>("block_size", 128);
   gather_axis_ = info.GetAttrOrDefault<int64_t>("gather_axis", 0);
-  quantize_axis_ = info.GetAttrOrDefault<int64_t>("quantize_axis", 0);
+  quantize_axis_ = info.GetAttrOrDefault<int64_t>("quantize_axis", 1);
 
   // If block size is set, it has to be no smaller than 16 and must be power of 2.
   // block_size_ & (block_size_ - 1) == 0 checks if block_size_ only has 1 bit set.
@@ -167,25 +169,9 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   }
 
   // block_size_ == 0 (FP8/FP4 only) means the whole quantize_axis dimension is a single block.
-  int64_t effective_block_size = block_size_ == 0 ? data_shape[quantize_axis_] : block_size_;
-
-  if constexpr (IsFpQuantizedV<T1>) {
-    // The CUDA kernel only supports two scale-broadcast shapes: (a) scales exactly matches
-    // data's block-shape (one scale per block, no broadcast), or (b) scales has exactly one
-    // element (a single global per-tensor scale). Partial broadcasting (e.g. broadcast on some
-    // non-quantize axis but not all) is not implemented here and would silently compute the
-    // wrong scale index, so reject it explicitly rather than let it fall through.
-    int64_t expected_num_blocks = 1;
-    for (int64_t i = 0; i < static_cast<int64_t>(data_rank); ++i) {
-      expected_num_blocks *= (i == quantize_axis_)
-                                 ? (data_shape[i] + effective_block_size - 1) / effective_block_size
-                                 : data_shape[i];
-    }
-    ORT_ENFORCE(scales->Shape().Size() == 1 || scales->Shape().Size() == expected_num_blocks,
-                "For FP8/FP4 data, 'scales' must either have exactly one element (a single global "
-                "per-tensor scale) or exactly one scale per block (no partial broadcasting is "
-                "supported on this execution provider).");
-  }
+  // Clamp to at least 1 so an empty (0-sized) quantize axis doesn't divide by zero below.
+  int64_t effective_block_size =
+      block_size_ == 0 ? std::max<int64_t>(data_shape[quantize_axis_], 1) : block_size_;
 
   GatherBlockQuantizedParam param;
   param.stream = Stream(ctx);
@@ -197,6 +183,43 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   param.gather_axis = gather_axis_;
   param.scale_size = scales->Shape().Size();
   param.N = N;
+
+  if constexpr (IsFpQuantizedV<T1>) {
+    // Build a generic per-axis description of `scales` so the kernel can (a) reset the block
+    // index at every quantize-axis row boundary, even when data_shape[quantize_axis_] isn't a
+    // multiple of effective_block_size, and (b) support broadcasting on any individual axis
+    // (scales dim == 1 while the corresponding data/block dim isn't), matching the CPU kernel.
+    const auto scales_shape = scales->Shape().GetDims();
+    ORT_ENFORCE(static_cast<int64_t>(scales_shape.size()) == data_rank,
+                "'scales' must have the same rank as 'data'.");
+
+    TArray<int64_t> data_dims(static_cast<int32_t>(data_rank));
+    TArray<int64_t> scale_strides(static_cast<int32_t>(data_rank));
+    TArray<int64_t> scale_broadcast_axis(static_cast<int32_t>(data_rank));
+
+    int64_t stride = 1;
+    for (int64_t i = data_rank - 1; i >= 0; --i) {
+      data_dims[static_cast<int32_t>(i)] = data_shape[i];
+
+      const int64_t expected_dim = (i == quantize_axis_)
+                                        ? (data_shape[i] + effective_block_size - 1) / effective_block_size
+                                        : data_shape[i];
+      const int64_t actual_dim = scales_shape[i];
+      const bool is_broadcast = actual_dim == 1 && actual_dim != expected_dim;
+      ORT_ENFORCE(is_broadcast || actual_dim == expected_dim,
+                  "'scales' shape does not match 'data' shape (and is not broadcastable) at axis ", i, ".");
+
+      scale_broadcast_axis[static_cast<int32_t>(i)] = is_broadcast ? 1 : 0;
+      scale_strides[static_cast<int32_t>(i)] = stride;
+      stride *= actual_dim;
+    }
+
+    param.rank = static_cast<int32_t>(data_rank);
+    param.quantize_axis = quantize_axis_;
+    param.data_dims = data_dims;
+    param.scale_strides = scale_strides;
+    param.scale_broadcast_axis = scale_broadcast_axis;
+  }
 
   const auto dequantized_type = scales->GetElementType();
   if (dequantized_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {

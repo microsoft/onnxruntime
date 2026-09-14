@@ -50,14 +50,18 @@ template <typename T1, typename T2, typename Tind>
 __global__ void GatherBlockQuantizedFpKernel(
     const T1* data,  // FP8 or packed FP4 codes, one code per element (no zero point, symmetric)
     const Tind* indices,
-    const T2* scales,  // one scale per block, or a single broadcast scale if scale_size == 1
+    const T2* scales,  // one scale per block, laid out per `scale_strides`/`scale_broadcast_axis`
     T2* output,
     int64_t after_gather_dim,
     int64_t gather_axis_dim,
     int64_t ind_dim,
     int64_t block_size,
     int64_t N,
-    int64_t scale_size) {
+    int32_t rank,
+    int64_t quantize_axis,
+    TArray<int64_t> data_dims,
+    TArray<int64_t> scale_strides,
+    TArray<int64_t> scale_broadcast_axis) {
   int64_t out_idx = blockDim.x * blockIdx.x + threadIdx.x;
   if (out_idx >= N) return;
 
@@ -74,8 +78,22 @@ __global__ void GatherBlockQuantizedFpKernel(
   }
   int64_t in_idx = idx_before * gather_axis_dim * after_gather_dim + idx_at_g * after_gather_dim + idx_after;
 
-  int64_t block_id = in_idx / block_size;
-  int64_t scale_idx = (scale_size == 1) ? 0 : block_id;
+  // Decompose in_idx (a flat row-major offset into a tensor shaped like `data`) into a per-axis
+  // index, so the quantize axis's block boundary resets correctly at every row (i.e. even when
+  // data_dims[quantize_axis] is not a multiple of block_size) and so scale broadcasting can be
+  // applied independently on any other axis.
+  int64_t scale_idx = 0;
+  int64_t remaining = in_idx;
+  for (int32_t i = rank - 1; i >= 0; --i) {
+    int64_t dim = data_dims[i];
+    int64_t axis_idx = remaining % dim;
+    remaining /= dim;
+    int64_t contrib = (i == quantize_axis) ? axis_idx / block_size : axis_idx;
+    if (scale_broadcast_axis[i]) {
+      contrib = 0;
+    }
+    scale_idx += contrib * scale_strides[i];
+  }
 
   float dq = dequant_fp_elem(data, in_idx);
   output[out_idx] = static_cast<T2>(dq) * scales[scale_idx];
@@ -144,7 +162,8 @@ void LaunchGatherBlockQuantizedKernel(const T1* data,
   if constexpr (IsFpQuantizedV<T1>) {
     GatherBlockQuantizedFpKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(
         data, indices, scales, output,
-        param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.block_size, param.N, param.scale_size);
+        param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.block_size, param.N,
+        param.rank, param.quantize_axis, param.data_dims, param.scale_strides, param.scale_broadcast_axis);
   } else {
     bool sign = std::is_same<T1, Int4x2>::value;
     GatherBlockQuantizedKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(data, indices, scales, zero_points, output,

@@ -34,7 +34,7 @@ template <>
 struct IsFpQuantized<Float8E5M2> : std::true_type {};
 template <>
 struct IsFpQuantized<Float8E5M2FNUZ> : std::true_type {};
-#endif  // !defined(DISABLE_FLOAT4_TYPES)
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
 #if !defined(DISABLE_FLOAT4_TYPES)
 template <>
 struct IsFpQuantized<Float4E2M1x2> : std::true_type {};
@@ -55,9 +55,22 @@ struct GatherBlockQuantizedParam {
   int64_t gather_axis;
   int64_t N;
   // Total number of elements in `scales`. When this is 1, every output element is dequantized
-  // with the single (broadcast) scale value, regardless of block_id. Only used for FP8/FP4 data;
-  // partial broadcasting (e.g. a single scale per row and nothing else) is not supported on CUDA.
+  // with the single (broadcast) scale value, regardless of block_id.
   int64_t scale_size;
+
+  // The following fields are only populated (and only used) for FP8/FP4 data, to support
+  // per-axis scale broadcasting and to correctly reset the block index at quantize-axis row
+  // boundaries (data_dims[quantize_axis] need not be a multiple of block_size).
+  //
+  // data_dims holds data's full shape (rank == data_rank); quantize_axis is always the last
+  // axis (data_rank - 1). scale_strides holds the row-major strides of the *actual* `scales`
+  // tensor shape, and scale_broadcast_axis[i] is true when axis i of `scales` is broadcast
+  // (i.e. its dim is 1 while the corresponding data/block dim is not).
+  int32_t rank;
+  int64_t quantize_axis;
+  TArray<int64_t> data_dims;
+  TArray<int64_t> scale_strides;
+  TArray<int64_t> scale_broadcast_axis;
 };
 
 template <typename T1, typename T2, typename Tind>
