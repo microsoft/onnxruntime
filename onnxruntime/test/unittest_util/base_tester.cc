@@ -695,6 +695,19 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       }
 #endif
 
+      // If a dynamic plugin EP is registered and declares itself an alias of a built-in EP,
+      // and that built-in EP is in the excluded set, also exclude the plugin EP.
+      // This lets tests keep excluding only the built-in EP name (e.g., kTensorrtExecutionProvider)
+      // while the plugin EP substitute is skipped transparently.
+      if (const auto aliased_built_in_ep_name = dynamic_plugin_ep_infra::GetAliasedBuiltInEpName();
+          aliased_built_in_ep_name.has_value() &&
+          ctx_.excluded_provider_types.count(*aliased_built_in_ep_name) > 0) {
+        if (const auto plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
+            plugin_ep_name.has_value()) {
+          ctx_.excluded_provider_types.insert(*plugin_ep_name);
+        }
+      }
+
       const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
       const bool route_cuda_to_dynamic_plugin_ep = ShouldRouteCudaToDynamicPluginEp(dynamic_plugin_ep_name);
 
