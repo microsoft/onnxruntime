@@ -11,5 +11,5 @@
 
 $MAIN {
   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
-  output.setByOffset(uniforms.row_offset * uniforms.N + global_idx, output_value_t(tail_input.getByOffset(global_idx)));
+  output.setByOffset(uniforms.output_offset + global_idx, output_value_t(tail_input.getByOffset(global_idx)));
 }  // MAIN

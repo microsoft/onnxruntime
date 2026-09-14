@@ -169,8 +169,7 @@ class SubgroupMatrixMatMulNBitsTailCopyProgram final : public Program<SubgroupMa
   }
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"output_size", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"row_offset", ProgramUniformVariableDataType::Uint32});
+      {"output_offset", ProgramUniformVariableDataType::Uint32});
 };
 
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
@@ -294,16 +293,21 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
     // Only the rows below `tail_rows` in `tail_buffer` were ever written by the
     // main kernel (the tail tile is always the last M-tile, so its row offset is
     // fixed); crop-copy just those into the real output.
+    constexpr uint32_t kTailCopyComponents = 4;
+    ORT_ENFORCE(N % kTailCopyComponents == 0, "N must be a multiple of ", kTailCopyComponents);
     const uint32_t tail_rows = M - (num_m_tiles - 1) * tile_size_a;
-    const uint32_t copy_size = tail_rows * N;
     const uint32_t row_offset = (num_m_tiles - 1) * tile_size_a;
+    const uint32_t n_vec4 = N / kTailCopyComponents;
+    const uint32_t output_size = tail_rows * n_vec4;
+    const uint32_t output_offset = row_offset * n_vec4;
     constexpr uint32_t kCopyWorkgroupSize = 256;
     SubgroupMatrixMatMulNBitsTailCopyProgram copy_program;
     copy_program.SetWorkgroupSize(kCopyWorkgroupSize);
-    copy_program.SetDispatchGroupSize(CeilDiv(copy_size, kCopyWorkgroupSize));
-    copy_program.AddInput({&tail_buffer, ProgramTensorMetadataDependency::TypeAndRank})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
-        .AddUniformVariables({{copy_size}, {N}, {row_offset}});
+    copy_program.SetDispatchGroupSize(CeilDiv(output_size, kCopyWorkgroupSize));
+
+    copy_program.AddInput({&tail_buffer, ProgramTensorMetadataDependency::Type, kTailCopyComponents})
+        .AddOutput({y, ProgramTensorMetadataDependency::Type, kTailCopyComponents})
+        .AddUniformVariables({{output_size}, {output_offset}});
     ORT_RETURN_IF_ERROR(context.RunProgram(copy_program));
   }
 
