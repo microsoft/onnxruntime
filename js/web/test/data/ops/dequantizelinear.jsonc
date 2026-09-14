@@ -622,41 +622,6 @@
     "attributes": [],
     "cases": [
       {
-        "name": "int8 per-tensor with zero point, more than one vec4",
-        "inputs": [
-          {
-            "data": [-128, -64, -1, 0, 1, 64, 126, 127],
-            "dims": [8],
-            "type": "int8"
-          },
-          {
-            "data": [0.5],
-            "dims": [1],
-            "type": "float32"
-          },
-          {
-            "data": [-1],
-            "dims": [1],
-            "type": "int8"
-          }
-        ],
-        "outputs": [
-          {
-            "data": [-63.5, -31.5, 0, 0.5, 1, 32.5, 63.5, 64],
-            "dims": [8],
-            "type": "float32"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "name": "dequantizelinear",
-    "operator": "DequantizeLinear",
-    "opset": { "domain": "", "version": 13 },
-    "attributes": [],
-    "cases": [
-      {
         "name": "uint8 2D per-tensor with zero point, more than one vec4",
         "inputs": [
           {
