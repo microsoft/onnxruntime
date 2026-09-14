@@ -13,8 +13,9 @@
 // C++ API consumers should use the companion header, onnxruntime_experimental_cxx_api.h, which provides typed
 // accessors for the experimental API functions.
 //
-// IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added, changed, or removed between
-// releases without notice. Anything in this file should be treated as experimental and unstable.
+// IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added or removed between releases
+// without notice. If an experimental function with a given name is available across releases, its behavior should
+// remain backwards compatible.
 //
 // C usage:
 //   OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn fn =

@@ -4,7 +4,7 @@
 
 ONNX Runtime (ORT) provides a mechanism for exposing experimental C API functions. Experimental APIs are a proving ground for new functionality that is subject to change and carries no stability guarantees. An experimental API may eventually be promoted to the stable ORT API or abandoned.
 
-Experimental functions are not part of the stable `OrtApi` struct. Instead, they are resolved by name at runtime through the stable C API [`OrtApi::GetExperimentalFunction`](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#ace33338eb9175cdc92b52f61c9aff9a6), which was introduced in ORT 1.28. Given a name, it returns a generic function pointer, or `nullptr` if the named function is not available in the running ORT. A non-null result means the function is present and can be used; a null result means it is absent and the caller must fall back or fail gracefully. This keeps experimental functions off the stable ABI while still making them reachable from any ORT build that supports them.
+Experimental functions are not part of the stable `OrtApi` struct. Instead, they are resolved by name at runtime through the stable C API [`OrtApi::GetExperimentalFunction`](https://onnxruntime.ai/docs/api/c/struct_ort_api.html#ace33338eb9175cdc92b52f61c9aff9a6), which was introduced in ORT 1.28. Given a name, it returns a generic function pointer, or `NULL` if the named function is not available in the running ORT. A non-null result means the function is present and can be used; a null result means it is absent and the caller must fall back or fail gracefully. This keeps experimental functions off the stable ABI while still making them reachable from any ORT build that supports them.
 
 Every experimental function has a name that ends in a `_SinceV<N>` suffix, where `N` is the ORT API version in which that function was first introduced (for example, `OrtApi_ExperimentalApiTest_SinceV28`). The suffix is part of the identity of the function: it makes each name unique across API versions (which correspond to ORT minor releases). For an experimental function with a given name, the behavior should remain stable. Updating the experimental function's behavior requires introducing a new name.
 
@@ -20,7 +20,7 @@ An experimental function with a given name has stable behavior *if it is availab
 
 ### Check availability at runtime
 
-Because an experimental function may be absent, always confirm that the lookup returned a usable pointer before calling it. In C, this means checking the pointer returned by `GetExperimentalFunction` against `nullptr`. The C++ header offers two accessor flavors per function so you can choose how absence is handled:
+Because an experimental function may be absent, always confirm that the lookup returned a usable pointer before calling it. In C, this means checking the pointer returned by `GetExperimentalFunction` against `NULL`. The C++ header offers two accessor flavors per function so you can choose how absence is handled:
 
 - A nullable accessor (`Get_<Name>_Fn`) returns the typed function pointer, or `nullptr` if the function is not available in this build. Use it when the function is optional and you want to branch on availability.
 - A throwing accessor (`Get_<Name>_FnOrThrow`) returns a guaranteed-non-null typed function pointer, or throws `Ort::Exception` with `ORT_NOT_IMPLEMENTED` if the function is not available. Use it when the function is required and its absence is a hard error.
