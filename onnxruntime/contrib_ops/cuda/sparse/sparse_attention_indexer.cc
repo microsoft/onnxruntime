@@ -48,6 +48,13 @@ Status CheckShape(const Tensor* tensor, const char* name, std::initializer_list<
   return Status::OK();
 }
 
+Status CheckIntDimension(const char* name, int64_t value, bool allow_zero = true) {
+  ORT_RETURN_IF(value < (allow_zero ? 0 : 1) || value > std::numeric_limits<int>::max(),
+                "SparseAttentionIndexer: ", name, " must be in ", allow_zero ? "[0, INT_MAX]" : "(0, INT_MAX]",
+                ", got ", value);
+  return Status::OK();
+}
+
 }  // namespace
 
 template <typename T>
@@ -127,7 +134,10 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
   const int64_t sequence_length = query_shape[1];
   const int64_t num_heads = query_shape[2];
   const int64_t head_size = query_shape[3];
-  ORT_RETURN_IF_NOT(num_heads > 0, "SparseAttentionIndexer: num_heads must be > 0, got ", num_heads);
+  ORT_RETURN_IF_ERROR(CheckIntDimension("batch_size", batch_size));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("sequence_length", sequence_length));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("num_heads", num_heads, false));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("head_size", head_size, false));
 
   const auto& cos_shape = cos_cache->Shape();
   ORT_RETURN_IF_NOT(cos_shape.NumDimensions() == 3 && cos_shape[0] == batch_size && cos_shape[1] > 0,
@@ -136,6 +146,8 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
                     cos_shape.ToString());
   const int64_t max_rotary_length = cos_shape[1];
   const int64_t rotary_width = cos_shape[2];
+  ORT_RETURN_IF_ERROR(CheckIntDimension("max_rotary_sequence_length", max_rotary_length, false));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("rotary_width", rotary_width, false));
   ORT_RETURN_IF_NOT(sin_cache->Shape() == cos_shape,
                     "SparseAttentionIndexer: sin_cache must have the same shape as "
                     "cos_cache");
@@ -149,6 +161,9 @@ Status SparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) const {
                     ", got ",
                     past_shape.ToString());
   const int64_t past_sequence_length = past_shape[1];
+  ORT_RETURN_IF_ERROR(CheckIntDimension("past_sequence_length", past_sequence_length));
+  ORT_RETURN_IF(past_sequence_length > std::numeric_limits<int>::max() - sequence_length,
+                "SparseAttentionIndexer: total_sequence_length must be no greater than INT_MAX");
   const int64_t total_sequence_length = past_sequence_length + sequence_length;
 
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {batch_size, sequence_length, head_size}));
@@ -232,7 +247,12 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   const int64_t sequence_length = query_shape[1];
   const int64_t num_heads = query_shape[2];
   const int64_t head_size = query_shape[3];
-  ORT_RETURN_IF_NOT(num_heads > 0, "SparseAttentionIndexer: num_heads must be > 0, got ", num_heads);
+  ORT_RETURN_IF_ERROR(CheckIntDimension("batch_size", batch_size));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("sequence_length", sequence_length));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("num_heads", num_heads, false));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("head_size", head_size, false));
+  ORT_RETURN_IF(head_size > std::numeric_limits<int>::max() / 2,
+                "SparseAttentionIndexer: 2 * head_size must be no greater than INT_MAX");
   const int64_t width = 2 * head_size;
 
   const auto& cos_shape = cos_cache->Shape();
@@ -242,6 +262,8 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
                     cos_shape.ToString());
   const int64_t max_rotary_length = cos_shape[1];
   const int64_t rotary_width = cos_shape[2];
+  ORT_RETURN_IF_ERROR(CheckIntDimension("max_rotary_sequence_length", max_rotary_length, false));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("rotary_width", rotary_width, false));
   ORT_RETURN_IF_NOT(sin_cache->Shape() == cos_shape,
                     "SparseAttentionIndexer: sin_cache must have the same shape as "
                     "cos_cache");
@@ -257,6 +279,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
                     "(batch_size, past_compressed_length, head_size), got ",
                     past_compressed_shape.ToString());
   const int64_t past_compressed_length = past_compressed_shape[1];
+  ORT_RETURN_IF_ERROR(CheckIntDimension("past_compressed_length", past_compressed_length));
 
   const auto& past_buffer_shape = past_kv_buffer->Shape();
   ORT_RETURN_IF_NOT(past_buffer_shape.NumDimensions() == 3 && past_buffer_shape[0] == batch_size &&
@@ -265,6 +288,7 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
                     "(batch_size, buffer_length, 2 * head_size), got ",
                     past_buffer_shape.ToString());
   const int64_t past_buffer_length = past_buffer_shape[1];
+  ORT_RETURN_IF_ERROR(CheckIntDimension("past_buffer_length", past_buffer_length));
 
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {batch_size, sequence_length, width}));
   ORT_RETURN_IF_ERROR(CheckShape(key_norm_weight, "key_norm_weight", {head_size}));
@@ -279,6 +303,12 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   ORT_RETURN_IF_NOT(sai::TryComputeCsaWindowPlan(past_buffer_length, sequence_length, compress_ratio_, plan),
                     "SparseAttentionIndexer: past_kv_buffer sequence length must be in [0, 2 * compress_ratio), got ",
                     past_buffer_length);
+  ORT_RETURN_IF_ERROR(CheckIntDimension("overlap_length", plan.overlap_length));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("new_window_count", plan.new_window_count));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("present_buffer_length", plan.present_buffer_length));
+  ORT_RETURN_IF_ERROR(CheckIntDimension("present_buffer_start", plan.present_buffer_start));
+  ORT_RETURN_IF(past_compressed_length > std::numeric_limits<int>::max() - plan.new_window_count,
+                "SparseAttentionIndexer: present_compressed_length must be no greater than INT_MAX");
   const int64_t present_compressed_length = past_compressed_length + plan.new_window_count;
 
   SparseAttentionIndexerParams params;
