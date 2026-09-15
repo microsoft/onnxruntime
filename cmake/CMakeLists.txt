@@ -806,9 +806,8 @@ if (onnxruntime_USE_CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
 
   if (onnxruntime_DISABLE_CONTRIB_OPS)
-    set(onnxruntime_USE_FLASH_ATTENTION OFF)
+    # Flash and memory efficient attention are also used by the ONNX domain Attention operator.
     set(onnxruntime_USE_LEAN_ATTENTION OFF)
-    set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
     set(onnxruntime_USE_FPA_INTB_GEMM OFF)
     set(onnxruntime_USE_FPA_INTB_GEMM_FULL OFF)
   endif()
