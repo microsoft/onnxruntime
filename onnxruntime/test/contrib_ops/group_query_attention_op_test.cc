@@ -3338,10 +3338,10 @@ static void RunGQACudaCacheAliasingTest(
       EXPECT_NE(kernel_log.find(use_flash ? "SdpaKernel=FLASH_ATTENTION" : "SdpaKernel=MATH"), std::string::npos)
           << kernel_log;
       if (use_flash && valid_windowed_cache) {
-        // The staged extent is C+S=11, which selects one split. Using the raw
-        // total length 257 would cross the 128-token block boundary and select
-        // multiple splits on supported Flash GPUs.
-        EXPECT_NE(kernel_log.find("NumSplits=1"), std::string::npos) << kernel_log;
+        // The staged extent is C+S=11, which uses the runtime's zero encoding
+        // for no split-KV workspace. Using the raw total length 257 would cross
+        // the 128-token block boundary and select multiple splits.
+        EXPECT_NE(kernel_log.find("NumSplits=0"), std::string::npos) << kernel_log;
       }
       ASSERT_STATUS_OK(binding->SynchronizeOutputs());
       std::vector<std::vector<float>> actual;
