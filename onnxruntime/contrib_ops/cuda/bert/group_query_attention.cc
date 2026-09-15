@@ -917,6 +917,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_flash_attention = data.use_flash_attention;
     debug_info.use_efficient_attention = data.use_memory_efficient_attention;
     debug_info.use_cudnn_flash_attention = data.use_cudnn_sdpa;
+    if (data.use_flash_attention) {
+      debug_info.num_splits = parameters.num_splits;
+    }
 
     debug_info.Print("GroupQueryAttention",
                      this->Node().Name(),

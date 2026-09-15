@@ -3213,7 +3213,7 @@ static void RunGQACudaCacheAliasingTest(
   const int sequence_length = windowed_sequence_length > 0 ? windowed_sequence_length : 1;
   constexpr int past_length = 3;
   const bool valid_windowed_cache = windowed_sequence_length > 0;
-  const int total_length = valid_windowed_cache ? 64 : past_length + sequence_length;
+  const int total_length = valid_windowed_cache ? 257 : past_length + sequence_length;
   constexpr int cache_capacity = 8;
   constexpr int hidden_size = num_heads * head_size;
   constexpr int kv_hidden_size = kv_num_heads * head_size;
@@ -3337,6 +3337,12 @@ static void RunGQACudaCacheAliasingTest(
       ASSERT_STATUS_OK(status);
       EXPECT_NE(kernel_log.find(use_flash ? "SdpaKernel=FLASH_ATTENTION" : "SdpaKernel=MATH"), std::string::npos)
           << kernel_log;
+      if (use_flash && valid_windowed_cache) {
+        // The staged extent is C+S=11, which selects one split. Using the raw
+        // total length 257 would cross the 128-token block boundary and select
+        // multiple splits on supported Flash GPUs.
+        EXPECT_NE(kernel_log.find("NumSplits=1"), std::string::npos) << kernel_log;
+      }
       ASSERT_STATUS_OK(binding->SynchronizeOutputs());
       std::vector<std::vector<float>> actual;
       for (const auto& result : binding->GetOutputs()) {
