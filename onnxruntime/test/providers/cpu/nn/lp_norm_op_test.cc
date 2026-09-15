@@ -77,6 +77,36 @@ TEST(LpNormalizationTest, L2Normalization) {
 }
 
 template <typename T>
+void LpNormalizationFiniteRange(int64_t p, T magnitude, T expected_value) {
+  OpTester test("LpNormalization");
+  test.AddAttribute("axis", static_cast<int64_t>(-1));
+  test.AddAttribute("p", p);
+
+  const vector<int64_t> dims = {2, 2};
+  test.AddInput<T>("input", dims, {magnitude, -magnitude, T{0}, T{0}});
+  test.AddOutput<T>(
+      "Y", dims, {expected_value, -expected_value, T{0}, T{0}});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(
+      OpTester::ExpectResult::kExpectSuccess,
+      "",
+      {},
+      nullptr,
+      &execution_providers);
+}
+
+TEST(LpNormalizationTest, FiniteRange) {
+  LpNormalizationFiniteRange<float>(1, 3.0e38f, 0.5f);
+  LpNormalizationFiniteRange<float>(2, 1.0e30f, std::sqrt(0.5f));
+  LpNormalizationFiniteRange<float>(2, 1.0e-30f, std::sqrt(0.5f));
+  LpNormalizationFiniteRange<double>(1, 1.0e308, 0.5);
+  LpNormalizationFiniteRange<double>(2, 1.0e200, std::sqrt(0.5));
+  LpNormalizationFiniteRange<double>(2, 1.0e-200, std::sqrt(0.5));
+}
+
+template <typename T>
 void LpNormalizationZeroExtentAxis(int64_t p) {
   OpTester test("LpNormalization");
   test.AddAttribute("axis", static_cast<int64_t>(1));
