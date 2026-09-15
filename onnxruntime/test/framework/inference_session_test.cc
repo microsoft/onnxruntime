@@ -525,8 +525,10 @@ TEST(InferenceSessionTests, WebGpuCompileOnlyUsesNoOpAllocator) {
 // End-to-end via the public V2 API in the *plugin* WebGPU build: select the virtual WebGPU OrtEpDevice and run a
 // compile-only session.
 //
-// Relies on test_main.cc registering the WebGPU plugin EP under a ".virtual" name, whose suffix auto-enables the env
-// config "allow_virtual_devices" so the factory surfaces a virtual GPU OrtEpDevice.
+// Relies on test_main.cc arranging for the factory to surface a virtual GPU OrtEpDevice: in the shared-library
+// plugin build by registering the EP library under a ".virtual" name, whose suffix auto-enables the env config
+// "allow_virtual_devices"; in the static plugin build by setting that env config entry directly at environment
+// creation (ORT core, not the test, registers the statically linked EP, so there is no registration name to suffix).
 //
 // It exercises the accepted (device-free) path even on a host that has a real GPU: device-free is driven by
 // session.compile_only, not by which device is selected, so no Dawn device is created.
@@ -545,9 +547,10 @@ TEST(InferenceSessionTests, WebGpuVirtualDeviceCompileOnlyEndToEnd) {
       break;
     }
   }
-  // A virtual device must be present in this build (test_main.cc's ".virtual" registration enables it).
+  // A virtual device must be present in this build (see the comment above this test for how test_main.cc enables it).
   ASSERT_FALSE(selected.empty())
-      << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
+      << "Expected a virtual WebGPU EP device from test_main.cc's virtual device configuration, "
+         "but none was surfaced.";
 
   Ort::SessionOptions session_options;
   // session-level compile_only (NOT an EP option) -> drives the device-free context and stop-before-finalize.
@@ -564,7 +567,7 @@ TEST(InferenceSessionTests, WebGpuVirtualDeviceCompileOnlyEndToEnd) {
 // internal factory): selecting the virtual WebGPU device for a normal (non-compile-only) session must be rejected
 // up front by the *adapter* factory's CreateEp with ORT_INVALID_ARGUMENT, rather than proceeding into Dawn to fail
 // obscurely with no real GPU behind the virtual device. Exercises the adapter factory's copy of the enforcement
-// through the public V2 API. Depends on the same test_main.cc ".virtual" registration as
+// through the public V2 API. Depends on the same test_main.cc virtual device configuration as
 // WebGpuVirtualDeviceCompileOnlyEndToEnd above (that's what surfaces the virtual device to select).
 TEST(InferenceSessionTests, WebGpuVirtualDeviceRejectedWithoutCompileOnly) {
   std::vector<Ort::ConstEpDevice> selected;
@@ -579,10 +582,11 @@ TEST(InferenceSessionTests, WebGpuVirtualDeviceRejectedWithoutCompileOnly) {
       break;
     }
   }
-  // See WebGpuVirtualDeviceCompileOnlyEndToEnd: a virtual device must be present from test_main.cc's .virtual
-  // registration in this build, so fail (not skip) if none was surfaced.
+  // See WebGpuVirtualDeviceCompileOnlyEndToEnd: a virtual device must be present in this build, so fail (not skip)
+  // if none was surfaced.
   ASSERT_FALSE(selected.empty())
-      << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
+      << "Expected a virtual WebGPU EP device from test_main.cc's virtual device configuration, "
+         "but none was surfaced.";
 
   // Deliberately NOT setting session.compile_only -> a runnable session on a virtual device, which must be rejected.
   Ort::SessionOptions session_options;
