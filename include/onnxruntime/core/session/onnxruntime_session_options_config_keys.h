@@ -115,7 +115,7 @@ static const char* const kOrtSessionOptionsMemoryOptimizerApplyConfig = "optimiz
 static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimization.enable_memory_probe_recompute_config";
 #endif
 
-// This setting if set should contain a comma separated list of optimizers names that should be disabled.
+// This setting if set should contain a comma- or semicolon-separated list of optimizer names that should be disabled.
 // Optimizers may take time to execute and affect model loading time. If you feel that a specific optimizer
 // does not provider runtime benefits, but affects your model loading time you may disable it using this config
 // entry. This option is not enabled in ORT_MINIMAL_BUILD build.
