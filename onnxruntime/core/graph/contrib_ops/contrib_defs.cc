@@ -2526,7 +2526,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GatherND, 1,
                                 .Output(0, "output", "Tensor of rank q-1+r-indices[-1].", "T")
                                 .TypeConstraint(
                                     "T",
-                                    OpSchema::all_tensor_types(),
+                                  OpSchema::all_tensor_types_ir4(),
                                     "Constrain input and output types to any tensor type.")
                                 .TypeConstraint(
                                     "Tind",
