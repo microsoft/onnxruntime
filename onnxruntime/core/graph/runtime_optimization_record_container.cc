@@ -144,6 +144,8 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
 
   auto& produced_op_ids = runtime_optimization_record.produced_op_ids;
   if (const auto* fbs_produced_op_ids = fbs_runtime_optimization_record.produced_op_ids()) {
+    ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_produced_op_ids,
+                                                                 "runtime optimization produced op id"));
     produced_op_ids.reserve(fbs_produced_op_ids->size());
     for (const auto* fbs_produced_op_id : *fbs_produced_op_ids) {
       ORT_FORMAT_RETURN_IF_NULL(fbs_produced_op_id, "runtime optimization record produced op id");
@@ -159,19 +161,19 @@ static Status LoadRuntimeOptimizationRecordFromOrtFormat(
 
 Status RuntimeOptimizationRecordContainer::LoadFromOrtFormat(
     const FbsRuntimeOptimizationRecordContainer& fbs_runtime_optimizations) {
+  ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(&fbs_runtime_optimizations,
+                                                               "runtime optimization container"));
   OptimizerNameToRecordsMap optimizer_name_to_records;
   for (const auto* fbs_runtime_optimization : fbs_runtime_optimizations) {
-    if (!fbs_runtime_optimization) continue;
-
     std::string optimizer_name;
     fbs::utils::LoadStringFromOrtFormat(optimizer_name, fbs_runtime_optimization->optimizer_name());
 
     std::vector<RuntimeOptimizationRecord> records;
     if (const auto* fbs_runtime_optimization_records = fbs_runtime_optimization->runtime_optimization_records()) {
+      ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_runtime_optimization_records,
+                                                                   "runtime optimization record"));
       records.reserve(fbs_runtime_optimization_records->size());
       for (const auto* fbs_runtime_optimization_record : *fbs_runtime_optimization_records) {
-        if (!fbs_runtime_optimization_record) continue;
-
         RuntimeOptimizationRecord runtime_optimization_record;
         ORT_RETURN_IF_ERROR(LoadRuntimeOptimizationRecordFromOrtFormat(*fbs_runtime_optimization_record,
                                                                        runtime_optimization_record));
