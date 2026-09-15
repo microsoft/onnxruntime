@@ -471,9 +471,9 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     }
 
     auto output_shape = query_shape;
+    const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+    const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
     if (ctx.getInputType(2) == nullptr) {
-      const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
-      const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
       if (num_heads > 0 && kv_num_heads > 0 && query_dims[2].has_dim_value()) {
         const int64_t packed_heads = num_heads + 2 * kv_num_heads;
         const int64_t packed_hidden_size = query_dims[2].dim_value();
@@ -482,6 +482,9 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
         }
         output_shape.mutable_dim(2)->set_dim_value(num_heads * (packed_hidden_size / packed_heads));
       }
+    } else if (num_heads > 0 && query_dims[2].has_dim_value() &&
+               query_dims[2].dim_value() % num_heads != 0) {
+      fail_shape_inference("Query hidden size must be divisible by the number of query heads");
     }
     updateOutputShape(ctx, 0, output_shape);
   }
@@ -505,8 +508,11 @@ void DynamicSparseAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
       if (query_dims.size() == 3 && num_heads > 0 && kv_num_heads > 0 &&
           query_dims[2].has_dim_value()) {
         const bool is_packed = ctx.getInputType(2) == nullptr;
-        const int64_t head_size = query_dims[2].dim_value() /
-                                  (is_packed ? num_heads + 2 * kv_num_heads : num_heads);
+        const int64_t divisor = is_packed ? num_heads + 2 * kv_num_heads : num_heads;
+        if (query_dims[2].dim_value() % divisor != 0) {
+          fail_shape_inference("Query hidden size must be divisible by the number of query heads");
+        }
+        const int64_t head_size = query_dims[2].dim_value() / divisor;
         ONNX_NAMESPACE::TensorShapeProto present_shape;
         *present_shape.add_dim() = query_dims[0];
         present_shape.add_dim()->set_dim_value(kv_num_heads);
@@ -541,9 +547,9 @@ scores or TopK indices. The first `selected_counts[q]` entries in each selected-
 must be -1. Valid entries must be unique, non-negative request-local positions in the selected source.
 
 `attention_mode="selected_only"` attends only to selected entries. `attention_mode="local_plus_selected"` jointly
-normalizes causally valid main-cache entries in `local_window_size`, selected auxiliary entries, and an optional
-per-query-head sink. The sink contributes to the softmax denominator but has no value vector. A row with no entries and
-no sink produces zero output.
+normalizes causally valid main-cache entries in `local_window_size` and selected auxiliary entries. An optional
+per-query-head sink can participate in either mode; it contributes to the shared softmax denominator but has no value
+vector. A row with no entries and no sink produces zero output.
 
 Supported mode/source combinations:
 
@@ -564,7 +570,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("kv_num_heads", "Number of main and auxiliary KV heads.", AttributeProto::INT)
         .Attr("scale", "Scaling factor applied to QK. Defaults to 1/sqrt(head_size).",
               AttributeProto::FLOAT, OPTIONAL_VALUE)
-        .Attr("is_causal", "Whether selected main-cache and local entries obey causal visibility.",
+        .Attr("is_causal", "Must be 1. DynamicSparseAttention version 1 supports causal attention only.",
               AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("local_window_size", "Number of causally visible main-cache entries in local_plus_selected mode.",
               AttributeProto::INT, static_cast<int64_t>(-1))
@@ -610,7 +616,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(14, "q_norm_weight", "Optional Q RMSNorm weight [head_size].", "T", OpSchema::Optional)
         .Input(15, "k_norm_weight", "Optional K RMSNorm weight [head_size].", "T", OpSchema::Optional)
-        .Input(16, "head_sink", "Optional sink logit [num_heads].", "T", OpSchema::Optional)
+        .Input(16, "head_sink",
+               "Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.",
+               "T", OpSchema::Optional)
         .Output(0, "output", "Attention output [batch, sequence, num_heads * head_size].", "T")
         .Output(1, "present_key", "Updated main key cache in BNSH layout.", "T", OpSchema::Optional)
         .Output(2, "present_value", "Updated main value cache in BNSH layout.", "T", OpSchema::Optional)

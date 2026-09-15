@@ -54,6 +54,7 @@ struct DynamicSparseAttentionCase {
   int64_t rotary_offset = 0;
   int64_t smooth_softmax = 0;
   bool packed_qkv = false;
+  bool has_past = true;
 
   std::vector<float> query;
   std::vector<float> key;
@@ -115,8 +116,10 @@ void RunDynamicSparseAttentionCase(
   }
   const size_t cache_elements =
       static_cast<size_t>(c.batch_size * c.kv_num_heads * c.cache_sequence_length * c.head_size);
-  ASSERT_EQ(c.past_key.size(), cache_elements);
-  ASSERT_EQ(c.past_value.size(), cache_elements);
+  if (c.has_past) {
+    ASSERT_EQ(c.past_key.size(), cache_elements);
+    ASSERT_EQ(c.past_value.size(), cache_elements);
+  }
 
   OpTester tester("DynamicSparseAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", c.num_heads);
@@ -144,12 +147,17 @@ void RunDynamicSparseAttentionCase(
     tester.AddInput<T>("value", {c.batch_size, c.sequence_length, kv_hidden_size},
                        ToTensorData<T>(c.value));
   }
-  tester.AddInput<T>("past_key",
-                     {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
-                     ToTensorData<T>(c.past_key));
-  tester.AddInput<T>("past_value",
-                     {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
-                     ToTensorData<T>(c.past_value));
+  if (c.has_past) {
+    tester.AddInput<T>("past_key",
+                       {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
+                       ToTensorData<T>(c.past_key));
+    tester.AddInput<T>("past_value",
+                       {c.batch_size, c.kv_num_heads, c.cache_sequence_length, c.head_size},
+                       ToTensorData<T>(c.past_value));
+  } else {
+    tester.AddOptionalInputEdge<T>();
+    tester.AddOptionalInputEdge<T>();
+  }
 
   if (c.auxiliary_sequence_length > 0) {
     tester.AddInput<T>("auxiliary_key",
@@ -252,7 +260,77 @@ DynamicSparseAttentionCase MakeSingleTokenSelectedValueCase(float value = 9.0f) 
   return c;
 }
 
+Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_width = 8) {
+  Model model("dynamic_sparse_attention_shape_inference", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}, {kMSDomain, 1}},
+              {}, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+  auto& graph = model.MainGraph();
+
+  std::vector<ONNX_NAMESPACE::TypeProto> tensor_types;
+  tensor_types.reserve(10);
+  auto add_tensor_type = [&](int elem_type, std::initializer_list<int64_t> dims) {
+    tensor_types.emplace_back();
+    auto* type = &tensor_types.back();
+    type->mutable_tensor_type()->set_elem_type(elem_type);
+    auto* shape = type->mutable_tensor_type()->mutable_shape();
+    for (const int64_t dim : dims) {
+      shape->add_dim()->set_dim_value(dim);
+    }
+    return type;
+  };
+
+  auto& empty = graph.GetOrCreateNodeArg("", nullptr);
+  std::vector<NodeArg*> inputs{
+      &graph.GetOrCreateNodeArg("query", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                         {1, 1, query_width})),
+      &graph.GetOrCreateNodeArg("key", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 8})),
+      &graph.GetOrCreateNodeArg("value", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 8})),
+      &graph.GetOrCreateNodeArg("past_key",
+                                add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 2, 8})),
+      &graph.GetOrCreateNodeArg("past_value",
+                                add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {1, 1, 2, 8})),
+      &empty,
+      &empty,
+      &graph.GetOrCreateNodeArg("selected_indices",
+                                add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {1, 1})),
+      &graph.GetOrCreateNodeArg("selected_counts",
+                                add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {1})),
+      &graph.GetOrCreateNodeArg("seqlens_k",
+                                add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {1})),
+      &graph.GetOrCreateNodeArg("total_sequence_length",
+                                add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {}))};
+
+  std::vector<NodeArg*> outputs;
+  outputs.reserve(output_count);
+  outputs.push_back(&graph.GetOrCreateNodeArg("output", nullptr));
+  if (output_count > 1) {
+    outputs.push_back(&graph.GetOrCreateNodeArg("present_key", nullptr));
+  }
+  if (output_count > 2) {
+    outputs.push_back(&graph.GetOrCreateNodeArg("present_value", nullptr));
+  }
+
+  auto& node = graph.AddNode("dynamic_sparse_attention", "DynamicSparseAttention", "",
+                             inputs, outputs, nullptr, kMSDomain);
+  node.AddAttribute("num_heads", int64_t{1});
+  node.AddAttribute("kv_num_heads", int64_t{1});
+  return graph.Resolve();
+}
+
 }  // namespace
+
+TEST(DynamicSparseAttentionTest, ShapeInferenceSupportsOptionalCacheOutputs_CUDA) {
+  ASSERT_STATUS_OK(ResolveDynamicSparseAttentionGraph(1));
+  ASSERT_STATUS_OK(ResolveDynamicSparseAttentionGraph(2));
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(DynamicSparseAttentionTest, ShapeInferenceRejectsNonDivisibleSeparateQueryWidth_CUDA) {
+  const auto status = ResolveDynamicSparseAttentionGraph(3, 9);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_NE(status.ErrorMessage().find("Query hidden size must be divisible"), std::string::npos);
+}
+#endif
 
 TEST(DynamicSparseAttentionTest, SelectedOnlyMainVariableCountsGqaAndCacheAppend_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
@@ -320,6 +398,47 @@ TEST(DynamicSparseAttentionTest, LocalPlusSelectedAuxiliaryJointSoftmaxSinkShare
   c.expected_present_key = c.key;
   c.expected_present_value = c.value;
 
+  RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, LocalPlusSelectedDistinctAuxiliaryValue_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  DynamicSparseAttentionCase c;
+  c.attention_mode = "local_plus_selected";
+  c.selected_kv_source = "auxiliary";
+  c.local_window_size = 1;
+  c.auxiliary_sequence_length = 1;
+  c.query.assign(8, 0.0f);
+  c.key.assign(8, 0.0f);
+  c.value.assign(8, 2.0f);
+  c.past_key.assign(8, 0.0f);
+  c.past_value.assign(8, 0.0f);
+  c.auxiliary_key.assign(8, 0.0f);
+  c.auxiliary_value.assign(8, 7.0f);
+  c.selected_indices = {0};
+  c.selected_counts = {1};
+  c.seqlens_k = {0};
+  c.expected_output.assign(8, 4.5f);
+  c.expected_present_key = c.key;
+  c.expected_present_value = c.value;
+
+  RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, SelectedOnlyNoPastPrefill_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  auto c = MakeSingleTokenSelectedValueCase(6.0f);
+  c.has_past = false;
+  c.past_key.clear();
+  c.past_value.clear();
   RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
 }
 
@@ -442,6 +561,29 @@ TEST(DynamicSparseAttentionTest, QkRmsNormPartialInterleavedRotary_CUDA) {
   c.expected_present_value = c.past_value;
   std::fill(c.expected_present_value.begin() + 16,
             c.expected_present_value.end(), 3.0f);
+
+  RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
+}
+
+TEST(DynamicSparseAttentionTest, PartialHalfSplitRotary_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available.";
+  }
+
+  auto c = MakeSingleTokenSelectedValueCase(5.0f);
+  c.has_past = false;
+  c.past_key.clear();
+  c.past_value.clear();
+  c.do_rotary = 1;
+  c.rotary_offset = 4;
+  c.rotary_cache_length = 1;
+  c.rotary_half_dim = 2;
+  c.position_ids = {0};
+  c.cos_cache = {0.0f, 0.0f};
+  c.sin_cache = {1.0f, 1.0f};
+  c.key = {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 4.0f};
+  c.expected_present_key = {0.0f, 0.0f, 0.0f, 0.0f, -3.0f, -4.0f, 1.0f, 2.0f};
 
   RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
 }
