@@ -44,6 +44,29 @@ Add `--add-vitisai-metadata` to write the CLIP model identity and Vitis AI quant
 
 The default input shape is `[1, 2520, 768]`, the default weight shape is `[768, 768]`, and the default output is `unit-models\clip_visual_dq_matmul_q.onnx`. Run `.\.venv\Scripts\python.exe .\generate_qdq_matmul_model.py -h` for all options.
 
+For symmetric signed weights, use `--omit-weight-zero-point` to omit the
+optional zero-point input instead of supplying an all-zero initializer.
+
+## Generate and run the compatibility test suite
+
+`generate_qdq_matmul_test_suite.py` generates 100 models covering per-tensor
+and per-channel weights with Microsoft and ONNX Q/DQ, plus blockwise ONNX Q/DQ.
+Each category covers signed and unsigned 4-bit and 8-bit weight variants,
+including both omitted and explicit zero points for symmetric signed weights.
+It runs every model through `run_acc.py --log-severity-level 0`, saves the
+combined logs, and writes NPU/CPU node placements and accuracy metrics to an
+Excel workbook.
+
+Run the suite from the Windows ML environment:
+
+```powershell
+.\.venv-winml\Scripts\python.exe .\generate_qdq_matmul_test_suite.py
+```
+
+Blockwise models use block size 32 on axis 0 by default. Use `--block-size`,
+`--block-axis`, `--provider`, and repeatable `--provider-option KEY=VALUE`
+arguments to override suite settings.
+
 
 ### Gemma-4-E2B-IT vision model's MatMul shapes for reference
 | Gemma 4 E2B-IT vision MatMul use | Left input shape | Right input shape | Output shape | Count |

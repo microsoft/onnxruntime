@@ -117,6 +117,14 @@ def parse_args() -> argparse.Namespace:
         help="Weight quantization scheme; default: asymmetric.",
     )
     parser.add_argument(
+        "--omit-weight-zero-point",
+        action="store_true",
+        help=(
+            "Omit the optional weight zero-point input. This is valid only "
+            "for symmetric signed weights, whose implicit zero point is zero."
+        ),
+    )
+    parser.add_argument(
         "--qdq-profile",
         choices=tuple(QDQ_PROFILES),
         default="onnx",
@@ -155,6 +163,13 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.output_scale is not None and args.output_scale <= 0:
         parser.error("--output-scale must be greater than zero")
+    if args.omit_weight_zero_point and (
+        args.weight_signedness != "signed"
+        or args.weight_symmetry != "symmetric"
+    ):
+        parser.error(
+            "--omit-weight-zero-point requires symmetric signed weights"
+        )
     if (
         args.qdq_profile == "microsoft"
         and args.weight_quantization == "blockwise"
@@ -411,7 +426,6 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
         ),
         numpy_helper.from_array(quantized_weight, "weight_quantized"),
         numpy_helper.from_array(weight_scale, "weight_scale"),
-        numpy_helper.from_array(weight_zero_point, "weight_zero_point"),
         numpy_helper.from_array(
             np.asarray(output_scale, dtype=np.float32), "output_scale"
         ),
@@ -420,6 +434,12 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
             "output_zero_point",
         ),
     ]
+    weight_dq_inputs = ["weight_quantized", "weight_scale"]
+    if not args.omit_weight_zero_point:
+        initializers.append(
+            numpy_helper.from_array(weight_zero_point, "weight_zero_point")
+        )
+        weight_dq_inputs.append("weight_zero_point")
     nodes: list[onnx.NodeProto] = []
     quantize_input = "input"
     if args.add_boundary_nodes:
@@ -455,7 +475,7 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
             ),
             helper.make_node(
                 "DequantizeLinear",
-                ["weight_quantized", "weight_scale", "weight_zero_point"],
+                weight_dq_inputs,
                 ["weight"],
                 name="DequantizeWeight",
                 domain=qdq_profile.qdq_domain,
@@ -547,6 +567,10 @@ def build_model(args: argparse.Namespace) -> onnx.ModelProto:
     )
     model.metadata_props.add(
         key="weight_symmetry", value=args.weight_symmetry
+    )
+    model.metadata_props.add(
+        key="weight_zero_point",
+        value="omitted" if args.omit_weight_zero_point else "present",
     )
     model.metadata_props.add(
         key="weight_shape", value="x".join(str(dimension) for dimension in weight_shape)
