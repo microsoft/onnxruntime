@@ -799,9 +799,9 @@ static void KvRowCopyLaunchConfig(const int vec_count,
                                   const int batch_size,
                                   dim3& grid,
                                   dim3& block) {
-  constexpr int kThreadsPerBlock = 256;
+  constexpr int kRowCopyThreadsPerBlock = 256;
   const int threads_x = vec_count < 32 ? vec_count : 32;
-  const int threads_y = kThreadsPerBlock / threads_x > 0 ? kThreadsPerBlock / threads_x : 1;
+  const int threads_y = kRowCopyThreadsPerBlock / threads_x > 0 ? kRowCopyThreadsPerBlock / threads_x : 1;
   block = dim3(threads_x, threads_y);
   grid = dim3((rows + threads_y - 1) / threads_y, kv_num_heads, batch_size);
 }

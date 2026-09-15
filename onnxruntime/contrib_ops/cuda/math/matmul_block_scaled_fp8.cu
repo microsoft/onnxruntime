@@ -515,17 +515,17 @@ struct Fp8GemvMma<__nv_bfloat16> {
 };
 
 template <int KSplit, int MTiles, typename AType>
-__global__ void MatMulBlockScaledFp8MmaGemvKernel(AType* __restrict__ output,
-                                                  const AType* __restrict__ input_a,
-                                                  const __nv_fp8_e4m3* __restrict__ input_b,
-                                                  const float* __restrict__ weight_scale,
-                                                  const AType* __restrict__ bias,
-                                                  const float* __restrict__ act_scale,
-                                                  int m,
-                                                  int n,
-                                                  int k,
-                                                  int block_size,
-                                                  int k_blocks) {
+__device__ __forceinline__ void Fp8MmaGemvBody(AType* __restrict__ output,
+                                               const AType* __restrict__ input_a,
+                                               const __nv_fp8_e4m3* __restrict__ input_b,
+                                               const float* __restrict__ weight_scale,
+                                               const AType* __restrict__ bias,
+                                               const float* __restrict__ act_scale,
+                                               int m,
+                                               int n,
+                                               int k,
+                                               int block_size,
+                                               int k_blocks) {
   using Mma = Fp8GemvMma<AType>;
 
   const bool act_qdq = act_scale != nullptr;
@@ -691,6 +691,35 @@ __global__ void MatMulBlockScaledFp8MmaGemvKernel(AType* __restrict__ output,
     }
   }
 }
+
+// Two entry points over one body. The pinned one carries a residency hint; see
+// `Fp8MmaGemvPinsResidency` for when the launcher picks it and why the plain one has to stay.
+// clang-format off
+#define ORT_FP8_MMA_GEMV_PARAMS                  \
+  AType* __restrict__ output,                    \
+      const AType* __restrict__ input_a,         \
+      const __nv_fp8_e4m3* __restrict__ input_b, \
+      const float* __restrict__ weight_scale,    \
+      const AType* __restrict__ bias,            \
+      const float* __restrict__ act_scale,       \
+      int m, int n, int k, int block_size, int k_blocks
+
+#define ORT_FP8_MMA_GEMV_ARGS \
+  output, input_a, input_b, weight_scale, bias, act_scale, m, n, k, block_size, k_blocks
+// clang-format on
+
+template <int KSplit, int MTiles, typename AType>
+__global__ void MatMulBlockScaledFp8MmaGemvKernel(ORT_FP8_MMA_GEMV_PARAMS) {
+  Fp8MmaGemvBody<KSplit, MTiles, AType>(ORT_FP8_MMA_GEMV_ARGS);
+}
+
+template <int KSplit, int MTiles, typename AType>
+__global__ __launch_bounds__(32 * KSplit, 3) void MatMulBlockScaledFp8MmaGemvKernelPinned(ORT_FP8_MMA_GEMV_PARAMS) {
+  Fp8MmaGemvBody<KSplit, MTiles, AType>(ORT_FP8_MMA_GEMV_ARGS);
+}
+
+#undef ORT_FP8_MMA_GEMV_ARGS
+#undef ORT_FP8_MMA_GEMV_PARAMS
 
 // Kill switch for A/B testing the tensor-core path against the FMA path in the same binary.
 bool Fp8GemvMmaEnabled() {
@@ -949,17 +978,32 @@ static Status LaunchMatMulBlockScaledFp8GemvImpl(void* y,
     const int k_split = ApplyFp8MmaKSplitOverride(selected_k_split, m, n, k);
     const int mtiles = (m > 16) ? 4 : ((m > 8) ? 2 : 1);
     const dim3 mma_blocks{static_cast<unsigned int>((n + 15) / 16)};
+    const bool pin_residency = Fp8MmaGemvPinsResidency(
+        n, k_split, mtiles, device_prop.multiProcessorCount, device_prop.major, device_prop.minor);
     const auto launch_mma = [&]<int KSplit, int MTiles>() {
       const dim3 mma_threads{32, KSplit};
-      if (is_bf16) {
-        MatMulBlockScaledFp8MmaGemvKernel<KSplit, MTiles><<<mma_blocks, mma_threads, 0, stream>>>(
-            reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b,
-            weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k, block_size, k_blocks);
-      } else {
-        MatMulBlockScaledFp8MmaGemvKernel<KSplit, MTiles><<<mma_blocks, mma_threads, 0, stream>>>(
-            reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,
-            weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k, block_size, k_blocks);
+#define ORT_FP8_LAUNCH_MMA(kernel_name)                                                      \
+  do {                                                                                       \
+    if (is_bf16) {                                                                           \
+      kernel_name<KSplit, MTiles><<<mma_blocks, mma_threads, 0, stream>>>(                   \
+          reinterpret_cast<__nv_bfloat16*>(y), reinterpret_cast<const __nv_bfloat16*>(a), b, \
+          weight_scale, reinterpret_cast<const __nv_bfloat16*>(bias), act_scale, m, n, k,    \
+          block_size, k_blocks);                                                             \
+    } else {                                                                                 \
+      kernel_name<KSplit, MTiles><<<mma_blocks, mma_threads, 0, stream>>>(                   \
+          reinterpret_cast<half*>(y), reinterpret_cast<const half*>(a), b,                   \
+          weight_scale, reinterpret_cast<const half*>(bias), act_scale, m, n, k,             \
+          block_size, k_blocks);                                                             \
+    }                                                                                        \
+  } while (0)
+      if constexpr (KSplit == 16 && MTiles == 1) {
+        if (pin_residency) {
+          ORT_FP8_LAUNCH_MMA(MatMulBlockScaledFp8MmaGemvKernelPinned);
+          return;
+        }
       }
+      ORT_FP8_LAUNCH_MMA(MatMulBlockScaledFp8MmaGemvKernel);
+#undef ORT_FP8_LAUNCH_MMA
     };
     // Only 1, 2 and 4 row tiles are instantiated; an M of 17..24 rounds up to 4 and masks the
     // remainder, which costs nothing next to the weight traffic it shares.

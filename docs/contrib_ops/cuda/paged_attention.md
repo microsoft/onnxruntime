@@ -178,6 +178,9 @@ matches the landing order in [§19](#19-phasing), so the schema grows monotonica
 | 17 | `query_positions` | `S` (opt) | `(token_count,)` | **new — §4.8** |
 | 18 | `attention_bias` | `T` (opt) | `(batch_size or 1, num_heads or 1, query_length_capacity, context_length_capacity)` | **new — §10** |
 
+For `k_cache_dtype=v_cache_dtype="int4"`, the cache tensors use `uint8` storage and their last
+dimension is `(head_size + 1) / 2`, not `head_size`.
+
 `max_context_len` is the largest per-sequence total KV length in the batch, bounded above by
 `block_table.shape[1] * block_size`.
 
@@ -248,9 +251,9 @@ ops without translation.
 `k_cache_dtype` and `v_cache_dtype` name the *logical* element type of each cache. Every value is
 spelled as the ONNX element type it denotes. `""` — the default — means the cache tensor's own
 element type is also the logical type; `"float16"`, `"bfloat16"`, `"int8"` and `"float8e4m3fn"` name
-that same type explicitly and must agree with the tensor. The reserved values `"int4"` and
-`"float4e2m1"` describe sub-byte types packed two per byte into a `uint8` cache (§21.4), which
-no ONNX tensor type can express here; they are rejected until a sub-byte backend exists. Every
+that same type explicitly and must agree with the tensor. `"int4"` describes signed values packed
+two per byte in a `uint8` cache and is supported by the CUDA INT4 build. A `uint8` cache requires
+an explicit `"int4"` attribute; `"float4e2m1"` remains reserved and rejected. Every
 value is a signed, zero-symmetric type — there is no zero-point input, so `uint4` / `uint8` are
 deliberately not in the vocabulary (§8.3.1).
 
@@ -434,7 +437,7 @@ varlen layout has no `(batch, seq)` grid — but it does mean a GQA↔PagedAtten
 | Name | Allowed | Change |
 |---|---|---|
 | `T` | `float16`, `bfloat16` | unchanged |
-| `T_CACHE` | `float16`, `bfloat16`, `int8`, `float8e4m3fn` | **new** (split out of `T`) |
+| `T_CACHE` | `float16`, `bfloat16`, `int8`, `float8e4m3fn`, `uint8` | **new** (split out of `T`) |
 | `T_KV_SCALE` | `float` | **new** |
 | `QK` | `float`, `float16`, `bfloat16` | **new** — §11 |
 | `S` | `int32` | unchanged |
@@ -443,10 +446,8 @@ Splitting `T_CACHE` out of `T` is backward compatible: every previously valid mo
 `T_CACHE == T`. The constraint name is `T_KV_SCALE`, matching GQA and the registration already in
 `paged_attention.cc`.
 
-`uint8` is **intentionally** omitted from `T_CACHE`, even though GQA's `T_CACHE` already admits it
-for packed INT4. There is no unsigned or sub-byte logical cache format specified for this operator
-yet (§21), and widening a type constraint later is itself a compatible change, so nothing is lost by
-waiting. This is a deliberate divergence from GQA, not an oversight.
+`uint8` stores packed signed INT4, not an unsigned logical cache type. Its CUDA registrations require
+`onnxruntime_USE_INT4_KV_CACHE=ON`.
 
 ## 5. Feature: `slot_mapping`
 
@@ -637,22 +638,21 @@ if (needs_prologue) {
 
 ### 8.1 Goal
 
-Store the block cache in INT8 or FP8 E4M3 while `query` remains FP16/BF16, halving (or better) the
-dominant memory consumer in a serving deployment and proportionally reducing HBM traffic on the
-decode path. Scope for this phase: **`PER_TENSOR` and `PER_CHANNEL`**, with `k_cache_dtype` and
-`v_cache_dtype` left at `""` (or naming the cache tensor's own element type).
-INT4 is deferred ([§19](#19-phasing)).
+Store the block cache in INT8, FP8 E4M3, or packed INT4 while `query` remains FP16/BF16, halving (or
+better) the dominant memory consumer in a serving deployment and proportionally reducing HBM traffic
+on the decode path. Scope for this phase: **`PER_TENSOR` and `PER_CHANNEL`** static scales.
+INT4 uses the portable decode and gather paths plus dedicated XQA decode and speculative-decode
+kernels. Performance and model-quality evaluation are separate gates; reduced cache storage alone
+does not establish either.
 
 ### 8.2 Schema
 
-- `key_cache` / `value_cache` move from `T` to `T_CACHE ∈ {float16, bfloat16, int8, float8e4m3fn}`.
-  `uint8` is intentionally excluded until a sub-byte format is specified (§4.9, §21).
+- `key_cache` / `value_cache` use `T_CACHE ∈ {float16, bfloat16, int8, float8e4m3fn, uint8}`.
 - `k_scale` / `v_scale` (inputs 14, 15), type `T_KV_SCALE` = **always FP32**, matching GQA.
-- Attributes `k_quant_type`, `v_quant_type` ∈ `{"NONE", "PER_TENSOR", "PER_CHANNEL"}`, plus
-  independent `k_cache_dtype` and `v_cache_dtype` attributes, which stay `""` while every logical
-  type is expressible as an ONNX element type.
+- Attributes `k_quant_type`, `v_quant_type` ∈ `{"NONE", "PER_TENSOR", "PER_CHANNEL"}`,
+  plus independent `k_cache_dtype` and `v_cache_dtype` attributes. Packed INT4 requires `"int4"`.
 - Kernel becomes `PagedAttention<T, T_CACHE>`, registered for the same combinations GQA uses:
-  `{MLFloat16, BFloat16} × {same as T, int8_t, Float8E4M3FN}` (plus `uint8_t` if and when INT4 lands).
+  `{MLFloat16, BFloat16} × {same as T, int8_t, Float8E4M3FN, uint8_t}`, with the narrow formats build-gated.
 
 ### 8.3 Scale layout under the block layout
 
@@ -678,7 +678,20 @@ Symmetric quantization, same formulas as GQA:
 |---|---|---|
 | INT8 | `[-128, 127]` | `q = clamp(round(x / scale), -128, 127)` |
 | FP8 E4M3 | `[-448, 448]` | `q = clamp(x / scale, -448, 448)` |
-| INT4 (deferred) | `[-8, 7]`, 2/byte | last cache dim becomes `(head_size + 1) / 2` |
+| INT4 | `[-8, 7]`, 2/byte | `clamp(round(x / scale), -8, 7)`; last cache dim `(head_size + 1) / 2` |
+
+INT4 uses round-to-nearest-even and stores `q + 8`, with the even channel in the low nibble.
+Zero-filled logical padding is `0x88`, not `0x00`. The caller initializes unwritten slots;
+the operator preserves every slot not selected by the write map.
+
+Scale values must be finite FP32 values. Signed scales are supported: negative values use the
+same division and multiplication formulas. A zero scale writes a zero logical code and dequantizes
+to zero; all-zero and mixed-zero tables are supported. Subnormal scales are supported by the
+portable CUDA path, which divides directly rather than forming a potentially infinite reciprocal.
+NaN and infinity are outside the input contract; their numerical outputs are unspecified. Scale
+values live on the device and are not validated by a synchronizing host readback. Producers must
+validate them before use. FP32 intermediate products, attention logits, and the final activation
+must still fit their respective types; finite scales alone do not guarantee finite arithmetic.
 
 #### 8.3.1 Zero point: always 0, and why the vocabulary is signed-only
 
@@ -715,6 +728,11 @@ versioned-successor topic rather than a late addition.
 scattered to their slots. This is a natural fit: the kernel is already elementwise over
 `(token, kv_head, channel)`, which is exactly the `PER_CHANNEL` scale index.
 
+Packed INT4 selects `ReshapeAndCacheHeads` instead: one block per `(token, kv_head)` for each
+tensor, so a whole head is resident when its channel pairs are packed into nibbles. The original
+elementwise path remains for native, INT8, and FP8 caches. Both paths reuse the explicit/derived
+slot resolvers and skip negative or out-of-range write slots.
+
 ### 8.5 Read path
 
 Phase 2 (correctness first): **dequantize-on-gather**. The MEA fallback already materializes a
@@ -730,10 +748,17 @@ output afterward. Both are `O(num_heads * head_size)` passes and avoid touching 
 is the path that makes a quantized cache actually pay off; the gather-based Phase 2 mostly buys
 memory capacity, not bandwidth.
 
+Packed INT4 unpacks a nibble at a time through the same `ReadPagedCache` accessor on both the
+split-KV decode and the gather paths, so the scale foldings above are unchanged. Gather still
+materializes an FP16/BF16 staging buffer, so INT4 does not reduce that prefill allocation.
+
 ### 8.6 Build gating
 
-Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_KV_CACHE`
-(default OFF). INT8 always built.
+Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` and `onnxruntime_USE_INT4_KV_CACHE` both default to
+`ON`. CUDA builds include the INT4 kernels by default; set
+`--cmake_extra_defines onnxruntime_USE_INT4_KV_CACHE=OFF` to omit them. Existing CMake build
+directories retain their cached option value, so pass `onnxruntime_USE_INT4_KV_CACHE=ON` explicitly
+when reusing a directory configured with the feature disabled. INT8 kernels are always built.
 
 ### 8.7 Validation
 
@@ -741,15 +766,16 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
   `k_quant_type == "NONE"` is `INVALID_ARGUMENT`.
 - `T_CACHE != T` requires a non-`NONE` quant type; `T_CACHE == T` requires both to be `NONE` and both
   scales to be absent.
-- `k_cache_dtype` and `v_cache_dtype` are `""` for every cache this operator stores, quantized or
-  not: the cache tensor's element type is the logical element type. Naming that type explicitly
+- `k_cache_dtype` and `v_cache_dtype` may be `""` for non-packed caches, quantized or not:
+  the cache tensor's element type is the logical element type. Naming that type explicitly
   (`"float16"`, `"bfloat16"`, `"int8"`, `"float8e4m3fn"`) is accepted but must agree with the tensor.
-  `"int4"` and `"float4e2m1"` are reserved for a `uint8` packed cache and are rejected
-  until one exists. Unsigned logical types (`uint4`, `uint8`) are rejected outright: quantization
+  `"int4"` requires a `uint8` cache with packed last dimension; `"float4e2m1"` remains unsupported.
+  Unsigned logical types (`uint4`, `uint8`) are rejected outright: quantization
   here has no zero point (§8.3.1).
 - In `"LATENT"` mode only K storage exists: `k_quant_type` and `k_scale` describe the latent row,
   `v_quant_type` and `v_cache_dtype` must be unset, and `v_scale` must be
   absent because V is a view of K.
+- `LATENT` rejects packed INT4 in this implementation.
 - FP8 is available when ORT is built with `onnxruntime_USE_FP8_KV_CACHE`; no additional runtime
   architecture gate is required for the conversion path used by this operator.
 - `PER_CHANNEL` scale shape must be exactly `(kv_num_heads, 1, head_size)` for both K and V. There
@@ -765,13 +791,17 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   `GatherAndExpandPagedKVCache` to dequantize while gathering, and the Flash varlen path uses the
 >   gathered grouped layout. A metadata-bounded speculative step of 2–8 query tokens uses paged XQA
 >   directly for matching native FP16/BF16 query and cache types, or FP16 query/output with an
->   INT8/FP8 cache, when `head_size = 256` and `group_size = 6`. Single-token decode reads and
+>   INT8/FP8 cache with `PER_TENSOR` K scales, when `head_size = 256` and
+>   `group_size = 6`. Quantized `PER_CHANNEL` K scales and INT4 use portable paged decode for
+>   metadata-bounded speculative steps. Single-token decode reads and
 >   dequantizes the cache in place through XQA when eligible or `PagedDecodeSplitKV` otherwise.
 > - Because a quantized cache never reaches Flash's *paged* kernel, the `block_size` tiling
 >   constraint of §18.1 does not apply to it; Flash eligibility skips that check when the cache is
 >   quantized. Any power-of-two `block_size >= 16` works with a quantized cache on either backend.
-> - **`uint8` / INT4 not added.** `T_CACHE` is `{float16, bfloat16, int8, float8e4m3fn}`, so
->   `k_cache_dtype` and `v_cache_dtype` must be `""` or name the cache tensor's own element type.
+> - **INT4 extension:** `uint8` packed caches are read in place by the portable decode/gather paths
+>   and, with `PER_CHANNEL` scales at `head_size = 256` and `group_size = 6`, by dedicated FP16 INT4
+>   XQA decode and speculative-decode kernels. `PER_TENSOR` scales and BF16 activations use the
+>   portable paths. No per-token scales are stored or passed.
 > - **No architecture gate for portable FP8 decode.** `Float8E4M3FN`'s converting constructor uses
 >   `__nv_cvt_float_to_fp8`, which is available on every architecture ORT builds for from CUDA 11.8
 >   onward. FP8 remains gated at *build* time by `onnxruntime_USE_FP8_KV_CACHE`.
@@ -781,8 +811,10 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 
 > **Paged decode kernels.** Quantized decode uses XQA directly on the paged cache when the query has
 > one token per sequence, `head_size ∈ {64, 128, 256}`, `group_size ∈ {4, 6, 8, 16, 32}`, no softcap,
-> and a block size divisible by 128. Separate speculative XQA specializations cover matching native
-> FP16/BF16 query and cache types, and FP16 query/output with an INT8/FP8 cache, when
+> a block size divisible by 128, and an INT8/FP8 cache with `PER_TENSOR` or `PER_CHANNEL` K scales.
+> Separate
+> speculative XQA specializations cover matching native FP16/BF16 query and cache types, and FP16
+> query/output with an INT8/FP8/INT4 cache, when
 > `attention_metadata` bounds the longest query to 2–8 tokens, `head_size = 256`, and
 > `group_size = 6`; these kernels write packed token-major output and support ragged batches. A
 > native FP16-cache specialization additionally covers `head_size = 256, group_size = 6`, the
@@ -795,9 +827,11 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 > Attention for a native FP16/BF16 cache when a ragged step is not one-token-per-sequence, the selected
 > image has no compatible XQA kernel, or its dynamic shared-memory requirement exceeds the device
 > limit. Other quantized configurations use `PagedDecodeSplitKV` and `PagedDecodeReduce` from
-> `paged_attention_impl.cu`.
+> `paged_attention_impl.cu`. Their grid-Y dimension is the aggregate query-token count, so paged
+> decode is eligible only when that count fits the device's grid-Y limit (65,535). Larger batches
+> use a gather-based backend when available, including metadata-bounded INT4 speculative steps.
 >
-> - **Both scale foldings are exact and granularity-agnostic.** K folds into Q at load time
+> - **Portable scale folding uses FP32 intermediates and is granularity-agnostic.** K folds into Q at load time
 >   (`q_sh[c] = float(q[c]) * GetCacheScale(k_scale, kv_head * head_size + c, k_per_channel)`), so
 >   `PER_TENSOR` is just the `per_channel == false` branch of the same expression rather than a
 >   separate "fold into the softmax scale" path. V folds into the epilogue: `v_scale_c` does not
@@ -805,6 +839,23 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   softmax denominator.
 > - The kernel reads pages in place at their stored width, so a decode step touches the KV cache once
 >   at `int8`/`fp8` bandwidth instead of gathering and dequantizing the whole live context.
+> - **`PER_CHANNEL` K scales are folded into Q for XQA, normalized by a power of two.** XQA takes a
+>   single scalar K scale, so the channel scale is folded into the query. Storing that product in
+>   fp16 would saturate on a large scale, and a zero cache code would then turn the infinity into a
+>   `NaN`. `PagedScaleNormalizerKernel` reduces the table to the power of two just above
+>   `max|k_scale|`; the fold divides by it and XQA multiplies it back into `qkScale` once per CTA,
+>   outside the K/V loop. A power of two is used rather than `max|k_scale|` itself so that both the
+>   division and the reapplication are exact, and every normalized scale lands in `(0, 1]` so the
+>   fold cannot overflow for any finite table. The reduction is a single block on the compute
+>   stream, so the path stays CUDA-graph capturable and re-reads the table on every replay.
+> - **Limit of the fold, and how to opt out.** fp16 spans about 40 binades, and an overflow-free
+>   normalizer must be at least `max|k_scale|`, so channels more than **24 binades** below the
+>   largest flush to zero in the folded query. Calibrated tables sit far inside that budget — across
+>   the 128 per-(head, side) tables of a Qwen3.8-27B INT4 export the widest spans 4.9 binades — and
+>   MMLU-Pro over 800 questions puts the INT4 per-channel cache within noise of an INT8 cache. A
+>   table that does span more than the fold can hold should set `ORT_ENABLE_XQA_PER_CHANNEL_KV=0`,
+>   which routes `PER_CHANNEL` K decode and metadata-bounded speculative decode to the portable FP32
+>   kernel at the cost of XQA's tensor-core acceleration. `PER_TENSOR` K is unaffected either way.
 > - `softcap` matches FlashAttention bit-for-bit: `softcap * tanh(qk_raw * scale / softcap)`, which is
 >   what `flash_api.cc` produces from `params.softcap = softmax_scale / softcap` and
 >   `params.scale_softmax = softcap`.
@@ -844,6 +895,19 @@ Mirror GQA: `onnxruntime_USE_FP8_KV_CACHE` (default ON), `onnxruntime_USE_INT4_K
 >   reuses. It lives outside the `USE_FLASH_ATTENTION` / `USE_MEMORY_EFFICIENT_ATTENTION` guards
 >   because the decode backend needs neither.
 > - **Still deferred from P5:** the fused MLA decode backend (§12.7).
+
+### 8.8 Packed INT4 tests
+
+Operator tests are in `onnxruntime/test/python/transformers/test_paged_attention_int4.py`, covering
+FP16/BF16, packed/derived writes, skipped slots, exact nibble encoding, zero padding,
+prefill/decode/speculative attention, a 65,536-token batch exceeding the portable grid-Y limit,
+INT4 norm/RoPE cache-write ordering, and negative contracts.
+XQA decode, speculative decode, and CUDA-graph replay tests assert native dispatch telemetry as
+well as numerical parity, so a portable fallback cannot silently pass as XQA coverage. INT8 and
+FP8 regression cases and extreme scale saturation are also covered. GPU operator tests skip when
+INT4 CUDA kernels are not built; XQA-specific tests additionally require an SM80-or-newer GPU and
+a compatible XQA image with sufficient shared memory. CPU-only helper tests verify telemetry
+capture and rejection of silent fallback independently of CUDA availability.
 
 ## 9. Feature: Sliding Window Attention
 
@@ -1392,10 +1456,10 @@ Consolidated, to be implemented in `paged_attention_helper::CheckInputs`. Every 
   `PER_CHANNEL` (both K and V — `v_scale` only exists alongside a `value_cache`, so its last
   dimension is always `head_size`); present iff the corresponding quant type is not `NONE`.
 - `T_CACHE != T` iff a quant type is not `NONE`.
-- `k_cache_dtype` and `v_cache_dtype` must be `""` or name the cache tensor's own element type:
-  every logical element type this operator stores is expressible as an ONNX element type. The
-  reserved sub-byte values are rejected until a `uint8` packed cache exists. FP8 availability is
-  controlled by `onnxruntime_USE_FP8_KV_CACHE`, without an additional runtime architecture gate.
+- Non-packed cache-dtype attributes must be `""` or name the cache tensor's own element type.
+  Packed `uint8` caches require explicit `"int4"` and `onnxruntime_USE_INT4_KV_CACHE`.
+  Other sub-byte formats remain unsupported. FP8 availability is controlled by
+  `onnxruntime_USE_FP8_KV_CACHE`, without an additional runtime architecture gate.
 - `attention_metadata`: rank 1, `dim0 ∈ {2, 3}`, `int32`, CPU-resident; entries `>= 0`; the first
   two entries are trusted upper bounds and the optional third is a trusted lower bound for every
   step served by the node or captured graph (§4.7). Bounds may only select implementations or size
@@ -1596,7 +1660,7 @@ These block the feature work and should land ahead of it.
 | **P4 — MLA (correctness)** | `kv_cache_layout="LATENT"`, `v_head_size`, `rotary_offset`, V-aliases-K, optional `value_cache`, unfused MLA reference kernel, absorbed↔non-absorbed equivalence tests (§12) | attrs `kv_cache_layout`, `v_head_size`, `rotary_offset`; input 4 optional |
 | **P5 — Performance** | Paged decode kernel with in-kernel dequant; fused MLA backend (FlashMLA / FlashInfer MLA, §12.7); `softcap` on decode; **remove the D→H sync and make the op CUDA-graph-capturable (§4.7)**; optional `attention_metadata` replay-wide bounds | input 16 |
 | **P6 — Completeness** | `query_positions` (§4.8); `attention_bias` (§10); `output_qk` (§11) | inputs 17–18, output 3, attr `qk_output` |
-| **Later** | INT4 cache; MLA quantized latent cache tuning; non-CUDA EPs | — |
+| **Later** | MLA quantized latent cache tuning; non-CUDA EPs | — |
 
 Status: P0–P4 are implemented, except the `.Alias` registration. P5 is partially
 implemented — the paged decode kernel with in-kernel dequantization (including `softcap`, sliding
@@ -1682,7 +1746,7 @@ expressibility for formats no ORT model uses today, at the cost of invalidating 
 serialized graph and every test. The decision is therefore:
 
 > Treat the separate-cache representation as **permanent** for `com.microsoft::PagedAttention`
-> opset 1. If a merged or sub-byte cache becomes a real requirement, introduce a separately versioned
+> opset 1. If a merged cache becomes a real requirement, introduce a separately versioned
 > schema or a new operator name with a migration tool — do not change the meaning of inputs, outputs
 > or attributes in place.
 
@@ -1692,8 +1756,8 @@ The complete deferred list:
 - one required functional `kv_cache_out` instead of two optional aliasing outputs;
 - removal of `kv_num_heads` in favor of `kv_cache.shape[2]`;
 - quantization granularity inferred from scale shape, and zero points (§21.3);
-- sub-byte logical types stored in `uint8` tensors — the `k_cache_dtype` / `v_cache_dtype` attributes
-  that name them are adopted in §4.5, but no backend decodes a packed cache yet (§21.4);
+- sub-byte logical types other than INT4 stored in `uint8` tensors; INT4 is implemented without
+  reinterpreting existing tensor types (§21.4);
 - inline scales or zero points packed into cache rows (§21.3, note);
 - a physical `HND` cache layout (§21.6);
 - renaming `local_window_size` to `window_size_left` / `window_size_right`, and the
@@ -1784,11 +1848,11 @@ introduces correction terms in both the QK and PV products.
 
 ### 21.4 `k_cache_dtype` / `v_cache_dtype` for sub-byte caches
 
-**The attributes themselves are adopted in §4.5**; only their sub-byte *values* are deferred, because
-no backend decodes a packed cache yet. They were adopted rather than deferred because the obvious
-alternative — a `k_cache_bit_width` / `v_cache_bit_width` pair — is redundant against the cache
-tensor's element type for every format that exists today and still insufficient for the format it
-was meant to describe.
+**The attributes and the `"int4"` value are implemented in §4.5 and §8.** Portable paged decode,
+gather, and the H256/group-6 single-token and speculative XQA specializations read packed INT4
+caches. Other sub-byte values remain deferred.
+A `k_cache_bit_width` / `v_cache_bit_width` pair would be redundant against the cache tensor's
+element type for native formats and could not distinguish INT4 from FP4.
 
 For `int8` and `float8e4m3fn` each cache tensor's own element type is the logical type and its
 corresponding cache-dtype attribute stays `""`. Sub-byte needs more:
@@ -1804,6 +1868,9 @@ corresponding cache-dtype attribute stays `""`. Sub-byte needs more:
 | `"float16"`, `"bfloat16"`, `"int8"`, `"float8e4m3fn"` | the same type, named explicitly | unchanged |
 | `"int4"`, `"float4e2m1"` | `uint8` | logical width / 2 |
 | `"int2"` | `uint8` | logical width / 4 |
+
+Only the `"int4"` sub-byte row is implemented, and only for `SEPARATE` caches. The merged and
+latent packed layouts discussed below remain proposals.
 
 where `E = head_size + v_head_size` under `"KV_CONCAT"`, or `kv_pack_dim`'s logical width under
 `"LATENT"`. Packing order must be specified or implementations will diverge: **logical element `2i`
@@ -1872,7 +1939,7 @@ migration tool over serialized graphs is cheap compared with breaking a shipped 
 | §21.2 merged `kv_cache` | **No** | Deferred to a versioned successor |
 | §21.5 required `kv_cache_out` | **No** | Deferred; §4.4 registers the alias instead |
 | §21.3 scale-shape granularity, zero points | Yes | Deferred — explicit attributes in §4.5 are preferred while only two granularities exist |
-| §21.4 `k_cache_dtype` / `v_cache_dtype` | Yes | **Adopted** — §4.5; only the sub-byte *values* wait for a packed-cache backend |
+| §21.4 `k_cache_dtype` / `v_cache_dtype` | Yes | **Implemented**, including packed INT4; other sub-byte values remain deferred |
 | §21.6 `kv_layout` | Yes | Deferred until a backend requires `HND` |
 | §21.5 `window_size_*` rename | Yes, with deprecated aliases | Deferred with the lookahead window |
 | `attention_metadata` | Yes | **Adopted, redesigned** — §4.7 |
