@@ -8,6 +8,7 @@
 
 #include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
@@ -46,6 +47,23 @@ TEST(CudaUtilsTest, FillCorrectness) {
   TestFillCorrectness<int32_t>(1 << 20, 3);
   TestFillCorrectness<float>(1 << 20, 4.0f);
   TestFillCorrectness<double>(1 << 20, 5.0);
+}
+
+TEST(CudaUtilsTest, CanUseTransposeHelperRejectsOverflowingElementCount) {
+  EXPECT_TRUE(CanUse_cublasTransposeHelper_MLFloat16(100, 100));
+  EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(100, 25000000));
+}
+
+TEST(CudaUtilsTest, CanUseTransposeHelperRejectsNonPositiveDimensions) {
+  EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(0, 100));
+  EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(100, 0));
+  EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(-1, 100));
+  EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(100, -1));
+}
+
+TEST(CudaUtilsTest, CanUseTransposeHelperRejectsGridYOverflow) {
+  // For TRANS_TILE_DIM=32, m=2097152 yields grid_y=65536, which is out of range.
+  EXPECT_FALSE(CanUse_cublasTransposeHelper_MLFloat16(2097152, 1));
 }
 
 }  // namespace test

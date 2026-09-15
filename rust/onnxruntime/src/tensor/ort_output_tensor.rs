@@ -77,15 +77,19 @@ impl Drop for OrtOutputTensor {
 /// underlying buffer owned by the `OrtOutputTensor`.
 pub struct WithOutputTensor<T> {
     pub(crate) tensor: OrtOutputTensor,
-    data_ptr: *const T,
+    data: OutputTensorData<T>,
     shape: Vec<usize>,
+}
+
+enum OutputTensorData<T> {
+    Borrowed(*const T),
+    Owned(Vec<T>),
 }
 
 impl<T> Debug for WithOutputTensor<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WithOutputTensor")
             .field("tensor", &self.tensor)
-            .field("data_ptr", &self.data_ptr)
             .field("shape", &self.shape)
             .finish()
     }
@@ -101,7 +105,11 @@ impl<T> WithOutputTensor<T> {
     ///
     /// The returned view borrows `self`, so it cannot outlive the tensor owner.
     pub fn view(&self) -> ArrayView<'_, T, ndarray::IxDyn> {
-        unsafe { ArrayView::from_shape_ptr(ndarray::IxDyn(&self.shape), self.data_ptr) }
+        let data_ptr = match &self.data {
+            OutputTensorData::Borrowed(data_ptr) => *data_ptr,
+            OutputTensorData::Owned(data) => data.as_ptr(),
+        };
+        unsafe { ArrayView::from_shape_ptr(ndarray::IxDyn(&self.shape), data_ptr) }
     }
 }
 
@@ -112,6 +120,13 @@ where
     type Error = OrtError;
 
     fn try_from(value: OrtOutputTensor) -> Result<Self> {
+        if matches!(
+            T::tensor_element_data_type(),
+            crate::TensorElementDataType::String
+        ) {
+            return Err(OrtError::StringTensorMutableData);
+        }
+
         // Get pointer to output tensor float values
         let mut output_array_ptr: *mut T = std::ptr::null_mut();
         let output_array_ptr_ptr: *mut *mut T = &mut output_array_ptr;
@@ -133,9 +148,97 @@ where
 
         Ok(WithOutputTensor {
             tensor: value,
-            data_ptr: output_array_ptr,
+            data: OutputTensorData::Borrowed(output_array_ptr),
             shape,
         })
+    }
+}
+
+fn strings_from_content(data: Vec<u8>, offsets: Vec<usize>) -> Result<Vec<String>> {
+    if offsets.first().copied().unwrap_or(0) != 0 || (offsets.is_empty() && !data.is_empty()) {
+        return Err(OrtError::InvalidStringTensorOffsets);
+    }
+
+    let mut strings = Vec::with_capacity(offsets.len());
+    for (index, start) in offsets.iter().copied().enumerate() {
+        let end = offsets.get(index + 1).copied().unwrap_or(data.len());
+        if start > end || end > data.len() {
+            return Err(OrtError::InvalidStringTensorOffsets);
+        }
+        strings.push(String::from_utf8(data[start..end].to_vec())?);
+    }
+    Ok(strings)
+}
+
+fn extract_string_tensor(value: OrtOutputTensor) -> Result<WithOutputTensor<String>> {
+    let element_count = value
+        .shape
+        .iter()
+        .try_fold(1usize, |count, dimension| count.checked_mul(*dimension))
+        .ok_or(OrtError::InvalidDimensions)?;
+    let mut data_len = 0usize;
+
+    let status = {
+        let api = ENV.get().unwrap().lock().unwrap();
+        unsafe {
+            api.api()
+                .GetStringTensorDataLength
+                .unwrap()(value.tensor_ptr, &mut data_len)
+        }
+    };
+    status_to_result(status).map_err(OrtError::GetStringTensorDataLength)?;
+
+    let mut data = vec![0u8; data_len];
+    let mut offsets = vec![0usize; element_count];
+    let status = {
+        let api = ENV.get().unwrap().lock().unwrap();
+        unsafe {
+            api.api().GetStringTensorContent.unwrap()(
+                value.tensor_ptr,
+                data.as_mut_ptr().cast::<std::ffi::c_void>(),
+                data.len(),
+                offsets.as_mut_ptr(),
+                offsets.len(),
+            )
+        }
+    };
+    status_to_result(status).map_err(OrtError::GetStringTensorContent)?;
+
+    let shape = value.shape.clone();
+    Ok(WithOutputTensor {
+        tensor: value,
+        data: OutputTensorData::Owned(strings_from_content(data, offsets)?),
+        shape,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strings_from_content;
+    use crate::OrtError;
+
+    #[test]
+    fn decodes_string_tensor_content() {
+        let strings = strings_from_content(b"alphabetagamma".to_vec(), vec![0, 5, 9]).unwrap();
+        assert_eq!(strings, ["alpha", "beta", "gamma"]);
+    }
+
+    #[test]
+    fn decodes_empty_strings() {
+        let strings = strings_from_content(b"value".to_vec(), vec![0, 0, 5]).unwrap();
+        assert_eq!(strings, ["", "value", ""]);
+    }
+
+    #[test]
+    fn rejects_invalid_string_offsets() {
+        let error = strings_from_content(b"value".to_vec(), vec![0, 6]).unwrap_err();
+        assert!(matches!(error, OrtError::InvalidStringTensorOffsets));
+    }
+
+    #[test]
+    fn rejects_invalid_utf8_string_content() {
+        let error = strings_from_content(vec![0xff], vec![0]).unwrap_err();
+        assert!(matches!(error, OrtError::StringTensorUtf8(_)));
     }
 }
 
@@ -331,7 +434,7 @@ impl TryFrom<OrtOutputTensor> for OrtOutput {
                     WithOutputTensor::try_from(value).map(OrtOutput::Int64)
                 }
                 sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING => {
-                    WithOutputTensor::try_from(value).map(OrtOutput::String)
+                    extract_string_tensor(value).map(OrtOutput::String)
                 }
                 sys::ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE => {
                     WithOutputTensor::try_from(value).map(OrtOutput::Double)

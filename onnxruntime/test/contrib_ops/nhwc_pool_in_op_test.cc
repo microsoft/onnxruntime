@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <random>
+#include <unordered_set>
 
 #include "core/util/math.h"
 #include "core/mlas/inc/mlas.h"
@@ -16,6 +17,16 @@
 namespace onnxruntime {
 namespace test {
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+
+namespace {
+
+// These tests target ORT's CPU implementation of the MS-internal NHWC fp16 pool
+// ops. Do not offer the models to EPs that may be registered by the test
+// harness but do not own this internal-domain CPU/MLAS coverage.
+const std::unordered_set<std::string> kNhwcFp16PoolExcludedProviders{
+    kCoreMLExecutionProvider,
+    kTensorrtExecutionProvider,
+};
 
 class NhwcFp16PoolOpTester {
  private:
@@ -181,9 +192,11 @@ class NhwcFp16PoolOpTester {
     if (!dilations_.empty()) {
       test.AddAttribute("dilations", dilations_);
     }
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "");
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", kNhwcFp16PoolExcludedProviders);
   }
 };
+
+}  // namespace
 
 TEST(NhwcFp16PoolOpTest, MaxPool1D) {
   for (int64_t channels = 1; channels < 94; channels++) {
@@ -303,7 +316,7 @@ TEST(NhwcFp16PoolOpTest, AvgPoolIncludePadPixel) {
 
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kNhwcFp16PoolExcludedProviders);
 }
 
 TEST(NhwcFp16PoolOpTest, GlobalAveragePool) {
@@ -508,7 +521,7 @@ TEST(NhwcFp16PoolOpTest, GlobalAveragePool) {
 
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kNhwcFp16PoolExcludedProviders);
 }
 
 #endif

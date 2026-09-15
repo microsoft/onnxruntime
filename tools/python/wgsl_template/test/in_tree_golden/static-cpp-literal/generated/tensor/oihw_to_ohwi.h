@@ -10,8 +10,8 @@ Status ApplyTemplate<"tensor/oihw_to_ohwi.wgsl.template">(ShaderHelper& shader_h
   [[maybe_unused]] auto& ss = shader_helper.AdditionalImplementation();
 
   // Extract variables
-  auto& __var_output = *params.var_output;
-  auto& __var_src = *params.var_src;
+  auto* __var_output = params.var_output;
+  auto* __var_src = params.var_src;
 
 //  1 | // Copyright (c) Microsoft Corporation. All rights reserved.
 //  2 | // Licensed under the MIT License.
@@ -30,7 +30,7 @@ ss << "                 ci * uniforms.H * uniforms.W +\n";
 ss << "                 h_w;\n";
 // 11 |     return src.getByOffset(offset);
 ss << "    return ";
-ss << __var_src.GetByOffset("offset");
+ss << __var_src->GetByOffset("offset");
 ss << ";\n";
 // 12 |   }
 ss << "  }\n";
@@ -52,7 +52,7 @@ ss << "                 h_w * uniforms.I +\n";
 ss << "                 ci;\n";
 // 21 |     output.setByOffset(offset, value);
 ss << "    ";
-ss << __var_output.SetByOffset("offset", "value");
+ss << __var_output->SetByOffset("offset", "value");
 ss << ";\n";
 // 22 |   }
 ss << "  }\n";

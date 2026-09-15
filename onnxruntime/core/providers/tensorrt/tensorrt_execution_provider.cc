@@ -545,8 +545,8 @@ bool ApplyProfileShapesFromProviderOptions(std::vector<nvinfer1::IOptimizationPr
       std::vector<int64_t> shapes_opt_64(shapes_opt.begin(), shapes_opt.end());
       std::vector<int64_t> shapes_max_64(shapes_max.begin(), shapes_max.end());
       trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min_64[0], shape_size);
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_opt_64[0], shape_size);
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_max_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt_64[0], shape_size);
 #else
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
@@ -761,8 +761,8 @@ Status ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptimizatio
       std::vector<int64_t> shapes_opt_64(shapes_opt.begin(), shapes_opt.end());
       std::vector<int64_t> shapes_max_64(shapes_max.begin(), shapes_max.end());
       trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min_64[0], shape_size);
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_opt_64[0], shape_size);
-      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_max_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max_64[0], shape_size);
+      trt_profile->setShapeValuesV2(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt_64[0], shape_size);
 #else
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
       trt_profile->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
@@ -2874,7 +2874,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_filename,
                                                       std::string& onnx_model_folder_path,
                                                       std::string& weight_stripped_engine_cath_path,
-                                                      bool path_check,
                                                       const void* onnx_model_bytestream,
                                                       size_t onnx_model_bytestream_size,
                                                       const void* onnx_external_data_bytestream,
@@ -2898,7 +2897,7 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
                              "When providing a bytestream during session initialization, it should also be set as trt_onnx_bytes_stream");
     } else {
       // Validate that the ONNX model path does not escape the model directory.
-      if (path_check && !onnx_model_filename.empty()) {
+      if (!onnx_model_filename.empty()) {
         ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(
             std::filesystem::path(onnx_model_folder_path), std::filesystem::path(onnx_model_filename)));
       }
@@ -3710,10 +3709,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     if (weight_stripped_engine_refit_) {
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Refit engine from main ONNX file after engine build";
-      auto status = RefitEngine(model_path_,
-                                onnx_model_folder_path_,
+      std::filesystem::path model_fs_path(model_path_);
+      std::string refit_folder = onnx_model_folder_path_.empty()
+                                     ? model_fs_path.parent_path().string()
+                                     : onnx_model_folder_path_;
+      auto status = RefitEngine(model_fs_path.filename().string(),
+                                refit_folder,
                                 engine_cache_path,
-                                false /* path check for security */,
                                 onnx_model_bytestream_,
                                 onnx_model_bytestream_size_,
                                 onnx_external_data_bytestream_,
@@ -4205,10 +4207,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       context_update = true;
 
       if (weight_stripped_engine_refit_) {
-        auto status = RefitEngine(model_path_,
-                                  onnx_model_folder_path_,
+        std::filesystem::path model_fs_path(model_path_);
+        std::string refit_folder = onnx_model_folder_path_.empty()
+                                       ? model_fs_path.parent_path().string()
+                                       : onnx_model_folder_path_;
+        auto status = RefitEngine(model_fs_path.filename().string(),
+                                  refit_folder,
                                   engine_cache_path,
-                                  false /* path check for security */,
                                   onnx_model_bytestream_,
                                   onnx_model_bytestream_size_,
                                   onnx_external_data_bytestream_,

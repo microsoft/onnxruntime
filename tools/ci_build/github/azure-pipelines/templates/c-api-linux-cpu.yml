@@ -42,9 +42,7 @@ jobs:
     ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
       hostArchitecture: Arm64
   steps:
-  - checkout: self
-    clean: true
-    submodules: none
+  - template: jobs/checkout-and-git-redirect.yml
 
   # Authenticate to Lotus to pull pip in UsePythonVersion task
   - template: setup-feeds-and-python-steps.yml
@@ -57,7 +55,7 @@ jobs:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --secret id=PIP_INDEX_URL"
         Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
 
   - ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
@@ -65,7 +63,7 @@ jobs:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
         Context: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --secret id=PIP_INDEX_URL"
         Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
 
   - task: CmdLine@2
@@ -77,16 +75,16 @@ jobs:
         -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
         -e PIP_INDEX_URL \
         --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+        --volume "${HOME}/.gitconfig:/home/onnxruntimedev/.gitconfig:ro" \
         --volume $HOME/.m2:/home/onnxruntimedev/.m2:ro \
         --volume $HOME/.gradle:/home/onnxruntimedev/.gradle \
         --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging /bin/bash -c "python3 \
         /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs --build_dir /build --config Release \
-        --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"
+        --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"
         mkdir $(Build.ArtifactStagingDirectory)/testdata
         cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
         ls -al $(Build.ArtifactStagingDirectory)
     displayName: 'Create Artifacts'
-
   - ${{ if eq(parameters.PackageJava, 'true') }}:
     - template: java-api-artifacts-package-and-publish-steps-posix.yml
       parameters:

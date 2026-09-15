@@ -13,54 +13,54 @@ namespace onnxruntime::llm::kernels::cutlass_kernels {
 
 #ifdef ENABLE_BF16
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 2, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultSilu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 2, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultFtGelu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 3, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultSilu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 3, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultFtGelu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 4, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultSilu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 4, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultFtGelu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 #else
 // BF16 not enabled, only instantiate FP16 variants
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 2, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultSilu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 2, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultFtGelu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 3, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultSilu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 3, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultFtGelu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 4, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultSilu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 template void sm80_generic_fused_moe_gemm_kernelLauncher<cutlass::half_t, cutlass::half_t, 16, 256, 64, 4, onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultFtGelu>(
-    cutlass::half_t const*, cutlass::half_t const*, cutlass::half_t const*, bool, cutlass::half_t*,
-    int64_t const*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
+    const cutlass::half_t*, const cutlass::half_t*, const cutlass::half_t*, bool, cutlass::half_t*,
+    const int64_t*, int64_t, int64_t, int64_t, int, int, cudaStream_t, int*);
 
 #endif
 

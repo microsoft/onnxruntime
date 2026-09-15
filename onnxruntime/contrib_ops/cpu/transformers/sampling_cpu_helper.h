@@ -64,6 +64,13 @@ Status Sample(AllocatorPtr& allocator,
               const IConsoleDumper* dumper) {
   ORT_UNUSED_PARAMETER(dumper);
 
+  // vocab_size is validated to be in [1, decoder-logits-width] before this point, but min_tokens_to_keep is
+  // copied verbatim from an untrusted graph attribute. Guard against it so the unsigned loop bound
+  // (vocab_size - min_tokens_to_keep) in cumulate_and_filter() cannot underflow and walk off the heap buffer.
+  ORT_RETURN_IF_NOT(parameters->min_tokens_to_keep >= 0 && parameters->min_tokens_to_keep < parameters->vocab_size,
+                    "Sampling: min_tokens_to_keep must be in [0, vocab_size), got ",
+                    parameters->min_tokens_to_keep, " with vocab_size ", parameters->vocab_size);
+
   gsl::span<T>& sorted_scores = sampling_state->sorted_scores;
   memcpy(sorted_scores.data(), next_token_scores.data(), next_token_scores.size_bytes());
   std::vector<size_t> sorted_indices(static_cast<size_t>(parameters->batch_size) * static_cast<size_t>(parameters->vocab_size));

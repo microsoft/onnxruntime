@@ -107,6 +107,23 @@ struct LayoutDetailsB<TypeA, uint4b_t, Arch, typename platform::enable_if<Arch::
   using Operator = cutlass::arch::OpMultiplyAddDequantizeInterleavedBToA;
 };
 
+// MXFP4 (e2m1) weights with FP16/BF16 activations on Turing+. Mirrors the uint4b_t 4-bit
+// interleaved layout: weights are stored in the SM80 column-major tile-interleaved layout and
+// dequantized after the smem load via OpMultiplyAddDequantizeInterleavedBToA.
+template <typename TypeA, typename Arch>
+struct LayoutDetailsB<TypeA, cutlass::float_e2m1_t, Arch, typename platform::enable_if<Arch::kMinComputeCapability >= 75>::type> {
+  static constexpr int ThreadblockK = 128 * 8 / cutlass::sizeof_bits<TypeA>::value;
+
+ private:
+  static constexpr int ElementsPerCacheLine = 128 * 8 / sizeof_bits<cutlass::float_e2m1_t>::value;
+  static constexpr int ColumnsInterleaved = ElementsPerCacheLine / ThreadblockK;
+
+ public:
+  using Layout = layout::ColumnMajorTileInterleave<ThreadblockK, ColumnsInterleaved>;
+  static constexpr int ElementsPerAccess = 128 / cutlass::sizeof_bits<cutlass::float_e2m1_t>::value;
+  using Operator = cutlass::arch::OpMultiplyAddDequantizeInterleavedBToA;
+};
+
 }  // namespace kernel
 }  // namespace gemm
 }  // namespace cutlass

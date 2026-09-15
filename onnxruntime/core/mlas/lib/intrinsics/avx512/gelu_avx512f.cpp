@@ -205,6 +205,34 @@ MlasGeluErfKernelAvx512FExactImpl(
     }
 }
 
+void
+MlasErfKernelAvx512FImpl(
+    const float* Input,
+    float* Output,
+    size_t N
+    )
+{
+    const GeluAvx512BroadcastConstants Constants;
+    while (N >= 16) {
+        const __m512 X = _mm512_loadu_ps(Input);
+        const __m512 Result = MlasGeluErfAvx512(X, Constants);
+
+        _mm512_storeu_ps(Output, Result);
+
+        Input += 16;
+        Output += 16;
+        N -= 16;
+    }
+
+    if (N > 0) {
+        const __mmask16 TailMask = __mmask16((1u << static_cast<unsigned>(N)) - 1u);
+        const __m512 X = _mm512_maskz_loadu_ps(TailMask, Input);
+        const __m512 Result = MlasGeluErfAvx512(X, Constants);
+
+        _mm512_mask_storeu_ps(Output, TailMask, Result);
+    }
+}
+
 }  // namespace
 
 void
@@ -216,4 +244,15 @@ MlasGeluErfKernelAvx512F(
     )
 {
     MlasGeluErfKernelAvx512FExactImpl(Input, Output, N);
+}
+
+void
+MLASCALL
+MlasErfKernelAvx512F(
+    const float* Input,
+    float* Output,
+    size_t N
+    )
+{
+    MlasErfKernelAvx512FImpl(Input, Output, N);
 }

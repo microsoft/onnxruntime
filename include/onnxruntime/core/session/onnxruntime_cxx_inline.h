@@ -1360,6 +1360,11 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const Ort
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetWeightlessEnabled(bool use_weightless) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetWeightlessEnabled(this->p_, use_weightless));
+  return *this;
+}
+
 namespace detail {
 
 template <typename T>
@@ -1873,6 +1878,7 @@ inline std::vector<std::string> ConstSessionImpl<T>::GetOverridableInitializerNa
     char* name;
     ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, i, allocator, &name));
     initializer_names.emplace_back(name);
+    allocator.Free(name);
   }
 
   return initializer_names;
@@ -2867,6 +2873,12 @@ inline UnownedValue KernelContext::GetOutput(size_t index, const int64_t* dim_va
 inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int64_t>& dims) const {
   OrtValue* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetOutput(ctx_, index, dims.data(), dims.size(), &out));
+  return UnownedValue(out);
+}
+
+inline UnownedValue KernelContext::GetPreallocatedOutput(size_t index) const {
+  OrtValue* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelContext_GetPreallocatedOutput(ctx_, index, &out));
   return UnownedValue(out);
 }
 

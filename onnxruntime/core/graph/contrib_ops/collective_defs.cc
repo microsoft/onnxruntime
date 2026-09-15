@@ -21,8 +21,8 @@ void RegisterCollectiveOps() {
       .Output(0, "output", "reduced tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)"},
-          "Constrain to float, float16 and double tensors.")
+          {"tensor(float16)", "tensor(bfloat16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16, bfloat16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });
@@ -42,8 +42,9 @@ void RegisterCollectiveOps() {
       .Output(0, "output", "gathered tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(int64)", "tensor(bool)"},
-          "Constrain to bool, float, float16 and double tensors.")
+          {"tensor(float16)", "tensor(bfloat16)", "tensor(float)", "tensor(double)", "tensor(int64)",
+           "tensor(bool)"},
+          "Constrain to bool, float, float16, bfloat16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         auto group_size = getAttribute(ctx, "group_size", 1);
         auto axis = getAttribute(ctx, "axis", 0);
@@ -74,8 +75,9 @@ void RegisterCollectiveOps() {
       .Output(0, "output", "collected tensors", "T", OpSchema::Variadic)
       .TypeConstraint(
           "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(int64)", "tensor(bool)"},
-          "Constrain to bool, float, float16 and double tensors.")
+          {"tensor(float16)", "tensor(bfloat16)", "tensor(float)", "tensor(double)", "tensor(int64)",
+           "tensor(bool)"},
+          "Constrain to bool, float, float16, bfloat16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
       });

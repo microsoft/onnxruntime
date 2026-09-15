@@ -47,6 +47,18 @@ SplitKConfig::SplitKConfig(const wgpu::AdapterInfo& adapter_info) {
       configs_per_dim_inner_range_.emplace_back(2304, 35.0);
       configs_per_dim_inner_range_.emplace_back(3072, 21.5);
       configs_per_dim_inner_range_.emplace_back(4096, 16.0);
+    } else if (adapter_info.architecture == std::string_view{"xe-3lpg"}) {
+      // Below thresholds are only verified on Intel Panther Lake iGPUs (12Xe).
+      enable_split_k_ = true;
+
+      max_batch_size_ = 8;
+      split_dim_inner_ = 256;
+      min_dim_inner_with_split_k_ = split_dim_inner_ * 2;
+
+      configs_per_dim_inner_range_.emplace_back(768, 40.0);
+      configs_per_dim_inner_range_.emplace_back(1792, 22.0);
+      configs_per_dim_inner_range_.emplace_back(3072, 18.0);
+      configs_per_dim_inner_range_.emplace_back(4096, 10.0);
     } else {
       // Below are the default thresholds on newer Intel GPUs. These values are chosen on
       // Intel "gen-12lp" GPU with 32EUs.

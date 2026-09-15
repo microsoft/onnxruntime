@@ -10,8 +10,8 @@ jobs:
   workspace:
     clean: all
   steps:
-  - checkout: self
-    submodules: false
+  - template: jobs/checkout-and-git-redirect.yml
+
   - task: DownloadPipelineArtifact@2
     inputs:
       artifact: '__commit'

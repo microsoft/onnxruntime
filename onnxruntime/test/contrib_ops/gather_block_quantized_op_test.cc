@@ -473,7 +473,7 @@ TEST(GatherBlockQuantizedOpTest, ShapeMismatch) {
 #endif
 
 template <typename T1, typename T2, typename Tind>
-void Test_InvalidIndices_WithZeroPoints() {
+void Test_InvalidIndices_WithZeroPoints(bool expect_safe_cuda_output = false) {
   std::vector<int> data = {-8, -7, -6, -5,
                            -4, -3, -2, -1,
                            0, 1, 2, 3,
@@ -495,8 +495,43 @@ void Test_InvalidIndices_WithZeroPoints() {
   constexpr int64_t quantize_axis = 2;
   constexpr int64_t block_size = 16;
   constexpr int64_t bits = 4;
+  if (expect_safe_cuda_output) {
+    output.assign(output.size(), 0.0f);
+  }
   RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
-                                gather_axis, quantize_axis, block_size, bits, output, output_shape, false, true);
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape,
+                                expect_safe_cuda_output, true);
+}
+
+template <typename T1, typename T2, typename Tind>
+void Test_NegativeInvalidIndices_WithZeroPoints(bool expect_safe_cuda_output = false) {
+  std::vector<int> data = {-8, -7, -6, -5,
+                           -4, -3, -2, -1,
+                           0, 1, 2, 3,
+                           4, 5, 6, 7,
+                           4, 5, 6, 7,
+                           -4, -3, -2, -1};
+  std::vector<int64_t> data_shape = {2, 3, 4};
+  std::vector<int> indices = {-3};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<int> zero_points = {-1, 1, 0, 0, 1, -1};
+  std::vector<float> output = {8.f, 10.f, 12.f, 14.f,
+                               3.f, 4.f, 5.f, 6.f,
+                               -6.f, -4.f, -2.f, 0.f};
+  std::vector<int64_t> output_shape = {1, 3, 4};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+  if (expect_safe_cuda_output) {
+    output.assign(output.size(), 0.0f);
+  }
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape,
+                                expect_safe_cuda_output, true);
 }
 
 #ifndef USE_CUDA
@@ -504,6 +539,28 @@ TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
   Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<Int4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
+}
+#endif
+
+#ifdef USE_CUDA
+TEST(GatherBlockQuantizedOpTest, InvalidIndicesSafelyHandled_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>(true);
+  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int64_t>(true);
+  Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>(true);
+}
+
+TEST(GatherBlockQuantizedOpTest, NegativeInvalidIndicesSafelyHandled_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  Test_NegativeInvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>(true);
+  Test_NegativeInvalidIndices_WithZeroPoints<UInt4x2, float, int64_t>(true);
+  Test_NegativeInvalidIndices_WithZeroPoints<uint8_t, float, int32_t>(true);
 }
 #endif
 
@@ -647,7 +704,22 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_8Bits) {
   Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>(8);
   Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>(8);
 }
+#endif
 
+#ifdef USE_CUDA
+TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_4Bits_Cuda) {
+  const std::vector<uint8_t> data(32, 0xAA);
+  const std::vector<float> scales = {0.5f, 0.25f};
+  std::vector<float> output(32, 1.0f);
+  output.insert(output.end(), 32, 0.5f);
+
+  RunGatherBlockQuantized<uint8_t, float, int64_t>(
+      data, {2, 16}, {0, 1}, {2}, scales, {2, 1}, {}, {},
+      0, 1, 32, 4, output, {2, 32});
+}
+#endif
+
+#ifndef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_2Bits_Uint8) {
   // 2-bit signed values in {-2, -1, 0, 1}. The test infra adds an offset of 2 when packing
   // and the kernel uses default zero_point = 2^(bits-1) = 2, so the dequantized value matches.
@@ -1092,9 +1164,9 @@ void Test_GatherAxis_NoPading_4bit() {
   std::vector<int64_t> scales_shape = {2, 3, 1};
   std::vector<int> zero_points = {};
   std::vector<float> output = {
-      0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3,
-      0, 2, 4, 6, 0, 2, 4, 6, 0, 2, 4, 6, 0, 2, 4, 6,
-      8, 9, 10, 11, 8, 9, 10, 11, 8, 9, 10, 11, 8, 9, 10, 11};
+      -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5,
+      -16, -14, -12, -10, -16, -14, -12, -10, -16, -14, -12, -10, -16, -14, -12, -10,
+      0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
   std::vector<int64_t> output_shape = {1, 3, 16};
 
   constexpr int64_t gather_axis = 0;
@@ -1132,9 +1204,9 @@ void Test_GatherAxis_NoPading_8bit() {
   std::vector<int64_t> scales_shape = {2, 3, 1};
   std::vector<int> zero_points = {};
   std::vector<float> output = {
-      255, 254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243, 242, 241, 240,
-      510, 508, 506, 504, 502, 500, 498, 496, 494, 492, 490, 488, 486, 484, 482, 480,
-      128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143};
+      127, 126, 125, 124, 123, 122, 121, 120, 119, 118, 117, 116, 115, 114, 113, 112,
+      254, 252, 250, 248, 246, 244, 242, 240, 238, 236, 234, 232, 230, 228, 226, 224,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   std::vector<int64_t> output_shape = {1, 3, 16};
 
   constexpr int64_t gather_axis = 0;

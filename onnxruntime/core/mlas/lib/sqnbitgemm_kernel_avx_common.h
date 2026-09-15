@@ -6,6 +6,60 @@
 // Quantized B data packing function implementation.
 //
 
+// Chunk size for coarser-grained parallelization in packing functions
+// Reduces scheduling overhead from millions of tiny iterations
+constexpr size_t MLAS_PACK_BLKS_PER_CHUNK = 64;
+
+// Minimum chunk size (in blocks/subblocks) below which we won't further split
+// work, so we don't reintroduce the "millions of tiny iterations" scheduling
+// overhead that MLAS_PACK_BLKS_PER_CHUNK was introduced to avoid.
+constexpr size_t MLAS_PACK_MIN_BLKS_PER_CHUNK = 32;
+
+// Below this N, rebalancing was measured to backfire: with so few independent
+// "n" columns, forcing ChunkCount up to approach MaxThreads creates many tiny
+// tasks whose thread-pool dispatch overhead dominates the (small) amount of
+// real work, making packing *slower* than the fixed MLAS_PACK_BLKS_PER_CHUNK
+// chunking. Benchmarks with 96 threads measured an approximately 9x slowdown
+// for N=1. We therefore only rebalance for N at or above this threshold,
+// preserving parallelism for narrow projection matrices while leaving smaller
+// N and the already-tuned large-N path untouched.
+constexpr size_t MLAS_PACK_REBALANCE_MIN_N = 32;
+
+// Picks a chunk size (in units of blocks or subblocks, depending on caller) for
+// the packing/scale-reorder parallelization in this file.
+//
+// MLAS_PACK_BLKS_PER_CHUNK works well when N is large enough to saturate the
+// thread pool on its own (Iterations = N * ChunkCount), which is the case this
+// chunking was tuned for. But for narrow N, a fixed 64-wide chunk can leave
+// Iterations well below the number of available threads, idling most cores
+// regardless of how large TotalUnits is.
+//
+// To avoid touching the (already tuned/benchmarked) large-N behavior, we only
+// rebalance the chunk size when the fixed-size chunking would clearly
+// underutilize the thread pool, i.e. when N * ChunkCount < MaxThreads, and
+// only for N >= MLAS_PACK_REBALANCE_MIN_N (see comment above). In that case we
+// shrink the chunk so that N * ChunkCount approaches MaxThreads, down to a
+// floor of MLAS_PACK_MIN_BLKS_PER_CHUNK units per chunk.
+inline size_t
+MlasQNBitPackChunkSize(size_t TotalUnits, size_t N, MLAS_THREADPOOL* ThreadPool)
+{
+    size_t ChunkUnits = std::min(MLAS_PACK_BLKS_PER_CHUNK, TotalUnits);
+    if (ChunkUnits == 0) {
+        return ChunkUnits;
+    }
+
+    const size_t ChunkCount = MlasDivRoundup(TotalUnits, ChunkUnits);
+    const ptrdiff_t MaxThreads = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (MaxThreads > 1 && N >= MLAS_PACK_REBALANCE_MIN_N &&
+        N * ChunkCount < static_cast<size_t>(MaxThreads)) {
+        const size_t DesiredChunks = std::max<size_t>(1, MlasDivRoundup(static_cast<size_t>(MaxThreads), N));
+        ChunkUnits = std::max(MLAS_PACK_MIN_BLKS_PER_CHUNK, MlasDivRoundup(TotalUnits, DesiredChunks));
+    }
+
+    return ChunkUnits;
+}
+
 template <int BlkBitWidth>
 static size_t
 QNBitGemmPackQuantBDataSize(
@@ -164,7 +218,14 @@ PackQuantB(
     const size_t SubBlkDataSize = SubBlkLen / 2;
     const size_t SubBlkBytePairCount = SubBlkLen / 4;
     const size_t SubBlkCountK = MlasDivRoundup(BlockCountK * BlkLen, SubBlkLen);
-    const size_t Iterations = N * SubBlkCountK;  // one iteration per sub block
+    if (N == 0 || SubBlkCountK == 0) {
+        return;
+    }
+    
+    // OPTIMIZATION: Coarser-grained parallelization for PackQuantB too
+    const size_t ChunkSubBlks = MlasQNBitPackChunkSize(SubBlkCountK, N, ThreadPool);
+    const size_t ChunkCount = MlasDivRoundup(SubBlkCountK, ChunkSubBlks);
+    const size_t Iterations = N * ChunkCount;  // Reduced from N * SubBlkCountK
 
     // for avx2
     // dst: | v0 v32 | v1 v33 | ... | v30 v62 | v31 v63 |
@@ -181,68 +242,73 @@ PackQuantB(
     MlasTrySimpleParallel(
         ThreadPool, Iterations,
         [&](ptrdiff_t tid) {
-            const size_t n = tid / SubBlkCountK;
-            const size_t k_subblk = tid % SubBlkCountK;
+            const size_t n = tid / ChunkCount;
+            const size_t chunk_idx = tid % ChunkCount;
+            const size_t k_subblk_start = chunk_idx * ChunkSubBlks;
+            const size_t k_subblk_end = std::min(k_subblk_start + ChunkSubBlks, SubBlkCountK);
+            
+            // Process multiple subblocks in this chunk
+            for (size_t k_subblk = k_subblk_start; k_subblk < k_subblk_end; ++k_subblk) {
+                const size_t src_data_offset = n * BlockCountK * BlkDataSize + k_subblk * SubBlkDataSize;
+                const std::byte* QuantBData = QuantBDataBegin + src_data_offset;
 
-            const size_t src_data_offset = n * BlockCountK * BlkDataSize + k_subblk * SubBlkDataSize;
-            const std::byte* QuantBData = QuantBDataBegin + src_data_offset;
+                size_t PackBytePairCount = SubBlkBytePairCount;
+                size_t PackDataSize = SubBlkDataSize;
 
-            size_t PackBytePairCount = SubBlkBytePairCount;
-            size_t PackDataSize = SubBlkDataSize;
+                auto pack_subblk = [](
+                  const std::byte* QuantBData, std::byte* PackedQuantBData,
+                  size_t pack_byte_pair_count, size_t pack_data_size) {
+                for (size_t byte_pair_idx = 0; byte_pair_idx < pack_byte_pair_count; ++byte_pair_idx) {
+                    const std::byte src0 = QuantBData[byte_pair_idx];
+                    const std::byte src1 = QuantBData[byte_pair_idx + pack_data_size / 2];
 
-            auto pack_subblk = [](
-              const std::byte* QuantBData, std::byte* PackedQuantBData,
-              size_t pack_byte_pair_count, size_t pack_data_size) {
-            for (size_t byte_pair_idx = 0; byte_pair_idx < pack_byte_pair_count; ++byte_pair_idx) {
-                const std::byte src0 = QuantBData[byte_pair_idx];
-                const std::byte src1 = QuantBData[byte_pair_idx + pack_data_size / 2];
+                    std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
+                    std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
 
-                std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
-                std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
+                    dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
+                    dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
+                } };
 
-                dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
-                dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
-            } };
-
-            if (SubBlkLen > BlkLen && k_subblk == SubBlkCountK - 1 &&
-                SubBlkLen * SubBlkCountK > BlkLen * BlockCountK) {
-                // this is the last subblk of the column. check if it extends out of the
-                // BlockCountK. If it does, we shall pack per blocks so that can compute
-                // on each block instead of each subblk.
-                PackBytePairCount = BlkBytePairCount;
-                PackDataSize = BlkDataSize;
-                const size_t k_blks_remaining = BlockCountK - (SubBlkCountK - 1) * SubBlkLen / BlkLen;
-                for (size_t k = 0; k < k_blks_remaining; k++) {
-                    const size_t k_blk = k_subblk * SubBlkLen / BlkLen + k;
+                if (SubBlkLen > BlkLen && k_subblk == SubBlkCountK - 1 &&
+                    SubBlkLen * SubBlkCountK > BlkLen * BlockCountK) {
+                    // this is the last subblk of the column. check if it extends out of the
+                    // BlockCountK. If it does, we shall pack per blocks so that can compute
+                    // on each block instead of each subblk.
+                    PackBytePairCount = BlkBytePairCount;
+                    PackDataSize = BlkDataSize;
+                    const size_t k_blks_remaining = BlockCountK - (SubBlkCountK - 1) * SubBlkLen / BlkLen;
+                    for (size_t k = 0; k < k_blks_remaining; k++) {
+                        const size_t k_blk = k_subblk * SubBlkLen / BlkLen + k;
+                        if (BlkLen == 16) {
+                          // not to do the compute order layout yet
+                            std::byte* PackedQuantBData = PackedQuantBDataBegin + src_data_offset;
+                            pack_subblk(QuantBData + k * BlkLen / 2, PackedQuantBData + k * BlkLen / 2, PackBytePairCount, PackDataSize);
+                        } else if (BlkLen >= SubBlkLen) {
+                            // shall not reach here with avx2
+                            assert(SubBlkLen == 128);
+                        } else {
+                            int blks_per_sub = (int)(SubBlkLen / BlkLen);
+                            const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
+                            std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
+                            pack_subblk(QuantBData + k * BlkLen / 2, PackedQuantBData, PackBytePairCount, PackDataSize);
+                        }
+                    }
+                } else {
                     if (BlkLen == 16) {
-                      // not to do the compute order layout yet
+                        // not to do the compute order layout yet
                         std::byte* PackedQuantBData = PackedQuantBDataBegin + src_data_offset;
-                        pack_subblk(QuantBData + k * BlkLen / 2, PackedQuantBData + k * BlkLen / 2, PackBytePairCount, PackDataSize);
+                        pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
                     } else if (BlkLen >= SubBlkLen) {
-                        // shall not reach here with avx2
-                        assert(SubBlkLen == 128);
+                        const size_t dst_data_offset = GetContinueLayoutOffsetSubBlk(N, n, SubBlkCountK, k_subblk);
+                        std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * SubBlkDataSize;
+                        pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
                     } else {
                         int blks_per_sub = (int)(SubBlkLen / BlkLen);
+                        const size_t k_blk = k_subblk * blks_per_sub;
                         const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
                         std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
-                        pack_subblk(QuantBData + k * BlkLen / 2, PackedQuantBData, PackBytePairCount, PackDataSize);
+                        pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
                     }
-                }
-            } else {
-                if (BlkLen == 16) {
-                    // not to do the compute order layout yet
-                    std::byte* PackedQuantBData = PackedQuantBDataBegin + src_data_offset;
-                    pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
-                } else if (BlkLen >= SubBlkLen) {
-                    const size_t dst_data_offset = GetContinueLayoutOffsetSubBlk(N, n, SubBlkCountK, k_subblk);
-                    std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * SubBlkDataSize;
-                    pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
-                } else {
-                    int blks_per_sub = (int)(SubBlkLen / BlkLen);
-                    const size_t k_blk = k_subblk * blks_per_sub;
-                    const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
-                    std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
-                    pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
                 }
             }
         }
@@ -265,7 +331,14 @@ Q8PackQuantB(
     const size_t SubBlkSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, SubBlkLen);
     const size_t SubBlkCountK = MlasDivRoundup(StrideN, SubBlkLen);
     const size_t RemainderBlockCountK = BlockCountK % (SubBlkLen > BlkLen ? SubBlkLen / BlkLen : 1);
-    const size_t Iterations = N * SubBlkCountK;  // one iteration per sub block
+    if (N == 0 || SubBlkCountK == 0) {
+        return;
+    }
+    
+    // OPTIMIZATION: Coarser-grained parallelization for Q8PackQuantB too
+    const size_t ChunkSubBlks = MlasQNBitPackChunkSize(SubBlkCountK, N, ThreadPool);
+    const size_t ChunkCount = MlasDivRoundup(SubBlkCountK, ChunkSubBlks);
+    const size_t Iterations = N * ChunkCount;  // Reduced from N * SubBlkCountK
 
     // SubBlkLen rows x 4 columns pack together, then remainder BlkLen x 4 columns if SubBlkLen > BlkLen.
     // remainder columns keep the original order.
@@ -274,30 +347,35 @@ Q8PackQuantB(
     MlasTrySimpleParallel(
         ThreadPool, Iterations,
         [&](ptrdiff_t tid) {
-            const size_t c = tid / SubBlkCountK;
+            const size_t c = tid / ChunkCount;
+            const size_t chunk_idx = tid % ChunkCount;
             const size_t c_4 = c & (~3), c_res = c & 3;
-            const size_t r_subblk = tid % SubBlkCountK;
+            const size_t r_subblk_start = chunk_idx * ChunkSubBlks;
+            const size_t r_subblk_end = std::min(r_subblk_start + ChunkSubBlks, SubBlkCountK);
+            
+            // Process multiple subblocks in this chunk
+            for (size_t r_subblk = r_subblk_start; r_subblk < r_subblk_end; ++r_subblk) {
+                const std::byte* src = QuantBDataBegin + c * StrideN + r_subblk * SubBlkLen;
 
-            const std::byte* src = QuantBDataBegin + c * StrideN + r_subblk * SubBlkLen;
-
-            if (c_4 + 4 <= N) { // full 4 cols
-                if (RemainderBlockCountK && r_subblk == SubBlkCountK - 1) { // remainder blocks
-                    std::byte* dest =
-                        PackedQuantBDataBegin + c_4 * StrideN + r_subblk * SubBlkSize * 4 + c_res * BlkSize;
-                    for (size_t i = 0; i < RemainderBlockCountK; i++) {
-                        std::copy(src, src + BlkSize, dest);
-                        src += BlkSize;
-                        dest += BlkSize * 4;
+                if (c_4 + 4 <= N) { // full 4 cols
+                    if (RemainderBlockCountK && r_subblk == SubBlkCountK - 1) { // remainder blocks
+                        std::byte* dest =
+                            PackedQuantBDataBegin + c_4 * StrideN + r_subblk * SubBlkSize * 4 + c_res * BlkSize;
+                        for (size_t i = 0; i < RemainderBlockCountK; i++) {
+                            std::copy(src, src + BlkSize, dest);
+                            src += BlkSize;
+                            dest += BlkSize * 4;
+                        }
+                    } else { // full subblock
+                        std::byte* dest =
+                            PackedQuantBDataBegin + c_4 * StrideN + r_subblk * SubBlkSize * 4 + c_res * SubBlkSize;
+                        std::copy(src, src + SubBlkSize, dest);
                     }
-                } else { // full subblock
+                } else { // remainder cols
                     std::byte* dest =
-                        PackedQuantBDataBegin + c_4 * StrideN + r_subblk * SubBlkSize * 4 + c_res * SubBlkSize;
-                    std::copy(src, src + SubBlkSize, dest);
+                        PackedQuantBDataBegin + c * StrideN + r_subblk * SubBlkSize;
+                    std::copy(src, src + std::min(SubBlkSize, StrideN - r_subblk * SubBlkSize), dest);
                 }
-            } else { // remainder cols
-                std::byte* dest =
-                    PackedQuantBDataBegin + c * StrideN + r_subblk * SubBlkSize;
-                std::copy(src, src + std::min(SubBlkSize, StrideN - r_subblk * SubBlkSize), dest);
             }
         }
     );
@@ -316,36 +394,57 @@ ComputePackBlkSum(
   MLAS_THREADPOOL* ThreadPool,
   const size_t BlockCountK)
 {
+    if (N == 0 || BlockCountK == 0) {
+        return;
+    }
+
     std::vector<float> QuantBScaleBeginCopy(N * BlockCountK);
     std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, QuantBScaleBeginCopy.begin());
-    MlasTrySimpleParallel(ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
-        const size_t n = tid / BlockCountK;
-        const size_t k_blk = tid % BlockCountK;
 
-        const size_t src_blk_offset = n * BlockCountK + k_blk;
-        const float& QuantBScale = QuantBScaleBeginCopy[src_blk_offset];
-        uint8_t zp = 8;
-        if (QuantBZPBegin) {
-            size_t ZPCountK = MlasDivRoundup(BlockCountK, 2);
-            size_t src_zp_offset = ZPCountK * n + k_blk / 2;
-            bool low_zp = k_blk % 2 == 0;
-            const std::byte* QuantBZP = QuantBZPBegin + src_zp_offset;
-            const std::byte low_mask{0X0F};
-            zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
-        }
+    const size_t ZPCountK = QuantBZPBegin ? MlasDivRoundup(BlockCountK, 2) : 0;
+    const int blks_per_sub = (BlkLen < SubBlkLen) ? (int)(SubBlkLen / BlkLen) : 0;
+    
+    // Coarser-grained parallelization: process chunks of K blocks together
+    const size_t ChunkBlks = MlasQNBitPackChunkSize(BlockCountK, N, ThreadPool);
+    const size_t ChunkCount = MlasDivRoundup(BlockCountK, ChunkBlks);
+    const size_t TotalIterations = N * ChunkCount;
+    
+    MlasTrySimpleParallel(ThreadPool, TotalIterations, [&](ptrdiff_t tid) {
+        const size_t n = tid / ChunkCount;
+        const size_t chunk_idx = tid % ChunkCount;
+        const size_t k_blk_start = chunk_idx * ChunkBlks;
+        const size_t k_blk_end = std::min(k_blk_start + ChunkBlks, BlockCountK);
+        
+        // Pre-compute row-major index for BlockSum (width 16 matrix)
+        const size_t blocksum_row_offset = (n / 16) * BlockCountK * 16;
+        const size_t blocksum_col_offset = n % 16;
+        
+        // Process all K blocks in this chunk
+        for (size_t k_blk = k_blk_start; k_blk < k_blk_end; ++k_blk) {
+            const float QuantBScale = QuantBScaleBeginCopy[n * BlockCountK + k_blk];
+            
+            uint8_t zp = 8;
+            if (QuantBZPBegin) {
+                size_t src_zp_offset = ZPCountK * n + k_blk / 2;
+                bool low_zp = k_blk % 2 == 0;
+                const std::byte* QuantBZP = QuantBZPBegin + src_zp_offset;
+                const std::byte low_mask{0X0F};
+                zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
+            }
 
-          // BlockSum is a width 16 row major matrix
-          const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-        *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
-        if (BlkLen == 16) {  // TODO
+            // BlockSum write using pre-computed offsets
+            const size_t dst_offset = blocksum_row_offset + k_blk * 16 + blocksum_col_offset;
+            *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+            
+            if (BlkLen == 16) {  // TODO
 
-        } else if (BlkLen >= SubBlkLen) {
-            const size_t scale_dst_offset = GetContinueLayoutOffsetSubBlk(N, n, BlockCountK, k_blk);
-            *(QuantBScaleBegin + scale_dst_offset) = QuantBScale;
-        } else {
-            int blks_per_sub = (int)(SubBlkLen / BlkLen);
-            size_t scale_dst_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
-            *(QuantBScaleBegin + scale_dst_offset) = QuantBScale;
+            } else if (BlkLen >= SubBlkLen) {
+                const size_t scale_dst_offset = GetContinueLayoutOffsetSubBlk(N, n, BlockCountK, k_blk);
+                *(QuantBScaleBegin + scale_dst_offset) = QuantBScale;
+            } else {
+                size_t scale_dst_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
+                *(QuantBScaleBegin + scale_dst_offset) = QuantBScale;
+            }
         }
     }
     );
@@ -362,51 +461,70 @@ Q8ComputePackBlkSum(
   MLAS_THREADPOOL* ThreadPool,
   const size_t BlockCountK)
 {
+    if (N == 0 || BlockCountK == 0) {
+        return;
+    }
+
     std::vector<float> QuantBScaleBeginCopy(N * BlockCountK);
     std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, QuantBScaleBeginCopy.begin());
 
-    MlasTrySimpleParallel(ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
-        const size_t n = tid / BlockCountK;
-        const size_t n_4 = n & (~3), n_res = n & 3;
-        const size_t k_blk = tid % BlockCountK;
+    const int blks_per_sub = (BlkLen < SubBlkLen) ? (int)(SubBlkLen / BlkLen) : 0;
+    const size_t sub_blk_count_k = (blks_per_sub > 0) ? MlasDivRoundup(BlockCountK, blks_per_sub) : 0;
+    const size_t remainder_blk = (blks_per_sub > 0) ? (BlockCountK % blks_per_sub) : 0;
 
-        const size_t src_blk_offset = n * BlockCountK + k_blk;
-        const float& QuantBScale = QuantBScaleBeginCopy[src_blk_offset];
-        uint8_t zp = 128;
-        if (QuantBZPBegin) {
-            const std::byte* QuantBZP = QuantBZPBegin + src_blk_offset;
-            zp = (uint8_t)(*QuantBZP);
-        }
-
-        // BlockSum is a width 16 row major matrix
-        const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-        *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
-
-        // re-arrange scale to the same order as packed data
-        if (n_4 + 4 > N) {
-            *(QuantBScaleBegin + n * BlockCountK + k_blk) = QuantBScale;
-        } else if (BlkLen >= SubBlkLen) {
-            *(QuantBScaleBegin + n_4 * BlockCountK + k_blk * 4 + n_res) = QuantBScale;
-        } else {
-            size_t blks_per_sub = SubBlkLen / BlkLen;
-            size_t remainder_blk = BlockCountK % blks_per_sub;
-            size_t sub_blk_count_k = MlasDivRoundup(BlockCountK, blks_per_sub);
-            size_t k_subblk = k_blk / blks_per_sub;
-            size_t k_blk_res = k_blk % blks_per_sub;
-            size_t dest_offset;
-
-            if (remainder_blk && k_subblk == sub_blk_count_k - 1) { // remainder blocks
-                dest_offset = n_4 * BlockCountK + k_blk * 4 + n_res;
-            } else { // full subblock
-                dest_offset = n_4 * BlockCountK + k_subblk * blks_per_sub * 4 + n_res * blks_per_sub + k_blk_res;
+    // Coarser-grained parallelization: process chunks of K blocks together
+    const size_t ChunkBlks = MlasQNBitPackChunkSize(BlockCountK, N, ThreadPool);
+    const size_t ChunkCount = MlasDivRoundup(BlockCountK, ChunkBlks);
+    const size_t TotalIterations = N * ChunkCount;
+    
+    MlasTrySimpleParallel(ThreadPool, TotalIterations, [&](ptrdiff_t tid) {
+        const size_t n = tid / ChunkCount;
+        const size_t chunk_idx = tid % ChunkCount;
+        const size_t k_blk_start = chunk_idx * ChunkBlks;
+        const size_t k_blk_end = std::min(k_blk_start + ChunkBlks, BlockCountK);
+        
+        // Pre-compute n-dependent values
+        const size_t n_4 = n & (~3);
+        const size_t n_res = n & 3;
+        const size_t blocksum_row_offset = (n / 16) * BlockCountK * 16;
+        const size_t blocksum_col_offset = n % 16;
+        
+        // Process all K blocks in this chunk
+        for (size_t k_blk = k_blk_start; k_blk < k_blk_end; ++k_blk) {
+            const float QuantBScale = QuantBScaleBeginCopy[n * BlockCountK + k_blk];
+            uint8_t zp = 128;
+            if (QuantBZPBegin) {
+                const std::byte* QuantBZP = QuantBZPBegin + n * BlockCountK + k_blk;
+                zp = (uint8_t)(*QuantBZP);
             }
 
-            *(QuantBScaleBegin + dest_offset) = QuantBScale;
+            // BlockSum write using pre-computed offsets
+            const size_t dst_offset = blocksum_row_offset + k_blk * 16 + blocksum_col_offset;
+            *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+
+            // re-arrange scale to the same order as packed data
+            if (n_4 + 4 > N) {
+                *(QuantBScaleBegin + n * BlockCountK + k_blk) = QuantBScale;
+            } else if (BlkLen >= SubBlkLen) {
+                *(QuantBScaleBegin + n_4 * BlockCountK + k_blk * 4 + n_res) = QuantBScale;
+            } else {
+                size_t k_subblk = k_blk / blks_per_sub;
+                size_t k_blk_res = k_blk % blks_per_sub;
+                size_t dest_offset;
+
+                if (remainder_blk && k_subblk == sub_blk_count_k - 1) { // remainder blocks
+                    dest_offset = n_4 * BlockCountK + k_blk * 4 + n_res;
+                } else { // full subblock
+                    dest_offset = n_4 * BlockCountK + k_subblk * blks_per_sub * 4 + n_res * blks_per_sub + k_blk_res;
+                }
+
+                *(QuantBScaleBegin + dest_offset) = QuantBScale;
+            }
         }
     });
 }
 
-static void
+inline void
 PackQuantBDataAndBlkSum(
     size_t N,
     size_t BlockCountK,
@@ -433,7 +551,7 @@ PackQuantBDataAndBlkSum(
     }
 }
 
-static void
+inline void
 Q8PackQuantBDataAndBlkSum(
     size_t N,
     size_t BlockCountK,

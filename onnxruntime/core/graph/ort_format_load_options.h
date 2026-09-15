@@ -11,8 +11,8 @@ struct OrtFormatLoadOptions {
   /// This requires the flatbuffer to remain valid for the entire duration of the InferenceSession.
   bool can_use_flatbuffer_for_initializers{true};
 
-  /// If true, do not load any saved runtime optimizations.
-  bool ignore_saved_runtime_optimizations{false};
+  /// Saved runtime optimizations contain graph rewrite instructions and are ignored unless explicitly trusted.
+  bool ignore_saved_runtime_optimizations{true};
 };
 
 }  // namespace onnxruntime

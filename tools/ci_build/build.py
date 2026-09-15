@@ -43,6 +43,7 @@ from util import (  # noqa: E402
     parse_qnn_version_from_sdk_yaml,
     run,
 )
+from vcpkg_tool_info import get_vcpkg_release_tag  # noqa: E402
 
 log = get_logger("build")
 
@@ -267,7 +268,8 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
-
+    if args.use_telemetry and not is_windows() and not args.android and not args.build_wasm:
+        vcpkg_install_options.append("--x-feature=telemetry")
     overlay_triplets_dir = None
 
     folder_name_parts = []
@@ -301,15 +303,23 @@ def generate_vcpkg_install_options(build_dir, args):
 
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
-        terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
-        if terrapin_cmd_path is None:
-            terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
-            if not os.path.exists(terrapin_cmd_path):
-                terrapin_cmd_path = None
+        terrapin_path_candidates = [
+            args.terrapin_retrieval_tool_path,
+            shutil.which("TerrapinRetrievalTool"),
+        ]
+        if is_windows():
+            terrapin_path_candidates.append("C:\\local\\Terrapin\\TerrapinRetrievalTool.exe")
+
+        terrapin_cmd_path = next(
+            (path for path in terrapin_path_candidates if path is not None and os.path.exists(path)),
+            None,
+        )
+
         if terrapin_cmd_path is not None:
+            quoted_terrapin_cmd_path = f'"{terrapin_cmd_path}"' if is_windows() else shlex.quote(terrapin_cmd_path)
             vcpkg_install_options.append(
                 "--x-asset-sources=x-script,"
-                + terrapin_cmd_path
+                + quoted_terrapin_cmd_path
                 + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
             )
         else:
@@ -318,6 +328,103 @@ def generate_vcpkg_install_options(build_dir, args):
             )
 
     return vcpkg_install_options
+
+
+def _get_vctools_install_dir(args):
+    vctools_dir = os.environ.get("VCToolsInstallDir")  # noqa: SIM112
+    if vctools_dir:
+        return Path(vctools_dir)
+
+    vswhere_candidates = []
+    program_files_x86 = os.environ.get("ProgramFiles(x86)")  # noqa: SIM112
+    if program_files_x86:
+        vswhere_candidates.append(Path(program_files_x86) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe")
+    if vswhere_path := shutil.which("vswhere.exe"):
+        vswhere_candidates.append(Path(vswhere_path))
+
+    installation_paths = []
+    for vswhere_path in vswhere_candidates:
+        if not vswhere_path.is_file():
+            continue
+        try:
+            result = subprocess.run(
+                [
+                    str(vswhere_path),
+                    "-products",
+                    "*",
+                    "-property",
+                    "installationPath",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except OSError:
+            continue
+        if result.returncode == 0 and result.stdout.strip():
+            installation_paths = [Path(path) for path in result.stdout.splitlines() if path.strip()]
+            break
+
+    for installation_path in installation_paths:
+        msvc_root = installation_path / "VC" / "Tools" / "MSVC"
+        if args.msvc_toolset:
+            matching_toolsets = sorted(
+                (path for path in msvc_root.glob(f"{args.msvc_toolset}*") if path.is_dir()),
+                key=lambda path: version_to_tuple(path.name),
+                reverse=True,
+            )
+            if matching_toolsets:
+                return matching_toolsets[0]
+            continue
+
+        default_version_file = installation_path / "VC" / "Auxiliary" / "Build" / "Microsoft.VCToolsVersion.default.txt"
+        try:
+            default_version = default_version_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if default_version:
+            vctools_dir = msvc_root / default_version
+            if vctools_dir.is_dir():
+                return vctools_dir
+
+    return None
+
+
+def get_msvc_spectre_lib_dir(args):
+    """Return the directory that holds the MSVC Spectre-mitigated CRT/STL static libraries for the
+    target architecture, or None if it cannot be located.
+
+    The /Qspectre compile flag only mitigates ONNX Runtime's own object files. The prebuilt MSVC
+    CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that get linked into the
+    binaries also need to be the Spectre-mitigated variants, otherwise BinSkim BA2024
+    (EnableSpectreMitigations) still fails. Those variants ship in the "C++ Spectre-mitigated libs"
+    Visual Studio component under %VCToolsInstallDir%\\lib\\spectre\\<arch>. When the build is not
+    running in a Visual Studio Developer Command Prompt, locate the selected toolset with vswhere.
+    """
+    vctools_dir = _get_vctools_install_dir(args)
+    if vctools_dir is None:
+        return None
+    if args.arm:
+        arch = "arm"
+    elif args.arm64:
+        arch = "arm64"
+    elif args.arm64ec:
+        arch = "arm64ec"
+    elif args.x86:
+        arch = "x86"
+    else:
+        # Default to the target architecture selected by vcvarsall.bat (x86, x64, arm, arm64),
+        # falling back to x64 which is what the official Windows release packages use.
+        arch = os.environ.get("VSCMD_ARG_TGT_ARCH", "x64")
+    spectre_dir = vctools_dir / "lib" / "spectre" / arch
+    if spectre_dir.is_dir():
+        return str(spectre_dir)
+    # Some toolsets do not ship a dedicated arm64ec folder; those reuse the arm64 Spectre libraries.
+    if args.arm64ec:
+        fallback = vctools_dir / "lib" / "spectre" / "arm64"
+        if fallback.is_dir():
+            return str(fallback)
+    return None
 
 
 def generate_build_tree(
@@ -355,11 +462,13 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
     disable_string_type = "string" in types_to_disable
+
+    # Telemetry uses ETW on Windows and 1DS on other supported native platforms.
+    cmake_args.append("-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"))
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
             "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
-            "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
             "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
         ]
 
@@ -460,6 +569,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
+        "-DDAWN_USE_AGILITY_SDK=" + ("ON" if args.use_dawn_agility_sdk else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -541,7 +651,14 @@ def generate_build_tree(
             vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(
-                    ["git", "clone", "-b", "2025.08.27", "https://github.com/microsoft/vcpkg.git", "--recursive"],
+                    [
+                        "git",
+                        "clone",
+                        "-b",
+                        get_vcpkg_release_tag(),
+                        "https://github.com/microsoft/vcpkg.git",
+                        "--recursive",
+                    ],
                     cwd=build_dir,
                 )
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
@@ -608,7 +725,11 @@ def generate_build_tree(
             )
         elif args.android:
             generate_android_triplets(
-                build_dir, configs, args.android_cpp_shared, args.android_api, args.use_full_protobuf
+                build_dir,
+                configs,
+                args.android_cpp_shared,
+                args.android_api,
+                args.use_full_protobuf,
             )
         elif is_windows():
             generate_windows_triplets(build_dir, configs, args.msvc_toolset, args.use_full_protobuf)
@@ -618,10 +739,10 @@ def generate_build_tree(
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf)
+            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf, args.use_telemetry)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir, configs, args.use_full_protobuf)
+            generate_linux_triplets(build_dir, configs, args.use_full_protobuf, args.use_telemetry)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         # Choose the cmake triplet
@@ -855,7 +976,8 @@ def generate_build_tree(
     if not args.use_webgpu:
         if args.use_external_dawn:
             raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")
-
+        if args.use_dawn_agility_sdk:
+            raise BuildError("Dawn Agility SDK (--use_dawn_agility_sdk) must be enabled with WebGPU (--use_webgpu).")
         if is_windows():
             if args.enable_pix_capture:
                 raise BuildError(
@@ -866,6 +988,32 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_EP_API_ADAPTERS=ON"]
         if args.build_wasm:
             raise BuildError("Only static library build of WebGPU EP is supported for WebAssembly build.")
+
+    if args.use_dawn_agility_sdk:
+        if not is_windows():
+            raise BuildError("Dawn Agility SDK (--use_dawn_agility_sdk) is only supported on Windows.")
+
+        if args.arm or args.arm64ec:
+            raise BuildError(
+                "Dawn Agility SDK (--use_dawn_agility_sdk) does not support Windows ARM32 or ARM64EC. "
+                "Use an x86, x64, or ARM64 target."
+            )
+
+        # The plugin EP package is built with `--use_webgpu shared_lib` and packaged in a separate step,
+        # so the `--build_*` check below does not cover it.
+        if args.use_webgpu == "shared_lib":
+            raise BuildError(
+                "Dawn Agility SDK (--use_dawn_agility_sdk) is not supported with the WebGPU plugin EP shared "
+                "library build (--use_webgpu shared_lib), which is the configuration used to produce the released "
+                "plugin EP packages. Use the static library build (--use_webgpu) for local development."
+            )
+
+        if args.build_wheel or args.build_csharp or args.build_nuget or args.build_java or args.build_nodejs:
+            raise BuildError(
+                "Dawn Agility SDK (--use_dawn_agility_sdk) is currently supported for local development builds only. "
+                "Python, C#, NuGet, Java, and Node.js packaging is not supported because the required D3D12 runtime "
+                "DLLs are not deployed into those packages."
+            )
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
@@ -1137,6 +1285,22 @@ def generate_build_tree(
                 # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
                 if not args.enable_address_sanitizer:
                     cflags += ["/Qspectre"]
+                    # /Qspectre only mitigates ONNX Runtime's own object files. The prebuilt MSVC
+                    # CRT/STL static libraries (libcmt.lib, libcpmt.lib, libvcruntime.lib) that are
+                    # linked into the binaries also have to be the Spectre-mitigated variants,
+                    # otherwise BinSkim BA2024 (EnableSpectreMitigations) still fails. Prepend the
+                    # Spectre lib directory to the linker search path so those libraries are
+                    # resolved ahead of the default (non-mitigated) CRT libraries.
+                    spectre_lib_dir = get_msvc_spectre_lib_dir(args)
+                    if spectre_lib_dir is not None:
+                        ldflags = [f'/LIBPATH:"{spectre_lib_dir}"', *ldflags]
+                    else:
+                        log.warning(
+                            "Could not locate the MSVC Spectre-mitigated CRT/STL libraries. The "
+                            "resulting binaries may fail BinSkim BA2024 (EnableSpectreMitigations). "
+                            "Install the 'C++ Spectre-mitigated libs' component from the Visual "
+                            "Studio installer and build from a Developer Command Prompt."
+                        )
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":

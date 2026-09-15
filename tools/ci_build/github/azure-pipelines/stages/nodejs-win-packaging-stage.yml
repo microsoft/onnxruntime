@@ -64,9 +64,7 @@ stages:
         build_py_lto_flag: --enable_lto
 
     steps:
-      - checkout: self
-        clean: true
-        submodules: none
+      - template: ../templates/jobs/checkout-and-git-redirect.yml
 
       - template: ../templates/setup-build-tools.yml
         parameters:
@@ -174,6 +172,6 @@ stages:
       - ${{ if and(eq(parameters.PublishWebGpuBuildTools, true), eq(parameters.sln_platform, 'x64')) }}:
         - script: |
             mkdir $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
-            copy $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\dxc\RelWithDebInfo\bin\llvm-tblgen.exe $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
-            copy $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\dxc\RelWithDebInfo\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
+            copy $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\directx-shader-compiler\src\RelWithDebInfo\bin\llvm-tblgen.exe $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
+            copy $(Build.BinariesDirectory)\$(BuildConfig)\_deps\dawn-build\third_party\directx-shader-compiler\src\RelWithDebInfo\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\${{ parameters.WebGpuBuildToolsArtifactName }}
           displayName: 'Copy WebGPU build tools'
