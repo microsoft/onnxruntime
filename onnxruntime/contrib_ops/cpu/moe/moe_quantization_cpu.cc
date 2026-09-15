@@ -130,7 +130,8 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              int64_t rows,
                              int64_t cols,
                              float* dequantized_data,
-                             MLAS_THREADPOOL* thread_pool);
+                             MLAS_THREADPOOL* thread_pool,
+                             const TScale* zero_points_fp = nullptr);
 
 template <typename TScale>
 Status ConvertToMlasQ4Format(const uint8_t* quantized_data,
@@ -308,7 +309,13 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              int64_t rows,
                              int64_t cols,
                              float* dequantized_data,
-                             MLAS_THREADPOOL* thread_pool) {
+                             MLAS_THREADPOOL* thread_pool,
+                             const TScale* zero_points_fp) {
+  // zero_points_fp (optional): float zero-points laid out identically to `scales`
+  // (unpacked, one value per group, same index). When present it takes precedence over the
+  // packed integer `zero_points` and dequant is w = (code - zero_point) * scale. This supports
+  // fractional/asymmetric schemes (e.g. Quark uint2 with a constant zp of 1.5) that cannot be
+  // represented on the integer code grid. Only wired for the 2/4-bit block-wise branch.
   ORT_UNUSED_PARAMETER(thread_pool);
   const float default_zp_8bit = 128.0f;
   const int64_t zp_pack_size = 8 / num_bits;
@@ -449,15 +456,22 @@ void DequantizeBlockWithMlas(const uint8_t* quantized_data,
 
       if (block_size > 0) {
         const uint8_t* row_zp_data = (zero_points == nullptr) ? nullptr : zero_points + r * blocks_per_row_packed;
+        // Float zero-points share the scales layout (one per group, same index).
+        const TScale* row_zp_fp = (zero_points_fp == nullptr) ? nullptr : zero_points_fp + r * blocks_per_row;
         for (int64_t block_start = 0; block_start < cols; block_start += block_size) {
           const int64_t block_end = std::min(block_start + block_size, cols);
           const int64_t block_idx = std::min(block_start / block_size, blocks_per_row - 1);
           const int64_t scale_idx = r * blocks_per_row + block_idx;
           const float scale = static_cast<float>(scales[scale_idx]);
 
-          const uint8_t packed_zp = (row_zp_data == nullptr) ? default_zp_packed : row_zp_data[block_idx / zp_pack_size];
-          const int zp_shift = static_cast<int>((block_idx % zp_pack_size) * num_bits);
-          const float zp = static_cast<float>((packed_zp >> zp_shift) & value_mask);
+          float zp;
+          if (row_zp_fp != nullptr) {
+            zp = static_cast<float>(row_zp_fp[block_idx]);
+          } else {
+            const uint8_t packed_zp = (row_zp_data == nullptr) ? default_zp_packed : row_zp_data[block_idx / zp_pack_size];
+            const int zp_shift = static_cast<int>((block_idx % zp_pack_size) * num_bits);
+            zp = static_cast<float>((packed_zp >> zp_shift) & value_mask);
+          }
 
           for (int64_t c = block_start; c < block_end; ++c) {
             const uint8_t packed_val = row_data[c / pack_size];
@@ -494,8 +508,9 @@ void DequantizeBlock(const uint8_t* quantized_data,
                      int64_t rows,
                      int64_t cols,
                      float* dequantized_data,
-                     MLAS_THREADPOOL* thread_pool = nullptr) {
-  DequantizeBlockWithMlas(quantized_data, scales, zero_points, block_size, num_bits, rows, cols, dequantized_data, thread_pool);
+                     MLAS_THREADPOOL* thread_pool = nullptr,
+                     const TScale* zero_points_fp = nullptr) {
+  DequantizeBlockWithMlas(quantized_data, scales, zero_points, block_size, num_bits, rows, cols, dequantized_data, thread_pool, zero_points_fp);
 }
 
 template <typename TScale>
@@ -656,6 +671,13 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
                                 Info().node().InputDefs()[zp_idx]->Exists();
       const Tensor* zp_tensor = nullptr;
       if (has_zp_input && !Info().TryGetConstantInput(zp_idx, &zp_tensor)) {
+        return Status::OK();
+      }
+
+      // Float zero-points (fractional/asymmetric, e.g. Quark uint2 zp=1.5) cannot be baked into the
+      // integer LUT grid. Skip prepacking so the weights stay unpacked and Compute takes the
+      // traditional dequantize->MlasGemm path that honors the float zero-points.
+      if (zp_tensor != nullptr && zp_tensor->template IsDataType<T>()) {
         return Status::OK();
       }
 
@@ -867,8 +889,8 @@ template <typename T>
 QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
     : OpKernel(op_kernel_info),
       MoEBaseCPU(op_kernel_info) {
-  ORT_ENFORCE(activation_type_ != ActivationType::SwiGLU || swiglu_fusion_ == 1,
-              "CPU QMoE only supports interleaved SwiGLU format. Please set swiglu_fusion=1.");
+  ORT_ENFORCE((activation_type_ != ActivationType::SwiGLU && activation_type_ != ActivationType::GeGLU) || swiglu_fusion_ == 1,
+              "CPU QMoE only supports interleaved SwiGLU/GeGLU format. Please set swiglu_fusion=1.");
   ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("expert_weight_bits", &expert_weight_bits_).IsOK());
   ORT_ENFORCE(expert_weight_bits_ == 2 || expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "Attribute 'expert_weight_bits' must be 2, 4, or 8.");
@@ -925,11 +947,39 @@ Status QMoECPU<T>::Compute(OpKernelContext* context) const {
       fc2_shape_ptr, inputs.fc2_experts_bias, inputs.fc2_scales, inputs.fc2_zero_points,
       fc3_shape_ptr, inputs.fc3_experts_bias, inputs.fc3_scales, inputs.fc3_zero_points,
       8 / expert_weight_bits_,
-      activation_type_ == ActivationType::SwiGLU,
+      (activation_type_ == ActivationType::SwiGLU || activation_type_ == ActivationType::GeGLU),
       block_size_));
 
   if (fc3_shape_ptr || inputs.fc3_experts_bias || inputs.fc3_scales || inputs.fc3_zero_points) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "FC3 gating is not yet implemented on CPU for QMoE");
+  }
+
+  // Float (unpacked, one-per-group) zero-points are only wired through the generic 2-bit
+  // block-wise dequant path (DequantizeBlockWithMlas honors zero_points_fp there). Every other
+  // mode -- 4-bit/8-bit, row-wise, and the integer-only fast paths (LUT GEMM, prepack, direct
+  // Q4) -- ignores the float pointer and would either drop the zero-point entirely or misread
+  // it. Reject those unsupported combinations up front so a float zero-point can never be
+  // silently dropped. Integer (uint8) zero-points are unaffected.
+  auto is_float_zp = [](const Tensor* zp) -> bool {
+    return zp != nullptr && !zp->IsDataType<uint8_t>();
+  };
+  auto is_block_wise = [](const Tensor* scales) -> bool {
+    if (scales == nullptr) {
+      return false;
+    }
+    const auto& dims = scales->Shape().GetDims();
+    return dims.size() == 3 && dims[2] > 1;
+  };
+  const bool has_float_zp = is_float_zp(inputs.fc1_zero_points) || is_float_zp(inputs.fc2_zero_points);
+  if (has_float_zp) {
+    ORT_RETURN_IF_NOT(expert_weight_bits_ == 2,
+                      "Float zero-points are only supported for 2-bit block-wise QMoE on CPU; "
+                      "got expert_weight_bits=",
+                      expert_weight_bits_, ".");
+    ORT_RETURN_IF_NOT((!is_float_zp(inputs.fc1_zero_points) || is_block_wise(inputs.fc1_scales)) &&
+                          (!is_float_zp(inputs.fc2_zero_points) || is_block_wise(inputs.fc2_scales)),
+                      "Float zero-points are only supported for block-wise QMoE on CPU "
+                      "(block_size must be provided).");
   }
 
   return ComputeCommon(context, inputs, moe_params);
@@ -1187,8 +1237,20 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const T* fc2_scales_data = fc2_scales->template Data<T>();
   const T* fc1_bias_data = fc1_experts_bias ? fc1_experts_bias->template Data<T>() : nullptr;
   const T* fc2_bias_data = fc2_experts_bias ? fc2_experts_bias->template Data<T>() : nullptr;
-  const uint8_t* fc1_zp_data = fc1_zero_points ? fc1_zero_points->template Data<uint8_t>() : nullptr;
-  const uint8_t* fc2_zp_data = fc2_zero_points ? fc2_zero_points->template Data<uint8_t>() : nullptr;
+  // Float zero-points (asymmetric/fractional schemes, e.g. Quark uint2 with a constant zp of 1.5)
+  // are unpacked one-per-group in the SAME layout as scales, not packed integers. Detect them by
+  // element type: when the zp tensor's dtype matches the scale dtype T (float/float16) rather than
+  // uint8, read a parallel float pointer and leave the integer zp pointer null so the integer-only
+  // fast paths (LUT GEMM, prepacked, direct Q4) are all bypassed and the traditional
+  // dequantize->MlasGemm path (which honors zero_points_fp) is taken.
+  const bool fc1_zp_is_float = fc1_zero_points != nullptr &&
+                               fc1_zero_points->template IsDataType<T>();
+  const bool fc2_zp_is_float = fc2_zero_points != nullptr &&
+                               fc2_zero_points->template IsDataType<T>();
+  const uint8_t* fc1_zp_data = (fc1_zero_points && !fc1_zp_is_float) ? fc1_zero_points->template Data<uint8_t>() : nullptr;
+  const uint8_t* fc2_zp_data = (fc2_zero_points && !fc2_zp_is_float) ? fc2_zero_points->template Data<uint8_t>() : nullptr;
+  const T* fc1_zp_fp_data = fc1_zp_is_float ? fc1_zero_points->template Data<T>() : nullptr;
+  const T* fc2_zp_fp_data = fc2_zp_is_float ? fc2_zero_points->template Data<T>() : nullptr;
 
   // Known loss-prone case from parity testing: 4-bit symmetric path (row-wise and block-wise).
   const bool known_accuracy_loss_case = (expert_weight_bits_ == 4) &&
@@ -1229,9 +1291,11 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   MLAS_BLK_QUANT_TYPE fc2_direct_qtype = BlkQ4Sym;
   const bool can_use_fc1_lut_gemm = use_mlas_lut_gemm_effective &&
                                     is_fc1_block_wise &&
+                                    !fc1_zp_is_float &&
                                     CanUseMlasLutGemm(expert_weight_bits_, block_size_, fc1_out_features, hidden_size);
   const bool can_use_fc2_lut_gemm = use_mlas_lut_gemm_effective &&
                                     is_fc2_block_wise &&
+                                    !fc2_zp_is_float &&
                                     CanUseMlasLutGemm(expert_weight_bits_, block_size_, hidden_size, inter_size);
 
   if (can_use_fc1_lut_gemm) {
@@ -1387,14 +1451,18 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
 
       const T* fc1_scales_ptr;
       const uint8_t* fc1_zp_ptr;
+      // Float zero-points share the per-expert scales stride (unpacked, one per group).
+      const T* fc1_zp_fp_ptr;
 
       if (is_fc1_block_wise) {
         const int64_t fc1_blocks_per_row = fc1_scales_dims[2];
         fc1_scales_ptr = fc1_scales_data + expert_idx * fc1_out_features * fc1_blocks_per_row;
         fc1_zp_ptr = (fc1_zp_data == nullptr) ? nullptr : fc1_zp_data + expert_idx * fc1_zp_expert_stride;
+        fc1_zp_fp_ptr = (fc1_zp_fp_data == nullptr) ? nullptr : fc1_zp_fp_data + expert_idx * fc1_out_features * fc1_blocks_per_row;
       } else {
         fc1_scales_ptr = fc1_scales_data + expert_idx * fc1_out_features;
         fc1_zp_ptr = (fc1_zp_data == nullptr) ? nullptr : fc1_zp_data + expert_idx * fc1_zp_expert_stride;
+        fc1_zp_fp_ptr = (fc1_zp_fp_data == nullptr) ? nullptr : fc1_zp_fp_data + expert_idx * fc1_out_features;
       }
 
       // When row-wise ZP is present, align block size to zp_pack_size so that parallel
@@ -1531,19 +1599,25 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
               current_zp_ptr = fc1_zp_ptr + start_row / zp_pack_size;
             }
           }
+          // Float zp shares the scales layout, so it uses the same per-row offset as scales.
+          const T* current_zp_fp_ptr = (fc1_zp_fp_ptr == nullptr)
+                                           ? nullptr
+                                           : fc1_zp_fp_ptr + (is_fc1_block_wise ? start_row * fc1_scales_dims[2] : start_row);
 
           DequantizeBlock(fc1_weights_data + offset,
                           current_scales_ptr,
                           current_zp_ptr,
                           is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
-                          end_row - start_row, hidden_size, B1_dequant + start_row * hidden_size, inner_tp);
+                          end_row - start_row, hidden_size, B1_dequant + start_row * hidden_size, inner_tp,
+                          current_zp_fp_ptr);
         });
       } else {
         DequantizeBlock(fc1_weights_data + expert_idx * fc1_out_features * fc1_packed_cols,
                         fc1_scales_ptr,
                         fc1_zp_ptr,
                         is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
-                        fc1_out_features, hidden_size, B1_dequant, inner_tp);
+                        fc1_out_features, hidden_size, B1_dequant, inner_tp,
+                        fc1_zp_fp_ptr);
       }
 
       MlasGemm(CblasNoTrans, CblasTrans,
@@ -1594,7 +1668,14 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
 
     fc1_gemm_done:
 
-      if (activation_type_ == ActivationType::SwiGLU) {
+      auto apply_gated_activation = [&](const float* in_row, float* out_row) {
+        if (activation_type_ == ActivationType::GeGLU) {
+          ApplyGeGLUActivation(in_row, out_row, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+        } else {
+          ApplySwiGLUActivation(in_row, out_row, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+        }
+      };
+      if (activation_type_ == ActivationType::SwiGLU || activation_type_ == ActivationType::GeGLU) {
         const int64_t activation_threshold = std::max(int64_t{4}, 256 / std::max(int64_t{1}, inter_size));
         if (num_expert_tokens >= activation_threshold && inner_tp != nullptr) {
           const int64_t activation_block_size = std::max(int64_t{1}, std::min(int64_t{64}, activation_threshold));
@@ -1608,21 +1689,21 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
               for (int64_t i = start_token; i < end_token; ++i) {
                 const float* C1_token = C1 + i * fc1_out_features;
                 float* A2_token = A2 + i * inter_size;
-                ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+                apply_gated_activation(C1_token, A2_token);
               }
             });
           } else {
             for (int64_t i = 0; i < num_expert_tokens; ++i) {
               const float* C1_token = C1 + i * fc1_out_features;
               float* A2_token = A2 + i * inter_size;
-              ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+              apply_gated_activation(C1_token, A2_token);
             }
           }
         } else {
           for (int64_t i = 0; i < num_expert_tokens; ++i) {
             const float* C1_token = C1 + i * fc1_out_features;
             float* A2_token = A2 + i * inter_size;
-            ApplySwiGLUActivation(C1_token, A2_token, inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+            apply_gated_activation(C1_token, A2_token);
           }
         }
       } else {
@@ -1632,14 +1713,18 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
 
       const T* fc2_scales_ptr;
       const uint8_t* fc2_zp_ptr;
+      // Float zero-points share the per-expert scales stride (unpacked, one per group).
+      const T* fc2_zp_fp_ptr;
 
       if (is_fc2_block_wise) {
         const int64_t fc2_blocks_per_row = fc2_scales_dims[2];
         fc2_scales_ptr = fc2_scales_data + expert_idx * hidden_size * fc2_blocks_per_row;
         fc2_zp_ptr = (fc2_zp_data == nullptr) ? nullptr : fc2_zp_data + expert_idx * fc2_zp_expert_stride;
+        fc2_zp_fp_ptr = (fc2_zp_fp_data == nullptr) ? nullptr : fc2_zp_fp_data + expert_idx * hidden_size * fc2_blocks_per_row;
       } else {
         fc2_scales_ptr = fc2_scales_data + expert_idx * hidden_size;
         fc2_zp_ptr = (fc2_zp_data == nullptr) ? nullptr : fc2_zp_data + expert_idx * fc2_zp_expert_stride;
+        fc2_zp_fp_ptr = (fc2_zp_fp_data == nullptr) ? nullptr : fc2_zp_fp_data + expert_idx * hidden_size;
       }
 
       // When row-wise ZP is present, align block size to zp_pack_size for correct lane indexing.
@@ -1778,19 +1863,25 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
               current_zp_ptr = fc2_zp_ptr + start_row / zp_pack_size;
             }
           }
+          // Float zp shares the scales layout, so it uses the same per-row offset as scales.
+          const T* current_zp_fp_ptr = (fc2_zp_fp_ptr == nullptr)
+                                           ? nullptr
+                                           : fc2_zp_fp_ptr + (is_fc2_block_wise ? start_row * fc2_scales_dims[2] : start_row);
 
           DequantizeBlock(fc2_weights_data + offset,
                           current_scales_ptr,
                           current_zp_ptr,
                           is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
-                          end_row - start_row, inter_size, B2_dequant + start_row * inter_size, inner_tp);
+                          end_row - start_row, inter_size, B2_dequant + start_row * inter_size, inner_tp,
+                          current_zp_fp_ptr);
         });
       } else {
         DequantizeBlock(fc2_weights_data + expert_idx * hidden_size * fc2_packed_cols,
                         fc2_scales_ptr,
                         fc2_zp_ptr,
                         is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
-                        hidden_size, inter_size, B2_dequant, inner_tp);
+                        hidden_size, inter_size, B2_dequant, inner_tp,
+                        fc2_zp_fp_ptr);
       }
 
       MlasGemm(CblasNoTrans, CblasTrans,
@@ -1954,6 +2045,12 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        // Zero-points are either packed integers (uint8) or unpacked float zero-points that
+        // match the scale dtype (float for this kernel). Constrain TZ to only the dtypes this
+        // kernel actually handles so schema-valid-but-unsupported dtypes (e.g. float16/bfloat16
+        // zero-points on the float kernel) can't be selected and silently misread as uint8.
+        .TypeConstraint("TZ", {DataTypeImpl::GetTensorType<uint8_t>(),
+                               DataTypeImpl::GetTensorType<float>()})
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<float>()),
     QMoECPU<float>);
 
@@ -1962,6 +2059,10 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<uint8_t>())
+        // See the float kernel above: TZ lists only the zero-point dtypes this kernel handles
+        // (packed uint8 or unpacked float16 matching the scale dtype).
+        .TypeConstraint("TZ", {DataTypeImpl::GetTensorType<uint8_t>(),
+                               DataTypeImpl::GetTensorType<MLFloat16>()})
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<MLFloat16>()),
     QMoECPU<MLFloat16>);
 
