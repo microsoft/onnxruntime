@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cassert>
 #include <limits>
 #include <string>
 
@@ -667,13 +668,12 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           // Build the TensorProto that corresponds to the computed OrtValue and add it as initializer to the graph.
           auto* constant_arg_out = node->MutableOutputDefs()[output_idx];
           const Tensor& out_tensor = ort_value.Get<Tensor>();
-          // Fallback to deep copy for aliased tensors (e.g., Reshape, Unsqueeze)
-          // to prevent dangling pointers when parent initializers are freed.
-          const bool use_tensor_buffer = out_tensor.OwnsBuffer();
+          assert(out_tensor.OwnsBuffer());
+          constexpr const bool use_tensor_buffer_true = true;
           ONNX_NAMESPACE::TensorProto out_tensorproto = utils::TensorToTensorProto(
               out_tensor,
               constant_arg_out->Name(),
-              use_tensor_buffer);
+              use_tensor_buffer_true);
 
           ONNX_NAMESPACE::TensorShapeProto result_shape;
           for (auto& dim : out_tensor.Shape().GetDims()) {
@@ -681,7 +681,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           }
 
           constant_arg_out->SetShape(result_shape);
-          // Inlined data (small or deep-copied tensors) does not need to hold an OrtValue reference.
+          // Inline data does not need an OrtValue to keep a backing buffer alive.
           if (!utils::HasExternalData(out_tensorproto)) {
             ORT_THROW_IF_ERROR(graph.AddInitializedOrtValue(out_tensorproto, OrtValue()));
           } else {
