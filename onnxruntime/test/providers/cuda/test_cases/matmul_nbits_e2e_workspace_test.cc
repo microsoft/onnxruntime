@@ -1032,9 +1032,10 @@ TEST(MatMulNBitsWorkspace, StaticSmallMDeclarationMatchesProfiledTactic) {
   const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
   ASSERT_NE(op_kernel, nullptr);
 
-  const std::vector<TensorShape> input_shapes{TensorShape({kSmallM, kE2eK})};
+  const std::array<WorkspaceInputShape, 1> input_shapes{
+      WorkspaceInputShape::PresentWithShape(TensorShape({kSmallM, kE2eK}))};
   InlinedVector<WorkspaceRequirement> requirements;
-  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
 
   std::vector<MLFloat16> a_data(static_cast<size_t>(kSmallM * kE2eK), MLFloat16(0.25f));
   OrtValue a_value;
@@ -1091,9 +1092,10 @@ TEST(MatMulNBitsWorkspace, UnprofiledSmallMDeclaresWorkspaceConservatively) {
   const OpKernel* op_kernel = session.GetSessionState().GetKernel(mm_node->Index());
   ASSERT_NE(op_kernel, nullptr);
 
-  const std::vector<TensorShape> input_shapes{TensorShape({kUnprofiledM, kE2eK})};
+  const std::array<WorkspaceInputShape, 1> input_shapes{
+      WorkspaceInputShape::PresentWithShape(TensorShape({kUnprofiledM, kE2eK}))};
   InlinedVector<WorkspaceRequirement> requirements;
-  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(AsSpan(input_shapes), requirements));
+  ASSERT_STATUS_OK(op_kernel->DeclareWorkspaceRequirements(gsl::make_span(input_shapes), requirements));
   ASSERT_EQ(requirements.size(), static_cast<size_t>(1))
       << "A missing tactic must retain CUTLASS capacity because runtime profiling may select GEMM.";
   EXPECT_GT(requirements[0].size_bytes, static_cast<size_t>(0));

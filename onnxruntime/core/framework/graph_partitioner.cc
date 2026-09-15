@@ -1780,7 +1780,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    LayeringIndex* layering_index,
                                    Mode mode,
                                    const epctx::ModelGenOptions& ep_context_gen_options,
-                                   const layout_transformation::DebugGraphFn& debug_graph_fn) const {  // Added arg
+                                   const layout_transformation::DebugGraphFn& debug_graph_fn,
+                                   WorkspaceReservationMap* workspace_reservations) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -1791,6 +1792,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   //    preference.
   if (providers_.Empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
+  }
+  if (workspace_reservations != nullptr) {
+    workspace_reservations->clear();
   }
 
   CheckLoadCancellationFn check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
