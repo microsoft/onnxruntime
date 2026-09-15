@@ -261,7 +261,8 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   } else {
     shader.MainFunctionBody() << "  let total_seq_length = uniforms.total_sequence_length;\n";
   }
-  shader.MainFunctionBody() << "  let past_sequence_length = select(0u, total_seq_length - uniforms.kv_sequence_length, total_seq_length >= uniforms.kv_sequence_length);\n";
+  // Right-padded batches with prompt shorter than kv_sequence_length would underflow u32; clamp to 0.
+  shader.MainFunctionBody() << "  let past_sequence_length = select(total_seq_length - uniforms.kv_sequence_length, 0u, total_seq_length <= uniforms.kv_sequence_length);\n";
   if (past_present_share_buffer_) {
     shader.MainFunctionBody() << "  let present_offset = " << present_key.IndicesToOffset("present_key_indices_t(batch, num_head_id, past_sequence_length + sequence_id, head_size_id)") << ";\n";
   } else {
