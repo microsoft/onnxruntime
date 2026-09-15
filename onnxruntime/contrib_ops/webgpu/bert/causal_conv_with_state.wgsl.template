@@ -56,6 +56,7 @@ $MAIN {
   let state_pos_stride = 1u;
 #endif
 
+
   // Perform depthwise causal convolution for this (batch, channel, pos).
   // The convolution window looks back state_length positions.
   // With conv_state providing the history before position 0, the
