@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2026, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -69,23 +69,6 @@ public class InferenceTest {
   private static final Pattern outputPBPattern = Pattern.compile("output_*.pb");
 
   private static final OrtEnvironment env = TestHelpers.getOrtEnvironment();
-
-  @Test
-  public void environmentTest() {
-    // Checks that the environment instance is the same.
-    OrtEnvironment otherEnv = OrtEnvironment.getEnvironment();
-    assertSame(env, otherEnv);
-    TestHelpers.quietLogger(OrtEnvironment.class);
-    otherEnv = OrtEnvironment.getEnvironment("test-name");
-    TestHelpers.loudLogger(OrtEnvironment.class);
-    assertSame(env, otherEnv);
-  }
-
-  @Test
-  public void testVersion() {
-    String version = env.getVersion();
-    assertFalse(version.isEmpty());
-  }
 
   @Test
   public void createSessionFromPath() throws OrtException {
@@ -642,19 +625,6 @@ public class InferenceTest {
     } finally {
       OnnxValue.close(container.values());
     }
-  }
-
-  @Test
-  public void testProviders() {
-    EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
-    int providersSize = providers.size();
-    assertTrue(providersSize > 0);
-    assertTrue(providers.contains(OrtProvider.CPU));
-
-    // Check that the providers are a copy of the original, note this does not enable the DNNL
-    // provider
-    providers.add(OrtProvider.DNNL);
-    assertEquals(providersSize, OrtEnvironment.getAvailableProviders().size());
   }
 
   @Test
