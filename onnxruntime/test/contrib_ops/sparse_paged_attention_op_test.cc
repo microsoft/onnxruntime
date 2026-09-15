@@ -348,6 +348,22 @@ TEST(SparsePagedAttention, WebGpu_SelectedMainWritesAndReadsPagedCache) {
   RunWebGpu(tester);
 }
 
+TEST(SparsePagedAttention, WebGpu_SelectedAuxiliaryWritesDirectOutput) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  AddCommonInputs(tester, 0.0f);
+  tester.AddAttribute<std::string>("selected_kv_source", "auxiliary");
+  tester.AddInput<MLFloat16>("auxiliary_key", {1, 1, 1, kHeadSize}, HalfVector(0.0f));
+  tester.AddInput<MLFloat16>("auxiliary_value", {1, 1, 1, kHeadSize}, HalfVector(5.0f));
+  tester.AddInput<int32_t>("auxiliary_lengths", {1}, {1});
+  tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(5.0f));
+  tester.SetOutputTolerance(0.01f);
+  RunWebGpu(tester);
+}
+
 // local_plus_selected + selected_kv_source='auxiliary' with a shared auxiliary
 // K/V tensor. The local window contributes the main-cache value (1.0) and the
 // selection contributes the auxiliary value (3.0). Because both partial states

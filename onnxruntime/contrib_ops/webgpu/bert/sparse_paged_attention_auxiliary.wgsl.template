@@ -8,9 +8,9 @@
 // entries that are negative or beyond the request's auxiliary length are
 // ignored, so a caller can pad selected_indices freely.
 //
-// The result is a partial FP32 softmax state (accumulator, running max,
-// running denominator) that the finalize stage merges with the main-cache
-// partial state, giving one joint softmax over both sources.
+// In single-source modes without a sink, the FP32 accumulator is normalized
+// directly into the activation-typed output. Other modes produce a partial
+// state that the finalize stage merges with the main-cache partial state.
 //
 // Layout:
 //   query                           : (token_count, num_heads * head_size)
@@ -18,7 +18,8 @@
 //   token_meta                      : (token_count, 4)
 //   selected_indices                : (token_count, max_selected_entries)
 //   selected_counts                 : (token_count,)
-//   partial                         : (token_count, num_heads, head_size + 2)
+//   output                          : (token_count, num_heads * head_size), or
+//                                     (token_count, num_heads, head_size + 2)
 //
 // When 'auxiliary_kv_shared' is set the op receives a single auxiliary tensor
 // used as both K and V, so auxiliary_value is not bound and is read with raw
@@ -26,6 +27,7 @@
 
 #param qkv_head_size
 #param auxiliary_kv_shared
+#param direct_output
 
 #use .getByOffset .setByOffset
 
@@ -121,12 +123,23 @@ $MAIN {
     workgroupBarrier();
   }
 
-  let partial_base = (token_idx * uniforms.num_heads + head_idx) * (head_size + 2u);
+#if direct_output
+  let output_base = (token_idx * uniforms.num_heads + head_idx) * head_size;
   for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
-    partial.setByOffset(partial_base + c, accumulator[c]);
+    var result: f32 = 0.0;
+    if (running_sum > 0.0) {
+      result = accumulator[c] / running_sum;
+    }
+    output.setByOffset(output_base + c, output_value_t(result));
+  }
+#else
+  let output_base = (token_idx * uniforms.num_heads + head_idx) * (head_size + 2u);
+  for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+    output.setByOffset(output_base + c, accumulator[c]);
   }
   if (local_idx == 0u) {
-    partial.setByOffset(partial_base + head_size, running_max);
-    partial.setByOffset(partial_base + head_size + 1u, running_sum);
+    output.setByOffset(output_base + head_size, running_max);
+    output.setByOffset(output_base + head_size + 1u, running_sum);
   }
+#endif
 }

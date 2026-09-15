@@ -56,43 +56,18 @@ namespace Microsoft.ML.OnnxRuntime
             var platformPath = NativeOnnxValueHelper.GetPlatformSerializedString(path);
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetInputModelPath(_handle, platformPath));
-
-            if (_inputModelBufferHandle.IsAllocated)
-            {
-                _inputModelBufferHandle.Free();
-            }
         }
 
         /// <summary>
         /// Set the input model to compile to be a byte array.
-        /// The input bytes are NOT copied. The array is pinned until another input model is set or this object is
-        /// disposed.
+        /// The input bytes are NOT copied and must remain valid while in use by ORT.
         /// </summary>
         /// <param name="buffer">Input model bytes.</param>
         public void SetInputModelFromBuffer(byte[] buffer)
         {
-            GCHandle newBufferHandle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-            try
-            {
-                NativeApiStatus.VerifySuccess(
-                    NativeMethods.CompileApi.OrtModelCompilationOptions_SetInputModelFromBuffer(
-                        _handle, buffer, (UIntPtr)buffer.Length));
-
-                if (_inputModelBufferHandle.IsAllocated)
-                {
-                    _inputModelBufferHandle.Free();
-                }
-
-                _inputModelBufferHandle = newBufferHandle;
-                newBufferHandle = default;
-            }
-            finally
-            {
-                if (newBufferHandle.IsAllocated)
-                {
-                    newBufferHandle.Free();
-                }
-            }
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetInputModelFromBuffer(
+                    _handle, buffer, (UIntPtr)buffer.Length));
         }
 
         /// <summary>
@@ -492,11 +467,6 @@ namespace Microsoft.ML.OnnxRuntime
                 _getInitializerLocationDelegateState?.Dispose();
             }
 
-            if (_inputModelBufferHandle.IsAllocated)
-            {
-                _inputModelBufferHandle.Free();
-            }
-
             Debug.Assert(_handle != IntPtr.Zero);
             NativeMethods.CompileApi.OrtReleaseModelCompilationOptions(_handle);
             _handle = IntPtr.Zero;
@@ -516,11 +486,6 @@ namespace Microsoft.ML.OnnxRuntime
         /// Handle to the native OrtModelCompilationOptions object.
         /// </summary>
         private IntPtr _handle;
-
-        /// <summary>
-        /// Keeps the input model buffer pinned while the native compilation options reference it.
-        /// </summary>
-        private GCHandle _inputModelBufferHandle = default;
 
         /// <summary>
         /// True if this OrtModelCompilationOptions instance has already been disposed.

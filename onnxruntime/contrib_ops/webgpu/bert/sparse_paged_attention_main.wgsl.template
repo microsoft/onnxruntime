@@ -16,9 +16,8 @@
 // selected_counts, and never truncated.
 //
 // The running softmax state (max, denominator) and the value accumulator are
-// kept in FP32 and are written out alongside the accumulator so the finalize
-// stage can merge this partial state with the auxiliary partial state into one
-// joint softmax.
+// kept in FP32. Single-source modes without a sink normalize directly into the
+// activation-typed output; other modes write a partial state for finalization.
 //
 // Every caller-owned i32 (selected index, block table entry) is validated
 // before conversion to u32, and invalid, out-of-range, non-causal, or unmapped
@@ -31,7 +30,8 @@
 //   block_table             : (batch_size, max_num_blocks_per_seq)
 //   selected_indices        : (token_count, max_selected_entries)
 //   selected_counts         : (token_count,)
-//   partial                 : (token_count, num_heads, head_size + 2)
+//   output                  : (token_count, num_heads * head_size), or
+//                             (token_count, num_heads, head_size + 2)
 //
 // selected_indices / selected_counts are only bound when the selection applies
 // to the main cache, so they are read with raw indexing.
@@ -41,6 +41,7 @@
 #param use_local_window
 #param use_selected
 #param dedup_selected
+#param direct_output
 
 #use .getByOffset .setByOffset
 
@@ -196,12 +197,23 @@ $MAIN {
     workgroupBarrier();
   }
 
-  let partial_base = (token_idx * uniforms.num_heads + head_idx) * (head_size + 2u);
+#if direct_output
+  let output_base = (token_idx * uniforms.num_heads + head_idx) * head_size;
   for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
-    partial.setByOffset(partial_base + c, accumulator[c]);
+    var result: f32 = 0.0;
+    if (running_sum > 0.0) {
+      result = accumulator[c] / running_sum;
+    }
+    output.setByOffset(output_base + c, output_value_t(result));
+  }
+#else
+  let output_base = (token_idx * uniforms.num_heads + head_idx) * (head_size + 2u);
+  for (var c: u32 = local_idx; c < head_size; c = c + workgroup_size_x) {
+    output.setByOffset(output_base + c, accumulator[c]);
   }
   if (local_idx == 0u) {
-    partial.setByOffset(partial_base + head_size, running_max);
-    partial.setByOffset(partial_base + head_size + 1u, running_sum);
+    output.setByOffset(output_base + head_size, running_max);
+    output.setByOffset(output_base + head_size + 1u, running_sum);
   }
+#endif
 }
