@@ -99,7 +99,7 @@ $MAIN {
 
   var selected_count: i32 = 0;
 #if use_selected
-  selected_count = clamp(selected_counts[token_idx], 0, i32(uniforms.max_selected_entries));
+  selected_count = clamp(selected_counts.getByOffset(token_idx), 0, i32(uniforms.max_selected_entries));
 #endif
 
   // local_count is bounded by position_limit + 1 and selected_count by the
@@ -119,7 +119,8 @@ $MAIN {
 #if use_selected
     if (!is_local) {
       let selected_slot = candidate - u32(local_count);
-      logical_position = selected_indices[token_idx * uniforms.max_selected_entries + selected_slot];
+      logical_position = selected_indices.getByOffset(
+          token_idx * uniforms.max_selected_entries + selected_slot);
     }
 #endif
 

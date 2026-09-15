@@ -21,8 +21,7 @@
 //   partial                         : (token_count, num_heads, head_size + 2)
 //
 // When 'auxiliary_kv_shared' is set the op receives a single auxiliary tensor
-// used as both K and V, so auxiliary_value is not bound and is read with raw
-// indexing where it applies.
+// used as both K and V, so auxiliary_value is not bound.
 
 #param qkv_head_size
 #param auxiliary_kv_shared
@@ -109,8 +108,7 @@ $MAIN {
 #if auxiliary_kv_shared
         let v = f32(auxiliary_key.getByOffset(cache_offset + c));
 #else
-        // Raw indexing: auxiliary_value is only bound when K and V are separate.
-        let v = f32(auxiliary_value[cache_offset + c]);
+        let v = f32(auxiliary_value.getByOffset(cache_offset + c));
 #endif
         accumulator[c] = accumulator[c] * old_weight + v * new_weight;
       }

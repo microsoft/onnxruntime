@@ -61,9 +61,7 @@ $MAIN {
 
   var auxiliary_length: i32 = 0;
 #if has_auxiliary_lengths
-  // Raw indexing (instead of `.getByOffset`) because this binding only exists
-  // when has_auxiliary_lengths is set.
-  auxiliary_length = clamp(auxiliary_lengths[batch_idx], 0, i32(uniforms.auxiliary_capacity));
+  auxiliary_length = clamp(auxiliary_lengths.getByOffset(batch_idx), 0, i32(uniforms.auxiliary_capacity));
 #endif
 
   let base = token_idx * 4u;

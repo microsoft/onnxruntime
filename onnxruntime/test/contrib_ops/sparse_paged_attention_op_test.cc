@@ -348,6 +348,98 @@ TEST(SparsePagedAttention, WebGpu_SelectedMainWritesAndReadsPagedCache) {
   RunWebGpu(tester);
 }
 
+TEST(SparsePagedAttention, WebGpu_PackedQkvRotaryAndBlockTableScatter) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  constexpr int kNumBlocks = 2;
+  constexpr int kPackedSize = 3 * kHeadSize;
+  std::vector<MLFloat16> packed_qkv(kPackedSize, MLFloat16(0.0f));
+  std::fill_n(packed_qkv.begin() + 2 * kHeadSize, kHeadSize, MLFloat16(4.0f));
+  std::vector<MLFloat16> expected_value_cache(kNumBlocks * kCacheElems, MLFloat16(0.0f));
+  SetConstantCacheRow(expected_value_cache, kBlockSize, kHeadSize, 4.0f);
+
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  AddAttributes(tester);
+  tester.AddAttribute<int64_t>("do_rotary", 1);
+  tester.AddInput<MLFloat16>("query", {1, kPackedSize}, packed_qkv);
+  tester.AddOptionalInputEdge<MLFloat16>();  // key is packed with query
+  tester.AddOptionalInputEdge<MLFloat16>();  // value is packed with query
+  tester.AddInput<MLFloat16>("key_cache", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                             HalfVector(0.0f, kNumBlocks * kCacheElems));
+  tester.AddInput<MLFloat16>("value_cache", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                             HalfVector(0.0f, kNumBlocks * kCacheElems));
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 1});
+  tester.AddInput<int32_t>("past_seqlens", {1}, {0});
+  tester.AddInput<int32_t>("block_table", {1, 1}, {1});
+  tester.AddOptionalInputEdge<int32_t>();  // derive the cache slot from block_table
+  tester.AddInput<int32_t>("selected_indices", {1, 1}, {0});
+  tester.AddInput<int32_t>("selected_counts", {1}, {1});
+  tester.AddOptionalInputEdge<MLFloat16>();  // auxiliary_key
+  tester.AddOptionalInputEdge<MLFloat16>();  // auxiliary_value
+  tester.AddOptionalInputEdge<int32_t>();    // auxiliary_lengths
+  tester.AddInput<MLFloat16>("cos_cache", {1, kHeadSize / 2},
+                             HalfVector(1.0f, kHeadSize / 2));
+  tester.AddInput<MLFloat16>("sin_cache", {1, kHeadSize / 2},
+                             HalfVector(0.0f, kHeadSize / 2));
+  tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(4.0f));
+  tester.AddOutput<MLFloat16>("key_cache_out", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                              HalfVector(0.0f, kNumBlocks * kCacheElems));
+  tester.AddOutput<MLFloat16>("value_cache_out", {kNumBlocks, kBlockSize, 1, kHeadSize},
+                              expected_value_cache);
+  tester.SetOutputTolerance(0.01f);
+  RunWebGpu(tester);
+}
+
+TEST(SparsePagedAttention, WebGpu_SinkSoftcapAndNonCausalSelection) {
+  if (DefaultWebGpuExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "WebGPU EP not available.";
+  }
+
+  std::vector<MLFloat16> query(2 * kHeadSize, MLFloat16(0.0f));
+  query[0] = MLFloat16(1.0f);
+  query[kHeadSize] = MLFloat16(1.0f);
+  std::vector<MLFloat16> key(2 * kHeadSize, MLFloat16(0.0f));
+  key[kHeadSize] = MLFloat16(2.0f);
+  std::vector<MLFloat16> value;
+  value.insert(value.end(), kHeadSize, MLFloat16(1.0f));
+  value.insert(value.end(), kHeadSize, MLFloat16(3.0f));
+
+  const float capped_future_logit = std::tanh(2.0f);
+  const float denominator = 1.0f + std::exp(capped_future_logit) + std::exp(0.5f);
+  const float expected_value = (1.0f + 3.0f * std::exp(capped_future_logit)) / denominator;
+
+  OpTester tester("SparsePagedAttention", 1, kMSDomain);
+  AddAttributes(tester);
+  tester.AddAttribute<float>("scale", 1.0f);
+  tester.AddAttribute<float>("softcap", 1.0f);
+  tester.AddAttribute<int64_t>("is_causal", 0);
+  tester.AddInput<MLFloat16>("query", {2, kHeadSize}, query);
+  tester.AddInput<MLFloat16>("key", {2, kHeadSize}, key);
+  tester.AddInput<MLFloat16>("value", {2, kHeadSize}, value);
+  tester.AddInput<MLFloat16>("key_cache", {1, kBlockSize, 1, kHeadSize},
+                             HalfVector(0.0f, kCacheElems));
+  tester.AddInput<MLFloat16>("value_cache", {1, kBlockSize, 1, kHeadSize},
+                             HalfVector(0.0f, kCacheElems));
+  tester.AddInput<int32_t>("cumulative_sequence_length", {2}, {0, 2});
+  tester.AddInput<int32_t>("past_seqlens", {1}, {0});
+  tester.AddInput<int32_t>("block_table", {1, 1}, {0});
+  tester.AddInput<int32_t>("slot_mapping", {2}, {0, 1});
+  tester.AddInput<int32_t>("selected_indices", {2, 2}, {0, 1, 0, 1});
+  tester.AddInput<int32_t>("selected_counts", {2}, {2, 2});
+  tester.AddOptionalInputEdge<MLFloat16>();  // auxiliary_key
+  tester.AddOptionalInputEdge<MLFloat16>();  // auxiliary_value
+  tester.AddOptionalInputEdge<int32_t>();    // auxiliary_lengths
+  tester.AddOptionalInputEdge<MLFloat16>();  // cos_cache
+  tester.AddOptionalInputEdge<MLFloat16>();  // sin_cache
+  tester.AddInput<MLFloat16>("head_sink", {1}, {MLFloat16(0.5f)});
+  tester.AddOutput<MLFloat16>("output", {2, kHeadSize},
+                              HalfVector(expected_value, 2 * kHeadSize));
+  tester.SetOutputTolerance(0.01f);
+  RunWebGpu(tester);
+}
+
 // local_plus_selected + selected_kv_source='auxiliary' with a shared auxiliary
 // K/V tensor. The local window contributes the main-cache value (1.0) and the
 // selection contributes the auxiliary value (3.0). Because both partial states
