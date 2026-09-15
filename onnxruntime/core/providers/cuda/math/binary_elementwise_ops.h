@@ -221,11 +221,13 @@ class Mod final : public BinaryElementwise<ShouldBroadcast> {
   Mod(const OpKernelInfo& info) : BinaryElementwise(info) {
     int64_t fmod = info.GetAttrOrDefault<int64_t>("fmod", 0LL);
     fmod_ = fmod != 0;
+    supports_float_floor_mod_ = info.node().SinceVersion() >= 28;
   }
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
   bool fmod_{false};
+  bool supports_float_floor_mod_{false};
 };
 
 template <typename T, typename CudaT>
