@@ -59,11 +59,6 @@ uint32_t StorageBindingSegments(const Tensor* tensor, uint64_t max_binding_size)
 struct StageBinding {
   const Tensor* tensor;
   const char* name;
-  // Optional bindings are read with raw indexing in the templates, because the
-  // WGSL template system cannot take a conditionally added variable. Raw
-  // indexing only ever reaches the first segment of a segmented buffer, so such
-  // a binding must stay within one segment.
-  bool raw_indexed = false;
 };
 
 // Validate a stage's bind group against the device *before* the shader is
@@ -80,14 +75,6 @@ Status CheckStageStorageBindings(const onnxruntime::webgpu::ComputeContext& cont
   uint32_t binding_count = 0;
   for (const StageBinding& binding : bindings) {
     const uint32_t segments = StorageBindingSegments(binding.tensor, max_binding_size);
-    if (segments > 1 && binding.raw_indexed) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "SparsePagedAttention (WebGPU): the ", stage_name, " stage binds '",
-                             binding.name, "' as ", segments,
-                             " buffer segments because it is larger than the ", max_binding_size,
-                             " byte maxStorageBufferBindingSize; segmented bindings are not "
-                             "supported for this input.");
-    }
     binding_count += segments;
   }
   if (binding_count > max_bindings) {
@@ -146,14 +133,14 @@ Status SparsePagedAttentionTokenMetaProgram::GenerateShaderCode(ShaderHelper& sh
   const auto& cumulative_sequence_length =
       sh.AddInput("cumulative_sequence_length", ShaderUsage::UseUniform);
   const auto& past_seqlens = sh.AddInput("past_seqlens", ShaderUsage::UseUniform);
-  // Optional bindings are read with raw indexing in the template, so they are
-  // added to the shader but not passed as template variables.
+  const ShaderVariableHelper* auxiliary_lengths = &past_seqlens;
   if (has_auxiliary_lengths_) {
-    sh.AddInput("auxiliary_lengths", ShaderUsage::UseUniform);
+    auxiliary_lengths = &sh.AddInput("auxiliary_lengths", ShaderUsage::UseUniform);
   }
   const auto& token_meta = sh.AddOutput("token_meta", ShaderUsage::UseUniform);
   return WGSL_TEMPLATE_APPLY(sh, "bert/sparse_paged_attention_token_meta.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_auxiliary_lengths, has_auxiliary_lengths_),
+                             WGSL_TEMPLATE_VARIABLE(auxiliary_lengths, *auxiliary_lengths),
                              WGSL_TEMPLATE_VARIABLE(cumulative_sequence_length, cumulative_sequence_length),
                              WGSL_TEMPLATE_VARIABLE(past_seqlens, past_seqlens),
                              WGSL_TEMPLATE_VARIABLE(token_meta, token_meta));
@@ -165,9 +152,11 @@ Status SparsePagedAttentionMainProgram::GenerateShaderCode(ShaderHelper& sh) con
   const auto& value_cache = sh.AddInput("value_cache", ShaderUsage::UseUniform);
   const auto& token_meta = sh.AddInput("token_meta", ShaderUsage::UseUniform);
   const auto& block_table = sh.AddInput("block_table", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* selected_indices = &block_table;
+  const ShaderVariableHelper* selected_counts = &block_table;
   if (use_selected_) {
-    sh.AddInput("selected_indices", ShaderUsage::UseUniform);
-    sh.AddInput("selected_counts", ShaderUsage::UseUniform);
+    selected_indices = &sh.AddInput("selected_indices", ShaderUsage::UseUniform);
+    selected_counts = &sh.AddInput("selected_counts", ShaderUsage::UseUniform);
   }
   const auto& output = sh.AddOutput(
       "output", direct_output_ ? ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias : ShaderUsage::UseUniform);
@@ -182,6 +171,8 @@ Status SparsePagedAttentionMainProgram::GenerateShaderCode(ShaderHelper& sh) con
                              WGSL_TEMPLATE_VARIABLE(key_cache, key_cache),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(query, query),
+                             WGSL_TEMPLATE_VARIABLE(selected_counts, *selected_counts),
+                             WGSL_TEMPLATE_VARIABLE(selected_indices, *selected_indices),
                              WGSL_TEMPLATE_VARIABLE(token_meta, token_meta),
                              WGSL_TEMPLATE_VARIABLE(value_cache, value_cache));
 }
@@ -189,8 +180,9 @@ Status SparsePagedAttentionMainProgram::GenerateShaderCode(ShaderHelper& sh) con
 Status SparsePagedAttentionAuxiliaryProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& query = sh.AddInput("query", ShaderUsage::UseUniform);
   const auto& auxiliary_key = sh.AddInput("auxiliary_key", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* auxiliary_value = &auxiliary_key;
   if (!auxiliary_kv_shared_) {
-    sh.AddInput("auxiliary_value", ShaderUsage::UseUniform);
+    auxiliary_value = &sh.AddInput("auxiliary_value", ShaderUsage::UseUniform);
   }
   const auto& token_meta = sh.AddInput("token_meta", ShaderUsage::UseUniform);
   const auto& selected_indices = sh.AddInput("selected_indices", ShaderUsage::UseUniform);
@@ -202,6 +194,7 @@ Status SparsePagedAttentionAuxiliaryProgram::GenerateShaderCode(ShaderHelper& sh
                              WGSL_TEMPLATE_PARAMETER(direct_output, direct_output_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, head_size_),
                              WGSL_TEMPLATE_VARIABLE(auxiliary_key, auxiliary_key),
+                             WGSL_TEMPLATE_VARIABLE(auxiliary_value, *auxiliary_value),
                              WGSL_TEMPLATE_VARIABLE(output, output),
                              WGSL_TEMPLATE_VARIABLE(query, query),
                              WGSL_TEMPLATE_VARIABLE(selected_counts, selected_counts),
@@ -210,21 +203,30 @@ Status SparsePagedAttentionAuxiliaryProgram::GenerateShaderCode(ShaderHelper& sh
 }
 
 Status SparsePagedAttentionFinalizeProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const ShaderVariableHelper* partial_main = nullptr;
+  const ShaderVariableHelper* partial_auxiliary = nullptr;
   if (has_main_) {
-    sh.AddInput("partial_main", ShaderUsage::UseUniform);
+    partial_main = &sh.AddInput("partial_main", ShaderUsage::UseUniform);
   }
   if (has_auxiliary_) {
-    sh.AddInput("partial_auxiliary", ShaderUsage::UseUniform);
+    partial_auxiliary = &sh.AddInput("partial_auxiliary", ShaderUsage::UseUniform);
   }
+  const ShaderVariableHelper* fallback_partial = partial_main != nullptr ? partial_main : partial_auxiliary;
+  partial_main = partial_main != nullptr ? partial_main : fallback_partial;
+  partial_auxiliary = partial_auxiliary != nullptr ? partial_auxiliary : fallback_partial;
+  const ShaderVariableHelper* head_sink = fallback_partial;
   if (has_head_sink_) {
-    sh.AddInput("head_sink", ShaderUsage::UseUniform);
+    head_sink = &sh.AddInput("head_sink", ShaderUsage::UseUniform);
   }
   const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   return WGSL_TEMPLATE_APPLY(sh, "bert/sparse_paged_attention_finalize.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_auxiliary, has_auxiliary_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
                              WGSL_TEMPLATE_PARAMETER(has_main, has_main_),
-                             WGSL_TEMPLATE_VARIABLE(output, output));
+                             WGSL_TEMPLATE_VARIABLE(head_sink, *head_sink),
+                             WGSL_TEMPLATE_VARIABLE(output, output),
+                             WGSL_TEMPLATE_VARIABLE(partial_auxiliary, *partial_auxiliary),
+                             WGSL_TEMPLATE_VARIABLE(partial_main, *partial_main));
 }
 
 namespace {
@@ -728,18 +730,6 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
   const bool direct_output = run_main != run_auxiliary && head_sink == nullptr;
 
   const uint64_t max_storage_buffer_binding_size = context.DeviceLimits().maxStorageBufferBindingSize;
-  const uint64_t partial_bytes = static_cast<uint64_t>(parameters.token_count) *
-                                 static_cast<uint64_t>(parameters.num_heads) *
-                                 (static_cast<uint64_t>(parameters.head_size) + 2u) * sizeof(float);
-  // The finalize stage reads the partial scratch with raw indexing (an optional
-  // binding cannot be a template variable), which only reaches the first
-  // segment, so the scratch must fit a single binding.
-  if (!direct_output && partial_bytes > max_storage_buffer_binding_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "SparsePagedAttention (WebGPU): the partial softmax scratch requires ",
-                           partial_bytes, " bytes, exceeding maxStorageBufferBindingSize of ",
-                           max_storage_buffer_binding_size, ".");
-  }
   const uint64_t workgroup_storage_bytes =
       (2ull * static_cast<uint64_t>(parameters.head_size) + kAttentionWorkgroupSize) * sizeof(float);
   if (workgroup_storage_bytes > context.DeviceLimits().maxComputeWorkgroupStorageSize) {
@@ -852,8 +842,7 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
       context, "token metadata",
       {{cumulative_seqlens_q, "cumulative_sequence_length"},
        {past_seqlens, "past_seqlens"},
-       {selected_from_auxiliary ? auxiliary_lengths : nullptr, "auxiliary_lengths",
-        /*raw_indexed*/ true},
+       {selected_from_auxiliary ? auxiliary_lengths : nullptr, "auxiliary_lengths"},
        {&token_meta, "token_meta"}}));
   ORT_RETURN_IF_ERROR(RunSparseTokenMeta(context, parameters,
                                          static_cast<uint32_t>(auxiliary_capacity),
@@ -885,10 +874,8 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
          {value_cache_out, "value_cache"},
          {&token_meta, "token_meta"},
          {block_table, "block_table"},
-         {main_uses_selected ? selected_indices : nullptr, "selected_indices",
-          /*raw_indexed*/ true},
-         {main_uses_selected ? selected_counts : nullptr, "selected_counts",
-          /*raw_indexed*/ true},
+         {main_uses_selected ? selected_indices : nullptr, "selected_indices"},
+         {main_uses_selected ? selected_counts : nullptr, "selected_counts"},
          {main_output, direct_output ? "output" : "partial"}}));
     ORT_RETURN_IF_ERROR(RunSparseMainPartial(
         context, parameters, is_causal_, local_plus_selected, main_uses_selected,
@@ -911,8 +898,7 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
         context, direct_output ? "auxiliary attention" : "auxiliary partial attention",
         {{query_for_attention, "query"},
          {auxiliary_key, "auxiliary_key"},
-         {auxiliary_kv_shared_ ? nullptr : auxiliary_value, "auxiliary_value",
-          /*raw_indexed*/ true},
+         {auxiliary_kv_shared_ ? nullptr : auxiliary_value, "auxiliary_value"},
          {&token_meta, "token_meta"},
          {selected_indices, "selected_indices"},
          {selected_counts, "selected_counts"},
@@ -929,9 +915,9 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
 
   ORT_RETURN_IF_ERROR(CheckStageStorageBindings(
       context, "softmax finalize",
-      {{run_main ? &partial_main : nullptr, "partial_main", /*raw_indexed*/ true},
-       {run_auxiliary ? &partial_auxiliary : nullptr, "partial_auxiliary", /*raw_indexed*/ true},
-       {head_sink, "head_sink", /*raw_indexed*/ true},
+      {{run_main ? &partial_main : nullptr, "partial_main"},
+       {run_auxiliary ? &partial_auxiliary : nullptr, "partial_auxiliary"},
+       {head_sink, "head_sink"},
        {output, "output"}}));
   return RunSparseFinalize(context, parameters, run_main ? &partial_main : nullptr,
                            run_auxiliary ? &partial_auxiliary : nullptr, head_sink, output);

@@ -19,15 +19,12 @@
 //   head_sink                  : (num_heads,)
 //   output                     : (token_count, num_heads * head_size)
 //
-// The partial and head-sink bindings are optional, so they are read with raw
-// indexing instead of the .getByOffset helper.
-
 #param has_main
 #param has_auxiliary
 #param has_head_sink
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
-#use .setByOffset
+#use .getByOffset .setByOffset
 
 const negative_infinity: f32 = -3.4028234663852886e38;
 
@@ -44,25 +41,25 @@ $MAIN {
   var accumulator: f32 = 0.0;
 
 #if has_head_sink
-  running_max = f32(head_sink[head_idx]);
+  running_max = f32(head_sink.getByOffset(head_idx));
   running_sum = 1.0;
 #endif
 
 #if has_main
   {
-    let other_max = partial_main[partial_base + uniforms.head_size];
-    let other_sum = partial_main[partial_base + uniforms.head_size + 1u];
+    let other_max = partial_main.getByOffset(partial_base + uniforms.head_size);
+    let other_sum = partial_main.getByOffset(partial_base + uniforms.head_size + 1u);
     if (other_sum > 0.0) {
       if (running_sum > 0.0) {
         let merged_max = max(running_max, other_max);
         let self_weight = exp(running_max - merged_max);
         let other_weight = exp(other_max - merged_max);
         accumulator = accumulator * self_weight +
-                      partial_main[partial_base + dim_idx] * other_weight;
+                      partial_main.getByOffset(partial_base + dim_idx) * other_weight;
         running_sum = running_sum * self_weight + other_sum * other_weight;
         running_max = merged_max;
       } else {
-        accumulator = partial_main[partial_base + dim_idx];
+        accumulator = partial_main.getByOffset(partial_base + dim_idx);
         running_sum = other_sum;
         running_max = other_max;
       }
@@ -72,19 +69,19 @@ $MAIN {
 
 #if has_auxiliary
   {
-    let other_max = partial_auxiliary[partial_base + uniforms.head_size];
-    let other_sum = partial_auxiliary[partial_base + uniforms.head_size + 1u];
+    let other_max = partial_auxiliary.getByOffset(partial_base + uniforms.head_size);
+    let other_sum = partial_auxiliary.getByOffset(partial_base + uniforms.head_size + 1u);
     if (other_sum > 0.0) {
       if (running_sum > 0.0) {
         let merged_max = max(running_max, other_max);
         let self_weight = exp(running_max - merged_max);
         let other_weight = exp(other_max - merged_max);
         accumulator = accumulator * self_weight +
-                      partial_auxiliary[partial_base + dim_idx] * other_weight;
+                      partial_auxiliary.getByOffset(partial_base + dim_idx) * other_weight;
         running_sum = running_sum * self_weight + other_sum * other_weight;
         running_max = merged_max;
       } else {
-        accumulator = partial_auxiliary[partial_base + dim_idx];
+        accumulator = partial_auxiliary.getByOffset(partial_base + dim_idx);
         running_sum = other_sum;
         running_max = other_max;
       }
