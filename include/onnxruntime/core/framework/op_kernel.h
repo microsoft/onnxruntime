@@ -10,6 +10,8 @@
 // as it doesn't include any pb headers.
 #include "core/framework/buffer_deleter.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/workspace_input_shape.h"
+#include "core/framework/workspace_requirement.h"
 
 #ifndef SHARED_PROVIDER
 #include <functional>
@@ -102,6 +104,25 @@ class OpKernel {
   // @param removable_attributes set of attributes the session can safely remove.
   virtual Status GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
     removable_attributes.clear();
+    return Status::OK();
+  }
+
+  // Phase-A memory roadmap (issue microsoft/onnxruntime#29775). Declares Compute()-time scratch
+  // ("workspace") that can be sized from shape metadata alone, without live tensors. The positional
+  // span corresponds to Node::InputDefs() and OpKernelContext::Input(i); implicit inputs are
+  // excluded. The default declares nothing, so callers fall back to today's dynamic GetScratchBuffer
+  // path and behavior is unchanged for kernels that do not override this method.
+  //
+  // Called during FinalizeSessionState() after kernel instances are created, when input shapes
+  // are known (static models) or max shape hints are provided via session.max_shape_override.
+  // Max-shape inference produces estimation hints, not proven upper bounds; declarations based on
+  // them must retain runtime validation and allocation fallback.
+  // A valid input that cannot be estimated returns OK with no requirements. A non-OK status is
+  // fatal to session initialization.
+  [[nodiscard]] virtual Status DeclareWorkspaceRequirements(
+      gsl::span<const WorkspaceInputShape> /*input_shapes*/,
+      /*out*/ InlinedVector<WorkspaceRequirement>& requirements) const {
+    requirements.clear();  // defensive: never attribute a prior kernel's slots to a no-op kernel
     return Status::OK();
   }
 

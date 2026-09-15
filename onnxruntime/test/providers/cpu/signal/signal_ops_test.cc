@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include <functional>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -107,6 +109,32 @@ TEST(SignalOpsTest, DFT20_Float_radix2) { TestRadix2DFTFloat(false, kOpsetVersio
 TEST(SignalOpsTest, DFT17_Float_radix2_onesided) { TestRadix2DFTFloat(true, kMinOpsetVersion); }
 
 TEST(SignalOpsTest, DFT20_Float_radix2_onesided) { TestRadix2DFTFloat(true, kOpsetVersion20); }
+
+TEST(SignalOpsTest, DFT20_Float_Bluestein_DftLengthTruncatesInput) {
+  OpTester test("DFT", kOpsetVersion20);
+
+  // Non-power-of-2 dft_length selects the Bluestein path.
+  // Input length on axis=1 is intentionally larger than dft_length. The trailing input must be ignored.
+  vector<int64_t> input_shape = {1, 10, 1};
+  vector<float> input = {1.f, 2.f, 3.f, 100.f, 200.f, 300.f, 400.f, 500.f, 600.f, 700.f};
+  vector<int64_t> output_shape = {1, 3, 2};
+  // clang-format off
+  vector<float> expected_output = {
+      6.000000f, 0.000000f,
+      -1.500000f, 0.866025f,
+      -1.500000f, -0.866025f,
+  };
+  // clang-format on
+
+  test.AddInput<float>("input", input_shape, input);
+  test.AddInput<int64_t>("dft_length", {}, {3});
+  test.AddInput<int64_t>("axis", {}, {1});
+  test.AddOutput<float>("output", output_shape, expected_output);
+  test.SetOutputAbsErr("output", 0.001f);
+  // DML path is deprecated for this test scenario.
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
 
 TEST(SignalOpsTest, DFT17_Float_inverse) {
   TestInverseFloat(kMinOpsetVersion);
@@ -231,6 +259,80 @@ TEST(SignalOpsTest, STFTFloat) {
       0.0000f, 0.000f, 0.0000f, 0.000f, 0.0000f, 0.000f};
   test.AddOutput<float>("output", output_shape, expected_output);
   test.Run();
+}
+
+static void TestSTFTInvalidFrameStep(int64_t frame_step) {
+  OpTester test("STFT", kMinOpsetVersion);
+
+  vector<float> signal(64, 1);
+  test.AddInput<float>("signal", {1, 64, 1}, signal);
+  test.AddInput<int64_t>("frame_step", {}, {frame_step});
+  vector<float> window(16, 1);
+  test.AddInput<float>("window", {16}, window);
+  test.AddInput<int64_t>("frame_length", {}, {16});
+
+  vector<int64_t> output_shape = {1, 7, 9, 2};
+  vector<float> expected_output(1 * 7 * 9 * 2, 0.f);
+  test.AddOutput<float>("output", output_shape, expected_output);
+  test.Config(OpTester::ExpectResult::kExpectFailure, "frame_step must be greater than zero");
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, STFTFrameStepMustBePositive) {
+  TestSTFTInvalidFrameStep(0);
+  TestSTFTInvalidFrameStep(-1);
+}
+
+template <typename T>
+static void TestSTFTComplexInputBatched() {
+  OpTester test("STFT", kMinOpsetVersion);
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(false));
+
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t signal_size = 128;
+  constexpr int64_t signal_components = 2;
+  constexpr int64_t frame_length = 32;
+  constexpr int64_t frame_step = 16;
+  constexpr int64_t n_dfts = 7;
+  constexpr int64_t dft_output_size = frame_length;
+  constexpr int64_t output_components = 2;
+
+  vector<T> signal(batch_size * signal_size * signal_components, static_cast<T>(0));
+  for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+    const T signal_value = batch_idx == 0 ? static_cast<T>(1) : static_cast<T>(99);
+    for (int64_t sample_idx = 0; sample_idx < signal_size; ++sample_idx) {
+      signal[(batch_idx * signal_size + sample_idx) * signal_components] = signal_value;
+    }
+  }
+
+  test.AddInput<T>("signal", {batch_size, signal_size, signal_components}, signal);
+  test.AddInput<int64_t>("frame_step", {}, {frame_step});
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<int64_t>("frame_length", {}, {frame_length});
+
+  vector<int64_t> output_shape = {batch_size, n_dfts, dft_output_size, output_components};
+  vector<T> expected_output(batch_size * n_dfts * dft_output_size * output_components, static_cast<T>(0));
+  for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+    const T dc_value = (batch_idx == 0 ? static_cast<T>(1) : static_cast<T>(99)) * static_cast<T>(frame_length);
+    for (int64_t frame_idx = 0; frame_idx < n_dfts; ++frame_idx) {
+      expected_output[((batch_idx * n_dfts + frame_idx) * dft_output_size) * output_components] = dc_value;
+    }
+  }
+
+  test.AddOutput<T>("output", output_shape, expected_output);
+  test.SetOutputAbsErr("output", 0.001f);
+  // DML does not consistently match these CPU STFT validation/regression paths in Windows GPU CI.
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, STFTFloatComplexInputBatched) {
+  TestSTFTComplexInputBatched<float>();
+}
+
+TEST(SignalOpsTest, STFTDoubleComplexInputBatched) {
+  TestSTFTComplexInputBatched<double>();
 }
 
 TEST(SignalOpsTest, HannWindowFloat) {
@@ -433,6 +535,161 @@ TEST(SignalOpsTest, DFT17_RFFT_IRFFT_roundtrip) {
 
 TEST(SignalOpsTest, DFT20_RFFT_IRFFT_roundtrip) {
   TestRFFTIRFFTRoundTrip(kOpsetVersion20);
+}
+
+// Length 7 is prime, exercising the non-radix code paths (Bluestein on CPU, direct DFT on GPU EPs).
+static void TestPrimeLengthDFTFloat(bool onesided, int since_version) {
+  OpTester test("DFT", since_version);
+
+  vector<int64_t> shape = {1, 7, 1};
+  vector<float> input = {1, 2, 3, 4, 5, 6, 7};
+
+  vector<int64_t> output_shape = {1, onesided ? 4 : 7, 2};
+  vector<float> expected_output = {28.00000f, 0.00000f, -3.50000f, 7.26782f,
+                                   -3.50000f, 2.79116f, -3.50000f, 0.79885f};
+  if (!onesided) {
+    expected_output.insert(expected_output.end(),
+                           {-3.50000f, -0.79885f, -3.50000f, -2.79116f, -3.50000f, -7.26782f});
+  }
+
+  test.AddInput<float>("input", shape, input);
+  if (since_version == 20) {
+    test.AddInput<int64_t>("dft_length", {}, {7});
+    test.AddInput<int64_t>("axis", {}, {1});
+  }
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(onesided));
+  test.AddOutput<float>("output", output_shape, expected_output);
+  test.SetOutputAbsErr("output", 0.0002f);
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, DFT17_Float_prime_length) { TestPrimeLengthDFTFloat(false, kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float_prime_length) { TestPrimeLengthDFTFloat(false, kOpsetVersion20); }
+
+TEST(SignalOpsTest, DFT17_Float_prime_length_onesided) { TestPrimeLengthDFTFloat(true, kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float_prime_length_onesided) { TestPrimeLengthDFTFloat(true, kOpsetVersion20); }
+
+// dft_length longer than the signal zero-pads before the transform; padding to 8 stays on radix
+// paths while padding to 7 lands on the non-radix fallback.
+static void TestZeroPaddedDFTFloat(int64_t dft_length, int since_version) {
+  OpTester test("DFT", since_version);
+
+  vector<int64_t> shape = {1, 5, 1};
+  vector<float> input = {1, 2, 3, 4, 5};
+
+  const vector<float> expected_padded_to_8 = {
+      15.00000f, 0.00000f, -5.41421f, -7.24264f, 3.00000f, 2.00000f, -2.58579f, -1.24264f,
+      3.00000f, 0.00000f, -2.58579f, 1.24264f, 3.00000f, -2.00000f, -5.41421f, 7.24264f};
+  const vector<float> expected_padded_to_7 = {
+      15.00000f, 0.00000f, -6.52930f, -4.05456f, 3.46346f, -1.43004f, -0.93416f, 2.45265f,
+      -0.93416f, -2.45265f, 3.46346f, 1.43004f, -6.52930f, 4.05456f};
+  const vector<float>& expected_output = dft_length == 8 ? expected_padded_to_8 : expected_padded_to_7;
+
+  test.AddInput<float>("input", shape, input);
+  test.AddInput<int64_t>("dft_length", {}, {dft_length});
+  if (since_version == 20) {
+    test.AddInput<int64_t>("axis", {}, {1});
+  }
+  test.AddOutput<float>("output", {1, dft_length, 2}, expected_output);
+  test.SetOutputAbsErr("output", 0.0002f);
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, DFT17_Float_zero_padded_radix2) { TestZeroPaddedDFTFloat(8, kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float_zero_padded_radix2) { TestZeroPaddedDFTFloat(8, kOpsetVersion20); }
+
+TEST(SignalOpsTest, DFT17_Float_zero_padded_prime) { TestZeroPaddedDFTFloat(7, kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float_zero_padded_prime) { TestZeroPaddedDFTFloat(7, kOpsetVersion20); }
+
+// Runs only against EPs that register DFT for float16 (the CPU kernel is float/double only).
+// Kernels accumulate in float32 internally, so the tolerance covers float16 output quantization.
+static void TestRadix2DFTFloat16(int since_version) {
+  OpTester test("DFT", since_version);
+
+  vector<int64_t> shape = {1, 8, 1};
+  vector<int64_t> output_shape = {1, 8, 2};
+
+  vector<float> input = {1, 2, 3, 4, 5, 6, 7, 8};
+  vector<float> expected_output = {36.000f, 0.000f, -4.000f, 9.65685f, -4.000f, 4.000f, -4.000f, 1.65685f,
+                                   -4.000f, 0.000f, -4.000f, -1.65685f, -4.000f, -4.000f, -4.000f, -9.65685f};
+
+  test.AddInput<MLFloat16>("input", shape, ToFloat16(input));
+  if (since_version == 20) {
+    test.AddInput<int64_t>("dft_length", {}, {8});
+    test.AddInput<int64_t>("axis", {}, {1});
+  }
+  test.AddOutput<MLFloat16>("output", output_shape, ToFloat16(expected_output));
+  test.SetOutputAbsErr("output", 0.05f);
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, DFT17_Float16_radix2) { TestRadix2DFTFloat16(kMinOpsetVersion); }
+
+TEST(SignalOpsTest, DFT20_Float16_radix2) { TestRadix2DFTFloat16(kOpsetVersion20); }
+
+// dft_length can imply a different half-spectrum bin count (floor(dft_length/2) + 1) than the
+// IRFFT input provides; missing bins are treated as zero and extra bins are ignored. The CPU
+// kernel implements these semantics on its Bluestein path but not yet on its radix-2 path, so
+// radix-2 length cases exclude the CPU EP until that is fixed.
+static void TestIRFFTSpectrumLengthMismatchFloat(const vector<float>& input, int64_t input_bins,
+                                                 int64_t dft_length, const vector<float>& expected_output,
+                                                 int since_version, bool exclude_cpu) {
+  if (exclude_cpu && nullptr == DefaultWebGpuExecutionProvider().get()) {
+    GTEST_SKIP() << "Test requires the WebGPU execution provider when the CPU radix-2 path is excluded.";
+  }
+
+  OpTester test("DFT", since_version);
+
+  test.AddInput<float>("input", {1, input_bins, 2}, input);
+  test.AddInput<int64_t>("dft_length", {}, {dft_length});
+  if (since_version == 20) {
+    test.AddInput<int64_t>("axis", {}, {1});
+  }
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(true));
+  test.AddAttribute<int64_t>("inverse", static_cast<int64_t>(true));
+  test.AddOutput<float>("output", {1, dft_length, 1}, expected_output);
+  test.SetOutputAbsErr("output", 0.001f);
+  std::unordered_set<std::string> excluded_providers{kDmlExecutionProvider};
+  if (exclude_cpu) {
+    excluded_providers.insert(kCpuExecutionProvider);
+  }
+  test.ConfigExcludeEps(excluded_providers);
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, DFT17_IRFFT_underprovided_spectrum_radix2) {
+  TestIRFFTSpectrumLengthMismatchFloat(
+      {1, 0, 2, 1, 3, -2}, 3, 8,
+      {1.375000f, 0.801777f, -0.875000f, -0.905330f, 0.375000f, 0.448223f, -0.375000f, 0.155330f},
+      kMinOpsetVersion, /*exclude_cpu=*/true);
+}
+
+TEST(SignalOpsTest, DFT20_IRFFT_underprovided_spectrum_radix2) {
+  TestIRFFTSpectrumLengthMismatchFloat(
+      {1, 0, 2, 1, 3, -2}, 3, 8,
+      {1.375000f, 0.801777f, -0.875000f, -0.905330f, 0.375000f, 0.448223f, -0.375000f, 0.155330f},
+      kOpsetVersion20, /*exclude_cpu=*/true);
+}
+
+TEST(SignalOpsTest, DFT20_IRFFT_underprovided_spectrum_prime) {
+  TestIRFFTSpectrumLengthMismatchFloat(
+      {1, 0, 2, 1, 3, -2}, 3, 7,
+      {1.571429f, 0.642126f, -1.283041f, -0.408290f, 0.733165f, -0.230072f, -0.025316f},
+      kOpsetVersion20, /*exclude_cpu=*/false);
+}
+
+TEST(SignalOpsTest, DFT20_IRFFT_overprovided_spectrum_radix2) {
+  TestIRFFTSpectrumLengthMismatchFloat(
+      {1, 0, 2, 1, 3, -2, 4, 0.5f, -1, 0, 5, 5, 6, -6}, 7, 8,
+      {2.250000f, 0.131282f, -0.875000f, -0.161612f, -0.750000f, 1.368718f, -0.625000f, -0.338388f},
+      kOpsetVersion20, /*exclude_cpu=*/true);
 }
 
 // Test 2D complex input (single 1D signal without batch dimension)

@@ -18,8 +18,6 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - alpha
-  - beta
   - rc
   - none
   default: none
@@ -27,7 +25,7 @@ parameters:
 - name: PreReleaseVersionSuffixNumber
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
-  default: 0
+  default: 1
 
 - name: AdditionalBuildFlag
   displayName: Build flags to append to build command
@@ -76,8 +74,9 @@ variables:
   value: $(Agent.TempDirectory)\v13.0
 - name: win_cudnn_home
   value: $(Agent.TempDirectory)\9.14.0.64_cuda13
+# Windows x64 CUDA architectures. Keep in sync with plugin-cuda-pipeline.yml.
 - name: CudaArchs
-  value: '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'
+  value: '75-real;80-real;86-real;89-real;120-real'
 
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
@@ -86,7 +85,7 @@ extends:
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
     settings:
-      networkIsolationPolicy: Permissive
+      networkIsolationPolicy: CFSClean,CFSClean2,CFSClean3,DefaultDeny
     featureFlags:
       binskimScanAllExtensions: true
     sdl:
@@ -94,7 +93,7 @@ extends:
         enabled: true
         scanOutputDirectoryOnly: true
       sourceAnalysisPool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
+        name: onnxruntime-Win-CPU-2022
         os: windows
       componentgovernance:
         ignoreDirectories: '$(Build.Repository.LocalPath)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/benchmark,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11,$(Build.Repository.LocalPath)/cmake/external/onnx/third_party/pybind11/tests,$(Build.Repository.LocalPath)/cmake/external/onnxruntime-extensions,$(Build.Repository.LocalPath)/js/react_native/e2e/node_modules,$(Build.Repository.LocalPath)/js/node_modules,$(Build.Repository.LocalPath)/onnxruntime-inference-examples,$(Build.SourcesDirectory)/cmake/external/emsdk/upstream/emscripten/tests,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/benchmark,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11,$(Build.SourcesDirectory)/cmake/external/onnx/third_party/pybind11/tests,$(Build.SourcesDirectory)/cmake/external/onnxruntime-extensions,$(Build.SourcesDirectory)/js/react_native/e2e/node_modules,$(Build.SourcesDirectory)/js/node_modules,$(Build.SourcesDirectory)/onnxruntime-inference-examples,$(Build.BinariesDirectory)'
@@ -126,6 +125,11 @@ extends:
 
     - template: templates/linux-cpu-packaging-pipeline.yml
 
+    - template: templates/mac-cpu-packaging-pipeline.yml
+      parameters:
+        AllowReleasedOpsetOnly: 1
+        DoESRP: true
+
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
         CudaVersion: ${{ parameters.CudaVersion }}
@@ -143,3 +147,49 @@ extends:
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
         CudaArchs: ${{ variables.CudaArchs }}
         win_cudnn_home: ${{ variables.win_cudnn_home }}
+
+    - template: stages/nodejs-win-packaging-stage.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        ArtifactName: 'drop-onnxruntime-nodejs-win-x64'
+        StageName: 'Windows_Nodejs_Packaging_x64'
+        BuildCommand: >-
+          --build_nodejs
+          --build_shared_lib
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_generic_interface
+          --enable_onnx_tests
+          --enable_wcos
+          --skip_submodule_sync
+          --use_dml
+          --use_webgpu
+        BuildArch: 'x64'
+        sln_platform: 'x64'
+        DoEsrp: true
+        PublishWebGpuBuildTools: true
+
+    - template: stages/nodejs-win-packaging-stage.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        ArtifactName: 'drop-onnxruntime-nodejs-win-arm64'
+        StageName: 'Windows_Nodejs_Packaging_arm64'
+        BuildCommand: >-
+          --arm64
+          --build_nodejs
+          --build_shared_lib
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_generic_interface
+          --enable_onnx_tests
+          --enable_wcos
+          --skip_submodule_sync
+          --use_dml
+          --use_webgpu
+        BuildArch: 'x64'
+        sln_platform: 'arm64'
+        DoEsrp: true
+        DependsOnStageName: Windows_Nodejs_Packaging_x64
+
+    - template: stages/nodejs-npm-packaging-stage.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}

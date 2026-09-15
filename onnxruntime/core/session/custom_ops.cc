@@ -9,6 +9,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <algorithm>
 
 #include <gsl/gsl>
 #include "core/common/safeint.h"
@@ -194,6 +195,23 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutput, _Inout_ OrtKernelContext* 
   });
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetPreallocatedOutput, _In_ const OrtKernelContext* context,
+                    _In_ size_t output_index, _Outptr_result_maybenull_ OrtValue** output) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    if (context == nullptr || output == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "context and output must not be null");
+    }
+
+    const auto* ctx = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context);
+    if (output_index >= static_cast<size_t>(ctx->OutputCount())) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "output_index is out of range");
+    }
+
+    *output = reinterpret_cast<OrtValue*>(ctx->GetPreallocatedOutputMLValue(onnxruntime::narrow<int>(output_index)));
+    return nullptr;
+  });
+};
+
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKernelContext* context,
                     _Outptr_ void** out) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
@@ -202,6 +220,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
       *out = stream->GetHandle();
     else
       *out = nullptr;
+    return nullptr;
+  });
+};
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
+                    _Outptr_result_maybenull_ OrtSyncStream** out) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    auto* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
+    *out = reinterpret_cast<OrtSyncStream*>(stream);
     return nullptr;
   });
 };
@@ -907,9 +934,13 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetScratchBuffer, _In_ const OrtKerne
 namespace onnxruntime {
 struct CustomOpKernel : OpKernel {
   CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
-    if (op_.version > ORT_API_VERSION) {
-      ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
-    }
+    // Cap the version to the current ORT API version. This allows custom ops compiled against a newer ORT
+    // to work on an older ORT runtime, provided they don't call API functions unavailable at the runtime version.
+    // Individual newer functions in OrtCustomOp are gated by per-function version checks throughout this file.
+    const uint32_t api_version = std::min(op_.version, static_cast<uint32_t>(ORT_API_VERSION));
+    const OrtApi* ort_api = OrtGetApiBase()->GetApi(api_version);
+    ORT_ENFORCE(ort_api != nullptr, "Failed to get ORT API for version ",
+                api_version, " in custom op '", op_.GetName(&op_), "'");
 
     if (op_.version >= min_ort_version_with_compute_v2_support &&
         op_.CreateKernelV2) {
@@ -917,11 +948,11 @@ struct CustomOpKernel : OpKernel {
       Ort::ThrowOnError(
           op_.CreateKernelV2(
               &op_,
-              OrtGetApiBase()->GetApi(op_.version),
+              ort_api,
               reinterpret_cast<const OrtKernelInfo*>(&info),
               &op_kernel_));
     } else {
-      op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
+      op_kernel_ = op_.CreateKernel(&op_, ort_api,
                                     reinterpret_cast<const OrtKernelInfo*>(&info));
     }
   }

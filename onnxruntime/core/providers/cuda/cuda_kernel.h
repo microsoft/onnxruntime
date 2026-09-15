@@ -7,6 +7,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include <mutex>
 #include "core/providers/cuda/cuda_stream_handle.h"
@@ -108,6 +109,17 @@ class CudaKernel : public OpKernel {
     return IAllocator::MakeUniquePtr<T>(Info().GetAllocator(OrtMemType::OrtMemTypeCPU), count_or_bytes);
   }
 
+  // Hands a host buffer to the provider to hold forever.  For buffers a captured
+  // graph copies from: the graph re-reads them on every replay, so they must not be
+  // recycled by the allocator.
+  template <typename T>
+  inline void RetainBufferForGraphCapture(IAllocatorUniquePtr<T> buffer) const {
+    auto deleter = buffer.get_deleter();
+    provider_->RetainBufferForGraphCapture(
+        std::shared_ptr<void>(buffer.release(),
+                              [deleter](void* p) { deleter(static_cast<T*>(p)); }));
+  }
+
   const cudaDeviceProp& GetDeviceProp() const { return provider_->GetDeviceProp(); }
   int GetCudnnConvAlgo() const { return provider_->GetCudnnConvAlgo(); }
   bool GetCudnnConvUseMaxWorkspace() const { return provider_->GetCudnnConvUseMaxWorkspace(); }
@@ -129,6 +141,10 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudnnHandle_t GetCudnnHandle(OpKernelContext* ctx) const {
+    return RequireCudnnHandle(GetCudnnHandle(static_cast<CudaStream*>(ctx->GetComputeStream())));
+  }
+
+  inline cudnnHandle_t TryGetCudnnHandle(OpKernelContext* ctx) const {
     return GetCudnnHandle(static_cast<CudaStream*>(ctx->GetComputeStream()));
   }
 
@@ -143,7 +159,7 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudnnHandle_t GetCudnnHandleOrDefault(onnxruntime::Stream* stream) const {
-    return stream ? GetCudnnHandle(stream) : DefaultCudnnHandle();
+    return stream ? RequireCudnnHandle(GetCudnnHandle(stream)) : DefaultCudnnHandle();
   }
 
   inline cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
@@ -216,7 +232,20 @@ class CudaKernel : public OpKernel {
         cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(gpu_copy_.get(), cpu_pinned_copy_.get(), count_ * sizeof(T), cudaMemcpyHostToDevice,
                                              cuda_stream));
-        op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), stream);
+        // While the stream is capturing, the copy above becomes a node of the graph
+        // and reads this host buffer again on every replay.  Releasing it here would
+        // let a later run of a different shape take the block and overwrite it, and
+        // the replay would then copy that run's bytes instead -- for the pointer
+        // arrays this class mostly carries, addresses that belong to nothing.
+        cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+        if (cuda_stream != nullptr) {
+          CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(cuda_stream, &capture_status));
+        }
+        if (capture_status != cudaStreamCaptureStatusNone) {
+          op_kernel_->RetainBufferForGraphCapture(std::move(cpu_pinned_copy_));
+        } else {
+          op_kernel_->AddDeferredReleaseCPUPtr(cpu_pinned_copy_.release(), stream);
+        }
       }
       return Status::OK();
     }
@@ -258,7 +287,21 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudnnHandle_t DefaultCudnnHandle() const {
-    return provider_->PerThreadDefaultCudnnHandle();
+    return RequireCudnnHandle(provider_->PerThreadDefaultCudnnHandle());
+  }
+
+  static inline cudnnHandle_t RequireCudnnHandle(cudnnHandle_t handle) {
+    if (handle == nullptr) {
+#ifndef USE_CUDA_MINIMAL
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                         "cuDNN is unavailable or disabled for CUDA Execution Provider: ",
+                                         cuda::CudnnLibrary::Get().Error()));
+#else
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                         "cuDNN is unavailable for CUDA Execution Provider in a CUDA minimal build."));
+#endif
+    }
+    return handle;
   }
 
   inline cudaStream_t DefaultCudaStream() const {

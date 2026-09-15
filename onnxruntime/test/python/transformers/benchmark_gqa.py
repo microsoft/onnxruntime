@@ -259,6 +259,7 @@ def run_performance_test(
     # Note: some models use bf16.
     # We use fp16/bf16 for all models in this test.
     configures = [
+        (40, 128, 8, 8192, None, "Qwen3-14B"),
         (32, 128, 8, 8192, None, "Llama3-8B"),
         (64, 128, 8, 8192, None, "Llama3-70B"),
         (32, 128, 8, 32768, 4096, "Mistral-7B-v0.1"),

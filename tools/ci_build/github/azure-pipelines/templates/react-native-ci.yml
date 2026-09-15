@@ -68,8 +68,6 @@ stages:
       runCodesignValidationInjection: false
     steps:
     - template: use-xcode-version.yml
-      parameters:
-        xcodeVersion: 16.4
 
     - template: setup-build-tools.yml
       parameters:
@@ -112,8 +110,6 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/ios_pod'
 
     - template: use-xcode-version.yml
-      parameters:
-        xcodeVersion: 16.4
 
     - task: NodeTool@0
       inputs:
@@ -123,6 +119,7 @@ stages:
 
     - script: |
         brew tap wix/brew
+        brew trust wix/brew
         brew install applesimutils
       displayName: Install applesimutils
 

@@ -34,6 +34,22 @@ Status UnsqueezeOpDataPropagation::infer() {
   } else if (input_0->GetInferredShapeValues().has_value()) {
     const auto& tensor_shape_proto = input_0->GetInferredShapeValues().value();
 
+    // Decline when unsqueezing a single-element (scalar-like, rank-1 [1]) value would yield a
+    // rank >= 2 result the values channel cannot faithfully represent (it would otherwise fabricate
+    // a misleading [1, value]). A single-element value (dim_size == 1) is the channel's
+    // representation of a scalar-like quantity; any unsqueeze lifts it to rank >= 2, which the
+    // single-value channel cannot represent. Multi-element shape vectors (dim_size > 1) are
+    // legitimate and left untouched.
+    //
+    // This decline is locked end to end by GatherUnsqueezeDeclineTest (Branch B) via a rank-lowering
+    // Squeeze (Shape -> Gather([-1]) -> Unsqueeze -> Squeeze -> Range): with the decline, Range's
+    // length stays symbolic; relaxing it fabricates [1, value], which makes the downstream Range
+    // input non-scalar and the model fails to load -- so the behavior IS observable and the test
+    // discriminates it. Multi-element shape vectors are unaffected.
+    if (tensor_shape_proto.dim_size() == 1) {
+      return Status::OK();
+    }
+
     // The TensorShapeProto (inferred shape values) should have rank > 0 and
     // all the dimensions have values (not symbolic)
     if (tensor_shape_proto.dim_size() > 0) {
@@ -54,7 +70,8 @@ Status UnsqueezeOpDataPropagation::infer() {
       if (node_.InputDefs().size() > 1) {
         const auto* input_1 = node_.InputDefs()[1];
         ORT_TRY {
-          ORT_RETURN_IF_ERROR(get_initialized_input_values_func_(input_1->Name(), axes));
+          [[maybe_unused]] int axes_num_dims = -1;
+          ORT_RETURN_IF_ERROR(get_initialized_input_values_func_(input_1->Name(), axes, axes_num_dims));
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {

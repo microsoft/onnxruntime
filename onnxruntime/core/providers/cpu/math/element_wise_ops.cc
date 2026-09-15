@@ -1580,24 +1580,38 @@ class Cos final : public OpKernel {
   Status Compute(OpKernelContext* context) const override {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
-    MakeEigenArrayMap<float>(Y) = MakeEigenArrayMap<float>(X).cos();
+    MakeEigenArrayMap<T>(Y) = MakeEigenArrayMap<T>(X).cos();
     return Status::OK();
   }
 };
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     Cos,
-    7,
-    21,
+    7, 21,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cos<float>);
 
-// Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Cos,
+    7, 21,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Cos<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Cos,
     22,
+    float,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Cos<float>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(
+    Cos,
+    22,
+    double,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+    Cos<double>);
 
 template <typename T>
 class Tan final : public OpKernel {
@@ -1890,7 +1904,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         float input0 = per_iter_bh.ScalarInput0<float>();
-        if (input0 > 0)
+        if (input0 >= 0)
           per_iter_bh.OutputEigen<float>().array() = input0;
         else
           per_iter_bh.OutputEigen<float>() = input0 * per_iter_bh.EigenInput1<float>().array();
@@ -1901,8 +1915,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
         float* output = per_iter_bh.OutputEigen<float>().data();
         size_t size = per_iter_bh.OutputEigen<float>().size();
         for (size_t i = 0; i < size; i++) {
-          output[i] = static_cast<float>(input0[i] > 0) * input0[i] +
-                      (1.0f - static_cast<float>(input0[i] > 0)) * input0[i] * input1;
+          output[i] = (input0[i] >= 0) ? input0[i] : input0[i] * input1;
         }
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -1911,8 +1924,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
         float* output = per_iter_bh.OutputEigen<float>().data();
         size_t size = per_iter_bh.OutputEigen<float>().size();
         for (size_t i = 0; i < size; i++) {
-          output[i] = static_cast<float>(input0[i] > 0) * input0[i] +
-                      (1.0f - static_cast<float>(input0[i] > 0)) * input0[i] * input1[i];
+          output[i] = (input0[i] >= 0) ? input0[i] : input0[i] * input1[i];
         }
       }};
 

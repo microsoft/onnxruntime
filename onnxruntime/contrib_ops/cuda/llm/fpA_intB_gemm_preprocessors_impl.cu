@@ -482,6 +482,49 @@ __global__ void add_bias_and_interleave_int4s_inplace_kernel(uint32_t* tensor, s
   }
 }
 
+// Interleave-only variant for MXFP4 (e2m1) weights: applies the SAME
+// [e0,e2,e4,e6,e1,e3,e5,e7] nibble pair-interleave as
+// add_bias_and_interleave_int4s_inplace_kernel, but writes the raw 4-bit code unchanged (no
+// signed +8 bias). The e2m1 dequant converter
+// (FastInterleavedAndBiasedNumericArrayConverter<half_t, float_e2m1_t, 8>) inverts exactly this
+// permutation, so the grouped GEMM requires the interleave while the floating-point nibbles must
+// stay untouched.
+__global__ void interleave_int4s_inplace_kernel(uint32_t* tensor, size_t num_elts) {
+  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  size_t register_idx = static_cast<size_t>(idx);
+  if (register_idx < num_elts / 8) {
+    uint32_t current_register = tensor[register_idx];
+    uint32_t transformed_register = 0;
+    for (int i = 0; i < 8; ++i) {
+      uint8_t raw_nibble = (current_register >> (i * 4)) & 0x0F;
+      int dest_idx = ((i % 2) == 0) ? (i / 2) : ((i - 1) / 2 + 4);
+      transformed_register |= (static_cast<uint32_t>(raw_nibble & 0x0F) << (dest_idx * 4));
+    }
+    tensor[register_idx] = transformed_register;
+  }
+}
+
+void interleave_without_bias_quantized_tensor_inplace_cuda(
+    int8_t* tensor,
+    size_t num_elts,
+    QuantType quant_type,
+    cudaStream_t stream) {
+  ORT_ENFORCE(quant_type == QuantType::W4_A16 || quant_type == QuantType::W4_AFP8,
+              "Interleave-without-bias is only supported for 4-bit (e2m1) weights.");
+  if (num_elts == 0) {
+    return;
+  }
+  ORT_ENFORCE(num_elts >= 8 && num_elts % 8 == 0,
+              "Interleave-without-bias requires the number of 4-bit elements to be a non-zero multiple of 8, got ",
+              num_elts, ".");
+  const int threads_per_block = 256;
+  const int num_registers = SafeInt<int32_t>(num_elts) / 8;
+  const int num_blocks = (num_registers + threads_per_block - 1) / threads_per_block;
+  interleave_int4s_inplace_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
+      reinterpret_cast<uint32_t*>(tensor),
+      num_elts);
+}
+
 /**
  * @brief Launches the CUDA kernel for in-place bias addition and interleaving.
  *
@@ -521,13 +564,29 @@ void add_bias_and_interleave_quantized_tensor_inplace_cuda(
   }
 }
 
+int get_arch_for_mixed_gemm_weight_preprocess(int arch) {
+  ORT_ENFORCE(arch >= 75, "Unsupported CUDA architecture: ", arch);
+  if (arch < 80) {
+    return 75;
+  }
+#ifndef EXCLUDE_SM_90
+  if (arch >= 90 && arch < 100) {
+    return 90;
+  }
+#endif
+  return 80;
+}
+
 void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
                                             int arch,
                                             int8_t* preprocessed_quantized_weight,
                                             int8_t* row_major_quantized_weight,
                                             int32_t* d_permutation_map,
                                             std::vector<size_t> const& shape,
-                                            QuantType quant_type) {
+                                            QuantType quant_type,
+                                            bool synchronize,
+                                            bool apply_bias_interleave,
+                                            bool interleave_without_bias) {
   LayoutDetails details = getLayoutDetailsForTransform(quant_type, arch);
 
   ORT_ENFORCE(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
@@ -564,11 +623,24 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
     std::swap(src_buf, dst_buf);
   }
 
-  add_bias_and_interleave_quantized_tensor_inplace_cuda(
-      src_buf,
-      num_elts,
-      quant_type,
-      stream);
+  // Step 4 (integer-only): add the +bias and pair-interleave. Skipped for MXFP4 (e2m1)
+  // float codes, which would be corrupted by the integer bias; the preceding layout-only
+  // steps already produced the ColumnMajorInterleaved nibble order the GEMV consumes.
+  if (apply_bias_interleave) {
+    add_bias_and_interleave_quantized_tensor_inplace_cuda(
+        src_buf,
+        num_elts,
+        quant_type,
+        stream);
+  } else if (interleave_without_bias) {
+    // MXFP4 grouped-GEMM layout: apply step 4's [e0,e2,e4,e6,e1,e3,e5,e7] nibble interleave
+    // (which the e2m1 dequant converter inverts) WITHOUT the integer +8 bias.
+    interleave_without_bias_quantized_tensor_inplace_cuda(
+        src_buf,
+        num_elts,
+        quant_type,
+        stream);
+  }
 
   if (preprocessed_quantized_weight != src_buf) {
     const size_t num_bytes = num_elts * static_cast<size_t>(get_weight_quant_bits(quant_type)) / static_cast<size_t>(8);
@@ -576,9 +648,17 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
     ORT_ENFORCE(copy_err == cudaSuccess, "cudaMemcpyAsync failed: ", cudaGetErrorString(copy_err));
   }
 
-  // Synchronize the stream to ensure the permutation is complete before row_permutation memory is relased.
-  auto sync_err = cudaStreamSynchronize(stream);
-  ORT_ENFORCE(sync_err == cudaSuccess, "cudaStreamSynchronize failed: ", cudaGetErrorString(sync_err));
+  // Synchronize the stream so that all transform work is complete before the
+  // caller releases the (transient) scratch buffers. Callers that invoke this
+  // repeatedly on the same stream (e.g. QMoE looping over experts) can pass
+  // ``synchronize=false`` to skip the per-call host-blocking sync and issue a
+  // single ``cudaStreamSynchronize`` once after the final call instead. The
+  // device permutation source (``kPerm_*``) has static storage duration, so it
+  // is always safe regardless of when the async copy completes.
+  if (synchronize) {
+    auto sync_err = cudaStreamSynchronize(stream);
+    ORT_ENFORCE(sync_err == cudaSuccess, "cudaStreamSynchronize failed: ", cudaGetErrorString(sync_err));
+  }
 }
 
 }  // namespace weight_only

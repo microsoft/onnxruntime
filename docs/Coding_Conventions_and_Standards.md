@@ -109,6 +109,7 @@ void foo(gsl::span<const std::string> names) {
 * Use [SafeInt](https://github.com/dcleblanc/SafeInt) when calculating the size of memory to allocate to protect against overflow errors
   * `#include "core/common/safeint.h"`
   * search for `SafeInt<size_t>` in the code for examples
+* In operator shape inference, validate every output index against `getNumOutputs()` before writing it. Optional trailing outputs lower an op's `min_output`, so a node may legally declare fewer outputs than the schema's maximum; guard each optional output by the exact index it populates so a `getNumOutputs() > N` guard never writes an index greater than `N`.
 * The following C++ warnings should never be disabled in onnxruntime VC++ projects(Required by [Binskim](https://github.com/microsoft/binskim/blob/d9afb65c89a621411efded74c27999281d87867e/src/BinSkim.Rules/PERules/BA2007.EnableCriticalCompilerWarnings.cs)).
   1. [4018](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4018) 'token' : signed/unsigned mismatch
   2. [4146](https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-2-c4146?view=msvc-160) unary minus operator applied to unsigned type, result still unsigned

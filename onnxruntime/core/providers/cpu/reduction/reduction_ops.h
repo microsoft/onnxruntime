@@ -154,6 +154,13 @@ inline bool reduce_isnan<int32_t>(int32_t) { return false; }
 template <>
 inline bool reduce_isnan<int64_t>(int64_t) { return false; }
 
+// Integer types whose precision exceeds double's 53-bit mantissa, where summing in double
+// loses precision for large values. For these, reduction aggregators use Kahan compensated
+// summation. int32_t/uint32_t (and narrower) fit exactly in double, so plain double
+// accumulation is sufficient.
+template <typename T>
+inline constexpr bool kReduceUseKahan = std::is_same_v<T, int64_t> || std::is_same_v<T, uint64_t>;
+
 class ReduceAggregatorBase {
  public:
   // Fast reduction: see OptimizeShapeForFastReduce's comment.
@@ -213,21 +220,83 @@ class ReduceAggregator : public ReduceAggregatorBase {
 
 template <typename T>
 class ReduceAggregatorSum : public ReduceAggregator<T, T> {
+ protected:
+  // For integer types, accumulate in double to avoid signed overflow UB.
+  // When overflow occurs, results saturate to T::max()/T::lowest() rather than wrapping.
+  // Note: NumPy/PyTorch use modular (wrapping) arithmetic for integers, but wrapping
+  // is non-deterministic in ORT due to parallelized reduction order. Saturation provides
+  // well-defined behavior. Other EPs (CUDA/DML) may still wrap.
+  // Double has range ~1.8e308, sufficient for any practical sum of int32/int64 values.
+  // For int64 values > 2^53, double cannot represent every integer exactly;
+  // Kahan summation minimizes but does not eliminate rounding in that regime.
+  double double_accumulator_ = 0.0;
+  double kahan_compensation_ = 0.0;
+
  public:
   inline ReduceAggregatorSum(int64_t N, const T&) : ReduceAggregator<T, T>(N, 0) {}
-  inline void update(const T& v) { this->accumulator_ += v; }
+  inline void update(const T& v) {
+    if constexpr (std::is_integral_v<T>) {
+      if constexpr (kReduceUseKahan<T>) {
+        double y = static_cast<double>(v) - kahan_compensation_;
+        double t = double_accumulator_ + y;
+        kahan_compensation_ = (t - double_accumulator_) - y;
+        double_accumulator_ = t;
+      } else {
+        double_accumulator_ += static_cast<double>(v);
+      }
+    } else {
+      this->accumulator_ += v;
+    }
+  }
   static T aggall(const T* from_data, int64_t size) {
-    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(size)).sum();
+    if constexpr (std::is_integral_v<T>) {
+      double sum = 0.0;
+      if constexpr (kReduceUseKahan<T>) {
+        double comp = 0.0;
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
+          double y = static_cast<double>(from_data[i]) - comp;
+          double t = sum + y;
+          comp = (t - sum) - y;
+          sum = t;
+        }
+      } else {
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
+          sum += static_cast<double>(from_data[i]);
+        }
+      }
+      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+      if (sum >= t_max) return std::numeric_limits<T>::max();
+      if (sum <= t_min) return std::numeric_limits<T>::min();
+      return static_cast<T>(sum);
+    } else {
+      return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(
+                 from_data, onnxruntime::narrow<size_t>(size))
+          .sum();
+    }
   }
   inline T aggall(const T* from_data) {
     return aggall(from_data, this->N_);
+  }
+  inline T get_value() {
+    if constexpr (std::is_integral_v<T>) {
+      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+      if (double_accumulator_ >= t_max) return std::numeric_limits<T>::max();
+      if (double_accumulator_ <= t_min) return std::numeric_limits<T>::min();
+      return static_cast<T>(double_accumulator_);
+    } else {
+      return this->accumulator_;
+    }
   }
 
   static void fill_for_empty_set(Tensor& output) {
     EigenMap<T>(output).array() = static_cast<T>(0);
   }
 
-  // Fast reduction
+  // Fast reduction paths use parallelized vectorized operations.
+  // For integer types, FastReduceRK and FastReduceKRK accumulate through double
+  // intermediates to avoid signed overflow UB, then saturating-cast back to T.
   static inline FastReduceKind WhichFastReduce() {
     return FastReduceKind::kKR | FastReduceKind::kRK | FastReduceKind::kKRK | FastReduceKind::kRKR;
   }
@@ -251,17 +320,40 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
     int64_t N = fast_shape[1];
     const T* data = input.Data<T>();
     T* out = output.MutableData<T>();
-
     int64_t n_rows = fast_shape[0];
-    memcpy(out, data, SafeInt<size_t>(N) * sizeof(T));
-    concurrency::ThreadPool::TryParallelFor(
-        tp, onnxruntime::narrow<std::ptrdiff_t>(N), ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
-        [data, out, N, n_rows](ptrdiff_t begin, ptrdiff_t end) {
-          for (int64_t row = 1; row < n_rows; ++row) {
-            EigenVectorArrayMap<T>(out + begin, end - begin) += ConstEigenVectorArrayMap<T>(
-                data + row * N + begin, end - begin);
-          }
-        });
+
+    if constexpr (std::is_integral_v<T>) {
+      // Accumulate rows in double to avoid signed overflow UB, then saturate.
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(N), ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
+          [data, out, N, n_rows](ptrdiff_t begin, ptrdiff_t end) {
+            for (ptrdiff_t col = begin; col < end; ++col) {
+              double sum = 0.0;
+              for (int64_t row = 0; row < n_rows; ++row) {
+                sum += static_cast<double>(data[row * N + col]);
+              }
+              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+              if (sum >= t_max) {
+                out[col] = std::numeric_limits<T>::max();
+              } else if (sum <= t_min) {
+                out[col] = std::numeric_limits<T>::lowest();
+              } else {
+                out[col] = static_cast<T>(sum);
+              }
+            }
+          });
+    } else {
+      memcpy(out, data, SafeInt<size_t>(N) * sizeof(T));
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(N), ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
+          [data, out, N, n_rows](ptrdiff_t begin, ptrdiff_t end) {
+            for (int64_t row = 1; row < n_rows; ++row) {
+              EigenVectorArrayMap<T>(out + begin, end - begin) += ConstEigenVectorArrayMap<T>(
+                  data + row * N + begin, end - begin);
+            }
+          });
+    }
   }
 
   static void FastReduceKRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
@@ -271,36 +363,152 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
     int64_t stridei = fast_shape[1] * fast_shape[2];
     int64_t strideo = fast_shape[2];
     T* out = output.MutableData<T>();
-    std::vector<T> one(onnxruntime::narrow<size_t>(fast_shape[1]), 1);
-    concurrency::ThreadPool::TryParallelFor(
-        tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]), ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
-        [one, data, fast_shape, stridei, strideo, out, N](ptrdiff_t begin, ptrdiff_t last) {
-          for (ptrdiff_t d = begin; d < last; ++d) {
-            // TODO(hasesh): Plumb through the mlas backend kernel selector config here
-            math::MatMul<T>(1, onnxruntime::narrow<ptrdiff_t>(N), onnxruntime::narrow<ptrdiff_t>(fast_shape[1]), one.data(), data + stridei * d, out + strideo * d, nullptr, nullptr);
-          }
-        });
+
+    if constexpr (std::is_integral_v<T>) {
+      // Accumulate the middle dimension in double to avoid signed overflow UB.
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]),
+          ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
+          [data, fast_shape, stridei, strideo, out, N](ptrdiff_t begin, ptrdiff_t last) {
+            for (ptrdiff_t d = begin; d < last; ++d) {
+              for (int64_t col = 0; col < N; ++col) {
+                double sum = 0.0;
+                for (int64_t row = 0; row < fast_shape[1]; ++row) {
+                  sum += static_cast<double>(data[stridei * d + row * N + col]);
+                }
+                constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+                constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+                if (sum >= t_max) {
+                  out[strideo * d + col] = std::numeric_limits<T>::max();
+                } else if (sum <= t_min) {
+                  out[strideo * d + col] = std::numeric_limits<T>::lowest();
+                } else {
+                  out[strideo * d + col] = static_cast<T>(sum);
+                }
+              }
+            }
+          });
+    } else {
+      std::vector<T> one(onnxruntime::narrow<size_t>(fast_shape[1]), 1);
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]),
+          ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
+          [one, data, fast_shape, stridei, strideo, out, N](ptrdiff_t begin, ptrdiff_t last) {
+            for (ptrdiff_t d = begin; d < last; ++d) {
+              math::MatMul<T>(1, onnxruntime::narrow<ptrdiff_t>(N),
+                              onnxruntime::narrow<ptrdiff_t>(fast_shape[1]),
+                              one.data(), data + stridei * d,
+                              out + strideo * d, nullptr, nullptr);
+            }
+          });
+    }
   }
 
   static void FastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    ReduceAggregator<T, T>::CommonFastReduceRKR(
-        input, fast_shape, output, tp,
-        [=](const T*) -> T { return 0; },
-        [=](T& value, const T* p, int64_t size) {
-          value += aggall(p, size);
-        });
+    if constexpr (std::is_integral_v<T>) {
+      // Use double accumulation across outer-dimension partial sums.
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      int64_t d0 = fast_shape[0];
+      int64_t d2 = fast_shape[2];
+      int64_t inc = d2 * fast_shape[1];
+
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[1]),
+          ParallelReduceFastCost(fast_shape[1], fast_shape[0] * fast_shape[2], sizeof(T), 6),
+          [data, out, d0, d2, inc](ptrdiff_t begin, ptrdiff_t last) {
+            for (ptrdiff_t d = begin; d < last; ++d) {
+              const T* p = data + d * d2;
+              double sum = 0.0;
+              for (int64_t i = 0; i < d0; ++i, p += inc) {
+                for (int64_t j = 0; j < d2; ++j) {
+                  sum += static_cast<double>(p[j]);
+                }
+              }
+              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+              if (sum >= t_max) {
+                out[d] = std::numeric_limits<T>::max();
+              } else if (sum <= t_min) {
+                out[d] = std::numeric_limits<T>::lowest();
+              } else {
+                out[d] = static_cast<T>(sum);
+              }
+            }
+          });
+    } else {
+      ReduceAggregator<T, T>::CommonFastReduceRKR(
+          input, fast_shape, output, tp,
+          [=](const T*) -> T { return 0; },
+          [=](T& value, const T* p, int64_t size) {
+            value += aggall(p, size);
+          });
+    }
   }
 };
 
 template <typename T, typename TVAL = T>
 class ReduceAggregatorSumSquare : public ReduceAggregator<T, TVAL> {
+  // For integer types, accumulate sum-of-squares in double to avoid signed overflow UB.
+  // Same rationale as ReduceAggregatorL2: squaring int32 values > 46340 overflows,
+  // and summing squared values compounds the problem.
+  double double_accumulator_ = 0.0;
+  double kahan_compensation_ = 0.0;  // Kahan compensation for int64+
+
  public:
   inline ReduceAggregatorSumSquare(int64_t N, const T&) : ReduceAggregator<T, TVAL>(N, 0) {}
   inline TVAL aggall(const T* from_data) {
-    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).squaredNorm();
+    if constexpr (std::is_integral_v<T>) {
+      double sum = 0.0;
+      if constexpr (kReduceUseKahan<T>) {
+        double comp = 0.0;
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
+          double dv = static_cast<double>(from_data[i]);
+          double y = dv * dv - comp;
+          double t = sum + y;
+          comp = (t - sum) - y;
+          sum = t;
+        }
+      } else {
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
+          double dv = static_cast<double>(from_data[i]);
+          sum += dv * dv;
+        }
+      }
+      constexpr double t_max = static_cast<double>(std::numeric_limits<TVAL>::max());
+      if (sum >= t_max) return std::numeric_limits<TVAL>::max();
+      return static_cast<TVAL>(sum);
+    } else {
+      return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(
+                 from_data, onnxruntime::narrow<size_t>(this->N_))
+          .squaredNorm();
+    }
   }
-  inline void update(const T& v) { this->accumulator_ += v * v; }
+  inline void update(const T& v) {
+    if constexpr (std::is_integral_v<T>) {
+      double dv = static_cast<double>(v);
+      if constexpr (kReduceUseKahan<T>) {
+        double y = dv * dv - kahan_compensation_;
+        double t = double_accumulator_ + y;
+        kahan_compensation_ = (t - double_accumulator_) - y;
+        double_accumulator_ = t;
+      } else {
+        double_accumulator_ += dv * dv;
+      }
+    } else {
+      this->accumulator_ += v * v;
+    }
+  }
+  inline TVAL get_value() {
+    if constexpr (std::is_integral_v<T>) {
+      constexpr double t_max = static_cast<double>(std::numeric_limits<TVAL>::max());
+      if (double_accumulator_ >= t_max) return std::numeric_limits<TVAL>::max();
+      return static_cast<TVAL>(double_accumulator_);
+    } else {
+      return this->accumulator_;
+    }
+  }
   static void fill_for_empty_set(Tensor& output) {
     EigenMap<T>(output).array() = static_cast<T>(0);
   }
@@ -311,63 +519,220 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
  public:
   inline ReduceAggregatorMean(int64_t N, const T&) : ReduceAggregatorSum<T>(N, 0) {}
   static T aggall(const T* from_data, int64_t size) {
-    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(size)).mean();
+    if constexpr (std::is_integral_v<T>) {
+      // Accumulate in double, divide, then saturate back to T.
+      double sum = 0.0;
+      if constexpr (kReduceUseKahan<T>) {
+        double comp = 0.0;
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
+          double y = static_cast<double>(from_data[i]) - comp;
+          double t = sum + y;
+          comp = (t - sum) - y;
+          sum = t;
+        }
+      } else {
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
+          sum += static_cast<double>(from_data[i]);
+        }
+      }
+      double result = sum / static_cast<double>(size);
+      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+      if (result >= t_max) return std::numeric_limits<T>::max();
+      if (result <= t_min) return std::numeric_limits<T>::min();
+      return static_cast<T>(result);
+    } else {
+      return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(
+                 from_data, onnxruntime::narrow<size_t>(size))
+          .mean();
+    }
   }
   inline T aggall(const T* from_data) {
     return aggall(from_data, this->N_);
   }
-  inline T get_value() { return this->accumulator_ / static_cast<T>(this->N_); }
+  inline T get_value() {
+    if constexpr (std::is_integral_v<T>) {
+      double result = this->double_accumulator_ / static_cast<double>(this->N_);
+      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+      if (result >= t_max) return std::numeric_limits<T>::max();
+      if (result <= t_min) return std::numeric_limits<T>::min();
+      return static_cast<T>(result);
+    } else {
+      return this->accumulator_ / static_cast<T>(this->N_);
+    }
+  }
 
   // Fast reduction
   // WhichFastReduce() already defined in ReduceAggregatorSum
 
   static void FastReduceKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
-    // TODO: use MLAS or BLAS
-    T* out = output.MutableData<T>();
-    T* end = out + fast_shape[0];
-    for (; out != end; ++out) {
-      *out /= static_cast<T>(fast_shape[1]);
+    if constexpr (std::is_integral_v<T>) {
+      // For integers: compute sum in double and divide before saturating to T.
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      int64_t stridei = fast_shape[1];
+      double divisor = static_cast<double>(stridei);
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(fast_shape[0]),
+          ParallelReduceFastCost(1, stridei, sizeof(T), 6),
+          [data, stridei, out, divisor](ptrdiff_t first, ptrdiff_t last) {
+            for (ptrdiff_t d = first; d < last; ++d) {
+              double sum = 0.0;
+              for (int64_t i = 0; i < stridei; ++i) {
+                sum += static_cast<double>(data[d * stridei + i]);
+              }
+              double result = sum / divisor;
+              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+              if (result >= t_max)
+                out[d] = std::numeric_limits<T>::max();
+              else if (result <= t_min)
+                out[d] = std::numeric_limits<T>::lowest();
+              else
+                out[d] = static_cast<T>(result);
+            }
+          });
+    } else {
+      ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
+      T* out = output.MutableData<T>();
+      T* end = out + fast_shape[0];
+      for (; out != end; ++out) {
+        *out /= static_cast<T>(fast_shape[1]);
+      }
     }
   }
 
   static void FastReduceRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                            Tensor& output, concurrency::ThreadPool* tp) {
-    ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
-    // TODO: use MLAS or BLAS
-    T* out = output.MutableData<T>();
-    T* end = out + fast_shape[1];
-    for (; out != end; ++out) {
-      *out /= static_cast<T>(fast_shape[0]);
+    if constexpr (std::is_integral_v<T>) {
+      // For integers: compute sum in double and divide before saturating to T.
+      int64_t N = fast_shape[1];
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      int64_t n_rows = fast_shape[0];
+      double divisor = static_cast<double>(n_rows);
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<std::ptrdiff_t>(N),
+          ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
+          [data, out, N, n_rows, divisor](ptrdiff_t begin, ptrdiff_t end) {
+            for (ptrdiff_t col = begin; col < end; ++col) {
+              double sum = 0.0;
+              for (int64_t row = 0; row < n_rows; ++row) {
+                sum += static_cast<double>(data[row * N + col]);
+              }
+              double result = sum / divisor;
+              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+              if (result >= t_max)
+                out[col] = std::numeric_limits<T>::max();
+              else if (result <= t_min)
+                out[col] = std::numeric_limits<T>::lowest();
+              else
+                out[col] = static_cast<T>(result);
+            }
+          });
+    } else {
+      ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
+      T* out = output.MutableData<T>();
+      T* end = out + fast_shape[1];
+      for (; out != end; ++out) {
+        *out /= static_cast<T>(fast_shape[0]);
+      }
     }
   }
 
   static void FastReduceKRK(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
-    int64_t strideo = fast_shape[2];
-    T* out = output.MutableData<T>();
-    T* begin;
-    T* end;
-    T div = static_cast<T>(fast_shape[1]);
-    for (int64_t d = 0; d < fast_shape[0]; ++d) {
-      begin = out + strideo * d;
-      end = begin + strideo;
-      for (; begin != end; ++begin) {
-        *begin /= div;
+    if constexpr (std::is_integral_v<T>) {
+      // For integers: compute sum in double and divide before saturating to T.
+      int64_t N = fast_shape[2];
+      const T* data = input.Data<T>();
+      int64_t stridei = fast_shape[1] * fast_shape[2];
+      int64_t strideo = fast_shape[2];
+      T* out = output.MutableData<T>();
+      double divisor = static_cast<double>(fast_shape[1]);
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[0]),
+          ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
+          [data, fast_shape, stridei, strideo, out, N, divisor](ptrdiff_t begin, ptrdiff_t last) {
+            for (ptrdiff_t d = begin; d < last; ++d) {
+              for (int64_t col = 0; col < N; ++col) {
+                double sum = 0.0;
+                for (int64_t row = 0; row < fast_shape[1]; ++row) {
+                  sum += static_cast<double>(data[stridei * d + row * N + col]);
+                }
+                double result = sum / divisor;
+                constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+                constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+                if (result >= t_max)
+                  out[strideo * d + col] = std::numeric_limits<T>::max();
+                else if (result <= t_min)
+                  out[strideo * d + col] = std::numeric_limits<T>::lowest();
+                else
+                  out[strideo * d + col] = static_cast<T>(result);
+              }
+            }
+          });
+    } else {
+      ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
+      int64_t strideo = fast_shape[2];
+      T* out = output.MutableData<T>();
+      T* begin;
+      T* end;
+      T div = static_cast<T>(fast_shape[1]);
+      for (int64_t d = 0; d < fast_shape[0]; ++d) {
+        begin = out + strideo * d;
+        end = begin + strideo;
+        for (; begin != end; ++begin) {
+          *begin /= div;
+        }
       }
     }
   }
 
   static void FastReduceRKR(const Tensor& input, const gsl::span<const int64_t>& fast_shape,
                             Tensor& output, concurrency::ThreadPool* tp) {
-    ReduceAggregatorSum<T>::FastReduceRKR(input, fast_shape, output, tp);
-    T* out = output.MutableData<T>();
-    T div = static_cast<T>(fast_shape[0] * fast_shape[2]);
-    T* end = out + fast_shape[1];
-    for (; out != end; ++out) {
-      *out /= div;
+    if constexpr (std::is_integral_v<T>) {
+      // For integers: compute sum in double and divide before saturating to T.
+      const T* data = input.Data<T>();
+      T* out = output.MutableData<T>();
+      int64_t d0 = fast_shape[0];
+      int64_t d2 = fast_shape[2];
+      int64_t inc = d2 * fast_shape[1];
+      double divisor = static_cast<double>(d0 * d2);
+      concurrency::ThreadPool::TryParallelFor(
+          tp, onnxruntime::narrow<ptrdiff_t>(fast_shape[1]),
+          ParallelReduceFastCost(fast_shape[1], fast_shape[0] * fast_shape[2], sizeof(T), 6),
+          [data, out, d0, d2, inc, divisor](ptrdiff_t begin, ptrdiff_t last) {
+            for (ptrdiff_t d = begin; d < last; ++d) {
+              const T* p = data + d * d2;
+              double sum = 0.0;
+              for (int64_t i = 0; i < d0; ++i, p += inc) {
+                for (int64_t j = 0; j < d2; ++j) {
+                  sum += static_cast<double>(p[j]);
+                }
+              }
+              double result = sum / divisor;
+              constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+              constexpr double t_min = static_cast<double>(std::numeric_limits<T>::lowest());
+              if (result >= t_max)
+                out[d] = std::numeric_limits<T>::max();
+              else if (result <= t_min)
+                out[d] = std::numeric_limits<T>::lowest();
+              else
+                out[d] = static_cast<T>(result);
+            }
+          });
+    } else {
+      ReduceAggregatorSum<T>::FastReduceRKR(input, fast_shape, output, tp);
+      T* out = output.MutableData<T>();
+      T div = static_cast<T>(fast_shape[0] * fast_shape[2]);
+      T* end = out + fast_shape[1];
+      for (; out != end; ++out) {
+        *out /= div;
+      }
     }
   }
 };
@@ -388,9 +753,13 @@ class ReduceAggregatorMax : public ReduceAggregator<T> {
   }
   inline void update(const T& v) { this->accumulator_ = v > this->accumulator_ ? v : this->accumulator_; }
 
+  // fill_for_empty_set: ReduceMax on empty set is semantically undefined for bool.
   static void fill_for_empty_set(Tensor& output) {
-    if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
-      ORT_NOT_IMPLEMENTED();
+    if constexpr (std::is_same_v<T, bool>) {
+      ORT_NOT_IMPLEMENTED("ReduceMax is not defined for empty set with bool type");
+    } else if constexpr (std::is_integral_v<T>) {
+      // For integers, infinity() returns 0. Use lowest() (most negative value).
+      EigenMap<T>(output).array() = std::numeric_limits<T>::lowest();
     } else {
       EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
     }
@@ -598,9 +967,13 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
   }
   inline void update(const T& v) { this->accumulator_ = v < this->accumulator_ ? v : this->accumulator_; }
 
+  // fill_for_empty_set: ReduceMin on empty set is semantically undefined for bool.
   static void fill_for_empty_set(Tensor& output) {
-    if constexpr (std::is_same_v<bool, T>) { /* bool specific impl */
-      ORT_NOT_IMPLEMENTED();
+    if constexpr (std::is_same_v<T, bool>) {
+      ORT_NOT_IMPLEMENTED("ReduceMin is not defined for empty set with bool type");
+    } else if constexpr (std::is_integral_v<T>) {
+      // For integers, infinity() returns 0. Use max() (largest value).
+      EigenMap<T>(output).array() = std::numeric_limits<T>::max();
     } else {
       EigenMap<T>(output).array() = std::numeric_limits<T>::infinity();
     }
@@ -709,12 +1082,49 @@ class ReduceAggregatorMin : public ReduceAggregator<T, T> {
 
 template <typename T>
 class ReduceAggregatorProd : public ReduceAggregator<T, T> {
+  // For integer types, accumulate product in double to avoid signed overflow UB.
+  // Double range (~1.8e308) is far larger than int64 range (~9.2e18).
+  // Precision loss is possible for int64 products > 2^53, but this is far better
+  // than undefined behavior from signed overflow.
+  double double_accumulator_ = 1.0;
+
  public:
   inline ReduceAggregatorProd(int64_t N, const T&) : ReduceAggregator<T, T>(N, 1) {}
   inline T aggall(const T* from_data) {
-    return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).prod();
+    if constexpr (std::is_integral_v<T>) {
+      double prod = 1.0;
+      for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
+        prod *= static_cast<double>(from_data[i]);
+      }
+      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+      if (prod >= t_max) return std::numeric_limits<T>::max();
+      if (prod <= t_min) return std::numeric_limits<T>::min();
+      return static_cast<T>(prod);
+    } else {
+      return Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(
+                 from_data, onnxruntime::narrow<size_t>(this->N_))
+          .prod();
+    }
   }
-  inline void update(const T& v) { this->accumulator_ *= v; }
+  inline void update(const T& v) {
+    if constexpr (std::is_integral_v<T>) {
+      double_accumulator_ *= static_cast<double>(v);
+    } else {
+      this->accumulator_ *= v;
+    }
+  }
+  inline T get_value() {
+    if constexpr (std::is_integral_v<T>) {
+      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+      if (double_accumulator_ >= t_max) return std::numeric_limits<T>::max();
+      if (double_accumulator_ <= t_min) return std::numeric_limits<T>::min();
+      return static_cast<T>(double_accumulator_);
+    } else {
+      return this->accumulator_;
+    }
+  }
   static void fill_for_empty_set(Tensor& output) {
     EigenMap<T>(output).array() = static_cast<T>(1);
   }
@@ -758,7 +1168,7 @@ class ReduceAggregatorL1 : public ReduceAggregator<T, T> {
   inline T aggall(const T* from_data) {
     if constexpr (std::is_integral_v<T>) {
       double sum = 0.0;
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         // Kahan compensated summation for int64+ to minimize precision loss.
         double comp = 0.0;
         for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
@@ -782,7 +1192,7 @@ class ReduceAggregatorL1 : public ReduceAggregator<T, T> {
   }
   inline void update(const T& v) {
     if constexpr (std::is_integral_v<T>) {
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         // Kahan compensated summation for int64+.
         double y = std::abs(static_cast<double>(v)) - kahan_compensation_;
         double t = double_accumulator_ + y;
@@ -842,7 +1252,7 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
   inline T aggall(const T* from_data) {
     if constexpr (std::is_integral_v<T>) {
       double sum = 0.0;
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         // Kahan compensated summation for int64+ to minimize precision loss.
         double comp = 0.0;
         for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
@@ -870,7 +1280,7 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
   inline void update(const T& v) {
     if constexpr (std::is_integral_v<T>) {
       double dv = static_cast<double>(v);
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         // Kahan compensated summation for int64+.
         double y = dv * dv - kahan_compensation_;
         double t = double_accumulator_ + y;
@@ -901,15 +1311,81 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
 
 template <typename T>
 class ReduceAggregatorLogSum : public ReduceAggregator<T, T> {
+  // For integer types, accumulate in double to avoid signed overflow UB before log.
+  double double_accumulator_ = 0.0;
+  double kahan_compensation_ = 0.0;
+
  public:
   inline ReduceAggregatorLogSum(int64_t N, const T&) : ReduceAggregator<T, T>(N, 0) {}
   inline T aggall(const T* from_data) {
-    return reduce_log<T>(Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).sum());
+    if constexpr (std::is_integral_v<T>) {
+      double sum = 0.0;
+      if constexpr (kReduceUseKahan<T>) {
+        double comp = 0.0;
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
+          double y = static_cast<double>(from_data[i]) - comp;
+          double t = sum + y;
+          comp = (t - sum) - y;
+          sum = t;
+        }
+      } else {
+        for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
+          sum += static_cast<double>(from_data[i]);
+        }
+      }
+      if (sum <= 0.0) {
+        // log is undefined for non-positive values; map to min (closest integer analogue of -inf).
+        return std::numeric_limits<T>::min();
+      }
+      double result = std::log(sum);
+      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+      if (result >= t_max) return std::numeric_limits<T>::max();
+      if (result <= t_min) return std::numeric_limits<T>::min();
+      return static_cast<T>(result);
+    } else {
+      return reduce_log<T>(Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(
+                               from_data, onnxruntime::narrow<size_t>(this->N_))
+                               .sum());
+    }
   }
-  inline void update(const T& v) { this->accumulator_ += v; }
-  inline T get_value() { return reduce_log<T>(this->accumulator_); }
+  inline void update(const T& v) {
+    if constexpr (std::is_integral_v<T>) {
+      if constexpr (kReduceUseKahan<T>) {
+        double y = static_cast<double>(v) - kahan_compensation_;
+        double t = double_accumulator_ + y;
+        kahan_compensation_ = (t - double_accumulator_) - y;
+        double_accumulator_ = t;
+      } else {
+        double_accumulator_ += static_cast<double>(v);
+      }
+    } else {
+      this->accumulator_ += v;
+    }
+  }
+  inline T get_value() {
+    if constexpr (std::is_integral_v<T>) {
+      if (double_accumulator_ <= 0.0) {
+        // log is undefined for non-positive values; map to min (closest integer analogue of -inf).
+        return std::numeric_limits<T>::min();
+      }
+      double result = std::log(double_accumulator_);
+      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+      if (result >= t_max) return std::numeric_limits<T>::max();
+      if (result <= t_min) return std::numeric_limits<T>::min();
+      return static_cast<T>(result);
+    } else {
+      return reduce_log<T>(this->accumulator_);
+    }
+  }
   static void fill_for_empty_set(Tensor& output) {
-    EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
+    if constexpr (std::is_integral_v<T>) {
+      // log(0) for integers: use min value (closest to -inf semantics).
+      EigenMap<T>(output).array() = std::numeric_limits<T>::min();
+    } else {
+      EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
+    }
   }
 };
 
@@ -917,25 +1393,87 @@ template <typename T>
 class ReduceAggregatorLogSumExp : public ReduceAggregator<T, T> {
  protected:
   T max_;
+  int64_t max_count_ = 0;  // Counter for integer types (avoids overflow in T accumulator)
 
  public:
   inline ReduceAggregatorLogSumExp(int64_t N, const T& init) : ReduceAggregator<T, T>(N, 0) {
     max_ = reduce_isinf(init) ? this->accumulator_ : init;
   }
   inline T aggall(const T* from_data) {
-    max_ = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(from_data, onnxruntime::narrow<size_t>(this->N_)).maxCoeff();
-    for (int64_t i = 0; i < this->N_; ++i) {
-      update(from_data[i]);
+    max_ = Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, 1>>(
+               from_data, onnxruntime::narrow<size_t>(this->N_))
+               .maxCoeff();
+    if constexpr (std::is_integral_v<T>) {
+      // For integer types: exp(v - max_) is 1 when v == max_, else 0 (truncation
+      // of exp(negative) < 1.0 to integer). No negative-value elements contribute
+      // because v <= max_ always, so v - max_ <= 0, and exp(<=0) truncates to 0 or 1.
+      // Avoid signed overflow in (v - max_) by counting equal-to-max elements directly.
+      int64_t num_maxval_elements = 0;
+      for (int64_t i = 0; i < this->N_; ++i) {
+        if (from_data[i] == max_) ++num_maxval_elements;
+      }
+      // Result: log(num_maxval_elements) + max_. Use double to detect overflow before casting.
+      double log_count = std::log(static_cast<double>(num_maxval_elements));
+      double result = log_count + static_cast<double>(max_);
+      // Saturate to avoid signed overflow when casting back to T.
+      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+      if (result >= t_max) return std::numeric_limits<T>::max();
+      if (result <= t_min) return std::numeric_limits<T>::min();
+      return static_cast<T>(result);
+    } else {
+      // For floating-point types: if max_ is infinite, return max_ early.
+      // When max_ = -inf: all inputs are -inf, exp(x_i)=0, log(0) = -inf.
+      // When max_ = +inf: result is +inf (avoids +inf - (+inf) = NaN).
+      if (reduce_isinf(max_)) {
+        return max_;
+      }
+      for (int64_t i = 0; i < this->N_; ++i) {
+        update(from_data[i]);
+      }
+      return get_value();
     }
-    return get_value();
   }
   inline void update0(const T& v) {
     max_ = (reduce_isinf(v) || reduce_isnan(v) || v < max_) ? max_ : v;
   }
-  inline void update(const T& v) { this->accumulator_ += reduce_exp(v - max_); }
-  inline T get_value() { return reduce_log<T>(this->accumulator_) + max_; }
+  inline void update(const T& v) {
+    if constexpr (std::is_integral_v<T>) {
+      // For integer types: exp(v - max_) truncates to 1 if v == max_, else 0.
+      // Use direct comparison to avoid signed overflow in (v - max_).
+      if (v == max_) ++max_count_;
+    } else {
+      // For floating-point types: if v is -inf, exp(-inf) = 0 regardless of max_.
+      // Skip to avoid -inf - (-inf) = NaN when max_ is also -inf.
+      if (v == -std::numeric_limits<T>::infinity()) return;
+      this->accumulator_ += reduce_exp(v - max_);
+    }
+  }
+  inline T get_value() {
+    if constexpr (std::is_integral_v<T>) {
+      // log(count) + max_. Use double to detect overflow.
+      double log_count = std::log(static_cast<double>(max_count_));
+      double result = log_count + static_cast<double>(max_);
+      constexpr double t_max = static_cast<double>(std::numeric_limits<T>::max());
+      constexpr double t_min = static_cast<double>(std::numeric_limits<T>::min());
+      if (result >= t_max) return std::numeric_limits<T>::max();
+      if (result <= t_min) return std::numeric_limits<T>::min();
+      return static_cast<T>(result);
+    } else {
+      // For floating-point types: if max_ is infinite, return max_ directly.
+      if (reduce_isinf(max_)) {
+        return max_;
+      }
+      return reduce_log<T>(this->accumulator_) + max_;
+    }
+  }
   static void fill_for_empty_set(Tensor& output) {
-    EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
+    if constexpr (std::is_integral_v<T>) {
+      // For integers, -infinity() returns 0. Use min() (closest to -inf semantics).
+      EigenMap<T>(output).array() = std::numeric_limits<T>::min();
+    } else {
+      EigenMap<T>(output).array() = -std::numeric_limits<T>::infinity();
+    }
   }
 };
 

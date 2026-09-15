@@ -31,7 +31,7 @@ class Conv<float> : public OpKernel {
     activation_.ActivationKind = MlasIdentityActivation;
     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
     if (channels_last_) {
       const auto& input_defs = info.node().InputDefs();
       const bool has_bias_input = input_defs.size() >= 3 && input_defs[2] != nullptr;
@@ -56,7 +56,7 @@ class Conv<float> : public OpKernel {
   ConvAttributes conv_attrs_;
   bool channels_last_{false};
 
-#if defined(USE_KLEIDIAI) && defined(__aarch64__) && defined(__linux__)
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
  private:
   Status EnsurePackedChannelsLastFilter(concurrency::ThreadPool* thread_pool,
                                         size_t filter_count_per_group,

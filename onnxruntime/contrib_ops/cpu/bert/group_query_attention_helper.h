@@ -97,7 +97,7 @@ Status Check_QKV(const T* packed_qkv, const T* value, const int num_heads, const
 
 template <typename T>
 Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_num_heads, int head_size, int kv_cache_bit_width,
-                 int& past_sequence_length) {
+                 int& past_sequence_length, int kv_cache_extra_bits = 0) {
   const auto& past_key_dims = past_key->Shape().GetDims();
   const auto& past_value_dims = past_value->Shape().GetDims();
 
@@ -140,17 +140,25 @@ Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_
   // We assume all sequence in past kv are right-padded to max or past sequence length
   past_sequence_length = static_cast<int>(past_key_dims[2]);
 
-  // For 4-bit quantized KV cache, actual dimension is head_size / 2 because 2 nibbles are packed into one byte.
-  // Note that we have checked that head_size is a multiple of 8 in Check_QKV.
-  int packed_head_size = (kv_cache_bit_width == 4) ? (head_size / 2) : head_size;
+  // Compute expected KV cache head dimension from quantization parameters.
+  // kv_cache_bit_width: bits per element (4 or 8). 0 means no quantization.
+  // kv_cache_extra_bits: additional metadata bits per head
+  // (e.g., 32bits for TurboQuant storing scale).
+  int packed_head_size;
+  if (kv_cache_bit_width == 0) {
+    packed_head_size = head_size;
+  } else {
+    int bits_per_element = static_cast<int>(past_key->DataType()->Size()) * 8;
+    packed_head_size = (head_size * kv_cache_bit_width + kv_cache_extra_bits) / bits_per_element;
+  }
   if (past_key_dims[3] != packed_head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' dimension 3 should be same as head_size, got ",
+                           "Input 'past_key' dimension 3 should match the packed KV head dimension, got ",
                            past_key_dims[3], " expected ", packed_head_size);
   }
   if (past_value_dims[3] != packed_head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_value' dimension 3 should be same as head_size, got ",
+                           "Input 'past_value' dimension 3 should match the packed KV head dimension, got ",
                            past_value_dims[3], " expected ", packed_head_size);
   }
   return Status::OK();
@@ -206,7 +214,14 @@ Status CheckInputs(const T* query,
                    const T* total_seqlen,
                    float scale,
                    float softcap,
-                   int kv_cache_bit_width) {
+                   int kv_cache_bit_width,
+                   int max_threads_per_block = 0,
+                   int kv_cache_extra_bits = 0,
+                   bool sliding_window_cache = false,
+                   int local_window_size = -1) {
+  if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
+  }
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
@@ -246,10 +261,15 @@ Status CheckInputs(const T* query,
     kv_sequence_length = sequence_length;
   }
 
+  if (kv_cache_extra_bits != 0 && kv_cache_bit_width == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "kv_cache_extra_bits requires kv_cache_bit_width to be non-zero.");
+  }
+
   // Check past-present KV
   int32_t past_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
-    ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, batch_size, kv_num_heads, head_size, kv_cache_bit_width, past_sequence_length));
+    ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, batch_size, kv_num_heads, head_size, kv_cache_bit_width, past_sequence_length, kv_cache_extra_bits));
     // When past KV exists, Q and K/V must have the same sequence length,
     // UNLESS kv_sequence_length is 0 (shared KV: new K/V are empty, past buffer
     // already contains the full shared KV cache — no append needed).
@@ -307,9 +327,56 @@ Status CheckInputs(const T* query,
 
   int present_sequence_length = std::max(total_sequence_length, past_sequence_length);
 
+  // Windowed KV cache: the bound past/present buffer *is* the capacity C, which is intentionally
+  // smaller than total_sequence_length. The op keeps only the min(T, C) most recent tokens, so the
+  // present tensor must keep the buffer's own sequence dimension instead of growing to T.
+  int kv_cache_capacity = 0;
+  if (sliding_window_cache) {
+    if (local_window_size <= 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "sliding_window_cache=1 requires local_window_size > 0.");
+    }
+    if (past_key == nullptr || past_value == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "sliding_window_cache=1 requires past_key and past_value to be present.");
+    }
+    if (kv_sequence_length == 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "sliding_window_cache=1 is not supported when kv_sequence_length == 0 (shared KV).");
+    }
+
+    // The windowed-cache compaction/staging kernels copy raw KV rows using 16-byte vectors.
+    // Enforce an aligned row size so sliding_window_cache fails with a clear INVALID_ARGUMENT.
+    if (kv_cache_bit_width == 8 && (head_size % 16) != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "sliding_window_cache: head_size (", head_size,
+                             ") must be a multiple of 16 for an 8-bit KV cache.");
+    }
+    if (kv_cache_bit_width == 4 && (head_size % 32) != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "sliding_window_cache: head_size (", head_size,
+                             ") must be a multiple of 32 for a 4-bit KV cache.");
+    }
+
+    kv_cache_capacity = past_sequence_length;
+    present_sequence_length = past_sequence_length;
+
+    // The cache must be able to hold the whole window; everything older is unreachable anyway.
+    // There is deliberately no requirement involving sequence_length: a multi-token step runs
+    // against a longer staging buffer, so it never has to fit into C.
+    if (kv_cache_capacity < local_window_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "sliding_window_cache: KV cache capacity (", kv_cache_capacity,
+                             ") must be at least local_window_size (", local_window_size, ").");
+    }
+  }
+
+  int rotary_max_position = 0;
   int rotary_dim = 0;
   if (cos_cache != nullptr && sin_cache != nullptr) {
     ORT_RETURN_IF_ERROR(CheckRotaryCaches(cos_cache, sin_cache, head_size, total_sequence_length, rotary_dim));
+    rotary_max_position = static_cast<int>(std::min(cos_cache->Shape().GetDims()[0],
+                                                    sin_cache->Shape().GetDims()[0]));
 
     // Validate seqlens_k against rotary cache size when rotary embeddings are enabled.
     // This prevents OOB access when deriving position IDs from seqlens_k during rotary embedding.
@@ -364,6 +431,10 @@ Status CheckInputs(const T* query,
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->kv_num_heads = kv_num_heads;
     output_parameters->rotary_dim = rotary_dim;
+    output_parameters->rotary_max_position = rotary_max_position;
+    output_parameters->is_windowed_kv_cache = sliding_window_cache;
+    output_parameters->kv_cache_capacity = kv_cache_capacity;
+    output_parameters->kv_cache_real_capacity = kv_cache_capacity;
     output_parameters->is_packed_qkv = is_packed_qkv;
     output_parameters->is_unidirectional = true;
     output_parameters->is_subsequent_prompt = is_subsequent_prompt;
@@ -378,34 +449,11 @@ Status CheckInputs(const T* query,
 }
 
 template <typename T = Tensor>
-Status CheckInputs(const T* query,
-                   const T* key,
-                   const T* value,
-                   const T* past_key,
-                   const T* past_value,
-                   const T* cos_cache,
-                   const T* sin_cache,
-                   void* parameters,
-                   int num_heads,
-                   int kv_num_heads,
-                   const T* seqlens_k,
-                   const T* total_seqlen,
-                   float scale,
-                   float softcap,
-                   int kv_cache_bit_width,
-                   int max_threads_per_block) {
-  if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
-  }
-
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap, kv_cache_bit_width);
-}
-
-template <typename T = Tensor>
 Status CheckCustomAttentionInputs(const T* position_ids,
                                   const T* attention_bias,
                                   const T* head_sink,
-                                  const GroupQueryAttentionParameters& parameters) {
+                                  const GroupQueryAttentionParameters& parameters,
+                                  bool support_windowed_attention_bias = false) {
   if (position_ids != nullptr) {
     const auto& pos_ids_shape = position_ids->Shape();
     if (pos_ids_shape[0] != parameters.batch_size) {
@@ -420,7 +468,18 @@ Status CheckCustomAttentionInputs(const T* position_ids,
   }
 
   if (attention_bias != nullptr) {
+    if (parameters.is_windowed_kv_cache && !support_windowed_attention_bias) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "attention_bias with sliding_window_cache is not implemented in GroupQueryAttention.");
+    }
+
     const auto& attn_bias_shape = attention_bias->Shape();
+    // TensorShape::operator[] is unchecked — validate the rank before indexing dims.
+    if (attn_bias_shape.NumDimensions() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "attention_bias must be a 4D tensor, got ", attn_bias_shape.NumDimensions(),
+                             " dimensions");
+    }
     if ((attn_bias_shape[0] != parameters.batch_size) && (attn_bias_shape[0] != 1)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "attention_bias dimension 0 must be equal to the batch size or 1, got ", attn_bias_shape[0]);

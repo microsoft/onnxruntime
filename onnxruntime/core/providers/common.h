@@ -155,9 +155,11 @@ inline Status ComputePadAndOutputShape(const int64_t in_dim,
   return Status::OK();
 }
 
-constexpr inline int64_t ComputeTotalPad(int64_t in_size, int64_t stride, int64_t adj,
-                                         int64_t kernel, int64_t dilation, int64_t out_size) {
-  return std::max<int64_t>(0, (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - out_size);
+inline int64_t ComputeTotalPad(int64_t in_size, int64_t stride, int64_t adj,
+                               int64_t kernel, int64_t dilation, int64_t out_size) {
+  SafeInt<int64_t> safe_pad = (SafeInt<int64_t>(in_size) - 1) * stride + adj +
+                              (SafeInt<int64_t>(kernel) - 1) * dilation + 1 - out_size;
+  return std::max<int64_t>(0, safe_pad);
 }
 
 inline void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,

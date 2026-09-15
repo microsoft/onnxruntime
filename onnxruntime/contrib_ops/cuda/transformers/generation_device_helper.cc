@@ -362,6 +362,10 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
+  const auto logits_vocab_size = static_cast<int>(logits_shape[2]);
+  ORT_RETURN_IF_NOT(vocab_size > 0 && vocab_size <= logits_vocab_size,
+                    "BeamSearch: vocab_size attribute (", vocab_size,
+                    ") must be positive and not exceed decoder logits width (", logits_vocab_size, ")");
   auto input_length = logits_shape[1];
   auto logits_batch_size = logits_shape[0];
 
@@ -849,6 +853,10 @@ Status GreedySearchProcessLogits(
   // where input_length equals to parameters_->sequence_length for first subgraph call, and 1 for the remaining calls.
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
+  const auto logits_vocab_size = static_cast<int>(logits_shape[2]);
+  ORT_RETURN_IF_NOT(vocab_size > 0 && vocab_size <= logits_vocab_size,
+                    "GreedySearch: vocab_size attribute (", vocab_size,
+                    ") must be positive and not exceed decoder logits width (", logits_vocab_size, ")");
   auto input_length = logits_shape[1];
 
   // NOTE: `padded_vocab_size` MAY be different from `vocab_size`.
@@ -1630,6 +1638,10 @@ Status UpdateDecoderCrossQK(
     float* cross_qk_buffer_data,
     int max_length,
     AllocatorPtr allocator) {
+  if (cross_qk_layer_head_pair_count == 0) {
+    return Status::OK();
+  }
+
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   if (qk_layer_pointers.get() == nullptr) {
@@ -1682,6 +1694,10 @@ Status FinalizeDecoderCrossQK(
     int num_return_sequences,
     const int* cache_indir_data,
     gsl::span<const int32_t> beam_indices_gpu) {
+  if (cross_qk_layer_head_pair_count == 0) {
+    return Status::OK();
+  }
+
   cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
 
   cuda::LaunchFinalizeCrossQK(

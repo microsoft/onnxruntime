@@ -148,7 +148,7 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
-  common::Status ReplayGraph(int graph_annotation_id) override;
+  common::Status ReplayGraph(int graph_annotation_id, bool sync = true) override;
   common::Status ReleaseCapturedGraph(int graph_annotation_id) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override;
 
@@ -174,12 +174,13 @@ class PluginExecutionProvider : public IExecutionProvider {
   std::vector<const OrtEpDevice*> ep_devices_;
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
   bool generate_ep_ctx_model_ = false;
+  bool weightless_requested_ = false;  // True if app set ep.enable_weightless=1
 
-  // Provider options extracted from session-level config (ep.<ep_name>.* keys, excluding arena.*).
+  // Provider options extracted from session-level config (excluding arena.*).
   // Exposed through GetProviderOptions() so the framework reports the effective EP configuration.
   ProviderOptions provider_options_;
 
-  // Arena options extracted from session-level config (ep.<ep_name>.arena.* keys).
+  // Arena options extracted from session-level config.
   // Built once at construction; passed directly to ep_factory_.CreateAllocator.
   std::optional<OrtKeyValuePairs> session_arena_options_;
 

@@ -217,6 +217,10 @@ void CPUIDInfo::ArmLinuxInit() {
         continue;
       }
       auto coreid = proc->linux_id;
+      if (coreid < 0 || static_cast<size_t>(coreid) >= core_uarchs_.size()) {
+        continue;
+      }
+
       auto uarch = corep->uarch;
       core_uarchs_[coreid] = uarch;
       if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
@@ -313,6 +317,17 @@ void CPUIDInfo::ArmWindowsInit() {
     has_arm_sme2_ = cpuinfo_has_arm_sme2();
   }
 #endif  // defined(CPUINFO_SUPPORTED)
+
+#if defined(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE)
+  // Available from Windows 11 24H2 SDKs; older SDKs lack the constants, in
+  // which case detection falls back to cpuinfo above (or SVE stays off).
+  has_arm_sve_ = has_arm_sve_ || IsProcessorFeaturePresent(PF_ARM_SVE_INSTRUCTIONS_AVAILABLE) != 0;
+#if defined(PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE)
+  // SVE i8mm gates the svmmla QGEMM kernels; without it they must not dispatch.
+  has_arm_sve_i8mm_ = has_arm_sve_ &&
+                      IsProcessorFeaturePresent(PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE) != 0;
+#endif
+#endif
 }
 
 #elif defined(__APPLE__)  // ^ defined(_WIN32)
@@ -381,11 +396,7 @@ CPUIDInfo::CPUIDInfo() {
 #endif  // defined(CPUINFO_SUPPORTED)
 
   // Note: This should be run after cpuinfo initialization if cpuinfo is enabled.
-  // On Wasm/Emscripten, cpuinfo cannot detect the CPU vendor so skip to avoid
-  // an unhelpful "Unknown CPU vendor" warning.
-#if !defined(__wasm__)
   VendorInfoInit();
-#endif
 
 #ifdef CPUIDINFO_ARCH_X86
   X86Init();
@@ -404,5 +415,14 @@ CPUIDInfo::CPUIDInfo() {
   RiscvLinuxInit();
 #endif
 #endif  // defined(CPUIDINFO_ARCH_RISCV64)
+}
+
+CPUIDInfo::~CPUIDInfo() {
+#if defined(CPUINFO_SUPPORTED)
+  if (pytorch_cpuinfo_init_) {
+    cpuinfo_deinitialize();
+    pytorch_cpuinfo_init_ = false;
+  }
+#endif
 }
 }  // namespace onnxruntime

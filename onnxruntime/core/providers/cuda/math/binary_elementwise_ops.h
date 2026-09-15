@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -201,6 +203,12 @@ class Xor final : public BinaryElementwise<ShouldBroadcast> {
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public BinaryElementwise<ShouldBroadcast> {
+  // Currently only registered for MLFloat16/float/double/BFloat16. Integer types
+  // would require addressing overflow in multiplication and NaN-free formulations.
+  static_assert(std::is_floating_point_v<T> || std::is_same_v<T, MLFloat16> ||
+                    std::is_same_v<T, BFloat16>,
+                "PRelu is only supported for floating-point types.");
+
  public:
   PRelu(const OpKernelInfo& info) : BinaryElementwise(info) {
   }

@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <string>
+#include <sstream>
 #include <vector>
 #include <memory>
 
@@ -12,6 +13,7 @@
 #include "core/common/span_utils.h"
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/compare_ortvalue.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
@@ -142,13 +144,14 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        std::unique_ptr<GraphTransformer> transformer,
                        const std::function<void(SessionOptions&)>& add_session_options,
                        const InlinedHashSet<std::string>& disabled_optimizers,
-                       std::unique_ptr<IExecutionProvider> ep) {
+                       std::unique_ptr<IExecutionProvider> ep,
+                       const ModelOptions& model_options) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
   domain_to_version[kMSDomain] = 1;
   Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+              domain_to_version, {}, DefaultLoggingManager().DefaultLogger(), model_options);
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
   ASSERT_TRUE(build_test_case);
@@ -165,6 +168,13 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        std::unique_ptr<GraphTransformer> transformer = nullptr) {
     SessionOptions session_options;
     session_options.graph_optimization_level = transformer ? baseline_level : level;
+    // Mirror the model build's shape/type-inference strictness onto the session so that
+    // loading the serialized model applies the same options. (allow_released_opsets_only is
+    // passed explicitly to Load below, since the byte/proto Load overloads don't read it
+    // from the config options.)
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsConfigStrictShapeTypeInference,
+        model_options.strict_shape_type_inference ? "1" : "0"));
 #if SAVE_TEST_GRAPH
     session_options.optimized_model_filepath =
         ToPathString("model" + std::to_string(static_cast<int>(level)) + ".onnx");
@@ -177,7 +187,12 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
       ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep_shared));
     }
 
-    ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+    // Load via an istream so the under-development opset flag can be honored: the istream Load
+    // overload takes allow_released_opsets_only explicitly (the byte/proto overloads hardcode it).
+    // This lets models built at an unreleased ONNX opset (e.g. opset 27 in ONNX 1.22) load on
+    // strict (ALLOW_RELEASED_ONNX_OPSET_ONLY default) CI legs.
+    std::istringstream model_istream(model_data);
+    ASSERT_STATUS_OK(session.Load(model_istream, model_options.allow_released_opsets_only));
     if (transformer) {
       ASSERT_STATUS_OK(session.RegisterGraphTransformer(std::move(transformer), level));
     } else if (!disabled_optimizers.empty()) {
@@ -222,17 +237,19 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
 Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
                             const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
                             TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
-                            const std::function<Status(Graph&)>& post_graph_checker) {
+                            const std::function<Status(Graph&)>& post_graph_checker,
+                            const ModelOptions& model_options) {
   const std::vector<int> opset_versions{opset_version};
   return TestGraphTransformer(build_test_case, opset_versions, logger, std::move(transformer),
-                              level, steps, pre_graph_checker, post_graph_checker);
+                              level, steps, pre_graph_checker, post_graph_checker, model_options);
 }
 
 Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
                             const std::vector<int>& opset_versions,
                             const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
                             TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
-                            const std::function<Status(Graph&)>& post_graph_checker) {
+                            const std::function<Status(Graph&)>& post_graph_checker,
+                            const ModelOptions& model_options) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{steps};
   ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(transformer), level));
 
@@ -242,7 +259,7 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
     domain_to_version[kOnnxDomain] = opset;
     domain_to_version[kMSDomain] = 1;
     Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-                domain_to_version, {}, logger);
+                domain_to_version, {}, logger, model_options);
     Graph& graph = model.MainGraph();
     ModelTestBuilder helper(graph);
     ORT_RETURN_IF_NOT(build_test_case, "build_test_case must be provided");

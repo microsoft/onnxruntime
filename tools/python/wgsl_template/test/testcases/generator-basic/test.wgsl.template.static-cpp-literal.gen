@@ -1,0 +1,1 @@
+ss << "@compute @workgroup_size(128)\nfn main(@builtin(global_invocation_id) global_id: vec3<u32>) {\n    let buffer_count = 4;\n    let index = global_id.x;\n}\n";

@@ -12,8 +12,6 @@ parameters:
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
   values:
-  - alpha
-  - beta
   - rc
   - none
   default: none
@@ -21,7 +19,7 @@ parameters:
 - name: PreReleaseVersionSuffixNumber
   displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
   type: number
-  default: 0
+  default: 1
 
 variables:
   - template: templates/common-variables.yml
@@ -34,7 +32,7 @@ variables:
       value: $(Agent.TempDirectory)\v13.0
   - name: CmakeCudaArchitectures
     ${{ if eq(parameters.CudaVersion, '12.8') }}:
-      value: 52-real;61-real;75-real;86-real;89-real;90-virtual
+      value: 61-real;75-real;86-real;89-real;120-real;120-virtual
     ${{ if eq(parameters.CudaVersion, '13.0') }}:
       value: 75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual
 
@@ -50,6 +48,8 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
+    settings:
+      networkIsolationPolicy: CFSClean,CFSClean2,CFSClean3,DefaultDeny
     featureFlags:
       binskimScanAllExtensions: true
     sdl:
@@ -97,7 +97,7 @@ extends:
           msbuildPlatform: x64
           packageName: x64-cuda
           CudaVersion: ${{ parameters.CudaVersion }}
-          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --nvcc_threads 4 --flash_nvcc_threads 2 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
+          buildparameter: --use_cuda --cuda_home=${{ variables.win_cuda_home }} --enable_onnx_tests --nvcc_threads 1 --flash_nvcc_threads 1 --caller_framework WinAI --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ variables.CmakeCudaArchitectures }}"
           runTests: false
           buildJava: false
           java_artifact_id: onnxruntime_gpu

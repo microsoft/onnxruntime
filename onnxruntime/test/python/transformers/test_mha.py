@@ -849,8 +849,11 @@ class TestMultiHeadAttention(unittest.TestCase):
 
     def run_mha_cuda_multi_threading(self, attention_kernel):
         for configs in multi_thread_test_cases("CUDAExecutionProvider", comprehensive_mode):
-            if configs and configs[0].causal and (SdpaKernel.TRT_CAUSAL_ATTENTION & attention_kernel != 0):
-                # TRT fused causal is disabled by default so skip the test of causal for multi-threading.
+            # TRT fused/flash/cross attention kernels do not support causal, so skip causal configs for them.
+            trt_self_attention = (
+                SdpaKernel.TRT_FUSED_ATTENTION | SdpaKernel.TRT_FLASH_ATTENTION | SdpaKernel.TRT_CROSS_ATTENTION
+            )
+            if configs and configs[0].causal and attention_kernel and (attention_kernel & ~trt_self_attention) == 0:
                 continue
 
             test_inputs = []
@@ -888,10 +891,7 @@ class TestMultiHeadAttention(unittest.TestCase):
     def run_mha_cuda_multi_threading_trt(self):
         if get_compute_capability() in [75, 80, 86, 89]:
             self.run_mha_cuda_multi_threading(
-                SdpaKernel.TRT_FUSED_ATTENTION
-                | SdpaKernel.TRT_FLASH_ATTENTION
-                | SdpaKernel.TRT_CAUSAL_ATTENTION
-                | SdpaKernel.TRT_CROSS_ATTENTION
+                SdpaKernel.TRT_FUSED_ATTENTION | SdpaKernel.TRT_FLASH_ATTENTION | SdpaKernel.TRT_CROSS_ATTENTION
             )
 
     def test_all(self):

@@ -541,7 +541,8 @@ class InferenceSession {
   const DataTransferManager& GetDataTransferManager() const;
 
   /*
-   * Get the GetExternalDataLoaderManager associated with this session
+   * Get the ExternalDataLoaderManager associated with this session.
+   * Registered loaders are available only during graph initialization, not during inference.
    */
   const ExternalDataLoaderManager& GetExternalDataLoaderManager() const;
 
@@ -891,6 +892,18 @@ class InferenceSession {
   // graph partitioning is complete so node counts per EP are accurate.
   void PopulateEpDeviceInfo(const onnxruntime::Graph& graph);
 
+  // Logs the SessionCreation and initial EpDeviceUsage telemetry for the initialized session. Shared by the
+  // normal initialization path and the compile-only path (which otherwise skips session-state finalization).
+  void LogSessionCreationTelemetry(const onnxruntime::Graph& graph,
+                                   const std::string& model_weight_type,
+                                   const std::string& model_graph_hash,
+                                   const std::string& model_weight_hash);
+
+  // Records the profiling event and telemetry marking the end of session initialization (profiler event,
+  // OnSessionInitializationEnd for each EP, and SessionCreationEnd). Shared by the normal initialization path
+  // and the compile-only early-return path. Returns status updated with any error from OnSessionInitializationEnd.
+  common::Status RecordSessionCreationEndTelemetry(const TimePoint& tp, common::Status status);
+
 #ifdef _WIN32
   static void LogAllSessions();
 #endif
@@ -1000,7 +1013,7 @@ class InferenceSession {
   uint32_t session_id_;                             // the current session's id
 
   struct Telemetry {
-    Telemetry() : time_sent_last_() {}
+    Telemetry();
     uint32_t total_runs_since_last_ = 0;                              // the total number of Run() calls since the last report
     long long total_run_duration_since_last_ = 0;                     // the total duration (us) of Run() calls since the last report
     std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
@@ -1023,12 +1036,14 @@ class InferenceSession {
       uint32_t device_id = 0;            // PCI device ID (0 when unavailable)
       std::string vendor;                // e.g. "Qualcomm"
       std::string ep_vendor;             // e.g. "Qualcomm" (from OrtEpDevice)
+      std::string ep_version;            // e.g. "1.2.3" (from OrtEpFactory::GetVersion, empty when unavailable)
       int assigned_node_count = 0;       // # graph nodes assigned to this EP type
     };
     std::vector<EpDeviceInfo> ep_device_info_;
     // Pre-formatted comma-separated summaries used to enrich SessionCreation.
     std::string ep_device_types_summary_;       // "NPU,CPU"
     std::string ep_device_vendor_ids_summary_;  // "0x5143,0x0000"
+    std::string ep_versions_summary_;           // "QNNExecutionProvider:1.2.3,CPUExecutionProvider:"
   } telemetry_;
 
   mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
@@ -1109,9 +1124,9 @@ class InferenceSession {
       return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != kGraphAnnotationSkip;
     }
 
-    Status ReplayGraph(int graph_annotation_id) {
+    Status ReplayGraph(int graph_annotation_id, bool sync = true) {
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
+        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id, sync);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
     }

@@ -666,12 +666,11 @@ def attention_past_func(
 # #################################################################################################
 
 
-def construct_causal_mask(seqlen_q, seqlen_k, device):
-    """Construct a causal mask for attention."""
+def construct_causal_mask(seqlen_q, seqlen_k, device, past_seqlen=0):
+    """Construct a causal mask for ONNX Attention upper-left alignment."""
     row_idx = rearrange(torch.arange(seqlen_q, device=device, dtype=torch.long), "s -> s 1")
     col_idx = torch.arange(seqlen_k, device=device, dtype=torch.long)
-    # Causal: positions can only attend to earlier positions
-    return col_idx > row_idx + seqlen_k - seqlen_q
+    return col_idx > row_idx + past_seqlen
 
 
 def attention_ref(
@@ -682,6 +681,7 @@ def attention_ref(
     attn_bias=None,
     causal=False,
     softcap=0.0,
+    past_seqlen=0,
 ):
     """
     Reference implementation of scaled dot-product attention with GQA support.
@@ -694,6 +694,7 @@ def attention_ref(
         attn_bias: Additive attention bias [broadcastable to batch, num_heads, seq_q, seq_k]
         causal: Whether to apply causal masking
         softcap: Softcap value for attention scores (0.0 = disabled)
+        past_seqlen: Number of past K/V tokens before q[0] for causal masking.
 
     Returns:
         output: Attention output [batch, seq_q, num_heads, head_size]
@@ -724,7 +725,7 @@ def attention_ref(
         scores.masked_fill_(rearrange(~key_padding_mask, "b s -> b 1 1 s"), float("-inf"))
 
     if causal:
-        causal_mask = construct_causal_mask(seqlen_q, seqlen_k, q.device)
+        causal_mask = construct_causal_mask(seqlen_q, seqlen_k, q.device, past_seqlen=past_seqlen)
         scores.masked_fill_(causal_mask, float("-inf"))
 
     attention = torch.softmax(scores, dim=-1)

@@ -312,11 +312,13 @@ namespace utils {
 
 bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   if (HasExternalData(ten_proto)) {
-    // Retrieve the external data info
     for (const auto& entry : ten_proto.external_data()) {
       if (entry.key() == "location") {
-        PathString location = ToWideString(entry.value());
-        return ((location == kTensorProtoLittleEndianMemoryAddressTag) || (location == kTensorProtoNativeEndianMemoryAddressTag));
+        const PathString location = ToWideString(entry.value());
+        if (location == kTensorProtoLittleEndianMemoryAddressTag ||
+            location == kTensorProtoNativeEndianMemoryAddressTag) {
+          return true;
+        }
       }
     }
   }
@@ -402,39 +404,57 @@ static bool HasPathComponentPrefix(const std::filesystem::path& prefix, const st
   return prefix_end == prefix.end();
 }
 
-Status ValidateExternalDataPath(const std::filesystem::path& model_path,
-                                const std::filesystem::path& external_data_path) {
+/// Validates that `external_data_path` is a relative path contained within `model_dir` after symlink resolution,
+/// and that the resolved file exists. This is the core security check for EP context cache paths.
+///
+/// Validation steps:
+///   1. Reject empty paths
+///   2. Reject internal in-memory reference tags
+///   3. Reject absolute paths (including Unix-style '/...' on Windows)
+///   4. Skip remaining checks on WASM if no filesystem is available
+///   5. Resolve `model_dir / external_data_path` to a canonical path (resolving symlinks for existing segments)
+///   6. Verify the canonical path is a prefix-child of the canonical model_dir (containment check)
+///   7. Verify the resolved file exists on disk
+///
+/// This function does NOT handle the symlinked-model fallback — that is the responsibility of
+/// ValidateExternalDataPath(), which calls this function as a first pass.
+Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                       const std::filesystem::path& external_data_path) {
+  // Step 1: Reject empty external data paths.
   ORT_RETURN_IF(external_data_path.empty(), "Empty external data path not allowed");
 
-  // Note: Use !root_path().empty() to reject paths like '/some/path` even on Windows.
+  // Step 2: Reject internal in-memory reference tags.
+  ORT_RETURN_IF(external_data_path.native() == kTensorProtoLittleEndianMemoryAddressTag ||
+                    external_data_path.native() == kTensorProtoNativeEndianMemoryAddressTag,
+                "In-memory external data reference tag is not a valid file path");
+
+  // Step 3: Reject absolute paths.
+  // Use !root_path().empty() to reject paths like '/some/path' even on Windows (where is_absolute()
+  // requires a drive letter).
   ORT_RETURN_IF(!external_data_path.root_path().empty(), "Absolute path not allowed for external data location");
 
 #if defined(__wasm__)
+  // Step 4 (WASM only): If we can't access the current working directory, assume the WASM environment
+  // does not have a virtual filesystem and defer validation to an ExternalDataLoader for the WASM EP.
   std::error_code error_code;
   std::filesystem::current_path(error_code);
   if (error_code) {
-    // If we can't access the current working directory in a WASM build, we assume that the WASM
-    // environment does not have a virtual filesystem and defer validation to an ExternalDataLoader for
-    // a WASM EP.
     return Status::OK();
   }
 #endif
 
-  // Determine the model directory: use model file's parent directory if provided,
-  // otherwise use the current working directory.
-  std::filesystem::path model_dir = model_path.empty() || model_path.parent_path().empty()
-                                        ? std::filesystem::path{"."}
-                                        : model_path.parent_path();
+  // Step 5: Resolve both the model directory and the combined path to canonical forms.
+  // WeaklyCanonicalPath resolves symlinks for existing path segments while lexically normalizing
+  // non-existent trailing segments.
+  std::filesystem::path resolved_dir = model_dir.empty() ? std::filesystem::path{"."} : model_dir;
 
-  // Resolve the model directory and the external data path to their weakly canonical forms, which
-  // resolves symlinks but does not require that the paths actually exist yet.
   std::filesystem::path model_dir_canonical;
   std::filesystem::path external_data_path_canonical;
-  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_dir, model_dir_canonical));
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(resolved_dir, model_dir_canonical));
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_dir_canonical / external_data_path, external_data_path_canonical));
 
-  // Check that the external data path is contained by the model directory.
-  // If it is, check if the external data file actually exists.
+  // Step 6: Containment check — verify the resolved external data path starts with the model directory.
+  // Step 7: Existence check — verify the file actually exists on disk.
   if (HasPathComponentPrefix(model_dir_canonical, external_data_path_canonical)) {
     bool path_exists = false;
     ORT_RETURN_IF_ERROR(PathExists(external_data_path_canonical, path_exists));
@@ -442,50 +462,110 @@ Status ValidateExternalDataPath(const std::filesystem::path& model_path,
     return Status::OK();
   }
 
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                         "External data path escapes model directory. ",
+                         "External data path: ", external_data_path, " resolved path: ",
+                         external_data_path_canonical, " ", "allowed directory: ", resolved_dir);
+}
+
+/// Validates that `external_data_path` is a safe relative path under the model's directory.
+/// This is the primary entry point for validating external data locations when loading ONNX models.
+///
+/// Validation flow:
+///   1. Try ValidateExternalDataPathFromDir against the model file's parent directory.
+///      If it passes, return success.
+///   2. If it fails due to an empty/absolute path or an in-memory reference tag, return the error immediately
+///      (these are input errors unrelated to the model location).
+///   3. If model_path is empty (model loaded from bytes), wrap the error with context.
+///   4. If model_path is a symlink, try the symlink fallback:
+///      - Resolve the external data path from the *symlink* model directory to its canonical form.
+///      - Check if that canonical target is under the *real* (resolved) model directory.
+///      This supports Hugging Face Hub local cache layouts where both the model file and
+///      external data files are symlinks into a shared blob store:
+///        snapshots/v1/model.onnx -> ../../blobs/sha256-abc  (model symlink)
+///        snapshots/v1/data.bin   -> ../../blobs/sha256-def  (data symlink)
+///      Both symlink targets live under blobs/, which is the real model directory.
+///   5. If none of the above succeed, return an error indicating directory escape.
+Status ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                const std::filesystem::path& external_data_path) {
+  // Derive the model directory from the model file path.
+  // If model_path is empty (loaded from bytes) or has no directory component (bare filename),
+  // fall back to "." (current working directory).
+  std::filesystem::path model_dir = model_path.empty() || model_path.parent_path().empty()
+                                        ? std::filesystem::path{"."}
+                                        : model_path.parent_path();
+
+  // --- Pass 1: Validate against the model file's parent directory ---
+  Status status = ValidateExternalDataPathFromDir(model_dir, external_data_path);
+  if (status.IsOK()) {
+    return status;
+  }
+
+  // --- Guard: Don't retry for input-validation errors ---
+  // Empty paths, absolute paths, and in-memory reference tags are always invalid regardless of model directory.
+  // Return the error directly without misleading "escapes directory" context.
+  if (external_data_path.empty() || !external_data_path.root_path().empty() ||
+      external_data_path.native() == kTensorProtoLittleEndianMemoryAddressTag ||
+      external_data_path.native() == kTensorProtoNativeEndianMemoryAddressTag) {
+    return status;
+  }
+
+  // --- Empty model_path: model loaded from bytes ---
+  // When there's no model file path, the working directory is used as the base.
+  // Provide a specific error message indicating this context.
   if (model_path.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "External data path for model loaded from bytes escapes working directory. ",
-                           "External data path: ", external_data_path, " resolved path: ",
-                           external_data_path_canonical, " ", "working directory: ", model_dir);
+                           status.ErrorMessage());
   }
 
-  // The model file itself may be a symlink. Therefore, check against the real/canonical directory of the model
-  // after resolving all symlinks.
+  // --- Pass 2: Symlink fallback for symlinked model files ---
   //
-  // This supports symlinked models (e.g., Hugging Face Hub local cache) where the canonical
-  // parent of the model file differs from the parent directory of the symlinked model file.
+  // When model_path is a symlink, the model's *apparent* parent directory (where the symlink lives)
+  // differs from its *real* parent directory (where the symlink target lives). External data files
+  // may also be symlinks in the apparent directory that resolve to the real directory tree.
+  //
+  // Example (Hugging Face Hub cache):
+  //   apparent dir:  ~/.cache/huggingface/hub/models--foo/snapshots/abc123/
+  //   real dir:      ~/.cache/huggingface/hub/models--foo/blobs/
+  //   model.onnx -> ../../blobs/sha256-111  (symlink)
+  //   weights.bin -> ../../blobs/sha256-222  (symlink)
+  //
+  // Pass 1 fails because "weights.bin" resolved from apparent_dir points to blobs/sha256-222,
+  // which is not under apparent_dir. This fallback checks if it's under real_dir instead.
   std::error_code ec;
   if (!std::filesystem::is_symlink(model_path, ec)) {
-    // Note: is_symlink returns false if file is not a symlink, file does not exist, or an error
-    // occurred (e.g., permissions). In any of these cases, we just return an error.
-    std::string fs_error_msg;
-    if (ec) {
-      fs_error_msg = " filesystem::is_symlink error: " + ec.message();
-    }
-
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "External data path for model escapes model directory. ",
-                           "External data path: ", external_data_path, " resolved path: ",
-                           external_data_path_canonical, " ", "model directory: ", model_dir, fs_error_msg);
+    // model_path is not a symlink (or doesn't exist, or we lack permissions).
+    // No fallback possible — return the original containment error.
+    return status;
   }
 
+  // Resolve the model symlink to get the real model directory.
   std::filesystem::path real_model_path;
   ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(model_path, real_model_path));
   auto real_model_dir = real_model_path.parent_path();
 
-  // Check that the external data path is contained by the real model directory.
-  // If it is, check if the external data file actually exists.
-  if (HasPathComponentPrefix(real_model_dir, external_data_path_canonical)) {
+  // Resolve the external data path from the *apparent* (symlink) model directory.
+  // This follows any symlinks in the external data file itself.
+  std::filesystem::path external_data_full_path = model_dir / external_data_path;
+  std::filesystem::path external_data_canonical;
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(external_data_full_path, external_data_canonical));
+
+  // Check if the resolved external data target is under the real model directory.
+  std::filesystem::path real_model_dir_canonical;
+  ORT_RETURN_IF_ERROR(WeaklyCanonicalPath(real_model_dir, real_model_dir_canonical));
+
+  if (HasPathComponentPrefix(real_model_dir_canonical, external_data_canonical)) {
     bool path_exists = false;
-    ORT_RETURN_IF_ERROR(PathExists(external_data_path_canonical, path_exists));
-    ORT_RETURN_IF(!path_exists, "External data path does not exist: ", external_data_path_canonical);
+    ORT_RETURN_IF_ERROR(PathExists(external_data_canonical, path_exists));
+    ORT_RETURN_IF(!path_exists, "External data path does not exist: ", external_data_canonical);
     return Status::OK();
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                         "External data path: ", external_data_path, " (resolved path: ",
-                         external_data_path_canonical, ") escapes both model directory: ", model_dir,
-                         " and real model directory: ", real_model_dir);
+                         "External data path escapes model directory. ",
+                         "External data path: ", external_data_path, " resolved path: ",
+                         external_data_canonical, " ", "allowed directory: ", real_model_dir);
 }
 
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
@@ -530,43 +610,6 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::str
   if constexpr (endian::native != endian::little) {
     utils::ConvertRawDataInTensorProto(tensor_proto);
   }
-}
-
-size_t GetElementSizeOfTensor(ONNX_NAMESPACE::TensorProto_DataType tensor_data_type) {
-  static const std::unordered_map<ONNX_NAMESPACE::TensorProto_DataType, size_t> tensorproto_data_size{
-      {TensorProto_DataType_FLOAT, sizeof(float)},
-      {TensorProto_DataType_UINT8, sizeof(uint8_t)},
-      {TensorProto_DataType_INT8, sizeof(int8_t)},
-      {TensorProto_DataType_UINT16, sizeof(uint16_t)},
-      {TensorProto_DataType_INT16, sizeof(int16_t)},
-      {TensorProto_DataType_FLOAT16, sizeof(uint16_t)},
-      {TensorProto_DataType_BFLOAT16, sizeof(uint16_t)},
-      {TensorProto_DataType_INT32, sizeof(int32_t)},
-      {TensorProto_DataType_UINT32, sizeof(uint32_t)},
-      {TensorProto_DataType_UINT64, sizeof(uint64_t)},
-      {TensorProto_DataType_INT64, sizeof(int64_t)},
-      {TensorProto_DataType_DOUBLE, sizeof(double)},
-      {TensorProto_DataType_COMPLEX64, sizeof(float)},   /* byteswap each element individually */
-      {TensorProto_DataType_COMPLEX128, sizeof(double)}, /* byteswap each element individually */
-      {TensorProto_DataType_BOOL, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E4M3FN, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E4M3FNUZ, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E5M2, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E5M2FNUZ, sizeof(uint8_t)},
-      {TensorProto_DataType_UINT4, sizeof(uint8_t)},
-      {TensorProto_DataType_INT4, sizeof(uint8_t)},
-      {TensorProto_DataType_UINT2, sizeof(uint8_t)},
-      {TensorProto_DataType_INT2, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT4E2M1, sizeof(uint8_t)},
-      {TensorProto_DataType_FLOAT8E8M0, sizeof(uint8_t)},
-  };
-
-  auto pos = tensorproto_data_size.find(tensor_data_type);
-  if (pos == tensorproto_data_size.end()) {
-    return 0;
-  }
-
-  return pos->second;
 }
 
 void ConvertRawDataInTensorProto(TensorProto& tensor) {
@@ -655,6 +698,17 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
   SwapByteOrderInplace(element_size, span);
 }
 
+// Bool tensors must hold canonical {0, 1} byte values. Data sourced from raw_data or external
+// files is copied verbatim and may contain other non-zero bytes; normalize any non-zero byte to 1
+// so every consumer observes a single, consistent value. Operate on the byte representation to
+// avoid loading a bool object that does not yet hold a valid value.
+static void NormalizeBoolBytes(uint8_t* bool_bytes, size_t num_elements) {
+  static_assert(sizeof(bool) == 1, "Normalization assumes 1 byte per bool element");
+  for (size_t i = 0; i < num_elements; ++i) {
+    bool_bytes[i] = bool_bytes[i] != 0 ? 1 : 0;
+  }
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto& tensor,
@@ -680,6 +734,19 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
 
   return UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(T),
                                           reinterpret_cast<unsigned char*>(p_data));
+}
+
+// UnpackTensorWithExternalData<bool>
+// External data is copied verbatim and may contain bytes outside the canonical {0, 1} set, so
+// normalize them (see NormalizeBoolBytes).
+template <>
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const std::filesystem::path& tensor_proto_dir, size_t expected_num_elements,
+                                    /*out*/ bool* p_data) {
+  ORT_RETURN_IF_ERROR(UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(bool),
+                                                       reinterpret_cast<unsigned char*>(p_data)));
+  NormalizeBoolBytes(reinterpret_cast<uint8_t*>(p_data), expected_num_elements);
+  return Status::OK();
 }
 
 #define DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(FOUR_BIT_TYPE, CalcPairFun)                                    \
@@ -730,7 +797,9 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int32_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int64_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint64_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint32_t)
-INSTANTIATE_UNPACK_EXTERNAL_TENSOR(bool)
+// bool is intentionally omitted: UnpackTensorWithExternalData<bool> is explicitly specialized
+// above (to normalize bytes to {0, 1}), so an explicit instantiation here would have no effect
+// and triggers -Werror,-Winstantiation-after-specialization.
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(MLFloat16)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(BFloat16)
 
@@ -837,7 +906,11 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   }
 
   if (raw_data != nullptr) {
-    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+    ORT_RETURN_IF_ERROR(UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data));
+    // raw_data is copied verbatim and may contain bytes outside the canonical {0, 1} set (see
+    // NormalizeBoolBytes).
+    NormalizeBoolBytes(reinterpret_cast<uint8_t*>(p_data), expected_size);
+    return Status::OK();
   }
 
   if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
@@ -1811,6 +1884,9 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, ort_value));
     const auto& ext_tensor = ort_value.Get<Tensor>();
     MakeCpuTensorCopy(ext_tensor, tensor);
+    // MakeCpuTensorCopy memcpy's external bytes verbatim. Bool external initializers may carry
+    // bytes outside the canonical {0, 1} set, so normalize them here as well (see NormalizeBoolBytes).
+    NormalizeBoolTensorIfNeeded(tensor);
     return Status::OK();
   }
 
@@ -2055,6 +2131,15 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 
   switch (constant_attribute.type()) {
     case AttributeProto_AttributeType_TENSOR:
+      // Defense-in-depth: reject ORT in-memory address markers on a Constant node's dense tensor
+      // attribute. These markers are an internal ORT sentinel for trusted in-memory buffers and must
+      // never appear in a deserialized protobuf. The Graph constructor also checks all initializers
+      // (including those converted from Constant nodes), but we block early here to prevent the
+      // crafted tensor from propagating further.
+      ORT_RETURN_IF(HasExternalDataInMemory(constant_attribute.t()),
+                    "Constant node '", node.name(),
+                    "' tensor attribute references an ORT in-memory address marker, "
+                    "which is not allowed in a model protobuf.");
       tensor = constant_attribute.t();
       break;
     case AttributeProto_AttributeType_FLOAT:
@@ -2121,6 +2206,13 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
   }
 }
 
+void NormalizeBoolTensorIfNeeded(Tensor& tensor) {
+  if (tensor.IsDataType<bool>()) {
+    NormalizeBoolBytes(reinterpret_cast<uint8_t*>(tensor.MutableDataRaw()),
+                       narrow<size_t>(tensor.Shape().Size()));
+  }
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 
 // Validates the external data declaration on a sub-tensor of a SparseTensorProto (values or
@@ -2163,6 +2255,12 @@ static Status CopySparseData(const std::string& name,
   std::vector<uint8_t> unpack_buffer;
   gsl::span<const int64_t> indices_data;
   const bool needs_unpack = utils::HasRawData(indices) || utils::HasExternalData(indices);
+  const auto append_indices = [&indices_values, indices_elements](auto first, auto last) {
+    indices_values.reserve(narrow<size_t>(indices_elements));
+    for (; first != last; ++first) {
+      indices_values.push_back(*first);
+    }
+  };
   switch (indices.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT64:
       if (needs_unpack) {
@@ -2198,14 +2296,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int32_t));
         auto int32_span = ReinterpretAsSpan<const int32_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int32_span.begin(), int32_span.end());
+        append_indices(int32_span.begin(), int32_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int32 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;
@@ -2222,14 +2320,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int16_t));
         auto int16_span = ReinterpretAsSpan<const int16_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int16_span.begin(), int16_span.end());
+        append_indices(int16_span.begin(), int16_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int16 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;
@@ -2246,14 +2344,14 @@ static Status CopySparseData(const std::string& name,
                           "Sparse tensor: ", name, " indices data size does not match expected: ",
                           indices_elements * sizeof(int8_t));
         auto int8_span = ReinterpretAsSpan<const int8_t>(gsl::make_span(unpack_buffer));
-        indices_values.insert(indices_values.cend(), int8_span.begin(), int8_span.end());
+        append_indices(int8_span.begin(), int8_span.end());
         unpack_buffer.clear();
         unpack_buffer.shrink_to_fit();
       } else {
         ORT_RETURN_IF_NOT(indices.int32_data_size() == indices_elements,
                           "Sparse tensor: ", name, " indices int8 data size does not match expected: ",
                           indices_elements);
-        indices_values.insert(indices_values.cend(), indices.int32_data().cbegin(), indices.int32_data().cend());
+        append_indices(indices.int32_data().cbegin(), indices.int32_data().cend());
       }
       indices_data = gsl::make_span(indices_values);
       break;

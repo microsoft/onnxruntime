@@ -120,11 +120,11 @@ LayoutDetails getLayoutDetailsForArch(QuantType quant_type) {
 }
 
 LayoutDetails getLayoutDetailsForTransform(QuantType quant_type, int arch) {
-  ORT_ENFORCE(arch >= 75, "Unsupported CUDA architecture: ", arch);
-  if (arch < 80) {
+  arch = get_arch_for_mixed_gemm_weight_preprocess(arch);
+  if (arch == 75) {
     return getLayoutDetailsForArch<cutlass::arch::Sm75>(quant_type);
 #ifndef EXCLUDE_SM_90
-  } else if (arch >= 90 && arch < 100) {
+  } else if (arch == 90) {
     return getLayoutDetailsForArch<cutlass::arch::Sm90>(quant_type);
 #endif
   } else {

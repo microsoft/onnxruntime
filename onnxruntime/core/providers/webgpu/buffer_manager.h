@@ -4,6 +4,8 @@
 #pragma once
 
 #include <iosfwd>
+#include <utility>
+#include <vector>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
@@ -60,6 +62,24 @@ class IBufferCacheManager {
 
   // when a stream refresh is requested
   virtual void OnRefresh(GraphCaptureState graph_capture_state) = 0;
+
+  // Extract all cached buffers from this manager, transferring ownership to the
+  // caller. The cache's internal containers are cleared (but bucket keys, if any,
+  // are preserved). Default returns empty; only graph-mode caches implement this.
+  virtual std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers() {
+    return {};
+  }
+
+  // Accept buffers donated from another cache and take ownership of them. Caches
+  // that cannot store the buffers must release them via wgpuBufferRelease (the
+  // default below) to avoid leaks.
+  virtual void AbsorbCachedBuffers(std::vector<std::pair<size_t, WGPUBuffer>>&& buffers) {
+    for (auto& entry : buffers) {
+      if (entry.second) {
+        wgpuBufferRelease(entry.second);
+      }
+    }
+  }
 };
 
 //
@@ -67,14 +87,20 @@ class IBufferCacheManager {
 //
 class BufferManager {
  public:
-  BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode);
+  BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
   void Upload(void* src, WGPUBuffer dst, size_t size) const;
   void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const;
-  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage) const;
+  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage, bool initialize_to_zero = false,
+                    bool submit_zero_initialize = false) const;
   bool SupportsUMA() const;  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
   void Release(WGPUBuffer buffer) const;
   void Download(WGPUBuffer src, void* dst, size_t size) const;
   void RefreshPendingBuffers(GraphCaptureState graph_capture_state) const;
+
+  // Direct access to the underlying cache managers. Used by SessionBufferPool to
+  // donate/seed buffers across per-graph BufferManager lifetimes.
+  IBufferCacheManager& StorageCache() { return *storage_cache_; }
+  IBufferCacheManager& UniformCache() { return *uniform_cache_; }
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
@@ -89,7 +115,7 @@ class BufferManager {
 
 class BufferManagerFactory {
  public:
-  static std::unique_ptr<BufferManager> Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode);
+  static std::unique_ptr<BufferManager> Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode);
 
  private:
   BufferManagerFactory() {}

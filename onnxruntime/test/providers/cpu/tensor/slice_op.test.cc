@@ -265,6 +265,54 @@ TEST(SliceTest, Slice3D) {
                        332.0f, 333.0f});
 }
 
+// Contiguous leading-axis slices exercise the CUDA EP single-memcpy fast path
+// (only leading dimensions are trimmed, all trailing dimensions fully included).
+TEST(SliceTest, Slice3D_ContiguousLeadingAxis) {
+  RunSliceTest<float>({3, 2, 2},
+                      {111.0f, 112.0f,
+                       121.0f, 122.0f,
+
+                       211.0f, 212.0f,
+                       221.0f, 222.0f,
+
+                       311.0f, 312.0f,
+                       321.0f, 322.0f},
+                      {1},
+                      {3},
+                      {0},
+                      {},
+                      {2, 2, 2},
+                      {211.0f, 212.0f,
+                       221.0f, 222.0f,
+
+                       311.0f, 312.0f,
+                       321.0f, 322.0f});
+}
+
+// Selecting a single leading index plus a partial second axis with full trailing
+// dims is still contiguous (input_ptr + offset).
+TEST(SliceTest, Slice3D_ContiguousSingleLeadingIndex) {
+  RunSliceTest<float>({3, 3, 2},
+                      {111.0f, 112.0f,
+                       121.0f, 122.0f,
+                       131.0f, 132.0f,
+
+                       211.0f, 212.0f,
+                       221.0f, 222.0f,
+                       231.0f, 232.0f,
+
+                       311.0f, 312.0f,
+                       321.0f, 322.0f,
+                       331.0f, 332.0f},
+                      {1, 1},
+                      {2, 3},
+                      {0, 1},
+                      {},
+                      {1, 2, 2},
+                      {221.0f, 222.0f,
+                       231.0f, 232.0f});
+}
+
 template <typename T>
 static void TestSlice1DIntData() {
   // static_assert(std::is_integral_v<TInt>);
@@ -664,6 +712,30 @@ TEST(SliceTest, OptionalAxesInputAloneMissing) {
   testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
   testv10.AddOutput<float>("output", output_dims, output_vals);
   testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(SliceTest, InvalidAxesOutOfBounds) {
+  OpTester testv10("Slice", 10);
+  testv10.AddInput<float>("data", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  testv10.AddInput<int64_t>("starts", {1}, {0});
+  testv10.AddInput<int64_t>("ends", {1}, {1});
+  testv10.AddInput<int64_t>("axes", {1}, {2});
+  testv10.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
+  testv10.Run(OpTester::ExpectResult::kExpectFailure,
+              "axis outside of the tensor dimension count",
+              {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(SliceTest, InvalidAxesDuplicates) {
+  OpTester testv10("Slice", 10);
+  testv10.AddInput<float>("data", {2, 2}, {1.0f, 2.0f, 3.0f, 4.0f});
+  testv10.AddInput<int64_t>("starts", {2}, {0, 0});
+  testv10.AddInput<int64_t>("ends", {2}, {1, 1});
+  testv10.AddInput<int64_t>("axes", {2}, {0, 0});
+  testv10.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
+  testv10.Run(OpTester::ExpectResult::kExpectFailure,
+              "'axes' has duplicates",
+              {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {

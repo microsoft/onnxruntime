@@ -1,0 +1,4 @@
+{
+  "type": "parser",
+  "description": "Test that the parser correctly removes single-line and multi-line comments while preserving line structure"
+}

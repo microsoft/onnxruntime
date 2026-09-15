@@ -120,6 +120,16 @@ static Status LoadModel(const char* source) {
   return session_object.Load(sstr);
 }
 
+// A recursive/cyclic chain of model-local functions can be rejected by either layer:
+// ONNX 1.22+ detects the cycle in its own model checker ("Cycle detected in model-local
+// function references"), which runs before ORT's equivalent check ("must not be recursive").
+// Older ONNX versions don't catch it, so ORT's check fires instead. Accept either message so
+// the cycle-rejection tests pass regardless of which layer rejects the model.
+static testing::Matcher<const std::string&> HasCycleRejectionMessage() {
+  return testing::AnyOf(testing::HasSubstr("must not be recursive"),
+                        testing::HasSubstr("Cycle detected in model-local function references"));
+}
+
 namespace {
 const char* basic_code = R"(
         <
@@ -358,7 +368,7 @@ TEST(FunctionTest, RejectsSelfRecursiveLocalFunction) {
 
   const auto status = LoadModel(code);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
 }
 
 TEST(FunctionTest, RejectsMutuallyRecursiveLocalFunctions) {
@@ -391,7 +401,7 @@ TEST(FunctionTest, RejectsMutuallyRecursiveLocalFunctions) {
 
   const auto status = LoadModel(code);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
 }
 
 TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
@@ -433,6 +443,63 @@ TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
 
 // --- Synthetic adjacency-list tests for ValidateCallGraphAcyclic ---
 // These test the cycle detection algorithm directly without constructing ONNX models.
+
+static ONNX_NAMESPACE::ModelProto CreateNestedLocalFunctionModel(size_t depth, bool use_graphs_attribute) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto* nodes = model_proto.add_functions()->mutable_node();
+  for (size_t i = 0; i < depth; ++i) {
+    auto* node = nodes->Add();
+    auto* attr = node->add_attribute();
+    if (use_graphs_attribute) {
+      nodes = attr->add_graphs()->mutable_node();
+    } else {
+      nodes = attr->mutable_g()->mutable_node();
+    }
+  }
+
+  return model_proto;
+}
+
+static ONNX_NAMESPACE::ModelProto CreateNestedLocalFunctionDefaultAttributeModel(
+    size_t depth, bool use_graphs_attribute) {
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto* function = model_proto.add_functions();
+  auto* attr = function->add_attribute_proto();
+  auto* graph = use_graphs_attribute ? attr->add_graphs() : attr->mutable_g();
+  for (size_t i = 1; i < depth; ++i) {
+    auto* node = graph->add_node();
+    attr = node->add_attribute();
+    graph = attr->mutable_g();
+  }
+
+  return model_proto;
+}
+
+TEST(FunctionTest, LocalFunctionSubgraphDepthValidated) {
+  EXPECT_STATUS_OK(ValidateModelSubgraphDepth(
+      CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth, false)));
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth + 1, false))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionModel(kMaxModelSubgraphDepth + 1, true))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+}
+
+TEST(FunctionTest, LocalFunctionDefaultAttributeSubgraphDepthValidated) {
+  EXPECT_STATUS_OK(ValidateModelSubgraphDepth(
+      CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth, false)));
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth + 1, false))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+  EXPECT_EQ(ValidateModelSubgraphDepth(
+                CreateNestedLocalFunctionDefaultAttributeModel(kMaxModelSubgraphDepth + 1, true))
+                .Code(),
+            common::NOT_IMPLEMENTED);
+}
 
 TEST(FunctionTest, CallGraphAcyclic_EmptyGraph) {
   onnxruntime::LocalFunctionCallGraph call_graph;
@@ -572,7 +639,7 @@ TEST(FunctionTest, RejectsLongerCycle) {
 
   const auto status = LoadModel(code);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
 }
 
 TEST(FunctionTest, AcceptsAcyclicDiamond) {
@@ -697,7 +764,7 @@ TEST(FunctionTest, RejectsMultipleIndependentCycles) {
 
   const auto status = LoadModel(code);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
 }
 
 // Test use of attibute references, especially where source/target attribute

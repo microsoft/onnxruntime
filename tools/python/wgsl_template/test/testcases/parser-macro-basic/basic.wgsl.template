@@ -1,0 +1,15 @@
+#define PI 3.14159
+#define MAX_SIZE 1024
+#define SHADER_VERSION 450
+
+const pi_value = PI;
+const buffer_size = MAX_SIZE;
+var<uniform> version: u32 = SHADER_VERSION;
+
+fn calculate_area(radius: f32) -> f32 {
+    return PI * radius * radius;
+}
+
+fn check_bounds(size: u32) -> bool {
+    return size <= MAX_SIZE;
+}

@@ -1,0 +1,13 @@
+diff --git a/include/gsl/assert b/include/gsl/assert
+index 58e0426..b3f7c8a 100644
+--- a/include/gsl/assert
++++ b/include/gsl/assert
+@@ -50,7 +50,7 @@
+ #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+ #else
+ #if defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
++#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+ #else
+ #define GSL_SUPPRESS(x)
+ #endif // _MSC_VER

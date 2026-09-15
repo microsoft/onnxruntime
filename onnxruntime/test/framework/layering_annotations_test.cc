@@ -12,6 +12,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/model.h"  // For Model, Graph
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"
@@ -1784,6 +1785,262 @@ TEST(LayeringIndexPartitionerTest, MultipleRulesForSameEp) {
   EXPECT_TRUE(found[1]);   // node1 - RuleA2
   EXPECT_FALSE(found[2]);  // node2 - RuleB (excluded)
   EXPECT_TRUE(found[3]);   // node3 - unassigned
+}
+
+// ===================== SubstringMatcher Tests =====================
+
+TEST(SubstringMatcherTest, BasicSubstringMatch) {
+  LayeringRules rules;
+  rules.rules.push_back({"gpu", "layers.0/", true});     // Index 0
+  rules.rules.push_back({"gpu", "layers.1/", true});     // Index 1
+  rules.rules.push_back({"cpu", "embed_tokens", true});  // Index 2
+
+  SubstringMatcher matcher(rules);
+
+  // Match in the middle of a node name
+  {
+    auto result = matcher.Match("/model/layers.0/self_attn/q_proj/MatMul");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, 0u);
+  }
+  {
+    auto result = matcher.Match("/model/layers.1/mlp/gate_proj/MatMul");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, 1u);
+  }
+  {
+    auto result = matcher.Match("/model/embed_tokens/Gather");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, 2u);
+  }
+  // No match
+  {
+    auto result = matcher.Match("/model/norm/LayerNormalization");
+    EXPECT_FALSE(result.has_value());
+  }
+}
+
+TEST(SubstringMatcherTest, LongestMatchWins) {
+  LayeringRules rules;
+  // Shorter pattern first in config order
+  rules.rules.push_back({"cpu", "layers.1", true});   // Index 0 — would match layers.10, layers.11, etc.
+  rules.rules.push_back({"gpu", "layers.10", true});  // Index 1 — longer, should win for layers.10
+
+  SubstringMatcher matcher(rules);
+
+  // "layers.10" is longer — should match even though "layers.1" also appears as a substring
+  {
+    auto result = matcher.Match("/model/layers.10/self_attn/MatMul");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, 1u);  // layers.10 wins (longer)
+  }
+  // "layers.1/" — only "layers.1" matches (layers.10 does not appear here)
+  {
+    auto result = matcher.Match("/model/layers.1/self_attn/MatMul");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, 0u);
+  }
+}
+
+TEST(SubstringMatcherTest, TrailingSlashDisambiguates) {
+  LayeringRules rules;
+  rules.rules.push_back({"gpu", "layers.1/", true});   // Index 0 — won't match layers.10/
+  rules.rules.push_back({"cpu", "layers.10/", true});  // Index 1
+
+  SubstringMatcher matcher(rules);
+
+  {
+    auto result = matcher.Match("/model/layers.1/self_attn/MatMul");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, 0u);
+  }
+  {
+    auto result = matcher.Match("/model/layers.10/self_attn/MatMul");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, 1u);  // "layers.10/" matches, not "layers.1/"
+  }
+}
+
+TEST(SubstringMatcherTest, BasicRuleIndices) {
+  LayeringRules rules;
+  rules.rules.push_back({"gpu", "layers.0/", true});  // Index 0
+  rules.rules.push_back({"cpu", "embed", true});      // Index 1
+
+  SubstringMatcher matcher(rules);
+
+  {
+    auto result = matcher.Match("/model/layers.0/MatMul");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, 0u);
+  }
+  {
+    auto result = matcher.Match("/model/embed_tokens/Gather");
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, 1u);
+  }
+}
+
+TEST(SubstringMatcherTest, EmptyNameNoMatch) {
+  LayeringRules rules;
+  rules.rules.push_back({"gpu", "layers.0/", true});
+
+  SubstringMatcher matcher(rules);
+
+  auto result = matcher.Match("");
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(LayeringIndexTest, NameBasedMatchingIntegration) {
+  // Test that LayeringIndex uses SubstringMatcher for unannotated nodes when configured
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 12;
+  Model model("test_model", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto type_proto;
+  type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  // Create nodes with transformer-style names (no annotations)
+  NodeArg* input = &graph.GetOrCreateNodeArg("input", &type_proto);
+  NodeArg* mid1 = &graph.GetOrCreateNodeArg("mid1", &type_proto);
+  NodeArg* mid2 = &graph.GetOrCreateNodeArg("mid2", &type_proto);
+  NodeArg* output = &graph.GetOrCreateNodeArg("output", &type_proto);
+
+  Node& node0 = graph.AddNode("/model/layers.0/self_attn/MatMul", "Abs", "", {input}, {mid1});
+  Node& node1 = graph.AddNode("/model/layers.1/mlp/MatMul", "Abs", "", {mid1}, {mid2});
+  Node& node2 = graph.AddNode("/model/embed_tokens/Gather", "Abs", "", {mid2}, {output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Build name-based rules for layers.0 -> gpu, layers.1 -> cpu
+  LayeringRules name_rules;
+  name_rules.rules.push_back({"gpu", "layers.0/", true});  // merged index 0
+  name_rules.rules.push_back({"cpu", "layers.1/", true});  // merged index 1
+
+  LayeringIndex::EpNameToLayeringIndices ep_map;
+  ep_map["GpuEP"].insert(0);
+  ep_map["CpuEP"].insert(1);
+
+  LayeringIndex::LayeringIndexToEpName rule_map;
+  rule_map[0] = "GpuEP";
+  rule_map[1] = "CpuEP";
+
+  // Create index with SubstringMatcher
+  SubstringMatcher substring_matcher(name_rules);
+  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(name_rules),
+                                     std::move(substring_matcher));
+
+  // Node with "layers.0/" in name → rule 0
+  auto assign0 = index.GetNodeAssignment(graph, node0.Index());
+  ASSERT_TRUE(assign0.has_value());
+  EXPECT_EQ(*assign0, 0u);
+
+  // Node with "layers.1/" in name → rule 1
+  auto assign1 = index.GetNodeAssignment(graph, node1.Index());
+  ASSERT_TRUE(assign1.has_value());
+  EXPECT_EQ(*assign1, 1u);
+
+  // Node with "embed_tokens" — no matching rule → unassigned
+  auto assign2 = index.GetNodeAssignment(graph, node2.Index());
+  EXPECT_FALSE(assign2.has_value());
+}
+
+TEST(LayeringIndexTest, MutualExclusivityRejectsBothConfigs) {
+  // Setting both annotation-based and name-based configs must return INVALID_ARGUMENT.
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 12;
+  Model model("test_model", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto type_proto;
+  type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  NodeArg* input = &graph.GetOrCreateNodeArg("input", &type_proto);
+  NodeArg* output = &graph.GetOrCreateNodeArg("output", &type_proto);
+  graph.AddNode("node0", "Abs", "", {input}, {output});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ExecutionProviders providers;
+  std::optional<LayeringIndex> layering_index;
+
+  // Both configs set — should fail
+  auto status = LayeringIndex::Create(graph,
+                                      /*config_string=*/"cpu(layer1)",
+                                      /*name_based_config_string=*/"gpu(layers.0/)",
+                                      {}, providers,
+                                      DefaultLoggingManager().DefaultLogger(),
+                                      layering_index);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("mutually exclusive"));
+}
+
+TEST(LayeringIndexTest, UpdateAppliesSubstringMatcherToNewNodes) {
+  // Verifies that LayeringIndex::Update() applies substring_matcher_ fallback
+  // for new nodes that have no annotation but whose Name() matches a name-based pattern.
+  // This covers the post-layout-transform incremental update path.
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 12;
+  Model model("test_model", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto type_proto;
+  type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  // Initial graph with one node assigned via name-based matching
+  NodeArg* input = &graph.GetOrCreateNodeArg("input", &type_proto);
+  NodeArg* mid = &graph.GetOrCreateNodeArg("mid", &type_proto);
+  NodeArg* output = &graph.GetOrCreateNodeArg("output", &type_proto);
+
+  graph.AddNode("/model/layers.0/self_attn/MatMul", "Abs", "", {input}, {mid});
+  graph.AddNode("/model/norm/LayerNorm", "Abs", "", {mid}, {output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Name-based rules: layers.0/ -> gpu (index 0)
+  LayeringRules name_rules;
+  name_rules.rules.push_back({"gpu", "layers.0/", true});
+
+  LayeringIndex::EpNameToLayeringIndices ep_map;
+  ep_map["GpuEP"].insert(0);
+  LayeringIndex::LayeringIndexToEpName rule_map;
+  rule_map[0] = "GpuEP";
+
+  SubstringMatcher substring_matcher(name_rules);
+  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map),
+                                     std::move(name_rules), std::move(substring_matcher));
+
+  // Simulate layout transform adding new nodes with structured names
+  NodeArg* new_out1 = &graph.GetOrCreateNodeArg("new_out1", &type_proto);
+  NodeArg* new_out2 = &graph.GetOrCreateNodeArg("new_out2", &type_proto);
+
+  // New node whose name matches "layers.0/" pattern
+  Node& new_matching = graph.AddNode("/model/layers.0/self_attn/Transpose", "Abs", "", {output}, {new_out1});
+
+  // New node whose name does NOT match any pattern
+  Node& new_unmatched = graph.AddNode("/model/lm_head/MatMul", "Abs", "", {new_out1}, {new_out2});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Call Update() with the new nodes (the incremental path)
+  std::vector<NodeIndex> new_nodes = {new_matching.Index(), new_unmatched.Index()};
+  index.Update(graph, new_nodes);
+
+  // new_matching should be assigned via substring match
+  auto assign_match = index.GetNodeAssignment(graph, new_matching.Index());
+  ASSERT_TRUE(assign_match.has_value());
+  EXPECT_EQ(*assign_match, 0u);
+
+  // new_unmatched should remain unassigned
+  auto assign_no = index.GetNodeAssignment(graph, new_unmatched.Index());
+  EXPECT_FALSE(assign_no.has_value());
 }
 
 }  // namespace test

@@ -1,0 +1,15 @@
+{
+  "type": "build",
+  "description": "Test building templates from multiple directories with aliases",
+  "templateExt": ".wgsl.template",
+  "generators": {
+    "static-cpp": {}
+  },
+  "sourceDirs": [
+    "common",
+    {
+      "path": "effects",
+      "alias": "@effects"
+    }
+  ]
+}

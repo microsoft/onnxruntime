@@ -165,5 +165,117 @@ TEST(Col2ImOpTest, Simple5dNCHWD) {
   test.Run();
 }
 
+TEST(Col2ImOpTest, WithStrides5dNCHWD) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0, 0, 0});
+
+  std::vector<float> output(64, 0.0f);
+  output[0] = 1.0f;
+  output[2] = 2.0f;
+  output[8] = 3.0f;
+  output[10] = 4.0f;
+  output[32] = 5.0f;
+  output[34] = 6.0f;
+  output[40] = 7.0f;
+  output[42] = 8.0f;
+
+  test.AddInput<float>("input", {1, 1, 8},
+                       std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  test.AddInput<int64_t>("image_shape", {3}, std::vector<int64_t>{4, 4, 4});
+  test.AddInput<int64_t>("block_shape", {3}, std::vector<int64_t>{1, 1, 1});
+  test.AddOutput<float>("output", {1, 1, 4, 4, 4}, output);
+  test.Run();
+}
+
+// Regression test for a heap buffer over-read in Col2Im when 'image_shape' implies more
+// sliding-block positions than the column tensor actually contains. The kernel must reject
+// the inputs instead of reading past the column allocation.
+TEST(Col2ImOpTest, ImageShapeLargerThanColumnTensor) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+  // col holds only 4 spatial positions but image_shape implies 4*4=16.
+  test.AddInput<float>("input", {1, 1, 4}, std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddInput<int64_t>("image_shape", {2}, std::vector<int64_t>{4, 4});
+  test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{1, 1});
+
+  test.AddOutput<float>("output", {1, 1, 4, 4}, std::vector<float>(16, 0.0f));
+  // Restrict to the CPU kernel: other execution providers (e.g. DML) reject the
+  // inconsistent shapes during graph partitioning with a different message.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "does not match the number of sliding blocks",
+           {kDmlExecutionProvider});
+}
+
+TEST(Col2ImOpTest, StridesMustBePositive) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{0, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+  test.AddInput<float>("input", {1, 1, 1}, std::vector<float>{1.0f});
+  test.AddInput<int64_t>("image_shape", {2}, std::vector<int64_t>{1, 1});
+  test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{1, 1});
+  test.AddOutput<float>("output", {1, 1, 1, 1}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All stride values must be positive",
+           {kDmlExecutionProvider});
+}
+
+TEST(Col2ImOpTest, DilationsMustBePositive) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{0, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+  test.AddInput<float>("input", {1, 2, 1}, std::vector<float>{1.0f, 2.0f});
+  test.AddInput<int64_t>("image_shape", {2}, std::vector<int64_t>{1, 1});
+  test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{2, 1});
+  test.AddOutput<float>("output", {1, 1, 1, 1}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All dilation values must be positive",
+           {kDmlExecutionProvider});
+}
+
+// The dilated kernel must fit within the padded image. With dilations={1,2} and block_shape={1,2}
+// the second dimension's dilated kernel extent is 3, larger than the padded image extent of 1, so
+// the kernel must reject the inputs instead of computing a negative/zero sliding-block count.
+TEST(Col2ImOpTest, PaddedImageSmallerThanDilatedKernel) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+  test.AddInput<float>("input", {1, 2, 1}, std::vector<float>{1.0f, 2.0f});
+  test.AddInput<int64_t>("image_shape", {2}, std::vector<int64_t>{1, 1});
+  test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{1, 2});
+  test.AddOutput<float>("output", {1, 1, 1, 1}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Padded image extent is smaller than the dilated kernel", {kDmlExecutionProvider});
+}
+
+// The column tensor's channel dimension (dim[1]) must be a positive multiple of prod(block_shape).
+// Here prod(block_shape) = 4 but dim[1] = 3, so the kernel must reject the inputs.
+TEST(Col2ImOpTest, ColumnChannelsNotMultipleOfBlock) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+  test.AddInput<float>("input", {1, 3, 1}, std::vector<float>{1.0f, 2.0f, 3.0f});
+  test.AddInput<int64_t>("image_shape", {2}, std::vector<int64_t>{2, 2});
+  test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{2, 2});
+  test.AddOutput<float>("output", {1, 1, 2, 2}, std::vector<float>(4, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must be a positive multiple of prod(block_shape)",
+           {kDmlExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

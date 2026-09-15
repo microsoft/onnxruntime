@@ -1,8 +1,30 @@
 # Agent Instructions for ONNX Runtime
 
+This file contains repository-wide guidance for coding agents. See
+[Extending Agent Coding Guidance](docs/Agent_Coding_Guidance.md) when adding or updating guidance.
+
+## Path-Scoped Instructions
+
+Before implementing or reviewing changes, inspect `.github/instructions/**/*.instructions.md` and parse each file's
+`applyTo` scope. Apply every instruction whose scope matches any target or changed path. Unless explicitly stated
+otherwise, matching instructions apply to both implementation and review.
+
+## Agent Skills
+
+Repository skills are available in [`.github/skills`](.github/skills/). Load each skill whose description matches the
+requested task, subsystem, or behavior.
+
+For code reviews, follow the `/code-review` skill in addition to relevant domain skills and matching path-scoped
+instructions.
+
 ## Build, Test, and Lint
 
-See the `/ort-build`, `/ort-test`, and `/ort-lint` skills (in `.agents/skills/`) for detailed instructions.
+See the `/ort-build`, `/ort-test`, and `/ort-lint` skills for detailed instructions.
+
+## CI
+
+See the `/ort-ci` skill for triggering, re-running, and unblocking CI checks on a pull request (GitHub Actions, Azure
+Pipelines, `Python format`, and `license/cla`).
 
 ## Architecture Overview
 
@@ -29,6 +51,14 @@ Training-specific code (gradient ops, loss functions, optimizers, `TrainingSessi
 ### Language bindings
 
 `csharp/`, `java/`, `js/`, `objectivec/`, `rust/` — each wraps the C API (`include/onnxruntime/core/session/onnxruntime_c_api.h`).
+
+## General Code Conventions
+
+### Code Comments
+
+Keep code comments concise. Add a comment only when it explains rationale, an invariant, a constraint, or subtle behavior
+that is not clear from the immediate context. Do not narrate obvious code or document the sequence of approaches taken
+to reach the current implementation; that history belongs in the pull request or commit message when relevant.
 
 ## C++ Conventions
 
@@ -66,6 +96,15 @@ Use `reserve()` not `resize()`. Do not use `absl::` directly — use the ORT typ
 - Prefer `gsl::span<const T>` over `const std::vector<T>&` for input parameters
 - Prefer `std::string_view` by value over `const std::string&`
 - `SafeInt<size_t>` (from `core/common/safeint.h`) for memory size arithmetic
+- **Signed vs unsigned on negative-capable differences.** Any expression of the form `a - b`
+  that can be negative (an offset or remaining-budget computed from counts, e.g.
+  `num_keys - num_queries`) must be stored and compared using a **signed** type
+  (`int32_t`/`int64_t`), and any unsigned operand must be `static_cast` to signed *before*
+  the subtraction/comparison. An unsigned result silently wraps to a huge value (`~4.29e9`
+  for `uint32_t`), which can permanently satisfy or skip a relational guard with **no crash
+  and no warning** — a correct-looking-but-wrong result. Concrete ORT instance + the exact
+  fix sites: CUTLASS FMHA `causal_diagonal_offset`, see the `cuda-attention-kernel-patterns`
+  skill §12.
 - Don't use `else` after `return`
 - Avoid `long` (ambiguous width) — use `int64_t` for dimensions, `size_t` for counts
 - `using namespace` allowed in limited scope but never at global scope in headers

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <type_traits>
+
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/narrow.h"
@@ -482,6 +484,11 @@ class BitwiseXor final : public OpKernel {
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public OpKernel {
+  // Currently only registered for float. Integer types would require addressing
+  // overflow in multiplication and avoiding 0.0*inf=NaN in branchless formulations.
+  static_assert(std::is_floating_point_v<T>,
+                "PRelu is only supported for floating-point types.");
+
  public:
   PRelu(const OpKernelInfo& info) : OpKernel(info) {
   }

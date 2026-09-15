@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 #include <limits>
@@ -125,13 +126,21 @@ TEST(IsInfTest, test_isinf_negative_mlfloat16) {
 }
 
 TEST(IsInfTest, test_isinf_bfloat16) {
+  if (NeedSkipIfCudaArchLowerThan(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA Compute Capability < 8.0";
+  }
+
   std::initializer_list<BFloat16> input = {BFloat16{-1.7f}, BFloat16::NaN, BFloat16::Infinity, 3.6_bfp16,
                                            BFloat16::NegativeInfinity, BFloat16::Infinity};
   std::initializer_list<bool> output = {false, false, true, false, true, true};
-  run_is_inf_test(20, 1, 1, input, output, true);  // Skip as TRT10 supports BF16 but T4 GPU run on TRT CIs doesn't
+  run_is_inf_test(20, 1, 1, input, output);
 }
 
 TEST(IsInfTest, test_isinf_positive_bfloat16) {
+  if (NeedSkipIfCudaArchLowerThan(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA Compute Capability < 8.0";
+  }
+
   std::initializer_list<BFloat16> input = {BFloat16{-1.7f}, BFloat16::NaN, BFloat16::Infinity, 3.6_bfp16,
                                            BFloat16::NegativeInfinity, BFloat16::Infinity};
   std::initializer_list<bool> output = {false, false, true, false, false, true};
@@ -139,6 +148,10 @@ TEST(IsInfTest, test_isinf_positive_bfloat16) {
 }
 
 TEST(IsInfTest, test_isinf_negative_bfloat16) {
+  if (NeedSkipIfCudaArchLowerThan(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA Compute Capability < 8.0";
+  }
+
   std::initializer_list<BFloat16> input = {BFloat16{-1.7f}, BFloat16::NaN, BFloat16::Infinity, 3.6_bfp16,
                                            BFloat16::NegativeInfinity, BFloat16::Infinity};
   std::initializer_list<bool> output = {false, false, false, false, true, false};

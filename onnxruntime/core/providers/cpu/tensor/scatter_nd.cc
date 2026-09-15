@@ -61,11 +61,13 @@ struct Prepare {
   TData* output_base;
   uint64_t element_to_copy;
   std::vector<uint64_t> element_offsets;
+  bool serialize_updates;
 
   Prepare() : input_base(nullptr),
               output_base(nullptr),
               element_to_copy(0),
-              element_offsets(0) {}
+              element_offsets(0),
+              serialize_updates(false) {}
 };  // struct Prepare
 
 template <typename TData>
@@ -89,7 +91,7 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
   auto last_indice_dimension = indice_shape[indice_shape.NumDimensions() - 1];
 
   // Re-use input for output. If input/output Tensor* are the same, do not copy.
-  if (src_base != dst_base) {
+  if (src_base != dst_base && input_tensor->Shape().Size() > 0) {
     if (is_string_type) {
       const auto* str_begin = input_tensor->Data<std::string>();
       const std::string* str_end = str_begin + input_shape.Size();
@@ -108,8 +110,9 @@ Status PrepareForCompute(OpKernelContext* context, Prepare<TData>& p) {
   }
 
   p.element_to_copy = input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(last_indice_dimension));
+  p.serialize_updates = last_indice_dimension == 0;
   const int64_t* indice_offset = indice_tensor->Data<int64_t>();
-  auto offset_count = indice_shape.Size() / last_indice_dimension;  // Times to copy
+  auto offset_count = indice_shape.SizeToDimension(indice_shape.NumDimensions() - 1);  // Times to copy
   p.element_offsets.assign(onnxruntime::narrow<size_t>(offset_count), 0LL);
 
   p.input_base = update_tensor->Data<TData>();
@@ -302,6 +305,12 @@ struct ScatterNDDispatchTarget {
   Status operator()(OpKernelContext* context, concurrency::ThreadPool* tp, ScatterND::Reduction reduction) const {
     Prepare<TData> prepare;
     ORT_RETURN_IF_ERROR(PrepareForCompute(context, prepare));
+    if (prepare.element_to_copy == 0 || prepare.element_offsets.empty()) {
+      return Status::OK();
+    }
+    if (prepare.serialize_updates) {
+      tp = nullptr;
+    }
 
     auto lambda = [&](ptrdiff_t i) {
       switch (reduction) {
@@ -343,6 +352,9 @@ struct ScatterNDDispatchTarget {
         } break;
       }
     };
+    if (context->Input<Tensor>(0)->IsDataTypeString()) {
+      tp = nullptr;
+    }
     concurrency::ThreadPool::TryParallelFor(
         tp, prepare.element_offsets.size(), static_cast<double>(prepare.element_to_copy),
         [&lambda](ptrdiff_t first, ptrdiff_t last) {

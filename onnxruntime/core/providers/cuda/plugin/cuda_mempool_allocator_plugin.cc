@@ -158,7 +158,7 @@ CudaMempoolOrtAllocator::CudaMempoolOrtAllocator(const OrtMemoryInfo* memory_inf
       pool_(pool),
       pool_release_threshold_(pool_release_threshold),
       bytes_to_keep_on_shrink_(bytes_to_keep_on_shrink) {
-  version = kCudaPluginEpMinOrtApiVersion;
+  version = ORT_API_VERSION;
   Alloc = AllocImpl;
   AllocOnStream = AllocOnStreamImpl;
   Free = FreeImpl;
@@ -361,6 +361,7 @@ OrtStatus* ORT_API_CALL CudaMempoolOrtAllocator::GetStatsImpl(
       std::lock_guard<std::mutex> lock(self.mutex_);
       stats.num_allocs = static_cast<int64_t>(self.num_allocs_);
       stats.bytes_in_use = static_cast<int64_t>(self.in_use_bytes_);
+      stats.bytes_requested_in_use = static_cast<int64_t>(self.in_use_bytes_);  // No padding in mempool
       stats.max_bytes_in_use = static_cast<int64_t>(self.max_bytes_in_use_);
       stats.max_alloc_size = static_cast<int64_t>(self.max_alloc_size_);
       stats.num_arena_shrinkages = static_cast<int64_t>(self.num_arena_shrinkages_);

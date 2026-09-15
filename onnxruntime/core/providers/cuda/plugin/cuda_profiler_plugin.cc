@@ -14,7 +14,7 @@ namespace cuda_plugin {
 
 CudaPluginEpProfiler::CudaPluginEpProfiler(const OrtEpApi& api)
     : OrtEpProfilerImpl{}, ep_api(api) {
-  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
+  ort_version_supported = ORT_API_VERSION;
   Release = ReleaseImpl;
   StartProfiling = StartProfilingImpl;
   EndProfiling = EndProfilingImpl;

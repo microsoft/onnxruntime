@@ -346,5 +346,133 @@ TEST(PartitioningUtilsTest, TestQDQNodeGroupWithRedundantClip) {
   CheckAllNodesProcessed(build_model);
 }
 
+// Verify that MakeComputeCapability surfaces implicit inputs from If nodes as MetaDef inputs.
+// Graph structure mirrors if_simple.onnx:
+//   Main graph inputs: X[FLOAT, 2x3], cond[BOOL, 1]
+//   If(cond) -> Y
+//     then_branch: Relu(X) -> T, Add(T, ones) -> Y   (X is implicit from outer scope)
+//     else_branch: Sigmoid(X) -> T, Mul(T, twos) -> Y (X is implicit from outer scope)
+TEST(PartitioningUtilsTest, TestImplicitInputsFromIfNode) {
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}};
+
+  Model model("if_simple_graph", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+
+  // Type for float [2, 3] tensor
+  ONNX_NAMESPACE::TypeProto float_2x3;
+  float_2x3.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_2x3.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(2);
+  float_2x3.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(3);
+
+  // Type for bool [1] tensor
+  ONNX_NAMESPACE::TypeProto bool_1;
+  bool_1.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  bool_1.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // Main graph inputs: X is used implicitly inside If branches, cond is explicit If input
+  auto& x_input = graph.GetOrCreateNodeArg("X", &float_2x3);
+  auto& cond_input = graph.GetOrCreateNodeArg("cond", &bool_1);
+
+  // Build then_branch: Relu(X) -> T, Add(T, ones) -> Y
+  ONNX_NAMESPACE::GraphProto then_branch;
+  {
+    Model branch_model("then_branch", false, logger);
+    auto& bg = branch_model.MainGraph();
+
+    auto& bg_x = bg.GetOrCreateNodeArg("X", &float_2x3);
+    bg.AddOuterScopeNodeArg("X");
+
+    // Local initializer "ones"
+    ONNX_NAMESPACE::TensorProto ones_init;
+    ones_init.set_name("ones");
+    ones_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    ones_init.add_dims(2);
+    ones_init.add_dims(3);
+    for (int i = 0; i < 6; ++i) ones_init.add_float_data(1.0f);
+    bg.AddInitializedTensor(ones_init);
+    auto& bg_ones = bg.GetOrCreateNodeArg("ones", &float_2x3);
+
+    auto& bg_t = bg.GetOrCreateNodeArg("T", &float_2x3);
+    auto& bg_y = bg.GetOrCreateNodeArg("Y", &float_2x3);
+
+    bg.AddNode("relu", "Relu", "", {&bg_x}, {&bg_t});
+    bg.AddNode("add", "Add", "", {&bg_t, &bg_ones}, {&bg_y});
+
+    auto status = bg.Resolve();
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+    then_branch = bg.ToGraphProto();
+  }
+
+  // Build else_branch: Sigmoid(X) -> T, Mul(T, twos) -> Y
+  ONNX_NAMESPACE::GraphProto else_branch;
+  {
+    Model branch_model("else_branch", false, logger);
+    auto& bg = branch_model.MainGraph();
+
+    auto& bg_x = bg.GetOrCreateNodeArg("X", &float_2x3);
+    bg.AddOuterScopeNodeArg("X");
+
+    // Local initializer "twos"
+    ONNX_NAMESPACE::TensorProto twos_init;
+    twos_init.set_name("twos");
+    twos_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    twos_init.add_dims(2);
+    twos_init.add_dims(3);
+    for (int i = 0; i < 6; ++i) twos_init.add_float_data(2.0f);
+    bg.AddInitializedTensor(twos_init);
+    auto& bg_twos = bg.GetOrCreateNodeArg("twos", &float_2x3);
+
+    auto& bg_t = bg.GetOrCreateNodeArg("T", &float_2x3);
+    auto& bg_y = bg.GetOrCreateNodeArg("Y", &float_2x3);
+
+    bg.AddNode("sigmoid", "Sigmoid", "", {&bg_x}, {&bg_t});
+    bg.AddNode("mul", "Mul", "", {&bg_t, &bg_twos}, {&bg_y});
+
+    auto status = bg.Resolve();
+    ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+    else_branch = bg.ToGraphProto();
+  }
+
+  // Main graph: If(cond) -> Y, with X as implicit input inside branches
+  auto& if_output = graph.GetOrCreateNodeArg("Y", &float_2x3);
+  auto& if_node = graph.AddNode("if_node", "If", "", {&cond_input}, {&if_output});
+  if_node.AddAttribute("then_branch", then_branch);
+  if_node.AddAttribute("else_branch", else_branch);
+
+  graph.SetInputs({&x_input, &cond_input});
+  graph.SetOutputs({&if_output});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  GraphViewer graph_viewer(graph);
+
+  // Collect all nodes for MakeComputeCapability (just the If node here)
+  std::vector<const Node*> group;
+  for (const auto& node : graph_viewer.Nodes()) {
+    group.push_back(&node);
+  }
+
+  const auto gen_metadef_name = []() { return "TestMetaDef_ImplicitInput"; };
+
+  auto result = utils::MakeComputeCapability(graph_viewer, group, gen_metadef_name, "TEST", false);
+
+  ASSERT_NE(result, nullptr);
+  ASSERT_NE(result->sub_graph, nullptr);
+  ASSERT_NE(result->sub_graph->GetMetaDef(), nullptr);
+
+  const auto& meta_def_inputs = result->sub_graph->GetMetaDef()->inputs;
+
+  // "cond" is the explicit input to the If node
+  EXPECT_THAT(meta_def_inputs, ::testing::Contains("cond"));
+
+  // "X" is an implicit input — used inside both branches from outer scope.
+  // This verifies the fix: implicit inputs must be surfaced in MetaDef inputs.
+  EXPECT_THAT(meta_def_inputs, ::testing::Contains("X"))
+      << "Implicit input 'X' (used in If subgraphs) must appear in MetaDef inputs";
+}
+
 }  // namespace test
 }  // namespace onnxruntime

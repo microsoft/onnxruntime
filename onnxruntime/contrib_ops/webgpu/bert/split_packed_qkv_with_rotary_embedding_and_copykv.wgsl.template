@@ -6,6 +6,10 @@
 #use guardAgainstOutOfBoundsWorkgroupSizes
 #use .setByIndices .getByIndices .getByOffset
 
+#if prepare_indirect_dispatch
+#include "bert/indirect_dispatch_common.wgsl.template"
+#endif
+
 $MAIN {
   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
 
@@ -29,14 +33,20 @@ $MAIN {
   // Calculate position_id (needed for rotary embedding)
   let seqlen_i = seqlens.getByOffset(batch_idx);
   let raw_total_seqlen = u32(seqlen_i) + 1u;
-  let total_seqlen = min(max(raw_total_seqlen, uniforms.sequence_length), uniforms.present_sequence_length);
+  let total_seqlen = min(raw_total_seqlen, uniforms.present_sequence_length);
 
-  let past_seqlen = total_seqlen - uniforms.sequence_length;
+  // Right-padded batches with prompt shorter than sequence_length would underflow u32; clamp to 0.
+  let past_seqlen = total_seqlen - min(total_seqlen, uniforms.sequence_length);
   // `position_id` is used to get cos/sin cache and also as the time step index in present_key/present_value
   let position_id = past_seqlen + seq_idx;
-  let valid_cache_position = raw_total_seqlen >= uniforms.sequence_length && raw_total_seqlen <= uniforms.present_sequence_length;
+  let valid_cache_position = raw_total_seqlen <= uniforms.present_sequence_length && position_id < raw_total_seqlen;
+#if prepare_indirect_dispatch
+  let global_total_seq_length = u32(total_sequence_length_input[0]);
+#else
+  let global_total_seq_length = uniforms.total_sequence_length;
+#endif
 #if use_multi_rotary_cache_concat
-  let base_position = select(0u, multi_rotary_cache_concat_offset, total_seqlen > multi_rotary_cache_concat_offset);
+  let base_position = select(0u, multi_rotary_cache_concat_offset, global_total_seq_length > multi_rotary_cache_concat_offset);
 #else
   let base_position = 0u;
 #endif
@@ -44,12 +54,9 @@ $MAIN {
   let valid_rotary_position = base_position < max_rotary_position && position_id < max_rotary_position - base_position;
 
 #if prepare_indirect_dispatch
-  // Prepare indirect dispatch buffer for thread 0
   if (global_idx == 0u) {
-    let num_total_seq_length_tile = (total_seqlen + uniforms.tile_size - 1u) / uniforms.tile_size;
-    indirect_buffer[0] = num_total_seq_length_tile;
-    indirect_buffer[1] = uniforms.num_heads;
-    indirect_buffer[2] = 1u;
+    let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
+    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
   }
 #endif
 

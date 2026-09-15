@@ -6,6 +6,10 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/util/include/default_providers.h"
 
+#if defined(USE_CUDA)
+#include "test/common/cuda_op_test_utils.h"
+#endif
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -224,6 +228,45 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2_fp16) {
 }
 
 #endif
+
+#ifdef USE_CUDA
+TEST(InstanceNormalizationOpTest, InstanceNormEmptyChannel_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  OpTester test("InstanceNormalization");
+  test.AddAttribute("epsilon", 0.3F);
+
+  test.AddInput<float>("input", {2, 0, 4, 4}, {});
+  test.AddInput<float>("scale", {0}, {});
+  test.AddInput<float>("B", {0}, {});
+  test.AddOutput<float>("Y", {2, 0, 4, 4}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cuda_only_ep;
+  cuda_only_ep.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cuda_only_ep);
+}
+
+TEST(InstanceNormalizationOpTest, InstanceNormEmptyBatch_Cuda) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  OpTester test("InstanceNormalization");
+  test.AddAttribute("epsilon", 0.3F);
+
+  test.AddInput<float>("input", {0, 3, 4, 4}, {});
+  test.AddInput<float>("scale", {3}, {1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("B", {3}, {0.0f, 0.0f, 0.0f});
+  test.AddOutput<float>("Y", {0, 3, 4, 4}, {});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cuda_only_ep;
+  cuda_only_ep.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cuda_only_ep);
+}
+#endif
+
 TEST(InstanceNormalizationOpTest, InstanceNorm_2) {
   OpTester test("InstanceNormalization");
   test.AddAttribute("epsilon", 0.3F);

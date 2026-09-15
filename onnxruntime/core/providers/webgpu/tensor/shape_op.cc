@@ -125,10 +125,21 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
     Shape);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Shape,
+    kOnnxDomain,
+    23, 23,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .OutputMemoryType(OrtMemTypeCPU, 0)
+        .TypeConstraint("T", WebGpuSupportedNumberTypes())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>()),
+    Shape);
+
 ONNX_OPERATOR_KERNEL_EX(
     Shape,
     kOnnxDomain,
-    23,
+    24,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPU, 0)

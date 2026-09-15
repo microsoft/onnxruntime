@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "contrib_ops/webgpu/bert/linear_attention.h"
 
 #include "core/providers/webgpu/shader_helper.h"
@@ -64,7 +66,7 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("query", ShaderUsage::UseUniform);
   shader.AddInput("key", ShaderUsage::UseUniform);
   shader.AddInput("value", ShaderUsage::UseUniform);
-  if (has_initial_state_) {
+  if (has_initial_state_ && !initial_state_in_present_state_) {
     shader.AddInput("initial_state", ShaderUsage::UseUniform);
   }
   if (has_decay_) {
@@ -81,6 +83,7 @@ Status LinearAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return WGSL_TEMPLATE_APPLY(shader, "bert/linear_attention.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(decay_broadcast_dk, decay_broadcast_dk_),
                              WGSL_TEMPLATE_PARAMETER(has_initial_state, has_initial_state_),
+                             WGSL_TEMPLATE_PARAMETER(initial_state_in_present_state, initial_state_in_present_state_),
                              WGSL_TEMPLATE_PARAMETER(subgroup_min_size, subgroup_min_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_v, tile_v_),
                              WGSL_TEMPLATE_PARAMETER(update_rule, update_rule_int),
@@ -107,6 +110,8 @@ LinearAttention::LinearAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   q_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("q_num_heads"));
   kv_num_heads_ = static_cast<int>(info.GetAttr<int64_t>("kv_num_heads"));
+  ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("state_window", 0) == 0,
+              "WebGPU LinearAttention does not support state_window > 0 (CUDA EP only)");
 }
 
 /*
@@ -193,10 +198,10 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   }
 
   // Allocate outputs — output is 3D packed, state is 4D
-  // Output uses kv_num_heads (matches schema inference: output_dim == V_dim).
-  // For inverse GQA (q < kv): each KV head writes its own output slot.
-  // For standard/MHA (q >= kv): q == kv with this schema, so equivalent.
-  TensorShapeVector output_shape({batch_size, seq_length, kv_num_heads_ * head_dim_v});
+  // Output head count = max(q, kv), matching schema inference and the CPU/CUDA kernels:
+  // standard GQA (q >= kv) emits one output per Q head, inverse GQA (q < kv) one per KV head.
+  const int64_t out_num_heads = std::max(q_num_heads_, kv_num_heads_);
+  TensorShapeVector output_shape({batch_size, seq_length, out_num_heads * head_dim_v});
   Tensor* output = context.Output(0, output_shape);
 
   TensorShapeVector state_shape({batch_size, kv_num_heads_, head_dim_k, head_dim_v});
@@ -244,6 +249,7 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   const uint32_t num_workgroups = onnxruntime::narrow<uint32_t>(batch_size * kv_num_heads_ * num_dv_tiles);
 
   bool has_initial_state = past_state != nullptr;
+  bool initial_state_in_present_state = has_initial_state && past_state->DataRaw() == present_state->DataRaw();
   bool has_decay = decay != nullptr;
   bool has_beta = beta != nullptr;
 
@@ -258,12 +264,13 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  LinearAttentionProgram program{update_rule_, has_initial_state, has_decay, has_beta, decay_broadcast_dk, tile_v, components, subgroup_min_size};
+  LinearAttentionProgram program{update_rule_, has_initial_state, initial_state_in_present_state,
+                                 has_decay, has_beta, decay_broadcast_dk, tile_v, components, subgroup_min_size};
 
   program.AddInputs({{query, ProgramTensorMetadataDependency::TypeAndRank},
                      {key, ProgramTensorMetadataDependency::TypeAndRank},
                      {value, ProgramTensorMetadataDependency::TypeAndRank, components}});
-  if (has_initial_state) {
+  if (has_initial_state && !initial_state_in_present_state) {
     program.AddInput({past_state, ProgramTensorMetadataDependency::TypeAndRank, components});
   }
   if (has_decay) {
@@ -279,7 +286,8 @@ Status LinearAttention::ComputeInternal(ComputeContext& context) const {
   program.SetDispatchGroupSize(num_workgroups)
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(std::to_string(static_cast<int>(update_rule_)),
-                 has_initial_state, has_decay, has_beta, decay_broadcast_dk, tile_v, components, subgroup_min_size)
+                 has_initial_state, initial_state_in_present_state, has_decay, has_beta,
+                 decay_broadcast_dk, tile_v, components, subgroup_min_size)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
                             {static_cast<uint32_t>(kv_num_heads_)},
                             {static_cast<uint32_t>(seq_length)},

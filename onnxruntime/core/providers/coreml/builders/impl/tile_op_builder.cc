@@ -50,7 +50,8 @@ Status TileOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     auto op = model_builder.CreateOperation(node, "tile");
     AddOperationInput(*op, "x", input_defs[0]->Name());
     if (repeats_init) {
-      Initializer unpacked(model_builder.GetGraphViewer().GetGraph(), *repeats_init);
+      const Initializer unpacked(model_builder.GetGraphViewer().GetGraph(), *repeats_init,
+                                 model_builder.GetGraphViewer().ModelPath());
       auto repeats = unpacked.DataAsSpan<int64_t>();
       AddOperationInput(*op, "reps", model_builder.AddConstant(op->type(), "reps", repeats));
     } else {
@@ -64,7 +65,8 @@ Status TileOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "TileOpBuilder NeuralNetwork path requires constant 'repeats'");
     }
-    Initializer unpacked(model_builder.GetGraphViewer().GetGraph(), *repeats_init);
+    const Initializer unpacked(model_builder.GetGraphViewer().GetGraph(), *repeats_init,
+                               model_builder.GetGraphViewer().ModelPath());
     auto repeats = unpacked.DataAsSpan<int64_t>();
     auto layer = model_builder.CreateNNLayer(node);
     auto* tile_params = layer->mutable_tile();
@@ -129,7 +131,7 @@ bool TileOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   }
 
   if (repeats_tensor) {
-    Initializer unpacked(input_params.graph_viewer.GetGraph(), *repeats_tensor);
+    Initializer unpacked(input_params.graph_viewer.GetGraph(), *repeats_tensor, input_params.graph_viewer.ModelPath());
     auto repeats = unpacked.DataAsSpan<int64_t>();
     if (repeats.size() != input_shape.size()) {
       LOGS(logger, VERBOSE) << "Tile 'repeats' length (" << repeats.size()

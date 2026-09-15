@@ -10,17 +10,6 @@
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
   endif()
-  if (onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-    if (onnxruntime_DISABLE_EXCEPTIONS)
-      message(FATAL_ERROR "Dynamic WGSL template generation requires exception handling to be enabled.")
-    endif()
-    if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-      message(FATAL_ERROR "Dynamic WGSL template generation is not supported when targeting WebAssembly.")
-    endif()
-    add_definitions(-DORT_WGSL_TEMPLATE_DYNAMIC=1)
-  elseif (NOT onnxruntime_WGSL_TEMPLATE STREQUAL "static")
-    message(FATAL_ERROR "Unsupported value for onnxruntime_WGSL_TEMPLATE: ${onnxruntime_WGSL_TEMPLATE}. Supported values are 'static' or 'dynamic'.")
-  endif()
 
   file(GLOB_RECURSE onnxruntime_providers_webgpu_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.h"
@@ -68,7 +57,7 @@
 
     target_link_libraries(onnxruntime_providers_webgpu PRIVATE
         onnxruntime_optimizer
-        onnxruntime_providers
+        ${onnxruntime_providers_target}
         onnxruntime_lora
         onnxruntime_framework
         onnxruntime_graph
@@ -174,15 +163,13 @@
     # WebAssembly/JavaScript code for WebGPU support.
     target_link_libraries(onnxruntime_providers_webgpu PUBLIC emdawnwebgpu_cpp)
 
-    # Dawn's emdawnwebgpu_cpp target has a bug: it lists ${DAWN_INCLUDE_DIR}/webgpu/webgpu_enum_class_bitmasks.h
-    # in INTERFACE_SOURCES but doesn't add ${DAWN_INCLUDE_DIR} to INTERFACE_INCLUDE_DIRECTORIES.
-    # In emsdk 4.0.11, this was masked because Emscripten bundled its own copy of the WebGPU headers.
-    # In emsdk 4.0.21+, Emscripten removed the bundled WebGPU headers, exposing this bug.
-    # We need to manually add the Dawn include directory to find webgpu_enum_class_bitmasks.h.
+    # We need to manually add the Dawn include directories so that generated Emscripten WebGPU
+    # headers (e.g. webgpu_enum_class_bitmasks.h) are found at compile time.
     #
-    # IMPORTANT: We must also add the generated emdawnwebgpu include directory BEFORE the Dawn source
-    # include directory, because ${dawn_SOURCE_DIR}/include/webgpu/webgpu_cpp.h is a stub that redirects
-    # to dawn/webgpu_cpp.h (native Dawn), but we need the generated Emscripten-specific webgpu_cpp.h.
+    # IMPORTANT: We must add the generated emdawnwebgpu include directory BEFORE the Dawn source
+    # include directory, because ${dawn_SOURCE_DIR}/include/webgpu/webgpu_cpp.h is a stub that
+    # redirects to dawn/webgpu_cpp.h (native Dawn), but we need the generated Emscripten-specific
+    # webgpu_cpp.h.
     target_include_directories(onnxruntime_providers_webgpu PRIVATE
         "${dawn_BINARY_DIR}/gen/src/emdawnwebgpu/include"
         "${dawn_SOURCE_DIR}/include"
@@ -203,6 +190,22 @@
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu dawn::dawncpp_headers dawn::dawn_headers)
 
     set(onnxruntime_providers_webgpu_dll_deps)
+
+    # Delay-load user32.dll which is pulled in by the WebGPU EP build.
+    # This allows onnxruntime.dll to load in processes with
+    # MITIGATION_WIN32K_DISABLE (e.g., a sandboxed process under Win32k lockdown).
+    # ORT's device discovery already skips SetupDi calls when Win32k syscalls
+    # are disallowed (Win32kSystemCallsDisallowed() in device_discovery.cc),
+    # so user32.dll is never actually needed in those processes.
+    if (WIN32 AND onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS)
+      list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:user32.dll")
+    endif()
+
+    if (NOT onnxruntime_USE_EXTERNAL_DAWN)
+      # The WebGPU EP configures the bundled Dawn instance with a custom dawn::platform::Platform,
+      # so it must link dawn_platform to resolve the platform base-class typeinfo/vtable symbols.
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE dawn::dawn_platform)
+    endif()
 
     if (onnxruntime_BUILD_DAWN_SHARED_LIBRARY)
       target_link_libraries(onnxruntime_providers_webgpu PUBLIC dawn::webgpu_dawn)
@@ -258,6 +261,17 @@
       endif()
     endif()
 
+    # In the plugin/adapter build (onnxruntime_USE_EP_API_ADAPTERS) the WebGPU EP is its own DLL
+    # (onnxruntime_providers_webgpu.dll) rather than being statically linked into onnxruntime.dll, so the
+    # delay-load flags accumulated above (notably /DELAYLOAD:user32.dll) must be applied to THIS target.
+    # Without it the DLL keeps a static import on user32.dll and fails to load in a Win32k-lockdown sandbox
+    # (e.g. Chromium's WebNN compiler process): 'depends on "USER32.dll" which is missing' (Error 1359).
+    # In the static build these same flags are applied to the onnxruntime target in onnxruntime.cmake.
+    if (WIN32 AND onnxruntime_USE_EP_API_ADAPTERS AND onnxruntime_DELAYLOAD_FLAGS)
+      target_link_options(onnxruntime_providers_webgpu PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+      target_link_libraries(onnxruntime_providers_webgpu PRIVATE delayimp.lib)
+    endif()
+
     if (onnxruntime_providers_webgpu_dll_deps)
       # Copy dependency DLLs to the output directory
       add_custom_command(
@@ -271,36 +285,21 @@
 
   add_dependencies(onnxruntime_providers_webgpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-  if (onnxruntime_WGSL_TEMPLATE)
-    # Define the WGSL templates directory and output directory
-    set(WGSL_TEMPLATES_DIR "${ONNXRUNTIME_ROOT}/core/providers/webgpu/wgsl_templates")
+  if (onnxruntime_USE_WEBGPU)
+    # The Python wgsl-gen tool lives at the repo level under tools/python.
+    set(WGSL_GEN_PYTHON_DIR "${REPO_ROOT}/tools/python")
     set(WGSL_GENERATED_ROOT "${CMAKE_CURRENT_BINARY_DIR}/wgsl_generated")
 
-    # Include the Node.js helper for finding and validating Node.js and NPM
-    include(node_helper.cmake)
+    # The top-level find_package(Python ...) in cmake/CMakeLists.txt is gated
+    # on BUILD_SHARED_LIB OR ENABLE_PYTHON, so Python_EXECUTABLE is not always
+    # set in WebGPU-enabled builds (e.g. the WASM lane). Find Python ourselves
+    # so this branch works in every config.
+    find_package(Python 3.10 COMPONENTS Interpreter REQUIRED)
 
-    # Install npm dependencies
-    add_custom_command(
-      OUTPUT "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
-      COMMAND ${NPM_CLI} ci
-      COMMAND ${CMAKE_COMMAND} -E touch "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
-      DEPENDS "${WGSL_TEMPLATES_DIR}/package.json" "${WGSL_TEMPLATES_DIR}/package-lock.json"
-      WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
-      COMMENT "Installing npm dependencies for WGSL template generation"
-      VERBATIM
-    )
-
-    if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
-      set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/wgsl_template_gen")
-      # set(WGSL_GEN_OUTPUTS "${WGSL_GENERATED_DIR}/index.h" "${WGSL_GENERATED_DIR}/index_impl.h")
-      # Define the output files that will be generated
-      set(WGSL_GENERATED_INDEX_H "${WGSL_GENERATED_DIR}/index.h")
-      set(WGSL_GENERATED_INDEX_IMPL_H "${WGSL_GENERATED_DIR}/index_impl.h")
-    elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-      set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/dynamic")
-      # set(WGSL_GEN_OUTPUTS "${WGSL_GENERATED_DIR}/templates.js")
-      set(WGSL_GENERATED_TEMPLATES_JS "${WGSL_GENERATED_DIR}/templates.js")
-    endif()
+    set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/wgsl_template_gen")
+    # Define the output files that will be generated
+    set(WGSL_GENERATED_INDEX_H "${WGSL_GENERATED_DIR}/index.h")
+    set(WGSL_GENERATED_INDEX_IMPL_H "${WGSL_GENERATED_DIR}/index_impl.h")
 
     # Ensure the output directory exists
     file(MAKE_DIRECTORY ${WGSL_GENERATED_DIR})
@@ -324,44 +323,30 @@
         list(APPEND WGSL_GEN_OPTIONS "-i" "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu")
     endif()
 
-    if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
-      if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp-literal")
-      else()
-        list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp")
-      endif()
-    elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-      list(APPEND WGSL_GEN_OPTIONS "--generator" "dynamic")
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+      list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp-literal")
+    else()
+      list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp")
     endif()
 
     # Generate WGSL templates
     add_custom_command(
-      OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H} ${WGSL_GENERATED_TEMPLATES_JS}
-      COMMAND ${NPM_CLI} run gen -- ${WGSL_GEN_OPTIONS}
-      DEPENDS "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete" ${WGSL_TEMPLATE_FILES}
-      WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
-      COMMENT "Generating WGSL templates from *.wgsl.template files"
+      OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H}
+      COMMAND ${Python_EXECUTABLE} "${WGSL_GEN_PYTHON_DIR}/wgsl_gen.py" ${WGSL_GEN_OPTIONS}
+      DEPENDS ${WGSL_TEMPLATE_FILES}
+      WORKING_DIRECTORY ${WGSL_GEN_PYTHON_DIR}
+      COMMENT "Generating WGSL templates from *.wgsl.template files (Python)"
       COMMAND_EXPAND_LISTS
       VERBATIM
     )
 
-    # Create a target to represent the generation step
     add_custom_target(onnxruntime_webgpu_wgsl_generation
-      DEPENDS ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H} ${WGSL_GENERATED_TEMPLATES_JS}
+      DEPENDS ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H}
       SOURCES ${WGSL_TEMPLATE_FILES}
     )
 
-    if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
-      # Add the generated directory to include paths
-      target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
-    elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-      target_link_libraries(onnxruntime_providers_webgpu PRIVATE duktape_static)
-      onnxruntime_add_include_to_target(onnxruntime_providers_webgpu duktape_static)
-
-      # Define the path to the generated templates.js file
-      target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
-        "ORT_WGSL_TEMPLATES_JS_PATH=\"${WGSL_GENERATED_TEMPLATES_JS}\"")
-    endif()
+    # Add the generated directory to include paths
+    target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
 
     # Make sure generation happens before building the provider
     add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_wgsl_generation)

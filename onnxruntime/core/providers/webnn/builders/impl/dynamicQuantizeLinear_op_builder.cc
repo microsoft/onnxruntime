@@ -172,7 +172,7 @@ bool DynamicQuantizeLinearOpBuilder::HasSupportedInputsImpl(const GraphViewer&, 
   // (reduceMax, reduceMin and quantizeLinear accept the first input).
   const std::array<std::string_view, 3> operations = {"reduceMax", "reduceMin", "quantizeLinear"};
   for (const auto& op : operations) {
-    if (!IsInputRankSupported(wnn_limits, op, "input", input_shape.size(), node.Name(), logger)) {
+    if (!IsRankSupportedByWebNNOp(wnn_limits, op, "input", input_shape.size(), node.Name(), logger)) {
       return false;
     }
   }

@@ -48,7 +48,11 @@ void RepetitionPenaltyLogitsProcessor<T>::Process(const ISequences* sequences,
       unique_word_ids.insert(word_id);
     }
 
+    const int vocab_size = next_token_scores.vocab_size;
     for (const int32_t word_id : unique_word_ids) {
+      if (word_id < 0 || word_id >= vocab_size) {
+        continue;
+      }
       T score = beam_token_scores[word_id];
 
       // If score < 0, then repetition penalty > 1.0 has to multiplied to reduce the previous token probability,
@@ -89,7 +93,11 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
       }
     }
 
+    const int vocab_size = next_token_scores.vocab_size;
     for (const int32_t word_id : blocked_word_ids) {
+      if (word_id < 0 || word_id >= vocab_size) {
+        continue;
+      }
       beam_token_scores[word_id] = std::numeric_limits<T>::lowest();
     }
   }

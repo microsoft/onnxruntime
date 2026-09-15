@@ -1319,11 +1319,6 @@ def main():
 
         from onnxruntime import __version__ as ort_version  # noqa: PLC0415
 
-        if version.parse(ort_version) == version.parse("1.16.0"):
-            # ORT 1.16 has a bug that might trigger Attention RuntimeError when latest fusion script is applied on clip model.
-            # The walkaround is to enable fused causal attention, or disable Attention fusion for clip model.
-            os.environ["ORT_ENABLE_FUSED_CAUSAL_ATTENTION"] = "1"
-
         if args.enable_cuda_graph:
             if not (args.engine == "onnxruntime" and args.provider in ["cuda", "tensorrt"] and args.pipeline is None):
                 raise ValueError("The stable diffusion pipeline does not support CUDA graph.")
@@ -1380,9 +1375,6 @@ def main():
                 skip_warmup=args.skip_warmup,
             )
     elif args.engine == "optimum" and provider == "CUDAExecutionProvider":
-        if "xl" in args.version:
-            os.environ["ORT_ENABLE_FUSED_CAUSAL_ATTENTION"] = "1"
-
         result = run_optimum_ort(
             model_name=sd_model,
             directory=args.pipeline,

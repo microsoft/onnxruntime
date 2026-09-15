@@ -282,6 +282,55 @@ TEST(CoreMLExecutionProviderTest, ShapeThenSliceAndGather) {
 #endif
 }
 
+// GatherND on the ML Program path is only claimed when 'indices' is a constant initializer
+// (see GatherNDOpBuilder::IsOpSupportedImpl -- CoreML's gather_nd miscomputes some shapes with a
+// runtime indices input). This is the supported path: a multi-dimensional slice gather (index depth 1
+// on rank-3 data) with constant indices must run on CoreML and match the CPU result.
+TEST(CoreMLExecutionProviderTest, GatherNDConstantIndicesMLProgram) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  onnxruntime::Model model("gnd_const", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  auto make_type = [](int32_t et, std::vector<int64_t> dims) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(et);
+    for (auto d : dims) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto data_t = make_type(ONNX_NAMESPACE::TensorProto_DataType_INT64, {2, 2, 2});
+  const auto out_t = make_type(ONNX_NAMESPACE::TensorProto_DataType_INT64, {2, 1, 2, 2});
+  auto& data = graph.GetOrCreateNodeArg("data", &data_t);
+  auto& out = graph.GetOrCreateNodeArg("Y", &out_t);
+  ONNX_NAMESPACE::TensorProto idx;
+  idx.set_name("indices");
+  idx.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  idx.add_dims(2);
+  idx.add_dims(1);
+  idx.add_dims(1);
+  idx.add_int64_data(1);
+  idx.add_int64_data(0);
+  graph.AddInitializedTensor(idx);
+  auto& idx_arg = graph.GetOrCreateNodeArg("indices", nullptr);
+  graph.AddNode("gnd", "GatherND", "", {&data, &idx_arg}, {&out});
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string md;
+  model.ToProto().SerializeToString(&md);
+  gsl::span<const std::byte> span{reinterpret_cast<const std::byte*>(md.data()), md.size()};
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {2, 2, 2};
+  std::vector<int64_t> vals = {0, 1, 2, 3, 4, 5, 6, 7};
+  OrtValue dv;
+  CreateMLValue<int64_t>(CPUAllocator::DefaultInstance(), dims, vals, &dv);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("data", dv));
+  RunAndVerifyOutputsWithEP(span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#endif
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
@@ -566,6 +615,160 @@ TEST(CoreMLExecutionProviderTest, ExternalDataInitializer) {
   for (size_t i = 0; i < input_data.size(); ++i) {
     EXPECT_NEAR(output_data[i], input_data[i] + initializer_data[i], 1e-5f)
         << "Mismatch at index " << i;
+  }
+#endif  // defined(__APPLE__)
+}
+
+// Verify that Gemm with external data weight/bias works with CoreML EP.
+// This exercises the GetTensorDataTransposed and bias unpacking paths in gemm_op_builder.cc
+// which previously failed with "model_path must not be empty" for external data tensors.
+TEST(CoreMLExecutionProviderTest, ExternalDataGemm) {
+  TemporaryDirectory tmp_dir(ORT_TSTR("coreml_external_data_gemm_test"));
+  const auto model_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("model.onnx");
+  const auto external_data_path = std::filesystem::path(tmp_dir.Path()) / ORT_TSTR("model.onnx_data");
+
+  // Gemm: Y = X * W + B, where X is {2,3}, W is {3,4}, B is {4}
+  // Weight W: 3*4 = 12 floats, Bias B: 4 floats -> 16 floats total in external data
+  const std::vector<float> weight_data = {0.1f, 0.2f, 0.3f, 0.4f,
+                                          0.5f, 0.6f, 0.7f, 0.8f,
+                                          0.9f, 1.0f, 1.1f, 1.2f};
+  const std::vector<float> bias_data = {0.01f, 0.02f, 0.03f, 0.04f};
+
+  // Write external data file: weight followed by bias
+  {
+    std::ofstream ofs(external_data_path, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open());
+    ofs.write(reinterpret_cast<const char*>(weight_data.data()),
+              weight_data.size() * sizeof(float));
+    ofs.write(reinterpret_cast<const char*>(bias_data.data()),
+              bias_data.size() * sizeof(float));
+    ofs.close();
+  }
+
+  const size_t weight_byte_size = weight_data.size() * sizeof(float);
+  const size_t bias_byte_size = bias_data.size() * sizeof(float);
+
+  // Build model with Gemm op
+  {
+    ONNX_NAMESPACE::ModelProto model_proto;
+    model_proto.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+    auto* opset = model_proto.add_opset_import();
+    opset->set_domain("");
+    opset->set_version(13);
+
+    auto* graph_proto = model_proto.mutable_graph();
+    graph_proto->set_name("test_external_data_gemm");
+
+    // Input X: {2,3} float tensor
+    auto* input = graph_proto->add_input();
+    input->set_name("X");
+    auto* input_type = input->mutable_type()->mutable_tensor_type();
+    input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* input_shape = input_type->mutable_shape();
+    input_shape->add_dim()->set_dim_value(2);
+    input_shape->add_dim()->set_dim_value(3);
+
+    // Output Y: {2,4} float tensor
+    auto* output = graph_proto->add_output();
+    output->set_name("Y");
+    auto* output_type = output->mutable_type()->mutable_tensor_type();
+    output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    auto* output_shape = output_type->mutable_shape();
+    output_shape->add_dim()->set_dim_value(2);
+    output_shape->add_dim()->set_dim_value(4);
+
+    // Initializer W {3,4} with external data
+    auto* w_init = graph_proto->add_initializer();
+    w_init->set_name("W");
+    w_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    w_init->add_dims(3);
+    w_init->add_dims(4);
+    w_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+    {
+      auto* ext = w_init->add_external_data();
+      ext->set_key("location");
+      ext->set_value("model.onnx_data");
+      ext = w_init->add_external_data();
+      ext->set_key("offset");
+      ext->set_value("0");
+      ext = w_init->add_external_data();
+      ext->set_key("length");
+      ext->set_value(std::to_string(weight_byte_size));
+    }
+
+    // Initializer B {4} with external data (offset after W)
+    auto* b_init = graph_proto->add_initializer();
+    b_init->set_name("B");
+    b_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    b_init->add_dims(4);
+    b_init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+    {
+      auto* ext = b_init->add_external_data();
+      ext->set_key("location");
+      ext->set_value("model.onnx_data");
+      ext = b_init->add_external_data();
+      ext->set_key("offset");
+      ext->set_value(std::to_string(weight_byte_size));
+      ext = b_init->add_external_data();
+      ext->set_key("length");
+      ext->set_value(std::to_string(bias_byte_size));
+    }
+
+    // Gemm node: Y = X * W + B (transB=0 by default, so W is {K,N} = {3,4})
+    auto* node = graph_proto->add_node();
+    node->set_op_type("Gemm");
+    node->add_input("X");
+    node->add_input("W");
+    node->add_input("B");
+    node->add_output("Y");
+
+    // Save model
+    std::ofstream ofs(model_path, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open());
+    ASSERT_TRUE(model_proto.SerializeToOstream(&ofs));
+    ofs.close();
+  }
+
+  // Input data: {2,3}
+  std::vector<int64_t> dims = {2, 3};
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
+  CreateMLValue<float>(allocator, dims, input_data, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunOptions run_options;
+  run_options.run_tag = "ExternalDataGemm";
+  std::vector<std::string> output_names = {"Y"};
+
+  SessionOptions so;
+  so.session_logid = "ExternalDataGemm";
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(MakeCoreMLExecutionProvider()));
+  ASSERT_STATUS_OK(session.Load(model_path.native()));
+  ASSERT_STATUS_OK(session.Initialize());
+
+#if defined(__APPLE__)
+  const auto& provider_types = session.GetRegisteredProviderTypes();
+  EXPECT_NE(std::find(provider_types.begin(), provider_types.end(), kCoreMLExecutionProvider), provider_types.end());
+  std::vector<OrtValue> fetches;
+  ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
+
+  // Compute expected: Y = X * W + B
+  // Row 0: [1*0.1+2*0.5+3*0.9+0.01, 1*0.2+2*0.6+3*1.0+0.02, 1*0.3+2*0.7+3*1.1+0.03, 1*0.4+2*0.8+3*1.2+0.04]
+  //       = [3.81, 4.42, 5.03, 5.64]
+  // Row 1: [4*0.1+5*0.5+6*0.9+0.01, 4*0.2+5*0.6+6*1.0+0.02, 4*0.3+5*0.7+6*1.1+0.03, 4*0.4+5*0.8+6*1.2+0.04]
+  //       = [8.31, 9.82, 11.33, 12.84]
+  const std::vector<float> expected = {3.81f, 4.42f, 5.03f, 5.64f, 8.31f, 9.82f, 11.33f, 12.84f};
+
+  ASSERT_EQ(fetches.size(), 1u);
+  const auto& output_tensor = fetches[0].Get<Tensor>();
+  auto output_data = output_tensor.DataAsSpan<float>();
+  ASSERT_EQ(static_cast<size_t>(output_data.size()), expected.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_NEAR(output_data[i], expected[i], 1e-5f) << "Mismatch at index " << i;
   }
 #endif  // defined(__APPLE__)
 }
@@ -2361,6 +2564,48 @@ TEST(CoreMLExecutionProviderTest, Split11SingleOutputNotSupported) {
 }
 
 namespace {
+// int64 -> Cast(bool) -> Cast(float) [-> Sqrt]; the first Cast is fed directly
+// by a graph input (no preceding node).
+//
+// append_nontrivial=false gives the all-Cast graph used by the NeuralNetwork
+// negative test below. append_nontrivial=true appends a Sqrt: a CoreML partition
+// made up only of trivial ops (Cast is marked trivial) is dropped, so the extra
+// non-trivial op keeps the partition and lets the test below assert the bool
+// Casts are claimed.
+std::string MakeCastBoolModelData(bool append_nontrivial = false) {
+  onnxruntime::Model model("cast_bool_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto make_type = [](int32_t elem_type) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(elem_type);
+    for (int64_t d : {1, 4}) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto int64_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  const auto bool_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  const auto float_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto& x = graph.GetOrCreateNodeArg("X", &int64_type);
+  auto& b = graph.GetOrCreateNodeArg("B", &bool_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &float_type);
+
+  auto& to_bool = graph.AddNode("cast_to_bool", "Cast", "int64 -> bool", {&x}, {&b});
+  to_bool.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BOOL));
+  auto& to_float = graph.AddNode("cast_to_float", "Cast", "bool -> float", {&b}, {&y});
+  to_float.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+  if (append_nontrivial) {
+    auto& z = graph.GetOrCreateNodeArg("Z", &float_type);
+    graph.AddNode("sqrt", "Sqrt", "float -> float", {&y}, {&z});
+  }
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+
 // Single-input model with both Sin and Cos consuming `X`, used by the
 // Sin/Cos tests below.
 std::string MakeSinCosModelData() {
@@ -2385,6 +2630,254 @@ std::string MakeSinCosModelData() {
   return model_data;
 }
 }  // namespace
+
+// On the NeuralNetwork format the Cast builder only supports a Cast that
+// consumes an ArgMax, so these graph-input / Cast-fed Casts must fall back to
+// CPU. Guards the IsOpSupportedImpl reordering that moved the preceding-node
+// check into the NeuralNetwork branch.
+TEST(CoreMLExecutionProviderTest, CastNonArgMaxNeuralNetworkNotSupported) {
+  const std::string model_data = MakeCastBoolModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
+// Load-time partition check on the ML Program path: confirms the EP claims both
+// bool Casts. A non-trivial Sqrt is appended so the partition isn't dropped as
+// all-trivial (see MakeCastBoolModelData); all three nodes -- both Casts and the
+// Sqrt -- must land on CoreML.
+TEST(CoreMLExecutionProviderTest, CastBoolMLProgramPartition) {
+  const std::string model_data = MakeCastBoolModelData(/*append_nontrivial=*/true);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+}
+
+namespace {
+ONNX_NAMESPACE::TypeProto MakeTensorType(int32_t elem_type, const std::vector<int64_t>& shape) {
+  ONNX_NAMESPACE::TypeProto t;
+  t.mutable_tensor_type()->set_elem_type(elem_type);
+  for (int64_t d : shape) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+  return t;
+}
+
+// Constant int64 indices initializer {{0},{2}} (shape [2,1]).
+void AddGatherNDIndices(onnxruntime::Graph& graph) {
+  ONNX_NAMESPACE::TensorProto indices;
+  indices.set_name("indices");
+  indices.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices.add_dims(2);
+  indices.add_dims(1);
+  for (int64_t v : {0, 2}) indices.add_int64_data(v);
+  graph.AddInitializedTensor(indices);
+}
+
+// GatherND(data[4,3] float input, indices[2,1] const) -> out[2,3] float.
+std::string MakeGatherNDModelData() {
+  onnxruntime::Model model("gather_nd_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  const auto float_data = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {4, 3});
+  const auto indices_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_INT64, {2, 1});
+  const auto float_out = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2, 3});
+
+  auto& data = graph.GetOrCreateNodeArg("data", &float_data);
+  auto& indices = graph.GetOrCreateNodeArg("indices", &indices_type);
+  auto& out = graph.GetOrCreateNodeArg("Out", &float_out);
+  AddGatherNDIndices(graph);
+  graph.AddNode("gather_nd", "GatherND", "gather rows", {&data, &indices}, {&out});
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+
+// data(int32 input) -> Cast(bool) -> GatherND -> Cast(float). Exercises the
+// bool-data path, which the builder lowers as cast -> gather_nd -> cast (the
+// bool tensors stay internal to the CoreML partition).
+std::string MakeGatherNDBoolModelData() {
+  onnxruntime::Model model("gather_nd_bool_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  const auto int32_data = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_INT32, {4, 3});
+  const auto bool_data = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_BOOL, {4, 3});
+  const auto indices_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_INT64, {2, 1});
+  const auto bool_out = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_BOOL, {2, 3});
+  const auto float_out = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2, 3});
+
+  auto& src = graph.GetOrCreateNodeArg("Src", &int32_data);
+  auto& data = graph.GetOrCreateNodeArg("data", &bool_data);
+  auto& indices = graph.GetOrCreateNodeArg("indices", &indices_type);
+  auto& gathered = graph.GetOrCreateNodeArg("gathered", &bool_out);
+  auto& out = graph.GetOrCreateNodeArg("Out", &float_out);
+  AddGatherNDIndices(graph);
+
+  auto& to_bool = graph.AddNode("cast_to_bool", "Cast", "int32 -> bool", {&src}, {&data});
+  to_bool.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BOOL));
+  graph.AddNode("gather_nd", "GatherND", "gather bool rows", {&data, &indices}, {&gathered});
+  auto& to_float = graph.AddNode("cast_to_float", "Cast", "bool -> float", {&gathered}, {&out});
+  to_float.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+
+// GatherND with batch_dims=1: data[2,3] input, indices[2,1] const -> out[2].
+std::string MakeGatherNDBatchDimsModelData() {
+  onnxruntime::Model model("gather_nd_batchdims_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+  const auto float_data = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2, 3});
+  const auto indices_type = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_INT64, {2, 1});
+  const auto float_out = MakeTensorType(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2});
+
+  auto& data = graph.GetOrCreateNodeArg("data", &float_data);
+  auto& indices = graph.GetOrCreateNodeArg("indices", &indices_type);
+  auto& out = graph.GetOrCreateNodeArg("Out", &float_out);
+
+  ONNX_NAMESPACE::TensorProto indices_init;
+  indices_init.set_name("indices");
+  indices_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices_init.add_dims(2);
+  indices_init.add_dims(1);
+  for (int64_t v : {0, 1}) indices_init.add_int64_data(v);
+  graph.AddInitializedTensor(indices_init);
+
+  auto& node = graph.AddNode("gather_nd", "GatherND", "batched gather", {&data, &indices}, {&out});
+  node.AddAttribute("batch_dims", static_cast<int64_t>(1));
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+
+// Where(cond, X, Y) with a constant bool `cond` initializer and X/Y graph
+// inputs of the given element type. The constant `cond` keeps the bool
+// internal -- a CoreML partition cannot have bool I/O.
+std::string MakeWhereModelData(int32_t xy_elem_type) {
+  onnxruntime::Model model("where_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto make_type = [](int32_t elem_type) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(elem_type);
+    for (int64_t d : {1, 4}) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto bool_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  const auto xy_type = make_type(xy_elem_type);
+
+  auto& cond = graph.GetOrCreateNodeArg("cond", &bool_type);
+  auto& x = graph.GetOrCreateNodeArg("X", &xy_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &xy_type);
+  auto& out = graph.GetOrCreateNodeArg("Out", &xy_type);
+
+  ONNX_NAMESPACE::TensorProto cond_init;
+  cond_init.set_name("cond");
+  cond_init.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  cond_init.add_dims(1);
+  cond_init.add_dims(4);
+  for (int32_t v : {1, 0, 1, 0}) cond_init.add_int32_data(v);  // ONNX stores bool in int32_data
+  graph.AddInitializedTensor(cond_init);
+
+  graph.AddNode("where", "Where", "select X where cond else Y", {&cond, &x, &y}, {&out});
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+
+// X1,X2(int64) -> Cast(bool) -> And -> Cast(float). And's bool inputs/output
+// are internal -- bool cannot sit on a CoreML partition boundary.
+std::string MakeAndChainModelData() {
+  onnxruntime::Model model("and_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto make_type = [](int32_t elem_type) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(elem_type);
+    for (int64_t d : {1, 4}) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto int64_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  const auto bool_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  const auto float_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto& x1 = graph.GetOrCreateNodeArg("X1", &int64_type);
+  auto& x2 = graph.GetOrCreateNodeArg("X2", &int64_type);
+  auto& a = graph.GetOrCreateNodeArg("A", &bool_type);
+  auto& b = graph.GetOrCreateNodeArg("B", &bool_type);
+  auto& c = graph.GetOrCreateNodeArg("C", &bool_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &float_type);
+
+  auto& cast_a = graph.AddNode("cast_a", "Cast", "int64 -> bool", {&x1}, {&a});
+  cast_a.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BOOL));
+  auto& cast_b = graph.AddNode("cast_b", "Cast", "int64 -> bool", {&x2}, {&b});
+  cast_b.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_BOOL));
+  graph.AddNode("and", "And", "logical and", {&a, &b}, {&c});
+  auto& cast_y = graph.AddNode("cast_y", "Cast", "bool -> float", {&c}, {&y});
+  cast_y.AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+
+// Where(cond, X, Y) where the bool `cond` is a graph INPUT (not a constant), so
+// the bool value sits on the CoreML partition boundary. RewriteBoolGraphIOBoundaries
+// exposes it as an int32 feature and inserts an int32->bool cast, so the node is
+// still claimed; model.mm does the bool<->int32 conversion at runtime.
+std::string MakeWhereBoolInputModelData() {
+  onnxruntime::Model model("where_bool_input_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto make_type = [](int32_t elem_type) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(elem_type);
+    for (int64_t d : {1, 4}) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto bool_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  const auto float_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto& cond = graph.GetOrCreateNodeArg("cond", &bool_type);
+  auto& x = graph.GetOrCreateNodeArg("X", &float_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &float_type);
+  auto& out = graph.GetOrCreateNodeArg("Out", &float_type);
+
+  graph.AddNode("where", "Where", "select X where cond else Y", {&cond, &x, &y}, {&out});
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+}  // namespace
+
+// GatherND is lowered to the ML Program 'gather_nd' op.
+TEST(CoreMLExecutionProviderTest, GatherND_MLProgram) {
+  const std::string model_data = MakeGatherNDModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {4, 3};
+  std::vector<float> values = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
+                               6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
+  OrtValue data_val;
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims, values, &data_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("data", data_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
 
 // Sin and Cos are lowered to the ML Program 'sin' / 'cos' ops.
 TEST(CoreMLExecutionProviderTest, SinCos_MLProgram) {
@@ -2486,6 +2979,31 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesAxis1) {
 #endif
 }
 
+// CoreML's gather_nd rejects bool 'x', so the builder lowers a bool-data
+// GatherND as cast(bool->int32) -> gather_nd -> cast(int32->bool). This
+// Cast->GatherND->Cast chain must run fully on CoreML.
+TEST(CoreMLExecutionProviderTest, GatherNDBoolData_MLProgram) {
+  const std::string model_data = MakeGatherNDBoolModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {4, 3};
+  std::vector<int32_t> values = {0, 1, 0, 1, 1, 0, 0, 0, 1, 1, 0, 1};
+  OrtValue src_val;
+  CreateMLValue<int32_t>(CPUAllocator::DefaultInstance(), dims, values, &src_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("Src", src_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
 // Sin/Cos only have an ML Program lowering (the NeuralNetwork
 // UnaryFunctionLayerParams has no sin/cos), so on the NeuralNetwork format
 // they must fall back to CPU rather than be claimed.
@@ -2564,6 +3082,154 @@ TEST(CoreMLExecutionProviderTest, GatherScalarIndicesAxis0) {
   TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
 #endif
+}
+
+// GatherND only has an ML Program lowering; on the NeuralNetwork format it
+// must fall back to CPU.
+TEST(CoreMLExecutionProviderTest, GatherNDNeuralNetworkNotSupported) {
+  const std::string model_data = MakeGatherNDModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
+// The iOS15 gather_nd op has no batch_dims parameter, so GatherND with
+// batch_dims != 0 must fall back to CPU.
+TEST(CoreMLExecutionProviderTest, GatherNDBatchDimsNotSupported) {
+  const std::string model_data = MakeGatherNDBatchDimsModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+}
+
+// Where is lowered to the ML Program 'select' op.
+TEST(CoreMLExecutionProviderTest, Where_MLProgram) {
+  const std::string model_data = MakeWhereModelData(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  OrtValue x_val, y_val;
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims, {1.0f, 2.0f, 3.0f, 4.0f}, &x_val);
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims, {-1.0f, -2.0f, -3.0f, -4.0f}, &y_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_val));
+  feeds.insert(std::make_pair("Y", y_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// Where only has an ML Program lowering ('select'); on the NeuralNetwork
+// format it must fall back to CPU.
+TEST(CoreMLExecutionProviderTest, WhereNeuralNetworkNotSupported) {
+  const std::string model_data = MakeWhereModelData(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
+// Where's X/Y branches are restricted to float / float16; an int32 Where must
+// fall back to CPU.
+TEST(CoreMLExecutionProviderTest, WhereNonFloatBranchesNotSupported) {
+  const std::string model_data = MakeWhereModelData(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+}
+
+// float16 X/Y variant of Where_MLProgram, exercising the float16 branch of
+// HasSupportedInputsImpl and the 'select' lowering.
+TEST(CoreMLExecutionProviderTest, WhereFloat16_MLProgram) {
+  const std::string model_data = MakeWhereModelData(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  std::vector<MLFloat16> x_data{MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(4.0f)};
+  std::vector<MLFloat16> y_data{MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(-3.0f), MLFloat16(-4.0f)};
+  OrtValue x_val, y_val;
+  CreateMLValue<MLFloat16>(CPUAllocator::DefaultInstance(), dims, x_data, &x_val);
+  CreateMLValue<MLFloat16>(CPUAllocator::DefaultInstance(), dims, y_data, &y_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_val));
+  feeds.insert(std::make_pair("Y", y_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// A bool graph INPUT flowing into Where exercises the partition-boundary bool
+// handling (RewriteBoolGraphIOBoundaries + model.mm int32<->bool conversion),
+// rather than the constant/internal bool the other Where/And tests rely on.
+TEST(CoreMLExecutionProviderTest, WhereBoolGraphInput_MLProgram) {
+  const std::string model_data = MakeWhereBoolInputModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  OrtValue cond_val, x_val, y_val;
+  CreateMLValue<bool>(CPUAllocator::DefaultInstance(), dims, std::vector<bool>{true, false, true, false}, &cond_val);
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims, {1.0f, 2.0f, 3.0f, 4.0f}, &x_val);
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims, {-1.0f, -2.0f, -3.0f, -4.0f}, &y_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("cond", cond_val));
+  feeds.insert(std::make_pair("X", x_val));
+  feeds.insert(std::make_pair("Y", y_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// And is lowered to the ML Program 'logical_and' op.
+TEST(CoreMLExecutionProviderTest, And_MLProgram) {
+  const std::string model_data = MakeAndChainModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  OrtValue x1_val, x2_val;
+  CreateMLValue<int64_t>(CPUAllocator::DefaultInstance(), dims, {1, 1, 0, 0}, &x1_val);
+  CreateMLValue<int64_t>(CPUAllocator::DefaultInstance(), dims, {1, 0, 1, 0}, &x2_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X1", x1_val));
+  feeds.insert(std::make_pair("X2", x2_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// And only has an ML Program lowering ('logical_and'); on the NeuralNetwork
+// format the chain falls back to CPU.
+TEST(CoreMLExecutionProviderTest, AndNeuralNetworkNotSupported) {
+  const std::string model_data = MakeAndChainModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
 }
 
 TEST(CoreMLExecutionProviderTest, GatherScalarIndicesNegativeAxis) {

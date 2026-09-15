@@ -19,6 +19,7 @@ import numpy
 import torch
 from bert_padding import pad_input, unpad_input
 from einops import rearrange, repeat
+from env_var_helper import scoped_env_var
 from onnx import TensorProto, helper
 
 from onnxruntime import InferenceSession, OrtValue, SessionOptions
@@ -2644,6 +2645,69 @@ class TestGQA(unittest.TestCase):
             pos_ids_attn_bias,
             qk_output,
         )
+
+    def test_gqa_decode_flash_vs_naive_parity(self):
+        # The FP32 flash gate enables the dedicated GEMV decode kernel (and the
+        # flash-decoding KV-split reduction) for sequence_length == 1 with
+        # total_sequence_length > 1. Run the same decode configs against the
+        # reference twice: once with the flash path enabled (default) and once
+        # with it disabled via ORT_GQA_DISABLE_FLASH_ATTENTION=1 (naive path).
+        # If both paths match the reference, the decode kernel and KV-split
+        # reduction are correct -- including the bias and local-window cases.
+        print("-------- TEST GQA DECODE FLASH VS NAIVE PARITY ---------")
+
+        # FP32 only: the GEMV decode kernel and flash gate are float-only.
+        torch_type = torch.float32
+        numpy_type = numpy.float32
+        ort_type = TensorProto.FLOAT
+        rtol = 1e-3
+        atol = 1e-3
+
+        batches = [1, 3]
+        # (sequence_length == 1) decode. Include a long KV length so that the
+        # flash-decoding KV-split path (kv_chunk_count > 1) is exercised.
+        seqs = [(1, 128), (1, 2048)]
+        num_h = [(9, 3)]
+        h_sizes = [64, 128]
+
+        # "0" keeps the flash path enabled; "1" forces the naive path. Reseed per
+        # phase so both paths are validated against the reference on identical
+        # inputs, independent of test execution order.
+        for env_value in ["0", "1"]:
+            with scoped_env_var("ORT_GQA_DISABLE_FLASH_ATTENTION", env_value):
+                print(f"  flash {'disabled (naive path)' if env_value == '1' else 'enabled'}")
+                random.seed(69)
+                torch.manual_seed(69)
+                for b in batches:
+                    for s, s2 in seqs:
+                        for n, n2 in num_h:
+                            for h in h_sizes:
+                                for local in [False, True]:
+                                    for has_attn in [False, True]:
+                                        config = Config(
+                                            b,
+                                            s,
+                                            s2,
+                                            0,
+                                            n,
+                                            n2,
+                                            h,
+                                            False,
+                                            has_attn,
+                                            False,
+                                            QKOutputType.NO_OUTPUT,
+                                        )
+                                        all_close = parity_check_gqa_past(
+                                            config,
+                                            torch_type=torch_type,
+                                            numpy_type=numpy_type,
+                                            ort_type=ort_type,
+                                            local=local,
+                                            past_format=Formats.BNSH,
+                                            rtol=rtol,
+                                            atol=atol,
+                                        )
+                                        self.assertTrue(all_close)
 
     def test_gqa_interactive_one_batch(self):
         print("-------- TEST GQA INTERACTIVE ---------")

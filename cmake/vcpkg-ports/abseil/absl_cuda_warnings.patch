@@ -11,6 +11,15 @@ index 1234567..abcdefg 100644
        "Hashing C arrays is not allowed. For string literals, wrap the literal "
        "in absl::string_view(). To hash the array contents, use "
        "absl::MakeSpan() or make the array an std::array. To hash the array "
+@@ -1265,7 +1265,7 @@ class ABSL_DLL MixingHashState : public HashStateBase<MixingHashState> {
+   }
+
+  private:
+-  friend class MixingHashState::HashStateBase;
++  friend class HashStateBase<MixingHashState>;
+   template <typename H>
+   friend H absl::hash_internal::hash_weakly_mixed_integer(H,
+                                                           WeaklyMixedInteger);
 diff --git a/absl/hash/hash.h b/absl/hash/hash.h
 index 1234567..abcdefg 100644
 --- a/absl/hash/hash.h
@@ -25,6 +34,15 @@ index 1234567..abcdefg 100644
      s.Init(state);
      return s;
    }
+@@ -368,7 +369,7 @@ class HashState : public hash_internal::HashStateBase<HashState> {
+  private:
+   HashState() = default;
+
+-  friend class HashState::HashStateBase;
++  friend class hash_internal::HashStateBase<HashState>;
+   friend struct hash_internal::CombineRaw;
+
+   template <typename T>
 diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
 index 1234567..abcdefg 100644
 --- a/absl/container/internal/raw_hash_set.h

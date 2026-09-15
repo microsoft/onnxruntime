@@ -216,6 +216,16 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
                         "Mask and input spatial dimensions mismatch at dimension ", i,
                         ": mask=", m_shape[i], " input=", x_shape[i]);
     }
+    // x_shape.NumDimensions() >= 3 is guaranteed above, so this subtraction cannot underflow.
+    const size_t input_spatial_rank = x_shape.NumDimensions() - 2;
+    // The pooling kernel rank drives the 1D/2D/3D dispatch below, which reads x_shape[2..4] and
+    // output_dims[2..4]. Require it to match the input spatial rank so those reads stay in bounds.
+    ORT_RETURN_IF_NOT(pool_attrs_.kernel_shape.size() == input_spatial_rank,
+                      "Pooling kernel rank must equal input spatial rank. Got kernel rank: ",
+                      pool_attrs_.kernel_shape.size(), " input spatial rank: ", input_spatial_rank);
+    // Only 1D/2D/3D pooling is implemented by the dispatch below; a larger rank would match no case.
+    ORT_RETURN_IF_NOT(input_spatial_rank >= 1 && input_spatial_rank <= 3,
+                      "Only 1D, 2D, and 3D pooling are supported. Got input spatial rank: ", input_spatial_rank);
 
     TensorShapeVector pads = pool_attrs_.pads;
     TensorShapeVector kernel_shape = pool_attrs_.kernel_shape;

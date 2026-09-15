@@ -11,8 +11,13 @@ namespace webgpu {
 
 WebGpuProfiler::WebGpuProfiler(WebGpuContext& context) : context_{context} {}
 
-Status WebGpuProfiler::StartProfiling(TimePoint) {
+Status WebGpuProfiler::StartProfiling(TimePoint profiling_start_time) {
   enabled_ = true;
+  // Push the ORT profiler's CPU time base into the context so GPU timestamps align
+  // with ORT CPU events. This is the only hook that receives the framework's
+  // profiling_start_time for both session-level and run-level profiling; for run-level
+  // profiling the WebGpuProfiler is a temporary that OnRunStart cannot reach directly.
+  context_.SetProfilingStartTime(profiling_start_time);
   return Status::OK();
 }
 

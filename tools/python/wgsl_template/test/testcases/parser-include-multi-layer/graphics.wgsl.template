@@ -1,0 +1,11 @@
+// Graphics utilities that depend on math utilities
+#include "math.wgsl.template"
+
+fn create_color(value: f32) -> vec4<f32> {
+    let normalized = normalize_value(value);
+    return vec4<f32>(normalized, normalized * 0.5, normalized * 0.8, 1.0);
+}
+
+fn transform_vertex(pos: vec3<f32>) -> vec3<f32> {
+    return multiply_vec3(pos, 2.0);
+}

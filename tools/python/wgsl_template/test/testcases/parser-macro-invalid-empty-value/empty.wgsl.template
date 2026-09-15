@@ -1,0 +1,3 @@
+#define EMPTY_MACRO
+
+const test = EMPTY_MACRO;

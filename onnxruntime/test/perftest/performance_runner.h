@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <numeric>
 #include <iostream>
 #include <random>
 #include <chrono>
@@ -35,9 +36,12 @@ struct PerformanceResult {
   double total_time_cost{0};
   std::vector<double> time_costs_submission;
   std::vector<double> time_costs_total;
+  // Per-shape-group timing (only populated when --data_shape is used)
+  std::vector<std::vector<double>> per_shape_time_costs_total;
   std::string model_name;
 
-  void DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics = false) const;
+  void DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics = false,
+                  const std::map<std::string, std::vector<std::vector<int64_t>>>& shape_groups = {}) const;
 };
 
 class PerformanceRunner {
@@ -53,7 +57,8 @@ class PerformanceRunner {
 
   inline void SerializeResult() const {
     performance_result_.DumpToFile(performance_test_config_.model_info.result_file_path,
-                                   performance_test_config_.run_config.f_dump_statistics);
+                                   performance_test_config_.run_config.f_dump_statistics,
+                                   performance_test_config_.run_config.data_shape_groups);
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerformanceRunner);
 
@@ -80,6 +85,14 @@ class PerformanceRunner {
       performance_result_.time_costs_total.emplace_back(duration_seconds.total_timing.count());
       // if the test did not run async the device timing will be equal to the CPU timing
       performance_result_.total_time_cost += duration_seconds.total_timing.count();
+      // Record per-shape timing when multi-shape mode is active
+      if (!performance_result_.per_shape_time_costs_total.empty()) {
+        size_t shape_idx = duration_seconds.test_input_index;
+        if (shape_idx < performance_result_.per_shape_time_costs_total.size()) {
+          performance_result_.per_shape_time_costs_total[shape_idx].emplace_back(
+              duration_seconds.total_timing.count());
+        }
+      }
       if (performance_test_config_.run_config.f_verbose) {
         std::cout << "iteration:" << performance_result_.time_costs_submission.size() << ","
                   << "time_cost_submission:" << performance_result_.time_costs_submission.back() << ","

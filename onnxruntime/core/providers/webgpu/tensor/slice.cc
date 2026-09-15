@@ -151,15 +151,25 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   }
   auto steps_raw = steps_tensor == nullptr ? steps_default : getInt64Input(steps_tensor);
 
+  ORT_RETURN_IF_NOT(axes_raw.size() == starts_raw.size(), "axes and starts must have the same size");
+  ORT_RETURN_IF_NOT(steps_raw.size() == starts_raw.size(), "steps and starts must have the same size");
+  ORT_RETURN_IF_NOT(ends_raw.size() == starts_raw.size(), "ends and starts must have the same size");
+
   // get final axes
   std::vector<uint32_t> axes, axes_fixed;
+  InlinedHashSet<uint32_t> unique_axes;
+  unique_axes.reserve(axes_raw.size());
   for (unsigned int i = 0; i < axes_raw.size(); i++) {
     int64_t val = axes_raw[i];
     if (val < 0) {
       val += input_rank;
     }
+    ORT_RETURN_IF_NOT(val >= 0 && val < static_cast<int64_t>(input_rank),
+                      "'axes' has an axis outside of the tensor dimension count");
+    const auto axis = static_cast<uint32_t>(val);
+    ORT_RETURN_IF_NOT(unique_axes.insert(axis).second, "'axes' has duplicates");
     axes_fixed.push_back(static_cast<int32_t>(val));
-    axes.push_back(static_cast<int32_t>(val));
+    axes.push_back(axis);
   }
 
   std::vector<uint32_t> starts;

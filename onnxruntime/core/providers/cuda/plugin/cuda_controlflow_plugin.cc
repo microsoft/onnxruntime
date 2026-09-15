@@ -86,7 +86,7 @@ Status PluginIfKernel::CreateControlFlowKernelImpl(const OrtKernelInfo* info, Or
 // ===================================================================
 
 PluginLoopHelper::PluginLoopHelper() : OrtLoopKernelHelper{} {
-  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
+  ort_version_supported = ORT_API_VERSION;
   Release = ReleaseImpl;
   ConcatOutput = ConcatOutputImpl;
 }
@@ -163,7 +163,7 @@ Status PluginLoopKernel::CreateControlFlowKernelImpl(const OrtKernelInfo* info, 
 // ===================================================================
 
 PluginScanHelper::PluginScanHelper() : OrtScanKernelHelper{} {
-  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
+  ort_version_supported = ORT_API_VERSION;
   Release = ReleaseImpl;
   Transpose = TransposeImpl;
 }

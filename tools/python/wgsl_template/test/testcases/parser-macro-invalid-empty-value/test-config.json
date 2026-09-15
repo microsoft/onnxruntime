@@ -1,0 +1,5 @@
+{
+  "type": "parser",
+  "description": "Test parser error handling for macro definition with empty value",
+  "expectsError": "Invalid macro definition in file empty.wgsl.template at line 1: macro \"EMPTY_MACRO\" has no value"
+}

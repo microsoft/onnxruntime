@@ -83,7 +83,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool DoCopyOnDefaultStream() const { return info_.do_copy_in_default_stream; }
   bool GetCudnnConvUseMaxWorkspace() const { return info_.cudnn_conv_use_max_workspace; }
   bool GetCudnnConv1dPadToNc1d() const { return info_.cudnn_conv1d_pad_to_nc1d; }
-  bool IsSkipLayerNormInStrictMode() const { return info_.enable_skip_layer_norm_strict_mode; }
   bool IsNHWCPreferred() const { return info_.prefer_nhwc; }
   bool IsFuseConvBias() const { return info_.fuse_conv_bias; }
   bool UseTF32() const { return info_.use_tf32; }
@@ -118,7 +117,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const override;
-  Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id) override;
+  Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id, bool sync = true) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
@@ -126,7 +125,16 @@ class CUDAExecutionProvider : public IExecutionProvider {
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
+  // Takes ownership of a host buffer that a kernel staged a device copy from while the
+  // stream was capturing.  The copy is a node of the captured graph and re-reads the
+  // buffer on every replay, so it must not go back to the allocator and be overwritten
+  // by a later run.  Held until the provider is destroyed.
+  void RetainBufferForGraphCapture(std::shared_ptr<void> buffer) const;
+
  private:
+  mutable std::mutex captured_host_buffers_mutex_;
+  mutable std::vector<std::shared_ptr<void>> captured_host_buffers_;
+
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
   bool external_stream_ = false;
@@ -143,8 +151,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                     CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
+    PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, const CUDAExecutionProviderInfo& info);
     ~PerThreadContext();
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
 
@@ -205,7 +212,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
-    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync = true);
     void IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
    private:

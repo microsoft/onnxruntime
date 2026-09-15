@@ -176,7 +176,14 @@ bool SplitOpBuilder::HasSupportedOutputsImpl(const Node& node,
     // Chromium has changed the output name of split from 'output' to 'outputs',
     // to avoid breaking the existing API, we need to check both names.
     const std::string_view wnn_output_name = wnn_limits["split"]["output"].isUndefined() ? "outputs" : "output";
-    return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, wnn_output_name, "outputs", logger);
+    if (!IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, wnn_output_name, "outputs", logger)) {
+      return false;
+    }
+
+    // All of split's outputs share the same rank; checking output 0 is sufficient.
+    std::vector<int64_t> output_shape;
+    return GetShape(*output_defs[0], output_shape, logger) &&
+           IsRankSupportedByWebNNOp(wnn_limits, "split", wnn_output_name, output_shape.size(), node.Name(), logger);
   }
 
   return false;

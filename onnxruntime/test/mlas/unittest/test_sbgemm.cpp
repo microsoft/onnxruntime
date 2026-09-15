@@ -15,9 +15,9 @@ Abstract:
 
 --*/
 
-#if defined(__aarch64__) && defined(__linux__)
-
 #include "test_sbgemm.h"
+
+#if defined(MLAS_SBGEMM_AVAILABLE)
 
 //
 // Short Execute() test helper to register each test separately by all parameters.
@@ -78,6 +78,7 @@ class SBGemmShortExecuteTest : public MlasTestFixture<MlasSBGemmTest<AType, BTyp
     }
     // TODO: check why the cosine similarly is < 0.99 for this shape alone
     // test_registered += RegisterSingleTest(43, 500, 401, 1, true);
+    test_registered += RegisterSingleTest(1, 129, 13, 1, true);
     test_registered += RegisterSingleTest(1001, 1027, 1031, 1, false);
     if (!Packed) {
       test_registered += RegisterSingleTest(43, 500, 401, 5, true);
@@ -187,4 +188,4 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   }
   return SBGemmRegistLongExecute() > 0;
 });
-#endif  // defined(__aarch64__) && defined(__linux__)
+#endif  // MLAS_SBGEMM_AVAILABLE

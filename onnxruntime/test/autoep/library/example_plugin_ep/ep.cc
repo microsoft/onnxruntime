@@ -4,17 +4,21 @@
 #include "ep.h"
 
 #include <array>
+#include <atomic>
 #include <cassert>
+#include <cstdint>
 #include <cstring>
-#include <functional>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
-#include <atomic>
 
+#include "../ep_context_data_utils.h"
 #include "ep_factory.h"
 #include "ep_stream_support.h"
+#include "ep_test_hooks.h"
 
 extern std::atomic<uint64_t> g_sync_count;
 
@@ -93,8 +97,37 @@ OrtStatus* MulKernel::Compute(OrtKernelContext* kernel_ctx) {
       throw Ort::Exception("Expected 1 output for MulKernel", ORT_INVALID_ARGUMENT);
     }
 
-    auto output = kernel_context.GetOutput(0, shape0);
-    float* output_data = output.GetTensorMutableData<float>();
+    // Prefer writing straight into an already-allocated output, avoiding an allocation. The query does not
+    // validate the buffer against this run's computed shape, so validate element type and shape before touching it.
+    // Do not write to an incompatible preallocated output. This example reports an error rather than calling
+    // GetOutput() on a mismatch. GetOutput() would not replace it; ORT can reject the already-allocated output slot
+    // with a shape-mismatch error.
+    OrtValue* preallocated_output = nullptr;
+    RETURN_IF_ERROR(ort_api.KernelContext_GetPreallocatedOutput(kernel_ctx, 0, &preallocated_output));
+    RecordPreallocatedOutputQueryResult(preallocated_output != nullptr ? 1 : 0);
+
+    // An out-of-range index must fail without touching the out parameter. Recorded rather than
+    // enforced here so the assertion lives with the tests.
+    {
+      OrtValue* const sentinel_value = reinterpret_cast<OrtValue*>(static_cast<uintptr_t>(1));
+      OrtValue* sentinel = sentinel_value;
+      OrtStatus* status = ort_api.KernelContext_GetPreallocatedOutput(kernel_ctx, num_outputs, &sentinel);
+      RecordPreallocatedOutputBadIndexRejected(status != nullptr && sentinel == sentinel_value ? 1 : 0);
+      ort_api.ReleaseStatus(status);
+    }
+
+    float* output_data = nullptr;
+    if (preallocated_output != nullptr) {
+      Ort::UnownedValue output_value{preallocated_output};
+      auto type_and_shape = output_value.GetTensorTypeAndShapeInfo();
+      if (type_and_shape.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+          type_and_shape.GetShape() != shape0) {
+        throw Ort::Exception("Unexpected output type or shape for preallocated output of MulKernel", ORT_INVALID_ARGUMENT);
+      }
+      output_data = output_value.GetTensorMutableData<float>();
+    } else {
+      output_data = kernel_context.GetOutput(0, shape0).GetTensorMutableData<float>();
+    }
 
     for (size_t i = 0; i < input0.size(); ++i) {
       output_data[i] = input0[i] * input1[i];
@@ -167,13 +200,15 @@ struct EpContextNodeComputeInfo : NodeComputeInfoBase {
   ExampleEp& ep;
 };
 
-ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger)
+ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger,
+                     Ort::Experimental::EpContextConfig ep_context_config)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
       ApiPtrs{static_cast<const ApiPtrs&>(factory)},
       factory_{factory},
       name_{name},
       config_{config},
-      logger_{logger} {
+      logger_{logger},
+      ep_context_config_{std::move(ep_context_config)} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
 
   // Initialize the execution provider's function table
@@ -185,6 +220,8 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;                  // optional. can be nullptr
   GetCompiledModelCompatibilityInfo = GetCompiledModelCompatibilityInfoImpl;  // compatibility info for compiled models
   Sync = SyncImpl;                                                            // optional. can be nullptr
+  GetDefaultMemoryDevice = GetDefaultMemoryDeviceImpl;                        // optional. can be nullptr
+  GetWeightlessSupport = GetWeightlessSupportImpl;                            // weightless support
 
   IGNORE_ORTSTATUS(ort_api.Logger_LogMessage(&logger_,
                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -192,12 +229,17 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
                                              ORT_FILE, __LINE__, __FUNCTION__));
 }
 
-ExampleEp::~ExampleEp() = default;
-
 /*static*/
 const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
   const auto* ep = static_cast<const ExampleEp*>(this_ptr);
   return ep->name_.c_str();
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::GetWeightlessSupportImpl(const OrtEp* /*this_ptr*/,
+                                                            OrtWeightlessSupport* support) noexcept {
+  *support = OrtWeightlessSupport_ALL;
+  return nullptr;
 }
 
 bool ExampleEp::CopiesConstantInitializers() const {
@@ -408,6 +450,28 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
     auto fused_node_name = fused_node.GetName();
 
     if (is_ep_context_node) {
+      Ort::ConstOpAttr embed_mode_attr;
+      RETURN_IF_ERROR(nodes[0].GetAttributeByName("embed_mode", embed_mode_attr));
+      int64_t embed_mode = 1;
+      RETURN_IF_ERROR(embed_mode_attr.GetValue(embed_mode));
+
+      if (embed_mode == 0) {
+        Ort::ConstOpAttr ep_cache_context_attr;
+        RETURN_IF_ERROR(nodes[0].GetAttributeByName("ep_cache_context", ep_cache_context_attr));
+        std::string ep_cache_context;
+        RETURN_IF_ERROR(ep_cache_context_attr.GetValue(ep_cache_context));
+
+        // This example only exercises the load-side read flow (callback first, file fallback otherwise) to show how
+        // an EP retrieves EPContext binary data during compile. A real EP would consume `ep_context_data` (e.g.,
+        // initialize a kernel/engine from it via ep_context_data.data()/size()); here it is intentionally read and
+        // then discarded. ReadEpContextData returns an owning EpContextData buffer that adopts the callback-provided
+        // memory instead of copying it.
+        ep_context_data_utils::EpContextData ep_context_data;
+        RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextData(
+            ep->ort_api, ep->ep_context_config_.get(), ep_cache_context.c_str(), ort_graphs[0],
+            ep_context_data));
+      }
+
       // Create EpContextKernel for EPContext nodes - clearly separates from MulKernel
       ep->ep_context_kernels_.emplace(fused_node_name,
                                       std::make_unique<EpContextKernel>(ep->ort_api, ep->logger_));
@@ -448,7 +512,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
       // Create EpContext nodes for the fused nodes we compiled (only for Mul, not EPContext).
       if (ep->config_.enable_ep_context) {
         assert(ep_context_nodes != nullptr);
-        RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
+        RETURN_IF_ERROR(ep->CreateEpContextNodes(ort_graphs[0], gsl::span<const OrtNode*>(fused_nodes, count),
                                                  gsl::span<OrtNode*>(ep_context_nodes, count)));
       }
     }
@@ -478,7 +542,8 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
 // Creates EPContext nodes from the given fused nodes.
 // This is an example implementation that can be used to generate an EPContext model. However, this example EP
 // cannot currently run the EPContext model.
-OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
+OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
+                                           gsl::span<const OrtNode*> fused_nodes,
                                            /*out*/ gsl::span<OrtNode*> ep_context_nodes) {
   try {
     assert(fused_nodes.size() == ep_context_nodes.size());
@@ -511,11 +576,32 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
       collect_input_output_names(fused_node_outputs, /*out*/ output_names);
 
       int64_t is_main_context = (i == 0);
-      int64_t embed_mode = 1;
+      int64_t embed_mode = config_.embed_ep_context_in_model ? 1 : 0;
 
       // Create node attributes. The CreateNode() function copies the attributes.
       std::array<Ort::OpAttr, 6> attributes = {};
-      std::string ep_ctx = "binary_data";
+      std::string ep_ctx = config_.embed_ep_context_in_model ? "binary_data" : fused_node_name + ".ctx";
+      if (!config_.embed_ep_context_in_model) {
+        const std::string ep_context_data = "binary_data";
+        std::string fallback_ep_ctx = ep_ctx;
+        const OrtGraph* fallback_graph = graph;
+        if (!config_.ep_context_output_model_path.empty()) {
+          std::filesystem::path output_model_path;
+          RETURN_IF_ERROR(ep_context_data_utils::Utf8Path(ort_api, config_.ep_context_output_model_path.c_str(),
+                                                          output_model_path));
+          const std::filesystem::path output_model_dir = output_model_path.parent_path();
+          if (!output_model_dir.empty()) {
+            std::filesystem::path ep_ctx_path;
+            RETURN_IF_ERROR(ep_context_data_utils::Utf8Path(ort_api, ep_ctx.c_str(), ep_ctx_path));
+            RETURN_IF_ERROR(ep_context_data_utils::PathToUtf8String(ort_api, output_model_dir / ep_ctx_path,
+                                                                    fallback_ep_ctx));
+          }
+          fallback_graph = nullptr;
+        }
+        RETURN_IF_ERROR(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+            ort_api, ep_context_config_.get(), ep_ctx.c_str(), fallback_ep_ctx.c_str(), fallback_graph,
+            ep_context_data.data(), ep_context_data.size()));
+      }
       attributes[0] = Ort::OpAttr("ep_cache_context", ep_ctx.data(), static_cast<int>(ep_ctx.size()),
                                   ORT_OP_ATTR_STRING);
 
@@ -599,6 +685,14 @@ OrtStatus* ORT_API_CALL ExampleEp::SyncImpl(_In_ OrtEp* this_ptr) noexcept {
   // used to trigger synchronization in tests.
   ++g_sync_count;
 
+  return nullptr;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEp::GetDefaultMemoryDeviceImpl(_In_ const OrtEp* this_ptr,
+                                                              _Outptr_ const OrtMemoryDevice** device) noexcept {
+  const auto* ep = static_cast<const ExampleEp*>(this_ptr);
+  *device = ep->ep_api.MemoryInfo_GetMemoryDevice(ep->factory_.GetDefaultMemoryInfo());
   return nullptr;
 }
 

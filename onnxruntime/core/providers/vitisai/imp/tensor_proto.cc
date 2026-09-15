@@ -31,7 +31,17 @@ gsl::span<const char> process_ext_address(const ONNX_NAMESPACE::TensorProto& ten
         // checksum = (size_t)std::strtoull(data.mutable_value()->data(), &end, 10);
       }
     }
-    if (file == "*/_ORT_MEM_ADDR_/*") {
+    // ORT marks initializers whose data lives in an in-process memory buffer
+    // (e.g. weights moved out of the TensorProto during graph optimization) with
+    // one of two sentinels in the 'location' field. The original little-endian
+    // tag is still emitted for some paths, but newer ORT defaults to the
+    // native-endian tag (see TensorToTensorProto / kTensorProtoNativeEndianMemoryAddressTag).
+    // Both encode the buffer address in the 'offset' field; on little-endian
+    // hosts (the only platform this EP targets) the bytes are identical, so we
+    // decode them the same way. Recognizing only the little-endian tag would let
+    // native-endian-tagged initializers slip through model_clone and trip ORT's
+    // "in-memory address marker not allowed in a model protobuf" check.
+    if (file == "*/_ORT_MEM_ADDR_/*" || file == "*/_ORT_NATIVE_ENDIAN_MEM_ADDR_/*") {
       auto addr = reinterpret_cast<const char*>(offset);
       return {addr, size};
     }

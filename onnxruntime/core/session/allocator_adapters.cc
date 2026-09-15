@@ -30,41 +30,18 @@ constexpr uint32_t kOrtAllocatorShrinkMinVersion = 25;
 // Used by both IAllocatorImplWrappingOrtAllocator and IArenaImplWrappingOrtAllocator.
 void GetStatsFromOrtAllocator(OrtAllocator* ort_allocator, AllocatorStats* stats) {
   if (ort_allocator->version >= kOrtAllocatorStatsMinVersion && ort_allocator->GetStats) {
-    OrtKeyValuePairs* kvps = nullptr;
-    Ort::ThrowOnError(ort_allocator->GetStats(ort_allocator, &kvps));
+    Ort::UnownedAllocator allocator(ort_allocator);
+    Ort::KeyValuePairs kvps = allocator.GetStats();
 
-    auto release_fn = [](OrtKeyValuePairs** kvp) {
-      OrtApis::ReleaseKeyValuePairs(*kvp);
-    };
-
-    std::unique_ptr<OrtKeyValuePairs*, decltype(release_fn)> kvp_guard(&kvps, release_fn);
-
-    const auto keys = kvps->Keys(), values = kvps->Values();
+    std::vector<const char*> keys, values;
+    kvps.GetKeyValuePairs(keys, values);
 
     for (size_t i = 0; i < keys.size(); ++i) {
       int64_t val = 0;
       if (!TryParseStringWithClassicLocale(std::string_view(values[i]), val)) {
         continue;  // skip unparseable entries
       }
-      if (strcmp(keys[i], "Limit") == 0) {
-        stats->bytes_limit = val;
-      } else if (strcmp(keys[i], "InUse") == 0) {
-        stats->bytes_in_use = val;
-      } else if (strcmp(keys[i], "TotalAllocated") == 0) {
-        stats->total_allocated_bytes = val;
-      } else if (strcmp(keys[i], "MaxInUse") == 0) {
-        stats->max_bytes_in_use = val;
-      } else if (strcmp(keys[i], "NumAllocs") == 0) {
-        stats->num_allocs = val;
-      } else if (strcmp(keys[i], "NumReserves") == 0) {
-        stats->num_reserves = val;
-      } else if (strcmp(keys[i], "NumArenaExtensions") == 0) {
-        stats->num_arena_extensions = val;
-      } else if (strcmp(keys[i], "NumArenaShrinkages") == 0) {
-        stats->num_arena_shrinkages = val;
-      } else if (strcmp(keys[i], "MaxAllocSize") == 0) {
-        stats->max_alloc_size = val;
-      }
+      stats->SetFromKeyValue(keys[i], val);
     }
   }
 }
@@ -144,6 +121,7 @@ std::unordered_map<std::string, std::string> OrtAllocatorImplWrappingIAllocator:
   if (stats.num_allocs > 0 || stats.bytes_limit != 0) {
     entries.insert_or_assign("Limit", std::to_string(stats.bytes_limit));
     entries.insert_or_assign("InUse", std::to_string(stats.bytes_in_use));
+    entries.insert_or_assign("RequestedInUse", std::to_string(stats.bytes_requested_in_use));
     entries.insert_or_assign("TotalAllocated", std::to_string(stats.total_allocated_bytes));
     entries.insert_or_assign("MaxInUse", std::to_string(stats.max_bytes_in_use));
     entries.insert_or_assign("NumAllocs", std::to_string(stats.num_allocs));

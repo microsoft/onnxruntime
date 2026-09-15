@@ -68,8 +68,14 @@ class DqMmaBase {
 
   static_assert(DequantOp != WeightOnlyQuantOp::UNDEFINED, "");
 
-  // Finegrained scales get streamed in via cp.async
-  static constexpr int ScalebiasStages = isFinegrained(DequantOp) ? Stages : 1;
+  static constexpr int kMinFinegrainedGroupSize = 32;
+  // Sized for the smallest supported fine-grained group size (32): a CTA K-tile of Shape::kK spans
+  // up to Shape::kK / 32 scale rows. Larger group sizes (64/128) consume fewer rows per stage and
+  // therefore leave part of this reservation unused -- a deliberate worst-case sizing so the same
+  // pipeline storage works for every supported group size. Keep this >= the largest rows-per-stage.
+  static constexpr int kFinegrainedScaleRowsPerStage = Shape::kK / kMinFinegrainedGroupSize;
+  // Finegrained scales get streamed in via cp.async.
+  static constexpr int ScalebiasStages = isFinegrained(DequantOp) ? Stages * kFinegrainedScaleRowsPerStage : 1;
   // We always have scales.
   static constexpr int ScaleElementsPerStage = Shape::kN;
   // We sometimes have a bias

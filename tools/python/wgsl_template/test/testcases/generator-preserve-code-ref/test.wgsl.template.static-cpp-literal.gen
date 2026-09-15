@@ -1,0 +1,18 @@
+//  1 | // This is a one line comment
+//  2 |
+//  3 | @compute @workgroup_size(128)
+ss << "@compute @workgroup_size(128)\n";
+//  4 | fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+ss << "fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {\n";
+//  5 |     let buffer_count = 4;  /* This
+ss << "    let buffer_count = 4;\n";
+//  6 |                               is
+ss << "\n";
+//  7 |                               a
+//  8 |                               multi-line
+//  9 |                               comment */
+// 10 |     let index = global_id.x;
+ss << "    let index = global_id.x;\n";
+// 11 | }
+ss << "}\n";
+// 12 |

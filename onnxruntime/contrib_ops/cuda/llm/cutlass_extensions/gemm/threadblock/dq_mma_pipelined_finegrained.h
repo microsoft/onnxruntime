@@ -140,7 +140,7 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
   // staticaly assert kStages for DqMmaPipelined is two (Double-buffered pipeline)
   static_assert((Base::kStages == 2), "DqMmaPipelined requires kStages set to value 2");
 
-  static_assert(Base::SharedStorage::ShapeScale::kRow == Base::kStages, "");
+  static_assert(Base::SharedStorage::ShapeScale::kRow == Base::kStages * Base::kFinegrainedScaleRowsPerStage, "");
   static_assert(Base::SharedStorage::ShapeScale::kColumn == Shape::kN, "");
 
  private:
@@ -169,6 +169,30 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
   /// Iterator to write threadblock-scoped tile of scale and zero operand to shared memory
   SmemIteratorScale smem_iterator_scale_;
 
+  int group_size_;
+
+ private:
+  CUTLASS_DEVICE
+  int scale_rows_per_stage() const {
+    return (Shape::kK + group_size_ - 1) / group_size_;
+  }
+
+  CUTLASS_DEVICE
+  int scale_row_for_warp_mma(int warp_mma_k) const {
+    int const k_offset = warp_mma_k * Shape::kK / Base::kWarpGemmIterations;
+    int const row = k_offset / group_size_;
+    int const rows = scale_rows_per_stage();
+    return row < rows ? row : rows - 1;
+  }
+
+  CUTLASS_DEVICE
+  void advance_dequantizer_after_load(int scale_row) {
+    int const rows = scale_rows_per_stage();
+    int const row_advance = (scale_row + 1 < rows) ? 1 : Base::kFinegrainedScaleRowsPerStage - scale_row;
+    warp_dequantizer_.add_pointer_offset(row_advance * Shape::kN);
+  }
+
+ public:
  public:
   /// Construct from tensor references
   CUTLASS_DEVICE
@@ -179,7 +203,7 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
                  int warp_idx,          ///< ID of warp
                  int lane_idx           ///< ID of each thread within a warp
                  )
-      : Base(shared_storage, thread_idx, warp_idx, lane_idx), warp_dequantizer_({shared_storage.operand_scale.data(), LayoutScale(Shape::kN)}, {shared_storage.operand_zero.data(), LayoutScale(Shape::kN)}, (warp_idx % (Base::WarpCount::kM * Base::WarpCount::kN)) / Base::WarpCount::kM, lane_idx), smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx), smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx), smem_iterator_scale_(LayoutScale(Shape::kN), shared_storage.operand_scale.data(), shared_storage.operand_zero.data(), {Base::kStages, Shape::kN}, thread_idx, group_size) {
+      : Base(shared_storage, thread_idx, warp_idx, lane_idx), warp_dequantizer_({shared_storage.operand_scale.data(), LayoutScale(Shape::kN)}, {shared_storage.operand_zero.data(), LayoutScale(Shape::kN)}, (warp_idx % (Base::WarpCount::kM * Base::WarpCount::kN)) / Base::WarpCount::kM, lane_idx), smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx), smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx), smem_iterator_scale_(LayoutScale(Shape::kN), shared_storage.operand_scale.data(), shared_storage.operand_zero.data(), {Base::kStages * Base::kFinegrainedScaleRowsPerStage, Shape::kN}, thread_idx, group_size), group_size_(group_size) {
     // Compute warp location within threadblock tile by mapping the warp_id to
     // three coordinates:
     //   _m: the warp's position within the threadblock along the M dimension
@@ -211,53 +235,53 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
 
     using FragmentElement = typename FragmentScale::Element;
 
-    auto gmem_scale_ptr = iterator_scale.get_scale();
-    auto gmem_zero_ptr = iterator_scale.get_zero();
+    int const current_group = iterator_scale.row_groupsize64_ * 64 / iterator_scale.group_size_;
+    int const next_group = (iterator_scale.row_groupsize64_ * 64 + Shape::kK) / iterator_scale.group_size_;
+    int const scale_rows_to_advance = next_group - current_group;
+    int const scale_rows_to_copy = scale_rows_to_advance > 0 ? scale_rows_to_advance : 1;
 
-    arch::global_load<FragmentScale, sizeof(FragmentScale)>(tb_frag_scales, gmem_scale_ptr, iterator_scale.valid());
+    CUTLASS_PRAGMA_UNROLL
+    for (int scale_row = 0; scale_row < Base::kFinegrainedScaleRowsPerStage; ++scale_row) {
+      if (scale_row < scale_rows_to_copy) {
+        auto gmem_scale_ptr = iterator_scale.get_scale();
+        auto gmem_zero_ptr = iterator_scale.get_zero();
 
-    if (gmem_zero_ptr != nullptr) {
-      arch::global_load<FragmentScale, sizeof(FragmentScale)>(
-          tb_frag_zeros, gmem_zero_ptr, iterator_scale.valid());
-    }
+        arch::global_load<FragmentScale, sizeof(FragmentScale)>(tb_frag_scales, gmem_scale_ptr, iterator_scale.valid());
 
-    typename TransformScale::result_type tb_frag_scales_fp16 = transformScale(tb_frag_scales);
-    typename TransformScale::result_type tb_frag_zeros_fp16;
-    if (gmem_zero_ptr != nullptr)
-      tb_frag_zeros_fp16 = transformScale(tb_frag_zeros);
+        if (gmem_zero_ptr != nullptr) {
+          arch::global_load<FragmentScale, sizeof(FragmentScale)>(
+              tb_frag_zeros, gmem_zero_ptr, iterator_scale.valid());
+        }
 
-    auto frag_scale_ptr_fp16 = reinterpret_cast<typename SmemIteratorScale::Element*>(&tb_frag_scales_fp16);
-    auto frag_zero_ptr_fp16 = reinterpret_cast<typename SmemIteratorScale::Element*>(&tb_frag_zeros_fp16);
-    auto smem_scale_ptr = this->smem_iterator_scale_.get_scale();
-    auto smem_zero_ptr = this->smem_iterator_scale_.get_zero();
+        typename TransformScale::result_type tb_frag_scales_fp16 = transformScale(tb_frag_scales);
+        typename TransformScale::result_type tb_frag_zeros_fp16;
+        if (gmem_zero_ptr != nullptr)
+          tb_frag_zeros_fp16 = transformScale(tb_frag_zeros);
 
-    if (iterator_scale.valid()) {
-      auto smem_offset = cast_smem_ptr_to_uint(smem_scale_ptr);
-      arch::shared_store<sizeof(FragmentScale)>(smem_offset, frag_scale_ptr_fp16);
+        auto frag_scale_ptr_fp16 = reinterpret_cast<typename SmemIteratorScale::Element*>(&tb_frag_scales_fp16);
+        auto frag_zero_ptr_fp16 = reinterpret_cast<typename SmemIteratorScale::Element*>(&tb_frag_zeros_fp16);
+        auto smem_scale_ptr = this->smem_iterator_scale_.get_scale();
+        auto smem_zero_ptr = this->smem_iterator_scale_.get_zero();
 
-      if (gmem_zero_ptr != nullptr) {
-        smem_offset = cast_smem_ptr_to_uint(smem_zero_ptr);
-        arch::shared_store<sizeof(FragmentScale)>(smem_offset, frag_zero_ptr_fp16);
-      }
-    }
+        if (iterator_scale.valid()) {
+          auto smem_offset = cast_smem_ptr_to_uint(smem_scale_ptr);
+          arch::shared_store<sizeof(FragmentScale)>(smem_offset, frag_scale_ptr_fp16);
 
-    if (iterator_scale.group_size_ == 64) {
-      iterator_scale.add_tile_offset({1, 0});
-    } else if (iterator_scale.group_size_ == 128) {
-      if constexpr (Shape::kK == 128) {
-        iterator_scale.add_tile_offset({1, 0});
-      } else if constexpr (Shape::kK == 64) {
-        if (iterator_scale.row_groupsize64_ & 0x1) {
+          if (gmem_zero_ptr != nullptr) {
+            smem_offset = cast_smem_ptr_to_uint(smem_zero_ptr);
+            arch::shared_store<sizeof(FragmentScale)>(smem_offset, frag_zero_ptr_fp16);
+          }
+        }
+
+        if (scale_row < scale_rows_to_advance) {
           iterator_scale.add_tile_offset({1, 0});
         }
-      } else {
-        static_assert(Shape::kK == 0, "Unsupported k tile shape, can only be 64 or 128");
       }
+
+      this->smem_iterator_scale_.add_tile_offset({1, 0});
     }
 
-    iterator_scale.row_groupsize64_++;
-
-    this->smem_iterator_scale_.add_tile_offset({1, 0});
+    iterator_scale.row_groupsize64_ += Shape::kK / 64;
   }
 
   /// Perform a threadblock-scoped matrix multiply-accumulate
@@ -323,7 +347,7 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
 
     ++this->warp_tile_iterator_A_;
     ++this->warp_tile_iterator_B_;
-    warp_dequantizer_.add_pointer_offset(Shape::kN);
+    advance_dequantizer_after_load(0);
 
     Operator warp_mma;
 
@@ -368,13 +392,13 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
           if (smem_write_stage_idx == 1) {
             this->smem_iterator_A_.add_tile_offset({0, -Base::kStages});
             this->smem_iterator_B_.add_tile_offset({-Base::kStages, 0});
-            this->smem_iterator_scale_.add_tile_offset({-Base::kStages, 0});
+            this->smem_iterator_scale_.add_tile_offset({-Base::kStages * Base::kFinegrainedScaleRowsPerStage, 0});
           } else {
             this->warp_tile_iterator_A_.add_tile_offset(
                 {0, -Base::kStages * Policy::kPartitionsK * Base::kWarpGemmIterations});
             this->warp_tile_iterator_B_.add_tile_offset(
                 {-Base::kStages * Policy::kPartitionsK * Base::kWarpGemmIterationsForB, 0});
-            warp_dequantizer_.add_pointer_offset(-Base::kStages * Shape::kN);
+            warp_dequantizer_.add_pointer_offset(-Base::kStages * Base::kFinegrainedScaleRowsPerStage * Shape::kN);
           }
 
           smem_write_stage_idx ^= 1;
@@ -409,6 +433,12 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
           iterator_scale.clear_mask(gemm_k_iterations <= 2);
         }
 
+        int const scale_row = scale_row_for_warp_mma(warp_mma_k);
+        if (warp_mma_k > 0 && scale_row != scale_row_for_warp_mma(warp_mma_k - 1)) {
+          warp_dequantizer_.load(warp_frag_scales, warp_frag_zero);
+          advance_dequantizer_after_load(scale_row);
+        }
+
         typename TransformBAfterLDS::result_type converted_frag_B = lds_converter(warp_frag_B[warp_tileB_k_load_offset % 2]);
         warp_dequantizer_.dequantize(converted_frag_B, warp_frag_scales, warp_frag_zero);
         warp_mma(accum, warp_frag_A[warp_mma_k % 2], converted_frag_B, accum, warp_tileB_k_compute_offset);
@@ -417,7 +447,7 @@ class DqMmaPipelined<Shape_, IteratorA_, SmemIteratorA_, IteratorB_, SmemIterato
       // Load the scales needed for the next tile iteration
       warp_dequantizer_.load(warp_frag_scales, warp_frag_zero);
       // Update internal pointer to the set of scales in shared memory
-      warp_dequantizer_.add_pointer_offset(Shape::kN);
+      advance_dequantizer_after_load(0);
     }
   }
 };

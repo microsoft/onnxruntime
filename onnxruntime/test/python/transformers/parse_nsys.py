@@ -188,6 +188,166 @@ def list_all_kernels(db_path: str) -> list[str]:
         conn.close()
 
 
+# CUDA runtime API calls that block the host until the device/stream finishes
+# (host-side synchronization). These should NOT appear inside a run when the
+# run is launched with disable_synchronize_execution_providers=1 (sync=false).
+# Patterns use SQL LIKE syntax (matched against the runtime API name, which may
+# carry a version suffix, e.g. "cudaStreamSynchronize_v3000" or "cudaMemcpy_v3020").
+# Only CUPTI_ACTIVITY_KIND_RUNTIME (the cuda* runtime API) is scanned, so driver
+# (cu*) names are intentionally not listed here. cudaStreamWaitEvent is excluded
+# because it is a stream-ordering primitive, not a host-blocking sync.
+SYNC_API_PATTERNS = [
+    "cudaDeviceSynchronize%",
+    "cudaStreamSynchronize%",
+    "cudaEventSynchronize%",
+    "cudaMemcpy%",  # synchronous cudaMemcpy* (async variants excluded below)
+    "cudaMemset%",  # synchronous cudaMemset* (async variants excluded below)
+]
+
+# API names matching any of these are excluded even if they match a SYNC pattern.
+# This removes non-blocking *Async* copies/sets (e.g. cudaMemcpyAsync) which do
+# not synchronize the host.
+SYNC_API_EXCLUDE_PATTERNS = [
+    "%Async%",
+]
+
+
+def parse_cuda_api_in_range(
+    db_path: str,
+    nvtx_range: str,
+    api_patterns: list[str] | None = None,
+    skip_first_ranges: int = 0,
+    exclude_patterns: list[str] | None = None,
+) -> list[dict]:
+    """
+    Aggregate CUDA runtime API calls that occur within an NVTX range.
+
+    Each occurrence of the NVTX range (e.g. one per inference run) is treated as
+    a separate window. CUDA runtime API events (CUPTI_ACTIVITY_KIND_RUNTIME) are
+    attributed to a window when their host-side start timestamp falls inside it.
+
+    Args:
+        db_path: Path to the .sqlite file exported by nsys.
+        nvtx_range: NVTX range/marker name to scope the API calls to.
+        api_patterns: Optional list of SQL LIKE patterns to filter API names.
+                      If None, all API calls in the range are returned.
+        skip_first_ranges: Skip API calls in the first N occurrences of the NVTX
+                           range (e.g. to exclude warmup iterations).
+        exclude_patterns: Optional list of SQL LIKE patterns; API names matching
+                          any of them are excluded (e.g. "%Async%").
+
+    Returns:
+        List of dicts with API call aggregation, ordered by call_count desc.
+    """
+    conn = sqlite3.connect(db_path)
+
+    where_clauses = ["ns.value = ?"]
+    params: list = [nvtx_range]
+
+    if api_patterns:
+        pattern_or = " OR ".join(["s.value LIKE ? ESCAPE '\\'" for _ in api_patterns])
+        where_clauses.append(f"({pattern_or})")
+        params.extend(api_patterns)
+
+    if exclude_patterns:
+        exclude_and = " AND ".join(["s.value NOT LIKE ? ESCAPE '\\'" for _ in exclude_patterns])
+        where_clauses.append(f"({exclude_and})")
+        params.extend(exclude_patterns)
+
+    where_sql = " AND ".join(where_clauses)
+
+    # Number the NVTX range occurrences so we can skip warmup windows, then attach
+    # each CUDA runtime API event to the window whose [start, end] contains it.
+    query = f"""
+    WITH ranges AS (
+        SELECT
+            n.start AS r_start,
+            n.end AS r_end,
+            ROW_NUMBER() OVER (ORDER BY n.start) AS range_num
+        FROM NVTX_EVENTS n
+        JOIN StringIds ns ON n.textId = ns.id
+        WHERE ns.value = ?
+    )
+    SELECT
+        s.value AS api_name,
+        COUNT(*) AS call_count,
+        SUM(r.end - r.start) AS total_ns,
+        MIN(r.end - r.start) AS min_ns,
+        MAX(r.end - r.start) AS max_ns,
+        AVG(r.end - r.start) AS avg_ns
+    FROM CUPTI_ACTIVITY_KIND_RUNTIME r
+    JOIN StringIds s ON r.nameId = s.id
+    JOIN ranges rg ON r.start >= rg.r_start AND r.start <= rg.r_end
+    JOIN NVTX_EVENTS n ON r.start >= n.start AND r.start <= n.end
+    JOIN StringIds ns ON n.textId = ns.id
+    WHERE {where_sql} AND rg.range_num > ?
+    GROUP BY s.value
+    ORDER BY call_count DESC
+    """
+    # ranges CTE consumes the first nvtx_range param; rebuild the full param list.
+    full_params = [nvtx_range, *params, skip_first_ranges]
+
+    results = []
+    try:
+        cursor = conn.execute(query, full_params)
+        for row in cursor.fetchall():
+            results.append(
+                {
+                    "api_name": row[0],
+                    "call_count": row[1],
+                    "total_us": row[2] / 1e3,  # ns to us
+                    "min_us": row[3] / 1e3,
+                    "max_us": row[4] / 1e3,
+                    "avg_us": row[5] / 1e3,
+                }
+            )
+    except sqlite3.OperationalError as e:
+        print(f"SQL Error: {e}", file=sys.stderr)
+
+    conn.close()
+    return results
+
+
+def list_all_cuda_apis(db_path: str) -> list[str]:
+    """List all CUDA runtime API names in the database for debugging."""
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.execute("""
+            SELECT DISTINCT s.value
+            FROM CUPTI_ACTIVITY_KIND_RUNTIME r
+            JOIN StringIds s ON r.nameId = s.id
+            ORDER BY s.value
+        """)
+        return [row[0] for row in cursor.fetchall()]
+    except sqlite3.OperationalError as e:
+        print(f"SQL Error: {e}", file=sys.stderr)
+        return []
+    finally:
+        conn.close()
+
+
+def format_cuda_api_table(results: list[dict], prefix: str = "") -> str:
+    """Format CUDA API aggregation results as a human-readable table."""
+    if not results:
+        return "No matching CUDA API calls found."
+
+    api_name_len_limit = 48
+    lines = []
+    lines.append(
+        f"{prefix}{'CUDA API':<{api_name_len_limit}} {'Calls':>8} {'Total(us)':>10} "
+        f"{'Avg(us)':>10} {'Min(us)':>10} {'Max(us)':>10}"
+    )
+    lines.append("-" * 100)
+    for r in results:
+        name = r["api_name"]
+        name = name[: api_name_len_limit - 3] + "..." if len(name) > api_name_len_limit else name
+        lines.append(
+            f"{name:<{api_name_len_limit}} {r['call_count']:>8d} {r['total_us']:>10.2f} "
+            f"{r['avg_us']:>10.2f} {r['min_us']:>10.2f} {r['max_us']:>10.2f}"
+        )
+    return "\n".join(lines)
+
+
 def format_kernel_name(kernel_name: str) -> str:
     prefix_list = [
         "void onnxruntime::contrib::cuda::",
@@ -275,6 +435,30 @@ Examples:
         metavar="N",
         help="Skip first N calls per kernel type (e.g., to exclude warmup iterations)",
     )
+    parser.add_argument(
+        "--cuda-api",
+        action="store_true",
+        help="Aggregate CUDA runtime API calls within --nvtx-range instead of kernels",
+    )
+    parser.add_argument(
+        "--sync-apis-only",
+        action="store_true",
+        help="With --cuda-api, only report host synchronization APIs (cudaStreamSynchronize, "
+        "cudaDeviceSynchronize, etc.). Exit code is 1 if any are found in the range.",
+    )
+    parser.add_argument(
+        "--api-pattern",
+        action="append",
+        help="With --cuda-api, add a custom CUDA API name pattern (SQL LIKE syntax)",
+    )
+    parser.add_argument("--list-cuda-apis", action="store_true", help="List all CUDA runtime API names in the database")
+    parser.add_argument(
+        "--skip-first-ranges",
+        type=int,
+        default=0,
+        metavar="N",
+        help="With --cuda-api, skip API calls in the first N occurrences of the NVTX range (warmup)",
+    )
 
     args = parser.parse_args()
 
@@ -289,8 +473,75 @@ Examples:
             print(f"  {k}")
         return
 
+    if args.list_cuda_apis:
+        apis = list_all_cuda_apis(args.sqlite_file)
+        print(f"Found {len(apis)} unique CUDA runtime APIs:")
+        for a in apis:
+            print(f"  {a}")
+        return
+
+    if args.cuda_api:
+        if not args.nvtx_range:
+            print("Error: --cuda-api requires --nvtx-range", file=sys.stderr)
+            sys.exit(2)
+
+        if args.sync_apis_only:
+            api_patterns = SYNC_API_PATTERNS
+        elif args.api_pattern:
+            api_patterns = args.api_pattern
+        else:
+            api_patterns = None
+
+        api_results = parse_cuda_api_in_range(
+            args.sqlite_file,
+            args.nvtx_range,
+            api_patterns=api_patterns,
+            skip_first_ranges=args.skip_first_ranges,
+            exclude_patterns=SYNC_API_EXCLUDE_PATTERNS if args.sync_apis_only else None,
+        )
+
+        scope = f"NVTX range '{args.nvtx_range}'"
+        if args.skip_first_ranges > 0:
+            scope += f" (skipping first {args.skip_first_ranges} occurrences)"
+
+        if args.format == "json":
+            output = json.dumps(api_results, indent=2)
+        elif args.format == "csv":
+            header = "api_name,call_count,total_us,avg_us,min_us,max_us"
+            rows = [
+                f'"{r["api_name"]}",{r["call_count"]},{r["total_us"]:.3f},'
+                f"{r['avg_us']:.3f},{r['min_us']:.3f},{r['max_us']:.3f}"
+                for r in api_results
+            ]
+            output = "\n".join([header, *rows])
+        else:
+            output = format_cuda_api_table(api_results, args.tag + " " if args.tag else "")
+
+        if args.sync_apis_only:
+            print(f"(Checking for host synchronization CUDA APIs within {scope})\n")
+        else:
+            print(f"(CUDA runtime API calls within {scope})\n")
+
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(output)
+            print(f"Results written to {args.output}")
+        else:
+            print(output)
+
+        if args.sync_apis_only:
+            total_sync = sum(r["call_count"] for r in api_results)
+            if total_sync > 0:
+                print(
+                    f"\nFAIL: found {total_sync} host synchronization CUDA API call(s) within {scope}.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            print(f"\nPASS: no host synchronization CUDA API calls within {scope}.")
+        return
+
     # Parse kernel timings
-    patterns = args.pattern if args.pattern else None
+    patterns = args.pattern or None
     results = parse_nsys_sqlite(args.sqlite_file, patterns, skip_first=args.skip_first, nvtx_range=args.nvtx_range)
 
     if args.nvtx_range:

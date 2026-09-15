@@ -1871,13 +1871,13 @@ Status QnnBackendManager::ExtractBackendProfilingInfo(qnn::profile::ProfilingInf
 
   // ETW disabled previously, but enabled now
   if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {
-    LOGS(*logger_, ERROR) << "ETW disabled previously, but enabled now. Can't do the switch! Won't output any profiling.";
+    LOGS(*logger_, WARNING) << "ETW disabled previously, but enabled now. Can't do the switch! Won't output any profiling.";
     return Status::OK();
   }
 
   // ETW enabled previously, but disabled now
   if (ProfilingLevel::INVALID != profiling_level_etw_ && !tracelogging_provider_ep_enabled) {
-    LOGS(*logger_, ERROR) << "ETW enabled previously, but disabled now. Can't do the switch! Won't output any profiling.";
+    LOGS(*logger_, WARNING) << "ETW enabled previously, but disabled now. Can't do the switch! Won't output any profiling.";
     return Status::OK();
   }
 

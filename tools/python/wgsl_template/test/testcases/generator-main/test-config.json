@@ -1,0 +1,13 @@
+{
+  "type": "generator",
+  "description": "Test MAIN variable substitution in generator",
+  "entries": {
+    "main.wgsl.template": {
+      "generators": {
+        "static-cpp-literal": {
+          "expectedVariables": []
+        }
+      }
+    }
+  }
+}

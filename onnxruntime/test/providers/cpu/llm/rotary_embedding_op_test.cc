@@ -1412,5 +1412,40 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_InBatch_WebGPU_Passthr
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// Test that a cos_cache whose width does not match head_size / 2 (or rotary_embedding_dim / 2)
+// is rejected by the mainline op. The mainline op needs no additional hidden_size/OOB guard
+// because it requires num_heads > 0 for a rank-3 input, so head_size is always derived as
+// hidden_size / num_heads (never inferred from the cache) and the exact-width check below
+// already rejects an over-sized cos_cache.
+TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsCosCacheWidthMismatch) {
+  // hidden_size = 64, num_heads = 1 => head_size = 64, expected cache width = 32.
+  // cos_cache dim1 = 64 mismatches the expected 32 and is rejected by the existing width check.
+  int batch_size = 1;
+  int sequence_length = 1;
+  int hidden_size = 64;
+  int half_rotary_dim = 64;  // mismatches expected head_size / 2 = 32
+  int max_sequence_length = 2;
+
+  OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(1));
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size},
+                       std::vector<float>(hidden_size, 42.0f));
+  test.AddInput<float>("cos_cache", {max_sequence_length, half_rotary_dim},
+                       std::vector<float>(max_sequence_length * half_rotary_dim, 0.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, half_rotary_dim},
+                       std::vector<float>(max_sequence_length * half_rotary_dim, 1.0f));
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {0});
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                        std::vector<float>(hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Input 'cos_cache' dimension 1 should be same as head_size / 2 or rotary_embedding_dim / 2",
+           {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
