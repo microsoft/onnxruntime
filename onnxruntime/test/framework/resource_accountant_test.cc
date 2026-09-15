@@ -13,6 +13,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"
 
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -360,6 +361,21 @@ TEST(ResourceAccountantTest, FusedNodeConsolidatesConstituentWorkspaceReservatio
   ASSERT_EQ(graph_reservations.size(), size_t{1});
   EXPECT_EQ(graph_reservations.at(fused_node_index).bytes, size_t{1200});
   EXPECT_EQ(graph_reservations.at(fused_node_index).source, WorkspaceEstimateSource::kEstimator);
+}
+
+TEST(ResourceAccountantTest, ConsolidationIncludesExistingDestinationReservation) {
+  NodeWorkspaceReservationMap reservations{
+      {1, WorkspaceEstimateSelection{400, WorkspaceEstimateSource::kEstimator}},
+      {2, WorkspaceEstimateSelection{800, WorkspaceEstimateSource::kEstimator}},
+      {42, WorkspaceEstimateSelection{50, WorkspaceEstimateSource::kFallback}},
+  };
+  const std::array<NodeIndex, 2> source_node_indices{1, 2};
+
+  ConsolidateWorkspaceReservations(reservations, source_node_indices, 42);
+
+  ASSERT_EQ(reservations.size(), size_t{1});
+  EXPECT_EQ(reservations.at(42).bytes, size_t{1250});
+  EXPECT_EQ(reservations.at(42).source, WorkspaceEstimateSource::kNone);
 }
 
 TEST(ResourceAccountantTest, ConsumedAmountRejectsOverflowAndUnderflow) {

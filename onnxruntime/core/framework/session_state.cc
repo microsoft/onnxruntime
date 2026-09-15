@@ -1951,13 +1951,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
     const bool strict_reservation_ownership_failed =
         strict_workspace_verification &&
-        missing_reservation > 0 &&
         orphaned_reservations > 0;
     if (strict_reservation_ownership_failed) {
       LOGS(logger_, WARNING)
           << "Level-2 workspace verification found " << orphaned_reservations
-          << " reservation(s) for removed nodes and " << missing_reservation
-          << " workspace declaration(s) without reservations";
+          << " reservation(s) for removed nodes";
     }
 
     if (nodes_with_workspace > 0 || missing_declaration > 0 || orphaned_reservations > 0) {
@@ -1982,7 +1980,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         strict_verification_failed || strict_reservation_ownership_failed,
         "Level-2 workspace verification failed: one or more declarations exceed "
         "the workspace reserved during graph partitioning, or a post-partition graph transformation "
-        "prevented a reservation from being matched to its declaration.");
+        "orphaned a workspace reservation.");
   }
 
   ORT_RETURN_IF_ERROR(

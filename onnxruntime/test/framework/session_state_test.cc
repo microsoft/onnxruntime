@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -167,10 +168,18 @@ class WorkspaceVerificationTestKernel final : public OpKernel {
   }
 };
 
+enum class WorkspaceVerificationMutation {
+  kNone,
+  kReplaceWithNew,
+  kFinalizeNodeFusionPair,
+  kFinalizeNodeFusionSpan,
+};
+
 static Status FinalizeWorkspaceVerificationTestSession(
     std::optional<size_t> reservation_bytes, bool strict_verification = true,
-    bool replace_node_after_reservation = false,
-    bool track_replacement_reservation = true) {
+    WorkspaceVerificationMutation mutation = WorkspaceVerificationMutation::kNone,
+    bool track_replacement_reservation = true,
+    bool add_orphaned_reservation = false) {
   Model model("workspace_verification", false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
 
@@ -186,8 +195,16 @@ static Status FinalizeWorkspaceVerificationTestSession(
         node.Index(),
         WorkspaceEstimateSelection{*reservation_bytes, WorkspaceEstimateSource::kEstimator});
   }
+  if (add_orphaned_reservation) {
+    Node& removed_node =
+        graph.AddNode("removed_workspace_node", "WorkspaceVerificationTestOp", "", {}, {});
+    reservations[&graph].insert_or_assign(
+        removed_node.Index(),
+        WorkspaceEstimateSelection{1, WorkspaceEstimateSource::kEstimator});
+    graph.RemoveNode(removed_node.Index());
+  }
 
-  if (replace_node_after_reservation) {
+  if (mutation != WorkspaceVerificationMutation::kNone) {
     if (track_replacement_reservation) {
       graph.SetNodeReplacementCallback(
           [&reservations](const Graph& modified_graph,
@@ -201,13 +218,25 @@ static Status FinalizeWorkspaceVerificationTestSession(
           });
     }
 
-    NodesToOptimize selected_nodes{
-        gsl::span<Node* const>{}, node, gsl::span<Node* const>{}};
-    const NodesToOptimize::NodeLocation target{
-        NodesToOptimize::NodeType::kTarget, 0};
-    ReplaceWithNewFixed replacement{
-        kOnnxDomain, "WorkspaceVerificationTestOp", {MoveAll(target, ArgType::kOutput)}};
-    ORT_RETURN_IF_ERROR(replacement.Run(graph, selected_nodes));
+    if (mutation == WorkspaceVerificationMutation::kReplaceWithNew) {
+      NodesToOptimize selected_nodes{
+          gsl::span<Node* const>{}, node, gsl::span<Node* const>{}};
+      const NodesToOptimize::NodeLocation target{
+          NodesToOptimize::NodeType::kTarget, 0};
+      ReplaceWithNewFixed replacement{
+          kOnnxDomain, "WorkspaceVerificationTestOp", {MoveAll(target, ArgType::kOutput)}};
+      ORT_RETURN_IF_ERROR(replacement.Run(graph, selected_nodes));
+    } else {
+      Node& replacement_node =
+          graph.AddNode("workspace_fused", "WorkspaceVerificationTestOp", "", {}, {});
+      if (mutation == WorkspaceVerificationMutation::kFinalizeNodeFusionPair) {
+        graph_utils::FinalizeNodeFusion(graph, replacement_node, node);
+      } else {
+        const std::array<std::reference_wrapper<Node>, 1> nodes_to_fuse{node};
+        graph_utils::FinalizeNodeFusion(
+            graph, nodes_to_fuse, replacement_node, replacement_node);
+      }
+    }
     graph.SetNodeReplacementCallback({});
   }
 
@@ -315,15 +344,31 @@ TEST(SessionStateTest, StrictWorkspaceVerificationOnlyRejectsOverrun) {
 
 TEST(SessionStateTest, StrictWorkspaceVerificationTracksReplacementNode) {
   EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
-      size_t{128}, true, true));
+      size_t{128}, true, WorkspaceVerificationMutation::kReplaceWithNew));
   EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
-      FinalizeWorkspaceVerificationTestSession(size_t{64}, true, true),
+      FinalizeWorkspaceVerificationTestSession(
+          size_t{64}, true, WorkspaceVerificationMutation::kReplaceWithNew),
       "declarations exceed the workspace reserved during graph partitioning");
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationTracksFinalizeNodeFusion) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, WorkspaceVerificationMutation::kFinalizeNodeFusionPair));
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, WorkspaceVerificationMutation::kFinalizeNodeFusionSpan));
 }
 
 TEST(SessionStateTest, StrictWorkspaceVerificationRejectsUntrackedReplacement) {
   EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
-      FinalizeWorkspaceVerificationTestSession(size_t{128}, true, true, false),
+      FinalizeWorkspaceVerificationTestSession(
+          size_t{128}, true, WorkspaceVerificationMutation::kReplaceWithNew, false),
+      "post-partition graph transformation");
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationRejectsOrphanedReservationWithoutMissingReservation) {
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      FinalizeWorkspaceVerificationTestSession(
+          size_t{128}, true, WorkspaceVerificationMutation::kNone, true, true),
       "post-partition graph transformation");
 }
 

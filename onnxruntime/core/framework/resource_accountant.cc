@@ -30,14 +30,8 @@ void ConsolidateWorkspaceReservations(
   WorkspaceEstimateSelection aggregate;
   bool has_reservation = false;
   InlinedHashSet<size_t> matched_node_indices;
-  for (size_t node_index : source_node_indices) {
-    const auto reservation_it = reservations.find(node_index);
-    if (reservation_it == reservations.end() ||
-        !matched_node_indices.insert(node_index).second) {
-      continue;
-    }
-
-    const auto& reservation = reservation_it->second;
+  const auto accumulate_reservation = [&aggregate, &has_reservation](
+                                          const WorkspaceEstimateSelection& reservation) {
     aggregate.bytes =
         static_cast<size_t>(SafeInt<size_t>(aggregate.bytes) + reservation.bytes);
     aggregate.profiled_bytes =
@@ -55,10 +49,27 @@ void ConsolidateWorkspaceReservations(
             ? reservation.source
             : WorkspaceEstimateSource::kNone;
     has_reservation = true;
+  };
+
+  for (size_t node_index : source_node_indices) {
+    const auto reservation_it = reservations.find(node_index);
+    if (reservation_it == reservations.end() ||
+        !matched_node_indices.insert(node_index).second) {
+      continue;
+    }
+
+    accumulate_reservation(reservation_it->second);
   }
 
   if (!has_reservation) {
     return;
+  }
+
+  if (matched_node_indices.find(destination_node_index) == matched_node_indices.end()) {
+    const auto destination_reservation_it = reservations.find(destination_node_index);
+    if (destination_reservation_it != reservations.end()) {
+      accumulate_reservation(destination_reservation_it->second);
+    }
   }
 
   for (size_t node_index : matched_node_indices) {
