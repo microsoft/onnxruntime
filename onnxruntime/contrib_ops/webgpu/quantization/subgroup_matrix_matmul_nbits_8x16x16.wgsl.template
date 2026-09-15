@@ -7,10 +7,10 @@
 // A: prepacked layout (from PrepackProgram) - elements arranged for subgroupMatrixLoad
 // B: 4-bit or 8-bit quantized, dequantized into SLM (tile_b)
 //
-// Workgroup: 256 threads = 8 subgroups x 32 lanes
-// Tile: kTileM(64) x kTileN(64)
-// Each subgroup handles kSgMatM(8) M rows x 64 N columns (4 x kSgMatN N blocks)
-// K dimension iterated in kTileK(32) blocks
+// Workgroup size and tile_m/tile_n (kTileM x kTileN) are caller-configurable; the number of
+// subgroups per workgroup must equal kTileM / sg_mat_m (i.e. workgroup size = kTileM / sg_mat_m * 32).
+// Each workgroup handles one (M-tile, N-tile) pair, decoded from a flattened workgroup_idx
+// K dimension iterated in kChunkSizeK(32) blocks
 
 #param n_bits
 #param has_zero_points
@@ -21,252 +21,291 @@
 #param sg_mat_k
 #param sg_mat_m
 #param sg_mat_n
+#param tile_m
+#param tile_n
 
 #use .getByOffset .setByOffset
 
 #include "quantization/matmul_nbits_zero_pt.wgsl.template"
 
-const kQuantizationBlockSize: u32 = 32;
+const kQuantizationBlockSize : u32 = 32;
+const kValuesPerPack : u32 = 8;  // K-values dequantized per packed_data element (mat2x4 = 8 elements)
+const kU32sPerBPack : u32 = 4;   // Number of packs loaded per kChunkSizeK cycle
 
-const kTileM: u32 = 64;                          // Tile size along M (output rows per workgroup)
-const kTileN: u32 = 64;                          // Tile size along N (output columns per workgroup)
-const kTileK: u32 = 32;                          // Tile size along K (reduction dimension per iteration)
-const kSgMatM: u32 = u32(sg_mat_m);              // Subgroup matrix M dimension (rows)
-const kSgMatN: u32 = u32(sg_mat_n);              // Subgroup matrix N dimension (columns)
-const kSgMatK: u32 = u32(sg_mat_k);              // Subgroup matrix K dimension (reduction)
-const kSgMatSizeLeft: u32 = kSgMatM * kSgMatK;   // Elements per left (A) subgroup matrix
-const kSgMatStrideN: u32 = kSgMatN * kTileK;     // Stride between N blocks in tile_b
-const kSgMatCountM: u32 = kTileM / kSgMatM;      // Number of subgroup matrices per tile along M
+const kTileM : u32 = u32(tile_m);                // Tile size along M (output rows per workgroup)
+const kTileN : u32 = u32(tile_n);                // Tile size along N (output columns per workgroup)
+const kChunkSizeK : u32 = 32;                    // Tile size along K (reduction dimension per iteration)
+const kSgMatDimM : u32 = u32(sg_mat_m);        // Subgroup matrix M dimension (rows)
+const kSgMatDimN : u32 = u32(sg_mat_n);        // Subgroup matrix N dimension (columns)
+const kSgMatDimK : u32 = u32(sg_mat_k);        // Subgroup matrix K dimension (reduction)
+const kSgMatLeftSize : u32 = kSgMatDimM * kSgMatDimK;  // Elements per left (A) subgroup matrix
+const kSgMatStrideN : u32 = kSgMatDimN * kChunkSizeK;  // Stride between N blocks in tile_b
+const kSgMatCountM : u32 = kTileM / kSgMatDimM;        // Number of subgroup matrices per tile along M
+const kSgMatCountN : u32 = kTileN / kSgMatDimN;        // Number of subgroup matrices per tile along N
+const kSgMatCountK : u32 = kChunkSizeK / kSgMatDimK;   // Number of subgroup_matrix K-substeps per kChunkSizeK block
 
-// Shared local memory for dequantized B weights [kTileN, kTileK], column-major
-var<workgroup> tile_b: array<f16, kTileN * kTileK>;
+alias SgMatLeft = subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>;
+alias SgMatRight = subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>;
+alias SgMatResult = subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+
+// Shared local memory for dequantized B weights [kTileN, kChunkSizeK], column-major
+var<workgroup> tile_b : array<f16, kTileN * kChunkSizeK>;
 
 #if has_bias
 // Scratch space for bounds-checked write-out with bias addition, [kTileM, kTileN],
 // row-major. The no-bias path never needs this - see `has_tail_buffer` below.
-var<workgroup> scratch: array<f16, kTileM * kTileN>;
+var<workgroup> scratch : array<f16, kTileM * kTileN>;
 #endif
 
-#if n_bits == 4
-// Dequantize 4-bit quantized B weights and store into tile_b [kTileN, kTileK] workgroup memory.
-// 256 threads load kTileN(64) x kTileK(32). 4 threads per N, 8 K elements per thread.
-// k_chunk_idx: which 8-element chunk of kTileK this thread handles (0..3).
-fn dequant_b_to_tile(n_base: u32, k_idx: u32, n_idx: u32, k_chunk_idx: u32) {
-    let global_n = n_base + n_idx;
-    if (global_n >= uniforms.N) {
-        return;
-    }
-    let k_offset = k_chunk_idx * 8;
+// --- Offset Helpers ---
+
+fn get_weight_offset() -> u32 {
 #if has_weight_idx
 #if has_weight_idx_indirect
-    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+  let actual_weight_idx = weight_index_indirect.getByOffset(uniforms.weight_idx);
 #else
-    let actual_weight_idx = uniforms.weight_idx;
+  let actual_weight_idx = uniforms.weight_idx;
 #endif
-    let weight_offset = actual_weight_idx * uniforms.K * uniforms.N;
-    let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / kQuantizationBlockSize);
+  return actual_weight_idx * uniforms.K * uniforms.N;
 #else
-    const weight_offset : u32 = 0;
-    const scale_offset : u32 = 0;
+  return 0u;
 #endif
-    let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
-    let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
-    let scale = f16(scales_b.getByOffset(scale_idx));
-    let zero = mm_read_zero(
-        global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
-    let packed_weights = input_b.getByOffset(packed_idx);
-    let weights_lo =
-        (vec4<f16>(unpack4xU8(packed_weights & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
-    let weights_hi =
-        (vec4<f16>(unpack4xU8((packed_weights >> 4) & 0x0F0F0F0Fu)) - vec4<f16>(zero)) * scale;
-    let tile_base = n_idx * kTileK + k_offset;
-    tile_b[tile_base]     = weights_lo[0];
-    tile_b[tile_base + 1] = weights_hi[0];
-    tile_b[tile_base + 2] = weights_lo[1];
-    tile_b[tile_base + 3] = weights_hi[1];
-    tile_b[tile_base + 4] = weights_lo[2];
-    tile_b[tile_base + 5] = weights_hi[2];
-    tile_b[tile_base + 6] = weights_lo[3];
-    tile_b[tile_base + 7] = weights_hi[3];
+}
+
+fn get_scale_offset() -> u32 {
+#if has_weight_idx
+#if has_weight_idx_indirect
+  let actual_weight_idx = weight_index_indirect.getByOffset(uniforms.weight_idx);
+#else
+  let actual_weight_idx = uniforms.weight_idx;
+#endif
+  return actual_weight_idx * uniforms.N * (uniforms.K / kQuantizationBlockSize);
+#else
+  return 0u;
+#endif
+}
+
+// --- Data Loading Functions ---
+
+// scale_offset is resolved once per workgroup (see get_scale_offset), not recomputed per thread.
+// Note: the scales buffer is strided by blocks-per-row (K / kQuantizationBlockSize), which is
+// NOT the same as uniforms.zero_blocks_per_col (that's padded to a zero-point byte boundary).
+fn load_scale(row : u32, block_idx : u32, scale_offset : u32) -> output_element_t {
+  let blocks_per_col = uniforms.K / kQuantizationBlockSize;
+  if (row < uniforms.N && block_idx < blocks_per_col) {
+    let offset = row * blocks_per_col + block_idx + scale_offset;
+    return scales_b.getByOffset(offset);
+  }
+  return output_element_t();
+}
+
+#if n_bits == 4
+alias InputBPack = vec4<u32>;
+fn load_b(row : u32, block_idx : u32, weight_offset : u32) -> InputBPack {
+  let k_of_b = uniforms.K / kQuantizationBlockSize;
+  if (row < uniforms.N && block_idx < k_of_b) {
+    let offset = row * k_of_b + block_idx + weight_offset;
+    return input_b.getByOffset(offset);
+  }
+  return InputBPack();
+}
+
+fn dequantize(packed_data : u32,
+              zero_point : output_element_t,
+              scale : output_element_t) -> mat2x4<output_element_t> {
+  let lower : vec4<u32> = unpack4xU8(packed_data & 0x0F0F0F0Fu);
+  let upper : vec4<u32> = unpack4xU8((packed_data >> 4u) & 0x0F0F0F0Fu);
+
+  let zero_mat : mat2x4<output_element_t> = mat2x4<output_element_t>(
+                     zero_point, zero_point, zero_point, zero_point,
+                     zero_point, zero_point, zero_point, zero_point);
+
+  var val : mat2x4<output_element_t> = mat2x4<output_element_t>(
+                output_element_t(lower[0]), output_element_t(upper[0]),
+                output_element_t(lower[1]), output_element_t(upper[1]),
+                output_element_t(lower[2]), output_element_t(upper[2]),
+                output_element_t(lower[3]), output_element_t(upper[3]));
+
+  return (val - zero_mat) * scale;
 }
 #endif
 
 #if n_bits == 8
-// Dequantize 8-bit quantized B weights and store into tile_b [kTileN, kTileK] workgroup memory.
-// 256 threads load kTileN(64) x kTileK(32). 4 threads per N, 8 K elements per thread.
-// k_chunk_idx: which 8-element chunk of kTileK this thread handles (0..3).
-fn dequant_b_to_tile(n_base: u32, k_idx: u32, n_idx: u32, k_chunk_idx: u32) {
-    let global_n = n_base + n_idx;
-    if (global_n >= uniforms.N) {
-        return;
-    }
-    let k_offset = k_chunk_idx * 8;
-#if has_weight_idx
-#if has_weight_idx_indirect
-    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
-#else
-    let actual_weight_idx = uniforms.weight_idx;
-#endif
-    let weight_offset = actual_weight_idx * uniforms.K * uniforms.N;
-    let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / kQuantizationBlockSize);
-#else
-    const weight_offset : u32 = 0;
-    const scale_offset : u32 = 0;
-#endif
-    let packed_idx = u32((global_n * uniforms.K + k_idx + k_offset) / 8) + weight_offset / 8;
-    let scale_idx = (global_n * uniforms.K + k_idx + k_offset) / kQuantizationBlockSize + scale_offset;
-    let scale = f16(scales_b.getByOffset(scale_idx));
-    let zero = mm_read_zero(
-        global_n, (k_idx + k_offset) / kQuantizationBlockSize, uniforms.N, uniforms.zero_blocks_per_col);
-    let packed_weights = input_b.getByOffset(packed_idx);
-    let weights_lo = (vec4<f16>(unpack4xU8(packed_weights[0])) - vec4<f16>(zero)) * scale;
-    let weights_hi = (vec4<f16>(unpack4xU8(packed_weights[1])) - vec4<f16>(zero)) * scale;
-    let tile_base = n_idx * kTileK + k_offset;
-    tile_b[tile_base]     = weights_lo[0];
-    tile_b[tile_base + 1] = weights_lo[1];
-    tile_b[tile_base + 2] = weights_lo[2];
-    tile_b[tile_base + 3] = weights_lo[3];
-    tile_b[tile_base + 4] = weights_hi[0];
-    tile_b[tile_base + 5] = weights_hi[1];
-    tile_b[tile_base + 6] = weights_hi[2];
-    tile_b[tile_base + 7] = weights_hi[3];
+alias InputBPack = array<vec2<u32>, 4>;
+fn load_b(row : u32, block_idx : u32, weight_offset : u32) -> InputBPack {
+  let k_vec4_offset = block_idx * 2u;
+  if (row < uniforms.N && k_vec4_offset + 1u < uniforms.K / 16u) {
+    let k_vec4s = uniforms.K / 16u;
+    let offset = row * k_vec4s + k_vec4_offset + weight_offset;
+
+    // Natively read 32 bytes at once
+    let v0 = input_b.getByOffset(offset);
+    let v1 = input_b.getByOffset(offset + 1u);
+
+    return array<vec2<u32>, 4>(
+        v0.xy, v0.zw, v1.xy, v1.zw);
+  }
+  return InputBPack();
+}
+
+fn dequantize(packed_data : vec2<u32>,
+              zero_point : output_element_t,
+              scale : output_element_t) -> mat2x4<output_element_t> {
+  let lower : vec4<u32> = unpack4xU8(packed_data.x);
+  let upper : vec4<u32> = unpack4xU8(packed_data.y);
+
+  let zero_mat : mat2x4<output_element_t> = mat2x4<output_element_t>(
+                     zero_point, zero_point, zero_point, zero_point,
+                     zero_point, zero_point, zero_point, zero_point);
+
+  var val : mat2x4<output_element_t> = mat2x4<output_element_t>(
+                output_element_t(lower[0]), output_element_t(lower[1]),
+                output_element_t(lower[2]), output_element_t(lower[3]),
+                output_element_t(upper[0]), output_element_t(upper[1]),
+                output_element_t(upper[2]), output_element_t(upper[3]));
+
+  return (val - zero_mat) * scale;
 }
 #endif
 
+// --- Main Compute ---
+
 $MAIN {
-    let global_base_b = workgroup_id.x * kTileN;
-    let sg_idx = u32(local_idx / sg_size);
-    let sg_mat_count_k = uniforms.K / kSgMatK;
-    let num_tiles_m = (uniforms.M + kTileM - 1) / kTileM;
+  // Resolve the (possibly indirect) weight index once per workgroup, not once per K-tile iteration.
+  let scale_offset = get_scale_offset();
+#if n_bits == 4
+  let weight_offset = get_weight_offset() / 32u;
+#elif n_bits == 8
+  let weight_offset = get_weight_offset() / 16u;
+#else
+  let weight_offset = 0u;
+#endif
 
-    // Zero-initialized accumulator template (used to reset per M-tile iteration).
-    var sg_mat_zero: subgroup_matrix_result<f16, sg_mat_n, sg_mat_m>;
+  let m_tile = (workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile;
 
-    // Sequential M-loop: each workgroup processes a contiguous block of M-tiles.
-    let m_start = workgroup_id.y * uniforms.m_tiles_per_wg;
-    let m_end = min(m_start + uniforms.m_tiles_per_wg, num_tiles_m);
-    for (var m_tile: u32 = m_start; m_tile < m_end; m_tile++) {
-        let global_base_a = m_tile * kTileM;
-        let sg_mat_idx = (m_tile * kSgMatCountM + sg_idx) * sg_mat_count_k;
+  let global_base_m = m_tile * kTileM;
+  let global_base_n = (workgroup_idx % uniforms.num_N_tile) * kTileN;
 
-        var sg_mat_offset_a = sg_mat_idx * kSgMatSizeLeft;
+  let sg_idx = u32(local_idx / sg_size);
+  var sg_mat_offset_a = (m_tile * kSgMatCountM + sg_idx) * (uniforms.K / kSgMatDimK) * kSgMatLeftSize;
 
-        var sg_mat_c0 = sg_mat_zero;
-        var sg_mat_c1 = sg_mat_zero;
-        var sg_mat_c2 = sg_mat_zero;
-        var sg_mat_c3 = sg_mat_zero;
-        for (var k_idx: u32 = 0; k_idx < uniforms.K; k_idx += kTileK) {
-            // Load Phase
-            dequant_b_to_tile(global_base_b, k_idx, local_idx / 4, local_idx % 4);
-            workgroupBarrier();
+  var sg_mat_acc : array<SgMatResult, kSgMatCountN>;
+  for (var k_idx : u32 = 0; k_idx < uniforms.K; k_idx += kChunkSizeK) {
+    if (local_idx < kTileN) {
+      let global_n = global_base_n + local_idx;
+      let b_col = k_idx / kQuantizationBlockSize;
+      let tile_offset = local_idx * kChunkSizeK;
 
-            for (var sg_mat_k_idx: u32 = 0; sg_mat_k_idx < kTileK; sg_mat_k_idx += kSgMatK)
-            {
-                // Load A from global memory (prepacked layout).
-                // Syntax: subgroupMatrixLoad<type, majorness>(src_ptr, src_offset, src_stride)
-                var sg_mat_a0: subgroup_matrix_left<f16, sg_mat_k, sg_mat_m> =
-                    subgroupMatrixLoad<subgroup_matrix_left<f16, sg_mat_k, sg_mat_m>, row_major>(
-                        &input_a, sg_mat_offset_a, kSgMatK);
-                sg_mat_offset_a += kSgMatSizeLeft;
+      let b_data = load_b(global_n, b_col, weight_offset);
+      let scale = load_scale(global_n, b_col, scale_offset);
+      let zero_point = mm_read_zero(global_n, b_col, uniforms.N, uniforms.zero_blocks_per_col);
 
-                // Load B from shared local memory.
-                // tile_b [kTileN, kTileK] is stored as column major.
-                var sg_mat_b0: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-                    subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
-                        &tile_b, sg_mat_k_idx, kTileK);
-                var sg_mat_b1: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-                    subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
-                        &tile_b, sg_mat_k_idx + kSgMatStrideN, kTileK);
-                var sg_mat_b2: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-                    subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
-                        &tile_b, sg_mat_k_idx + 2 * kSgMatStrideN, kTileK);
-                var sg_mat_b3: subgroup_matrix_right<f16, sg_mat_n, sg_mat_k> =
-                    subgroupMatrixLoad<subgroup_matrix_right<f16, sg_mat_n, sg_mat_k>, col_major>(
-                        &tile_b, sg_mat_k_idx + 3 * kSgMatStrideN, kTileK);
-
-                // Compute Phase
-                // Syntax: subgroupMatrixMultiplyAccumulate left, right, accumulate -> accumulate
-                sg_mat_c0 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b0, sg_mat_c0);
-                sg_mat_c1 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b1, sg_mat_c1);
-                sg_mat_c2 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b2, sg_mat_c2);
-                sg_mat_c3 = subgroupMatrixMultiplyAccumulate(sg_mat_a0, sg_mat_b3, sg_mat_c3);
-            }
-            workgroupBarrier();
+      for (var pack_idx = 0u; pack_idx < kU32sPerBPack; pack_idx++) {
+        let b_dequantized = dequantize(b_data[pack_idx], zero_point, scale);
+        let tile_b_base = tile_offset + pack_idx * kValuesPerPack;
+        for (var elem_idx = 0u; elem_idx < kValuesPerPack; elem_idx++) {
+          tile_b[tile_b_base + elem_idx] = b_dequantized[elem_idx / 4u][elem_idx % 4u];
         }
+      }
+    }
+    workgroupBarrier();
 
-        // Write out
+    for (var sg_mat_k_idx = 0u; sg_mat_k_idx < kSgMatCountK; sg_mat_k_idx++) {
+      var sg_mat_a : SgMatLeft = subgroupMatrixLoad<SgMatLeft, row_major>(&input_a,
+                                                                          sg_mat_offset_a,
+                                                                          kSgMatDimK);
+      sg_mat_offset_a += kSgMatLeftSize;
+
+      var sg_mat_offset_b = sg_mat_k_idx * kSgMatDimK;
+      for (var sg_mat_n_idx = 0u; sg_mat_n_idx < kSgMatCountN; sg_mat_n_idx++) {
+        var sg_mat_b : SgMatRight = subgroupMatrixLoad<SgMatRight, col_major>(&tile_b,
+                                                                              sg_mat_offset_b,
+                                                                              kChunkSizeK);
+        sg_mat_offset_b += kSgMatStrideN;
+
+        sg_mat_acc[sg_mat_n_idx] = subgroupMatrixMultiplyAccumulate(sg_mat_a, sg_mat_b, sg_mat_acc[sg_mat_n_idx]);
+      }
+    }
+    workgroupBarrier();
+  }
+
+  // Write out
 #if has_bias
-        // Store results to scratch workgroup memory, then add bias and write to output.
-        // scratch layout: [kTileM, kTileN] row-major
-        let scratch_m_base = sg_idx * kSgMatM;
-        subgroupMatrixStore<row_major>(&scratch, scratch_m_base * kTileN, sg_mat_c0, kTileN);
-        subgroupMatrixStore<row_major>(&scratch, scratch_m_base * kTileN + kSgMatN, sg_mat_c1, kTileN);
-        subgroupMatrixStore<row_major>(&scratch, scratch_m_base * kTileN + 2 * kSgMatN, sg_mat_c2, kTileN);
-        subgroupMatrixStore<row_major>(&scratch, scratch_m_base * kTileN + 3 * kSgMatN, sg_mat_c3, kTileN);
-        workgroupBarrier();
+  let scratch_store_base = sg_idx * kSgMatDimM * kTileN;
+  for (var sg_mat_n_idx = 0u; sg_mat_n_idx < kSgMatCountN; sg_mat_n_idx++) {
+    subgroupMatrixStore<row_major>(&scratch,
+                                   scratch_store_base + sg_mat_n_idx * kSgMatDimN,
+                                   sg_mat_acc[sg_mat_n_idx],
+                                   kTileN);
+  }
+  workgroupBarrier();
 
-        // 256 threads write 64x64 = 4096 elements. Each thread handles 16 elements.
-        // Thread mapping: m = local_idx / 4, n_base = (local_idx % 4) * 16
-        let out_m = local_idx / 4;
-        let out_n_base = (local_idx % 4) * 16;
-        let global_m = global_base_a + out_m;
-        if (global_m < uniforms.M) {
-            let global_n_base = global_base_b + out_n_base;
-            let scratch_base = out_m * kTileN + out_n_base;
-            let out_base = global_m * uniforms.N + global_n_base;
+  let ThreadsPerMRow = workgroup_size_x / kTileM;  // Threads cooperatively writing each M row
+  let ElemsPerThreadRow = kTileN / ThreadsPerMRow;  // N-elements each thread writes per row
+  let out_m = local_idx / ThreadsPerMRow;
+  let out_n_base = (local_idx % ThreadsPerMRow) * ElemsPerThreadRow;
+  let out_global_m = global_base_m + out_m;
+  if (out_global_m < uniforms.M) {
+    let out_global_n_base = global_base_n + out_n_base;
+    let scratch_base = out_m * kTileN + out_n_base;
+    let out_base = out_global_m * uniforms.N + out_global_n_base;
 #if has_weight_idx_indirect
-            let bias_offset = weight_index_indirect[uniforms.weight_idx] * uniforms.N;
+    let bias_offset = weight_index_indirect.getByOffset(uniforms.weight_idx) * uniforms.N;
 #elif has_weight_idx
-            let bias_offset = uniforms.weight_idx * uniforms.N;
+    let bias_offset = uniforms.weight_idx * uniforms.N;
 #else
-            const bias_offset: u32 = 0;
+    const bias_offset : u32 = 0;
 #endif
-            for (var i: u32 = 0; i < 16; i++) {
-                if (global_n_base + i < uniforms.N) {
-                    let val = output_element_t(scratch[scratch_base + i])
-                        + bias[bias_offset + global_n_base + i];
-                    output.setByOffset(out_base + i, val);
-                }
-            }
-        }
+    for (var i : u32 = 0; i < ElemsPerThreadRow; i++) {
+      if (out_global_n_base + i < uniforms.N) {
+        let val = f16(scratch[scratch_base + i]) + bias[bias_offset + out_global_n_base + i];
+        output.setByOffset(out_base + i, val);
+      }
+    }
+  }
 #else
-        // A trailing M-tile may be partial (M is not required to be a multiple of
-        // kTileM). Writing it with subgroupMatrixStore straight to output would run
-        // past M. That's not just an out-of-bounds risk: a subgroupMatrixStore whose
-        // footprint leaves the buffer does not degrade to a per-element clamp or zero
-        // fill - Tint's robustness transform resets the whole store to offset 0 with
-        // the minimum stride, so it would silently overwrite a different, valid region
-        // of the buffer (e.g. row 0) instead.
+  // A trailing M-tile may be partial (M is not required to be a multiple of
+  // kTileM). Writing it with subgroupMatrixStore straight to output would run
+  // past M. That's not just an out-of-bounds risk: a subgroupMatrixStore whose
+  // footprint leaves the buffer does not degrade to a per-element clamp or zero
+  // fill - Tint's robustness transform resets the whole store to offset 0 with
+  // the minimum stride, so it would silently overwrite a different, valid region
+  // of the buffer (e.g. row 0) instead.
 #if has_tail_buffer
-        // Every tile - including the tail one - still writes via the same
-        // branch-free fast path (no per-element bounds check, no workgroup
-        // scratch); the tail tile targets a [kTileM, N] padded `tail_output`
-        // buffer instead of `output` (which is too short by this point).
-        // ApplySubgroupMatrixMatMulNBits crops the valid rows back into the real
-        // output with a follow-up copy dispatch.
-        if (global_base_a + kTileM <= uniforms.M) {
-            let sg_mat_offset_c = global_base_a * uniforms.N + global_base_b + sg_idx * kSgMatM * uniforms.N;
-            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
-            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
-            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
-            subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
-        } else {
-            let sg_mat_offset_c = global_base_b + sg_idx * kSgMatM * uniforms.N;
-            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
-            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
-            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
-            subgroupMatrixStore<row_major>(&tail_output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
-        }
+  // Every tile - including the tail one - still writes via the same
+  // branch-free fast path (no per-element bounds check, no workgroup
+  // scratch); the tail tile targets a [kTileM, N] padded `tail_output`
+  // buffer instead of `output` (which is too short by this point).
+  // ApplySubgroupMatrixMatMulNBits crops the valid rows back into the real
+  // output with a follow-up copy dispatch.
+  if (global_base_m + kTileM <= uniforms.M) {
+    let out_base = (global_base_m + sg_idx * kSgMatDimM) * uniforms.N + global_base_n;
+    for (var sg_mat_n_idx = 0u; sg_mat_n_idx < kSgMatCountN; sg_mat_n_idx++) {
+      subgroupMatrixStore<row_major>(&output,
+                                     out_base + sg_mat_n_idx * kSgMatDimN,
+                                     sg_mat_acc[sg_mat_n_idx],
+                                     uniforms.N);
+    }
+  } else {
+    let out_base = sg_idx * kSgMatDimM * uniforms.N + global_base_n;
+    for (var sg_mat_n_idx = 0u; sg_mat_n_idx < kSgMatCountN; sg_mat_n_idx++) {
+      subgroupMatrixStore<row_major>(&tail_output,
+                                     out_base + sg_mat_n_idx * kSgMatDimN,
+                                     sg_mat_acc[sg_mat_n_idx],
+                                     uniforms.N);
+    }
+  }
 #else
-        // ApplySubgroupMatrixMatMulNBits only sets has_tail_buffer when M isn't a
-        // multiple of kTileM, so here M is guaranteed aligned: every tile -
-        // including the last - is always fully in bounds.
-        let sg_mat_offset_c = global_base_a * uniforms.N + global_base_b + sg_idx * kSgMatM * uniforms.N;
-        subgroupMatrixStore<row_major>(&output, sg_mat_offset_c, sg_mat_c0, uniforms.N);
-        subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + kSgMatN, sg_mat_c1, uniforms.N);
-        subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 2 * kSgMatN, sg_mat_c2, uniforms.N);
-        subgroupMatrixStore<row_major>(&output, sg_mat_offset_c + 3 * kSgMatN, sg_mat_c3, uniforms.N);
+  // ApplySubgroupMatrixMatMulNBits only sets has_tail_buffer when M isn't a
+  // multiple of kTileM, so here M is guaranteed aligned: every tile -
+  // including the last - is always fully in bounds.
+  let out_base = (global_base_m + sg_idx * kSgMatDimM) * uniforms.N + global_base_n;
+  for (var sg_mat_n_idx = 0u; sg_mat_n_idx < kSgMatCountN; sg_mat_n_idx++) {
+    subgroupMatrixStore<row_major>(&output,
+                                   out_base + sg_mat_n_idx * kSgMatDimN,
+                                   sg_mat_acc[sg_mat_n_idx],
+                                   uniforms.N);
+  }
 #endif
 #endif
-    } // end M-tile loop
 }  // MAIN
