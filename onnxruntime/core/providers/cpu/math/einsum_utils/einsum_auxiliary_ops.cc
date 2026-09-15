@@ -3,6 +3,8 @@
 
 #include "einsum_auxiliary_ops.h"
 
+#include <algorithm>
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -59,6 +61,30 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
   return Status::OK();
 }
 
+template <>
+Status MatMul<BFloat16>(const BFloat16* input_1_data, const BFloat16* input_2_data,
+                        BFloat16* output_data, size_t left_stride, size_t right_stride,
+                        size_t output_stride, size_t num_batches, size_t M, size_t K, size_t N,
+                        concurrency::ThreadPool* /*tp*/, const void* /*mlas_backend_config*/,
+                        void* /*einsum_cuda_assets*/) {
+  for (size_t batch = 0; batch < num_batches; ++batch) {
+    const BFloat16* left = input_1_data + batch * left_stride;
+    const BFloat16* right = input_2_data + batch * right_stride;
+    BFloat16* output = output_data + batch * output_stride;
+    for (size_t m = 0; m < M; ++m) {
+      for (size_t n = 0; n < N; ++n) {
+        float sum = 0.0f;
+        for (size_t k = 0; k < K; ++k) {
+          sum += left[m * K + k].ToFloat() * right[k * N + n].ToFloat();
+        }
+        output[m * N + n] = BFloat16(sum);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 // CPU specific ReduceSum helper
 template <typename T>
 std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> reduce_axes,
@@ -68,6 +94,29 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
   return onnxruntime::ReduceSum<T>::Impl(input, reduce_axes,
                                          allocator, tp, keep_dims,
                                          input_shape_override);
+}
+
+template <>
+std::unique_ptr<Tensor> ReduceSum<BFloat16>(const Tensor& input,
+                                           gsl::span<const int64_t> reduce_axes,
+                                           bool keep_dims, AllocatorPtr allocator,
+                                           const TensorShape* input_shape_override,
+                                           concurrency::ThreadPool* tp,
+                                           void* /*einsum_cuda_assets*/) {
+  Tensor float_input(DataTypeImpl::GetType<float>(), input.Shape(), allocator);
+  const auto input_data = input.DataAsSpan<BFloat16>();
+  auto float_input_data = float_input.MutableDataAsSpan<float>();
+  std::transform(input_data.begin(), input_data.end(), float_input_data.begin(),
+                 [](BFloat16 value) { return value.ToFloat(); });
+
+  auto float_output = onnxruntime::ReduceSum<float>::Impl(
+      float_input, reduce_axes, allocator, tp, keep_dims, input_shape_override);
+  auto output = std::make_unique<Tensor>(DataTypeImpl::GetType<BFloat16>(), float_output->Shape(), allocator);
+  const auto float_output_data = float_output->DataAsSpan<float>();
+  auto output_data = output->MutableDataAsSpan<BFloat16>();
+  std::transform(float_output_data.begin(), float_output_data.end(), output_data.begin(),
+                 [](float value) { return BFloat16(value); });
+  return output;
 }
 // CPU specific Diagonal helper(s)
 static inline bool IsTransposeRequiredForDiagonal(int64_t dim_1, int64_t dim_2, int64_t rank) {
@@ -159,6 +208,11 @@ static std::unique_ptr<Tensor> DiagonalInnermostDims(const Tensor& input,
       DiagonalDataAssignment<double>(reinterpret_cast<const double*>(input.DataRaw()),
                                      reinterpret_cast<double*>(output->MutableDataRaw()),
                                      batch_size, base_stride, inner_stride);
+      break;
+    case 2:
+      DiagonalDataAssignment<BFloat16>(reinterpret_cast<const BFloat16*>(input.DataRaw()),
+                                       reinterpret_cast<BFloat16*>(output->MutableDataRaw()),
+                                       batch_size, base_stride, inner_stride);
       break;
 
     default:
