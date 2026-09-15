@@ -484,9 +484,8 @@ MlasHalfGemmKleidiAIPackBSize(
     size_t K
     );
 
-// Packs B into the native KleidiAI RHS-packed layout for the supported
-// halfgemm configuration only. This differs from the generic MLAS halfgemm
-// prepacked-B format produced by MlasHalfGemmPackB and
+// Packs B or its transpose into the native KleidiAI RHS-packed layout. This differs
+// from the generic MLAS halfgemm prepacked-B format produced by MlasHalfGemmPackB and
 // MlasHalfGemmConvertPackB, so generic MLAS prepacked weights may need to be
 // repacked into this layout before running the KleidiAI halfgemm path.
 // Unsupported transpose combinations return false/0 so the caller can fall

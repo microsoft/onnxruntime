@@ -85,6 +85,11 @@ class KernelRegistry {
     return kernel_creator_fn_map_;
   }
 
+  auto GetKernelCreateRange(std::string_view op_name, std::string_view domain,
+                            std::string_view provider) const {
+    return kernel_creator_fn_map_.equal_range(GetMapKey(op_name, domain, provider));
+  }
+
  private:
   // TryFindKernel implementation. Either kernel_type_str_resolver or type_constraints is provided.
   Status TryFindKernelImpl(const Node& node, ProviderType exec_provider,
