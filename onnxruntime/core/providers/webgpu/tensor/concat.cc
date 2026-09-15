@@ -192,7 +192,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     offsets.pop_back();
     sizes_in_concat_axis.pop_back();
 
-    program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis, components), ","))
+    program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis), ","))
         .AddOutputs({{prepare.output_tensor, ProgramTensorMetadataDependency::None, components}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .AddUniformVariables({gsl::span<const uint32_t>(offsets.data(), offsets.size()), gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()), output_size});

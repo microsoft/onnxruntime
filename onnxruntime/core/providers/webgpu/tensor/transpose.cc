@@ -224,7 +224,7 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
   TransposeProgram program{permutations, use_shared};
 
   program
-      .CacheHint(absl::StrJoin(permutations, "-"), components)
+      .CacheHint(absl::StrJoin(permutations, "-"))
       .AddInputs({{&input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, components}})
       .AddOutputs({{&output, ProgramTensorMetadataDependency::None, output_shape, components}})
       .AddUniformVariables({{output_size}});

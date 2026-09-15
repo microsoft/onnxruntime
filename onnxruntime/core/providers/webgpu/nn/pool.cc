@@ -360,8 +360,7 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   PoolProgram program{is_max_pool, is_nhwc, kernel_shape, is_float16, count_include_pad, use_parallel_reduction};
 
   program
-      .CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad, use_parallel_reduction,
-                 components)
+      .CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad, use_parallel_reduction)
       .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank, components}})
       .AddOutputs({{Y, ProgramTensorMetadataDependency::None, components}})
       .AddUniformVariables({output_size, kernel_size,
