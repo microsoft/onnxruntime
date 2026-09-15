@@ -489,6 +489,17 @@ Return Value:
 
 --*/
 {
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV) && \
+    !defined(FORCE_GENERIC_ALGORITHMS)
+    // Short rows do not amortize the dispatch and vector setup costs.
+    if (N >= 32 && (Activation->ActivationKind != MlasIdentityActivation || Bias != nullptr)) {
+        const auto activation_override = GetMlasPlatform().MlasActivationOverride;
+        if (activation_override != nullptr && activation_override(Activation, Buffer, Bias, M, N, ldc)) {
+            return;
+        }
+    }
+#endif
+
     switch (Activation->ActivationKind) {
 
         case MlasIdentityActivation:

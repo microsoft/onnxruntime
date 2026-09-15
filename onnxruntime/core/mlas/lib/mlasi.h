@@ -651,6 +651,18 @@ void
     size_t OutputCountRightPad
     );
 
+// Return false to request the generic fallback without modifying Buffer.
+typedef
+bool
+(MLASCALL MLAS_ACTIVATION_OVERRIDE)(
+    const MLAS_ACTIVATION* Activation,
+    float* Buffer,
+    const float* Bias,
+    size_t M,
+    size_t N,
+    size_t ldc
+    );
+
 typedef
 void
 (MLASCALL MLAS_COMPUTE_UNARY_FLOAT_KERNEL)(
@@ -1450,6 +1462,7 @@ MlasReorderOutputNchwBlock16Avx512F(
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+    MLAS_ACTIVATION_OVERRIDE MlasActivationRvv;
     MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelRvv;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelRvv;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelRvv;
@@ -1887,6 +1900,7 @@ struct MLAS_PLATFORM {
 #endif
 
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+    MLAS_ACTIVATION_OVERRIDE* MlasActivationOverride{nullptr};
     MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
