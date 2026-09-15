@@ -3,6 +3,7 @@
 
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "contrib_ops/webgpu/bert/causal_conv_with_state.h"
+#include "contrib_ops/webgpu/bert/varlen_causal_conv_with_state.h"
 #include "contrib_ops/webgpu/bert/engram_gate.h"
 #include "contrib_ops/webgpu/bert/ngram_hash_mapping.h"
 #include "contrib_ops/webgpu/bert/gated_add.h"
@@ -28,6 +29,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, Attention)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, BiasAdd)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, CausalConvWithState)>,
+    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, VarlenCausalConvWithState)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, BiasGelu)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, BiasSplitGelu)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kMSDomain, 1, FastGelu)>,
