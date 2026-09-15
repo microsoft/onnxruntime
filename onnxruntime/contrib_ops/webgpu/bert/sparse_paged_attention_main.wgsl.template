@@ -119,8 +119,7 @@ $MAIN {
 #if use_selected
     if (!is_local) {
       let selected_slot = candidate - u32(local_count);
-      logical_position = selected_indices.getByOffset(
-          token_idx * uniforms.max_selected_entries + selected_slot);
+      logical_position = selected_indices.getByOffset(token_idx * uniforms.max_selected_entries + selected_slot);
     }
 #endif
 
