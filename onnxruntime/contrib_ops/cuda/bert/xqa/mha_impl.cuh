@@ -495,7 +495,7 @@ __device__ inline void applyMaskFromInput(const Warp& warp, WarpAcc& acc, const 
 
             const bool begMaskFlag = ctaNeedBegMask ? (begMask & (1ULL << col)) : true;
 
-            acc(m, n)(i, j) = maskFlag && begMaskFlag && col < nbValidCols ? acc(m, n)(i, j) : safeInitRowMax;
+            acc(m, n)(i, j) = maskFlag && begMaskFlag && col < nbValidCols ? acc(m, n)(i, j) : SAFE_INIT_ROW_MAX;
           }
         }
       }
@@ -766,6 +766,7 @@ __device__ inline GemmOutRegTile loadGemmOutTile(const Warp& warp, const SharedM
 __device__ inline void copyOutputToGlobalMem(const Warp& warp, OutputHead* dst, uint32_t nbQHeads,
 #if SPEC_DEC
                                              uint32_t headGrpSize, uint32_t idxHeadGrpOffset, uint32_t nbValidHeadTokens,
+                                             uint32_t actualQSeqLen,
 #else
                                              uint32_t idxHeadGrp,
 #endif
@@ -773,6 +774,7 @@ __device__ inline void copyOutputToGlobalMem(const Warp& warp, OutputHead* dst, 
   static_assert(sizeof(PaddedInputHead) == grainBytes * SharedMem::XSmemBuffer::cols * gemm1WarpsPerGrp);
 #if SPEC_DEC
   static_assert(warpTile.y <= SharedMem::XSmemBuffer::rows);
+  unused(actualQSeqLen);
 #else
   static_assert(nbValidRows <= SharedMem::XSmemBuffer::rows);
 #endif
@@ -794,16 +796,17 @@ __device__ inline void copyOutputToGlobalMem(const Warp& warp, OutputHead* dst, 
 #endif
       break;
     }
-    assert(m < nbValidRows);
 #if SPEC_DEC
+    // m is a request-wide flattened (token, head) row, so it is not bounded by one tile's height.
     const uint32_t idxBeam = 0;
     const uint32_t idxInGrp = m;
     const uint32_t tokenIdx = idxInGrp / headGrpSize;
     const uint32_t headIdx = idxInGrp % headGrpSize;
     assert(idxBeam < beamWidth);
     const uint32_t idxHead = idxHeadGrpOffset + tokenIdx * nbQHeads + headIdx;
-    assert(idxHead < nbValidHeadTokens * nbQHeads);
+    assert(idxHead < actualQSeqLen * nbQHeads);
 #else
+    assert(m < nbValidRows);
     const uint32_t idxBeam = m / headGrpSize;
     const uint32_t idxInGrp = m % headGrpSize;
     assert(idxBeam < beamWidth);
@@ -1219,12 +1222,24 @@ __device__ inline ThrdRegRowMax mergeRowMax(
 }
 
 __device__ inline void addAttentionSinks(
-    ThrdRegRowMax& globalRowSum, const ThrdRegRowMax globalRowMax, const float* attentionSinks) {
+    ThrdRegRowMax& globalRowSum, const ThrdRegRowMax globalRowMax, const float* attentionSinks
+#if SPEC_DEC
+    ,
+    uint32_t rowOffset, uint32_t nbValidHeadTokens
+#endif
+) {
   for (uint32_t i = 0; i < globalRowSum.size; i++) {
     uint32_t srcOffset = warp_size * i + laneId();
+#if SPEC_DEC
+    // Rows are flattened (token, head) pairs, so every token reuses its own head's sink.
+    if (srcOffset < nbValidHeadTokens) {
+      globalRowSum[i] += expf(attentionSinks[(rowOffset + srcOffset) % headGrpSize] - globalRowMax[i]);
+    }
+#else
     if (srcOffset < headGrpSize) {
       globalRowSum[i] += expf(attentionSinks[srcOffset] - globalRowMax[i]);
     }
+#endif
   }
 }
 
@@ -1267,7 +1282,7 @@ CUBIN_EXPORT __global__
 #endif
 #endif
         const uint32_t batchSize,
-        // Device memory scalars, used only for int8/fp8 KV cache. K and V have independent scales:
+        // Device memory scalars for quantized KV cache. K and V have independent scales:
         // kCacheScale is folded into qkScale (applied to Q*K.T before softmax) and vCacheScale into
         // voScale (applied to the P*V accumulator). Both are read once per CTA, outside the K/V loop.
         // Either may be null, meaning "scale is 1": the caller has already folded a non-scalar
@@ -1283,7 +1298,12 @@ CUBIN_EXPORT __global__
   assert(!isMultiBlock || (semaphores != nullptr && scratch != nullptr));
 
   // gridDim: x - K/V sequence-dim split; y - number of K or V heads per token; z - number of requests
+#if SPEC_DEC
+  // In speculative mode gridDim.y also fans out over the token tiles of each head group.
+  assert(gridDim.z == batchSize && gridDim.y % nbKHeads == 0);
+#else
   assert(gridDim.z == batchSize && gridDim.y == nbKHeads);
+#endif
   extern __shared__ char smemByteBuf[];
   SharedMem& smem = *reinterpret_cast<SharedMem*>(&smemByteBuf[0]);
 
@@ -1292,6 +1312,9 @@ CUBIN_EXPORT __global__
   // Variable query sequence length support.
   const bool variableQSeqLen = qCuSeqLens != nullptr;
   const uint32_t actualQSeqLen = variableQSeqLen ? uint32_t(qCuSeqLens[idxReq + 1] - qCuSeqLens[idxReq]) : qSeqLen;
+  if (actualQSeqLen == 0) {
+    return;
+  }
   // Same as idxReq * qSeqLen if all sequences all the same.
   // Take different beams as different requests/sequences currently.
   const uint32_t reqSeqOffset = variableQSeqLen ? uint32_t(qCuSeqLens[idxReq]) : (qSeqLen * idxReq);
@@ -1429,9 +1452,15 @@ CUBIN_EXPORT __global__
   }
 #endif
 
-  const uint32_t cacheSeqLen = getCacheSeqLen<usePagedKVCache>(cacheList, idxReq);
+  const uint32_t cacheSeqLen = getCacheSeqLen<usePagedKVCache>(cacheList, idxReq)
+#if SPEC_DEC
+                               + (actualQSeqLen > 0 ? actualQSeqLen - 1 : 0)
+#endif
+      ;
 #if SLIDING_WINDOW && SPEC_DEC && !IS_SPEC_DEC_TREE
-  const uint32_t tok0SeqLen = cacheSeqLen - actualQSeqLen + 1 + idxHeadTokenInGrp;  // ctaTokOffset;
+  // Position of the request's first query token. applyMaskFromInput() adds the per-row query-token
+  // index (derived from the flattened row offset) on top of this, so no tile offset belongs here.
+  const uint32_t tok0SeqLen = cacheSeqLen - actualQSeqLen + 1;
   const int32_t tok0WinBeg = int32_t(tok0SeqLen) - int32_t(slidingWinSize);
   const uint32_t nbTotalSkipTokens = mha::max(0, tok0WinBeg);
 
@@ -1460,6 +1489,13 @@ CUBIN_EXPORT __global__
 
   const uint32_t seqStrideIters = nbSubSeqPerSeq;
   constexpr bool isKVCacheQuantized = (cacheElemSize < 2);
+#if defined(XQA_PAGED_INT4)
+  // INT4 dequantizes into FP16 shared memory, so cacheElemSize is 2 and isKVCacheQuantized is false,
+  // yet the packed codes still carry the caller's scalar dequant factor.
+  constexpr bool hasScalarCacheScale = true;
+#else
+  constexpr bool hasScalarCacheScale = isKVCacheQuantized;
+#endif
   const uint32_t seqIterInit = nbSkipLeadingTiles + idxSubSeqInSeq;
 #if BEAM_WIDTH > 1
   const uint32_t nbCtxCtaTiles = beamSearchParams.ctxLenList[idxReq * beamWidth] / ctaTile.x;
@@ -1473,7 +1509,7 @@ CUBIN_EXPORT __global__
   };
   if (warpIdx.z == 0) {
     // qkScale is applied onto Q*K.T before softmax. A null kCacheScale means the scale is already in Q.
-    const float qkScale = qScale * ((isKVCacheQuantized && kCacheScale != nullptr) ? kCacheScale[0] : 1.f);
+    const float qkScale = qScale * ((hasScalarCacheScale && kCacheScale != nullptr) ? kCacheScale[0] : 1.f);
     CircIdx<nbKBuffers> idxCurrSMemKBuf{nbKBuffers - 1};
     const auto getSMemKTile = [&](uint32_t idx) -> SharedMem::KSmemBuffer& { return smem.k[warpIdx.x][idx]; };
 #if BEAM_WIDTH > 1
@@ -1758,6 +1794,10 @@ CUBIN_EXPORT __global__
       smem.warpRowSum[warpIdx.y][warpIdx.x].storeFromReg<false>(warp, regRowSum);
       unused(xBar.produced.arrive());
     }
+#if defined(XQA_PAGED_INT4)
+    ldgsts::waitGroup<0>();
+    __syncthreads();
+#endif
   } else {
     assert(warpIdx.z == 1);
 #if CTA_ROW_MAX_BACKWARD_METHOD == 3
@@ -2162,12 +2202,17 @@ CUBIN_EXPORT __global__
     }
 
     // A null vCacheScale means the caller rescales the output itself (per-channel V scale).
-    float voScale = ((isKVCacheQuantized && vCacheScale != nullptr) ? vCacheScale[0] : 1.F);
+    float voScale = ((hasScalarCacheScale && vCacheScale != nullptr) ? vCacheScale[0] : 1.F);
     if (seqIterInit < nbSeqIters) {  // otherwise rcpRowSum will be NAN.
       // The attention sinks are moved to the multi-block reduction part if the multi-block is enabled.
       if (!isMultiBlock && attentionSinks != nullptr) {
         // Attention sinks are per head.
-        addAttentionSinks(globalRowSum, globalRowMax, attentionSinks + headGrpSize * idxHeadGrp);
+        addAttentionSinks(globalRowSum, globalRowMax, attentionSinks + headGrpSize * idxHeadGrp
+#if SPEC_DEC
+                          ,
+                          idxHeadTokenInGrp, nbValidHeadTokens
+#endif
+        );
       }
       const ThrdRegRowMax rcpRowSum = __frcp_rn(globalRowSum);
 #if LOW_PREC_OUTPUT
@@ -2177,6 +2222,10 @@ CUBIN_EXPORT __global__
     }
     const GemmOutRegTile outTile = toFp16(acc);
 
+#if defined(XQA_PAGED_INT4)
+    ldgsts::waitGroup<0>();
+    __syncwarp();
+#endif
     auto mergeAndSaveOutTile = [&](const GemmOutRegTile& tile, bool reorder) {
       if constexpr (gemm1NbWarpGrps == 1) {
         // swizzle in shared memory and write output global memory
@@ -2267,6 +2316,9 @@ CUBIN_EXPORT __global__
 
       // merge if we are the last CTA.
       const bool isLastCta = mbsmem.isLastCta;
+#if defined(XQA_PAGED_INT4)
+      __syncthreads();
+#endif
       if (isLastCta) {
         MultiBlockSMem::MBBuf& mbbuf = mbsmem.storage[warpIdx.y];
         SMemWarpRowMax& smemRowMax = reinterpret_cast<SMemWarpRowMax&>(smem);
@@ -2281,6 +2333,9 @@ CUBIN_EXPORT __global__
         // rescale and accumulate
         auto getTileBuf = [&](auto& buffers, uint32_t d) -> decltype(buffers[0][0][0])& { return buffers[warpGrpIdx][warpIdxInGrp][d]; };
         auto loadBufAsync = [&](uint32_t n) {
+#if defined(XQA_PAGED_INT4)
+          __syncwarp();
+#endif
           const uint32_t d = n / gemm1NbWarpGrps % nbTileBuffers;
           SharedMem::XSmemBuffer& dstTile = getTileBuf(mbbuf.tiles, d);
           SMemWarpRowMax& dstRowSum = getTileBuf(mbbuf.tileRowSums, d);
@@ -2305,6 +2360,9 @@ CUBIN_EXPORT __global__
           }
           ldgsts::commitGroup();
           ldgsts::waitGroup<1>();
+#if defined(XQA_PAGED_INT4)
+          __syncwarp();
+#endif
           const uint32_t d = n / gemm1NbWarpGrps % nbTileBuffers;
           WarpAcc tile = toWarpAcc(loadGemmOutTile(warp, mbbuf.tiles[warpGrpIdx][warpIdxInGrp][d]));
           const ThrdRegRowMax tileRowMax = getTileBuf(mbbuf.tileRowMax, d).loadToReg<false>(warp);
@@ -2340,7 +2398,12 @@ CUBIN_EXPORT __global__
         }
         if (attentionSinks != nullptr) {
           // Attention sinks are per head.
-          addAttentionSinks(mergedRowSum, mergedRowMax, attentionSinks + headGrpSize * idxHeadGrp);
+          addAttentionSinks(mergedRowSum, mergedRowMax, attentionSinks + headGrpSize * idxHeadGrp
+#if SPEC_DEC
+                            ,
+                            idxHeadTokenInGrp, nbValidHeadTokens
+#endif
+          );
         }
         __syncthreads();
         rescaleAcc(warp, sumAcc, fullRescaleMask, __frcp_rn(mergedRowSum));
@@ -2351,7 +2414,7 @@ CUBIN_EXPORT __global__
     if (warpGrpIdx == 0) {
 #if SPEC_DEC
       copyOutputToGlobalMem(warp, &output[reqSeqOffset * nbQHeads], nbQHeads, headGrpSize,
-                            (idxHeadGrp * headGrpSize), nbValidHeadTokens,
+                            (idxHeadGrp * headGrpSize), nbValidHeadTokens, actualQSeqLen,
                             uint2{warpTile.x * warpIdxInGrp, nbValidRows * warpIdx.y + idxHeadTokenInGrp}, *smemOutTile);
 #else
       copyOutputToGlobalMem(warp, &output[nbQHeads * beamWidth * idxReq], nbQHeads, idxHeadGrp,
@@ -2403,7 +2466,7 @@ CUBIN_EXPORT __global__ __launch_bounds__(256, nbCtaPerSM) void kernel_mha(
     const BeamSearchParams beamSearchParams,
 #endif
     const uint32_t batchSize,
-    // Device memory scalars, used only for int8/fp8 KV cache. See kernel_mha_impl.
+    // Device memory scalars for quantized KV cache. See kernel_mha_impl.
     const float* __restrict__ kCacheScale,
     const float* __restrict__ vCacheScale,
     uint32_t* __restrict__ semaphores = nullptr, void* __restrict__ scratch = nullptr) {
@@ -2484,8 +2547,8 @@ void launchMHA(const cudaDeviceProp& prop, uint32_t nbKHeads,
                const BeamSearchParams& beamSearchParams,
 #endif
                uint32_t batchSize,
-               // Device memory scalars, used only for int8/fp8 KV cache. K and V may have different
-               // scales; both are per-tensor (a single float each).
+               // Device memory scalars for quantized KV cache. K and V may have different scales;
+               // each is either a per-tensor scale or a normalizer for a folded per-channel scale.
                const float* __restrict__ kCacheScale,
                const float* __restrict__ vCacheScale,
 #if SPEC_DEC

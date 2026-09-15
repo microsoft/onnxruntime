@@ -1847,6 +1847,69 @@ TEST(PoolTest, GlobalAveragePool_Large_256) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
 }
 
+// The WebGPU EP runs a pool as a workgroup-cooperative reduction when the serial path would not
+// fill the device and the kernel window is large. Global pooling only reaches that path with a
+// single output element per channel, which leaves two things unexercised: an output index taken
+// from workgroup_idx, and a divisor that has to be reduced across the workgroup.
+static void RunWebGpuLargeKernelPoolTest(const char* op_type, int opset, bool is_max_pool) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  // A 12x12 window with pad 2 over a 24x24 input: kernel_size 144, output_size 578.
+  constexpr int64_t kChannels = 2, kSpatial = 24, kKernel = 12, kPad = 2;
+  constexpr int64_t kOutSpatial = kSpatial + 2 * kPad - kKernel + 1;
+
+  std::vector<float> x_vals(kChannels * kSpatial * kSpatial);
+  for (size_t i = 0; i < x_vals.size(); ++i) {
+    x_vals[i] = static_cast<float>(i) * 0.01f;
+  }
+
+  std::vector<float> expected_vals(kChannels * kOutSpatial * kOutSpatial);
+  for (int64_t c = 0; c < kChannels; ++c) {
+    for (int64_t oh = 0; oh < kOutSpatial; ++oh) {
+      for (int64_t ow = 0; ow < kOutSpatial; ++ow) {
+        float acc = is_max_pool ? std::numeric_limits<float>::lowest() : 0.0f;
+        int64_t count = 0;
+        for (int64_t kh = 0; kh < kKernel; ++kh) {
+          for (int64_t kw = 0; kw < kKernel; ++kw) {
+            const int64_t ih = oh + kh - kPad;
+            const int64_t iw = ow + kw - kPad;
+            if (ih < 0 || ih >= kSpatial || iw < 0 || iw >= kSpatial) {
+              continue;
+            }
+            const float v = x_vals[static_cast<size_t>((c * kSpatial + ih) * kSpatial + iw)];
+            acc = is_max_pool ? (v > acc ? v : acc) : acc + v;
+            ++count;
+          }
+        }
+        expected_vals[static_cast<size_t>((c * kOutSpatial + oh) * kOutSpatial + ow)] =
+            is_max_pool ? acc : acc / static_cast<float>(count);
+      }
+    }
+  }
+
+  OpTester test(op_type, opset);
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{kKernel, kKernel});
+  test.AddAttribute("pads", std::vector<int64_t>{kPad, kPad, kPad, kPad});
+  test.AddInput<float>("X", {1, kChannels, kSpatial, kSpatial}, x_vals);
+  test.AddOutput<float>("Y", {1, kChannels, kOutSpatial, kOutSpatial}, expected_vals,
+                        /*sort_output=*/false, /*rel_error=*/1e-3f, /*abs_error=*/1e-2f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(PoolTest, AveragePool_LargeKernelMultiElementOutput_WebGpu) {
+  RunWebGpuLargeKernelPoolTest("AveragePool", 11, /*is_max_pool=*/false);
+}
+
+TEST(PoolTest, MaxPool_LargeKernelMultiElementOutput_WebGpu) {
+  RunWebGpuLargeKernelPoolTest("MaxPool", 12, /*is_max_pool=*/true);
+}
+
 TEST(PoolTest, LpPool) {
   OpTester test("LpPool");
 
@@ -2519,6 +2582,38 @@ TEST(PoolTest, MaxPoolDimWithZeroForN) {
 // Graph::Resolve() and reach kernel construction where our ORT_ENFORCE checks fire.
 // Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
 // different error messages.
+TEST(PoolTest, MaxPool_NegativePad) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, -1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 3});
+
+  test.AddInput<float>("X", {1, 1, 1, 4}, {1.0f, 2.0f, 3.0f, 4.0f});
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Pad values must be non-negative",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(PoolTest, MlasPool_NegativePad) {
+  const int64_t input_shape[] = {1, 1, 1, 4};
+  const int64_t kernel_shape[] = {1, 3};
+  const int64_t pads[] = {0, 0, 0, -1};
+  const int64_t strides[] = {1, 1};
+  const int64_t output_shape[] = {1, 1, 1, 1};
+  const float input[] = {1.0f, 2.0f, 3.0f, 4.0f};
+  float output[1];
+
+  EXPECT_THROW(MlasPool(MlasMaximumPooling, 2, input_shape, kernel_shape, pads, strides,
+                        output_shape, input, output, nullptr),
+               std::invalid_argument);
+}
+#endif
+
 TEST(PoolTest, MaxPool_ZeroStride) {
   OpTester test("MaxPool");
   test.AddShapeToTensorData(false);

@@ -52,16 +52,15 @@ void AppendTensorInfo(OStringStream& ss,
 
 std::string CalculateProgramCacheKey(const ProgramBase& program,
                                      std::span<uint32_t> inputs_segments,
-                                     std::span<uint32_t> outputs_segments,
-                                     bool is_1d_dispatch) {
+                                     std::span<uint32_t> outputs_segments) {
   SS(ss, kStringInitialSizeCacheKey);
 
   // final key format:
-  // <KEY>=<PROGRAM_NAME>[<CUSTOM_CACHE_HINT>]:<WORKGROUP_SIZE>:<DISPATCH_FLAG>:<UNIFORMS>:<INPUTS_INFO>
+  // <KEY>=<PROGRAM_NAME>[<CUSTOM_CACHE_HINT>]:<WORKGROUP_SIZE>:<SUBGROUP_SIZE>:<UNIFORMS>:<INPUTS_INFO>
   //
   // <CUSTOM_CACHE_HINT> = <HINT_0>|<HINT_1>|...
-  // <WORKGROUP_SIZE>    = <X_IF_OVERRIDED>,<Y_IF_OVERRIDED>,<Z_IF_OVERRIDED>
-  // <DISPATCH_FLAG>     = <!IS_1D_DISPATCH>
+  // <WORKGROUP_SIZE>    = <X_IF_OVERRIDDEN>,<Y_IF_OVERRIDDEN>,<Z_IF_OVERRIDDEN>
+  // <SUBGROUP_SIZE>     = <SUBGROUP_SIZE_IF_OVERRIDDEN>
   // <UNIFORMS>          = <UNIFORMS_INFO_0>|<UNIFORMS_INFO_1>|...
   // <UNIFORMS_INFO_i>   = <UNIFORM_LENGTH>
   // <INPUTS_INFO>       = <INPUTS_INFO_0>|<INPUTS_INFO_1>|...
@@ -91,7 +90,11 @@ std::string CalculateProgramCacheKey(const ProgramBase& program,
     }
   }
 
-  ss << ":" D("DispatchDim=") << (is_1d_dispatch ? "1" : "3");
+  // append the requested subgroup size (subgroup-size-control) if any
+  if (auto subgroup_size = program.SubgroupSize(); subgroup_size != 0) {
+    ss << ":" D("SubgroupSize=") << subgroup_size;
+  }
+
   ss << ":" D("UniformSizes=");
   bool first = true;
   for (const auto& uniform : program.UniformVariables()) {

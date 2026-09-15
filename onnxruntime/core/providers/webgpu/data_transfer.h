@@ -33,6 +33,10 @@ class DataTransfer : public IDataTransfer {
   DataTransfer(const BufferManager& buffer_manager) : impl_{buffer_manager} {};
   ~DataTransfer() {};
 
+  // Device-compatibility half of CanCopy, split out because it needs no BufferManager and so can
+  // be tested without a live device.
+  static bool IsSupportedDevicePair(const OrtDevice& src_device, const OrtDevice& dst_device);
+
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;

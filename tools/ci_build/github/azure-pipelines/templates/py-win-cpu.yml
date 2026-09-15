@@ -25,11 +25,9 @@ jobs:
 - job: Windows_py_Wheels_${{parameters.architecture}}
   ${{ if eq(parameters.architecture, 'arm64') }}:
     pool:
-      name: 'onnxruntime-qnn-windows-vs-2022-arm64'
+      name: onnxruntime-medium-arm64-scus
       os: windows
       hostArchitecture: Arm64
-      demands:
-        - Agent.Version -equals 4.264.2
   ${{ else }}:
     pool:
       name: 'onnxruntime-Win-CPU-VS2022-Latest'
@@ -74,9 +72,9 @@ jobs:
     clean: all
 
   steps:
-  - checkout: self
-    clean: true
-    submodules: recursive
+  - template: jobs/checkout-and-git-redirect.yml
+    parameters:
+      submodules: recursive
 
   - template: setup-build-tools.yml
     parameters:

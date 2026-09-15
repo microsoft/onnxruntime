@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(__wasm__)
-
 #include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_tiling_selector.h"
 
 #include <cstddef>
@@ -14,7 +12,7 @@
 
 #include "core/common/narrow.h"
 #include "core/providers/webgpu/compute_context.h"
-#include "core/providers/webgpu/math/subgroup_matrix_matmul.h"
+#include "core/providers/webgpu/math/subgroup_matrix_tiling.h"
 #include "core/providers/webgpu/vendor/intel/intel_device_info.h"
 
 // Pretuned tile + split-K table baked into the build; consulted before the
@@ -217,5 +215,3 @@ SubgroupMatrixTilingSelector CreateSubgroupMatrixTilingSelector(
 }  // namespace intel
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)

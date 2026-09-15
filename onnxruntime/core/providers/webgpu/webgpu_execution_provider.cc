@@ -604,6 +604,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
+      enable_matmul_fp32_accumulation_{config.enable_matmul_fp32_accumulation},
       prepack_allocator_{CreateWebGpuAllocator(
           /*device_free=*/!context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
@@ -631,7 +632,8 @@ std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
       // default allocator
       CreateWebGpuAllocator(
           device_free,
-          [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false),
+          [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false,
+          [this]() { return !IsRunActive(); }),
   };
 }
 
@@ -853,10 +855,13 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     }
   }
 
+  run_active_.store(true);
   return Status::OK();
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  run_active_.store(false);
+
   // When capturing, flushing creates the replay-ready CapturedCommandInfo entries before
   // CaptureEnd() detaches their external storage.
   Status flush_status = context_.Flush(BufferManager());

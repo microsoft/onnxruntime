@@ -1,12 +1,30 @@
 # Agent Instructions for ONNX Runtime
 
+This file contains repository-wide guidance for coding agents. See
+[Extending Agent Coding Guidance](docs/Agent_Coding_Guidance.md) when adding or updating guidance.
+
+## Path-Scoped Instructions
+
+Before implementing or reviewing changes, inspect `.github/instructions/**/*.instructions.md` and parse each file's
+`applyTo` scope. Apply every instruction whose scope matches any target or changed path. Unless explicitly stated
+otherwise, matching instructions apply to both implementation and review.
+
+## Agent Skills
+
+Repository skills are available in [`.github/skills`](.github/skills/). Load each skill whose description matches the
+requested task, subsystem, or behavior.
+
+For code reviews, follow the `/code-review` skill in addition to relevant domain skills and matching path-scoped
+instructions.
+
 ## Build, Test, and Lint
 
-See the `/ort-build`, `/ort-test`, and `/ort-lint` skills (in `.agents/skills/`) for detailed instructions.
+See the `/ort-build`, `/ort-test`, and `/ort-lint` skills for detailed instructions.
 
 ## CI
 
-See the `/ort-ci` skill (in `.agents/skills/`) for triggering, re-running, and unblocking CI checks on a pull request (GitHub Actions, Azure Pipelines, `Python format`, and `license/cla`).
+See the `/ort-ci` skill for triggering, re-running, and unblocking CI checks on a pull request (GitHub Actions, Azure
+Pipelines, `Python format`, and `license/cla`).
 
 ## Architecture Overview
 
@@ -33,6 +51,14 @@ Training-specific code (gradient ops, loss functions, optimizers, `TrainingSessi
 ### Language bindings
 
 `csharp/`, `java/`, `js/`, `objectivec/`, `rust/` — each wraps the C API (`include/onnxruntime/core/session/onnxruntime_c_api.h`).
+
+## General Code Conventions
+
+### Code Comments
+
+Keep code comments concise. Add a comment only when it explains rationale, an invariant, a constraint, or subtle behavior
+that is not clear from the immediate context. Do not narrate obvious code or document the sequence of approaches taken
+to reach the current implementation; that history belongs in the pull request or commit message when relevant.
 
 ## C++ Conventions
 
