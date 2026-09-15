@@ -1203,11 +1203,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   using NodeReplacementCallback =
       std::function<void(const Graph&, gsl::span<const NodeIndex>, NodeIndex)>;
+  using NodeRemovalCallback =
+      std::function<void(const Graph&, gsl::span<const NodeIndex>)>;
 
   void SetNodeReplacementCallback(NodeReplacementCallback callback);
   void NotifyNodeReplacement(
       gsl::span<const NodeIndex> source_node_indices,
       NodeIndex destination_node_index) const;
+  void SetNodeRemovalCallback(NodeRemovalCallback callback);
+  void NotifyNodesRemoved(gsl::span<const NodeIndex> node_indices) const;
 
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
@@ -2157,6 +2161,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   NodeReplacementCallback node_replacement_callback_;
+  NodeRemovalCallback node_removal_callback_;
 #endif
 
   // NodeArgs that come from outer scope. Used when building a graph so that

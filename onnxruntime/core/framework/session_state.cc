@@ -1856,6 +1856,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     size_t missing_reservation = 0;
     size_t missing_declaration = 0;
     size_t orphaned_reservations = 0;
+    size_t orphaned_workspace_reservations = 0;
     SafeInt<size_t> level2_excess_bytes = 0;
     SafeInt<size_t> reservation_excess_bytes = 0;
     SafeInt<size_t> orphaned_reservation_bytes = 0;
@@ -1946,17 +1947,20 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         if (graph_.GetNode(node_index) == nullptr) {
           ++orphaned_reservations;
           orphaned_reservation_bytes += reservation.bytes;
+          if (reservation.bytes > 0) {
+            ++orphaned_workspace_reservations;
+          }
         }
       }
     }
 
     const bool strict_reservation_ownership_failed =
         strict_workspace_verification &&
-        orphaned_reservations > 0;
+        orphaned_workspace_reservations > 0;
     if (strict_reservation_ownership_failed) {
       LOGS(logger_, WARNING)
-          << "Level-2 workspace verification found " << orphaned_reservations
-          << " reservation(s) for removed nodes";
+          << "Level-2 workspace verification found " << orphaned_workspace_reservations
+          << " nonzero reservation(s) for removed nodes";
     }
 
     if (nodes_with_workspace > 0 || missing_declaration > 0 || orphaned_reservations > 0) {
@@ -1972,6 +1976,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                           << ", missing reservation=" << missing_reservation
                           << ", missing declaration=" << missing_declaration
                           << ", orphaned reservation=" << orphaned_reservations
+                          << ", orphaned nonzero reservation=" << orphaned_workspace_reservations
                           << ", Level-2 excess=" << static_cast<size_t>(level2_excess_bytes) << " bytes"
                           << ", reservation excess=" << static_cast<size_t>(reservation_excess_bytes) << " bytes"
                           << ", orphaned reservation bytes="
@@ -1981,7 +1986,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         strict_verification_failed || strict_reservation_ownership_failed,
         "Level-2 workspace verification failed: one or more declarations exceed "
         "the workspace reserved during graph partitioning, or a post-partition graph transformation "
-        "orphaned a workspace reservation.");
+        "orphaned a nonzero workspace reservation.");
   }
 #endif
 

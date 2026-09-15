@@ -494,13 +494,13 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   return &node_arg;
 }
 
-static void CreateEmbedLayernormNode(Graph& graph,
-                                     NodeArg* input_ids,
-                                     NodeArg* segment_ids,
-                                     NodeArg* word_embedding,
-                                     NodeArg* position_embedding,
-                                     NodeArg* segment_embedding,
-                                     Node& layer_norm_node) {
+static Node& CreateEmbedLayernormNode(Graph& graph,
+                                      NodeArg* input_ids,
+                                      NodeArg* segment_ids,
+                                      NodeArg* word_embedding,
+                                      NodeArg* position_embedding,
+                                      NodeArg* segment_embedding,
+                                      Node& layer_norm_node) {
   // Cast input_ids and segment_ids to int32 if needed.
   input_ids = CastToInt32(graph, input_ids, layer_norm_node);
   if (segment_ids != nullptr && segment_embedding != nullptr) {
@@ -543,6 +543,7 @@ static void CreateEmbedLayernormNode(Graph& graph,
 
   // Assign provider to this new node. Provider should be same as the provider for old node.
   embed_layer_norm_node.SetExecutionProviderType(layer_norm_node.GetExecutionProviderType());
+  return embed_layer_norm_node;
 }
 
 static bool FuseSubGraph(Graph& graph,
@@ -693,10 +694,12 @@ static bool FuseSubGraph(Graph& graph,
     return false;
   }
 
-  CreateEmbedLayernormNode(graph, input_ids, segment_ids, word_embedding, position_embedding, segment_embedding,
-                           layer_norm_node);
+  Node& embed_layer_norm_node =
+      CreateEmbedLayernormNode(graph, input_ids, segment_ids, word_embedding, position_embedding, segment_embedding,
+                               layer_norm_node);
 
   if (!nodes_to_remove.empty()) {
+    graph.NotifyNodeReplacement(nodes_to_remove, embed_layer_norm_node.Index());
     graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
   }
 
@@ -709,6 +712,7 @@ static bool FuseSubGraph(Graph& graph,
   nodes_to_remove.push_back(layer_norm_add_node.Index());
   nodes_to_remove.push_back(layer_norm_node.Index());
 
+  graph.NotifyNodeReplacement(nodes_to_remove, embed_layer_norm_node.Index());
   for (const NodeIndex index : nodes_to_remove) {
     Node* node = graph.GetNode(index);
     graph_utils::RemoveNodeOutputEdges(graph, *node);
@@ -789,10 +793,12 @@ static bool FuseSubGraphDistilBert(Graph& graph,
     return false;
   }
 
-  CreateEmbedLayernormNode(graph, input_ids, nullptr, word_embedding, position_embedding, nullptr,
-                           layer_norm_node);
+  Node& embed_layer_norm_node =
+      CreateEmbedLayernormNode(graph, input_ids, nullptr, word_embedding, position_embedding, nullptr,
+                               layer_norm_node);
 
   if (!nodes_to_remove.empty()) {
+    graph.NotifyNodeReplacement(nodes_to_remove, embed_layer_norm_node.Index());
     graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
   }
 
@@ -803,6 +809,7 @@ static bool FuseSubGraphDistilBert(Graph& graph,
 
   nodes_to_remove.push_back(layer_norm_node.Index());
 
+  graph.NotifyNodeReplacement(nodes_to_remove, embed_layer_norm_node.Index());
   for (const NodeIndex index : nodes_to_remove) {
     Node* node = graph.GetNode(index);
     graph_utils::RemoveNodeOutputEdges(graph, *node);

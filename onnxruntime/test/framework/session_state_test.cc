@@ -179,7 +179,8 @@ static Status FinalizeWorkspaceVerificationTestSession(
     std::optional<size_t> reservation_bytes, bool strict_verification = true,
     WorkspaceVerificationMutation mutation = WorkspaceVerificationMutation::kNone,
     bool track_replacement_reservation = true,
-    bool add_orphaned_reservation = false) {
+    std::optional<size_t> orphaned_reservation_bytes = std::nullopt,
+    bool discard_orphaned_reservation = false) {
   Model model("workspace_verification", false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
 
@@ -195,13 +196,31 @@ static Status FinalizeWorkspaceVerificationTestSession(
         node.Index(),
         WorkspaceEstimateSelection{*reservation_bytes, WorkspaceEstimateSource::kEstimator});
   }
-  if (add_orphaned_reservation) {
+  if (orphaned_reservation_bytes.has_value()) {
     Node& removed_node =
         graph.AddNode("removed_workspace_node", "WorkspaceVerificationTestOp", "", {}, {});
+    const NodeIndex removed_node_index = removed_node.Index();
     reservations[&graph].insert_or_assign(
-        removed_node.Index(),
-        WorkspaceEstimateSelection{1, WorkspaceEstimateSource::kEstimator});
-    graph.RemoveNode(removed_node.Index());
+        removed_node_index,
+        WorkspaceEstimateSelection{*orphaned_reservation_bytes, WorkspaceEstimateSource::kEstimator});
+    if (discard_orphaned_reservation) {
+      graph.SetNodeRemovalCallback(
+          [&reservations](const Graph& modified_graph,
+                          gsl::span<const NodeIndex> node_indices) {
+            auto graph_it = reservations.find(&modified_graph);
+            if (graph_it == reservations.end()) {
+              return;
+            }
+            for (const NodeIndex node_index : node_indices) {
+              graph_it->second.erase(node_index);
+            }
+          });
+    }
+    graph.RemoveNode(removed_node_index);
+    if (discard_orphaned_reservation) {
+      graph.NotifyNodesRemoved(gsl::span<const NodeIndex>{&removed_node_index, 1});
+      graph.SetNodeRemovalCallback({});
+    }
   }
 
   if (mutation != WorkspaceVerificationMutation::kNone) {
@@ -368,8 +387,18 @@ TEST(SessionStateTest, StrictWorkspaceVerificationRejectsUntrackedReplacement) {
 TEST(SessionStateTest, StrictWorkspaceVerificationRejectsOrphanedReservationWithoutMissingReservation) {
   EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
       FinalizeWorkspaceVerificationTestSession(
-          size_t{128}, true, WorkspaceVerificationMutation::kNone, true, true),
+          size_t{128}, true, WorkspaceVerificationMutation::kNone, true, size_t{1}),
       "post-partition graph transformation");
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationAllowsOrphanedZeroByteReservation) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, WorkspaceVerificationMutation::kNone, true, size_t{0}));
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationAllowsIntentionalReservationRemoval) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, WorkspaceVerificationMutation::kNone, true, size_t{128}, true));
 }
 
 class SessionStateAddGetKernelTest : public testing::TestWithParam<int> {};

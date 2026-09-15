@@ -303,6 +303,7 @@ static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
 
 /** Removes a node with a single incoming node and connects the incoming node with the output node/s.*/
 static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node) {
+  const NodeIndex node_index = node.Index();
   // Store info for input and output edges.
   std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
 
@@ -322,7 +323,8 @@ static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node)
     ReplaceDownstreamNodeInput(graph, node, src_idx, incoming_node, input_edge.GetSrcArgIndex());
   }
 
-  graph.RemoveNode(node.Index());
+  graph.RemoveNode(node_index);
+  graph.NotifyNodesRemoved(gsl::span<const NodeIndex>{&node_index, 1});
 
   return true;
 }
@@ -849,12 +851,14 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
 }
 
 bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement) {
+  const NodeIndex node_index = node.Index();
   // We have to remove the output edges before we create replacement ones, so save the current output edge information
   std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
 
   // Remove the output edges of the node and then the node (this will remove any input edges).
   RemoveNodeOutputEdges(graph, node);
-  graph.RemoveNode(node.Index());
+  graph.RemoveNode(node_index);
+  graph.NotifyNodesRemoved(gsl::span<const NodeIndex>{&node_index, 1});
 
   // Re-create the output edges using 'replacement' as the source NodeArg (input) to the destination node/s
   for (auto& output_edge : output_edges) {

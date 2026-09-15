@@ -1856,8 +1856,27 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
               graph_it->second, source_node_indices, destination_node_index);
         }
       });
-  auto clear_node_replacement_callback =
-      gsl::finally([&graph]() { graph.SetNodeReplacementCallback({}); });
+  graph.SetNodeRemovalCallback(
+      [&workspace_reservations](const Graph& modified_graph,
+                                gsl::span<const NodeIndex> node_indices) {
+        auto graph_it = workspace_reservations.find(&modified_graph);
+        if (graph_it == workspace_reservations.end()) {
+          return;
+        }
+
+        for (const NodeIndex node_index : node_indices) {
+          graph_it->second.erase(node_index);
+        }
+
+        if (graph_it->second.empty()) {
+          workspace_reservations.erase(graph_it);
+        }
+      });
+  auto clear_node_mutation_callbacks =
+      gsl::finally([&graph]() {
+        graph.SetNodeReplacementCallback({});
+        graph.SetNodeRemovalCallback({});
+      });
 
 #if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
   // an EP that prefers BNHS is expected to fuse the Transpose nodes inserted above into its GQA

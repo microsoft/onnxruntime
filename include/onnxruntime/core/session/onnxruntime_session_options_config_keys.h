@@ -482,11 +482,11 @@ static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.n
 static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape_override";
 
 /// Controls whether a Level-2 workspace declaration larger than the workspace reservation selected during
-/// partitioning, or a reservation is orphaned by a post-partition graph mutation. The default value is "0",
-/// which logs a warning and retains existing runtime allocation behavior. Nodes without a partition-time
-/// reservation remain diagnostic only. Set to "1" for strict constrained-memory validation. Strict verification
-/// is not supported when loading an ORT format model because partition-time workspace reservations are not
-/// serialized in the model.
+/// partitioning, or a nonzero reservation is orphaned by a post-partition graph mutation. The default value is
+/// "0", which logs a warning and retains existing runtime allocation behavior. Nodes without a partition-time
+/// reservation and orphaned zero-byte reservations remain diagnostic only. Set to "1" for strict constrained-memory
+/// validation. Strict verification is not supported when loading an ORT format model because partition-time
+/// workspace reservations are not serialized in the model.
 static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
     "session.strict_workspace_verification";
 

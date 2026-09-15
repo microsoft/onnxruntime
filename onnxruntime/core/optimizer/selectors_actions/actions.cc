@@ -31,25 +31,33 @@ bool CanSafelyRemoveNode(const Node& node_to_remove, const InlinedHashSet<const 
 }
 
 // remove nodes if it is 'safe' to do so according to the checks in CanSafelyRemoveNode.
-void SafelyRemoveNodes(Graph& graph, gsl::span<Node* const> nodes_to_remove, const Node* ignore_target) {
+InlinedVector<NodeIndex> SafelyRemoveNodes(
+    Graph& graph, gsl::span<Node* const> nodes_to_remove, const Node* ignore_target) {
   InlinedHashSet<const Node*> removal_set;
   removal_set.reserve(nodes_to_remove.size());
   removal_set.insert(nodes_to_remove.begin(), nodes_to_remove.end());
 
+  InlinedVector<NodeIndex> removed_node_indices;
   for (Node* node : nodes_to_remove) {
     if (node && node != ignore_target && CanSafelyRemoveNode(*node, removal_set)) {
       // TODO: It's slightly insane we don't support optionally removing the output edges as part of Graph::RemoveNode
       // but to make that change we need to validate a lot of existing code
+      const NodeIndex node_index = node->Index();
       graph_utils::RemoveNodeOutputEdges(graph, *node);
-      graph.RemoveNode(node->Index());
+      if (graph.RemoveNode(node_index)) {
+        removed_node_indices.push_back(node_index);
+      }
     }
   }
+  return removed_node_indices;
 }
 }  // namespace
 
 Status RemoveNodes::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   Node* ignore_target = preserve_target_node_ ? &selected_nodes.Target() : nullptr;
-  SafelyRemoveNodes(graph, selected_nodes.AllNodes(), ignore_target);
+  const auto removed_node_indices =
+      SafelyRemoveNodes(graph, selected_nodes.AllNodes(), ignore_target);
+  graph.NotifyNodesRemoved(removed_node_indices);
 
   return Status::OK();
 }
@@ -59,7 +67,10 @@ Status MergeIntoTarget::Run(Graph& graph, const NodesToOptimize& selected_nodes)
   ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, selected_nodes.Target(), ValueMoves(runtime_state),
                                       /* only_update_dest_definitions */ false));
 
-  return node_remover_.Run(graph, selected_nodes);
+  const auto removed_node_indices =
+      SafelyRemoveNodes(graph, selected_nodes.AllNodes(), &selected_nodes.Target());
+  graph.NotifyNodeReplacement(removed_node_indices, selected_nodes.Target().Index());
+  return Status::OK();
 }
 
 // adds a replacement node to the graph
@@ -106,13 +117,6 @@ static Status CreateReplacementNode(Graph& graph,
 
 Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   const RuntimeState runtime_state{graph, selected_nodes};
-  InlinedVector<NodeIndex> selected_node_indices;
-  for (const Node* node : selected_nodes.AllNodes()) {
-    if (node != nullptr) {
-      selected_node_indices.push_back(node->Index());
-    }
-  }
-
   Node* replacement{};
   ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
                                             OpType(runtime_state),
@@ -121,15 +125,9 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) 
                                             ValueMoves(runtime_state),
                                             /* only_update_dest_definitions */ false, &replacement));
   ORT_RETURN_IF_ERROR(ProcessNewNode(graph, selected_nodes, *replacement));
-  ORT_RETURN_IF_ERROR(node_remover_.Run(graph, selected_nodes));
-
-  InlinedVector<NodeIndex> removed_node_indices;
-  for (NodeIndex node_index : selected_node_indices) {
-    if (graph.GetNode(node_index) == nullptr) {
-      removed_node_indices.push_back(node_index);
-    }
-  }
-  graph.NotifyNodeReplacement(gsl::make_span(removed_node_indices), replacement->Index());
+  const auto removed_node_indices =
+      SafelyRemoveNodes(graph, selected_nodes.AllNodes(), nullptr);
+  graph.NotifyNodeReplacement(removed_node_indices, replacement->Index());
   return Status::OK();
 }
 

@@ -651,6 +651,7 @@ static bool TryFuseMobileClipMHA(Node& qkv_matmul,
     nodes_to_remove.push_back(proj_gemm->Index());
   }
 
+  graph.NotifyNodeReplacement(nodes_to_remove, mha_node.Index());
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
     if (node == nullptr) {
@@ -908,6 +909,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
                                int64_t num_heads,
                                int64_t head_size,
                                const float mask_filter_value,
+                               NodeIndex& attention_node_index,
                                const logging::Logger& logger) {
   InlinedVector<std::reference_wrapper<const Node>> pivot_nodes;
   if (edges.size() == 2) {
@@ -1032,6 +1034,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
 
   // Assign provider to this new node.
   attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
+  attention_node_index = attention_node.Index();
 
   // Remove nodes that are not used anymore.
   parent_path_nodes.insert(parent_path_nodes.end(), pivot_nodes.begin(), pivot_nodes.end());
@@ -1079,14 +1082,16 @@ static bool FuseSubGraphQK(Node& layer_norm,
   }
 
   std::vector<NodeIndex> nodes_to_remove;
+  NodeIndex attention_node_index = 0;
   if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes,
                           mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
-                          num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
+                          num_heads, head_size, mask_nodes.mask_filter_value, attention_node_index, logger)) {
     return false;
   }
 
   AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
 
+  graph.NotifyNodeReplacement(nodes_to_remove, attention_node_index);
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
     graph_utils::RemoveNodeOutputEdges(graph, *node);
@@ -1171,9 +1176,10 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
   }
 
   std::vector<NodeIndex> nodes_to_remove;
+  NodeIndex attention_node_index = 0;
   if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes,
                           mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
-                          num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
+                          num_heads, head_size, mask_nodes.mask_filter_value, attention_node_index, logger)) {
     return false;
   }
 
@@ -1191,6 +1197,7 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
 
   AttentionFusionHelper::SetMaskNodesToRemove(graph, mask_nodes, nodes_to_remove);
 
+  graph.NotifyNodeReplacement(nodes_to_remove, attention_node_index);
   for (const auto& node_index : nodes_to_remove) {
     Node* node = graph.GetNode(node_index);
     graph_utils::RemoveNodeOutputEdges(graph, *node);
