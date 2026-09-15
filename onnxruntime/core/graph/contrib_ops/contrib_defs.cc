@@ -1426,15 +1426,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
-        .Input(0, "input", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
-        .Input(1, "router_probs", "2D input tensor with shape (num_tokens, num_experts)", "T")
+        .Input(0, "input",
+               "2D packed token tensor with shape (total_tokens, hidden_size), where tokens "
+               "from ragged sequences may be concatenated without padding, or 3D input tensor with shape "
+               "(batch_size, sequence_length, hidden_size)",
+               "T")
+        .Input(1, "router_probs",
+               "2D input tensor with shape (total_tokens, num_experts), where total_tokens "
+               "must match the flattened token count of input",
+               "T")
         .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise", "T")
         .Input(3, "fc1_experts_bias", "2D optional input tensor with shape (num_experts, fusion_size * inter_size)", "T", OpSchema::Optional)
         .Input(4, "fc2_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
         .Input(5, "fc2_experts_bias", "2D optional input tensor with shape (num_experts, hidden_size)", "T", OpSchema::Optional)
         .Input(6, "fc3_experts_weights", "3D optional input tensor with shape (num_experts, inter_size, hidden_size)", "T", OpSchema::Optional)
         .Input(7, "fc3_experts_bias", "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
-        .Output(0, "output", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
+        .Output(0, "output",
+                "Same shape as input: packed (total_tokens, hidden_size) or padded "
+                "(batch_size, sequence_length, hidden_size)",
+                "T")
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
@@ -1533,12 +1543,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               static_cast<int64_t>(-1))
         .Input(0,
                "input",
-               "2D tensor with shape (num_tokens, hidden_size), or "
+               "2D packed token tensor with shape (total_tokens, hidden_size), where tokens from ragged sequences "
+               "may be concatenated without padding, or "
                "3D tensor with shape (batch_size, sequence_length, hidden_size)",
                "T")
         .Input(1,
                "router_probs",
-               "2D tensor with shape (num_tokens, num_experts)",
+               "2D tensor with shape (total_tokens, num_experts), where total_tokens must match the flattened "
+               "token count of input",
                "T")
         .Input(2,
                "fc1_experts_weights",

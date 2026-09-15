@@ -1016,10 +1016,12 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const int num_routing_threads = std::max(1, optimal_routing_threads);
 
   std::vector<std::vector<std::vector<int64_t>>> thread_local_expert_token_maps(num_routing_threads);
+  const size_t expected_routes_per_expert = static_cast<size_t>(std::max<int64_t>(
+      1, (num_tokens * k_) / (num_experts * num_routing_threads) * 2));
   for (auto& map : thread_local_expert_token_maps) {
     map.resize(static_cast<size_t>(num_experts));
     for (auto& expert_tokens : map) {
-      expert_tokens.reserve(32);
+      expert_tokens.reserve(expected_routes_per_expert);
     }
   }
 

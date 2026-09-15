@@ -239,15 +239,15 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     input_float = reinterpret_cast<const float*>(input_data_to_use);
   }
 
+  int total_active_experts = 0;
+  for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
+    if (!expert_token_map[static_cast<size_t>(expert_idx)].empty()) {
+      total_active_experts++;
+    }
+  }
+
   int num_expert_threads = 1;
   if (tp != nullptr) {
-    int total_active_experts = 0;
-    for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
-      if (!expert_token_map[static_cast<size_t>(expert_idx)].empty()) {
-        total_active_experts++;
-      }
-    }
-
     if (total_active_experts > 0) {
       int max_threads = concurrency::ThreadPool::DegreeOfParallelism(tp);
       num_expert_threads = std::min(total_active_experts, max_threads);
@@ -279,16 +279,13 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
     void EnsureCapacity(AllocatorPtr& allocator, int64_t required_tokens, int64_t hidden_size,
                         int64_t fc1_output_size, int64_t inter_size) {
       if (required_tokens > current_capacity) {
-        // Use high watermark approach - allocate more than needed for future reuse
-        int64_t new_capacity = std::max(required_tokens * 2, current_capacity + 512);
+        A1_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(required_tokens * hidden_size));
+        batch_weights_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(required_tokens));
+        token_ids_buffer = IAllocator::MakeUniquePtr<int64_t>(allocator, static_cast<size_t>(required_tokens));
+        A1_t_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(required_tokens * hidden_size));
+        C2_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(required_tokens * hidden_size));
 
-        A1_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(new_capacity * hidden_size));
-        batch_weights_buffer = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(new_capacity));
-        token_ids_buffer = IAllocator::MakeUniquePtr<int64_t>(allocator, static_cast<size_t>(new_capacity));
-        A1_t_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(new_capacity * hidden_size));
-        C2_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(new_capacity * hidden_size));
-
-        current_capacity = new_capacity;
+        current_capacity = required_tokens;
       }
 
       // Ensure ProcessExpertBatch buffers have sufficient capacity
@@ -296,15 +293,13 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
       int64_t required_activation_capacity = required_tokens * inter_size;
 
       if (required_fc1_capacity > current_fc1_capacity) {
-        int64_t new_fc1_capacity = std::max(required_fc1_capacity * 2, current_fc1_capacity + (512 * fc1_output_size));
-        fc1_output_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(new_fc1_capacity));
-        current_fc1_capacity = new_fc1_capacity;
+        fc1_output_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(required_fc1_capacity));
+        current_fc1_capacity = required_fc1_capacity;
       }
 
       if (required_activation_capacity > current_activation_capacity) {
-        int64_t new_activation_capacity = std::max(required_activation_capacity * 2, current_activation_capacity + (512 * inter_size));
-        activation_output_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(new_activation_capacity));
-        current_activation_capacity = new_activation_capacity;
+        activation_output_buffer = IAllocator::MakeUniquePtr<T>(allocator, static_cast<size_t>(required_activation_capacity));
+        current_activation_capacity = required_activation_capacity;
       }
     }
   };
@@ -322,17 +317,31 @@ Status MoE<T>::ComputeMoE(const OpKernelContext* context,
   // Initialize thread-local outputs with vectorized operation
   std::fill_n(thread_local_outputs, static_cast<size_t>(num_expert_threads) * output_buffer_size, 0.0f);
 
+  std::vector<std::pair<int64_t, size_t>> expert_workload;
+  expert_workload.reserve(static_cast<size_t>(total_active_experts));
+  for (int64_t expert_idx = 0; expert_idx < num_experts; ++expert_idx) {
+    const size_t token_count = expert_token_map[static_cast<size_t>(expert_idx)].size();
+    if (token_count > 0) {
+      expert_workload.emplace_back(expert_idx, token_count);
+    }
+  }
+  std::sort(expert_workload.begin(), expert_workload.end(),
+            [](const auto& lhs, const auto& rhs) { return lhs.second > rhs.second; });
+
+  std::vector<std::vector<int64_t>> expert_batches(static_cast<size_t>(num_expert_threads));
+  for (size_t i = 0; i < expert_workload.size(); ++i) {
+    expert_batches[i % static_cast<size_t>(num_expert_threads)].push_back(expert_workload[i].first);
+  }
+
   // Optimized expert processing with thread-local buffer reuse
   concurrency::ThreadPool::TrySimpleParallelFor(tp, num_expert_threads, [&](std::ptrdiff_t thread_id_pd) {
     int thread_id = narrow<int>(thread_id_pd);
-    auto work = concurrency::ThreadPool::PartitionWork(thread_id, num_expert_threads, static_cast<std::ptrdiff_t>(num_experts));
 
     float* local_output = thread_local_outputs + static_cast<size_t>(thread_id) * output_buffer_size;
     ThreadLocalBuffers& buffers = thread_buffers[thread_id];
 
-    for (int64_t expert_idx = work.start; expert_idx < work.end; ++expert_idx) {
+    for (int64_t expert_idx : expert_batches[static_cast<size_t>(thread_id)]) {
       const auto& routes = expert_token_map[static_cast<size_t>(expert_idx)];
-      if (routes.empty()) continue;
 
       const int64_t num_expert_tokens = static_cast<int64_t>(routes.size());
 
