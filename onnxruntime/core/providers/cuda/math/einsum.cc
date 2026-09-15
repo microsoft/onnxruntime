@@ -7,6 +7,7 @@
 #include "core/providers/cuda/tensor/transpose.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/math/matmul.h"
+#include "einsum_utils/einsum_fast_path.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -57,11 +58,29 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
                                                EinsumOp::DeviceHelpers::CudaDeviceHelpers::CreateTensor);
 
-  ORT_RETURN_IF_ERROR(einsum_compute_preprocessor.Run());
+  ORT_RETURN_IF_ERROR(einsum_compute_preprocessor.Analyze());
+
+  const bool has_empty_input = std::any_of(inputs.begin(), inputs.end(), [](const Tensor* input) {
+    return input->Shape().Size() == 0;
+  });
+  if (has_empty_input) {
+    Tensor& output = *context->Output(0, einsum_compute_preprocessor.GetOutputDims());
+    return EinsumOp::DeviceHelpers::CudaDeviceHelpers::ZeroBuffer(output, &einsum_cuda_assets);
+  }
+
+  EinsumFastPathPlan fast_path_plan;
+  ORT_RETURN_IF_ERROR(CreateEinsumFastPathPlan(einsum_compute_preprocessor, fast_path_plan));
+  if (fast_path_plan.kind == EinsumFastPathKind::Trace && context->GetUseDeterministicCompute()) {
+    fast_path_plan.kind = EinsumFastPathKind::None;
+  }
 
   const auto& first_input_tensor = inputs[0];
 
   if (first_input_tensor->IsDataType<float>()) {
+    if (fast_path_plan.kind != EinsumFastPathKind::None) {
+      return ExecuteEinsumFastPath<float>(this, context, inputs, fast_path_plan, einsum_cuda_assets);
+    }
+    ORT_RETURN_IF_ERROR(einsum_compute_preprocessor.MaterializeInputs());
     EinsumTypedComputeProcessor<float> einsum_compute_processor(context, allocator, tp, nullptr, einsum_compute_preprocessor, &einsum_cuda_assets);
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<float>,
@@ -72,6 +91,10 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
     return einsum_compute_processor.Run();
 
   } else if (first_input_tensor->IsDataType<double>()) {
+    if (fast_path_plan.kind != EinsumFastPathKind::None) {
+      return ExecuteEinsumFastPath<double>(this, context, inputs, fast_path_plan, einsum_cuda_assets);
+    }
+    ORT_RETURN_IF_ERROR(einsum_compute_preprocessor.MaterializeInputs());
     EinsumTypedComputeProcessor<double> einsum_compute_processor(context, allocator, tp, nullptr, einsum_compute_preprocessor, &einsum_cuda_assets);
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<double>,
@@ -82,6 +105,10 @@ Status Einsum::ComputeInternal(OpKernelContext* context) const {
     return einsum_compute_processor.Run();
 
   } else if (first_input_tensor->IsDataType<MLFloat16>()) {
+    if (fast_path_plan.kind != EinsumFastPathKind::None) {
+      return ExecuteEinsumFastPath<MLFloat16>(this, context, inputs, fast_path_plan, einsum_cuda_assets);
+    }
+    ORT_RETURN_IF_ERROR(einsum_compute_preprocessor.MaterializeInputs());
     EinsumTypedComputeProcessor<MLFloat16> einsum_compute_processor(context, allocator, tp, nullptr, einsum_compute_preprocessor, &einsum_cuda_assets);
     einsum_compute_processor.SetDeviceHelpers(EinsumOp::DeviceHelpers::CudaDeviceHelpers::Transpose,
                                               EinsumOp::DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>,
