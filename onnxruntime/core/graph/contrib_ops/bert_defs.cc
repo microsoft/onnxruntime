@@ -2885,7 +2885,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             fail_shape_inference("CausalConvWithState: channels_last must be 0 or 1, got ",
                                  channels_last);
           }
-          if (channels_last == 1 && getAttribute(ctx, "ndim", 1) != 1) {
+
+          const int64_t ndim = getAttribute(ctx, "ndim", 1);
+          if (ndim < 1 || ndim > 3) {
+            fail_shape_inference("CausalConvWithState: ndim must be 1, 2, or 3, got ", ndim);
+          }
+          if (channels_last == 1 && ndim != 1) {
             fail_shape_inference("CausalConvWithState: channels_last requires ndim = 1");
           }
 
@@ -2899,10 +2904,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
             auto& input_shape = getInputShape(ctx, 0);
             auto& weight_shape = getInputShape(ctx, 1);
-            int64_t ndim = getAttribute(ctx, "ndim", 1);
-            if (ndim < 1 || ndim > 3) {
-              fail_shape_inference("CausalConvWithState: ndim must be 1, 2, or 3, got ", ndim);
-            }
             // weight is always channels-first: (channels, 1, k_1, ..., k_ndim), rank == ndim + 2.
             if (weight_shape.dim_size() != ndim + 2) {
               fail_shape_inference("CausalConvWithState: weight must have rank ndim + 2 (",
