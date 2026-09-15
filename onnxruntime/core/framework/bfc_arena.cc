@@ -4,9 +4,65 @@
 #include "core/common/safeint.h"
 #include "core/framework/allocator.h"
 #include "core/framework/bfc_arena.h"
+#include <iostream>
 #include <type_traits>
 
+#include "core/platform/env_var_utils.h"
+
 namespace onnxruntime {
+namespace {
+
+std::mutex& DiagnosticArenaRegistryMutex() {
+  static auto* mutex = new std::mutex;
+  return *mutex;
+}
+
+std::vector<BFCArena*>& DiagnosticArenaRegistry() {
+  static auto* arenas = new std::vector<BFCArena*>;
+  return *arenas;
+}
+
+void RegisterDiagnosticArena(BFCArena* arena) {
+  std::lock_guard<std::mutex> lock(DiagnosticArenaRegistryMutex());
+  DiagnosticArenaRegistry().push_back(arena);
+}
+
+void UnregisterDiagnosticArena(BFCArena* arena) {
+  std::lock_guard<std::mutex> lock(DiagnosticArenaRegistryMutex());
+  auto& arenas = DiagnosticArenaRegistry();
+  arenas.erase(std::remove(arenas.begin(), arenas.end(), arena), arenas.end());
+}
+
+void LogDiagnosticArenaStats(const char* checkpoint,
+                             const char* phase,
+                             const BFCArena& arena,
+                             const AllocatorStats& stats) {
+  const int64_t bfc_region_bytes = stats.total_allocated_bytes - stats.reserved_bytes;
+  const int64_t bfc_live_bytes = stats.bytes_in_use - stats.reserved_bytes;
+  std::cout << "[ ARENA CHECKPOINT ]"
+            << " checkpoint=" << checkpoint
+            << " phase=" << phase
+            << " allocator=" << arena.Info().name
+            << " device_id=" << arena.Info().device.Id()
+            << " total_allocated_bytes=" << stats.total_allocated_bytes
+            << " reserved_bytes=" << stats.reserved_bytes
+            << " bfc_region_bytes=" << bfc_region_bytes
+            << " bytes_in_use=" << stats.bytes_in_use
+            << " bytes_requested_in_use=" << stats.bytes_requested_in_use
+            << " arena_slack_bytes=" << bfc_region_bytes - bfc_live_bytes
+            << " internal_fragmentation_bytes="
+            << stats.bytes_in_use - stats.bytes_requested_in_use
+            << " max_bytes_in_use=" << stats.max_bytes_in_use
+            << " max_alloc_size=" << stats.max_alloc_size
+            << " num_allocs=" << stats.num_allocs
+            << " num_reserves=" << stats.num_reserves
+            << " num_arena_extensions=" << stats.num_arena_extensions
+            << " num_arena_shrinkages=" << stats.num_arena_shrinkages
+            << std::endl;
+}
+
+}  // namespace
+
 BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    size_t total_memory,
                    ArenaExtendStrategy arena_extend_strategy,
@@ -74,9 +130,15 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       ORT_ENFORCE(BinForSize(bin_size * 2) != BinFromIndex(b));
     }
   }
+
+  if (ParseEnvironmentVariableWithDefault<int>("ORT_ARENA_DIAGNOSTICS", 0) != 0) {
+    RegisterDiagnosticArena(this);
+  }
 }
 
 BFCArena::~BFCArena() {
+  UnregisterDiagnosticArena(this);
+
   for (const auto& region : region_manager_.regions()) {
     device_allocator_->Free(region.ptr());
   }
@@ -553,6 +615,49 @@ Status BFCArena::Shrink() {
   // In case the extend strategy is kSameAsRequested, the arena growth is exactly the size of the memory request itself
   curr_region_allocation_bytes_ = initial_growth_chunk_size_bytes_;
 
+  return Status::OK();
+}
+
+Status LogAndShrinkRegisteredGpuArenas(const char* checkpoint,
+                                       bool shrink,
+                                       int64_t* reclaimed_bytes,
+                                       size_t* arena_count) {
+  ORT_RETURN_IF_NOT(checkpoint != nullptr, "checkpoint must not be null");
+  ORT_RETURN_IF_NOT(reclaimed_bytes != nullptr, "reclaimed_bytes must not be null");
+  ORT_RETURN_IF_NOT(arena_count != nullptr, "arena_count must not be null");
+
+  *reclaimed_bytes = 0;
+  *arena_count = 0;
+
+  std::lock_guard<std::mutex> lock(DiagnosticArenaRegistryMutex());
+  for (BFCArena* arena : DiagnosticArenaRegistry()) {
+    if (arena->Info().device.Type() != OrtDevice::GPU) {
+      continue;
+    }
+
+    ++*arena_count;
+    AllocatorStats before_stats;
+    arena->GetStats(&before_stats);
+    LogDiagnosticArenaStats(
+        checkpoint, shrink ? "before_shrink" : "snapshot", *arena, before_stats);
+
+    if (!shrink) {
+      continue;
+    }
+
+    ORT_RETURN_IF_ERROR(arena->Shrink());
+    AllocatorStats after_stats;
+    arena->GetStats(&after_stats);
+    *reclaimed_bytes += before_stats.total_allocated_bytes - after_stats.total_allocated_bytes;
+    LogDiagnosticArenaStats(checkpoint, "after_shrink", *arena, after_stats);
+  }
+
+  std::cout << "[ ARENA SHRINK ]"
+            << " checkpoint=" << checkpoint
+            << " requested=" << shrink
+            << " arena_count=" << *arena_count
+            << " reclaimed_bytes=" << *reclaimed_bytes
+            << std::endl;
   return Status::OK();
 }
 

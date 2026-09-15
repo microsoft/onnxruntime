@@ -65,6 +65,21 @@ TEST_F(ExperimentalCApiTest, CallThroughTypedPointer) {
   EXPECT_EQ(result, 12345);
 }
 
+TEST_F(ExperimentalCApiTest, DebugLogAndShrinkGpuArenas) {
+  auto* fn =
+      Ort::Experimental::Get_OrtApi_DebugLogAndShrinkGpuArenas_SinceV29_FnOrThrow(api_);
+
+  int64_t reclaimed_bytes = -1;
+  size_t arena_count = 0;
+  auto status = Ort::Status{fn("experimental_api_test", false, &reclaimed_bytes, &arena_count)};
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  EXPECT_EQ(reclaimed_bytes, 0);
+
+  status = Ort::Status{fn(nullptr, false, &reclaimed_bytes, &arena_count)};
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+}
+
 // The same name looked up twice returns the same pointer
 TEST_F(ExperimentalCApiTest, ConsistentLookup) {
   OrtExperimentalFnPtr fn1 =
