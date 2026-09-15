@@ -2479,7 +2479,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>data</tt> : T1</dt>
 <dd>Tensor of rank r >= 1. Block-wise quantized.</dd>
 <dt><tt>indices</tt> : Tind</dt>
-<dd>Tensor of int32/int64 indices, of any rank q. Values in [-s, s-1] select elements along an axis of size s. An out-of-range index produces zeros for the corresponding output slice.</dd>
+<dd>Tensor of int32/int64 indices, of any rank q. Values in [-s, s-1] select elements along an axis of size s. Unlike ONNX Gather, an out-of-range index produces zeros for the corresponding output slice.</dd>
 <dt><tt>scales</tt> : T2</dt>
 <dd>quantization scale. Same rank as data. On axes other than quantize_axis, a dimension of 1 broadcasts the scale along that axis (e.g. a single per-tensor scale for the whole table); only applicable when `data` is an FP8 or FP4 type.</dd>
 <dt><tt>zero_points</tt> (optional) : T1</dt>
@@ -4297,11 +4297,16 @@ This version of the operator has been available since version 1 of the 'com.micr
   (batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
   Positions before the start of the whole sequence use pad_id, or eos_token_id when it is provided.
   Running the op once over a full sequence and running it over consecutive chunks while threading
-  present_ids into past_ids produce identical hash ids. When past_ids is omitted the missing history is
-  pad_id, or eos_token_id when it is provided.
-
+  present_ids into past_ids produce identical hash ids, including when reset_on_eos is enabled. When
+  segment_ids is used, segment boundaries are applied only within the current input_ids chunk and are
+  not inferred from past_ids. When past_ids is omitted the missing history is pad_id, or eos_token_id
+  when it is provided.
+  past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
+  only when the whole operator call is unconditionally committed; a caller that may select a prefix or
+  roll back must preserve past_ids.
+  
   Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
-
+  
   - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
     boundaries: any shifted position at or before the most recent EOS strictly before the current
     position is replaced with eos_token_id instead of the real token.

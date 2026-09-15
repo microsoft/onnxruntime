@@ -336,7 +336,7 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       int64_t indices_val = static_cast<int64_t>(indices_ptr[gather_N_idx]);
       int64_t output_idx_base = gather_MN_idx * gather_block;
       if (indices_val < -gather_axis_dim || indices_val >= gather_axis_dim) {
-        memset(output_ptr + output_idx_base, 0, narrow<size_t>(gather_block * sizeof(T2)));
+        std::fill_n(output_ptr + output_idx_base, narrow<size_t>(gather_block), static_cast<T2>(0.0f));
         return;
       }
 
@@ -426,7 +426,7 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       int64_t indices_val = static_cast<int64_t>(indices_ptr[gather_N_idx]);
       int64_t output_idx_base = gather_MN_idx * gather_block;
       if (indices_val < -gather_axis_dim || indices_val >= gather_axis_dim) {
-        memset(output_ptr + output_idx_base, 0, narrow<size_t>(gather_block * sizeof(T2)));
+        std::fill_n(output_ptr + output_idx_base, narrow<size_t>(gather_block), static_cast<T2>(0.0f));
         return;
       }
 
