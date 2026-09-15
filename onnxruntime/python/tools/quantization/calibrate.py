@@ -521,8 +521,9 @@ class MinMaxCalibrater(CalibraterBase):
             )
             if (
                 self.max_intermediate_outputs is not None
-                and len(self.intermediate_outputs) == self.max_intermediate_outputs
+                and len(self.intermediate_outputs) >= self.max_intermediate_outputs
             ):
+                self.compute_data()
                 self.clear_collected_data()
 
         if len(self.intermediate_outputs) == 0 and self.calibrate_tensors_range is None:
@@ -555,8 +556,8 @@ class MinMaxCalibrater(CalibraterBase):
                 min_value = old_min + self.averaging_constant * (new_min - old_min)
                 max_value = old_max + self.averaging_constant * (new_max - old_max)
             else:
-                min_value = min(old_min, new_min)
-                max_value = max(old_max, new_max)
+                min_value = np.fmin(old_min, new_min)
+                max_value = np.fmax(old_max, new_max)
 
             # If structured as TensorData, wrap the result accordingly
             if isinstance(value, TensorData) or isinstance(new_range[key], TensorData):
