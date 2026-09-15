@@ -4304,7 +4304,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
   only when the whole operator call is unconditionally committed; a caller that may select a prefix or
   roll back must preserve past_ids.
-
+  
   Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
   
   - eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
@@ -7719,3 +7719,5 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
+
+

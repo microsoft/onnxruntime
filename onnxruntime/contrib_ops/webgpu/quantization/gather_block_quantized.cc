@@ -2,9 +2,6 @@
 // Licensed under the MIT License.
 
 #include <sstream>
-#include <iomanip>
-#include <locale>
-#include <cmath>
 #include <cstring>
 #include <algorithm>
 
@@ -28,10 +25,10 @@ using namespace onnxruntime::webgpu;
 using onnxruntime::webgpu::ComputeContext;
 
 namespace {
-// Builds the WGSL `const` dequantization lookup table for an FP8 or FP4 `data` type: table[code]
-// is the float value of the code, computed once host-side via ORT's own (already-tested)
-// Float8E*/Float4E2M1x2 -> float conversions, so the shader never needs to reproduce FP8/FP4 bit
-// manipulation itself. FP8 has 256 possible byte codes; FP4 has 16 (one nibble).
+// Builds the WGSL `const` dequantization lookup table for an FP8 or FP4 `data` type. Each entry is
+// the raw f32 bits computed via ORT's own conversions; the shader bitcasts the selected value at
+// runtime because WGSL rejects non-finite bitcasts in constant expressions. FP8 has 256 possible
+// byte codes; FP4 has 16 (one nibble).
 std::string BuildFpDequantLutWgsl(int32_t fp_elem_type) {
   std::vector<float> table;
 #if !defined(DISABLE_FLOAT8_TYPES)
@@ -71,22 +68,12 @@ std::string BuildFpDequantLutWgsl(int32_t fp_elem_type) {
 #endif  // !defined(DISABLE_FLOAT4_TYPES)
 
   std::ostringstream oss;
-  oss.imbue(std::locale::classic());
-  oss << std::setprecision(9);
-  oss << "const kFpDequantLut = array<f32, " << table.size() << ">(";
+  oss << "const kFpDequantLutBits = array<u32, " << table.size() << ">(";
   for (size_t i = 0; i < table.size(); ++i) {
     if (i > 0) oss << ", ";
-    // NaN/Inf (reserved codes in some FP8 layouts, e.g. E5M2) have no valid WGSL float-literal
-    // spelling ("nan"/"inf" text is not a WGSL token); encode them via a bit-pattern reinterpret
-    // instead so the const array always parses, even though such codes are unlikely to appear in
-    // real quantized data.
-    if (std::isfinite(table[i])) {
-      oss << table[i] << "f";
-    } else {
-      uint32_t bits;
-      std::memcpy(&bits, &table[i], sizeof(bits));
-      oss << "bitcast<f32>(" << bits << "u)";
-    }
+    uint32_t bits;
+    std::memcpy(&bits, &table[i], sizeof(bits));
+    oss << bits << "u";
   }
   oss << ");\n";
   return oss.str();
@@ -263,7 +250,7 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "  var dequantized_data = output_value_t(0);\n";
   if (is_fp_quantized_) {
     shader.MainFunctionBody()
-        << "  dequantized_data = output_value_t(kFpDequantLut[quantized_data]) * scale;\n";
+        << "  dequantized_data = output_value_t(bitcast<f32>(kFpDequantLutBits[quantized_data])) * scale;\n";
   } else {
     shader.MainFunctionBody()
         << "  dequantized_data = (output_value_t(quantized_data) - output_value_t(zero_point)) * scale;\n";
@@ -365,7 +352,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   // The WebGPU program layer only knows how to derive a WGSL storage type for a fixed set of
   // ONNX element types (see ToProgramVariableDataType in core/providers/webgpu/program.cc), which
   // does not include the FP8/FP4 element types. The shader treats `x` as raw packed bytes/nibbles
-  // regardless (looking up dequantized values via `kFpDequantLut`), so reinterpret the tensor as
+  // regardless (looking up dequantized values via `kFpDequantLutBits`), so reinterpret the tensor as
   // the equivalent already-supported packed integer type (UInt4x2 for FP4, uint8_t for FP8)
   // without changing its shape or underlying data.
   std::optional<Tensor> data_representation_fp;
