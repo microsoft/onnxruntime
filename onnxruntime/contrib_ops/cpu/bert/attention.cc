@@ -226,7 +226,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> output_shape(3);
   output_shape[0] = static_cast<int64_t>(batch_size);
   output_shape[1] = static_cast<int64_t>(sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
+  output_shape[2] = static_cast<int64_t>(parameters.GetOutputHiddenSize());
   Tensor* output = context->Output(0, output_shape);
 
   constexpr size_t element_size = sizeof(T);
@@ -238,7 +238,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // Compute Q, K, V
   // gemm_data(BS, D_t) = input(BS, D_i) x weights(D_i, D_t) + bias(D_t), where D_t = D + D + D_v
   // Hidden dimension of input could be larger than that of Q, K and V when model is pruned.
-  int qkv_hidden_size = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
+  int qkv_hidden_size = (parameters.GetQueryHiddenSize() + parameters.GetKeyHiddenSize() +
+                         parameters.GetValueHiddenSize());
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * qkv_hidden_size * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(std::move(allocator)));
 
@@ -340,8 +341,10 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   return ApplyAttention(Q, K, V, mask_index, past, nullptr /* past_key */, nullptr /* past_value */,
                         output, nullptr /* present_key */, nullptr /* present_value */, nullptr /* output_qk */,
                         batch_size, sequence_length, sequence_length,
-                        parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
-                        attention_bias, context);
+                        parameters.head_size, parameters.v_head_size, parameters.GetOutputHiddenSize(),
+                        attention_bias, context,
+                        0 /* past_sequence_length */, false /* past_present_share_buffer */,
+                        parameters.kv_num_heads);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

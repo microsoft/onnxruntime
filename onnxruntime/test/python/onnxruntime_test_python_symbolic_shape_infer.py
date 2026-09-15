@@ -124,6 +124,46 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
         raise AssertionError()
 
+    def test_multi_head_attention_grouped_query_shapes(self):
+        graph = helper.make_graph(
+            [
+                helper.make_node(
+                    "MultiHeadAttention",
+                    ["query", "key", "value"],
+                    ["output", "present_key", "present_value"],
+                    domain="com.microsoft",
+                    num_heads=4,
+                    kv_num_heads=2,
+                )
+            ],
+            "MultiHeadAttention_GroupedQuery",
+            [
+                helper.make_tensor_value_info("query", TensorProto.FLOAT, ["batch", "query_sequence", 32]),
+                helper.make_tensor_value_info("key", TensorProto.FLOAT, ["batch", "kv_sequence", 16]),
+                helper.make_tensor_value_info("value", TensorProto.FLOAT, ["batch", "kv_sequence", 12]),
+            ],
+            [
+                helper.make_tensor_value_info("output", TensorProto.FLOAT, None),
+                helper.make_tensor_value_info("present_key", TensorProto.FLOAT, None),
+                helper.make_tensor_value_info("present_value", TensorProto.FLOAT, None),
+            ],
+        )
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+        )
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        inferred_shapes = {
+            output.name: [
+                dim.dim_param if dim.dim_param else dim.dim_value for dim in output.type.tensor_type.shape.dim
+            ]
+            for output in inferred.graph.output
+        }
+        self.assertEqual(inferred_shapes["output"], ["batch", "query_sequence", 24])
+        self.assertEqual(inferred_shapes["present_key"], ["batch", 2, "kv_sequence", 8])
+        self.assertEqual(inferred_shapes["present_value"], ["batch", 2, "kv_sequence", 6])
+
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
             [

@@ -161,6 +161,15 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
+  const int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+  const int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", num_heads);
+  if (num_heads <= 0 || kv_num_heads <= 0) {
+    fail_shape_inference("num_heads and kv_num_heads must be positive integers");
+  }
+  if (num_heads % kv_num_heads != 0) {
+    fail_shape_inference("Number of query heads shall be a multiple of number of key/value heads");
+  }
+
   // Shape inference
   int64_t sequence_length = 0;
   if (hasInputShape(ctx, 0)) {
@@ -188,12 +197,24 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
         sequence_length = value_dims[1].dim_value();
       }
 
+      const bool is_grouped_query = num_heads != kv_num_heads;
+
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
-      *output_shape.add_dim() = value_dims.size() == 3
-                                    ? (dmmha_packing ? value_dims[2] / 3 : value_dims[2])
-                                    : value_dims[1] * value_dims[3];
+      if (value_dims.size() == 4) {  // value is (batch_size, kv_num_heads, kv_sequence_length, v_head_size)
+        *output_shape.add_dim() = value_dims[3] * num_heads;
+      } else if (dmmha_packing) {
+        *output_shape.add_dim() = value_dims[2] / 3;
+      } else if (!is_grouped_query) {
+        *output_shape.add_dim() = value_dims[2];
+      } else if (value_dims[2].has_dim_value() && value_dims[2].dim_value() % kv_num_heads == 0) {
+        output_shape.add_dim()->set_dim_value(num_heads * value_dims[2].dim_value() / kv_num_heads);
+      } else {
+        // Grouped query attention scales the value hidden size by num_heads / kv_num_heads, which cannot be
+        // expressed symbolically. Leave the dimension unknown rather than asserting the smaller input size.
+        output_shape.add_dim();
+      }
       updateOutputShape(ctx, 0, output_shape);
     } else if (hasInputShape(ctx, 1)) {
       auto& key_shape = getInputShape(ctx, 1);
@@ -225,9 +246,24 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
             *present_shape.add_dim() = dim;
           }
           present_shape.mutable_dim(2)->set_dim_value(total_sequence_length);
-
           updateOutputShape(ctx, 1, present_shape);
-          updateOutputShape(ctx, 2, present_shape);
+
+          // present_value follows past_value since its head size may differ from past_key's.
+          const auto past_value_index = static_cast<size_t>(past_key_index) + 1;
+          if (hasInputShape(ctx, past_value_index)) {
+            auto& past_value_dims = getInputShape(ctx, past_value_index).dim();
+            if (past_value_dims.size() != 4) {
+              fail_shape_inference("The past_value input shall be 4 dimensions");
+            }
+            ONNX_NAMESPACE::TensorShapeProto present_value_shape;
+            for (auto& dim : past_value_dims) {
+              *present_value_shape.add_dim() = dim;
+            }
+            present_value_shape.mutable_dim(2)->set_dim_value(total_sequence_length);
+            updateOutputShape(ctx, 2, present_value_shape);
+          } else {
+            updateOutputShape(ctx, 2, present_shape);
+          }
         }
       }
     }
@@ -1107,6 +1143,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(MultiHeadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("kv_num_heads",
+              "Number of attention heads for key and value. Defaults to num_heads when not specified. "
+              "For grouped query attention, num_heads shall be a multiple of kv_num_heads",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Attr("scale",
@@ -1123,18 +1164,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(1,
                "key",
-               "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
-               "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+               "Key with shape (batch_size, kv_sequence_length, kv_num_heads * head_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
+               "or past_key with shape (batch_size, kv_num_heads, kv_sequence_length, head_size). "
+               "Grouped query attention requires separate key and value inputs",
                "T",
                OpSchema::Optional)
         .Input(2,
                "value",
-               "Value with shape (batch_size, kv_sequence_length, v_hidden_size), or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+               "Value with shape (batch_size, kv_sequence_length, kv_num_heads * v_head_size), or past_value with shape "
+               "(batch_size, kv_num_heads, kv_sequence_length, v_head_size)",
                "T",
                OpSchema::Optional)
         .Input(3,
                "bias",
-               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
+               "Bias tensor with shape (hidden_size + kv_hidden_size + kv_v_hidden_size) from input projection. "
+               "The key and value parts are assumed to be zero when key and value are 4-D BNSH tensors",
                "T",
                OpSchema::Optional)
         .Input(4,
@@ -1150,14 +1194,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(6,
                "past_key",
-               "past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) "
-               "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
+               "past state for key with shape (batch_size, kv_num_heads, past_sequence_length, head_size) "
+               "or (batch_size, kv_num_heads, max_sequence_length, head_size) when buffer sharing is used",
                "T",
                OpSchema::Optional)
         .Input(7,
                "past_value",
-               "past state for value with shape (batch_size, num_heads, past_sequence_length, head_size) "
-               "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
+               "past state for value with shape (batch_size, kv_num_heads, past_sequence_length, v_head_size) "
+               "or (batch_size, kv_num_heads, max_sequence_length, v_head_size) when buffer sharing is used",
                "T",
                OpSchema::Optional)
         .Input(8,
@@ -1173,18 +1217,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Output(0,
                 "output",
-                "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
+                "3D output tensor with shape (batch_size, sequence_length, num_heads * v_head_size)",
                 "T")
         .Output(1,
                 "present_key",
-                "present state for key with shape (batch_size, num_heads, total_sequence_length, head_size) "
-                "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
+                "present state for key with shape (batch_size, kv_num_heads, total_sequence_length, head_size) "
+                "or (batch_size, kv_num_heads, max_sequence_length, head_size) when buffer sharing is used",
                 "T",
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
-                "present state for value with shape (batch_size, num_heads, total_sequence_length, head_size) "
-                "or (batch_size, num_heads, max_sequence_length, head_size) when buffer sharing is used",
+                "present state for value with shape (batch_size, kv_num_heads, total_sequence_length, v_head_size) "
+                "or (batch_size, kv_num_heads, max_sequence_length, v_head_size) when buffer sharing is used",
                 "T",
                 OpSchema::Optional)
         .Output(3,

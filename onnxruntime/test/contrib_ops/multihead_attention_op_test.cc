@@ -681,6 +681,488 @@ TEST(MultiHeadAttentionTest, EmptyKeyValueSequence) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCpu) {
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 2;
+  constexpr int sequence_length = 2;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+
+  tester.AddInput<float>("query", {1, sequence_length, num_heads * head_size},
+                         std::vector<float>(sequence_length * num_heads * head_size, 0.0f));
+  tester.AddInput<float>("key", {1, sequence_length, kv_num_heads * head_size},
+                         std::vector<float>(sequence_length * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<float>("value", {1, sequence_length, kv_num_heads * head_size},
+                         {1.0f, 1.0f, 3.0f, 3.0f, 5.0f, 5.0f, 7.0f, 7.0f});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<int32_t>();
+
+  tester.AddOutput<float>("output", {1, sequence_length, num_heads * head_size},
+                          {3.0f, 3.0f, 3.0f, 3.0f, 5.0f, 5.0f, 5.0f, 5.0f,
+                           3.0f, 3.0f, 3.0f, 3.0f, 5.0f, 5.0f, 5.0f, 5.0f});
+  tester.AddOutput<float>("present_key", {1, kv_num_heads, sequence_length, head_size},
+                          std::vector<float>(sequence_length * kv_num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {1, kv_num_heads, sequence_length, head_size},
+                          {1.0f, 1.0f, 5.0f, 5.0f, 3.0f, 3.0f, 7.0f, 7.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCudaFp32WithPresent) {
+  if (!HasCudaEnvironment(800)) {
+    return;
+  }
+
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 8;
+  constexpr int sequence_length = 2;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+
+  std::vector<float> query(sequence_length * num_heads * head_size, 0.0f);
+  std::vector<float> key(sequence_length * kv_num_heads * head_size, 0.0f);
+  std::vector<float> value;
+  value.insert(value.end(), kv_num_heads * head_size, 1.0f);
+  std::fill(value.begin() + head_size, value.end(), 3.0f);
+  value.insert(value.end(), kv_num_heads * head_size, 5.0f);
+  std::fill(value.begin() + 3 * head_size, value.end(), 7.0f);
+
+  tester.AddInput<float>("query", {1, sequence_length, num_heads * head_size}, query);
+  tester.AddInput<float>("key", {1, sequence_length, kv_num_heads * head_size}, key);
+  tester.AddInput<float>("value", {1, sequence_length, kv_num_heads * head_size}, value);
+  tester.AddOptionalInputEdge<float>();
+  // A neutral 2-D mask rules out fused CUDA kernels so this exercises the unfused cache path.
+  tester.AddInput<int32_t>("key_padding_mask", {1, sequence_length}, {1, 1});
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<int32_t>();
+
+  std::vector<float> output;
+  for (int sequence = 0; sequence < sequence_length; ++sequence) {
+    output.insert(output.end(), 2 * head_size, 3.0f);
+    output.insert(output.end(), 2 * head_size, 5.0f);
+  }
+  tester.AddOutput<float>("output", {1, sequence_length, num_heads * head_size}, output,
+                          false, 0.0f, 0.02f);
+
+  tester.AddOutput<float>("present_key", {1, kv_num_heads, sequence_length, head_size},
+                          std::vector<float>(sequence_length * kv_num_heads * head_size, 0.0f));
+
+  std::vector<float> present_value;
+  present_value.insert(present_value.end(), head_size, 1.0f);
+  present_value.insert(present_value.end(), head_size, 5.0f);
+  present_value.insert(present_value.end(), head_size, 3.0f);
+  present_value.insert(present_value.end(), head_size, 7.0f);
+  tester.AddOutput<float>("present_value", {1, kv_num_heads, sequence_length, head_size}, present_value);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCpuWithBiasAndPast) {
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 2;
+  constexpr int sequence_length = 1;
+  constexpr int past_sequence_length = 1;
+  constexpr int total_sequence_length = past_sequence_length + sequence_length;
+  constexpr int query_hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+
+  // Query and key are zero, so the scaled Q*K' scores are all zero and softmax is uniform over T.
+  tester.AddInput<float>("query", {1, sequence_length, query_hidden_size},
+                         std::vector<float>(sequence_length * query_hidden_size, 0.0f));
+  tester.AddInput<float>("key", {1, sequence_length, kv_hidden_size},
+                         std::vector<float>(sequence_length * kv_hidden_size, 0.0f));
+  tester.AddInput<float>("value", {1, sequence_length, kv_hidden_size}, {2.0f, 2.0f, 6.0f, 6.0f});
+
+  // bias is laid out as [query_hidden_size | kv_hidden_size | kv_hidden_size].
+  std::vector<float> bias(query_hidden_size, 0.0f);
+  bias.insert(bias.end(), kv_hidden_size, 0.5f);
+  bias.insert(bias.end(), kv_hidden_size, 1.0f);
+  tester.AddInput<float>("bias", {query_hidden_size + 2 * kv_hidden_size}, bias);
+
+  tester.AddOptionalInputEdge<int32_t>();  // key_padding_mask
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddInput<float>("past_key", {1, kv_num_heads, past_sequence_length, head_size},
+                         std::vector<float>(kv_num_heads * past_sequence_length * head_size, 0.0f));
+  tester.AddInput<float>("past_value", {1, kv_num_heads, past_sequence_length, head_size},
+                         {1.0f, 1.0f, 5.0f, 5.0f});
+  tester.AddOptionalInputEdge<int32_t>();  // past_sequence_length
+  tester.AddOptionalInputEdge<int32_t>();  // cache_indirection
+
+  // Query heads 0/1 average KV head 0 values (1 and 3), heads 2/3 average KV head 1 values (5 and 7).
+  tester.AddOutput<float>("output", {1, sequence_length, query_hidden_size},
+                          {2.0f, 2.0f, 2.0f, 2.0f, 6.0f, 6.0f, 6.0f, 6.0f});
+  tester.AddOutput<float>("present_key", {1, kv_num_heads, total_sequence_length, head_size},
+                          {0.0f, 0.0f, 0.5f, 0.5f, 0.0f, 0.0f, 0.5f, 0.5f});
+  tester.AddOutput<float>("present_value", {1, kv_num_heads, total_sequence_length, head_size},
+                          {1.0f, 1.0f, 3.0f, 3.0f, 5.0f, 5.0f, 7.0f, 7.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+static void RunGroupedQueryAttentionCpuWithPastOptionalPresentOutputs(bool output_present_key,
+                                                                      bool output_present_value) {
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 1;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddInput<float>("query", {1, 1, num_heads * head_size}, std::vector<float>(num_heads, 1.0f));
+  tester.AddInput<float>("key", {1, 1, kv_num_heads * head_size}, {1.0f, 4.0f});
+  tester.AddInput<float>("value", {1, 1, kv_num_heads * head_size}, {3.0f, 7.0f});
+  tester.AddOptionalInputEdge<float>();    // bias
+  tester.AddOptionalInputEdge<int32_t>();  // key_padding_mask
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddInput<float>("past_key", {1, kv_num_heads, 1, head_size}, {0.0f, 0.0f});
+  tester.AddInput<float>("past_value", {1, kv_num_heads, 1, head_size}, {1.0f, 5.0f});
+  tester.AddOptionalInputEdge<int32_t>();  // past_sequence_length
+  tester.AddOptionalInputEdge<int32_t>();  // cache_indirection
+
+  tester.AddOutput<float>("output", {1, 1, num_heads * head_size},
+                          {2.462117f, 2.462117f, 6.964028f, 6.964028f});
+  if (output_present_key) {
+    tester.AddOutput<float>("present_key", {1, kv_num_heads, 2, head_size}, {0.0f, 1.0f, 0.0f, 4.0f});
+  } else if (output_present_value) {
+    tester.AddOptionalOutputEdge<float>();
+  }
+  if (output_present_value) {
+    tester.AddOutput<float>("present_value", {1, kv_num_heads, 2, head_size}, {1.0f, 3.0f, 5.0f, 7.0f});
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCpuWithPastNoPresentOutputs) {
+  RunGroupedQueryAttentionCpuWithPastOptionalPresentOutputs(false, false);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCpuWithPastPresentKeyOnly) {
+  RunGroupedQueryAttentionCpuWithPastOptionalPresentOutputs(true, false);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCpuWithPastPresentValueOnly) {
+  RunGroupedQueryAttentionCpuWithPastOptionalPresentOutputs(false, true);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCpuSharedPastPresentBuffer) {
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 2;
+  constexpr int sequence_length = 1;
+  constexpr int past_sequence_length = 1;
+  constexpr int max_sequence_length = 3;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+
+  tester.AddInput<float>("query", {1, sequence_length, num_heads * head_size},
+                         std::vector<float>(sequence_length * num_heads * head_size, 0.0f));
+  tester.AddInput<float>("key", {1, sequence_length, kv_num_heads * head_size},
+                         std::vector<float>(sequence_length * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<float>("value", {1, sequence_length, kv_num_heads * head_size},
+                         {3.0f, 3.0f, 7.0f, 7.0f});
+  tester.AddOptionalInputEdge<float>();    // bias
+  tester.AddOptionalInputEdge<int32_t>();  // key_padding_mask
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddInput<float>("past_key", {1, kv_num_heads, max_sequence_length, head_size},
+                         std::vector<float>(kv_num_heads * max_sequence_length * head_size, 0.0f));
+  tester.AddInput<float>("past_value", {1, kv_num_heads, max_sequence_length, head_size},
+                         {1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                          5.0f, 5.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  tester.AddInput<int32_t>("past_sequence_length", {1}, {past_sequence_length});
+  tester.AddOptionalInputEdge<int32_t>();  // cache_indirection
+
+  tester.AddOutput<float>("output", {1, sequence_length, num_heads * head_size},
+                          {2.0f, 2.0f, 2.0f, 2.0f, 6.0f, 6.0f, 6.0f, 6.0f});
+  tester.AddOutput<float>("present_key", {1, kv_num_heads, max_sequence_length, head_size},
+                          std::vector<float>(kv_num_heads * max_sequence_length * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {1, kv_num_heads, max_sequence_length, head_size},
+                          {1.0f, 1.0f, 3.0f, 3.0f, 0.0f, 0.0f,
+                           5.0f, 5.0f, 7.0f, 7.0f, 0.0f, 0.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionSharedPastPresentBufferRejectsCacheOverflow) {
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 1;
+  constexpr int sequence_length = 2;
+  constexpr int past_sequence_length = 2;
+  constexpr int max_sequence_length = 3;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddInput<float>("query", {1, sequence_length, num_heads * head_size},
+                         std::vector<float>(sequence_length * num_heads, 0.0f));
+  tester.AddInput<float>("key", {1, sequence_length, kv_num_heads * head_size},
+                         std::vector<float>(sequence_length * kv_num_heads, 0.0f));
+  tester.AddInput<float>("value", {1, sequence_length, kv_num_heads * head_size},
+                         std::vector<float>(sequence_length * kv_num_heads, 0.0f));
+  tester.AddOptionalInputEdge<float>();    // bias
+  tester.AddOptionalInputEdge<int32_t>();  // key_padding_mask
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddInput<float>("past_key", {1, kv_num_heads, max_sequence_length, head_size},
+                         std::vector<float>(kv_num_heads * max_sequence_length, 0.0f));
+  tester.AddInput<float>("past_value", {1, kv_num_heads, max_sequence_length, head_size},
+                         std::vector<float>(kv_num_heads * max_sequence_length, 0.0f));
+  tester.AddInput<int32_t>("past_sequence_length", {1}, {past_sequence_length});
+  tester.AddOptionalInputEdge<int32_t>();  // cache_indirection
+  tester.AddOutput<float>("output", {1, sequence_length, num_heads * head_size},
+                          std::vector<float>(sequence_length * num_heads, 0.0f));
+  tester.AddOutput<float>("present_key", {1, kv_num_heads, max_sequence_length, head_size},
+                          std::vector<float>(kv_num_heads * max_sequence_length, 0.0f));
+  tester.AddOutput<float>("present_value", {1, kv_num_heads, max_sequence_length, head_size},
+                          std::vector<float>(kv_num_heads * max_sequence_length, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "past_sequence_length + kv_sequence_length must not exceed max_sequence_length",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCudaRejectsCacheIndirection) {
+  if (!HasCudaEnvironment(0)) {
+    return;
+  }
+
+  constexpr int batch_size = 2;
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 8;
+  constexpr int max_sequence_length = 2;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddInput<float>("query", {batch_size, 1, num_heads * head_size},
+                         std::vector<float>(batch_size * num_heads * head_size, 0.0f));
+  tester.AddInput<float>("key", {batch_size, 1, kv_num_heads * head_size},
+                         std::vector<float>(batch_size * kv_num_heads * head_size, 0.0f));
+  tester.AddInput<float>("value", {batch_size, 1, kv_num_heads * head_size},
+                         std::vector<float>(batch_size * kv_num_heads * head_size, 0.0f));
+  tester.AddOptionalInputEdge<float>();    // bias
+  tester.AddOptionalInputEdge<int32_t>();  // key_padding_mask
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddInput<float>("past_key", {batch_size, kv_num_heads, max_sequence_length, head_size},
+                         std::vector<float>(batch_size * kv_num_heads * max_sequence_length * head_size, 0.0f));
+  tester.AddInput<float>("past_value", {batch_size, kv_num_heads, max_sequence_length, head_size},
+                         std::vector<float>(batch_size * kv_num_heads * max_sequence_length * head_size, 0.0f));
+  tester.AddInput<int32_t>("past_sequence_length", {1}, {1});
+  tester.AddInput<int32_t>("cache_indirection", {1, batch_size, max_sequence_length},
+                           std::vector<int32_t>(batch_size * max_sequence_length, 0));
+  tester.AddOutput<float>("output", {batch_size, 1, num_heads * head_size},
+                          std::vector<float>(batch_size * num_heads * head_size, 0.0f));
+  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, max_sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * max_sequence_length * head_size, 0.0f));
+  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, max_sequence_length, head_size},
+                          std::vector<float>(batch_size * kv_num_heads * max_sequence_length * head_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "Grouped query MultiHeadAttention with cache indirection is not implemented for CUDA",
+             {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCpuBnshKeyValueDifferentHeadSizes) {
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 2;
+  constexpr int v_head_size = 1;
+  constexpr int sequence_length = 1;
+  constexpr int kv_sequence_length = 2;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+
+  // Key and value are 4-D (B, N_kv, L, H) while query stays 3-D (B, S, N*H).
+  tester.AddInput<float>("query", {1, sequence_length, num_heads * head_size},
+                         std::vector<float>(sequence_length * num_heads * head_size, 0.0f));
+  tester.AddInput<float>("key", {1, kv_num_heads, kv_sequence_length, head_size},
+                         std::vector<float>(kv_num_heads * kv_sequence_length * head_size, 0.0f));
+  tester.AddInput<float>("value", {1, kv_num_heads, kv_sequence_length, v_head_size},
+                         {1.0f, 3.0f, 5.0f, 7.0f});
+
+  tester.AddOptionalInputEdge<float>();    // bias
+  tester.AddOptionalInputEdge<int32_t>();  // key_padding_mask
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // past_key
+  tester.AddOptionalInputEdge<float>();    // past_value
+  tester.AddOptionalInputEdge<int32_t>();  // past_sequence_length
+  tester.AddOptionalInputEdge<int32_t>();  // cache_indirection
+
+  tester.AddOutput<float>("output", {1, sequence_length, num_heads * v_head_size},
+                          {2.0f, 2.0f, 6.0f, 6.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionBnshKeyValueIgnoresKeyValueBias) {
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 2;
+  constexpr int v_head_size = 1;
+  constexpr int kv_sequence_length = 2;
+  constexpr int query_bias_length = num_heads * head_size;
+  constexpr int kv_bias_length = kv_num_heads * (head_size + v_head_size);
+
+  // The kernel assumes the key/value parts of bias are zero when key and value are 4-D BNSH tensors,
+  // so non-zero values there must not change the result.
+  std::vector<float> bias(query_bias_length, 0.0f);
+  bias.insert(bias.end(), kv_bias_length, 1.0f);
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+  tester.AddInput<float>("query", {1, 1, num_heads * head_size},
+                         std::vector<float>(num_heads * head_size, 0.0f));
+  tester.AddInput<float>("key", {1, kv_num_heads, kv_sequence_length, head_size},
+                         std::vector<float>(kv_num_heads * kv_sequence_length * head_size, 0.0f));
+  tester.AddInput<float>("value", {1, kv_num_heads, kv_sequence_length, v_head_size},
+                         {1.0f, 3.0f, 5.0f, 7.0f});
+  tester.AddInput<float>("bias", {query_bias_length + kv_bias_length}, bias);
+  tester.AddOptionalInputEdge<int32_t>();  // key_padding_mask
+  tester.AddOptionalInputEdge<float>();    // attention_bias
+  tester.AddOptionalInputEdge<float>();    // past_key
+  tester.AddOptionalInputEdge<float>();    // past_value
+  tester.AddOptionalInputEdge<int32_t>();  // past_sequence_length
+  tester.AddOptionalInputEdge<int32_t>();  // cache_indirection
+  tester.AddOutput<float>("output", {1, 1, num_heads * v_head_size},
+                          {2.0f, 2.0f, 6.0f, 6.0f});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionCudaWithBiasAndPresent) {
+  if (!HasCudaEnvironment(800)) {
+    return;
+  }
+
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 8;
+  constexpr int sequence_length = 2;
+  constexpr int query_hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", num_heads);
+  tester.AddAttribute<int64_t>("kv_num_heads", kv_num_heads);
+
+  tester.AddInput<MLFloat16>("query", {1, sequence_length, query_hidden_size},
+                             ToFloat16(std::vector<float>(sequence_length * query_hidden_size, 0.0f)));
+  tester.AddInput<MLFloat16>("key", {1, sequence_length, kv_hidden_size},
+                             ToFloat16(std::vector<float>(sequence_length * kv_hidden_size, 0.0f)));
+
+  std::vector<float> value;
+  value.insert(value.end(), head_size, 1.0f);
+  value.insert(value.end(), head_size, 3.0f);
+  value.insert(value.end(), head_size, 5.0f);
+  value.insert(value.end(), head_size, 7.0f);
+  tester.AddInput<MLFloat16>("value", {1, sequence_length, kv_hidden_size}, ToFloat16(value));
+
+  std::vector<float> bias(query_hidden_size, 0.0f);
+  bias.insert(bias.end(), head_size, 10.0f);
+  bias.insert(bias.end(), head_size, 20.0f);
+  bias.insert(bias.end(), head_size, 2.0f);
+  bias.insert(bias.end(), head_size, 4.0f);
+  tester.AddInput<MLFloat16>("bias", {query_hidden_size + 2 * kv_hidden_size}, ToFloat16(bias));
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<MLFloat16>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<int32_t>();
+
+  std::vector<float> output;
+  for (int sequence = 0; sequence < sequence_length; ++sequence) {
+    output.insert(output.end(), 2 * head_size, 5.0f);
+    output.insert(output.end(), 2 * head_size, 9.0f);
+  }
+  tester.AddOutput<MLFloat16>("output", {1, sequence_length, query_hidden_size}, ToFloat16(output),
+                              false, 0.0f, 0.02f);
+
+  std::vector<float> present_key;
+  present_key.insert(present_key.end(), 2 * head_size, 10.0f);
+  present_key.insert(present_key.end(), 2 * head_size, 20.0f);
+  tester.AddOutput<MLFloat16>("present_key", {1, kv_num_heads, sequence_length, head_size},
+                              ToFloat16(present_key));
+
+  std::vector<float> present_value;
+  present_value.insert(present_value.end(), head_size, 3.0f);
+  present_value.insert(present_value.end(), head_size, 7.0f);
+  present_value.insert(present_value.end(), head_size, 7.0f);
+  present_value.insert(present_value.end(), head_size, 11.0f);
+  tester.AddOutput<MLFloat16>("present_value", {1, kv_num_heads, sequence_length, head_size},
+                              ToFloat16(present_value));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, GroupedQueryAttentionInvalidHeadCount) {
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 4);
+  tester.AddAttribute<int64_t>("kv_num_heads", 3);
+  tester.AddInput<float>("query", {1, 1, 32}, std::vector<float>(32, 0.0f));
+  tester.AddInput<float>("key", {1, 1, 24}, std::vector<float>(24, 0.0f));
+  tester.AddInput<float>("value", {1, 1, 24}, std::vector<float>(24, 0.0f));
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOutput<float>("output", {1, 1, 32}, std::vector<float>(32, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectFailure,
+             "Number of query heads shall be a multiple of number of key/value heads",
+             {}, nullptr, &execution_providers);
+}
+
 TEST(MultiHeadAttentionTest, CacheIndirectionBeamWidthOneInvalidIndex) {
   OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", 1);
