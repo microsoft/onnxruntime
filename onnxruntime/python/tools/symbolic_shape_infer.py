@@ -2343,6 +2343,14 @@ class SymbolicShapeInference:
     def _infer_BiasGelu(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)
 
+    def _div_by_kv_num_heads(self, node, hidden_size, kv_num_heads, out_idx, dim):
+        """Split a key/value hidden size into a head size, or return a fresh symbolic dim when it is not divisible."""
+        if not isinstance(hidden_size, int):
+            return f"{hidden_size}/{kv_num_heads}"
+        if hidden_size % kv_num_heads == 0:
+            return hidden_size // kv_num_heads
+        return str(self._new_symbolic_dim_from_output(node, out_idx, dim))
+
     def _infer_MultiHeadAttention(self, node):  # noqa: N802
         # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
         # Q, K and V without packing:
@@ -2363,6 +2371,17 @@ class SymbolicShapeInference:
         output_dtype = None
         num_heads = get_attribute(node, "num_heads")
         kv_num_heads = get_attribute(node, "kv_num_heads", num_heads)
+
+        # Mirror the runtime and the C++ shape inference contract: head counts must be positive and num_heads must
+        # be a multiple of kv_num_heads. Otherwise the model is rejected at kernel initialization.
+        if isinstance(num_heads, int) and isinstance(kv_num_heads, int):
+            if num_heads <= 0 or kv_num_heads <= 0:
+                raise ValueError(f"{node.name}: num_heads and kv_num_heads must be positive integers")
+            if num_heads % kv_num_heads != 0:
+                raise ValueError(
+                    f"{node.name}: num_heads ({num_heads}) shall be a multiple of kv_num_heads ({kv_num_heads})"
+                )
+
         if query_shape is not None:
             if len(query_shape) == 3:
                 key_shape = self._try_get_shape(node, 1)
@@ -2373,12 +2392,14 @@ class SymbolicShapeInference:
                     if len(value_shape) == 3:
                         if num_heads == kv_num_heads:
                             output_shape[2] = value_shape[2]
+                        elif not isinstance(value_shape[2], int):
+                            output_shape[2] = f"{value_shape[2]}*{num_heads}/{kv_num_heads}"
+                        elif value_shape[2] % kv_num_heads == 0:
+                            output_shape[2] = value_shape[2] * num_heads // kv_num_heads
                         else:
-                            output_shape[2] = (
-                                value_shape[2] * num_heads // kv_num_heads
-                                if isinstance(value_shape[2], int)
-                                else f"{value_shape[2]}*{num_heads}/{kv_num_heads}"
-                            )
+                            # A static value hidden size that is not divisible by kv_num_heads is rejected by the
+                            # runtime. Leave the dimension unknown instead of truncating the division.
+                            output_shape[2] = str(self._new_symbolic_dim_from_output(node, 0, 2))
                     elif len(value_shape) == 4:
                         output_shape[2] = (
                             value_shape[3] * num_heads
@@ -2419,11 +2440,7 @@ class SymbolicShapeInference:
                     value_shape = self._try_get_shape(node, 2)
                     if key_shape is not None:
                         if len(key_shape) == 3:
-                            key_head_size = (
-                                key_shape[2] // kv_num_heads
-                                if isinstance(key_shape[2], int)
-                                else f"{key_shape[2]}/{kv_num_heads}"
-                            )
+                            key_head_size = self._div_by_kv_num_heads(node, key_shape[2], kv_num_heads, 1, 3)
                         elif len(key_shape) == 4:
                             key_head_size = key_shape[3]
                         elif len(key_shape) == 5:
@@ -2431,11 +2448,7 @@ class SymbolicShapeInference:
                             value_head_size = key_shape[4]
                     if value_shape is not None:
                         if len(value_shape) == 3:
-                            value_head_size = (
-                                value_shape[2] // kv_num_heads
-                                if isinstance(value_shape[2], int)
-                                else f"{value_shape[2]}/{kv_num_heads}"
-                            )
+                            value_head_size = self._div_by_kv_num_heads(node, value_shape[2], kv_num_heads, 2, 3)
                         elif len(value_shape) == 4:
                             value_head_size = value_shape[3]
                 else:
