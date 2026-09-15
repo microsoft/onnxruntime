@@ -17,13 +17,13 @@ struct AttentionParameters {
   int total_sequence_length = 0;  // total sequence length of K or V
   int max_sequence_length = 0;    // max sequence length from 4D mask
   int input_hidden_size = 0;      // first dimension of weights for input projection
-  int hidden_size = 0;            // hidden size of Q or K
+  int hidden_size = 0;            // hidden size of Q (num_heads * head_size)
   int head_size = 0;              // hidden size per head of Q or K
-  int v_hidden_size = 0;          // hidden size of V
   int v_head_size = 0;            // hidden size per head of V
-  int num_heads = 0;
-  int num_splits = 0;  // number of splits for splitkv
-  int rotary_dim = 0;  // rotary embedding dimension
+  int num_heads = 0;              // number of heads of query
+  int kv_num_heads = 0;           // number of heads of key or value. Always set by CheckInputs.
+  int num_splits = 0;             // number of splits for splitkv
+  int rotary_dim = 0;             // rotary embedding dimension
   int beam_width = 0;
   bool is_unidirectional = false;
   bool past_present_share_buffer = false;
@@ -38,6 +38,13 @@ struct AttentionParameters {
   bool is_output_bnsh = false;  // whether the output format is BNSH
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
+
+  // Hidden size of each input and of the attention output. In grouped query attention, K and V have
+  // fewer heads than Q, so their hidden sizes are smaller than the query and output hidden sizes.
+  int GetQueryHiddenSize() const { return num_heads * head_size; }
+  int GetKeyHiddenSize() const { return kv_num_heads * head_size; }
+  int GetValueHiddenSize() const { return kv_num_heads * v_head_size; }
+  int GetOutputHiddenSize() const { return num_heads * v_head_size; }
 };
 
 // Parameters deduced from node attributes and inputs/outputs.
@@ -84,7 +91,6 @@ struct DecoderMaskedMultiHeadAttentionParameters : AttentionParameters {
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct GroupQueryAttentionParameters : AttentionParameters {
-  int kv_num_heads;             // number of heads of key or value
   int kv_hidden_size;           // hidden size of key or value
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
@@ -123,7 +129,6 @@ struct GroupQueryAttentionParameters : AttentionParameters {
 
 // Parameters deduced from node attributes and inputs/outputs.
 struct PagedAttentionParameters : AttentionParameters {
-  int kv_num_heads;            // number of heads of key or value
   int kv_hidden_size;          // hidden size of key or value
   int token_count;             // number of tokens in packed query
   int block_size;              // block size for kv cache
@@ -149,8 +154,8 @@ struct PagedAttentionParameters : AttentionParameters {
   KVQuantizationType v_quant_type = KVQuantizationType::NONE;
   // Multi-head Latent Attention (kv_cache_layout == "LATENT"). There is a single physical cache:
   // V of every head is the leading v_head_size channels of the same key_cache row, so 'value' and
-  // 'value_cache' are absent. The inherited v_head_size / v_hidden_size hold the effective V width
-  // and the output width; in SEPARATE mode they equal head_size / hidden_size.
+  // 'value_cache' are absent. The inherited v_head_size holds the effective per-head V width;
+  // GetOutputHiddenSize() gives the output width. In SEPARATE mode they match head_size / hidden_size.
   bool is_latent_kv = false;
   // First channel within head_size covered by rotary embedding. RoPE covers
   // [rotary_offset, rotary_offset + rotary_dim); channels outside are copied through. Default 0
@@ -161,7 +166,6 @@ struct PagedAttentionParameters : AttentionParameters {
 // Parameters for sparse attention.
 struct SparseAttentionParameters : AttentionParameters {
   int kv_hidden_size;              // hidden size of key or value
-  int kv_num_heads;                // number of heads of key or value
   bool do_rotary;                  // whether to use rotary embedding
   bool rotary_interleaved;         // whether to use interleaved rotary embedding
   int sparse_block_size;           // block size for sparse attention

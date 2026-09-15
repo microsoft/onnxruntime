@@ -21,6 +21,9 @@ class MultiHeadAttention final : public WebGpuKernel, public AttentionBase {
  public:
   MultiHeadAttention(const OpKernelInfo& info);
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
+
+ private:
+  int kv_num_heads_;
 };
 
 }  // namespace webgpu

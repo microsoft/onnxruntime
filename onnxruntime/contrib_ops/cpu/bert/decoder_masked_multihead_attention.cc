@@ -92,7 +92,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
   int head_size = parameters.head_size;
   int v_head_size = parameters.v_head_size;
   int hidden_size = parameters.hidden_size;
-  int v_hidden_size = parameters.v_hidden_size;
+  int v_hidden_size = parameters.GetOutputHiddenSize();
 
   // This kernel is for decoding only (i.e.) sequence length has to be 1
   if (sequence_length != 1) {
@@ -206,7 +206,9 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                           value->Data<T>(),
                           mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value, output_qk,
                           batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
-                          head_size, v_head_size, v_hidden_size, attention_bias, context);
+                          head_size, v_head_size, v_hidden_size, attention_bias, context,
+                          0 /* past_sequence_length */, false /* past_present_share_buffer */,
+                          parameters.kv_num_heads);
   }
 
   OrtValue K, V;
@@ -223,7 +225,8 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                           mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value, output_qk,
                           batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
                           head_size, v_head_size, v_hidden_size, attention_bias, context,
-                          parameters.past_sequence_length, true /* past_present_share_buffer */);
+                          parameters.past_sequence_length, true /* past_present_share_buffer */,
+                          parameters.kv_num_heads);
   }
 
   // Self-attention, has_beams

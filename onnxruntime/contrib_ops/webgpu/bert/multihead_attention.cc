@@ -28,7 +28,10 @@ ONNX_OPERATOR_KERNEL_EX(
     MultiHeadAttention);
 
 MultiHeadAttention::MultiHeadAttention(const OpKernelInfo& info)
-    : WebGpuKernel(info), AttentionBase(info, false) {
+    : WebGpuKernel(info),
+      AttentionBase(info, false),
+      kv_num_heads_(narrow<int>(info.GetAttrOrDefault<int64_t>("kv_num_heads", num_heads_))) {
+  ORT_ENFORCE(kv_num_heads_ > 0, "kv_num_heads must be a positive integer");
   // Unidirectional attention is now supported for both flash attention and normal attention paths
 }
 
@@ -75,7 +78,12 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
                                                                       is_unidirectional_,
                                                                       past_present_share_buffer,
                                                                       kMultiHeadAttention,
-                                                                      context.DeviceLimits().maxComputeInvocationsPerWorkgroup));
+                                                                      context.DeviceLimits().maxComputeInvocationsPerWorkgroup,
+                                                                      kv_num_heads_));
+  if (params.kv_num_heads != params.num_heads) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "Grouped query MultiHeadAttention is not implemented for WebGPU");
+  }
   WebgpuAttentionParameters parameters(params);
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);
@@ -103,9 +111,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   TensorShape output_qk_shape(output_qk_dims);
   Tensor* output_qk = context.Output(3, output_qk_shape);
 
-  // Match CPU EP semantics: when no present_key/present_value output is requested,
-  // ignore past_key/past_value. The CPU EP sets past_sequence_length=0 in this case,
-  // effectively treating the input as if there is no KV cache.
+  // WebGPU currently ignores past_key/past_value when no present cache output is requested.
   if (present_key == nullptr && present_value == nullptr) {
     past_key = nullptr;
     past_value = nullptr;
