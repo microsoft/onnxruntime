@@ -105,13 +105,58 @@ TEST(GroupQueryAttentionWorkspaceTest, OrdinaryNonWindowedPreparationHasThreeVec
   EXPECT_EQ(recipe.sequence_lengths_offset_bytes, 0U);
   EXPECT_EQ(recipe.sequence_lengths_bytes, 24U);
 
-  // Fallback packed preprocess: B*S*N*H*sizeof(T) = 2*3*4*8*2 = 384.
+  // Unfused packed preprocess: B*S*N*H*sizeof(T) = 2*3*4*8*2 = 384.
   EXPECT_EQ(recipe.qkv_preprocess_offset_bytes, 256U);
   EXPECT_EQ(recipe.qkv_preprocess_bytes, 384U);
   EXPECT_EQ(recipe.total_preparation_bytes, 640U);
   EXPECT_FALSE(recipe.uses_staging);
   EXPECT_FALSE(recipe.uses_compaction);
   EXPECT_EQ(recipe.effective_kv_cache_capacity, 5);
+}
+
+TEST(GroupQueryAttentionWorkspaceTest, AsymmetricAliasPreservesOnePastCacheTensor) {
+  auto problem = ValidProblem();
+  problem.past_kv_cache_capacity = 5;
+  problem.requires_separate_past_buffer = true;
+
+  GQAPreparationRecipe recipe;
+  ASSERT_TRUE(BuildRecipe(problem, recipe));
+
+  // B*Nk*P*row = 2*2*5*16 = 320.
+  EXPECT_TRUE(recipe.uses_separate_past_buffer);
+  EXPECT_EQ(recipe.separate_past_offset_bytes, 0U);
+  EXPECT_EQ(recipe.separate_past_bytes, 320U);
+  EXPECT_EQ(recipe.sequence_lengths_offset_bytes, 512U);
+  EXPECT_TRUE(ValidateGQAPreparationRecipe(recipe).IsOK());
+}
+
+TEST(GroupQueryAttentionWorkspaceTest, RejectsInvalidSeparatePastBufferFacts) {
+  auto problem = ValidProblem();
+  problem.requires_separate_past_buffer = true;
+  EXPECT_EQ(GetGQAPreparationRecipe(problem, {}).status.error,
+            GQAWorkspaceError::InvalidArgument);
+
+  problem.past_kv_cache_capacity = 5;
+  problem.is_windowed_kv_cache = true;
+  EXPECT_EQ(GetGQAPreparationRecipe(problem, {}).status.error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
+TEST(GroupQueryAttentionWorkspaceTest, RejectsSeparatePastBufferForSharedOnlyRoutes) {
+  auto problem = ValidXqaProblem();
+  problem.past_kv_cache_capacity = 5;
+  problem.requires_separate_past_buffer = true;
+  EXPECT_EQ(
+      GetGQAPreparationRecipe(
+          problem, GQAPreparationRoute{GQAPreprocessMode::Xqa, false})
+          .status.error,
+      GQAWorkspaceError::InvalidArgument);
+
+  EXPECT_EQ(
+      GetGQAPreparationRecipe(
+          problem, GQAPreparationRoute{GQAPreprocessMode::Flash, true})
+          .status.error,
+      GQAWorkspaceError::InvalidArgument);
 }
 
 TEST(GroupQueryAttentionWorkspaceTest, WindowedSingleTokenUsesCompactionAndSixVectors) {

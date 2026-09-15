@@ -200,6 +200,13 @@ selected backend's simultaneously-live allocation regions at checked
 does not select or aggregate routes. cuDNN is explicitly unavailable because a
 graph-free recipe must not query or build a cuDNN graph.
 
+When exactly one past/present K/V pair aliases, non-windowed GQA preserves the
+aliased past tensor in a separate scratch allocation before preprocessing
+overwrites the present cache. The workspace problem records that asymmetric
+alias fact and the past-cache capacity, and the preparation recipe includes the
+checked preservation region. Windowed execution, XQA, and Flash fast decode
+require both K/V pairs to alias and reject this state.
+
 MHA and GQA are high-value coverage targets and have high estimation-drift risk. Their runtime behavior can include
 dynamic internal backend dispatch, cache lifecycle and aliasing, optional inputs, non-monotonic fallback paths, and
 unfused workspace governed by `S_q * S_kv_total`. GQA additionally has different Q and KV head counts. MHA can have

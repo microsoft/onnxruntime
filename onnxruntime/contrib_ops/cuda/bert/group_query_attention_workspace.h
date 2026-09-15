@@ -76,6 +76,9 @@ struct GQAWorkspaceProblem {
 
   // Allocated present-cache capacity before any windowed staging adjustment.
   int64_t present_kv_cache_capacity = 0;
+  // Allocated past-cache capacity when exactly one past/present K/V pair aliases.
+  // Zero when no separate past preservation buffer is required.
+  int64_t past_kv_cache_capacity = 0;
 
   // Zero for unpacked storage, otherwise the packed KV-cache element width.
   int64_t kv_cache_bit_width = 0;
@@ -90,6 +93,7 @@ struct GQAWorkspaceProblem {
   bool do_rotary = false;
   bool is_packed_qkv = false;
   bool use_qk_norm = false;
+  bool requires_separate_past_buffer = false;
 };
 
 struct GQAPreparationRoute {
@@ -98,8 +102,9 @@ struct GQAPreparationRoute {
   // partial geometry predicates above.
   GQAPreprocessMode preprocess_mode = GQAPreprocessMode::Unfused;
 
-  // This is the authoritative selected runtime fact. Complete-route
-  // composition validates that the Flash backend config carries the same value.
+  // True only for the Flash single-token fast-decode path. This is the
+  // authoritative selected runtime fact; complete-route composition validates
+  // that the Flash backend config carries the same value.
   bool use_flash_attention_fast_decode = false;
 };
 
@@ -119,6 +124,11 @@ struct GQAPreparationRecipe {
   int64_t effective_kv_cache_capacity = 0;
   // Bytes per cache row after applying the KV-cache packing width.
   size_t cache_row_bytes = 0;
+
+  // Exactly one past/present K/V pair aliases, so runtime preserves that past tensor.
+  bool uses_separate_past_buffer = false;
+  size_t separate_past_offset_bytes = 0;
+  size_t separate_past_bytes = 0;
 
   // Windowed multi-token updates stage K and V in separate full-capacity regions.
   bool uses_staging = false;
@@ -372,6 +382,8 @@ GQACompleteWorkspaceResult GetGQACompleteWorkspaceRecipe(
     const GQAWorkspaceProblem& problem,
     const GQAConcreteRoute& route) noexcept;
 
+// Recipe validators check structural layout and cross-recipe consistency.
+// Canonical byte counts come from the checked Get*Recipe builders above.
 GQAWorkspaceStatus ValidateGQACompleteWorkspaceRecipe(
     const GQACompleteWorkspaceRecipe& recipe) noexcept;
 

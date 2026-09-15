@@ -204,6 +204,10 @@ GQAWorkspaceStatus ValidateGQACompleteWorkspaceRecipe(
       if (!IsDefault(recipe.xqa) || !IsDefault(recipe.flash) || !IsDefault(recipe.unfused)) {
         return Invalid("A complete MEA recipe exposes another backend recipe.");
       }
+      if (recipe.memory_efficient.effective_kv_cache_capacity !=
+          recipe.preparation.effective_kv_cache_capacity) {
+        return Invalid("The complete MEA recipe capacity does not match preparation.");
+      }
       status = ValidateGQAMemoryEfficientWorkspaceRecipe(recipe.memory_efficient);
       selected_backend_bytes = recipe.memory_efficient.total_backend_bytes;
       break;
@@ -220,6 +224,10 @@ GQAWorkspaceStatus ValidateGQACompleteWorkspaceRecipe(
       return Invalid("The complete GQA backend is invalid.");
   }
   if (!status.IsOK()) return status;
+  if (recipe.preparation.sequence_length_vector_count == 0 &&
+      recipe.backend != GQABackend::Flash) {
+    return Invalid("Only Flash fast decode may omit GQA sequence vectors.");
+  }
   if (selected_backend_bytes != recipe.backend_bytes) {
     return Invalid("The complete GQA backend byte count does not match its selected recipe.");
   }
