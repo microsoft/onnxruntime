@@ -539,7 +539,11 @@
           NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
           SOURCES ${onnxruntime_cuda_xqa_srcs})
       else()
-        target_sources(onnxruntime_providers_cuda PRIVATE ${onnxruntime_cuda_xqa_srcs})
+        if(TARGET onnxruntime_providers_cuda_obj)
+          target_sources(onnxruntime_providers_cuda_obj PRIVATE ${onnxruntime_cuda_xqa_srcs})
+        else()
+          target_sources(onnxruntime_providers_cuda PRIVATE ${onnxruntime_cuda_xqa_srcs})
+        endif()
       endif()
     endif()
 
