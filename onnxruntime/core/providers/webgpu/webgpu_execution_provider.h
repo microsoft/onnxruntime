@@ -53,6 +53,10 @@ struct WebGpuExecutionProviderConfig {
   // generator's worth of intermediate buffers.
   size_t session_buffer_pool_generations{1};
   uint32_t kv_cache_quantization_bits{0};  // KV cache quantization bits (0 = off, 4 = 4-bit)
+  // Accumulate MatMulNBits dot products in f32 rather than in the output element type.
+  // This is the single line that decides the shipped default for the
+  // "enableMatmulFp32Accumulation" provider option.
+  bool enable_matmul_fp32_accumulation{false};
   std::vector<std::string> force_cpu_node_names{};
 };
 
@@ -117,6 +121,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
   uint32_t KvCacheQuantizationBits() const { return kv_cache_quantization_bits_; }
   bool KvCacheQuantizationEnabled() const { return kv_cache_quantization_bits_ != 0; }
+  bool EnableMatmulFp32Accumulation() const { return enable_matmul_fp32_accumulation_; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
   inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
@@ -142,6 +147,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
+  bool enable_matmul_fp32_accumulation_ = false;
   std::unordered_map<int, int> graph_id_to_run_count_;
   // Required regular runs before graph capture for any necessary allocations.
   const int min_num_runs_before_graph_capture_ = 0;
