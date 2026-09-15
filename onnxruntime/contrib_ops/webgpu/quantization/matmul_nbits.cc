@@ -225,7 +225,7 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
   uint32_t zero_blocks_per_col = (n_blocks_per_col + zp_elements_per_byte - 1) / zp_elements_per_byte * zp_elements_per_byte;
 
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
-  std::optional<SubgroupMatrixConfig> subgroup_matrix_config;
+  int32_t subgroup_matrix_config_index = -1;
   if (CanApplySubgroupMatrixMatMulNBits(context,
                                         accuracy_level,
                                         block_size,
@@ -234,13 +234,11 @@ Status ApplyMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales, 
                                         K,
                                         static_cast<uint32_t>(nbits),
                                         y->DataType() == DataTypeImpl::GetType<MLFloat16>(),
-                                        subgroup_matrix_config,
+                                        subgroup_matrix_config_index,
                                         M,
-                                        has_weight_idx_indirect)) {
-    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K,
-                                          static_cast<uint32_t>(nbits), zero_blocks_per_col,
-                                          *subgroup_matrix_config, context, y, weight_index,
-                                          weight_index_indirect);
+                                        has_weight_idx_indirect,
+                                        bias != nullptr)) {
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, bias, M, N, K, static_cast<uint32_t>(nbits), zero_blocks_per_col, subgroup_matrix_config_index, context, y, weight_index, weight_index_indirect);
   }
 
   // On FP32 only GPUs and Qualcomm GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
