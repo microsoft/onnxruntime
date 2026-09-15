@@ -253,6 +253,48 @@ TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsFastDecodePreparationOnReg
             GQAWorkspaceError::InvalidArgument);
 }
 
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsSeparatePastPreparationOnSharedOnlyBackends) {
+  auto separate_problem = DecodeProblem();
+  separate_problem.past_kv_cache_capacity =
+      separate_problem.present_kv_cache_capacity;
+  separate_problem.requires_separate_past_buffer = true;
+  GQAConcreteRoute unfused_route;
+  unfused_route.backend = GQABackend::Unfused;
+  unfused_route.preparation.preprocess_mode = GQAPreprocessMode::Unfused;
+  unfused_route.unfused.total_sequence_length = 512;
+  const auto separate_result =
+      GetGQACompleteWorkspaceRecipe(separate_problem, unfused_route);
+  ASSERT_TRUE(separate_result.status.IsOK()) << separate_result.status.message;
+  ASSERT_TRUE(separate_result.recipe.preparation.uses_separate_past_buffer);
+
+  auto shared_problem = DecodeProblem();
+  GQAConcreteRoute xqa_route;
+  xqa_route.backend = GQABackend::Xqa;
+  xqa_route.preparation.preprocess_mode = GQAPreprocessMode::Xqa;
+  xqa_route.xqa = XqaConfig();
+  auto xqa_result = GetGQACompleteWorkspaceRecipe(shared_problem, xqa_route);
+  ASSERT_TRUE(xqa_result.status.IsOK()) << xqa_result.status.message;
+  xqa_result.recipe.preparation = separate_result.recipe.preparation;
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(xqa_result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+
+  shared_problem.num_heads = 2;
+  shared_problem.kv_num_heads = 2;
+  GQAConcreteRoute flash_route;
+  flash_route.backend = GQABackend::Flash;
+  flash_route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+  flash_route.preparation.use_flash_attention_fast_decode = true;
+  flash_route.flash.fast_decode = true;
+  flash_route.flash.total_sequence_length = 512;
+  flash_route.flash.multi_processor_count = 80;
+  auto flash_result =
+      GetGQACompleteWorkspaceRecipe(shared_problem, flash_route);
+  ASSERT_TRUE(flash_result.status.IsOK()) << flash_result.status.message;
+  flash_result.recipe.preparation = separate_result.recipe.preparation;
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(flash_result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
 TEST(GroupQueryAttentionCompleteWorkspaceTest, FlashRootIncludesPreparationExactlyOnce) {
   auto problem = DecodeProblem();
   problem.num_heads = 2;

@@ -191,12 +191,19 @@ GQAWorkspaceStatus ValidateGQACompleteWorkspaceRecipe(
       if (!IsDefault(recipe.flash) || !IsDefault(recipe.memory_efficient) || !IsDefault(recipe.unfused)) {
         return Invalid("A complete XQA recipe exposes another backend recipe.");
       }
+      if (recipe.preparation.uses_separate_past_buffer) {
+        return Invalid("A complete XQA recipe cannot preserve a separate past buffer.");
+      }
       status = ValidateGQAXqaWorkspaceRecipe(recipe.xqa);
       selected_backend_bytes = recipe.xqa.total_backend_bytes;
       break;
     case GQABackend::Flash:
       if (!IsDefault(recipe.xqa) || !IsDefault(recipe.memory_efficient) || !IsDefault(recipe.unfused)) {
         return Invalid("A complete Flash recipe exposes another backend recipe.");
+      }
+      if (recipe.flash.fast_decode &&
+          recipe.preparation.uses_separate_past_buffer) {
+        return Invalid("A complete Flash fast-decode recipe cannot preserve a separate past buffer.");
       }
       status = ValidateGQAFlashWorkspaceRecipe(recipe.flash);
       selected_backend_bytes = recipe.flash.total_backend_bytes;
