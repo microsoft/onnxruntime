@@ -24,13 +24,20 @@
 
 #include "kai/ukernels/matmul/matmul_clamp_f16_f16_f16p/kai_matmul_clamp_f16_f16_f16p_interface.h"
 
+#include "kai/ukernels/dwconv/dwconv_f32_f32_f32p/kai_dwconv_clamp_f32_f32_f32p_interface.h"
+
 // Wrapper type that carries a stable "name" alongside the KAI ukernel interface.
 // This avoids needing to infer which underlying microkernel was selected from a function pointer.
 template <typename UkernelFn>
-struct KaiMatmulKernel {
+struct KaiKernel {
     const char* name;
     UkernelFn ukernel;
 };
+
+using KaiF32DepthwiseConvKernel = KaiKernel<kai_dwconv_clamp_f32_f32_f32p_planar_ukernel>;
+
+template <typename UkernelFn>
+using KaiMatmulKernel = KaiKernel<UkernelFn>;
 
 enum class KaiQ4RhsPackLayout {
     SymmetricNxK,
@@ -104,3 +111,5 @@ const KaiBF16SBgemmKernel& GetKleidiAISBGemmUKernel();
 
 // Returns the selected FP16 HGEMM ukernel based on runtime CPU capabilities.
 const KaiF16HgemmKernel& GetKleidiAIHgemmUKernel();
+// Returns the selected FP32 depthwise convolution ukernel based on runtime CPU capabilities.
+const KaiF32DepthwiseConvKernel& GetKleidiAIDepthwiseConvUKernel();

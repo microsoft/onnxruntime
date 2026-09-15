@@ -15,6 +15,9 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 // Standalone MLAS builds don't have access to the ORT-internal SafeInt
 // wrapper; fall back to the SafeInt.hpp header directly (its default
@@ -1351,6 +1354,7 @@ static constexpr size_t ComputeChannelsLastConvOutSize(size_t input, size_t kern
 
     return 0;
 }
+
 #endif
 
 }  // namespace
@@ -1453,22 +1457,32 @@ MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
     MLAS_UNREFERENCED_PARAMETER(Beta);
     return false;
 #else
-    MLAS_UNREFERENCED_PARAMETER(Dimensions);
-    MLAS_UNREFERENCED_PARAMETER(BatchCount);
-    MLAS_UNREFERENCED_PARAMETER(GroupCount);
-    MLAS_UNREFERENCED_PARAMETER(InputChannelsPerGroup);
-    MLAS_UNREFERENCED_PARAMETER(InputShape);
-    MLAS_UNREFERENCED_PARAMETER(KernelShape);
-    MLAS_UNREFERENCED_PARAMETER(DilationShape);
-    MLAS_UNREFERENCED_PARAMETER(Padding);
-    MLAS_UNREFERENCED_PARAMETER(StrideShape);
-    MLAS_UNREFERENCED_PARAMETER(FilterCount);
-    MLAS_UNREFERENCED_PARAMETER(Beta);
+    if (GetMlasPlatform().MlasConvPrepareOverride == nullptr ||
+        GetMlasPlatform().MlasConvOverride == nullptr) {
+        return false;
+    }
 
-    // TODO: enable only for shapes supported by the dedicated
-    // depthwise kernel. Until then, keep depthwise/grouped convolutions out of
-    // the Arm® KleidiAI™ NHWC path.
-    return false;
+    if (Dimensions != 2) {
+        return false;
+    }
+
+    MLAS_CONV_PARAMETERS parameters{};
+    parameters.Dimensions = Dimensions;
+    parameters.BatchCount = BatchCount;
+    parameters.GroupCount = GroupCount;
+    parameters.InputChannels = InputChannelsPerGroup;
+    parameters.FilterCount = FilterCount;
+    parameters.Beta = Beta;
+    for (size_t dim = 0; dim < Dimensions; ++dim) {
+        parameters.InputShape[dim] = InputShape[dim];
+        parameters.KernelShape[dim] = KernelShape[dim];
+        parameters.DilationShape[dim] = DilationShape[dim];
+        parameters.Padding[dim] = Padding[dim];
+        parameters.Padding[dim + Dimensions] = Padding[dim + Dimensions];
+        parameters.StrideShape[dim] = StrideShape[dim];
+    }
+
+    return ArmKleidiAI::DepthwiseConvKleidiAISupported(&parameters);
 #endif
 }
 
