@@ -3,8 +3,11 @@
 
 #pragma once
 
+#include <algorithm>
 #include <functional>
+#include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/sequential_execution_plan.h"
 #include "core/framework/session_state.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -26,6 +29,7 @@ class OpKernelContextInternal : public OpKernelContext {
                                    profiling::Profiler* run_profiler = nullptr)
       : OpKernelContext(&frame, &kernel, stream, session_state.GetThreadPool(), logger),
         session_state_(session_state),
+        execution_frame_(frame),
         terminate_flag_(terminate_flag),
         run_profiler_(run_profiler) {
     const auto& implicit_inputs = kernel.Node().ImplicitInputDefs();
@@ -47,6 +51,42 @@ class OpKernelContextInternal : public OpKernelContext {
       }
     }
 #endif
+  }
+
+  ~OpKernelContextInternal() override {
+    for (const auto* workspace_plan : active_workspace_plans_) {
+      execution_frame_.ReleasePlannedWorkspace(workspace_plan->pattern_id, workspace_plan->location);
+    }
+  }
+
+  Status GetPreallocatedWorkspace(int slot_id, size_t requested_bytes, void** workspace) override {
+    *workspace = nullptr;
+    const auto* execution_plan = session_state_.GetExecutionPlan();
+    if (execution_plan == nullptr) {
+      return Status::OK();
+    }
+
+    const auto node_it = execution_plan->workspace_allocation_plan.find(GetNodeIndex());
+    if (node_it == execution_plan->workspace_allocation_plan.end()) {
+      return Status::OK();
+    }
+
+    for (const auto& workspace_plan : node_it->second) {
+      if (workspace_plan.slot_id != slot_id || requested_bytes > workspace_plan.size_bytes) {
+        continue;
+      }
+
+      ORT_RETURN_IF(std::find(active_workspace_plans_.begin(), active_workspace_plans_.end(), &workspace_plan) !=
+                        active_workspace_plans_.end(),
+                    "Workspace slot ", slot_id, " was requested more than once by node ", GetNodeIndex());
+      ORT_RETURN_IF_ERROR(execution_frame_.GetPlannedWorkspace(
+          workspace_plan.pattern_id, workspace_plan.location,
+          workspace_plan.allocation_bytes, workspace_plan.alignment_bytes, workspace));
+      active_workspace_plans_.push_back(&workspace_plan);
+      return Status::OK();
+    }
+
+    return Status::OK();
   }
 
   bool GetUseDeterministicCompute() const override {
@@ -144,9 +184,11 @@ class OpKernelContextInternal : public OpKernelContext {
 #endif
 
   const SessionState& session_state_;
+  IExecutionFrame& execution_frame_;
   const bool& terminate_flag_;
   profiling::Profiler* run_profiler_;
   std::vector<const OrtValue*> implicit_input_values_;
+  InlinedVector<const SequentialExecutionPlan::WorkspaceAllocationPlan*> active_workspace_plans_;
 };
 
 }  // namespace onnxruntime
