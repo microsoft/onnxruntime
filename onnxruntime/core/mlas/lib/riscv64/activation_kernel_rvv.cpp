@@ -10,8 +10,8 @@ Module Name:
 
 Abstract:
 
-    RVV unary activation kernels for riscv64: erf, tanh, logistic (sigmoid),
-    exp, silu, gelu(erf). Wired through MLAS_PLATFORM kernel routine fields
+    RVV fused bias/activation and unary activation kernels for riscv64:
+    erf, tanh, logistic (sigmoid), exp, silu, gelu(erf). Wired through MLAS_PLATFORM fields
     on builds with RVV support (MLAS_USE_RVV).
 
     LMUL=m4 throughout (32 floats per vector at VLEN=256), scaling with VLEN
@@ -106,6 +106,162 @@ constexpr float ERF_A4 = -1.453152027f;
 constexpr float ERF_A5 =  1.061405429f;
 
 }  // namespace
+
+namespace {
+
+template<MLAS_ACTIVATION_KIND ActivationKind, bool AddBias>
+void
+MlasFusedActivationKernelRvv(
+    const MLAS_ACTIVATION* Activation,
+    float* Buffer,
+    const float* Bias,
+    size_t M,
+    size_t N,
+    size_t ldc
+    )
+{
+    float Alpha = 0.0f;
+    float Beta = 0.0f;
+    float Minimum = 0.0f;
+    float Maximum = 1.0f;
+    if constexpr (ActivationKind == MlasLeakyReluActivation) {
+        Alpha = Activation->Parameters.LeakyRelu.alpha;
+    } else if constexpr (ActivationKind == MlasClipActivation) {
+        Minimum = Activation->Parameters.Clip.minimum;
+        Maximum = Activation->Parameters.Clip.maximum;
+    } else if constexpr (ActivationKind == MlasHardSigmoidActivation) {
+        Alpha = Activation->Parameters.HardSigmoid.alpha;
+        Beta = Activation->Parameters.HardSigmoid.beta;
+    } else if constexpr (ActivationKind == MlasHardSwishActivation) {
+        Alpha = 1.0f / 6.0f;
+        Beta = 0.5f;
+    }
+
+    while (M-- > 0) {
+        float BiasValue = 0.0f;
+        if constexpr (AddBias) {
+            BiasValue = *Bias++;
+        }
+        float* buffer = Buffer;
+        size_t n = N;
+        if constexpr (ActivationKind == MlasLeakyReluActivation) {
+            // The generic four-lane kernel uses > 0, but its scalar tail uses
+            // >= 0. Preserve that distinction for signed zero and nonfinite alpha.
+            n &= ~size_t(3);
+        }
+        while (n > 0) {
+            const size_t vl = __riscv_vsetvl_e32m4(n);
+            vfloat32m4_t Value = __riscv_vle32_v_f32m4(buffer, vl);
+            if constexpr (AddBias) {
+                Value = __riscv_vfadd_vf_f32m4(Value, BiasValue, vl);
+            }
+
+            if constexpr (ActivationKind == MlasReluActivation) {
+                // Compare/select preserves NaNs and signed zero, unlike vfmax.
+                const vbool8_t Negative = __riscv_vmflt_vf_f32m4_b8(Value, 0.0f, vl);
+                Value = __riscv_vfmerge_vfm_f32m4(Value, 0.0f, Negative, vl);
+            } else if constexpr (ActivationKind == MlasLeakyReluActivation) {
+                const vfloat32m4_t Scaled = __riscv_vfmul_vf_f32m4(Value, Alpha, vl);
+                const vbool8_t Positive = __riscv_vmfgt_vf_f32m4_b8(Value, 0.0f, vl);
+                Value = __riscv_vmerge_vvm_f32m4(Scaled, Value, Positive, vl);
+            } else if constexpr (ActivationKind == MlasClipActivation) {
+                const vbool8_t Below = __riscv_vmflt_vf_f32m4_b8(Value, Minimum, vl);
+                Value = __riscv_vfmerge_vfm_f32m4(Value, Minimum, Below, vl);
+                const vbool8_t Above = __riscv_vmfgt_vf_f32m4_b8(Value, Maximum, vl);
+                Value = __riscv_vfmerge_vfm_f32m4(Value, Maximum, Above, vl);
+            } else if constexpr (ActivationKind == MlasHardSigmoidActivation ||
+                                 ActivationKind == MlasHardSwishActivation) {
+                vfloat32m4_t Gate = __riscv_vfmul_vf_f32m4(Value, Alpha, vl);
+                Gate = __riscv_vfadd_vf_f32m4(Gate, Beta, vl);
+                const vbool8_t Above = __riscv_vmfgt_vf_f32m4_b8(Gate, Maximum, vl);
+                Gate = __riscv_vfmerge_vfm_f32m4(Gate, Maximum, Above, vl);
+                const vbool8_t Below = __riscv_vmflt_vf_f32m4_b8(Gate, Minimum, vl);
+                Gate = __riscv_vfmerge_vfm_f32m4(Gate, Minimum, Below, vl);
+                if constexpr (ActivationKind == MlasHardSwishActivation) {
+                    Value = __riscv_vfmul_vv_f32m4(Value, Gate, vl);
+                } else {
+                    Value = Gate;
+                }
+            }
+
+            __riscv_vse32_v_f32m4(buffer, Value, vl);
+            buffer += vl;
+            n -= vl;
+        }
+        if constexpr (ActivationKind == MlasLeakyReluActivation) {
+            for (size_t tail = N % 4; tail > 0; --tail) {
+                float Value = *buffer;
+                if constexpr (AddBias) {
+                    Value += BiasValue;
+                }
+                *buffer++ = (Value >= 0.0f) ? Value : Value * Alpha;
+            }
+        }
+        Buffer += ldc;
+    }
+}
+
+template<MLAS_ACTIVATION_KIND ActivationKind>
+void
+MlasFusedActivationRvv(
+    const MLAS_ACTIVATION* Activation,
+    float* Buffer,
+    const float* Bias,
+    size_t M,
+    size_t N,
+    size_t ldc
+    )
+{
+    if (Bias != nullptr) {
+        MlasFusedActivationKernelRvv<ActivationKind, true>(Activation, Buffer, Bias, M, N, ldc);
+    } else if constexpr (ActivationKind != MlasIdentityActivation) {
+        MlasFusedActivationKernelRvv<ActivationKind, false>(Activation, Buffer, Bias, M, N, ldc);
+    }
+}
+
+}  // namespace
+
+extern "C"
+bool
+MLASCALL
+MlasActivationRvv(
+    const MLAS_ACTIVATION* Activation,
+    float* Buffer,
+    const float* Bias,
+    size_t M,
+    size_t N,
+    size_t ldc
+    )
+{
+    switch (Activation->ActivationKind) {
+        case MlasIdentityActivation:
+            MlasFusedActivationRvv<MlasIdentityActivation>(Activation, Buffer, Bias, M, N, ldc);
+            return true;
+        case MlasReluActivation:
+            MlasFusedActivationRvv<MlasReluActivation>(Activation, Buffer, Bias, M, N, ldc);
+            return true;
+        case MlasLeakyReluActivation:
+            MlasFusedActivationRvv<MlasLeakyReluActivation>(Activation, Buffer, Bias, M, N, ldc);
+            return true;
+        case MlasClipActivation:
+            MlasFusedActivationRvv<MlasClipActivation>(Activation, Buffer, Bias, M, N, ldc);
+            return true;
+        case MlasHardSigmoidActivation:
+            // Nonfinite parameters can distinguish fused from separate multiply/add.
+            // Leave that behavior to the generic kernel and its compilation flags.
+            if (!std::isfinite(Activation->Parameters.HardSigmoid.alpha) ||
+                !std::isfinite(Activation->Parameters.HardSigmoid.beta)) {
+                return false;
+            }
+            MlasFusedActivationRvv<MlasHardSigmoidActivation>(Activation, Buffer, Bias, M, N, ldc);
+            return true;
+        case MlasHardSwishActivation:
+            MlasFusedActivationRvv<MlasHardSwishActivation>(Activation, Buffer, Bias, M, N, ldc);
+            return true;
+        default:
+            return false;
+    }
+}
 
 extern "C"
 void
