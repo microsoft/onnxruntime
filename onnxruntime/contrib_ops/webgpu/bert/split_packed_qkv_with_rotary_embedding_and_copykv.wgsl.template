@@ -79,9 +79,11 @@ $MAIN {
     let q_j = packed_qkv.getByOffset(q_j_offset);
     var q_re = q_i;
     var q_im = q_j;
+    var cos_v = cos_cache_value_t(1);
+    var sin_v = cos_cache_value_t(0);
     if (valid_rotary_position) {
-      let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
-      let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
+      cos_v = cos_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
+      sin_v = sin_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
       q_re = q_i * cos_v - q_j * sin_v;
       q_im = q_i * sin_v + q_j * cos_v;
     }
@@ -98,8 +100,6 @@ $MAIN {
       var k_re = k_i;
       var k_im = k_j;
       if (valid_rotary_position) {
-        let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
-        let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + position_id, in_head_idx));
         k_re = k_i * cos_v - k_j * sin_v;
         k_im = k_i * sin_v + k_j * cos_v;
       }

@@ -194,7 +194,7 @@ FlashAttentionProgram::FlashAttentionProgram(const std::string& kernel_name,
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
-  const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform);
+  const auto& cos_cache = sh.AddInput("cos_cache", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& sin_cache = sh.AddInput("sin_cache", ShaderUsage::UseUniform);
   if (prepare_indirect_dispatch_) {
     sh.AddInput("total_sequence_length_input", ShaderUsage::None);
@@ -371,7 +371,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
       .AddUniformVariables({{static_cast<uint32_t>(copy_size)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
-                            {gsl::narrow_cast<uint32_t>(present_key->Shape()[2])},
+                            {static_cast<uint32_t>(present_key->Shape()[2])},
                             {tile_size},
                             {static_cast<uint32_t>(parameters.num_heads_)},
                             {static_cast<uint32_t>(parameters.batch_size_)},
@@ -1541,7 +1541,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
       .AddInput({packedQKV, ProgramTensorMetadataDependency::TypeAndRank, components})
       .AddInputs({
           {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
-          {cos_cache, ProgramTensorMetadataDependency::Rank, components},
+          {cos_cache, ProgramTensorMetadataDependency::TypeAndRank, components},
           {sin_cache, ProgramTensorMetadataDependency::Rank, components},
       });
   if (prepare_indirect_dispatch) {
