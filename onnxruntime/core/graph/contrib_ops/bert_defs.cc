@@ -3339,6 +3339,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
 constexpr const char* GatedDeltaNet_ver1_doc = R"DOC(
 Packed (token-major) gated delta network / linear attention with an explicit recurrent state.
+Implemented by CUDA and native WebGPU execution providers. WebGPU supports float and float16
+with scalar decay and `head_size_qk <= 256`, but rejects `state_update_capacity > 0`.
 
 Layout. Query, key and value are token-major, so head counts are derived from the shapes
 rather than from attributes:
