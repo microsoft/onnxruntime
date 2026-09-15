@@ -354,6 +354,7 @@ Return Value:
         has_rvv = false;
     }
     if (has_rvv) {
+        this->MlasActivationOverride = MlasActivationRvv;
         this->GemmFloatKernel = MlasGemmFloatKernelRvv;
         this->GemmU8S8Dispatch = &MlasGemmQuantDispatchRvv;
         this->GemmU8U8Dispatch = &MlasGemmQuantDispatchRvv;
