@@ -2,6 +2,10 @@
 
 ## Status and Scope
 
+The complete source build, coherent deployment, benchmark, and BFC
+diagnostic procedure is documented in
+[HY-MT2 Foundry Local BFC Diagnostics Build and Run Guide](hy_mt2_bfc_allocator_diagnostics_build_and_run.md).
+
 This document uses one benchmark scenario as the source of truth:
 
 - coherent source-built ORT and ORT GenAI binaries;
