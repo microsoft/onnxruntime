@@ -7044,9 +7044,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Request-local positions, shape (token_count, max_selected_entries); unused entries are -1.</dd>
 <dt><tt>selected_counts</tt> : S</dt>
 <dd>Selected entry count per query token.</dd>
-<dt><tt>auxiliary_key</tt> (optional) : T_AUX</dt>
+<dt><tt>auxiliary_key</tt> (optional) : T</dt>
 <dd>Shape (batch_size, capacity, kv_num_heads_or_one, head_size).</dd>
-<dt><tt>auxiliary_value</tt> (optional) : T_AUX</dt>
+<dt><tt>auxiliary_value</tt> (optional) : T</dt>
 <dd>Same shape as auxiliary_key.</dd>
 <dt><tt>auxiliary_lengths</tt> (optional) : S</dt>
 <dd>Valid auxiliary length per request.</dd>
@@ -7086,8 +7086,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Activation type.</dd>
 <dt><tt>T_CACHE</tt> : tensor(float16), tensor(bfloat16), tensor(int8)</dt>
 <dd>Main cache storage type.</dd>
-<dt><tt>T_AUX</tt> : tensor(float16), tensor(bfloat16)</dt>
-<dd>Auxiliary cache type.</dd>
 <dt><tt>T_KV_SCALE</tt> : tensor(float)</dt>
 <dd>Main cache scale type.</dd>
 <dt><tt>S</tt> : tensor(int32)</dt>

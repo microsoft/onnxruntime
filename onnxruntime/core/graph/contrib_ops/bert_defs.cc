@@ -1835,8 +1835,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(10, "selected_counts", "Selected entry count per query token.", "S")
         .Input(11, "auxiliary_key",
                "Shape (batch_size, capacity, kv_num_heads_or_one, head_size).",
-               "T_AUX", OpSchema::Optional)
-        .Input(12, "auxiliary_value", "Same shape as auxiliary_key.", "T_AUX", OpSchema::Optional)
+               "T", OpSchema::Optional)
+        .Input(12, "auxiliary_value", "Same shape as auxiliary_key.", "T", OpSchema::Optional)
         .Input(13, "auxiliary_lengths", "Valid auxiliary length per request.", "S", OpSchema::Optional)
         .Input(14, "cos_cache", "Rotary cosine cache.", "T", OpSchema::Optional)
         .Input(15, "sin_cache", "Rotary sine cache.", "T", OpSchema::Optional)
@@ -1855,7 +1855,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)"}, "Activation type.")
         .TypeConstraint("T_CACHE", {"tensor(float16)", "tensor(bfloat16)", "tensor(int8)"},
                         "Main cache storage type.")
-        .TypeConstraint("T_AUX", {"tensor(float16)", "tensor(bfloat16)"}, "Auxiliary cache type.")
         .TypeConstraint("T_KV_SCALE", {"tensor(float)"}, "Main cache scale type.")
         .TypeConstraint("S", {"tensor(int32)"}, "Index and length type.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
