@@ -80,6 +80,8 @@
     SM90_SOURCES onnxruntime_cuda_sm90_tma_srcs
     SM120_SOURCES onnxruntime_cuda_sm120_tma_srcs
   )
+  # Flash Attention sources are dropped entirely (not just excluded from this OBJECT library)
+  # when onnxruntime_USE_FLASH_ATTENTION is OFF; see onnxruntime_extract_flash_attention_sources.
   onnxruntime_extract_flash_attention_sources(onnxruntime_cuda_contrib_ops_cu_srcs
     FLASH_SOURCES onnxruntime_cuda_flash_attention_srcs
   )
@@ -497,14 +499,18 @@
   # (GMMA, TMA) that cannot produce useful device code for older architectures.
   #
   # SM90/SM120 TMA and LLM OBJECT libraries contain MoE and MatMulNBits kernels (contrib ops).
-  # Flash Attention is also used by the ONNX domain Attention op, so it is included even
-  # when contrib ops are disabled.
+  # Flash Attention is also used by the ONNX domain Attention op, so when
+  # onnxruntime_USE_FLASH_ATTENTION is ON it is included even when contrib ops are disabled.
   if(NOT onnxruntime_CUDA_MINIMAL)
     # Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
     # Flash Attention V2 kernels require SM80 (Ampere) and are memory-intensive to compile.
     # Isolating them allows the rest of the build to use higher --threads without OOM.
-    # Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
-    # kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
+    # Included even with onnxruntime_DISABLE_CONTRIB_OPS (when onnxruntime_USE_FLASH_ATTENTION
+    # is ON) because the ONNX domain Attention kernel depends on flash attention infrastructure
+    # in contrib_ops/cuda/bert/. onnxruntime_cuda_flash_attention_srcs is only populated when
+    # onnxruntime_USE_FLASH_ATTENTION is ON; otherwise the .cu sources are excluded from the
+    # build entirely (see extraction above), and onnxruntime_USE_FLASH_ATTENTION always takes
+    # precedence over onnxruntime_DISABLE_CONTRIB_OPS.
     set(onnxruntime_FLASH_NVCC_THREADS "1" CACHE STRING
         "Number of NVCC threads for Flash Attention compilation (memory-intensive, keep low).")
     if(onnxruntime_cuda_flash_attention_srcs)

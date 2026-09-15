@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -2758,12 +2759,26 @@ An n-gram window reaches max_ngram_size - 1 positions before the current token. 
 across invocations (chunked prefill or autoregressive decode), the optional past_ids input carries
 those preceding ids and present_ids returns the ids to pass to the next call. Both have shape
 (batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
-Positions before the start of the whole sequence use pad_id. Running the op once over a full sequence
-and running it over consecutive chunks while threading present_ids into past_ids produce identical
-hash ids. When past_ids is omitted the missing history is pad_id, which matches a fresh sequence.
+Positions before the start of the whole sequence use pad_id, or eos_token_id when it is provided.
+Running the op once over a full sequence and running it over consecutive chunks while threading
+present_ids into past_ids produce identical hash ids, including when reset_on_eos is enabled. When
+segment_ids is used, segment boundaries are applied only within the current input_ids chunk and are
+not inferred from past_ids. When past_ids is omitted the missing history is pad_id, or eos_token_id
+when it is provided.
 past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
 only when the whole operator call is unconditionally committed; a caller that may select a prefix or
 roll back must preserve past_ids.
+
+Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
+
+- eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
+  boundaries: any shifted position at or before the most recent EOS strictly before the current
+  position is replaced with eos_token_id instead of the real token.
+- segment_ids, when provided, additionally resets causal history at any position whose segment id
+  differs from the immediately preceding position's segment id within input_ids. Segment boundaries
+  are not checked against past_ids history.
+- head_offsets, when provided, adds a fixed per-output-head offset after the modulo by the head's
+  vocabulary size, letting all heads across all n-gram orders share one flat embedding table.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2779,14 +2794,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("pad_id",
               "Compressed tokenizer id used to pad causal shifts before the beginning of a sequence.",
               AttributeProto::INT)
+        .Attr("reset_on_eos",
+              "When non-zero and the eos_token_id input is provided, reset causal n-gram history at "
+              "EOS boundaries as described in the op doc. Default is 0 (disabled), which preserves "
+              "the original pad_id-only behavior.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Input(0,
                "input_ids",
                "Compressed tokenizer ids with shape (batch_size, sequence_length).",
                "M")
         .Input(1,
                "multipliers",
-               "Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any "
-               "value is accepted.",
+               "Per-shift hash multipliers with shape at least (max_ngram_size). Conventionally odd, "
+               "but any value is accepted.",
                "M")
         .Input(2,
                "vocab_sizes",
@@ -2799,8 +2820,28 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past_ids",
                "Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede "
                "this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last "
-               "slot is the most recent id. If omitted the history is pad_id.",
+               "slot is the most recent id. If omitted the history is pad_id, or eos_token_id when "
+               "provided.",
                "M",
+               OpSchema::Optional)
+        .Input(4,
+               "head_offsets",
+               "Optional per-output-head additive offset with shape "
+               "((max_ngram_size - 1) * n_head_per_ngram), added after the modulo.",
+               "M",
+               OpSchema::Optional)
+        .Input(5,
+               "eos_token_id",
+               "Optional scalar end-of-sequence token id, same type as input_ids. Required for "
+               "reset_on_eos to take effect and for EOS-based substitution of unavailable prior "
+               "context; see the op doc.",
+               "M",
+               OpSchema::Optional)
+        .Input(6,
+               "segment_ids",
+               "Optional per-token segment id with shape (batch_size, sequence_length), used to reset "
+               "causal history at packed-sequence boundaries within input_ids.",
+               "tensor(int32)",
                OpSchema::Optional)
         .Output(0,
                 "hash_ids",
@@ -2830,6 +2871,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (n_head_per_ngram < 1) {
             fail_shape_inference("NGramHashMapping: n_head_per_ngram must be positive");
           }
+          if (max_ngram_size - 1 > std::numeric_limits<int64_t>::max() / n_head_per_ngram) {
+            fail_shape_inference("NGramHashMapping: (max_ngram_size - 1) * n_head_per_ngram overflows int64_t");
+          }
+          const int64_t num_heads = (max_ngram_size - 1) * n_head_per_ngram;
 
           if (hasInputShape(ctx, 0)) {
             const auto& input_shape = getInputShape(ctx, 0);
@@ -2839,7 +2884,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             TensorShapeProto output_shape;
             *output_shape.add_dim() = input_shape.dim(0);
             *output_shape.add_dim() = input_shape.dim(1);
-            output_shape.add_dim()->set_dim_value((max_ngram_size - 1) * n_head_per_ngram);
+            output_shape.add_dim()->set_dim_value(num_heads);
             updateOutputShape(ctx, 0, output_shape);
 
             if (ctx.getNumOutputs() > 1) {
@@ -2847,6 +2892,52 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               *present_shape.add_dim() = input_shape.dim(0);
               present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
               updateOutputShape(ctx, 1, present_shape);
+            }
+          }
+          if (hasInputShape(ctx, 1)) {
+            const auto& multipliers_shape = getInputShape(ctx, 1);
+            if (multipliers_shape.dim_size() != 1 ||
+                (multipliers_shape.dim(0).has_dim_value() &&
+                 multipliers_shape.dim(0).dim_value() < max_ngram_size)) {
+              fail_shape_inference("NGramHashMapping: multipliers must have shape at least (max_ngram_size)");
+            }
+          }
+          if (hasInputShape(ctx, 2)) {
+            const auto& vocab_sizes_shape = getInputShape(ctx, 2);
+            if (vocab_sizes_shape.dim_size() != 1 ||
+                (vocab_sizes_shape.dim(0).has_dim_value() &&
+                 vocab_sizes_shape.dim(0).dim_value() != num_heads)) {
+              fail_shape_inference(
+                  "NGramHashMapping: vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
+            }
+          }
+          if (hasInputShape(ctx, 4)) {
+            const auto& head_offsets_shape = getInputShape(ctx, 4);
+            if (head_offsets_shape.dim_size() != 1 ||
+                (head_offsets_shape.dim(0).has_dim_value() && head_offsets_shape.dim(0).dim_value() != num_heads)) {
+              fail_shape_inference(
+                  "NGramHashMapping: head_offsets must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
+            }
+          }
+          if (hasInputShape(ctx, 5)) {
+            const auto& eos_token_id_shape = getInputShape(ctx, 5);
+            if (eos_token_id_shape.dim_size() != 0) {
+              fail_shape_inference("NGramHashMapping: eos_token_id must be a scalar");
+            }
+          }
+          if (hasInputShape(ctx, 6)) {
+            const auto& segment_ids_shape = getInputShape(ctx, 6);
+            if (segment_ids_shape.dim_size() != 2) {
+              fail_shape_inference("NGramHashMapping: segment_ids must have rank 2");
+            }
+            if (hasInputShape(ctx, 0)) {
+              const auto& input_shape = getInputShape(ctx, 0);
+              if ((segment_ids_shape.dim(0).has_dim_value() && input_shape.dim(0).has_dim_value() &&
+                   segment_ids_shape.dim(0).dim_value() != input_shape.dim(0).dim_value()) ||
+                  (segment_ids_shape.dim(1).has_dim_value() && input_shape.dim(1).has_dim_value() &&
+                   segment_ids_shape.dim(1).dim_value() != input_shape.dim(1).dim_value())) {
+                fail_shape_inference("NGramHashMapping: segment_ids must have shape (batch_size, sequence_length)");
+              }
             }
           }
         }));
@@ -2866,8 +2957,10 @@ It computes the Engram gate:
 gate = sigmoid(sign(dot) * sqrt(max(abs(dot), 1e-6))) where
 dot = sum(RMSNorm(key) * RMSNorm(query)) / sqrt(hidden_size).
 
-The output is gate * value, broadcast across the hyper-connections. The final Engram residual
-value + short_conv(value) is then expressed with RMSNorm, CausalConvWithState and Add.
+The output is gate * value, broadcast across the hyper-connections. The optional gated_value_normed
+output applies RMSNorm to gate * value with conv_norm_scale, which can feed a following
+CausalConvWithState. The final Engram residual value + short_conv(value) is then expressed with
+RMSNorm, CausalConvWithState and Add.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2899,15 +2992,30 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "query_norm_scale",
                "RMSNorm scale for queries with shape (hc_mult, hidden_size).",
                "T")
+        .Input(5,
+               "conv_norm_scale",
+               "Optional RMSNorm scale for the gated value, with shape (hc_mult, hidden_size). Required "
+               "when gated_value_normed is requested.",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "Gated value tensor with shape (batch_size, sequence_length, hc_mult, hidden_size).",
                 "T")
+        .Output(1,
+                "gated_value_normed",
+                "Optional RMS-normalized gated value tensor with shape "
+                "(batch_size, sequence_length, hc_mult, hidden_size).",
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"},
                         "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (ctx.getNumOutputs() > 1) {
+            propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          }
 
           if (hasInputShape(ctx, 0)) {
             const auto& key_shape = getInputShape(ctx, 0);
@@ -2915,6 +3023,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               fail_shape_inference("EngramGate: key must have rank 4");
             }
             propagateShapeFromInputToOutput(ctx, 0, 0);
+            if (ctx.getNumOutputs() > 1) {
+              propagateShapeFromInputToOutput(ctx, 0, 1);
+            }
           }
           if (hasInputShape(ctx, 1)) {
             const auto& query_shape = getInputShape(ctx, 1);
@@ -3102,7 +3213,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
 constexpr const char* VarlenCausalConvWithState_ver1_doc = R"DOC(
 Stateful causal depthwise convolution over a packed, token-major batch of variable-length
-sequences (CUDA only).
+sequences (CUDA and WebGPU).
 
 input and output have shape (total_tokens, channels). cumulative_sequence_length is a
 device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
@@ -3126,7 +3237,7 @@ min(state_update_capacity, sequence_length[b]))) contain the original local inpu
 These values represent the append component of each shift-left-and-append state transition.
 All remaining slots are zero. capture_count is forbidden when state_update_capacity is zero.
 
-For memory-safety containment, each CUDA work item validates cumulative_sequence_length[0] == 0,
+For memory-safety containment, each GPU work item validates cumulative_sequence_length[0] == 0,
 cumulative_sequence_length[batch_size] == total_tokens, and its local range
 0 <= start < end <= total_tokens before accessing input, state, or output.
 Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
