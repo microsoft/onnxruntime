@@ -46,3 +46,29 @@ index 3887169..8432613 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
+diff --git a/onnx/common/tensor.h b/onnx/common/tensor.h
+--- a/onnx/common/tensor.h
++++ b/onnx/common/tensor.h
+@@ -51,14 +51,20 @@
+   /// if tensor is a scalar, the sizes is empty, but the element number is actually 1.
+   /// size_from_dim() cannot handle this case, while elem_num() handles it correctly
+   int64_t elem_num() const {
+-    return safe_dim_product(sizes_, [](const char* msg) { throw tensor_error(msg); });
++    return safe_dim_product(sizes_, [](const char* msg) {
++      std::string error_msg(msg);
++      throw_tensor_error(error_msg);
++    });
+   }
+   int64_t size_from_dim(int dim) const {
+     if (dim < 0) {
+       dim += static_cast<int>(sizes_.size());
+     }
+     ONNX_ASSERT(dim >= 0 && (size_t)dim < sizes_.size())
+-    return safe_dim_product(sizes_.begin() + dim, sizes_.end(), [](const char* msg) { throw tensor_error(msg); });
++    return safe_dim_product(sizes_.begin() + dim, sizes_.end(), [](const char* msg) {
++      std::string error_msg(msg);
++      throw_tensor_error(error_msg);
++    });
+   }
+ 
+   int32_t elem_type() const {
