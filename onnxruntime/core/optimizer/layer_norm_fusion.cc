@@ -520,22 +520,30 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // scale and bias could be multi-dims; we only support it for training at the moment
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
+    const auto is_produced_by_removed_node = [&graph, &nodes_to_remove](const NodeArg* node_arg) {
+      const Node* producer = graph.GetProducerNode(node_arg->Name());
+      return producer != nullptr &&
+             std::any_of(nodes_to_remove.begin(), nodes_to_remove.end(),
+                         [producer](const auto& node) { return node.get().Index() == producer->Index(); });
+    };
     NodeArg* bias = nullptr;
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+      NodeArg* input = mul_node.MutableInputDefs()[i];
+      if (input->Shape() == nullptr || is_produced_by_removed_node(input)) {
         continue;
       }
-      if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        scale = mul_node.MutableInputDefs()[i];
+      if (input->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        scale = input;
       }
     }
 
     for (size_t i = 0; i < last_add_node.MutableInputDefs().size(); i++) {
-      if (last_add_node.MutableInputDefs()[i]->Shape() == nullptr) {
+      NodeArg* input = last_add_node.MutableInputDefs()[i];
+      if (input->Shape() == nullptr || is_produced_by_removed_node(input)) {
         continue;
       }
-      if (last_add_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        bias = last_add_node.MutableInputDefs()[i];
+      if (input->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        bias = input;
       }
     }
     if (scale == nullptr || bias == nullptr) {
@@ -784,19 +792,26 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // scale and bias could be multi-dims; we only support it for training at the moment
     // because SkipLayerNorm kernel, for example, has dependency on single dim size
     NodeArg* scale = nullptr;
+    const auto is_produced_by_removed_node = [&graph, &nodes_to_remove](const NodeArg* node_arg) {
+      const Node* producer = graph.GetProducerNode(node_arg->Name());
+      return producer != nullptr &&
+             std::any_of(nodes_to_remove.begin(), nodes_to_remove.end(),
+                         [producer](const auto& node) { return node.get().Index() == producer->Index(); });
+    };
     for (size_t i = 0; i < mul_node.MutableInputDefs().size(); i++) {
-      if (mul_node.MutableInputDefs()[i]->Shape() == nullptr) {
+      NodeArg* input = mul_node.MutableInputDefs()[i];
+      if (input->Shape() == nullptr || is_produced_by_removed_node(input)) {
         continue;
       }
 #ifdef ENABLE_TRAINING_CORE
       if (axes_values.empty() ||
-          mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
-        scale = mul_node.MutableInputDefs()[i];
+          input->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
+        scale = input;
       }
 #else
       // Scale must be 1d.
-      if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
-        scale = mul_node.MutableInputDefs()[i];
+      if (input->Shape()->dim_size() == 1) {
+        scale = input;
       }
 #endif
     }
