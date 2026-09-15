@@ -331,6 +331,10 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
   }
   if (HasGQAReachableBackend(bounds.reachable_backends,
                              GQAReachableBackend::FlashFastDecode)) {
+    // FlashBackendEnvelope reserves the maximum reachable split count instead
+    // of evaluating the non-monotonic split heuristic. Its storage and the
+    // preparation storage are nondecreasing in sequence length, so Smax covers
+    // every dynamic S in the bounded domain.
     const auto result = size_flash(true, bounds.sequence_length_bound, false);
     retain(GQAReachableBackend::FlashFastDecode, result.first, result.second);
   }

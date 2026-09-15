@@ -109,8 +109,11 @@ bool ValidateAuxiliaryShapes(const GQAWorkspaceEstimateConfig& config,
     const auto* cos = Shape(shapes, kCosCache);
     const auto* sin = Shape(shapes, kSinCache);
     if (cos == nullptr || sin == nullptr || cos->NumDimensions() != 2 ||
-        sin->NumDimensions() != 2 || !PositiveDims(*cos) || !PositiveDims(*sin) ||
-        std::min((*cos)[1], (*sin)[1]) * 2 < head_bound) {
+        sin->NumDimensions() != 2 || !PositiveDims(*cos) || !PositiveDims(*sin)) {
+      return false;
+    }
+    const int64_t rotary_width = std::min((*cos)[1], (*sin)[1]);
+    if (rotary_width < head_bound / 2 + head_bound % 2) {
       return false;
     }
   }

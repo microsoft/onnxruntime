@@ -222,6 +222,20 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsUndersizedPositionIds) {
                   .has_value());
 }
 
+TEST(GroupQueryAttentionWorkspaceEstimateTest, AcceptsLargeRotaryCacheDimensionsWithoutOverflow) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.do_rotary = true;
+  auto shapes = SeparateShapes();
+  constexpr int64_t kMaxDimension = std::numeric_limits<int64_t>::max();
+  shapes[7] = Known({kMaxDimension, kMaxDimension});
+  shapes[8] = Known({kMaxDimension, kMaxDimension});
+  EXPECT_TRUE(EstimateGroupQueryAttentionWorkspace(
+                  config, shapes, Device(), options)
+                  .has_value());
+}
+
 TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsNoncausalLocalWindow) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);
@@ -442,6 +456,49 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, FlashEnvelopeDominatesDiscontinuous
               concrete.recipe.total_workspace_bytes)
         << kv_length << " selected splits "
         << flash_recipe.recipe.selected_split_count;
+  }
+}
+
+TEST(GroupQueryAttentionWorkspaceBoundsTest, FlashFastDecodeEnvelopeCoversEverySequenceLength) {
+  auto bounds = Bounds();
+  bounds.batch_size_bound = 1;
+  bounds.sequence_length_bound = 130;
+  bounds.num_heads = 8;
+  bounds.kv_num_heads = 2;
+  bounds.head_size_bound = 128;
+  bounds.present_kv_cache_capacity_bound = 1024;
+  bounds.is_windowed_kv_cache = false;
+  bounds.local_window_size = -1;
+  bounds.reachable_backends = GQAReachableBackend::FlashFastDecode;
+  const auto envelope = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(envelope.status.IsOK()) << envelope.status.message;
+
+  for (int64_t sequence_length = 1;
+       sequence_length <= bounds.sequence_length_bound; ++sequence_length) {
+    GQAWorkspaceProblem problem;
+    problem.qkv_element_size = bounds.qkv_element_size;
+    problem.cache_element_size = bounds.cache_element_size;
+    problem.batch_size = bounds.batch_size_bound;
+    problem.sequence_length = sequence_length;
+    problem.num_heads = bounds.num_heads;
+    problem.kv_num_heads = bounds.kv_num_heads;
+    problem.head_size = bounds.head_size_bound;
+    problem.present_kv_cache_capacity = bounds.present_kv_cache_capacity_bound;
+
+    GQAConcreteRoute route;
+    route.backend = GQABackend::Flash;
+    route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+    route.preparation.use_flash_attention_fast_decode = true;
+    route.flash.total_sequence_length = bounds.present_kv_cache_capacity_bound;
+    route.flash.multi_processor_count = bounds.multi_processor_count;
+    route.flash.fast_decode = true;
+    const auto concrete = GetGQACompleteWorkspaceRecipe(problem, route);
+    ASSERT_TRUE(concrete.status.IsOK())
+        << sequence_length << ": " << concrete.status.message;
+    EXPECT_GE(envelope.total_workspace_bytes,
+              concrete.recipe.total_workspace_bytes)
+        << sequence_length << " selected splits "
+        << concrete.recipe.flash.selected_split_count;
   }
 }
 
