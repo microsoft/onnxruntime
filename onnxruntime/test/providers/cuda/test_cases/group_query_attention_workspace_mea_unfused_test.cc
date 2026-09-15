@@ -220,6 +220,39 @@ TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsFastDecodePreparationOnUnf
             GQAWorkspaceError::InvalidArgument);
 }
 
+TEST(GroupQueryAttentionCompleteWorkspaceTest, RejectsFastDecodePreparationOnRegularFlashRoute) {
+  auto problem = DecodeProblem();
+  problem.num_heads = 2;
+  problem.kv_num_heads = 2;
+  GQAConcreteRoute fast_decode_route;
+  fast_decode_route.backend = GQABackend::Flash;
+  fast_decode_route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+  fast_decode_route.preparation.use_flash_attention_fast_decode = true;
+  fast_decode_route.flash.fast_decode = true;
+  fast_decode_route.flash.total_sequence_length = 512;
+  fast_decode_route.flash.multi_processor_count = 80;
+  const auto fast_decode_result =
+      GetGQACompleteWorkspaceRecipe(problem, fast_decode_route);
+  ASSERT_TRUE(fast_decode_result.status.IsOK()) << fast_decode_result.status.message;
+  ASSERT_TRUE(fast_decode_result.recipe.flash.fast_decode);
+  ASSERT_EQ(fast_decode_result.recipe.preparation.sequence_length_vector_count, 0U);
+
+  GQAConcreteRoute regular_route;
+  regular_route.backend = GQABackend::Flash;
+  regular_route.preparation.preprocess_mode = GQAPreprocessMode::Flash;
+  regular_route.flash.total_sequence_length = 512;
+  regular_route.flash.multi_processor_count = 80;
+  auto regular_result = GetGQACompleteWorkspaceRecipe(problem, regular_route);
+  ASSERT_TRUE(regular_result.status.IsOK()) << regular_result.status.message;
+  ASSERT_FALSE(regular_result.recipe.flash.fast_decode);
+  regular_result.recipe.preparation = fast_decode_result.recipe.preparation;
+  regular_result.recipe.backend_offset_bytes = 0;
+  regular_result.recipe.total_workspace_bytes = regular_result.recipe.backend_bytes;
+
+  EXPECT_EQ(ValidateGQACompleteWorkspaceRecipe(regular_result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
 TEST(GroupQueryAttentionCompleteWorkspaceTest, FlashRootIncludesPreparationExactlyOnce) {
   auto problem = DecodeProblem();
   problem.num_heads = 2;

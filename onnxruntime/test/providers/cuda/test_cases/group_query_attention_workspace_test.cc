@@ -142,6 +142,19 @@ TEST(GroupQueryAttentionWorkspaceTest, RejectsInvalidSeparatePastBufferFacts) {
             GQAWorkspaceError::InvalidArgument);
 }
 
+TEST(GroupQueryAttentionWorkspaceTest, RejectsSeparatePastBufferWithWindowedRecipe) {
+  auto problem = ValidProblem();
+  problem.sequence_length = 1;
+  problem.is_windowed_kv_cache = true;
+  auto result = GetGQAPreparationRecipe(problem, {});
+  ASSERT_TRUE(result.status.IsOK()) << result.status.message;
+
+  result.recipe.uses_separate_past_buffer = true;
+  result.recipe.separate_past_bytes = result.recipe.compaction_bytes;
+  EXPECT_EQ(ValidateGQAPreparationRecipe(result.recipe).error,
+            GQAWorkspaceError::InvalidArgument);
+}
+
 TEST(GroupQueryAttentionWorkspaceTest, RejectsSeparatePastBufferForSharedOnlyRoutes) {
   auto problem = ValidXqaProblem();
   problem.past_kv_cache_capacity = 5;

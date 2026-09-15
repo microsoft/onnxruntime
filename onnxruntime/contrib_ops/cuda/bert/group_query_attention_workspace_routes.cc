@@ -46,7 +46,8 @@ bool IsDefault(const GQAXqaWorkspaceRecipe& recipe) noexcept {
 }
 
 bool IsDefault(const GQAFlashWorkspaceRecipe& recipe) noexcept {
-  return recipe.split_heuristic_head_count == 0 &&
+  return !recipe.fast_decode &&
+         recipe.split_heuristic_head_count == 0 &&
          recipe.split_heuristic_kv_length == 0 &&
          recipe.selected_split_count == 1 &&
          recipe.runtime_num_splits == 0 &&
@@ -225,7 +226,7 @@ GQAWorkspaceStatus ValidateGQACompleteWorkspaceRecipe(
   }
   if (!status.IsOK()) return status;
   if (recipe.preparation.sequence_length_vector_count == 0 &&
-      recipe.backend != GQABackend::Flash) {
+      (recipe.backend != GQABackend::Flash || !recipe.flash.fast_decode)) {
     return Invalid("Only Flash fast decode may omit GQA sequence vectors.");
   }
   if (selected_backend_bytes != recipe.backend_bytes) {

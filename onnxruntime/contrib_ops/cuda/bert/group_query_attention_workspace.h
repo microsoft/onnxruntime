@@ -102,9 +102,10 @@ struct GQAPreparationRoute {
   // partial geometry predicates above.
   GQAPreprocessMode preprocess_mode = GQAPreprocessMode::Unfused;
 
-  // True only for the Flash single-token fast-decode path. This is the
-  // authoritative selected runtime fact; complete-route composition validates
-  // that the Flash backend config carries the same value.
+  // True for the selected Flash fast-decode route. Sequence-vector suppression
+  // additionally requires a single-token query. This is the authoritative
+  // selected runtime fact; complete-route composition validates that the Flash
+  // backend config carries the same value.
   bool use_flash_attention_fast_decode = false;
 };
 
@@ -236,6 +237,8 @@ struct GQAFlashConfig {
 // Flash owns up to three separate runtime allocations. Their offsets describe a
 // 256-byte-aligned concrete root; byte counts remain the exact allocation requests.
 struct GQAFlashWorkspaceRecipe {
+  // Selected-route witness used for complete-recipe cross-validation.
+  bool fast_decode = false;
   size_t split_heuristic_head_count = 0;
   size_t split_heuristic_kv_length = 0;
   size_t selected_split_count = 1;

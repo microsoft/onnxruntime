@@ -648,6 +648,11 @@ GQAWorkspaceStatus ValidateGQAPreparationRecipe(const GQAPreparationRecipe& reci
     return Invalid("GQA preparation staging and compaction are mutually exclusive.");
   }
 
+  if (recipe.uses_separate_past_buffer &&
+      (recipe.uses_staging || recipe.uses_compaction)) {
+    return Invalid("GQA separate past preservation is incompatible with windowed preparation.");
+  }
+
   if (recipe.uses_separate_past_buffer) {
     if (recipe.separate_past_bytes == 0) {
       return Invalid("GQA separate past-buffer region must be nonempty.");

@@ -472,6 +472,7 @@ GQAFlashWorkspaceResult GetGQAFlashWorkspaceRecipe(
   }
 
   GQAFlashWorkspaceRecipe recipe;
+  recipe.fast_decode = config.fast_decode;
   recipe.split_heuristic_head_count = static_cast<size_t>(
       config.fast_decode ? problem.kv_num_heads : problem.num_heads);
   recipe.split_heuristic_kv_length = static_cast<size_t>(config.total_sequence_length);
