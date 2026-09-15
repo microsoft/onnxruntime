@@ -61,6 +61,31 @@ static bool CheckAxesOnReduceMean(std::vector<int64_t>& axes_values, int64_t ran
   return true;
 }
 
+static bool AreShapesIdentical(const TensorShapeProto& lhs, const TensorShapeProto& rhs) {
+  if (lhs.dim_size() != rhs.dim_size()) {
+    return false;
+  }
+
+  for (int i = 0; i < lhs.dim_size(); ++i) {
+    const auto& lhs_dim = lhs.dim(i);
+    const auto& rhs_dim = rhs.dim(i);
+    if (lhs_dim.has_dim_value() && rhs_dim.has_dim_value() &&
+        lhs_dim.dim_value() == rhs_dim.dim_value()) {
+      continue;
+    }
+
+    if (lhs_dim.has_dim_param() && rhs_dim.has_dim_param() &&
+        lhs_dim.dim_param() == rhs_dim.dim_param()) {
+      continue;
+    }
+
+    return false;
+  }
+
+  return true;
+}
+
+// Returns true only when source_shape can broadcast into target_shape without expanding it.
 static bool IsShapeProvablyBroadcastableTo(const TensorShapeProto& source_shape,
                                            const TensorShapeProto& target_shape) {
   if (source_shape.dim_size() > target_shape.dim_size()) {
@@ -848,19 +873,30 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
                                         : pow_node.MutableInputDefs()[0];
 
-    if (x_input->Shape() == nullptr || !IsShapeProvablyBroadcastableTo(*scale->Shape(), *x_input->Shape())) {
-      continue;
-    }
+    const auto* x_shape = x_input->Shape();
+    if (x_shape != nullptr) {
+      const auto* mul_output_shape = mul_node.OutputDefs()[0]->Shape();
+      if ((mul_output_shape == nullptr || !AreShapesIdentical(*mul_output_shape, *x_shape)) &&
+          !IsShapeProvablyBroadcastableTo(*scale->Shape(), *x_shape)) {
+        continue;
+      }
 
-    const auto& x_shape = *x_input->Shape();
-    const int64_t first_normalized_dim = x_shape.dim_size() + axes_values.front();
-    bool has_zero_normalized_dim = first_normalized_dim < 0;
-    for (int64_t i = first_normalized_dim; !has_zero_normalized_dim && i < x_shape.dim_size(); ++i) {
-      const auto& dim = x_shape.dim(static_cast<int>(i));
-      has_zero_normalized_dim = dim.has_dim_value() && dim.dim_value() == 0;
-    }
-    if (has_zero_normalized_dim) {
-      continue;
+      const int first_normalized_dim = x_shape->dim_size() - static_cast<int>(axes_values.size());
+      if (first_normalized_dim < 0) {
+        continue;
+      }
+
+      bool has_zero_normalized_dim = false;
+      for (int i = first_normalized_dim; i < x_shape->dim_size(); ++i) {
+        const auto& dim = x_shape->dim(i);
+        if (dim.has_dim_value() && dim.dim_value() == 0) {
+          has_zero_normalized_dim = true;
+          break;
+        }
+      }
+      if (has_zero_normalized_dim) {
+        continue;
+      }
     }
 
     // CPU doesn't support fp16

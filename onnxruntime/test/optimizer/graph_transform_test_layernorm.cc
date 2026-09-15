@@ -592,32 +592,35 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent)
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAddEpsilonInput0) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<float>({{2, 4}});
     auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
-    auto* epsilon = builder.MakeInitializer<float>({}, {1e-4f});
-    auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+    for (const bool scale_first : {false, true}) {
+      auto* input = builder.MakeInput<float>({{2, 4}});
+      auto* epsilon = builder.MakeInitializer<float>({}, {1e-4f});
+      auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
 
-    auto* pow_out = builder.MakeIntermediate();
-    auto* reduce_mean_out = builder.MakeIntermediate();
-    auto* add_out = builder.MakeIntermediate();
-    auto* sqrt_out = builder.MakeIntermediate();
-    auto* div_out = builder.MakeIntermediate();
-    auto* output = builder.MakeOutput();
+      auto* pow_out = builder.MakeIntermediate();
+      auto* reduce_mean_out = builder.MakeIntermediate();
+      auto* add_out = builder.MakeIntermediate();
+      auto* sqrt_out = builder.MakeIntermediate();
+      auto* div_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
 
-    builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
-    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
-        .AddAttribute("axes", std::vector<int64_t>{-1});
-    builder.AddNode("Add", {epsilon, reduce_mean_out}, {add_out});
-    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
-    builder.AddNode("Div", {input, sqrt_out}, {div_out});
-    builder.AddNode("Mul", {scale, div_out}, {output});
+      builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+      builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+          .AddAttribute("axes", std::vector<int64_t>{-1});
+      builder.AddNode("Add", {epsilon, reduce_mean_out}, {add_out});
+      builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+      builder.AddNode("Div", {input, sqrt_out}, {div_out});
+      builder.AddNode("Mul", scale_first ? std::vector<NodeArg*>{scale, div_out} : std::vector<NodeArg*>{div_out, scale},
+                      {output});
+    }
   };
 
   auto post_graph_checker = [](Graph& graph) {
     const auto op_to_count = CountOpsInGraph(graph);
     const auto simplified_layer_norm_it = op_to_count.find("SimplifiedLayerNormalization");
     TEST_RETURN_IF_NOT(simplified_layer_norm_it != op_to_count.end() &&
-                       simplified_layer_norm_it->second == 1);
+                       simplified_layer_norm_it->second == 2);
 
     for (const Node& node : graph.Nodes()) {
       if (node.OpType() == "SimplifiedLayerNormalization") {
@@ -674,9 +677,9 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRejectsIncompatibleSca
       TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
-TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRejectsUnprovenScaleBroadcast) {
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAllowsUnrankedInput) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{{1, -1}});
+    auto* input = builder.MakeInput<float>(std::nullopt);
     auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
     auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
     auto* scale = builder.MakeInitializer<float>({2}, {1.0f, 1.0f});
@@ -686,7 +689,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRejectsUnprovenScaleBr
     auto* add_out = builder.MakeIntermediate();
     auto* sqrt_out = builder.MakeIntermediate();
     auto* div_out = builder.MakeIntermediate();
-    auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{{1, 2}});
+    auto* output = builder.MakeOutput();
 
     builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
     builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
@@ -699,9 +702,10 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRejectsUnprovenScaleBr
 
   auto post_graph_checker = [](Graph& graph) {
     const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_to_count.find("SimplifiedLayerNormalization") == op_to_count.end());
-    const auto mul_it = op_to_count.find("Mul");
-    TEST_RETURN_IF_NOT(mul_it != op_to_count.end() && mul_it->second == 1);
+    const auto simplified_layer_norm_it = op_to_count.find("SimplifiedLayerNormalization");
+    TEST_RETURN_IF_NOT(simplified_layer_norm_it != op_to_count.end() &&
+                       simplified_layer_norm_it->second == 1);
+    TEST_RETURN_IF_NOT(op_to_count.find("Mul") == op_to_count.end());
     return Status::OK();
   };
 
