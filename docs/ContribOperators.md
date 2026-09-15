@@ -118,6 +118,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.SkipSimplifiedLayerNormalization">com.microsoft.SkipSimplifiedLayerNormalization</a>
   * <a href="#com.microsoft.Snpe">com.microsoft.Snpe</a>
   * <a href="#com.microsoft.SparseAttention">com.microsoft.SparseAttention</a>
+  * <a href="#com.microsoft.SparseAttentionIndexer">com.microsoft.SparseAttentionIndexer</a>
   * <a href="#com.microsoft.SparseToDenseMatMul">com.microsoft.SparseToDenseMatMul</a>
   * <a href="#com.microsoft.Tokenizer">com.microsoft.Tokenizer</a>
   * <a href="#com.microsoft.TorchEmbedding">com.microsoft.TorchEmbedding</a>
@@ -6965,6 +6966,137 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input and output to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
 <dd>Constrain integer type.</dd>
+</dl>
+
+
+### <a name="com.microsoft.SparseAttentionIndexer"></a><a name="com.microsoft.sparseattentionindexer">**com.microsoft.SparseAttentionIndexer**</a>
+
+  Selects, for every query token, the sparse-attention candidates that the following attention
+  operator is allowed to read. It covers the two indexer flavours used by recent sparse-attention
+  decoders, chosen with the policy_mode attribute:
+  
+    policy_mode = "qsa" ("query sparse attention" token indexer)
+      Groups the tokens that are visible to a query into complete blocks of compress_ratio tokens,
+      mean-pools the indexer keys of every block, normalizes and rotates the pooled key, scores it
+      against the query heads with sum_h ReLU(q_h . k), keeps the token_budget / compress_ratio
+      highest scoring blocks and emits the token indices of those blocks followed by the visible
+      tokens of the trailing incomplete block.
+  
+    policy_mode = "csa" ("compressed sparse attention" block indexer)
+      Compresses every compress_ratio consecutive tokens into one entry with a softmax-gated pooling
+      over a window of 2 * compress_ratio slots (the previous window contributes its "Ca" half and
+      the current window its "Cb" half), normalizes and rotates the entry, appends it to the
+      compressed-key state, scores the queries against every compressed entry with
+      sum_h w_h * ReLU(q_h . k), masks the entries a query may not attend to and emits the index_topk
+      highest scoring entry indices.
+  
+  Common contract:
+    * selected_indices is int32 with a fixed capacity that only depends on attributes:
+      token_budget + compress_ratio - 1 for "qsa" and index_topk for "csa". Unused entries are -1,
+      so no output size depends on the data and no device-to-host synchronization is required.
+    * All state is explicit in the graph. Nothing is cached inside the operator.
+    * Rotary embeddings reuse the precomputed cos_cache / sin_cache tables, which are indexed by
+      absolute key position. "qsa" applies the half-rotation of the model's (M)RoPE to the leading
+      rotary_dim = cos_cache.shape[2] channels. "csa" applies its trailing rotary to the last
+      2 * cos_cache.shape[2] channels, with each cos/sin entry covering two consecutive channels.
+    * key_norm_weight is the effective RMSNorm multiplier. Models that store a zero-centered gamma
+      (the normalized value is multiplied by 1 + gamma) must fold the addition into this initializer.
+    * Accumulation, pooling, softmax, normalization and scoring are performed in float32 and the
+      result is rounded once to the tensor element type.
+    * Ties in the top-k selection are broken by the smaller entry index, and the emitted entries are
+      ordered by decreasing score, so the result is deterministic.
+  
+  State layout for policy_mode = "csa": past_kv_buffer / past_gate_buffer hold the tokens that have
+  not been folded into a compressed entry yet. When their length is >= compress_ratio, the first
+  compress_ratio tokens are the previous complete window (the "Ca" operand of the next window) and
+  the remainder is the current incomplete window; when it is < compress_ratio there is no previous
+  complete window and the whole buffer is the incomplete window. The length is therefore always in
+  [0, 2 * compress_ratio), and the number of compressed entries emitted by a call is known from the
+  input shapes alone. position_bias is re-applied to the buffered gates, so the buffers hold the raw
+  gate projection.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>compress_ratio</tt> : int (required)</dt>
+<dd>Number of consecutive tokens folded into one compressed block. Must be > 0.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon of the RMS normalization applied to the compressed keys. Default is 1e-6.</dd>
+<dt><tt>head_weight_scale</tt> : float</dt>
+<dd>Only for policy_mode 'csa': scale applied to head_weights. Default is 1/sqrt(num_heads). Must be omitted when policy_mode is 'qsa'.</dd>
+<dt><tt>index_topk</tt> : int</dt>
+<dd>Only for policy_mode 'csa': number of compressed entries selected per query. Must be > 0. Must be omitted when policy_mode is 'qsa'.</dd>
+<dt><tt>policy_mode</tt> : string (required)</dt>
+<dd>Indexer policy. Must be exactly 'qsa' (token indexer) or 'csa' (compressed block indexer).</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Scale applied to the per-head ReLU scores. Default is 1/sqrt(head_size).</dd>
+<dt><tt>token_budget</tt> : int</dt>
+<dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
+</dl>
+
+#### Inputs (5 - 14)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Indexer queries with shape (batch_size, sequence_length, num_heads, head_size), already normalized but not yet rotated.</dd>
+<dt><tt>key</tt> : T</dt>
+<dd>Indexer key projection of the new tokens. Shape is (batch_size, sequence_length, head_size) for policy_mode 'qsa' and (batch_size, sequence_length, 2 * head_size) for policy_mode 'csa', where the first head_size channels are the Ca series and the last head_size channels the Cb series.</dd>
+<dt><tt>key_norm_weight</tt> : T</dt>
+<dd>Effective RMSNorm multiplier of the compressed keys, with shape (head_size).</dd>
+<dt><tt>cos_cache</tt> : T</dt>
+<dd>Cosine rotary table indexed by absolute key position, with shape (batch_size, max_rotary_sequence_length, rotary_width).</dd>
+<dt><tt>sin_cache</tt> : T</dt>
+<dd>Sine rotary table with the same shape as cos_cache.</dd>
+<dt><tt>mask</tt> (optional) : TB</dt>
+<dd>Only for policy_mode 'qsa': tokens visible to each query, with shape (batch_size, 1, sequence_length, total_sequence_length) or (batch_size, sequence_length, total_sequence_length). total_sequence_length is past_sequence_length + sequence_length.</dd>
+<dt><tt>past_key</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'qsa': cached indexer keys with shape (batch_size, past_sequence_length, head_size).</dd>
+<dt><tt>gate</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': gate projection of the new tokens with shape (batch_size, sequence_length, 2 * head_size).</dd>
+<dt><tt>position_bias</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': per-slot gate bias with shape (compress_ratio, 2 * head_size).</dd>
+<dt><tt>head_weights</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': per-head score weights with shape (batch_size, sequence_length, num_heads).</dd>
+<dt><tt>position_ids</tt> (optional) : I</dt>
+<dd>Only for policy_mode 'csa': absolute position of every query with shape (batch_size, sequence_length).</dd>
+<dt><tt>past_compressed_key</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': compressed keys emitted by previous calls, with shape (batch_size, past_compressed_length, head_size).</dd>
+<dt><tt>past_kv_buffer</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': buffered key projections with shape (batch_size, buffer_length, 2 * head_size), where buffer_length is in [0, 2 * compress_ratio).</dd>
+<dt><tt>past_gate_buffer</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': buffered gate projections with the same shape as past_kv_buffer.</dd>
+</dl>
+
+#### Outputs (1 - 5)
+
+<dl>
+<dt><tt>selected_indices</tt> : M</dt>
+<dd>Selected entries with shape (batch_size, sequence_length, capacity). capacity is token_budget + compress_ratio - 1 for policy_mode 'qsa', where the values are token indices into the key cache, and index_topk for policy_mode 'csa', where the values are compressed entry indices. Unused entries are -1.</dd>
+<dt><tt>present_key</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'qsa': past_key concatenated with key, with shape (batch_size, total_sequence_length, head_size).</dd>
+<dt><tt>present_compressed_key</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': past_compressed_key concatenated with the entries emitted by this call, with shape (batch_size, present_compressed_length, head_size).</dd>
+<dt><tt>present_kv_buffer</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': updated key buffer with shape (batch_size, present_buffer_length, 2 * head_size).</dd>
+<dt><tt>present_gate_buffer</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': updated gate buffer with the same shape as present_kv_buffer.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain floating point tensors to float, float16 and bfloat16.</dd>
+<dt><tt>TB</tt> : tensor(bool)</dt>
+<dd>Constrain the visibility mask to boolean tensors.</dd>
+<dt><tt>I</tt> : tensor(int64)</dt>
+<dd>Constrain position ids to 64-bit integer tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain selected indices to 32-bit integer tensors.</dd>
 </dl>
 
 
