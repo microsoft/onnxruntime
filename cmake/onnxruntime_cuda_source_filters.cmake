@@ -3,7 +3,7 @@
 
 # Shared filtering logic for CUDA contrib ops .cu source lists.
 # Both the main CUDA provider and the plugin EP build use identical filtering
-# rules for flash attention (quick build) and MoE GEMM FP4/FP8 kernels.
+# rules for flash attention, XQA, and MoE GEMM FP4/FP8 kernels.
 #
 # Usage:
 #   onnxruntime_filter_cuda_cu_sources(<list_variable_name>)
@@ -141,6 +141,25 @@ function(onnxruntime_extract_flash_attention_sources CU_SRC_LIST)
 
   set("${CU_SRC_LIST}" "${_list}" PARENT_SCOPE)
   set("${_FA_FLASH_SOURCES}" "${_flash_srcs}" PARENT_SCOPE)
+endfunction()
+
+# Extract XQA CUDA source files into a separate list for SM80+ compilation.
+function(onnxruntime_extract_xqa_sources CU_SRC_LIST)
+  cmake_parse_arguments(PARSE_ARGV 1 _XQA "" "XQA_SOURCES" "")
+
+  set(_list "${${CU_SRC_LIST}}")
+  set(_xqa_srcs)
+  foreach(_src IN LISTS _list)
+    if(_src MATCHES "/bert/xqa/.*\\.cu$")
+      list(APPEND _xqa_srcs "${_src}")
+    endif()
+  endforeach()
+  if(_xqa_srcs)
+    list(REMOVE_ITEM _list ${_xqa_srcs})
+  endif()
+
+  set("${CU_SRC_LIST}" "${_list}" PARENT_SCOPE)
+  set("${_XQA_XQA_SOURCES}" "${_xqa_srcs}" PARENT_SCOPE)
 endfunction()
 
 # Extract LLM CUDA source files into separate lists for per-architecture compilation.
