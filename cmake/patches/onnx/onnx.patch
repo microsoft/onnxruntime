@@ -47,11 +47,10 @@ index 3887169..8432613 100644
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
 diff --git a/onnx/defs/printer.cc b/onnx/defs/printer.cc
-index 1d43bcc..0000000 100644
+index 1d43bcc..7a0bd06 100644
 --- a/onnx/defs/printer.cc
 +++ b/onnx/defs/printer.cc
-@@ -30,16 +30,22 @@ std::vector<Widened> ParseRawIntData(const TensorProto& tensor) {
- // Format numbers with std::to_chars: locale-independent and, for floating
+@@ -31,6 +31,11 @@ std::vector<Widened> ParseRawIntData(const TensorProto& tensor) {
  // point, the shortest form that round-trips through the parser.
  template <typename T>
  void PrintNumber(std::ostream& os, T value) {
@@ -63,11 +62,7 @@ index 1d43bcc..0000000 100644
    if constexpr (std::is_floating_point_v<T>) {
      // Normalize NaN: MSVC's to_chars emits payload forms like "nan(ind)"
      // that the parser does not accept.
-     if (std::isnan(value)) {
-       os << (std::signbit(value) ? "-nan" : "nan");
-       return;
-     }
-   }
+@@ -42,4 +47,5 @@ void PrintNumber(std::ostream& os, T value) {
    std::array<char, 32> buf{};
    const auto res = std::to_chars(buf.data(), buf.data() + buf.size(), value);
    os.write(buf.data(), res.ptr - buf.data());
