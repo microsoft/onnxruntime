@@ -19,6 +19,10 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/session_buffer_pool.h"
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+#include "ep/adapters.h"
+#endif
+
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
