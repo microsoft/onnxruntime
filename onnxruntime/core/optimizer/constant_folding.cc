@@ -487,9 +487,10 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // This prevents malicious models from causing excessive memory allocation during constant folding.
       if (max_output_size > 0) {
         int64_t estimated_size = -1;
-        try {
+        ORT_TRY {
           estimated_size = EstimateNodeOutputSizeInBytes(*node, graph);
-        } catch (const std::exception&) {
+        }
+        ORT_CATCH(const std::exception&) {
           // SafeInt overflow means the size is astronomically large - definitely skip
           LOGS(logger, WARNING) << "Integer overflow while estimating output size of "
                                 << node->OpType() << " node '" << node->Name()
@@ -595,12 +596,15 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       // Skip the current node if Compute fails so one bad constant-fold candidate does not abort
       // the entire constant folding pass.
       Status compute_status = Status::OK();
-      try {
+      ORT_TRY {
         compute_status = kernel->Compute(&op_kernel_context);
-      } catch (const std::exception& ex) {
-        LOGS(logger, WARNING) << "Exception during constant folding of " << node->OpType()
-                              << " node '" << node->Name() << "': " << ex.what()
-                              << ". Skipping constant folding for this node.";
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          LOGS(logger, WARNING) << "Exception during constant folding of " << node->OpType()
+                                << " node '" << node->Name() << "': " << ex.what()
+                                << ". Skipping constant folding for this node.";
+        });
         continue;
       }
 
@@ -622,7 +626,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       if (max_output_size > 0) {
         SafeInt<int64_t> actual_total_size = 0;
         bool size_exceeded = false;
-        try {
+        ORT_TRY {
           for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
             if (fetches[fetch_idx].IsAllocated() && fetches[fetch_idx].IsTensor()) {
               const auto& tensor = fetches[fetch_idx].Get<Tensor>();
@@ -630,7 +634,8 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
             }
           }
           size_exceeded = actual_total_size > max_output_size;
-        } catch (const std::exception&) {
+        }
+        ORT_CATCH(const std::exception&) {
           // SafeInt overflow means total size is astronomically large
           size_exceeded = true;
         }

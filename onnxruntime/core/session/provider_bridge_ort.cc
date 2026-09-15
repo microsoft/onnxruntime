@@ -1566,14 +1566,14 @@ struct ProviderHostImpl : ProviderHost {
 
   void* Initializer__mutable_data(Initializer& initializer, int data_type) override {
     if (data_type != initializer.data_type()) {
-      throw std::invalid_argument("Initializer mutable data type mismatch");
+      ORT_THROW_EX(std::invalid_argument, "Initializer mutable data type mismatch");
     }
     return initializer.mutable_data_raw();
   }
 
   const void* Initializer__data(const Initializer& initializer, int data_type) override {
     if (data_type != initializer.data_type()) {
-      throw std::invalid_argument("Initializer data type mismatch");
+      ORT_THROW_EX(std::invalid_argument, "Initializer data type mismatch");
     }
     return initializer.data_raw();
   }
@@ -1928,10 +1928,13 @@ struct ProviderSharedLibrary {
 
 static ProviderSharedLibrary s_library_shared;
 
-bool InitProvidersSharedLibrary() try {
-  ORT_THROW_IF_ERROR(s_library_shared.Initialize());
-  return true;
-} catch (const std::exception&) {
+bool InitProvidersSharedLibrary() {
+  ORT_TRY {
+    ORT_THROW_IF_ERROR(s_library_shared.Initialize());
+    return true;
+  }
+  ORT_CATCH(const std::exception&) {
+  }
   return false;
 }
 
@@ -1948,7 +1951,7 @@ Status ProviderLibrary::Load() {
     return Status::OK();
   }
 
-  try {
+  ORT_TRY {
     std::lock_guard<std::mutex> lock{mutex_};
     if (!provider_) {
       ORT_RETURN_IF_ERROR(s_library_shared.Initialize());
@@ -1973,16 +1976,17 @@ Status ProviderLibrary::Load() {
 
       provider_ = PGetProvider();
     }
-  } catch (const std::exception&) {
+  }
+  ORT_CATCH(const std::exception&) {
     Unload();  // If anything fails we unload the library and rethrow
-    throw;
+    ORT_RETHROW;
   }
 
   return Status::OK();
 }
 
 Provider& ProviderLibrary::Get() {
-  try {
+  ORT_TRY {
     if (!initialized_) {
       if (!provider_) {
         ORT_THROW_IF_ERROR(Load());
@@ -1994,12 +1998,12 @@ Provider& ProviderLibrary::Get() {
       }
       initialized_ = true;
     }
-
-    return *provider_;
-  } catch (const std::exception&) {
-    Unload();  // If anything fails we unload the library and rethrow
-    throw;
   }
+  ORT_CATCH(const std::exception&) {
+    Unload();  // If anything fails we unload the library and rethrow
+    ORT_RETHROW;
+  }
+  return *provider_;
 }
 
 void ProviderLibrary::Unload() {
@@ -2128,23 +2132,31 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   return cuda_options_converted;
 }
 
+// Loading a shared-library EP can fail (missing library, incompatible build). The factory and
+// provider-info accessors below log and return nullptr in that case instead of propagating.
+#define ORT_CATCH_LOG_RETURN_NULLPTR           \
+  ORT_CATCH(const std::exception& exception) { \
+    ORT_HANDLE_EXCEPTION([&]() {               \
+      LOGS_DEFAULT(ERROR) << exception.what(); \
+    });                                        \
+  }                                            \
+  return nullptr
+
 std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
-    const OrtCUDAProviderOptions* provider_options) try {
-  OrtCUDAProviderOptionsV2 cuda_options_converted = onnxruntime::OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(provider_options);
-  return s_library_cuda.Get().CreateExecutionProviderFactory(&cuda_options_converted);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+    const OrtCUDAProviderOptions* provider_options) {
+  ORT_TRY {
+    OrtCUDAProviderOptionsV2 cuda_options_converted = onnxruntime::OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(provider_options);
+    return s_library_cuda.Get().CreateExecutionProviderFactory(&cuda_options_converted);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
-    const OrtCUDAProviderOptionsV2* provider_options) try {
-  return s_library_cuda.Get().CreateExecutionProviderFactory(provider_options);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+    const OrtCUDAProviderOptionsV2* provider_options) {
+  ORT_TRY {
+    return s_library_cuda.Get().CreateExecutionProviderFactory(provider_options);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 std::shared_ptr<IExecutionProviderFactory>
@@ -2209,55 +2221,50 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   return trt_options_converted;
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) try {
-  return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
+  ORT_TRY {
+    return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(
-    const OrtTensorRTProviderOptions* provider_options) try {
-  OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
-  return s_library_tensorrt.Get().CreateExecutionProviderFactory(&trt_options_converted);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+    const OrtTensorRTProviderOptions* provider_options) {
+  ORT_TRY {
+    OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
+    return s_library_tensorrt.Get().CreateExecutionProviderFactory(&trt_options_converted);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(
-    const OrtTensorRTProviderOptionsV2* provider_options) try {
-  return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+    const OrtTensorRTProviderOptionsV2* provider_options) {
+  ORT_TRY {
+    return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
-std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) try {
-  return s_library_nv.Get().CreateExecutionProviderFactory(device_id);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) {
+  ORT_TRY {
+    return s_library_nv.Get().CreateExecutionProviderFactory(device_id);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options, const SessionOptions* session_options) try {
-  const ConfigOptions* config_options = nullptr;
-  if (session_options != nullptr) {
-    config_options = &session_options->config_options;
-  }
+    const ProviderOptions& provider_options, const SessionOptions* session_options) {
+  ORT_TRY {
+    const ConfigOptions* config_options = nullptr;
+    if (session_options != nullptr) {
+      config_options = &session_options->config_options;
+    }
 
-  std::array<const void*, 2> configs_array = {&provider_options, config_options};
-  const void* arg = reinterpret_cast<const void*>(&configs_array);
-  return s_library_nv.Get().CreateExecutionProviderFactory(arg);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+    std::array<const void*, 2> configs_array = {&provider_options, config_options};
+    const void* arg = reinterpret_cast<const void*>(&configs_array);
+    return s_library_nv.Get().CreateExecutionProviderFactory(arg);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
@@ -2309,37 +2316,35 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
 
 #if !BUILD_QNN_EP_STATIC_LIB
 std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options_map, const SessionOptions* session_options) try {
-  const ConfigOptions* config_options = nullptr;
-  if (session_options != nullptr) {
-    config_options = &session_options->config_options;
-  }
+    const ProviderOptions& provider_options_map, const SessionOptions* session_options) {
+  ORT_TRY {
+    const ConfigOptions* config_options = nullptr;
+    if (session_options != nullptr) {
+      config_options = &session_options->config_options;
+    }
 
-  std::array<const void*, 2> configs_array = {&provider_options_map, config_options};
-  const void* arg = reinterpret_cast<const void*>(&configs_array);
-  return s_library_qnn.Get().CreateExecutionProviderFactory(arg);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+    std::array<const void*, 2> configs_array = {&provider_options_map, config_options};
+    const void* arg = reinterpret_cast<const void*>(&configs_array);
+    return s_library_qnn.Get().CreateExecutionProviderFactory(arg);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 #endif  // !BUILD_QNN_EP_STATIC_LIB
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
-    const ProviderOptions* provider_options_map, const SessionOptions* session_options) try {
-  // Append session options applicable for EP to EP Provider options.
-  const ConfigOptions* config_options = nullptr;
-  if (session_options != nullptr) {
-    config_options = &session_options->config_options;
-  }
+    const ProviderOptions* provider_options_map, const SessionOptions* session_options) {
+  ORT_TRY {
+    // Append session options applicable for EP to EP Provider options.
+    const ConfigOptions* config_options = nullptr;
+    if (session_options != nullptr) {
+      config_options = &session_options->config_options;
+    }
 
-  std::array<const void*, 2> configs_array = {provider_options_map, config_options};
-  const void* arg = reinterpret_cast<const void*>(&configs_array);
-  return s_library_openvino.Get().CreateExecutionProviderFactory(arg);
-} catch (const std::exception& exception) {
-  // Will get an exception when fail to load EP library.
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+    std::array<const void*, 2> configs_array = {provider_options_map, config_options};
+    const void* arg = reinterpret_cast<const void*>(&configs_array);
+    return s_library_openvino.Get().CreateExecutionProviderFactory(arg);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {
@@ -2347,25 +2352,25 @@ std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(co
 }
 
 std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(
-    const ProviderOptions& provider_options) try {
-  return s_library_vitisai.Get().CreateExecutionProviderFactory(&provider_options);
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+    const ProviderOptions& provider_options) {
+  ORT_TRY {
+    return s_library_vitisai.Get().CreateExecutionProviderFactory(&provider_options);
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
-ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO() try {
-  return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO() {
+  ORT_TRY {
+    return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
-ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT() try {
-  return reinterpret_cast<ProviderInfo_TensorRT*>(s_library_tensorrt.Get().GetInfo());
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT() {
+  ORT_TRY {
+    return reinterpret_cast<ProviderInfo_TensorRT*>(s_library_tensorrt.Get().GetInfo());
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 ProviderInfo_TensorRT& GetProviderInfo_TensorRT() {
@@ -2375,11 +2380,11 @@ ProviderInfo_TensorRT& GetProviderInfo_TensorRT() {
   ORT_THROW("TensorRT Provider not available, can't get interface for it");
 }
 
-ProviderInfo_Nv* TryGetProviderInfo_Nv() try {
-  return reinterpret_cast<ProviderInfo_Nv*>(s_library_nv.Get().GetInfo());
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+ProviderInfo_Nv* TryGetProviderInfo_Nv() {
+  ORT_TRY {
+    return reinterpret_cast<ProviderInfo_Nv*>(s_library_nv.Get().GetInfo());
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 ProviderInfo_Nv& GetProviderInfo_Nv() {
@@ -2389,11 +2394,11 @@ ProviderInfo_Nv& GetProviderInfo_Nv() {
   ORT_THROW("NV Provider not available, can't get interface for it");
 }
 
-ProviderInfo_CUDA* TryGetProviderInfo_CUDA() try {
-  return reinterpret_cast<ProviderInfo_CUDA*>(s_library_cuda.Get().GetInfo());
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA() {
+  ORT_TRY {
+    return reinterpret_cast<ProviderInfo_CUDA*>(s_library_cuda.Get().GetInfo());
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 ProviderInfo_CUDA& GetProviderInfo_CUDA() {
@@ -2403,11 +2408,11 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA() {
   ORT_THROW("CUDA Provider not available, can't get interface for it");
 }
 
-ProviderInfo_CUDA* TryGetProviderInfo_CUDA_Test() try {
-  return reinterpret_cast<ProviderInfo_CUDA*>(s_library_cuda_test.Get().GetInfo());
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA_Test() {
+  ORT_TRY {
+    return reinterpret_cast<ProviderInfo_CUDA*>(s_library_cuda_test.Get().GetInfo());
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 ProviderInfo_CUDA& GetProviderInfo_CUDA_Test() {
@@ -2417,11 +2422,11 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA_Test() {
   ORT_THROW("CUDA Provider not available, can't get interface for it");
 }
 
-ProviderInfo_CANN* TryGetProviderInfo_CANN() try {
-  return reinterpret_cast<ProviderInfo_CANN*>(s_library_cann.Get().GetInfo());
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+ProviderInfo_CANN* TryGetProviderInfo_CANN() {
+  ORT_TRY {
+    return reinterpret_cast<ProviderInfo_CANN*>(s_library_cann.Get().GetInfo());
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 ProviderInfo_CANN& GetProviderInfo_CANN() {
@@ -2431,11 +2436,11 @@ ProviderInfo_CANN& GetProviderInfo_CANN() {
   ORT_THROW("CANN Provider not available, can't get interface for it");
 }
 
-ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl() try {
-  return reinterpret_cast<ProviderInfo_Dnnl*>(s_library_dnnl.Get().GetInfo());
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl() {
+  ORT_TRY {
+    return reinterpret_cast<ProviderInfo_Dnnl*>(s_library_dnnl.Get().GetInfo());
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 ProviderInfo_Dnnl& GetProviderInfo_Dnnl() {
@@ -2445,11 +2450,11 @@ ProviderInfo_Dnnl& GetProviderInfo_Dnnl() {
   ORT_THROW("oneDNN Provider not available, can't get interface for it");
 }
 
-ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX() try {
-  return reinterpret_cast<ProviderInfo_MIGraphX*>(s_library_migraphx.Get().GetInfo());
-} catch (const std::exception& exception) {
-  LOGS_DEFAULT(ERROR) << exception.what();
-  return nullptr;
+ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX() {
+  ORT_TRY {
+    return reinterpret_cast<ProviderInfo_MIGraphX*>(s_library_migraphx.Get().GetInfo());
+  }
+  ORT_CATCH_LOG_RETURN_NULLPTR;
 }
 
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX() {
