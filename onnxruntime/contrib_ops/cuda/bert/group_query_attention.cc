@@ -506,6 +506,11 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     parameters.seqlen_present_kv_cache = staged_cache_capacity;
   }
 
+  const int effective_workspace_kv_length = static_cast<int>(GetGQAEffectiveWorkspaceKvLength(
+      parameters.total_sequence_length,
+      parameters.seqlen_present_kv_cache,
+      parameters.is_windowed_kv_cache));
+
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
   constexpr bool is_fp8 = std::is_same<U, Float8E4M3FN>::value;
@@ -721,7 +726,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
 
     int num_heads_for_split = data.use_flash_attention_fast_decode ? parameters.kv_num_heads : parameters.num_heads;
-    size_t sequence_length_for_split = static_cast<size_t>(parameters.total_sequence_length);
+    size_t sequence_length_for_split = static_cast<size_t>(effective_workspace_kv_length);
     if (data.use_flash_attention_fast_decode && parameters.local_window_size > 0) {
       sequence_length_for_split = std::min(sequence_length_for_split, static_cast<size_t>(parameters.local_window_size));
     }
@@ -885,7 +890,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     const size_t H_v = (parameters.v_head_size > 0)
                            ? static_cast<size_t>(parameters.v_head_size)
                            : H;
-    const size_t S_kv = static_cast<size_t>(parameters.total_sequence_length);
+    // This is the same resident/staged cache bound passed to the unfused kernel.
+    const size_t S_kv = static_cast<size_t>(effective_workspace_kv_length);
 
     auto align = [](SafeInt<size_t> v) -> SafeInt<size_t> {
       return ((v + SafeInt<size_t>(255)) / SafeInt<size_t>(256)) * SafeInt<size_t>(256);
@@ -911,6 +917,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_flash_attention = data.use_flash_attention;
     debug_info.use_efficient_attention = data.use_memory_efficient_attention;
     debug_info.use_cudnn_flash_attention = data.use_cudnn_sdpa;
+    if (data.use_flash_attention) {
+      debug_info.num_splits = parameters.num_splits;
+    }
 
     debug_info.Print("GroupQueryAttention",
                      this->Node().Name(),

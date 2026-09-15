@@ -12,6 +12,17 @@ namespace cuda {
 
 constexpr size_t kGQAWorkspaceAlignment = 256;
 
+// Windowed backends consume at most the resident/staged cache extent. Non-windowed
+// allocations intentionally continue to use the caller's absolute total length.
+constexpr int64_t GetGQAEffectiveWorkspaceKvLength(
+    int64_t total_sequence_length,
+    int64_t present_kv_cache_capacity,
+    bool is_windowed_kv_cache) noexcept {
+  return is_windowed_kv_cache && present_kv_cache_capacity < total_sequence_length
+             ? present_kv_cache_capacity
+             : total_sequence_length;
+}
+
 enum class GQAWorkspaceError {
   None,
   InvalidArgument,
@@ -55,7 +66,7 @@ enum class GQAPreprocessMode {
   Xqa,
   Flash,
   MemoryEfficient,
-  Fallback,
+  Unfused,
 };
 
 // Plain-scalar runtime geometry and feature facts used by preparation allocations.
@@ -76,6 +87,9 @@ struct GQAWorkspaceProblem {
 
   // Allocated present-cache capacity before any windowed staging adjustment.
   int64_t present_kv_cache_capacity = 0;
+  // Allocated past-cache capacity when exactly one past/present K/V pair aliases.
+  // Zero when no separate past preservation buffer is required.
+  int64_t past_kv_cache_capacity = 0;
 
   // Zero for unpacked storage, otherwise the packed KV-cache element width.
   int64_t kv_cache_bit_width = 0;
@@ -90,15 +104,19 @@ struct GQAWorkspaceProblem {
   bool do_rotary = false;
   bool is_packed_qkv = false;
   bool use_qk_norm = false;
+  bool requires_separate_past_buffer = false;
 };
 
 struct GQAPreparationRoute {
   // QKV preprocessing behavior of the final backend route selected after all runtime
   // eligibility and device-capability fallbacks. Do not derive this route from the
   // partial geometry predicates above.
-  GQAPreprocessMode preprocess_mode = GQAPreprocessMode::Fallback;
+  GQAPreprocessMode preprocess_mode = GQAPreprocessMode::Unfused;
 
-  // True only for the Flash single-token fast-decode path.
+  // True for the selected Flash fast-decode route. Sequence-vector suppression
+  // additionally requires a single-token query. This is the authoritative
+  // selected runtime fact; complete-route composition validates that the Flash
+  // backend config carries the same value.
   bool use_flash_attention_fast_decode = false;
 };
 
@@ -118,6 +136,11 @@ struct GQAPreparationRecipe {
   int64_t effective_kv_cache_capacity = 0;
   // Bytes per cache row after applying the KV-cache packing width.
   size_t cache_row_bytes = 0;
+
+  // Exactly one past/present K/V pair aliases, so runtime preserves that past tensor.
+  bool uses_separate_past_buffer = false;
+  size_t separate_past_offset_bytes = 0;
+  size_t separate_past_bytes = 0;
 
   // Windowed multi-token updates stage K and V in separate full-capacity regions.
   bool uses_staging = false;
@@ -225,6 +248,8 @@ struct GQAFlashConfig {
 // Flash owns up to three separate runtime allocations. Their offsets describe a
 // 256-byte-aligned concrete root; byte counts remain the exact allocation requests.
 struct GQAFlashWorkspaceRecipe {
+  // Selected-route witness used for complete-recipe cross-validation.
+  bool fast_decode = false;
   size_t split_heuristic_head_count = 0;
   size_t split_heuristic_kv_length = 0;
   size_t selected_split_count = 1;
@@ -244,6 +269,87 @@ struct GQAFlashWorkspaceRecipe {
 struct GQAFlashWorkspaceResult {
   GQAWorkspaceStatus status;
   GQAFlashWorkspaceRecipe recipe;
+};
+
+// MEA owns separate K expansion, V expansion, and optional FP32 output
+// accumulator allocations. effective_kv_cache_capacity is the post-staging
+// capacity from GQAPreparationRecipe.
+struct GQAMemoryEfficientWorkspaceRecipe {
+  int64_t effective_kv_cache_capacity = 0;
+  size_t expanded_key_offset_bytes = 0;
+  size_t expanded_key_bytes = 0;
+  size_t expanded_value_offset_bytes = 0;
+  size_t expanded_value_bytes = 0;
+  size_t output_accumulator_offset_bytes = 0;
+  size_t output_accumulator_bytes = 0;
+  size_t total_backend_bytes = 0;
+};
+
+struct GQAMemoryEfficientWorkspaceResult {
+  GQAWorkspaceStatus status;
+  GQAMemoryEfficientWorkspaceRecipe recipe;
+};
+
+// The unfused backend owns one combined runtime allocation. Q, Y, FP32 QK, and
+// the upper-bound softmax view are all represented explicitly.
+struct GQAUnfusedWorkspaceRecipe {
+  size_t q_bnsh_offset_bytes = 0;
+  size_t q_bnsh_bytes = 0;
+  size_t y_bnsh_offset_bytes = 0;
+  size_t y_bnsh_bytes = 0;
+  size_t qk_offset_bytes = 0;
+  size_t qk_bytes = 0;
+  size_t softmax_offset_bytes = 0;
+  size_t softmax_bytes = 0;
+  size_t total_backend_bytes = 0;
+};
+
+struct GQAUnfusedWorkspaceResult {
+  GQAWorkspaceStatus status;
+  GQAUnfusedWorkspaceRecipe recipe;
+};
+
+struct GQAUnfusedConfig {
+  int64_t total_sequence_length = 0;
+};
+
+enum class GQABackend {
+  Xqa,
+  Flash,
+  MemoryEfficient,
+  Unfused,
+  Cudnn,
+};
+
+struct GQAConcreteRoute {
+  GQABackend backend = GQABackend::Unfused;
+  GQAPreparationRoute preparation;
+  // Only the config matching backend is populated.
+  GQAXqaConfig xqa;
+  GQAFlashConfig flash;
+  GQAUnfusedConfig unfused;
+};
+
+// A complete recipe composes exactly one preparation recipe and one selected
+// backend recipe. Backend recipe offsets remain relative to backend_offset_bytes;
+// adding that checked, 256-byte-aligned base gives root-relative offsets. Routes
+// are concrete and mutually exclusive: this type does not aggregate reachability.
+struct GQACompleteWorkspaceRecipe {
+  GQABackend backend = GQABackend::Unfused;
+  GQAPreparationRecipe preparation;
+  size_t backend_offset_bytes = 0;
+  size_t backend_bytes = 0;
+  // Only the recipe matching backend is populated; all others remain default-initialized.
+  GQAXqaWorkspaceRecipe xqa;
+  GQAFlashWorkspaceRecipe flash;
+  GQAMemoryEfficientWorkspaceRecipe memory_efficient;
+  GQAUnfusedWorkspaceRecipe unfused;
+  size_t total_workspace_bytes = 0;
+};
+
+struct GQACompleteWorkspaceResult {
+  GQAWorkspaceStatus status;
+  GQACompleteWorkspaceRecipe recipe;
 };
 
 GQAWorkspaceStatus CheckedGQAWorkspaceAdd(size_t left, size_t right, size_t& result) noexcept;
@@ -266,11 +372,34 @@ GQAFlashWorkspaceResult GetGQAFlashWorkspaceRecipe(
     const GQAWorkspaceProblem& problem,
     const GQAFlashConfig& config) noexcept;
 
+GQAMemoryEfficientWorkspaceResult GetGQAMemoryEfficientWorkspaceRecipe(
+    const GQAWorkspaceProblem& problem,
+    int64_t effective_kv_cache_capacity) noexcept;
+
+GQAUnfusedWorkspaceResult GetGQAUnfusedWorkspaceRecipe(
+    const GQAWorkspaceProblem& problem,
+    int64_t total_sequence_length) noexcept;
+
 GQAWorkspaceStatus ValidateGQAXqaWorkspaceRecipe(
     const GQAXqaWorkspaceRecipe& recipe) noexcept;
 
 GQAWorkspaceStatus ValidateGQAFlashWorkspaceRecipe(
     const GQAFlashWorkspaceRecipe& recipe) noexcept;
+
+GQAWorkspaceStatus ValidateGQAMemoryEfficientWorkspaceRecipe(
+    const GQAMemoryEfficientWorkspaceRecipe& recipe) noexcept;
+
+GQAWorkspaceStatus ValidateGQAUnfusedWorkspaceRecipe(
+    const GQAUnfusedWorkspaceRecipe& recipe) noexcept;
+
+GQACompleteWorkspaceResult GetGQACompleteWorkspaceRecipe(
+    const GQAWorkspaceProblem& problem,
+    const GQAConcreteRoute& route) noexcept;
+
+// Recipe validators check structural layout and cross-recipe consistency.
+// Canonical byte counts come from the checked Get*Recipe builders above.
+GQAWorkspaceStatus ValidateGQACompleteWorkspaceRecipe(
+    const GQACompleteWorkspaceRecipe& recipe) noexcept;
 
 }  // namespace cuda
 }  // namespace contrib

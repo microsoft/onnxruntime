@@ -41,6 +41,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
+#include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_qkv.cuh"
 #include "contrib_ops/cuda/bert/group_query_attention_qdq.cuh"
@@ -1623,7 +1624,8 @@ Status UnfusedGqaAttention(
     // The cache holds only the most recent min(T, C) tokens, contiguously from index 0. Causal and
     // local-window masks depend solely on query/key distance, so shifting to cache-relative
     // coordinates leaves them unchanged.
-    p.total_kv_length = std::min(parameters.total_sequence_length, max_kv);
+    p.total_kv_length = static_cast<int>(GetGQAEffectiveWorkspaceKvLength(
+        parameters.total_sequence_length, max_kv, /*is_windowed_kv_cache=*/true));
     p.past_kv_length = p.total_kv_length - parameters.sequence_length;
     p.seqlens_k = data.cache_total_seq_lens;
   }
