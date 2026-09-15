@@ -96,7 +96,7 @@ __global__ void GatherBlockQuantizedFpKernel(
   }
 
   float dq = dequant_fp_elem(data, in_idx);
-  output[out_idx] = static_cast<T2>(dq) * scales[scale_idx];
+  output[out_idx] = static_cast<T2>(dq * static_cast<float>(scales[scale_idx]));
 }
 
 template <typename T1, typename T2, typename Tind>

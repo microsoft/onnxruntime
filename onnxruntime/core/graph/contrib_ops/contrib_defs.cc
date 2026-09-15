@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/graph/contrib_ops/contrib_defs.h"
 
+#include <algorithm>
 #include <cmath>
 #include "core/graph/onnx_protobuf.h"
 
@@ -2903,10 +2904,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
 
 #if !defined(DISABLE_FLOAT8_TYPES)
 #define GEMM_FLOAT8_TYPES \
-  {"tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+  { "tensor(float8e4m3fn)", "tensor(float8e5m2)", "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
 #else
 #define GEMM_FLOAT8_TYPES \
-  {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}
+  { "tensor(float16)", "tensor(bfloat16)", "tensor(float)" }
 #endif
 
 ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
@@ -4208,7 +4209,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
       .Input(1,
              "indices",
              "Tensor of int32/int64 indices, of any rank q. Values in [-s, s-1] select elements along an axis of "
-             "size s. An out-of-range index produces zeros for the corresponding output slice.",
+             "size s. Unlike ONNX Gather, an out-of-range index produces zeros for the corresponding output slice.",
              "Tind")
       .Input(2, "scales",
              "quantization scale. Same rank as data. On axes other than quantize_axis, a dimension of 1 broadcasts "
@@ -4257,6 +4258,14 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
                                      data_elem_type == onnx::TensorProto_DataType_FLOAT8E5M2 ||
                                      data_elem_type == onnx::TensorProto_DataType_FLOAT8E5M2FNUZ ||
                                      data_elem_type == onnx::TensorProto_DataType_FLOAT4E2M1;
+
+        if (data_elem_type == onnx::TensorProto_DataType_UINT8) {
+          if (bits != 2 && bits != 4 && bits != 8) {
+            fail_shape_inference("bits must be 2, 4, or 8 for uint8 data");
+          }
+        } else if (!is_fp_quantized && bits != 4) {
+          fail_shape_inference("bits must be 4 for int4/uint4 data");
+        }
 
         const bool block_size_valid = block_size == 0
                                           ? is_fp_quantized
