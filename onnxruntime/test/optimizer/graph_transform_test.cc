@@ -10176,6 +10176,71 @@ TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
                            1, 0, 1);
 }
 
+TEST_F(GraphTransformationTests, BitmaskDropoutReplacementTransfersWorkspaceReservations) {
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(
+      MODEL_FOLDER "fusion/bitmask_dropout_replacement_basic.onnx",
+      model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  constexpr size_t kDropoutReservationBytes = 11;
+  constexpr size_t kDropoutGradReservationBytes = 17;
+  NodeWorkspaceReservationMap reservations;
+
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "Dropout") {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+      reservations.insert_or_assign(
+          node.Index(),
+          WorkspaceEstimateSelection{
+              kDropoutReservationBytes, WorkspaceEstimateSource::kEstimator});
+    } else if (node.OpType() == "DropoutGrad") {
+      node.SetExecutionProviderType(kCudaExecutionProvider);
+      reservations.insert_or_assign(
+          node.Index(),
+          WorkspaceEstimateSelection{
+              kDropoutGradReservationBytes, WorkspaceEstimateSource::kEstimator});
+    }
+  }
+  ASSERT_EQ(reservations.size(), 2U);
+
+  graph.SetNodeReplacementCallback(
+      [&reservations](const Graph&,
+                      gsl::span<const NodeIndex> source_node_indices,
+                      NodeIndex destination_node_index) {
+        ConsolidateWorkspaceReservations(
+            reservations, source_node_indices, destination_node_index);
+      });
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<BitmaskDropoutReplacement>(),
+      TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(
+      graph, TransformerLevel::Level2, *logger_));
+  graph.SetNodeReplacementCallback({});
+
+  const Node* bitmask_dropout_node = nullptr;
+  const Node* bitmask_dropout_grad_node = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "BitmaskDropout") {
+      bitmask_dropout_node = &node;
+    } else if (node.OpType() == "BitmaskDropoutGrad") {
+      bitmask_dropout_grad_node = &node;
+    }
+  }
+
+  ASSERT_NE(bitmask_dropout_node, nullptr);
+  ASSERT_NE(bitmask_dropout_grad_node, nullptr);
+  ASSERT_EQ(reservations.size(), 2U);
+  EXPECT_EQ(
+      reservations.at(bitmask_dropout_node->Index()).bytes,
+      kDropoutReservationBytes);
+  EXPECT_EQ(
+      reservations.at(bitmask_dropout_grad_node->Index()).bytes,
+      kDropoutGradReservationBytes);
+}
+
 /*
 This test build a graph like:
              input0  input1

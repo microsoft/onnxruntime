@@ -1168,9 +1168,11 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<cons
   return true;
 }
 
-bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
+bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node,
+                                      std::vector<NodeIndex>* removed_node_indices) {
   std::queue<NodeIndex> q;
   InlinedHashSet<NodeIndex> removed_nodes;
+  std::vector<NodeIndex> removed_node_indices_local;
 
   NodeIndex start_node_index = start_node.Index();
   q.push(start_node_index);
@@ -1210,12 +1212,20 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
       graph.RemoveNode(cur_node_index);
 
       removed_nodes.insert(cur_node_index);
+      removed_node_indices_local.push_back(cur_node_index);
     }
   }
 
-  if (removed_nodes.size() == 0) {
+  if (removed_node_indices_local.empty()) {
     // Nothing to remove
     return false;
+  }
+
+  if (removed_node_indices != nullptr) {
+    removed_node_indices->insert(removed_node_indices->end(),
+                                 removed_node_indices_local.cbegin(), removed_node_indices_local.cend());
+  } else {
+    graph.NotifyNodesRemoved(removed_node_indices_local);
   }
 
   return true;

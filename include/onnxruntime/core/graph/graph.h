@@ -1205,6 +1205,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       std::function<void(const Graph&, gsl::span<const NodeIndex>, NodeIndex)>;
   using NodeRemovalCallback =
       std::function<void(const Graph&, gsl::span<const NodeIndex>)>;
+#ifdef ENABLE_TRAINING
+  using NodeCloneCallback =
+      std::function<void(const Graph&, NodeIndex, NodeIndex)>;
+#endif
 
   void SetNodeReplacementCallback(NodeReplacementCallback callback);
   void NotifyNodeReplacement(
@@ -1212,6 +1216,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       NodeIndex destination_node_index) const;
   void SetNodeRemovalCallback(NodeRemovalCallback callback);
   void NotifyNodesRemoved(gsl::span<const NodeIndex> node_indices) const;
+#ifdef ENABLE_TRAINING
+  void SetNodeCloneCallback(NodeCloneCallback callback);
+  void NotifyNodeCloned(NodeIndex source_node_index, NodeIndex cloned_node_index) const;
+#endif
 
   /** Add an edge between two Nodes.
   @param src_node_index NodeIndex of source Node that is providing output to the destination Node.
@@ -2162,6 +2170,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   NodeReplacementCallback node_replacement_callback_;
   NodeRemovalCallback node_removal_callback_;
+#ifdef ENABLE_TRAINING
+  NodeCloneCallback node_clone_callback_;
+#endif
 #endif
 
   // NodeArgs that come from outer scope. Used when building a graph so that

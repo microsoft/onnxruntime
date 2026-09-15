@@ -699,8 +699,10 @@ static bool FuseSubGraph(Graph& graph,
                                layer_norm_node);
 
   if (!nodes_to_remove.empty()) {
-    graph.NotifyNodeReplacement(nodes_to_remove, embed_layer_norm_node.Index());
-    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
+    std::vector<NodeIndex> removed_node_indices;
+    graph_utils::RemoveNodesWithOneOutputBottomUp(
+        graph, *graph.GetNode(nodes_to_remove[0]), &removed_node_indices);
+    graph.NotifyNodeReplacement(removed_node_indices, embed_layer_norm_node.Index());
   }
 
   nodes_to_remove.clear();
@@ -798,8 +800,10 @@ static bool FuseSubGraphDistilBert(Graph& graph,
                                layer_norm_node);
 
   if (!nodes_to_remove.empty()) {
-    graph.NotifyNodeReplacement(nodes_to_remove, embed_layer_norm_node.Index());
-    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *graph.GetNode(nodes_to_remove[0]));
+    std::vector<NodeIndex> removed_node_indices;
+    graph_utils::RemoveNodesWithOneOutputBottomUp(
+        graph, *graph.GetNode(nodes_to_remove[0]), &removed_node_indices);
+    graph.NotifyNodeReplacement(removed_node_indices, embed_layer_norm_node.Index());
   }
 
   nodes_to_remove.clear();

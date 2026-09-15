@@ -1189,8 +1189,10 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
   const Node* p_concat_1 = graph_utils::GetInputNode(reshape_1, 1);
   const Node* p_concat_2 = graph_utils::GetInputNode(reshape_2, 1);
   if (p_concat_1 != nullptr && p_concat_2 != nullptr) {
-    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_1);
-    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_2);
+    std::vector<NodeIndex> removed_node_indices;
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_1, &removed_node_indices);
+    graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_concat_2, &removed_node_indices);
+    graph.NotifyNodeReplacement(removed_node_indices, attention_node_index);
   } else {
     return false;
   }

@@ -1901,10 +1901,29 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
           workspace_reservations.erase(graph_it);
         }
       });
+#ifdef ENABLE_TRAINING
+  graph.SetNodeCloneCallback(
+      [&workspace_reservations](const Graph& modified_graph,
+                                NodeIndex source_node_index,
+                                NodeIndex cloned_node_index) {
+        auto graph_it = workspace_reservations.find(&modified_graph);
+        if (graph_it == workspace_reservations.end()) {
+          return;
+        }
+
+        const auto source_it = graph_it->second.find(source_node_index);
+        if (source_it != graph_it->second.end()) {
+          graph_it->second.insert_or_assign(cloned_node_index, source_it->second);
+        }
+      });
+#endif
   auto clear_node_mutation_callbacks =
       gsl::finally([&graph]() {
         graph.SetNodeReplacementCallback({});
         graph.SetNodeRemovalCallback({});
+#ifdef ENABLE_TRAINING
+        graph.SetNodeCloneCallback({});
+#endif
       });
 
 #if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
@@ -2899,7 +2918,7 @@ common::Status InferenceSession::Initialize() {
       return false;
     }();
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     ORT_RETURN_IF(
         loading_ort_format &&
             session_options_.config_options.GetConfigOrDefault(
