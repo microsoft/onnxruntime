@@ -302,6 +302,14 @@ bool GroupNormOpBuilder::IsOpSupportedImpl(const GraphViewer&,
   }
 
   if (is_skip) {
+    if (TensorExists(input_defs, 4)) {
+      std::vector<int64_t> residual_bias_shape;
+      if (!GetShape(*input_defs[4], residual_bias_shape, logger) ||
+          residual_bias_shape.size() != 1 || residual_bias_shape[0] != channels) {
+        LOGS(logger, VERBOSE) << op_type << " residual bias must be 1D of size channels.";
+        return false;
+      }
+    }
     if (output_defs.size() > 2) {
       LOGS(logger, VERBOSE) << op_type << " output count must not exceed 2.";
       return false;
