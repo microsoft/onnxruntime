@@ -19,6 +19,9 @@ Related documentation:
 4. [Optimization - Vectorized Dequantization Kernel](#4-optimization---vectorized-dequantization-kernel)
 5. [Decode GEMV - Memory-Level Parallelism](#5-decode-gemv---memory-level-parallelism)
 6. [Decode GEMV - Tensor Cores](#6-decode-gemv---tensor-cores)
+  - [RTX 4090 Split-K Qualification and Dispatch Refinement](#65-rtx-4090-split-k-qualification-and-dispatch-refinement)
+  - [RTX 50-Series and RTX 3060 Split-K Validation](#66-rtx-50-series-and-rtx-3060-split-k-validation)
+  - [Standalone Timings Do Not Rank Split-K for These Shapes](#67-standalone-timings-do-not-rank-split-k-for-these-shapes)
 7. [Benchmark Commands](#7-benchmark-commands)
 8. [Lessons](#8-lessons)
 
@@ -304,8 +307,59 @@ steps.
 16 columns per warp gives about 8x fewer warps than the FMA kernel, which alone
 costs more in lost memory-level parallelism than the instruction saving is worth.
 `KSplit` warps per block therefore take a strided share of the K windows and are
-reduced through shared memory at the end. `KSplit = 8` for `N >= 8192` (the
-column count already fills the grid) and 16 otherwise.
+reduced through shared memory at the end. The generic policy uses `KSplit = 8`
+for `N >= 8192` and 16 otherwise, subject to the short-K window clamp. Two
+qualified low-M configurations select 8 earlier:
+
+- SM89 with 128 SMs (measured on RTX 4090), `M <= 8`, `16 <= K/64 <= 96`:
+  more than `3 * sm_count` output blocks. This preserves the pinned KS16 window
+  and changes only `6144 < N < 8192`, `1024 <= K <= 6144` relative to the
+  generic policy.
+- SM120 with 36 SMs (measured on RTX 5060 Ti), `M <= 8`, `40 <= K/64 <= 96`:
+  more than `2 * sm_count` output blocks.
+
+The SM count is part of the measured SM120 qualification, not a proxy for the
+architecture. A 170-SM RTX 5090 Laptop did not reproduce that crossover and
+retains the generic policy. Other configurations also retain the generic policy
+and the existing SM121 KS32 override. The residency hint remains active where
+the selected KS16 qualifies.
+
+A third qualification, SM90 with 132 SMs above `2 * sm_count` output blocks, was
+added on the strength of the standalone H200 numbers below and then **withdrawn**:
+re-measured inside a live decode stream the same shapes regressed 16-18% per
+call. Both measurements are recorded in
+[section 6.7](#67-standalone-timings-do-not-rank-split-k-for-these-shapes).
+The standalone H200 data, kept for the record:
+
+| output blocks | blocks/SM | shipped us | KSplit 8 us | shipped / KSplit 8 |
+| --- | --- | --- | --- | --- |
+| 262 | 1.985 | 6.592 | 7.296 | 0.904 |
+| 264 | 2.000 | 6.784 | 7.328 | 0.928 |
+| 265 | 2.008 | 9.072 | 8.288 | **1.096** |
+| 320 | 2.424 | 9.296 | 8.640 | **1.076** |
+| 384 | 2.909 | 9.456 | 8.720 | **1.083** |
+| 429 | 3.250 | 12.000 | 10.624 | **1.130** |
+| 495 | 3.750 | 12.496 | 11.392 | **1.098** |
+| 512 | 3.879 | 11.744 | 11.712 | 0.996 (already KSplit 8) |
+
+On H200, plain KSplit 16 is 512 threads at 48 registers and fits two blocks per
+SM, while KSplit 8 fits five. Standalone, the crossover tracked `2 * sm_count`
+rather than a fixed N, and held for `K = 2560`, `5120` and `6144` (windows 40, 80
+and 96) and for both `M = 1` and `M = 8`. At `M = 16` two row tiles cost 72
+registers, which drops KSplit 16 to a single block per SM, and KSplit 8 wins at
+every width measured (1.23-1.43x); the selector does not act on that.
+
+The RTX 4090 experiments and the rationale for its narrower qualification are
+recorded in [section 6.5](#65-rtx-4090-split-k-qualification-and-dispatch-refinement).
+
+Cross-device validation used CUDA graph replay and Nsight Systems kernel timing.
+On an RTX 5060 Ti (SM120, 36 SMs), the crossover lands at 72/73 output blocks and
+KSplit 8 improves `M=4, N=5120, K=6144` by 9.5%. On an RTX 5090 Laptop (SM120,
+170 SMs), the winner does not flip at 340/341 blocks and instead varies with M
+and K. On an RTX 3060 (SM86, 28 SMs), KSplit 8 regresses
+`M=1, N=897, K=5120` by 12.1% and `N=2048, K=5120` by about 8%, while results at
+larger widths are mixed. The 170-SM SM120 and SM86 configurations therefore
+retain the generic policy.
 
 Preconditions: SM80+, `K % 64 == 0`, `K >= 256`, `block_size % 64 == 0`, `M <= 8`.
 Otherwise the FMA kernel runs unchanged. `ORT_FP8_GEMV_MMA=0` forces the FMA
@@ -381,6 +435,342 @@ Measured on H200 (us, `M = 4`, versus the previous `<R, 1, 1>` and cuBLAS FP16):
 The hoisting itself is bit-identical (the per-lane `fmaf` sequence is unchanged),
 but a different `Unroll` changes which K chunk a lane accumulates first, so the
 re-tuned dispatch is a last-ulp change relative to `<RowsPerWarp, 1, 1>`.
+
+---
+
+### 6.5 RTX 4090 Split-K Qualification and Dispatch Refinement
+
+#### Environment and Method
+
+Measured on September 14, 2026 for [PR #32594](https://github.com/microsoft/onnxruntime/pull/32594):
+
+- RTX 4090, SM89, 128 SMs, 72 MiB L2; Windows WDDM with an active display.
+- CUDA 13.3.73, driver 610.60, Visual Studio 18 2026, Release `sm_89` compilation.
+- Main baseline `b03fb522be1e1574e86835c9dca84b2b94ef2ca5` versus original PR
+  `c2de46090018e9cbcba84e1f7654a9c405ab6476`. Their production device bodies were
+  identical; a standalone same-binary harness compared the exact selectors and
+  kernel entry points. No full ORT DLL or model was used for these timings.
+- FP8 E4M3 weights, FP32 scales, block size 128, FP16/BF16 activations and
+  outputs; no bias or activation QDQ. Inputs and buffers were prepared before timing.
+- CUDA events measured batches of graph nodes after 50 eager and 10 graph
+  warmups. A/B order alternated within paired samples. The initial sweep covered
+  188 shape/dtype cases with 31 pairs and 128 nodes per graph; 18 cases received
+  three independent confirmation runs with 101 pairs and 256 nodes per graph.
+- Follow-up qualification added 168 focused cases and two-run cache-mode
+  comparisons, totaling 14,592 additional pairs. It included intermediate
+  `M={9,12,17,24,31}`, `K={1024,2560,5120,6144,8192,16384}`, and grid boundaries.
+- Reused-weight tests repeatedly accessed the same allocation. Streaming tests
+  rotated weight/scale allocations totaling at least three times L2 capacity,
+  while reusing activations and outputs. This probes cache sensitivity; it is
+  not a cache-flush test or a full-model workload.
+
+Times below are unprofiled, graph-amortized **microseconds per kernel node**.
+Speedup is the median paired `main_time / candidate_time`; values above 1 favor
+the candidate. Separate latency medians need not divide to that paired statistic.
+Clocks were not locked, WDDM and a concurrent CPU build could perturb timing,
+and no outliers were discarded.
+
+#### Original Rule: Pinned KS16 Is the Relevant Baseline
+
+The original PR chose KS8 once `ceil(N/16) > 2 * sm_count`. On this GPU that
+means `N > 4096`. However, for low M and sufficiently long K, main already used
+**pinned KS16** for `4096 < N <= 6144`, rather than plain KS16.
+
+| Type | M | N | K | Main us | Original PR us | Paired speedup |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| FP16 | 8 | 4097 | 5120 | 9.820 | 10.656 | 0.927x |
+| BF16 | 8 | 4097 | 5120 | 9.980 | 10.884 | 0.918x |
+| FP16 | 1 | 5120 | 6144 | 9.956 | 10.216 | 0.981x |
+| FP16 | 8 | 6144 | 5120 | 12.540 | 13.092 | 0.956x |
+| FP16 | 8 | 6145 | 5120 | 14.968 | 12.948 | 1.166x |
+| FP16 | 16 | 6144 | 5120 | 27.264 | 17.744 | 1.543x |
+
+The first FP16 regression persisted across three runs (0.910-0.939x run-median
+speedups). Nsight Systems confirmed pinned KS16 versus plain KS8, with traced
+kernel medians of 10.208 versus 11.232 us and similar inter-node gaps. Traced
+timings are diagnostic and are not mixed into the table's unprofiled results.
+
+Pinned KS16 used 40 registers/thread and could theoretically host three blocks
+per SM; plain KS8 used 48 registers/thread and could host five. Thus main already
+fit the boundary grid in one residency round. The unhinted-KS16 occupancy argument
+does not justify replacing this path. Actual achieved occupancy and bandwidth
+were not measured because performance-counter access was denied.
+
+#### Streaming Weights Reject a Broad Larger-M Rule
+
+A candidate preserving the low-M pinned window but selecting KS8 above two
+blocks per SM for all larger M passed the original sweep. Additional testing
+found that some reused-weight gains reverse with streaming weights:
+
+| Type | M | N | K | Reused speedup | Streaming speedup |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| BF16 | 9 | 7168 | 5120 | 1.161x | 0.966x |
+| BF16 | 12 | 7168 | 6144 | 1.245x | 0.966x |
+| BF16 | 9 | 7168 | 8192 | 1.125x | 0.930x |
+| BF16 | 9 | 7168 | 16384 | 0.952x | 0.945x |
+
+These results reject both an unrestricted larger-M rule and a K<=8192 cap.
+Low-M long-K reused-weight cases also showed small losses, so the retained rule
+is bounded in both M and K. Some larger-M gains remain real but are deferred
+rather than adding another partially qualified dispatch region.
+
+#### Retained Region and Dispatch Rules
+
+Representative FP16 results within the retained low-M region:
+
+| M | N | K | Reused main / KS8 us | Reused speedup | Streaming main / KS8 us | Streaming speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 7168 | 1024 | 4.023 / 3.448 | 1.166x | 9.946 / 9.585 | 1.038x |
+| 8 | 7168 | 2560 | 9.472 / 7.981 | 1.178x | 21.790 / 21.651 | 1.005x |
+| 1 | 7168 | 6144 | 13.867 / 13.048 | 1.064x | 49.699 / 49.725 | 1.002x |
+| 8 | 7168 | 6144 | 19.908 / 17.568 | 1.154x | 49.798 / 49.809 | 0.998x |
+
+Across both dtypes, the retained original sweep cases gave 1.064-1.194x.
+Selected streaming confirmations gave 0.998-1.038x, with no qualified loss above
+3%. Qualification required a paired 95% bootstrap interval entirely beyond
+1.03 for gains or below 1/1.03 for losses; this does not prove every unmeasured
+shape in the region improves.
+
+The refined policy in
+[`matmul_block_scaled_fp8_tiling.h`](../../../onnxruntime/contrib_ops/cuda/math/matmul_block_scaled_fp8_tiling.h)
+uses `output_blocks = ceil(N/16)` and `windows = K/64`:
+
+| Configuration | Rule before the short-K clamp |
+| --- | --- |
+| Default, including unqualified devices and larger M | KS8 if `N >= 8192`, otherwise KS16 |
+| SM89, 128 SMs, `M <= 8`, `16 <= windows <= 96` | Select KS8 above `3 * sm_count` output blocks |
+
+The SM89 change relative to main is therefore limited to `6144 < N < 8192`,
+`M <= 8`, and `1024 <= K <= 6144`, subject to the MMA path's existing alignment
+requirements. `N=6144` keeps pinned KS16; `N=6145` is the first changed width.
+M>8 and K>6144 retain main's policy. Architecture and SM-count checks qualify
+configurations, not GPU marketing names; other devices sharing those properties
+will also match.
+
+After selection, the existing window clamp selects KS8 or KS4 when the reduction
+cannot feed the requested split. The SM121 KS32 override remains unchanged, as
+does the residency predicate: selected KS16 still uses the hinted entry point
+when eligible. The SM90 low-M rule that this section assumed was later withdrawn;
+see [section 6.7](#67-standalone-timings-do-not-rank-split-k-for-these-shapes).
+No runtime autotuning was introduced.
+
+All new timed cases passed the independent FP64-reference check. Final validation
+against the edited production header passed 192 FP16/BF16 GPU correctness/dispatch
+cases and the extracted host selector/residency-boundary tests. The production
+CUDA translation unit also compiled separately. These checks do not establish
+full-provider test coverage or end-to-end model speedup.
+
+### 6.6 RTX 50-Series and RTX 3060 Split-K Validation
+
+#### Environment and Method
+
+Measured on September 14-15, 2026 while evaluating the Split-K dispatch change:
+
+- RTX 5060 Ti, SM120, 36 SMs, about 448 GB/s memory bandwidth.
+- RTX 5090 Laptop, SM120, 170 SMs, 24 GiB memory.
+- RTX 3060, SM86, 28 SMs.
+- CUDA 13.0, Visual Studio 2022, Release build containing both KSplit 8 and
+  KSplit 16 kernel instantiations.
+- FP8 E4M3 weights, FP32 scales, block size 128, and FP16 activations and
+  outputs. The focused cases used no bias or activation QDQ.
+- A NumPy/ORT harness allocated CUDA `OrtValue`s, captured the operator in a
+  CUDA graph, warmed it up, and replayed it hundreds of times. Nsight Systems
+  2026.3.2 CUDA graph-node traces supplied kernel durations. The final A/B used
+  one freshly built binary and `ORT_FP8_GEMV_KSPLIT` to force each choice, which
+  avoids compiler or binary differences between the two arms.
+- The final fresh-binary cases ran an exact output check after replay. Separate
+  selector tests checked the default route, including the short-K clamp and
+  device qualification.
+
+The RTX 5090 package used an ONNX Runtime wheel with the CUDA EP bundled into
+the wheel rather than supplied as a plugin EP. CUDA was provider 0 and Nsight
+captured `MatMulBlockScaledFp8MmaGemvKernel`; the plugin-device registration
+warning emitted during session creation did not indicate CPU fallback.
+
+The numbers below are median microseconds per CUDA graph kernel node. Speedup is
+`KSplit 16 / KSplit 8`, so values above 1 favor KSplit 8.
+
+#### RTX 5060 Ti: Residency Boundary Holds
+
+With 36 SMs, two output blocks per SM is 72 blocks. Since the MMA kernel emits
+one block per 16 output columns, the boundary lies between `N=1152` and the next
+block at `N=1153..1168`. An exploratory same-binary forced-kernel sweep at the
+full-block endpoints showed a sharp crossover:
+
+| M | N | K | output blocks | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 8 | 1152 | 5120 | 72 | **6.720 us** | 7.583 us | 0.886x |
+| 8 | 1168 | 5120 | 73 | 9.248 us | **8.288 us** | 1.116x |
+
+The exploratory sweep also found that the first block above the boundary favored
+KSplit 8 at `M=1` over each tested reduction length:
+
+| M | N | K | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1168 | 2560 | 4.512 us | **3.904 us** | 1.156x |
+| 1 | 1168 | 5120 | 7.104 us | **6.624 us** | 1.072x |
+| 1 | 1168 | 6144 | 8.096 us | **7.680 us** | 1.054x |
+
+The final fresh-binary confirmation used a model projection shape. KSplit 8
+reduced the median from 28.512 us to 26.047 us, a 1.095x speedup:
+
+| M | N | K | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 5120 | 6144 | 28.512 us | **26.047 us** | **1.095x** |
+
+Nsight reported 54 registers per thread for both variants in this Windows
+SM120 build. A KSplit 16 block has 512 threads and fits two blocks per SM by the
+register limit, while a KSplit 8 block has 256 threads and fits four. The exact
+72/73-block timing discontinuity, rather than an assumed cross-architecture
+register count, is the evidence for the retained `2 * sm_count` boundary.
+
+#### RTX 5090 Laptop: Residency Boundary Does Not Generalize
+
+The RTX 5090 Laptop has 170 SMs, placing its two-block boundary between 340 and
+341 output blocks (`N=5440/5456`). The same-binary A/B used CUDA 13.3, driver
+610.62, FP8 E4M3 weights, FP32 scales, FP16 input/output, block size 128, and
+Nsight Systems 2026.3.2. All 26 forced-dispatch correctness runs passed.
+
+Initial 100-warmup traces contained fresh-process clock-ramp outliers. The
+decision matrix therefore used 10,000 warmups, 1,000 timed CUDA graph replays,
+disabled CPU sampling and context-switch tracing, and alternated pair order.
+The table reports median kernel-node duration:
+
+| M | N | K | output blocks | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 5440 | 2560 | 340 | 8.160 us | **7.808 us** | 1.045x |
+| 1 | 5456 | 2560 | 341 | 8.224 us | **7.392 us** | 1.113x |
+| 1 | 5440 | 5120 | 340 | **13.472 us** | 14.464 us | 0.931x |
+| 1 | 5456 | 5120 | 341 | **13.506 us** | 14.400 us | 0.938x |
+| 1 | 5456 | 6144 | 341 | **15.904 us** | 17.472 us | 0.910x |
+| 4 | 5440 | 6144 | 340 | **18.320 us** | 19.104 us | 0.959x |
+| 4 | 5456 | 6144 | 341 | **18.368 us** | 19.040 us | 0.965x |
+| 8 | 5456 | 6144 | 341 | 23.520 us | **21.984 us** | 1.070x |
+| 8 | 6144 | 5120 | 384 | 21.664 us | **19.744 us** | 1.097x |
+| 1 | 8160 | 5120 | 510 | 19.776 us | **18.336 us** | 1.079x |
+| 1 | 8176 | 5120 | 511 | 19.216 us | **18.368 us** | 1.046x |
+| 1 | 8192 | 5120 | 512 | 19.328 us | **18.432 us** | 1.049x |
+| 9 | 5456 | 5120 | 341 | 31.504 us | **19.840 us** | 1.588x |
+
+There is no 340/341-block winner flip: KSplit 8 wins on both sides for `K=2560`,
+while KSplit 16 wins on both sides for `M=1, K=5120` and `M=4, K=6144`. The
+winner also changes with M. Residency wave count alone is therefore not a valid
+SM120-wide selector.
+
+Default-route traces confirmed KSplit 16 at `N=5440` and `N=5456`, with grids
+of 340 and 341 blocks, and KSplit 8 at the generic `N=8192` threshold. Nsight
+reported block dimensions `(32,16,1)` and `(32,8,1)` for the two variants.
+
+#### RTX 3060: Residency Alone Does Not Predict the Choice
+
+The analogous two-block boundary on the 28-SM RTX 3060 is 56 output blocks.
+The final fresh-binary test at the first ragged width in block 57 showed the
+opposite result from SM120:
+
+| M | N | K | output blocks | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 897 | 5120 | 57 | **42.879 us** | 48.063 us | **0.892x** |
+
+KSplit 8 was therefore 12.1% slower at the exact proposed dispatch boundary.
+An exploratory reduction sweep showed that the result also depends on K: at the
+nearby full-block width `N=912`, KSplit 8 slightly won for `K=2560` but lost for
+the longer reductions.
+
+| M | N | K | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 912 | 2560 | 20.320 us | **20.064 us** | 1.013x |
+| 1 | 912 | 5120 | **37.600 us** | 38.688 us | 0.972x |
+| 1 | 912 | 6144 | **44.480 us** | 45.760 us | 0.972x |
+
+Nor was there a monotonic width threshold. At `M=1, K=5120`, KSplit 8 was about
+8% slower at `N=2048`, slightly faster at `N=3072`, and approximately tied again
+at `N=4096`. At larger `M=8` model projections it produced modest gains: 1.022x
+at `N=5120, K=6144` and 1.035x at `N=6144, K=5120`. A single occupancy-derived
+rule would therefore trade regressions in some decode shapes for gains in others.
+
+Nsight reported 56 registers per thread for both plain variants on SM86, again
+giving approximately two resident KSplit 16 blocks versus four KSplit 8 blocks
+by the register limit. SM86 does not have native FP8 tensor-core instructions,
+but that fact is not by itself the explanation: this kernel converts E4M3
+weights to FP16/BF16 fragments and issues FP16/BF16 MMA instructions on every
+supported architecture. Differences in memory behavior, scheduling, and the
+cost of the split reduction still make the best KSplit architecture- and
+shape-dependent.
+
+#### Dispatch Decision
+
+The retained selector consequently qualifies only the measured 36-SM SM120
+configuration (`M <= 8` and `40 <= K/64 <= 96`) for KSplit 8 above
+`2 * sm_count` output blocks. The 170-SM SM120 configuration, RTX 3060, and other
+unqualified devices keep the legacy `N >= 8192` crossover. The final
+default-route traces confirmed KSplit 8 on the 36-SM boundary case, KSplit 16 on
+the RTX 3060 boundary case, and KSplit 16 on both sides of the 170-SM boundary.
+These results reject an SM120 architecture-wide residency rule.
+
+### 6.7 Standalone Timings Do Not Rank Split-K for These Shapes
+
+The SM90 qualification described in [section 6.1](#61-design) was withdrawn after
+the same shapes were re-measured inside a live decode stream. This section
+records that measurement because the conclusion generalizes beyond H200.
+
+Workload: Qwen3.8-27B (FP8 weights, speculative decoding, batch 1, 512-token
+context) on an H200 with 132 SMs, driver 580.159.04, CUDA 13.0. Arms differ only
+in `ORT_FP8_GEMV_KSPLIT` / `ORT_FP8_GEMV_MATCH_N`, so a single binary serves all
+of them. Kernel times come from Nsight Systems traces of the real inference
+stream (three runs per arm, roughly 26,000 launches per cell, per-call medians).
+
+#### Per-call kernel time in situ
+
+| grid | N | K | selected KS16 + residency hint | forced KSplit 8 | KSplit 8 versus selected |
+| --- | --- | --- | --- | --- | --- |
+| 320 | 5120 | 6144 | 12.833 us | 15.200 us | **1.184x slower** |
+| 384 | 6144 | 5120 | 11.424 us | 13.280 us | **1.162x slower** |
+| 64 | 1024 | 6144 | 6.432 us | 9.600 us | 1.493x slower |
+
+Shapes that the arms do not touch reproduce to within 0.7% across every arm
+(grids 640, 768, 1088 and 15520), and the two arms that both force KSplit 8 at
+`N = 1024` agree to 9.600 us on each. The 16-18% is therefore not run-to-run
+noise.
+
+The standalone table in section 6.1 predicted the opposite sign for the same two
+shapes: 1.076x and 1.083x in favor of KSplit 8. Comparing the two protocols
+directly, moving from standalone to in situ costs the hinted KSplit 16 kernel
+1.38x but costs KSplit 8 1.76x. A standalone benchmark replays one shape in a
+loop, so its weights stay resident in L2; in a decode round every projection is
+touched once and the weights stream from DRAM. The extra blocks per SM that
+KSplit 8 buys are worth nothing once DRAM bandwidth is the limit, while the
+larger split adds reduction traffic, and the hinted KSplit 16 kernel degrades
+less under cold weights.
+
+#### End-to-end confirmation
+
+28 rounds of a round-blocked A/B over four arm-order rotations, judged on decode
+milliseconds per target forward. Judging on tokens/second would have been
+misleading here: changing the reduction order perturbs rounding, which moves
+draft acceptance, and two of these arms look 3.7-5.0% *faster* on tokens/second
+while every kernel in them got slower.
+
+| arm | forced KSplit 8 at | paired delta versus control | 95% CI | sign test |
+| --- | --- | --- | --- | --- |
+| duplicate control | nothing | +0.189% | [-0.126, +0.505] | p = 0.18 |
+| inert control | nothing | +0.104% | [-0.516, +0.724] | p = 0.18 |
+| gated | N = 5120 | **+1.171%** | [+0.693, +1.649] | p < 0.0001 |
+| gated | N = 6144 | **+0.520%** | [+0.193, +0.847] | p = 0.036 |
+| gated | N = 1024 | +0.420% | [+0.134, +0.706] | p = 0.036 |
+| global | every FP8 GEMV | **+1.719%** | [+1.346, +2.091] | p < 0.0001 |
+
+Both zero-controls straddle zero, which sets the resolution of the design at
+roughly +/-0.5%. The two methods agree quantitatively: +200.8 us and +91.4 us per
+decode round on a 20,919 us kernel sum predict +0.96% and +0.44% against +1.171%
+and +0.520% measured.
+
+#### Dispatch decision
+
+SM90 keeps the generic `N >= 8192` crossover and the residency hint, which stays
+active in its `(2 * sm_count, 3 * sm_count]` window. The RTX 4090 and 36-SM
+SM120 qualifications were derived from standalone timings on machines where this
+workload was not available, so they carry the same risk and should be re-checked
+in situ before being widened.
 
 ---
 
@@ -467,6 +857,17 @@ CUDA_VISIBLE_DEVICES=0 "$ORT_BUILD/onnxruntime_provider_test" \
 - Know the launch floor before optimizing: on H200 an empty kernel costs 0.68 us
   as a CUDA graph node. Ops cheaper than that are launch bound and should be
   fused, not tuned.
+- Do not rank split-K variants of a weight-only GEMV from a standalone benchmark.
+  Replaying one shape in a loop keeps its weights in L2, while a decode round
+  touches each projection once and streams them from DRAM. On H200 that changed
+  the KSplit 8 versus KSplit 16 ranking by sign, not just by margin: 1.08x ahead
+  standalone, 1.16-1.18x behind in situ. Confirm a dispatch change with kernel
+  times captured from the real inference stream.
+- When an A/B perturbs numerics, do not judge speculative decoding on
+  tokens/second. Changing a reduction order moves draft acceptance, and an arm
+  whose every kernel got slower can still post a higher token rate. Decode time
+  per target forward, cross-checked against per-call kernel time, is the honest
+  metric.
 - The FP8 weight-only GEMV is 1.5-2.0x faster than cuBLAS FP16 at `M = 1`, so
   quantizing a projection is a decode latency win, not just a footprint win. The
   ordering reverses by `M = 4`.
