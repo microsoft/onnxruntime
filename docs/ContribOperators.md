@@ -4288,8 +4288,13 @@ This version of the operator has been available since version 1 of the 'com.micr
   (batch_size, max_ngram_size - 1) and are right-aligned, so the last slot is the most recent id.
   Positions before the start of the whole sequence use pad_id, or eos_token_id when it is provided.
   Running the op once over a full sequence and running it over consecutive chunks while threading
-  present_ids into past_ids produce identical hash ids. When past_ids is omitted the missing history is
-  pad_id, or eos_token_id when it is provided.
+  present_ids into past_ids produce identical hash ids, including when reset_on_eos is enabled. When
+  segment_ids is used, segment boundaries are applied only within the current input_ids chunk and are
+  not inferred from past_ids. When past_ids is omitted the missing history is pad_id, or eos_token_id
+  when it is provided.
+  past_ids and present_ids may use the same allocation. Such in-place execution is transaction-safe
+  only when the whole operator call is unconditionally committed; a caller that may select a prefix or
+  roll back must preserve past_ids.
 
   Optional inputs add packed-sequence and Qwen4-Exp-style n-gram embedding support:
 
@@ -7705,4 +7710,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
