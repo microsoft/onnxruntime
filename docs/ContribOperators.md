@@ -1653,9 +1653,9 @@ This version of the operator has been available since version 1 of the 'com.micr
   must be -1. Valid entries must be unique, non-negative request-local positions in the selected source.
   
   `attention_mode="selected_only"` attends only to selected entries. `attention_mode="local_plus_selected"` jointly
-  normalizes causally valid main-cache entries in `local_window_size`, selected auxiliary entries, and an optional
-  per-query-head sink. The sink contributes to the softmax denominator but has no value vector. A row with no entries and
-  no sink produces zero output.
+  normalizes causally valid main-cache entries in `local_window_size` and selected auxiliary entries. An optional
+  per-query-head sink can participate in either mode; it contributes to the shared softmax denominator but has no value
+  vector. A row with no entries and no sink produces zero output.
   
   Supported mode/source combinations:
   
@@ -1681,7 +1681,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>do_rotary</tt> : int</dt>
 <dd>Whether to apply rotary embedding to Q and newly appended K.</dd>
 <dt><tt>is_causal</tt> : int</dt>
-<dd>Whether selected main-cache and local entries obey causal visibility.</dd>
+<dd>Must be 1. DynamicSparseAttention version 1 supports causal attention only.</dd>
 <dt><tt>kv_num_heads</tt> : int (required)</dt>
 <dd>Number of main and auxiliary KV heads.</dd>
 <dt><tt>local_window_size</tt> : int</dt>
@@ -1738,7 +1738,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>k_norm_weight</tt> (optional) : T</dt>
 <dd>Optional K RMSNorm weight [head_size].</dd>
 <dt><tt>head_sink</tt> (optional) : T</dt>
-<dd>Optional sink logit [num_heads].</dd>
+<dd>Optional sink logit [num_heads]. Participates in the shared softmax denominator in both attention modes.</dd>
 </dl>
 
 #### Outputs (1 - 3)
@@ -7838,5 +7838,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-
