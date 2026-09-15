@@ -3323,6 +3323,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (n_head_per_ngram < 1) {
             fail_shape_inference("NGramHashMapping: n_head_per_ngram must be positive");
           }
+          if (max_ngram_size - 1 > std::numeric_limits<int64_t>::max() / n_head_per_ngram) {
+            fail_shape_inference("NGramHashMapping: (max_ngram_size - 1) * n_head_per_ngram overflows int64_t");
+          }
+          const int64_t num_heads = (max_ngram_size - 1) * n_head_per_ngram;
 
           if (hasInputShape(ctx, 0)) {
             const auto& input_shape = getInputShape(ctx, 0);
@@ -3332,7 +3336,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             TensorShapeProto output_shape;
             *output_shape.add_dim() = input_shape.dim(0);
             *output_shape.add_dim() = input_shape.dim(1);
-            output_shape.add_dim()->set_dim_value((max_ngram_size - 1) * n_head_per_ngram);
+            output_shape.add_dim()->set_dim_value(num_heads);
             updateOutputShape(ctx, 0, output_shape);
 
             if (ctx.getNumOutputs() > 1) {
@@ -3354,15 +3358,38 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             const auto& vocab_sizes_shape = getInputShape(ctx, 2);
             if (vocab_sizes_shape.dim_size() != 1 ||
                 (vocab_sizes_shape.dim(0).has_dim_value() &&
-                 vocab_sizes_shape.dim(0).dim_value() != (max_ngram_size - 1) * n_head_per_ngram)) {
+                 vocab_sizes_shape.dim(0).dim_value() != num_heads)) {
               fail_shape_inference(
                   "NGramHashMapping: vocab_sizes must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
+            }
+          }
+          if (hasInputShape(ctx, 4)) {
+            const auto& head_offsets_shape = getInputShape(ctx, 4);
+            if (head_offsets_shape.dim_size() != 1 ||
+                (head_offsets_shape.dim(0).has_dim_value() && head_offsets_shape.dim(0).dim_value() != num_heads)) {
+              fail_shape_inference(
+                  "NGramHashMapping: head_offsets must have shape ((max_ngram_size - 1) * n_head_per_ngram)");
             }
           }
           if (hasInputShape(ctx, 5)) {
             const auto& eos_token_id_shape = getInputShape(ctx, 5);
             if (eos_token_id_shape.dim_size() != 0) {
               fail_shape_inference("NGramHashMapping: eos_token_id must be a scalar");
+            }
+          }
+          if (hasInputShape(ctx, 6)) {
+            const auto& segment_ids_shape = getInputShape(ctx, 6);
+            if (segment_ids_shape.dim_size() != 2) {
+              fail_shape_inference("NGramHashMapping: segment_ids must have rank 2");
+            }
+            if (hasInputShape(ctx, 0)) {
+              const auto& input_shape = getInputShape(ctx, 0);
+              if ((segment_ids_shape.dim(0).has_dim_value() && input_shape.dim(0).has_dim_value() &&
+                   segment_ids_shape.dim(0).dim_value() != input_shape.dim(0).dim_value()) ||
+                  (segment_ids_shape.dim(1).has_dim_value() && input_shape.dim(1).has_dim_value() &&
+                   segment_ids_shape.dim(1).dim_value() != input_shape.dim(1).dim_value())) {
+                fail_shape_inference("NGramHashMapping: segment_ids must have shape (batch_size, sequence_length)");
+              }
             }
           }
         }));
