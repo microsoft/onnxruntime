@@ -484,7 +484,8 @@ static const char* const kOrtSessionOptionsMaxShapeOverride = "session.max_shape
 /// Controls whether a Level-2 workspace declaration larger than the workspace reservation selected during
 /// partitioning fails session initialization. The default value is "0", which logs a warning and retains
 /// existing runtime allocation behavior. Missing reservations remain diagnostic only. Set to "1" for strict
-/// constrained-memory validation.
+/// constrained-memory validation. Strict verification is not supported when loading an ORT format model because
+/// partition-time workspace reservations are not serialized in the model.
 static const char* const kOrtSessionOptionsStrictWorkspaceVerification =
     "session.strict_workspace_verification";
 

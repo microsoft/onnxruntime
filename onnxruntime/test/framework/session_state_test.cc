@@ -34,6 +34,8 @@
 #include "test/util/include/file_util.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/graph_optimizer_registry.h"
+#include "core/optimizer/selectors_actions/actions.h"
+#include "core/optimizer/selectors_actions/helpers.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -166,7 +168,9 @@ class WorkspaceVerificationTestKernel final : public OpKernel {
 };
 
 static Status FinalizeWorkspaceVerificationTestSession(
-    std::optional<size_t> reservation_bytes, bool strict_verification = true) {
+    std::optional<size_t> reservation_bytes, bool strict_verification = true,
+    bool replace_node_after_reservation = false,
+    bool track_replacement_reservation = true) {
   Model model("workspace_verification", false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
 
@@ -175,8 +179,42 @@ static Status FinalizeWorkspaceVerificationTestSession(
   output_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
   NodeArg output_arg("output", &output_type);
   Node& node = graph.AddNode("workspace_node", "WorkspaceVerificationTestOp", "", {}, {&output_arg});
+
+  WorkspaceReservationMap reservations;
+  if (reservation_bytes.has_value()) {
+    reservations[&graph].insert_or_assign(
+        node.Index(),
+        WorkspaceEstimateSelection{*reservation_bytes, WorkspaceEstimateSource::kEstimator});
+  }
+
+  if (replace_node_after_reservation) {
+    if (track_replacement_reservation) {
+      graph.SetNodeReplacementCallback(
+          [&reservations](const Graph& modified_graph,
+                          gsl::span<const NodeIndex> source_node_indices,
+                          NodeIndex destination_node_index) {
+            auto graph_it = reservations.find(&modified_graph);
+            if (graph_it != reservations.end()) {
+              ConsolidateWorkspaceReservations(
+                  graph_it->second, source_node_indices, destination_node_index);
+            }
+          });
+    }
+
+    NodesToOptimize selected_nodes{
+        gsl::span<Node* const>{}, node, gsl::span<Node* const>{}};
+    const NodesToOptimize::NodeLocation target{
+        NodesToOptimize::NodeType::kTarget, 0};
+    ReplaceWithNewFixed replacement{
+        kOnnxDomain, "WorkspaceVerificationTestOp", {MoveAll(target, ArgType::kOutput)}};
+    ORT_RETURN_IF_ERROR(replacement.Run(graph, selected_nodes));
+    graph.SetNodeReplacementCallback({});
+  }
+
   ORT_RETURN_IF_ERROR(graph.Resolve());
-  node.SetExecutionProviderType(kCpuExecutionProvider);
+  for (auto& final_node : graph.Nodes()) {
+    final_node.SetExecutionProviderType(kCpuExecutionProvider);
+  }
 
   ExecutionProviders execution_providers;
   ORT_RETURN_IF_ERROR(execution_providers.Add(
@@ -195,11 +233,7 @@ static Status FinalizeWorkspaceVerificationTestSession(
                              external_data_loader_manager, DefaultLoggingManager().DefaultLogger(),
                              profiler, session_options);
 
-  if (reservation_bytes.has_value()) {
-    WorkspaceReservationMap reservations;
-    reservations[&graph].insert_or_assign(
-        node.Index(),
-        WorkspaceEstimateSelection{*reservation_bytes, WorkspaceEstimateSource::kEstimator});
+  if (!reservations.empty()) {
     session_state.SetWorkspaceReservations(std::move(reservations));
   }
 
@@ -277,6 +311,20 @@ TEST(SessionStateTest, StrictWorkspaceVerificationOnlyRejectsOverrun) {
   EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
       FinalizeWorkspaceVerificationTestSession(size_t{64}),
       "declarations exceed the workspace reserved during graph partitioning");
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationTracksReplacementNode) {
+  EXPECT_STATUS_OK(FinalizeWorkspaceVerificationTestSession(
+      size_t{128}, true, true));
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      FinalizeWorkspaceVerificationTestSession(size_t{64}, true, true),
+      "declarations exceed the workspace reserved during graph partitioning");
+}
+
+TEST(SessionStateTest, StrictWorkspaceVerificationRejectsUntrackedReplacement) {
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      FinalizeWorkspaceVerificationTestSession(size_t{128}, true, true, false),
+      "post-partition graph transformation");
 }
 
 class SessionStateAddGetKernelTest : public testing::TestWithParam<int> {};

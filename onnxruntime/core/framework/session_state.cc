@@ -1854,8 +1854,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     size_t equal = 0;
     size_t missing_reservation = 0;
     size_t missing_declaration = 0;
+    size_t orphaned_reservations = 0;
     SafeInt<size_t> level2_excess_bytes = 0;
     SafeInt<size_t> reservation_excess_bytes = 0;
+    SafeInt<size_t> orphaned_reservation_bytes = 0;
     bool strict_verification_failed = false;
     const bool strict_workspace_verification =
         session_options.config_options.GetConfigOrDefault(
@@ -1937,7 +1939,28 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         ++equal;
       }
     }
-    if (nodes_with_workspace > 0 || missing_declaration > 0) {
+
+    if (graph_reservations != nullptr) {
+      for (const auto& [node_index, reservation] : *graph_reservations) {
+        if (graph_.GetNode(node_index) == nullptr) {
+          ++orphaned_reservations;
+          orphaned_reservation_bytes += reservation.bytes;
+        }
+      }
+    }
+
+    const bool strict_reservation_ownership_failed =
+        strict_workspace_verification &&
+        missing_reservation > 0 &&
+        orphaned_reservations > 0;
+    if (strict_reservation_ownership_failed) {
+      LOGS(logger_, WARNING)
+          << "Level-2 workspace verification found " << orphaned_reservations
+          << " reservation(s) for removed nodes and " << missing_reservation
+          << " workspace declaration(s) without reservations";
+    }
+
+    if (nodes_with_workspace > 0 || missing_declaration > 0 || orphaned_reservations > 0) {
       LOGS(logger_, INFO) << "Level-2 workspace declaration summary for graph '"
                           << graph_viewer_->Name() << "': "
                           << nodes_with_workspace << " kernel(s) declared workspace, "
@@ -1949,12 +1972,17 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                           << ", equal=" << equal
                           << ", missing reservation=" << missing_reservation
                           << ", missing declaration=" << missing_declaration
+                          << ", orphaned reservation=" << orphaned_reservations
                           << ", Level-2 excess=" << static_cast<size_t>(level2_excess_bytes) << " bytes"
-                          << ", reservation excess=" << static_cast<size_t>(reservation_excess_bytes) << " bytes";
+                          << ", reservation excess=" << static_cast<size_t>(reservation_excess_bytes) << " bytes"
+                          << ", orphaned reservation bytes="
+                          << static_cast<size_t>(orphaned_reservation_bytes) << " bytes";
     }
-    ORT_RETURN_IF(strict_verification_failed,
-                  "Level-2 workspace verification failed: one or more declarations exceed "
-                  "the workspace reserved during graph partitioning.");
+    ORT_RETURN_IF(
+        strict_verification_failed || strict_reservation_ownership_failed,
+        "Level-2 workspace verification failed: one or more declarations exceed "
+        "the workspace reserved during graph partitioning, or a post-partition graph transformation "
+        "prevented a reservation from being matched to its declaration.");
   }
 
   ORT_RETURN_IF_ERROR(

@@ -106,6 +106,13 @@ static Status CreateReplacementNode(Graph& graph,
 
 Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {
   const RuntimeState runtime_state{graph, selected_nodes};
+  InlinedVector<NodeIndex> selected_node_indices;
+  for (const Node* node : selected_nodes.AllNodes()) {
+    if (node != nullptr) {
+      selected_node_indices.push_back(node->Index());
+    }
+  }
+
   Node* replacement{};
   ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
                                             OpType(runtime_state),
@@ -114,7 +121,16 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) 
                                             ValueMoves(runtime_state),
                                             /* only_update_dest_definitions */ false, &replacement));
   ORT_RETURN_IF_ERROR(ProcessNewNode(graph, selected_nodes, *replacement));
-  return node_remover_.Run(graph, selected_nodes);
+  ORT_RETURN_IF_ERROR(node_remover_.Run(graph, selected_nodes));
+
+  InlinedVector<NodeIndex> removed_node_indices;
+  for (NodeIndex node_index : selected_node_indices) {
+    if (graph.GetNode(node_index) == nullptr) {
+      removed_node_indices.push_back(node_index);
+    }
+  }
+  graph.NotifyNodeReplacement(gsl::make_span(removed_node_indices), replacement->Index());
+  return Status::OK();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
