@@ -1868,11 +1868,25 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const epctx::ModelGenOptions& ep_context_gen_options = session_options_.GetEpContextGenerationOptions();
+  WorkspaceReservationMap workspace_reservations;
 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_, layering_index,
-                                                       mode, ep_context_gen_options, debug_graph_fn));
+                                                       mode, ep_context_gen_options, debug_graph_fn,
+                                                       &workspace_reservations));
+  graph.SetNodeReplacementCallback(
+      [&workspace_reservations](const Graph& modified_graph,
+                                gsl::span<const NodeIndex> source_node_indices,
+                                NodeIndex destination_node_index) {
+        auto graph_it = workspace_reservations.find(&modified_graph);
+        if (graph_it != workspace_reservations.end()) {
+          ConsolidateWorkspaceReservations(
+              graph_it->second, source_node_indices, destination_node_index);
+        }
+      });
+  auto clear_node_replacement_callback =
+      gsl::finally([&graph]() { graph.SetNodeReplacementCallback({}); });
 
 #if defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
   // an EP that prefers BNHS is expected to fuse the Transpose nodes inserted above into its GQA
@@ -2035,6 +2049,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
         epctx::BuildAndSaveOptimizedModel(*model_, ep_context_gen_options, *session_logger_));
   }
 
+  session_state_->SetWorkspaceReservations(std::move(workspace_reservations));
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -2864,6 +2879,16 @@ common::Status InferenceSession::Initialize() {
       }
       return false;
     }();
+
+#if !defined(ORT_MINIMAL_BUILD)
+    ORT_RETURN_IF(
+        loading_ort_format &&
+            session_options_.config_options.GetConfigOrDefault(
+                kOrtSessionOptionsStrictWorkspaceVerification, "0") == "1",
+        "session.strict_workspace_verification is not supported when loading an ORT format model because "
+        "partition-time workspace reservations are not serialized in the model. Load the ONNX model to use "
+        "strict workspace verification.");
+#endif
 
     if (!loading_ort_format) {
 #if !defined(ORT_MINIMAL_BUILD)

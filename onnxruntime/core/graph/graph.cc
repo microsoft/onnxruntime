@@ -4980,6 +4980,26 @@ bool Graph::RemoveNode(NodeIndex p_index) {
 
   return ReleaseNode(p_index);
 }
+
+void Graph::SetNodeReplacementCallback(NodeReplacementCallback callback) {
+  Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  root_graph->node_replacement_callback_ = std::move(callback);
+}
+
+void Graph::NotifyNodeReplacement(
+    gsl::span<const NodeIndex> source_node_indices,
+    NodeIndex destination_node_index) const {
+  const Graph* root_graph = this;
+  while (root_graph->parent_graph_ != nullptr) {
+    root_graph = root_graph->parent_graph_;
+  }
+  if (root_graph->node_replacement_callback_) {
+    root_graph->node_replacement_callback_(*this, source_node_indices, destination_node_index);
+  }
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -6055,6 +6075,8 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
 
     RemoveNode(node_index);
   }
+
+  NotifyNodeReplacement(gsl::make_span(sub_graph.nodes), new_node_idx);
 }
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

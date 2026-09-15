@@ -8,6 +8,7 @@
 #include "core/common/logging/logging.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <queue>
 #include <string>
@@ -1043,16 +1044,25 @@ void SetOptionalNodeInput(Graph& graph, Node& target, size_t target_input_idx, N
 }
 
 void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
+  const std::array<NodeIndex, 2> source_node_indices{first_node.Index(), second_node.Index()};
+
   // move the outputs from second_node to first_node
   RemoveNodeOutputEdges(graph, first_node);
   MoveAllNodeOutputs(graph, second_node, first_node);
 
   // second node now has no output edges and can be removed
   graph.RemoveNode(second_node.Index());
+  graph.NotifyNodeReplacement(source_node_indices, first_node.Index());
 }
 
 void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Node>> nodes, Node& replacement_node_start,
                         Node& replacement_node_end) {
+  std::vector<NodeIndex> source_node_indices;
+  source_node_indices.reserve(nodes.size());
+  for (const Node& node : nodes) {
+    source_node_indices.push_back(node.Index());
+  }
+
   MoveAllNodeInputEdges(graph, *nodes.begin(), replacement_node_start);
   MoveAllNodeOutputs(graph, nodes.back(), replacement_node_end);
 
@@ -1060,6 +1070,8 @@ void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrapper<Nod
     RemoveNodeOutputEdges(graph, node);
     graph.RemoveNode(node.Index());
   }
+
+  graph.NotifyNodeReplacement(source_node_indices, replacement_node_start.Index());
 }
 
 const Node* GetInputNode(const Node& node, int arg_index) {
