@@ -1840,6 +1840,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                           session_options.initializers_to_share_map));
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Level-2 workspace declaration: after kernels are created and PrePack'd, call
   // DeclareWorkspaceRequirements() on each kernel with positional input presence/shape metadata.
   // Static graph shapes remain usable when no max-shape inference result is available.
@@ -1982,6 +1983,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         "the workspace reserved during graph partitioning, or a post-partition graph transformation "
         "orphaned a workspace reservation.");
   }
+#endif
 
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInputOutputNamesToNodeMapping(*graph_viewer_, *this, valid_outer_scope_node_args));

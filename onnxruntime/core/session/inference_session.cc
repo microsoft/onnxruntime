@@ -2805,6 +2805,7 @@ common::Status InferenceSession::Initialize() {
       return false;
     }();
 
+#if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF(
         loading_ort_format &&
             session_options_.config_options.GetConfigOrDefault(
@@ -2812,6 +2813,7 @@ common::Status InferenceSession::Initialize() {
         "session.strict_workspace_verification is not supported when loading an ORT format model because "
         "partition-time workspace reservations are not serialized in the model. Load the ONNX model to use "
         "strict workspace verification.");
+#endif
 
     if (!loading_ort_format) {
 #if !defined(ORT_MINIMAL_BUILD)
