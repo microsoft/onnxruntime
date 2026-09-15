@@ -117,9 +117,10 @@ follow from `Lb`, `S` and `r` alone (see [§5](#5-policy-csa)).
 | `I` | `tensor(int64)` |
 | `M` | `tensor(int32)` |
 
-Only the CUDA execution provider registers a kernel. There is no CPU kernel; the header under
-`contrib_ops/cpu/sparse/` only holds the CUDA-free constants that the schema, the kernel and the
-tests must agree on.
+CUDA registers all three `T` types. WebGPU registers `float` and `float16`; see the
+[WebGPU implementation notes](../webgpu/sparse_attention_indexer.md). There is no CPU kernel; the
+header under `contrib_ops/cpu/sparse/` only holds the provider-neutral constants that the schema,
+kernels and tests must agree on.
 
 ### Output slot discipline
 
