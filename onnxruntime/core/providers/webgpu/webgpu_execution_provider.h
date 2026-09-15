@@ -19,16 +19,18 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/session_buffer_pool.h"
 
-#if defined(ORT_USE_EP_API_ADAPTERS)
-#include "ep/adapters.h"
-#endif
-
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
 struct pthreadpool;
 namespace onnxruntime {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+namespace ep::adapter {
+struct Logger;
+}
+#endif
+
 namespace webgpu {
 
 // forward declaration for this EP's namespace.
@@ -123,12 +125,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool KvCacheQuantizationEnabled() const { return kv_cache_quantization_bits_ != 0; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
-  inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
-    return *ep_logger_;
-  }
-  inline void SetEpLogger(const OrtLogger* logger) {
-    ep_logger_ = std::make_unique<onnxruntime::ep::adapter::Logger>(logger);
-  }
+  onnxruntime::ep::adapter::Logger& GetEpLogger() const;
+  void SetEpLogger(const OrtLogger* logger);
 #endif
 
  private:
