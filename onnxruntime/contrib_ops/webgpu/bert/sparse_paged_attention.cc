@@ -729,7 +729,6 @@ Status SparsePagedAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext
   const bool main_uses_selected = !selected_from_auxiliary;
   const bool direct_output = run_main != run_auxiliary && head_sink == nullptr;
 
-  const uint64_t max_storage_buffer_binding_size = context.DeviceLimits().maxStorageBufferBindingSize;
   const uint64_t workgroup_storage_bytes =
       (2ull * static_cast<uint64_t>(parameters.head_size) + kAttentionWorkgroupSize) * sizeof(float);
   if (workgroup_storage_bytes > context.DeviceLimits().maxComputeWorkgroupStorageSize) {
