@@ -468,11 +468,6 @@ def create_cpu_moe_onnx_graph(
 
     activation = "swiglu" if use_swiglu else "silu"
 
-    # Set normalization behavior based on operator type:
-    # - QMoE: Raw logits passed, needs normalization in C++ kernel
-    # - Regular MoE: Pre-computed probabilities passed, no additional normalization needed
-    normalize_routing = 1 if use_quant else 0
-
     nodes = [
         helper.make_node(
             op_name,
@@ -480,7 +475,7 @@ def create_cpu_moe_onnx_graph(
             ["output"],
             "MoE_0",
             k=topk,
-            normalize_routing_weights=normalize_routing,
+            normalize_routing_weights=1,
             activation_type=activation,
             # Add new attributes with backwards-compatible default values
             swiglu_fusion=swiglu_fusion,
@@ -813,20 +808,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         hidden_states_flat = hidden_states.view(-1, hidden_dim)
         router_logits = self.gate(hidden_states_flat)
 
-        # Different routing logic for QMoE vs regular MoE:
-        # - QMoE expects raw logits (does its own softmax internally)
-        # - Regular MoE expects pre-computed routing probabilities
-        if hasattr(self, "quant_bits") and self.quant_bits > 0:
-            # QMoE: Pass raw logits directly (QMoE does softmax internally)
-            router_input = router_logits
-            # print("DEBUG: Using QMoE routing (raw logits)")
-        else:
-            top_k_logits, selected_experts = torch.topk(router_logits, self.top_k, dim=-1)
-            routing_weights = F.softmax(top_k_logits, dim=-1, dtype=torch.float).to(router_logits.dtype)
-            router_input = torch.zeros_like(router_logits)
-            router_input.scatter_(1, selected_experts, routing_weights)
-
-        #     print("DEBUG: Using regular MoE routing (processed probabilities)")
+        # Both QMoE and MoE apply softmax and select the top-k experts internally.
+        router_input = router_logits
 
         # print(f"DEBUG: router_input stats: mean={router_input.mean():.6f}, std={router_input.std():.6f}")
         # print(
