@@ -41,6 +41,7 @@ This is supported in ONNX Runtime v1.3.0+
 **Python example:**
 ```
 #!/usr/bin/python3
+import os
 os.environ["OMP_NUM_THREADS"] = "1"
 import onnxruntime
 
