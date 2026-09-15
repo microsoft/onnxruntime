@@ -15,8 +15,6 @@ inline int PickGenericFp8MmaKSplit(int n, int m, int windows, int sm_count,
                                    int compute_capability_major, int compute_capability_minor) {
   int k_split = (n >= 8192) ? 8 : 16;
   const int output_blocks = Fp8MmaOutputBlocks(n);
-  const bool qualified_h200 = compute_capability_major == 9 && compute_capability_minor == 0 &&
-                              sm_count == 132 && m <= 8 && output_blocks > 2 * sm_count;
   const bool qualified_rtx4090 = compute_capability_major == 8 && compute_capability_minor == 9 &&
                                  sm_count == 128 && m <= 8 && windows >= 16 && windows <= 96 &&
                                  output_blocks > 3 * sm_count;
@@ -25,7 +23,9 @@ inline int PickGenericFp8MmaKSplit(int n, int m, int windows, int sm_count,
   const bool qualified_sm120_36sm = compute_capability_major == 12 && compute_capability_minor == 0 &&
                                     sm_count == 36 && m <= 8 && windows >= 40 && windows <= 96 &&
                                     output_blocks > 2 * sm_count;
-  if (qualified_h200 || qualified_rtx4090 || qualified_sm120_36sm) {
+  // SM90/132 SMs qualified here on standalone timings, then regressed 16-18% per call when
+  // measured inside a live decode stream. See section 6.7 of the experiments doc.
+  if (qualified_rtx4090 || qualified_sm120_36sm) {
     k_split = 8;
   }
   if (windows < k_split) {
