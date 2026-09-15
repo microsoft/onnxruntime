@@ -2910,9 +2910,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                                    ndim + 2, "), got rank ", weight_shape.dim_size());
             }
             if (channels_last == 1) {
-              // channels_last input is (batch_size, sequence_length, d_1, ..., d_n), where
-              // d_1 * ... * d_n = channels. n is independent of ndim (always 1 here), so only a
-              // lower bound applies.
+              // (batch_size, sequence_length, d_1, ..., d_n). Check the lower bound.
               if (input_shape.dim_size() < 3) {
                 fail_shape_inference("CausalConvWithState: channels_last input must have rank >= 3");
               }
