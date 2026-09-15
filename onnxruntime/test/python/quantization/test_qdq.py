@@ -16,6 +16,7 @@ import onnx
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import (
     TestDataFeeds,
+    build_tiny_weights,
     check_model_correctness,
     check_op_type_count,
     check_op_type_order,
@@ -1776,14 +1777,7 @@ class TestAdjustWeightScaleForInt32Bias(unittest.TestCase):
 
         tiny_value = 1e-7 if np_float_type == np.float32 else 0.007782
         # weight_scale = 2*tiny_value / 255.0 = 7.84313725490196e-10
-
-        weight_data = np.full(weight_shape, tiny_value, dtype=np_float_type)
-        with np.nditer(weight_data, op_flags=["readwrite"]) as it:
-            for i, x in enumerate(it):
-                if i % 2 == 0:
-                    x[...] = -x
-
-        weight = onnx.numpy_helper.from_array(weight_data, "weight")
+        weight = build_tiny_weights(tiny_value, weight_shape, np_float_type)
 
         # if we set input_scale to 0.05, then normally bias_scale would be
         # (input_scale * weight_scale) => (0.05 * 7.84314e-10) => 3.9215686274509805e-11
@@ -1857,6 +1851,88 @@ class TestAdjustWeightScaleForInt32Bias(unittest.TestCase):
                 data_reader = TestDataFeeds(input_data_list)
 
                 # quantize model to QDQ
+                quantize_static(
+                    float_model_path,
+                    qdq_model_path,
+                    data_reader,
+                    activation_type=QuantType.QUInt8,
+                    weight_type=QuantType.QInt8,
+                    per_channel=per_channel,
+                )
+
+                # Check correctness
+                data_reader.rewind()
+                check_model_correctness(self, float_model_path, qdq_model_path, data_reader.get_next())
+
+    def build_gemm_test_model(
+        self,
+        input0_shape: list[int],
+        weight_shape: list[int],
+        bias_shape: list[int],
+        onnx_float_type: onnx.TensorProto.DataType,
+    ):
+        np_float_type = onnx.helper.tensor_dtype_to_np_dtype(onnx_float_type)
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx_float_type, input0_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx_float_type, None)
+
+        # Tiny weights give a tiny weight scale, which makes bias scale small
+        # enough to saturate the bias's int32 range.
+        # See build_conv_test_model().
+        tiny_value = 1e-7
+        weight = build_tiny_weights(tiny_value, weight_shape, np_float_type)
+
+        bias_data = np.ones(bias_shape, dtype=np_float_type)
+        with np.nditer(bias_data, op_flags=["readwrite"]) as it:
+            for i, x in enumerate(it):
+                x[...] = 5.0 if i % 2 == 0 else -4.5
+
+        bias = onnx.numpy_helper.from_array(bias_data, "bias")
+
+        gemm_node = onnx.helper.make_node("Gemm", ["input_0", "weight", "bias"], ["output_0"], name="Gemm0")
+        graph = onnx.helper.make_graph(
+            [gemm_node],
+            "Gemmfloat",
+            [input_0],
+            [output_0],
+            initializer=[weight, bias],
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        onnx.checker.check_model(model, True)
+        return model
+
+    def test_adjust_weight_scale_for_int32_bias_gemm_2d_bias(self):
+        """
+        Test the weight scale adjustment for a Gemm with a 2D (1, N) bias.
+
+        Unlike Conv, whose bias must be 1D, Gemm's C input only has to be
+        unidirectionally broadcastable to (M, N):
+        https://onnx.ai/onnx/operators/onnx__Gemm.html
+        and a (1, N) bias is what MatMul+Add fusion produces.
+        """
+        for per_channel in (True, False):
+            with self.subTest(per_channel=per_channel):
+                label = f"_perchannel{per_channel}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"gemm{label}.float.onnx")
+                qdq_model_path = os.path.join(self._tmp_dir_path, f"gemm{label}.qdq.onnx")
+
+                input0_shape = [1, 8]  # (M, K)
+                weight_shape = [8, 4]  # (K, N)
+                bias_shape = [1, 4]  # broadcastable to (M, N)
+                float_model = self.build_gemm_test_model(input0_shape, weight_shape, bias_shape, onnx.TensorProto.FLOAT)
+                onnx.save_model(float_model, float_model_path)
+
+                input0_rmin = 0.0
+                input0_scale = 0.05
+                input0_rmax = (input0_scale * 255.0) + input0_rmin
+                input_data_list = [
+                    {"input_0": np.full(input0_shape, input0_rmin, dtype=np.float32)},
+                    {"input_0": np.full(input0_shape, (input0_rmax - input0_rmin) / 2.0, dtype=np.float32)},
+                    {"input_0": np.full(input0_shape, input0_rmax, dtype=np.float32)},
+                ]
+                data_reader = TestDataFeeds(input_data_list)
+
                 quantize_static(
                     float_model_path,
                     qdq_model_path,
