@@ -8,13 +8,15 @@
 //
 // The function pointer typedefs and name constants should be used together with the experimental API lookup function
 // `OrtApi::GetExperimentalFunction()`. A function's availability should always be checked at runtime (the lookup
-// returns nullptr if the function is not present).
+// returns NULL if the function is not present).
 //
 // C++ API consumers should use the companion header, onnxruntime_experimental_cxx_api.h, which provides typed
 // accessors for the experimental API functions.
 //
-// IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added, changed, or removed between
-// releases without notice. Anything in this file should be treated as experimental and unstable.
+// IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added or removed between releases
+// without notice. If an experimental function with a given name is available across releases, its signature does not
+// change, and its ABI-relevant types and behavioral contract remain backward compatible. A signature change or an
+// incompatible ABI or behavioral-contract change requires a new name.
 //
 // C usage:
 //   OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn fn =
