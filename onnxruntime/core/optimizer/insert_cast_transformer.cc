@@ -356,8 +356,10 @@ static bool KernelDomainMatchesNode(const KernelDef& kernel_def, const onnxrunti
 
 static bool KernelVersionMatchesNode(const KernelDef& kernel_def, const onnxruntime::Node& node) {
   const auto [kernel_start_version, kernel_end_version] = kernel_def.SinceVersion();
-  return kernel_start_version <= node.SinceVersion() &&
-         kernel_end_version >= node.SinceVersion();
+  const int node_version = node.SinceVersion();
+  return kernel_start_version == node_version ||
+         (kernel_end_version != std::numeric_limits<int>::max() &&
+          kernel_start_version <= node_version && kernel_end_version >= node_version);
 }
 
 static bool IsKernelTypeCompatible(gsl::span<const MLDataType> enabled_types,
@@ -449,7 +451,10 @@ static bool HasCpuKernelWithTypeSupport(
     const InlinedVector<gsl::not_null<const KernelRegistry*>>& cpu_kernel_registries,
     bool replace_fp16_with_float) {
   for (const KernelRegistry* cpu_kernel_registry : cpu_kernel_registries) {
-    for (const auto& [_, kernel_create_info] : cpu_kernel_registry->GetKernelCreateMap()) {
+    const auto candidates = cpu_kernel_registry->GetKernelCreateRange(
+        node.OpType(), node.Domain(), kCpuExecutionProvider);
+    for (auto it = candidates.first; it != candidates.second; ++it) {
+      const auto& kernel_create_info = it->second;
       const auto* kernel_def = kernel_create_info.kernel_def.get();
       if (kernel_def != nullptr &&
           kernel_def->Provider() == kCpuExecutionProvider &&

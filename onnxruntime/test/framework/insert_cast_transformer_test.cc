@@ -1507,6 +1507,42 @@ TEST(TransformerTest, Fp16OutputOnlyNodeWithNoCpuKernelForcedToFp32) {
   EXPECT_EQ(ops["Cast"], 1);
 }
 
+TEST(TransformerTest, KernelWithoutExplicitEndVersionDoesNotMatchNewerNodeVersion) {
+  auto model = std::make_shared<onnxruntime::Model>(
+      "test", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+      std::unordered_map<std::string, int>{{onnxruntime::kOnnxDomain, 22}},
+      std::vector<ONNX_NAMESPACE::FunctionProto>(), DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  TypeProto tensor_float_16;
+  tensor_float_16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  onnxruntime::NodeArg output_def("output", &tensor_float_16);
+
+  NodeAttributes attrs = {
+      {"dtype", utils::MakeAttribute("dtype", static_cast<int64_t>(TensorProto_DataType_FLOAT16))},
+      {"shape", utils::MakeAttribute("shape", std::vector<int64_t>{1})}};
+  auto& random_normal = graph.AddNode("random_normal", "RandomNormal", "newer schema version",
+                                      ArgMap{}, ArgMap{&output_def}, &attrs);
+  random_normal.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  graph.SetOutputs({random_normal.OutputDefs()[0]});
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  ASSERT_EQ(random_normal.SinceVersion(), 22);
+
+  // The CPU kernel starts at version 1 with no explicit end version, so it must not match version 22.
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  EXPECT_FALSE(modified);
+  EXPECT_EQ(random_normal.GetAttributes().at("dtype").i(),
+            static_cast<int64_t>(TensorProto_DataType_FLOAT16));
+  const auto ops = CountOpsInGraph(graph);
+  EXPECT_EQ(ops.find("Cast"), ops.end());
+}
+
 // A stand-in for a kernel registry a user adds to a session (SessionOptions::AddCustomOpDomain and
 // friends end up in KernelRegistryManager::custom_kernel_registries_). Only the kernel def matters
 // here: InsertCastTransformer looks kernels up but never creates one, so the create function is
