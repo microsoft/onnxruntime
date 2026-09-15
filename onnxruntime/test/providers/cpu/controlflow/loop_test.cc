@@ -830,6 +830,71 @@ TEST(Loop, Opset11WithNoVariadicInputsAndOutputs) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+// Regression test for an out-of-bounds read during session initialization when a Loop body declares an input
+// that is ALSO a body initializer. Such a body has fewer entries in GraphViewer::GetInputs() (which excludes
+// initializer-backed inputs) than the parent Loop's explicit inputs. Previously
+// OuterScopeNodeArgLocationAccumulator() indexed GetInputs() using the parent's input index, reading past the
+// end of the vector and dereferencing an invalid NodeArg pointer. The model must now be rejected with a clean
+// error status rather than crashing / tripping ASan.
+TEST(Loop, BodyInputAlsoInitializer_RejectedWithoutOutOfBoundsRead) {
+  auto create_subgraph = []() {
+    Model model("Loop body with initializer-backed input", false, DefaultLoggingManager().DefaultLogger());
+    auto& graph = model.MainGraph();
+
+    TypeProto int64_scalar;
+    int64_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+    int64_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto bool_scalar;
+    bool_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+    bool_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    TypeProto float_scalar;
+    float_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+    float_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+    // Body inputs: iter_num, cond_in, state_in (a loop-carried variable).
+    auto& iter_num_in = graph.GetOrCreateNodeArg("iter_num_in", &int64_scalar);
+    auto& cond_in = graph.GetOrCreateNodeArg("cond_in", &bool_scalar);
+    auto& state_in = graph.GetOrCreateNodeArg("state_in", &float_scalar);
+
+    auto& cond_out = graph.GetOrCreateNodeArg("cond_out", &bool_scalar);
+    auto& state_out = graph.GetOrCreateNodeArg("state_out", &float_scalar);
+
+    graph.AddNode("cond_identity", "Identity", "Forward cond_in to cond_out", {&cond_in}, {&cond_out});
+    graph.AddNode("state_identity", "Identity", "Forward state_in to state_out", {&state_in}, {&state_out});
+
+    // Make state_in ALSO a body initializer. This is the malformed condition: state_in stays in
+    // GetInputsIncludingInitializers() but is dropped from GetInputs().
+    TensorProto state_initializer;
+    state_initializer.set_name("state_in");
+    state_initializer.set_data_type(TensorProto_DataType_FLOAT);
+    state_initializer.add_dims(1);
+    state_initializer.add_float_data(0.0f);
+    graph.AddInitializedTensor(state_initializer);
+
+    graph.SetInputs({&iter_num_in, &cond_in, &state_in});
+    graph.SetOutputs({&cond_out, &state_out});
+
+    auto status = graph.Resolve();
+    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+    return graph.ToGraphProto();
+  };
+
+  OpTester test("Loop", 13);
+  auto body = create_subgraph();
+  test.AddAttribute<GraphProto>("body", body);
+  test.AddInput<int64_t>("M", {1}, {1});
+  test.AddInput<bool>("cond", {1}, {true});
+  test.AddInput<float>("state", {1}, {3.0f});
+  test.AddOutput<float>("final_state", {1}, {3.0f});
+
+  // Must be rejected cleanly during initialization (no crash / no out-of-bounds read).
+  test.Run(OpTester::ExpectResult::kExpectFailure, "",
+           {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
 // Test a combination of things:
 // Subgraph input for loop state var has no type and is not used in the Loop subgraph (used in nested If subgraph)
 // Loop subgraph calls an If where the loop state var is an implicit input so it has no shape due to a loop state

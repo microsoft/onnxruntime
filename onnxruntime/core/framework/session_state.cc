@@ -1513,22 +1513,52 @@ static Status OuterScopeNodeArgLocationAccumulator(const SequentialExecutionPlan
   // Process explicit inputs to the node
   // (they are passed through as explicit subgraph inputs and hence requires a re-mapping of names
   // to their corresponding names in the inner nested subgraph(s) held by the node)
-  const auto& subgraph_inputs = subgraph.GetInputs();
-
-  auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map,
-                        &subgraph_inputs](const NodeArg& input, size_t arg_idx) {
-    const auto& name = input.Name();
-    OrtValueIndex index = -1;
-    ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
-
-    // Store the location of the outer scope value in the map using the subgraph input as the key
-    // as that will be the referenced name in the subgraph (i.e.) re-mapping of names is required
-    outer_scope_arg_to_location_map.insert({subgraph_inputs[arg_idx]->Name(), plan.GetLocation(index)});
-
-    return Status::OK();
-  };
-
+  //
+  // Only nodes whose inputs map one-to-one onto the explicit subgraph inputs (Loop, Scan>=9) reach the
+  // re-mapping below; for other control flow nodes (e.g. If, or Scan opset 8) there is no such positional
+  // mapping and nothing is accumulated here.
   if (IsNodeWhereNodeInputsAreSameAsExplicitSubgraphInputs(parent_node)) {
+    // The parent node's explicit inputs map positionally onto the subgraph's declared inputs.
+    // Select the subgraph input vector whose cardinality matches the parent's explicit inputs, mirroring the
+    // logic in Graph::InferAndVerifySubgraphTypes: the ONNX spec requires all subgraph inputs (including those
+    // backed by an initializer) to be provided, so prefer GetInputsIncludingInitializers(); ORT also allows just
+    // the required inputs (GetInputs()) as a user-friendly relaxation. A malformed/hostile model can declare a
+    // subgraph input that is also an initializer, which makes GetInputs() shorter than the parent input list and,
+    // without this guard, causes an out-of-bounds read below ((*subgraph_inputs)[arg_idx]).
+    const auto num_parent_inputs = parent_node.InputDefs().size();
+    const auto* subgraph_inputs = &subgraph.GetInputsIncludingInitializers();
+    if (subgraph_inputs->size() != num_parent_inputs) {
+      const auto& required_subgraph_inputs = subgraph.GetInputs();
+      if (required_subgraph_inputs.size() != num_parent_inputs) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH,
+                               "Subgraph input count does not match the number of inputs provided by the parent node '",
+                               parent_node.Name(), "' (OpType: ", parent_node.OpType(), "). Parent provides ",
+                               num_parent_inputs, " inputs but the subgraph declares ", subgraph_inputs->size(),
+                               " inputs and requires ", required_subgraph_inputs.size(), ".");
+      }
+      subgraph_inputs = &required_subgraph_inputs;
+    }
+
+    auto process_input = [&plan, &ort_value_name_to_idx_map, &outer_scope_arg_to_location_map,
+                          subgraph_inputs, &parent_node](const NodeArg& input, size_t arg_idx) {
+      const auto& name = input.Name();
+      OrtValueIndex index = -1;
+      ORT_RETURN_IF_ERROR(Index(ort_value_name_to_idx_map, name, index));
+
+      // Defensive bounds check: the selected vector's size is validated to match parent_node.InputDefs() above,
+      // so this should never trip for a well-formed graph, but guard against indexing past the end for a
+      // malformed/hostile model rather than performing an out-of-bounds read.
+      ORT_RETURN_IF_NOT(arg_idx < subgraph_inputs->size(), "Explicit input index ", arg_idx,
+                        " is out of range for subgraph of node '", parent_node.Name(), "' which has ",
+                        subgraph_inputs->size(), " inputs.");
+
+      // Store the location of the outer scope value in the map using the subgraph input as the key
+      // as that will be the referenced name in the subgraph (i.e.) re-mapping of names is required
+      outer_scope_arg_to_location_map.insert({(*subgraph_inputs)[arg_idx]->Name(), plan.GetLocation(index)});
+
+      return Status::OK();
+    };
+
     return Node::ForEachWithIndex(parent_node.InputDefs(), process_input);
   }
 
