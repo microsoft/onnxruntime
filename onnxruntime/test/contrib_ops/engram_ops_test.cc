@@ -14,7 +14,6 @@
 #include <vector>
 
 #include <memory>
-#include <optional>
 
 #include "gtest/gtest.h"
 #include "core/framework/execution_provider.h"
