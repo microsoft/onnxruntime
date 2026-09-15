@@ -5,6 +5,7 @@
 
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "contrib_ops/cuda/bert/attention_data.h"
+#include "core/framework/allocator.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime {
