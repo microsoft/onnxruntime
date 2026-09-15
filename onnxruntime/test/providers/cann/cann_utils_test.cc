@@ -130,6 +130,7 @@ TEST_F(CannUtilsTest, SaveFileAtomicallyDoesNotPublishAfterSaveFailure) {
   });
 
   EXPECT_FALSE(status.IsOK());
+  EXPECT_EQ(status.ErrorMessage(), "Injected save failure");
   EXPECT_TRUE(cann::MatchFile(file_name).empty());
 }
 
