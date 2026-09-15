@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -126,6 +126,7 @@ PLACEMENT_PATTERN = re.compile(
     r"(?:All nodes|Node\(s\)) placed on \[([^\]]+)\]\. "
     r"Number of nodes: (\d+)"
 )
+PLACED_NODE_PATTERN = re.compile(r"\]\s+(\S+)\s+\([^)]*\)\s*$")
 MAE_PATTERN = re.compile(r"^- Mean abs error:\s*(\S+)\s*$", re.MULTILINE)
 COSINE_PATTERN = re.compile(
     r"^- Cosine similarity:\s*(\S+)\s*$", re.MULTILINE
@@ -196,6 +197,12 @@ def create_workbook() -> tuple[Workbook, Worksheet, dict[tuple[int, int], int]]:
     data_rows: dict[tuple[int, int], int] = {}
     header_fill = PatternFill("solid", fgColor="D9EAF7")
     subheader_fill = PatternFill("solid", fgColor="EAF2F8")
+    table_border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin"),
+    )
 
     for category_index, category in enumerate(CATEGORIES):
         header_row = category_index * 5 + 1
@@ -232,6 +239,14 @@ def create_workbook() -> tuple[Workbook, Worksheet, dict[tuple[int, int], int]]:
             cell.fill = subheader_fill
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal="center", vertical="center")
+        for row in worksheet.iter_rows(
+            min_row=header_row,
+            max_row=header_row + 3,
+            min_col=1,
+            max_col=11,
+        ):
+            for cell in row:
+                cell.border = table_border
 
     worksheet.column_dimensions["A"].width = 36
     for column in range(2, 12):
@@ -250,7 +265,7 @@ def run_command(command: list[str]) -> tuple[int, str]:
         encoding="utf-8",
         errors="replace",
     )
-    return completed.returncode, completed.stdout
+    return completed.returncode, completed.stdout.replace("\x00", "")
 
 
 def generate_model(
@@ -285,6 +300,7 @@ def generate_model(
         category.qdq_profile,
         "--seed",
         str(seed),
+        "--add-vitisai-metadata"
     ]
     if variant.omit_zero_point:
         command.append("--omit-weight-zero-point")
@@ -312,19 +328,22 @@ def run_accuracy(
         "--seed",
         str(seed),
         "--log-severity-level",
-        "0",
+        "0"
+        # ,"--warmup-iterations",
+        # "1000"
     ]
     for option in provider_options:
         command.extend(["--provider-option", option])
     return run_command(command)
 
 
-def extract_result(log: str) -> tuple[int, int, str, str]:
+def extract_result(log: str) -> tuple[int, int, tuple[str, ...], str, str]:
     placement_start = log.rfind("Node placements")
     if placement_start < 0:
         raise ValueError("NPU run log does not contain 'Node placements'")
 
-    placements = PLACEMENT_PATTERN.findall(log[placement_start:])
+    placement_log = log[placement_start:]
+    placements = PLACEMENT_PATTERN.findall(placement_log)
     if not placements:
         raise ValueError("NPU node placement counts were not found")
 
@@ -338,16 +357,44 @@ def extract_result(log: str) -> tuple[int, int, str, str]:
         for provider, count in placements
         if provider != "CPUExecutionProvider"
     )
+    cpu_op_names: list[str] = []
+    current_provider = ""
+    remaining_nodes = 0
+    for line in placement_log.splitlines():
+        placement_match = PLACEMENT_PATTERN.search(line)
+        if placement_match:
+            current_provider = placement_match.group(1)
+            remaining_nodes = int(placement_match.group(2))
+            continue
+
+        if remaining_nodes == 0:
+            continue
+
+        node_match = PLACED_NODE_PATTERN.search(line)
+        if node_match:
+            if current_provider == "CPUExecutionProvider":
+                cpu_op_names.append(node_match.group(1))
+            remaining_nodes -= 1
+
     mae_matches = MAE_PATTERN.findall(log)
     cosine_matches = COSINE_PATTERN.findall(log)
     if not mae_matches or not cosine_matches:
         raise ValueError("accuracy metrics were not found")
-    return cpu_ops, npu_ops, mae_matches[-1], cosine_matches[-1]
+    return cpu_ops, npu_ops, tuple(cpu_op_names), mae_matches[-1], cosine_matches[-1]
 
 
-def format_result(cpu_ops: int, npu_ops: int, mae: str, cosine: str) -> str:
+def format_result(
+    cpu_ops: int,
+    npu_ops: int,
+    cpu_op_names: tuple[str, ...],
+    mae: str,
+    cosine: str,
+) -> str:
+    cpu_op_summary = (
+        f" ({', '.join(cpu_op_names)})" if cpu_op_names else ""
+    )
     return (
-        f"CPU ops: {cpu_ops}, NPU ops: {npu_ops}\n"
+        f"CPU ops: {cpu_ops}{cpu_op_summary}, NPU ops: {npu_ops}\n"
         f"MAE vs CPU run = {mae}\n"
         f"Cosine similarity vs CPU run = {cosine}"
     )
@@ -452,15 +499,22 @@ def main() -> None:
         log_path.write_text(output, encoding="utf-8")
         if return_code != 0:
             result = format_error(final_error(output, "run_acc.py failed"))
+            passed = False
         else:
             try:
-                result = format_result(*extract_result(output))
+                extracted_result = extract_result(output)
+                result = format_result(*extracted_result)
+                cpu_ops, _, _, _, cosine = extracted_result
+                passed = cpu_ops == 0 and float(cosine) == 1.0
             except ValueError as error:
                 result = format_error(str(error))
+                passed = False
 
         row = data_rows[(category_index, shape_index)]
         cell = worksheet.cell(row, variant_index + 2, result)
         cell.alignment = Alignment(wrap_text=True, vertical="top")
+        if passed:
+            cell.fill = PatternFill("solid", fgColor="C6EFCE")
         workbook.save(args.workbook)
 
     print(f"Saved results to {args.workbook.resolve()}")
