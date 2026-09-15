@@ -6,13 +6,24 @@
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 
 #include <array>
+#include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
+#include "core/framework/op_kernel.h"
+#include "core/framework/session_state.h"
 #include "core/graph/graph.h"
+#include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
+#include "test/test_environment.h"
+#include "test/util/include/asserts.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/scoped_env_vars.h"
 
 namespace onnxruntime {
 namespace test {
@@ -135,6 +146,93 @@ std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateFromNode(
   Node node{"gqa", "GroupQueryAttention", "", inputs, outputs, &attributes, kMSDomain};
   return EstimateGroupQueryAttentionWorkspace(
       node, input_shapes, Device(), options);
+}
+
+void SetValueInfo(ONNX_NAMESPACE::ValueInfoProto& value_info,
+                  const char* name,
+                  int32_t element_type,
+                  std::initializer_list<int64_t> dimensions) {
+  value_info.set_name(name);
+  auto* tensor_type = value_info.mutable_type()->mutable_tensor_type();
+  tensor_type->set_elem_type(element_type);
+  auto* shape = tensor_type->mutable_shape();
+  for (int64_t dimension : dimensions) {
+    shape->add_dim()->set_dim_value(dimension);
+  }
+}
+
+std::string BuildGroupQueryAttentionKernelModel() {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::IR_VERSION);
+  auto* onnx_opset = model.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(17);
+  auto* ms_opset = model.add_opset_import();
+  ms_opset->set_domain(kMSDomain);
+  ms_opset->set_version(1);
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("group_query_attention_workspace_level2");
+  auto* node = graph->add_node();
+  node->set_domain(kMSDomain);
+  node->set_name("gqa");
+  node->set_op_type("GroupQueryAttention");
+  for (const char* input_name :
+       {"query", "key", "value", "past_key", "past_value", "seqlens_k",
+        "total_sequence_length", "", "", "", "", "head_sink"}) {
+    node->add_input(input_name);
+  }
+  node->add_output("output");
+  node->add_output("present_key");
+  node->add_output("present_value");
+
+  const auto add_int_attribute = [node](const char* name, int64_t value) {
+    auto* attribute = node->add_attribute();
+    attribute->set_name(name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    attribute->set_i(value);
+  };
+  add_int_attribute("num_heads", 8);
+  add_int_attribute("kv_num_heads", 2);
+  add_int_attribute("local_window_size", 128);
+  add_int_attribute("sliding_window_cache", 1);
+
+  constexpr int32_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  constexpr int32_t kInt32 = ONNX_NAMESPACE::TensorProto_DataType_INT32;
+  SetValueInfo(*graph->add_input(), "query", kFloat16, {2, 4, 512});
+  SetValueInfo(*graph->add_input(), "key", kFloat16, {2, 4, 128});
+  SetValueInfo(*graph->add_input(), "value", kFloat16, {2, 4, 128});
+  SetValueInfo(*graph->add_input(), "past_key", kFloat16, {2, 2, 256, 64});
+  SetValueInfo(*graph->add_input(), "past_value", kFloat16, {2, 2, 256, 64});
+  SetValueInfo(*graph->add_input(), "seqlens_k", kInt32, {2});
+  SetValueInfo(*graph->add_input(), "total_sequence_length", kInt32, {});
+  SetValueInfo(*graph->add_output(), "output", kFloat16, {2, 4, 512});
+  SetValueInfo(*graph->add_output(), "present_key", kFloat16, {2, 2, 256, 64});
+  SetValueInfo(*graph->add_output(), "present_value", kFloat16, {2, 2, 256, 64});
+
+  auto* head_sink = graph->add_initializer();
+  head_sink->set_name("head_sink");
+  head_sink->set_data_type(kFloat16);
+  head_sink->add_dims(8);
+  head_sink->mutable_raw_data()->assign(8 * sizeof(uint16_t), '\0');
+
+  std::string bytes;
+  model.SerializeToString(&bytes);
+  return bytes;
+}
+
+const Node* FindNodeByOpType(const Graph& graph, const char* op_type) {
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == op_type) {
+      return &node;
+    }
+  }
+  return nullptr;
+}
+
+bool HasCudaDevice() {
+  int device_count = 0;
+  return cudaGetDeviceCount(&device_count) == cudaSuccess && device_count > 0;
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, ParsesPackedAndSeparateLayouts) {
@@ -565,6 +663,63 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, DeclaresOneAlignedSlotAndOnlyWork
   Level1MemoryEstimate zero_level1;
   SetGroupQueryAttentionLevel1MemoryEstimate(zero, zero_level1);
   EXPECT_FALSE(zero_level1.runtime_workspace_bytes.has_value());
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRoot) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required to construct the CUDA kernel.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_XQA", "1"}}};
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Default;
+  session_options.session_logid = "GroupQueryAttentionWorkspaceLevel2";
+  InferenceSessionWrapper session(session_options, GetEnvironment());
+
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel = kMath;
+  auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+  const std::string model_bytes = BuildGroupQueryAttentionKernelModel();
+  ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const Graph& graph = session.GetGraph();
+  const Node* node = FindNodeByOpType(graph, "GroupQueryAttention");
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  const OpKernel* kernel = session.GetSessionState().GetKernel(node->Index());
+  ASSERT_NE(kernel, nullptr);
+
+  auto shapes = SeparateShapes();
+  shapes[11] = Known({8});
+  auto expected_config = Config();
+  expected_config.head_sink_is_prepacked = true;
+  const auto expected = EstimateGroupQueryAttentionWorkspace(
+      expected_config, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
+      *cuda_ep->GetAttentionKernelOptions());
+  ASSERT_TRUE(expected.has_value());
+
+  auto dynamic_config = expected_config;
+  dynamic_config.head_sink_is_prepacked = false;
+  const auto dynamic = EstimateGroupQueryAttentionWorkspace(
+      dynamic_config, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
+      *cuda_ep->GetAttentionKernelOptions());
+  ASSERT_TRUE(dynamic.has_value());
+  EXPECT_LT(expected->total_workspace_bytes, dynamic->total_workspace_bytes);
+
+  InlinedVector<WorkspaceRequirement> requirements;
+  ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(shapes), requirements));
+  ASSERT_EQ(requirements.size(), 1U);
+  EXPECT_EQ(requirements[0].slot_id, 0);
+  EXPECT_EQ(requirements[0].size_bytes, expected->total_workspace_bytes);
+  EXPECT_EQ(requirements[0].alignment_bytes, 256U);
+
+  shapes[0] = WorkspaceInputShape::PresentWithoutShape();
+  ASSERT_STATUS_OK(kernel->DeclareWorkspaceRequirements(
+      gsl::make_span(shapes), requirements));
+  EXPECT_TRUE(requirements.empty());
 }
 
 TEST(GroupQueryAttentionWorkspaceBoundsTest, CheckedOverflowIsUnavailable) {
