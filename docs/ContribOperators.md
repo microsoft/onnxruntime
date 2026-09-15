@@ -6536,6 +6536,47 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.VarlenCausalConvWithState"></a><a name="com.microsoft.varlencausalconvwithstate">**com.microsoft.VarlenCausalConvWithState**</a>
 
+  Stateful causal depthwise convolution over a packed, token-major batch of variable-length
+  sequences (CUDA and WebGPU).
+
+  input and output have shape (total_tokens, channels). cumulative_sequence_length is a
+  device-resident int32 tensor of shape (batch_size + 1); sequence i occupies
+  [cumulative_sequence_length[i], cumulative_sequence_length[i + 1]). Every sequence contributes
+  at least one token. weight has shape (channels, 1, kernel_size), and optional bias has shape
+  (channels). The convolution never reads across a sequence boundary.
+
+  initial_state is required and has shape (batch_size, channels, state_length), where
+  state_length = (kernel_size - 1) * dilation. It contains
+  the committed raw activation samples immediately preceding this call. final_state has the same
+  shape and type and is fully written with the state after each sequence's final token. State
+  uses the activation type because it stores raw samples, not accumulated convolution values.
+  initial_state and final_state may use the same allocation. Such in-place execution is
+  transaction-safe only when the whole operator call is unconditionally committed; a caller that
+  may select a prefix or roll back must preserve initial_state and replay the compact state update.
+
+  When state_update_capacity is positive, capture_count is required with shape (batch_size), and
+  state_update has shape (batch_size, state_update_capacity, channels).
+  For request b, slots [0, clamp(capture_count[b], 0,
+  min(state_update_capacity, sequence_length[b]))) contain the original local input token values.
+  These values represent the append component of each shift-left-and-append state transition.
+  All remaining slots are zero. capture_count is forbidden when state_update_capacity is zero.
+
+  For memory-safety containment, each GPU work item validates cumulative_sequence_length[0] == 0,
+  cumulative_sequence_length[batch_size] == total_tokens, and its local range
+  0 <= start < end <= total_tokens before accessing input, state, or output.
+  Malformed offsets cause affected work to return without those accesses; outputs are unspecified.
+  This device-side containment is not a synchronous validation or rejection mechanism.
+
+  The optional activation attribute supports none, SiLU, and Swish.
+
+  The dilation attribute spaces the kernel taps along the sequence axis: local token t of a request
+  reads that request's local positions t - (kernel_size - 1 - j) * dilation for tap j, and positions
+  before the request's first token come from the carry state. The carry state therefore holds
+  state_length = (kernel_size - 1) * dilation positions per request instead of kernel_size - 1.
+  Dilation 1 (the default) is the undilated case and keeps the original state length, so models
+  exported before the attribute existed are unaffected. input and output are already token-major
+  (sequence-major, channels-last), so this op needs no separate layout attribute.
+
 #### Version
 
 This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
