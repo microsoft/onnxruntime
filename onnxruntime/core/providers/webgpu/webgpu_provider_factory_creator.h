@@ -14,6 +14,7 @@ struct OrtDataTransferImpl;
 
 namespace onnxruntime {
 struct ConfigOptions;
+class WebGpuExecutionProvider;
 
 struct WebGpuProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const ConfigOptions& config_options);
@@ -21,9 +22,9 @@ struct WebGpuProviderFactoryCreator {
       const ConfigOptions& config_options, uint64_t max_storage_buffer_binding_size);
 };
 
-// C API to create data transfer for WebGPU EP with lazy initialization
-// Context will be determined from tensors during the first CopyTensors call
-// Caller takes ownership of the returned OrtDataTransferImpl*
-OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id = 0);
+// The caller owns the returned transfer. An EP-bound transfer uses that EP's current recording and
+// buffer manager; the EP must outlive the transfer. Without an EP, the default Env context is acquired
+// lazily on the first copy, so registration does not determine the Session's device configuration.
+OrtDataTransferImpl* OrtWebGpuCreateDataTransfer(int context_id = 0, WebGpuExecutionProvider* ep = nullptr);
 
 }  // namespace onnxruntime

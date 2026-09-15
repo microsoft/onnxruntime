@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <memory>
+#include <utility>
+
 #include "core/framework/data_transfer.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/ort_value.h"
@@ -13,12 +16,12 @@ namespace plugin_ep {
 
 /// <summary>
 /// Class to implement IDataTransfer for plugin execution providers.
-/// It uses the OrtDataTransferImpl from the plugin EP factory to implement the data transfer functionality.
+/// It uses the OrtDataTransferImpl from the plugin EP or factory to implement data transfer functionality.
 /// </summary>
 class DataTransfer : public IDataTransfer {
  public:
-  DataTransfer(OrtDataTransferImpl& impl)
-      : impl_{impl} {
+  explicit DataTransfer(OrtDataTransferImpl& impl, std::shared_ptr<OrtEp> ep = {})
+      : impl_{impl}, ep_{std::move(ep)} {
   }
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override {
@@ -46,6 +49,9 @@ class DataTransfer : public IDataTransfer {
   Status CopyTensorImpl(const Tensor& src, Tensor& dst, onnxruntime::Stream* stream = nullptr) const;
 
   OrtDataTransferImpl& impl_;
+  // Instance-created transfers may borrow EP state. Release the transfer before releasing the EP,
+  // including when provider registration fails or a transfer outlives its host-side provider.
+  std::shared_ptr<OrtEp> ep_;
 };
 }  // namespace plugin_ep
 }  // namespace onnxruntime
