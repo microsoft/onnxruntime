@@ -120,7 +120,9 @@ void RunCuda(OpTester& tester) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-void AddCommonInputs(OpTester& tester, float current_value) {
+void AddCommonInputs(OpTester& tester, float current_value,
+                     const std::vector<int32_t>& selected_indices = {0, -1},
+                     int32_t selected_count = 1) {
   tester.AddAttribute<int64_t>("num_heads", 1);
   tester.AddAttribute<int64_t>("kv_num_heads", 1);
   tester.AddInput<MLFloat16>("query", {1, kHeadSize},
@@ -137,8 +139,9 @@ void AddCommonInputs(OpTester& tester, float current_value) {
   tester.AddInput<int32_t>("past_seqlens", {1}, {0});
   tester.AddInput<int32_t>("block_table", {1, 1}, {0});
   tester.AddInput<int32_t>("slot_mapping", {1}, {0});
-  tester.AddInput<int32_t>("selected_indices", {1, 2}, {0, -1});
-  tester.AddInput<int32_t>("selected_counts", {1}, {1});
+  tester.AddInput<int32_t>("selected_indices", {1, static_cast<int64_t>(selected_indices.size())},
+                           selected_indices);
+  tester.AddInput<int32_t>("selected_counts", {1}, {selected_count});
 }
 
 void RunWebGpu(OpTester& tester,
@@ -446,11 +449,14 @@ TEST(SparsePagedAttention, WebGpu_SelectedAuxiliaryWritesDirectOutput) {
   }
 
   OpTester tester("SparsePagedAttention", 1, kMSDomain);
-  AddCommonInputs(tester, 0.0f);
+  AddCommonInputs(tester, 0.0f, {0, 1}, 2);
   tester.AddAttribute<std::string>("selected_kv_source", "auxiliary");
-  tester.AddInput<MLFloat16>("auxiliary_key", {1, 1, 1, kHeadSize}, HalfVector(0.0f));
-  tester.AddInput<MLFloat16>("auxiliary_value", {1, 1, 1, kHeadSize}, HalfVector(5.0f));
-  tester.AddInput<int32_t>("auxiliary_lengths", {1}, {1});
+  tester.AddInput<MLFloat16>("auxiliary_key", {1, 2, 1, kHeadSize}, HalfVector(0.0f, 2 * kHeadSize));
+  auto auxiliary_value = HalfVector(3.0f);
+  const auto second_value = HalfVector(7.0f);
+  auxiliary_value.insert(auxiliary_value.end(), second_value.begin(), second_value.end());
+  tester.AddInput<MLFloat16>("auxiliary_value", {1, 2, 1, kHeadSize}, auxiliary_value);
+  tester.AddInput<int32_t>("auxiliary_lengths", {1}, {2});
   tester.AddOutput<MLFloat16>("output", {1, kHeadSize}, HalfVector(5.0f));
   tester.SetOutputTolerance(0.01f);
   RunWebGpu(tester);
