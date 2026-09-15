@@ -151,6 +151,8 @@ GQAWorkspaceStatus FlashBackendEnvelope(const GQAWorkspaceProblem& problem,
 GQAWorkspaceStatus XqaBackendEnvelope(const GQAWorkspaceProblem& problem,
                                       const GQAWorkspaceBounds& bounds,
                                       size_t& bytes) noexcept {
+  // Route eligibility is established by the graph adapter. This envelope
+  // intentionally bounds GetXQAScratchSize without reapplying recipe guards.
   size_t sequence_count = 0;
   auto status = Mul(static_cast<size_t>(problem.batch_size),
                     static_cast<size_t>(problem.kv_num_heads), sequence_count);
@@ -331,6 +333,8 @@ GQAWorkspaceAggregate GetGQAWorkspaceAggregateForBounds(
   }
   if (HasGQAReachableBackend(bounds.reachable_backends,
                              GQAReachableBackend::FlashFastDecode)) {
+    // The current graph adapter rejects non-windowed inputs, so this route is
+    // retained for graph-free callers and a future non-windowed adapter.
     // FlashBackendEnvelope reserves the maximum reachable split count instead
     // of evaluating the non-monotonic split heuristic. Its storage and the
     // preparation storage are nondecreasing in sequence length, so Smax covers

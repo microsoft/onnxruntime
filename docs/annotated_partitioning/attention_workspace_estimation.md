@@ -229,9 +229,12 @@ min(128, SM count, ceil(KV length bound / block size))
 It then sizes the split accumulators at that envelope. Complete routes are
 mutually exclusive and are aggregated with `max`, not sum. The resulting
 nonzero estimate is one operator-owned slot-0 root with 256-byte alignment.
-Level 1 reports it as `runtime_workspace_bytes`; Level 2 declares the same
-root. Neither adapter changes runtime `GetScratchBuffer()` calls or allocation
-topology.
+Level 1 reports it as `runtime_workspace_bytes`; Level 2 declares one root from
+the same estimator. Level 1 conservatively includes dynamic head-sink conversion
+because prepack state is unavailable during capability analysis. Level 2 can
+omit that transient region when the constructed kernel has a prepacked head
+sink, so its root can be smaller. Neither adapter changes runtime
+`GetScratchBuffer()` calls or allocation topology.
 
 The CPU `total_sequence_length` scalar and past/present aliasing are not
 available through `WorkspaceInputShape`. For non-windowed GQA, the scalar can
