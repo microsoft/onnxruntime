@@ -26,7 +26,6 @@
 #include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/prepacked_weights_container.h"
-#include "core/framework/resource_accountant.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/mem_pattern.h"
@@ -39,6 +38,9 @@
 #include <mutex>
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/resource_accountant.h"
+#endif
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif
@@ -377,9 +379,11 @@ class SessionState {
 
   const SessionOptions& GetSessionOptions() const { return sess_options_; }
 
+#if !defined(ORT_MINIMAL_BUILD)
   void SetWorkspaceReservations(WorkspaceReservationMap workspace_reservations) {
     workspace_reservations_ = std::move(workspace_reservations);
   }
+#endif
 
   /// <summary>
   /// Deduce the flag whether we need to enable or disable
@@ -469,7 +473,9 @@ class SessionState {
 
   // cache of the constructed kernels to avoid spending construction time per executor
   std::vector<std::unique_ptr<OpKernel>> session_kernels_;
+#if !defined(ORT_MINIMAL_BUILD)
   WorkspaceReservationMap workspace_reservations_;
+#endif
   Graph& graph_;
   std::optional<GraphViewer> graph_viewer_;  // GraphViewer for const access to Graph
 

@@ -71,6 +71,11 @@ struct WorkspaceEstimatorConfig {
 using NodeWorkspaceReservationMap = InlinedHashMap<size_t, WorkspaceEstimateSelection>;
 using WorkspaceReservationMap = InlinedHashMap<const void*, NodeWorkspaceReservationMap>;
 
+void ConsolidateWorkspaceReservations(
+    NodeWorkspaceReservationMap& reservations,
+    gsl::span<const size_t> source_node_indices,
+    size_t destination_node_index);
+
 // Type-erased arithmetic for ResourceCount values.
 // Implementations use std::visit so the compiler enforces exhaustive handling
 // of all variant members — adding a new type to ResourceCount will produce

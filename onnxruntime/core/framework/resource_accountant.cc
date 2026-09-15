@@ -23,6 +23,61 @@
 
 namespace onnxruntime {
 
+void ConsolidateWorkspaceReservations(
+    NodeWorkspaceReservationMap& reservations,
+    gsl::span<const size_t> source_node_indices,
+    size_t destination_node_index) {
+  WorkspaceEstimateSelection aggregate;
+  bool has_reservation = false;
+  InlinedHashSet<size_t> matched_node_indices;
+  const auto accumulate_reservation = [&aggregate, &has_reservation](
+                                          const WorkspaceEstimateSelection& reservation) {
+    aggregate.bytes =
+        static_cast<size_t>(SafeInt<size_t>(aggregate.bytes) + reservation.bytes);
+    aggregate.profiled_bytes =
+        static_cast<size_t>(SafeInt<size_t>(aggregate.profiled_bytes) + reservation.profiled_bytes);
+    aggregate.level1_estimated_bytes =
+        static_cast<size_t>(SafeInt<size_t>(aggregate.level1_estimated_bytes) +
+                            reservation.level1_estimated_bytes);
+    aggregate.persistent_prepack_bytes =
+        static_cast<size_t>(SafeInt<size_t>(aggregate.persistent_prepack_bytes) +
+                            reservation.persistent_prepack_bytes);
+    aggregate.initialization_scratch_bytes =
+        std::max(aggregate.initialization_scratch_bytes, reservation.initialization_scratch_bytes);
+    aggregate.source =
+        !has_reservation || aggregate.source == reservation.source
+            ? reservation.source
+            : WorkspaceEstimateSource::kNone;
+    has_reservation = true;
+  };
+
+  for (size_t node_index : source_node_indices) {
+    const auto reservation_it = reservations.find(node_index);
+    if (reservation_it == reservations.end() ||
+        !matched_node_indices.insert(node_index).second) {
+      continue;
+    }
+
+    accumulate_reservation(reservation_it->second);
+  }
+
+  if (!has_reservation) {
+    return;
+  }
+
+  if (matched_node_indices.find(destination_node_index) == matched_node_indices.end()) {
+    const auto destination_reservation_it = reservations.find(destination_node_index);
+    if (destination_reservation_it != reservations.end()) {
+      accumulate_reservation(destination_reservation_it->second);
+    }
+  }
+
+  for (size_t node_index : matched_node_indices) {
+    reservations.erase(node_index);
+  }
+  reservations.insert_or_assign(destination_node_index, aggregate);
+}
+
 // Accounts for resources represented as byte counts. Per-node costs can come from
 // profiling statistics, ad-hoc fallback estimation, or an operator-specific estimator.
 // This is currently used by CUDA EP.
@@ -287,44 +342,7 @@ class SizeBasedResourceAccountant : public IResourceAccountant {
       return;
     }
 
-    WorkspaceEstimateSelection aggregate;
-    bool has_reservation = false;
-    InlinedVector<size_t> matched_node_indices;
-    for (size_t node_index : source_node_indices) {
-      const auto reservation_it = graph_it->second.find(node_index);
-      if (reservation_it == graph_it->second.end()) {
-        continue;
-      }
-
-      const auto& reservation = reservation_it->second;
-      aggregate.bytes =
-          static_cast<size_t>(SafeInt<size_t>(aggregate.bytes) + reservation.bytes);
-      aggregate.profiled_bytes =
-          static_cast<size_t>(SafeInt<size_t>(aggregate.profiled_bytes) + reservation.profiled_bytes);
-      aggregate.level1_estimated_bytes =
-          static_cast<size_t>(SafeInt<size_t>(aggregate.level1_estimated_bytes) +
-                              reservation.level1_estimated_bytes);
-      aggregate.persistent_prepack_bytes =
-          static_cast<size_t>(SafeInt<size_t>(aggregate.persistent_prepack_bytes) +
-                              reservation.persistent_prepack_bytes);
-      aggregate.initialization_scratch_bytes =
-          std::max(aggregate.initialization_scratch_bytes, reservation.initialization_scratch_bytes);
-      aggregate.source =
-          !has_reservation || aggregate.source == reservation.source
-              ? reservation.source
-              : WorkspaceEstimateSource::kNone;
-      has_reservation = true;
-      matched_node_indices.push_back(node_index);
-    }
-
-    if (!has_reservation) {
-      return;
-    }
-
-    for (size_t node_index : matched_node_indices) {
-      graph_it->second.erase(node_index);
-    }
-    graph_it->second.insert_or_assign(destination_node_index, aggregate);
+    ConsolidateWorkspaceReservations(graph_it->second, source_node_indices, destination_node_index);
   }
 
   WorkspaceEstimateSourceCounts GetWorkspaceEstimateSourceCounts() const override {
