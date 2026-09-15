@@ -53,12 +53,13 @@ and no stage truncates its candidate list.
    arithmetic or turn into a candidate count large enough to hang the device.
    Positions at or beyond the block table's reach have no physical block, so
    clamping to it drops nothing the attention stages would have used.
-4. **Partial attention.** One workgroup per `(token, head)` walks its candidate
-   list and produces an FP32 online-softmax state
+4. **Attention.** One workgroup per `(token, head)` walks its candidate list.
+   Single-source modes without a head sink normalize their FP32 accumulator
+   directly into the output. Other modes produce an FP32 online-softmax state
    `(accumulator[head_size], running_max, running_sum)`. Up to two partial states
    are produced: one over the paged main cache, one over the contiguous auxiliary
    cache.
-5. **Finalize.** The partial states are merged with the standard online-softmax
+5. **Finalize, when needed.** The partial states are merged with the standard online-softmax
    rule, which is exactly equivalent to one softmax over the union of their
    candidates, and the optional head sink seeds the merge with
    `(max = sink, sum = 1, accumulator = 0)`. A token with no valid candidate and
@@ -113,10 +114,11 @@ Each of these is rejected with an explicit error; none silently changes numerics
 
 ## Limitations
 
-- The implementation is staged rather than fused: it writes FP32 partial softmax
-  states to a scratch tensor of
-  `token_count * num_heads * (head_size + 2)` floats and merges them in a second
-  pass. The scratch size is validated against `maxStorageBufferBindingSize`.
+- Joint-source and head-sink modes write FP32 partial softmax states to a scratch
+  tensor of `token_count * num_heads * (head_size + 2)` floats and merge them in
+  a second pass. Single-source modes without a head sink write directly to the
+  output. When used, the scratch size is validated against
+  `maxStorageBufferBindingSize`.
 - Storage-binding budgets are validated per stage, from the actual binding
   segments rather than from a tensor count: the WebGPU EP binds any buffer larger
   than `maxStorageBufferBindingSize` as several consecutive segments, so a large
