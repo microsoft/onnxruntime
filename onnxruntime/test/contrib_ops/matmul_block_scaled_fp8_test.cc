@@ -151,6 +151,20 @@ TEST(MatMulBlockQuantizedFp8WeightOpTest, GemvTensorCoreKSplitSelection) {
       {1153, 9, 80, 36, 12, 0, 16},
       {1153, 1, 80, 35, 12, 0, 16},
       {1153, 1, 80, 36, 12, 1, 16},
+
+      // RTX 5090 Laptop (SM120, 170 SMs): the 340/341-block boundary did not
+      // reproduce the 36-SM crossover, so it retains the generic policy.
+      {5440, 1, 40, 170, 12, 0, 16},
+      {5456, 1, 40, 170, 12, 0, 16},
+      {5440, 1, 80, 170, 12, 0, 16},
+      {5456, 1, 80, 170, 12, 0, 16},
+      {5456, 1, 96, 170, 12, 0, 16},
+      {5456, 4, 96, 170, 12, 0, 16},
+      {5456, 8, 96, 170, 12, 0, 16},
+      {8160, 1, 80, 170, 12, 0, 16},
+      {8176, 1, 80, 170, 12, 0, 16},
+      {8192, 1, 80, 170, 12, 0, 8},
+
       // RTX 3060 (SM86, 28 SMs): measured regressions retain the legacy N threshold.
       {897, 1, 80, 28, 8, 6, 16},
       {2048, 1, 80, 28, 8, 6, 16},

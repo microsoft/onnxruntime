@@ -20,7 +20,7 @@ Related documentation:
 5. [Decode GEMV - Memory-Level Parallelism](#5-decode-gemv---memory-level-parallelism)
 6. [Decode GEMV - Tensor Cores](#6-decode-gemv---tensor-cores)
   - [RTX 4090 Split-K Qualification and Dispatch Refinement](#65-rtx-4090-split-k-qualification-and-dispatch-refinement)
-  - [RTX 5060 Ti and RTX 3060 Split-K Validation](#66-rtx-5060-ti-and-rtx-3060-split-k-validation)
+  - [RTX 50-Series and RTX 3060 Split-K Validation](#66-rtx-50-series-and-rtx-3060-split-k-validation)
 7. [Benchmark Commands](#7-benchmark-commands)
 8. [Lessons](#8-lessons)
 
@@ -319,8 +319,11 @@ qualified low-M configurations select 8 earlier:
 - SM120 with 36 SMs (measured on RTX 5060 Ti), `M <= 8`, `40 <= K/64 <= 96`:
   more than `2 * sm_count` output blocks.
 
-Other configurations retain the generic policy and the existing SM121 KS32
-override. The residency hint remains active where the selected KS16 qualifies.
+The SM count is part of the measured SM120 qualification, not a proxy for the
+architecture. A 170-SM RTX 5090 Laptop did not reproduce that crossover and
+retains the generic policy. Other configurations also retain the generic policy
+and the existing SM121 KS32 override. The residency hint remains active where
+the selected KS16 qualifies.
 
 On H200, plain KSplit 16 is 512 threads at 48 registers and fits two blocks per
 SM, while KSplit 8 fits five. The following H200 measurements motivated its
@@ -348,10 +351,12 @@ recorded in [section 6.5](#65-rtx-4090-split-k-qualification-and-dispatch-refine
 
 Cross-device validation used CUDA graph replay and Nsight Systems kernel timing.
 On an RTX 5060 Ti (SM120, 36 SMs), the crossover lands at 72/73 output blocks and
-KSplit 8 improves `M=4, N=5120, K=6144` by 9.5%. On an RTX 3060 (SM86, 28 SMs),
-KSplit 8 regresses `M=1, N=897, K=5120` by 12.1% and `N=2048, K=5120` by about
-8%, while results at larger widths are mixed. The SM86 configuration therefore
-retains the generic policy.
+KSplit 8 improves `M=4, N=5120, K=6144` by 9.5%. On an RTX 5090 Laptop (SM120,
+170 SMs), the winner does not flip at 340/341 blocks and instead varies with M
+and K. On an RTX 3060 (SM86, 28 SMs), KSplit 8 regresses
+`M=1, N=897, K=5120` by 12.1% and `N=2048, K=5120` by about 8%, while results at
+larger widths are mixed. The 170-SM SM120 and SM86 configurations therefore
+retain the generic policy.
 
 Preconditions: SM80+, `K % 64 == 0`, `K >= 256`, `block_size % 64 == 0`, `M <= 8`.
 Otherwise the FMA kernel runs unchanged. `ORT_FP8_GEMV_MMA=0` forces the FMA
@@ -552,13 +557,14 @@ cases and the extracted host selector/residency-boundary tests. The production
 CUDA translation unit also compiled separately. These checks do not establish
 full-provider test coverage or end-to-end model speedup.
 
-### 6.6 RTX 5060 Ti and RTX 3060 Split-K Validation
+### 6.6 RTX 50-Series and RTX 3060 Split-K Validation
 
 #### Environment and Method
 
-Measured on September 14, 2026 while evaluating the Split-K dispatch change:
+Measured on September 14-15, 2026 while evaluating the Split-K dispatch change:
 
 - RTX 5060 Ti, SM120, 36 SMs, about 448 GB/s memory bandwidth.
+- RTX 5090 Laptop, SM120, 170 SMs, 24 GiB memory.
 - RTX 3060, SM86, 28 SMs.
 - CUDA 13.0, Visual Studio 2022, Release build containing both KSplit 8 and
   KSplit 16 kernel instantiations.
@@ -572,6 +578,11 @@ Measured on September 14, 2026 while evaluating the Split-K dispatch change:
 - The final fresh-binary cases ran an exact output check after replay. Separate
   selector tests checked the default route, including the short-K clamp and
   device qualification.
+
+The RTX 5090 package used an ONNX Runtime wheel with the CUDA EP bundled into
+the wheel rather than supplied as a plugin EP. CUDA was provider 0 and Nsight
+captured `MatMulBlockScaledFp8MmaGemvKernel`; the plugin-device registration
+warning emitted during session creation did not indicate CPU fallback.
 
 The numbers below are median microseconds per CUDA graph kernel node. Speedup is
 `KSplit 16 / KSplit 8`, so values above 1 favor KSplit 8.
@@ -609,6 +620,43 @@ SM120 build. A KSplit 16 block has 512 threads and fits two blocks per SM by the
 register limit, while a KSplit 8 block has 256 threads and fits four. The exact
 72/73-block timing discontinuity, rather than an assumed cross-architecture
 register count, is the evidence for the retained `2 * sm_count` boundary.
+
+#### RTX 5090 Laptop: Residency Boundary Does Not Generalize
+
+The RTX 5090 Laptop has 170 SMs, placing its two-block boundary between 340 and
+341 output blocks (`N=5440/5456`). The same-binary A/B used CUDA 13.3, driver
+610.62, FP8 E4M3 weights, FP32 scales, FP16 input/output, block size 128, and
+Nsight Systems 2026.3.2. All 26 forced-dispatch correctness runs passed.
+
+Initial 100-warmup traces contained fresh-process clock-ramp outliers. The
+decision matrix therefore used 10,000 warmups, 1,000 timed CUDA graph replays,
+disabled CPU sampling and context-switch tracing, and alternated pair order.
+The table reports median kernel-node duration:
+
+| M | N | K | output blocks | KSplit 16 | KSplit 8 | speedup |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 5440 | 2560 | 340 | 8.160 us | **7.808 us** | 1.045x |
+| 1 | 5456 | 2560 | 341 | 8.224 us | **7.392 us** | 1.113x |
+| 1 | 5440 | 5120 | 340 | **13.472 us** | 14.464 us | 0.931x |
+| 1 | 5456 | 5120 | 341 | **13.506 us** | 14.400 us | 0.938x |
+| 1 | 5456 | 6144 | 341 | **15.904 us** | 17.472 us | 0.910x |
+| 4 | 5440 | 6144 | 340 | **18.320 us** | 19.104 us | 0.959x |
+| 4 | 5456 | 6144 | 341 | **18.368 us** | 19.040 us | 0.965x |
+| 8 | 5456 | 6144 | 341 | 23.520 us | **21.984 us** | 1.070x |
+| 8 | 6144 | 5120 | 384 | 21.664 us | **19.744 us** | 1.097x |
+| 1 | 8160 | 5120 | 510 | 19.776 us | **18.336 us** | 1.079x |
+| 1 | 8176 | 5120 | 511 | 19.216 us | **18.368 us** | 1.046x |
+| 1 | 8192 | 5120 | 512 | 19.328 us | **18.432 us** | 1.049x |
+| 9 | 5456 | 5120 | 341 | 31.504 us | **19.840 us** | 1.588x |
+
+There is no 340/341-block winner flip: KSplit 8 wins on both sides for `K=2560`,
+while KSplit 16 wins on both sides for `M=1, K=5120` and `M=4, K=6144`. The
+winner also changes with M. Residency wave count alone is therefore not a valid
+SM120-wide selector.
+
+Default-route traces confirmed KSplit 16 at `N=5440` and `N=5456`, with grids
+of 340 and 341 blocks, and KSplit 8 at the generic `N=8192` threshold. Nsight
+reported block dimensions `(32,16,1)` and `(32,8,1)` for the two variants.
 
 #### RTX 3060: Residency Alone Does Not Predict the Choice
 
@@ -648,13 +696,13 @@ shape-dependent.
 
 #### Dispatch Decision
 
-The retained selector consequently qualifies the measured RTX 5060 Ti
-configuration (`SM120`, 36 SMs, `M <= 8`, and `40 <= K/64 <= 96`) for KSplit 8
-above `2 * sm_count` output blocks. The RTX 3060 and other unqualified devices
-keep the legacy `N >= 8192` crossover. The final default-route traces confirmed
-KSplit 8 on the RTX 5060 Ti boundary case and KSplit 16 on the RTX 3060 boundary
-case. These results do not justify extending either decision to unmeasured RTX
-40- or RTX 50-series configurations solely from compute capability.
+The retained selector consequently qualifies only the measured 36-SM SM120
+configuration (`M <= 8` and `40 <= K/64 <= 96`) for KSplit 8 above
+`2 * sm_count` output blocks. The 170-SM SM120 configuration, RTX 3060, and other
+unqualified devices keep the legacy `N >= 8192` crossover. The final
+default-route traces confirmed KSplit 8 on the 36-SM boundary case, KSplit 16 on
+the RTX 3060 boundary case, and KSplit 16 on both sides of the 170-SM boundary.
+These results reject an SM120 architecture-wide residency rule.
 
 ---
 
