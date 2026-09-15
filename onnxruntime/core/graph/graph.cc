@@ -561,6 +561,12 @@ Node::EdgeEnd::EdgeEnd(const Node& node) noexcept
     : EdgeEnd(node, INT_MAX, INT_MAX) {
 }
 
+void Node::AddControlEdgeBetweenNodes(Node& src_node, Node& dst_node) {
+  src_node.relationships_.output_edges.emplace(dst_node);
+  dst_node.relationships_.input_edges.emplace(src_node);
+  dst_node.relationships_.control_inputs.insert(src_node.Name());
+}
+
 Node::NodeConstIterator::NodeConstIterator(EdgeConstIterator p_iter) {
   m_iter = p_iter;
 }
@@ -889,32 +895,69 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
 }
 
 Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edges,
-                                    const Graph& graph) {
+                                    Graph& graph) {
   ORT_RETURN_IF(fbs_node_edges.node_index() != index_,
                 "input index: ", fbs_node_edges.node_index(), " is not the same as this node's index:", index_);
 
-  auto add_edges = [&graph](const flatbuffers::Vector<const onnxruntime::fbs::EdgeEnd*>* fbs_edges,
-                            EdgeSet& edge_set, const std::string& dst_name) -> Status {
+  auto add_edges = [this, &graph](const flatbuffers::Vector<const onnxruntime::fbs::EdgeEnd*>* fbs_edges,
+                                  bool input_edges) -> Status {
+    const char* edge_description = input_edges ? "input edge" : "output edge";
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
-        ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing for ", dst_name);
+        ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing for ", edge_description);
         const auto edge_node_index = fbs_edge->node_index();
         const size_t node_slot_count = static_cast<size_t>(graph.MaxNodeIndex());
         ORT_RETURN_IF(static_cast<size_t>(edge_node_index) >= node_slot_count,
-                      "Node::LoadEdgesFromOrtFormat, ", dst_name, " has out-of-range node index ",
+                      "Node::LoadEdgesFromOrtFormat, ", edge_description, " has out-of-range node index ",
                       edge_node_index, ". Invalid ORT format model.");
-        const auto* edge_node = graph.GetNode(edge_node_index);
+        auto* edge_node = graph.GetNode(edge_node_index);
         ORT_RETURN_IF(edge_node == nullptr,
-                      "Node::LoadEdgesFromOrtFormat, ", dst_name, " references missing node ",
+                      "Node::LoadEdgesFromOrtFormat, ", edge_description, " references missing node ",
                       edge_node_index, ". Invalid ORT format model.");
-        edge_set.emplace(*edge_node, fbs_edge->src_arg_index(), fbs_edge->dst_arg_index());
+
+        Node& src_node = input_edges ? *edge_node : *this;
+        Node& dst_node = input_edges ? *this : *edge_node;
+        const int32_t src_arg_index = fbs_edge->src_arg_index();
+        const int32_t dst_arg_index = fbs_edge->dst_arg_index();
+        const bool is_control_edge = src_arg_index == INT_MAX && dst_arg_index == INT_MAX;
+        ORT_RETURN_IF((src_arg_index == INT_MAX) != (dst_arg_index == INT_MAX),
+                      "Node::LoadEdgesFromOrtFormat, ", edge_description,
+                      " has an invalid control-edge slot pair. Invalid ORT format model.");
+        if (is_control_edge) {
+          AddControlEdgeBetweenNodes(src_node, dst_node);
+          continue;
+        }
+
+        ORT_RETURN_IF(src_arg_index < 0 ||
+                          static_cast<size_t>(src_arg_index) >= src_node.OutputDefs().size(),
+                      "Node::LoadEdgesFromOrtFormat, ", edge_description, " has out-of-range src_arg_index ",
+                      src_arg_index, ". Invalid ORT format model.");
+        const size_t dst_arg_count = dst_node.InputDefs().size() + dst_node.ImplicitInputDefs().size();
+        ORT_RETURN_IF(dst_arg_index < 0 || static_cast<size_t>(dst_arg_index) >= dst_arg_count,
+                      "Node::LoadEdgesFromOrtFormat, ", edge_description, " has out-of-range dst_arg_index ",
+                      dst_arg_index, ". Invalid ORT format model.");
+
+        const NodeArg* src_arg = src_node.OutputDefs()[src_arg_index];
+        const auto explicit_dst_arg_count = dst_node.InputDefs().size();
+        const NodeArg* dst_arg = static_cast<size_t>(dst_arg_index) < explicit_dst_arg_count
+                                     ? dst_node.InputDefs()[dst_arg_index]
+                                     : dst_node.ImplicitInputDefs()[dst_arg_index - explicit_dst_arg_count];
+        ORT_RETURN_IF(!src_arg->Exists() || !dst_arg->Exists(),
+                      "Node::LoadEdgesFromOrtFormat, ", edge_description,
+                      " references a missing optional NodeArg. Invalid ORT format model.");
+        ORT_RETURN_IF(src_arg != dst_arg,
+                      "Node::LoadEdgesFromOrtFormat, ", edge_description,
+                      " connects mismatched NodeArgs. Invalid ORT format model.");
+
+        src_node.relationships_.output_edges.emplace(dst_node, src_arg_index, dst_arg_index);
+        dst_node.relationships_.input_edges.emplace(src_node, src_arg_index, dst_arg_index);
       }
     }
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.input_edges(), relationships_.input_edges, "input edges"));
-  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.output_edges(), relationships_.output_edges, "output edges"));
+  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.input_edges(), true));
+  ORT_RETURN_IF_ERROR(add_edges(fbs_node_edges.output_edges(), false));
 
   return Status::OK();
 }
@@ -1691,10 +1734,32 @@ void Graph::AddEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_
 }
 
 void Graph::RemoveEdge(NodeIndex src_node_index, NodeIndex dst_node_index, int src_arg_slot, int dst_arg_slot) {
-  if (nodes_.size() <= src_node_index || src_arg_slot < 0 || nodes_.size() <= dst_node_index || dst_arg_slot < 0 ||
+  if (nodes_.size() <= src_node_index || nodes_.size() <= dst_node_index ||
       nullptr == nodes_[src_node_index] || nullptr == nodes_[dst_node_index]) {
     // Invalid node indexes specified.
     ORT_THROW("Invalid node indexes specified when removing edge.");
+  }
+
+  if (src_arg_slot == INT_MAX && dst_arg_slot == INT_MAX) {
+    auto& src_node = *nodes_[src_node_index];
+    auto& dst_node = *nodes_[dst_node_index];
+    src_node.MutableRelationships().output_edges.erase(Node::EdgeEnd(dst_node));
+    dst_node.MutableRelationships().input_edges.erase(Node::EdgeEnd(src_node));
+    dst_node.MutableRelationships().control_inputs.erase(src_node.Name());
+    ort_format_control_edges_.erase(
+        std::remove(ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
+                    std::pair{src_node_index, dst_node_index}),
+        ort_format_control_edges_.end());
+    ort_format_control_edge_nodes_.clear();
+    for (const auto& [control_src_node_index, control_dst_node_index] : ort_format_control_edges_) {
+      ort_format_control_edge_nodes_.insert(control_src_node_index);
+      ort_format_control_edge_nodes_.insert(control_dst_node_index);
+    }
+    return;
+  }
+
+  if (src_arg_slot < 0 || dst_arg_slot < 0) {
+    ORT_THROW("Invalid node arg slots specified when removing edge.");
   }
 
   const NodeArg* src_arg = nullptr;
@@ -1869,7 +1934,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
           }
         }
       }
-    } else if (node.OutputDefs().empty()) {
+    } else if (node.OutputDefs().empty() && !HasOrtFormatControlEdge(node.Index())) {
       // This is a useless node.
       // It has no input/output.
       if (node.ContainsSubgraph()) {
@@ -3741,6 +3806,29 @@ Status Graph::VerifyInputAndInitializerNames() {
   return Status::OK();
 }
 
+bool Graph::HasOrtFormatControlEdge(NodeIndex node_index) const {
+  return ort_format_control_edge_nodes_.contains(node_index);
+}
+
+void Graph::RestoreOrtFormatControlEdges() {
+  for (const auto& [src_node_index, dst_node_index] : ort_format_control_edges_) {
+    auto* src_node = GetNode(src_node_index);
+    auto* dst_node = GetNode(dst_node_index);
+    if (src_node == nullptr || dst_node == nullptr) {
+      continue;
+    }
+
+    const bool nodes_are_connected = std::any_of(
+        src_node->OutputEdgesBegin(), src_node->OutputEdgesEnd(),
+        [dst_node_index](const Node::EdgeEnd& edge) { return edge.GetNode().Index() == dst_node_index; });
+    if (nodes_are_connected) {
+      dst_node->relationships_.control_inputs.insert(src_node->Name());
+    } else {
+      Node::AddControlEdgeBetweenNodes(*src_node, *dst_node);
+    }
+  }
+}
+
 Status Graph::InitInputsInitializersOutputs() {
   // clear the previous relationships, as we re-create them when resolving.
   // same applies to the implicit input defs as they are built from any subgraphs within this graph.
@@ -3821,6 +3909,12 @@ Status Graph::Resolve(const ResolveOptions& options) {
     all_subgraphs.clear();
     FindAllSubgraphs(all_subgraphs);
   }
+
+  auto restore_control_edges = [](Graph& graph) {
+    graph.RestoreOrtFormatControlEdges();
+    return Status::OK();
+  };
+  ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, restore_control_edges));
 
   // topological sort of this and any subgraphs is non-recursive
   auto topo_sort_func = [](Graph& graph) { return graph.PerformTopologicalSortAndCheckIsAcyclic(); };
@@ -4978,6 +5072,20 @@ bool Graph::RemoveNode(NodeIndex p_index) {
     RemoveEdge(input_edge.GetNode().Index(), p_index, input_edge.GetSrcArgIndex(), input_edge.GetDstArgIndex());
   }
 
+  if (ort_format_control_edge_nodes_.contains(p_index)) {
+    ort_format_control_edges_.erase(
+        std::remove_if(ort_format_control_edges_.begin(), ort_format_control_edges_.end(),
+                       [p_index](const auto& control_edge) {
+                         return control_edge.first == p_index || control_edge.second == p_index;
+                       }),
+        ort_format_control_edges_.end());
+    ort_format_control_edge_nodes_.clear();
+    for (const auto& [src_node_index, dst_node_index] : ort_format_control_edges_) {
+      ort_format_control_edge_nodes_.insert(src_node_index);
+      ort_format_control_edge_nodes_.insert(dst_node_index);
+    }
+  }
+
   return ReleaseNode(p_index);
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -4992,11 +5100,7 @@ bool Graph::AddControlEdge(NodeIndex src_node_index, NodeIndex dst_node_index) {
     return false;
   }
 
-  GSL_SUPPRESS(es.84) {  // ignoring return from insert()
-    nodes_[src_node_index]->MutableRelationships().output_edges.insert(Node::EdgeEnd(*nodes_[dst_node_index]));
-    nodes_[dst_node_index]->MutableRelationships().input_edges.insert(Node::EdgeEnd(*nodes_[src_node_index]));
-    nodes_[dst_node_index]->MutableRelationships().control_inputs.insert(nodes_[src_node_index]->Name());
-  }
+  Node::AddControlEdgeBetweenNodes(*nodes_[src_node_index], *nodes_[dst_node_index]);
 
   return true;
 }
@@ -6960,6 +7064,31 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
                     "NodeEdge references missing node ", fbs_node_edge->node_index(),
                     ". Invalid ORT format model.");
       ORT_RETURN_IF_ERROR(nodes_[fbs_node_edge->node_index()]->LoadEdgesFromOrtFormat(*fbs_node_edge, *this));
+    }
+  }
+
+  for (const auto& node : Nodes()) {
+    for (auto edge = node.OutputEdgesBegin(); edge != node.OutputEdgesEnd(); ++edge) {
+      if (edge->GetSrcArgIndex() == INT_MAX && edge->GetDstArgIndex() == INT_MAX) {
+        ort_format_control_edges_.push_back({node.Index(), edge->GetNode().Index()});
+        ort_format_control_edge_nodes_.insert(node.Index());
+        ort_format_control_edge_nodes_.insert(edge->GetNode().Index());
+      }
+    }
+  }
+
+  for (const auto& node : nodes_) {
+    if (node == nullptr) {
+      continue;
+    }
+    InlinedHashSet<int> populated_input_slots;
+    for (const auto& edge : node->relationships_.input_edges) {
+      if (edge.GetDstArgIndex() == INT_MAX) {
+        continue;
+      }
+      ORT_RETURN_IF(!populated_input_slots.insert(edge.GetDstArgIndex()).second,
+                    "Node::LoadEdgesFromOrtFormat, destination argument slot ", edge.GetDstArgIndex(),
+                    " has multiple producers. Invalid ORT format model.");
     }
   }
 
