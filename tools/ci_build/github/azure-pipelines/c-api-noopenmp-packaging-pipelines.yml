@@ -223,3 +223,8 @@ extends:
         sln_platform: 'arm64'
         DoEsrp: true
         DependsOnStageName: Windows_Nodejs_Packaging_x64
+
+    - template: ../stages/nodejs-npm-packaging-stage.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
