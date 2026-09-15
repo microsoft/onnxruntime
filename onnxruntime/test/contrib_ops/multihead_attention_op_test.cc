@@ -588,6 +588,75 @@ TEST(MultiHeadAttentionTest, CacheIndirectionBeamIndexOutOfRange) {
              {}, nullptr, &execution_providers);
 }
 
+#if USE_MEMORY_EFFICIENT_ATTENTION
+static void RunCudaMask1DKeySeqLenStartSanitizationTest(const std::vector<int32_t>& mask_data,
+                                                        int64_t batch_size = 1) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+
+  constexpr int64_t sequence_length = 256;
+  constexpr int64_t hidden_size = 32;
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::attention::kDisableFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
+
+  OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", 1);
+
+  tester.AddInput<float>("query", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.1f));
+  tester.AddInput<float>("key", {batch_size, sequence_length, hidden_size},
+                         std::vector<float>(static_cast<size_t>(batch_size * sequence_length * hidden_size), 0.2f));
+  std::vector<float> value_data(static_cast<size_t>(batch_size * sequence_length * hidden_size));
+  for (int64_t batch = 0; batch < batch_size; ++batch) {
+    const float value = 0.3f + static_cast<float>(batch) * 0.4f;
+    const size_t batch_elements = static_cast<size_t>(sequence_length * hidden_size);
+    std::fill_n(value_data.begin() + batch * batch_elements, batch_elements, value);
+  }
+  tester.AddInput<float>("value", {batch_size, sequence_length, hidden_size},
+                         value_data);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddInput<int32_t>("key_padding_mask", {3 * batch_size + 2}, mask_data);
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<float>();
+  tester.AddOptionalInputEdge<int32_t>();
+  tester.AddOptionalInputEdge<int32_t>();
+
+  // Every row within a batch is identical, while batches differ. Correctly bounded
+  // attention therefore reproduces the input value rows and exposes cross-batch reads.
+  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                          value_data);
+  tester.AddOptionalOutputEdge<float>();
+  tester.AddOptionalOutputEdge<float>();
+  tester.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesOversizedOffsets) {
+  RunCudaMask1DKeySeqLenStartSanitizationTest({256, 0, 0x40000000, 0, 0x40000000});
+}
+
+TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartSanitizesRequiredBoundaries) {
+  RunCudaMask1DKeySeqLenStartSanitizationTest({256, 1, 255, 1, 255});
+}
+
+TEST(MultiHeadAttentionTest, CudaMask1DKeySeqLenStartBoundsKeyLengthPerBatch) {
+  RunCudaMask1DKeySeqLenStartSanitizationTest(
+      {512, 256, 0, 256, 512, 0, 256, 512}, 2);
+}
+#endif
+
 TEST(MultiHeadAttentionTest, CacheIndirectionBatchBeamNotDivisibleByNumBeams) {
   // num_beams = 2 does not evenly divide batch_beam_size = 3.
   // cache_indirection dim 0 is a valid-looking 1 (= 3 / 2 with truncating division),
