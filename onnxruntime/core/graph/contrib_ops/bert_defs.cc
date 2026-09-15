@@ -2633,6 +2633,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           if (ctx.getNumOutputs() > 1) {
             propagateElemTypeFromInputToOutput(ctx, 0, 1);
           }
+          if (ctx.getNumOutputs() > 2) {
+            propagateElemTypeFromInputToOutput(ctx, 3, 2);
+          }
 
           const int64_t max_ngram_size = getAttribute(ctx, "max_ngram_size", int64_t{-1});
           const int64_t n_head_per_ngram = getAttribute(ctx, "n_head_per_ngram", int64_t{-1});
@@ -2685,9 +2688,18 @@ the packed batch, the optional past_ids input carries those preceding ids per re
 present_ids returns the ids to pass to the next call. Both have shape (batch_size, max_ngram_size -
 1) and are right-aligned, so the last slot is the most recent id, and are indexed by request
 (batch_size), not by position in the packed buffer. Positions before the start of a request's whole
-sequence use pad_id. Running NGramHashMapping once per sequence and running this op once over those
+sequence use pad_id, or eos_token_id when provided. Running NGramHashMapping once per sequence and running this op once over those
 sequences packed together (optionally split into packed chunks with present_ids threaded into
 past_ids) produce identical hash ids.
+
+Optional inputs add Qwen4-Exp-style n-gram embedding support:
+
+- eos_token_id, when provided together with reset_on_eos != 0, causes causal history to reset at EOS
+  boundaries. Missing history is also filled with eos_token_id.
+- segment_ids, when provided, additionally resets causal history when adjacent tokens within one
+  packed request have different segment ids. Thread present_segment_ids into past_segment_ids on
+  subsequent calls to preserve boundaries across chunked prefill and decode calls.
+- head_offsets, when provided, adds a fixed per-output-head offset after the modulo.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -2704,14 +2716,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Compressed tokenizer id used to pad causal shifts before the beginning of a request's "
               "sequence.",
               AttributeProto::INT)
+        .Attr("reset_on_eos",
+              "When non-zero and eos_token_id is provided, reset causal n-gram history at EOS "
+              "boundaries. Default is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
         .Input(0,
                "input_ids",
                "Token-major packed compressed tokenizer ids with shape (total_tokens).",
                "M")
         .Input(1,
                "multipliers",
-               "Per-shift hash multipliers with shape (max_ngram_size). Conventionally odd, but any "
-               "value is accepted.",
+               "Per-shift hash multipliers with at least max_ngram_size elements. Conventionally odd, "
+               "but any value is accepted.",
                "M")
         .Input(2,
                "vocab_sizes",
@@ -2730,8 +2747,33 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional compressed tokenizer ids for the max_ngram_size - 1 positions that precede "
                "this call, with shape (batch_size, max_ngram_size - 1). Right-aligned, so the last "
                "slot is the most recent id, and indexed by request rather than by packed position. "
-               "If omitted the history is pad_id.",
+               "If omitted the history is pad_id, or eos_token_id when provided.",
                "M",
+               OpSchema::Optional)
+        .Input(5,
+               "head_offsets",
+               "Optional per-output-head additive offset with shape "
+               "((max_ngram_size - 1) * n_head_per_ngram), added after the modulo.",
+               "M",
+               OpSchema::Optional)
+        .Input(6,
+               "eos_token_id",
+               "Optional scalar end-of-sequence token id. When provided it replaces pad_id for "
+               "missing history and enables reset_on_eos.",
+               "M",
+               OpSchema::Optional)
+        .Input(7,
+               "segment_ids",
+               "Optional token-major segment ids with shape (total_tokens), used to reset causal "
+               "history at segment boundaries within each packed request.",
+               "tensor(int32)",
+               OpSchema::Optional)
+        .Input(8,
+               "past_segment_ids",
+               "Optional segment ids corresponding to past_ids, with shape "
+               "(batch_size, max_ngram_size - 1). Thread present_segment_ids from the previous call "
+               "into this input to preserve segment boundaries across calls.",
+               "S",
                OpSchema::Optional)
         .Output(0,
                 "hash_ids",
@@ -2745,12 +2787,18 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "call.",
                 "M",
                 OpSchema::Optional)
+        .Output(2,
+                "present_segment_ids",
+                "Trailing max_ngram_size - 1 segment ids corresponding to present_ids, with shape "
+                "(batch_size, max_ngram_size - 1). Feed this back as past_segment_ids on the next call.",
+                "S",
+                OpSchema::Optional)
         .TypeConstraint("M",
                         {"tensor(int32)", "tensor(int64)"},
                         "Constrain ids, multipliers, vocabulary sizes, and output ids to integer tensors.")
         .TypeConstraint("S",
                         {"tensor(int32)"},
-                        "Constrain cumulative_sequence_length to a device int32 tensor.")
+                        "Constrain cumulative_sequence_length and segment ids to device int32 tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           if (ctx.getNumOutputs() > 1) {
@@ -2809,6 +2857,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               }
               present_shape.add_dim()->set_dim_value(max_ngram_size - 1);
               updateOutputShape(ctx, 1, present_shape);
+              if (ctx.getNumOutputs() > 2) {
+                updateOutputShape(ctx, 2, present_shape);
+              }
             }
           }
         }));
