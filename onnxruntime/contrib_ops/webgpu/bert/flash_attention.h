@@ -48,9 +48,10 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
 
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
-  CopyKVCacheProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH, bool past_present_share_buffer,
+  CopyKVCacheProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH, bool has_qkv_bias,
+                     bool past_present_share_buffer,
                      bool prepare_indirect_dispatch = false, bool use_seqlen_k = false)
-      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), past_present_share_buffer_(past_present_share_buffer), prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {
+      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), has_qkv_bias_(has_qkv_bias), past_present_share_buffer_(past_present_share_buffer), prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -61,11 +62,14 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"batch_size", ProgramUniformVariableDataType::Uint32},
-                                          {"num_q_tiles", ProgramUniformVariableDataType::Uint32});
+                                          {"num_q_tiles", ProgramUniformVariableDataType::Uint32},
+                                          {"key_bias_offset", ProgramUniformVariableDataType::Uint32},
+                                          {"value_bias_offset", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_past_;
   bool kv_BNSH_;
+  bool has_qkv_bias_;
   bool past_present_share_buffer_;
   bool prepare_indirect_dispatch_;
   bool use_seqlen_k_;
@@ -89,6 +93,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
  public:
   FlashAttentionProgram(const std::string& kernel_name,
                         bool has_attention_bias,
+                        bool has_qkv_bias,
                         bool is_qualcomm,
                         bool is_fp16,
                         int qkv_head_size,
@@ -123,6 +128,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
 
  private:
   bool has_attention_bias_;
+  bool has_qkv_bias_;
   bool is_qualcomm_;
   int qkv_head_size_;
   int qkv_num_heads_;
@@ -206,7 +212,7 @@ Status ComputeFlashAttentionPagedPrefill(onnxruntime::webgpu::ComputeContext& co
 class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecodeQKVProgram> {
  public:
   FlashAttentionDecodeQKVProgram(const std::string& kernel_name,
-                                 bool has_attention_bias, uint32_t tile_size, int head_size_vec,
+                                 bool has_attention_bias, bool has_qkv_bias, uint32_t tile_size, int head_size_vec,
                                  bool use_indirect_dispatch, bool q_BNSH = false,
                                  bool is_unidirectional = false,
                                  uint32_t m_tile = 1,
@@ -214,7 +220,7 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                  uint32_t kv_cache_quantization_bits = 0,
                                  int compressed_head_size_u32 = 0,
                                  bool use_seqlens_q = false)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k), kv_cache_quantization_(kv_cache_quantization_bits != 0), kv_cache_quantization_bits_(kv_cache_quantization_bits), compressed_head_size_u32_(compressed_head_size_u32), use_seqlens_q_(use_seqlens_q) {
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), has_qkv_bias_(has_qkv_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k), kv_cache_quantization_(kv_cache_quantization_bits != 0), kv_cache_quantization_bits_(kv_cache_quantization_bits), compressed_head_size_u32_(compressed_head_size_u32), use_seqlens_q_(use_seqlens_q) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -234,6 +240,7 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
 
  private:
   bool has_attention_bias_;
+  bool has_qkv_bias_;
   uint32_t tile_size_;
   int head_size_vec_;
   bool use_indirect_dispatch_;
@@ -348,6 +355,7 @@ class FlashAttentionPagedDecodeVxReduceProgram final : public Program<FlashAtten
 // LEFT-aligned variable-q_len callers (e.g. PagedAttention). Uniform-q_len
 // callers pass nullptr and keep the pre-existing clamped path.
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
+                           const Tensor* qkv_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr,
                            const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr, const Tensor* head_sink = nullptr,

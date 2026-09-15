@@ -7,6 +7,7 @@
 
 #param hadamard_size_log2
 #param components
+#param has_bias
 
 const HADAMARD_SIZE : u32 = 1u << hadamard_size_log2;
 const HADAMARD_SIZE_VEC : u32 = HADAMARD_SIZE / components;
@@ -27,7 +28,11 @@ $MAIN {
 
   // Load from input into shared memory.
   for (var i = local_idx; i < HADAMARD_SIZE_VEC; i += workgroup_size_x) {
+#if has_bias
+    let val = input.getByOffset(base_offset + i) + bias[(base_offset + i) % uniforms.bias_size];
+#else
     let val = input.getByOffset(base_offset + i);
+#endif
 #if components == 4
     hadamard_buffer[i * 4u + 0u] = val[0];
     hadamard_buffer[i * 4u + 1u] = val[1];
