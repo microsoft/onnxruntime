@@ -61,28 +61,21 @@ static bool CheckAxesOnReduceMean(std::vector<int64_t>& axes_values, int64_t ran
   return true;
 }
 
-static bool AreShapesIdentical(const TensorShapeProto& lhs, const TensorShapeProto& rhs) {
+static bool AreShapesProvablyDifferent(const TensorShapeProto& lhs, const TensorShapeProto& rhs) {
   if (lhs.dim_size() != rhs.dim_size()) {
-    return false;
+    return true;
   }
 
   for (int i = 0; i < lhs.dim_size(); ++i) {
     const auto& lhs_dim = lhs.dim(i);
     const auto& rhs_dim = rhs.dim(i);
     if (lhs_dim.has_dim_value() && rhs_dim.has_dim_value() &&
-        lhs_dim.dim_value() == rhs_dim.dim_value()) {
-      continue;
+        lhs_dim.dim_value() != rhs_dim.dim_value()) {
+      return true;
     }
-
-    if (lhs_dim.has_dim_param() && rhs_dim.has_dim_param() &&
-        lhs_dim.dim_param() == rhs_dim.dim_param()) {
-      continue;
-    }
-
-    return false;
   }
 
-  return true;
+  return false;
 }
 
 // Returns true only when source_shape can broadcast into target_shape without expanding it.
@@ -876,7 +869,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     const auto* x_shape = x_input->Shape();
     if (x_shape != nullptr) {
       const auto* mul_output_shape = mul_node.OutputDefs()[0]->Shape();
-      if ((mul_output_shape == nullptr || !AreShapesIdentical(*mul_output_shape, *x_shape)) &&
+      if (mul_output_shape != nullptr && AreShapesProvablyDifferent(*mul_output_shape, *x_shape) &&
           !IsShapeProvablyBroadcastableTo(*scale->Shape(), *x_shape)) {
         continue;
       }

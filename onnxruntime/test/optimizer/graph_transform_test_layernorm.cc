@@ -715,6 +715,45 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAllowsUnrankedInput) {
       TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAllowsSymbolicNormalizedDimension) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeSymbolicInput<float>(
+        {std::string("batch"), std::string("sequence"), std::string("hidden")});
+    auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+    auto* scale = builder.MakeInitializer<float>({768}, std::vector<float>(768, 1.0f));
+
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+        .AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+    builder.AddNode("Div", {input, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, scale}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    const auto simplified_layer_norm_it = op_to_count.find("SimplifiedLayerNormalization");
+    TEST_RETURN_IF_NOT(simplified_layer_norm_it != op_to_count.end() &&
+                       simplified_layer_norm_it->second == 1);
+    TEST_RETURN_IF_NOT(op_to_count.find("Mul") == op_to_count.end());
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRejectsZeroNormalizedDimension) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{{1, 0}});
