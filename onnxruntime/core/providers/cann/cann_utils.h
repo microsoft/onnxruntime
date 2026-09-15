@@ -11,6 +11,10 @@
 #include <memory>
 #include <filesystem>
 #include <regex>
+#include <exception>
+#include <gsl/util>
+#include <random>
+#include <system_error>
 
 #include "core/framework/murmurhash3.h"
 #include "core/providers/cann/cann_common.h"
@@ -18,6 +22,48 @@
 
 namespace onnxruntime {
 namespace cann {
+namespace detail {
+
+template <typename F>
+Status SaveFileAtomically(const std::string& file_name, F&& save_fn) {
+  namespace fs = std::filesystem;
+
+  try {
+    const auto file_dir = fs::absolute(file_name).parent_path();
+
+    fs::path tmp_dir;
+    std::random_device random;
+    bool created = false;
+
+    // MatchFile does not perform subdirectory lookup
+    for (int attempt = 0; attempt < 64 && !created; ++attempt) {
+      tmp_dir = file_dir / (".ort-cann-tmp-" + std::to_string(random()));
+      created = fs::create_directory(tmp_dir);
+    }
+
+    ORT_RETURN_IF_NOT(created, "Could not create a temporary directory in ", file_dir.string());
+
+    auto cleanup = gsl::finally([&tmp_dir] {
+      std::error_code ec;
+      fs::remove_all(tmp_dir, ec);
+    });
+
+    const auto tmp_file_name = (tmp_dir / fs::path(file_name).filename()).string();
+    ORT_RETURN_IF_ERROR(std::forward<F>(save_fn)(tmp_file_name));
+
+    for (const auto& entry : fs::directory_iterator(tmp_dir)) {
+      if (entry.is_regular_file() && entry.path().extension() == ".om") {
+        fs::rename(entry.path(), file_dir / entry.path().filename());
+      }
+    }
+  } catch (const std::exception& e) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to save file: ", e.what());
+  }
+
+  return Status::OK();
+}
+
+}  // namespace detail
 
 struct CannPreparation {
   CannPreparation() {
@@ -127,7 +173,22 @@ Status aclrtblasGemmEx(aclTransType transA,
 bool FileExist(const std::string& file_name);
 void GenerateHashValue(const std::string string, HashValue& hash_value);
 bool is_dynamic_shape(const aclmdlIODims& dims);
-std::string MatchFile(const std::string& file_name);
+
+inline std::string MatchFile(const std::string& file_name) {
+  namespace fs = std::filesystem;
+  fs::path current_dir = fs::current_path();
+
+  for (const auto& entry : fs::directory_iterator(current_dir)) {
+    if (entry.is_regular_file()) {
+      std::string name = entry.path().filename().string();
+      if (name.find(file_name) != std::string::npos && entry.path().extension() == ".om") {
+        return name;
+      }
+    }
+  }
+  return "";
+}
+
 Status SaveFile(const std::string& file_name, const ge::ModelBufferData& model);
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger);
 bool GetRepeatInitFlag();
