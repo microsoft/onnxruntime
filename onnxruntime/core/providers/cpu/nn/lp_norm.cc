@@ -46,7 +46,8 @@ void DoNormalize(
     ConstStridedVec<T> xVec(xData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
     StridedVec<T> yVec(yData + base, 1, onnxruntime::narrow<size_t>(m), InnerStride(onnxruntime::narrow<size_t>(sf)));
 
-    const auto scale = xVec.cwiseAbs().maxCoeff();
+    // A NaN must reach the fallback even when all other components are zero.
+    const auto scale = xVec.cwiseAbs().template maxCoeff<Eigen::PropagateNaN>();
     if (scale == 0) {
       yVec.setZero();
     } else if (std::isfinite(scale)) {

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cmath>
+#include <limits>
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -104,6 +105,78 @@ TEST(LpNormalizationTest, FiniteRange) {
   LpNormalizationFiniteRange<double>(1, 1.0e308, 0.5);
   LpNormalizationFiniteRange<double>(2, 1.0e200, std::sqrt(0.5));
   LpNormalizationFiniteRange<double>(2, 1.0e-200, std::sqrt(0.5));
+}
+
+template <typename T>
+void LpNormalizationNonFinite(int64_t p, bool strided, int opset) {
+  const T nan = std::numeric_limits<T>::quiet_NaN();
+  const T inf = std::numeric_limits<T>::infinity();
+  const T unit = p == 1 ? T{0.5} : std::sqrt(T{0.5});
+  const vector<T> rows = {
+      nan, 0, 0, 0,
+      0, nan, 0, 0,
+      0, 0, nan, 0,
+      0, 0, 0, nan,
+      inf, 2, -2, 0,
+      -inf, 2, -2, 0,
+      inf, -inf, 0, 0,
+      nan, 1, -1, 0,
+      nan, inf, -inf, 0,
+      0, 0, 0, 0,
+      1, -1, 0, 0};
+  const vector<T> expected_rows = {
+      nan, nan, nan, nan,
+      nan, nan, nan, nan,
+      nan, nan, nan, nan,
+      nan, nan, nan, nan,
+      nan, 0, 0, 0,
+      nan, 0, 0, 0,
+      nan, nan, 0, 0,
+      nan, nan, nan, nan,
+      nan, nan, nan, nan,
+      0, 0, 0, 0,
+      unit, -unit, 0, 0};
+  vector<T> input(rows.size());
+  vector<T> expected(rows.size());
+  for (size_t row = 0; row < 11; ++row) {
+    for (size_t col = 0; col < 4; ++col) {
+      const size_t index = strided ? col * 11 + row : row * 4 + col;
+      input[index] = rows[row * 4 + col];
+      expected[index] = expected_rows[row * 4 + col];
+    }
+  }
+
+  OpTester test("LpNormalization", opset);
+  test.AddAttribute("axis", static_cast<int64_t>(strided ? 0 : -1));
+  test.AddAttribute("p", p);
+  const vector<int64_t> dims = strided ? vector<int64_t>{4, 11} : vector<int64_t>{11, 4};
+  test.AddInput<T>("input", dims, input);
+  test.AddOutput<T>("Y", dims, expected);
+
+  SessionOptions options;
+  options.intra_op_param.thread_pool_size = 1;
+  options.inter_op_param.thread_pool_size = 1;
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(LpNormalizationTest, NonFiniteContiguous) {
+  for (int opset : {1, 22}) {
+    for (int64_t p : {1, 2}) {
+      LpNormalizationNonFinite<float>(p, false, opset);
+      LpNormalizationNonFinite<double>(p, false, opset);
+    }
+  }
+}
+
+TEST(LpNormalizationTest, NonFiniteStrided) {
+  for (int opset : {1, 22}) {
+    for (int64_t p : {1, 2}) {
+      LpNormalizationNonFinite<float>(p, true, opset);
+      LpNormalizationNonFinite<double>(p, true, opset);
+    }
+  }
 }
 
 template <typename T>
