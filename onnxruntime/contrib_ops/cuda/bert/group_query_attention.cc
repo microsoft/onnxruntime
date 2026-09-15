@@ -13,6 +13,9 @@
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+#include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
+#endif
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
@@ -200,6 +203,51 @@ Status GroupQueryAttention<T, U>::PrePack(const Tensor& tensor, int input_idx, A
 
   return Status::OK();
 }
+
+#if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
+template <typename T, typename U>
+Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
+    gsl::span<const WorkspaceInputShape> input_shapes,
+    InlinedVector<WorkspaceRequirement>& requirements) const {
+  requirements.clear();
+  GQAWorkspaceEstimateConfig config;
+  config.qkv_element_size = sizeof(T);
+  config.cache_element_size = sizeof(U);
+  config.num_heads = num_heads_;
+  config.kv_num_heads = kv_num_heads_;
+  config.causal = is_unidirectional_ ? 1 : 0;
+  config.local_window_size = local_window_size_;
+  config.sliding_window_cache = sliding_window_cache_;
+  config.do_rotary = do_rotary_;
+  config.smooth_softmax = use_smooth_softmax_;
+  config.softcap = softcap_;
+  config.k_quantization =
+      k_quant_type_ == KVQuantizationType::PER_TENSOR
+          ? GQAKvQuantizationType::PerTensor
+          : (k_quant_type_ == KVQuantizationType::PER_CHANNEL
+                 ? GQAKvQuantizationType::PerChannel
+                 : GQAKvQuantizationType::None);
+  config.v_quantization =
+      v_quant_type_ == KVQuantizationType::PER_TENSOR
+          ? GQAKvQuantizationType::PerTensor
+          : (v_quant_type_ == KVQuantizationType::PER_CHANNEL
+                 ? GQAKvQuantizationType::PerChannel
+                 : GQAKvQuantizationType::None);
+  config.kv_cache_bit_width = kv_cache_bit_width_;
+  config.is_bf16 = std::is_same_v<T, BFloat16>;
+  config.cache_is_fp8 = std::is_same_v<U, Float8E4M3FN>;
+  config.enable_xqa = enable_xqa_;
+  config.disable_flash_decode = disable_flash_decode_;
+  config.head_sink_is_prepacked = xqa_head_sink_count_ == num_heads_;
+
+  const auto estimate = EstimateGroupQueryAttentionWorkspace(
+      config, input_shapes, GetDeviceProp(), *kernel_options_);
+  if (estimate.has_value()) {
+    SetGroupQueryAttentionWorkspaceRequirements(*estimate, requirements);
+  }
+  return Status::OK();
+}
+#endif
 
 // ComputeInternal executes the GQA kernel.
 //
