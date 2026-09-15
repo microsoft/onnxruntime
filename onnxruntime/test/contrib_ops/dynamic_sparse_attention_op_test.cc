@@ -572,18 +572,25 @@ TEST(DynamicSparseAttentionTest, PartialHalfSplitRotary_CUDA) {
   }
 
   auto c = MakeSingleTokenSelectedValueCase(5.0f);
+  c.head_size = 16;
   c.has_past = false;
+  c.query.assign(16, 0.0f);
+  c.key = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+           1.0f, 2.0f, 3.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  c.value.assign(16, 5.0f);
   c.past_key.clear();
   c.past_value.clear();
   c.do_rotary = 1;
-  c.rotary_offset = 4;
+  c.rotary_offset = 8;
   c.rotary_cache_length = 1;
   c.rotary_half_dim = 2;
   c.position_ids = {0};
   c.cos_cache = {0.0f, 0.0f};
   c.sin_cache = {1.0f, 1.0f};
-  c.key = {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 4.0f};
-  c.expected_present_key = {0.0f, 0.0f, 0.0f, 0.0f, -3.0f, -4.0f, 1.0f, 2.0f};
+  c.expected_output.assign(16, 5.0f);
+  c.expected_present_key = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                            -3.0f, -4.0f, 1.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+  c.expected_present_value = c.value;
 
   RunDynamicSparseAttentionCase(c, std::move(cuda_ep));
 }
