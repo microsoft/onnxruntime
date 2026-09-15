@@ -2177,7 +2177,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>data</tt> : T1</dt>
 <dd></dd>
 <dt><tt>indices</tt> : Tind</dt>
-<dd>Tensor of int32/int64 indices, of any rank q. Values in [-s, s-1] select elements along an axis of size s. An out-of-range index produces zeros for the corresponding output slice.</dd>
+<dd>Tensor of int32/int64 indices, of any rank q. Values in [-s, s-1] select elements along an axis of size s. Unlike ONNX Gather, an out-of-range index produces zeros for the corresponding output slice.</dd>
 <dt><tt>scales</tt> : T2</dt>
 <dd>quantization scale. Same rank as data. On axes other than quantize_axis, a dimension of 1 broadcasts the scale along that axis (e.g. a single per-tensor scale for the whole table); only applicable when `data` is an FP8 or FP4 type.</dd>
 <dt><tt>zero_points</tt> (optional) : T1</dt>

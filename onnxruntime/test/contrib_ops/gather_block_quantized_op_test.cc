@@ -430,6 +430,8 @@ TEST(GatherBlockQuantizedOpTest, InvalidQuantizeAxis) {
 }
 
 TEST(GatherBlockQuantizedOpTest, NotSupportedBits) {
+  Test_Fail_WithZeroPoints<uint8_t, float, int32_t>(0, 2, 16, 0);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 0);
   Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 1);
   Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 2);
   Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 3);
@@ -1264,7 +1266,7 @@ TEST(GatherBlockQuantizedOpTest, FpBasicPerRowScale) {
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
   test.AddAttribute<int64_t>("block_size", 0);
-  test.AddInput<Float8E4M3FN>("data", {4, 4}, data);
+  test.AddInput<Float8E4M3FN>("data", {4, 4}, data, true);
   test.AddInput<int64_t>("indices", {2}, indices);
   test.AddInput<float>("scales", {4, 1}, scales);
   test.AddOutput<float>("output", {2, 4}, expected);
@@ -1291,7 +1293,7 @@ TEST(GatherBlockQuantizedOpTest, FpGlobalPerTensorScale) {
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
   test.AddAttribute<int64_t>("block_size", 0);
-  test.AddInput<Float8E4M3FN>("data", {4, 4}, data);
+  test.AddInput<Float8E4M3FN>("data", {4, 4}, data, true);
   test.AddInput<int64_t>("indices", {2}, indices);
   test.AddInput<float>("scales", {1, 1}, scales);
   test.AddOutput<float>("output", {2, 4}, expected);
@@ -1303,7 +1305,7 @@ TEST(GatherBlockQuantizedOpTest, FpEmptyTrailingDimension) {
   test.AddAttribute<int64_t>("gather_axis", 1);
   test.AddAttribute<int64_t>("quantize_axis", 2);
   test.AddAttribute<int64_t>("block_size", 0);
-  test.AddInput<Float8E4M3FN>("data", {2, 3, 0}, {});
+  test.AddInput<Float8E4M3FN>("data", {2, 3, 0}, {}, true);
   test.AddInput<int64_t>("indices", {1}, {0});
   test.AddInput<float>("scales", {2, 3, 0}, {});
   test.AddOutput<float>("output", {2, 1, 0}, {});
@@ -1334,7 +1336,7 @@ TEST(GatherBlockQuantizedOpTest, FpSubRowBlockScale) {
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
   test.AddAttribute<int64_t>("block_size", 16);
-  test.AddInput<Float8E4M3FN>("data", {1, 32}, data);
+  test.AddInput<Float8E4M3FN>("data", {1, 32}, data, true);
   test.AddInput<int64_t>("indices", {1}, indices);
   test.AddInput<float>("scales", {1, 2}, scales);
   test.AddOutput<float>("output", {1, 32}, expected);
@@ -1355,7 +1357,7 @@ TEST(GatherBlockQuantizedOpTest, FpFloat16Output) {
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
   test.AddAttribute<int64_t>("block_size", 0);
-  test.AddInput<Float8E4M3FN>("data", {2, 2}, data);
+  test.AddInput<Float8E4M3FN>("data", {2, 2}, data, true);
   test.AddInput<int32_t>("indices", {2}, indices);
   test.AddInput<MLFloat16>("scales", {2, 1}, scales);
   test.AddOutput<MLFloat16>("output", {2, 2}, expected);
@@ -1433,7 +1435,7 @@ TEST(GatherBlockQuantizedOpTest, FpInvalidBlockSizeThrows) {
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
   test.AddAttribute<int64_t>("block_size", 8);  // not a power of 2 >= 16, and not 0
-  test.AddInput<Float8E4M3FN>("data", {1, 2}, data);
+  test.AddInput<Float8E4M3FN>("data", {1, 2}, data, true);
   test.AddInput<int64_t>("indices", {1}, indices);
   test.AddInput<float>("scales", {1, 1}, scales);
   test.AddOutput<float>("output", {1, 2}, {1.0f, 2.0f});
@@ -1457,7 +1459,7 @@ TEST(GatherBlockQuantizedOpTest, FpRank3NonLeadingGatherAxisDifferentQuantizeAxi
   test.AddAttribute<int64_t>("gather_axis", 1);
   test.AddAttribute<int64_t>("quantize_axis", 2);
   test.AddAttribute<int64_t>("block_size", 0);
-  test.AddInput<Float8E4M3FN>("data", {2, 3, 4}, data);
+  test.AddInput<Float8E4M3FN>("data", {2, 3, 4}, data, true);
   test.AddInput<int64_t>("indices", {2}, indices);
   test.AddInput<float>("scales", {2, 3, 1}, scales);
   test.AddOutput<float>("output", {2, 2, 4}, expected);
@@ -1482,7 +1484,7 @@ TEST(GatherBlockQuantizedOpTest, FpValidNegativeIndices) {
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
   test.AddAttribute<int64_t>("block_size", 0);
-  test.AddInput<Float8E4M3FN>("data", {4, 4}, data);
+  test.AddInput<Float8E4M3FN>("data", {4, 4}, data, true);
   test.AddInput<int64_t>("indices", {2}, indices);
   test.AddInput<float>("scales", {4, 1}, scales);
   test.AddOutput<float>("output", {2, 4}, expected);
@@ -1502,7 +1504,7 @@ TEST(GatherBlockQuantizedOpTest, FpInvalidOutOfRangeIndexZeroFills) {
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
   test.AddAttribute<int64_t>("block_size", 0);
-  test.AddInput<Float8E4M3FN>("data", {4, 4}, data);
+  test.AddInput<Float8E4M3FN>("data", {4, 4}, data, true);
   test.AddInput<int64_t>("indices", {1}, indices);
   test.AddInput<float>("scales", {4, 1}, scales);
   test.AddOutput<float>("output", {1, 4}, {0.0f, 0.0f, 0.0f, 0.0f});
@@ -1528,7 +1530,7 @@ TEST(GatherBlockQuantizedOpTest, Fp4BasicPerRowScale) {
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
   test.AddAttribute<int64_t>("block_size", 0);
-  test.AddInput<Float4E2M1x2>("data", {2, 4}, data);
+  test.AddInput<Float4E2M1x2>("data", {2, 4}, data, true);
   test.AddInput<int64_t>("indices", {2}, indices);
   test.AddInput<float>("scales", {2, 1}, scales);
   test.AddOutput<float>("output", {2, 4}, expected);
@@ -1548,7 +1550,7 @@ TEST(GatherBlockQuantizedOpTest, Fp4OddLogicalDimension) {
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
   test.AddAttribute<int64_t>("block_size", 0);
-  test.AddInput<Float4E2M1x2>("data", {1, 5}, data);
+  test.AddInput<Float4E2M1x2>("data", {1, 5}, data, true);
   test.AddInput<int64_t>("indices", {1}, indices);
   test.AddInput<float>("scales", {1, 1}, scales);
   test.AddOutput<float>("output", {1, 5}, expected);
@@ -1566,7 +1568,7 @@ TEST(GatherBlockQuantizedOpTest, Fp4OddRowsStartOnHighNibble) {
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
   test.AddAttribute<int64_t>("block_size", 0);
-  test.AddInput<Float4E2M1x2>("data", {3, 5}, data);
+  test.AddInput<Float4E2M1x2>("data", {3, 5}, data, true);
   test.AddInput<int64_t>("indices", {1}, {1});
   test.AddInput<float>("scales", {3, 1}, {1.0f, 0.5f, 2.0f});
   test.AddOutput<float>("output", {1, 5}, {-1.0f, -2.0f, -3.0f, 0.25f, 0.5f});
