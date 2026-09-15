@@ -1392,24 +1392,31 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       // It is very necessary to provide a new mechanism for memory reclamation to avoid inference failure caused by
       // device memory exhaustion
       uint32_t modelID;
-      if (modelIDs_.find(filename) != modelIDs_.end()) {
-        modelID = modelIDs_[filename];
-      } else {
+      {
         std::lock_guard<std::mutex> lock(g_mutex);
-        auto filename_with_suffix = cann::MatchFile(filename);
-        if (!filename_with_suffix.empty()) {
-          CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
+        if (const auto it = modelIDs_.find(filename); it != modelIDs_.end()) {
+          modelID = it->second;
         } else {
-          ge::Graph graph{cann_state->node_name.c_str()};
-          ORT_RETURN_IF_ERROR(ParserONNXModel(string_model, graph));
+          auto filename_with_suffix = cann::MatchFile(filename);
+          if (!filename_with_suffix.empty()) {
+            CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));
+          } else {
+            ge::Graph graph{cann_state->node_name.c_str()};
+            ORT_RETURN_IF_ERROR(ParserONNXModel(string_model, graph));
 
-          ge::ModelBufferData model;
-          ORT_RETURN_IF_ERROR(BuildONNXModel(graph, input_shape, soc_name_, filename, info_, model));
+            ge::ModelBufferData model;
+            ORT_RETURN_IF_ERROR(BuildONNXModel(graph, input_shape, soc_name_, filename, info_, model));
 
-          CANN_RETURN_IF_ERROR(aclmdlLoadFromMem(model.data.get(), model.length, &modelID));
+            CANN_RETURN_IF_ERROR(aclmdlLoadFromMem(model.data.get(), model.length, &modelID));
+          }
+
+          try {
+            modelIDs_.emplace(filename, modelID);
+          } catch (...) {
+            CANN_CALL(aclmdlUnload(modelID));
+            throw;
+          }
         }
-
-        modelIDs_.emplace(filename, modelID);
       }
 
       CannModelPreparation prepare(modelID);
