@@ -4,6 +4,14 @@ const pkg = require('onnxruntime-react-native/package.json');
 const path = require('path');
 const fs = require('fs');
 
+// Expo SDK 55+ bare template uses ExpoReactHostFactory instead of ReactNativeHostWrapper.
+function isExpoSdk55OrAbove(config) {
+  const major = config.sdkVersion ? parseInt(String(config.sdkVersion).split('.')[0], 10) : -1;
+  if (!Number.isNaN(major)) {
+    return major >= 55;
+  }
+}
+
 const withOrt = (config) => {
   // Add build dependency to gradle file
   config = configPlugin.withAppBuildGradle(config, (config) => {
@@ -35,14 +43,26 @@ const withOrt = (config) => {
         offset: 0,
         comment: '//',
       }).contents;
-      config.modResults.contents = generateCode.mergeContents({
-        src: config.modResults.contents,
-        newSrc: '      add(OnnxruntimePackage())',
-        tag: 'onnxruntime-react-native-package',
-        anchor: /override fun getPackages\(\)/,
-        offset: 2,
-        comment: '//',
-      }).contents;
+      const packageRegistration = isExpoSdk55OrAbove(config)
+        ? // Expo 55+ path
+          generateCode.mergeContents({
+            src: config.modResults.contents,
+            newSrc: '          add(OnnxruntimePackage())',
+            tag: 'onnxruntime-react-native-package',
+            anchor: /PackageList\(this\)\.packages\.apply\s*\{/,
+            offset: 1,
+            comment: '//',
+          })
+        : // Expo < 55 path
+          generateCode.mergeContents({
+            src: config.modResults.contents,
+            newSrc: '              add(OnnxruntimePackage())',
+            tag: 'onnxruntime-react-native-package',
+            anchor: /override fun getPackages\(\)/,
+            offset: 2,
+            comment: '//',
+          });
+      config.modResults.contents = packageRegistration.contents;
     } else if (lang === 'java') {
       config.modResults.contents = generateCode.mergeContents({
         src: config.modResults.contents,
@@ -56,7 +76,7 @@ const withOrt = (config) => {
         if (/return\s+new PackageList\(this\)\.getPackages\(\);/.test(config.modResults.contents)) {
           config.modResults.contents = config.modResults.contents.replace(
             /(\s*)return\s+new PackageList\(this\)\.getPackages\(\);/,
-            '$1List<ReactPackage> packages = new PackageList(this).getPackages();\n$1packages.add(new OnnxruntimePackage());\n$1return packages;',
+            '$1List<ReactPackage> packages = new PackageList(this).getPackages();\n$1packages.add(new OnnxruntimePackage());\n$1return packages;'
           );
         } else {
           config.modResults.contents = generateCode.mergeContents({
