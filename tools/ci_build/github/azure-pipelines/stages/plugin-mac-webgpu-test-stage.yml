@@ -12,9 +12,7 @@ stages:
       demands:
       - ImageOverride -equals ACES_VM_SharedPool_Sequoia
     steps:
-    - checkout: self
-      clean: true
-      submodules: none
+    - template: ../templates/jobs/checkout-and-git-redirect.yml
 
     - template: ../templates/setup-build-tools.yml
       parameters:

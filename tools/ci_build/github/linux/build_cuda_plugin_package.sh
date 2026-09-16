@@ -27,7 +27,7 @@ done
 
 # Update parallel to the minimum of the number of processors and 8 for aarch64 to avoid OOM errors during build.
 if [ "$arch" = "aarch64" ]; then
-    PARALLEL=$(( $(nproc) < 8 ? $(nproc) : 8 ))
+    PARALLEL=$(( $(nproc) < 8 ? $(nproc) : $(nproc) - 2 ))
 else
     PARALLEL=""
 fi

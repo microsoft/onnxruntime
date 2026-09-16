@@ -10,7 +10,7 @@ index 791e24b..5f861a1 100644
  option(ONNX_INSTALL "Install ONNX targets, headers, and CMake config files" ON)
  if(WIN32)
    option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime. Ignored if CMAKE_MSVC_RUNTIME_LIBRARY is defined." OFF)
-@@ -515,7 +516,22 @@ add_dependencies(onnx_proto onnx_proto_gen)
+@@ -515,7 +516,23 @@ add_dependencies(onnx_proto onnx_proto_gen)
  # Core library. Hand-written sources come from target_sources(onnx ...) in the
  # subdirectories; the protobuf objects are pulled in from onnx_proto.
  add_library(onnx $<TARGET_OBJECTS:onnx_proto>)
@@ -22,6 +22,7 @@ index 791e24b..5f861a1 100644
 +    # the full operator/schema sources via add_subdirectory(onnx).
 +    target_sources(onnx PRIVATE
 +        "${ONNX_ROOT}/onnx/defs/data_type_utils.cc"
++        "${ONNX_ROOT}/onnx/defs/doc_strings.cc"
 +    )
 +    # Ensure ONNX_ML is treated as ON for minimal build consistency with ORT's file
 +    set(ONNX_ML ON CACHE BOOL "Enable traditional ML API." FORCE)
