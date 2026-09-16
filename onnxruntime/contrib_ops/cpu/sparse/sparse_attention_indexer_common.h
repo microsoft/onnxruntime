@@ -41,8 +41,9 @@ inline bool TryParsePolicy(const std::string& policy_mode, Policy& policy) {
   return false;
 }
 
-// Input slots. Slots 5-6 belong to policy_mode="qsa" and slots 7-13 to policy_mode="csa";
-// a slot that does not belong to the active policy must be omitted from the node.
+// Input slots. mask belongs to policy_mode="qsa"; gate, position_bias, head_weights, position_ids,
+// and past_proj_buffer belong to policy_mode="csa". The past_key and past_sequence_length state is
+// shared by both policies.
 enum InputIndex : int {
   kQuery = 0,
   kKey = 1,
@@ -55,26 +56,23 @@ enum InputIndex : int {
   kPositionBias = 8,
   kHeadWeights = 9,
   kPositionIds = 10,
-  kPastCompressedKey = 11,
-  kPastKvBuffer = 12,
-  kPastGateBuffer = 13,
-  kInputCount = 14,
+  kPastSequenceLength = 11,
+  kPastProjBuffer = 12,
+  kInputCount = 13,
 };
 
-// Output slots. Slot 1 belongs to policy_mode="qsa" and slots 2-4 to policy_mode="csa".
+// present_key is shared by both policies; present_proj_buffer is only used by policy_mode="csa".
 enum OutputIndex : int {
   kSelectedIndices = 0,
   kPresentKey = 1,
-  kPresentCompressedKey = 2,
-  kPresentKvBuffer = 3,
-  kPresentGateBuffer = 4,
-  kOutputCount = 5,
+  kPresentProjBuffer = 2,
+  kOutputCount = 3,
 };
 
-// A "qsa" node declares selected_indices + present_key; a "csa" node declares every slot so that
-// the three csa state outputs keep their fixed indices (slot 1 is left as a missing optional).
+// A "qsa" node declares selected_indices + present_key. A "csa" node additionally declares
+// present_proj_buffer.
 constexpr int kQsaOutputCount = 2;
-constexpr int kCsaOutputCount = 5;
+constexpr int kCsaOutputCount = 3;
 
 // Number of selected entries emitted per query. The capacity only depends on attributes, so it is
 // a compile-time constant of the graph rather than a function of the data.
@@ -85,7 +83,7 @@ SAI_HOST_DEVICE inline int64_t SelectedCapacity(Policy policy, int64_t token_bud
 
 // How the "csa" token buffer is split and how many new compressed entries this call emits.
 //
-// past_kv_buffer / past_gate_buffer carry `overlap_length` tokens of the previous complete window
+// Each plane of past_proj_buffer carries `overlap_length` tokens of the previous complete window
 // (the Ca operand of the next window) followed by `leftover_length` tokens of an incomplete window.
 // Since `leftover_length` is always < compress_ratio, a buffer length >= compress_ratio uniquely
 // means "the previous complete window is present", so no extra state tensor is needed.
@@ -93,7 +91,7 @@ struct CsaWindowPlan {
   int64_t overlap_length = 0;         // compress_ratio, or 0 before the first complete window
   int64_t leftover_length = 0;        // tokens of the current incomplete window
   int64_t new_window_count = 0;       // complete windows closed by this call
-  int64_t present_buffer_length = 0;  // length of present_kv_buffer / present_gate_buffer
+  int64_t present_buffer_length = 0;  // sequence length of present_proj_buffer
   int64_t present_buffer_start = 0;   // offset of that buffer inside [past buffer | new tokens]
 };
 

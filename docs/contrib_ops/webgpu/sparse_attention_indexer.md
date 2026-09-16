@@ -10,12 +10,13 @@ the provider-neutral schema and state ABI described in the
 - batched inputs;
 - `qsa` and `csa` policy modes;
 - `float32` and `float16`;
-- explicit graph-visible key, compressed-key, and incomplete-window state;
+- explicit graph-visible key and packed projection-buffer state;
 - arbitrary boolean QSA visibility masks;
 - deterministic score-descending, index-ascending TopK ties.
 
-BF16 and packed/variable-length inputs are not registered by the WebGPU kernel.
-Unknown policies and policy-incompatible inputs or attributes are rejected.
+BF16, packed/variable-length inputs, and fixed-capacity caches using
+`past_sequence_length` are not supported by the WebGPU kernel. Unknown policies
+and policy-incompatible inputs or attributes are rejected.
 
 ## Execution
 
@@ -34,6 +35,7 @@ limits and GPU-to-CPU synchronization at the cost of additional computation.
 ## Follow-up work
 
 - packed/variable-length input;
+- fixed-capacity cache updates;
 - specialized large-candidate TopK;
 - subgroup-optimized reductions;
 - fused projection, pooling, and scoring;
