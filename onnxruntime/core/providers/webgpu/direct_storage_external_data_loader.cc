@@ -131,10 +131,10 @@ struct ScopedHandle {
 common::Status LoadBatchToD3D12(
     DirectStorageBatch& batch,
     ID3D12Device* d3d_device,
-    const std::function<bool()>& is_cancelled,
+    const std::function<bool()>& is_canceled,
     DirectStorageLoadMetrics& metrics) {
   ORT_RETURN_IF_NOT(d3d_device != nullptr, "A D3D12 device is required.");
-  if (is_cancelled && is_cancelled()) {
+  if (is_canceled && is_canceled()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                            "DirectStorage initializer loading was canceled.");
   }
@@ -345,13 +345,13 @@ common::Status LoadBatchToD3D12(
                           : common::Status::OK());
   const auto io_start = Clock::now();
   queue->Submit();
-  bool cancelled = false;
+  bool canceled = false;
   DWORD wait_result = WAIT_TIMEOUT;
   while (wait_result == WAIT_TIMEOUT) {
     wait_result = WaitForSingleObject(completion_event.value, 10);
-    if (!cancelled && is_cancelled && is_cancelled()) {
+    if (!canceled && is_canceled && is_canceled()) {
       queue->CancelRequestsWithTag(UINT64_MAX, kCancellationTag);
-      cancelled = true;
+      canceled = true;
     }
   }
   if (wait_result != WAIT_OBJECT_0) {
@@ -364,7 +364,7 @@ common::Status LoadBatchToD3D12(
         wait_result, ".");
   }
   const auto io_end = Clock::now();
-  if (cancelled) {
+  if (canceled) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, MODEL_LOAD_CANCELED,
         "Loading DirectStorage external weights was canceled due to user request.");
@@ -722,7 +722,7 @@ common::Status DirectStorageExternalDataLoader::PreloadTensor(
 }
 
 common::Status DirectStorageExternalDataLoader::FinalizePreload(
-    const std::function<bool()>& is_cancelled) const {
+    const std::function<bool()>& is_canceled) const {
   if (!impl_->enabled) {
     return common::Status::OK();
   }
@@ -730,7 +730,7 @@ common::Status DirectStorageExternalDataLoader::FinalizePreload(
                     "DirectStorage preload batch has not been started.");
   if (impl_->preload_batch->request_count == 0) {
     impl_->context.ContinueInitialize();
-    if (is_cancelled && is_cancelled()) {
+    if (is_canceled && is_canceled()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "DirectStorage initializer preloading was canceled.");
     }
@@ -744,13 +744,13 @@ common::Status DirectStorageExternalDataLoader::FinalizePreload(
     impl_->preload_future = std::async(
         std::launch::async,
         [batch = impl_->preload_batch.get(), &metrics = impl_->preload_metrics,
-         d3d_device, is_cancelled,
+         d3d_device, is_canceled,
          abort_requested = &impl_->abort_requested]() {
           return LoadBatchToD3D12(
               *batch, d3d_device.Get(),
-              [is_cancelled, abort_requested]() {
+              [is_canceled, abort_requested]() {
                 return abort_requested->load(std::memory_order_relaxed) ||
-                       (is_cancelled && is_cancelled());
+                       (is_canceled && is_canceled());
               },
               metrics);
         });
@@ -798,7 +798,7 @@ common::Status DirectStorageExternalDataLoader::PrepareTensor(
 }
 
 common::Status DirectStorageExternalDataLoader::FinalizeLoad(
-    const std::function<bool()>& is_cancelled) const {
+    const std::function<bool()>& is_canceled) const {
   if (!impl_->enabled) {
     return common::Status::OK();
   }
@@ -830,13 +830,13 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
     if (!preload_status.IsOK()) {
       return fail_or_fallback(preload_status);
     }
-    if (is_cancelled && is_cancelled()) {
+    if (is_canceled && is_canceled()) {
       return fail_or_fallback(ORT_MAKE_STATUS(
           ONNXRUNTIME, MODEL_LOAD_CANCELED,
           "DirectStorage initializer loading was canceled."));
     }
     impl_->context.WaitForInitializeComplete();
-    if (is_cancelled && is_cancelled()) {
+    if (is_canceled && is_canceled()) {
       return fail_or_fallback(ORT_MAKE_STATUS(
           ONNXRUNTIME, MODEL_LOAD_CANCELED,
           "DirectStorage initializer loading was canceled."));
@@ -878,13 +878,13 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
 
   if (!used_preload) {
     const auto load_status =
-        LoadBatchToD3D12(batch, d3d_device.Get(), is_cancelled, load_metrics);
+        LoadBatchToD3D12(batch, d3d_device.Get(), is_canceled, load_metrics);
     if (!load_status.IsOK()) {
       return fail_or_fallback(load_status);
     }
   }
   impl_->context.WaitForInitializeComplete();
-  if (is_cancelled && is_cancelled()) {
+  if (is_canceled && is_canceled()) {
     return fail_or_fallback(ORT_MAKE_STATUS(
         ONNXRUNTIME, MODEL_LOAD_CANCELED,
         "DirectStorage initializer loading was canceled."));
@@ -903,7 +903,7 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
                       "DirectStorage and Dawn used different D3D12 devices.");
 
     for (auto& tensor : batch.tensors) {
-      if (is_cancelled && is_cancelled()) {
+      if (is_canceled && is_canceled()) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, MODEL_LOAD_CANCELED,
             "DirectStorage initializer loading was canceled.");

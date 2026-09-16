@@ -46,9 +46,9 @@ class ExternalDataLoaderManager {
       const Graph& graph,
       const std::unordered_set<std::string>& excluded_initializer_names,
       const std::unordered_set<PathString>& excluded_external_data_files,
-      const std::function<bool()>& is_cancelled) const;
+      const std::function<bool()>& is_canceled) const;
   common::Status BeginLoad() const;
-  common::Status FinalizeLoad(const std::function<bool()>& is_cancelled) const;
+  common::Status FinalizeLoad(const std::function<bool()>& is_canceled) const;
   void AbortLoad() const noexcept;
 #endif
 
