@@ -70,7 +70,7 @@ Status ExternalDataLoaderManager::PreloadExternalData(
     const Graph& graph,
     const std::unordered_set<std::string>& excluded_initializer_names,
     const std::unordered_set<PathString>& excluded_external_data_files,
-    const std::function<bool()>& is_cancelled) const {
+    const std::function<bool()>& is_canceled) const {
   bool has_preloader = false;
   for (const auto& loader : external_data_loaders_) {
     if (loader->SupportsPreload()) {
@@ -107,7 +107,7 @@ Status ExternalDataLoaderManager::PreloadExternalData(
         continue;
       }
     }
-    if (is_cancelled && is_cancelled()) {
+    if (is_canceled && is_canceled()) {
       return ORT_MAKE_STATUS(
           ONNXRUNTIME, MODEL_LOAD_CANCELED,
           "Preloading external weights was canceled due to user request.");
@@ -124,7 +124,7 @@ Status ExternalDataLoaderManager::PreloadExternalData(
 
   for (const auto& loader : external_data_loaders_) {
     if (loader->SupportsPreload()) {
-      ORT_RETURN_IF_ERROR(loader->FinalizePreload(is_cancelled));
+      ORT_RETURN_IF_ERROR(loader->FinalizePreload(is_canceled));
     }
   }
   preload_finalized = true;
@@ -143,9 +143,9 @@ Status ExternalDataLoaderManager::BeginLoad() const {
   return Status::OK();
 }
 
-Status ExternalDataLoaderManager::FinalizeLoad(const std::function<bool()>& is_cancelled) const {
+Status ExternalDataLoaderManager::FinalizeLoad(const std::function<bool()>& is_canceled) const {
   for (const auto& external_data_loader : external_data_loaders_) {
-    auto status = external_data_loader->FinalizeLoad(is_cancelled);
+    auto status = external_data_loader->FinalizeLoad(is_canceled);
     if (!status.IsOK()) {
       AbortLoad();
       return status;

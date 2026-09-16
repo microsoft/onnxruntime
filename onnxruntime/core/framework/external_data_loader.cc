@@ -38,7 +38,7 @@ common::Status IExternalDataLoader::PreloadTensor(
 }
 
 common::Status IExternalDataLoader::FinalizePreload(
-    const std::function<bool()>& /*is_cancelled*/) const {
+    const std::function<bool()>& /*is_canceled*/) const {
   return common::Status::OK();
 }
 
@@ -54,7 +54,7 @@ common::Status IExternalDataLoader::PrepareTensor([[maybe_unused]] const Env& en
   return common::Status::OK();
 }
 
-common::Status IExternalDataLoader::FinalizeLoad(const std::function<bool()>& /*is_cancelled*/) const {
+common::Status IExternalDataLoader::FinalizeLoad(const std::function<bool()>& /*is_canceled*/) const {
   return common::Status::OK();
 }
 
