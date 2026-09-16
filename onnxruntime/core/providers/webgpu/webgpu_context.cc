@@ -220,6 +220,11 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_limits_.maxStorageBufferBindingSize =
           std::min(device_limits_.maxStorageBufferBindingSize, max_storage_buffer_binding_size_);
     }
+    if (max_storage_buffers_per_shader_stage_ != 0) {
+      ORT_ENFORCE(max_storage_buffers_per_shader_stage_ <= device_limits_.maxStorageBuffersPerShaderStage,
+                  "maxStorageBuffersPerShaderStage exceeds the device limit");
+      device_limits_.maxStorageBuffersPerShaderStage = max_storage_buffers_per_shader_stage_;
+    }
     // Align maxStorageBufferBindingSize down to minStorageBufferOffsetAlignment so that
     // buffer segment offsets are always properly aligned for WebGPU bind group creation.
     if (device_limits_.minStorageBufferOffsetAlignment > 0) {
@@ -1272,7 +1277,8 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
                                                                     config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
                                                                     config.max_storage_buffer_binding_size,
-                                                                    config.test_only_max_storage_buffer_binding_size));
+                                                                    config.test_only_max_storage_buffer_binding_size,
+                                                                    config.max_storage_buffers_per_shader_stage));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&

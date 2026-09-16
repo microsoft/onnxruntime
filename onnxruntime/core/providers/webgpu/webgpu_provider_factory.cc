@@ -256,6 +256,21 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
         "Invalid maxStorageBufferBindingSize value: ", max_storage_buffer_binding_size_str);
   }
 
+  std::string max_storage_buffers_per_shader_stage_str;
+  if (config_options.TryGetConfigEntry(kMaxStorageBuffersPerShaderStage,
+                                       max_storage_buffers_per_shader_stage_str)) {
+    ORT_ENFORCE(
+        std::errc{} == std::from_chars(
+                           max_storage_buffers_per_shader_stage_str.data(),
+                           max_storage_buffers_per_shader_stage_str.data() +
+                               max_storage_buffers_per_shader_stage_str.size(),
+                           config.max_storage_buffers_per_shader_stage)
+                           .ec,
+        "Invalid maxStorageBuffersPerShaderStage value: ", max_storage_buffers_per_shader_stage_str);
+    ORT_ENFORCE(config.max_storage_buffers_per_shader_stage > 0,
+                "maxStorageBuffersPerShaderStage must be greater than 0");
+  }
+
   std::string max_num_pending_dispatches_str;
   if (config_options.TryGetConfigEntry(
           kMaxNumPendingDispatches,
@@ -289,6 +304,8 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << config.preserve_device;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP CompileOnly: " << config.compile_only;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << config.max_storage_buffer_binding_size;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffers per shader stage: "
+                        << config.max_storage_buffers_per_shader_stage;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max pending dispatches: " << config.max_num_pending_dispatches;
 
   // buffer cache modes
