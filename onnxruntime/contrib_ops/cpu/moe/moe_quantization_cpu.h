@@ -70,9 +70,9 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
     bool scales_packed{false};               // scales are folded into `packed`; pass no QuantBScale at compute time
   };
   bool QNBitGemmEligible(int input_idx, int64_t num_experts, int64_t rows, int64_t cols,
-                         const Tensor** scales_out) const;
-  Status InitQNBitPacked(QNBitPackedExperts& packed, int64_t num_experts, int64_t rows, int64_t cols,
-                         const Tensor& scales, AllocatorPtr alloc);
+                         const Tensor** scales_out, size_t* packed_size_per_expert_out) const;
+  Status InitQNBitPacked(QNBitPackedExperts& packed, size_t packed_size_per_expert, int64_t num_experts,
+                         int64_t rows, int64_t cols, const Tensor& scales, AllocatorPtr alloc);
   Status PrePackQNBitExperts(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                              /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights);
 

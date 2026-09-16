@@ -131,6 +131,21 @@ constexpr const char* kQMoEQNBitGemmEnv = "ORT_QMOE_CPU_QNBIT_GEMM";
 // Tag appended to the prepacked shape buffer to mark the QNBit-packed layout (see PrePackQNBitExperts).
 constexpr int64_t kQNBitPackedLayoutTag = 0x514E4249;  // 'QNBI'
 
+// Prepacked shape buffer: rank, dims, then `trailer` (empty for the legacy layouts; the QNBit layout
+// appends kQNBitPackedLayoutTag and the compute type it was packed for).
+static void PushPrePackedShapeBuffer(const TensorShape& shape, gsl::span<const int64_t> trailer,
+                                     const AllocatorPtr& alloc, PrePackedWeights& prepacked_weights) {
+  const auto dims = shape.GetDims();
+  const size_t shape_size = (1 + dims.size() + trailer.size()) * sizeof(int64_t);
+  auto shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, shape_size);
+  int64_t* buffer_data = static_cast<int64_t*>(shape_buffer.get());
+  buffer_data[0] = static_cast<int64_t>(dims.size());
+  std::copy(dims.begin(), dims.end(), buffer_data + 1);
+  std::copy(trailer.begin(), trailer.end(), buffer_data + 1 + dims.size());
+  prepacked_weights.buffers_.push_back(std::move(shape_buffer));
+  prepacked_weights.buffer_sizes_.push_back(shape_size);
+}
+
 template <typename TScale>
 void DequantizeBlockWithMlas(const uint8_t* quantized_data,
                              const TScale* scales,
@@ -699,19 +714,7 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
       prepacked_weights->buffers_.push_back(std::move(lut_cache_buffer));
       prepacked_weights->buffer_sizes_.push_back(cache_size);
       is_packed = true;
-
-      auto dims = shape.GetDims();
-      size_t rank_bytes = sizeof(int64_t);
-      size_t dims_bytes = dims.size() * sizeof(int64_t);
-      size_t shape_size = rank_bytes + dims_bytes;
-
-      auto shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, shape_size);
-      int64_t* buffer_data = static_cast<int64_t*>(shape_buffer.get());
-      *buffer_data = static_cast<int64_t>(dims.size());
-      memcpy(buffer_data + 1, dims.data(), dims_bytes);
-
-      prepacked_weights->buffers_.push_back(std::move(shape_buffer));
-      prepacked_weights->buffer_sizes_.push_back(shape_size);
+      PushPrePackedShapeBuffer(shape, {}, alloc, *prepacked_weights);
       return Status::OK();
     }
 
@@ -738,20 +741,7 @@ Status QMoECPU<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr all
       prepacked_weights->buffers_.push_back(std::move(packed_buffer));
       prepacked_weights->buffer_sizes_.push_back(packed_size);
       is_packed = true;
-
-      // Pack Shape (Buffer 1)
-      auto dims = shape.GetDims();
-      size_t rank_bytes = sizeof(int64_t);
-      size_t dims_bytes = dims.size() * sizeof(int64_t);
-      size_t shape_size = rank_bytes + dims_bytes;
-
-      auto shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, shape_size);
-      int64_t* buffer_data = static_cast<int64_t*>(shape_buffer.get());
-      *buffer_data = static_cast<int64_t>(dims.size());
-      memcpy(buffer_data + 1, dims.data(), dims_bytes);
-
-      prepacked_weights->buffers_.push_back(std::move(shape_buffer));
-      prepacked_weights->buffer_sizes_.push_back(shape_size);
+      PushPrePackedShapeBuffer(shape, {}, alloc, *prepacked_weights);
 
       // Try build MLAS Q4 cache if scales are available
       if (use_mlas_q4_gemm_) {
@@ -827,25 +817,33 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
     return Status::OK();
   };
 
-  // QNBit-packed layout: [packed experts, shape buffer ending with kQNBitPackedLayoutTag].
+  // QNBit-packed layout: [packed experts, shape buffer = rank, dims, kQNBitPackedLayoutTag, compute type].
   if ((input_idx == 2 || input_idx == 5) && prepacked_buffers.size() == 2 && prepacked_buffer_sizes.size() == 2 &&
-      prepacked_buffer_sizes[1] >= 5 * sizeof(int64_t)) {
+      prepacked_buffer_sizes[1] >= 6 * sizeof(int64_t)) {
     const int64_t* buffer_data = static_cast<const int64_t*>(prepacked_buffers[1].get());
     if (buffer_data[0] == 3 && buffer_data[4] == kQNBitPackedLayoutTag) {
       ORT_RETURN_IF_NOT(use_qnbit_gemm_, "QMoE prepacked weights use the QNBit layout but this kernel has it disabled.");
+      // The packed bytes depend on the compute type (block sums, folded scales), and equal sizes do
+      // not imply equal layouts, so a buffer packed under another ORT_QMOE_CPU_QNBIT_GEMM setting or
+      // saved by another build must be rejected rather than silently used.
+      ORT_RETURN_IF_NOT(buffer_data[5] == static_cast<int64_t>(qnbit_compute_type_),
+                        "QMoE prepacked weights were packed for QNBit compute type ", buffer_data[5],
+                        " but this kernel uses ", static_cast<int64_t>(qnbit_compute_type_), ".");
       TensorShape& shape = (input_idx == 2) ? fc1_shape_ : fc2_shape_;
       ORT_RETURN_IF_ERROR(parse_shape(shape));
       const int64_t num_experts = shape[0];
       const int64_t rows = shape[1];
       const int64_t cols = shape[2] * (8 / expert_weight_bits_);
       const Tensor* scales_tensor = nullptr;
-      ORT_RETURN_IF_NOT(QNBitGemmEligible(input_idx, num_experts, rows, cols, &scales_tensor),
+      size_t packed_size_per_expert = 0;
+      ORT_RETURN_IF_NOT(QNBitGemmEligible(input_idx, num_experts, rows, cols, &scales_tensor, &packed_size_per_expert),
                         "QMoE prepacked weights use the QNBit layout but the node is not eligible for it.");
       QNBitPackedExperts& packed = (input_idx == 2) ? qnbit_fc1_ : qnbit_fc2_;
-      // Already initialized when this kernel packed the weights itself (the session-state prepack
-      // pass always runs PrePack before handing the buffers back here).
+      // Skip re-initialization (and the fp16 scales re-conversion) when this kernel already packed
+      // the weights itself: the session-state prepack pass always runs PrePack before handing the
+      // buffers back here.
       if (packed.packed_size_per_expert == 0) {
-        ORT_RETURN_IF_ERROR(InitQNBitPacked(packed, num_experts, rows, cols, *scales_tensor,
+        ORT_RETURN_IF_ERROR(InitQNBitPacked(packed, packed_size_per_expert, num_experts, rows, cols, *scales_tensor,
                                             Info().GetAllocator(OrtMemType::OrtMemTypeDefault)));
       }
       ORT_RETURN_IF_NOT(prepacked_buffer_sizes[0] == packed.packed_size_per_expert * static_cast<size_t>(num_experts),
@@ -975,8 +973,9 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
 
 template <typename T>
 bool QMoECPU<T>::QNBitGemmEligible(int input_idx, int64_t num_experts, int64_t rows, int64_t cols,
-                                   const Tensor** scales_out) const {
+                                   const Tensor** scales_out, size_t* packed_size_per_expert_out) const {
   *scales_out = nullptr;
+  *packed_size_per_expert_out = 0;
   if (!use_qnbit_gemm_ || (input_idx != 2 && input_idx != 5)) {
     return false;
   }
@@ -1012,17 +1011,14 @@ bool QMoECPU<T>::QNBitGemmEligible(int input_idx, int64_t num_experts, int64_t r
   }
 
   *scales_out = scales_tensor;
+  *packed_size_per_expert_out = packed_size;
   return true;
 }
 
 template <typename T>
-Status QMoECPU<T>::InitQNBitPacked(QNBitPackedExperts& packed, int64_t num_experts, int64_t rows, int64_t cols,
-                                   const Tensor& scales, AllocatorPtr alloc) {
-  packed.packed_size_per_expert = MlasQNBitGemmPackQuantBDataSize(
-      static_cast<size_t>(rows), static_cast<size_t>(cols), static_cast<size_t>(expert_weight_bits_),
-      static_cast<size_t>(block_size_), /*HasZeroPoint*/ false, qnbit_compute_type_,
-      &mlas_backend_kernel_selector_config_);
-  ORT_RETURN_IF(packed.packed_size_per_expert == 0, "MLAS QNBit GEMM packing is not available for this expert shape.");
+Status QMoECPU<T>::InitQNBitPacked(QNBitPackedExperts& packed, size_t packed_size_per_expert, int64_t num_experts,
+                                   int64_t rows, int64_t cols, const Tensor& scales, AllocatorPtr alloc) {
+  packed.packed_size_per_expert = packed_size_per_expert;
   packed.scales_packed = MlasQNBitGemmScalesPacked(
       static_cast<size_t>(cols), static_cast<size_t>(expert_weight_bits_), static_cast<size_t>(block_size_),
       qnbit_compute_type_, /*HasZeroPoint*/ false, &mlas_backend_kernel_selector_config_);
@@ -1049,12 +1045,13 @@ Status QMoECPU<T>::PrePackQNBitExperts(const Tensor& tensor, int input_idx, Allo
   const int64_t cols = shape[2] * pack_unit;
 
   const Tensor* scales_tensor = nullptr;
-  if (!QNBitGemmEligible(input_idx, num_experts, rows, cols, &scales_tensor)) {
+  size_t packed_size_per_expert = 0;
+  if (!QNBitGemmEligible(input_idx, num_experts, rows, cols, &scales_tensor, &packed_size_per_expert)) {
     return Status::OK();
   }
 
   QNBitPackedExperts& packed = (input_idx == 2) ? qnbit_fc1_ : qnbit_fc2_;
-  ORT_RETURN_IF_ERROR(InitQNBitPacked(packed, num_experts, rows, cols, *scales_tensor, alloc));
+  ORT_RETURN_IF_ERROR(InitQNBitPacked(packed, packed_size_per_expert, num_experts, rows, cols, *scales_tensor, alloc));
 
   const float* scales_fp32 = nullptr;
   if constexpr (std::is_same_v<T, MLFloat16>) {
@@ -1085,11 +1082,14 @@ Status QMoECPU<T>::PrePackQNBitExperts(const Tensor& tensor, int input_idx, Allo
 
   // Experts pack independently into disjoint regions, so spread them over a load-time pool
   // (the session pool is not reachable from PrePack; same approach as MatMulNBits::PrePack).
-  OrtThreadPoolParams pack_tp_params;
-  pack_tp_params.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
-  pack_tp_params.allow_spinning = false;
-  pack_tp_params.auto_set_affinity = false;
-  auto pack_tp = concurrency::CreateThreadPool(&Env::Default(), pack_tp_params, concurrency::ThreadPoolType::INTRA_OP);
+  std::unique_ptr<concurrency::ThreadPool> pack_tp;
+  if (num_experts > 1) {
+    OrtThreadPoolParams pack_tp_params;
+    pack_tp_params.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
+    pack_tp_params.allow_spinning = false;
+    pack_tp_params.auto_set_affinity = false;
+    pack_tp = concurrency::CreateThreadPool(&Env::Default(), pack_tp_params, concurrency::ThreadPoolType::INTRA_OP);
+  }
   concurrency::ThreadPool::TrySimpleParallelFor(pack_tp.get(), narrow<int>(num_experts), [&](std::ptrdiff_t e) {
     std::byte* expert_dst = dst + static_cast<size_t>(e) * per_expert;
     const float* expert_scales = scales_fp32 + static_cast<size_t>(e) * scale_stride;
@@ -1113,17 +1113,11 @@ Status QMoECPU<T>::PrePackQNBitExperts(const Tensor& tensor, int input_idx, Allo
     prepacked_weights->buffers_.push_back(std::move(packed_buffer));
     prepacked_weights->buffer_sizes_.push_back(total_packed_size);
 
-    // Shape buffer: rank, dims, then the layout tag so UseSharedPrePackedBuffers can tell this
-    // layout apart from the legacy unpacked-transposed one (which stores rank + dims only).
-    auto dims = shape.GetDims();
-    const size_t shape_size = (2 + dims.size()) * sizeof(int64_t);
-    auto shape_buffer = IAllocator::MakeUniquePtr<void>(alloc, shape_size);
-    int64_t* buffer_data = static_cast<int64_t*>(shape_buffer.get());
-    buffer_data[0] = static_cast<int64_t>(dims.size());
-    memcpy(buffer_data + 1, dims.data(), dims.size() * sizeof(int64_t));
-    buffer_data[1 + dims.size()] = kQNBitPackedLayoutTag;
-    prepacked_weights->buffers_.push_back(std::move(shape_buffer));
-    prepacked_weights->buffer_sizes_.push_back(shape_size);
+    // The layout tag lets UseSharedPrePackedBuffers tell this layout apart from the legacy
+    // unpacked-transposed one (rank + dims only); the compute type guards against a buffer
+    // packed for different kernels.
+    const int64_t trailer[] = {kQNBitPackedLayoutTag, static_cast<int64_t>(qnbit_compute_type_)};
+    PushPrePackedShapeBuffer(shape, trailer, alloc, *prepacked_weights);
   } else {
     packed.packed = std::move(packed_buffer);
   }
@@ -1568,18 +1562,24 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
     qnbit_workspace_ptr = IAllocator::MakeUniquePtr<std::byte>(allocator, static_cast<size_t>(num_expert_threads) * qnbit_workspace_per_thread, true);
     qnbit_workspace = qnbit_workspace_ptr.get();
   }
-  auto run_qnbit_gemm = [&](const QNBitPackedExperts& packed, int64_t expert_idx,
+  // fp32 [E, N, K/block] scales for the kernels: the scales input itself for T == float, the copy
+  // converted at PrePack for T == MLFloat16.
+  const float* qnbit_fc1_scales = nullptr;
+  const float* qnbit_fc2_scales = nullptr;
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    qnbit_fc1_scales = qnbit_fc1_.scales_fp32.get();
+    qnbit_fc2_scales = qnbit_fc2_.scales_fp32.get();
+  } else {
+    qnbit_fc1_scales = fc1_scales_data;
+    qnbit_fc2_scales = fc2_scales_data;
+  }
+  auto run_qnbit_gemm = [&](const QNBitPackedExperts& packed, const float* scales_base, int64_t expert_idx,
                             const float* A, size_t M, size_t N, size_t K,
-                            const T* expert_scales, const float* bias, float* C,
+                            const float* bias, float* C,
                             std::byte* gemm_workspace, concurrency::ThreadPool* gemm_tp) {
-    const float* scales = nullptr;
-    if (!packed.scales_packed) {
-      if constexpr (std::is_same_v<T, MLFloat16>) {
-        scales = packed.scales_fp32.get() + static_cast<size_t>(expert_idx) * N * (K / qnbit_blk);
-      } else {
-        scales = reinterpret_cast<const float*>(expert_scales);
-      }
-    }
+    const float* scales = packed.scales_packed
+                              ? nullptr
+                              : scales_base + static_cast<size_t>(expert_idx) * N * (K / qnbit_blk);
     const std::byte* packed_b = static_cast<const std::byte*>(packed.packed.get()) +
                                 static_cast<size_t>(expert_idx) * packed.packed_size_per_expert;
 
@@ -1728,7 +1728,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
           }
           fc1_bias_float = thread_bias1_buffer;
         }
-        run_qnbit_gemm(qnbit_fc1_, expert_idx, A1, m, n, k, fc1_scales_ptr, fc1_bias_float, C1, thread_qnbit_workspace, inner_tp);
+        run_qnbit_gemm(qnbit_fc1_, qnbit_fc1_scales, expert_idx, A1, m, n, k, fc1_bias_float, C1, thread_qnbit_workspace, inner_tp);
         goto fc1_gemm_done;
       }
 
@@ -1987,7 +1987,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
           }
           fc2_bias_float = thread_bias2_buffer;
         }
-        run_qnbit_gemm(qnbit_fc2_, expert_idx, A2, m2, n2, k2, fc2_scales_ptr, fc2_bias_float, C2, thread_qnbit_workspace, inner_tp);
+        run_qnbit_gemm(qnbit_fc2_, qnbit_fc2_scales, expert_idx, A2, m2, n2, k2, fc2_bias_float, C2, thread_qnbit_workspace, inner_tp);
         fc2_bias_added_by_mlas = true;
         goto fc2_gemm_done;
       }

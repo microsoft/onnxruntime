@@ -2346,7 +2346,12 @@ TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Fp16) {
 }
 
 TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU) {
-  // 8-bit has no fp32-activation QNBit kernel, so this runs the int8-activation kernels where available.
+  // 8-bit stays on the dequantize path by default (no fp32-activation QNBit kernel).
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8}, 0.01f);
+}
+
+TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU_Int8Activations) {
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_QMOE_CPU_QNBIT_GEMM", "int8"}}};
   RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8}, 0.05f);
 }
 
