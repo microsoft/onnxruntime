@@ -1240,6 +1240,204 @@ TEST_F(GraphTransformationTests, LayerNormFusionCurrentOpsetTest) {
                                         ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
+TEST_F(GraphTransformationTests, LayerNormFusionFusesScaleFirstOperandOrder) {
+  // Positive operand-order test: with a rank-1 input both Mul inputs share the same rank, so
+  // rank-based scale selection picks the wrong operand (the last matching input). Mul(scale, div_out)
+  // must fuse with the scale initializer - not the normalized Div output - as the LayerNormalization scale.
+  std::string scale_name;
+  std::string bias_name;
+  auto build_test_case = [&scale_name, &bias_name](ModelTestBuilder& builder) {
+    constexpr int64_t hidden_size = 64;
+    auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{{hidden_size}});
+    auto* gamma = builder.MakeInitializer<float>({hidden_size}, -1.0f, 1.0f);
+    auto* beta = builder.MakeInitializer<float>({hidden_size}, -0.5f, 0.5f);
+    auto* two = builder.MakeInitializer<float>({}, {2.0f});
+    auto* eps = builder.MakeInitializer<float>({}, {1e-5f});
+    scale_name = gamma->Name();
+    bias_name = beta->Name();
+
+    auto* mean1_out = builder.MakeIntermediate();
+    auto* sub_out = builder.MakeIntermediate();
+    auto* pow_out = builder.MakeIntermediate();
+    auto* mean2_out = builder.MakeIntermediate();
+    auto* add_eps_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* mul_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input}, {mean1_out}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Sub", {input, mean1_out}, {sub_out});
+    builder.AddNode("Pow", {sub_out, two}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {mean2_out}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean2_out, eps}, {add_eps_out});
+    builder.AddNode("Sqrt", {add_eps_out}, {sqrt_out});
+    builder.AddNode("Div", {sub_out, sqrt_out}, {div_out});
+    // Scale and bias as the FIRST operands.
+    builder.AddNode("Mul", {gamma, div_out}, {mul_out});
+    builder.AddNode("Add", {beta, mul_out}, {output});
+  };
+
+  auto post_graph_checker = [&scale_name, &bias_name](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("LayerNormalization") != op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.at("LayerNormalization") == 1);
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "LayerNormalization") {
+        // The fused node must use the scale/bias initializers, not the Div/Mul outputs.
+        TEST_RETURN_IF_NOT(node.InputDefs().size() == 3);
+        TEST_RETURN_IF_NOT(node.InputDefs()[1]->Name() == scale_name);
+        TEST_RETURN_IF_NOT(node.InputDefs()[2]->Name() == bias_name);
+      }
+    }
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level1),
+      TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionRejectsExpandingScaleBiasBroadcast) {
+  // Negative expanding-broadcast test: Mul([1, 1], [2]) broadcasts the normalized [1, 1] input
+  // to [1, 2], but LayerNormalization preserves the input shape, so this pattern must NOT fuse.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{{1, 1}});
+    auto* gamma = builder.MakeInitializer<float>({2}, {1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({2}, {0.0f, 0.0f});
+    auto* two = builder.MakeInitializer<float>({}, {2.0f});
+    auto* eps = builder.MakeInitializer<float>({}, {1e-5f});
+
+    auto* mean1_out = builder.MakeIntermediate();
+    auto* sub_out = builder.MakeIntermediate();
+    auto* pow_out = builder.MakeIntermediate();
+    auto* mean2_out = builder.MakeIntermediate();
+    auto* add_eps_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* mul_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{{1, 2}});
+
+    builder.AddNode("ReduceMean", {input}, {mean1_out}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Sub", {input, mean1_out}, {sub_out});
+    builder.AddNode("Pow", {sub_out, two}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {mean2_out}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean2_out, eps}, {add_eps_out});
+    builder.AddNode("Sqrt", {add_eps_out}, {sqrt_out});
+    builder.AddNode("Div", {sub_out, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, gamma}, {mul_out});
+    builder.AddNode("Add", {mul_out, beta}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("LayerNormalization") == op_to_count.end());
+    const auto mul_it = op_to_count.find("Mul");
+    TEST_RETURN_IF_NOT(mul_it != op_to_count.end() && mul_it->second == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level1),
+      TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionFusesMatchingSymbolicDims) {
+  // Positive symbolic-dim test: the input's leading dim is symbolic ("batch") while scale/bias
+  // are concrete [64]. The trailing dims are provably equal, so the pattern must still fuse.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeSymbolicInput<float>({std::string("batch"), int64_t(64)});
+    auto* gamma = builder.MakeInitializer<float>({64}, -1.0f, 1.0f);
+    auto* beta = builder.MakeInitializer<float>({64}, -0.5f, 0.5f);
+    auto* two = builder.MakeInitializer<float>({}, {2.0f});
+    auto* eps = builder.MakeInitializer<float>({}, {1e-5f});
+
+    auto* mean1_out = builder.MakeIntermediate();
+    auto* sub_out = builder.MakeIntermediate();
+    auto* pow_out = builder.MakeIntermediate();
+    auto* mean2_out = builder.MakeIntermediate();
+    auto* add_eps_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* mul_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input}, {mean1_out}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Sub", {input, mean1_out}, {sub_out});
+    builder.AddNode("Pow", {sub_out, two}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {mean2_out}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean2_out, eps}, {add_eps_out});
+    builder.AddNode("Sqrt", {add_eps_out}, {sqrt_out});
+    builder.AddNode("Div", {sub_out, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, gamma}, {mul_out});
+    builder.AddNode("Add", {mul_out, beta}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("LayerNormalization") != op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.at("LayerNormalization") == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level1),
+      TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, LayerNormFusionRejectsUnprovenSymbolicBroadcast) {
+  // Negative symbolic-dim test: scale/bias [2] against input [N] (symbolic). N == 1 is a valid
+  // runtime shape where Mul would expand the result to [2] while LayerNormalization preserves
+  // the input shape, so this pattern must NOT fuse.
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeSymbolicInput<float>({std::string("N")});
+    auto* gamma = builder.MakeInitializer<float>({2}, {1.0f, 1.0f});
+    auto* beta = builder.MakeInitializer<float>({2}, {0.0f, 0.0f});
+    auto* two = builder.MakeInitializer<float>({}, {2.0f});
+    auto* eps = builder.MakeInitializer<float>({}, {1e-5f});
+
+    auto* mean1_out = builder.MakeIntermediate();
+    auto* sub_out = builder.MakeIntermediate();
+    auto* pow_out = builder.MakeIntermediate();
+    auto* mean2_out = builder.MakeIntermediate();
+    auto* add_eps_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* mul_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input}, {mean1_out}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Sub", {input, mean1_out}, {sub_out});
+    builder.AddNode("Pow", {sub_out, two}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {mean2_out}).AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {mean2_out, eps}, {add_eps_out});
+    builder.AddNode("Sqrt", {add_eps_out}, {sqrt_out});
+    builder.AddNode("Div", {sub_out, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, gamma}, {mul_out});
+    builder.AddNode("Add", {mul_out, beta}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.find("LayerNormalization") == op_to_count.end());
+    const auto mul_it = op_to_count.find("Mul");
+    TEST_RETURN_IF_NOT(mul_it != op_to_count.end() && mul_it->second == 1);
+    return Status::OK();
+  };
+
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level1),
+      TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+}
+
 TEST_F(GraphTransformationTests, SkipLayerNormFusionCurrentOpsetTest) {
   // SkipLayerNorm pattern: Add(input, skip) -> LayerNormalization(gamma, beta)
   int current_opset = GetCurrentOnnxOpset();
