@@ -64,7 +64,7 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
   // block-wise 4/8-bit experts without zero points; each expert's [rows, cols] matrix is packed
   // independently and stored back to back.
   struct QNBitPackedExperts {
-    IAllocatorUniquePtr<void> packed;        // num_experts * packed_size_per_expert bytes
+    IAllocatorUniquePtr<void> packed;  // num_experts * packed_size_per_expert bytes
     size_t packed_size_per_expert{0};
     IAllocatorUniquePtr<float> scales_fp32;  // fp32 copy of the [E, rows, cols/block_size] scales (T == MLFloat16 only)
     bool scales_packed{false};               // scales are folded into `packed`; pass no QuantBScale at compute time
