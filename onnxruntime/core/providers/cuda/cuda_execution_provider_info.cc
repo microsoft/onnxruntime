@@ -38,6 +38,7 @@ constexpr const char* kUseEPLevelUnifiedStream = "use_ep_level_unified_stream";
 constexpr const char* kUseTF32 = "use_tf32";
 constexpr const char* kFuseConvBias = "fuse_conv_bias";
 constexpr const char* kSdpaKernel = "sdpa_kernel";
+constexpr const char* kEnableHostPageableGather = "enable_host_pageable_gather";
 
 }  // namespace provider_option_names
 }  // namespace cuda
@@ -131,6 +132,8 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
           .AddAssignmentToReference(cuda::provider_option_names::kUseEPLevelUnifiedStream, info.use_ep_level_unified_stream)
           .AddAssignmentToReference(cuda::provider_option_names::kUseTF32, info.use_tf32)
           .AddAssignmentToReference(cuda::provider_option_names::kSdpaKernel, info.sdpa_kernel)
+          .AddAssignmentToReference(cuda::provider_option_names::kEnableHostPageableGather,
+                                    info.enable_host_pageable_gather)
           .AddAssignmentToReference(cuda::provider_option_names::kFuseConvBias, info.fuse_conv_bias)
           .AddValueParser(
               cuda::provider_option_names::kTunableOpEnable,
@@ -187,6 +190,8 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kUseTF32, MakeStringWithClassicLocale(info.use_tf32)},
       {cuda::provider_option_names::kSdpaKernel, MakeStringWithClassicLocale(info.sdpa_kernel)},
       {cuda::provider_option_names::kFuseConvBias, MakeStringWithClassicLocale(info.fuse_conv_bias)},
+      {cuda::provider_option_names::kEnableHostPageableGather,
+       MakeStringWithClassicLocale(info.enable_host_pageable_gather)},
   };
 
   return options;
@@ -212,6 +217,8 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
       {cuda::provider_option_names::kUseTF32, MakeStringWithClassicLocale(info.use_tf32)},
       {cuda::provider_option_names::kFuseConvBias, MakeStringWithClassicLocale(info.fuse_conv_bias)},
       {cuda::provider_option_names::kSdpaKernel, MakeStringWithClassicLocale(info.sdpa_kernel)},
+      {cuda::provider_option_names::kEnableHostPageableGather,
+       MakeStringWithClassicLocale(info.enable_host_pageable_gather)},
   };
 
   return options;
