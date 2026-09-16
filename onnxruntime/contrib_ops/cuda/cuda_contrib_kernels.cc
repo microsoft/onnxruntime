@@ -276,6 +276,42 @@ class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Int4x2, float, int64_t, GatherBlockQu
 class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Int4x2, MLFloat16, int64_t, GatherBlockQuantized);
 class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Int4x2, BFloat16, int64_t, GatherBlockQuantized);
 
+#if !defined(DISABLE_FLOAT8_TYPES)
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, float, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, float, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, MLFloat16, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, MLFloat16, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, BFloat16, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, BFloat16, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, float, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, float, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, MLFloat16, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, MLFloat16, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, BFloat16, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, BFloat16, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, float, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, float, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, MLFloat16, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, MLFloat16, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, BFloat16, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, BFloat16, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, float, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, float, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, MLFloat16, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, MLFloat16, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, BFloat16, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, BFloat16, int64_t, GatherBlockQuantized);
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, float, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, float, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, MLFloat16, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, MLFloat16, int64_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, BFloat16, int32_t, GatherBlockQuantized);
+class CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, BFloat16, int64_t, GatherBlockQuantized);
+#endif  // !defined(DISABLE_FLOAT4_TYPES)
+
 #ifdef ENABLE_ATEN
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kPytorchAtenDomain, 1, ATen);
 #endif
@@ -583,6 +619,40 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, UInt4x2, BFloat16, int64_t, GatherBlockQuantized)>,
       BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Int4x2, BFloat16, int32_t, GatherBlockQuantized)>,
       BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Int4x2, BFloat16, int64_t, GatherBlockQuantized)>,
+#if !defined(DISABLE_FLOAT8_TYPES)
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, float, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, float, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, MLFloat16, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, MLFloat16, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, BFloat16, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FN, BFloat16, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, float, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, float, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, MLFloat16, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, MLFloat16, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, BFloat16, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E4M3FNUZ, BFloat16, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, float, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, float, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, MLFloat16, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, MLFloat16, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, BFloat16, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2, BFloat16, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, float, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, float, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, MLFloat16, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, MLFloat16, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, BFloat16, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float8E5M2FNUZ, BFloat16, int64_t, GatherBlockQuantized)>,
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+#if !defined(DISABLE_FLOAT4_TYPES)
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, float, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, float, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, MLFloat16, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, MLFloat16, int64_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, BFloat16, int32_t, GatherBlockQuantized)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_THREE_TYPED_CLASS_NAME(1, Float4E2M1x2, BFloat16, int64_t, GatherBlockQuantized)>,
+#endif  // !defined(DISABLE_FLOAT4_TYPES)
 
 #ifdef ENABLE_ATEN
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCudaExecutionProvider, kPytorchAtenDomain, 1, ATen)>,

@@ -1057,6 +1057,7 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_P
   set(onnxruntime_test_providers_cuda_plugin_internal_test_src
     "${TEST_SRC_DIR}/providers/cuda/test_cases/allocator_cuda_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_utils_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/group_query_attention_workspace_header_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/packed_attention_workspace_header_test.cc"
     "${TEST_SRC_DIR}/providers/cuda/test_cases/reduction_functions_test.cc"
   )
@@ -1566,7 +1567,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/quantize.cc
       ${BENCHMARK_DIR}/reduceminmax.cc
       ${BENCHMARK_DIR}/layer_normalization.cc
-      $<$<BOOL:${onnxruntime_USE_WEBGPU}>:${BENCHMARK_DIR}/paged_attention.cc>)
+      $<$<OR:$<BOOL:${onnxruntime_USE_WEBGPU}>,$<BOOL:${onnxruntime_USE_CUDA}>>:${BENCHMARK_DIR}/paged_attention.cc>)
     target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
     target_compile_definitions(onnxruntime_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     target_compile_definitions(onnxruntime_benchmark PRIVATE ${mlas_private_compile_definitions})

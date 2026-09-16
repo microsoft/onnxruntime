@@ -7,9 +7,11 @@
 #param use_subgroup
 #param vec_size
 // Mirrors ActivationKind; static_asserts in im2col_matmul.cc enforce these values.
-// 0=None, 1=Relu, 2=Sigmoid, 3=Clip, 4=HardSigmoid, 5=LeakyRelu, 6=Tanh.
+// 0=None, 1=Relu, 2=Sigmoid, 3=Clip, 4=HardSigmoid, 5=LeakyRelu, 6=Tanh, 7=QuickGelu.
 // Keep branches synchronized with IsActivationSupported().
 #param activation_kind
+// QuickGelu only: alpha 1 drops the multiply, and the alpha uniform is not emitted.
+#param quick_gelu_unit_alpha
 
 #use .getByOffset .setByOffset
 
@@ -158,6 +160,12 @@ $MAIN {
     output_data = select(output_element_t(uniforms.activation_param_0) * output_data, output_data, output_data >= output_element_t(0));
 #elif activation_kind == 6
     output_data = tanh(output_data);
+#elif activation_kind == 7
+#if quick_gelu_unit_alpha
+    output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-output_data)));
+#else
+    output_data = output_data * (output_element_t(1) / (output_element_t(1) + exp(-(output_element_t(uniforms.activation_param_0) * output_data))));
+#endif
 #endif
     write_output(batch, m_base + m_idx, n_base, output_data);
   }
