@@ -68,11 +68,20 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
     size_t packed_size_per_expert{0};
     IAllocatorUniquePtr<float> scales_fp32;  // fp32 copy of the [E, rows, cols/block_size] scales (T == MLFloat16 only)
     bool scales_packed{false};               // scales are folded into `packed`; pass no QuantBScale at compute time
+    bool has_zero_point{false};              // packed with the constant zero points; pass the expert's slice at compute time
+  };
+  // Result of QNBitGemmEligible. `ineligible_reason` is set only when a block-wise node misses the
+  // path for a reason worth surfacing (row-wise scales and a disabled path leave it null).
+  struct QNBitEligibility {
+    const Tensor* scales{nullptr};
+    const Tensor* zero_points{nullptr};  // null when the node has no zero points input
+    size_t packed_size_per_expert{0};
+    const char* ineligible_reason{nullptr};
   };
   bool QNBitGemmEligible(int input_idx, int64_t num_experts, int64_t rows, int64_t cols,
-                         const Tensor** scales_out, size_t* packed_size_per_expert_out) const;
-  Status InitQNBitPacked(QNBitPackedExperts& packed, size_t packed_size_per_expert, int64_t num_experts,
-                         int64_t rows, int64_t cols, const Tensor& scales, AllocatorPtr alloc);
+                         QNBitEligibility& out) const;
+  Status InitQNBitPacked(QNBitPackedExperts& packed, const QNBitEligibility& eligibility, int64_t num_experts,
+                         int64_t rows, int64_t cols, AllocatorPtr alloc);
   Status PrePackQNBitExperts(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                              /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights);
 
@@ -92,7 +101,9 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
   IAllocatorUniquePtr<void> packed_fc1_mlas_cache_;
   IAllocatorUniquePtr<void> packed_fc2_mlas_cache_;
 
+  int64_t accuracy_level_{0};
   bool use_qnbit_gemm_{true};
+  bool qnbit_fallback_logged_{false};
   MLAS_QNBIT_GEMM_COMPUTE_TYPE qnbit_compute_type_{SQNBIT_CompFp32};
   QNBitPackedExperts qnbit_fc1_;
   QNBitPackedExperts qnbit_fc2_;

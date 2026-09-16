@@ -1505,6 +1505,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("activation_beta",
               "Beta parameter used in activation function.",
               AttributeProto::FLOAT, 0.0f)
+        .Attr("accuracy_level",
+              "Minimum accuracy level of the expert GEMMs, with the MatMulNBits meaning: 0 (default) or 1 keeps "
+              "fp32 activations; 4 allows int8 activations (int8 dot-product kernels) for block-wise 4/8-bit "
+              "experts on CPU. Other values are treated as 0.",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("block_size",
               "Size of each quantization block along the K (input feature) dimension. "
               "Must be power of two and ≥ 16 (e.g., 16, 32, 64, 128). "

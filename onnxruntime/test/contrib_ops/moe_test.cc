@@ -2127,11 +2127,12 @@ TEST(MoETest, QMoETest_CPU_Int4_MLAS) {
 #endif
 }
 
-// Block-wise 4/8-bit SwiGLU QMoE on CPU with non-trivial weights. Block-wise symmetric experts
-// without zero points take the MLAS QNBit GEMM (MatMulNBits kernel) path; the expected output is an
-// fp32 reference computed here from the dequantized weights and the kernel's routing (softmax over
-// the top-k router logits). Weights, scales and biases are constant initializers so that PrePack runs;
-// as graph inputs the kernel would silently fall back to the dequantize+SGEMM path.
+// Block-wise 4/8-bit SwiGLU QMoE on CPU with non-trivial weights. Block-wise experts with constant
+// scales (and, if present, constant zero points) take the MLAS QNBit GEMM (MatMulNBits kernel) path;
+// the expected output is an fp32 reference computed here from the dequantized weights and the
+// kernel's routing (softmax over the top-k router logits). Weights, scales, zero points and biases
+// are constant initializers so that PrePack runs; as graph inputs the kernel would fall back to the
+// dequantize+SGEMM path.
 namespace {
 struct QMoEBlockWiseCase {
   int num_rows;
@@ -2142,6 +2143,8 @@ struct QMoEBlockWiseCase {
   int top_k;
   bool with_bias;
   int bits{4};
+  bool with_zero_points{false};
+  int accuracy_level{0};
 };
 
 template <typename T>
@@ -2154,6 +2157,7 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
   const int fc2_blocks = inter_size / block_size;
   const int pack = 8 / bits;
   const float code_zero = (bits == 4) ? 8.0f : 128.0f;
+  const int code_max = (1 << bits) - 1;
   constexpr bool is_fp16 = std::is_same_v<T, MLFloat16>;
 
   uint32_t state = 0x12345678u;
@@ -2189,6 +2193,28 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
   };
   const std::vector<uint8_t> fc1_weights = pack_codes(fc1_codes);
   const std::vector<uint8_t> fc2_weights = pack_codes(fc2_codes);
+  // Zero points: one code per block, stored [E, N, ceil(blocks/pack)] with the lower block in the
+  // low bits (the MatMulNBits layout); kept away from the code range ends so weights stay signed.
+  std::vector<uint8_t> fc1_zp_codes, fc2_zp_codes, fc1_zero_points, fc2_zero_points;
+  if (c.with_zero_points) {
+    fc1_zp_codes.resize(static_cast<size_t>(num_experts * fc1_rows * fc1_blocks));
+    fc2_zp_codes.resize(static_cast<size_t>(num_experts * hidden_size * fc2_blocks));
+    for (auto& v : fc1_zp_codes) v = static_cast<uint8_t>(1 + static_cast<int>(next_uniform() * (code_max - 2)));
+    for (auto& v : fc2_zp_codes) v = static_cast<uint8_t>(1 + static_cast<int>(next_uniform() * (code_max - 2)));
+    auto pack_zero_points = [pack, bits](const std::vector<uint8_t>& codes, int rows_total, int blocks) {
+      const int packed_blocks = (blocks + pack - 1) / pack;
+      std::vector<uint8_t> packed(static_cast<size_t>(rows_total * packed_blocks), 0);
+      for (int r = 0; r < rows_total; ++r) {
+        for (int b = 0; b < blocks; ++b) {
+          packed[static_cast<size_t>(r * packed_blocks + b / pack)] |=
+              static_cast<uint8_t>(codes[static_cast<size_t>(r * blocks + b)] << ((b % pack) * bits));
+        }
+      }
+      return packed;
+    };
+    fc1_zero_points = pack_zero_points(fc1_zp_codes, num_experts * fc1_rows, fc1_blocks);
+    fc2_zero_points = pack_zero_points(fc2_zp_codes, num_experts * hidden_size, fc2_blocks);
+  }
   std::vector<float> fc1_scales(static_cast<size_t>(num_experts * fc1_rows * fc1_blocks));
   std::vector<float> fc2_scales(static_cast<size_t>(num_experts * hidden_size * fc2_blocks));
   // Signed scales, as produced by MatMulNBits-style quantizers; scaled so the weight range is
@@ -2204,10 +2230,12 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
     for (auto& v : fc2_bias) v = round_to_t(0.2f * next_uniform() - 0.1f);
   }
 
-  auto dequant = [&](const std::vector<uint8_t>& codes, const std::vector<float>& scales, int e, int n, int k,
-                     int rows, int cols, int blocks) {
-    const float scale = scales[static_cast<size_t>((e * rows + n) * blocks + k / block_size)];
-    return (static_cast<float>(codes[static_cast<size_t>((e * rows + n) * cols + k)]) - code_zero) * scale;
+  auto dequant = [&](const std::vector<uint8_t>& codes, const std::vector<float>& scales,
+                     const std::vector<uint8_t>& zp_codes, int e, int n, int k, int rows, int cols, int blocks) {
+    const size_t block_index = static_cast<size_t>((e * rows + n) * blocks + k / block_size);
+    const float scale = scales[block_index];
+    const float zero = c.with_zero_points ? static_cast<float>(zp_codes[block_index]) : code_zero;
+    return (static_cast<float>(codes[static_cast<size_t>((e * rows + n) * cols + k)]) - zero) * scale;
   };
 
   std::vector<float> expected(static_cast<size_t>(num_rows * hidden_size), 0.0f);
@@ -2229,7 +2257,7 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
       std::vector<float> h(static_cast<size_t>(fc1_rows));
       for (int n = 0; n < fc1_rows; ++n) {
         float acc = c.with_bias ? fc1_bias[static_cast<size_t>(e * fc1_rows + n)] : 0.0f;
-        for (int k = 0; k < hidden_size; ++k) acc += x[k] * dequant(fc1_codes, fc1_scales, e, n, k, fc1_rows, hidden_size, fc1_blocks);
+        for (int k = 0; k < hidden_size; ++k) acc += x[k] * dequant(fc1_codes, fc1_scales, fc1_zp_codes, e, n, k, fc1_rows, hidden_size, fc1_blocks);
         h[n] = acc;
       }
       std::vector<float> a(static_cast<size_t>(inter_size));
@@ -2239,7 +2267,7 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
       }
       for (int n = 0; n < hidden_size; ++n) {
         float acc = c.with_bias ? fc2_bias[static_cast<size_t>(e * hidden_size + n)] : 0.0f;
-        for (int k = 0; k < inter_size; ++k) acc += a[k] * dequant(fc2_codes, fc2_scales, e, n, k, hidden_size, inter_size, fc2_blocks);
+        for (int k = 0; k < inter_size; ++k) acc += a[k] * dequant(fc2_codes, fc2_scales, fc2_zp_codes, e, n, k, hidden_size, inter_size, fc2_blocks);
         expected[static_cast<size_t>(t * hidden_size + n)] += w * acc;
       }
     }
@@ -2254,6 +2282,9 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
   tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   tester.AddAttribute<int64_t>("expert_weight_bits", bits);
   tester.AddAttribute<int64_t>("block_size", block_size);
+  if (c.accuracy_level != 0) {
+    tester.AddAttribute<int64_t>("accuracy_level", c.accuracy_level);
+  }
 
   auto add_t_input = [&](const char* name, std::vector<int64_t> dims, const std::vector<float>& values, bool is_initializer) {
     if constexpr (is_fp16) {
@@ -2277,6 +2308,13 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
     add_t_input("fc2_experts_bias", {num_experts, hidden_size}, fc2_bias, true);
   } else {
     tester.AddOptionalInputEdge<T>();
+  }
+  if (c.with_zero_points) {
+    tester.AddOptionalInputEdge<uint8_t>();  // fc3_experts_weights
+    tester.AddOptionalInputEdge<T>();        // fc3_scales
+    tester.AddOptionalInputEdge<T>();        // fc3_experts_bias
+    tester.AddInput<uint8_t>("fc1_zero_points", {num_experts, fc1_rows, (fc1_blocks + pack - 1) / pack}, fc1_zero_points, true);
+    tester.AddInput<uint8_t>("fc2_zero_points", {num_experts, hidden_size, (fc2_blocks + pack - 1) / pack}, fc2_zero_points, true);
   }
   if constexpr (is_fp16) {
     tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size}, ToFloat16(expected));
@@ -2356,8 +2394,21 @@ TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU_Int8Activations) {
 }
 
 TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Int8Activations) {
+  // accuracy_level=4 opts into int8 activations, as for MatMulNBits.
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 4, false, 4}, 0.05f);
+}
+
+TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_ZeroPoints) {
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 4, true}, 0.01f);
+}
+
+TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_ZeroPoints_Int8Activations) {
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 4, true, 4}, 0.05f);
+}
+
+TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU_ZeroPoints_Int8Activations) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_QMOE_CPU_QNBIT_GEMM", "int8"}}};
-  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true}, 0.05f);
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8, true}, 0.05f);
 }
 
 TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_SharedPrePackedWeights) {
