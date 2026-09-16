@@ -795,7 +795,7 @@ Status SessionState::PrepackConstantInitializedTensors(
   auto* intra_op_thread_pool = GetThreadPool();
   if (!should_cache_prepacked_weights_for_shared_initializers &&
       concurrency::ThreadPool::DegreeOfParallelism(intra_op_thread_pool) > 1 &&
-      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableParallelPrepack, "1") == "1") {
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableParallelPrepack, "0") == "1") {
     parallel_prepack_nodes.reserve(GetGraphViewer().NumberOfNodes());
     for (auto& node : GetGraphViewer().Nodes()) {
       if (is_parallel_prepack_candidate(node)) {

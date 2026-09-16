@@ -1292,6 +1292,32 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, SingleNodePrepackDoesNot
   EXPECT_EQ(parallel_prepack_test_state->PrePackCallCount(), 1U);
 }
 
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, OuterParallelPrepackIsDisabledByDefault) {
+  SessionOptions sess_options;
+
+  Model model("default_prepack", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "ConcurrentPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                      kernel_registry_manager));
+  EXPECT_FALSE(parallel_prepack_test_state->OuterParallelismObserved());
+  EXPECT_EQ(parallel_prepack_test_state->PrePackCallCount(), 4U);
+}
+
 // Pre-packing enabled + no shared initializers, however, we put all the pre-packs
 // in a session_state container for ownership.
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
