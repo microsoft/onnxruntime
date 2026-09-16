@@ -328,7 +328,7 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsWrongOutputCount) {
   GraphOptions options;
   options.output_count = 4;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "exactly 6 declared outputs");
+                       "output size 4 not in range [min=6, max=6]");
 }
 
 #endif  // ORT_NO_EXCEPTIONS
