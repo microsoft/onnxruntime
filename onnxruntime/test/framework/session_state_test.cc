@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <thread>
 #include <absl/base/config.h>
 
 #include "asserts.h"
@@ -841,6 +842,65 @@ class ConcurrentPrePackingTestOpKernel : public OpKernel {
   std::shared_ptr<ParallelPrepackTestState> state_;
 };
 
+// Coordinates a blocking PrePack() call with a test thread that raises the load-cancellation
+// flag while workers are still inside PrePack(), then releases them. This exercises the
+// post-join recheck in SessionState::PrepackConstantInitializedTensors, which is needed
+// because a worker's initial cancellation check can pass before the flag is set.
+class BlockingPrePackTestState {
+ public:
+  void EnterPrePack() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    ++entered_count_;
+    entered_condition_.notify_all();
+    release_condition_.wait(lock, [this]() { return released_; });
+  }
+
+  void WaitForEntered(size_t count) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    entered_condition_.wait_for(lock, std::chrono::seconds(5),
+                                [this, count]() { return entered_count_ >= count; });
+  }
+
+  void Release() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    released_ = true;
+    release_condition_.notify_all();
+  }
+
+ private:
+  std::mutex mutex_;
+  std::condition_variable entered_condition_;
+  std::condition_variable release_condition_;
+  size_t entered_count_{0};
+  bool released_{false};
+};
+
+class BlockingPrePackingTestOpKernel : public OpKernel {
+ public:
+  BlockingPrePackingTestOpKernel(const OpKernelInfo& info, std::shared_ptr<BlockingPrePackTestState> state)
+      : OpKernel(info), state_(std::move(state)) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
+
+    state_->EnterPrePack();
+    is_packed = true;
+    return Status::OK();
+  }
+
+ private:
+  std::shared_ptr<BlockingPrePackTestState> state_;
+};
+
 #if !defined(ORT_NO_EXCEPTIONS)
 class ThrowingPrePackingTestOpKernel : public OpKernel {
  public:
@@ -1041,6 +1101,11 @@ void RegisterPrePackingTestSchemaOnce() {
         .Input(0, "Input_0", "input 0", "tensor(float)")
         .Input(1, "Input_1", "input 1", "tensor(float)")
         .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+    ONNX_OPERATOR_SCHEMA(BlockingPrePackingTest)
+        .SetDoc("Faking a node whose PrePack blocks until released by the test")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
 #if !defined(ORT_NO_EXCEPTIONS)
     ONNX_OPERATOR_SCHEMA(ThrowingPrePackingTest)
         .SetDoc("Faking a throwing node for parallel PrePack")
@@ -1134,6 +1199,7 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   KernelRegistryManager kernel_registry_manager;
   std::unique_ptr<concurrency::ThreadPool> tp;
   std::shared_ptr<ParallelPrepackTestState> parallel_prepack_test_state;
+  std::shared_ptr<BlockingPrePackTestState> blocking_prepack_test_state;
 
   void SetUp() override {
     OrtThreadPoolParams to{};
@@ -1141,6 +1207,7 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
     to.thread_pool_size = 2;
     tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     parallel_prepack_test_state = std::make_shared<ParallelPrepackTestState>();
+    blocking_prepack_test_state = std::make_shared<BlockingPrePackTestState>();
     RegisterPrePackingTestSchemaOnce();
 
     auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
@@ -1185,6 +1252,20 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
                          [state = parallel_prepack_test_state](
                              FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
                            out = std::make_unique<ConcurrentPrePackingTestOpKernel>(info, state);
+                           return Status::OK();
+                         })));
+
+    auto blocking_kernel_def = KernelDefBuilder()
+                                   .SetName("BlockingPrePackingTest")
+                                   .Provider(kCpuExecutionProvider)
+                                   .SinceVersion(1)
+                                   .Build();
+
+    ASSERT_STATUS_OK(kernel_registry->Register(
+        KernelCreateInfo(std::move(blocking_kernel_def),
+                         [state = blocking_prepack_test_state](
+                             FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           out = std::make_unique<BlockingPrePackingTestOpKernel>(info, state);
                            return Status::OK();
                          })));
 
@@ -1263,6 +1344,47 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackCallsOver
   EXPECT_TRUE(parallel_prepack_test_state->OverlapObserved());
   EXPECT_TRUE(parallel_prepack_test_state->OuterParallelismObserved());
   EXPECT_EQ(parallel_prepack_test_state->PrePackCallCount(), 4U);
+}
+
+// Regression test for the post-join recheck in SessionState::PrepackConstantInitializedTensors:
+// a worker's initial cancellation check can pass before the flag is set, letting it spend time
+// inside PrePack() while cancellation_requested stays false. Sets the flag while workers are
+// blocked inside PrePack(), releases them, and asserts the load is reported as canceled.
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackCancellationDuringPrePackReturnsCanceled) {
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
+
+  Model model("parallel_prepack_cancel_mid_prepack", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "BlockingPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  std::thread canceller([&]() {
+    // Wait until at least one worker is blocked inside PrePack() before requesting cancellation,
+    // then release the blocked worker(s) so FinalizeSessionState can join and recheck the flag.
+    blocking_prepack_test_state->WaitForEntered(1);
+    sess_options.SetLoadCancellationFlag(true);
+    blocking_prepack_test_state->Release();
+  });
+
+  Status status = session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager);
+  canceller.join();
+
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.Category(), common::ONNXRUNTIME);
+  EXPECT_EQ(status.Code(), common::MODEL_LOAD_CANCELED);
 }
 
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, SingleNodePrepackDoesNotUseOuterParallelism) {
