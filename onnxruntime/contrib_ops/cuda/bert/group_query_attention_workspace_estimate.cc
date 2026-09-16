@@ -247,7 +247,8 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   if ((*past_key)[1] < config.kv_num_heads || (*past_value)[1] < config.kv_num_heads) {
     return std::nullopt;
   }
-  const int64_t capacity_bound = std::min((*past_key)[2], (*past_value)[2]);
+  if ((*past_key)[2] != (*past_value)[2]) return std::nullopt;
+  const int64_t capacity_bound = (*past_key)[2];
   int64_t cache_head_bound = std::min((*past_key)[3], (*past_value)[3]);
   if (config.kv_cache_bit_width == 4) {
     if (cache_head_bound > std::numeric_limits<int64_t>::max() / 2) return std::nullopt;
@@ -255,7 +256,7 @@ std::optional<GQAWorkspaceBounds> BuildBounds(
   }
   head_bound = std::min(head_bound, cache_head_bound);
   if (batch_bound <= 0 || capacity_bound <= 0 || head_bound < 8 ||
-      capacity_bound < config.local_window_size ||
+      capacity_bound != config.local_window_size ||
       !ValidateAuxiliaryShapes(config, shapes, batch_bound, sequence_bound,
                                head_bound, capacity_bound)) {
     return std::nullopt;

@@ -84,7 +84,7 @@ GQAWorkspaceEstimateConfig Config() {
   config.cache_element_size = 2;
   config.num_heads = 8;
   config.kv_num_heads = 2;
-  config.local_window_size = 128;
+  config.local_window_size = 256;
   config.sliding_window_cache = true;
   return config;
 }
@@ -138,7 +138,7 @@ std::optional<contrib::cuda::GQAWorkspaceAggregate> EstimateFromNode(
   add_int_attribute("num_heads", 8);
   add_int_attribute("kv_num_heads", 2);
   add_int_attribute("causal", 1);
-  add_int_attribute("local_window_size", 128);
+  add_int_attribute("local_window_size", 256);
   add_int_attribute("sliding_window_cache", 1);
 
   const std::vector<NodeArg*> inputs{&query, &key, &value, &past_key};
@@ -194,7 +194,7 @@ std::string BuildGroupQueryAttentionKernelModel() {
   };
   add_int_attribute("num_heads", 8);
   add_int_attribute("kv_num_heads", 2);
-  add_int_attribute("local_window_size", 128);
+  add_int_attribute("local_window_size", 256);
   add_int_attribute("sliding_window_cache", 1);
 
   constexpr int32_t kFloat16 = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
@@ -265,6 +265,26 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedTotalKvAndAliasingAreU
   EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
                    config, SeparateShapes(/*sequence=*/1, /*head=*/64, /*capacity=*/128),
                    Device(), options)
+                   .has_value());
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsCacheCapacityDifferentFromWindow) {
+  AttentionKernelOptions options;
+  options.InitializeOnce(kMath, true);
+  auto config = Config();
+  config.local_window_size = 128;
+  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                   config, SeparateShapes(), Device(), options)
+                   .has_value());
+  EXPECT_TRUE(EstimateGroupQueryAttentionWorkspace(
+                  config, SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/128),
+                  Device(), options)
+                  .has_value());
+
+  auto shapes = SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/128);
+  shapes[4] = Known({2, 2, 256, 64});
+  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                   config, shapes, Device(), options)
                    .has_value());
 }
 
@@ -352,12 +372,6 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsNoncausalLocalWindow) {
   config.causal = 0;
   EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
                    config, SeparateShapes(), Device(), options)
-                   .has_value());
-
-  config = Config();
-  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
-                   config, SeparateShapes(/*sequence=*/4, /*head=*/64, /*capacity=*/64),
-                   Device(), options)
                    .has_value());
 }
 
