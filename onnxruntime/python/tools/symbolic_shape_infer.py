@@ -2667,18 +2667,18 @@ class SymbolicShapeInference:
             past_key_shape = past_shape(6)
             if past_key_shape is None:
                 return
-            if len(node.input) > 14 and node.input[14]:
+            if len(node.input) > 11 and node.input[11]:
                 set_output(1, past_key_shape)
             else:
                 set_output(1, [query_shape[0], past_key_shape[1] + query_shape[1], query_shape[3]])
             return
 
-        past_compressed_shape = past_shape(11)
+        past_compressed_shape = past_shape(6)
         past_buffer_shape = past_shape(12)
         if past_compressed_shape is None or past_buffer_shape is None:
             return
 
-        buffer_length = past_buffer_shape[1]
+        buffer_length = past_buffer_shape[2]
         sequence_length = query_shape[1]
 
         # The number of compressed entries emitted by this call is known as soon as the buffer and
@@ -2694,20 +2694,19 @@ class SymbolicShapeInference:
             )
             present_compressed_length = (
                 past_compressed_shape[1]
-                if len(node.input) > 15 and node.input[15]
+                if len(node.input) > 11 and node.input[11]
                 else past_compressed_shape[1] + new_window_count
             )
         else:
             present_compressed_length = (
                 past_compressed_shape[1]
-                if len(node.input) > 15 and node.input[15]
-                else self._new_symbolic_dim_from_output(node, 2, 1)
+                if len(node.input) > 11 and node.input[11]
+                else self._new_symbolic_dim_from_output(node, 1, 1)
             )
-            present_buffer_length = self._new_symbolic_dim_from_output(node, 3, 1)
+            present_buffer_length = self._new_symbolic_dim_from_output(node, 2, 2)
 
-        set_output(2, [query_shape[0], present_compressed_length, query_shape[3]])
-        set_output(3, [query_shape[0], present_buffer_length, past_buffer_shape[2]])
-        set_output(4, [query_shape[0], present_buffer_length, past_buffer_shape[2]])
+        set_output(1, [query_shape[0], present_compressed_length, query_shape[3]])
+        set_output(2, [2, query_shape[0], present_buffer_length, past_buffer_shape[3]])
 
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)

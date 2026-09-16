@@ -18,22 +18,20 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 namespace sai = onnxruntime::contrib::sparse_attention_indexer;
 
-#define REGISTER_KERNEL_TYPED(T)                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
-      SparseAttentionIndexer,                                               \
-      kMSDomain,                                                            \
-      1,                                                                    \
-      T,                                                                    \
-      kCudaExecutionProvider,                                               \
-      (*KernelDefBuilder::Create())                                         \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())            \
-          .TypeConstraint("TB", DataTypeImpl::GetTensorType<bool>())        \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())      \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())      \
-          .MayInplace(sai::kPastKey, sai::kPresentKey)                      \
-          .MayInplace(sai::kPastCompressedKey, sai::kPresentCompressedKey)  \
-          .InputMemoryType(OrtMemTypeCPUInput, sai::kPastSequenceLength)    \
-          .InputMemoryType(OrtMemTypeCPUInput, sai::kPastCompressedLength), \
+#define REGISTER_KERNEL_TYPED(T)                                          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                          \
+      SparseAttentionIndexer,                                             \
+      kMSDomain,                                                          \
+      1,                                                                  \
+      T,                                                                  \
+      kCudaExecutionProvider,                                             \
+      (*KernelDefBuilder::Create())                                       \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())          \
+          .TypeConstraint("TB", DataTypeImpl::GetTensorType<bool>())      \
+          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())    \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())    \
+          .MayInplace(sai::kPastKey, sai::kPresentKey)                    \
+          .InputMemoryType(OrtMemTypeCPUInput, sai::kPastSequenceLength), \
       SparseAttentionIndexer<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -116,14 +114,10 @@ SparseAttentionIndexer<T>::SparseAttentionIndexer(const OpKernelInfo& info) : Cu
 template <typename T>
 Status SparseAttentionIndexer<T>::ComputeInternal(OpKernelContext* context) const {
   const bool is_qsa = policy_ == sai::Policy::kQsa;
-  for (int index = sai::kMask; index < sai::kInputCount; ++index) {
-    const bool policy_owns_slot =
-        is_qsa ? (index <= sai::kPastKey || index == sai::kPastSequenceLength)
-               : (index >= sai::kGate && index <= sai::kPastGateBuffer) || index == sai::kPastCompressedLength;
+  for (int index : {sai::kMask, sai::kGate, sai::kPositionBias, sai::kHeadWeights,
+                    sai::kPositionIds, sai::kPastProjBuffer}) {
+    const bool policy_owns_slot = is_qsa ? index == sai::kMask : index != sai::kMask;
     const bool provided = index < context->InputCount() && context->Input<Tensor>(index) != nullptr;
-    if (!provided && (index == sai::kPastSequenceLength || index == sai::kPastCompressedLength)) {
-      continue;
-    }
     ORT_RETURN_IF(provided != policy_owns_slot, "SparseAttentionIndexer: input ", index,
                   provided ? " must be omitted for policy_mode '" : " is required for policy_mode '",
                   is_qsa ? sai::kPolicyModeQsa : sai::kPolicyModeCsa, "'");
@@ -268,9 +262,8 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   const Tensor* position_bias = context->Input<Tensor>(sai::kPositionBias);
   const Tensor* head_weights = context->Input<Tensor>(sai::kHeadWeights);
   const Tensor* position_ids = context->Input<Tensor>(sai::kPositionIds);
-  const Tensor* past_compressed_key = context->Input<Tensor>(sai::kPastCompressedKey);
-  const Tensor* past_kv_buffer = context->Input<Tensor>(sai::kPastKvBuffer);
-  const Tensor* past_gate_buffer = context->Input<Tensor>(sai::kPastGateBuffer);
+  const Tensor* past_key = context->Input<Tensor>(sai::kPastKey);
+  const Tensor* past_proj_buffer = context->Input<Tensor>(sai::kPastProjBuffer);
 
   const auto& query_shape = query->Shape();
   ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 4,
@@ -306,25 +299,25 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
                     "rotary_width=",
                     rotary_width, " head_size=", head_size);
 
-  const auto& past_compressed_shape = past_compressed_key->Shape();
+  const auto& past_compressed_shape = past_key->Shape();
   ORT_RETURN_IF_NOT(past_compressed_shape.NumDimensions() == 3 && past_compressed_shape[0] == batch_size &&
                         past_compressed_shape[2] == head_size,
-                    "SparseAttentionIndexer: past_compressed_key must have shape "
+                    "SparseAttentionIndexer: past_key must have shape "
                     "(batch_size, past_compressed_length, head_size), got ",
                     past_compressed_shape.ToString());
   const int64_t compressed_cache_capacity = past_compressed_shape[1];
   ORT_RETURN_IF_ERROR(CheckIntDimension("compressed_cache_capacity", compressed_cache_capacity));
   int64_t past_compressed_length = compressed_cache_capacity;
-  ORT_RETURN_IF_ERROR(ReadOptionalLength(context, sai::kPastCompressedLength, "past_compressed_length",
-                                         past_compressed_length));
+  ORT_RETURN_IF_ERROR(
+      ReadOptionalLength(context, sai::kPastSequenceLength, "past_sequence_length", past_compressed_length));
 
-  const auto& past_buffer_shape = past_kv_buffer->Shape();
-  ORT_RETURN_IF_NOT(past_buffer_shape.NumDimensions() == 3 && past_buffer_shape[0] == batch_size &&
-                        past_buffer_shape[2] == width,
-                    "SparseAttentionIndexer: past_kv_buffer must have shape "
-                    "(batch_size, buffer_length, 2 * head_size), got ",
+  const auto& past_buffer_shape = past_proj_buffer->Shape();
+  ORT_RETURN_IF_NOT(past_buffer_shape.NumDimensions() == 4 && past_buffer_shape[0] == 2 &&
+                        past_buffer_shape[1] == batch_size && past_buffer_shape[3] == width,
+                    "SparseAttentionIndexer: past_proj_buffer must have shape "
+                    "(2, batch_size, buffer_length, 2 * head_size), got ",
                     past_buffer_shape.ToString());
-  const int64_t past_buffer_length = past_buffer_shape[1];
+  const int64_t past_buffer_length = past_buffer_shape[2];
   ORT_RETURN_IF_ERROR(CheckIntDimension("past_buffer_length", past_buffer_length));
 
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {batch_size, sequence_length, width}));
@@ -333,12 +326,9 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckShape(position_bias, "position_bias", {compress_ratio_, width}));
   ORT_RETURN_IF_ERROR(CheckShape(head_weights, "head_weights", {batch_size, sequence_length, num_heads}));
   ORT_RETURN_IF_ERROR(CheckShape(position_ids, "position_ids", {batch_size, sequence_length}));
-  ORT_RETURN_IF_ERROR(CheckShape(past_gate_buffer, "past_gate_buffer",
-                                 {batch_size, past_buffer_length, width}));
-
   sai::CsaWindowPlan plan;
   ORT_RETURN_IF_NOT(sai::TryComputeCsaWindowPlan(past_buffer_length, sequence_length, compress_ratio_, plan),
-                    "SparseAttentionIndexer: past_kv_buffer sequence length must be in [0, 2 * compress_ratio), got ",
+                    "SparseAttentionIndexer: past_proj_buffer sequence length must be in [0, 2 * compress_ratio), got ",
                     past_buffer_length);
   ORT_RETURN_IF_ERROR(CheckIntDimension("overlap_length", plan.overlap_length));
   ORT_RETURN_IF_ERROR(CheckIntDimension("new_window_count", plan.new_window_count));
@@ -348,10 +338,10 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
                 "SparseAttentionIndexer: present_compressed_length must be no greater than INT_MAX");
   const int64_t present_compressed_length = past_compressed_length + plan.new_window_count;
   ORT_RETURN_IF(present_compressed_length > compressed_cache_capacity &&
-                    context->InputCount() > sai::kPastCompressedLength &&
-                    context->Input<Tensor>(sai::kPastCompressedLength) != nullptr,
+                    context->InputCount() > sai::kPastSequenceLength &&
+                    context->Input<Tensor>(sai::kPastSequenceLength) != nullptr,
                 "SparseAttentionIndexer: present_compressed_length must not exceed compressed_cache_capacity when "
-                "past_compressed_length is provided");
+                "past_sequence_length is provided");
 
   SparseAttentionIndexerParams params;
   params.batch_size = static_cast<int>(batch_size);
@@ -369,8 +359,8 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
   params.present_compressed_length = static_cast<int>(present_compressed_length);
   params.past_compressed_capacity = static_cast<int>(compressed_cache_capacity);
   params.compressed_cache_capacity = static_cast<int>(
-      context->InputCount() > sai::kPastCompressedLength &&
-              context->Input<Tensor>(sai::kPastCompressedLength) != nullptr
+      context->InputCount() > sai::kPastSequenceLength &&
+              context->Input<Tensor>(sai::kPastSequenceLength) != nullptr
           ? compressed_cache_capacity
           : present_compressed_length);
   params.past_buffer_length = static_cast<int>(past_buffer_length);
@@ -384,20 +374,24 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
 
   Tensor* selected_indices = context->Output(sai::kSelectedIndices,
                                              TensorShape({batch_size, sequence_length, params.capacity}));
-  Tensor* present_compressed_key = context->Output(
-      sai::kPresentCompressedKey, TensorShape({batch_size, params.compressed_cache_capacity, head_size}));
-  Tensor* present_kv_buffer =
-      context->Output(sai::kPresentKvBuffer, TensorShape({batch_size, plan.present_buffer_length, width}));
-  Tensor* present_gate_buffer =
-      context->Output(sai::kPresentGateBuffer, TensorShape({batch_size, plan.present_buffer_length, width}));
-  ORT_RETURN_IF(selected_indices == nullptr || present_compressed_key == nullptr || present_kv_buffer == nullptr ||
-                    present_gate_buffer == nullptr,
-                "SparseAttentionIndexer: policy_mode 'csa' requires selected_indices, present_compressed_key, "
-                "present_kv_buffer and present_gate_buffer outputs");
+  Tensor* present_key =
+      context->Output(sai::kPresentKey, TensorShape({batch_size, params.compressed_cache_capacity, head_size}));
+  Tensor* present_proj_buffer =
+      context->Output(sai::kPresentProjBuffer, TensorShape({2, batch_size, plan.present_buffer_length, width}));
+  ORT_RETURN_IF(selected_indices == nullptr || present_key == nullptr || present_proj_buffer == nullptr,
+                "SparseAttentionIndexer: policy_mode 'csa' requires selected_indices, present_key and "
+                "present_proj_buffer outputs");
 
   auto float_workspace = GetScratchBuffer<float>(GetCsaWorkspaceFloatCount(params), GetComputeStream(context));
 
   const CudaT* empty = nullptr;
+  const int64_t past_proj_plane_elements = batch_size * past_buffer_length * width;
+  const int64_t present_proj_plane_elements = batch_size * plan.present_buffer_length * width;
+  const CudaT* past_proj_data =
+      past_buffer_length > 0 ? reinterpret_cast<const CudaT*>(past_proj_buffer->Data<T>()) : empty;
+  CudaT* present_proj_data = plan.present_buffer_length > 0
+                                 ? reinterpret_cast<CudaT*>(present_proj_buffer->MutableData<T>())
+                                 : nullptr;
   return LaunchCsaSparseAttentionIndexer<CudaT>(
       Stream(context), params,
       reinterpret_cast<const CudaT*>(query->Data<T>()),
@@ -409,13 +403,13 @@ Status SparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(position_bias->Data<T>()),
       reinterpret_cast<const CudaT*>(head_weights->Data<T>()),
       position_ids->Data<int64_t>(),
-      compressed_cache_capacity > 0 ? reinterpret_cast<const CudaT*>(past_compressed_key->Data<T>()) : empty,
-      past_buffer_length > 0 ? reinterpret_cast<const CudaT*>(past_kv_buffer->Data<T>()) : empty,
-      past_buffer_length > 0 ? reinterpret_cast<const CudaT*>(past_gate_buffer->Data<T>()) : empty,
+      compressed_cache_capacity > 0 ? reinterpret_cast<const CudaT*>(past_key->Data<T>()) : empty,
+      past_proj_data,
+      past_buffer_length > 0 ? past_proj_data + past_proj_plane_elements : empty,
       selected_indices->MutableData<int32_t>(),
-      params.compressed_cache_capacity > 0 ? reinterpret_cast<CudaT*>(present_compressed_key->MutableData<T>()) : nullptr,
-      plan.present_buffer_length > 0 ? reinterpret_cast<CudaT*>(present_kv_buffer->MutableData<T>()) : nullptr,
-      plan.present_buffer_length > 0 ? reinterpret_cast<CudaT*>(present_gate_buffer->MutableData<T>()) : nullptr,
+      params.compressed_cache_capacity > 0 ? reinterpret_cast<CudaT*>(present_key->MutableData<T>()) : nullptr,
+      present_proj_data,
+      plan.present_buffer_length > 0 ? present_proj_data + present_proj_plane_elements : nullptr,
       float_workspace.get());
 }
 

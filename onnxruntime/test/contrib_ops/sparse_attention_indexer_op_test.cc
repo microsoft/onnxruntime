@@ -163,25 +163,22 @@ void AddCsaNode(ModelTestBuilder& builder, const CsaGraphOptions& options) {
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, 64, options.rotary_width}),
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, 64, options.rotary_width}),
       &empty,
-      &empty,
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.sequence_length, width}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.compress_ratio, width}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.sequence_length, options.num_heads}),
-      builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, options.sequence_length}),
       builder.MakeInput<float>(
           std::vector<int64_t>{options.batch_size,
                                options.share_cache ? options.compressed_cache_capacity
                                                    : options.past_compressed_length,
                                options.head_size}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.past_buffer_length, width}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.past_buffer_length, width}),
+      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.sequence_length, width}),
+      builder.MakeInput<float>(std::vector<int64_t>{options.compress_ratio, width}),
+      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.sequence_length, options.num_heads}),
+      builder.MakeInput<int64_t>(std::vector<int64_t>{options.batch_size, options.sequence_length}),
+      options.share_cache ? builder.MakeInput<int32_t>(std::vector<int64_t>{1}) : &empty,
+      builder.MakeInput<float>(std::vector<int64_t>{2, options.batch_size, options.past_buffer_length, width}),
   };
-  inputs.push_back(&empty);
-  inputs.push_back(options.share_cache ? builder.MakeInput<int32_t>(std::vector<int64_t>{1}) : &empty);
 
-  std::vector<NodeArg*> outputs{builder.MakeOutput()};
-  for (int64_t slot = 1; slot < options.output_count; ++slot) {
-    outputs.push_back(slot == sai::kPresentKey ? &empty : builder.MakeOutput());
+  std::vector<NodeArg*> outputs;
+  for (int64_t slot = 0; slot < options.output_count; ++slot) {
+    outputs.push_back(builder.MakeOutput());
   }
 
   Node& node = builder.AddNode("SparseAttentionIndexer", inputs, outputs, kMSDomain);
@@ -786,33 +783,31 @@ void RunCsaTest(const CsaProblem& base, float tolerance) {
   test.AddInput<T>("sin_cache", {batch_size, problem.max_rotary_length, problem.rotary_width},
                    ToElementType<T>(problem.sin_cache));
   test.AddOptionalInputEdge<bool>();
-  test.AddOptionalInputEdge<T>();
+  test.AddInput<T>("past_key", {batch_size, problem.PastCompressedCapacity(), head_size},
+                   ToElementType<T>(problem.past_compressed_key));
   test.AddInput<T>("gate", {batch_size, sequence_length, width}, ToElementType<T>(problem.gate));
   test.AddInput<T>("position_bias", {problem.compress_ratio, width}, ToElementType<T>(problem.position_bias));
   test.AddInput<T>("head_weights", {batch_size, sequence_length, problem.num_heads},
                    ToElementType<T>(problem.head_weights));
   test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, problem.position_ids);
-  test.AddInput<T>("past_compressed_key", {batch_size, problem.PastCompressedCapacity(), head_size},
-                   ToElementType<T>(problem.past_compressed_key));
-  test.AddInput<T>("past_kv_buffer", {batch_size, problem.past_buffer_length, width},
-                   ToElementType<T>(problem.past_kv_buffer));
-  test.AddInput<T>("past_gate_buffer", {batch_size, problem.past_buffer_length, width},
-                   ToElementType<T>(problem.past_gate_buffer));
-  test.AddOptionalInputEdge<int32_t>();
   if (problem.compressed_cache_capacity > 0) {
-    test.AddInput<int32_t>("past_compressed_length", {1}, {problem.past_compressed_length});
+    test.AddInput<int32_t>("past_sequence_length", {1}, {problem.past_compressed_length});
+  } else {
+    test.AddOptionalInputEdge<int32_t>();
   }
+  std::vector<float> past_proj_buffer = problem.past_kv_buffer;
+  past_proj_buffer.insert(past_proj_buffer.end(), problem.past_gate_buffer.begin(), problem.past_gate_buffer.end());
+  test.AddInput<T>("past_proj_buffer", {2, batch_size, problem.past_buffer_length, width},
+                   ToElementType<T>(past_proj_buffer));
 
   test.AddOutput<int32_t>("selected_indices", {batch_size, sequence_length, problem.index_topk}, selected);
-  test.AddOptionalOutputEdge<T>();
   const int compressed_capacity =
       problem.compressed_cache_capacity > 0 ? problem.compressed_cache_capacity : present_compressed_length;
-  test.AddOutput<T>("present_compressed_key", {batch_size, compressed_capacity, head_size},
+  test.AddOutput<T>("present_key", {batch_size, compressed_capacity, head_size},
                     ToElementType<T>(present_compressed_key), false, 0.0f, tolerance);
-  test.AddOutput<T>("present_kv_buffer", {batch_size, plan.present_buffer_length, width},
+  present_kv_buffer.insert(present_kv_buffer.end(), present_gate_buffer.begin(), present_gate_buffer.end());
+  test.AddOutput<T>("present_proj_buffer", {2, batch_size, plan.present_buffer_length, width},
                     ToElementType<T>(present_kv_buffer), false, 0.0f, tolerance);
-  test.AddOutput<T>("present_gate_buffer", {batch_size, plan.present_buffer_length, width},
-                    ToElementType<T>(present_gate_buffer), false, 0.0f, tolerance);
   RunOnCuda(test);
 }
 
@@ -895,13 +890,11 @@ TEST(SparseAttentionIndexerShapeInferenceTest, CsaInfersCompressedStateShapes) {
   const Node& node = *graph.Nodes().begin();
   ExpectShape(graph, node.OutputDefs()[sai::kSelectedIndices]->Name(), ONNX_NAMESPACE::TensorProto_DataType_INT32,
               {options.batch_size, options.sequence_length, options.index_topk});
-  ExpectShape(graph, node.OutputDefs()[sai::kPresentCompressedKey]->Name(),
+  ExpectShape(graph, node.OutputDefs()[sai::kPresentKey]->Name(),
               ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               {options.batch_size, options.past_compressed_length + plan.new_window_count, options.head_size});
-  ExpectShape(graph, node.OutputDefs()[sai::kPresentKvBuffer]->Name(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-              {options.batch_size, plan.present_buffer_length, 2 * options.head_size});
-  ExpectShape(graph, node.OutputDefs()[sai::kPresentGateBuffer]->Name(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-              {options.batch_size, plan.present_buffer_length, 2 * options.head_size});
+  ExpectShape(graph, node.OutputDefs()[sai::kPresentProjBuffer]->Name(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+              {2, options.batch_size, plan.present_buffer_length, 2 * options.head_size});
 }
 
 TEST(SparseAttentionIndexerShapeInferenceTest, CsaSharedCacheKeepsCapacity) {
@@ -913,7 +906,7 @@ TEST(SparseAttentionIndexerShapeInferenceTest, CsaSharedCacheKeepsCapacity) {
 
   const Graph& graph = model->MainGraph();
   const Node& node = *graph.Nodes().begin();
-  ExpectShape(graph, node.OutputDefs()[sai::kPresentCompressedKey]->Name(),
+  ExpectShape(graph, node.OutputDefs()[sai::kPresentKey]->Name(),
               ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
               {options.batch_size, options.compressed_cache_capacity, options.head_size});
 }
@@ -987,16 +980,16 @@ TEST(SparseAttentionIndexerShapeInferenceTest, RejectsCsaWithQsaAttribute) {
 // keeps inference from touching an output index the node does not have.
 TEST(SparseAttentionIndexerShapeInferenceTest, RejectsCsaWithMissingStateOutputs) {
   CsaGraphOptions options;
-  options.output_count = 3;
+  options.output_count = 2;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); },
-                       "requires exactly 5 declared outputs");
+                       "requires exactly 3 declared outputs");
 }
 
 TEST(SparseAttentionIndexerShapeInferenceTest, RejectsOversizedCsaBuffer) {
   CsaGraphOptions options;
   options.past_buffer_length = 2 * options.compress_ratio;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddCsaNode(builder, options); },
-                       "past_kv_buffer sequence length must be in [0, 2 * compress_ratio)");
+                       "past_proj_buffer sequence length must be in [0, 2 * compress_ratio)");
 }
 
 #endif  // ORT_NO_EXCEPTIONS

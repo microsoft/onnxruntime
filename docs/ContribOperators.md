@@ -7006,14 +7006,14 @@ This version of the operator has been available since version 1 of the 'com.micr
     * Ties in the top-k selection are broken by the smaller entry index, and the emitted entries are
       ordered by decreasing score, so the result is deterministic.
   
-  State layout for policy_mode = "csa": past_kv_buffer / past_gate_buffer hold the tokens that have
-  not been folded into a compressed entry yet. When their length is >= compress_ratio, the first
-  compress_ratio tokens are the previous complete window (the "Ca" operand of the next window) and
-  the remainder is the current incomplete window; when it is < compress_ratio there is no previous
-  complete window and the whole buffer is the incomplete window. The length is therefore always in
-  [0, 2 * compress_ratio), and the number of compressed entries emitted by a call is known from the
-  input shapes alone. position_bias is re-applied to the buffered gates, so the buffers hold the raw
-  gate projection.
+  State layout for policy_mode = "csa": the two slices of past_proj_buffer hold the key and gate
+  projections that have not been folded into a compressed entry yet. When their length is >=
+  compress_ratio, the first compress_ratio tokens are the previous complete window (the "Ca" operand
+  of the next window) and the remainder is the current incomplete window; when it is < compress_ratio
+  there is no previous complete window and the whole buffer is the incomplete window. The length is
+  therefore always in [0, 2 * compress_ratio), and the number of compressed entries emitted by a call
+  is known from the input shapes alone. position_bias is re-applied to the buffered gates, so the gate
+  projection plane stores the raw projection.
 
 #### Version
 
@@ -7038,7 +7038,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs (5 - 16)
+#### Inputs (6 - 13)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -7053,8 +7053,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Sine rotary table with the same shape as cos_cache.</dd>
 <dt><tt>mask</tt> (optional) : TB</dt>
 <dd>Only for policy_mode 'qsa': tokens visible to each query, with shape (batch_size, 1, sequence_length, total_sequence_length) or (batch_size, sequence_length, total_sequence_length). total_sequence_length is past_sequence_length + sequence_length.</dd>
-<dt><tt>past_key</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'qsa': cached indexer keys with shape (batch_size, past_sequence_length, head_size), or (batch_size, max_cache_length, head_size) when past_sequence_length input is provided.</dd>
+<dt><tt>past_key</tt> : T</dt>
+<dd>Cached indexer keys. For policy_mode 'qsa', these are raw keys; for 'csa', they are compressed keys. Shape is (batch_size, past_sequence_length, head_size), or (batch_size, max_cache_length, head_size) when a valid past_sequence_length is provided.</dd>
 <dt><tt>gate</tt> (optional) : T</dt>
 <dd>Only for policy_mode 'csa': gate projection of the new tokens with shape (batch_size, sequence_length, 2 * head_size).</dd>
 <dt><tt>position_bias</tt> (optional) : T</dt>
@@ -7063,31 +7063,21 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'csa': per-head score weights with shape (batch_size, sequence_length, num_heads).</dd>
 <dt><tt>position_ids</tt> (optional) : I</dt>
 <dd>Only for policy_mode 'csa': absolute position of every query with shape (batch_size, sequence_length).</dd>
-<dt><tt>past_compressed_key</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'csa': compressed keys emitted by previous calls, with shape (batch_size, past_compressed_length, head_size), or (batch_size, max_cache_length, head_size) when past_compressed_length input is provided.</dd>
-<dt><tt>past_kv_buffer</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'csa': buffered key projections with shape (batch_size, buffer_length, 2 * head_size), where buffer_length is in [0, 2 * compress_ratio).</dd>
-<dt><tt>past_gate_buffer</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'csa': buffered gate projections with the same shape as past_kv_buffer.</dd>
 <dt><tt>past_sequence_length</tt> (optional) : M</dt>
-<dd>Only for policy_mode 'qsa': optional one-element CPU tensor containing the number of valid rows in past_key. When provided, past_key and present_key have the same max-capacity shape and may share their buffer.</dd>
-<dt><tt>past_compressed_length</tt> (optional) : M</dt>
-<dd>Only for policy_mode 'csa': optional one-element CPU tensor containing the number of valid rows in past_compressed_key. When provided, past_compressed_key and present_compressed_key have the same max-capacity shape and may share their buffer.</dd>
+<dd>Optional one-element CPU tensor containing the number of valid rows in past_key. For policy_mode 'csa', the value is the number of compressed keys. When provided, past_key and present_key have the same max-capacity shape and may share their buffer.</dd>
+<dt><tt>past_proj_buffer</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': buffered key and gate projections packed along dimension 0, with shape (2, batch_size, buffer_length, 2 * head_size). Slice 0 contains keys and slice 1 contains gates. buffer_length is in [0, 2 * compress_ratio).</dd>
 </dl>
 
-#### Outputs (1 - 5)
+#### Outputs (2 - 3)
 
 <dl>
 <dt><tt>selected_indices</tt> : M</dt>
 <dd>Selected entries with shape (batch_size, sequence_length, capacity). capacity is token_budget + compress_ratio - 1 for policy_mode 'qsa', where the values are token indices into the key cache, and index_topk for policy_mode 'csa', where the values are compressed entry indices. Unused entries are -1.</dd>
-<dt><tt>present_key</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'qsa': past_key concatenated with key, with shape (batch_size, total_sequence_length, head_size). When past_sequence_length is provided, the shape instead matches the max-capacity past_key and the two tensors may share a buffer.</dd>
-<dt><tt>present_compressed_key</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'csa': past_compressed_key concatenated with the entries emitted by this call, with shape (batch_size, present_compressed_length, head_size). When past_compressed_length is provided, the shape instead matches the max-capacity past_compressed_key and the two tensors may share a buffer.</dd>
-<dt><tt>present_kv_buffer</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'csa': updated key buffer with shape (batch_size, present_buffer_length, 2 * head_size).</dd>
-<dt><tt>present_gate_buffer</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'csa': updated gate buffer with the same shape as present_kv_buffer.</dd>
+<dt><tt>present_key</tt> : T</dt>
+<dd>Updated raw key cache for policy_mode 'qsa' or compressed-key cache for 'csa'. Without past_sequence_length its sequence dimension grows by the entries emitted by this call. When past_sequence_length is provided, its shape matches the max-capacity past_key and the two tensors may share a buffer.</dd>
+<dt><tt>present_proj_buffer</tt> (optional) : T</dt>
+<dd>Only for policy_mode 'csa': updated packed key/gate projection buffer with shape (2, batch_size, present_buffer_length, 2 * head_size).</dd>
 </dl>
 
 #### Type Constraints

@@ -182,9 +182,6 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
                 "",
                 "",
                 "",
-                "",
-                "",
-                "",
                 "past_sequence_length",
             ],
             ["selected_indices", "present_key"],
@@ -208,7 +205,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         outputs = {output.name: output for output in inferred.graph.output}
         self.assertEqual(self._tensor_shape(outputs["present_key"]), ["batch", "capacity", 8])
 
-    def test_sparse_attention_indexer_csa_static_with_empty_output(self):
+    def test_sparse_attention_indexer_csa_static(self):
         node = helper.make_node(
             "SparseAttentionIndexer",
             [
@@ -218,16 +215,15 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
                 "cos_cache",
                 "sin_cache",
                 "",
-                "",
+                "past_key",
                 "gate",
                 "position_bias",
                 "head_weights",
                 "position_ids",
-                "past_compressed_key",
-                "past_kv_buffer",
-                "past_gate_buffer",
+                "",
+                "past_proj_buffer",
             ],
-            ["selected_indices", "", "present_compressed_key", "present_kv_buffer", "present_gate_buffer"],
+            ["selected_indices", "present_key", "present_proj_buffer"],
             domain="com.microsoft",
             policy_mode="csa",
             compress_ratio=4,
@@ -243,18 +239,16 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("position_bias", TensorProto.FLOAT, [4, 16]),
             helper.make_tensor_value_info("head_weights", TensorProto.FLOAT, [2, 5, 2]),
             helper.make_tensor_value_info("position_ids", TensorProto.INT64, [2, 5]),
-            helper.make_tensor_value_info("past_compressed_key", TensorProto.FLOAT, [2, 6, 8]),
-            helper.make_tensor_value_info("past_kv_buffer", TensorProto.FLOAT, [2, 5, 16]),
-            helper.make_tensor_value_info("past_gate_buffer", TensorProto.FLOAT, [2, 5, 16]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT, [2, 6, 8]),
+            helper.make_tensor_value_info("past_proj_buffer", TensorProto.FLOAT, [2, 2, 5, 16]),
         ]
 
         inferred = self._infer_sparse_attention_indexer(node, inputs)
         outputs = {output.name: output for output in inferred.graph.output}
         self.assertEqual(list(inferred.graph.node[0].output), list(node.output))
         self.assertEqual(self._tensor_shape(outputs["selected_indices"]), [2, 5, 3])
-        self.assertEqual(self._tensor_shape(outputs["present_compressed_key"]), [2, 7, 8])
-        self.assertEqual(self._tensor_shape(outputs["present_kv_buffer"]), [2, 6, 16])
-        self.assertEqual(self._tensor_shape(outputs["present_gate_buffer"]), [2, 6, 16])
+        self.assertEqual(self._tensor_shape(outputs["present_key"]), [2, 7, 8])
+        self.assertEqual(self._tensor_shape(outputs["present_proj_buffer"]), [2, 2, 6, 16])
 
     def test_sparse_attention_indexer_csa_shared_cache(self):
         node = helper.make_node(
@@ -266,18 +260,15 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
                 "cos_cache",
                 "sin_cache",
                 "",
-                "",
+                "past_key",
                 "gate",
                 "position_bias",
                 "head_weights",
                 "position_ids",
-                "past_compressed_key",
-                "past_kv_buffer",
-                "past_gate_buffer",
-                "",
-                "past_compressed_length",
+                "past_sequence_length",
+                "past_proj_buffer",
             ],
-            ["selected_indices", "", "present_compressed_key", "present_kv_buffer", "present_gate_buffer"],
+            ["selected_indices", "present_key", "present_proj_buffer"],
             domain="com.microsoft",
             policy_mode="csa",
             compress_ratio=4,
@@ -293,15 +284,14 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("position_bias", TensorProto.FLOAT, [4, 16]),
             helper.make_tensor_value_info("head_weights", TensorProto.FLOAT, [2, 5, 2]),
             helper.make_tensor_value_info("position_ids", TensorProto.INT64, [2, 5]),
-            helper.make_tensor_value_info("past_compressed_key", TensorProto.FLOAT, [2, 32, 8]),
-            helper.make_tensor_value_info("past_kv_buffer", TensorProto.FLOAT, [2, 5, 16]),
-            helper.make_tensor_value_info("past_gate_buffer", TensorProto.FLOAT, [2, 5, 16]),
-            helper.make_tensor_value_info("past_compressed_length", TensorProto.INT32, [1]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT, [2, 32, 8]),
+            helper.make_tensor_value_info("past_sequence_length", TensorProto.INT32, [1]),
+            helper.make_tensor_value_info("past_proj_buffer", TensorProto.FLOAT, [2, 2, 5, 16]),
         ]
 
         inferred = self._infer_sparse_attention_indexer(node, inputs)
         outputs = {output.name: output for output in inferred.graph.output}
-        self.assertEqual(self._tensor_shape(outputs["present_compressed_key"]), [2, 32, 8])
+        self.assertEqual(self._tensor_shape(outputs["present_key"]), [2, 32, 8])
 
     def test_sparse_attention_indexer_csa_symbolic_fallback(self):
         node = helper.make_node(
@@ -313,16 +303,15 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
                 "cos_cache",
                 "sin_cache",
                 "",
-                "",
+                "past_key",
                 "gate",
                 "position_bias",
                 "head_weights",
                 "position_ids",
-                "past_compressed_key",
-                "past_kv_buffer",
-                "past_gate_buffer",
+                "",
+                "past_proj_buffer",
             ],
-            ["selected_indices", "", "present_compressed_key", "present_kv_buffer", "present_gate_buffer"],
+            ["selected_indices", "present_key", "present_proj_buffer"],
             domain="com.microsoft",
             policy_mode="csa",
             compress_ratio=4,
@@ -338,20 +327,19 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info("position_bias", TensorProto.FLOAT, [4, 16]),
             helper.make_tensor_value_info("head_weights", TensorProto.FLOAT, ["batch", "sequence", 2]),
             helper.make_tensor_value_info("position_ids", TensorProto.INT64, ["batch", "sequence"]),
-            helper.make_tensor_value_info("past_compressed_key", TensorProto.FLOAT, ["batch", "compressed", 8]),
-            helper.make_tensor_value_info("past_kv_buffer", TensorProto.FLOAT, ["batch", "buffer", 16]),
-            helper.make_tensor_value_info("past_gate_buffer", TensorProto.FLOAT, ["batch", "buffer", 16]),
+            helper.make_tensor_value_info("past_key", TensorProto.FLOAT, ["batch", "compressed", 8]),
+            helper.make_tensor_value_info("past_proj_buffer", TensorProto.FLOAT, [2, "batch", "buffer", 16]),
         ]
 
         inferred = self._infer_sparse_attention_indexer(node, inputs)
         outputs = {output.name: output for output in inferred.graph.output}
-        compressed_shape = self._tensor_shape(outputs["present_compressed_key"])
-        buffer_shape = self._tensor_shape(outputs["present_kv_buffer"])
+        compressed_shape = self._tensor_shape(outputs["present_key"])
+        buffer_shape = self._tensor_shape(outputs["present_proj_buffer"])
         self.assertEqual(compressed_shape[::2], ["batch", 8])
-        self.assertEqual(buffer_shape[::2], ["batch", 16])
+        self.assertEqual(buffer_shape[::3], [2, 16])
+        self.assertEqual(buffer_shape[1], "batch")
         self.assertTrue(compressed_shape[1].startswith("SparseAttentionIndexer_"))
-        self.assertTrue(buffer_shape[1].startswith("SparseAttentionIndexer_"))
-        self.assertEqual(self._tensor_shape(outputs["present_gate_buffer"]), buffer_shape)
+        self.assertTrue(buffer_shape[2].startswith("SparseAttentionIndexer_"))
 
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
