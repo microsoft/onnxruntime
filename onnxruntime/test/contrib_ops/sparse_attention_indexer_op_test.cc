@@ -801,7 +801,7 @@ void RunCsaTest(const CsaProblem& base, float tolerance) {
                    ToElementType<T>(past_proj_buffer));
 
   test.AddOutput<int32_t>("selected_indices", {batch_size, sequence_length, problem.index_topk}, selected);
-  const int compressed_capacity =
+  const int64_t compressed_capacity =
       problem.compressed_cache_capacity > 0 ? problem.compressed_cache_capacity : present_compressed_length;
   test.AddOutput<T>("present_key", {batch_size, compressed_capacity, head_size},
                     ToElementType<T>(present_compressed_key), false, 0.0f, tolerance);
