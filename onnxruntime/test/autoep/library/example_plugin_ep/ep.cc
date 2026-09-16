@@ -648,6 +648,12 @@ OrtStatus* ORT_API_CALL ExampleEp::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
 
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
+  if (ep->config_.use_default_cpu_allocator &&
+      ep->ort_api.MemoryInfoGetDeviceMemType(memory_info) == OrtDeviceMemoryType_HOST_ACCESSIBLE) {
+    *allocator = nullptr;
+    return nullptr;
+  }
+
   // for simplicity in this example we use the factory implementation.
   return ep->factory_.CreateAllocator(&ep->factory_, memory_info, nullptr, allocator);
 }
