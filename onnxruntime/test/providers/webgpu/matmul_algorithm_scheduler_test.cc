@@ -98,6 +98,43 @@ TEST(MatMulAlgorithmSchedulerTest, SplitKPrecedesPackedFallback) {
   EXPECT_EQ(scheduler.Select(params), MatMulAlgorithm::Packed);
 }
 
+TEST(MatMulAlgorithmPrerequisiteTest, SplitKRejectsEachHardConstraint) {
+  MatMulAlgorithmPrerequisites prerequisites{};
+  prerequisites.split_k_configured = true;
+  prerequisites.is_vec4 = true;
+  prerequisites.split_k_bias_layout_supported = true;
+  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+
+  prerequisites.deterministic_compute = true;
+  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+  prerequisites.deterministic_compute = false;
+
+  prerequisites.is_vec4 = false;
+  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+  prerequisites.is_vec4 = true;
+
+  prerequisites.has_fused_activation = true;
+  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+  prerequisites.has_fused_activation = false;
+
+  prerequisites.split_k_bias_layout_supported = false;
+  EXPECT_FALSE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::PackedSplitK, prerequisites));
+}
+
+TEST(MatMulAlgorithmPrerequisiteTest, IntelCapabilityDoesNotIncludeAutomaticThresholds) {
+  MatMulAlgorithmPrerequisites prerequisites{};
+  prerequisites.has_intel_subgroup_capability = true;
+  EXPECT_TRUE(MeetsMatMulAlgorithmPrerequisites(MatMulAlgorithm::IntelSubgroup, prerequisites));
+
+  MatMulAlgorithmSelectionParams below_heuristic_threshold{};
+  below_heuristic_threshold.m = 1;
+  below_heuristic_threshold.n = 1;
+  below_heuristic_threshold.k = 1;
+  below_heuristic_threshold.has_intel_subgroup_capability = true;
+  intel::IntelMatMulAlgorithmScheduler scheduler;
+  EXPECT_NE(scheduler.Select(below_heuristic_threshold), MatMulAlgorithm::IntelSubgroup);
+}
+
 }  // namespace test
 }  // namespace webgpu
 }  // namespace onnxruntime
