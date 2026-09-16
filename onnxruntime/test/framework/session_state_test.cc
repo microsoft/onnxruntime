@@ -842,6 +842,46 @@ class ConcurrentPrePackingTestOpKernel : public OpKernel {
   std::shared_ptr<ParallelPrepackTestState> state_;
 };
 
+class FailingPrePackTestState {
+ public:
+  void RecordPrePackCall() {
+    ++prepack_calls_;
+  }
+
+  size_t PrePackCallCount() const {
+    return prepack_calls_;
+  }
+
+ private:
+  std::atomic<size_t> prepack_calls_{0};
+};
+
+class FailingPrePackingTestOpKernel : public OpKernel {
+ public:
+  FailingPrePackingTestOpKernel(const OpKernelInfo& info, std::shared_ptr<FailingPrePackTestState> state)
+      : OpKernel(info), state_(std::move(state)) {}
+
+  Status Compute(OpKernelContext* context) const override {
+    ORT_UNUSED_PARAMETER(context);
+    return Status::OK();
+  }
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override {
+    ORT_UNUSED_PARAMETER(tensor);
+    ORT_UNUSED_PARAMETER(input_idx);
+    ORT_UNUSED_PARAMETER(alloc);
+    ORT_UNUSED_PARAMETER(is_packed);
+    ORT_UNUSED_PARAMETER(prepacked_weights);
+
+    state_->RecordPrePackCall();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parallel prepack failure");
+  }
+
+ private:
+  std::shared_ptr<FailingPrePackTestState> state_;
+};
+
 // Coordinates a blocking PrePack() call with a test thread that raises the load-cancellation
 // flag while workers are still inside PrePack(), then releases them. This exercises the
 // post-join recheck in SessionState::PrepackConstantInitializedTensors, which is needed
@@ -1101,6 +1141,11 @@ void RegisterPrePackingTestSchemaOnce() {
         .Input(0, "Input_0", "input 0", "tensor(float)")
         .Input(1, "Input_1", "input 1", "tensor(float)")
         .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+    ONNX_OPERATOR_SCHEMA(FailingPrePackingTest)
+        .SetDoc("Faking nodes that fail during parallel PrePack")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
     ONNX_OPERATOR_SCHEMA(BlockingPrePackingTest)
         .SetDoc("Faking a node whose PrePack blocks until released by the test")
         .Input(0, "Input_0", "input 0", "tensor(float)")
@@ -1199,6 +1244,7 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   KernelRegistryManager kernel_registry_manager;
   std::unique_ptr<concurrency::ThreadPool> tp;
   std::shared_ptr<ParallelPrepackTestState> parallel_prepack_test_state;
+  std::shared_ptr<FailingPrePackTestState> failing_prepack_test_state;
   std::shared_ptr<BlockingPrePackTestState> blocking_prepack_test_state;
 
   void SetUp() override {
@@ -1207,6 +1253,7 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
     to.thread_pool_size = 2;
     tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     parallel_prepack_test_state = std::make_shared<ParallelPrepackTestState>();
+    failing_prepack_test_state = std::make_shared<FailingPrePackTestState>();
     blocking_prepack_test_state = std::make_shared<BlockingPrePackTestState>();
     RegisterPrePackingTestSchemaOnce();
 
@@ -1252,6 +1299,20 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
                          [state = parallel_prepack_test_state](
                              FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
                            out = std::make_unique<ConcurrentPrePackingTestOpKernel>(info, state);
+                           return Status::OK();
+                         })));
+
+    auto failing_kernel_def = KernelDefBuilder()
+                                  .SetName("FailingPrePackingTest")
+                                  .Provider(kCpuExecutionProvider)
+                                  .SinceVersion(1)
+                                  .Build();
+
+    ASSERT_STATUS_OK(kernel_registry->Register(
+        KernelCreateInfo(std::move(failing_kernel_def),
+                         [state = failing_prepack_test_state](
+                             FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           out = std::make_unique<FailingPrePackingTestOpKernel>(info, state);
                            return Status::OK();
                          })));
 
@@ -1344,6 +1405,33 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackCallsOver
   EXPECT_TRUE(parallel_prepack_test_state->OverlapObserved());
   EXPECT_TRUE(parallel_prepack_test_state->OuterParallelismObserved());
   EXPECT_EQ(parallel_prepack_test_state->PrePackCallCount(), 4U);
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackFailureStopsPendingWork) {
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
+
+  Model model("parallel_prepack_failure", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "FailingPrePackingTest");
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(), kernel_registry_manager),
+      "parallel prepack failure");
+  EXPECT_LT(failing_prepack_test_state->PrePackCallCount(), 4U);
 }
 
 // Regression test for the post-join recheck in SessionState::PrepackConstantInitializedTensors:

@@ -833,9 +833,8 @@ Status SessionState::PrepackConstantInitializedTensors(
     return Status::OK();
   }
 
-  // Parallel path: fan out the per-node CPU work (dominated by kernel->PrePack(), which reads and
-  // repacks each node's constant initializer) across the intra-op thread pool. EPs that do not
-  // advertise concurrent kernel execution are left on the sequential path.
+  // Parallel path: fan out eligible CPU nodes across the intra-op thread pool. Nodes assigned to
+  // every other EP remain on the sequential path.
   LOGS(logger_, INFO) << "Pre-packing constant initializers using the intra-op thread pool.";
   for (auto& node : GetGraphViewer().Nodes()) {
     if (is_parallel_prepack_candidate(node)) {
@@ -852,9 +851,13 @@ Status SessionState::PrepackConstantInitializedTensors(
 
   std::vector<Status> statuses(parallel_prepack_nodes.size());
   std::atomic<bool> cancellation_requested{false};
+  std::atomic<bool> failure_requested{false};
   concurrency::ThreadPool::TrySimpleParallelFor(
       intra_op_thread_pool, static_cast<std::ptrdiff_t>(parallel_prepack_nodes.size()),
       [&](std::ptrdiff_t i) {
+        if (failure_requested) {
+          return;
+        }
         if (sess_options_.IsLoadCancellationFlagSet()) {
           cancellation_requested = true;
           return;
@@ -881,6 +884,9 @@ Status SessionState::PrepackConstantInitializedTensors(
         ORT_CATCH(...) {
           status = ORT_MAKE_STATUS(
               ONNXRUNTIME, RUNTIME_EXCEPTION, "Unknown exception while pre-packing node '", node->Name(), "'.");
+        }
+        if (!status.IsOK()) {
+          failure_requested = true;
         }
       });
 
