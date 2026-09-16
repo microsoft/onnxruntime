@@ -651,6 +651,7 @@ struct DirectStorageExternalDataLoader::Impl {
   mutable std::once_flag support_once;
   mutable common::Status resolved_status;
   mutable bool enabled = false;
+  mutable std::atomic<bool> abort_requested{false};
   mutable std::unique_ptr<DirectStorageBatch> preload_batch;
   mutable DirectStorageLoadMetrics preload_metrics;
   mutable std::future<common::Status> preload_future;
@@ -700,6 +701,7 @@ common::Status DirectStorageExternalDataLoader::BeginPreload() const {
   if (!impl_->enabled) {
     return common::Status::OK();
   }
+  impl_->abort_requested.store(false, std::memory_order_relaxed);
   impl_->preload_batch = std::make_unique<DirectStorageBatch>();
   return common::Status::OK();
 }
@@ -742,9 +744,15 @@ common::Status DirectStorageExternalDataLoader::FinalizePreload(
     impl_->preload_future = std::async(
         std::launch::async,
         [batch = impl_->preload_batch.get(), &metrics = impl_->preload_metrics,
-         d3d_device, is_cancelled]() {
+         d3d_device, is_cancelled,
+         abort_requested = &impl_->abort_requested]() {
           return LoadBatchToD3D12(
-              *batch, d3d_device.Get(), is_cancelled, metrics);
+              *batch, d3d_device.Get(),
+              [is_cancelled, abort_requested]() {
+                return abort_requested->load(std::memory_order_relaxed) ||
+                       (is_cancelled && is_cancelled());
+              },
+              metrics);
         });
   } catch (const std::exception& ex) {
     const auto status = ORT_MAKE_STATUS(
@@ -968,6 +976,7 @@ common::Status DirectStorageExternalDataLoader::FinalizeLoad(
 
 void DirectStorageExternalDataLoader::AbortLoad() const noexcept {
   if (impl_) {
+    impl_->abort_requested.store(true, std::memory_order_relaxed);
     impl_->context.ContinueInitialize();
   }
   if (!impl_) {
