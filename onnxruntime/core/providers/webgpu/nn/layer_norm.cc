@@ -26,7 +26,7 @@ static TensorShape GetOverrideShape(const TensorShape& shape, int components) {
 }
 
 Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("scale", ShaderUsage::UseUniform);
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
@@ -39,9 +39,17 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddOutput("inv_std_dev_output", ShaderUsage::None);
   }
 
-  // Fused LayerNorm can have different input and output types. Normalize in f32 before converting to the output type.
+  // Preserve same-type rounding to match fused normalization kernels. Mixed types normalize in f32.
+  const bool mixed_types = Inputs()[0].var_type != Outputs()[0].var_type;
+  const int components = x.NumComponents();
+  shader.AdditionalImplementation()
+      << "alias norm_element_t = " << (mixed_types ? "f32" : "x_element_t") << ";\n"
+      << "alias norm_value_t = "
+      << (components == 4 ? "vec4<norm_element_t>" : (components == 2 ? "vec2<norm_element_t>" : "norm_element_t"))
+      << ";\n";
+
   std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
-  std::string simpl2 = (simplified_) ? "" : "- mean ";
+  std::string simpl2 = (simplified_) ? "" : "- norm_element_t(mean) ";
 
   if (split_norm_dim_) {
     shader.AdditionalImplementation()
@@ -79,7 +87,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n"
         << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
         << "  let offset = workgroup_idx * workgroup_size_x + local_idx;\n"
-        << "  y[offset] = y_value_t((vec4<f32>(cur_input) " << simpl2 << ") * inv_std_dev) * scale[offset]" << (has_bias_ ? " + bias[offset] " : "") << ";\n";
+        << "  y[offset] = y_value_t((norm_value_t(cur_input) " << simpl2 << ") * norm_element_t(inv_std_dev)) * scale[offset]" << (has_bias_ ? " + bias[offset] " : "") << ";\n";
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "  if (local_idx == 0 && workgroup_idx == 0) {\n"
@@ -92,7 +100,6 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                 << "  }\n";
     }
   } else {
-    int components = x.NumComponents();
     std::string bias = (has_bias_) ? " + bias[offset1d + i] " : "";
 
     shader.AdditionalImplementation()
@@ -133,7 +140,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n"
         << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components) << " / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
-        << " y[offset + i] = y_value_t((f32_val_t(x[offset + i]) " << simpl2 << ") * inv_std_dev) * scale[offset1d + i]" << bias << ";\n"
+        << " y[offset + i] = y_value_t((norm_value_t(x[offset + i]) " << simpl2 << ") * norm_element_t(inv_std_dev)) * scale[offset1d + i]" << bias << ";\n"
         << "};\n";
 
     if (has_mean_output_) {
