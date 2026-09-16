@@ -2665,8 +2665,12 @@ class SymbolicShapeInference:
 
         if policy_mode == "qsa":
             past_key_shape = past_shape(6)
-            past_length = past_key_shape[1] if past_key_shape else 0
-            set_output(1, [query_shape[0], past_length + query_shape[1], query_shape[3]])
+            if past_key_shape is None:
+                return
+            if len(node.input) > 14 and node.input[14]:
+                set_output(1, past_key_shape)
+            else:
+                set_output(1, [query_shape[0], past_key_shape[1] + query_shape[1], query_shape[3]])
             return
 
         past_compressed_shape = past_shape(11)
@@ -2688,9 +2692,17 @@ class SymbolicShapeInference:
             present_buffer_length = (
                 compress_ratio + pending % compress_ratio if new_window_count > 0 else buffer_length + sequence_length
             )
-            present_compressed_length = past_compressed_shape[1] + new_window_count
+            present_compressed_length = (
+                past_compressed_shape[1]
+                if len(node.input) > 15 and node.input[15]
+                else past_compressed_shape[1] + new_window_count
+            )
         else:
-            present_compressed_length = self._new_symbolic_dim_from_output(node, 2, 1)
+            present_compressed_length = (
+                past_compressed_shape[1]
+                if len(node.input) > 15 and node.input[15]
+                else self._new_symbolic_dim_from_output(node, 2, 1)
+            )
             present_buffer_length = self._new_symbolic_dim_from_output(node, 3, 1)
 
         set_output(2, [query_shape[0], present_compressed_length, query_shape[3]])

@@ -140,9 +140,17 @@ returned as an output, so the caller (or the ORT session binding) owns the buffe
 | `csa` | `past_kv_buffer` → `present_kv_buffer` |
 | `csa` | `past_gate_buffer` → `present_gate_buffer` |
 
-`present_key` and `present_compressed_key` grow by a number of positions that is known from the
-input shapes and the attributes, so the graph can pre-allocate them. The two `csa` buffers stay
-bounded by `2r - 1` positions.
+By default, `present_key` and `present_compressed_key` grow by a number of positions that is known
+from the input shapes and attributes. For autoregressive decoding, the caller can instead provide a
+max-capacity cache and the corresponding valid-length input:
+
+- `qsa`: `past_sequence_length` gives the valid rows in `past_key`.
+- `csa`: `past_compressed_length` gives the valid rows in `past_compressed_key`.
+
+In this mode, the past and present tensors have the same shape and the CUDA allocation planner may
+alias them. The kernel appends new rows at the valid length without copying existing rows. The
+capacity must accommodate all rows emitted by the call. The two small `csa` token buffers retain
+their ordinary bounded state contract and stay below `2r` positions.
 
 ## 4. Policy `qsa`
 
@@ -356,9 +364,6 @@ The implementation is correctness-first. The following are known and deliberate:
    rotation per block.
 4. **`CompactVisibleKernel` is `O(T)` per query row** and re-reads the mask for every `s`. For long
    contexts a batched exclusive scan over the whole `(B, S, T)` mask would be cheaper.
-5. **`present_key` / `present_compressed_key` are copied every call.** An in-place cache with a
-   `past_sequence_length` input (as `GroupQueryAttention` does) would avoid the copy, at the cost of
-   a less explicit state contract.
-6. **`compress_ratio` and `head_size` are not specialized.** Templating the hot kernels on a small
+5. **`compress_ratio` and `head_size` are not specialized.** Templating the hot kernels on a small
    set of common values would remove the dynamic loop bounds.
-7. **No CPU kernel.** The operator is CUDA-only today.
+6. **No CPU kernel.** The operator is CUDA-only today.

@@ -179,21 +179,32 @@ __global__ void RotateQueryKernel(const T* query, const T* cos_cache, const T* s
 // ---------------------------------------------------------------------------------------------
 
 template <typename T>
-__global__ void ConcatPastKeyKernel(const T* past_key, const T* key, T* present_key,
-                                    SparseAttentionIndexerParams params) {
-  const int64_t total = static_cast<int64_t>(params.batch_size) * params.total_sequence_length * params.head_size;
+__global__ void CopyQsaPastKeyKernel(const T* past_key, T* present_key, SparseAttentionIndexerParams params) {
+  const int64_t total = static_cast<int64_t>(params.batch_size) * params.past_key_capacity * params.head_size;
   for (int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; index < total;
        index += static_cast<int64_t>(gridDim.x) * blockDim.x) {
     const int d = static_cast<int>(index % params.head_size);
     const int64_t token_row = index / params.head_size;
-    const int token = static_cast<int>(token_row % params.total_sequence_length);
-    const int batch = static_cast<int>(token_row / params.total_sequence_length);
-    present_key[index] =
-        token < params.past_sequence_length
-            ? past_key[(static_cast<int64_t>(batch) * params.past_sequence_length + token) * params.head_size + d]
-            : key[(static_cast<int64_t>(batch) * params.sequence_length + (token - params.past_sequence_length)) *
-                      params.head_size +
-                  d];
+    const int token = static_cast<int>(token_row % params.past_key_capacity);
+    const int batch = static_cast<int>(token_row / params.past_key_capacity);
+    const int64_t output_index =
+        (static_cast<int64_t>(batch) * params.key_cache_capacity + token) * params.head_size + d;
+    present_key[output_index] = past_key[index];
+  }
+}
+
+template <typename T>
+__global__ void AppendQsaKeyKernel(const T* key, T* present_key, SparseAttentionIndexerParams params) {
+  const int64_t total = static_cast<int64_t>(params.batch_size) * params.sequence_length * params.head_size;
+  for (int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; index < total;
+       index += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    const int d = static_cast<int>(index % params.head_size);
+    const int64_t token_row = index / params.head_size;
+    const int token = static_cast<int>(token_row % params.sequence_length);
+    const int batch = static_cast<int>(token_row / params.sequence_length);
+    present_key[(static_cast<int64_t>(batch) * params.key_cache_capacity + params.past_sequence_length + token) *
+                    params.head_size +
+                d] = key[index];
   }
 }
 
@@ -259,7 +270,7 @@ __global__ void QsaBlockScoreKernel(const T* present_key, const T* key_norm_weig
 
     const int32_t* index_row = visible_indices + row * params.total_sequence_length;
     const int32_t* group = index_row + static_cast<int64_t>(block_index) * params.compress_ratio;
-    const int64_t key_base = static_cast<int64_t>(batch) * params.total_sequence_length * params.head_size;
+    const int64_t key_base = static_cast<int64_t>(batch) * params.key_cache_capacity * params.head_size;
 
     for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
       float sum = 0.0f;
@@ -459,7 +470,7 @@ __global__ void CsaCompressKernel(const T* key, const T* gate, const T* past_kv_
     const int64_t cache_offset =
         (static_cast<int64_t>(batch) * params.max_rotary_length + position) * params.rotary_width;
     const int64_t out_base =
-        (static_cast<int64_t>(batch) * params.present_compressed_length + entry) * params.head_size;
+        (static_cast<int64_t>(batch) * params.compressed_cache_capacity + entry) * params.head_size;
     for (int d = threadIdx.x; d < params.head_size; d += blockDim.x) {
       present_compressed_key[out_base + d] = from_float<T>(TrailingRope<T>(
           pooled, params.head_size, params.rotary_width, cos_cache + cache_offset, sin_cache + cache_offset, d));
@@ -471,15 +482,20 @@ __global__ void CsaCompressKernel(const T* key, const T* gate, const T* past_kv_
 template <typename T>
 __global__ void CsaCopyPastCompressedKernel(const T* past_compressed_key, T* present_compressed_key,
                                             SparseAttentionIndexerParams params) {
-  const int64_t total = static_cast<int64_t>(params.batch_size) * params.past_compressed_length * params.head_size;
+  const int64_t total =
+      static_cast<int64_t>(params.batch_size) * params.past_compressed_capacity * params.head_size;
   for (int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; index < total;
        index += static_cast<int64_t>(gridDim.x) * blockDim.x) {
     const int64_t entry_row = index / params.head_size;
-    const int entry = static_cast<int>(entry_row % params.past_compressed_length);
-    const int batch = static_cast<int>(entry_row / params.past_compressed_length);
+    const int entry = static_cast<int>(entry_row % params.past_compressed_capacity);
+    const int batch = static_cast<int>(entry_row / params.past_compressed_capacity);
     const int d = static_cast<int>(index % params.head_size);
-    present_compressed_key[(static_cast<int64_t>(batch) * params.present_compressed_length + entry) * params.head_size +
-                           d] = past_compressed_key[index];
+    present_compressed_key[(static_cast<int64_t>(batch) * params.compressed_cache_capacity + entry) *
+                               params.head_size +
+                           d] =
+        past_compressed_key[(static_cast<int64_t>(batch) * params.past_compressed_capacity + entry) *
+                                params.head_size +
+                            d];
   }
 }
 
@@ -523,7 +539,7 @@ __global__ void CsaScoreKernel(const float* query_rotated, const T* present_comp
     }
 
     const int64_t key_base =
-        (static_cast<int64_t>(batch) * params.present_compressed_length + entry) * params.head_size;
+        (static_cast<int64_t>(batch) * params.compressed_cache_capacity + entry) * params.head_size;
     float total_score = 0.0f;
     for (int head = 0; head < params.num_heads; ++head) {
       const float* query_head = query_rotated + (row * params.num_heads + head) * params.head_size;
@@ -607,11 +623,16 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
 
   // The present state is produced even when there is no query row to score, so that a zero-length step still
   // forwards the incoming cache unchanged.
-  const int64_t present_key_elements =
-      static_cast<int64_t>(params.batch_size) * params.total_sequence_length * params.head_size;
-  if (present_key_elements > 0) {
-    ConcatPastKeyKernel<T><<<GridForElements(present_key_elements), kThreads, 0, stream>>>(past_key, key, present_key,
-                                                                                           params);
+  const int64_t past_key_elements =
+      static_cast<int64_t>(params.batch_size) * params.past_key_capacity * params.head_size;
+  if (past_key_elements > 0 && past_key != present_key) {
+    CopyQsaPastKeyKernel<T><<<GridForElements(past_key_elements), kThreads, 0, stream>>>(
+        past_key, present_key, params);
+  }
+  const int64_t new_key_elements =
+      static_cast<int64_t>(params.batch_size) * params.sequence_length * params.head_size;
+  if (new_key_elements > 0) {
+    AppendQsaKeyKernel<T><<<GridForElements(new_key_elements), kThreads, 0, stream>>>(key, present_key, params);
   }
 
   if (rows == 0) {
@@ -662,8 +683,8 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   // The present state is produced even when there is no query row to score, so that a zero-length step still
   // forwards the incoming cache unchanged.
   const int64_t past_compressed_elements =
-      static_cast<int64_t>(params.batch_size) * params.past_compressed_length * params.head_size;
-  if (past_compressed_elements > 0) {
+      static_cast<int64_t>(params.batch_size) * params.past_compressed_capacity * params.head_size;
+  if (past_compressed_elements > 0 && past_compressed_key != present_compressed_key) {
     CsaCopyPastCompressedKernel<T><<<GridForElements(past_compressed_elements), kThreads, 0, stream>>>(
         past_compressed_key, present_compressed_key, params);
   }

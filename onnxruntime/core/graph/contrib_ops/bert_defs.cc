@@ -1988,6 +1988,14 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
                                   : " is required when policy_mode is 'csa'");
     }
   }
+  if (SparseAttentionIndexerHasInput(ctx, sai::kPastSequenceLength) && !is_qsa) {
+    fail_shape_inference(
+        "SparseAttentionIndexer: past_sequence_length must be omitted when policy_mode is 'csa'");
+  }
+  if (SparseAttentionIndexerHasInput(ctx, sai::kPastCompressedLength) && is_qsa) {
+    fail_shape_inference(
+        "SparseAttentionIndexer: past_compressed_length must be omitted when policy_mode is 'qsa'");
+  }
 
   const size_t expected_outputs = is_qsa ? sai::kQsaOutputCount : sai::kCsaOutputCount;
   if (ctx.getNumOutputs() != expected_outputs) {
@@ -2026,11 +2034,16 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     propagateElemTypeFromInputToOutput(ctx, sai::kQuery, sai::kPresentKey);
     const auto* past_key_shape = SparseAttentionIndexerShape(ctx, sai::kPastKey, 3);
     if (past_key_shape != nullptr) {
+      (void)SparseAttentionIndexerShape(ctx, sai::kPastSequenceLength, 1);
       ONNX_NAMESPACE::TensorShapeProto present_shape;
       SparseAttentionIndexerAppendDim(present_shape, batch_dim);
-      auto* total_dim = present_shape.add_dim();
-      if (past_key_shape->dim(1).has_dim_value() && sequence_dim.has_dim_value()) {
-        total_dim->set_dim_value(past_key_shape->dim(1).dim_value() + sequence_dim.dim_value());
+      if (SparseAttentionIndexerHasInput(ctx, sai::kPastSequenceLength)) {
+        SparseAttentionIndexerAppendDim(present_shape, past_key_shape->dim(1));
+      } else {
+        auto* total_dim = present_shape.add_dim();
+        if (past_key_shape->dim(1).has_dim_value() && sequence_dim.has_dim_value()) {
+          total_dim->set_dim_value(past_key_shape->dim(1).dim_value() + sequence_dim.dim_value());
+        }
       }
       SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
       updateOutputShape(ctx, sai::kPresentKey, present_shape);
@@ -2044,6 +2057,7 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
   propagateElemTypeFromInputToOutput(ctx, sai::kQuery, sai::kPresentGateBuffer);
 
   const auto* past_compressed_shape = SparseAttentionIndexerShape(ctx, sai::kPastCompressedKey, 3);
+  (void)SparseAttentionIndexerShape(ctx, sai::kPastCompressedLength, 1);
   const auto* past_buffer_shape = SparseAttentionIndexerShape(ctx, sai::kPastKvBuffer, 3);
   const auto* past_gate_shape = SparseAttentionIndexerShape(ctx, sai::kPastGateBuffer, 3);
   (void)SparseAttentionIndexerShape(ctx, sai::kGate, 3);
@@ -2080,7 +2094,9 @@ void SparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::InferenceContex
     ONNX_NAMESPACE::TensorShapeProto present_shape;
     SparseAttentionIndexerAppendDim(present_shape, batch_dim);
     auto* entry_dim = present_shape.add_dim();
-    if (plan_known && past_compressed_shape->dim(1).has_dim_value()) {
+    if (SparseAttentionIndexerHasInput(ctx, sai::kPastCompressedLength)) {
+      *entry_dim = past_compressed_shape->dim(1);
+    } else if (plan_known && past_compressed_shape->dim(1).has_dim_value()) {
       entry_dim->set_dim_value(past_compressed_shape->dim(1).dim_value() + plan.new_window_count);
     }
     SparseAttentionIndexerAppendDim(present_shape, head_size_dim);
@@ -2214,7 +2230,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(6,
                "past_key",
                "Only for policy_mode 'qsa': cached indexer keys with shape "
-               "(batch_size, past_sequence_length, head_size).",
+               "(batch_size, past_sequence_length, head_size), or "
+               "(batch_size, max_cache_length, head_size) when past_sequence_length input is provided.",
                "T",
                OpSchema::Optional)
         .Input(7,
@@ -2243,7 +2260,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(11,
                "past_compressed_key",
                "Only for policy_mode 'csa': compressed keys emitted by previous calls, with shape "
-               "(batch_size, past_compressed_length, head_size).",
+               "(batch_size, past_compressed_length, head_size), or "
+               "(batch_size, max_cache_length, head_size) when past_compressed_length input is provided.",
                "T",
                OpSchema::Optional)
         .Input(12,
@@ -2257,6 +2275,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Only for policy_mode 'csa': buffered gate projections with the same shape as past_kv_buffer.",
                "T",
                OpSchema::Optional)
+        .Input(14,
+               "past_sequence_length",
+               "Only for policy_mode 'qsa': optional one-element CPU tensor containing the number of valid rows in "
+               "past_key. When provided, past_key and present_key have the same max-capacity shape and may share "
+               "their buffer.",
+               "M",
+               OpSchema::Optional)
+        .Input(15,
+               "past_compressed_length",
+               "Only for policy_mode 'csa': optional one-element CPU tensor containing the number of valid rows in "
+               "past_compressed_key. When provided, past_compressed_key and present_compressed_key have the same "
+               "max-capacity shape and may share their buffer.",
+               "M",
+               OpSchema::Optional)
         .Output(0,
                 "selected_indices",
                 "Selected entries with shape (batch_size, sequence_length, capacity). capacity is "
@@ -2267,13 +2299,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(1,
                 "present_key",
                 "Only for policy_mode 'qsa': past_key concatenated with key, with shape "
-                "(batch_size, total_sequence_length, head_size).",
+                "(batch_size, total_sequence_length, head_size). When past_sequence_length is provided, "
+                "the shape instead matches the max-capacity past_key and the two tensors may share a buffer.",
                 "T",
                 OpSchema::Optional)
         .Output(2,
                 "present_compressed_key",
                 "Only for policy_mode 'csa': past_compressed_key concatenated with the entries emitted by "
-                "this call, with shape (batch_size, present_compressed_length, head_size).",
+                "this call, with shape (batch_size, present_compressed_length, head_size). When "
+                "past_compressed_length is provided, the shape instead matches the max-capacity "
+                "past_compressed_key and the two tensors may share a buffer.",
                 "T",
                 OpSchema::Optional)
         .Output(3,
@@ -2292,7 +2327,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain floating point tensors to float, float16 and bfloat16.")
         .TypeConstraint("TB", {"tensor(bool)"}, "Constrain the visibility mask to boolean tensors.")
         .TypeConstraint("I", {"tensor(int64)"}, "Constrain position ids to 64-bit integer tensors.")
-        .TypeConstraint("M", {"tensor(int32)"}, "Constrain selected indices to 32-bit integer tensors.")
+        .TypeConstraint("M", {"tensor(int32)"}, "Constrain indices and cache lengths to 32-bit integer tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           SparseAttentionIndexerTypeAndShapeInference(ctx);
         }));

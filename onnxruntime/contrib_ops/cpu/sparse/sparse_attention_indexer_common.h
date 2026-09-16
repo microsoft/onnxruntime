@@ -31,8 +31,8 @@ inline bool TryParsePolicy(const std::string& policy_mode, Policy& policy) {
   return false;
 }
 
-// Input slots. Slots 5-6 belong to policy_mode="qsa" and slots 7-13 to policy_mode="csa";
-// a slot that does not belong to the active policy must be omitted from the node.
+// Input slots. Slots 5-6 and 14 belong to policy_mode="qsa"; slots 7-13 and 15 belong to
+// policy_mode="csa". A slot that does not belong to the active policy must be omitted.
 enum InputIndex : int {
   kQuery = 0,
   kKey = 1,
@@ -48,7 +48,9 @@ enum InputIndex : int {
   kPastCompressedKey = 11,
   kPastKvBuffer = 12,
   kPastGateBuffer = 13,
-  kInputCount = 14,
+  kPastSequenceLength = 14,
+  kPastCompressedLength = 15,
+  kInputCount = 16,
 };
 
 // Output slots. Slot 1 belongs to policy_mode="qsa" and slots 2-4 to policy_mode="csa".

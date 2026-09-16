@@ -7038,7 +7038,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs (5 - 14)
+#### Inputs (5 - 16)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -7054,7 +7054,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>mask</tt> (optional) : TB</dt>
 <dd>Only for policy_mode 'qsa': tokens visible to each query, with shape (batch_size, 1, sequence_length, total_sequence_length) or (batch_size, sequence_length, total_sequence_length). total_sequence_length is past_sequence_length + sequence_length.</dd>
 <dt><tt>past_key</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'qsa': cached indexer keys with shape (batch_size, past_sequence_length, head_size).</dd>
+<dd>Only for policy_mode 'qsa': cached indexer keys with shape (batch_size, past_sequence_length, head_size), or (batch_size, max_cache_length, head_size) when past_sequence_length input is provided.</dd>
 <dt><tt>gate</tt> (optional) : T</dt>
 <dd>Only for policy_mode 'csa': gate projection of the new tokens with shape (batch_size, sequence_length, 2 * head_size).</dd>
 <dt><tt>position_bias</tt> (optional) : T</dt>
@@ -7064,11 +7064,15 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>position_ids</tt> (optional) : I</dt>
 <dd>Only for policy_mode 'csa': absolute position of every query with shape (batch_size, sequence_length).</dd>
 <dt><tt>past_compressed_key</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'csa': compressed keys emitted by previous calls, with shape (batch_size, past_compressed_length, head_size).</dd>
+<dd>Only for policy_mode 'csa': compressed keys emitted by previous calls, with shape (batch_size, past_compressed_length, head_size), or (batch_size, max_cache_length, head_size) when past_compressed_length input is provided.</dd>
 <dt><tt>past_kv_buffer</tt> (optional) : T</dt>
 <dd>Only for policy_mode 'csa': buffered key projections with shape (batch_size, buffer_length, 2 * head_size), where buffer_length is in [0, 2 * compress_ratio).</dd>
 <dt><tt>past_gate_buffer</tt> (optional) : T</dt>
 <dd>Only for policy_mode 'csa': buffered gate projections with the same shape as past_kv_buffer.</dd>
+<dt><tt>past_sequence_length</tt> (optional) : M</dt>
+<dd>Only for policy_mode 'qsa': optional one-element CPU tensor containing the number of valid rows in past_key. When provided, past_key and present_key have the same max-capacity shape and may share their buffer.</dd>
+<dt><tt>past_compressed_length</tt> (optional) : M</dt>
+<dd>Only for policy_mode 'csa': optional one-element CPU tensor containing the number of valid rows in past_compressed_key. When provided, past_compressed_key and present_compressed_key have the same max-capacity shape and may share their buffer.</dd>
 </dl>
 
 #### Outputs (1 - 5)
@@ -7077,9 +7081,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>selected_indices</tt> : M</dt>
 <dd>Selected entries with shape (batch_size, sequence_length, capacity). capacity is token_budget + compress_ratio - 1 for policy_mode 'qsa', where the values are token indices into the key cache, and index_topk for policy_mode 'csa', where the values are compressed entry indices. Unused entries are -1.</dd>
 <dt><tt>present_key</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'qsa': past_key concatenated with key, with shape (batch_size, total_sequence_length, head_size).</dd>
+<dd>Only for policy_mode 'qsa': past_key concatenated with key, with shape (batch_size, total_sequence_length, head_size). When past_sequence_length is provided, the shape instead matches the max-capacity past_key and the two tensors may share a buffer.</dd>
 <dt><tt>present_compressed_key</tt> (optional) : T</dt>
-<dd>Only for policy_mode 'csa': past_compressed_key concatenated with the entries emitted by this call, with shape (batch_size, present_compressed_length, head_size).</dd>
+<dd>Only for policy_mode 'csa': past_compressed_key concatenated with the entries emitted by this call, with shape (batch_size, present_compressed_length, head_size). When past_compressed_length is provided, the shape instead matches the max-capacity past_compressed_key and the two tensors may share a buffer.</dd>
 <dt><tt>present_kv_buffer</tt> (optional) : T</dt>
 <dd>Only for policy_mode 'csa': updated key buffer with shape (batch_size, present_buffer_length, 2 * head_size).</dd>
 <dt><tt>present_gate_buffer</tt> (optional) : T</dt>
@@ -7096,7 +7100,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>I</tt> : tensor(int64)</dt>
 <dd>Constrain position ids to 64-bit integer tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
-<dd>Constrain selected indices to 32-bit integer tensors.</dd>
+<dd>Constrain indices and cache lengths to 32-bit integer tensors.</dd>
 </dl>
 
 
@@ -7814,5 +7818,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-
