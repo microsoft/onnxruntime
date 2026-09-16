@@ -136,6 +136,21 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
   test_info.output_verifier(fetches);
 }
 
+#if !defined(ORT_ENABLE_GQA_VALUE_LAYOUT)
+TEST(OrtModelOnlyTests, RejectsGqaValueLayoutOptionWhenDisabled) {
+  for (const char* layout : {"BNSH", "BNHS", "NHWC", ""}) {
+    SCOPED_TRACE(layout);
+    SessionOptions options;
+    ASSERT_STATUS_OK(options.config_options.AddConfigEntry(kOrtSessionOptionsGqaValueLayout, layout));
+    InferenceSessionWrapper session{options, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/mnist.basic.ort")));
+    const Status status = session.Initialize();
+    EXPECT_EQ(status.Code(), common::INVALID_ARGUMENT);
+    EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("GQA layout disabled"));
+  }
+}
+#endif
+
 TEST(OrtModelTest, RejectsInitializerRawDataSizeMismatch) {
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
     std::vector<int64_t> dims{32};

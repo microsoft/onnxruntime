@@ -10,7 +10,7 @@
 #not affect built binaries.
 #
 abseil_cpp;https://github.com/abseil/abseil-cpp/archive/refs/tags/20250814.0.zip;a9eb1d648cbca4d4d788737e971a6a7a63726b07
-coremltools;https://github.com/apple/coremltools/archive/refs/tags/7.1.zip;f1bab0f30966f2e217d8e01207d518f230a1641a
+coremltools;https://github.com/apple/coremltools/archive/refs/tags/9.0.zip;0e9b1a9a9a9fe283ac1a0c9261420075d5574dd1
 cxxopts;https://github.com/jarro2783/cxxopts/archive/3c73d91c0b04e2b59462f0a741be8c07024c1bc0.zip;6c6ca7f8480b26c8d00476e0e24b7184717fe4f0
 date;https://github.com/HowardHinnant/date/archive/refs/tags/v3.0.1.zip;2dac0c81dc54ebdd8f8d073a75c053b04b56e159
 dlpack;https://github.com/dmlc/dlpack/archive/5c210da409e7f1e51ddf445134a4376fdbd70d7d.zip;e499c86e4e5c5268a87661d7ea39c27fae10907c
@@ -25,7 +25,7 @@ eigen;https://github.com/eigen-mirror/eigen/archive/1d8b82b0740839c0de7f1242a358
 flatbuffers;https://github.com/google/flatbuffers/archive/refs/tags/v23.5.26.zip;59422c3b5e573dd192fead2834d25951f1c1670c
 fp16;https://github.com/Maratyszcza/FP16/archive/0a92994d729ff76a58f692d3028ca1b64b145d91.zip;b985f6985a05a1c03ff1bb71190f66d8f98a1494
 fxdiv;https://github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip;a5658f4036402dbca7cebee32be57fb8149811e1
-google_benchmark;https://github.com/google/benchmark/archive/refs/tags/v1.8.5.zip;cd47d3d272faf353600c8cc2fdec2b52d6f69177
+google_benchmark;https://github.com/google/benchmark/archive/refs/tags/v1.9.5.zip;e56e2dbb8f5bef7e943883a34f40bc29f63efae6
 googletest;https://github.com/google/googletest/archive/refs/tags/v1.17.0.zip;f638fa0e724760e2ba07ff8cfba32cd644e1ce28
 #xnnpack 2025.06.22
 googlexnnpack;https://github.com/google/XNNPACK/archive/3cf85e705098622d59056dcb8f5f963ea7bb0a00.zip;6f6bbba627241f89463ca845febaf063982b34fe
@@ -68,7 +68,7 @@ kleidiai-qmx;https://github.com/qualcomm/kleidiai/archive/2f10c9a8d32f81ffeeb6d4
 vulkan_headers;https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/refs/tags/v1.4.344;57bc528ef7c4a3f7bfbb59e64a187e3734bd29d8
 # cpp_client_telemetry (1DS SDK) for cross-platform telemetry on non-Windows platforms.
 # Pinned to the stable release plus the ORT-maintained compatibility patch.
-cpp_client_telemetry;https://github.com/microsoft/cpp_client_telemetry/archive/refs/tags/v3.10.173.1.zip;d35a0f0595114304ed8c308e720671032f9586d1
+cpp_client_telemetry;https://github.com/microsoft/cpp_client_telemetry/archive/refs/tags/v3.10.240.1.zip;96cd290d746b86a31c8e08dd167cf39d390c0134
 # Static HTTP transport used by 1DS on non-vcpkg Linux builds.
 curl;https://github.com/curl/curl/releases/download/curl-8_21_0/curl-8.21.0.tar.xz;c3b4712175609f1e1662e716efd4fd48901e863d
 mbedtls;https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2;e892e98cff90cf7e0736c525bf357626a2513c4c
