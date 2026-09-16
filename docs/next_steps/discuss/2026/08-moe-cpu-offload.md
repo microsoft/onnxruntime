@@ -144,7 +144,13 @@ Expert-statistics collection is disabled by default. It is enabled only when the
 session.enable_moe_expert_statistics=1
 ```
 
-The default value is `0`. When it is `0`, the routing path must not allocate statistics buffers, collect expert identifiers, or add measurable synchronization overhead. The evaluation script exposes the same setting as `--enable-moe-expert-statistics`.
+The default value is `0`. When it is `0`, the routing path must not allocate statistics buffers, collect expert
+identifiers, or add measurable synchronization overhead. `qmoe_prompt_runner.py` enables the setting automatically.
+
+The delivered evaluation protocol is intentionally limited to sequential, single-prompt generation. The runner
+processes one prompt at a time, and expert-statistics logging rejects a 3D MoE/QMoE input whose explicit batch dimension
+is not 1. A 2D input remains valid because the operator schema defines it as an unbatched token matrix, which is needed
+for a single prompt's multi-token prefill. Concurrent `Run()` calls are outside this protocol.
 
 The implementation writes only MoE routing decisions through the normal ONNX Runtime logger at INFO severity. It does
 not enable `profiling::Profiler`, retain a Chrome trace in memory, or record unrelated node and kernel events. Consumers
@@ -155,6 +161,12 @@ Each current routing record contains `request_id`, `node_name`, `node_index`, `e
 `top_k`, and `execution_device_id`. CUDA routing buffers are copied asynchronously and retained until the normal
 end-of-run execution-provider synchronization, then serialized. Per-run record and routing-element limits bound pinned
 host memory; a `moe_routing_truncated` warning reports any dropped decisions explicitly.
+
+The runner surrounds every prompt with ordered `prompt_start` and `prompt_end` markers and writes a final
+`moe_routing_complete` footer containing the prompt, prompt-run, and routing-record counts. The analyzer requires all
+markers, rejects overlapping or out-of-order prompts, validates the footer counts against the records, and cross-checks
+the completed prompt count with the benchmark JSON before writing CSV or plot artifacts. An interrupted, truncated, or
+non-sequential run therefore fails closed.
 
 PR 2 adds a dedicated JSON Lines destination:
 
@@ -169,7 +181,7 @@ failures are reported as run errors rather than silently disabling trace collect
 
 A later output-prediction study extends these events with sampled MoE outputs. This extension remains behind `session.enable_moe_expert_statistics=1` and is disabled unless an explicit sampling configuration is provided. It records the source `(request_id, input_shapes, token_index, layer_id)`, output shape and type, and either the sampled output vector or a documented deterministic projection. It must not emit every full activation by default because that would make the JSON traces impractically large.
 
-Each routing record contains:
+The planned extended routing record contains:
 
 | Field | Meaning |
 |---|---|
@@ -195,7 +207,9 @@ Run metadata records the model revision, ONNX Runtime and `onnxruntime-genai` ve
 `tools/python/qmoe_prompt_runner.py` submits a JSON list of prompts directly through the `onnxruntime-genai`
 generation API. It does not import or invoke `locodellm`. Until the dedicated routing-file session option is
 implemented, it redirects the native ORT `stderr` file descriptor to the requested routing log and emits explicit
-`N/total` prompt boundaries. It writes generated text, token counts, durations, and throughput to a separate JSON file.
+`N/total` prompt start/end boundaries. After the result JSON is written, it appends a counted
+`moe_routing_complete` footer. It writes generated text, token counts, durations, and throughput to a separate JSON
+file.
 
 ```bash
 python tools/python/qmoe_prompt_runner.py /path/to/model --prompts-file prompts.json --provider cuda --max-new-tokens 256 --output qmoe-prompt-results.json --routing-log qmoe-routing.log
@@ -208,16 +222,18 @@ chat template by default; `--raw-prompts` disables that behavior.
 `tools/python/qmoe_expert_distribution.py` validates and streams the routing records, computes prompt, layer, and global
 expert distributions, ranks experts by frequency, maps every selected top-k expert to its zero-based frequency rank,
 generates threshold aggregates, derives expert bytes from the ONNX external initializers, and writes the result plots.
-Logs containing a `moe_routing_truncated` warning are rejected before generating analysis artifacts, since missing
-routing decisions would bias placement estimates. Matplotlib is required for plotting, but not for importing the
-analysis helpers.
+Logs containing a `moe_routing_truncated` warning, incomplete prompt boundaries, an absent or inconsistent completion
+footer, or malformed routing and external-data metadata are rejected before generating analysis artifacts. The
+benchmark JSON is required, and its prompt count and indices must match the completed trace. Matplotlib is required for
+plotting, but not for importing the analysis helpers.
 
 ```bash
 python tools/python/qmoe_expert_distribution.py qmoe-routing.log --benchmark-json qmoe-prompt-results.json --model /path/to/model/model.onnx --output-prefix qmoe-routing-analysis
 ```
 
-Both scripts keep the raw routing trace separate from aggregate CSV and PNG artifacts. PR 2 adds synthetic fixtures and
-targeted tests for prompt boundaries, top-k extraction, rank ties, threshold totals, and ONNX expert-size calculation.
+Both scripts keep the raw routing trace separate from aggregate CSV and PNG artifacts. The analyzer tests are registered
+explicitly in Python CI and cover prompt completeness and ordering, top-k extraction, rank ties, threshold totals,
+routing-schema validation, and ONNX expert-size calculation.
 
 ## First results
 
@@ -377,7 +393,7 @@ Every persistent change is delivered through one of the following pull requests.
 
 ### PR 2: reproducible evaluation and statistical-analysis scripts
 
-- Add an `onnxruntime-genai` script that runs a fixed set of 1,000 prompts with identical generation settings on CPU and CUDA and passes `--enable-moe-expert-statistics`.
+- Add an `onnxruntime-genai` script that runs a fixed set of 1,000 prompts with identical generation settings on CPU and CUDA and enables expert statistics in its generated session configuration.
 - Pin and validate the supported `onnxruntime-genai` revision and record its generation and provider configurations in every run.
 - Add checked-in scripts that validate, normalize, and join the CPU and CUDA traces.
 - Detect sequence boundaries from decreases in the sequence-length input dimension and validate them against request identifiers.

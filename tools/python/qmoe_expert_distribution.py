@@ -11,10 +11,13 @@ import onnx
 
 ROUTING_MARKER = "moe_routing "
 ROUTING_TRUNCATED_MARKER = "moe_routing_truncated "
-PROMPT_PROGRESS = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_start$")
+ROUTING_COMPLETE_MARKER = "moe_routing_complete "
+PROMPT_START = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_start$")
+PROMPT_END = re.compile(r"^\[qmoe_prompt_runner\] (\d+)/(\d+) prompt_end$")
 LAYER_NUMBER = re.compile(r"/layers\.(\d+)/")
 QMOE_EXPERT_WEIGHT_INPUT_INDICES = (2, 5)
 MAX_PLOTTED_LAYERS = 9
+MAX_EXTERNAL_DATA_VALUE = (1 << 63) - 1
 
 
 def parse_args():
@@ -40,10 +43,18 @@ def parse_args():
 
 def load_prompt_labels(path):
     if not path.is_file():
-        return {}
+        raise FileNotFoundError(f"Benchmark JSON not found: {path}")
     with path.open(encoding="utf-8") as stream:
         benchmark = json.load(stream)
-    return {index: case["prompt"] for index, case in enumerate(benchmark, start=1)}
+    if not isinstance(benchmark, list) or not benchmark:
+        raise ValueError(f"Benchmark JSON must contain a non-empty list: {path}")
+
+    prompt_labels = {}
+    for index, case in enumerate(benchmark, start=1):
+        if not isinstance(case, dict) or case.get("prompt_index") != index or not isinstance(case.get("prompt"), str):
+            raise ValueError(f"Benchmark JSON entry {index} has an invalid prompt index or prompt.")
+        prompt_labels[index] = case["prompt"]
+    return prompt_labels
 
 
 def resolve_model_path(log_path, model_path):
@@ -69,36 +80,127 @@ def layer_sort_key(node_name):
     return (int(match.group(1)), node_name) if match else (10**9, node_name)
 
 
-def iter_routing_events(log_path):
-    prompt_index = None
+def _validate_routing_event(event, line_number):
+    if not isinstance(event, dict):
+        raise ValueError(f"Line {line_number}: routing payload must be a JSON object.")
+    if not isinstance(event.get("node_name"), str) or not event["node_name"]:
+        raise ValueError(f"Line {line_number}: node_name must be a non-empty string.")
+    for field in ("num_rows", "top_k"):
+        value = event.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(f"Line {line_number}: {field} must be a positive integer.")
+
+    expected = event["num_rows"] * event["top_k"]
+    for field in ("expert_ids", "router_weights"):
+        values = event.get(field)
+        if not isinstance(values, list) or len(values) != expected:
+            actual = len(values) if isinstance(values, list) else "non-list"
+            raise ValueError(f"Line {line_number}: expected {expected} {field}, got {actual}.")
+    if any(not isinstance(expert_id, int) or isinstance(expert_id, bool) for expert_id in event["expert_ids"]):
+        raise ValueError(f"Line {line_number}: expert_ids must contain integers.")
+    if any(
+        not isinstance(weight, (int, float)) or isinstance(weight, bool) or not math.isfinite(weight)
+        for weight in event["router_weights"]
+    ):
+        raise ValueError(f"Line {line_number}: router_weights must contain finite numbers.")
+
+
+def parse_routing_trace(log_path):
+    active_prompt = None
+    completed_prompts = 0
+    expected_prompts = None
+    routing_events = []
+    completion = None
 
     with log_path.open(encoding="utf-8", errors="replace") as stream:
         for line_number, line in enumerate(stream, start=1):
             if ROUTING_TRUNCATED_MARKER in line:
                 raise ValueError(f"Incomplete routing trace at line {line_number}: {line.strip()}")
 
-            progress = PROMPT_PROGRESS.search(line)
-            if progress:
-                prompt_index = int(progress.group(1))
+            stripped_line = line.strip()
+            prompt_start = PROMPT_START.fullmatch(stripped_line)
+            if prompt_start:
+                prompt_index, prompt_total = map(int, prompt_start.groups())
+                if completion is not None:
+                    raise ValueError(f"Prompt started after the completion footer at line {line_number}.")
+                if active_prompt is not None:
+                    raise ValueError(
+                        f"Prompt {prompt_index} started before prompt {active_prompt} ended at line {line_number}."
+                    )
+                if prompt_total <= 0 or (expected_prompts is not None and prompt_total != expected_prompts):
+                    raise ValueError(f"Inconsistent prompt total at line {line_number}: {prompt_total}.")
+                if prompt_index != completed_prompts + 1:
+                    raise ValueError(
+                        f"Expected prompt {completed_prompts + 1}, got {prompt_index} at line {line_number}."
+                    )
+                expected_prompts = prompt_total
+                active_prompt = prompt_index
+                continue
+
+            prompt_end = PROMPT_END.fullmatch(stripped_line)
+            if prompt_end:
+                prompt_index, prompt_total = map(int, prompt_end.groups())
+                if active_prompt != prompt_index or prompt_total != expected_prompts:
+                    raise ValueError(f"Unexpected prompt_end marker at line {line_number}: {stripped_line}")
+                active_prompt = None
+                completed_prompts += 1
+                continue
+
+            completion_position = line.find(ROUTING_COMPLETE_MARKER)
+            if completion_position >= 0:
+                if completion is not None:
+                    raise ValueError(f"Duplicate routing completion footer at line {line_number}.")
+                if active_prompt is not None:
+                    raise ValueError(f"Routing completion footer precedes prompt_end at line {line_number}.")
+                try:
+                    completion = json.loads(line[completion_position + len(ROUTING_COMPLETE_MARKER) :])
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Invalid routing completion footer at line {line_number}: {exc}") from exc
+                continue
 
             marker_position = line.find(ROUTING_MARKER)
             if marker_position < 0:
                 continue
-            if prompt_index is None:
-                raise ValueError(f"Routing event at line {line_number} precedes the first prompt marker.")
+            if active_prompt is None:
+                raise ValueError(f"Routing event at line {line_number} is outside an active prompt.")
+            if completion is not None:
+                raise ValueError(f"Routing event follows the completion footer at line {line_number}.")
 
             payload = line[marker_position + len(ROUTING_MARKER) :].strip()
             try:
                 event = json.loads(payload)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"Invalid routing JSON at line {line_number}: {exc}") from exc
+            _validate_routing_event(event, line_number)
+            routing_events.append((active_prompt, event))
 
-            expert_ids = event["expert_ids"]
-            expected = event["num_rows"] * event["top_k"]
-            if len(expert_ids) != expected:
-                raise ValueError(f"Line {line_number}: expected {expected} expert IDs, got {len(expert_ids)}.")
+    if active_prompt is not None:
+        raise ValueError(f"Incomplete routing trace: prompt {active_prompt} has no prompt_end marker.")
+    if expected_prompts is None:
+        raise ValueError("Incomplete routing trace: no prompt_start marker.")
+    if completed_prompts != expected_prompts:
+        raise ValueError(f"Incomplete routing trace: completed {completed_prompts} of {expected_prompts} prompts.")
+    if not isinstance(completion, dict):
+        raise ValueError("Incomplete routing trace: missing moe_routing_complete footer.")
+    if any(
+        not isinstance(completion.get(field), int) or isinstance(completion[field], bool)
+        for field in ("prompts", "prompt_runs", "routing_records")
+    ):
+        raise ValueError("Routing completion footer counts must be integers.")
 
-            yield prompt_index, event
+    expected_completion = {
+        "prompts": expected_prompts,
+        "prompt_runs": completed_prompts,
+        "routing_records": len(routing_events),
+    }
+    if completion != expected_completion:
+        raise ValueError(f"Routing completion footer mismatch: expected {expected_completion}, got {completion}.")
+    return routing_events, completion
+
+
+def iter_routing_events(log_path):
+    routing_events, _ = parse_routing_trace(log_path)
+    yield from routing_events
 
 
 def read_distributions(log_path, num_experts):
@@ -271,7 +373,20 @@ def load_qmoe_model_metadata(model_path):
     return initializers, qmoe_nodes, expert_counts.pop()
 
 
-def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_names, num_experts):
+def _external_data_integer(external_data, key, initializer_name):
+    raw_value = external_data.get(key)
+    if raw_value is None:
+        return 0
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid external_data.{key} for initializer {initializer_name}: {raw_value!r}.") from exc
+    if value < 0 or value > MAX_EXTERNAL_DATA_VALUE:
+        raise ValueError(f"Invalid external_data.{key} for initializer {initializer_name}: {raw_value!r}.")
+    return value
+
+
+def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_names, num_experts, model_path=None):
     expert_bytes = {}
     for node_name in node_names:
         node = qmoe_nodes.get(node_name)
@@ -286,7 +401,25 @@ def calculate_qmoe_expert_bytes(initializers, qmoe_nodes, node_names, num_expert
             if initializer.dims[0] != num_experts:
                 continue
             external_data = {entry.key: entry.value for entry in initializer.external_data}
-            tensor_bytes = int(external_data.get("length", 0)) or initializer_byte_count(initializer)
+            expected_tensor_bytes = initializer_byte_count(initializer)
+            declared_length = _external_data_integer(external_data, "length", input_name)
+            if declared_length and declared_length != expected_tensor_bytes:
+                raise ValueError(
+                    f"External data length for initializer {input_name} is {declared_length}, "
+                    f"expected {expected_tensor_bytes}."
+                )
+            tensor_bytes = declared_length or expected_tensor_bytes
+
+            location = external_data.get("location")
+            if model_path is not None and location:
+                external_path = Path(model_path).parent / location
+                if external_path.is_file():
+                    offset = _external_data_integer(external_data, "offset", input_name)
+                    if offset + tensor_bytes > external_path.stat().st_size:
+                        raise ValueError(
+                            f"External data range for initializer {input_name} exceeds {external_path}: "
+                            f"offset {offset}, length {tensor_bytes}, file size {external_path.stat().st_size}."
+                        )
             if tensor_bytes % num_experts:
                 raise ValueError(f"Initializer size is not divisible by {num_experts}: {input_name}")
             total_bytes += tensor_bytes // num_experts
@@ -459,11 +592,19 @@ def main():
     output_prefix = args.output_prefix or args.log.with_name(f"{args.log.stem}-expert-distribution")
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
 
+    _, completion = parse_routing_trace(args.log)
     prompt_labels = load_prompt_labels(benchmark_json)
+    if len(prompt_labels) != completion["prompts"]:
+        raise ValueError(
+            f"Benchmark JSON contains {len(prompt_labels)} prompts, "
+            f"but the routing trace completed {completion['prompts']} prompts."
+        )
     model_path = resolve_model_path(args.log, args.model)
     initializers, qmoe_nodes, num_experts = load_qmoe_model_metadata(model_path)
     by_prompt_qmoe, by_qmoe, global_counts, event_count = read_distributions(args.log, num_experts)
-    expert_bytes = calculate_qmoe_expert_bytes(initializers, qmoe_nodes, by_qmoe.keys(), num_experts)
+    expert_bytes = calculate_qmoe_expert_bytes(
+        initializers, qmoe_nodes, by_qmoe.keys(), num_experts, model_path=model_path
+    )
 
     prompt_qmoe_path = Path(f"{output_prefix}-by-prompt-qmoe.csv")
     qmoe_path = Path(f"{output_prefix}-by-qmoe.csv")

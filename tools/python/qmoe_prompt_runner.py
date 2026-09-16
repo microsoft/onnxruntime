@@ -11,6 +11,9 @@ from pathlib import Path
 
 import onnxruntime_genai as og
 
+ROUTING_MARKER = "moe_routing "
+ROUTING_COMPLETE_MARKER = "moe_routing_complete "
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -148,6 +151,11 @@ def generate(model, tokenizer, prompt, max_new_tokens, raw_prompt):
     }
 
 
+def count_routing_records(path):
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        return sum(ROUTING_MARKER in line for line in stream)
+
+
 def main():
     args = parse_args()
     if args.max_new_tokens <= 0:
@@ -180,6 +188,11 @@ def main():
                 }
             )
             print(
+                f"[qmoe_prompt_runner] {prompt_index}/{len(prompts)} prompt_end",
+                file=sys.stderr,
+                flush=True,
+            )
+            print(
                 f"[{prompt_index}/{len(prompts)}] "
                 f"{result['generated_tokens']} tokens in "
                 f"{result['duration_seconds']:.3f}s"
@@ -189,6 +202,13 @@ def main():
         json.dumps(results, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    completion = {
+        "prompts": len(prompts),
+        "prompt_runs": len(results),
+        "routing_records": count_routing_records(args.routing_log),
+    }
+    with args.routing_log.open("a", encoding="utf-8") as stream:
+        stream.write(f"{ROUTING_COMPLETE_MARKER}{json.dumps(completion, separators=(',', ':'))}\n")
     print(args.output)
     print(args.routing_log)
 
