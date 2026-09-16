@@ -4221,7 +4221,7 @@ static void RunIndirectDispatchGraphCapture(bool do_rotary,
   auto cos_cache_data = make_data(large_rotary_cache_length * half_rotary_dim, 0.001f, 37);
   int cos_cache_length = large_rotary_cache_length;
   int sin_cache_length = use_asymmetric_rotary_caches ? short_total_sequence_length
-                                                       : large_rotary_cache_length;
+                                                      : large_rotary_cache_length;
   auto sin_cache_data = make_data(sin_cache_length * half_rotary_dim, 0.001f, 41);
   if (enable_multi_rotary_cache) {
     ASSERT_FALSE(use_asymmetric_rotary_caches);
