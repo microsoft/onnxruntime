@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -16,6 +17,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensor.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/providers/cuda/cuda_external_data_loader.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cuda/cuda_external_data_loader_thread_pool.h"
 #include "core/session/inference_session.h"
@@ -32,15 +34,14 @@ namespace onnxruntime {
 namespace test {
 namespace {
 
-constexpr size_t kParallelReadThreshold = 16 * 1024 * 1024;
-constexpr size_t kStagingBufferSize = 64 * 1024 * 1024;
 constexpr size_t kFilePrefixSize = 13;
 
 uint8_t TestValue(size_t index) {
   return static_cast<uint8_t>((index * 31 + 7) & 0xff);
 }
 
-void CreateExternalDataFile(size_t length, PathString& path) {
+void CreateExternalDataFile(size_t length, PathString& path,
+                            gsl::span<const uint8_t> suffix = {}) {
   FILE* file = nullptr;
   path = ORT_TSTR("cuda_external_data_loader_XXXXXX");
   CreateTestFile(file, path);
@@ -54,6 +55,9 @@ void CreateExternalDataFile(size_t length, PathString& path) {
     }
     ASSERT_EQ(chunk_size, fwrite(chunk.data(), 1, chunk_size, file));
     offset += chunk_size;
+  }
+  if (!suffix.empty()) {
+    ASSERT_EQ(suffix.size(), fwrite(suffix.data(), 1, suffix.size(), file));
   }
   EXPECT_EQ(0, fclose(file));
 }
@@ -160,15 +164,15 @@ TEST(CudaExternalDataLoaderThreadPoolTest, DrainsThrowingReadsAndRemainsUsable) 
 #endif
 
 TEST(CudaExternalDataLoaderTest, LoadsBelowParallelReadThreshold) {
-  VerifyLoad(kParallelReadThreshold - 1);
+  VerifyLoad(cuda::kExternalDataLoaderParallelReadThreshold - 1);
 }
 
 TEST(CudaExternalDataLoaderTest, LoadsAtParallelReadThreshold) {
-  VerifyLoad(kParallelReadThreshold);
+  VerifyLoad(cuda::kExternalDataLoaderParallelReadThreshold);
 }
 
 TEST(CudaExternalDataLoaderTest, LoadsSynchronouslyWhenConfiguredWithOneReadingThread) {
-  VerifyLoad(kParallelReadThreshold, 1, 1);
+  VerifyLoad(cuda::kExternalDataLoaderParallelReadThreshold, 1, 1);
 }
 
 TEST(CudaExternalDataLoaderTest, DisablesLoaderWhenConfiguredWithZeroReadingThreads) {
@@ -202,18 +206,71 @@ TEST(CudaExternalDataLoaderTest, RejectsTooManyReadingThreadsFromStructOptions) 
 }
 
 TEST(CudaExternalDataLoaderTest, ReusesAlternatingBuffersAcrossRepeatedLoads) {
-  VerifyLoad(2 * kStagingBufferSize + 1, 2);
+  VerifyLoad(2 * cuda::kExternalDataLoaderBufferSize + 1, 2);
+}
+
+cudaError_t FailPinnedBufferAllocation(void**, size_t) {
+  return cudaErrorMemoryAllocation;
+}
+
+cudaError_t FailStreamCreation(cudaStream_t*, unsigned int) {
+  return cudaErrorInitializationError;
+}
+
+TEST(CudaExternalDataLoaderTest, NormalizesBoolWithPinnedAndPageableFallback) {
+  const std::array<uint8_t, 4> input{0, 1, 2, 255};
+  const std::array<uint8_t, 4> expected{0, 1, 1, 1};
+  PathString path;
+  CreateExternalDataFile(0, path, input);
+  ScopedFileDeleter file_deleter{path};
+
+  auto execution_provider = DefaultCudaExecutionProvider();
+  ASSERT_NE(execution_provider, nullptr);
+  auto allocators = execution_provider->CreatePreferredAllocators();
+  const auto allocator = std::find_if(allocators.begin(), allocators.end(), [](const AllocatorPtr& candidate) {
+    return candidate->Info().device.Type() == OrtDevice::GPU &&
+           candidate->Info().mem_type == OrtMemTypeDefault;
+  });
+  ASSERT_NE(allocator, allocators.end());
+
+  for (int failure_mode = 0; failure_mode < 3; ++failure_mode) {
+    SCOPED_TRACE(failure_mode);
+    std::unique_ptr<cuda::ExternalDataLoader> loader;
+    if (failure_mode == 1) {
+      loader = std::make_unique<cuda::ExternalDataLoader>(
+          0, 4, FailPinnedBufferAllocation);
+    } else if (failure_mode == 2) {
+      loader = std::make_unique<cuda::ExternalDataLoader>(
+          0, 4, cudaMallocHost, FailStreamCreation);
+    } else {
+      loader = std::make_unique<cuda::ExternalDataLoader>(0, 4);
+    }
+
+    Tensor tensor(DataTypeImpl::GetType<bool>(), TensorShape({static_cast<int64_t>(input.size())}), *allocator);
+    ASSERT_STATUS_OK(loader->LoadTensor(
+        Env::Default(), path, kFilePrefixSize, input.size(), tensor));
+    std::array<uint8_t, 4> output{};
+    ASSERT_EQ(cudaSuccess, cudaMemcpy(
+                               output.data(), tensor.DataRaw(), output.size(), cudaMemcpyDeviceToHost));
+    EXPECT_EQ(output, expected);
+  }
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
 TEST(CudaExternalDataLoaderTest, ExternalInitializerSessionMatchesWithLoaderEnabledAndDisabled) {
-  constexpr int64_t kLength = kStagingBufferSize + 17;
-  const InlinedVector<int64_t> indices{0, 1, kParallelReadThreshold - 1, kParallelReadThreshold,
-                                       kParallelReadThreshold + 1, kStagingBufferSize - 1,
-                                       kStagingBufferSize, kStagingBufferSize + 1, kLength - 1};
+  constexpr int64_t kLength = cuda::kExternalDataLoaderBufferSize + 17;
+  constexpr std::string_view kPrepackedKey = "saved_prepack";
+  const std::array<uint8_t, 5> prepacked_blob{11, 22, 33, 44, 55};
+  const InlinedVector<int64_t> indices{
+      0, 1, cuda::kExternalDataLoaderParallelReadThreshold - 1,
+      cuda::kExternalDataLoaderParallelReadThreshold,
+      cuda::kExternalDataLoaderParallelReadThreshold + 1,
+      cuda::kExternalDataLoaderBufferSize - 1,
+      cuda::kExternalDataLoaderBufferSize,
+      cuda::kExternalDataLoaderBufferSize + 1, kLength - 1};
   const auto output_length = static_cast<int64_t>(indices.size());
   PathString data_path;
-  ASSERT_NO_FATAL_FAILURE(CreateExternalDataFile(kLength, data_path));
+  ASSERT_NO_FATAL_FAILURE(CreateExternalDataFile(kLength, data_path, prepacked_blob));
   ScopedFileDeleter data_deleter{data_path};
 
   ONNX_NAMESPACE::ModelProto model;
@@ -234,6 +291,9 @@ TEST(CudaExternalDataLoaderTest, ExternalInitializerSessionMatchesWithLoaderEnab
   add_external_data("location", ToUTF8String(std::filesystem::path(data_path).filename().native()));
   add_external_data("offset", std::to_string(kFilePrefixSize));
   add_external_data("length", std::to_string(kLength));
+  add_external_data(
+      "prepacked_0",
+      MakeString(kPrepackedKey, "|", kFilePrefixSize + kLength, ";", prepacked_blob.size(), ";0"));
 
   auto* input = graph->add_input();
   input->set_name("indices");
@@ -285,6 +345,14 @@ TEST(CudaExternalDataLoaderTest, ExternalInitializerSessionMatchesWithLoaderEnab
     ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx("weights", weights_index));
     const auto& initialized_weights = session_state.GetInitializedTensors().at(weights_index).Get<Tensor>();
     ASSERT_EQ(initialized_weights.Location().device.Type(), OrtDevice::GPU);
+    const auto* restored_prepack =
+        session_state.GetPrepackedIniitializersForGraph().GetPrepackedWeights(std::string{kPrepackedKey});
+    ASSERT_NE(restored_prepack, nullptr);
+    ASSERT_EQ(restored_prepack->buffers_.size(), 1U);
+    ASSERT_EQ(restored_prepack->buffer_sizes_, std::vector<size_t>{prepacked_blob.size()});
+    EXPECT_TRUE(std::equal(
+        prepacked_blob.begin(), prepacked_blob.end(),
+        static_cast<const uint8_t*>(restored_prepack->buffers_[0].get())));
 
     std::vector<OrtValue> fetches;
     ASSERT_STATUS_OK(session.Run(RunOptions{}, {{"indices", indices_value}}, output_names, &fetches));

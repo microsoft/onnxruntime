@@ -13,11 +13,19 @@
 namespace onnxruntime {
 namespace cuda {
 
+inline constexpr size_t kExternalDataLoaderBufferSize = 64 * 1024 * 1024;
+inline constexpr size_t kExternalDataLoaderParallelReadThreshold = 16 * 1024 * 1024;
+
 class ExternalDataLoaderThreadPool;
 
 class ExternalDataLoader final : public IExternalDataLoader {
  public:
-  ExternalDataLoader(int device_id, size_t reading_thread_count);
+  using AllocatePinnedBufferFn = cudaError_t (*)(void**, size_t);
+  using CreateStreamFn = cudaError_t (*)(cudaStream_t*, unsigned int);
+
+  ExternalDataLoader(int device_id, size_t reading_thread_count,
+                     AllocatePinnedBufferFn allocate_pinned_buffer = cudaMallocHost,
+                     CreateStreamFn create_stream = cudaStreamCreateWithFlags);
   ~ExternalDataLoader() override;
 
   bool CanLoad(const OrtMemoryInfo& target_memory_info) const override;
@@ -37,6 +45,8 @@ class ExternalDataLoader final : public IExternalDataLoader {
   mutable std::array<void*, 2> buffers_{};
   mutable std::array<cudaStream_t, 2> streams_{};
   const size_t reading_thread_count_;
+  const AllocatePinnedBufferFn allocate_pinned_buffer_;
+  const CreateStreamFn create_stream_;
   mutable std::unique_ptr<ExternalDataLoaderThreadPool> reader_pool_;
 };
 

@@ -18,9 +18,6 @@ namespace onnxruntime {
 namespace cuda {
 namespace {
 
-constexpr size_t kBufferSize = 64 * 1024 * 1024;
-constexpr size_t kParallelReadThreshold = 16 * 1024 * 1024;
-
 class CudaDeviceGuard {
  public:
   common::Status SetDevice(int device_id) {
@@ -46,7 +43,8 @@ class CudaDeviceGuard {
 common::Status ReadChunk(const RandomAccessFile& file, FileOffsetType offset, size_t length, void* buffer,
                          size_t configured_reader_count,
                          std::unique_ptr<ExternalDataLoaderThreadPool>& reader_pool) {
-  const size_t reader_count = length >= kParallelReadThreshold ? configured_reader_count : 1;
+  const size_t reader_count =
+      length >= kExternalDataLoaderParallelReadThreshold ? configured_reader_count : 1;
   common::Status status = Status::OK();
   ORT_TRY {
     if (reader_count == 1) {
@@ -85,7 +83,7 @@ common::Status LoadWithPageableBuffer(const RandomAccessFile& file, FileOffsetTy
                                       size_t length, Tensor& tensor,
                                       size_t configured_reader_count,
                                       std::unique_ptr<ExternalDataLoaderThreadPool>& reader_pool) {
-  InlinedVector<uint8_t> buffer(std::min(kBufferSize, length));
+  InlinedVector<uint8_t> buffer(std::min(kExternalDataLoaderBufferSize, length));
   auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
 
   for (size_t offset = 0; offset < length;) {
@@ -116,8 +114,13 @@ common::Status LoadWithPageableBuffer(const RandomAccessFile& file, FileOffsetTy
 
 }  // namespace
 
-ExternalDataLoader::ExternalDataLoader(int device_id, size_t reading_thread_count)
-    : device_id_(device_id), reading_thread_count_(reading_thread_count) {}
+ExternalDataLoader::ExternalDataLoader(int device_id, size_t reading_thread_count,
+                                       AllocatePinnedBufferFn allocate_pinned_buffer,
+                                       CreateStreamFn create_stream)
+    : device_id_(device_id),
+      reading_thread_count_(reading_thread_count),
+      allocate_pinned_buffer_(allocate_pinned_buffer),
+      create_stream_(create_stream) {}
 
 ExternalDataLoader::~ExternalDataLoader() {
   reader_pool_.reset();
@@ -138,13 +141,13 @@ common::Status ExternalDataLoader::EnsureResources() const {
   }
 
   for (size_t i = 0; i < buffers_.size(); ++i) {
-    auto status = CUDA_CALL(cudaMallocHost(&buffers_[i], kBufferSize));
+    auto status = CUDA_CALL(allocate_pinned_buffer_(&buffers_[i], kExternalDataLoaderBufferSize));
     if (!status.IsOK()) {
       ReleaseResources();
       return status;
     }
 
-    status = CUDA_CALL(cudaStreamCreateWithFlags(&streams_[i], cudaStreamNonBlocking));
+    status = CUDA_CALL(create_stream_(&streams_[i], cudaStreamNonBlocking));
     if (!status.IsOK()) {
       ReleaseResources();
       return status;
@@ -230,7 +233,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
 
   for (size_t offset = 0, chunk_index = 0; offset < length; ++chunk_index) {
     const size_t buffer_index = chunk_index % buffers_.size();
-    const size_t chunk_size = std::min(kBufferSize, length - offset);
+    const size_t chunk_size = std::min(kExternalDataLoaderBufferSize, length - offset);
 
     if (stream_used[buffer_index]) {
       const auto sync_status = CUDA_CALL(cudaStreamSynchronize(streams_[buffer_index]));
