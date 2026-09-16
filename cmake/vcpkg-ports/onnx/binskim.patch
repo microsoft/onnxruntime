@@ -51,14 +51,27 @@ diff --git a/onnx/defs/printer.cc b/onnx/defs/printer.cc
 index 1d43bcc..7a0bd06 100644
 --- a/onnx/defs/printer.cc
 +++ b/onnx/defs/printer.cc
-@@ -31,6 +31,11 @@ std::vector<Widened> ParseRawIntData(const TensorProto& tensor) {
+@@ -8,6 +8,9 @@
+ #include <cmath>
+ #include <cstdint>
+ #include <iomanip>
++#include <limits>
++#include <locale>
++#include <sstream>
+ #include <string>
+ #include <type_traits>
+ #include <vector>
+@@ -31,6 +31,14 @@ std::vector<Widened> ParseRawIntData(const TensorProto& tensor) {
  // point, the shortest form that round-trips through the parser.
  template <typename T>
  void PrintNumber(std::ostream& os, T value) {
 +#if defined(__APPLE__) && defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__) && \
 +    __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ < 160300
 +  // std::to_chars is unavailable when targeting iOS releases before 16.3.
-+  os << value;
++  std::ostringstream value_stream;
++  value_stream.imbue(std::locale::classic());
++  value_stream << std::setprecision(std::numeric_limits<T>::max_digits10) << value;
++  os << value_stream.str();
 +#else
    if constexpr (std::is_floating_point_v<T>) {
      // Normalize NaN: MSVC's to_chars emits payload forms like "nan(ind)"

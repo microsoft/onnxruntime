@@ -1734,7 +1734,11 @@ def create_sparse_mixer_onnx_graph(
         ],
     )
 
-    return helper.make_model(graph, producer_name="MoE_Model")
+    return helper.make_model(
+        graph,
+        producer_name="MoE_Model",
+        opset_imports=[helper.make_opsetid("", 27), helper.make_opsetid("com.microsoft", 1)],
+    )
 
 
 class TestSparseMixer(unittest.TestCase):
@@ -1774,6 +1778,8 @@ class TestSparseMixer(unittest.TestCase):
             fc2_bias,
             onnx_dtype,
         )
+        opset_imports = {opset_import.domain: opset_import.version for opset_import in onnx_model.opset_import}
+        self.assertEqual(opset_imports, {"": 27, "com.microsoft": 1})
 
         sess_options = onnxruntime.SessionOptions()
         sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), sess_options, providers=get_ort_provider())

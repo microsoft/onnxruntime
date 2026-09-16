@@ -2,16 +2,14 @@ diff --git a/CMakeLists.txt b/CMakeLists.txt
 index 4a7df7d71..257d77e61 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -185,6 +185,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "AIX")
- # Build the libraries with -fPIC including the protobuf lib.
- if(NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE)
+@@ -198,6 +198,7 @@ if(NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE)
    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
  endif()
  
 +find_package(protobuf CONFIG REQUIRED)
  list(APPEND CMAKE_MODULE_PATH ${ONNX_ROOT}/cmake/external)
- if(NOT ONNX_BUILD_CUSTOM_PROTOBUF)
-   if((ONNX_USE_LITE_PROTO AND TARGET protobuf::libprotobuf-lite) OR ((NOT ONNX_USE_LITE_PROTO) AND TARGET protobuf::libprotobuf))
+ if(ONNX_USE_ASAN OR ONNX_USE_TSAN OR ONNX_USE_TYPESAN)
+    find_package(Sanitizer REQUIRED)
 diff --git a/cmake/ONNXConfig.cmake.in b/cmake/ONNXConfig.cmake.in
 index aa1ef47d9..d450b51e5 100644
 --- a/cmake/ONNXConfig.cmake.in
