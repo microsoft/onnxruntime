@@ -120,6 +120,80 @@ static Status LoadModel(const char* source) {
   return session_object.Load(sstr);
 }
 
+static ONNX_NAMESPACE::ModelProto CreateFunctionExpansionModel(size_t body_node_count, size_t call_count) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(8);
+  auto* onnx_opset = model.add_opset_import();
+  onnx_opset->set_domain("");
+  onnx_opset->set_version(13);
+  auto* local_opset = model.add_opset_import();
+  local_opset->set_domain("local");
+  local_opset->set_version(1);
+
+  auto set_float_value = [](ONNX_NAMESPACE::ValueInfoProto& value, const std::string& name) {
+    value.set_name(name);
+    auto* tensor_type = value.mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+  };
+
+  auto* graph = model.mutable_graph();
+  graph->set_name("function_expansion");
+  set_float_value(*graph->add_input(), "input");
+
+  auto* function = model.add_functions();
+  function->set_domain("local");
+  function->set_name("Expand");
+  function->add_input("function_input");
+  function->add_output("function_output");
+  auto* function_opset = function->add_opset_import();
+  function_opset->set_domain("");
+  function_opset->set_version(13);
+
+  std::string previous_value = "function_input";
+  for (size_t i = 0; i < body_node_count; ++i) {
+    auto* node = function->add_node();
+    node->set_op_type("Identity");
+    node->add_input(previous_value);
+    previous_value = i + 1 == body_node_count ? "function_output" : "body_" + std::to_string(i);
+    node->add_output(previous_value);
+  }
+
+  previous_value = "input";
+  for (size_t i = 0; i < call_count; ++i) {
+    auto* node = graph->add_node();
+    node->set_domain("local");
+    node->set_op_type("Expand");
+    node->add_input(previous_value);
+    previous_value = "call_" + std::to_string(i);
+    node->add_output(previous_value);
+  }
+  set_float_value(*graph->add_output(), previous_value);
+
+  return model;
+}
+
+static Status InitializeFunctionExpansionModel(size_t body_node_count, size_t call_count) {
+  std::string serialized_model;
+  ORT_RETURN_IF_NOT(CreateFunctionExpansionModel(body_node_count, call_count).SerializeToString(&serialized_model),
+                    "Failed to serialize function expansion model.");
+
+  SessionOptions session_options;
+  InferenceSession session{session_options, GetEnvironment()};
+  std::istringstream stream(serialized_model);
+  ORT_RETURN_IF_ERROR(session.Load(stream));
+  return session.Initialize();
+}
+
+TEST(FunctionTest, AotInliningLimitsFunctionExpansion) {
+  constexpr size_t body_node_count = 21;
+  ASSERT_STATUS_OK(InitializeFunctionExpansionModel(body_node_count, 1));
+
+  const auto status = InitializeFunctionExpansionModel(body_node_count, 21);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("AOT function inlining exceeds the"));
+}
+
 // A recursive/cyclic chain of model-local functions can be rejected by either layer:
 // ONNX 1.22+ detects the cycle in its own model checker ("Cycle detected in model-local
 // function references"), which runs before ORT's equivalent check ("must not be recursive").

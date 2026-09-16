@@ -1277,6 +1277,78 @@ static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* lay
   return Status::OK();
 }
 
+constexpr size_t kAotFunctionExpansionRatio = 10;
+
+static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::GraphProto& graph);
+
+static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::AttributeProto& attribute) {
+  SafeInt<size_t> node_count = 0;
+  if (attribute.has_g()) {
+    node_count += CountNodesIncludingSubgraphs(attribute.g());
+  }
+  for (const auto& attribute_graph : attribute.graphs()) {
+    node_count += CountNodesIncludingSubgraphs(attribute_graph);
+  }
+
+  return node_count;
+}
+
+static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::GraphProto& graph) {
+  SafeInt<size_t> node_count = graph.node_size();
+  for (const auto& node : graph.node()) {
+    for (const auto& attribute : node.attribute()) {
+      node_count += CountNodesIncludingSubgraphs(attribute);
+    }
+  }
+
+  return node_count;
+}
+
+static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::FunctionProto& function) {
+  SafeInt<size_t> node_count = function.node_size();
+  for (const auto& node : function.node()) {
+    for (const auto& attribute : node.attribute()) {
+      node_count += CountNodesIncludingSubgraphs(attribute);
+    }
+  }
+  for (const auto& default_attribute : function.attribute_proto()) {
+    node_count += CountNodesIncludingSubgraphs(default_attribute);
+  }
+
+  return node_count;
+}
+
+struct FunctionExpansionCost {
+  size_t node_count;
+  size_t proto_bytes;
+};
+
+static Status GetFunctionExpansionCost(const Node& node, FunctionExpansionCost& cost) {
+  if (const auto* function_body = node.GetFunctionBody()) {
+    const auto graph_proto = function_body->Body().ToGraphProto();
+    cost = {CountNodesIncludingSubgraphs(graph_proto), graph_proto.ByteSizeLong()};
+    return Status::OK();
+  }
+
+  ONNX_NAMESPACE::FunctionProto function_proto;
+  ORT_RETURN_IF_NOT(node.TryGetFunctionProto(function_proto),
+                    "Unable to get function body for node '", node.Name(), "'.");
+  std::string accounting_prefix = "_inlfunc_" + node.OpType();
+  accounting_prefix.append(32, '_');
+  function_utils::Specialize(function_proto, node, accounting_prefix);
+  cost = {CountNodesIncludingSubgraphs(function_proto), function_proto.ByteSizeLong()};
+  return Status::OK();
+}
+
+static size_t CountModelNodes(const ONNX_NAMESPACE::ModelProto& model) {
+  SafeInt<size_t> node_count = CountNodesIncludingSubgraphs(model.graph());
+  for (const auto& function : model.functions()) {
+    node_count += CountNodesIncludingSubgraphs(function);
+  }
+
+  return node_count;
+}
+
 static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
                                      const KernelRegistryManager& kernel_registry_mgr,
                                      Graph& graph,
@@ -1284,7 +1356,11 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                      const logging::Logger& logger,
                                      const CheckLoadCancellationFn& check_load_cancellation_fn,
                                      InlinedHashSet<std::string>& not_inlined,
-                                     size_t& inlined_count) {
+                                     size_t& inlined_count,
+                                     size_t expansion_node_budget,
+                                     size_t& expanded_node_count,
+                                     size_t expansion_byte_budget,
+                                     size_t& expanded_proto_bytes) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -1302,7 +1378,11 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                                  logger,
                                                  check_load_cancellation_fn,
                                                  not_inlined,
-                                                 inlined_count));
+                                                 inlined_count,
+                                                 expansion_node_budget,
+                                                 expanded_node_count,
+                                                 expansion_byte_budget,
+                                                 expanded_proto_bytes));
     }
   }
 
@@ -1355,6 +1435,15 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
     auto* node = graph.GetNode(node_index);
     if (node != nullptr) {
       if (claimed_by_ep.count(node_index) == 0) {
+        FunctionExpansionCost expansion_cost{};
+        ORT_RETURN_IF_ERROR(GetFunctionExpansionCost(*node, expansion_cost));
+        ORT_RETURN_IF(expansion_cost.node_count > expansion_node_budget - expanded_node_count,
+                      "AOT function inlining exceeds the node expansion limit of ", expansion_node_budget, ".");
+        ORT_RETURN_IF(expansion_cost.proto_bytes > expansion_byte_budget - expanded_proto_bytes,
+                      "AOT function inlining exceeds the protobuf expansion limit of ", expansion_byte_budget,
+                      " bytes.");
+        expanded_node_count += expansion_cost.node_count;
+        expanded_proto_bytes += expansion_cost.proto_bytes;
         ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
         ++inlined_count;
       } else {
@@ -1742,6 +1831,13 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
   auto check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
 
   auto& graph = model.MainGraph();
+  const auto model_proto = model.ToProto();
+  const size_t expansion_node_budget =
+      static_cast<size_t>(SafeInt<size_t>(CountModelNodes(model_proto)) * kAotFunctionExpansionRatio);
+  const size_t expansion_byte_budget =
+      static_cast<size_t>(SafeInt<size_t>(model_proto.ByteSizeLong()) * kAotFunctionExpansionRatio);
+  size_t expanded_node_count = 0;
+  size_t expanded_proto_bytes = 0;
   InlinedHashSet<std::string> not_inlined;
   do {
     size_t inlined_count = 0;
@@ -1752,7 +1848,11 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                                logger,
                                                check_load_cancellation_fn,
                                                not_inlined,
-                                               inlined_count));
+                                               inlined_count,
+                                               expansion_node_budget,
+                                               expanded_node_count,
+                                               expansion_byte_budget,
+                                               expanded_proto_bytes));
 
     if (inlined_count == 0) {
       break;
