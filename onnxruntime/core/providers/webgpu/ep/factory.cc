@@ -211,6 +211,9 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
   // A device-free context (compile-only session) gets a no-op allocator: a real GpuBufferAllocator
   // needs a device, and such a session stops before finalization and never allocates.
   const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
+  // These implementations belong to this Session, not the Env shared allocator below.
+  // Plain writable Alloc must submit cached clears even during Run: a subsequent copy may
+  // use a different recording. Only a matching AllocOnStream may defer those clears.
   auto device_alloc = webgpu::CreateWebGpuAllocator(
       device_free,
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); },
@@ -219,14 +222,14 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
       []() { return true; });
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
-      device_alloc,                     // default device allocator
+      device_alloc,                     // also retained by the EP adapter as the kernel temp-space allocator
       webgpu::CreateWebGpuAllocator(
           device_free,
           [webgpu_ep_ptr]() -> const webgpu::BufferManager& {
             return webgpu_ep_ptr->InitializerBufferManager();
           },
           [webgpu_ep_ptr]() -> webgpu::CommandRecordingState& { return webgpu_ep_ptr->Recording(); },
-          true),  // initializer device allocator
+          true),  // read-only initializers: separate allocator, same Session recording
   };
   *ep = new Ep(std::move(webgpu_ep), *factory, *logger, webgpu_ep_config);
   return nullptr;
@@ -252,6 +255,8 @@ OrtStatus* ORT_API_CALL Factory::CreateAllocatorImpl(
                                   "Unsupported memory info for shared allocator.");
   }
 
+  // Env path: the wrapper lazily creates an ExternalGpuBufferAllocator with its own recording
+  // and a retained context reference. It does not borrow an EP or depend on a Session's lifetime.
   *allocator = new onnxruntime::ep::adapter::Allocator(
       memory_info,
       [](const OrtMemoryInfo&) -> AllocatorPtr {

@@ -318,6 +318,8 @@ OrtStatus* ORT_API_CALL Ep::CreateAllocatorImpl(_In_ OrtEp* this_ptr,
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* ep = static_cast<Ep*>(this_ptr);
   Ort::ConstMemoryInfo ort_memory_info{memory_info};
+  // Wrap the existing Session allocator, unlike Factory::CreateAllocatorImpl's Env path.
+  // The wrapper retains the allocator implementation, not the EP borrowed by its getters.
   if (ort_memory_info.GetAllocatorType() == OrtReadOnlyAllocator) {
     *allocator = CreateWebGpuSessionAllocator(ep->config_.initializer_allocator);
   } else {

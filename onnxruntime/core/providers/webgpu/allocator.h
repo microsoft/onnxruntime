@@ -22,11 +22,43 @@ inline constexpr OrtDevice WebGpuDevice{OrtDevice::GPU,
                                         OrtDevice::VendorIds::NONE,
                                         0};
 
+// Plugin device allocators (ORT_USE_EP_API_ADAPTERS, with a real device):
+// The Session column describes config.device_allocator, also used for kernel scratch.
+// Env APIs can allocate after Env/device setup, before any Session exists, and remain usable afterward.
+// Session allocators require an existing Session and serve both application APIs and internal execution.
+//
+// | Aspect          | Env shared allocator               | Session device allocator                    |
+// |-----------------|------------------------------------|---------------------------------------------|
+// | App API use     | CreateTensor/Alloc without Session | CreateTensor/Alloc via a Session allocator  |
+// | Internal use    | Not used for EP kernel scratch     | Run input/intermediate/output and scratch   |
+// | Implementation  | ExternalGpuBufferAllocator         | GpuBufferAllocator                          |
+// | Created by      | Factory::CreateAllocatorImpl       | Factory::CreateEpImpl                       |
+// | Impl creation   | Lazy, on first allocation          | Once when creating the Session's EP         |
+// | C API wrapper   | adapter::Allocator                 | WebGpuSessionAllocator                      |
+// | C API exposure  | Factory::CreateAllocatorImpl       | Ep::CreateAllocatorImpl wraps existing impl |
+// | Buffer manager  | Context's default BufferManager    | EP-selected context or per-graph manager    |
+// | Recording       | Owns command_state_                | Borrows the owning EP's Recording()         |
+// | Lifetime        | Retains Context; no Session needed | EP must outlive allocator use/tensor frees  |
+// | Alloc           | Submit cached clear before return  | Submit cached clear, even during Run        |
+// | AllocOnStream   | Not provided                       | Matching Session stream: defer cached clear |
+// |                 |                                    | Null stream: same policy as plain Alloc     |
+//
+// Either can supply tensors to other Sessions on the same WebGPU device/context. Using a small
+// Session only for allocation does not remove its lifetime requirement. A shared buffer cache
+// does not imply a shared recording; callers must order tensor writes before another Session uses them.
+// Alloc vs AllocOnStream is a stream-based distinction, not an external-vs-internal API distinction:
+// BindInput can allocate on a Session stream before Run; streamless allocation during Run still uses Alloc.
+// Read-only initializers and writable prepacked weights use separate GpuBufferAllocator instances
+// with InitializerBufferManager(), not the device allocator above. Read-only initializers skip clears;
+// prepack and native-EP callers can supply different plain-Alloc submission policies.
 class GpuBufferAllocator : public IAllocator {
  public:
   // Calls buffer_manager_getter on every Alloc/Free to obtain the current
   // BufferManager. This allows the EP to route allocations to different
   // buffer managers (e.g., per-graph) without explicit refresh calls.
+  // Read-only initializers skip cached-buffer clears and can be mapped at creation on UMA.
+  // should_submit_zero_initialize controls plain Alloc; a matching plugin AllocOnStream
+  // instead defers clears on the supplied Session stream.
   GpuBufferAllocator(std::function<const BufferManager&()> buffer_manager_getter,
                      std::function<CommandRecordingState&()> recording_getter,
                      bool is_read_only_allocator,
@@ -53,8 +85,6 @@ class GpuBufferAllocator : public IAllocator {
   bool initialize_to_zero_;
 };
 
-// Environment-level shared allocator. It uses the context BufferManager with private command state,
-// so it shares the buffer cache without participating in any Session command timeline.
 class ExternalGpuBufferAllocator : public IAllocator {
  public:
   explicit ExternalGpuBufferAllocator(std::shared_ptr<WebGpuContext> context);

@@ -308,6 +308,64 @@ TEST(WebGpuContextTest, WebGpuExecutionProviderTracksRunActivity) {
   EXPECT_FALSE(webgpu_ep->IsRunActive());
 }
 
+TEST(WebGpuContextTest, EnablesImplicitDeviceSynchronization) {
+#if defined(__wasm__)
+  GTEST_SKIP() << "ImplicitDeviceSynchronization is a Dawn native feature.";
+#else
+  ConfigOptions options;
+  auto ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(ep, nullptr);
+  EXPECT_TRUE(webgpu::WebGpuContextFactory::GetContext(0).DeviceHasFeature(
+      wgpu::FeatureName::ImplicitDeviceSynchronization));
+#endif
+}
+
+TEST(WebGpuContextTest, ExternalDeviceRequiresImplicitDeviceSynchronization) {
+#if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
+  GTEST_SKIP() << "Dawn native device creation is unavailable.";
+#else
+  // Initialize ORT's Dawn proc table before using externally created devices.
+  ConfigOptions options;
+  auto owned_ep = WebGpuProviderFactoryCreator::Create(options)->CreateProvider();
+  ASSERT_NE(owned_ep, nullptr);
+
+  dawn::native::Instance instance;
+  wgpu::RequestAdapterOptions adapter_options{};
+  adapter_options.backendType = static_cast<wgpu::BackendType>(webgpu::WebGpuContextConfig{}.backend_type);
+  auto adapters = instance.EnumerateAdapters(&adapter_options);
+  ASSERT_FALSE(adapters.empty());
+
+  for (bool enable_synchronization : {false, true}) {
+    SCOPED_TRACE(enable_synchronization);
+    const auto feature = wgpu::FeatureName::ImplicitDeviceSynchronization;
+    wgpu::DeviceDescriptor device_desc{};
+    device_desc.requiredFeatureCount = enable_synchronization ? 1 : 0;
+    device_desc.requiredFeatures = enable_synchronization ? &feature : nullptr;
+    auto device = wgpu::Device::Acquire(adapters.front().CreateDevice(&device_desc));
+    ASSERT_NE(device, nullptr);
+    ASSERT_EQ(device.HasFeature(feature), enable_synchronization);
+
+    ConfigOptions external_options;
+    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(kDeviceId, "1"));
+    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
+        kWebGpuInstance, std::to_string(reinterpret_cast<uintptr_t>(instance.Get())).c_str()));
+    ORT_THROW_IF_ERROR(external_options.AddConfigEntry(
+        kWebGpuDevice, std::to_string(reinterpret_cast<uintptr_t>(device.Get())).c_str()));
+
+    if (enable_synchronization) {
+      auto external_ep = WebGpuProviderFactoryCreator::Create(external_options)->CreateProvider();
+      ASSERT_NE(external_ep, nullptr);
+      EXPECT_TRUE(webgpu::WebGpuContextFactory::GetContext(1).DeviceHasFeature(feature));
+    } else {
+      EXPECT_THAT([&]() { WebGpuProviderFactoryCreator::Create(external_options); },
+                  ::testing::ThrowsMessage<OnnxRuntimeException>(::testing::HasSubstr(
+                      "an externally supplied native device must enable ImplicitDeviceSynchronization "
+                      "in DeviceDescriptor.requiredFeatures when it is created.")));
+    }
+  }
+#endif
+}
+
 TEST(WebGpuContextTest, EnablesLazyClearResourceOnFirstUse) {
 #if defined(__wasm__) || defined(USE_EXTERNAL_DAWN)
   GTEST_SKIP() << "Dawn native toggle inspection is unavailable.";

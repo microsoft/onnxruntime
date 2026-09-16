@@ -31,6 +31,10 @@ GpuBufferAllocator::GpuBufferAllocator(
       initialize_to_zero_{!is_read_only_allocator} {
 }
 
+// Streamless allocation, e.g., application CreateTensor/Alloc APIs using a Session allocator,
+// or framework allocations without a stream, including during Run. The plugin's writable device
+// allocator submits cached clears before returning: the consumer may use a different recording.
+// Other allocator roles/native-EP callers can supply a different submission policy.
 void* GpuBufferAllocator::Alloc(size_t size) {
   auto& recording = recording_getter_();
   std::lock_guard<std::recursive_mutex> lock{recording.mutex};
@@ -54,6 +58,10 @@ void* GpuBufferAllocator::Allocate(size_t size, bool submit_zero_initialize) {
 }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
+// Stream-ordered allocation for Run input copies, intermediate/output tensors and kernel scratch.
+// BindInput can also use this path before Run. A matching Session stream orders deferred clears
+// with subsequent copies/kernels in the same recording, without submitting each allocation.
+// Null streams use Alloc's policy; streams from another Session are rejected.
 void* GpuBufferAllocator::AllocOnStream(size_t size, Stream* stream) {
   if (stream == nullptr) {
     return Alloc(size);
@@ -65,6 +73,8 @@ void* GpuBufferAllocator::AllocOnStream(size_t size, Stream* stream) {
 
 namespace {
 
+// C API wrapper around an existing Session allocator, not another buffer pool or recording.
+// Unlike the generic adapter::Allocator used by the Env path, it also forwards AllocOnStream.
 struct WebGpuSessionAllocator final : OrtAllocator {
   explicit WebGpuSessionAllocator(AllocatorPtr impl) : OrtAllocator{}, impl_{std::move(impl)} {
     version = ORT_API_VERSION;

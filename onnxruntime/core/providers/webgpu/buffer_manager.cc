@@ -560,9 +560,10 @@ WGPUBuffer BufferManager::Create(CommandRecordingState& recording, size_t size, 
   }
   if (buffer) {
     if (initialize_to_zero) {
-      // initialize_to_zero controls whether a cached buffer is cleared. submit_zero_initialize separately controls
-      // whether that clear is submitted before Create returns. Session::Run defers submission to preserve dispatch
-      // batching, while allocations made outside Run submit immediately so subsequent queue work observes the clear.
+      // initialize_to_zero controls whether a cached buffer is cleared; submit_zero_initialize
+      // separately controls submission before Create returns. Plugin allocations on an explicit
+      // Session stream defer clears; plain/null-stream and Env allocations submit them immediately,
+      // even during Run. Flush submits the whole recording, not just this buffer's clear.
       auto buffer_guard = wgpu::Buffer::Acquire(buffer);
       ORT_THROW_IF_ERROR(context_.EncodeDeferredDispatches(recording));
       context_.EndComputePass(recording);

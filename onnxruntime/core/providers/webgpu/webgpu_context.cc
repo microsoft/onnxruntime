@@ -229,14 +229,15 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_features_.insert(supported_features.features[i]);
     }
 #if !defined(__wasm__)
-    // Without this feature Dawn's device-level entry points (buffer creation, Queue::Submit,
-    // WriteBuffer) are not thread-safe, so sessions sharing this context on different threads
-    // can corrupt Dawn's internal state. Per-session command recording alone does not cover it.
-    if (!DeviceHasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization)) {
-      LOGS_DEFAULT(WARNING) << "WebGPU: ImplicitDeviceSynchronization is not available on this "
-                               "device. Using multiple inference sessions concurrently from "
-                               "different threads is not safe.";
-    }
+    // Dawn native advertises this software feature on all adapters, and ORT requests it when
+    // creating a device. An externally supplied device must have requested it too: per-session
+    // encoders do not protect shared device entry points such as buffer creation and Queue::Submit.
+    ORT_ENFORCE(DeviceHasFeature(wgpu::FeatureName::ImplicitDeviceSynchronization),
+                config.device != nullptr
+                    ? "WebGPU: an externally supplied native device must enable ImplicitDeviceSynchronization "
+                      "in DeviceDescriptor.requiredFeatures when it is created."
+                    : "WebGPU: the internally created native device is missing the required "
+                      "ImplicitDeviceSynchronization feature.");
 #endif
     // cache adapter info
     if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {

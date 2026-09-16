@@ -232,6 +232,143 @@ class PluginEpWebGpuConcurrency : public ::testing::Test {
     VerifyOutput(output_data, value);
   }
 
+  enum class OutputBinding { None,
+                             CpuToGpu,
+                             CpuOnlyGraphToGpu };
+
+  void RunWithCpuPartitionFeeds(bool use_gpu_feed, bool reverse_feeds = false,
+                                OutputBinding output_binding = OutputBinding::None) const {
+    const bool bind_cpu_output_to_gpu = output_binding != OutputBinding::None;
+    const bool cpu_only_graph = output_binding == OutputBinding::CpuOnlyGraphToGpu;
+    ONNX_NAMESPACE::ModelProto model;
+    model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    model.add_opset_import()->set_version(18);
+    auto* graph = model.mutable_graph();
+    graph->set_name("webgpu_mixed_feed_copies");
+    const std::array<const char*, 2> input_names{"gpu_node_input", "cpu_node_input"};
+    const std::array<const char*, 2> output_names{"gpu_node_output", "cpu_node_output"};
+    const std::array<const char*, 2> node_names{"gpu_neg", "cpu_neg"};
+    for (size_t index = 0; index < input_names.size(); ++index) {
+      auto* input = graph->add_input();
+      input->set_name(input_names[index]);
+      auto* output = graph->add_output();
+      output->set_name(output_names[index]);
+      for (auto* value_info : {input, output}) {
+        auto* tensor_type = value_info->mutable_type()->mutable_tensor_type();
+        tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+        for (auto dimension : kShape) {
+          tensor_type->mutable_shape()->add_dim()->set_dim_value(dimension);
+        }
+      }
+      auto* node = graph->add_node();
+      node->set_name(node_names[index]);
+      node->set_op_type("Neg");
+      node->add_input(input_names[index]);
+      node->add_output(output_names[index]);
+    }
+
+    const auto model_bytes = model.SerializeAsString();
+    Ort::SessionOptions options;
+    options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+    const std::unordered_map<std::string, std::string> ep_options{
+        {"forceCpuNodeNames", cpu_only_graph ? "gpu_neg\ncpu_neg" : node_names[1]}};
+    options.AppendExecutionProvider_V2(*ort_env, {Device()}, ep_options);
+    Ort::Session session(*ort_env, model_bytes.data(), model_bytes.size(), options);
+    const auto input_memory = session.GetMemoryInfoForInputs();
+    const auto output_memory = session.GetMemoryInfoForOutputs();
+    ASSERT_EQ(input_memory.size(), 2u);
+    ASSERT_EQ(output_memory.size(), 2u);
+    const auto first_node_device = cpu_only_graph ? OrtMemoryInfoDeviceType_CPU : OrtMemoryInfoDeviceType_GPU;
+    ASSERT_EQ(input_memory[0].GetDeviceType(), first_node_device);
+    ASSERT_EQ(input_memory[1].GetDeviceType(), OrtMemoryInfoDeviceType_CPU);
+    ASSERT_EQ(output_memory[0].GetDeviceType(), first_node_device);
+    ASSERT_EQ(output_memory[1].GetDeviceType(), OrtMemoryInfoDeviceType_CPU);
+    const auto input_devices = session.GetEpDeviceForInputs();
+    ASSERT_EQ(input_devices.size(), 2u);
+    if (!cpu_only_graph) {
+      ASSERT_NE(input_devices[0], nullptr);
+      ASSERT_STREQ(input_devices[0].EpName(), kWebGpuExecutionProvider);
+    }
+
+    const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+    Ort::Allocator allocator(session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+    std::array<float, kElements> gpu_node_data{};
+    std::array<float, kElements> cpu_node_data{};
+    auto gpu_node_feed = Ort::Value::CreateTensor<float>(
+        cpu_memory, gpu_node_data.data(), gpu_node_data.size(), kShape.data(), kShape.size());
+    auto cpu_node_source = Ort::Value::CreateTensor<float>(
+        cpu_memory, cpu_node_data.data(), cpu_node_data.size(), kShape.data(), kShape.size());
+    auto cpu_node_feed = use_gpu_feed
+                             ? Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size())
+                             : Ort::Value::CreateTensor<float>(
+                                   cpu_memory, cpu_node_data.data(), cpu_node_data.size(), kShape.data(), kShape.size());
+    std::array<Ort::Value, 2> feeds{std::move(gpu_node_feed), std::move(cpu_node_feed)};
+    auto feed_names = input_names;
+    if (reverse_feeds) {
+      std::swap(feeds[0], feeds[1]);
+      std::swap(feed_names[0], feed_names[1]);
+    }
+    Ort::IoBinding binding(session);
+
+    for (int iteration = 0; iteration < kIterations; ++iteration) {
+      SCOPED_TRACE(iteration);
+      for (size_t index = 0; index < kElements; ++index) {
+        gpu_node_data[index] = static_cast<float>((iteration + 1) * (index + 1));
+        cpu_node_data[index] = static_cast<float>(100 + iteration * kElements + index);
+      }
+      if (use_gpu_feed) {
+        ThrowOnError(ort_env->CopyTensor(cpu_node_source, feeds[reverse_feeds ? 0 : 1], nullptr));
+      }
+      if (bind_cpu_output_to_gpu) {
+        for (size_t index = 0; index < feeds.size(); ++index) {
+          binding.BindInput(feed_names[index], feeds[index]);
+        }
+        for (size_t index = 0; index < output_names.size(); ++index) {
+          const size_t output_index = reverse_feeds ? output_names.size() - 1 - index : index;
+          binding.BindOutput(output_names[output_index],
+                             output_index == 0 ? Ort::ConstMemoryInfo{cpu_memory}
+                                               : Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+        }
+      }
+
+      // Seed feed/output allocations before Run, without overlapping external allocation and Run.
+      {
+        std::array<Ort::Value, 2> cached_tensors{
+            Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size()),
+            Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size())};
+        for (auto& cached_tensor : cached_tensors) {
+          ThrowOnError(ort_env->CopyTensor(feeds[reverse_feeds ? 1 : 0], cached_tensor, nullptr));
+        }
+      }
+
+      std::vector<Ort::Value> outputs;
+      std::array<float, kElements> cpu_output_data{};
+      if (bind_cpu_output_to_gpu) {
+        session.Run(Ort::RunOptions{nullptr}, binding);
+        outputs = binding.GetOutputValues();
+        ASSERT_EQ(outputs.size(), 2u);
+        if (reverse_feeds) {
+          std::swap(outputs[0], outputs[1]);
+        }
+        ASSERT_EQ(outputs[1].GetTensorMemoryInfo().GetDeviceType(), OrtMemoryInfoDeviceType_GPU);
+        auto cpu_output = Ort::Value::CreateTensor<float>(
+            cpu_memory, cpu_output_data.data(), cpu_output_data.size(), kShape.data(), kShape.size());
+        ThrowOnError(ort_env->CopyTensor(outputs[1], cpu_output, nullptr));
+        outputs[1] = std::move(cpu_output);
+        binding.ClearBoundOutputs();
+      } else {
+        // Both feed copies must be prepared in the same Run, rather than separately by BindInput.
+        outputs = session.Run(Ort::RunOptions{nullptr}, feed_names.data(), feeds.data(), feeds.size(),
+                              output_names.data(), output_names.size());
+      }
+      ASSERT_EQ(outputs.size(), 2u);
+      for (size_t index = 0; index < kElements; ++index) {
+        ASSERT_EQ(outputs[0].GetTensorData<float>()[index], -gpu_node_data[index]) << "GPU branch, element " << index;
+        ASSERT_EQ(outputs[1].GetTensorData<float>()[index], -cpu_node_data[index]) << "CPU branch, element " << index;
+      }
+    }
+  }
+
  private:
   std::unique_ptr<Utils::ExamplePluginInfo> webgpu_ep_info_;
   RegisteredEpDeviceUniquePtr webgpu_ep_device_holder_;
@@ -271,6 +408,82 @@ TEST_F(PluginEpWebGpuConcurrency, CpuInputAndOutputRun) {
   auto session = CreateSession();
   for (int iteration = 0; iteration < kIterations; ++iteration) {
     RunWithCpuInputAndOutput(*session, static_cast<float>(iteration + 1));
+  }
+}
+
+TEST_F(PluginEpWebGpuConcurrency, MixedCpuAndGpuFeeds) {
+  RunWithCpuPartitionFeeds(true);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, MixedCpuAndGpuFeedsReversed) {
+  RunWithCpuPartitionFeeds(true, true);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, CpuFeedsWithCpuPartition) {
+  RunWithCpuPartitionFeeds(false);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, CpuOutputBoundToGpu) {
+  RunWithCpuPartitionFeeds(false, false, OutputBinding::CpuToGpu);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, CpuOutputBoundToGpuFirst) {
+  RunWithCpuPartitionFeeds(false, true, OutputBinding::CpuToGpu);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, CpuOnlyGraphOutputBoundToGpu) {
+  RunWithCpuPartitionFeeds(false, true, OutputBinding::CpuOnlyGraphToGpu);
+}
+
+TEST_F(PluginEpWebGpuConcurrency, RepeatedKernelScratchBufferReuse) {
+  ONNX_NAMESPACE::ModelProto model;
+  model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  model.add_opset_import()->set_version(18);
+  auto* graph = model.mutable_graph();
+  graph->set_name("webgpu_scratch_buffer_reuse");
+  auto* input = graph->add_input();
+  input->set_name("X");
+  auto* output = graph->add_output();
+  output->set_name("Y");
+  for (auto* value_info : {input, output}) {
+    auto* type = value_info->mutable_type()->mutable_tensor_type();
+    type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    for (auto dimension : kShape) {
+      type->mutable_shape()->add_dim()->set_dim_value(dimension);
+    }
+  }
+  // Four-input Min allocates intermediate GPU tensors through CreateGPUTensor.
+  for (int index = 0; index < 2; ++index) {
+    auto* node = graph->add_node();
+    node->set_name(index == 0 ? "first_min" : "second_min");
+    node->set_op_type("Min");
+    node->add_input(index == 0 ? "X" : "intermediate");
+    for (int input_index = 0; input_index < 3; ++input_index) {
+      node->add_input("X");
+    }
+    node->add_output(index == 0 ? "intermediate" : "Y");
+  }
+  Ort::SessionOptions options;
+  options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
+  options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1");
+  options.AppendExecutionProvider_V2(*ort_env, {Device()}, std::unordered_map<std::string, std::string>{});
+  const auto model_bytes = model.SerializeAsString();
+  Ort::Session session(*ort_env, model_bytes.data(), model_bytes.size(), options);
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const std::array<const char*, 1> input_names{"X"};
+  const std::array<const char*, 1> output_names{"Y"};
+  std::array<float, kElements> input_data{};
+  auto input_tensor = Ort::Value::CreateTensor<float>(
+      cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+  for (int iteration = 0; iteration < kIterations; ++iteration) {
+    SCOPED_TRACE(iteration);
+    input_data.fill(static_cast<float>(iteration + 1));
+    auto outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), &input_tensor, 1,
+                               output_names.data(), output_names.size());
+    ASSERT_EQ(outputs.size(), 1u);
+    for (size_t index = 0; index < input_data.size(); ++index) {
+      ASSERT_EQ(outputs[0].GetTensorData<float>()[index], input_data[index]);
+    }
   }
 }
 
@@ -384,6 +597,48 @@ TEST_F(PluginEpWebGpuConcurrency, SharedAllocatorCreatesAndCopiesConcurrently) {
     }
   });
 
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, SameSessionAllocatorCreatesAndCopiesConcurrently) {
+  auto allocator_session = CreateSession();
+  Ort::Allocator allocator(*allocator_session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+      CopyTensorRoundTrip(allocator, static_cast<float>(thread_id * kIterations + iteration + 1));
+    }
+  });
+  ASSERT_FALSE(error.Failed()) << error.Message();
+}
+
+TEST_F(PluginEpWebGpuConcurrency, DedicatedSessionAllocatorFeedsConcurrentSessions) {
+  auto allocator_session = CreateSession();
+  Ort::Allocator allocator(*allocator_session, Device().GetMemoryInfo(OrtDeviceMemoryType_DEFAULT));
+  std::array<std::unique_ptr<Ort::Session>, kThreads> sessions;
+  for (auto& session : sessions) {
+    session = CreateSession();
+  }
+  const auto cpu_memory = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  const std::array<const char*, 1> input_names{"X"};
+  const std::array<const char*, 1> output_names{"Y"};
+  FirstError error;
+  RunWorkers(error, [&](int thread_id) {
+    for (int iteration = 0; iteration < kIterations && !error.Failed(); ++iteration) {
+      const float value = static_cast<float>(thread_id * kIterations + iteration + 1);
+      std::array<float, kElements> input_data{};
+      input_data.fill(value);
+      auto input = Ort::Value::CreateTensor<float>(
+          cpu_memory, input_data.data(), input_data.size(), kShape.data(), kShape.size());
+      auto gpu_input = Ort::Value::CreateTensor<float>(allocator, kShape.data(), kShape.size());
+      ThrowOnError(ort_env->CopyTensor(input, gpu_input, nullptr));
+      auto outputs = sessions[thread_id]->Run(Ort::RunOptions{nullptr}, input_names.data(), &gpu_input, 1,
+                                              output_names.data(), output_names.size());
+      std::array<float, kElements> output_data{};
+      std::copy_n(outputs.front().GetTensorData<float>(), output_data.size(), output_data.begin());
+      VerifyOutput(output_data, value);
+    }
+  });
   ASSERT_FALSE(error.Failed()) << error.Message();
 }
 
