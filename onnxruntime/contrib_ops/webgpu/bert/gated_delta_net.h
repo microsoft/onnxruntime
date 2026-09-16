@@ -67,7 +67,7 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
  public:
   GatedDeltaNetProgram(GatedDeltaNetUpdateRule update_rule, bool has_cu_seqlens, bool has_initial_state,
                        bool initial_state_in_final_state, bool output_final_state, bool qwen_gate,
-                       bool sigmoid_beta, bool qk_l2_norm, bool use_packed_params)
+                       bool sigmoid_beta, bool qk_l2_norm, bool use_packed_params, bool vectorized_value_io)
       : Program{"GatedDeltaNet"},
         update_rule_(update_rule),
         has_cu_seqlens_(has_cu_seqlens),
@@ -77,7 +77,8 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
         qwen_gate_(qwen_gate),
         sigmoid_beta_(sigmoid_beta),
         qk_l2_norm_(qk_l2_norm),
-        use_packed_params_(use_packed_params) {}
+        use_packed_params_(use_packed_params),
+        vectorized_value_io_(vectorized_value_io) {}
 
   Status GenerateShaderCode(ShaderHelper& shader) const override;
 
@@ -100,6 +101,7 @@ class GatedDeltaNetProgram final : public Program<GatedDeltaNetProgram> {
   bool sigmoid_beta_;
   bool qk_l2_norm_;
   bool use_packed_params_;
+  bool vectorized_value_io_;
 };
 
 class GatedDeltaNetPrefillPrepareProgram final : public Program<GatedDeltaNetPrefillPrepareProgram> {
