@@ -345,10 +345,24 @@ Status MatMul<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ A
                                   /*out*/ bool& is_packed,
                                   /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
-  if (input_idx == 1) {
+  if (input_idx == 1 && IsPlainMatMul()) {
     size_t packed_b_size = 0;
     is_packed = GemmPackBHalfNative(alloc, tensor, packed_b_, packed_b_size, b_shape_,
                                     &mlas_backend_kernel_selector_config_);
+#if defined(MLAS_HGEMM_PACKB_SUPPORTED)
+    if (!is_packed && tensor.Shape().NumDimensions() == 2) {
+      const size_t K = static_cast<size_t>(tensor.Shape()[0]);
+      const size_t N = static_cast<size_t>(tensor.Shape()[1]);
+      packed_b_size = MlasHGemmPackBSize(CblasNoTrans, N, K);
+      if (packed_b_size != 0) {
+        packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size, true);
+        MlasHGemmPackB(CblasNoTrans, N, K, tensor.Data<MLFloat16>(), N, packed_b_.get());
+        b_shape_ = tensor.Shape();
+        packed_b_is_hgemm_ = true;
+        is_packed = true;
+      }
+    }
+#endif
     // The native fp16 packed-B layout depends on the active MLAS backend selector.
     // Keep it owned by this kernel until shared prepacked weights carry layout metadata.
     if (is_packed && prepacked_weights != nullptr) {
@@ -380,8 +394,12 @@ Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
   const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
   const auto& b_shape = b ? b->Shape() : b_shape_;
 
+  // match CUDA kernel implementation, ignore transpose for vectors
+  const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
+  const bool trans_b = trans_b_attr_ && b_shape.NumDimensions() != 1;
+
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape));
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b, trans_batch_a_, trans_batch_b_));
   Tensor* y = ctx->Output(0, helper.OutputShape());
 
   if (y->Shape().Size() == 0) {
@@ -402,8 +420,74 @@ Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
   const size_t K = static_cast<size_t>(helper.K());
-  const size_t lda = helper.Lda(false);
-  const size_t ldb = helper.Ldb(false);
+  const size_t lda = helper.Lda(trans_a);
+  const size_t ldb = helper.Ldb(trans_b);
+
+#if defined(MLAS_HGEMM_PACKB_SUPPORTED)
+  if (packed_b_is_hgemm_) {
+    InlinedVector<MLAS_HGEMM_DATA_PARAMS> data(max_len);
+    for (size_t i = 0; i < max_len; i++) {
+      data[i].A = a_data + helper.LeftOffsets()[i];
+      data[i].lda = lda;
+      data[i].B = static_cast<const MLFloat16*>(packed_b_.get());
+      data[i].ldb = 0;
+      data[i].C = y_data + helper.OutputOffsets()[i];
+      data[i].ldc = N;
+      data[i].alpha = MLFloat16(1.0f).val;
+      data[i].beta = MLFloat16(0.0f).val;
+      data[i].BIsPacked = true;
+    }
+    MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K, data.data(), max_len, thread_pool);
+    return Status::OK();
+  }
+#endif
+
+  // The paths below only handle a plain A x B.
+  if (!IsPlainMatMul()) {
+    const CBLAS_TRANSPOSE trans_a_blas = trans_a ? CblasTrans : CblasNoTrans;
+    const CBLAS_TRANSPOSE trans_b_blas = trans_b ? CblasTrans : CblasNoTrans;
+    if (MlasHGemmSupported(trans_a_blas, trans_b_blas)) {
+      const auto alpha = MLFloat16(alpha_attr_);
+      InlinedVector<MLAS_HGEMM_DATA_PARAMS> data(max_len);
+      for (size_t i = 0; i < max_len; i++) {
+        data[i].A = a_data + helper.LeftOffsets()[i];
+        data[i].lda = lda;
+        data[i].B = b_data + helper.RightOffsets()[i];
+        data[i].ldb = ldb;
+        data[i].C = y_data + helper.OutputOffsets()[i];
+        data[i].ldc = N;
+        data[i].alpha = alpha.val;
+        data[i].beta = MLFloat16(0.0f).val;
+      }
+      MlasGemmBatch(trans_a_blas, trans_b_blas, M, N, K, data.data(), max_len, thread_pool);
+      return Status::OK();
+    }
+
+    const size_t a_size = narrow<size_t>(a->Shape().Size());
+    const size_t b_size = narrow<size_t>(b_shape.Size());
+    const size_t y_size = narrow<size_t>(y->Shape().Size());
+    std::vector<float> a_float(a_size);
+    std::vector<float> b_float(b_size);
+    std::vector<float> y_float(y_size);
+    MlasConvertHalfToFloatBuffer(a_data, a_float.data(), a_size);
+    MlasConvertHalfToFloatBuffer(b_data, b_float.data(), b_size);
+    std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
+    for (size_t i = 0; i < max_len; i++) {
+      data[i].BIsPacked = false;
+      data[i].A = a_float.data() + helper.LeftOffsets()[i];
+      data[i].lda = lda;
+      data[i].B = b_float.data() + helper.RightOffsets()[i];
+      data[i].ldb = ldb;
+      data[i].C = y_float.data() + helper.OutputOffsets()[i];
+      data[i].ldc = N;
+      data[i].alpha = alpha_attr_;
+      data[i].beta = 0.0f;
+    }
+    MlasGemmBatch(trans_a_blas, trans_b_blas, M, N, K, data.data(), max_len, thread_pool,
+                  &mlas_backend_kernel_selector_config_);
+    MlasConvertFloatToHalfBuffer(y_float.data(), y_data, y_size);
+    return Status::OK();
+  }
 
   const bool has_accelerated_half_gemm =
       MlasHalfGemmAccelerationSupported(&mlas_backend_kernel_selector_config_);

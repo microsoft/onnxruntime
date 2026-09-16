@@ -15,7 +15,7 @@ namespace onnxruntime {
 
 // FastGelu supports limited data types.
 static constexpr std::array gpu_supported_data_types{"tensor(float16)", "tensor(float)", "tensor(bfloat16)"};
-static constexpr std::array cpu_supported_data_types{"tensor(float)"};
+static constexpr std::array cpu_supported_data_types{"tensor(float16)", "tensor(float)"};
 
 static bool IsSupportedDataType(const Node& node) {
   if (node.GetExecutionProviderType() == kCpuExecutionProvider) {

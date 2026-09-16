@@ -116,11 +116,7 @@ Status ElementWiseRangedTransform<T>::Create(const std::string& type, const Node
 template Status ElementWiseRangedTransform<float>::Create(const std::string& type, const NodeAttributes& attributes,
                                                           std::unique_ptr<ElementWiseRangedTransform<float>>& out);
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
-// The MLFloat16 factory only covers the activations that have an MLFloat16
-// CPU kernel (see the REGISTER_*_TYPED_KERNEL(..., MLFloat16) list above).
-// GemmActivationFusion must not fuse anything outside this set, or FusedGemm
-// construction fails at session initialization. IsFp16FusableActivation()
-// below is the single source of truth shared by both.
+// Keep in sync with Create() below.
 bool IsFp16FusableActivation(const std::string& type) {
   return type == "Relu" || type == "LeakyRelu" || type == "Tanh";
 }
@@ -169,8 +165,6 @@ template <>
 void Tanh<MLFloat16>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
   ptrdiff_t len = last - first;
   MLFloat16* output_ptr = output + first;
-  // MlasComputeTanh<T> is templated — MLFloat16 specialization exists
-  // in tanh_kernel_neon_fp16.cpp, runs native FP16 NEON on Graviton3
   MlasComputeTanh(input + first, output_ptr, static_cast<size_t>(len));
 }
 #endif

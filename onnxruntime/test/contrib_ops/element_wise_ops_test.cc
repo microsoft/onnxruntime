@@ -157,8 +157,6 @@ TEST(BiasGeluTest, MLFloat16) {
   RunBiasGeluTestHalf({2, 2333}, {2333});
 }
 
-// Empty input: the MLFloat16 Compute specialization must handle a zero-element
-// tensor without touching the temp buffer or the thread pool.
 TEST(BiasGeluTest, MLFloat16EmptyInput) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -181,11 +179,6 @@ TEST(BiasGeluTest, MLFloat16EmptyInput) {
 #endif
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-// Execution-level guard for the FP16 Gemm+activation fusion. GemmActivationFusion
-// only fuses activations that ElementWiseRangedTransform<MLFloat16>::Create() can
-// build; if the two ever drift, FusedGemm<MLFloat16> construction throws
-// NOT_IMPLEMENTED and this test fails at session initialization rather than in
-// some downstream model.
 static void RunFusedGemmFp16Test(const std::string& activation,
                                  const std::function<float(float)>& ref) {
   constexpr int64_t M = 4, K = 8, N = 6;
@@ -210,8 +203,6 @@ static void RunFusedGemmFp16Test(const std::string& activation,
   OpTester test("FusedGemm", 1, onnxruntime::kMSDomain);
   test.AddAttribute("activation", activation);
   if (activation == "LeakyRelu") {
-    // FusedGemm forwards attributes prefixed with "activation_" to the
-    // activation functor; LeakyRelu::Init() requires alpha.
     test.AddAttribute("activation_alpha", 0.01f);
   }
   test.AddInput<MLFloat16>("A", {M, K}, a_half);

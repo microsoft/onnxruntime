@@ -71,11 +71,6 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     }
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
-    // IsFusableActivation() accepts more activations than
-    // ElementWiseRangedTransform<MLFloat16>::Create() can build. Fusing one of
-    // the others would produce a FusedGemm<MLFloat16> that throws
-    // NOT_IMPLEMENTED at session initialization, so gate FP16 on the factory's
-    // own list.
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
         !functors::IsFp16FusableActivation(next_node.OpType())) {
       continue;
