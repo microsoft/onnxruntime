@@ -861,6 +861,16 @@ TEST(MathOpTest, MatMulSubgroupMatrix) {
       {"SplitKScratchCap (64x64,K=256)", {64, 256}, 256, 64},
       // Batched A folds to M=8; one tile + K=256 -> split_k=8.
       {"SplitKBatched (2*4 -> M=8)", {2, 4, 256}, 256, 16},
+      // Odd N: the subgroup f16 load needs an even B row stride, so a constant odd-N
+      // weight is padded once to N+1 (even) and cached; output is still written at
+      // the real, odd N. Covers small/large odd N, min K, partial M, batched-A fold,
+      // and split-K, all with odd N.
+      {"OddN15 (N=15)", {32, 64}, 64, 15},
+      {"OddN33 (N=33)", {16, 64}, 64, 33},
+      {"OddN MinK (K=16,N=17)", {8, 16}, 16, 17},
+      {"OddN PartialM (M=40,N=31)", {40, 64}, 64, 31},
+      {"OddN BatchedA (2*32 -> M=64,N=63)", {2, 32, 64}, 64, 63},
+      {"OddN SplitK (K=256,N=17)", {8, 256}, 256, 17},
   };
 
   for (const auto& c : cases) {

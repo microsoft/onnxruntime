@@ -1,10 +1,36 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # pylint: disable=C0114,C0115,C0116,W0212
+import contextlib
+import io
 import unittest
-from unittest.mock import patch
+from unittest import mock
 
 import onnxruntime
+
+
+class TestPreloadDlls(unittest.TestCase):
+    def test_optional_cuda_libraries_do_not_report_load_failures(self):
+        cases = [
+            ("Linux", ("libnvrtc.so.12", "libcufft.so.11"), "libcublas.so.12"),
+            ("Windows", ("cufft64_11.dll",), "cublas64_12.dll"),
+        ]
+
+        for system, optional_filenames, required_filename in cases:
+            with self.subTest(system=system):
+                output = io.StringIO()
+                with (
+                    mock.patch.object(onnxruntime, "cuda_version", "12.4"),
+                    mock.patch("platform.system", return_value=system),
+                    mock.patch("ctypes.CDLL", side_effect=OSError("not found")),
+                    mock.patch.object(onnxruntime, "_register_bundled_cuda_plugin_ep"),
+                    contextlib.redirect_stdout(output),
+                ):
+                    onnxruntime.preload_dlls(cuda=True, cudnn=False, msvc=False, directory="")
+
+                for filename in optional_filenames:
+                    self.assertNotIn(f"Failed to load {filename}", output.getvalue())
+                self.assertIn(f"Failed to load {required_filename}", output.getvalue())
 
 
 class TestGetNvidiaDllPaths(unittest.TestCase):
@@ -45,8 +71,8 @@ class TestGetNvidiaDllPaths(unittest.TestCase):
         self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cufft64_12.dll"), paths)
         self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cudart64_13.dll"), paths)
 
-    @patch("platform.machine", return_value="ARM64")
-    @patch("sysconfig.get_platform", return_value="win-amd64")
+    @mock.patch("platform.machine", return_value="ARM64")
+    @mock.patch("sysconfig.get_platform", return_value="win-amd64")
     def test_cuda13_windows_uses_process_architecture(self, get_platform, machine):
         paths = self._paths(is_windows=True, build_cuda_version="13.2", cudnn=False)
         self.assertIn(("nvidia", "cu13", "bin", "x86_64", "cudart64_13.dll"), paths)

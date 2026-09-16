@@ -54,6 +54,7 @@ struct SessionState;
 }  // namespace fbs
 
 class ExecutionProviders;
+class MaxShapeInferenceResult;
 class KernelDef;
 class OpKernel;
 class NodeIndexInfo;
@@ -443,6 +444,7 @@ class SessionState {
                                   bool remove_initializers,
                                   bool save_prepacked_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+                                  const MaxShapeInferenceResult& max_shape_inference_result,
                                   const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 

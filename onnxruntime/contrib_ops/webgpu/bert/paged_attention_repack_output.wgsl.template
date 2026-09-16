@@ -1,0 +1,39 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+//
+// PagedAttention — repack padded BSNH attention output back to packed varlen.
+//
+// Inverse of paged_attention_unpack_query. FA wrote output into
+// (batch_size, max_seqlen_q, num_heads, head_size); this kernel reads slot
+// s = local_tok = token_idx - cumulative_sequence_length[b] and writes it
+// to packed (token_count, num_heads * head_size). LEFT-aligned convention
+// mirrors the unpack kernel.
+//
+// Batch lookup is a linear scan of cumulative_sequence_length[].
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .getByOffset .getByIndices .setByIndices
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
+
+  let col = global_idx % uniforms.hidden_size;
+  let token_idx = global_idx / uniforms.hidden_size;
+
+  let d = col % uniforms.head_size;
+  let h = col / uniforms.head_size;
+
+  var b: u32 = 0u;
+  for (var i: u32 = 0u; i < uniforms.batch_size; i = i + 1u) {
+    let hi = u32(cumulative_sequence_length.getByOffset(i + 1u));
+    if (token_idx < hi) {
+      b = i;
+      break;
+    }
+  }
+  let cum_lo = u32(cumulative_sequence_length.getByOffset(b));
+  let s = token_idx - cum_lo;
+
+  let v = input.getByIndices(vec4<u32>(b, s, h, d));
+  output.setByIndices(vec2<u32>(token_idx, col), v);
+}

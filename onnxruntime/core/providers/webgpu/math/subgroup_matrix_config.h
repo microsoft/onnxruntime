@@ -3,8 +3,6 @@
 
 #pragma once
 
-#if !defined(__wasm__)
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -87,5 +85,3 @@ bool IsSubgroupMatrixConfigSupported(const ComputeContextBase& context, bool is_
 
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)

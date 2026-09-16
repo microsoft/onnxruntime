@@ -1576,6 +1576,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <returns></returns>
   Status ConvertInitializersIntoOrtValues();
 
+  /// <summary>
+  /// Validates that all in-memory external data references are backed by matching OrtValues.
+  /// </summary>
+  Status ValidateInMemoryInitializers();
+
   /**
    * @brief This function examines the specified initializers in the graph and converts them inline
    *        if any has external data in memory.

@@ -293,7 +293,7 @@ bool MatMulNBitsBuilder::HasSupportedInputsImpl(const GraphViewer&,
                                  wnn_limits, "input", "x", logger) &&
          IsDataTypeSupportedByOp("DequantizeLinear", dq_input_type,
                                  wnn_limits, "zeroPoint", "x_zero_point", logger) &&
-         IsInputRankSupported(wnn_limits, "matmul", "a", input_shape.size(), node.Name(), logger);
+         IsRankSupportedByWebNNOp(wnn_limits, "matmul", "a", input_shape.size(), node.Name(), logger);
 }
 
 bool MatMulNBitsBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,

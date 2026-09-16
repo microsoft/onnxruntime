@@ -615,27 +615,6 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Offset one past the last resident row of a windowed KV cache, i.e. where the next entry is
-// appended. Whole `gap`-sized blocks are reclaimed at once, which keeps the result in
-// [capacity - gap + 1, capacity] once the cache has filled:
-//   end(P) = P while P <= capacity, else P - gap * ceil((P - capacity) / gap)
-//
-// This mirrors WindowedCacheEnd() in the CPU kernel (contrib_ops/cpu/bert/group_query_attention.cc);
-// the two layouts must agree or CPU/CUDA parity breaks, so keep them in sync.
-//
-// The intermediate math runs in int64_t because `past_sequence_length` derives from the
-// caller-supplied seqlens_k input: `overflow + gap - 1` and `gap * blocks` could otherwise overflow
-// for values near INT32_MAX, and signed overflow is UB. The result is bounded by `capacity`, so
-// narrowing back to int is safe.
-__device__ __forceinline__ int WindowedCacheEnd(int64_t past_sequence_length, int64_t capacity, int64_t gap) {
-  if (past_sequence_length <= capacity) {
-    return static_cast<int>(past_sequence_length);  // still filling: nothing has been reclaimed yet
-  }
-  const int64_t overflow = past_sequence_length - capacity;
-  const int64_t reclaimed = gap * ((overflow + gap - 1) / gap);
-  return static_cast<int>(past_sequence_length - reclaimed);
-}
-
 // ============================================================================
 // GetSequenceLengths Kernel
 // ============================================================================
@@ -699,47 +678,24 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
       return;
     }
 
-    // Cache-relative coordinates for a windowed KV cache. The cache holds the L = min(T, C) most
-    // recent tokens contiguously at indices [0, L), where C is the real capacity.
+    // Cache-relative coordinates for a windowed KV cache. The CUDA kernel requires the capacity to
+    // equal local_window_size, so the eviction block size G = C - W + 1 is 1 and the specified
+    // resident count L(T) collapses to min(T, C): the cache is simply kept full.
     //   Lp = min(P, C)                  tokens currently resident
     //   E  = max(0, Lp + S - C)         tokens this append pushes out of the real cache
     //   D  = max(0, Lp + S - C_used)    tokens that have to be shifted out of the buffer in use
     // A multi-token step writes into a staging buffer long enough to hold Lp + S entries, so there
     // D is 0 and E is only the offset of the window inside the staging buffer. For a single-token
     // step the staging buffer is the cache itself (C_used == C) and D == E.
-    //
-    // For single-token decode steps the drifting-layout optimisation applies: entries live at
-    // [0, end) and are appended at `end`; compaction reclaims a whole block of `gap = C - W + 1`
-    // rows at once, so the kernel is load-bearing on only one step in `gap` and on the remaining
-    // steps the d <= 0 early-exit fires. Note that `end` is still a pure function of the absolute
-    // past length P, so the op stays stateless across Run() calls.
-    // For multi-token steps the staging buffer size must be predictable from Lp = min(P, C), and
-    // the write-back offset is the number of evicted rows under the old formula, so we keep the
-    // original Lp-based computation for that case.
     const int C = kv_cache_real_capacity;
     const int C_used = kv_cache_capacity;
-    const int W = C < C_used ? C : C_used;  // == local_window_size when C == C_used
-    const int gap = C - W + 1;              // >= 1; at C == W (no slack) this is 1 and every step compacts
 
-    int E, D;
-    int Lp;
-    if (sequence_length == 1) {
-      // Drifting-layout end pointer for single-token steps; see WindowedCacheEnd above.
-      // This keeps W <= end <= C once the cache has filled.
-      const int end_before = WindowedCacheEnd(past_len, C, gap);
-      const int end_after = WindowedCacheEnd(static_cast<int64_t>(past_len) + 1, C, gap);
-      const int kept = end_after - 1;
-      E = end_before - kept > 0 ? end_before - kept : 0;
-      D = (C_used < C) ? 0 : E;
-      Lp = end_before;
-    } else {
-      // Original formula for multi-token (staging) steps: Lp = min(P, C), E = evicted rows.
-      Lp = past_len < C ? past_len : C;
-      const int evicted = Lp + sequence_length - C;
-      const int shifted = Lp + sequence_length - C_used;
-      E = evicted > 0 ? evicted : 0;
-      D = shifted > 0 ? shifted : 0;
-    }
+    const int Lp = past_len < C ? past_len : C;
+    const int evicted = Lp + sequence_length - C;
+    const int shifted = Lp + sequence_length - C_used;
+    const int E = evicted > 0 ? evicted : 0;
+    const int D = shifted > 0 ? shifted : 0;
+
     cache_past_seq_lens[i] = Lp - D;
     cache_total_seq_lens[i] = (Lp + sequence_length) < C_used ? (Lp + sequence_length) : C_used;
     evict_counts[i] = E;
@@ -799,9 +755,9 @@ static void KvRowCopyLaunchConfig(const int vec_count,
                                   const int batch_size,
                                   dim3& grid,
                                   dim3& block) {
-  constexpr int kThreadsPerBlock = 256;
+  constexpr int kRowCopyThreadsPerBlock = 256;
   const int threads_x = vec_count < 32 ? vec_count : 32;
-  const int threads_y = kThreadsPerBlock / threads_x > 0 ? kThreadsPerBlock / threads_x : 1;
+  const int threads_y = kRowCopyThreadsPerBlock / threads_x > 0 ? kRowCopyThreadsPerBlock / threads_x : 1;
   block = dim3(threads_x, threads_y);
   grid = dim3((rows + threads_y - 1) / threads_y, kv_num_heads, batch_size);
 }
@@ -1323,17 +1279,12 @@ Status DequantizeFlashAttentionFallback(
   // (max_length sized) capacity on every decode step is pure memory traffic.
   bool is_bsnh = (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
-  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, U, float>(
-      stream, k_dequant, reinterpret_cast<const U*>(data.present_key), data.k_scale,
-      nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-      parameters.head_size, parameters.kv_cache_bit_width, parameters.k_quant_type, is_bsnh,
-      data.total_seq_lens)));
-
-  ORT_RETURN_IF_ERROR((LaunchDequantizeKV<T, U, float>(
-      stream, v_dequant, reinterpret_cast<const U*>(data.present_value), data.v_scale,
-      nullptr, parameters.batch_size, parameters.kv_num_heads, parameters.seqlen_present_kv_cache,
-      parameters.head_size, parameters.kv_cache_bit_width, parameters.v_quant_type, is_bsnh,
-      data.total_seq_lens)));
+  ORT_RETURN_IF_ERROR((LaunchDequantizeKVPair<T, U, float>(
+      stream, k_dequant, v_dequant,
+      reinterpret_cast<const U*>(data.present_key), reinterpret_cast<const U*>(data.present_value),
+      data.k_scale, data.v_scale, parameters.batch_size, parameters.kv_num_heads,
+      parameters.seqlen_present_kv_cache, parameters.head_size, parameters.kv_cache_bit_width,
+      parameters.k_quant_type, parameters.v_quant_type, is_bsnh, data.total_seq_lens)));
 
   // Step 3: Run Flash Attention on dequantized k/v
   bool is_causal = parameters.is_unidirectional;
@@ -1425,7 +1376,12 @@ Status FlashAttentionAndQuantizeKV(
       reinterpret_cast<void*>(data.softmax_lse_accum),
       reinterpret_cast<void*>(data.out_accum),
       true,  // kv_bsnh = true (BSNH)
-      local_window_size));
+      local_window_size,
+      /*cache_batch_idx*/ nullptr, /*leftpad_k*/ nullptr,
+      // head_sink must be forwarded here as well. This is the only prompt path taken when the KV
+      // cache is quantized, so dropping it silently disables attention sinks for the whole prompt
+      // while the unquantized prompt path (FlashAttention) keeps them.
+      reinterpret_cast<void*>(const_cast<T*>(data.head_sink))));
 
   if (parameters.k_quant_type != KVQuantizationType::NONE) {
     ORT_RETURN_IF_ERROR((LaunchQuantizeKV<T, U, float>(
@@ -1503,7 +1459,7 @@ Status EfficientAttention(
   p.max_sequence_length = present_sequence_length;
   p.qk_head_size = head_size;
   p.v_head_size = head_size;
-  p.causal = true;
+  p.causal = parameters.is_unidirectional;
   p.scale = scale;
   p.softcap = parameters.softcap;
   p.seqlen_k_ptr = parameters.is_windowed_kv_cache
@@ -1717,7 +1673,7 @@ Status CudnnSdpaAttention(
         parameters.sequence_length,          // sequence_length_q
         parameters.seqlen_present_kv_cache,  // sequence_length_kv (capacity, matches buffer strides)
         scale,
-        /*is_causal=*/true,
+        parameters.is_unidirectional,
         is_bf16,
         /*broadcast_attn_bias_dim_0=*/false,
         /*broadcast_attn_bias_dim_1=*/false,
@@ -1794,6 +1750,12 @@ Status QkvToContext(
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "Unfused GQA fallback does not support quantized KV cache.");
     }
+  }
+
+  if (parameters.k_quant_type != KVQuantizationType::NONE ||
+      parameters.v_quant_type != KVQuantizationType::NONE) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "No available GroupQueryAttention kernel supports the quantized KV cache.");
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unfused Group Query Attention not implemented yet.");

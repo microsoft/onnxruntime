@@ -13,6 +13,8 @@
 #include "core/providers/cuda/curand_wrapper.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
+#include <limits>
+
 #define TRANS_TILE_DIM 32
 #define BLOCK_ROWS 8
 #define COPY_TILE_DIM 1024
@@ -31,7 +33,8 @@ __global__ void transposeNoOverlap(half* odata, const half* idata, const int m, 
   if (x < m) {
     for (int j = 0; j < TRANS_TILE_DIM; j += BLOCK_ROWS) {
       if (j >= (n - y)) continue;
-      tile[threadIdx.y + j][threadIdx.x] = idata[(y + j) * m + x];
+      const int64_t input_offset = static_cast<int64_t>(y + j) * m + x;
+      tile[threadIdx.y + j][threadIdx.x] = idata[input_offset];
     }
   }
 
@@ -44,7 +47,8 @@ __global__ void transposeNoOverlap(half* odata, const half* idata, const int m, 
 
   for (int j = 0; j < TRANS_TILE_DIM; j += BLOCK_ROWS) {
     if ((y + j) >= m) return;
-    odata[(y + j) * n + x] = tile[threadIdx.x][threadIdx.y + j];
+    const int64_t output_offset = static_cast<int64_t>(y + j) * n + x;
+    odata[output_offset] = tile[threadIdx.x][threadIdx.y + j];
   }
 }
 
@@ -64,20 +68,34 @@ __global__ void CopyVectorBFloat16(const onnxruntime::BFloat16* x, int incx, onn
 }  // namespace
 
 dim3 cublasTransposeHelperDimGrid(int m, int n) {
-  return dim3((n + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, (m + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, 1);
+  const auto grid_x = static_cast<unsigned int>((static_cast<int64_t>(n) + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM);
+  const auto grid_y = static_cast<unsigned int>((static_cast<int64_t>(m) + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM);
+  return dim3(grid_x, grid_y, 1);
 }
 
 // cublasTransposeHelper can only be used if it won't overflow the 65536 grid y dimension size
 __host__ bool CanUse_cublasTransposeHelper_MLFloat16(int m, int n) {
+  if (m <= 0 || n <= 0) {
+    return false;
+  }
+
+  // transposeNoOverlap uses int64_t row * stride + col addressing in device code.
+  // Keep fallback disabled when total element count would overflow 32-bit launch/indexing assumptions.
+  if (static_cast<int64_t>(m) * static_cast<int64_t>(n) > std::numeric_limits<int>::max()) {
+    return false;
+  }
+
   dim3 dimGrid = cublasTransposeHelperDimGrid(m, n);
   return dimGrid.y < 65536;
 }
 
 cublasStatus_t cublasTransposeHelper(cudaStream_t stream, cublasHandle_t, cublasOperation_t, cublasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int) {
+  ORT_ENFORCE(m > 0 && n > 0);
   if (C != A) {
     dim3 dimGrid = cublasTransposeHelperDimGrid(m, n);
     dim3 dimBlock(TRANS_TILE_DIM, BLOCK_ROWS, 1);
 
+    ORT_ENFORCE(static_cast<int64_t>(m) * static_cast<int64_t>(n) <= std::numeric_limits<int>::max());
     ORT_ENFORCE(dimGrid.y < 65536);  // To prevent this, call CanUse_cublasTransposeHelper_MLFloat16 first
     transposeNoOverlap<<<dimGrid, dimBlock, 0, stream>>>(C, A, n, m);
   } else {

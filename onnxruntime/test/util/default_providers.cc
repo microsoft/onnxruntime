@@ -342,6 +342,14 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
   // Disable storage buffer cache
   ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kStorageBufferCacheMode).c_str(),
                                                    webgpu::options::kBufferCacheMode_Disabled));
+  // Enable int64 so the generic (EP-agnostic) int64 operator tests exercise the WebGPU int64
+  // kernels instead of silently falling back to CPU. Kept on by default for the test harness so
+  // operator tests don't have to build a bespoke WebGPU EP just to reach the int64 path.
+  //
+  // NOTE: this enables int64 for ALL WebGPU tests, not just the binary elementwise ops.
+  // TODO: migrate the other int64-gated ops' WebGPU-only int64 tests to EP-agnostic form too.
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kEnableInt64).c_str(),
+                                                   webgpu::options::kEnableInt64_ON));
   if (!is_nhwc) {
     // Enable NCHW support
     ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kPreferredLayout).c_str(),
@@ -388,6 +396,15 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const Con
 #endif
 #else
   ORT_UNUSED_PARAMETER(config_options);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithTestStorageBufferBindingSize(uint64_t max_size) {
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+  return WebGpuProviderFactoryCreator::CreateForTesting(ConfigOptions{}, max_size)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(max_size);
   return nullptr;
 #endif
 }

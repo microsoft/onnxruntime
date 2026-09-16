@@ -23,6 +23,9 @@
     "vite": ">=7.1.12 <7.3.0",
     "webpack-cli": "^5.1.4"
   },
+  "overrides": {
+    "terser": "5.49.0"
+  },
   "scripts": {
     "build:w:esmjs": "webpack --mode=production --config webpack.config.esm-js.js",
     "build:w:umdjs": "webpack --mode=production --config webpack.config.umd-js.js",

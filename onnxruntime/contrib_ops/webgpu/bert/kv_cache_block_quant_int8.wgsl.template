@@ -1,0 +1,160 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Symmetric per-vector INT8 KV-cache quantization.
+// Each workgroup handles one (batch, head, seq) slice for either K or V.
+// Output layout per head: [fp32_scale_u32, four_int8_values_per_u32, ...]
+
+#param components
+#param compressed_head_size_u32
+#param has_past
+#param head_size
+#param kv_BNSH
+#param past_present_share_buffer
+#param prepare_indirect_dispatch
+#param use_seqlen_k
+#use .indicesToOffset .getByOffset .setByOffset
+
+const HEAD_SIZE : u32 = head_size;
+const HEAD_SIZE_VEC : u32 = HEAD_SIZE / components;
+const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
+const VALUES_PER_WORD : u32 = 4u;
+
+var<workgroup> block_values : array<f32, HEAD_SIZE>;
+var<workgroup> scale_reduction_buffer : array<f32, 64>;
+var<workgroup> quantized_values : array<u32, HEAD_SIZE>;
+
+#if prepare_indirect_dispatch
+#include "bert/indirect_dispatch_common.wgsl.template"
+#endif
+
+$MAIN {
+  let is_value = workgroup_idx >= uniforms.num_slices_per_kv;
+  let kv_slice = select(workgroup_idx, workgroup_idx - uniforms.num_slices_per_kv, is_value);
+  if (kv_slice >= uniforms.num_slices_per_kv) { return; }
+
+  let copy_seq_length = uniforms.copy_sequence_length;
+  let batch = kv_slice / (uniforms.kv_num_heads * copy_seq_length);
+  let head = (kv_slice / copy_seq_length) % uniforms.kv_num_heads;
+  let seq = kv_slice % copy_seq_length;
+
+#if use_seqlen_k
+  let per_batch_total_seq_length = u32(seqlen_k[batch]) + 1u;
+#else
+  let per_batch_total_seq_length = uniforms.total_sequence_length;
+#endif
+  let past_seq_length =
+      per_batch_total_seq_length - min(per_batch_total_seq_length, uniforms.kv_sequence_length);
+
+#if prepare_indirect_dispatch
+  if (workgroup_idx == 0u && local_idx == 0u) {
+    let global_total_seq_length = u32(total_sequence_length_input[0]);
+    let num_total_sequence_length_tiles =
+        (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
+    populate_indirect_dispatch_buffer(
+        num_total_sequence_length_tiles, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
+  }
+#endif
+
+  if (seq >= per_batch_total_seq_length) {
+    return;
+  }
+
+#if past_present_share_buffer
+  let dest_seq = past_seq_length + seq;
+#else
+  let dest_seq = seq;
+#endif
+  let present_base =
+      ((batch * uniforms.kv_num_heads + head) * uniforms.present_seq_length + dest_seq) *
+      COMPRESSED_HEAD_U32;
+
+#if has_past
+  if (seq < past_seq_length) {
+    let past_base =
+        ((batch * uniforms.kv_num_heads + head) * uniforms.past_input_seq_length + seq) *
+        COMPRESSED_HEAD_U32;
+    for (var i = local_idx; i < COMPRESSED_HEAD_U32; i += workgroup_size_x) {
+      if (!is_value) {
+        present_key.setByOffset(present_base + i, past_key.getByOffset(past_base + i));
+      } else {
+        present_value.setByOffset(present_base + i, past_value.getByOffset(past_base + i));
+      }
+    }
+    return;
+  }
+  let new_seq = seq - past_seq_length;
+#else
+  let new_seq = seq;
+#endif
+
+#if kv_BNSH
+  let src_base = key.indicesToOffset(key_indices_t(batch, head, new_seq, 0u));
+#else
+  let src_base = key.indicesToOffset(key_indices_t(batch, new_seq, head, 0u));
+#endif
+
+  for (var i = local_idx; i < HEAD_SIZE_VEC; i += workgroup_size_x) {
+    var value_to_quantize : key_value_t;
+    if (!is_value) {
+      value_to_quantize = key.getByOffset(src_base + i);
+    } else {
+      value_to_quantize = value.getByOffset(src_base + i);
+    }
+#if components == 4
+    block_values[i * 4u] = f32(value_to_quantize[0]);
+    block_values[i * 4u + 1u] = f32(value_to_quantize[1]);
+    block_values[i * 4u + 2u] = f32(value_to_quantize[2]);
+    block_values[i * 4u + 3u] = f32(value_to_quantize[3]);
+#elif components == 2
+    block_values[i * 2u] = f32(value_to_quantize[0]);
+    block_values[i * 2u + 1u] = f32(value_to_quantize[1]);
+#else
+    block_values[i] = f32(value_to_quantize);
+#endif
+  }
+  workgroupBarrier();
+
+  var partial_max_abs = 0.0f;
+  for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
+    partial_max_abs = max(partial_max_abs, abs(block_values[i]));
+  }
+  scale_reduction_buffer[local_idx] = partial_max_abs;
+  workgroupBarrier();
+  for (var stride = workgroup_size_x >> 1u; stride > 0u; stride >>= 1u) {
+    if (local_idx < stride) {
+      scale_reduction_buffer[local_idx] =
+          max(scale_reduction_buffer[local_idx], scale_reduction_buffer[local_idx + stride]);
+    }
+    workgroupBarrier();
+  }
+
+  let quant_scale = scale_reduction_buffer[0] / 127.0f;
+  let inv_scale = select(0.0f, 1.0f / quant_scale, quant_scale > 0.0f);
+  for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
+    let quantized = i32(clamp(round(block_values[i] * inv_scale), -127.0f, 127.0f));
+    quantized_values[i] = u32(quantized + 128);
+  }
+  workgroupBarrier();
+
+  if (local_idx == 0u) {
+    if (!is_value) {
+      present_key.setByOffset(present_base, bitcast<u32>(quant_scale));
+    } else {
+      present_value.setByOffset(present_base, bitcast<u32>(quant_scale));
+    }
+  }
+
+  for (var word = local_idx; word < HEAD_SIZE / VALUES_PER_WORD; word += workgroup_size_x) {
+    let base_element = word * VALUES_PER_WORD;
+    let packed = quantized_values[base_element] |
+                 (quantized_values[base_element + 1u] << 8u) |
+                 (quantized_values[base_element + 2u] << 16u) |
+                 (quantized_values[base_element + 3u] << 24u);
+    if (!is_value) {
+      present_key.setByOffset(present_base + 1u + word, packed);
+    } else {
+      present_value.setByOffset(present_base + 1u + word, packed);
+    }
+  }
+}

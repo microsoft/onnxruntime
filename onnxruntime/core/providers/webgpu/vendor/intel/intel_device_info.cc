@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !defined(__wasm__)
-
 #include "core/providers/webgpu/vendor/intel/intel_device_info.h"
 
 namespace onnxruntime {
@@ -22,5 +20,3 @@ uint32_t HwSubgroups(std::string_view arch) {
 }  // namespace intel
 }  // namespace webgpu
 }  // namespace onnxruntime
-
-#endif  // !defined(__wasm__)

@@ -83,6 +83,8 @@ class ExampleEp : public OrtEp, public ApiPtrs {
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
+  static OrtStatus* ORT_API_CALL GetWeightlessSupportImpl(const OrtEp* this_ptr,
+                                                          OrtWeightlessSupport* support) noexcept;
 
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(_In_ OrtEp* this_ptr,
                                                      _In_ const OrtMemoryInfo* memory_info,

@@ -330,7 +330,8 @@ ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
       indirect_dispatch_tensor_{nullptr},
       workgroup_size_x_{0},
       workgroup_size_y_{0},
-      workgroup_size_z_{0} {
+      workgroup_size_z_{0},
+      subgroup_size_{0} {
 }
 
 ProgramBase& ProgramBase::AddInput(ProgramInput&& input) {
@@ -386,6 +387,11 @@ ProgramBase& ProgramBase::SetWorkgroupSize(uint32_t x, uint32_t y, uint32_t z) {
   workgroup_size_x_ = x;
   workgroup_size_y_ = y;
   workgroup_size_z_ = z;
+  return *this;
+}
+
+ProgramBase& ProgramBase::SetSubgroupSize(uint32_t size) {
+  subgroup_size_ = size;
   return *this;
 }
 

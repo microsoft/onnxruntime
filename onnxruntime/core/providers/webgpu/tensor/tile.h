@@ -32,10 +32,8 @@ class Tile final : public WebGpuKernel {
 // Create Tile kernel info with appropriate type constraints based on int64 support.
 // Tile is a pure data-movement op; int64 is safe because element values are never
 // interpreted or used in shader arithmetic.
-template <int StartVersion, int EndVersion>
-KernelCreateInfo CreateTileVersionedKernelInfo(bool enable_int64);
-template <int SinceVersion>
-KernelCreateInfo CreateTileKernelInfo(bool enable_int64);
+KernelCreateInfo CreateTileVersionedKernelInfo(int start_version, int end_version, bool enable_int64);
+KernelCreateInfo CreateTileKernelInfo(int since_version, bool enable_int64);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
