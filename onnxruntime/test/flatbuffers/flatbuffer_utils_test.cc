@@ -3,6 +3,8 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <algorithm>
+#include <array>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -440,6 +442,77 @@ TEST(FlatbufferUtilsTest, LoadInitializerRejectsExternalTensorWithDimTooLargeFor
 }
 
 #ifdef ENABLE_TRAINING_APIS
+template <typename F6>
+void TestFloat6OrtTensorRoundTrip(bool use_external_data) {
+  static onnxruntime::CPUExecutionProviderInfo info;
+  static onnxruntime::CPUExecutionProvider cpu_provider(info);
+  AllocatorPtr cpu_allocator = cpu_provider.CreatePreferredAllocators()[0];
+
+  Tensor input{DataTypeImpl::GetType<F6>(), TensorShape({4}), cpu_allocator};
+  const std::array<uint8_t, 4> expected_runtime_bits{0x01, 0x02, 0x03, 0x04};
+  auto* input_data = input.MutableData<F6>();
+  for (size_t i = 0; i < expected_runtime_bits.size(); ++i) {
+    input_data[i] = F6(expected_runtime_bits[i], F6::FromBits());
+  }
+
+  std::vector<uint8_t> external_data;
+  ExternalDataWriter writer;
+  if (use_external_data) {
+    writer = [&external_data](int32_t, gsl::span<const uint8_t> bytes, uint64_t& offset) {
+      offset = 0;
+      external_data.assign(bytes.begin(), bytes.end());
+      return Status::OK();
+    };
+  }
+
+  flatbuffers::FlatBufferBuilder builder;
+  flatbuffers::Offset<fbs::Tensor> tensor_offset;
+  ASSERT_STATUS_OK(SaveOrtTensorOrtFormat("float6", input, builder, tensor_offset, writer));
+  builder.Finish(tensor_offset);
+
+  const auto* fbs_tensor = flatbuffers::GetRoot<fbs::Tensor>(builder.GetBufferPointer());
+  const std::array<uint8_t, 3> expected_packed_bytes{0x81, 0x30, 0x10};
+  if (use_external_data) {
+    ASSERT_EQ(fbs_tensor->external_data_offset(), 0);
+    ASSERT_EQ(external_data, std::vector<uint8_t>(expected_packed_bytes.begin(), expected_packed_bytes.end()));
+  } else {
+    ASSERT_NE(fbs_tensor->raw_data(), nullptr);
+    ASSERT_EQ(fbs_tensor->raw_data()->size(), expected_packed_bytes.size());
+    ASSERT_TRUE(std::equal(expected_packed_bytes.begin(), expected_packed_bytes.end(), fbs_tensor->raw_data()->begin()));
+  }
+
+  ExternalDataReader reader = [&external_data](uint64_t offset, gsl::span<uint8_t> bytes) {
+    ORT_ENFORCE(offset == 0 && bytes.size() == external_data.size());
+    std::copy(external_data.begin(), external_data.end(), bytes.begin());
+    return Status::OK();
+  };
+  Tensor output;
+  std::string tensor_name;
+  ASSERT_STATUS_OK(LoadOrtTensorOrtFormat(*fbs_tensor, cpu_allocator, tensor_name, output,
+                                          use_external_data ? reader : ExternalDataReader{}));
+  ASSERT_EQ(tensor_name, "float6");
+  const auto* output_data = output.Data<F6>();
+  for (size_t i = 0; i < expected_runtime_bits.size(); ++i) {
+    ASSERT_EQ(output_data[i].ToBits(), expected_runtime_bits[i]);
+  }
+}
+
+TEST(FlatbufferUtilsTest, Float6E2M3OrtTensorInlineRoundTrip) {
+  TestFloat6OrtTensorRoundTrip<Float6E2M3>(false);
+}
+
+TEST(FlatbufferUtilsTest, Float6E3M2OrtTensorInlineRoundTrip) {
+  TestFloat6OrtTensorRoundTrip<Float6E3M2>(false);
+}
+
+TEST(FlatbufferUtilsTest, Float6E2M3OrtTensorExternalRoundTrip) {
+  TestFloat6OrtTensorRoundTrip<Float6E2M3>(true);
+}
+
+TEST(FlatbufferUtilsTest, Float6E3M2OrtTensorExternalRoundTrip) {
+  TestFloat6OrtTensorRoundTrip<Float6E3M2>(true);
+}
+
 // tests method that loads to OrtTensor (used when loading a checkpoint into a checkpoint state)
 TEST(FlatbufferUtilsTest, ExternalWriteReadWithLoadOrtTensor) {
   // create data

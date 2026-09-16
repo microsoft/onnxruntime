@@ -7,6 +7,7 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "core/framework/float6.h"
 #include "core/framework/int4.h"
 #include "core/framework/int2.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -1398,6 +1399,49 @@ TEST(QuantizeLinearOpTest, Per_Channel_Axis_neg) {
                            0, 1, 2, 255,
                            0, 0, 1, 250});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT doesn't support support UINT8 for quantization
+}
+
+template <typename F6>
+void QuantizeDequantizeLinearOp28Float6Test() {
+  const std::vector<int64_t> dims{6};
+  const std::vector<float> input{-4.0f, -1.0f, -0.25f, 0.0f, 0.25f, 4.0f};
+  constexpr float scale = 0.5f;
+  const F6 zero_point(0.0f);
+  std::vector<F6> quantized;
+  std::vector<float> dequantized;
+  quantized.reserve(input.size());
+  dequantized.reserve(input.size());
+
+  for (float value : input) {
+    const F6 quantized_value(value / scale);
+    quantized.push_back(quantized_value);
+    dequantized.push_back(static_cast<float>(quantized_value) * scale);
+  }
+
+  OpTester quantize_test("QuantizeLinear", 28);
+  quantize_test.AddAttribute<int64_t>("saturate", 0);
+  quantize_test.AddInput<float>("x", dims, input);
+  quantize_test.AddInput<float>("y_scale", {}, {scale});
+  quantize_test.AddInput<F6>("y_zero_point", {}, {zero_point});
+  quantize_test.AddOutput<F6>("y", dims, quantized);
+  quantize_test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+                    {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+
+  OpTester dequantize_test("DequantizeLinear", 28);
+  dequantize_test.AddInput<F6>("x", dims, quantized);
+  dequantize_test.AddInput<float>("x_scale", {}, {scale});
+  dequantize_test.AddInput<F6>("x_zero_point", {}, {zero_point});
+  dequantize_test.AddOutput<float>("y", dims, dequantized);
+  dequantize_test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+                      {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+TEST(QuantizeLinearOpTest, Float6E2M3) {
+  QuantizeDequantizeLinearOp28Float6Test<Float6E2M3>();
+}
+
+TEST(QuantizeLinearOpTest, Float6E3M2) {
+  QuantizeDequantizeLinearOp28Float6Test<Float6E3M2>();
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)

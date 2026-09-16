@@ -6,6 +6,7 @@
 #include "core/framework/element_type_lists.h"
 #include "core/common/float8.h"
 #include "core/common/float16.h"
+#include "core/framework/float6.h"
 #include "core/framework/int4.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
@@ -119,13 +120,24 @@ static void PrepareForQDQ(const TensorShape& input_shape,
 }
 
 #define REGISTER_DEQUANTIZELINEAR(T)                                         \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                            \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                  \
       DequantizeLinear,                                                      \
-      25,                                                                    \
+      25, 27,                                                                \
       T,                                                                     \
       KernelDefBuilder()                                                     \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())            \
           .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),       \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}), \
+      DequantizeLinear<T>);
+
+#define REGISTER_DEQUANTIZELINEAR_28(T)                                     \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                           \
+      DequantizeLinear,                                                     \
+      28,                                                                   \
+      T,                                                                    \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())           \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),      \
                                  DataTypeImpl::GetTensorType<MLFloat16>()}), \
       DequantizeLinear<T>);
 
@@ -160,7 +172,7 @@ static void PrepareForQDQ(const TensorShape& input_shape,
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DequantizeLinear<T>);
 
-// Opset25
+// Opset 25-27
 REGISTER_DEQUANTIZELINEAR(int8_t)
 REGISTER_DEQUANTIZELINEAR(uint8_t)
 REGISTER_DEQUANTIZELINEAR(int16_t)
@@ -175,6 +187,25 @@ REGISTER_DEQUANTIZELINEAR(Float8E4M3FN)
 REGISTER_DEQUANTIZELINEAR(Float8E4M3FNUZ)
 REGISTER_DEQUANTIZELINEAR(Float8E5M2)
 REGISTER_DEQUANTIZELINEAR(Float8E5M2FNUZ)
+#endif
+
+// Opset 28 adds float6 quantization types.
+REGISTER_DEQUANTIZELINEAR_28(int8_t)
+REGISTER_DEQUANTIZELINEAR_28(uint8_t)
+REGISTER_DEQUANTIZELINEAR_28(int16_t)
+REGISTER_DEQUANTIZELINEAR_28(uint16_t)
+REGISTER_DEQUANTIZELINEAR_28(int32_t)
+REGISTER_DEQUANTIZELINEAR_28(Int4x2)
+REGISTER_DEQUANTIZELINEAR_28(UInt4x2)
+REGISTER_DEQUANTIZELINEAR_28(Int2x4)
+REGISTER_DEQUANTIZELINEAR_28(UInt2x4)
+REGISTER_DEQUANTIZELINEAR_28(Float6E2M3)
+REGISTER_DEQUANTIZELINEAR_28(Float6E3M2)
+#if !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_DEQUANTIZELINEAR_28(Float8E4M3FN)
+REGISTER_DEQUANTIZELINEAR_28(Float8E4M3FNUZ)
+REGISTER_DEQUANTIZELINEAR_28(Float8E5M2)
+REGISTER_DEQUANTIZELINEAR_28(Float8E5M2FNUZ)
 #endif
 
 // opset24
@@ -536,6 +567,38 @@ DEQUANTIZE_LINEAR_APPLY_FLOAT8(Float8E5M2FNUZ)
 
 #endif
 
+#define DEQUANTIZE_LINEAR_APPLY_FLOAT6(T)                                                           \
+  template <typename OutT, int elements_per_byte>                                                   \
+  struct DequantizeLinearApply<T, OutT, false, elements_per_byte> {                                 \
+    void op(size_t M, size_t K, size_t N,                                                           \
+            const T* input, const OutT* scale, OutT* output, const T*, concurrency::ThreadPool*) { \
+      for (size_t m = 0; m < M; ++m) {                                                              \
+        for (size_t bd = 0; bd < K; ++bd) {                                                         \
+          const auto sc = scale[bd];                                                                \
+          for (size_t bs = 0; bs < N; ++bs, ++input) {                                              \
+            *output++ = static_cast<OutT>(static_cast<float>(*input) * sc);                        \
+          }                                                                                         \
+        }                                                                                           \
+      }                                                                                             \
+    }                                                                                               \
+    void op(size_t M, size_t K, size_t N, size_t quant_block_size,                                 \
+            const T* input, const OutT* scale, OutT* output, const T*, concurrency::ThreadPool*) { \
+      for (size_t m = 0; m < M; ++m) {                                                              \
+        for (size_t bd = 0; bd < K; bd += quant_block_size) {                                      \
+          for (size_t qb = 0, qb_end = std::min(quant_block_size, K - bd); qb < qb_end; ++qb) {    \
+            for (size_t bs = 0; bs < N; ++bs, ++input) {                                           \
+              *output++ = static_cast<OutT>(static_cast<float>(*input) * scale[bs]);               \
+            }                                                                                       \
+          }                                                                                         \
+          scale += N;                                                                               \
+        }                                                                                           \
+      }                                                                                             \
+    }                                                                                               \
+  };
+
+DEQUANTIZE_LINEAR_APPLY_FLOAT6(Float6E2M3)
+DEQUANTIZE_LINEAR_APPLY_FLOAT6(Float6E3M2)
+
 // formula is Y = (X - ZeroPoint) * Scale
 template <typename T>
 Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
@@ -564,6 +627,13 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
                 "DequantizeLinear with type float8 should have no zero point or all zero points should be 0");
   }
 #endif
+  if constexpr (std::is_same_v<T, Float6E2M3> || std::is_same_v<T, Float6E3M2>) {
+    ORT_ENFORCE(zero_point == nullptr ||
+                    std::all_of(zero_point,
+                                zero_point + x_zero_point->Shape().Size(),
+                                [](T zp) { return static_cast<float>(zp) == 0.0f; }),
+                "DequantizeLinear with type float6 should have no zero point or all zero points should be 0");
+  }
 
   const auto to = x_scale.GetElementType();
   const T* input = x.Data<T>();
@@ -614,9 +684,22 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 }
 
 #define REGISTER_QUANTIZELINEAR(T)                                          \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                                 \
+      QuantizeLinear,                                                       \
+      25, 27,                                                               \
+      T,                                                                    \
+      KernelDefBuilder()                                                    \
+          .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),      \
+                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+          .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>()),          \
+      QuantizeLinear<T>);
+
+#define REGISTER_QUANTIZELINEAR_28(T)                                       \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                           \
       QuantizeLinear,                                                       \
-      25,                                                                   \
+      28,                                                                   \
       T,                                                                    \
       KernelDefBuilder()                                                    \
           .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),      \
@@ -673,7 +756,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T>);
 
-// Opset 25
+// Opset 25-27
 REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
 REGISTER_QUANTIZELINEAR(int16_t)
@@ -687,6 +770,24 @@ REGISTER_QUANTIZELINEAR(Float8E4M3FN)
 REGISTER_QUANTIZELINEAR(Float8E4M3FNUZ)
 REGISTER_QUANTIZELINEAR(Float8E5M2)
 REGISTER_QUANTIZELINEAR(Float8E5M2FNUZ)
+#endif
+
+// Opset 28 adds float6 quantization types.
+REGISTER_QUANTIZELINEAR_28(int8_t)
+REGISTER_QUANTIZELINEAR_28(uint8_t)
+REGISTER_QUANTIZELINEAR_28(int16_t)
+REGISTER_QUANTIZELINEAR_28(uint16_t)
+REGISTER_QUANTIZELINEAR_28(Int4x2)
+REGISTER_QUANTIZELINEAR_28(UInt4x2)
+REGISTER_QUANTIZELINEAR_28(Int2x4)
+REGISTER_QUANTIZELINEAR_28(UInt2x4)
+REGISTER_QUANTIZELINEAR_28(Float6E2M3)
+REGISTER_QUANTIZELINEAR_28(Float6E3M2)
+#if !defined(DISABLE_FLOAT8_TYPES)
+REGISTER_QUANTIZELINEAR_28(Float8E4M3FN)
+REGISTER_QUANTIZELINEAR_28(Float8E4M3FNUZ)
+REGISTER_QUANTIZELINEAR_28(Float8E5M2)
+REGISTER_QUANTIZELINEAR_28(Float8E5M2FNUZ)
 #endif
 
 // Opset 24
@@ -815,19 +916,21 @@ void ParQuantizeLinear(const InputType* Input,
                        const OutputType* ZeroPoint,
                        bool saturate,
                        concurrency::ThreadPool* thread_pool) {
-#if !defined(DISABLE_FLOAT8_TYPES)
-  if constexpr (!boost::mp11::mp_contains<element_type_lists::AllFloat8, OutputType>::value) {
-#endif
+  if constexpr (!IsFloatQuantizationType<OutputType>) {
     ORT_UNUSED_PARAMETER(saturate);
     ParQuantizeLinearStd(Input, Output, N, Scale, ZeroPoint != nullptr ? ZeroPoint[bd] : (OutputType)0, thread_pool);
-#if !defined(DISABLE_FLOAT8_TYPES)
   } else {
+    const auto default_zero_point = []() {
+      if constexpr (std::is_same_v<OutputType, Float6E2M3> || std::is_same_v<OutputType, Float6E3M2>) {
+        return OutputType(0.0f);
+      } else {
+        return OutputType(0.0f, true);
+      }
+    }();
     ParQuantizeLinearSat(Input, Output, N, Scale,
-                         ZeroPoint != nullptr ? ZeroPoint[bd]
-                                              : OutputType(static_cast<InputType>(static_cast<float>(0)), true),
+                         ZeroPoint != nullptr ? ZeroPoint[bd] : default_zero_point,
                          saturate, thread_pool);
   }
-#endif
 }
 
 /**
@@ -944,12 +1047,21 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
   T* output = y.MutableData<T>();
 
+  if constexpr (std::is_same_v<T, Float6E2M3> || std::is_same_v<T, Float6E3M2>) {
+    ORT_ENFORCE(zero_point == nullptr ||
+                    std::all_of(zero_point,
+                                zero_point + y_zero_point->Shape().Size(),
+                                [](T zp) { return static_cast<float>(zp) == 0.0f; }),
+                "QuantizeLinear with type float6 should have no zero point or all zero points should be 0");
+  }
+
   constexpr int output_type_group_ =
       boost::mp11::mp_contains<TypeList<Int4x2, UInt4x2>, T>::value   ? 2
       : boost::mp11::mp_contains<TypeList<Int2x4, UInt2x4>, T>::value ? 3
 #if !defined(DISABLE_FLOAT8_TYPES)
       : boost::mp11::mp_contains<element_type_lists::AllFloat8, T>::value ? 1
 #endif
+      : (std::is_same_v<T, Float6E2M3> || std::is_same_v<T, Float6E3M2>) ? 1
                                                                           : 0;
 
   if (x.IsDataType<float>()) {
