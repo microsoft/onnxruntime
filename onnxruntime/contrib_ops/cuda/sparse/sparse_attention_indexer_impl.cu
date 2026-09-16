@@ -182,8 +182,8 @@ __global__ void QsaBlockScoreKernel(const T* query, const T* present_key, const 
   extern __shared__ float shared[];
   float* pooled = shared;
   float* rotated = shared + params.head_size;
-  float* query_head = shared + 2 * params.head_size;
-  float* reduction = shared + 3 * params.head_size;
+  float* query_head = pooled;
+  float* reduction = shared + 2 * params.head_size;
 
   const int64_t total = static_cast<int64_t>(params.batch_size) * params.sequence_length * params.max_block_count;
   for (int64_t work = blockIdx.x; work < total; work += gridDim.x) {
@@ -611,7 +611,7 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   if (params.max_block_count > 0) {
     const int64_t block_work = rows * params.max_block_count;
     const int score_blocks = static_cast<int>(std::min<int64_t>(block_work, kMaxGridDimX));
-    QsaBlockScoreKernel<T><<<score_blocks, kThreads, 3 * value_bytes + kThreads * sizeof(float), stream>>>(
+    QsaBlockScoreKernel<T><<<score_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
         query, present_key, key_norm_weight, cos_cache, sin_cache, visible_indices, visible_count,
         block_scores, params);
   }

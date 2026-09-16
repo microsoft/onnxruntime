@@ -1041,12 +1041,21 @@ TEST(SparseAttentionIndexerTest, QsaMultiTileAndStridedChannels) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
 }
 
-TEST(SparseAttentionIndexerTest, QsaSinglePassTopK) {
+TEST(SparseAttentionIndexerTest, QsaSinglePassTopKLimit) {
   QsaProblem problem;
   problem.batch_size = 1;
   problem.sequence_length = 1;
   problem.past_sequence_length = 300;
-  problem.token_budget = 32;
+  problem.token_budget = 64;
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
+}
+
+TEST(SparseAttentionIndexerTest, QsaRepeatedScanTopKFallback) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.past_sequence_length = 300;
+  problem.token_budget = 66;
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
 }
 
