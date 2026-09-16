@@ -117,9 +117,10 @@ Both policies read and write the *same four* state slots — there is no separat
   `CsaWindowPlan`/`TryComputeCsaWindowPlan`).
 
 State never grows. `present_*` always has exactly the same shape as `past_*`; only the *contents*
-change. Input/output aliasing is supported: every kernel reads its sources (`past_kv_buffer` /
-`key`, `past_gate_buffer` / `gate`) and never re-reads `present_*`, so it is correct whether
-`present_*` is a distinct allocation or the same underlying buffer as `past_*`.
+change. Input/output aliasing is supported. CUDA avoids unsafe buffer aliases; WebGPU omits an
+aliased `past_*` read-only binding and reads the prior contents through the matching read-write
+`present_*` binding. Each request is handled by one invocation, and buffer compaction reads entries
+at or above the destination index before overwriting them.
 
 **State overflow.** If a call would close more blocks/windows than
 `state_capacity - old_entry_count` allows, that request's step is rejected as a deterministic

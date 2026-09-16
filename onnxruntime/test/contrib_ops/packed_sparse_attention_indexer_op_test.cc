@@ -93,9 +93,13 @@ struct GraphOptions {
   int64_t state_capacity = 6;
   int64_t input_state_capacity = -1;
   int64_t token_budget = 4;
+  int64_t key_total_tokens = -1;
+  int64_t kv_buffer_capacity = -1;
+  int64_t gate_buffer_width = -1;
   bool add_index_topk = false;
   bool add_csa_inputs = false;
   bool add_position_ids = false;
+  bool invert_gate_output_presence = false;
   int output_count = psai::kFixedOutputCount;
   std::string policy_mode = psai::kPolicyModeQsa;
 };
@@ -113,7 +117,8 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   std::vector<NodeArg*> inputs{
       builder.MakeInput<float>(
           std::vector<int64_t>{options.total_tokens, options.num_heads, options.head_size}),
-      builder.MakeInput<float>(std::vector<int64_t>{options.total_tokens, width}),
+      builder.MakeInput<float>(
+          std::vector<int64_t>{options.key_total_tokens >= 0 ? options.key_total_tokens : options.total_tokens, width}),
       builder.MakeInput<float>(std::vector<int64_t>{options.head_size}),
       builder.MakeInput<float>(std::vector<int64_t>{64, options.rotary_width}),
       builder.MakeInput<float>(std::vector<int64_t>{64, options.rotary_width}),
@@ -139,9 +144,12 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   inputs.push_back(
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, input_state_capacity, options.head_size}));
   inputs.push_back(
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, buffer_capacity, width}));
+      builder.MakeInput<float>(std::vector<int64_t>{
+          options.batch_size, options.kv_buffer_capacity >= 0 ? options.kv_buffer_capacity : buffer_capacity, width}));
   if (is_csa) {
-    inputs.push_back(builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, buffer_capacity, width}));
+    inputs.push_back(builder.MakeInput<float>(
+        std::vector<int64_t>{options.batch_size, buffer_capacity,
+                             options.gate_buffer_width >= 0 ? options.gate_buffer_width : width}));
   } else {
     inputs.push_back(&empty);
   }
@@ -149,7 +157,8 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
 
   std::vector<NodeArg*> outputs;
   for (int i = 0; i < options.output_count; ++i) {
-    outputs.push_back(i == psai::kPresentGateBuffer && !is_csa ? &empty : builder.MakeOutput());
+    const bool gate_output_present = is_csa != options.invert_gate_output_presence;
+    outputs.push_back(i == psai::kPresentGateBuffer && !gate_output_present ? &empty : builder.MakeOutput());
   }
   Node& node = builder.AddNode("PackedSparseAttentionIndexer", inputs, outputs, kMSDomain);
   node.AddAttribute("policy_mode", options.policy_mode);
@@ -226,6 +235,43 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateCapacityShapeMi
   options.input_state_capacity = options.state_capacity + 1;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
                        "past_key_state dimension 1 must equal state_capacity");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaGateOutput) {
+  GraphOptions options;
+  options.invert_gate_output_presence = true;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "must be omitted when policy_mode is 'qsa'");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsCsaMissingGateOutput) {
+  GraphOptions options;
+  options.policy_mode = psai::kPolicyModeCsa;
+  options.invert_gate_output_presence = true;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "is required when policy_mode is 'csa'");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsMismatchedKeyTokenCount) {
+  GraphOptions options;
+  options.key_total_tokens = options.total_tokens + 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "key dimension 0 must equal query dimension 0");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsWrongKvBufferCapacity) {
+  GraphOptions options;
+  options.kv_buffer_capacity = BufferCapacity(options.compress_ratio) + 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "past_kv_buffer dimension 1 must equal 2 * compress_ratio - 1");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsMismatchedCsaGateBufferWidth) {
+  GraphOptions options;
+  options.policy_mode = psai::kPolicyModeCsa;
+  options.gate_buffer_width = 2 * options.head_size + 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "past_gate_buffer dimension 2 must equal 2 * head_size");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsUnknownPolicyMode) {
@@ -393,6 +439,20 @@ std::vector<float> RoundTrip(const std::vector<float>& data) {
     }
     return result;
   }
+}
+
+template <typename T>
+std::vector<float> CopyTensorToFloat(const Tensor& tensor) {
+  const auto values = tensor.DataAsSpan<T>();
+  std::vector<float> result(values.size());
+  for (size_t i = 0; i < values.size(); ++i) {
+    if constexpr (std::is_same_v<T, float>) {
+      result[i] = values[i];
+    } else {
+      result[i] = values[i].ToFloat();
+    }
+  }
+  return result;
 }
 
 // Split-half rotary over the leading rotary_width channels.
@@ -645,7 +705,7 @@ QsaPackedProblem MakeQsaPackedProblem(QsaPackedProblem problem = {}) {
 
 template <typename T>
 void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedProblem(),
-                      ProviderKind provider_kind = ProviderKind::Cuda) {
+                      ProviderKind provider_kind = ProviderKind::Cuda, QsaPackedResult* actual = nullptr) {
   auto provider = CreateProvider(provider_kind);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -703,6 +763,13 @@ void RunQsaPackedTest(float tolerance, QsaPackedProblem problem = MakeQsaPackedP
   test.AddOptionalOutputEdge<T>();  // present_gate_buffer
   test.AddOutput<int32_t>("present_state_lengths", {batch_size, 2}, expected.present_state_lengths);
   RunOnProvider(test, std::move(provider));
+  if (actual != nullptr) {
+    const auto& fetches = test.GetFetches();
+    actual->present_key_state = CopyTensorToFloat<T>(fetches[2].Get<Tensor>());
+    actual->present_kv_buffer = CopyTensorToFloat<T>(fetches[3].Get<Tensor>());
+    actual->present_state_lengths.assign(fetches[4].Get<Tensor>().DataAsSpan<int32_t>().begin(),
+                                         fetches[4].Get<Tensor>().DataAsSpan<int32_t>().end());
+  }
 }
 
 }  // namespace
@@ -713,13 +780,26 @@ TEST(PackedSparseAttentionIndexerTest, QsaFloat16) { RunQsaPackedTest<MLFloat16>
 
 TEST(PackedSparseAttentionIndexerTest, QsaBFloat16) { RunQsaPackedTest<BFloat16>(2.0e-2f); }
 
-// Prefill followed by decode: request 0 continues an existing 3-token history, request 1 starts
-// fresh; the two requests keep independent block/tail state.
 TEST(PackedSparseAttentionIndexerTest, QsaPrefillThenDecodeIndependentState) {
-  QsaPackedProblem problem;
-  problem.cumulative_sequence_lengths = {0, 1, 4};
-  problem.past_sequence_lengths = {5, 0};
-  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  QsaPackedProblem prefill;
+  prefill.cumulative_sequence_lengths = {0, 3, 5};
+  prefill.past_sequence_lengths = {0, 0};
+  QsaPackedResult prefill_outputs;
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(prefill)), ProviderKind::Cuda,
+                          &prefill_outputs);
+
+  QsaPackedProblem decode;
+  decode.cumulative_sequence_lengths = {0, 1, 3};
+  decode.past_sequence_lengths = {3, 2};
+  decode = MakeQsaPackedProblem(std::move(decode));
+  decode.past_key_state = std::move(prefill_outputs.present_key_state);
+  decode.past_kv_buffer = std::move(prefill_outputs.present_kv_buffer);
+  decode.past_state_lengths = std::move(prefill_outputs.present_state_lengths);
+  RunQsaPackedTest<float>(1.0e-5f, std::move(decode));
 }
 
 // A zero-token request row (repeated cumulative offset) must not affect the other request and
@@ -747,6 +827,10 @@ TEST(PackedSparseAttentionIndexerTest, QsaStateCapacityOverflowIsSafe) {
 #ifdef USE_WEBGPU
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat) {
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat16) {
+  RunQsaPackedTest<MLFloat16>(2.0e-3f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateCapacityOverflowIsRejected) {
@@ -1005,7 +1089,7 @@ CsaPackedProblem MakeCsaPackedProblem(CsaPackedProblem problem = {}) {
 
 template <typename T>
 void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
-                      ProviderKind provider_kind = ProviderKind::Cuda) {
+                      ProviderKind provider_kind = ProviderKind::Cuda, CsaPackedResult* actual = nullptr) {
   auto provider = CreateProvider(provider_kind);
   if (provider == nullptr) {
     GTEST_SKIP() << (provider_kind == ProviderKind::Cuda ? "CUDA" : "WebGPU")
@@ -1070,6 +1154,14 @@ void RunCsaPackedTest(const CsaPackedProblem& base, float tolerance,
                     ToElementType<T>(expected.present_gate_buffer), false, 0.0f, tolerance);
   test.AddOutput<int32_t>("present_state_lengths", {batch_size, 2}, expected.present_state_lengths);
   RunOnProvider(test, std::move(provider));
+  if (actual != nullptr) {
+    const auto& fetches = test.GetFetches();
+    actual->present_key_state = CopyTensorToFloat<T>(fetches[2].Get<Tensor>());
+    actual->present_kv_buffer = CopyTensorToFloat<T>(fetches[3].Get<Tensor>());
+    actual->present_gate_buffer = CopyTensorToFloat<T>(fetches[4].Get<Tensor>());
+    actual->present_state_lengths.assign(fetches[5].Get<Tensor>().DataAsSpan<int32_t>().begin(),
+                                         fetches[5].Get<Tensor>().DataAsSpan<int32_t>().end());
+  }
 }
 
 }  // namespace
@@ -1080,13 +1172,28 @@ TEST(PackedSparseAttentionIndexerTest, CsaFloat16) { RunCsaPackedTest<MLFloat16>
 
 TEST(PackedSparseAttentionIndexerTest, CsaBFloat16) { RunCsaPackedTest<BFloat16>(MakeCsaPackedProblem(), 3.0e-2f); }
 
-// Prefill followed by decode: continues a previously compressed entry and a partially filled
-// buffer for one request, while another request starts fresh.
 TEST(PackedSparseAttentionIndexerTest, CsaPrefillThenDecodeIndependentState) {
-  CsaPackedProblem problem;
-  problem.cumulative_sequence_lengths = {0, 1, 4};
-  problem.past_state_lengths = {1, 1, 0, 0};
-  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available";
+  }
+
+  CsaPackedProblem prefill;
+  prefill.cumulative_sequence_lengths = {0, 3, 5};
+  prefill.past_sequence_lengths = {0, 0};
+  CsaPackedResult prefill_outputs;
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(prefill)), 1.0e-5f, ProviderKind::Cuda,
+                          &prefill_outputs);
+
+  CsaPackedProblem decode;
+  decode.cumulative_sequence_lengths = {0, 1, 3};
+  decode.past_sequence_lengths = {3, 2};
+  decode.position_ids = {3, 2, 3};
+  decode = MakeCsaPackedProblem(std::move(decode));
+  decode.past_key_state = std::move(prefill_outputs.present_key_state);
+  decode.past_kv_buffer = std::move(prefill_outputs.present_kv_buffer);
+  decode.past_gate_buffer = std::move(prefill_outputs.present_gate_buffer);
+  decode.past_state_lengths = std::move(prefill_outputs.present_state_lengths);
+  RunCsaPackedTest<float>(decode, 1.0e-5f);
 }
 
 TEST(PackedSparseAttentionIndexerTest, CsaStateCapacityOverflowIsRejected) {
@@ -1101,6 +1208,10 @@ TEST(PackedSparseAttentionIndexerTest, CsaStateCapacityOverflowIsRejected) {
 #ifdef USE_WEBGPU
 TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat) {
   RunCsaPackedTest<float>(MakeCsaPackedProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat16) {
+  RunCsaPackedTest<MLFloat16>(MakeCsaPackedProblem(), 4.0e-3f, ProviderKind::WebGpu);
 }
 
 TEST(PackedSparseAttentionIndexerWebGpuTest, CsaStateCapacityOverflowIsRejected) {

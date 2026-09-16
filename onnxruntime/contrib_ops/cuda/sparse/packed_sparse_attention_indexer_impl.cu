@@ -183,7 +183,7 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
     // Publish the raw trailing buffer. Skipped entirely on overflow: present_kv_buffer already
     // holds past_kv_buffer's contents unchanged (from the baseline copy in the Launch function
     // below), which is exactly the prior valid buffer this rejected step must preserve.
-    if (!overflowed) {
+    if (!rejected) {
       for (int t = static_cast<int>(threadIdx.x); t < new_buf_len; t += static_cast<int>(blockDim.x)) {
         const int virtual_pos = new_block_count * params.compress_ratio + t;
         const int64_t out_base = (static_cast<int64_t>(b) * params.buffer_capacity + t) * params.head_size;
@@ -420,8 +420,8 @@ __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_n
     const int old_key_len = min(max(raw_key_len, 0), params.state_capacity);
     const int old_buf_len = min(max(raw_buf_len, 0), params.buffer_capacity);
 
-    sai::CsaWindowPlan plan;
-    const bool plan_ok = sai::TryComputeCsaWindowPlan(old_buf_len, req_len, params.compress_ratio, plan);
+    psai::CsaWindowPlan plan;
+    const bool plan_ok = psai::TryComputeCsaWindowPlan(old_buf_len, req_len, params.compress_ratio, plan);
     // plan_ok is always true here: old_buf_len is clamped into [0, buffer_capacity) ==
     // [0, 2 * compress_ratio) and req_len >= 0, which are exactly the documented preconditions.
     const int full_new_window_count = plan_ok ? static_cast<int>(plan.new_window_count) : 0;
@@ -568,7 +568,7 @@ __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_n
     // present_gate_buffer already hold past_kv_buffer's / past_gate_buffer's contents unchanged
     // (from the baseline copy in the Launch function below), which is exactly the prior valid
     // buffer this rejected step must preserve.
-    if (!overflowed) {
+    if (!rejected) {
       for (int t = static_cast<int>(threadIdx.x); t < present_buffer_length; t += static_cast<int>(blockDim.x)) {
         const int virtual_pos = present_buffer_start + t;
         const int64_t out_base = (static_cast<int64_t>(b) * params.buffer_capacity + t) * width;

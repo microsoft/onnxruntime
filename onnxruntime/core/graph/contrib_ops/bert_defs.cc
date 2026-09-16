@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <limits>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "core/graph/constants.h"
@@ -2395,6 +2396,11 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     fail_shape_inference("PackedSparseAttentionIndexer: exactly ", psai::kFixedOutputCount,
                          " declared outputs are required, got ", ctx.getNumOutputs());
   }
+  if (ctx.hasOutput(psai::kPresentGateBuffer) == is_qsa) {
+    fail_shape_inference("PackedSparseAttentionIndexer: output ", psai::kPresentGateBuffer,
+                         is_qsa ? " must be omitted when policy_mode is 'qsa'"
+                                : " is required when policy_mode is 'csa'");
+  }
 
   updateOutputElemType(ctx, psai::kSelectedIndices, ONNX_NAMESPACE::TensorProto_DataType_INT32);
   updateOutputElemType(ctx, psai::kSelectedCounts, ONNX_NAMESPACE::TensorProto_DataType_INT32);
@@ -2407,20 +2413,156 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     propagateElemTypeFromInputToOutput(ctx, psai::kPastGateBuffer, psai::kPresentGateBuffer);
   }
 
-  (void)PackedSparseAttentionIndexerShape(ctx, psai::kKeyNormWeight, 1);
-  (void)PackedSparseAttentionIndexerShape(ctx, psai::kKey, 2);
-  (void)PackedSparseAttentionIndexerShape(ctx, psai::kCumulativeSequenceLengths, 1);
-  (void)PackedSparseAttentionIndexerShape(ctx, psai::kPastSequenceLengths, 1);
-  if (!is_qsa) {
-    (void)PackedSparseAttentionIndexerShape(ctx, psai::kGate, 2);
-    (void)PackedSparseAttentionIndexerShape(ctx, psai::kPositionBias, 2);
-    (void)PackedSparseAttentionIndexerShape(ctx, psai::kHeadWeights, 2);
+  const auto* query_shape = PackedSparseAttentionIndexerShape(ctx, psai::kQuery, 3);
+  const auto* key_shape = PackedSparseAttentionIndexerShape(ctx, psai::kKey, 2);
+  const auto* norm_shape = PackedSparseAttentionIndexerShape(ctx, psai::kKeyNormWeight, 1);
+  const auto* cumulative_shape =
+      PackedSparseAttentionIndexerShape(ctx, psai::kCumulativeSequenceLengths, 1);
+  const auto* past_sequence_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastSequenceLengths, 1);
+  const ONNX_NAMESPACE::TensorShapeProto* cos_shape = nullptr;
+  const ONNX_NAMESPACE::TensorShapeProto* sin_shape = nullptr;
+  for (const auto [index, name, shape_out] :
+       {std::tuple<int, const char*, const ONNX_NAMESPACE::TensorShapeProto**>{
+            psai::kCosCache, "cos_cache", &cos_shape},
+        {psai::kSinCache, "sin_cache", &sin_shape}}) {
+    if (hasInputShape(ctx, index)) {
+      const auto& shape = getInputShape(ctx, index);
+      if (shape.dim_size() != 2 && shape.dim_size() != 3) {
+        fail_shape_inference("PackedSparseAttentionIndexer: ", name, " must have rank 2 or 3, got rank ",
+                             shape.dim_size());
+      }
+      *shape_out = &shape;
+    }
   }
+  const auto* key_state_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastKeyState, 3);
+  const auto* kv_buffer_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastKvBuffer, 3);
+  const auto* state_lengths_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastStateLengths, 2);
+  const ONNX_NAMESPACE::TensorShapeProto* gate_shape = nullptr;
+  const ONNX_NAMESPACE::TensorShapeProto* position_bias_shape = nullptr;
+  const ONNX_NAMESPACE::TensorShapeProto* head_weights_shape = nullptr;
+  const ONNX_NAMESPACE::TensorShapeProto* gate_buffer_shape = nullptr;
+  if (!is_qsa) {
+    gate_shape = PackedSparseAttentionIndexerShape(ctx, psai::kGate, 2);
+    position_bias_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPositionBias, 2);
+    head_weights_shape = PackedSparseAttentionIndexerShape(ctx, psai::kHeadWeights, 2);
+    gate_buffer_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastGateBuffer, 3);
+  }
+  const ONNX_NAMESPACE::TensorShapeProto* position_ids_shape = nullptr;
   if (PackedSparseAttentionIndexerHasInput(ctx, psai::kPositionIds)) {
-    (void)PackedSparseAttentionIndexerShape(ctx, psai::kPositionIds, 1);
+    position_ids_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPositionIds, 1);
   }
 
-  const auto* query_shape = PackedSparseAttentionIndexerShape(ctx, psai::kQuery, 3);
+  auto require_equal_dims = [](const ONNX_NAMESPACE::TensorShapeProto* lhs, int lhs_index,
+                               const ONNX_NAMESPACE::TensorShapeProto* rhs, int rhs_index,
+                               const char* description) {
+    if (lhs != nullptr && rhs != nullptr && lhs->dim(lhs_index).has_dim_value() &&
+        rhs->dim(rhs_index).has_dim_value() &&
+        lhs->dim(lhs_index).dim_value() != rhs->dim(rhs_index).dim_value()) {
+      fail_shape_inference("PackedSparseAttentionIndexer: ", description);
+    }
+  };
+  auto require_dim_value = [](const ONNX_NAMESPACE::TensorShapeProto* shape, int index, int64_t expected,
+                              const char* description) {
+    if (shape != nullptr && shape->dim(index).has_dim_value() && shape->dim(index).dim_value() != expected) {
+      fail_shape_inference("PackedSparseAttentionIndexer: ", description, " (", expected, "), got ",
+                           shape->dim(index).dim_value());
+    }
+  };
+
+  const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio);
+  require_equal_dims(key_shape, 0, query_shape, 0, "key dimension 0 must equal query dimension 0");
+  require_equal_dims(norm_shape, 0, query_shape, 2, "key_norm_weight dimension 0 must equal head_size");
+  require_equal_dims(past_sequence_shape, 0, key_state_shape, 0,
+                     "past_sequence_lengths dimension 0 must equal the state batch dimension");
+  require_equal_dims(key_state_shape, 0, kv_buffer_shape, 0,
+                     "past_key_state and past_kv_buffer batch dimensions must match");
+  require_equal_dims(state_lengths_shape, 0, key_state_shape, 0,
+                     "past_state_lengths dimension 0 must equal the state batch dimension");
+  require_equal_dims(key_state_shape, 2, query_shape, 2,
+                     "past_key_state dimension 2 must equal head_size");
+  require_dim_value(key_state_shape, 1, state_capacity, "past_key_state dimension 1 must equal state_capacity");
+  require_dim_value(kv_buffer_shape, 1, buffer_capacity,
+                    "past_kv_buffer dimension 1 must equal 2 * compress_ratio - 1");
+  require_dim_value(state_lengths_shape, 1, psai::kStateLengthColumns,
+                    "past_state_lengths dimension 1 must equal 2");
+  if (cumulative_shape != nullptr && past_sequence_shape != nullptr &&
+      cumulative_shape->dim(0).has_dim_value() && past_sequence_shape->dim(0).has_dim_value() &&
+      cumulative_shape->dim(0).dim_value() != past_sequence_shape->dim(0).dim_value() + 1) {
+    fail_shape_inference(
+        "PackedSparseAttentionIndexer: cumulative_sequence_lengths dimension 0 must equal batch_size + 1");
+  }
+
+  if (query_shape != nullptr && query_shape->dim(2).has_dim_value()) {
+    const int64_t head_size = query_shape->dim(2).dim_value();
+    if (head_size <= 0) {
+      fail_shape_inference("PackedSparseAttentionIndexer: head_size must be > 0, got ", head_size);
+    }
+    if (!is_qsa && head_size > std::numeric_limits<int64_t>::max() / 2) {
+      fail_shape_inference("PackedSparseAttentionIndexer: 2 * head_size exceeds INT64_MAX");
+    }
+    const int64_t width = is_qsa ? head_size : 2 * head_size;
+    require_dim_value(key_shape, 1, width, "key dimension 1 must equal the policy-specific width");
+    require_dim_value(kv_buffer_shape, 2, width,
+                      "past_kv_buffer dimension 2 must equal the policy-specific width");
+    if (!is_qsa) {
+      require_dim_value(gate_shape, 1, width, "gate dimension 1 must equal 2 * head_size");
+      require_dim_value(position_bias_shape, 1, width, "position_bias dimension 1 must equal 2 * head_size");
+      require_dim_value(gate_buffer_shape, 2, width, "past_gate_buffer dimension 2 must equal 2 * head_size");
+    }
+  }
+  if (!is_qsa) {
+    require_equal_dims(gate_shape, 0, query_shape, 0, "gate dimension 0 must equal query dimension 0");
+    require_equal_dims(head_weights_shape, 0, query_shape, 0,
+                       "head_weights dimension 0 must equal query dimension 0");
+    require_equal_dims(head_weights_shape, 1, query_shape, 1,
+                       "head_weights dimension 1 must equal num_heads");
+    require_dim_value(position_bias_shape, 0, compress_ratio,
+                      "position_bias dimension 0 must equal compress_ratio");
+    require_equal_dims(gate_buffer_shape, 0, kv_buffer_shape, 0,
+                       "past_gate_buffer and past_kv_buffer batch dimensions must match");
+    require_equal_dims(gate_buffer_shape, 1, kv_buffer_shape, 1,
+                       "past_gate_buffer and past_kv_buffer capacities must match");
+    require_equal_dims(gate_buffer_shape, 2, kv_buffer_shape, 2,
+                       "past_gate_buffer and past_kv_buffer widths must match");
+  }
+  require_equal_dims(position_ids_shape, 0, query_shape, 0,
+                     "position_ids dimension 0 must equal query dimension 0");
+  if (cos_shape != nullptr && sin_shape != nullptr) {
+    if (cos_shape->dim_size() != sin_shape->dim_size()) {
+      fail_shape_inference("PackedSparseAttentionIndexer: cos_cache and sin_cache ranks must match");
+    }
+    for (int i = 0; i < cos_shape->dim_size(); ++i) {
+      require_equal_dims(cos_shape, i, sin_shape, i, "cos_cache and sin_cache dimensions must match");
+    }
+  }
+  for (const auto* cache_shape : {cos_shape, sin_shape}) {
+    if (cache_shape == nullptr) {
+      continue;
+    }
+    if (cache_shape->dim_size() == 3) {
+      require_equal_dims(cache_shape, 0, past_sequence_shape, 0,
+                         "batched rotary cache dimension 0 must equal batch_size");
+    }
+    const int position_dim = cache_shape->dim_size() - 2;
+    const int rotary_dim = cache_shape->dim_size() - 1;
+    if (cache_shape->dim(position_dim).has_dim_value() && cache_shape->dim(position_dim).dim_value() <= 0) {
+      fail_shape_inference("PackedSparseAttentionIndexer: rotary cache max_position must be > 0");
+    }
+    if (cache_shape->dim(rotary_dim).has_dim_value()) {
+      const int64_t rotary_width = cache_shape->dim(rotary_dim).dim_value();
+      if (rotary_width <= 0 || (is_qsa && rotary_width % 2 != 0)) {
+        fail_shape_inference("PackedSparseAttentionIndexer: invalid rotary cache width ", rotary_width);
+      }
+      if (query_shape != nullptr && query_shape->dim(2).has_dim_value()) {
+        const int64_t head_size = query_shape->dim(2).dim_value();
+        if ((is_qsa && rotary_width > head_size) ||
+            (!is_qsa && rotary_width > head_size / 2)) {
+          fail_shape_inference("PackedSparseAttentionIndexer: rotary cache width is incompatible with head_size");
+        }
+      }
+    }
+  }
+
   if (query_shape != nullptr) {
     const auto& total_tokens_dim = query_shape->dim(0);
     const auto& num_heads_dim = query_shape->dim(1);
@@ -2440,22 +2582,15 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   }
 
   // State never grows: present_* always has exactly the same fixed shape as past_*.
-  const auto* key_state_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastKeyState, 3);
   if (key_state_shape != nullptr) {
-    if (key_state_shape->dim(1).has_dim_value() && key_state_shape->dim(1).dim_value() != state_capacity) {
-      fail_shape_inference("PackedSparseAttentionIndexer: past_key_state dimension 1 must equal state_capacity (",
-                           state_capacity, "), got ", key_state_shape->dim(1).dim_value());
-    }
     updateOutputShape(ctx, psai::kPresentKeyState, *key_state_shape);
   }
-  const auto* kv_buffer_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastKvBuffer, 3);
   if (kv_buffer_shape != nullptr) {
     updateOutputShape(ctx, psai::kPresentKvBuffer, *kv_buffer_shape);
-    if (!is_qsa) {
-      updateOutputShape(ctx, psai::kPresentGateBuffer, *kv_buffer_shape);
-    }
   }
-  const auto* state_lengths_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastStateLengths, 2);
+  if (gate_buffer_shape != nullptr) {
+    updateOutputShape(ctx, psai::kPresentGateBuffer, *gate_buffer_shape);
+  }
   if (state_lengths_shape != nullptr) {
     updateOutputShape(ctx, psai::kPresentStateLengths, *state_lengths_shape);
   }

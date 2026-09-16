@@ -37,7 +37,11 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", WebGpuSupportedFloatTypes())
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()),
+        .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>())
+        .MayInplace(psai::kPastKeyState, psai::kPresentKeyState)
+        .MayInplace(psai::kPastKvBuffer, psai::kPresentKvBuffer)
+        .MayInplace(psai::kPastGateBuffer, psai::kPresentGateBuffer)
+        .MayInplace(psai::kPastStateLengths, psai::kPresentStateLengths),
     PackedSparseAttentionIndexer);
 
 namespace {
@@ -98,20 +102,30 @@ Status PackedSparseAttentionIndexerQsaUpdateProgram::GenerateShaderCode(ShaderHe
   const auto& sin_cache = shader.AddInput("sin_cache", ShaderUsage::UseUniform);
   const auto& cu_seqlens = shader.AddInput("cumulative_sequence_lengths", ShaderUsage::UseUniform);
   const auto& past_seqlens = shader.AddInput("past_sequence_lengths", ShaderUsage::UseUniform);
-  const auto& past_kv_buffer = shader.AddInput("past_kv_buffer", ShaderUsage::UseUniform);
-  const auto& past_state_lengths = shader.AddInput("past_state_lengths", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* past_kv_buffer = nullptr;
+  if (!kv_buffer_aliases_) {
+    past_kv_buffer = &shader.AddInput("past_kv_buffer", ShaderUsage::UseUniform);
+  }
+  const ShaderVariableHelper* past_state_lengths = nullptr;
+  if (!state_lengths_aliases_) {
+    past_state_lengths = &shader.AddInput("past_state_lengths", ShaderUsage::UseUniform);
+  }
   const auto& present_key_state =
       shader.AddOutput("present_key_state", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& present_kv_buffer =
       shader.AddOutput("present_kv_buffer", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& present_state_lengths = shader.AddOutput("present_state_lengths", ShaderUsage::UseUniform);
   const auto& overflow_flags = shader.AddOutput("overflow_flags", ShaderUsage::UseUniform);
+  const ShaderVariableHelper& kv_buffer_history =
+      kv_buffer_aliases_ ? present_kv_buffer : *past_kv_buffer;
+  const ShaderVariableHelper& state_lengths_history =
+      state_lengths_aliases_ ? present_state_lengths : *past_state_lengths;
 
   shader.AdditionalImplementation()
       << "fn extended_key(b: u32, virtual_pos: i32, old_buf_len: i32, req_start: i32, d: u32) -> f32 {\n"
       << "  if (virtual_pos < old_buf_len) {\n"
       << "    let idx = (b * uniforms.buffer_capacity + u32(virtual_pos)) * uniforms.head_size + d;\n"
-      << "    return f32(" << past_kv_buffer.GetByOffset("idx") << ");\n"
+      << "    return f32(" << kv_buffer_history.GetByOffset("idx") << ");\n"
       << "  }\n"
       << "  let idx2 = u32(req_start + virtual_pos - old_buf_len) * uniforms.head_size + d;\n"
       << "  return f32(" << key.GetByOffset("idx2") << ");\n"
@@ -162,8 +176,8 @@ Status PackedSparseAttentionIndexerQsaUpdateProgram::GenerateShaderCode(ShaderHe
       << "  if (b >= uniforms.batch_size || local_idx != 0u) { return; }\n"
       << "  let req_start = " << cu_seqlens.GetByOffset("b") << ";\n"
       << "  let req_end = " << cu_seqlens.GetByOffset("b + 1u") << ";\n"
-      << "  let old_key_len = " << past_state_lengths.GetByOffset("b * 2u") << ";\n"
-      << "  let old_buf_len = " << past_state_lengths.GetByOffset("b * 2u + 1u") << ";\n"
+      << "  let old_key_len = " << state_lengths_history.GetByOffset("b * 2u") << ";\n"
+      << "  let old_buf_len = " << state_lengths_history.GetByOffset("b * 2u + 1u") << ";\n"
       << "  let past_len = " << past_seqlens.GetByOffset("b") << ";\n"
       << "  let invalid = " << cu_seqlens.GetByOffset("0") << " != 0 || "
       << cu_seqlens.GetByOffset("uniforms.batch_size") << " != i32(uniforms.total_tokens) || "
@@ -364,9 +378,18 @@ Status PackedSparseAttentionIndexerCsaUpdateProgram::GenerateShaderCode(ShaderHe
   const auto& position_bias = shader.AddInput("position_bias", ShaderUsage::UseUniform);
   const auto& cu_seqlens = shader.AddInput("cumulative_sequence_lengths", ShaderUsage::UseUniform);
   const auto& past_seqlens = shader.AddInput("past_sequence_lengths", ShaderUsage::UseUniform);
-  const auto& past_kv_buffer = shader.AddInput("past_kv_buffer", ShaderUsage::UseUniform);
-  const auto& past_gate_buffer = shader.AddInput("past_gate_buffer", ShaderUsage::UseUniform);
-  const auto& past_state_lengths = shader.AddInput("past_state_lengths", ShaderUsage::UseUniform);
+  const ShaderVariableHelper* past_kv_buffer = nullptr;
+  if (!kv_buffer_aliases_) {
+    past_kv_buffer = &shader.AddInput("past_kv_buffer", ShaderUsage::UseUniform);
+  }
+  const ShaderVariableHelper* past_gate_buffer = nullptr;
+  if (!gate_buffer_aliases_) {
+    past_gate_buffer = &shader.AddInput("past_gate_buffer", ShaderUsage::UseUniform);
+  }
+  const ShaderVariableHelper* past_state_lengths = nullptr;
+  if (!state_lengths_aliases_) {
+    past_state_lengths = &shader.AddInput("past_state_lengths", ShaderUsage::UseUniform);
+  }
   const auto& present_key_state =
       shader.AddOutput("present_key_state", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& present_kv_buffer =
@@ -375,13 +398,19 @@ Status PackedSparseAttentionIndexerCsaUpdateProgram::GenerateShaderCode(ShaderHe
       shader.AddOutput("present_gate_buffer", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
   const auto& present_state_lengths = shader.AddOutput("present_state_lengths", ShaderUsage::UseUniform);
   const auto& overflow_flags = shader.AddOutput("overflow_flags", ShaderUsage::UseUniform);
+  const ShaderVariableHelper& kv_buffer_history =
+      kv_buffer_aliases_ ? present_kv_buffer : *past_kv_buffer;
+  const ShaderVariableHelper& gate_buffer_history =
+      gate_buffer_aliases_ ? present_gate_buffer : *past_gate_buffer;
+  const ShaderVariableHelper& state_lengths_history =
+      state_lengths_aliases_ ? present_state_lengths : *past_state_lengths;
 
   shader.AdditionalImplementation()
       << "fn extended_key(b: u32, virtual_pos: i32, old_buf_len: i32, req_start: i32, channel: u32) -> f32 {\n"
       << "  let width = 2u * uniforms.head_size;\n"
       << "  if (virtual_pos < old_buf_len) {\n"
       << "    let idx = (b * uniforms.buffer_capacity + u32(virtual_pos)) * width + channel;\n"
-      << "    return f32(" << past_kv_buffer.GetByOffset("idx") << ");\n"
+      << "    return f32(" << kv_buffer_history.GetByOffset("idx") << ");\n"
       << "  }\n"
       << "  let idx2 = u32(req_start + virtual_pos - old_buf_len) * width + channel;\n"
       << "  return f32(" << key.GetByOffset("idx2") << ");\n"
@@ -390,7 +419,7 @@ Status PackedSparseAttentionIndexerCsaUpdateProgram::GenerateShaderCode(ShaderHe
       << "  let width = 2u * uniforms.head_size;\n"
       << "  if (virtual_pos < old_buf_len) {\n"
       << "    let idx = (b * uniforms.buffer_capacity + u32(virtual_pos)) * width + channel;\n"
-      << "    return f32(" << past_gate_buffer.GetByOffset("idx") << ");\n"
+      << "    return f32(" << gate_buffer_history.GetByOffset("idx") << ");\n"
       << "  }\n"
       << "  let idx2 = u32(req_start + virtual_pos - old_buf_len) * width + channel;\n"
       << "  return f32(" << gate.GetByOffset("idx2") << ");\n"
@@ -446,8 +475,8 @@ Status PackedSparseAttentionIndexerCsaUpdateProgram::GenerateShaderCode(ShaderHe
       << "  if (b >= uniforms.batch_size || local_idx != 0u) { return; }\n"
       << "  let req_start = " << cu_seqlens.GetByOffset("b") << ";\n"
       << "  let req_end = " << cu_seqlens.GetByOffset("b + 1u") << ";\n"
-      << "  let old_key_len = " << past_state_lengths.GetByOffset("b * 2u") << ";\n"
-      << "  let old_buf_len = " << past_state_lengths.GetByOffset("b * 2u + 1u") << ";\n"
+      << "  let old_key_len = " << state_lengths_history.GetByOffset("b * 2u") << ";\n"
+      << "  let old_buf_len = " << state_lengths_history.GetByOffset("b * 2u + 1u") << ";\n"
       << "  let invalid = " << cu_seqlens.GetByOffset("0") << " != 0 || "
       << cu_seqlens.GetByOffset("uniforms.batch_size") << " != i32(uniforms.total_tokens) || "
       << "req_start < 0 || req_end < req_start || req_end > i32(uniforms.total_tokens) || "
@@ -806,19 +835,25 @@ Status PackedSparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeCont
   }
 
   if (batch_size > 0) {
-    PackedSparseAttentionIndexerQsaUpdateProgram update{rotary.batched};
-    update.CacheHint(rotary.batched)
+    const bool kv_buffer_aliases = present_kv_buffer->DataRaw() == past_kv_buffer->DataRaw();
+    const bool state_lengths_aliases = present_state_lengths->DataRaw() == past_state_lengths->DataRaw();
+    PackedSparseAttentionIndexerQsaUpdateProgram update{rotary.batched, kv_buffer_aliases, state_lengths_aliases};
+    update.CacheHint(rotary.batched, kv_buffer_aliases, state_lengths_aliases)
         .SetWorkgroupSize(kWorkgroupSize)
         .AddInputs({{key, ProgramTensorMetadataDependency::Type},
                     {norm, ProgramTensorMetadataDependency::Type},
                     {cos_cache, ProgramTensorMetadataDependency::Type},
                     {sin_cache, ProgramTensorMetadataDependency::Type},
                     {cu_seqlens, ProgramTensorMetadataDependency::Type},
-                    {past_seqlens, ProgramTensorMetadataDependency::Type},
-                    {past_kv_buffer, ProgramTensorMetadataDependency::Type}})
-        .AddInput({past_state_lengths, ProgramTensorMetadataDependency::Type})
-        .AddOutputs({{present_key_state, ProgramTensorMetadataDependency::Type},
-                     {present_kv_buffer, ProgramTensorMetadataDependency::Type}})
+                    {past_seqlens, ProgramTensorMetadataDependency::Type}});
+    if (!kv_buffer_aliases) {
+      update.AddInput({past_kv_buffer, ProgramTensorMetadataDependency::Type});
+    }
+    if (!state_lengths_aliases) {
+      update.AddInput({past_state_lengths, ProgramTensorMetadataDependency::Type});
+    }
+    update.AddOutputs({{present_key_state, ProgramTensorMetadataDependency::Type},
+                       {present_kv_buffer, ProgramTensorMetadataDependency::Type}})
         .AddOutput({present_state_lengths, ProgramTensorMetadataDependency::Type})
         .AddOutput({&overflow_flags, ProgramTensorMetadataDependency::Type})
         .SetDispatchGroupSize(ToUint32(batch_size))
@@ -966,8 +1001,12 @@ Status PackedSparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeCont
   ORT_RETURN_IF_ERROR(copy_if_needed(past_state_lengths, present_state_lengths));
 
   if (batch_size > 0) {
-    PackedSparseAttentionIndexerCsaUpdateProgram update{rotary.batched};
-    update.CacheHint(rotary.batched)
+    const bool kv_buffer_aliases = present_kv_buffer->DataRaw() == past_kv_buffer->DataRaw();
+    const bool gate_buffer_aliases = present_gate_buffer->DataRaw() == past_gate_buffer->DataRaw();
+    const bool state_lengths_aliases = present_state_lengths->DataRaw() == past_state_lengths->DataRaw();
+    PackedSparseAttentionIndexerCsaUpdateProgram update{
+        rotary.batched, kv_buffer_aliases, gate_buffer_aliases, state_lengths_aliases};
+    update.CacheHint(rotary.batched, kv_buffer_aliases, gate_buffer_aliases, state_lengths_aliases)
         .SetWorkgroupSize(kWorkgroupSize)
         .AddInputs({{key, ProgramTensorMetadataDependency::Type},
                     {gate, ProgramTensorMetadataDependency::Type},
@@ -976,13 +1015,19 @@ Status PackedSparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeCont
                     {sin_cache, ProgramTensorMetadataDependency::Type},
                     {position_bias, ProgramTensorMetadataDependency::Type},
                     {cu_seqlens, ProgramTensorMetadataDependency::Type},
-                    {past_seqlens, ProgramTensorMetadataDependency::Type},
-                    {past_kv_buffer, ProgramTensorMetadataDependency::Type},
-                    {past_gate_buffer, ProgramTensorMetadataDependency::Type}})
-        .AddInput({past_state_lengths, ProgramTensorMetadataDependency::Type})
-        .AddOutputs({{present_key_state, ProgramTensorMetadataDependency::Type},
-                     {present_kv_buffer, ProgramTensorMetadataDependency::Type},
-                     {present_gate_buffer, ProgramTensorMetadataDependency::Type}})
+                    {past_seqlens, ProgramTensorMetadataDependency::Type}});
+    if (!kv_buffer_aliases) {
+      update.AddInput({past_kv_buffer, ProgramTensorMetadataDependency::Type});
+    }
+    if (!gate_buffer_aliases) {
+      update.AddInput({past_gate_buffer, ProgramTensorMetadataDependency::Type});
+    }
+    if (!state_lengths_aliases) {
+      update.AddInput({past_state_lengths, ProgramTensorMetadataDependency::Type});
+    }
+    update.AddOutputs({{present_key_state, ProgramTensorMetadataDependency::Type},
+                       {present_kv_buffer, ProgramTensorMetadataDependency::Type},
+                       {present_gate_buffer, ProgramTensorMetadataDependency::Type}})
         .AddOutput({present_state_lengths, ProgramTensorMetadataDependency::Type})
         .AddOutput({&overflow_flags, ProgramTensorMetadataDependency::Type})
         .SetDispatchGroupSize(ToUint32(batch_size))
