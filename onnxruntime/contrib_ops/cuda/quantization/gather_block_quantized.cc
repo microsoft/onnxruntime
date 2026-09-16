@@ -106,7 +106,7 @@ GatherBlockQuantized<T1, T2, Tind>::GatherBlockQuantized(const OpKernelInfo& inf
   direct_host_data_ =
       SelectGatherBlockQuantizedDataPolicy(option_enabled, pageable_memory_access != 0,
                                            uses_host_page_tables != 0, IsCudaGraphEnabled(),
-                                           IsFp8QuantizedV<T1>) ==
+                                           IsFp8QuantizedV<T1>, data_is_constant_) ==
       GatherBlockQuantizedDataPolicy::DirectHost;
   if (option_enabled && IsFp8QuantizedV<T1> && !direct_host_data_) {
     LOGS_DEFAULT(WARNING)

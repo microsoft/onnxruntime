@@ -55,6 +55,8 @@ std::unique_ptr<IExecutionProvider> CudaPluginExecutionProviderWithOptions(const
     AddCudaPluginOption(config_options, "use_tf32", std::to_string(provider_options->use_tf32));
     AddCudaPluginOption(config_options, "fuse_conv_bias", std::to_string(provider_options->fuse_conv_bias));
     AddCudaPluginOption(config_options, "sdpa_kernel", std::to_string(provider_options->sdpa_kernel));
+    AddCudaPluginOption(config_options, "enable_host_pageable_gather",
+                        std::to_string(provider_options->enable_host_pageable_gather));
   }
 
   return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);

@@ -19,10 +19,9 @@
 
 #ifdef USE_CUDA
 #include "contrib_ops/cuda/quantization/gather_block_quantized.h"
-#ifndef BUILD_CUDA_EP_AS_PLUGIN
-#include "core/providers/cuda/cuda_execution_provider.h"
-#include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
 #endif
 
@@ -1378,17 +1377,19 @@ TEST(GatherBlockQuantizedOpTest, HostPageablePolicySelection) {
   using contrib::cuda::GatherBlockQuantizedDataPolicy;
   using contrib::cuda::SelectGatherBlockQuantizedDataPolicy;
 
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(false, true, true, false, true),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(false, true, true, false, true, true),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(false, false, false, false, true),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(false, false, false, false, true, true),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, false, true),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, false, true, true),
             GatherBlockQuantizedDataPolicy::DirectHost);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, false, false, true),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, false, false, true, true),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, true, true),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, true, true, true),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, false, false),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, false, false, true),
+            GatherBlockQuantizedDataPolicy::DeviceCopy);
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, false, true, false),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
 }
 
@@ -1414,10 +1415,19 @@ TEST(GatherBlockQuantizedOpTest, HostPageableProviderOptionRoundTripAndHash) {
             std::hash<CUDAExecutionProviderInfo>{}(enabled_info));
 }
 
+#endif
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 TEST(GatherBlockQuantizedOpTest, FpFallbackWithPrepackingDisabledCuda) {
   if (!HasCudaEnvironment(0)) {
     GTEST_SKIP() << "CUDA not available";
+  }
+
+  OrtCUDAProviderOptionsV2 info;
+  info.enable_host_pageable_gather = 0;
+  auto cuda_ep = CudaExecutionProviderWithOptions(&info);
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available";
   }
 
   OpTester test("GatherBlockQuantized", 1, kMSDomain);
@@ -1437,10 +1447,8 @@ TEST(GatherBlockQuantizedOpTest, FpFallbackWithPrepackingDisabledCuda) {
       session_options.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, "1"));
   test.Config(session_options);
 
-  CUDAExecutionProviderInfo info;
-  info.enable_host_pageable_gather = false;
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(std::make_unique<CUDAExecutionProvider>(info));
+  providers.push_back(std::move(cuda_ep));
   test.ConfigEps(std::move(providers));
   test.RunWithConfig();
 }
@@ -1464,6 +1472,13 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCuda) {
     GTEST_SKIP() << "CUDA device does not use host page tables for pageable memory";
   }
 
+  OrtCUDAProviderOptionsV2 info;
+  info.enable_host_pageable_gather = 1;
+  auto cuda_ep = CudaExecutionProviderWithOptions(&info);
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
   OpTester test("GatherBlockQuantized", 1, kMSDomain);
   test.AddAttribute<int64_t>("gather_axis", 0);
   test.AddAttribute<int64_t>("quantize_axis", 1);
@@ -1479,14 +1494,11 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCuda) {
                              MLFloat16(2.0f), MLFloat16(4.0f),
                              MLFloat16(1.5f), MLFloat16(2.0f)});
 
-  CUDAExecutionProviderInfo info;
-  info.enable_host_pageable_gather = true;
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
-  providers.push_back(std::make_unique<CUDAExecutionProvider>(info));
+  providers.push_back(std::move(cuda_ep));
   test.ConfigEps(std::move(providers));
   test.RunWithConfig();
 }
-#endif
 #endif
 
 TEST(GatherBlockQuantizedOpTest, FpBFloat16OutputCuda) {
