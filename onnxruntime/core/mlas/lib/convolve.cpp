@@ -1,6 +1,7 @@
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
+SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 
 Licensed under the MIT License.
 
@@ -1457,6 +1458,8 @@ MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
     MLAS_UNREFERENCED_PARAMETER(Beta);
     return false;
 #else
+    // Channels-last float convolution is only implemented by the KleidiAI
+    // override. The generic MLAS convolution path assumes NCHW layout.
     if (GetMlasPlatform().MlasConvPrepareOverride == nullptr ||
         GetMlasPlatform().MlasConvOverride == nullptr) {
         return false;

@@ -457,9 +457,29 @@ DepthwiseConvKleidiAI(
     const float* feature_map,
     const float* weights,
     const float* bias,
+    const void* packed_weights,
     float* out,
     float clamp_min,
     float clamp_max
+    );
+
+size_t
+MLASCALL
+MlasDepthwiseConvPackWeightsAndBiasSize(
+    size_t channels,
+    size_t filter_height,
+    size_t filter_width
+    );
+
+void
+MLASCALL
+MlasDepthwiseConvPackWeightsAndBias(
+    size_t channels,
+    size_t filter_height,
+    size_t filter_width,
+    const float* weights,
+    const float* bias,
+    void* packed_weights
     );
 
 size_t

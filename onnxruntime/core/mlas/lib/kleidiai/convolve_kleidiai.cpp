@@ -813,6 +813,7 @@ ArmKleidiAI::MlasConv(
                                   Input,
                                   Filter,
                                   Bias,
+                                  Parameters->FilterIsPacked ? Parameters->PackedFilter : nullptr,
                                   Output,
                                   -std::numeric_limits<float>::max(),
                                   std::numeric_limits<float>::max())) {
