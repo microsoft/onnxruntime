@@ -19,6 +19,7 @@
 #include <cassert>
 #include <cutlass/numeric_types.h>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -52,6 +53,14 @@ constexpr const char* kEnvProfileM = "ORT_FPA_INTB_PROFILE_M";
 // M values are handled by lazy single-bucket profiling.
 constexpr int kDefaultProfileMaxM = 2048;
 
+// Computes the single temporary CUDA allocation used while profiling tactics.
+// `packed_n` is the number of 16-bit elements that hold one packed weight row.
+// This pure-math helper is shared by the runtime profiler and partition-time
+// memory estimation so their allocation formulas cannot drift.
+std::optional<size_t> ComputeWeightOnlyGemmProfilerScratchSize(
+    size_t max_m, size_t packed_n, size_t k, int quant_bits,
+    size_t group_size, size_t runner_workspace_bytes);
+
 class WeightOnlyGroupwiseQuantGemmPluginProfiler
     : public GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,
                                 GemmIdCore, GemmIdCoreHash> {
@@ -62,6 +71,10 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   // positive list (empty when the string is empty/blank). Used for the ep.cuda.fpa_intb_profile_m
   // session-config key and the ORT_FPA_INTB_PROFILE_M env var, both resolved by the kernel.
   static std::vector<int> ParseProfileMList(const std::string& value);
+
+  // Returns the exact initial bucket set used by construction-time profiling.
+  static std::vector<int> GetInitialProfileMBuckets(
+      int min_m, int max_m, const std::vector<int>& profile_m_override);
 
   // Overrides the initial profile M-bucket set for this profiler instance (per session). An empty
   // list keeps the built-in default bucket set. Resolved by the kernel from session config / env.
