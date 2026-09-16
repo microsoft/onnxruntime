@@ -635,6 +635,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool uses_global_weight_scales = is_fp4_family || is_fp8 || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  const auto* instrumentation = context->GetRunInstrumentationContext();
+  ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+#endif
   // When PrePack consumed the int4/int8 expert-weight initializers
   // (``weights_prepacked == false`` opt-in path), the original tensors
   // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
@@ -1574,7 +1578,6 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // When native CUTLASS WFP4A16 is enabled, GEMV serves only the decode regime
   // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  const auto* instrumentation = context->GetRunInstrumentationContext();
   CudaMoeRoutingRecord* routing_record = nullptr;
   const size_t routing_element_count =
       SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);

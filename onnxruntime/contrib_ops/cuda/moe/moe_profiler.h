@@ -18,6 +18,14 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+inline Status ValidateCudaMoeLoggingBatchSize(const RunInstrumentationContext* instrumentation,
+                                              const TensorShape& input_shape) {
+  // A 2D input is an unbatched token matrix. Only a 3D input carries an explicit batch dimension.
+  ORT_RETURN_IF(instrumentation != nullptr && input_shape.NumDimensions() == 3 && input_shape[0] != 1,
+                "MoE expert statistics logging only supports batch size 1; got batch size ", input_shape[0], ".");
+  return Status::OK();
+}
+
 template <typename T>
 std::string CudaMoeJsonArray(gsl::span<const T> values) {
   std::ostringstream stream;

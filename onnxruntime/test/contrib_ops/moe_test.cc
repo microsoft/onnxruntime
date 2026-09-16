@@ -2579,7 +2579,11 @@ static std::vector<nlohmann::json> ParseMoeRoutingLogs(const std::string& logs) 
   return events;
 }
 
-static std::vector<nlohmann::json> RunMoECpuLoggingTest(bool enable_moe_statistics) {
+static std::vector<nlohmann::json> RunMoECpuLoggingTest(
+    bool enable_moe_statistics,
+    const std::vector<int64_t>& input_shape,
+    OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess,
+    std::string_view expected_error = "") {
   constexpr int num_rows = 2;
   constexpr int num_experts = 2;
   constexpr int hidden_size = 4;
@@ -2602,7 +2606,7 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(bool enable_moe_statisti
   tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   tester.AddAttribute<int64_t>("swiglu_fusion", 1);
   tester.AddAttribute<float>("activation_beta", 1.0f);
-  tester.AddInput<float>("input_ids", {num_rows, hidden_size}, input);
+  tester.AddInput<float>("input_ids", input_shape, input);
   tester.AddInput<float>("router_probs", {num_rows, num_experts}, router_probs);
   tester.AddInput<float>("fc1_experts_weights", {num_experts, hidden_size, 2 * inter_size}, fc1_experts_weights);
   tester.AddOptionalInputEdge<float>();
@@ -2610,7 +2614,7 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(bool enable_moe_statisti
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<float>();
-  tester.AddOutput<float>("output", {num_rows, hidden_size}, output_data);
+  tester.AddOutput<float>("output", input_shape, output_data);
   tester.SetOutputTolerance(0.05f);
 
   SessionOptions session_options;
@@ -2626,12 +2630,13 @@ static std::vector<nlohmann::json> RunMoECpuLoggingTest(bool enable_moe_statisti
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   testing::internal::CaptureStderr();
-  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
+  tester.Run(session_options, expected_result, std::string(expected_error), {},
+             &run_options, &execution_providers);
   return ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
 }
 
 TEST(MoETest, MoECpuRoutingLogHasDecisionSchema) {
-  const auto routing_events = RunMoECpuLoggingTest(true);
+  const auto routing_events = RunMoECpuLoggingTest(true, {1, 2, 4});
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "{routing \"request\"}");
@@ -2647,11 +2652,19 @@ TEST(MoETest, MoECpuRoutingLogHasDecisionSchema) {
 }
 
 TEST(MoETest, MoECpuRoutingLogDisabledHasNoDecision) {
-  EXPECT_TRUE(RunMoECpuLoggingTest(false).empty());
+  EXPECT_TRUE(RunMoECpuLoggingTest(false, {2, 1, 4}).empty());
+}
+
+TEST(MoETest, MoECpuRoutingLogRejectsBatchGreaterThanOne) {
+  RunMoECpuLoggingTest(true, {2, 1, 4}, OpTester::ExpectResult::kExpectFailure,
+                       "MoE expert statistics logging only supports batch size 1; got batch size 2.");
 }
 
 #ifdef USE_MLAS
-static std::vector<nlohmann::json> RunQMoECpuLoggingTest() {
+static std::vector<nlohmann::json> RunQMoECpuLoggingTest(
+    const std::vector<int64_t>& input_shape,
+    OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess,
+    std::string_view expected_error = "") {
   constexpr int num_rows = 2;
   constexpr int num_experts = 2;
   constexpr int hidden_size = 32;
@@ -2664,7 +2677,7 @@ static std::vector<nlohmann::json> RunQMoECpuLoggingTest() {
   tester.AddAttribute<int64_t>("swiglu_fusion", 1);
   tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
   tester.AddAttribute<int64_t>("expert_weight_bits", 4);
-  tester.AddInput<MLFloat16>("input", {num_rows, hidden_size},
+  tester.AddInput<MLFloat16>("input", input_shape,
                              ToFloat16(std::vector<float>(num_rows * hidden_size, 1.0f)));
   tester.AddInput<MLFloat16>("router_probs", {num_rows, num_experts},
                              ToFloat16({0.1f, 0.9f, 0.8f, 0.2f}));
@@ -2683,7 +2696,7 @@ static std::vector<nlohmann::json> RunQMoECpuLoggingTest() {
   tester.AddOptionalInputEdge<uint8_t>();
   tester.AddOptionalInputEdge<float>();
   tester.AddOptionalInputEdge<MLFloat16>();
-  tester.AddOutput<MLFloat16>("output", {num_rows, hidden_size},
+  tester.AddOutput<MLFloat16>("output", input_shape,
                               ToFloat16(std::vector<float>(num_rows * hidden_size, 0.0f)));
 
   SessionOptions session_options;
@@ -2695,12 +2708,13 @@ static std::vector<nlohmann::json> RunQMoECpuLoggingTest() {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   testing::internal::CaptureStderr();
-  tester.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &execution_providers);
+  tester.Run(session_options, expected_result, std::string(expected_error), {},
+             &run_options, &execution_providers);
   return ParseMoeRoutingLogs(testing::internal::GetCapturedStderr());
 }
 
 TEST(MoETest, QMoECpuRoutingLogHasDecisionSchema) {
-  const auto routing_events = RunQMoECpuLoggingTest();
+  const auto routing_events = RunQMoECpuLoggingTest({1, 2, 32});
   ASSERT_EQ(routing_events.size(), 1U);
   const auto& event = routing_events[0];
   EXPECT_EQ(event["request_id"], "cpu qmoe request");
@@ -2709,6 +2723,11 @@ TEST(MoETest, QMoECpuRoutingLogHasDecisionSchema) {
   EXPECT_EQ(event["num_rows"], 2);
   EXPECT_EQ(event["top_k"], 1);
   EXPECT_EQ(event["execution_device_id"], -1);
+}
+
+TEST(MoETest, QMoECpuRoutingLogRejectsBatchGreaterThanOne) {
+  RunQMoECpuLoggingTest({2, 1, 32}, OpTester::ExpectResult::kExpectFailure,
+                        "MoE expert statistics logging only supports batch size 1; got batch size 2.");
 }
 #endif
 

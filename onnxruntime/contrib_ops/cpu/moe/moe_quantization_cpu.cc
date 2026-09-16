@@ -961,6 +961,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   const size_t routing_element_count =
       SafeInt<size_t>(num_tokens) * SafeInt<size_t>(k_);
   const auto* instrumentation = GetMoeRunInstrumentationContext(context);
+  ORT_RETURN_IF_ERROR(ValidateMoeLoggingBatchSize(instrumentation, input_shape));
   if (instrumentation != nullptr &&
       !instrumentation->TryReserveMoeRoutingRecord(routing_element_count)) {
     instrumentation = nullptr;

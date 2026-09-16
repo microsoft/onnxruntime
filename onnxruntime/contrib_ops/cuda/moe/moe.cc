@@ -57,6 +57,11 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_experts_weights_optional = context->Input<Tensor>(6);
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
+#if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
+  const auto* instrumentation = context->GetRunInstrumentationContext();
+  ORT_RETURN_IF_ERROR(ValidateCudaMoeLoggingBatchSize(instrumentation, input->Shape()));
+#endif
+
   using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
 
   // Backward compatibility: the published gpt-oss-20b model (and any model exported by ORT < 1.27)
@@ -225,7 +230,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   int* unpermuted_row_to_permuted_row = reinterpret_cast<int*>(workspace_ptr + ws_size + scales_bytes + indices_bytes);
 
 #if !defined(BUILD_CUDA_EP_AS_PLUGIN) && !defined(ORT_MINIMAL_BUILD)
-  const auto* instrumentation = context->GetRunInstrumentationContext();
   CudaMoeRoutingRecord* routing_record = nullptr;
   if (instrumentation != nullptr &&
       !instrumentation->TryReserveMoeRoutingRecord(expanded_rows)) {
