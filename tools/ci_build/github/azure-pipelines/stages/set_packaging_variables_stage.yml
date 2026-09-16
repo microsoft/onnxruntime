@@ -23,6 +23,8 @@ stages:
   - job: Set_Variables
     pool:
       name: 'onnxruntime-Ubuntu2404-AMD-CPU'
+      demands:
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64-test
       os: 'linux'
     templateContext:
       sdl:

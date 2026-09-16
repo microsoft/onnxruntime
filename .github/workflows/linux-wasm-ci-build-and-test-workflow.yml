@@ -40,6 +40,7 @@ jobs:
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-linux-large",
+        "1ES.ImageOverride=onnxruntime-ubuntu2404-nvme-x64-test",
         "JobId=build-wasm-${{inputs.job_name}}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 120

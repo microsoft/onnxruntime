@@ -69,6 +69,9 @@ stages:
   - job: Precheck_and_extract_commit
     pool:
       name: ${{ parameters.PoolName }}
+      ${{ if eq(parameters.PoolName, 'onnxruntime-Ubuntu2404-AMD-CPU') }}:
+        demands:
+        - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64-test
       ${{ if or(contains(parameters.PoolName, 'ubuntu'), contains(parameters.PoolName, 'linux')) }}:
         os: linux
     variables:

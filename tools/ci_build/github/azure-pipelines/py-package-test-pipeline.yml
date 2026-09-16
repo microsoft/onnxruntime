@@ -32,6 +32,8 @@ stages:
         arch: 'x86_64'
         machine_pool:
           name: 'onnxruntime-Ubuntu2404-AMD-CPU'
+          demands:
+          - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64-test
 
 # ****The following Stage depend on all previous tags. ***
 
