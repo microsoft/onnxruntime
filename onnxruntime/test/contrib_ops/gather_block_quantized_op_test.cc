@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <initializer_list>
 #include <vector>
 #include <type_traits>
 #include <memory>
@@ -9,6 +12,10 @@
 #include <sstream>
 #include <unordered_set>
 #include <string>
+
+#ifndef _WIN32
+#include <sys/mman.h>
+#endif
 
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
@@ -19,7 +26,11 @@
 
 #ifdef USE_CUDA
 #include "contrib_ops/cuda/quantization/gather_block_quantized.h"
+#include "core/graph/model.h"
+#include "core/platform/env.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/util/include/temp_dir.h"
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
@@ -1377,19 +1388,17 @@ TEST(GatherBlockQuantizedOpTest, HostPageablePolicySelection) {
   using contrib::cuda::GatherBlockQuantizedDataPolicy;
   using contrib::cuda::SelectGatherBlockQuantizedDataPolicy;
 
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(false, true, true, false, true, true),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(false, true, true, true, true),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(false, false, false, false, true, true),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(false, false, false, true, true),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, false, true, true),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, true, true),
             GatherBlockQuantizedDataPolicy::DirectHost);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, false, false, true, true),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, false, true, true),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, true, true, true),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, false, true),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, false, false, true),
-            GatherBlockQuantizedDataPolicy::DeviceCopy);
-  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, false, true, false),
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, true, false),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
 }
 
@@ -1498,6 +1507,191 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCuda) {
   providers.push_back(std::move(cuda_ep));
   test.ConfigEps(std::move(providers));
   test.RunWithConfig();
+}
+
+TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA not available";
+  }
+
+  int pageable_memory_access = 0;
+  int uses_host_page_tables = 0;
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 10020
+  if (cudaDeviceGetAttribute(&pageable_memory_access, cudaDevAttrPageableMemoryAccess, 0) != cudaSuccess ||
+      cudaDeviceGetAttribute(&uses_host_page_tables, cudaDevAttrPageableMemoryAccessUsesHostPageTables, 0) !=
+          cudaSuccess) {
+    cudaGetLastError();
+    GTEST_SKIP() << "CUDA pageable-memory attributes are unavailable";
+  }
+#endif
+  if (pageable_memory_access == 0 || uses_host_page_tables == 0) {
+    GTEST_SKIP() << "CUDA device does not use host page tables for pageable memory";
+  }
+
+  OrtCUDAProviderOptionsV2 info;
+  info.enable_cuda_graph = 1;
+  info.enable_host_pageable_gather = 1;
+  auto cuda_ep = CudaExecutionProviderWithOptions(&info);
+  if (cuda_ep == nullptr) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+  IExecutionProvider* cuda_ep_ptr = cuda_ep.get();
+
+  const std::vector<Float8E4M3FN> data = {
+      Float8E4M3FN(1.0f), Float8E4M3FN(2.0f),
+      Float8E4M3FN(3.0f), Float8E4M3FN(4.0f),
+      Float8E4M3FN(5.0f), Float8E4M3FN(6.0f),
+      Float8E4M3FN(7.0f), Float8E4M3FN(8.0f)};
+  const size_t data_bytes = data.size() * sizeof(data[0]);
+  const auto temp_dir_path =
+      std::filesystem::temp_directory_path() /
+      ("ort_gather_block_quantized_cuda_graph_" +
+       std::to_string(reinterpret_cast<uintptr_t>(&pageable_memory_access)));
+  TemporaryDirectory temp_dir(temp_dir_path.native());
+  const auto data_path = temp_dir_path / "data.bin";
+  {
+    std::ofstream data_file(data_path, std::ios::binary);
+    ASSERT_TRUE(data_file.good());
+    data_file.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data_bytes));
+    ASSERT_TRUE(data_file.good());
+  }
+
+  Env::MappedMemoryPtr mapped_memory;
+  ASSERT_STATUS_OK(Env::Default().MapFileIntoMemory(data_path.c_str(), 0, data_bytes, mapped_memory));
+  const void* const mapped_address = mapped_memory.get();
+  OrtMemoryInfo cpu_memory_info{CPU, OrtDeviceAllocator};
+  Tensor mapped_tensor(DataTypeImpl::GetType<Float8E4M3FN>(), TensorShape({4, 2}),
+                       mapped_memory.get(), cpu_memory_info);
+  OrtValue mapped_data_value;
+  Tensor::InitOrtValue(std::move(mapped_tensor), mapped_data_value);
+
+  std::unordered_map<std::string, int> domain_to_version = {{onnxruntime::kMSDomain, 1}};
+  std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
+  auto model = std::make_unique<Model>(
+      "gather_block_quantized_cuda_graph", true, ModelMetaData(), PathString(),
+      IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, model_specific_functions,
+      DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
+  auto& graph = model->MainGraph();
+
+  std::vector<ONNX_NAMESPACE::TypeProto> tensor_types;
+  tensor_types.reserve(4);
+  auto add_tensor_type = [&](int elem_type, std::initializer_list<int64_t> dims) {
+    tensor_types.emplace_back();
+    auto* type = &tensor_types.back();
+    type->mutable_tensor_type()->set_elem_type(elem_type);
+    auto* shape = type->mutable_tensor_type()->mutable_shape();
+    for (const int64_t dim : dims) {
+      shape->add_dim()->set_dim_value(dim);
+    }
+    return type;
+  };
+
+  auto& data_arg = graph.GetOrCreateNodeArg(
+      "data", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN, {4, 2}));
+  auto& indices_arg = graph.GetOrCreateNodeArg(
+      "indices", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_INT64, {2}));
+  auto& scales_arg = graph.GetOrCreateNodeArg(
+      "scales", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {4, 1}));
+  auto& output_arg = graph.GetOrCreateNodeArg(
+      "output", add_tensor_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT, {2, 2}));
+
+  ONNX_NAMESPACE::TensorProto data_initializer;
+  data_initializer.set_name("data");
+  data_initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN);
+  data_initializer.add_dims(4);
+  data_initializer.add_dims(2);
+  data_initializer.mutable_raw_data()->assign(data_bytes, '\0');
+  graph.AddInitializedTensor(data_initializer);
+
+  NodeAttributes attributes = {
+      {"block_size", utils::MakeAttribute("block_size", int64_t{0})},
+      {"gather_axis", utils::MakeAttribute("gather_axis", int64_t{0})},
+      {"quantize_axis", utils::MakeAttribute("quantize_axis", int64_t{1})},
+  };
+  auto& node = graph.AddNode("gather_block_quantized", "GatherBlockQuantized",
+                             "CUDA Graph direct host-pageable test",
+                             {&data_arg, &indices_arg, &scales_arg}, {&output_arg},
+                             &attributes, onnxruntime::kMSDomain);
+  node.SetExecutionProviderType(cuda_ep_ptr->Type());
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_string;
+  ASSERT_TRUE(model->ToProto().SerializeToString(&model_string));
+  std::stringstream model_stream(model_string);
+
+  SessionOptions session_options;
+  ASSERT_STATUS_OK(session_options.AddInitializer("data", &mapped_data_value));
+  {
+    InferenceSession session(session_options, GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(cuda_ep)));
+    auto device_allocators = cuda_ep_ptr->CreatePreferredAllocators();
+    const OrtMemoryInfo* device_memory_info = nullptr;
+    for (const auto& allocator : device_allocators) {
+      if (allocator->Info().device.Type() == OrtDevice::GPU &&
+          allocator->Info().mem_type == OrtMemTypeDefault) {
+        device_memory_info = &allocator->Info();
+        break;
+      }
+    }
+    ASSERT_NE(device_memory_info, nullptr);
+    ASSERT_STATUS_OK(session.Load(model_stream));
+    ASSERT_STATUS_OK(session.Initialize());
+    auto device_allocator = session.GetAllocator(*device_memory_info);
+    ASSERT_NE(device_allocator, nullptr);
+
+    auto make_gpu_value = [&](const auto& values, const TensorShape& shape) {
+      using T = typename std::decay_t<decltype(values)>::value_type;
+      Tensor cpu_tensor(DataTypeImpl::GetType<T>(), shape, const_cast<T*>(values.data()), cpu_memory_info);
+      Tensor gpu_tensor(DataTypeImpl::GetType<T>(), shape, device_allocator);
+      ORT_THROW_IF_ERROR(cuda_ep_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+      OrtValue value;
+      Tensor::InitOrtValue(std::move(gpu_tensor), value);
+      return value;
+    };
+
+    std::vector<int64_t> indices = {0, 2};
+    const std::vector<float> scales = {1.0f, 0.5f, 2.0f, 0.25f};
+    auto indices_value = make_gpu_value(indices, TensorShape({2}));
+    auto scales_value = make_gpu_value(scales, TensorShape({4, 1}));
+    auto output_value = make_gpu_value(std::vector<float>(4), TensorShape({2, 2}));
+
+    std::unique_ptr<IOBinding> io_binding;
+    ASSERT_STATUS_OK(session.NewIOBinding(&io_binding));
+    ASSERT_STATUS_OK(io_binding->BindInput("indices", indices_value));
+    ASSERT_STATUS_OK(io_binding->BindInput("scales", scales_value));
+    ASSERT_STATUS_OK(io_binding->BindOutput("output", output_value));
+
+    RunOptions run_options;
+    ASSERT_STATUS_OK(run_options.config_options.AddConfigEntry("gpu_graph_id", "1"));
+    for (int i = 0; i < 3; ++i) {
+      ASSERT_STATUS_OK(session.Run(run_options, *io_binding));
+    }
+    ASSERT_TRUE(cuda_ep_ptr->IsGraphCaptured(1));
+
+    auto verify_output = [&](std::initializer_list<float> expected) {
+      ASSERT_EQ(cudaSuccess, cudaDeviceSynchronize());
+      std::vector<float> actual(expected.size());
+      Tensor cpu_output(DataTypeImpl::GetType<float>(), TensorShape({2, 2}), actual.data(), cpu_memory_info);
+      ASSERT_STATUS_OK(cuda_ep_ptr->GetDataTransfer()->CopyTensor(output_value.Get<Tensor>(), cpu_output));
+      EXPECT_EQ(actual, std::vector<float>(expected.begin(), expected.end()));
+    };
+    verify_output({1.0f, 2.0f, 10.0f, 12.0f});
+
+    indices = {3, 1};
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpy(indices_value.GetMutable<Tensor>()->MutableData<int64_t>(), indices.data(),
+                         indices.size() * sizeof(indices[0]), cudaMemcpyHostToDevice));
+    ASSERT_STATUS_OK(session.Run(run_options, *io_binding));
+    verify_output({1.75f, 2.0f, 1.5f, 2.0f});
+
+#ifndef _WIN32
+    ASSERT_EQ(0, madvise(mapped_memory.get(), data_bytes, MADV_DONTNEED));
+    ASSERT_STATUS_OK(session.Run(run_options, *io_binding));
+    verify_output({1.75f, 2.0f, 1.5f, 2.0f});
+#endif
+
+    EXPECT_EQ(mapped_address, mapped_memory.get());
+  }
 }
 #endif
 

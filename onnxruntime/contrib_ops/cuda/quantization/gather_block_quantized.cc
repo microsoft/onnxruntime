@@ -105,14 +105,14 @@ GatherBlockQuantized<T1, T2, Tind>::GatherBlockQuantized(const OpKernelInfo& inf
   const bool option_enabled = EnableHostPageableGather();
   direct_host_data_ =
       SelectGatherBlockQuantizedDataPolicy(option_enabled, pageable_memory_access != 0,
-                                           uses_host_page_tables != 0, IsCudaGraphEnabled(),
-                                           IsFp8QuantizedV<T1>, data_is_constant_) ==
+                                           uses_host_page_tables != 0, IsFp8QuantizedV<T1>,
+                                           data_is_constant_) ==
       GatherBlockQuantizedDataPolicy::DirectHost;
   if (option_enabled && IsFp8QuantizedV<T1> && !direct_host_data_) {
     LOGS_DEFAULT(WARNING)
         << "enable_host_pageable_gather was requested, but direct host-pageable GatherBlockQuantized "
-           "access is unavailable because the CUDA device lacks pageable memory access through host page tables "
-           "or CUDA Graph capture is enabled. Falling back to a persistent CUDA copy.";
+           "access is unavailable because input 0 is not a constant initializer or the CUDA device lacks pageable "
+           "memory access through host page tables. Falling back to a persistent CUDA copy.";
   }
 
   // If block size is set, it has to be no smaller than 16 and must be power of 2.
@@ -169,14 +169,8 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   const Tensor* scales = ctx->Input<Tensor>(2);
   const Tensor* zero_points = ctx->Input<Tensor>(3);
 
-  TensorShapeVector data_shape_storage;
-  if (data != nullptr) {
-    data_shape_storage.assign(data->Shape().GetDims().begin(), data->Shape().GetDims().end());
-  } else {
-    std::lock_guard<std::mutex> lock(device_data_mutex_);
-    data_shape_storage = data_shape_;
-  }
-  const gsl::span<const int64_t> data_shape{data_shape_storage};
+  const gsl::span<const int64_t> data_shape =
+      data != nullptr ? data->Shape().GetDims() : gsl::span<const int64_t>{data_shape_};
   int64_t data_rank = static_cast<int64_t>(data_shape.size());
   const int64_t gather_axis = HandleNegativeAxis(gather_axis_, data_rank);
   const int64_t quantize_axis = HandleNegativeAxis(quantize_axis_, data_rank);
@@ -241,6 +235,12 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     {
       std::lock_guard<std::mutex> lock(device_data_mutex_);
       if (device_data_ == nullptr && data != nullptr && data->SizeInBytes() != 0) {
+        cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+        CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(Stream(ctx), &capture_status));
+        ORT_RETURN_IF_NOT(
+            capture_status == cudaStreamCaptureStatusNone,
+            "GatherBlockQuantized cannot initialize its persistent CUDA fallback copy during CUDA Graph capture. "
+            "Enable prepacking or run an uncaptured warmup iteration before capture.");
         ORT_RETURN_IF_ERROR(CreateDeviceCopy(*data, Info().GetAllocator(OrtMemTypeDefault)));
       }
       data_ptr = static_cast<const T1*>(device_data_.get());

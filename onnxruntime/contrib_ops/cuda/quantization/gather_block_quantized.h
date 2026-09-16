@@ -22,9 +22,9 @@ enum class GatherBlockQuantizedDataPolicy {
 
 constexpr GatherBlockQuantizedDataPolicy SelectGatherBlockQuantizedDataPolicy(
     bool option_enabled, bool pageable_memory_access, bool uses_host_page_tables,
-    bool cuda_graph_enabled, bool is_fp8, bool is_constant_initializer) {
+    bool is_fp8, bool is_constant_initializer) {
   return option_enabled && pageable_memory_access && uses_host_page_tables &&
-                 !cuda_graph_enabled && is_fp8 && is_constant_initializer
+                 is_fp8 && is_constant_initializer
              ? GatherBlockQuantizedDataPolicy::DirectHost
              : GatherBlockQuantizedDataPolicy::DeviceCopy;
 }
