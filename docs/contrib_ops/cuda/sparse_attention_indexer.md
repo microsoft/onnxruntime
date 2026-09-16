@@ -347,15 +347,14 @@ Run them with:
 
 The implementation is correctness-first. The following are known and deliberate:
 
-1. **Selection is `O(topk * entries)` per query row.** Each emitted index costs a full block-wide
-   scan. A radix-select or a per-row bitonic top-k would reduce this to roughly one pass, and is the
-   single biggest win for large `index_topk` / `token_budget`.
+1. **Large TopK selection remains `O(topk * entries)` per query row.** The common case of at most
+   32 selected blocks uses a single-read block TopK with deterministic score/index ordering.
+   Larger values retain the repeated-scan fallback to avoid excessive shared memory.
 2. **Scoring is not tensor-core accelerated.** `QsaBlockScoreKernel` and `CsaScoreKernel` compute
    `q · k` with a shared-memory block reduction, one dot product per block. A tiled GEMM (or a
    fused `ReLU`+reduce epilogue) would be far better once shapes grow.
-3. **The rotated query is materialized in `float32`.** That costs `B*S*N*D` floats of workspace.
-   Fusing the rotation into the scoring kernels removes the traffic at the cost of recomputing the
-   rotation per block.
+3. **Query rotation is fused into QSA scoring.** This removes the separate rotation launch and the
+   `B*S*N*D` float workspace, at the cost of recomputing rotation for each scored block.
 4. **`CompactVisibleKernel` is `O(T)` per query row** and re-reads the mask for every `s`. For long
    contexts a batched exclusive scan over the whole `(B, S, T)` mask would be cheaper.
 5. **`compress_ratio` and `head_size` are not specialized.** Templating the hot kernels on a small
