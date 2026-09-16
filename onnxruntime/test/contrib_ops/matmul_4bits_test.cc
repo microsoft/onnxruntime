@@ -90,11 +90,6 @@ struct TestOptions {
 
   bool disable_cpu_ep_fallback{false};
 
-  // When set, explicitly runs the session with session.prepack.enable_parallel = "1", i.e. with
-  // SessionState::PrepackConstantInitializedTensors fanning kernel->PrePack() calls out across the
-  // intra-op thread pool. Numeric output must be identical to the sequential path.
-  bool enable_parallel_prepack{false};
-
   bool has_zero_point{false};
   bool zp_is_4bit{true};
   bool scales_are_initializers{true};
@@ -309,15 +304,10 @@ void RunTest(const TestOptions& opts,
     test.ConfigEps(std::move(explicit_eps));
   }
 
-  if (opts.disable_cpu_ep_fallback || opts.enable_parallel_prepack) {
+  if (opts.disable_cpu_ep_fallback) {
     SessionOptions session_options;
     session_options.use_per_session_threads = false;
-    if (opts.disable_cpu_ep_fallback) {
-      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
-    }
-    if (opts.enable_parallel_prepack) {
-      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
-    }
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
     test.Config(session_options);
   }
 
@@ -859,10 +849,8 @@ TEST(MatMulNBits, ParallelPrepack) {
     SessionOptions session_options;
     session_options.intra_op_param.thread_pool_size = 4;
     ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsMlasLutGemm, "1"));
-    if (!parallel) {
-      ASSERT_STATUS_OK(
-          session_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "0"));
-    }
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsEnableParallelPrepack, parallel ? "1" : "0"));
     InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
     ASSERT_STATUS_OK(session.Initialize());
