@@ -241,7 +241,8 @@ TEST(CudaExternalDataLoaderTest, NormalizesBoolWithPinnedAndPageableFallback) {
           0, 4, FailPinnedBufferAllocation);
     } else if (failure_mode == 2) {
       loader = std::make_unique<cuda::ExternalDataLoader>(
-          0, 4, cudaMallocHost, FailStreamCreation);
+          0, 4, static_cast<cuda::ExternalDataLoader::AllocatePinnedBufferFn>(cudaMallocHost),
+          FailStreamCreation);
     } else {
       loader = std::make_unique<cuda::ExternalDataLoader>(0, 4);
     }
