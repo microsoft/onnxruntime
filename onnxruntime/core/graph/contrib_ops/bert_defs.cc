@@ -2396,7 +2396,8 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
     fail_shape_inference("PackedSparseAttentionIndexer: exactly ", psai::kFixedOutputCount,
                          " declared outputs are required, got ", ctx.getNumOutputs());
   }
-  if (ctx.hasOutput(psai::kPresentGateBuffer) == is_qsa) {
+  const bool has_gate_output = ctx.getOutputType(psai::kPresentGateBuffer) != nullptr;
+  if (has_gate_output == is_qsa) {
     fail_shape_inference("PackedSparseAttentionIndexer: output ", psai::kPresentGateBuffer,
                          is_qsa ? " must be omitted when policy_mode is 'qsa'"
                                 : " is required when policy_mode is 'csa'");
@@ -2421,7 +2422,7 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   const auto* past_sequence_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastSequenceLengths, 1);
   const ONNX_NAMESPACE::TensorShapeProto* cos_shape = nullptr;
   const ONNX_NAMESPACE::TensorShapeProto* sin_shape = nullptr;
-  for (const auto [index, name, shape_out] :
+  for (const auto& [index, name, shape_out] :
        {std::tuple<int, const char*, const ONNX_NAMESPACE::TensorShapeProto**>{
             psai::kCosCache, "cos_cache", &cos_shape},
         {psai::kSinCache, "sin_cache", &sin_shape}}) {
