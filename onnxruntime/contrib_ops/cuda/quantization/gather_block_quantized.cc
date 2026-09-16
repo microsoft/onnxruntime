@@ -156,6 +156,8 @@ Status GatherBlockQuantized<T1, T2, Tind>::PrePack(
 
   std::lock_guard<std::mutex> lock(device_data_mutex_);
   if (direct_host_data_) {
+    ORT_RETURN_IF_NOT(tensor.Location().device.Type() == OrtDevice::CPU,
+                      "Direct host-pageable GatherBlockQuantized requires a CPU-resident initializer.");
     direct_host_data_ptr_ = tensor.Data<T1>();
     data_shape_.assign(tensor.Shape().GetDims().begin(), tensor.Shape().GetDims().end());
   } else {
@@ -233,7 +235,9 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
 
   const T1* data_ptr = nullptr;
   if (direct_host_data_) {
-    data_ptr = direct_host_data_ptr_;
+    data_ptr = direct_host_data_ptr_ != nullptr ? direct_host_data_ptr_
+               : data == nullptr                ? nullptr
+                                                : data->Data<T1>();
   } else if (data_is_constant_) {
     {
       std::lock_guard<std::mutex> lock(device_data_mutex_);
