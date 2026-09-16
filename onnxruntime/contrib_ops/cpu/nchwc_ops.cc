@@ -127,7 +127,10 @@ Status ReorderOutput::Compute(OpKernelContext* context) const {
   const auto& X_shape = X->Shape().GetDims();
   const auto X_rank = X_shape.size();
   ORT_ENFORCE(X_rank == 4);
-  ORT_ENFORCE(channels_ <= X_shape[1]);
+  const int64_t nchwc_block_size = static_cast<int64_t>(MlasNchwcGetBlockSize());
+  ORT_ENFORCE(X_shape[1] % nchwc_block_size == 0 &&
+                  channels_ <= X_shape[1] && X_shape[1] - channels_ < nchwc_block_size,
+              "Input channels must match the NCHWc block-aligned channel count.");
 
   // Build the output shape in NCHW or NHWC order.
   TensorShapeVector Y_shape(X_rank);
