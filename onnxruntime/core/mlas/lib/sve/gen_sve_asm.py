@@ -50,7 +50,17 @@ LITERAL_LOAD_RE = re.compile(r"^ldr\s+[^,]+,\s+0x[0-9a-f]+\s*$")
 # compiler off them. Extend both together if another platform reserves more.
 RESERVED_REGS = ("x18",)
 RESERVED_REG_RE = re.compile(r"\b[wx]18\b")
-DEFAULT_CFLAGS = ("-ffixed-x18",)
+
+# -fstack-clash-protection: the frozen code runs on Windows, where armasm64
+# assembles raw DCD words and inserts no __chkstk, so any frame over one page
+# must probe page by page itself or a large `sub sp` can jump the guard page.
+# gcc's aarch64 default guard size is 64 KB; 2^12 = 4 KB matches both the
+# Windows guard page and the default Linux pthread stack guard.
+DEFAULT_CFLAGS = (
+    "-ffixed-x18",
+    "-fstack-clash-protection",
+    "--param=stack-clash-protection-guard-size=12",
+)
 
 
 def run(cmd):
