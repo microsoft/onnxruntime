@@ -95,10 +95,7 @@ MLAS_FORCEINLINE
 MLAS_FLOAT16X4
 MlasLoadPartialFloat16x4(const _mlas_fp16_* Buffer, size_t len)
 {
-    // len == 4 is a full vector: the (len & 1) / (len & 2) decomposition below
-    // matches nothing and would return zeros, so handle it up front. Callers
-    // pass a runtime remainder that can legitimately be 4 (e.g. an N tail of
-    // exactly 4 in the HGEMM B packing kernel).
+    // The (len & 1) / (len & 2) checks below load nothing for len == 4.
     if (len >= 4) {
         return MlasLoadFloat16x4(Buffer);
     }
@@ -141,8 +138,6 @@ MLAS_FORCEINLINE
 void
 MlasStorePartialFloat16x4(_mlas_fp16_* Buffer, MLAS_FLOAT16X4 Vector, size_t len)
 {
-    // See MlasLoadPartialFloat16x4: len == 4 is a full vector and would
-    // otherwise store nothing.
     if (len >= 4) {
         MlasStoreFloat16x4(Buffer, Vector);
         return;

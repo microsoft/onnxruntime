@@ -11,21 +11,9 @@ Module Name:
 
 Abstract:
 
-    SVE intrinsics implementation of the FP16 matrix-vector kernel (N == 1),
-    and the regeneration source for the portable machine-code variant
-    (aarch64/halfgemv_sve_asm.S, script: sve/gen_sve_asm.py).
-
-    Vector length agnostic: the K loop steps by svcnth() and the tail is
-    predicated with svwhilelt_b16, so the same code runs on 128-, 256- and
-    512-bit SVE without a width switch.
-
-    Four rows of A are processed per pass so the B vector is loaded once per
-    row group rather than once per row -- B is the reused operand here, and at
-    N == 1 the kernel is bandwidth bound on A.
-
-    Self-containment contract (verified by the generator): no calls, no global
-    data, no literal pools -- every input arrives through the argument
-    registers, so the frozen machine code is position independent.
+    SVE implementation of the FP16 matrix-vector kernel (N == 1). This is the
+    source for aarch64/halfgemv_sve_asm.S (see sve/gen_sve_asm.py), so it must
+    not make calls or reference global data.
 
 --*/
 
@@ -39,9 +27,6 @@ using _mlas_fp16_ = mlas_sve_fp16_t;
 #define MLAS_FORCEINLINE __attribute__((always_inline)) inline
 #endif
 
-//
-// Accumulate acc += a[k] * b[k] over one predicated vector of K.
-//
 MLAS_FORCEINLINE svfloat16_t
 HgemvStep(svbool_t pg, svfloat16_t acc, const _mlas_fp16_* a, svfloat16_t bvec)
 {
@@ -66,11 +51,6 @@ MlasHgemvNKernel_sve(
 
     size_t m = 0;
 
-    //
-    // Four rows at a time: one B load feeds four independent FMA chains, which
-    // both amortises the B traffic and gives the FMA pipeline four independent
-    // accumulators to work on.
-    //
     for (; m + 4 <= CountM; m += 4) {
         svfloat16_t acc0 = svdup_n_f16((__fp16)0.f);
         svfloat16_t acc1 = acc0, acc2 = acc0, acc3 = acc0;
@@ -109,9 +89,6 @@ MlasHgemvNKernel_sve(
         }
     }
 
-    //
-    // Remaining rows, one at a time.
-    //
     for (; m < CountM; ++m) {
         svfloat16_t acc = svdup_n_f16((__fp16)0.f);
         const _mlas_fp16_* a = A + m * lda;

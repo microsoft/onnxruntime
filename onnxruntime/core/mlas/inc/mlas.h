@@ -1734,7 +1734,40 @@ struct MLAS_HGEMM_DATA_PARAMS {
     size_t ldc;         /**< Supplies the first dimension of matrix C. */
     uint16_t alpha;     /**< Supplies the scalar alpha multiplier (see GEMM definition). FP16 encoding. */
     uint16_t beta;      /**< Supplies the scalar beta multiplier (see GEMM definition). FP16 encoding. */
+    bool BIsPacked = false; /**< B was packed by MlasHGemmPackB (ldb and TransB are then ignored) */
 };
+
+/**
+ * @brief Defined when MlasHGemmPackBSize and MlasHGemmPackB are available.
+ */
+#define MLAS_HGEMM_PACKB_SUPPORTED 1
+
+/**
+ * @brief Returns the size in bytes of the buffer MlasHGemmPackB fills for an N x K (op(B) is K x N)
+ *        matrix, or 0 when the HGEMM driver is unavailable on this CPU and B must not be packed.
+ */
+size_t
+MLASCALL
+MlasHGemmPackBSize(
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K
+    );
+
+/**
+ * @brief Packs matrix B for MlasGemmBatch(MLAS_HGEMM_DATA_PARAMS) with BIsPacked = true.
+ *        PackedB must hold MlasHGemmPackBSize(TransB, N, K) bytes.
+ */
+void
+MLASCALL
+MlasHGemmPackB(
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB
+    );
 
 /**
  * @brief Check whether current CPU supports half precision gemm.

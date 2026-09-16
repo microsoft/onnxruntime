@@ -88,13 +88,6 @@ static void GemmLLMSizeProducts(benchmark::internal::Benchmark* b) {
 BENCHMARK_CAPTURE(HGEMM, LLM_TransB, false, true)->Apply(GemmLLMSizeProducts)->UseRealTime();
 BENCHMARK_CAPTURE(HGEMM, LLM_B, false, false)->Apply(GemmLLMSizeProducts)->UseRealTime();
 
-//
-// TransA == CblasTrans variants. Unlike the NoTrans cases above, these route
-// through the A-transpose pack (MlasHgemmTransposeA_sve on SVE) before the
-// compute kernels, so they measure that transpose cost as part of the GEMM.
-// The transpose work scales with M*K, so it is most visible on the larger-M
-// NORMAL / LLM shapes; the GEMV set is kept for parity with the NoTrans suite.
-//
 BENCHMARK_CAPTURE(HGEMM, GEMV_TransA_TransB, true, true)->Apply(GemmSizeWithOne)->UseRealTime();
 BENCHMARK_CAPTURE(HGEMM, GEMV_TransA_B, true, false)->Apply(GemmSizeWithOne)->UseRealTime();
 BENCHMARK_CAPTURE(HGEMM, NORMAL_TransA_TransB, true, true)->Apply(GemmSizeProducts)->UseRealTime();

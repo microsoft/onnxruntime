@@ -11,29 +11,7 @@ Module Name:
 
 Abstract:
 
-    Correctness tests for the AArch64 SVE fp16 GEMM path (onnxruntime/core/mlas/
-    lib/sve/halfgemm_kernel_sve.cpp, driven by hgemm.cpp).
-
-    Two complementary suites are registered:
-
-      1. SveHGemmTransposeA - a direct, bit-exact unit test of the
-         MlasHgemmTransposeA_sve primitive (the TransA packing transpose). The
-         transpose is pure data movement, so it is checked for an EXACT match
-         against a scalar reference over an exhaustive sweep of the M (CountY)
-         and K (CountX) dimensions plus leading-dimension padding. Inputs live
-         in guard-page-backed buffers sized exactly to the operand, so any
-         lane over-read or output over-write faults immediately. This is the
-         kernel that was extended from the 256-bit-only fast path to also cover
-         128-bit (svcnth()==8, with M-splitting) and 512-bit (svcnth()==32).
-
-      2. SveHalfGemm - an end-to-end correctness sweep through the public
-         MlasGemm fp16 API, exercising the whole SVE pipeline (TransposeA /
-         CopyPackB / TransposePackB / KernelZero / KernelAdd) across all four
-         (TransA, TransB) combinations, alpha/beta variants, a wide M/N/K sweep
-         and padded strides. Registered one gtest per shape (SGEMM-style) so it
-         is filterable via --gtest_filter and reads well in the runner output.
-
-    Both suites are gated on runtime SVE availability and no-op otherwise.
+    Tests for the SVE FP16 GEMM kernels and the HGEMM driver.
 
 --*/
 
@@ -47,27 +25,12 @@ Abstract:
 #include <sstream>
 #include <vector>
 
-//
-// The SVE TransA transpose primitive. Defined (external linkage) in
-// halfgemm_kernel_sve.cpp and declared locally by hgemm.cpp; re-declared here
-// so the unit test can drive it directly. Layout contract:
-//   D[m*CountX + k] = A[k*lda + m],  m in [0,CountY), k in [0,CountX)
-// i.e. A is stored K-major with row stride lda, D is the row-major CountY x
-// CountX NoTrans panel the compute kernels consume.
-//
-// The kernels are extern "C" so the intrinsics reference and the frozen
-// machine code in aarch64/halfgemm_sve_asm.S are interchangeable; take the
-// declaration from the header both implementations agree on rather than
-// restating it here.
 #include "core/mlas/lib/sve/halfgemm_sve.h"
 
 static bool SveAvailable() {
   return MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve();
 }
 
-// ===========================================================================
-//  Suite 1: direct bit-exact test of MlasHgemmTransposeA_sve
-// ===========================================================================
 class MlasSveHGemmTransposeATest : public MlasTestBase {
  private:
   MatrixGuardBuffer<uint16_t> BufferA;
@@ -75,18 +38,10 @@ class MlasSveHGemmTransposeATest : public MlasTestBase {
   MatrixGuardBuffer<uint16_t> BufferDRef;
   std::mt19937 gen_{20240702};
 
-  // One case: transpose a CountY(M) x CountX(K) block whose A operand is stored
-  // K-major with the given leading dimension (lda >= CountY). Buffers are sized
-  // exactly to the operand so the guard page catches any over-read/over-write.
   void TestOne(size_t CountY, size_t CountX, size_t lda) {
     ASSERT_GE(lda, CountY);
 
     auto fill = [this](uint16_t* p, size_t n) {
-      // Distinct-ish random fp16 bit patterns; correctness is by exact match
-      // against the reference computed from the same buffer, so the actual
-      // values only need to be varied enough that a mis-picked source element
-      // is observable. Padding columns [CountY, lda) are filled too and must
-      // never surface in the output.
       std::uniform_int_distribution<uint32_t> d(0, 0xFFFF);
       for (size_t i = 0; i < n; ++i) p[i] = static_cast<uint16_t>(d(gen_));
     };
@@ -95,7 +50,6 @@ class MlasSveHGemmTransposeATest : public MlasTestBase {
     uint16_t* D = BufferD.GetBuffer(CountY * CountX, /*ZeroFill*/ true);
     uint16_t* Dref = BufferDRef.GetBuffer(CountY * CountX, /*ZeroFill*/ true);
 
-    // Scalar reference transpose.
     for (size_t m = 0; m < CountY; ++m) {
       for (size_t k = 0; k < CountX; ++k) {
         Dref[m * CountX + k] = A[k * lda + m];
@@ -124,11 +78,6 @@ class MlasSveHGemmTransposeATest : public MlasTestBase {
       GTEST_SKIP() << "SVE not available on this CPU.";
     }
 
-    // CountY (M) is <= MLAS_HGEMM_TRANSA_ROWS (== 12) in production; sweep a
-    // little past it. CountX (K) sweeps across and past each vector-length tile
-    // boundary (8 / 16 / 32) so the vectorised tiles and the scalar K-remainder
-    // are both exercised at every supported SVE width. lda padding forces the
-    // predicated M-lane loads to be tested against a tight A row.
     const size_t Ks[] = {1, 2, 3, 7, 8, 9, 15, 16, 17, 23, 31, 32,
                          33, 40, 47, 48, 63, 64, 65, 96, 127, 128, 129, 200};
     for (size_t CountY = 1; CountY <= 13; ++CountY) {
@@ -138,16 +87,12 @@ class MlasSveHGemmTransposeATest : public MlasTestBase {
         }
       }
     }
-    // A couple of larger panels.
     TestOne(12, 512, 12);
     TestOne(12, 1023, 20);
     TestOne(8, 777, 8);
   }
 };
 
-// ===========================================================================
-//  Suite 2: end-to-end MlasGemm fp16 correctness (all Trans/alpha/beta)
-// ===========================================================================
 class MlasSveHalfGemmTest : public MlasTestBase {
  private:
   MatrixGuardBuffer<MLAS_FP16> BufferA;
@@ -173,7 +118,6 @@ class MlasSveHalfGemmTest : public MlasTestBase {
       GTEST_SKIP() << "HGEMM not supported for this transpose combination.";
     }
 
-    // Padded leading dimensions (mirrors the NeonHGemm test conventions).
     const size_t lda = (transA ? M : K) + 3;
     const size_t ldb = (transB ? K : N) + 5;
     const size_t ldc = N + 7;
@@ -186,7 +130,6 @@ class MlasSveHalfGemmTest : public MlasTestBase {
     const MLAS_FP16* B = BufferB.GetFilledBuffer(bRows * ldb, fill);
     MLAS_FP16* C = BufferC.GetFilledBuffer(M * ldc, fill);
 
-    // Capture the initial C (for the beta term) and build the float reference.
     float* Cref = BufferCReference.GetBuffer(M * ldc, /*ZeroFill*/ true);
     for (size_t i = 0; i < M; ++i) {
       for (size_t j = 0; j < N; ++j) {
@@ -214,9 +157,7 @@ class MlasSveHalfGemmTest : public MlasTestBase {
              MLFp16(alpha).val, MLFp16(beta).val,
              nullptr);
 
-    // fp16 accumulation in the kernel diverges from the float reference as K
-    // grows, so scale the absolute tolerance with K. A transpose/pack/kernel
-    // indexing bug produces order-of-result errors, comfortably above this.
+    // fp16 accumulation error grows with K.
     const float rtol = 0.03f;
     const float atol = 0.06f + 0.0015f * static_cast<float>(K);
     for (size_t i = 0; i < M; ++i) {
@@ -233,10 +174,6 @@ class MlasSveHalfGemmTest : public MlasTestBase {
   }
 };
 
-//
-// Per-shape dynamic registration (SGEMM-style): one gtest per shape so the set
-// is filterable and self-describing in the runner output.
-//
 class SveHalfGemmShortExecuteTest : public MlasTestFixture<MlasSveHalfGemmTest> {
  public:
   explicit SveHalfGemmShortExecuteTest(size_t M, size_t N, size_t K, bool transA, bool transB,
@@ -274,22 +211,17 @@ class SveHalfGemmShortExecuteTest : public MlasTestFixture<MlasSveHalfGemmTest> 
 
     for (bool tA : trans) {
       for (bool tB : trans) {
-        // Dense small-M sweep: M spans the TransA CountY range (1..12) and just
-        // past it; N and K straddle vector-length tile boundaries.
         for (size_t M = 1; M <= 13; ++M) {
           count += RegisterSingleTest(M, 32, 33, tA, tB, 1.0f, 0.0f);
           count += RegisterSingleTest(M, 17, 65, tA, tB, 1.0f, 0.0f);
         }
-        // K remainder / boundary sweep.
         for (size_t K : {1, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129}) {
           count += RegisterSingleTest(4, 40, K, tA, tB, 1.0f, 0.0f);
           count += RegisterSingleTest(12, 24, K, tA, tB, 1.0f, 0.0f);
         }
-        // alpha/beta variants.
         count += RegisterSingleTest(7, 33, 40, tA, tB, 0.5f, 1.0f);
         count += RegisterSingleTest(9, 48, 64, tA, tB, 1.5f, 0.5f);
         count += RegisterSingleTest(13, 31, 63, tA, tB, 0.5f, 0.5f);
-        // A few larger / irregular shapes.
         count += RegisterSingleTest(2, 129, 128, tA, tB, 1.0f, 0.0f);
         count += RegisterSingleTest(33, 65, 96, tA, tB, 1.0f, 0.0f);
         count += RegisterSingleTest(64, 64, 512, tA, tB, 1.0f, 0.0f);
