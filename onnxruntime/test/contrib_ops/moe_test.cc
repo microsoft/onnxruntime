@@ -2384,7 +2384,15 @@ TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Fp16) {
 }
 
 TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU) {
-  // 8-bit stays on the dequantize path by default (no fp32-activation QNBit kernel).
+  // MLAS has no fp32-activation QNBit kernel for 8 bits, so this runs with int8 activations by
+  // default and carries their quantization error; the tolerance matches the other int8 cases.
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8}, 0.05f);
+}
+
+TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU_ForcedFp32FallsBackToDequantize) {
+  // Forcing fp32 activations keeps 8-bit experts on the dequantize path, which is exact enough
+  // for the tight tolerance.
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_QMOE_CPU_QNBIT_GEMM", "fp32"}}};
   RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8}, 0.01f);
 }
 
