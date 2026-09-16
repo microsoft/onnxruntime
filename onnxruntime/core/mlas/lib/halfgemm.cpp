@@ -21,6 +21,7 @@ Abstract:
 #include "halfgemm.h"
 
 #include <exception>
+#include <vector>
 
 static void
 MlasHalfGemmZeroKBatch(
@@ -157,6 +158,35 @@ MlasHalfGemmBatch(
                 "backend-native halfgemm packed B is not supported by generic MLAS halfgemm");
         }
     }
+
+#if defined(MLAS_USE_SVE)
+    // The SVE HGEMM driver is faster than the NEON halfgemm kernels, so use it when it can take the call.
+    if (MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
+        bool forward = true;
+        for (size_t gemm_i = 0; gemm_i < BatchN && forward; gemm_i++) {
+            const auto& data = DataParams[gemm_i];
+            forward = !data.AIsfp32 && !data.BIsfp32 && !data.BIsPacked && data.ldb != 0 &&
+                      data.Bias == nullptr && data.OutputProcessor == nullptr;
+        }
+        if (forward) {
+            std::vector<MLAS_HGEMM_DATA_PARAMS> hgemm_data(BatchN);
+            for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
+                const auto& data = DataParams[gemm_i];
+                auto& h = hgemm_data[gemm_i];
+                h.A = static_cast<const MLAS_FP16*>(data.A);
+                h.lda = data.lda;
+                h.B = static_cast<const MLAS_FP16*>(data.B);
+                h.ldb = data.ldb;
+                h.C = data.C;
+                h.ldc = data.ldc;
+                h.alpha = MLAS_FP16(1.0f).val;
+                h.beta = MLAS_FP16(0.0f).val;
+            }
+            MlasGemmBatch(CblasNoTrans, CblasNoTrans, M, N, K, hgemm_data.data(), BatchN, ThreadPool);
+            return;
+        }
+    }
+#endif
 
     const MLAS_HALFGEMM_DISPATCH* dispatch = MlasHalfGemmGetDispatch();
     MLAS_HALFGEMM_OPERATION* operation = dispatch->Operation;

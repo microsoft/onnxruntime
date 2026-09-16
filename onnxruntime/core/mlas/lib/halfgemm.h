@@ -595,9 +595,6 @@ const MLAS_HALFGEMM_DISPATCH*
 MlasHalfGemmGetDispatch()
 {
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
-    // The legacy MlasHalfGemm path uses the Neon dispatch on all ARM64 FP16
-    // targets. The SVE FP16 GEMM lives in the separate sgemm-parallel driver
-    // (hgemm.cpp + sve/halfgemm_kernel_sve.cpp) reached via MlasGemmBatch.
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
         return &MlasHalfGemmDispatchNeon;
     }

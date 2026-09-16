@@ -511,8 +511,6 @@ void HPackB_B_Kernel(
         MlasStoreFloat16x4(PackedB_data, v0);
         MlasStoreFloat16x4(PackedB_data + 4, v1);
     } else if (CountN > 0) {
-        // Each packed row is 8 wide; only CountN (<= 4) lanes carry data, so the
-        // upper half must be zero-filled rather than left uninitialized.
         const float16x4_t zero_v4 = MlasZeroFloat16x4();
         float16x4_t v0 = MlasLoadPartialFloat16x4(B_data, CountN);
         for (; CountK >= 2; B_data += ldb, PackedB_data += 8, --CountK) {
@@ -1092,13 +1090,7 @@ void HGemm_B_Kernel_Complicated(
     _mlas_fp16_ alpha,
     _mlas_fp16_ beta
 ) {
-    // beta == 0 means C is write-only: callers may legitimately pass an
-    // uninitialized output buffer. This kernel folds beta in as
-    // fma(mul(C, beta), accu, alpha) at every store, which reads C
-    // regardless, so a stale NaN bit pattern would survive 0 * NaN. The
-    // alpha == 1 cases are dispatched to HGemm_B_Kernel_Simple, which
-    // overwrites; this one handles every other (alpha, beta) pair, so zero
-    // the tile up front and let the existing beta arithmetic proceed.
+    // C may be uninitialized when beta == 0, and the beta term below still reads it.
     if (beta == MLAS_FP16(0.0f).val) {
         for (size_t m = 0; m < static_cast<size_t>(CountM); ++m) {
             std::fill_n(C_data + m * ldc, CountN, static_cast<_mlas_fp16_>(0));

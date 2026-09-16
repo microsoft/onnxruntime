@@ -7477,22 +7477,72 @@ KAI_ASM_FUNCTION_LABEL(MlasHgemmTransposeA_sve)
 KAI_ASM_FUNCTION_LABEL(MlasHgemvFloat16Kernel_sve)
     KAI_ASM_BTI_C
     KAI_ASM_INST(0x12001cc6)  // and	w6, w6, #0xff
-    KAI_ASM_INST(0xb40003c4)  // cbz	x4, 7c <MlasHgemvFloat16Kernel_sve+0x7c>
-    KAI_ASM_INST(0xaa0103e9)  // mov	x9, x1
-    KAI_ASM_INST(0xd37ff8a7)  // lsl	x7, x5, #1
-    KAI_ASM_INST(0x120000ca)  // and	w10, w6, #0x1
-    KAI_ASM_INST(0xd2800008)  // mov	x8, #0x0
-    KAI_ASM_INST(0x0460e3ec)  // cnth	x12
-    KAI_ASM_INST(0x0420e3eb)  // cntb	x11
-    KAI_ASM_INST(0x2518e3e2)  // ptrue	p2.b
+    KAI_ASM_INST(0x0421e3e9)  // cntb	x9, all, mul #2
+    KAI_ASM_INST(0xeb09009f)  // cmp	x4, x9
+    KAI_ASM_INST(0x54000603)  // b.cc	cc <MlasHgemvFloat16Kernel_sve+0xcc>
+    KAI_ASM_INST(0xd37ff8ab)  // lsl	x11, x5, #1
+    KAI_ASM_INST(0xaa0903f0)  // mov	x16, x9
+    KAI_ASM_INST(0xaa0203ec)  // mov	x12, x2
+    KAI_ASM_INST(0xaa0103ed)  // mov	x13, x1
+    KAI_ASM_INST(0x8b03040a)  // add	x10, x0, x3, lsl #1
+    KAI_ASM_INST(0x120000ce)  // and	w14, w6, #0x1
+    KAI_ASM_INST(0x0423e3ef)  // cntb	x15, all, mul #4
+    KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
+    KAI_ASM_INST(0x3500044e)  // cbnz	w14, b8 <MlasHgemvFloat16Kernel_sve+0xb8>
     KAI_ASM_INST(0xd503201f)  // nop
-    KAI_ASM_INST(0x25641d01)  // whilelo	p1.h, x8, x4
+    KAI_ASM_INST(0xa4a0a182)  // ld1h	{z2.h}, p0/z, [x12]
+    KAI_ASM_INST(0xa4a1a184)  // ld1h	{z4.h}, p0/z, [x12, #1, mul vl]
+    KAI_ASM_INST(0xa4a2a183)  // ld1h	{z3.h}, p0/z, [x12, #2, mul vl]
+    KAI_ASM_INST(0xa4a3a181)  // ld1h	{z1.h}, p0/z, [x12, #3, mul vl]
+    KAI_ASM_INST(0xaa0d03e7)  // mov	x7, x13
+    KAI_ASM_INST(0xb4000203)  // cbz	x3, 8c <MlasHgemvFloat16Kernel_sve+0x8c>
+    KAI_ASM_INST(0xaa0003e8)  // mov	x8, x0
+    KAI_ASM_INST(0xd503201f)  // nop
+    KAI_ASM_INST(0x84c0a100)  // ld1rh	{z0.h}, p0/z, [x8]
+    KAI_ASM_INST(0xa4a0a0e6)  // ld1h	{z6.h}, p0/z, [x7]
+    KAI_ASM_INST(0xa4a1a0e5)  // ld1h	{z5.h}, p0/z, [x7, #1, mul vl]
+    KAI_ASM_INST(0x91000908)  // add	x8, x8, #0x2
+    KAI_ASM_INST(0x656000c2)  // fmla	z2.h, p0/m, z6.h, z0.h
+    KAI_ASM_INST(0x656000a4)  // fmla	z4.h, p0/m, z5.h, z0.h
+    KAI_ASM_INST(0xa4a2a0e6)  // ld1h	{z6.h}, p0/z, [x7, #2, mul vl]
+    KAI_ASM_INST(0xa4a3a0e5)  // ld1h	{z5.h}, p0/z, [x7, #3, mul vl]
+    KAI_ASM_INST(0x656000c3)  // fmla	z3.h, p0/m, z6.h, z0.h
+    KAI_ASM_INST(0x8b0b00e7)  // add	x7, x7, x11
+    KAI_ASM_INST(0x656000a1)  // fmla	z1.h, p0/m, z5.h, z0.h
+    KAI_ASM_INST(0xeb08015f)  // cmp	x10, x8
+    KAI_ASM_INST(0x54fffe81)  // b.ne	58 <MlasHgemvFloat16Kernel_sve+0x58>
+    KAI_ASM_INST(0xe4a1e184)  // st1h	{z4.h}, p0, [x12, #1, mul vl]
+    KAI_ASM_INST(0xe4a2e183)  // st1h	{z3.h}, p0, [x12, #2, mul vl]
+    KAI_ASM_INST(0xe4a3e181)  // st1h	{z1.h}, p0, [x12, #3, mul vl]
+    KAI_ASM_INST(0x8b100127)  // add	x7, x9, x16
+    KAI_ASM_INST(0xe4a0e182)  // st1h	{z2.h}, p0, [x12]
+    KAI_ASM_INST(0x8b0f01ad)  // add	x13, x13, x15
+    KAI_ASM_INST(0x8b0f018c)  // add	x12, x12, x15
+    KAI_ASM_INST(0xeb07009f)  // cmp	x4, x7
+    KAI_ASM_INST(0x54000123)  // b.cc	d0 <MlasHgemvFloat16Kernel_sve+0xd0>
+    KAI_ASM_INST(0xaa0703e9)  // mov	x9, x7
+    KAI_ASM_INST(0x34fffc2e)  // cbz	w14, 38 <MlasHgemvFloat16Kernel_sve+0x38>
+    KAI_ASM_INST(0x2578c001)  // mov	z1.h, #0
+    KAI_ASM_INST(0x04613023)  // mov	z3.d, z1.d
+    KAI_ASM_INST(0x04613024)  // mov	z4.d, z1.d
+    KAI_ASM_INST(0x04613022)  // mov	z2.d, z1.d
+    KAI_ASM_INST(0x17ffffe0)  // b	48 <MlasHgemvFloat16Kernel_sve+0x48>
+    KAI_ASM_INST(0xd2800009)  // mov	x9, #0x0
+    KAI_ASM_INST(0xeb09009f)  // cmp	x4, x9
+    KAI_ASM_INST(0x54000389)  // b.ls	144 <MlasHgemvFloat16Kernel_sve+0x144>
+    KAI_ASM_INST(0x8b090428)  // add	x8, x1, x9, lsl #1
+    KAI_ASM_INST(0xd37ff8a7)  // lsl	x7, x5, #1
+    KAI_ASM_INST(0x120000ce)  // and	w14, w6, #0x1
+    KAI_ASM_INST(0x0460e3eb)  // cnth	x11
+    KAI_ASM_INST(0x0420e3ea)  // cntb	x10
+    KAI_ASM_INST(0x2518e3e2)  // ptrue	p2.b
+    KAI_ASM_INST(0x25641d21)  // whilelo	p1.h, x9, x4
     KAI_ASM_INST(0x2578c000)  // mov	z0.h, #0
     KAI_ASM_INST(0x25814420)  // mov	p0.b, p1.b
-    KAI_ASM_INST(0x3500004a)  // cbnz	w10, 3c <MlasHgemvFloat16Kernel_sve+0x3c>
-    KAI_ASM_INST(0xa4a84440)  // ld1h	{z0.h}, p1/z, [x2, x8, lsl #1]
-    KAI_ASM_INST(0xb4000163)  // cbz	x3, 68 <MlasHgemvFloat16Kernel_sve+0x68>
-    KAI_ASM_INST(0xaa0903e5)  // mov	x5, x9
+    KAI_ASM_INST(0x3500004e)  // cbnz	w14, 104 <MlasHgemvFloat16Kernel_sve+0x104>
+    KAI_ASM_INST(0xa4a94440)  // ld1h	{z0.h}, p1/z, [x2, x9, lsl #1]
+    KAI_ASM_INST(0xb4000163)  // cbz	x3, 130 <MlasHgemvFloat16Kernel_sve+0x130>
+    KAI_ASM_INST(0xaa0803e5)  // mov	x5, x8
     KAI_ASM_INST(0xd2800001)  // mov	x1, #0x0
     KAI_ASM_INST(0x8b010406)  // add	x6, x0, x1, lsl #1
     KAI_ASM_INST(0x91000421)  // add	x1, x1, #0x1
@@ -7501,13 +7551,138 @@ KAI_ASM_FUNCTION_LABEL(MlasHgemvFloat16Kernel_sve)
     KAI_ASM_INST(0x8b0700a5)  // add	x5, x5, x7
     KAI_ASM_INST(0x65620020)  // fmla	z0.h, p0/m, z1.h, z2.h
     KAI_ASM_INST(0xeb01007f)  // cmp	x3, x1
-    KAI_ASM_INST(0x54ffff21)  // b.ne	48 <MlasHgemvFloat16Kernel_sve+0x48>
-    KAI_ASM_INST(0xe4a84440)  // st1h	{z0.h}, p1, [x2, x8, lsl #1]
-    KAI_ASM_INST(0x8b0c0108)  // add	x8, x8, x12
+    KAI_ASM_INST(0x54ffff21)  // b.ne	110 <MlasHgemvFloat16Kernel_sve+0x110>
+    KAI_ASM_INST(0xe4a94440)  // st1h	{z0.h}, p1, [x2, x9, lsl #1]
     KAI_ASM_INST(0x8b0b0129)  // add	x9, x9, x11
-    KAI_ASM_INST(0xeb08009f)  // cmp	x4, x8
-    KAI_ASM_INST(0x54fffd88)  // b.hi	28 <MlasHgemvFloat16Kernel_sve+0x28>
+    KAI_ASM_INST(0x8b0a0108)  // add	x8, x8, x10
+    KAI_ASM_INST(0xeb09009f)  // cmp	x4, x9
+    KAI_ASM_INST(0x54fffd88)  // b.hi	f0 <MlasHgemvFloat16Kernel_sve+0xf0>
     KAI_ASM_INST(0xd65f03c0)  // ret
     KAI_ASM_FUNCTION_END(MlasHgemvFloat16Kernel_sve)
+
+    KAI_ASM_GLOBAL(MlasHgemv2Float16Kernel_sve)
+    KAI_ASM_FUNCTION_TYPE(MlasHgemv2Float16Kernel_sve)
+KAI_ASM_FUNCTION_LABEL(MlasHgemv2Float16Kernel_sve)
+    KAI_ASM_BTI_C
+    KAI_ASM_INST(0xa9bd7bfd)  // stp	x29, x30, [sp, #-48]!
+    KAI_ASM_INST(0x8b010408)  // add	x8, x0, x1, lsl #1
+    KAI_ASM_INST(0x8b04047e)  // add	x30, x3, x4, lsl #1
+    KAI_ASM_INST(0x910003fd)  // mov	x29, sp
+    KAI_ASM_INST(0xa90153f3)  // stp	x19, x20, [sp, #16]
+    KAI_ASM_INST(0x0421e3eb)  // cntb	x11, all, mul #2
+    KAI_ASM_INST(0xf90013f5)  // str	x21, [sp, #32]
+    KAI_ASM_INST(0x3940c3f5)  // ldrb	w21, [sp, #48]
+    KAI_ASM_INST(0xeb0b00df)  // cmp	x6, x11
+    KAI_ASM_INST(0x54000883)  // b.cc	134 <MlasHgemv2Float16Kernel_sve+0x134>
+    KAI_ASM_INST(0xd37ff8ed)  // lsl	x13, x7, #1
+    KAI_ASM_INST(0xaa0b03f4)  // mov	x20, x11
+    KAI_ASM_INST(0xaa0303ef)  // mov	x15, x3
+    KAI_ASM_INST(0xaa1e03ee)  // mov	x14, x30
+    KAI_ASM_INST(0xaa0203f1)  // mov	x17, x2
+    KAI_ASM_INST(0xd37ff8ac)  // lsl	x12, x5, #1
+    KAI_ASM_INST(0x120002b3)  // and	w19, w21, #0x1
+    KAI_ASM_INST(0x0423e3f0)  // cntb	x16, all, mul #4
+    KAI_ASM_INST(0x2518e3e0)  // ptrue	p0.b
+    KAI_ASM_INST(0x35000633)  // cbnz	w19, 110 <MlasHgemv2Float16Kernel_sve+0x110>
+    KAI_ASM_INST(0xa4a0a1f0)  // ld1h	{z16.h}, p0/z, [x15]
+    KAI_ASM_INST(0xa4a1a1f3)  // ld1h	{z19.h}, p0/z, [x15, #1, mul vl]
+    KAI_ASM_INST(0xa4a2a1f2)  // ld1h	{z18.h}, p0/z, [x15, #2, mul vl]
+    KAI_ASM_INST(0xa4a3a1f1)  // ld1h	{z17.h}, p0/z, [x15, #3, mul vl]
+    KAI_ASM_INST(0xa4a0a1c5)  // ld1h	{z5.h}, p0/z, [x14]
+    KAI_ASM_INST(0xa4a1a1c7)  // ld1h	{z7.h}, p0/z, [x14, #1, mul vl]
+    KAI_ASM_INST(0xa4a2a1c6)  // ld1h	{z6.h}, p0/z, [x14, #2, mul vl]
+    KAI_ASM_INST(0xa4a3a1c4)  // ld1h	{z4.h}, p0/z, [x14, #3, mul vl]
+    KAI_ASM_INST(0xaa1103e1)  // mov	x1, x17
+    KAI_ASM_INST(0xb40002e5)  // cbz	x5, d0 <MlasHgemv2Float16Kernel_sve+0xd0>
+    KAI_ASM_INST(0xd2800004)  // mov	x4, #0x0
+    KAI_ASM_INST(0xd503201f)  // nop
+    KAI_ASM_INST(0xa4a0a022)  // ld1h	{z2.h}, p0/z, [x1]
+    KAI_ASM_INST(0x8b04000a)  // add	x10, x0, x4
+    KAI_ASM_INST(0x8b040109)  // add	x9, x8, x4
+    KAI_ASM_INST(0x84c0a141)  // ld1rh	{z1.h}, p0/z, [x10]
+    KAI_ASM_INST(0x84c0a120)  // ld1rh	{z0.h}, p0/z, [x9]
+    KAI_ASM_INST(0x65610050)  // fmla	z16.h, p0/m, z2.h, z1.h
+    KAI_ASM_INST(0x65600045)  // fmla	z5.h, p0/m, z2.h, z0.h
+    KAI_ASM_INST(0x91000884)  // add	x4, x4, #0x2
+    KAI_ASM_INST(0xa4a2a022)  // ld1h	{z2.h}, p0/z, [x1, #2, mul vl]
+    KAI_ASM_INST(0xa4a1a023)  // ld1h	{z3.h}, p0/z, [x1, #1, mul vl]
+    KAI_ASM_INST(0x65610052)  // fmla	z18.h, p0/m, z2.h, z1.h
+    KAI_ASM_INST(0x65600046)  // fmla	z6.h, p0/m, z2.h, z0.h
+    KAI_ASM_INST(0x65610073)  // fmla	z19.h, p0/m, z3.h, z1.h
+    KAI_ASM_INST(0xa4a3a022)  // ld1h	{z2.h}, p0/z, [x1, #3, mul vl]
+    KAI_ASM_INST(0x65600067)  // fmla	z7.h, p0/m, z3.h, z0.h
+    KAI_ASM_INST(0x8b0d0021)  // add	x1, x1, x13
+    KAI_ASM_INST(0x65610051)  // fmla	z17.h, p0/m, z2.h, z1.h
+    KAI_ASM_INST(0x65600044)  // fmla	z4.h, p0/m, z2.h, z0.h
+    KAI_ASM_INST(0xeb0c009f)  // cmp	x4, x12
+    KAI_ASM_INST(0x54fffda1)  // b.ne	80 <MlasHgemv2Float16Kernel_sve+0x80>
+    KAI_ASM_INST(0xe4a1e1f3)  // st1h	{z19.h}, p0, [x15, #1, mul vl]
+    KAI_ASM_INST(0xe4a2e1f2)  // st1h	{z18.h}, p0, [x15, #2, mul vl]
+    KAI_ASM_INST(0xe4a3e1f1)  // st1h	{z17.h}, p0, [x15, #3, mul vl]
+    KAI_ASM_INST(0xe4a0e1f0)  // st1h	{z16.h}, p0, [x15]
+    KAI_ASM_INST(0xe4a1e1c7)  // st1h	{z7.h}, p0, [x14, #1, mul vl]
+    KAI_ASM_INST(0xe4a2e1c6)  // st1h	{z6.h}, p0, [x14, #2, mul vl]
+    KAI_ASM_INST(0xe4a3e1c4)  // st1h	{z4.h}, p0, [x14, #3, mul vl]
+    KAI_ASM_INST(0x8b140161)  // add	x1, x11, x20
+    KAI_ASM_INST(0xe4a0e1c5)  // st1h	{z5.h}, p0, [x14]
+    KAI_ASM_INST(0x8b1001ef)  // add	x15, x15, x16
+    KAI_ASM_INST(0x8b1001ce)  // add	x14, x14, x16
+    KAI_ASM_INST(0x8b100231)  // add	x17, x17, x16
+    KAI_ASM_INST(0xeb06003f)  // cmp	x1, x6
+    KAI_ASM_INST(0x540001a8)  // b.hi	138 <MlasHgemv2Float16Kernel_sve+0x138>
+    KAI_ASM_INST(0xaa0103eb)  // mov	x11, x1
+    KAI_ASM_INST(0x34fffa33)  // cbz	w19, 50 <MlasHgemv2Float16Kernel_sve+0x50>
+    KAI_ASM_INST(0x2578c004)  // mov	z4.h, #0
+    KAI_ASM_INST(0x04643086)  // mov	z6.d, z4.d
+    KAI_ASM_INST(0x04643087)  // mov	z7.d, z4.d
+    KAI_ASM_INST(0x04643085)  // mov	z5.d, z4.d
+    KAI_ASM_INST(0x04643091)  // mov	z17.d, z4.d
+    KAI_ASM_INST(0x04643092)  // mov	z18.d, z4.d
+    KAI_ASM_INST(0x04643093)  // mov	z19.d, z4.d
+    KAI_ASM_INST(0x04643090)  // mov	z16.d, z4.d
+    KAI_ASM_INST(0x17ffffd0)  // b	70 <MlasHgemv2Float16Kernel_sve+0x70>
+    KAI_ASM_INST(0xd280000b)  // mov	x11, #0x0
+    KAI_ASM_INST(0xeb0b00df)  // cmp	x6, x11
+    KAI_ASM_INST(0x54000429)  // b.ls	1c0 <MlasHgemv2Float16Kernel_sve+0x1c0>
+    KAI_ASM_INST(0xd37ff8e9)  // lsl	x9, x7, #1
+    KAI_ASM_INST(0x8b0b044a)  // add	x10, x2, x11, lsl #1
+    KAI_ASM_INST(0x120002b3)  // and	w19, w21, #0x1
+    KAI_ASM_INST(0x0460e3ed)  // cnth	x13
+    KAI_ASM_INST(0x0420e3ec)  // cntb	x12
+    KAI_ASM_INST(0x2518e3e1)  // ptrue	p1.b
+    KAI_ASM_INST(0x25661d62)  // whilelo	p2.h, x11, x6
+    KAI_ASM_INST(0x25824840)  // mov	p0.b, p2.b
+    KAI_ASM_INST(0x35000393)  // cbnz	w19, 1d0 <MlasHgemv2Float16Kernel_sve+0x1d0>
+    KAI_ASM_INST(0xa4ab4861)  // ld1h	{z1.h}, p2/z, [x3, x11, lsl #1]
+    KAI_ASM_INST(0xa4ab4bc0)  // ld1h	{z0.h}, p2/z, [x30, x11, lsl #1]
+    KAI_ASM_INST(0xaa0a03e4)  // mov	x4, x10
+    KAI_ASM_INST(0xb40001c5)  // cbz	x5, 1a8 <MlasHgemv2Float16Kernel_sve+0x1a8>
+    KAI_ASM_INST(0xd2800002)  // mov	x2, #0x0
+    KAI_ASM_INST(0xd37ff841)  // lsl	x1, x2, #1
+    KAI_ASM_INST(0x91000442)  // add	x2, x2, #0x1
+    KAI_ASM_INST(0xa4a0a882)  // ld1h	{z2.h}, p2/z, [x4]
+    KAI_ASM_INST(0x8b010007)  // add	x7, x0, x1
+    KAI_ASM_INST(0x8b090084)  // add	x4, x4, x9
+    KAI_ASM_INST(0x8b010101)  // add	x1, x8, x1
+    KAI_ASM_INST(0x84c0a4e4)  // ld1rh	{z4.h}, p1/z, [x7]
+    KAI_ASM_INST(0x84c0a423)  // ld1rh	{z3.h}, p1/z, [x1]
+    KAI_ASM_INST(0x65640041)  // fmla	z1.h, p0/m, z2.h, z4.h
+    KAI_ASM_INST(0x65630040)  // fmla	z0.h, p0/m, z2.h, z3.h
+    KAI_ASM_INST(0xeb0200bf)  // cmp	x5, x2
+    KAI_ASM_INST(0x54fffea1)  // b.ne	178 <MlasHgemv2Float16Kernel_sve+0x178>
+    KAI_ASM_INST(0xe4ab4861)  // st1h	{z1.h}, p2, [x3, x11, lsl #1]
+    KAI_ASM_INST(0xe4ab4bc0)  // st1h	{z0.h}, p2, [x30, x11, lsl #1]
+    KAI_ASM_INST(0x8b0d016b)  // add	x11, x11, x13
+    KAI_ASM_INST(0x8b0c014a)  // add	x10, x10, x12
+    KAI_ASM_INST(0xeb0b00df)  // cmp	x6, x11
+    KAI_ASM_INST(0x54fffce8)  // b.hi	158 <MlasHgemv2Float16Kernel_sve+0x158>
+    KAI_ASM_INST(0xa94153f3)  // ldp	x19, x20, [sp, #16]
+    KAI_ASM_INST(0xf94013f5)  // ldr	x21, [sp, #32]
+    KAI_ASM_INST(0xa8c37bfd)  // ldp	x29, x30, [sp], #48
+    KAI_ASM_INST(0xd65f03c0)  // ret
+    KAI_ASM_INST(0x2578c000)  // mov	z0.h, #0
+    KAI_ASM_INST(0x04603001)  // mov	z1.d, z0.d
+    KAI_ASM_INST(0x17ffffe5)  // b	16c <MlasHgemv2Float16Kernel_sve+0x16c>
+    KAI_ASM_FUNCTION_END(MlasHgemv2Float16Kernel_sve)
 
     KAI_ASM_END

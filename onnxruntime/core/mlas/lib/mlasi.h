@@ -37,9 +37,7 @@ Abstract:
 
 #include "core/mlas/inc/mlas.h"
 #include "core/mlas/inc/mlas_qnbit.h"
-// Defines _mlas_fp16_ / MLAS_FP16. Needed here (not only via the
-// !BUILD_MLAS_NO_ONNXRUNTIME block below) because MLAS_HGEMM_DISPATCH
-// uses those types in a standalone MLAS build too.
+// MLAS_HGEMM_DISPATCH needs MLAS_FP16 in a standalone MLAS build too.
 #include "core/mlas/inc/mlas_float16.h"
 
 #if defined(_WIN32)
@@ -1680,22 +1678,15 @@ struct MLAS_HGEMM_DISPATCH {
         size_t, size_t, size_t, size_t, size_t, size_t, _mlas_fp16_, _mlas_fp16_);
     typedef void(HGemmKernel_PackedB_Fn)(const MLAS_FP16*, const MLAS_FP16*, MLAS_FP16*,
         size_t, size_t, size_t, size_t, size_t, _mlas_fp16_, _mlas_fp16_);
-    // Transposes a K×M sub-panel of A into a row-major M×K buffer.
-    // Signature: (D, A, lda, CountM, CountK)
-    //   D      — output M×K row-major panel (stride = CountK)
-    //   A      — pointer to A_stored[k_base, m_base], stride between rows = lda
-    //   lda    — row stride of the stored A matrix (in fp16 elements)
-    //   CountM — number of M-columns to transpose (rows of D)
-    //   CountK — number of K-rows    to transpose (cols of D)
+    // (D, A, lda, CountM, CountK): transposes a K x M block of A into the row-major M x K panel D.
     typedef void(HTransposeA_Fn)(MLAS_FP16*, const MLAS_FP16*, size_t, size_t, size_t);
     HPackBKernel_TransposedB_Fn* HPackBKernel_TransposedB = nullptr;
     HPackBKernel_B_Fn* HPackBKernel_B = nullptr;
     HGemmKernel_TransposedB_Fn* HGemmKernel_TransposedB = nullptr;
     HGemmKernel_B_Fn* HGemmKernel_B = nullptr;
     HGemmKernel_PackedB_Fn* HGemmKernel_PackedB = nullptr;
-    HTransposeA_Fn* HTransposeA = nullptr;   // nullptr → fall back to scalar loop
-    // Max M rows passed to HGemmKernel_PackedB in the TransA path.
-    // Must not exceed what the backend's PackedB kernel can handle.
+    HTransposeA_Fn* HTransposeA = nullptr;
+    // Max M rows per HGemmKernel_PackedB call in the TransA path.
     size_t TransAStrideM = 2;
 };
 #endif
