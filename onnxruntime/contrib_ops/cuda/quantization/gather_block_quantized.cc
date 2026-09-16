@@ -13,17 +13,17 @@ namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
 
-#define REGISTER_GATHERBLOCKQUANTIZED(T1, T2, Tind)                     \
-  ONNX_OPERATOR_THREE_TYPED_KERNEL_EX(                                  \
-      GatherBlockQuantized,                                             \
-      kMSDomain, 1,                                                     \
-      T1, T2, Tind,                                                     \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())      \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())      \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>())  \
-          .InputMemoryType(OrtMemTypeCPUInput, 0),                      \
+#define REGISTER_GATHERBLOCKQUANTIZED(T1, T2, Tind)                    \
+  ONNX_OPERATOR_THREE_TYPED_KERNEL_EX(                                 \
+      GatherBlockQuantized,                                            \
+      kMSDomain, 1,                                                    \
+      T1, T2, Tind,                                                    \
+      kCudaExecutionProvider,                                          \
+      (*KernelDefBuilder::Create())                                    \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())     \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())     \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()) \
+          .InputMemoryType(OrtMemTypeCPUInput, 0),                     \
       GatherBlockQuantized<T1, T2, Tind>);
 
 REGISTER_GATHERBLOCKQUANTIZED(uint8_t, float, int32_t);
@@ -249,6 +249,10 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     ORT_RETURN_IF_NOT(data != nullptr && data->Location().device.Type() == OrtDevice::CPU,
                       "GatherBlockQuantized input 0 must reside in CPU memory.");
     if (data->SizeInBytes() != 0) {
+      cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+      CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(Stream(ctx), &capture_status));
+      ORT_RETURN_IF_NOT(capture_status == cudaStreamCaptureStatusNone,
+                        "CUDA Graph capture requires GatherBlockQuantized input 0 to be a constant initializer.");
       runtime_data = GetScratchBuffer<void>(data->SizeInBytes(), GetComputeStream(ctx));
       ORT_RETURN_IF_NOT(runtime_data != nullptr, "Failed to allocate CUDA storage for GatherBlockQuantized input 0.");
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(runtime_data.get(), data->DataRaw(), data->SizeInBytes(),

@@ -14,5 +14,10 @@ prefetch, hash, scan, or copy the complete initializer, and the initializer is n
 Fallback copies are allocated by the CUDA initializer allocator; they are not currently included in capacity-aware
 partitioning estimates.
 
+Because the CPU memory contract is part of the static CUDA kernel registration, non-constant input data is staged to
+CUDA on every run, including for non-FP8 types. Such runtime input is not supported during CUDA Graph capture. Multiple
+nodes that use the same initializer can also create separate fallback copies; direct host access does not duplicate the
+initializer.
+
 This mode primarily reduces GPU memory capacity requirements. Performance depends on storage latency and operating
 system page-cache state, so cold prefill can be slower and less predictable than using resident GPU memory.

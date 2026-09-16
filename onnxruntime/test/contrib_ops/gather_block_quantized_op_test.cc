@@ -18,10 +18,12 @@
 #include "test/util/include/default_providers.h"
 
 #ifdef USE_CUDA
+#include "contrib_ops/cuda/quantization/gather_block_quantized.h"
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "contrib_ops/cuda/quantization/gather_block_quantized.h"
+#endif
 #endif
 
 namespace onnxruntime {
@@ -1373,8 +1375,8 @@ TEST(GatherBlockQuantizedOpTest, FpFloat16Output) {
 
 #ifdef USE_CUDA
 TEST(GatherBlockQuantizedOpTest, HostPageablePolicySelection) {
-  using cuda::GatherBlockQuantizedDataPolicy;
-  using cuda::SelectGatherBlockQuantizedDataPolicy;
+  using contrib::cuda::GatherBlockQuantizedDataPolicy;
+  using contrib::cuda::SelectGatherBlockQuantizedDataPolicy;
 
   EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(false, true, true, false, true),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
@@ -1390,6 +1392,7 @@ TEST(GatherBlockQuantizedOpTest, HostPageablePolicySelection) {
             GatherBlockQuantizedDataPolicy::DeviceCopy);
 }
 
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
 TEST(GatherBlockQuantizedOpTest, HostPageableProviderOptionRoundTripAndHash) {
   CUDAExecutionProviderInfo default_info =
       CUDAExecutionProviderInfo::FromProviderOptions({});
@@ -1483,6 +1486,7 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCuda) {
   test.ConfigEps(std::move(providers));
   test.RunWithConfig();
 }
+#endif
 #endif
 
 TEST(GatherBlockQuantizedOpTest, FpBFloat16OutputCuda) {
