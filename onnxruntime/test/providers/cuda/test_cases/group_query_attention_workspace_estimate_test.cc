@@ -5,6 +5,7 @@
 
 #if !defined(USE_CUDA_MINIMAL) && !defined(DISABLE_CONTRIB_OPS) && !defined(BUILD_CUDA_EP_AS_PLUGIN)
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -254,6 +255,89 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, NodeAdapterParsesAttributesAndTyp
   const auto estimate = EstimateFromNode(SeparateShapes(), options);
   ASSERT_TRUE(estimate.has_value());
   EXPECT_GT(estimate->total_workspace_bytes, 0u);
+}
+
+TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Estimate) {
+  if (!HasCudaDevice()) {
+    GTEST_SKIP() << "A CUDA device is required for the budget integration test.";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{{{"ORT_ENABLE_XQA", "1"}}};
+  CUDAExecutionProviderInfo provider_info;
+  provider_info.sdpa_kernel = kMath;
+  const std::string model_bytes = BuildGroupQueryAttentionKernelModel();
+
+  auto make_session_options = [](size_t memory_threshold) {
+    SessionOptions session_options;
+    session_options.graph_optimization_level = TransformerLevel::Default;
+    const std::string partitioning_settings =
+        std::to_string(memory_threshold) + ",";
+    ORT_THROW_IF_ERROR(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsResourceCudaPartitioningSettings,
+        partitioning_settings.c_str()));
+    return session_options;
+  };
+
+  std::optional<GQAWorkspaceAggregate> estimate;
+  {
+    InferenceSessionWrapper session(make_session_options(1024 * 1024),
+                                    GetEnvironment());
+    auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+    if (cuda_ep->GetDeviceProp().major < 8) {
+      GTEST_SKIP() << "XQA requires compute capability 8.0 or newer.";
+    }
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+    ASSERT_NE(node, nullptr);
+    ASSERT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+    auto shapes = SeparateShapes();
+    shapes[11] = Known({8});
+    estimate = EstimateGroupQueryAttentionWorkspace(
+        *node, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
+        *cuda_ep->GetAttentionKernelOptions());
+    ASSERT_TRUE(estimate.has_value());
+  }
+
+  constexpr size_t kHeadSinkInitializerBytes = 8 * sizeof(MLFloat16);
+  constexpr size_t kOutputBytes = 2 * 4 * 512 * sizeof(MLFloat16);
+  constexpr size_t kPresentCacheBytes = 2 * 2 * 256 * 64 * sizeof(MLFloat16);
+  constexpr size_t kAccountedTensorBytes =
+      kHeadSinkInitializerBytes + kOutputBytes + 2 * kPresentCacheBytes;
+  constexpr size_t kFallbackWorkspaceBytes = kAccountedTensorBytes / 2;
+  ASSERT_LT(estimate->total_workspace_bytes, kFallbackWorkspaceBytes);
+
+  {
+    const size_t threshold =
+        kAccountedTensorBytes + estimate->total_workspace_bytes + 1;
+    InferenceSessionWrapper session(make_session_options(threshold),
+                                    GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(provider_info)));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+    ASSERT_NE(node, nullptr);
+    EXPECT_EQ(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  }
+
+  {
+    const size_t threshold =
+        kAccountedTensorBytes + estimate->total_workspace_bytes;
+    InferenceSessionWrapper session(make_session_options(threshold),
+                                    GetEnvironment());
+    ASSERT_STATUS_OK(session.RegisterExecutionProvider(
+        std::make_shared<CUDAExecutionProvider>(provider_info)));
+    ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
+    ASSERT_STATUS_OK(session.Initialize());
+
+    const Node* node = FindNodeByOpType(session.GetGraph(), "GroupQueryAttention");
+    ASSERT_NE(node, nullptr);
+    EXPECT_NE(node->GetExecutionProviderType(), kCudaExecutionProvider);
+  }
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, NonWindowedTotalKvAndAliasingAreUnavailable) {
