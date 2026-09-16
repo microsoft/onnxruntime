@@ -17,5 +17,8 @@ WebGPU EP in `onnxruntime/core/providers/webgpu/` or `onnxruntime/contrib_ops/we
 Accept correctness and security fixes to existing behavior. Require focused regression coverage for an accepted JSEP
 fix.
 
+For a JSEP WebGPU kernel fix, inspect the corresponding native WebGPU EP implementation. Report an actionable finding
+if the same defect applies there but the change does not include the native fix and focused regression coverage.
+
 Accept deprecation, migration, or removal work. Read and follow
 [`docs/design/onnxruntime_web_jsep_to_webgpu_ep_migration.md`](../../docs/design/onnxruntime_web_jsep_to_webgpu_ep_migration.md).
