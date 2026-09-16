@@ -235,6 +235,8 @@ struct GQAXqaWorkspaceResult {
 };
 
 struct GQAFlashConfig {
+  // Standalone recipes consume this value as-is. Complete recipes accept the
+  // absolute length and apply the windowed resident/staged-capacity bound.
   int64_t total_sequence_length = 0;
   int64_t local_window_size = -1;
   int64_t multi_processor_count = 0;
@@ -310,6 +312,8 @@ struct GQAUnfusedWorkspaceResult {
 };
 
 struct GQAUnfusedConfig {
+  // Complete recipes accept the absolute length and apply the windowed
+  // resident/staged-capacity bound before building the standalone recipe.
   int64_t total_sequence_length = 0;
 };
 

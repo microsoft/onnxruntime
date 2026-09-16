@@ -932,6 +932,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     if (data.use_flash_attention) {
       debug_info.num_splits = parameters.num_splits;
     }
+    debug_info.effective_kv_length_bound = effective_workspace_kv_length;
 
     debug_info.Print("GroupQueryAttention",
                      this->Node().Name(),

@@ -3578,6 +3578,15 @@ static void RunGQACudaCacheAliasingTest(
       ASSERT_STATUS_OK(status);
       EXPECT_NE(kernel_log.find(use_flash ? "SdpaKernel=FLASH_ATTENTION" : "SdpaKernel=MATH"), std::string::npos)
           << kernel_log;
+      if (valid_windowed_cache) {
+        // Single-token decode uses resident capacity C; multi-token runs stage C+S.
+        const int expected_effective_kv_length = std::min(
+            total_length, cache_capacity + (sequence_length > 1 ? sequence_length : 0));
+        EXPECT_NE(kernel_log.find(MakeString(
+                      "EffectiveKvLengthBound=", expected_effective_kv_length)),
+                  std::string::npos)
+            << kernel_log;
+      }
       if (use_flash && valid_windowed_cache) {
         // The staged extent is C+S=11, which uses the runtime's zero encoding
         // for no split-KV workspace. Using the raw total length 257 would cross

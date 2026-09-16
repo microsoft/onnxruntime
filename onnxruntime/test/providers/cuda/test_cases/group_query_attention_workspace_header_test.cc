@@ -11,6 +11,7 @@
 namespace onnxruntime {
 namespace test {
 
+using contrib::cuda::GetGQAEffectiveWorkspaceKvLength;
 using contrib::cuda::GQACompleteWorkspaceRecipe;
 using contrib::cuda::GQAConcreteRoute;
 using contrib::cuda::GQAFlashWorkspaceRecipe;
@@ -38,6 +39,9 @@ static_assert(IsSupportedGQAXqaHeadSize(64));
 static_assert(!IsSupportedGQAXqaHeadSize(96));
 static_assert(IsSupportedGQAXqaGroupSize(5, false));
 static_assert(!IsSupportedGQAXqaGroupSize(5, true));
+static_assert(GetGQAEffectiveWorkspaceKvLength(257, 8, true) == 8);
+static_assert(GetGQAEffectiveWorkspaceKvLength(5, 8, true) == 5);
+static_assert(GetGQAEffectiveWorkspaceKvLength(257, 8, false) == 257);
 
 void CompileGroupQueryAttentionWorkspaceHeaderInIsolation() {
   GQAWorkspaceProblem problem;
