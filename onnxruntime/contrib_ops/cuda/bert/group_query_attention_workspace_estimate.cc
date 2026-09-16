@@ -9,6 +9,7 @@
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -112,8 +113,9 @@ bool ValidateAuxiliaryShapes(const GQAWorkspaceEstimateConfig& config,
         sin->NumDimensions() != 2 || !PositiveDims(*cos) || !PositiveDims(*sin)) {
       return false;
     }
-    const int64_t rotary_width = std::min((*cos)[1], (*sin)[1]);
-    if (rotary_width < head_bound / 2 + head_bound % 2) {
+    const int64_t rotary_width = (*cos)[1];
+    if (rotary_width != (*sin)[1] || rotary_width % 8 != 0 ||
+        rotary_width > head_bound / 2) {
       return false;
     }
   }

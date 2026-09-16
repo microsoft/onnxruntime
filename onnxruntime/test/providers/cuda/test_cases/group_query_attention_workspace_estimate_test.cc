@@ -320,18 +320,29 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsUndersizedPositionIds) {
                   .has_value());
 }
 
-TEST(GroupQueryAttentionWorkspaceEstimateTest, AcceptsLargeRotaryCacheDimensionsWithoutOverflow) {
+TEST(GroupQueryAttentionWorkspaceEstimateTest, ValidatesPartialRotaryCaches) {
   AttentionKernelOptions options;
   options.InitializeOnce(kMath, true);
   auto config = Config();
   config.do_rotary = true;
   auto shapes = SeparateShapes();
   constexpr int64_t kMaxDimension = std::numeric_limits<int64_t>::max();
-  shapes[7] = Known({kMaxDimension, kMaxDimension});
-  shapes[8] = Known({kMaxDimension, kMaxDimension});
+  shapes[7] = Known({kMaxDimension, 8});
+  shapes[8] = Known({kMaxDimension, 8});
   EXPECT_TRUE(EstimateGroupQueryAttentionWorkspace(
                   config, shapes, Device(), options)
                   .has_value());
+
+  shapes[8] = Known({kMaxDimension, 16});
+  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                   config, shapes, Device(), options)
+                   .has_value());
+
+  shapes[7] = Known({kMaxDimension, 40});
+  shapes[8] = Known({kMaxDimension, 40});
+  EXPECT_FALSE(EstimateGroupQueryAttentionWorkspace(
+                   config, shapes, Device(), options)
+                   .has_value());
 }
 
 TEST(GroupQueryAttentionWorkspaceEstimateTest, RejectsNoncausalLocalWindow) {
@@ -679,6 +690,9 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRo
   CUDAExecutionProviderInfo provider_info;
   provider_info.sdpa_kernel = kMath;
   auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
+  if (cuda_ep->GetDeviceProp().major < 8) {
+    GTEST_SKIP() << "XQA requires compute capability 8.0 or newer.";
+  }
   ASSERT_STATUS_OK(session.RegisterExecutionProvider(cuda_ep));
   const std::string model_bytes = BuildGroupQueryAttentionKernelModel();
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
