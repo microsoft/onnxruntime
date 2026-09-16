@@ -217,8 +217,6 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
       {cuda::provider_option_names::kUseTF32, MakeStringWithClassicLocale(info.use_tf32)},
       {cuda::provider_option_names::kFuseConvBias, MakeStringWithClassicLocale(info.fuse_conv_bias)},
       {cuda::provider_option_names::kSdpaKernel, MakeStringWithClassicLocale(info.sdpa_kernel)},
-      {cuda::provider_option_names::kEnableHostPageableGather,
-       MakeStringWithClassicLocale(info.enable_host_pageable_gather)},
   };
 
   return options;

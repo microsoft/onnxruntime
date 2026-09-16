@@ -245,8 +245,6 @@ struct CUDA_Provider : Provider {
     info.use_ep_level_unified_stream = params->use_ep_level_unified_stream != 0;
     info.use_tf32 = params->use_tf32 != 0;
     info.sdpa_kernel = params->sdpa_kernel;
-    info.enable_host_pageable_gather = params->enable_host_pageable_gather != 0;
-
     return std::make_shared<CUDAProviderFactory>(info);
   }
 
@@ -281,7 +279,6 @@ struct CUDA_Provider : Provider {
     cuda_options.use_tf32 = internal_options.use_tf32;
     cuda_options.sdpa_kernel = internal_options.sdpa_kernel;
     cuda_options.fuse_conv_bias = internal_options.fuse_conv_bias;
-    cuda_options.enable_host_pageable_gather = internal_options.enable_host_pageable_gather;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

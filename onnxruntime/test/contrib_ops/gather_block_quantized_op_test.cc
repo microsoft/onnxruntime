@@ -1409,7 +1409,6 @@ TEST(GatherBlockQuantizedOpTest, HostPageableProviderOptionRoundTripAndHash) {
   CUDAExecutionProviderInfo default_info =
       CUDAExecutionProviderInfo::FromProviderOptions({});
   EXPECT_FALSE(default_info.enable_host_pageable_gather);
-  EXPECT_EQ(OrtCUDAProviderOptionsV2{}.enable_host_pageable_gather, 0);
 
   CUDAExecutionProviderInfo disabled_info =
       CUDAExecutionProviderInfo::FromProviderOptions({{"enable_host_pageable_gather", "0"}});
@@ -1434,9 +1433,8 @@ TEST(GatherBlockQuantizedOpTest, FpFallbackWithPrepackingDisabledCuda) {
     GTEST_SKIP() << "CUDA not available";
   }
 
-  OrtCUDAProviderOptionsV2 info;
-  info.enable_host_pageable_gather = 0;
-  auto cuda_ep = CudaExecutionProviderWithOptions(&info);
+  auto cuda_ep = CudaExecutionProviderWithOptions(
+      ProviderOptions{{"enable_host_pageable_gather", "0"}});
   if (cuda_ep == nullptr) {
     GTEST_SKIP() << "CUDA EP not available";
   }
@@ -1483,9 +1481,8 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCuda) {
     GTEST_SKIP() << "CUDA device does not use host page tables for pageable memory";
   }
 
-  OrtCUDAProviderOptionsV2 info;
-  info.enable_host_pageable_gather = 1;
-  auto cuda_ep = CudaExecutionProviderWithOptions(&info);
+  auto cuda_ep = CudaExecutionProviderWithOptions(
+      ProviderOptions{{"enable_host_pageable_gather", "1"}});
   if (cuda_ep == nullptr) {
     GTEST_SKIP() << "CUDA EP not available";
   }
@@ -1530,10 +1527,9 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
     GTEST_SKIP() << "CUDA device does not use host page tables for pageable memory";
   }
 
-  OrtCUDAProviderOptionsV2 info;
-  info.enable_cuda_graph = 1;
-  info.enable_host_pageable_gather = 1;
-  auto cuda_ep = CudaExecutionProviderWithOptions(&info);
+  auto cuda_ep = CudaExecutionProviderWithOptions(
+      ProviderOptions{{"enable_cuda_graph", "1"},
+                      {"enable_host_pageable_gather", "1"}});
   if (cuda_ep == nullptr) {
     GTEST_SKIP() << "CUDA EP not available";
   }

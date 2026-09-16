@@ -13,17 +13,16 @@ namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
 
-#define REGISTER_GATHERBLOCKQUANTIZED(T1, T2, Tind)                    \
-  ONNX_OPERATOR_THREE_TYPED_KERNEL_EX(                                 \
-      GatherBlockQuantized,                                            \
-      kMSDomain, 1,                                                    \
-      T1, T2, Tind,                                                    \
-      kCudaExecutionProvider,                                          \
-      (*KernelDefBuilder::Create())                                    \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())     \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())     \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()) \
-          .InputMemoryType(OrtMemTypeCPUInput, 0),                     \
+#define REGISTER_GATHERBLOCKQUANTIZED(T1, T2, Tind)                     \
+  ONNX_OPERATOR_THREE_TYPED_KERNEL_EX(                                  \
+      GatherBlockQuantized,                                             \
+      kMSDomain, 1,                                                     \
+      T1, T2, Tind,                                                     \
+      kCudaExecutionProvider,                                           \
+      (*KernelDefBuilder::Create())                                     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())      \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())      \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tind>()), \
       GatherBlockQuantized<T1, T2, Tind>);
 
 REGISTER_GATHERBLOCKQUANTIZED(uint8_t, float, int32_t);
@@ -112,7 +111,7 @@ GatherBlockQuantized<T1, T2, Tind>::GatherBlockQuantized(const OpKernelInfo& inf
     LOGS_DEFAULT(WARNING)
         << "enable_host_pageable_gather was requested, but direct host-pageable GatherBlockQuantized "
            "access is unavailable because input 0 is not a constant initializer or the CUDA device lacks pageable "
-           "memory access through host page tables. Falling back to a persistent CUDA copy.";
+           "memory access through host page tables. Using the standard CUDA input path.";
   }
 
   // If block size is set, it has to be no smaller than 16 and must be power of 2.
@@ -131,16 +130,18 @@ Status GatherBlockQuantized<T1, T2, Tind>::CreateDeviceCopy(const Tensor& tensor
   ORT_RETURN_IF_NOT(tensor.Location().device.Type() == OrtDevice::CPU,
                     "GatherBlockQuantized input 0 must reside in CPU memory.");
 
-  data_shape_.assign(tensor.Shape().GetDims().begin(), tensor.Shape().GetDims().end());
   const size_t bytes = tensor.SizeInBytes();
   if (bytes == 0) {
+    data_shape_.assign(tensor.Shape().GetDims().begin(), tensor.Shape().GetDims().end());
     device_data_.reset();
     return Status::OK();
   }
 
-  device_data_ = IAllocator::MakeUniquePtr<void>(alloc, bytes);
-  ORT_RETURN_IF_NOT(device_data_ != nullptr, "Failed to allocate persistent CUDA storage for GatherBlockQuantized.");
-  CUDA_RETURN_IF_ERROR(cudaMemcpy(device_data_.get(), tensor.DataRaw(), bytes, cudaMemcpyHostToDevice));
+  auto device_data = IAllocator::MakeUniquePtr<void>(alloc, bytes);
+  ORT_RETURN_IF_NOT(device_data != nullptr, "Failed to allocate persistent CUDA storage for GatherBlockQuantized.");
+  CUDA_RETURN_IF_ERROR(cudaMemcpy(device_data.get(), tensor.DataRaw(), bytes, cudaMemcpyHostToDevice));
+  data_shape_.assign(tensor.Shape().GetDims().begin(), tensor.Shape().GetDims().end());
+  device_data_ = std::move(device_data);
   return Status::OK();
 }
 
@@ -149,12 +150,17 @@ Status GatherBlockQuantized<T1, T2, Tind>::PrePack(
     const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     bool& is_packed, PrePackedWeights* prepacked_weights) {
   is_packed = false;
-  if (input_idx != 0 || direct_host_data_) {
+  if (input_idx != 0) {
     return Status::OK();
   }
 
   std::lock_guard<std::mutex> lock(device_data_mutex_);
-  ORT_RETURN_IF_ERROR(CreateDeviceCopy(tensor, std::move(alloc)));
+  if (direct_host_data_) {
+    direct_host_data_ptr_ = tensor.Data<T1>();
+    data_shape_.assign(tensor.Shape().GetDims().begin(), tensor.Shape().GetDims().end());
+  } else {
+    ORT_RETURN_IF_ERROR(CreateDeviceCopy(tensor, std::move(alloc)));
+  }
   is_packed = true;
   if (prepacked_weights != nullptr) {
     prepacked_weights->has_kernel_owned_packed_weights_ = true;
@@ -225,16 +231,14 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     return Status::OK();
   }
 
-  IAllocatorUniquePtr<void> runtime_data;
   const T1* data_ptr = nullptr;
   if (direct_host_data_) {
-    ORT_RETURN_IF_NOT(data != nullptr && data->Location().device.Type() == OrtDevice::CPU,
-                      "Direct host-pageable GatherBlockQuantized requires CPU-resident input 0.");
-    data_ptr = data->Data<T1>();
+    data_ptr = direct_host_data_ptr_;
   } else if (data_is_constant_) {
     {
       std::lock_guard<std::mutex> lock(device_data_mutex_);
-      if (device_data_ == nullptr && data != nullptr && data->SizeInBytes() != 0) {
+      if (device_data_ == nullptr && data != nullptr &&
+          data->Location().device.Type() == OrtDevice::CPU && data->SizeInBytes() != 0) {
         cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
         CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(Stream(ctx), &capture_status));
         ORT_RETURN_IF_NOT(
@@ -243,22 +247,12 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
             "Enable prepacking or run an uncaptured warmup iteration before capture.");
         ORT_RETURN_IF_ERROR(CreateDeviceCopy(*data, Info().GetAllocator(OrtMemTypeDefault)));
       }
-      data_ptr = static_cast<const T1*>(device_data_.get());
+      data_ptr = device_data_ != nullptr ? static_cast<const T1*>(device_data_.get())
+                 : data == nullptr       ? nullptr
+                                         : data->Data<T1>();
     }
   } else {
-    ORT_RETURN_IF_NOT(data != nullptr && data->Location().device.Type() == OrtDevice::CPU,
-                      "GatherBlockQuantized input 0 must reside in CPU memory.");
-    if (data->SizeInBytes() != 0) {
-      cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
-      CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(Stream(ctx), &capture_status));
-      ORT_RETURN_IF_NOT(capture_status == cudaStreamCaptureStatusNone,
-                        "CUDA Graph capture requires GatherBlockQuantized input 0 to be a constant initializer.");
-      runtime_data = GetScratchBuffer<void>(data->SizeInBytes(), GetComputeStream(ctx));
-      ORT_RETURN_IF_NOT(runtime_data != nullptr, "Failed to allocate CUDA storage for GatherBlockQuantized input 0.");
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(runtime_data.get(), data->DataRaw(), data->SizeInBytes(),
-                                           cudaMemcpyHostToDevice, Stream(ctx)));
-      data_ptr = static_cast<const T1*>(runtime_data.get());
-    }
+    data_ptr = data->Data<T1>();
   }
   ORT_RETURN_IF_NOT(N == 0 || data_ptr != nullptr,
                     "GatherBlockQuantized fallback has no device-resident input 0.");

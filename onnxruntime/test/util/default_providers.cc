@@ -13,6 +13,10 @@
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 #ifdef USE_CUDA
+#if !defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) || !defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+#include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
+#endif
 #include "core/providers/cuda/cuda_provider_options.h"
 #endif
 #if defined(USE_WEBGPU)
@@ -55,8 +59,6 @@ std::unique_ptr<IExecutionProvider> CudaPluginExecutionProviderWithOptions(const
     AddCudaPluginOption(config_options, "use_tf32", std::to_string(provider_options->use_tf32));
     AddCudaPluginOption(config_options, "fuse_conv_bias", std::to_string(provider_options->fuse_conv_bias));
     AddCudaPluginOption(config_options, "sdpa_kernel", std::to_string(provider_options->sdpa_kernel));
-    AddCudaPluginOption(config_options, "enable_host_pageable_gather",
-                        std::to_string(provider_options->enable_host_pageable_gather));
   }
 
   return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
@@ -196,6 +198,24 @@ std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCU
   if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
     return factory->CreateProvider();
   return nullptr;
+#endif
+#else
+  ORT_UNUSED_PARAMETER(provider_options);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const ProviderOptions& provider_options) {
+#ifdef USE_CUDA
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  ConfigOptions config_options;
+  for (const auto& [key, value] : provider_options) {
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(key.c_str(), value.c_str()));
+  }
+  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
+#else
+  return std::make_unique<CUDAExecutionProvider>(
+      CUDAExecutionProviderInfo::FromProviderOptions(provider_options));
 #endif
 #else
   ORT_UNUSED_PARAMETER(provider_options);

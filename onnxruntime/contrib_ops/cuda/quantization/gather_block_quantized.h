@@ -47,6 +47,7 @@ class GatherBlockQuantized final : public CudaKernel {
   bool direct_host_data_;
   bool data_is_constant_;
   mutable std::mutex device_data_mutex_;
+  const T1* direct_host_data_ptr_{};
   mutable IAllocatorUniquePtr<void> device_data_;
   mutable TensorShapeVector data_shape_;
 };
