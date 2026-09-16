@@ -1394,6 +1394,8 @@ TEST(GatherBlockQuantizedOpTest, HostPageablePolicySelection) {
             GatherBlockQuantizedDataPolicy::DeviceCopy);
   EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, true, true),
             GatherBlockQuantizedDataPolicy::DirectHost);
+  EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, false, true, true, true),
+            GatherBlockQuantizedDataPolicy::DeviceCopy);
   EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, false, true, true),
             GatherBlockQuantizedDataPolicy::DeviceCopy);
   EXPECT_EQ(SelectGatherBlockQuantizedDataPolicy(true, true, true, false, true),
@@ -1558,7 +1560,6 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
 
   Env::MappedMemoryPtr mapped_memory;
   ASSERT_STATUS_OK(Env::Default().MapFileIntoMemory(data_path.c_str(), 0, data_bytes, mapped_memory));
-  const void* const mapped_address = mapped_memory.get();
   OrtMemoryInfo cpu_memory_info{CPU, OrtDeviceAllocator};
   Tensor mapped_tensor(DataTypeImpl::GetType<Float8E4M3FN>(), TensorShape({4, 2}),
                        mapped_memory.get(), cpu_memory_info);
@@ -1685,12 +1686,18 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
     verify_output({1.75f, 2.0f, 1.5f, 2.0f});
 
 #ifndef _WIN32
+    auto* mapped_data = reinterpret_cast<Float8E4M3FN*>(mapped_memory.get());
+    mapped_data[2] = Float8E4M3FN(6.0f);
+    mapped_data[3] = Float8E4M3FN(8.0f);
+    mapped_data[6] = Float8E4M3FN(2.0f);
+    mapped_data[7] = Float8E4M3FN(4.0f);
+    ASSERT_STATUS_OK(session.Run(run_options, *io_binding));
+    verify_output({0.5f, 1.0f, 3.0f, 4.0f});
+
     ASSERT_EQ(0, madvise(mapped_memory.get(), data_bytes, MADV_DONTNEED));
     ASSERT_STATUS_OK(session.Run(run_options, *io_binding));
     verify_output({1.75f, 2.0f, 1.5f, 2.0f});
 #endif
-
-    EXPECT_EQ(mapped_address, mapped_memory.get());
   }
 }
 #endif
