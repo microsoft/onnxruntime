@@ -7038,7 +7038,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Only for policy_mode 'qsa': maximum number of tokens selected from complete blocks. Must be > 0 and divisible by compress_ratio. Must be omitted when policy_mode is 'csa'.</dd>
 </dl>
 
-#### Inputs (6 - 13)
+#### Inputs (7 - 13)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
