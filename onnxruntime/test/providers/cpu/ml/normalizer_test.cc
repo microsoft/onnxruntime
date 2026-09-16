@@ -156,6 +156,33 @@ TEST(Normalizer, TwoDimensionDouble) {
   RunTests(input, dims, max_output, l1_output, l2_output);
 }
 
+TEST(Normalizer, ExtremeMagnitudeDouble) {
+  std::vector<int64_t> dims = {2, 2};
+  std::vector<double> input = {1e300, 1e300,
+                               1e-300, -1e-300};
+
+  std::vector<float> max_output{1.f, 1.f,
+                                1.f, -1.f};
+
+  std::vector<float> l1_output{0.5f, 0.5f,
+                               0.5f, -0.5f};
+
+  std::vector<float> l2_output{0.70710677f, 0.70710677f,
+                               0.70710677f, -0.70710677f};
+
+  RunTests(input, dims, max_output, l1_output, l2_output);
+}
+
+TEST(Normalizer, ExtremeMagnitudeFloatL2) {
+  std::vector<int64_t> dims = {2, 2};
+  std::vector<float> input = {1e30f, 1e30f,
+                              1e-30f, -1e-30f};
+  std::vector<float> output{0.70710677f, 0.70710677f,
+                            0.70710677f, -0.70710677f};
+
+  RunTest(input, dims, output, "L2");
+}
+
 #if defined(_M_AMD64) || defined(__x86_64__)
 TEST(Normalizer, TwoDimensionInt) {
   std::vector<int64_t> dims = {3, 2};
