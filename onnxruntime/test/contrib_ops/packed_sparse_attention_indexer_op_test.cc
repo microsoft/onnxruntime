@@ -91,6 +91,7 @@ struct GraphOptions {
   int64_t rotary_width = 8;
   int64_t compress_ratio = 2;
   int64_t state_capacity = 6;
+  int64_t input_state_capacity = -1;
   int64_t token_budget = 4;
   bool add_index_topk = false;
   bool add_csa_inputs = false;
@@ -133,8 +134,10 @@ void AddNode(ModelTestBuilder& builder, const GraphOptions& options) {
   } else {
     inputs.push_back(&empty);
   }
+  const int64_t input_state_capacity =
+      options.input_state_capacity >= 0 ? options.input_state_capacity : options.state_capacity;
   inputs.push_back(
-      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, options.state_capacity, options.head_size}));
+      builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, input_state_capacity, options.head_size}));
   inputs.push_back(
       builder.MakeInput<float>(std::vector<int64_t>{options.batch_size, buffer_capacity, width}));
   if (is_csa) {
@@ -179,6 +182,13 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaInfersFixedCapacityAndSt
               {options.batch_size, BufferCapacity(options.compress_ratio), options.head_size});
   ExpectShape(graph, node.OutputDefs()[psai::kPresentStateLengths]->Name(),
               ONNX_NAMESPACE::TensorProto_DataType_INT32, {options.batch_size, 2});
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateCapacityShapeMismatch) {
+  GraphOptions options;
+  options.input_state_capacity = options.state_capacity + 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "past_key_state dimension 1 must equal state_capacity");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, CsaInfersFixedCapacityAndState) {
@@ -481,10 +491,11 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
   const int capacity = p.Capacity();
 
   out.present_key_state = p.past_key_state;
-  out.present_kv_buffer.assign(static_cast<size_t>(p.batch_size) * buffer_capacity * head_size, 0.0f);
-  out.present_state_lengths.assign(static_cast<size_t>(p.batch_size) * 2, 0);
+  out.present_kv_buffer = p.past_kv_buffer;
+  out.present_state_lengths = p.past_state_lengths;
 
   std::vector<int> key_len_after(static_cast<size_t>(p.batch_size));
+  std::vector<bool> overflowed(static_cast<size_t>(p.batch_size), false);
   for (int b = 0; b < p.batch_size; ++b) {
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
@@ -494,8 +505,14 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
     const int old_buf_len =
         std::clamp(p.past_state_lengths[static_cast<size_t>(b) * 2 + 1], 0, p.compress_ratio - 1);
     const int pending = old_buf_len + req_len;
-    const int new_block_count = std::min(pending / p.compress_ratio, std::max(p.state_capacity - old_key_len, 0));
-    const int new_buf_len = new_block_count < pending / p.compress_ratio ? 0 : pending % p.compress_ratio;
+    const int full_new_block_count = pending / p.compress_ratio;
+    overflowed[static_cast<size_t>(b)] = full_new_block_count > std::max(p.state_capacity - old_key_len, 0);
+    if (overflowed[static_cast<size_t>(b)]) {
+      key_len_after[static_cast<size_t>(b)] = old_key_len;
+      continue;
+    }
+    const int new_block_count = full_new_block_count;
+    const int new_buf_len = pending % p.compress_ratio;
 
     auto raw_value = [&](int virtual_pos, int d) -> float {
       return virtual_pos < old_buf_len
@@ -535,6 +552,9 @@ void QsaPackedReference(const QsaPackedProblem& p, QsaPackedResult& out) {
   out.selected_indices.assign(static_cast<size_t>(total_tokens) * capacity, -1);
   out.selected_counts.assign(static_cast<size_t>(total_tokens), 0);
   for (int b = 0; b < p.batch_size; ++b) {
+    if (overflowed[static_cast<size_t>(b)]) {
+      continue;
+    }
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
     for (int token = req_start; token < req_end; ++token) {
@@ -705,7 +725,7 @@ TEST(PackedSparseAttentionIndexerTest, QsaZeroTokenRequestRow) {
 }
 
 // state_capacity smaller than what the incoming tokens would naturally produce: the update must
-// deterministically drop the overflowing blocks rather than corrupt memory.
+// reject the request's step without partially changing its state.
 TEST(PackedSparseAttentionIndexerTest, QsaStateCapacityOverflowIsSafe) {
   QsaPackedProblem problem;
   problem.cumulative_sequence_lengths = {0, 6};
@@ -715,6 +735,22 @@ TEST(PackedSparseAttentionIndexerTest, QsaStateCapacityOverflowIsSafe) {
   problem.past_state_lengths = {2, 0};
   RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)));
 }
+
+#ifdef USE_WEBGPU
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaFloat) {
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(), ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, QsaStateCapacityOverflowIsRejected) {
+  QsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 6};
+  problem.past_sequence_lengths = {4};
+  problem.state_capacity = 2;
+  problem.past_state_lengths = {2, 0};
+  RunQsaPackedTest<float>(1.0e-5f, MakeQsaPackedProblem(std::move(problem)), ProviderKind::WebGpu);
+}
+#endif
 
 namespace {
 
@@ -771,10 +807,11 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
   const float head_weight_scale = p.head_weight_scale.value_or(1.0f / std::sqrt(static_cast<float>(p.num_heads)));
 
   out.present_key_state = p.past_key_state;
-  out.present_kv_buffer.assign(static_cast<size_t>(p.batch_size) * buffer_capacity * width, 0.0f);
-  out.present_gate_buffer.assign(static_cast<size_t>(p.batch_size) * buffer_capacity * width, 0.0f);
-  out.present_state_lengths.assign(static_cast<size_t>(p.batch_size) * 2, 0);
+  out.present_kv_buffer = p.past_kv_buffer;
+  out.present_gate_buffer = p.past_gate_buffer;
+  out.present_state_lengths = p.past_state_lengths;
   std::vector<int> key_len_after(static_cast<size_t>(p.batch_size));
+  std::vector<bool> overflowed(static_cast<size_t>(p.batch_size), false);
 
   for (int b = 0; b < p.batch_size; ++b) {
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
@@ -788,21 +825,22 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
     const int leftover_length = old_buf_len - overlap_length;
     const int pending = leftover_length + req_len;
     const int full_new_window_count = pending / p.compress_ratio;
-    const int new_window_count =
-        std::min(full_new_window_count, std::max(p.state_capacity - old_key_len, 0));
-    const bool overflowed = new_window_count < full_new_window_count;
+    overflowed[static_cast<size_t>(b)] = full_new_window_count > std::max(p.state_capacity - old_key_len, 0);
+    if (overflowed[static_cast<size_t>(b)]) {
+      key_len_after[static_cast<size_t>(b)] = old_key_len;
+      continue;
+    }
+    const int new_window_count = full_new_window_count;
     int present_buffer_length = 0;
     int present_buffer_start = 0;
-    if (!overflowed) {
-      if (new_window_count > 0) {
-        present_buffer_length = p.compress_ratio + pending % p.compress_ratio;
-        present_buffer_start = overlap_length + (new_window_count - 1) * p.compress_ratio;
-      } else {
-        present_buffer_length = old_buf_len + req_len;
-        present_buffer_start = 0;
-      }
-      present_buffer_length = std::min(present_buffer_length, buffer_capacity);
+    if (new_window_count > 0) {
+      present_buffer_length = p.compress_ratio + pending % p.compress_ratio;
+      present_buffer_start = overlap_length + (new_window_count - 1) * p.compress_ratio;
+    } else {
+      present_buffer_length = old_buf_len + req_len;
+      present_buffer_start = 0;
     }
+    present_buffer_length = std::min(present_buffer_length, buffer_capacity);
 
     auto extended_key = [&](int virtual_pos, int channel) -> float {
       return virtual_pos < old_buf_len
@@ -874,6 +912,9 @@ void CsaPackedReference(const CsaPackedProblem& p, CsaPackedResult& out) {
   out.selected_indices.assign(static_cast<size_t>(total_tokens) * capacity, -1);
   out.selected_counts.assign(static_cast<size_t>(total_tokens), 0);
   for (int b = 0; b < p.batch_size; ++b) {
+    if (overflowed[static_cast<size_t>(b)]) {
+      continue;
+    }
     const int req_start = p.cumulative_sequence_lengths[static_cast<size_t>(b)];
     const int req_end = p.cumulative_sequence_lengths[static_cast<size_t>(b) + 1];
     for (int token = req_start; token < req_end; ++token) {
@@ -1039,6 +1080,30 @@ TEST(PackedSparseAttentionIndexerTest, CsaPrefillThenDecodeIndependentState) {
   problem.past_state_lengths = {1, 1, 0, 0};
   RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
 }
+
+TEST(PackedSparseAttentionIndexerTest, CsaStateCapacityOverflowIsRejected) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 4};
+  problem.state_capacity = 1;
+  problem.past_state_lengths = {1, 0};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f);
+}
+
+#ifdef USE_WEBGPU
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaFloat) {
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(), 1.0e-5f, ProviderKind::WebGpu);
+}
+
+TEST(PackedSparseAttentionIndexerWebGpuTest, CsaStateCapacityOverflowIsRejected) {
+  CsaPackedProblem problem;
+  problem.batch_size = 1;
+  problem.cumulative_sequence_lengths = {0, 4};
+  problem.state_capacity = 1;
+  problem.past_state_lengths = {1, 0};
+  RunCsaPackedTest<float>(MakeCsaPackedProblem(std::move(problem)), 1.0e-5f, ProviderKind::WebGpu);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -19,17 +19,19 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 namespace psai = onnxruntime::contrib::packed_sparse_attention_indexer;
 
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
-      PackedSparseAttentionIndexer,                                     \
-      kMSDomain,                                                        \
-      1,                                                                \
-      T,                                                                \
-      kCudaExecutionProvider,                                           \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())  \
-          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()), \
+#define REGISTER_KERNEL_TYPED(T)                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
+      PackedSparseAttentionIndexer,                                    \
+      kMSDomain,                                                       \
+      1,                                                               \
+      T,                                                               \
+      kCudaExecutionProvider,                                          \
+      (*KernelDefBuilder::Create())                                    \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
+          .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()) \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int32_t>()) \
+          .MayInplace(11, 2)                                           \
+          .MayInplace(14, 5),                                          \
       PackedSparseAttentionIndexer<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -98,11 +100,10 @@ PackedSparseAttentionIndexer<T>::PackedSparseAttentionIndexer(const OpKernelInfo
   ORT_ENFORCE(compress_ratio_ > 0 && compress_ratio_ <= std::numeric_limits<int>::max(),
               "PackedSparseAttentionIndexer: compress_ratio must be in (0, INT_MAX], got ", compress_ratio_);
 
-  int64_t state_capacity = 0;
-  ORT_ENFORCE(info.GetAttr<int64_t>("state_capacity", &state_capacity).IsOK(),
+  ORT_ENFORCE(info.GetAttr<int64_t>("state_capacity", &state_capacity_).IsOK(),
               "PackedSparseAttentionIndexer: state_capacity is required");
-  ORT_ENFORCE(state_capacity > 0 && state_capacity <= std::numeric_limits<int>::max(),
-              "PackedSparseAttentionIndexer: state_capacity must be in (0, INT_MAX], got ", state_capacity);
+  ORT_ENFORCE(state_capacity_ > 0 && state_capacity_ <= std::numeric_limits<int>::max(),
+              "PackedSparseAttentionIndexer: state_capacity must be in (0, INT_MAX], got ", state_capacity_);
 
   const bool has_token_budget = info.GetAttr<int64_t>("token_budget", &token_budget_).IsOK();
   const bool has_index_topk = info.GetAttr<int64_t>("index_topk", &index_topk_).IsOK();
@@ -197,6 +198,8 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
                     cu_shape.ToString());
   const int64_t batch_size = cu_shape[0] - 1;
   ORT_RETURN_IF_ERROR(CheckIntDimension("batch_size", batch_size));
+  ORT_RETURN_IF(batch_size == 0 && total_tokens != 0,
+                "PackedSparseAttentionIndexer: total_tokens must be 0 when batch_size is 0");
 
   ORT_RETURN_IF_ERROR(CheckShape(past_sequence_lengths, "past_sequence_lengths", {batch_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, head_size}));
@@ -221,6 +224,8 @@ Status PackedSparseAttentionIndexer<T>::ComputeQsa(OpKernelContext* context) con
                     key_state_shape.ToString());
   const int64_t state_capacity = key_state_shape[1];
   ORT_RETURN_IF_ERROR(CheckIntDimension("state_capacity", state_capacity, false));
+  ORT_RETURN_IF_NOT(state_capacity == state_capacity_,
+                    "PackedSparseAttentionIndexer: past_key_state capacity must match the state_capacity attribute");
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio_);
   ORT_RETURN_IF_ERROR(CheckShape(past_kv_buffer, "past_kv_buffer", {batch_size, buffer_capacity, head_size}));
@@ -329,6 +334,8 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
                     cu_shape.ToString());
   const int64_t batch_size = cu_shape[0] - 1;
   ORT_RETURN_IF_ERROR(CheckIntDimension("batch_size", batch_size));
+  ORT_RETURN_IF(batch_size == 0 && total_tokens != 0,
+                "PackedSparseAttentionIndexer: total_tokens must be 0 when batch_size is 0");
 
   ORT_RETURN_IF_ERROR(CheckShape(past_sequence_lengths, "past_sequence_lengths", {batch_size}));
   ORT_RETURN_IF_ERROR(CheckShape(key, "key", {total_tokens, width}));
@@ -354,6 +361,8 @@ Status PackedSparseAttentionIndexer<T>::ComputeCsa(OpKernelContext* context) con
                     key_state_shape.ToString());
   const int64_t state_capacity = key_state_shape[1];
   ORT_RETURN_IF_ERROR(CheckIntDimension("state_capacity", state_capacity, false));
+  ORT_RETURN_IF_NOT(state_capacity == state_capacity_,
+                    "PackedSparseAttentionIndexer: past_key_state capacity must match the state_capacity attribute");
 
   const int64_t buffer_capacity = psai::GenericBufferCapacity(compress_ratio_);
   ORT_RETURN_IF_ERROR(CheckShape(past_kv_buffer, "past_kv_buffer", {batch_size, buffer_capacity, width}));

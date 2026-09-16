@@ -23,6 +23,7 @@ class PackedSparseAttentionIndexer final : public onnxruntime::cuda::CudaKernel 
 
   packed_sparse_attention_indexer::Policy policy_;
   int64_t compress_ratio_;
+  int64_t state_capacity_;
   int64_t token_budget_;
   int64_t index_topk_;
   float epsilon_;

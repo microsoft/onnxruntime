@@ -36,6 +36,7 @@ class PackedSparseAttentionIndexerQsaUpdateProgram final
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"total_tokens", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
       {"state_capacity", ProgramUniformVariableDataType::Uint32},
       {"buffer_capacity", ProgramUniformVariableDataType::Uint32},
@@ -88,6 +89,7 @@ class PackedSparseAttentionIndexerCsaUpdateProgram final
   Status GenerateShaderCode(ShaderHelper& shader) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"total_tokens", ProgramUniformVariableDataType::Uint32},
       {"compress_ratio", ProgramUniformVariableDataType::Uint32},
       {"state_capacity", ProgramUniformVariableDataType::Uint32},
       {"buffer_capacity", ProgramUniformVariableDataType::Uint32},
@@ -137,6 +139,7 @@ class PackedSparseAttentionIndexer final : public WebGpuKernel {
 
   packed_sparse_attention_indexer::Policy policy_;
   int64_t compress_ratio_;
+  int64_t state_capacity_;
   int64_t token_budget_;
   int64_t index_topk_;
   float epsilon_;

@@ -85,7 +85,8 @@ __global__ void ElementwiseCopyKernel(const T* src, T* dst, int64_t count) {
 template <typename T>
 __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, const T* cos_cache,
                                      const T* sin_cache, const int32_t* cumulative_sequence_lengths,
-                                     const T* past_kv_buffer, const int32_t* past_state_lengths,
+                                     const int32_t* past_sequence_lengths, const T* past_kv_buffer,
+                                     const int32_t* past_state_lengths,
                                      T* present_key_state, T* present_kv_buffer,
                                      int32_t* present_state_lengths, int32_t* overflow_flags,
                                      PackedSparseAttentionIndexerParams params) {
@@ -97,11 +98,20 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
   for (int b = static_cast<int>(blockIdx.x); b < params.batch_size; b += static_cast<int>(gridDim.x)) {
     const int req_start = cumulative_sequence_lengths[b];
     const int req_end = cumulative_sequence_lengths[b + 1];
-    const int req_len = req_end > req_start ? req_end - req_start : 0;
-
-    const int old_key_len = min(max(past_state_lengths[b * 2 + psai::kKeyStateLength], 0), params.state_capacity);
-    const int old_buf_len =
-        min(max(past_state_lengths[b * 2 + psai::kBufferLength], 0), params.compress_ratio - 1);
+    const int raw_key_len = past_state_lengths[b * 2 + psai::kKeyStateLength];
+    const int raw_buf_len = past_state_lengths[b * 2 + psai::kBufferLength];
+    const int past_sequence_length = past_sequence_lengths[b];
+    const bool invalid_metadata =
+        cumulative_sequence_lengths[0] != 0 ||
+        cumulative_sequence_lengths[params.batch_size] != params.total_tokens ||
+        req_start < 0 || req_end < req_start || req_end > params.total_tokens ||
+        past_sequence_length < 0 || raw_key_len < 0 || raw_key_len > params.state_capacity ||
+        raw_buf_len < 0 || raw_buf_len >= params.compress_ratio ||
+        raw_key_len != past_sequence_length / params.compress_ratio ||
+        raw_buf_len != past_sequence_length % params.compress_ratio;
+    const int req_len = invalid_metadata ? 0 : req_end - req_start;
+    const int old_key_len = min(max(raw_key_len, 0), params.state_capacity);
+    const int old_buf_len = min(max(raw_buf_len, 0), params.compress_ratio - 1);
 
     const int pending = old_buf_len + req_len;
     const int full_new_block_count = pending / params.compress_ratio;
@@ -109,9 +119,9 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
     // Reject (do not partially apply) a step that would need more than the fixed state_capacity:
     // no new blocks are formed and the buffer is left exactly as it was, so a rejected step is a
     // deterministic no-op on state rather than a silent partial truncation.
-    const bool overflowed = full_new_block_count > capacity_left;
-    const int new_block_count = overflowed ? 0 : full_new_block_count;
-    const int new_buf_len = overflowed ? old_buf_len : (pending % params.compress_ratio);
+    const bool rejected = invalid_metadata || full_new_block_count > capacity_left;
+    const int new_block_count = rejected ? 0 : full_new_block_count;
+    const int new_buf_len = rejected ? old_buf_len : (pending % params.compress_ratio);
 
     // Barrier: every thread has now read past_state_lengths (identically) before any thread below
     // writes present_state_lengths, which keeps this correct even if the two tensors alias.
@@ -120,7 +130,7 @@ __global__ void QsaUpdateStateKernel(const T* key, const T* key_norm_weight, con
     if (threadIdx.x == 0) {
       present_state_lengths[b * 2 + psai::kKeyStateLength] = old_key_len + new_block_count;
       present_state_lengths[b * 2 + psai::kBufferLength] = new_buf_len;
-      overflow_flags[b] = overflowed ? 1 : 0;
+      overflow_flags[b] = rejected ? 1 : 0;
     }
 
     for (int k = 0; k < new_block_count; ++k) {
@@ -384,7 +394,8 @@ __global__ void QsaSelectKernel(const float* block_scores, const int32_t* cumula
 template <typename T>
 __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_norm_weight, const T* cos_cache,
                                      const T* sin_cache, const T* position_bias,
-                                     const int32_t* cumulative_sequence_lengths, const T* past_kv_buffer,
+                                     const int32_t* cumulative_sequence_lengths,
+                                     const int32_t* past_sequence_lengths, const T* past_kv_buffer,
                                      const T* past_gate_buffer, const int32_t* past_state_lengths,
                                      T* present_key_state, T* present_kv_buffer, T* present_gate_buffer,
                                      int32_t* present_state_lengths, int32_t* overflow_flags,
@@ -397,11 +408,17 @@ __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_n
   for (int b = static_cast<int>(blockIdx.x); b < params.batch_size; b += static_cast<int>(gridDim.x)) {
     const int req_start = cumulative_sequence_lengths[b];
     const int req_end = cumulative_sequence_lengths[b + 1];
-    const int req_len = req_end > req_start ? req_end - req_start : 0;
-
-    const int old_key_len = min(max(past_state_lengths[b * 2 + psai::kKeyStateLength], 0), params.state_capacity);
-    const int old_buf_len =
-        min(max(past_state_lengths[b * 2 + psai::kBufferLength], 0), params.buffer_capacity);
+    const int raw_key_len = past_state_lengths[b * 2 + psai::kKeyStateLength];
+    const int raw_buf_len = past_state_lengths[b * 2 + psai::kBufferLength];
+    const bool invalid_metadata =
+        cumulative_sequence_lengths[0] != 0 ||
+        cumulative_sequence_lengths[params.batch_size] != params.total_tokens ||
+        req_start < 0 || req_end < req_start || req_end > params.total_tokens ||
+        past_sequence_lengths[b] < 0 || raw_key_len < 0 || raw_key_len > params.state_capacity ||
+        raw_buf_len < 0 || raw_buf_len > params.buffer_capacity;
+    const int req_len = invalid_metadata ? 0 : req_end - req_start;
+    const int old_key_len = min(max(raw_key_len, 0), params.state_capacity);
+    const int old_buf_len = min(max(raw_buf_len, 0), params.buffer_capacity);
 
     sai::CsaWindowPlan plan;
     const bool plan_ok = sai::TryComputeCsaWindowPlan(old_buf_len, req_len, params.compress_ratio, plan);
@@ -413,14 +430,14 @@ __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_n
     // Reject (do not partially apply) a step that would need more than the fixed state_capacity:
     // no new windows are closed and the buffer is left exactly as it was, so a rejected step is a
     // deterministic no-op on state rather than a silent partial truncation.
-    const bool overflowed = full_new_window_count > capacity_left;
-    const int new_window_count = overflowed ? 0 : full_new_window_count;
+    const bool rejected = invalid_metadata || full_new_window_count > capacity_left;
+    const int new_window_count = rejected ? 0 : full_new_window_count;
     const int present_buffer_length =
-        overflowed ? old_buf_len
-                   : (static_cast<int>(plan.present_buffer_length) < params.buffer_capacity
-                          ? static_cast<int>(plan.present_buffer_length)
-                          : params.buffer_capacity);
-    const int present_buffer_start = overflowed ? 0 : static_cast<int>(plan.present_buffer_start);
+        rejected ? old_buf_len
+                 : (static_cast<int>(plan.present_buffer_length) < params.buffer_capacity
+                        ? static_cast<int>(plan.present_buffer_length)
+                        : params.buffer_capacity);
+    const int present_buffer_start = rejected ? 0 : static_cast<int>(plan.present_buffer_start);
     const int overlap_length = static_cast<int>(plan.overlap_length);
 
     // Barrier: every thread has now read past_state_lengths / computed the plan (identically)
@@ -431,7 +448,7 @@ __global__ void CsaUpdateStateKernel(const T* key, const T* gate, const T* key_n
     if (threadIdx.x == 0) {
       present_state_lengths[b * 2 + psai::kKeyStateLength] = old_key_len + new_window_count;
       present_state_lengths[b * 2 + psai::kBufferLength] = present_buffer_length;
-      overflow_flags[b] = overflowed ? 1 : 0;
+      overflow_flags[b] = rejected ? 1 : 0;
     }
 
     for (int k = 0; k < new_window_count; ++k) {
@@ -739,8 +756,8 @@ Status LaunchQsaPackedSparseAttentionIndexer(
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
   const int state_blocks = static_cast<int>(std::min<int64_t>(params.batch_size, kSaiMaxGridDimX));
   QsaUpdateStateKernel<T><<<state_blocks, kThreads, 2 * value_bytes + kThreads * sizeof(float), stream>>>(
-      key, key_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_kv_buffer, past_state_lengths,
-      present_key_state, present_kv_buffer, present_state_lengths, overflow_flags, params);
+      key, key_norm_weight, cos_cache, sin_cache, cumulative_sequence_lengths, past_sequence_lengths, past_kv_buffer,
+      past_state_lengths, present_key_state, present_kv_buffer, present_state_lengths, overflow_flags, params);
 
   if (params.total_tokens == 0) {
     return CUDA_CALL(cudaGetLastError());
@@ -814,9 +831,9 @@ Status LaunchCsaPackedSparseAttentionIndexer(
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
   const int state_blocks = static_cast<int>(std::min<int64_t>(params.batch_size, kSaiMaxGridDimX));
   CsaUpdateStateKernel<T><<<state_blocks, kThreads, value_bytes + kThreads * sizeof(float), stream>>>(
-      key, gate, key_norm_weight, cos_cache, sin_cache, position_bias, cumulative_sequence_lengths, past_kv_buffer,
-      past_gate_buffer, past_state_lengths, present_key_state, present_kv_buffer, present_gate_buffer,
-      present_state_lengths, overflow_flags, params);
+      key, gate, key_norm_weight, cos_cache, sin_cache, position_bias, cumulative_sequence_lengths,
+      past_sequence_lengths, past_kv_buffer, past_gate_buffer, past_state_lengths, present_key_state,
+      present_kv_buffer, present_gate_buffer, present_state_lengths, overflow_flags, params);
 
   if (params.total_tokens == 0) {
     return CUDA_CALL(cudaGetLastError());
@@ -855,7 +872,7 @@ Status LaunchCsaPackedSparseAttentionIndexer(
   template Status LaunchCsaPackedSparseAttentionIndexer<T>(                                                   \
       cudaStream_t, const PackedSparseAttentionIndexerParams&, const T*, const T*, const T*, const T*,        \
       const T*, const T*, const T*, const T*, const int32_t*, const int32_t*, const int64_t*, const T*,       \
-      const T*, const T*, const int32_t*, int32_t*, int32_t*, T*, T*, T*, int32_t*, float*);
+      const T*, const T*, const int32_t*, int32_t*, int32_t*, T*, T*, T*, int32_t*, float*, int32_t*);
 
 INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER(float)
 INSTANTIATE_PACKED_SPARSE_ATTENTION_INDEXER(half)

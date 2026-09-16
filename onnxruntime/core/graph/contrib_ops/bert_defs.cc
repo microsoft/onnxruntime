@@ -2439,6 +2439,10 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   // State never grows: present_* always has exactly the same fixed shape as past_*.
   const auto* key_state_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastKeyState, 3);
   if (key_state_shape != nullptr) {
+    if (key_state_shape->dim(1).has_dim_value() && key_state_shape->dim(1).dim_value() != state_capacity) {
+      fail_shape_inference("PackedSparseAttentionIndexer: past_key_state dimension 1 must equal state_capacity (",
+                           state_capacity, "), got ", key_state_shape->dim(1).dim_value());
+    }
     updateOutputShape(ctx, psai::kPresentKeyState, *key_state_shape);
   }
   const auto* kv_buffer_shape = PackedSparseAttentionIndexerShape(ctx, psai::kPastKvBuffer, 3);
