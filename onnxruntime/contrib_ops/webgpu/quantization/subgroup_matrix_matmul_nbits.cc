@@ -5,6 +5,7 @@
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "core/providers/webgpu/math/subgroup_matrix_config.h"
 #include "core/providers/webgpu/vendor/intel/intel_device_info.h"
+#include "core/providers/webgpu/webgpu_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -86,10 +87,12 @@ Status GenerateShaderCode8x16x16(ShaderHelper& shader,
                                  const ShaderVariableHelper& b,
                                  const ShaderVariableHelper& scales_b,
                                  const ShaderVariableHelper& output,
-                                 uint32_t nbits, int32_t config_index, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect) {
+                                 uint32_t nbits, int32_t config_index, bool has_zero_points, bool has_bias, bool has_weight_idx, bool has_weight_idx_indirect,
+                                 bool has_tail_buffer) {
   const auto& config = supported_subgroup_matrix_configs[config_index];
   return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_8x16x16.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias),
+                             WGSL_TEMPLATE_PARAMETER(has_tail_buffer, has_tail_buffer),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx, has_weight_idx),
                              WGSL_TEMPLATE_PARAMETER(has_weight_idx_indirect, has_weight_idx_indirect),
                              WGSL_TEMPLATE_PARAMETER(has_zero_points, has_zero_points),
@@ -133,12 +136,15 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
     shader.AddInput("weight_index_indirect", ShaderUsage::UseUniform);
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  if (has_tail_buffer_) {
+    shader.AddOutput("tail_output", ShaderUsage::None);
+  }
 
   const auto& config = supported_subgroup_matrix_configs[config_index_];
   if (config.Is(8, 8, 8)) {
     return GenerateShaderCode8x8x8(shader, a, b, scales_b, output, nbits_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else if (config.Is(8, 16, 16)) {
-    return GenerateShaderCode8x16x16(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
+    return GenerateShaderCode8x16x16(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_, has_tail_buffer_);
   } else if (config.Is(16, 16, 16)) {
     return GenerateShaderCode16x16x16(shader, b, scales_b, output, nbits_, config_index_, has_zero_points_, has_bias_, has_weight_idx_, has_weight_idx_indirect_);
   } else {
@@ -146,6 +152,25 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
                   "Unsupported subgroup matrix config dimensions.");
   }
 }
+
+// Crops the valid rows out of the padded tail-tile buffer written by the
+// SubgroupMatrixMatMulNBitsProgram's no-bias edge-tile fast path (see
+// `has_tail_buffer` in subgroup_matrix_matmul_nbits_8x16x16.wgsl.template) and
+// copies them into the real output tensor at the tail tile's row offset.
+class SubgroupMatrixMatMulNBitsTailCopyProgram final : public Program<SubgroupMatrixMatMulNBitsTailCopyProgram> {
+ public:
+  SubgroupMatrixMatMulNBitsTailCopyProgram() : Program{"SubgroupMatrixMatMulNBitsTailCopy"} {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    const auto& tail_input = shader.AddInput("tail_input", ShaderUsage::UseValueTypeAlias);
+    const auto& output = shader.AddOutput("output", ShaderUsage::UseValueTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "quantization/subgroup_matrix_matmul_nbits_tail_copy.wgsl.template",
+                               WGSL_TEMPLATE_VARIABLE(output, output),
+                               WGSL_TEMPLATE_VARIABLE(tail_input, tail_input));
+  }
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"output_size", ProgramUniformVariableDataType::Uint32},
+      {"output_offset", ProgramUniformVariableDataType::Uint32});
+};
 
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
                                       const Tensor* zero_points, const Tensor* bias,
@@ -210,7 +235,13 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   const bool has_bias = bias != nullptr;
   const bool has_weight_idx_indirect = weight_index_indirect != nullptr;
   const bool has_weight_idx = weight_index > 0 || has_weight_idx_indirect;
-  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect};
+  // For the no-bias 8x16x16 path, a trailing partial M-tile is written via the same
+  // branch-free fast path as an in-bounds tile, but into a small [tile_size_a, N]
+  // padded buffer instead of `y` (which is too short by this point); the crop-copy
+  // dispatch below moves the valid rows into `y`. This keeps the no-bias write-out
+  // free of any bounds-checked workgroup-scratch store.
+  const bool has_tail_buffer = !has_bias && config.Is(8, 16, 16) && (M % tile_size_a != 0);
+  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, has_tail_buffer};
   mul_program.SetWorkgroupSize(work_group_size);
 
   // On Intel, use a fixed subgroup size of 32 for better performance.
@@ -240,7 +271,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{M}, {N}, {K}, {zero_blocks_per_col}, {weight_index}, {m_tiles_per_wg}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1})
-      .CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect);
+      .CacheHint(nbits, has_zero_points, has_bias, has_weight_idx, has_weight_idx_indirect, has_tail_buffer);
   if (has_zero_points) {
     mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
   }
@@ -250,7 +281,37 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   if (has_weight_idx_indirect) {
     mul_program.AddInput({weight_index_indirect, ProgramTensorMetadataDependency::None});
   }
-  return context.RunProgram(mul_program);
+
+  Tensor tail_buffer;
+  if (has_tail_buffer) {
+    tail_buffer = context.CreateGPUTensor(y->DataType(), TensorShape{tile_size_a, N});
+    mul_program.AddOutput({&tail_buffer, ProgramTensorMetadataDependency::None});
+  }
+  ORT_RETURN_IF_ERROR(context.RunProgram(mul_program));
+
+  if (has_tail_buffer) {
+    // Only the rows below `tail_rows` in `tail_buffer` were ever written by the
+    // main kernel (the tail tile is always the last M-tile, so its row offset is
+    // fixed); crop-copy just those into the real output.
+    constexpr uint32_t kTailCopyComponents = 4;
+    ORT_ENFORCE(N % kTailCopyComponents == 0, "N must be a multiple of ", kTailCopyComponents);
+    const uint32_t tail_rows = M - (num_m_tiles - 1) * tile_size_a;
+    const uint32_t row_offset = (num_m_tiles - 1) * tile_size_a;
+    const uint32_t n_vec4 = N / kTailCopyComponents;
+    const uint32_t output_size = tail_rows * n_vec4;
+    const uint32_t output_offset = row_offset * n_vec4;
+    constexpr uint32_t kCopyWorkgroupSize = 256;
+    SubgroupMatrixMatMulNBitsTailCopyProgram copy_program;
+    copy_program.SetWorkgroupSize(kCopyWorkgroupSize);
+    copy_program.SetDispatchGroupSize(CeilDiv(output_size, kCopyWorkgroupSize));
+
+    copy_program.AddInput({&tail_buffer, ProgramTensorMetadataDependency::Type, kTailCopyComponents})
+        .AddOutput({y, ProgramTensorMetadataDependency::Type, kTailCopyComponents})
+        .AddUniformVariables({{output_size}, {output_offset}});
+    ORT_RETURN_IF_ERROR(context.RunProgram(copy_program));
+  }
+
+  return Status::OK();
 }
 
 bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
@@ -272,6 +333,16 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
   // Dispatch precondition: the subgroup-matrix kernel is reserved for the
   // tile-optimized M range without indirect weight indexing.
   if (!(M >= kMinMForTileOptimization && !has_weight_idx_indirect)) {
+    return false;
+  }
+
+  // Every fp16 config in supported_subgroup_matrix_configs has resultComponentType == F16, and
+  // the kernels declare subgroup_matrix_result<f16, ...> to match, so the accumulation inside
+  // subgroupMatrixMultiplyAccumulate is f16 and there is no variant of this kernel that can
+  // honour an f32 accumulator request. Decline the path instead of ignoring the option: the
+  // caller then falls through to a kernel that does honour it. Only fp16 outputs are affected;
+  // the fp32 config accumulates in f32 already.
+  if (is_fp16 && context.EnableMatmulFp32Accumulation()) {
     return false;
   }
 

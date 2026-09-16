@@ -12,6 +12,7 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
+#include "contrib_ops/cuda/bert/group_query_attention_workspace.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
@@ -325,6 +326,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 /*kv_cache_extra_bits=*/0,
                                                                 sliding_window_cache_,
                                                                 local_window_size_));
+
+  // The CUDA kernel evicts the minimum number of positions on every step, so the cache it produces
+  // is always full at min(T, C). That equals the resident range the operator specifies only when
+  // the capacity has no slack above the window (C == W, i.e. G == 1). Reject a larger capacity
+  // instead of silently returning a layout that neither matches the spec nor the CPU kernel.
+  if (parameters.is_windowed_kv_cache && parameters.kv_cache_real_capacity != local_window_size_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "GroupQueryAttention (CUDA): sliding_window_cache=1 requires the KV cache capacity (",
+                           parameters.kv_cache_real_capacity, ") to equal local_window_size (", local_window_size_,
+                           ").");
+  }
+
 #ifndef USE_INT4_KV_CACHE
   if (kv_cache_bit_width_ == 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_cache_bit_width==4 is not enabled in this build.");
@@ -562,24 +575,23 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     bool is_int8_quantized_supported = is_int8 &&
                                        (is_supported_quant_type(k_quant_type_) &&
                                         is_supported_quant_type(v_quant_type_) &&
-                                        (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
-                                        (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32));
+                                        IsSupportedGQAXqaHeadSize(parameters.head_size) &&
+                                        IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/true));
 
 #ifdef USE_FP8_KV_CACHE
     bool is_fp8_quantized_supported = is_fp8 &&
                                       (is_supported_quant_type(k_quant_type_) &&
                                        is_supported_quant_type(v_quant_type_) &&
-                                       (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
-                                       (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32) &&
+                                       IsSupportedGQAXqaHeadSize(parameters.head_size) &&
+                                       IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/true) &&
                                        (device_prop.major >= 9 || (device_prop.major == 8 && device_prop.minor == 9)));  // FP8 requires SM89+ (Ada Lovelace)
 #else
     constexpr bool is_fp8_quantized_supported = false;
 #endif
 
     bool is_non_quantized_supported = !is_inputs_quantized &&
-                                      (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
-                                      (group_size == 1 || group_size == 2 || group_size == 4 || group_size == 5 ||
-                                       group_size == 8 || group_size == 16 || group_size == 32);
+                                      IsSupportedGQAXqaHeadSize(parameters.head_size) &&
+                                      IsSupportedGQAXqaGroupSize(group_size, /*is_quantized=*/false);
 
     data.use_xqa = (is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported);
 

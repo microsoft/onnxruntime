@@ -162,6 +162,28 @@ The planned operator-specific sequence is:
 5. Separate memory models for Linear, Sparse, Longformer, quantized, and ONNX Attention operators.
 6. Continue the generic planner integration after its budget and multi-slot contracts stabilize.
 
+### GroupQueryAttention XQA and Flash recipes
+
+The first GroupQueryAttention backend follow-up adds graph-free, checked
+recipes for two concrete selected backends:
+
+- XQA reproduces the semaphore, row-max, row-sum, and multi-block output
+  accumulator layout from `GetXQAScratchSize`. Its backend allocation also
+  retains the runtime's aligned RoPE Q/K buffers and dynamic FP32 head-sink
+  conversion. A persistent prepacked head sink is not transient workspace.
+- Flash retains the separate LSE, split-LSE, and split-output allocations.
+  Fast decode selects splits using KV heads and the local-window-adjusted KV
+  length, but sizes accumulators using query heads and a head size rounded to
+  32, matching the GQA override.
+
+Flash split selection is discontinuous and concrete workspace is not monotonic
+in KV length. For example, with `B=1`, `S_q=1`, two heads, head size 64, and
+108 SMs, increasing KV length from 13,824 to 13,825 changes the selected split
+count from 54 to 28 and reduces the concrete split workspace. A future bounded
+aggregate must therefore compute a conservative envelope over the bounded
+domain or report unavailable; evaluating only the componentwise maximum is not
+safe.
+
 MHA and GQA are high-value coverage targets and have high estimation-drift risk. Their runtime behavior can include
 dynamic internal backend dispatch, cache lifecycle and aliasing, optional inputs, non-monotonic fallback paths, and
 unfused workspace governed by `S_q * S_kv_total`. GQA additionally has different Q and KV head counts. MHA can have

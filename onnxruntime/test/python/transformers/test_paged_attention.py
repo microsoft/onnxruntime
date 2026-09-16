@@ -869,6 +869,7 @@ def parity_check_paged_attention(
     new_seqlens_override=None,
     local_window_size_override=None,
     past_seqlens_override=None,
+    k_scale_max_override=None,
 ):
     # Generate padded inputs
     q = torch.randn(
@@ -1005,6 +1006,10 @@ def parity_check_paged_attention(
         k_scale = compute_kv_scale(
             [k_cache_paged, k_ro], config.k_quant_type, config.kv_cache_type, config.kv_num_heads, config.head_size
         )
+        if k_scale_max_override is not None:
+            assert config.k_quant_type == "PER_CHANNEL"
+            k_scale = (k_scale / k_scale.max()) * k_scale_max_override
+            assert torch.isfinite(k_scale).all()
         v_scale = compute_kv_scale(
             [v_cache_paged, v_new], config.v_quant_type, config.kv_cache_type, config.kv_num_heads, config.head_size
         )
@@ -1085,6 +1090,10 @@ def parity_check_paged_attention(
     out = torch.reshape(out, (num_tokens, config.num_heads, config.head_size))
     out = out.detach().cpu().numpy()
 
+    if k_scale_max_override is not None:
+        assert numpy.isfinite(out_ref).all()
+        assert numpy.isfinite(out).all()
+
     err_msg = f" with {config}"
     # The updated cache is compared to the reference at one quantization step of slack: the host
     # computes rotary / RMSNorm slightly differently from the kernel, and a 1-ULP fp16 difference in
@@ -1112,7 +1121,7 @@ def parity_check_paged_attention(
             k_cache_ref[i, : total_seqlens[i]].detach().cpu().numpy(),
             rtol=cache_rtol,
             atol=cache_atol,
-            equal_nan=True,
+            equal_nan=k_scale_max_override is None,
             err_msg=err_msg,
         )
         numpy.testing.assert_allclose(
@@ -1120,13 +1129,15 @@ def parity_check_paged_attention(
             v_cache_ref[i, : total_seqlens[i]].detach().cpu().numpy(),
             rtol=cache_rtol,
             atol=cache_atol,
-            equal_nan=True,
+            equal_nan=k_scale_max_override is None,
             err_msg=err_msg,
         )
         new_seqlen = cum_seqlens[i + 1] - cum_seqlens[i]
         out_i = out[cum_seqlens[i] : cum_seqlens[i + 1]]
         out_ref_i = out_ref[i, :new_seqlen]
-        numpy.testing.assert_allclose(out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=True, err_msg=err_msg)
+        numpy.testing.assert_allclose(
+            out_i, out_ref_i, rtol=rtol, atol=atol, equal_nan=k_scale_max_override is None, err_msg=err_msg
+        )
 
 
 def capture_native_stdout(run_func):
@@ -2289,7 +2300,17 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
             setattr(config, key, value)
         return config
 
-    def _check_xqa(self, quant_type="PER_TENSOR", kv_cache_type="int8", rtol=5e-3, atol=5e-3, **overrides):
+    def _check_xqa(
+        self,
+        quant_type="PER_TENSOR",
+        kv_cache_type="int8",
+        rtol=5e-3,
+        atol=5e-3,
+        k_scale_max_override=None,
+        expect_xqa=None,
+        per_channel_xqa=None,
+        **overrides,
+    ):
         if kv_cache_type == "fp8":
             if not has_fp8_kv_cache():
                 self.skipTest("FP8 KV cache kernels are not built")
@@ -2302,7 +2323,22 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
             v_quant_type=quant_type,
             **overrides,
         )
-        parity_check_paged_attention(config, rtol=rtol, atol=atol)
+
+        def run():
+            parity_check_paged_attention(config, rtol=rtol, atol=atol, k_scale_max_override=k_scale_max_override)
+
+        if expect_xqa is None:
+            run()
+            return
+        with patch.dict(
+            os.environ,
+            {"ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1", "ORT_ENABLE_XQA": "1"},
+        ):
+            debug_output = capture_native_stdout(run)
+        if expect_xqa:
+            self.assertIn("SdpaKernel=XQA", debug_output)
+        else:
+            self.assertNotIn("SdpaKernel=XQA", debug_output)
 
     def _capture_xqa_debug(self, config):
         with patch.dict(
@@ -2485,6 +2521,29 @@ class TestPagedAttentionXqaDecode(unittest.TestCase):
     )
     def test_xqa_quant_type(self, _, kv_cache_type, quant_type):
         self._check_xqa(kv_cache_type=kv_cache_type, quant_type=quant_type)
+
+    @parameterized.expand([("int8", "int8"), ("fp8", "fp8")])
+    def test_xqa_large_per_channel_k_scale(self, _, kv_cache_type):
+        # Scaling the whole table up to FP32 max leaves its dynamic range intact, which is the shape
+        # a calibrated table has. The power-of-two normalizer keeps the fold in range, so this stays
+        # on XQA.
+        self._check_xqa(
+            kv_cache_type=kv_cache_type,
+            quant_type="PER_CHANNEL",
+            k_scale_max_override=torch.finfo(torch.float32).max,
+            expect_xqa=True,
+        )
+
+    @parameterized.expand([("int8", "int8"), ("fp8", "fp8")])
+    def test_per_channel_xqa_opt_out_uses_portable_kernel(self, _, kv_cache_type):
+        # ORT_ENABLE_XQA_PER_CHANNEL_KV=0 is the escape hatch for scale tables whose channel range
+        # exceeds what folding into an fp16 query can hold.
+        self._check_xqa(
+            kv_cache_type=kv_cache_type,
+            quant_type="PER_CHANNEL",
+            expect_xqa=False,
+            per_channel_xqa=False,
+        )
 
     def test_xqa_mixed_granularity(self):
         # k PER_CHANNEL folds into Q, v PER_TENSOR stays a kernel argument: the two scales take
