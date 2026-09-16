@@ -5344,6 +5344,66 @@ TEST(TransposeOptimizerTests, LayoutTransformFixStuckTransposeWithoutDQ) {
   }
 }
 
+TEST(TransposeOptimizerTests, PerAxisQAxisExceedsTransposePermNoOpt) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>(std::nullopt);
+    auto* identity_out = builder.MakeIntermediate<float>(std::nullopt);
+    auto* transpose_out = builder.MakeIntermediate<float>(std::vector<int64_t>(5, -1));
+    auto* output = builder.MakeOutput<uint8_t>(std::vector<int64_t>(5, -1));
+    auto* dq_input = builder.MakeInput<uint8_t>({1}, {uint8_t{1}});
+    auto* dq_output = builder.MakeOutput();
+
+    builder.AddNode("Identity", {input}, {identity_out});
+    auto& transpose = builder.AddNode("Transpose", {identity_out}, {transpose_out});
+    transpose.AddAttribute("perm", std::vector<int64_t>{1, 0});
+    auto& quantize = builder.AddQuantizeLinearNode<uint8_t>(
+        transpose_out, std::vector<float>(3, 0.05f), std::vector<uint8_t>(3, 0), output);
+    quantize.AddAttribute("axis", static_cast<int64_t>(4));
+    builder.AddDequantizeLinearNode<uint8_t>(dq_input, 0.05f, static_cast<uint8_t>(0), dq_output);
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const Node* transpose = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Transpose") {
+        transpose = &node;
+        break;
+      }
+    }
+
+    TEST_RETURN_IF_NOT(transpose != nullptr);
+    TEST_RETURN_IF_NOT(transpose->InputDefs()[0]->Shape() == nullptr);
+    TEST_RETURN_IF_NOT(transpose->OutputDefs()[0]->Shape() != nullptr &&
+                       transpose->OutputDefs()[0]->Shape()->dim_size() == 5);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.count("Transpose") != 0 && op_to_count.at("Transpose") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.count("QuantizeLinear") != 0 && op_to_count.at("QuantizeLinear") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.count("DequantizeLinear") != 0 && op_to_count.at("DequantizeLinear") == 1);
+
+    const Node* quantize = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "QuantizeLinear") {
+        quantize = &node;
+        break;
+      }
+    }
+
+    TEST_RETURN_IF_NOT(quantize != nullptr);
+    const Node* transpose = graph.GetProducerNode(quantize->InputDefs()[0]->Name());
+    TEST_RETURN_IF_NOT(transpose != nullptr && transpose->OpType() == "Transpose");
+    return Status::OK();
+  };
+
+  AllocatorPtr cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, DefaultLoggingManager().DefaultLogger(),
+                                        std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
 // Tests the transpose optimizer's ability to constant fold inserted Transpose and Squeeze nodes.
 // After the core transpose optimization loop, the test model contains the following "constant foldable" sequence:
 //
