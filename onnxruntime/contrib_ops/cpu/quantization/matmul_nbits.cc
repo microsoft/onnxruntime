@@ -20,6 +20,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 #include "core/platform/threadpool.h"
+#include "core/util/thread_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -371,6 +372,18 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   }
 #endif
 
+  std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
+  concurrency::ThreadPool* threadpool_ptr = nullptr;
+  if (prefer_lut_gemm_ && input_idx == InputIndex::B && !IsOuterPrePackParallelismEnabled()) {
+    OrtThreadPoolParams tpo;
+    tpo.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
+    tpo.allow_spinning = false;
+    tpo.auto_set_affinity = false;
+    temp_threadpool = concurrency::CreateThreadPool(
+        &Env::Default(), tpo, concurrency::ThreadPoolType::INTRA_OP);
+    threadpool_ptr = temp_threadpool.get();
+  }
+
   if (input_idx == InputIndex::B) {
     const Tensor* scales = nullptr;
     OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
@@ -409,7 +422,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
           zp_ptr,
           is_float_zp,
           static_cast<std::byte*>(packed_b_.get()),
-          nullptr);
+          threadpool_ptr);
 
       // Do not append packed_b_ here. Both the LUT and non-LUT branches share the single append
       // after this if/else, so each records exactly one buffer. Appending here as well would move

@@ -771,8 +771,14 @@ class BrokenPrePackingTestOpKernel : public OpKernel {
 
 class ParallelPrepackTestState {
  public:
-  void WaitForOverlap() {
+  void EnterPrePack(bool outer_parallelism_enabled) {
     std::unique_lock<std::mutex> lock(mutex_);
+    ++prepack_calls_;
+    outer_parallelism_observed_ = outer_parallelism_observed_ || outer_parallelism_enabled;
+    if (!outer_parallelism_enabled) {
+      return;
+    }
+
     ++active_calls_;
     if (active_calls_ > 1) {
       overlap_observed_ = true;
@@ -789,12 +795,24 @@ class ParallelPrepackTestState {
     return overlap_observed_;
   }
 
+  bool OuterParallelismObserved() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return outer_parallelism_observed_;
+  }
+
+  size_t PrePackCallCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return prepack_calls_;
+  }
+
  private:
   mutable std::mutex mutex_;
   std::condition_variable condition_;
   size_t active_calls_{0};
   bool wait_attempted_{false};
   bool overlap_observed_{false};
+  bool outer_parallelism_observed_{false};
+  size_t prepack_calls_{0};
 };
 
 class ConcurrentPrePackingTestOpKernel : public OpKernel {
@@ -814,7 +832,7 @@ class ConcurrentPrePackingTestOpKernel : public OpKernel {
     ORT_UNUSED_PARAMETER(alloc);
     ORT_UNUSED_PARAMETER(prepacked_weights);
 
-    state_->WaitForOverlap();
+    state_->EnterPrePack(IsOuterPrePackParallelismEnabled());
     is_packed = true;
     return Status::OK();
   }
@@ -875,12 +893,12 @@ static void CreateSimpleGraph(Graph& graph, const std::string& op_type = "PrePac
   ASSERT_TRUE(status.IsOK());
 }
 
-static void CreateMultiNodePrepackGraph(Graph& graph, const std::string& op_type) {
+static void CreateMultiNodePrepackGraph(Graph& graph, const std::string& op_type, int node_count = 4) {
   TypeProto type;
   type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
 
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < node_count; ++i) {
     const std::string prefix = "prepack_node_" + std::to_string(i);
     NodeArg& input = graph.GetOrCreateNodeArg(prefix + "_input", &type);
     NodeArg& initializer = graph.GetOrCreateNodeArg(prefix + "_initializer", &type);
@@ -1243,6 +1261,35 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackCallsOver
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
                                                       kernel_registry_manager));
   EXPECT_TRUE(parallel_prepack_test_state->OverlapObserved());
+  EXPECT_TRUE(parallel_prepack_test_state->OuterParallelismObserved());
+  EXPECT_EQ(parallel_prepack_test_state->PrePackCallCount(), 4U);
+}
+
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, SingleNodePrepackDoesNotUseOuterParallelism) {
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsEnableParallelPrepack, "1"));
+
+  Model model("single_node_prepack", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+              std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  CreateMultiNodePrepackGraph(model.MainGraph(), "ConcurrentPrePackingTest", 1);
+  PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionState session_state(model.MainGraph(),
+                             execution_providers,
+                             tp.get(),
+                             nullptr, /*inter_op_thread_pool*/
+                             dtm,
+                             edlm,
+                             DefaultLoggingManager().DefaultLogger(),
+                             profiler,
+                             sess_options);
+
+  ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                      kernel_registry_manager));
+  EXPECT_FALSE(parallel_prepack_test_state->OuterParallelismObserved());
+  EXPECT_EQ(parallel_prepack_test_state->PrePackCallCount(), 1U);
 }
 
 // Pre-packing enabled + no shared initializers, however, we put all the pre-packs

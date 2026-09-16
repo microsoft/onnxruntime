@@ -499,8 +499,16 @@ Status SessionState::PrepackConstantInitializedTensors(
   auto process_node = [this, &constant_initializers_use_count, &initializers_to_share_map, &commit_mutex,
                        &pending_erasures](
                           const Node& node, bool should_cache_prepacked_weights_for_shared_initializers,
-                          bool guard_bookkeeping) -> Status {
+                          bool guard_bookkeeping, bool outer_prepack_parallelism_enabled) -> Status {
     auto kernel = GetMutableKernel(node.Index());
+    if (kernel != nullptr) {
+      kernel->SetOuterPrePackParallelism(outer_prepack_parallelism_enabled);
+    }
+    auto reset_outer_prepack_parallelism = gsl::finally([kernel]() {
+      if (kernel != nullptr) {
+        kernel->SetOuterPrePackParallelism(false);
+      }
+    });
     int input_idx = 0;
     for (auto& input_def : node.InputDefs()) {
       if (input_def->Exists()) {
@@ -807,7 +815,8 @@ Status SessionState::PrepackConstantInitializedTensors(
         return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                                "Weight pre-packing was canceled due to user request.");
       }
-      ORT_RETURN_IF_ERROR(process_node(node, /*should_cache*/ true, /*guard_bookkeeping*/ false));
+      ORT_RETURN_IF_ERROR(process_node(node, /*should_cache*/ true, /*guard_bookkeeping*/ false,
+                                       /*outer_prepack_parallelism_enabled*/ false));
     }
     return Status::OK();
   }
@@ -818,7 +827,8 @@ Status SessionState::PrepackConstantInitializedTensors(
         return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                                "Weight pre-packing was canceled due to user request.");
       }
-      ORT_RETURN_IF_ERROR(process_node(node, /*should_cache*/ false, /*guard_bookkeeping*/ false));
+      ORT_RETURN_IF_ERROR(process_node(node, /*should_cache*/ false, /*guard_bookkeeping*/ false,
+                                       /*outer_prepack_parallelism_enabled*/ false));
     }
     return Status::OK();
   }
@@ -836,7 +846,8 @@ Status SessionState::PrepackConstantInitializedTensors(
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "Weight pre-packing was canceled due to user request.");
     }
-    ORT_RETURN_IF_ERROR(process_node(node, /*should_cache*/ false, /*guard_bookkeeping*/ false));
+    ORT_RETURN_IF_ERROR(process_node(node, /*should_cache*/ false, /*guard_bookkeeping*/ false,
+                                     /*outer_prepack_parallelism_enabled*/ false));
   }
 
   std::vector<Status> statuses(parallel_prepack_nodes.size());
@@ -852,7 +863,8 @@ Status SessionState::PrepackConstantInitializedTensors(
         Status& status = statuses[static_cast<size_t>(i)];
         const Node* node = parallel_prepack_nodes[static_cast<size_t>(i)];
         ORT_TRY {
-          status = process_node(*node, /*should_cache*/ false, /*guard_bookkeeping*/ true);
+          status = process_node(*node, /*should_cache*/ false, /*guard_bookkeeping*/ true,
+                                /*outer_prepack_parallelism_enabled*/ true);
         }
         ORT_CATCH(const OnnxRuntimeException& ex) {
           ORT_HANDLE_EXCEPTION([&]() {
