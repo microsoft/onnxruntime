@@ -406,8 +406,8 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     if (qwen_gate_) params_program.AddInputs({{a_log, ProgramTensorMetadataDependency::None},
                                               {dt_bias, ProgramTensorMetadataDependency::None}});
     params_program.AddOutput({&*packed_params, ProgramTensorMetadataDependency::None})
-        .SetDispatchGroupSize(
-            (onnxruntime::narrow<uint32_t>(total_tokens * hv) + 63u) / 64u)
+        .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(
+            (static_cast<uint64_t>(total_tokens) * static_cast<uint64_t>(hv) + 63u) / 64u))
         .SetWorkgroupSize(64)
         .CacheHint(needs_decay, needs_beta, qwen_gate_, sigmoid_beta_)
         .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
@@ -611,7 +611,8 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
   } else {
     program.AddInputs({{query, ProgramTensorMetadataDependency::Type},
                        {key, ProgramTensorMetadataDependency::Type},
-                       {value, ProgramTensorMetadataDependency::Type, kValueChannelsPerWorkgroup}});
+                       {value, ProgramTensorMetadataDependency::Type,
+                        vectorized_value_io ? kValueChannelsPerWorkgroup : 1}});
   }
   if (cu_seqlens != nullptr) program.AddInput({cu_seqlens, ProgramTensorMetadataDependency::None});
   if (decay != nullptr && !use_packed_params) program.AddInput({decay, ProgramTensorMetadataDependency::None});

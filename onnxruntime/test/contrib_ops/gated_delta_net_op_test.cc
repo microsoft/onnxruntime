@@ -430,6 +430,21 @@ TEST(GatedDeltaNetWebGpuTest, Rank3UniformFloat32) {
                       /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true);
 }
 
+TEST(GatedDeltaNetWebGpuTest, RecurrentVectorizedValueIoAndSharedGate) {
+  if (NeedSkipGatedDeltaNetWebGpuTest()) {
+    GTEST_SKIP() << "WebGPU execution provider is not available";
+  }
+  Geometry g{7, 2, 1, 2, 8, 8};
+  Inputs inputs = MakeInputs(g, 212);
+  inputs.cu_seqlens = {0, 3, 7};
+  Options options;
+  options.update_rule = "gated";
+  options.gate_activation = "qwen";
+  RunTypedCase<MLFloat16>(g, options, inputs, 3e-3f, 3e-4f,
+                          /*rank4=*/false, /*fetches=*/nullptr, /*use_webgpu=*/true,
+                          /*omit_final_state=*/true);
+}
+
 TEST(GatedDeltaNetWebGpuTest, ParallelPrefillLinearUniformRank3AndRank4) {
   if (NeedSkipGatedDeltaNetWebGpuTest()) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
