@@ -3,7 +3,6 @@
 
 #include <algorithm>
 
-#include "core/common/logging/logging.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/gather_block_quantized.h"
 #include "contrib_ops/cuda/quantization/gather_block_quantized.cuh"
