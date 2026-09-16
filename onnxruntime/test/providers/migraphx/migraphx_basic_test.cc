@@ -5,14 +5,24 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
+#include "test/util/include/current_test_name.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #include "core/providers/migraphx/migraphx_execution_provider_utils.h"
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <thread>
+
+#ifdef _WIN32
+#include <process.h>
+#define ORT_TEST_PID _getpid()
+#else
+#include <unistd.h>
+#define ORT_TEST_PID getpid()
+#endif
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -33,6 +43,14 @@ constexpr const char* kInt8UseNativeCalibrationTableOption = "migraphx_int8_use_
 
 std::unique_ptr<IExecutionProvider> CreateMIGraphXProvider(const ProviderOptions& options = {}) {
   return MIGraphXProviderFactoryCreator::Create(options)->CreateProvider();
+}
+
+std::filesystem::path GetCalibrationTablePath() {
+  auto test_name = CurrentTestName();
+  std::replace(test_name.begin(), test_name.end(), '/', '_');
+  std::replace(test_name.begin(), test_name.end(), '\\', '_');
+  return std::filesystem::path{testing::TempDir()} /
+         ("migraphx_int8_calibration_table_test_" + test_name + "_" + std::to_string(ORT_TEST_PID) + ".txt");
 }
 
 }  // namespace
@@ -209,8 +227,7 @@ TEST(MIGraphXExecutionProviderTest, canEvalArgument) {
 class MIGraphXInt8CalibrationTableTest : public testing::Test {
  protected:
   void SetUp() override {
-    calibration_table_path_ =
-        std::filesystem::path{testing::TempDir()} / "migraphx_int8_calibration_table_test.txt";
+    calibration_table_path_ = GetCalibrationTablePath();
     std::ofstream calibration_table{calibration_table_path_};
     calibration_table << "TRT-8400-EntropyCalibration2\n"
                       << "input: 3f800000\n";
