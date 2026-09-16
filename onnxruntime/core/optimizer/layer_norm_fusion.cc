@@ -556,9 +556,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_reduce_mean_input_node->Index())->MutableInputDefs()[0]
                                         : reduce_mean_node.MutableInputDefs()[0];
 
-    // CPU doesn't support fp16
+    // CPU kernels need X, scale and bias to be the same type.
     if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
-        x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+        (x_input->TypeAsProto()->tensor_type().elem_type() != scale->TypeAsProto()->tensor_type().elem_type() ||
+         x_input->TypeAsProto()->tensor_type().elem_type() != bias->TypeAsProto()->tensor_type().elem_type())) {
       continue;
     }
 
@@ -729,17 +730,14 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // 3. x->Cast(to:fp16)->y : SimplifiedLayerNorm(T:float,V:fp16)
     // 4. x->y : SimplifiedLayerNorm(T:float,V:float)
     // They all work for GPU EP.
-    // For CPU EP, we have only SimplifiedlayerNorm(T:float,V:float) implementation, so only #4 works. We made an
-    // exception here, since pre-training optimization happens without device assignment. skip_device_check_ is the
-    // flag to disable device check intent only for pre-training optimization.
-    // For #1 and #2, if we treat the entry Cast as a normal node, meaning has_leading_cast is false, then for #2,
-    // we can still fuse it to "Cast(to:float)->SimplifiedlayerNorm(T:float,V:float)" (same as applying #4 to the x->y
-    // after Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking
-    // if there is a Cast between x and y. Having Cast between means cannot fuse.
+    // For CPU EP, SimplifiedLayerNorm is only registered with T == V (float, double, MLFloat16), so #1 and #4
+    // work and the mixed-type cases are skipped further down. skip_device_check_ is the flag to disable device
+    // check intent only for pre-training optimization.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
     bool has_leading_cast = false;
     bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider || skip_device_check_;
-    if (is_gpu_ep && p_pow_input_node) {
+    const bool is_cpu_ep = pow_node.GetExecutionProviderType() == kCpuExecutionProvider;
+    if ((is_gpu_ep || is_cpu_ep) && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
       if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
@@ -754,7 +752,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
-      if (!is_gpu_ep) continue;
+      if (!is_gpu_ep && !is_cpu_ep) continue;
       nodes_to_remove.push_back(*next_node);
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
@@ -815,9 +813,9 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
                                         : pow_node.MutableInputDefs()[0];
 
-    // CPU doesn't support fp16
-    if (reduce_mean_node.GetExecutionProviderType() == kCpuExecutionProvider &&
-        x_input->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    // CPU only has T == V kernels.
+    if (is_cpu_ep &&
+        x_input->TypeAsProto()->tensor_type().elem_type() != scale->TypeAsProto()->tensor_type().elem_type()) {
       continue;
     }
 

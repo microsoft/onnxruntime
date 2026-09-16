@@ -4952,11 +4952,6 @@ TEST_F(GraphTransformationTests, Gemm_Relu_three_input) {
 }
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
-// GemmActivationFusion must only fuse FP16 Gemm+activation pairs that
-// ElementWiseRangedTransform<MLFloat16>::Create() can actually build. Fusing
-// anything else yields a FusedGemm<MLFloat16> that throws NOT_IMPLEMENTED when
-// the kernel is constructed, which surfaces as a session-initialization failure
-// rather than a graph error.
 static void RunGemmFp16ActivationFusionTest(const std::string& activation, bool expect_fused,
                                             const logging::Logger& logger) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -4988,15 +4983,12 @@ static void RunGemmFp16ActivationFusionTest(const std::string& activation, bool 
 }
 
 TEST_F(GraphTransformationTests, GemmActivationFusion_Fp16_SupportedActivations) {
-  // These have MLFloat16 CPU kernels and an MLFloat16 factory entry.
   for (const auto& act : {"Relu", "LeakyRelu", "Tanh"}) {
     RunGemmFp16ActivationFusionTest(act, /*expect_fused=*/true, *logger_);
   }
 }
 
 TEST_F(GraphTransformationTests, GemmActivationFusion_Fp16_UnsupportedActivationsNotFused) {
-  // IsFusableActivation() accepts these, but there is no MLFloat16 factory
-  // entry, so fusing them would break kernel construction.
   for (const auto& act : {"Sigmoid", "Elu", "Softplus", "Softsign", "HardSigmoid", "Selu"}) {
     RunGemmFp16ActivationFusionTest(act, /*expect_fused=*/false, *logger_);
   }
