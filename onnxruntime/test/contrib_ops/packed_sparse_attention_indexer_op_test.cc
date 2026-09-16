@@ -184,13 +184,6 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, QsaInfersFixedCapacityAndSt
               ONNX_NAMESPACE::TensorProto_DataType_INT32, {options.batch_size, 2});
 }
 
-TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateCapacityShapeMismatch) {
-  GraphOptions options;
-  options.input_state_capacity = options.state_capacity + 1;
-  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
-                       "past_key_state dimension 1 must equal state_capacity");
-}
-
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, CsaInfersFixedCapacityAndState) {
   GraphOptions options;
   options.policy_mode = psai::kPolicyModeCsa;
@@ -228,6 +221,13 @@ void ExpectResolveFailure(const std::function<void(ModelTestBuilder& builder)>& 
 
 }  // namespace
 
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsStateCapacityShapeMismatch) {
+  GraphOptions options;
+  options.input_state_capacity = options.state_capacity + 1;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "past_key_state dimension 1 must equal state_capacity");
+}
+
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsUnknownPolicyMode) {
   GraphOptions options;
   options.policy_mode = "qsa_v2";
@@ -247,6 +247,14 @@ TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsZeroNumHeads) {
   options.num_heads = 0;
   ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
                        "num_heads must be > 0");
+}
+
+TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsGenericBufferCapacityOverflow) {
+  GraphOptions options;
+  options.policy_mode = psai::kPolicyModeCsa;
+  options.compress_ratio = static_cast<int64_t>(std::numeric_limits<int>::max()) / 2 + 2;
+  ExpectResolveFailure([&options](ModelTestBuilder& builder) { AddNode(builder, options); },
+                       "generic buffer capacity no greater than INT_MAX");
 }
 
 TEST(PackedSparseAttentionIndexerShapeInferenceTest, RejectsQsaTokenBudgetNotDivisibleByCompressRatio) {

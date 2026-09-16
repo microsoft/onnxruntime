@@ -4747,7 +4747,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>compress_ratio</tt> : int (required)</dt>
-<dd>Number of consecutive tokens folded into one compressed/pooled entry. Must be > 0.</dd>
+<dd>Number of consecutive tokens folded into one compressed/pooled entry. Must be > 0 and 2 * compress_ratio - 1 must not exceed INT_MAX.</dd>
 <dt><tt>epsilon</tt> : float</dt>
 <dd>Epsilon of the RMS normalization applied to the compressed keys. Default is 1e-6.</dd>
 <dt><tt>head_weight_scale</tt> : float</dt>

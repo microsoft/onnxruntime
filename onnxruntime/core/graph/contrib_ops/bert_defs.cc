@@ -2331,9 +2331,12 @@ void PackedSparseAttentionIndexerTypeAndShapeInference(ONNX_NAMESPACE::Inference
   const bool is_qsa = policy == psai::Policy::kQsa;
 
   const int64_t compress_ratio = getAttribute(ctx, "compress_ratio", static_cast<int64_t>(0));
-  if (compress_ratio <= 0 || compress_ratio > std::numeric_limits<int>::max()) {
-    fail_shape_inference("PackedSparseAttentionIndexer: compress_ratio must be in (0, INT_MAX], got ",
-                         compress_ratio);
+  if (compress_ratio <= 0 ||
+      compress_ratio > (static_cast<int64_t>(std::numeric_limits<int>::max()) + 1) / 2) {
+    fail_shape_inference(
+        "PackedSparseAttentionIndexer: compress_ratio must be positive and produce a generic "
+        "buffer capacity no greater than INT_MAX, got ",
+        compress_ratio);
   }
   const int64_t state_capacity = getAttribute(ctx, "state_capacity", static_cast<int64_t>(0));
   if (state_capacity <= 0 || state_capacity > std::numeric_limits<int>::max()) {
@@ -2532,7 +2535,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Indexer policy. Must be exactly 'qsa' (token indexer) or 'csa' (compressed block indexer).",
               AttributeProto::STRING)
         .Attr("compress_ratio",
-              "Number of consecutive tokens folded into one compressed/pooled entry. Must be > 0.",
+              "Number of consecutive tokens folded into one compressed/pooled entry. Must be > 0 and "
+              "2 * compress_ratio - 1 must not exceed INT_MAX.",
               AttributeProto::INT)
         .Attr("state_capacity",
               "Fixed capacity (number of entries) of past_key_state / present_key_state. Must be > 0.",

@@ -656,7 +656,10 @@ PackedSparseAttentionIndexer::PackedSparseAttentionIndexer(const OpKernelInfo& i
               psai::kPolicyModeQsa, "' or '", psai::kPolicyModeCsa, "', got '", policy_mode, "'");
   ORT_ENFORCE(info.GetAttr<int64_t>("compress_ratio", &compress_ratio_).IsOK(),
               "PackedSparseAttentionIndexer: compress_ratio is required");
-  ORT_ENFORCE(compress_ratio_ > 0, "PackedSparseAttentionIndexer: compress_ratio must be > 0");
+  ORT_ENFORCE(compress_ratio_ > 0 &&
+                  compress_ratio_ <= (static_cast<int64_t>(std::numeric_limits<int>::max()) + 1) / 2,
+              "PackedSparseAttentionIndexer: compress_ratio must be positive and produce a generic buffer capacity "
+              "no greater than INT_MAX");
   ORT_ENFORCE(info.GetAttr<int64_t>("state_capacity", &state_capacity_).IsOK() && state_capacity_ > 0,
               "PackedSparseAttentionIndexer: state_capacity must be a positive integer");
 
