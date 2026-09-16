@@ -27,17 +27,11 @@ static TensorShape GetOverrideShape(const TensorShape& shape, int components) {
 
 Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("scale", ShaderUsage::UseUniform);
-  if (has_bias_) {
-    shader.AddInput("bias", ShaderUsage::UseUniform);
-  }
-  shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-  if (has_mean_output_) {
-    shader.AddOutput("mean_output", ShaderUsage::None);
-  }
-  if (has_inv_std_dev_output_) {
-    shader.AddOutput("inv_std_dev_output", ShaderUsage::None);
-  }
+  const auto& scale = shader.AddInput("scale", ShaderUsage::UseUniform);
+  const auto* bias = has_bias_ ? &shader.AddInput("bias", ShaderUsage::UseUniform) : nullptr;
+  const auto& y = shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  const auto* mean_output = has_mean_output_ ? &shader.AddOutput("mean_output", ShaderUsage::None) : nullptr;
+  const auto* inv_std_dev_output = has_inv_std_dev_output_ ? &shader.AddOutput("inv_std_dev_output", ShaderUsage::None) : nullptr;
 
   // Preserve same-type rounding to match fused normalization kernels. Mixed types normalize in f32.
   const bool mixed_types = Inputs()[0].var_type != Outputs()[0].var_type;
@@ -62,7 +56,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  var cur_input = x_value_t(0);\n"
         << "  for (var i: u32 = 0; i < uniforms.norm_size / (workgroup_size_x * 4); i++) {\n"
         << "    let input_offset = i * workgroup_size_x + local_idx;\n"
-        << "    let input_value = x[input_offset];\n"
+        << "    let input_value = " << x.GetByOffset("input_offset") << ";\n"
         << "    if (i == workgroup_idx) {\n"
         << "      cur_input = input_value;\n"
         << "    }\n"
@@ -87,21 +81,21 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n"
         << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
         << "  let offset = workgroup_idx * workgroup_size_x + local_idx;\n"
-        << "  y[offset] = y_value_t((norm_value_t(cur_input) " << simpl2 << ") * norm_element_t(inv_std_dev)) * scale[offset]" << (has_bias_ ? " + bias[offset] " : "") << ";\n";
+        << "  let output_value = y_value_t((norm_value_t(cur_input) " << simpl2 << ") * norm_element_t(inv_std_dev)) * "
+        << scale.GetByOffset("offset") << (has_bias_ ? " + " + bias->GetByOffset("offset") : "") << ";\n"
+        << "  " << y.SetByOffset("offset", "output_value") << "\n";
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "  if (local_idx == 0 && workgroup_idx == 0) {\n"
-                                << "    mean_output[global_idx / uniforms.norm_size] = mean;\n"
+                                << "    " << mean_output->SetByOffset("global_idx / uniforms.norm_size", "mean") << "\n"
                                 << "  }\n";
     }
     if (has_inv_std_dev_output_) {
       shader.MainFunctionBody() << "  if (local_idx == 0 && workgroup_idx == 0) {\n"
-                                << "    inv_std_dev_output[global_idx / uniforms.norm_size] = inv_std_dev;\n"
+                                << "    " << inv_std_dev_output->SetByOffset("global_idx / uniforms.norm_size", "inv_std_dev") << "\n"
                                 << "  }\n";
     }
   } else {
-    std::string bias = (has_bias_) ? " + bias[offset1d + i] " : "";
-
     shader.AdditionalImplementation()
         << "alias f32_val_t = " << (components == 4 ? "vec4<f32>" : (components == 2 ? "vec2<f32>" : "f32")) << ";\n"
         << "var<workgroup> sum_shared : array<f32_val_t, workgroup_size_x>;\n"
@@ -120,7 +114,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << " stride = norm_size_vectorized - stride * ix;\n"
         << "}\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
-        << " let input_value = x[offset + i];\n"
+        << " let input_value = " << x.GetByOffset("offset + i") << ";\n"
         << " let f32_value = f32_val_t(input_value);\n"
         << " sum_shared[ix] += f32_value;\n"
         << " sum_squared_shared[ix] += f32_value * f32_value;\n"
@@ -140,17 +134,20 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n"
         << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components) << " / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
-        << " y[offset + i] = y_value_t((norm_value_t(x[offset + i]) " << simpl2 << ") * norm_element_t(inv_std_dev)) * scale[offset1d + i]" << bias << ";\n"
+        << " let output_value = y_value_t((norm_value_t(" << x.GetByOffset("offset + i") << ") " << simpl2
+        << ") * norm_element_t(inv_std_dev)) * " << scale.GetByOffset("offset1d + i")
+        << (has_bias_ ? " + " + bias->GetByOffset("offset1d + i") : "") << ";\n"
+        << " " << y.SetByOffset("offset + i", "output_value") << "\n"
         << "};\n";
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "if (ix == 0) {\n"
-                                << "  mean_output[iy] = mean;\n"
+                                << "  " << mean_output->SetByOffset("iy", "mean") << "\n"
                                 << "}\n";
     }
     if (has_inv_std_dev_output_) {
       shader.MainFunctionBody() << "if (ix == 0) {\n"
-                                << "  inv_std_dev_output[iy] = inv_std_dev;\n"
+                                << "  " << inv_std_dev_output->SetByOffset("iy", "inv_std_dev") << "\n"
                                 << "}\n";
     }
   }
