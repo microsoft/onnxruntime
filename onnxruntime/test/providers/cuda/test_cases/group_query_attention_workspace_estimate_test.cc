@@ -19,6 +19,7 @@
 #include "core/graph/graph.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cuda/bert/group_query_attention_workspace_estimate.h"
 #include "test/test_environment.h"
@@ -267,11 +268,11 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
   provider_info.sdpa_kernel = kMath;
   const std::string model_bytes = BuildGroupQueryAttentionKernelModel();
 
-  auto make_session_options = [](size_t memory_threshold) {
+  auto make_session_options = [](size_t memory_limit_kb) {
     SessionOptions session_options;
     session_options.graph_optimization_level = TransformerLevel::Default;
     const std::string partitioning_settings =
-        std::to_string(memory_threshold) + ",";
+        std::to_string(memory_limit_kb) + ",";
     ORT_THROW_IF_ERROR(session_options.config_options.AddConfigEntry(
         kOrtSessionOptionsResourceCudaPartitioningSettings,
         partitioning_settings.c_str()));
@@ -280,7 +281,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
 
   std::optional<GQAWorkspaceAggregate> estimate;
   {
-    InferenceSessionWrapper session(make_session_options(1024 * 1024),
+    InferenceSessionWrapper session(make_session_options(1024),
                                     GetEnvironment());
     auto cuda_ep = std::make_shared<CUDAExecutionProvider>(provider_info);
     if (cuda_ep->GetDeviceProp().major < 8) {
@@ -307,12 +308,15 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
   constexpr size_t kAccountedTensorBytes =
       kHeadSinkInitializerBytes + kOutputBytes + 2 * kPresentCacheBytes;
   constexpr size_t kFallbackWorkspaceBytes = kAccountedTensorBytes / 2;
-  ASSERT_LT(estimate->total_workspace_bytes, kFallbackWorkspaceBytes);
+  ASSERT_GT(estimate->total_workspace_bytes, kFallbackWorkspaceBytes);
+  const auto kilobytes_above = [](size_t bytes) {
+    return bytes / 1024 + 1;
+  };
 
   {
-    const size_t threshold =
-        kAccountedTensorBytes + estimate->total_workspace_bytes + 1;
-    InferenceSessionWrapper session(make_session_options(threshold),
+    const size_t accepted_limit_kb = kilobytes_above(
+        kAccountedTensorBytes + estimate->total_workspace_bytes);
+    InferenceSessionWrapper session(make_session_options(accepted_limit_kb),
                                     GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(provider_info)));
@@ -325,9 +329,13 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
   }
 
   {
-    const size_t threshold =
-        kAccountedTensorBytes + estimate->total_workspace_bytes;
-    InferenceSessionWrapper session(make_session_options(threshold),
+    // Fallback accounting would admit this node. The larger Level-1 estimate
+    // must instead make CUDA reject it.
+    const size_t rejected_limit_kb = kilobytes_above(
+        kAccountedTensorBytes + kFallbackWorkspaceBytes);
+    ASSERT_LT(rejected_limit_kb * 1024,
+              kAccountedTensorBytes + estimate->total_workspace_bytes);
+    InferenceSessionWrapper session(make_session_options(rejected_limit_kb),
                                     GetEnvironment());
     ASSERT_STATUS_OK(session.RegisterExecutionProvider(
         std::make_shared<CUDAExecutionProvider>(provider_info)));
