@@ -100,7 +100,9 @@ bool run_paged(
     bool /*is_bf16*/,
     cudnnHandle_t /*handle*/,
     Stream* /*stream*/,
-    AllocatorPtr /*allocator*/) {
+    AllocatorPtr /*allocator*/,
+    bool* cache_hit) {
+  *cache_hit = false;
   return false;
 }
 
@@ -858,7 +860,8 @@ bool run_paged(
     bool is_bf16,
     cudnnHandle_t handle,
     Stream* stream,
-    AllocatorPtr allocator) {
+    AllocatorPtr allocator,
+    bool* cache_hit) {
   PagedGraphParams params;
   FillPagedGraphParams(params, batch_size, num_heads_q, num_heads_kv, head_size_qk, head_size_v,
                        cache_num_blocks, block_size, max_num_blocks_per_seq,
@@ -867,8 +870,10 @@ bool run_paged(
   std::shared_ptr<fe::graph::Graph> mha_graph;
   auto it = paged_mha_graph_cache.find(params);
   if (it != paged_mha_graph_cache.end()) {
+    *cache_hit = true;
     mha_graph = it->second;
   } else {
+    *cache_hit = false;
     // Cache miss. cuDNN graph build is not capturable, and PagedAttention's cascade issues a
     // probe (try_build_paged_graph) on the first non-capturing Compute for this node so a
     // captured graph should never see a miss here. If it happens anyway, return false rather
