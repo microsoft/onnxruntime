@@ -435,7 +435,7 @@ TEST(GatedDeltaNetWebGpuTest, RecurrentVectorizedValueIoAndSharedGate) {
     GTEST_SKIP() << "WebGPU execution provider is not available";
   }
   Geometry g{7, 2, 1, 2, 8, 8};
-  Inputs inputs = MakeInputs(g, 212);
+  Inputs inputs = MakeInputs(g, 212, /*with_state=*/false);
   inputs.cu_seqlens = {0, 3, 7};
   Options options;
   options.update_rule = "gated";
