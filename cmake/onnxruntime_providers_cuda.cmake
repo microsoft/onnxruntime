@@ -92,7 +92,7 @@
   )
   if(MSVC OR UNIX)
     foreach(_src IN LISTS onnxruntime_cuda_llm_sm90_srcs)
-      if(_src MATCHES "/moe_gemm/deep_gemm_sm90\\.cu$")
+      if(_src MATCHES "/(moe_gemm/deep_gemm_sm90|deep_gemm_matmul_sm90)\\.cu$")
         if(MSVC)
           set_source_files_properties(${_src} PROPERTIES COMPILE_OPTIONS "-Xcompiler=/wd4068")
         else()
