@@ -61,7 +61,6 @@ bool is_supported_paged(const cudaDeviceProp& /*dprops*/,
                         int /*head_size_qk*/,
                         int /*head_size_v*/,
                         int /*sequence_length_q*/,
-                        int /*max_sequence_length_kv*/,
                         int /*block_size*/) {
   return false;
 }
@@ -546,7 +545,6 @@ bool is_supported_paged(const cudaDeviceProp& dprops,
                         int head_size_qk,
                         int head_size_v,
                         int sequence_length_q,
-                        int max_sequence_length_kv,
                         int block_size) {
   // Feature envelope from cuDNN release notes (paged SDPA landed in 9.5.0). Keep this in sync with
   // is_stable() so the paged tier is gated to versions we have actually validated.
@@ -573,7 +571,7 @@ bool is_supported_paged(const cudaDeviceProp& dprops,
     return false;
   }
 
-  if (block_size <= 0 || max_sequence_length_kv <= 0) {
+  if (block_size <= 0) {
     return false;
   }
 
@@ -759,6 +757,8 @@ thread_local std::unordered_map<PagedGraphParams,
                                 std::shared_ptr<fe::graph::Graph>,
                                 BytesHash<PagedGraphParams> >
     paged_mha_graph_cache;
+// TODO(tianleiwu): Bound this cache. Continuous batching can produce many combinations of
+// batch_size, cache_num_blocks, and max_num_blocks_per_seq over a process lifetime.
 
 // Fill a PagedGraphParams for both the probe and the run. Byte-zeros first so BytesHash covers
 // the padding bytes deterministically; without this, the padding bytes are indeterminate and
