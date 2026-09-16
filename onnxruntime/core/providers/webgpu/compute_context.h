@@ -122,6 +122,10 @@ class ComputeContextBase {
     return ep_.EnableMatmulFp32Accumulation();
   }
 
+  inline std::optional<MatMulAlgorithm> ForcedMatMulAlgorithm() const {
+    return ep_.ForcedMatMulAlgorithm();
+  }
+
   //
   // Get the logger.
   //
