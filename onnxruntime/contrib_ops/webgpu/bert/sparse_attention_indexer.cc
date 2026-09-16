@@ -243,11 +243,9 @@ Status SparseAttentionIndexerCsaCopyCompressedProgram::GenerateShaderCode(Shader
 Status SparseAttentionIndexerCsaCompressProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform);
   const auto& gate = shader.AddInput("gate", ShaderUsage::UseUniform);
-  const ShaderVariableHelper* past_kv = nullptr;
-  const ShaderVariableHelper* past_gate = nullptr;
+  const ShaderVariableHelper* past_proj = nullptr;
   if (has_past_buffer_) {
-    past_kv = &shader.AddInput("past_kv_buffer", ShaderUsage::UseUniform);
-    past_gate = &shader.AddInput("past_gate_buffer", ShaderUsage::UseUniform);
+    past_proj = &shader.AddInput("past_proj_buffer", ShaderUsage::UseUniform);
   }
   const auto& bias = shader.AddInput("position_bias", ShaderUsage::UseUniform);
   const auto& norm = shader.AddInput("key_norm_weight", ShaderUsage::UseUniform);
@@ -261,7 +259,7 @@ Status SparseAttentionIndexerCsaCompressProgram::GenerateShaderCode(ShaderHelper
   if (has_past_buffer_) {
     shader.AdditionalImplementation()
         << "  if (position < uniforms.past_buffer_length) {\n"
-        << "    return f32(" << past_kv->GetByOffset(
+        << "    return f32(" << past_proj->GetByOffset(
                                     "(batch * uniforms.past_buffer_length + position) * "
                                     "(2u * uniforms.head_size) + channel")
         << ");\n"
@@ -278,7 +276,9 @@ Status SparseAttentionIndexerCsaCompressProgram::GenerateShaderCode(ShaderHelper
   if (has_past_buffer_) {
     shader.AdditionalImplementation()
         << "  if (position < uniforms.past_buffer_length) {\n"
-        << "    return f32(" << past_gate->GetByOffset(
+        << "    return f32(" << past_proj->GetByOffset(
+                                    "uniforms.past_buffer_length * uniforms.head_size * 2u * "
+                                    "(uniforms.work_items / uniforms.new_window_count) + "
                                     "(batch * uniforms.past_buffer_length + position) * "
                                     "(2u * uniforms.head_size) + channel")
         << ");\n"
@@ -367,15 +367,11 @@ Status SparseAttentionIndexerCsaCopyBufferProgram::GenerateShaderCode(ShaderHelp
     key = &shader.AddInput("key", ShaderUsage::UseUniform);
     gate = &shader.AddInput("gate", ShaderUsage::UseUniform);
   }
-  const ShaderVariableHelper* past_kv = nullptr;
-  const ShaderVariableHelper* past_gate = nullptr;
+  const ShaderVariableHelper* past_proj = nullptr;
   if (has_past_buffer_) {
-    past_kv = &shader.AddInput("past_kv_buffer", ShaderUsage::UseUniform);
-    past_gate = &shader.AddInput("past_gate_buffer", ShaderUsage::UseUniform);
+    past_proj = &shader.AddInput("past_proj_buffer", ShaderUsage::UseUniform);
   }
-  const auto& present_kv = shader.AddOutput("present_kv_buffer",
-                                            ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
-  const auto& present_gate = shader.AddOutput("present_gate_buffer",
+  const auto& present_proj = shader.AddOutput("present_proj_buffer",
                                               ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   shader.MainFunctionBody()
@@ -390,9 +386,11 @@ Status SparseAttentionIndexerCsaCopyBufferProgram::GenerateShaderCode(ShaderHelp
     shader.MainFunctionBody()
         << "  if (source < uniforms.past_buffer_length) {\n"
         << "    let input = (batch * uniforms.past_buffer_length + source) * width + channel;\n"
-        << "    " << present_kv.SetByOffset("global_idx", "present_kv_buffer_element_t(" + past_kv->GetByOffset("input") + ")")
+        << "    " << present_proj.SetByOffset("global_idx", "present_proj_buffer_element_t(" + past_proj->GetByOffset("input") + ")")
         << "\n"
-        << "    " << present_gate.SetByOffset("global_idx", "present_gate_buffer_element_t(" + past_gate->GetByOffset("input") + ")")
+        << "    " << present_proj.SetByOffset("uniforms.total + global_idx", "present_proj_buffer_element_t(" + past_proj->GetByOffset("(uniforms.total / uniforms.present_buffer_length) * "
+                                                                                                                                       "uniforms.past_buffer_length + input") +
+                                                                                 ")")
         << "\n"
         << "    return;\n"
         << "  }\n";
@@ -402,12 +400,12 @@ Status SparseAttentionIndexerCsaCopyBufferProgram::GenerateShaderCode(ShaderHelp
         << "  let current_token = source - uniforms.past_buffer_length;\n"
         << "  let input = (batch * uniforms.sequence_length + current_token) * width + channel;\n"
         << "  "
-        << present_kv.SetByOffset("global_idx",
-                                  "present_kv_buffer_element_t(" + key->GetByOffset("input") + ")")
+        << present_proj.SetByOffset("global_idx",
+                                    "present_proj_buffer_element_t(" + key->GetByOffset("input") + ")")
         << "\n"
         << "  "
-        << present_gate.SetByOffset("global_idx",
-                                    "present_gate_buffer_element_t(" + gate->GetByOffset("input") + ")")
+        << present_proj.SetByOffset("uniforms.total + global_idx",
+                                    "present_proj_buffer_element_t(" + gate->GetByOffset("input") + ")")
         << "\n";
   }
   return Status::OK();
@@ -536,8 +534,9 @@ SparseAttentionIndexer::SparseAttentionIndexer(const OpKernelInfo& info) : WebGp
 
 Status SparseAttentionIndexer::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const bool is_qsa = policy_ == sai::Policy::kQsa;
-  for (int index = sai::kMask; index < sai::kInputCount; ++index) {
-    const bool policy_owns_slot = is_qsa ? (index <= sai::kPastKey) : (index >= sai::kGate);
+  for (int index : {sai::kMask, sai::kGate, sai::kPositionBias, sai::kHeadWeights,
+                    sai::kPositionIds, sai::kPastProjBuffer}) {
+    const bool policy_owns_slot = is_qsa ? index == sai::kMask : index != sai::kMask;
     const bool provided = index < context.InputCount() && context.Input(index) != nullptr;
     ORT_RETURN_IF(provided != policy_owns_slot, "SparseAttentionIndexer: input ", index,
                   provided ? " must be omitted for policy_mode '" : " is required for policy_mode '",
@@ -554,6 +553,9 @@ Status SparseAttentionIndexer::ComputeQsa(onnxruntime::webgpu::ComputeContext& c
   const Tensor* sin_cache = context.Input(sai::kSinCache);
   const Tensor* mask = context.Input(sai::kMask);
   const Tensor* past_key = context.Input(sai::kPastKey);
+  ORT_RETURN_IF(context.InputCount() > sai::kPastSequenceLength &&
+                    context.Input(sai::kPastSequenceLength) != nullptr,
+                "SparseAttentionIndexer WebGPU does not support fixed-capacity caches");
 
   const auto& query_shape = query->Shape();
   ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 4, "SparseAttentionIndexer: query must have rank 4");
@@ -652,9 +654,11 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
   const Tensor* bias = context.Input(sai::kPositionBias);
   const Tensor* head_weights = context.Input(sai::kHeadWeights);
   const Tensor* position_ids = context.Input(sai::kPositionIds);
-  const Tensor* past_compressed = context.Input(sai::kPastCompressedKey);
-  const Tensor* past_kv = context.Input(sai::kPastKvBuffer);
-  const Tensor* past_gate = context.Input(sai::kPastGateBuffer);
+  const Tensor* past_compressed = context.Input(sai::kPastKey);
+  const Tensor* past_proj = context.Input(sai::kPastProjBuffer);
+  ORT_RETURN_IF(context.InputCount() > sai::kPastSequenceLength &&
+                    context.Input(sai::kPastSequenceLength) != nullptr,
+                "SparseAttentionIndexer WebGPU does not support fixed-capacity caches");
 
   const auto& query_shape = query->Shape();
   ORT_RETURN_IF_NOT(query_shape.NumDimensions() == 4, "SparseAttentionIndexer: query must have rank 4");
@@ -683,12 +687,11 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
                         past_compressed_shape[0] == batch_size && past_compressed_shape[2] == head_size,
                     "SparseAttentionIndexer: invalid past_compressed_key shape");
   const int64_t past_compressed_length = past_compressed_shape[1];
-  const auto& past_buffer_shape = past_kv->Shape();
-  ORT_RETURN_IF_NOT(past_buffer_shape.NumDimensions() == 3 && past_buffer_shape[0] == batch_size &&
-                        past_buffer_shape[2] == width,
-                    "SparseAttentionIndexer: invalid past_kv_buffer shape");
-  const int64_t past_buffer_length = past_buffer_shape[1];
-  ORT_RETURN_IF_ERROR(CheckShape(past_gate, "past_gate_buffer", {batch_size, past_buffer_length, width}));
+  const auto& past_buffer_shape = past_proj->Shape();
+  ORT_RETURN_IF_NOT(past_buffer_shape.NumDimensions() == 4 && past_buffer_shape[0] == 2 &&
+                        past_buffer_shape[1] == batch_size && past_buffer_shape[3] == width,
+                    "SparseAttentionIndexer: invalid past_proj_buffer shape");
+  const int64_t past_buffer_length = past_buffer_shape[2];
 
   sai::CsaWindowPlan plan;
   ORT_RETURN_IF_NOT(sai::TryComputeCsaWindowPlan(past_buffer_length, sequence_length, compress_ratio_, plan),
@@ -697,12 +700,10 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
   const int64_t capacity = sai::SelectedCapacity(policy_, token_budget_, index_topk_, compress_ratio_);
   Tensor* selected =
       context.Output(sai::kSelectedIndices, TensorShape({batch_size, sequence_length, capacity}));
-  Tensor* present_compressed = context.Output(
-      sai::kPresentCompressedKey, TensorShape({batch_size, present_compressed_length, head_size}));
-  Tensor* present_kv =
-      context.Output(sai::kPresentKvBuffer, TensorShape({batch_size, plan.present_buffer_length, width}));
-  Tensor* present_gate =
-      context.Output(sai::kPresentGateBuffer, TensorShape({batch_size, plan.present_buffer_length, width}));
+  Tensor* present_compressed =
+      context.Output(sai::kPresentKey, TensorShape({batch_size, present_compressed_length, head_size}));
+  Tensor* present_proj = context.Output(
+      sai::kPresentProjBuffer, TensorShape({2, batch_size, plan.present_buffer_length, width}));
 
   const int64_t past_compressed_elements = batch_size * past_compressed_length * head_size;
   if (past_compressed_elements > 0) {
@@ -726,8 +727,7 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
         .AddInputs({{key, ProgramTensorMetadataDependency::Type},
                     {gate, ProgramTensorMetadataDependency::Type}});
     if (has_past_buffer) {
-      compress.AddInputs({{past_kv, ProgramTensorMetadataDependency::Type},
-                          {past_gate, ProgramTensorMetadataDependency::Type}});
+      compress.AddInput({past_proj, ProgramTensorMetadataDependency::Type});
     }
     compress.AddInputs({{bias, ProgramTensorMetadataDependency::Type},
                         {norm, ProgramTensorMetadataDependency::Type},
@@ -762,11 +762,9 @@ Status SparseAttentionIndexer::ComputeCsa(onnxruntime::webgpu::ComputeContext& c
                              {gate, ProgramTensorMetadataDependency::Type}});
     }
     if (has_past_buffer) {
-      copy_buffer.AddInputs({{past_kv, ProgramTensorMetadataDependency::Type},
-                             {past_gate, ProgramTensorMetadataDependency::Type}});
+      copy_buffer.AddInput({past_proj, ProgramTensorMetadataDependency::Type});
     }
-    copy_buffer.AddOutputs({{present_kv, ProgramTensorMetadataDependency::Type},
-                            {present_gate, ProgramTensorMetadataDependency::Type}})
+    copy_buffer.AddOutput({present_proj, ProgramTensorMetadataDependency::Type})
         .SetWorkgroupSize(kWorkgroupSize)
         .SetDispatchGroupSize((ToUint32(present_buffer_elements) + kWorkgroupSize - 1) / kWorkgroupSize)
         .AddUniformVariables({{ToUint32(present_buffer_elements)},
