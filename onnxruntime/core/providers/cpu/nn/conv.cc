@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 /* Modifications Copyright (c) Microsoft. */
+// SPDX-FileCopyrightText: Copyright 2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
 
 #include <vector>
 
@@ -199,7 +200,8 @@ Status Conv<float>::EnsurePackedChannelsLastFilter(concurrency::ThreadPool* thre
                                                    size_t filter_count_per_group,
                                                    size_t input_channels_per_group,
                                                    const TensorShapeVector& kernel_shape,
-                                                   const TensorShapeVector& dilations) const {
+                                                   const TensorShapeVector& dilations,
+                                                   bool is_depthwise) const {
   if (!can_cache_packed_filter_) {
     return Status::OK();
   }
@@ -214,32 +216,53 @@ Status Conv<float>::EnsurePackedChannelsLastFilter(concurrency::ThreadPool* thre
       return;
     }
 
-    packed_filter_group_stride_ =
-        ArmKleidiAI::MlasConvSymmetricChannelsLast2DFloatPackWSize(filter_count_per_group,
-                                                                   input_channels_per_group,
-                                                                   kernel_shape.data(),
-                                                                   dilations.data());
-    if (packed_filter_group_stride_ == 0) {
+    size_t packed_filter_size = 0;
+    if (is_depthwise) {
+      packed_filter_size = ArmKleidiAI::MlasDepthwiseConvPackWeightsAndBiasSize(
+          onnxruntime::narrow<size_t>(conv_attrs_.group),
+          onnxruntime::narrow<size_t>(kernel_shape[0]),
+          onnxruntime::narrow<size_t>(kernel_shape[1]));
+    } else {
+      packed_filter_group_stride_ =
+          ArmKleidiAI::MlasConvSymmetricChannelsLast2DFloatPackWSize(filter_count_per_group,
+                                                                     input_channels_per_group,
+                                                                     kernel_shape.data(),
+                                                                     dilations.data());
+      packed_filter_size = SafeInt<size_t>(packed_filter_group_stride_) *
+                           onnxruntime::narrow<size_t>(conv_attrs_.group);
+    }
+
+    if (packed_filter_size == 0) {
       packed_filter_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                               "Failed to get KleidiAI packed filter size.");
       return;
     }
 
-    const size_t packed_filter_size =
-        packed_filter_group_stride_ * onnxruntime::narrow<size_t>(conv_attrs_.group);
     packed_filter_ = IAllocator::MakeUniquePtr<void>(alloc, packed_filter_size, true);
     memset(packed_filter_.get(), 0, packed_filter_size);
 
-    ArmKleidiAI::MlasConvSymmetricChannelsLast2DFloatPackW(filter_count_per_group,
-                                                           input_channels_per_group,
-                                                           kernel_shape.data(),
-                                                           dilations.data(),
-                                                           onnxruntime::narrow<size_t>(conv_attrs_.group),
-                                                           constant_filter_tensor_->Data<float>(),
-                                                           constant_bias_tensor_ ? constant_bias_tensor_->Data<float>() : nullptr,
-                                                           packed_filter_.get(),
-                                                           packed_filter_group_stride_,
-                                                           thread_pool);
+    if (is_depthwise) {
+      ArmKleidiAI::MlasDepthwiseConvPackWeightsAndBias(
+          onnxruntime::narrow<size_t>(conv_attrs_.group),
+          onnxruntime::narrow<size_t>(kernel_shape[0]),
+          onnxruntime::narrow<size_t>(kernel_shape[1]),
+          constant_filter_tensor_->Data<float>(),
+          constant_bias_tensor_ ? constant_bias_tensor_->Data<float>() : nullptr,
+          packed_filter_.get());
+    } else {
+      ArmKleidiAI::MlasConvSymmetricChannelsLast2DFloatPackW(filter_count_per_group,
+                                                             input_channels_per_group,
+                                                             kernel_shape.data(),
+                                                             dilations.data(),
+                                                             onnxruntime::narrow<size_t>(conv_attrs_.group),
+                                                             constant_filter_tensor_->Data<float>(),
+                                                             constant_bias_tensor_
+                                                                 ? constant_bias_tensor_->Data<float>()
+                                                                 : nullptr,
+                                                             packed_filter_.get(),
+                                                             packed_filter_group_stride_,
+                                                             thread_pool);
+    }
   });
 
   return packed_filter_status_;
@@ -324,9 +347,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const size_t group_count = narrow<size_t>(conv_attrs_.group);
   const size_t input_channels_per_group = narrow<size_t>(C / conv_attrs_.group);
   const size_t filter_count_per_group = narrow<size_t>(M / conv_attrs_.group);
-  const bool nhwc_fastpath =
-      wants_channels_last && !sum_present &&
-      (MlasConvSupportsDenseChannelsLast2DFloatKernel(
+  const bool dense_nhwc_fastpath =
+      wants_channels_last && !sum_present && MlasConvSupportsDenseChannelsLast2DFloatKernel(
            kernel_rank,
            narrow<size_t>(N),
            group_count,
@@ -336,8 +358,9 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
            pads_size_t.data(),
            strides_size_t.data(),
            filter_count_per_group,
-           /*Beta*/ 0.0f) ||
-       MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+           /*Beta*/ 0.0f);
+  const bool depthwise_nhwc_fastpath =
+      wants_channels_last && !sum_present && MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
            kernel_rank,
            narrow<size_t>(N),
            group_count,
@@ -348,7 +371,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
            pads_size_t.data(),
            strides_size_t.data(),
            filter_count_per_group,
-           /*Beta*/ 0.0f));
+           /*Beta*/ 0.0f);
+  const bool nhwc_fastpath = dense_nhwc_fastpath || depthwise_nhwc_fastpath;
 
 #if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
   if (nhwc_fastpath && can_cache_packed_filter_) {
@@ -356,7 +380,8 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                                                        filter_count_per_group,
                                                        input_channels_per_group,
                                                        kernel_shape,
-                                                       dilations));
+                                                       dilations,
+                                                       depthwise_nhwc_fastpath));
   }
 #endif
 

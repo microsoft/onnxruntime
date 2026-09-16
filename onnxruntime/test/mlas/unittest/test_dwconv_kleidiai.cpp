@@ -10,6 +10,7 @@
 #include "core/mlas/lib/kleidiai/mlasi_kleidiai.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <random>
@@ -173,6 +174,7 @@ void RunDepthwiseConvCase(size_t channels, size_t in_height, size_t in_width, si
                                                          input_data,
                                                          weights.data(),
                                                          bias.data(),
+                                                         nullptr,
                                                          output.data(),
                                                          clamp_min,
                                                          clamp_max);
@@ -183,7 +185,11 @@ void RunDepthwiseConvCase(size_t channels, size_t in_height, size_t in_width, si
   }
 }
 
-void RunMlasConvChannelsLastCase(size_t channels, size_t in_height, size_t in_width, size_t padding) {
+void RunMlasConvChannelsLastCase(size_t channels,
+                                 size_t in_height,
+                                 size_t in_width,
+                                 size_t padding,
+                                 bool use_prepacked_weights = false) {
   if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
     GTEST_SKIP() << "DepthwiseConvKleidiAI requires ARM64 SME2. Skipping test.";
   }
@@ -267,6 +273,21 @@ void RunMlasConvChannelsLastCase(size_t channels, size_t in_height, size_t in_wi
                   0.0f,
                   nullptr);
   std::vector<float> working_buffer(working_buffer_size);
+  std::vector<std::byte> packed_weights;
+  if (use_prepacked_weights) {
+    const size_t packed_size =
+        ArmKleidiAI::MlasDepthwiseConvPackWeightsAndBiasSize(channels, filter_height, filter_width);
+    ASSERT_NE(packed_size, 0U);
+    packed_weights.resize(packed_size);
+    ArmKleidiAI::MlasDepthwiseConvPackWeightsAndBias(
+        channels, filter_height, filter_width, weights.data(), bias.data(), packed_weights.data());
+    parameters.FilterIsPacked = true;
+    parameters.PackedFilter = packed_weights.data();
+
+    std::fill(weights.begin(), weights.end(), std::numeric_limits<float>::quiet_NaN());
+    std::fill(bias.begin(), bias.end(), std::numeric_limits<float>::quiet_NaN());
+  }
+
   MlasConv(&parameters,
            input_nhwc.data(),
            weights.data(),
@@ -298,8 +319,115 @@ TEST(MlasKleidiDepthwiseTest, UnitPaddingNhwc) {
   RunDepthwiseConvCase(/*channels=*/32, /*in_height=*/8, /*in_width=*/8, /*padding=*/1, /*channels_last=*/true);
 }
 
+TEST(MlasKleidiDepthwiseTest, LargeChannelCountNhwc) {
+  RunDepthwiseConvCase(/*channels=*/128, /*in_height=*/8, /*in_width=*/8, /*padding=*/1, /*channels_last=*/true);
+}
+
+TEST(MlasKleidiDepthwiseTest, ChannelTailNhwc) {
+  RunDepthwiseConvCase(/*channels=*/129, /*in_height=*/8, /*in_width=*/8, /*padding=*/1, /*channels_last=*/true);
+}
+
 TEST(MlasKleidiDepthwiseTest, MlasConvChannelsLast) {
   RunMlasConvChannelsLastCase(/*channels=*/32, /*in_height=*/8, /*in_width=*/8, /*padding=*/1);
+}
+
+TEST(MlasKleidiDepthwiseTest, MlasConvChannelsLastPrepackedWeights) {
+  RunMlasConvChannelsLastCase(
+      /*channels=*/32, /*in_height=*/8, /*in_width=*/8, /*padding=*/1, /*use_prepacked_weights=*/true);
+}
+
+TEST(MlasKleidiDepthwiseTest, RejectsOutputSmallerThanKernelTile) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
+    GTEST_SKIP() << "DepthwiseConvKleidiAI requires ARM64 SME2. Skipping test.";
+  }
+
+  MLAS_CONV_PARAMETERS parameters{};
+  parameters.Dimensions = 2;
+  parameters.BatchCount = 1;
+  parameters.GroupCount = 32;
+  parameters.InputChannels = 1;
+  parameters.FilterCount = 1;
+  parameters.InputShape[0] = 5;
+  parameters.InputShape[1] = 5;
+  parameters.KernelShape[0] = 3;
+  parameters.KernelShape[1] = 3;
+  parameters.DilationShape[0] = 1;
+  parameters.DilationShape[1] = 1;
+  parameters.StrideShape[0] = 1;
+  parameters.StrideShape[1] = 1;
+
+  EXPECT_FALSE(ArmKleidiAI::DepthwiseConvKleidiAISupported(&parameters));
+}
+
+TEST(MlasKleidiDepthwiseTest, BatchCountTwoFallsBackToGenericMlas) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
+    GTEST_SKIP() << "DepthwiseConvKleidiAI requires ARM64 SME2. Skipping test.";
+  }
+
+  constexpr size_t batches = 2;
+  constexpr size_t channels = 8;
+  constexpr size_t in_height = 8;
+  constexpr size_t in_width = 8;
+  constexpr size_t filter_height = 3;
+  constexpr size_t filter_width = 3;
+  constexpr size_t padding = 1;
+  constexpr size_t out_height = in_height;
+  constexpr size_t out_width = in_width;
+
+  std::vector<float> input(batches * channels * in_height * in_width);
+  std::vector<float> weights(channels * filter_height * filter_width);
+  std::vector<float> bias(channels);
+  std::vector<float> expected(batches * channels * out_height * out_width);
+  std::vector<float> output(expected.size(), std::numeric_limits<float>::quiet_NaN());
+  std::mt19937 rng(42);
+  std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+  std::generate(input.begin(), input.end(), [&] { return dist(rng); });
+  std::generate(weights.begin(), weights.end(), [&] { return dist(rng); });
+  std::generate(bias.begin(), bias.end(), [&] { return dist(rng); });
+
+  DepthwiseReferenceNchw(input.data(), weights.data(), bias.data(), batches, channels,
+                         in_height, in_width, filter_height, filter_width,
+                         padding, padding, padding, padding,
+                         -std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), expected.data());
+
+  const int64_t input_shape[] = {in_height, in_width};
+  const int64_t kernel_shape[] = {filter_height, filter_width};
+  const int64_t dilation_shape[] = {1, 1};
+  const int64_t pads[] = {padding, padding, padding, padding};
+  const int64_t strides[] = {1, 1};
+  const int64_t output_shape[] = {out_height, out_width};
+  MLAS_ACTIVATION activation{};
+  activation.ActivationKind = MlasIdentityActivation;
+  MLAS_CONV_PARAMETERS parameters{};
+  size_t working_buffer_size = 0;
+  MlasConvPrepare(&parameters, 2, batches, channels, 1, input_shape, kernel_shape,
+                  dilation_shape, pads, strides, output_shape, 1, &activation,
+                  &working_buffer_size, false, 0.0f, nullptr);
+  EXPECT_FALSE(ArmKleidiAI::DepthwiseConvKleidiAISupported(&parameters));
+
+  std::vector<float> working_buffer(working_buffer_size);
+  MlasConv(&parameters, input.data(), weights.data(), bias.data(), working_buffer.data(), output.data(), nullptr);
+  for (size_t i = 0; i < output.size(); ++i) {
+    EXPECT_NEAR(expected[i], output[i], 1e-4f) << "Mismatch at element " << i;
+  }
+}
+
+TEST(MlasKleidiDepthwiseTest, SelectorDisabledDeclinesPrepare) {
+  const int64_t shape[] = {8, 8};
+  const int64_t kernel_shape[] = {3, 3};
+  const int64_t unit_shape[] = {1, 1};
+  const int64_t padding[] = {1, 1, 1, 1};
+  MLAS_ACTIVATION activation{};
+  activation.ActivationKind = MlasIdentityActivation;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG selector_config{};
+  selector_config.use_kleidiai = false;
+  MLAS_CONV_PARAMETERS parameters{};
+  parameters.BackendKernelSelectorConfig = &selector_config;
+  size_t working_buffer_size = 0;
+
+  EXPECT_FALSE(ArmKleidiAI::MlasConvPrepare(
+      &parameters, 2, 1, 32, 1, shape, kernel_shape, unit_shape, padding, unit_shape,
+      shape, 1, &activation, &working_buffer_size, true, 0.0f, nullptr));
 }
 
 TEST(MlasKleidiDepthwiseTest, RejectsNon3x3Filters) {
@@ -320,12 +448,12 @@ TEST(MlasKleidiDepthwiseTest, RejectsNon3x3Filters) {
   EXPECT_FALSE(ArmKleidiAI::DepthwiseConvKleidiAI(
       batches, in_height, in_width, channels, /*filter_height=*/2, /*filter_width=*/3,
       /*pad_top=*/0, /*pad_left=*/0, /*pad_bottom=*/0, /*pad_right=*/0, /*channels_last=*/true,
-      input.data(), weights.data(), bias.data(), output.data(),
+      input.data(), weights.data(), bias.data(), nullptr, output.data(),
       -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
   EXPECT_FALSE(ArmKleidiAI::DepthwiseConvKleidiAI(
       batches, in_height, in_width, channels, /*filter_height=*/3, /*filter_width=*/2,
       /*pad_top=*/0, /*pad_left=*/0, /*pad_bottom=*/0, /*pad_right=*/0, /*channels_last=*/true,
-      input.data(), weights.data(), bias.data(), output.data(),
+      input.data(), weights.data(), bias.data(), nullptr, output.data(),
       -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()));
 }
 

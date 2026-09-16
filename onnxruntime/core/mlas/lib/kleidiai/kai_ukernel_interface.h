@@ -36,9 +36,6 @@ struct KaiKernel {
 
 using KaiF32DepthwiseConvKernel = KaiKernel<kai_dwconv_clamp_f32_f32_f32p_planar_ukernel>;
 
-template <typename UkernelFn>
-using KaiMatmulKernel = KaiKernel<UkernelFn>;
-
 enum class KaiQ4RhsPackLayout {
     SymmetricNxK,
     SymmetricNxKInterleavedNrx4,
@@ -54,10 +51,10 @@ struct KaiQ4MatmulKernel {
 };
 
 // Wrapper for FP32 GEMM kernels where both LHS and RHS are pre-packed (common SGEMM path).
-using KaiF32SgemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_f32p_f32p_ukernel>;
+using KaiF32SgemmKernel = KaiKernel<kai_matmul_clamp_f32_f32p_f32p_ukernel>;
 
 // Wrapper for FP32 kernels used for GEMV-style workloads (typically a single-row/skinny-M use case).
-using KaiF32SgemvKernel = KaiMatmulKernel<kai_matmul_clamp_f32_f32_f32p_ukernel>;
+using KaiF32SgemvKernel = KaiKernel<kai_matmul_clamp_f32_f32_f32p_ukernel>;
 
 // Wrapper for Qnbit GEMM kernels producing FP32 output.
 using KaiQnbitGemmKernel = KaiQ4MatmulKernel<kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel>;
@@ -66,18 +63,18 @@ using KaiQnbitGemmKernel = KaiQ4MatmulKernel<kai_matmul_clamp_f32_qai8dxp_qsi4c3
 using KaiQnbitAsymGemmKernel = KaiQ4MatmulKernel<kai_matmul_clamp_f32_qsi8d32p_qai4c32p_ukernel>;
 
 // Wrapper for dynamic-quantized GEMM kernels producing FP32 output.
-using KaiDynamicQGemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_qai8dxp_qsi8cxp_ukernel>;
+using KaiDynamicQGemmKernel = KaiKernel<kai_matmul_clamp_f32_qai8dxp_qsi8cxp_ukernel>;
 
 // Wrapper for FP32 IMATMUL kernels used by the KleidiAI convolution implementation.
-using KaiF32IMatmulKernel = KaiMatmulKernel<kai_imatmul_clamp_f32_f32p_f32p_ukernel>;
+using KaiF32IMatmulKernel = KaiKernel<kai_imatmul_clamp_f32_f32p_f32p_ukernel>;
 
 // Wrapper for FP16 IMATMUL kernels used by the KleidiAI convolution implementation.
-using KaiF16IMatmulKernel = KaiMatmulKernel<kai_imatmul_clamp_f16_f16p_f16p_ukernel>;
+using KaiF16IMatmulKernel = KaiKernel<kai_imatmul_clamp_f16_f16p_f16p_ukernel>;
 
-using KaiBF16SBgemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_bf16p_bf16p_ukernel>;
+using KaiBF16SBgemmKernel = KaiKernel<kai_matmul_clamp_f32_bf16p_bf16p_ukernel>;
 
 // Wrapper for FP16 HGEMM kernels producing FP16 output.
-using KaiF16HgemmKernel = KaiMatmulKernel<kai_matmul_clamp_f16_f16_f16p_ukernel>;
+using KaiF16HgemmKernel = KaiKernel<kai_matmul_clamp_f16_f16_f16p_ukernel>;
 
 // Returns the selected Qnbit GEMM ukernel based on runtime CPU capabilities.
 const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel();
