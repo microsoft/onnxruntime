@@ -261,6 +261,7 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
                                           {"batch_heads", ProgramUniformVariableDataType::Uint32},
                                           {"new_sequence_length", ProgramUniformVariableDataType::Uint32},

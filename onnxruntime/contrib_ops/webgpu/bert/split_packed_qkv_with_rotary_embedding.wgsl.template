@@ -44,7 +44,7 @@ $MAIN {
 #else
     let base_position = 0u;
 #endif
-    let max_rotary_position = uniforms.cos_cache_shape[0];
+    let max_rotary_position = min(uniforms.cos_cache_shape[0], uniforms.sin_cache_shape[0]);
     let valid_rotary_position = base_position < max_rotary_position && position_id < max_rotary_position - base_position;
     // Process a rotary pair (i, j)
 
