@@ -10,6 +10,7 @@
 #param sigmoid_beta
 #param qk_l2_norm
 #param use_packed_params
+#param vectorized_value_io
 #param value_channels_per_workgroup
 #use .getByOffset .setByOffset
 
@@ -22,6 +23,9 @@ var<workgroup> key_norm: array<f32, workgroup_size_x>;
 var<workgroup> query_norm: array<f32, workgroup_size_x>;
 #endif
 var<workgroup> delta: array<f32, VALUE_CHANNELS_PER_WORKGROUP>;
+#if update_rule == 1 || update_rule == 3
+var<workgroup> gate_scale: f32;
+#endif
 
 fn gdn_softplus(x: f32) -> f32 {
   if (x > 0.0) {
@@ -95,15 +99,18 @@ $MAIN {
     query_value *= inverseSqrt(query_norm[0] + 1e-12);
 #endif
 #if update_rule == 1 || update_rule == 3
+    if (key_index == 0u) {
 #if use_packed_params
-    var gate = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u);
+      var gate = parameters.getByOffset((token * uniforms.num_heads_v + value_head) * 2u);
 #else
-    var gate = decay.getByOffset(token * uniforms.num_heads_v + value_head);
+      var gate = decay.getByOffset(token * uniforms.num_heads_v + value_head);
 #if qwen_gate
-    gate = -exp(a_log.getByOffset(value_head)) * gdn_softplus(gate + dt_bias.getByOffset(value_head));
+      gate = -exp(a_log.getByOffset(value_head)) * gdn_softplus(gate + dt_bias.getByOffset(value_head));
 #endif
 #endif
-    let gate_scale = exp(gate);
+      gate_scale = exp(gate);
+    }
+    workgroupBarrier();
     for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
       state[value_offset] *= gate_scale;
     }
@@ -138,25 +145,43 @@ $MAIN {
 #endif
 #endif
 #endif
+#if vectorized_value_io
+      let value_tensor_offset =
+          ((token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_start) /
+          VALUE_CHANNELS_PER_WORKGROUP;
+      let value_vector = vec4<f32>(value.getByOffset(value_tensor_offset));
+      var output_vector: vec4<f32>;
+#endif
       for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
         let value_index = value_start + value_offset;
         if (value_index < uniforms.head_size_v) {
           var retrieved_value = 0.0;
-          let value_tensor_offset =
-              (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index;
 #if update_rule == 2 || update_rule == 3
           retrieved_value = retrieved[value_offset * workgroup_size_x];
 #endif
-          delta[value_offset] = beta_value * (f32(value.getByOffset(value_tensor_offset)) - retrieved_value);
-          let output_tensor_offset =
+#if vectorized_value_io
+          delta[value_offset] = beta_value * (value_vector[value_offset] - retrieved_value);
+#else
+          let value_tensor_offset =
               (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index;
+          delta[value_offset] = beta_value * (f32(value.getByOffset(value_tensor_offset)) - retrieved_value);
+#endif
           let output_value =
               (pre_output[value_offset * workgroup_size_x] + delta[value_offset] * key_query[0]) * uniforms.scale;
+#if vectorized_value_io
+          output_vector[value_offset] = output_value;
+#else
+          let output_tensor_offset =
+              (token * uniforms.num_heads_v + value_head) * uniforms.head_size_v + value_index;
           output.setByOffset(output_tensor_offset, output_element_t(output_value));
+#endif
         } else {
           delta[value_offset] = 0.0;
         }
       }
+#if vectorized_value_io
+      output.setByOffset(value_tensor_offset, output_value_t(output_vector));
+#endif
     }
     workgroupBarrier();
     for (var value_offset = 0u; value_offset < VALUE_CHANNELS_PER_WORKGROUP; value_offset++) {
