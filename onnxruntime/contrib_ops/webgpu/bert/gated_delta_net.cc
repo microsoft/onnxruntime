@@ -404,7 +404,7 @@ Status GatedDeltaNet::ComputeInternal(onnxruntime::webgpu::ComputeContext& conte
     if (qwen_gate_) params_program.AddInputs({{a_log, ProgramTensorMetadataDependency::None},
                                               {dt_bias, ProgramTensorMetadataDependency::None}});
     params_program.AddOutput({&*packed_params, ProgramTensorMetadataDependency::None})
-        .SetDispatchGroupSize(onnxruntime::narrow<uint32_t>(total_tokens * hv))
+        .SetDispatchGroupSize((onnxruntime::narrow<uint32_t>(total_tokens * hv) + 63u) / 64u)
         .SetWorkgroupSize(64)
         .CacheHint(needs_decay, needs_beta, qwen_gate_, sigmoid_beta_)
         .AddUniformVariables({{onnxruntime::narrow<uint32_t>(total_tokens)},
