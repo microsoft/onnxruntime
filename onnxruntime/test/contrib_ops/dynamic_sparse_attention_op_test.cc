@@ -260,7 +260,8 @@ DynamicSparseAttentionCase MakeSingleTokenSelectedValueCase(float value = 9.0f) 
   return c;
 }
 
-Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_width = 8) {
+Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_width = 8,
+                                          int64_t num_heads = 1) {
   Model model("dynamic_sparse_attention_shape_inference", true, ModelMetaData(), PathString(),
               IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 17}, {kMSDomain, 1}},
               {}, DefaultLoggingManager().DefaultLogger(), ModelOptions(true, true));
@@ -312,7 +313,7 @@ Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_wid
 
   auto& node = graph.AddNode("dynamic_sparse_attention", "DynamicSparseAttention", "",
                              inputs, outputs, nullptr, kMSDomain);
-  node.AddAttribute("num_heads", int64_t{1});
+  node.AddAttribute("num_heads", num_heads);
   node.AddAttribute("kv_num_heads", int64_t{1});
   return graph.Resolve();
 }
@@ -326,7 +327,7 @@ TEST(DynamicSparseAttentionTest, ShapeInferenceSupportsOptionalCacheOutputs_CUDA
 
 #ifndef ORT_NO_EXCEPTIONS
 TEST(DynamicSparseAttentionTest, ShapeInferenceRejectsNonDivisibleSeparateQueryWidth_CUDA) {
-  const auto status = ResolveDynamicSparseAttentionGraph(3, 9);
+  const auto status = ResolveDynamicSparseAttentionGraph(3, 9, 2);
   ASSERT_FALSE(status.IsOK());
   EXPECT_NE(status.ErrorMessage().find("Query hidden size must be divisible"), std::string::npos);
 }
