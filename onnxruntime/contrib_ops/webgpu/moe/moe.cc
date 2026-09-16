@@ -221,6 +221,10 @@ Status MoE::ComputeInternal(ComputeContext& context) const {
   const auto dtype_uint32 = DataTypeImpl::GetType<uint32_t>();
   const bool is_fp16 = dtype == DataTypeImpl::GetType<MLFloat16>();
   const uint32_t num_experts = static_cast<uint32_t>(params.num_experts);
+  Tensor* output = context.Output(0, hidden_state->Shape());
+  if (params.num_rows == 0) {
+    return Status::OK();
+  }
   const auto& device_limits = context.DeviceLimits();
   ORT_RETURN_IF_NOT(num_experts <= device_limits.maxComputeWorkgroupSizeX &&
                         num_experts <= device_limits.maxComputeInvocationsPerWorkgroup,
@@ -232,10 +236,6 @@ Status MoE::ComputeInternal(ComputeContext& context) const {
   const uint32_t fc1_cols = is_fused_swiglu ? 2 * inter_size : inter_size;
   constexpr int max_tokens = 2 * 1024;
 
-  Tensor* output = context.Output(0, hidden_state->Shape());
-  if (params.num_rows == 0) {
-    return Status::OK();
-  }
   const uint32_t output_vec4_size = static_cast<uint32_t>((hidden_state->Shape().Size() + 3) / 4);
   MoEZeroTensorProgram zero;
   zero.AddOutput({output, ProgramTensorMetadataDependency::Type, ProgramOutput::Flatten, 4})

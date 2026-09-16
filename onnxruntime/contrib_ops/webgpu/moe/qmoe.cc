@@ -265,6 +265,10 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const int max_tokens = 2 * 1024;
 
   const uint32_t num_experts = static_cast<uint32_t>(moe_params.num_experts);
+  Tensor* output_tensor = context.Output(0, input_shape);
+  if (moe_params.num_rows == 0) {
+    return Status::OK();
+  }
   const auto& device_limits = context.DeviceLimits();
   ORT_RETURN_IF_NOT(num_experts <= device_limits.maxComputeWorkgroupSizeX &&
                         num_experts <= device_limits.maxComputeInvocationsPerWorkgroup,
@@ -286,11 +290,6 @@ Status QMoE::ComputeInternal(ComputeContext& context) const {
   const int64_t block_size_fc2 = (block_size_ != 0) ? block_size_ : K_fc2;
   const int64_t block_size_fc3 = block_size_fc1;
   Status status;
-
-  Tensor* output_tensor = context.Output(0, input_shape);
-  if (moe_params.num_rows == 0) {
-    return Status::OK();
-  }
 
   if (moe_params.num_rows == 1) {
     // Fused MoE path for 1 token: instead of looping k times with separate dispatches,

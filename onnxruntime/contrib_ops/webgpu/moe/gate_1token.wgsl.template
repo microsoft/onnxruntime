@@ -14,6 +14,8 @@
 #param has_router_weights
 #param normalize_routing_weights
 
+#use .getByOffset .setByOffset
+
 const K: u32 = k;
 #if is_fp16
 const MAX_FLOAT: f16 = 65504.0;
@@ -36,12 +38,12 @@ $MAIN {
     var max_idx: u32 = 0u;
 
     if (local_idx < cols) {
-        max_val = router_logits[row * cols + local_idx];
+        max_val = router_logits.getByOffset(row * cols + local_idx);
         max_idx = local_idx;
     }
     shared_vals[local_idx] = max_val;
     shared_idxs[local_idx] = max_idx;
-    topk_values[output_base + local_idx] = topk_values_value_t(0);
+    topk_values.setByOffset(output_base + local_idx, topk_values_value_t(0));
     workgroupBarrier();
 
     // K is small, use a simple bubble sort
@@ -67,18 +69,18 @@ $MAIN {
 #if normalize_routing_weights
         sum = 0.0;
         for (var i = 0u; i < K; i++) {
-            sum += f32(router_weights[shared_idxs[i]]);
+            sum += f32(router_weights.getByOffset(shared_idxs[i]));
         }
 #endif
         for (var i = 0u; i < K; i++) {
             let expert_idx = shared_idxs[i];
-            let weight = f32(router_weights[expert_idx]);
+            let weight = f32(router_weights.getByOffset(expert_idx));
             var normalized_weight = 0.0;
             if (sum != 0.0) {
                 normalized_weight = weight / sum;
             }
-            topk_values[output_base + expert_idx] = topk_values_value_t(normalized_weight);
-            indirect_experts[i] = expert_idx;
+            topk_values.setByOffset(output_base + expert_idx, topk_values_value_t(normalized_weight));
+            indirect_experts.setByOffset(i, expert_idx);
         }
 #else
         // softmax with max-subtraction for numerical stability — without it, large
@@ -97,8 +99,8 @@ $MAIN {
         }
         for (var i = 0u; i < K; i++) {
             let expert_idx = shared_idxs[i];
-            topk_values[output_base + expert_idx] = topk_values_value_t(exp(f32(shared_vals[i]) - max_val) / sum);
-            indirect_experts[i] = expert_idx;
+            topk_values.setByOffset(output_base + expert_idx, topk_values_value_t(exp(f32(shared_vals[i]) - max_val) / sum));
+            indirect_experts.setByOffset(i, expert_idx);
         }
 #endif
     }
