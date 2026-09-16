@@ -31,14 +31,22 @@ constexpr bool IsScalarOr1Element1DTensor(gsl::span<const int64_t> tensor_shape)
   return (rank == 0) || ((rank == 1) && (tensor_shape[0] == 1));
 }
 
-static std::vector<int64_t> DataInt64(api::TensorRef& tensor) {
+static std::optional<std::vector<int64_t>> DataInt64(api::TensorRef& tensor) {
+  if (tensor.DType() != api::DataType::INT64) {
+    return std::nullopt;
+  }
+
   std::vector<uint8_t> raw_data = tensor.Data();
   int64_t* data_int = reinterpret_cast<int64_t*>(raw_data.data());
   std::vector<int64_t> result(data_int, data_int + tensor.NumElements());
   return result;
 }
 
-static std::vector<int32_t> DataInt32(api::TensorRef& tensor) {
+static std::optional<std::vector<int32_t>> DataInt32(api::TensorRef& tensor) {
+  if (tensor.DType() != api::DataType::INT32) {
+    return std::nullopt;
+  }
+
   std::vector<uint8_t> raw_data = tensor.Data();
   int32_t* data_int = reinterpret_cast<int32_t*>(raw_data.data());
   std::vector<int32_t> result(data_int, data_int + tensor.NumElements());
@@ -1948,8 +1956,11 @@ bool HandleReduceOps(HandlerArgs& args) {
     empty_axes = true;
   } else {
     axes_const = args.ctx.graph.GetConstant(inputs[1]);
-    if (axes_const != nullptr && axes_const->NumElements() == 0) {
-      empty_axes = true;
+    if (axes_const != nullptr) {
+      if (axes_const->DType() != api::DataType::INT64) {
+        return false;
+      }
+      empty_axes = axes_const->NumElements() == 0;
     }
   }
 
@@ -1974,11 +1985,11 @@ bool HandleReduceOps(HandlerArgs& args) {
 
   // Case 3: Const axes
   auto axes = DataInt64(*axes_const);
-  if (!NormalizeAndValidateAxes(axes, args.perm.size())) {
+  if (!axes || !NormalizeAndValidateAxes(*axes, args.perm.size())) {
     return false;
   }
 
-  std::vector<int64_t> new_axes = SortedAxesForTransposedInput(axes, args.perm);
+  std::vector<int64_t> new_axes = SortedAxesForTransposedInput(*axes, args.perm);
   std::vector<int64_t> axes_shape{gsl::narrow_cast<int64_t>(new_axes.size())};
   std::string_view new_axes_const = AddInitializerInt64(args.ctx.graph, axes_shape, new_axes);
   std::string_view axes_inp = inputs[1];
@@ -2125,8 +2136,9 @@ static bool HandleArgMinMax(HandlerArgs& args) {
 constexpr HandlerInfo arg_min_max_handler = {&FirstInput, &HandleArgMinMax};
 
 // Creates an int32 or int64 initializer and returns the name (Slice supports int64 or int32 axes)
-static std::string_view AddIntInitializerMatchingDtype(api::GraphRef& graph, std::vector<int64_t> values,
-                                                       api::DataType dtype) {
+static std::optional<std::string_view> AddIntInitializerMatchingDtype(api::GraphRef& graph,
+                                                                     std::vector<int64_t> values,
+                                                                     api::DataType dtype) {
   std::vector<int64_t> shape{gsl::narrow_cast<int64_t>(values.size())};
 
   if (dtype == api::DataType::INT32) {
@@ -2139,20 +2151,32 @@ static std::string_view AddIntInitializerMatchingDtype(api::GraphRef& graph, std
     return AddInitializerInt32(graph, shape, values_int32);
   }
 
-  return AddInitializerInt64(graph, shape, values);
+  if (dtype == api::DataType::INT64) {
+    return AddInitializerInt64(graph, shape, values);
+  }
+
+  return std::nullopt;
 }
 
 // Gets int data from an int32 or int64 tensor
-static std::vector<int64_t> TensorIntData(api::TensorRef& tensor, api::DataType dtype) {
+static std::optional<std::vector<int64_t>> TensorIntData(api::TensorRef& tensor, api::DataType dtype) {
   if (dtype == api::DataType::INT32) {
-    std::vector<int32_t> values_int32 = DataInt32(tensor);
+    auto values_int32 = DataInt32(tensor);
+    if (!values_int32) {
+      return std::nullopt;
+    }
+
     std::vector<int64_t> values;
-    values.reserve(values_int32.size());
-    for (int32_t v : values_int32) {
+    values.reserve(values_int32->size());
+    for (int32_t v : *values_int32) {
       values.push_back(gsl::narrow_cast<int64_t>(v));
     }
 
     return values;
+  }
+
+  if (dtype != api::DataType::INT64) {
+    return std::nullopt;
   }
 
   return DataInt64(tensor);
@@ -2196,7 +2220,8 @@ static bool HandleSlice(HandlerArgs& args) {
     const std::optional<std::vector<int64_t>> starts_shape = starts_value_info->Shape();
     api::DataType int_dtype = starts_value_info->DType();
 
-    if (starts_shape == std::nullopt || starts_shape->size() != 1 ||
+    if ((int_dtype != api::DataType::INT32 && int_dtype != api::DataType::INT64) ||
+        starts_shape == std::nullopt || starts_shape->size() != 1 ||
         (*starts_shape)[0] < 0 || static_cast<uint64_t>((*starts_shape)[0]) > rank) {
       return false;
     }
@@ -2207,8 +2232,11 @@ static bool HandleSlice(HandlerArgs& args) {
       new_axes.push_back(args.perm[i]);
     }
 
-    std::string_view new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
-    args.node.SetInput(3, new_axes_const);
+    auto new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
+    if (!new_axes_const) {
+      return false;
+    }
+    args.node.SetInput(3, *new_axes_const);
 
   } else {
     // Case 2: Axes input provided. Update if constant.
@@ -2220,15 +2248,18 @@ static bool HandleSlice(HandlerArgs& args) {
 
     api::DataType int_dtype = axes_const->DType();
     auto axes = TensorIntData(*axes_const, int_dtype);
-    if (!NormalizeAndValidateAxes(axes, rank)) {
+    if (!axes || !NormalizeAndValidateAxes(*axes, rank)) {
       return false;
     }
 
     // Update axes but leave the order unchanged (don't sort them). Need to line up with starts/ends/steps
-    new_axes = AxesForTransposedInput(axes, args.perm);
+    new_axes = AxesForTransposedInput(*axes, args.perm);
     std::vector<int64_t> axes_shape{gsl::narrow_cast<int64_t>(new_axes.size())};
-    std::string_view new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
-    args.node.SetInput(3, new_axes_const);
+    auto new_axes_const = AddIntInitializerMatchingDtype(args.ctx.graph, new_axes, int_dtype);
+    if (!new_axes_const) {
+      return false;
+    }
+    args.node.SetInput(3, *new_axes_const);
     if (!args.ctx.graph.HasValueConsumers(axes_inp)) {
       args.ctx.graph.RemoveInitializer(axes_inp);
     }
@@ -2303,19 +2334,23 @@ static bool HandleTile(HandlerArgs& args) {
   std::unique_ptr<api::TensorRef> repeats_const = args.ctx.graph.GetConstant(repeats_inp);
   if (repeats_const != nullptr) {
     // Case 1: Repeats is constant. Shuffle order.
-    const std::vector<int64_t>& repeats = DataInt64(*repeats_const);
+    auto repeats = DataInt64(*repeats_const);
+    if (!repeats) {
+      return false;
+    }
+
     // 'repeats' is required by the Tile spec to have one entry per dimension of the preceding
     // Transpose's input, i.e. the same length as 'rank' derived from that Transpose's 'perm'. That
     // isn't necessarily verified ahead of this point (e.g. shape inference may not have been able to
     // validate it if the data input's rank wasn't statically known), so re-check it here before using
     // values from 'perm_inv' (which are all < rank) to index into 'repeats'.
-    if (repeats.size() != rank) {
+    if (repeats->size() != rank) {
       return false;
     }
     std::vector<int64_t> new_repeats;
     new_repeats.reserve(rank);
     for (int64_t p : args.perm_inv) {
-      new_repeats.push_back(repeats[gsl::narrow_cast<size_t>(p)]);
+      new_repeats.push_back((*repeats)[gsl::narrow_cast<size_t>(p)]);
     }
 
     std::string_view new_repeats_const = AddInitializerInt64(args.ctx.graph, perm_shape, new_repeats);
@@ -2534,9 +2569,12 @@ static bool HandleReshapeAsTranspose(HandlerArgs& args) {
   }
 
   auto reshape_requested_shape = DataInt64(*requested_shape_data);
+  if (!reshape_requested_shape) {
+    return false;
+  }
 
   // need rank to match for Reshape to be equivalent to a Transpose
-  if (transpose_input_shape->size() != reshape_requested_shape.size()) {
+  if (transpose_input_shape->size() != reshape_requested_shape->size()) {
     return false;
   }
 
@@ -2551,7 +2589,7 @@ static bool HandleReshapeAsTranspose(HandlerArgs& args) {
   }
 
   std::vector<int64_t> reshape_output_shape;
-  if (!FinalizeReshapeShape(*transpose_output_shape, reshape_requested_shape, allow_zero, reshape_output_shape)) {
+  if (!FinalizeReshapeShape(*transpose_output_shape, *reshape_requested_shape, allow_zero, reshape_output_shape)) {
     return false;
   }
 
@@ -2642,7 +2680,8 @@ static bool HandleReshapeSplit(HandlerArgs& args) {
   // resolved), but we also write a new constant shape initializer, so the
   // original must have been constant too.
   auto shape_input_constant = args.ctx.graph.GetConstant(args.node.Inputs()[1]);
-  if (shape_input_constant == nullptr || shape_input_constant->Data().size() == 0) {
+  if (shape_input_constant == nullptr || shape_input_constant->DType() != api::DataType::INT64 ||
+      shape_input_constant->Data().size() == 0) {
     return false;
   }
 
