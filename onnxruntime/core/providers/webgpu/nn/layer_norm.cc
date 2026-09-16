@@ -26,12 +26,12 @@ static TensorShape GetOverrideShape(const TensorShape& shape, int components) {
 }
 
 Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("scale", ShaderUsage::UseUniform);
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("y", ShaderUsage::UseUniform);
+  shader.AddOutput("y", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   if (has_mean_output_) {
     shader.AddOutput("mean_output", ShaderUsage::None);
   }
@@ -39,8 +39,9 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddOutput("inv_std_dev_output", ShaderUsage::None);
   }
 
+  // Fused LayerNorm can have different input and output types. Normalize in f32 before converting to the output type.
   std::string simpl1 = (simplified_) ? "" : "- mean * mean ";
-  std::string simpl2 = (simplified_) ? "" : "- x_element_t(mean) ";
+  std::string simpl2 = (simplified_) ? "" : "- mean ";
 
   if (split_norm_dim_) {
     shader.AdditionalImplementation()
@@ -78,7 +79,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "  let mean = sum_shared[0] / f32(uniforms.norm_size);\n"
         << "  let inv_std_dev = inverseSqrt(sum_squared_shared[0] / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
         << "  let offset = workgroup_idx * workgroup_size_x + local_idx;\n"
-        << "  y[offset] = ((cur_input " << simpl2 << ") * x_element_t(inv_std_dev) * scale[offset]" << (has_bias_ ? " + bias[offset] " : "") << ");\n";
+        << "  y[offset] = y_value_t((vec4<f32>(cur_input) " << simpl2 << ") * inv_std_dev) * scale[offset]" << (has_bias_ ? " + bias[offset] " : "") << ";\n";
 
     if (has_mean_output_) {
       shader.MainFunctionBody() << "  if (local_idx == 0 && workgroup_idx == 0) {\n"
@@ -113,7 +114,6 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "}\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
         << " let input_value = x[offset + i];\n"
-        << " y[offset + i] = input_value;\n"
         << " let f32_value = f32_val_t(input_value);\n"
         << " sum_shared[ix] += f32_value;\n"
         << " sum_squared_shared[ix] += f32_value * f32_value;\n"
@@ -133,7 +133,7 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let mean = " << SumVector("sum", components) << " / f32(uniforms.norm_size);\n"
         << "let inv_std_dev = inverseSqrt(" << SumVector("square_sum", components) << " / f32(uniforms.norm_size) " << simpl1 << "+ uniforms.epsilon);\n"
         << "for (var i: u32 = 0; i < stride; i++) {\n"
-        << " y[offset + i] = (y[offset + i] " << simpl2 << ") * x_element_t(inv_std_dev) * scale[offset1d + i]" << bias << ";\n"
+        << " y[offset + i] = y_value_t((f32_val_t(x[offset + i]) " << simpl2 << ") * inv_std_dev) * scale[offset1d + i]" << bias << ";\n"
         << "};\n";
 
     if (has_mean_output_) {
@@ -216,7 +216,7 @@ Status RunLayerNormProgram(ComputeContext& context,
       .AddInputs({{x, ProgramTensorMetadataDependency::Type, GetOverrideShape(x->Shape(), components), components}})
       .AddInputs(
           {{scale, ProgramTensorMetadataDependency::Type, GetOverrideShape(scale->Shape(), components), components}})
-      .AddOutputs({{y, ProgramTensorMetadataDependency::None, GetOverrideShape(y->Shape(), components), components}})
+      .AddOutputs({{y, ProgramTensorMetadataDependency::Type, GetOverrideShape(y->Shape(), components), components}})
       .AddUniformVariables({
           {static_cast<uint32_t>(components)},
       })
