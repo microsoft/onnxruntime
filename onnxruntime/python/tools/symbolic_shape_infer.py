@@ -238,6 +238,7 @@ class SymbolicShapeInference:
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
             "SparseAttention": self._infer_SparseAttention,
             "SparseAttentionIndexer": self._infer_SparseAttentionIndexer,
+            "PackedSparseAttentionIndexer": self._infer_PackedSparseAttentionIndexer,
             "UnfoldTensor": self._infer_UnfoldTensor,
         }
         self.aten_op_dispatcher_ = {
@@ -498,6 +499,7 @@ class SymbolicShapeInference:
             "SkipSimplifiedLayerNormalization",
             "SparseAttention",
             "SparseAttentionIndexer",
+            "PackedSparseAttentionIndexer",
             "SkipGroupNorm",
             "QLinearAdd",
             "QLinearMul",
@@ -2696,6 +2698,55 @@ class SymbolicShapeInference:
         set_output(2, [query_shape[0], present_compressed_length, query_shape[3]])
         set_output(3, [query_shape[0], present_buffer_length, past_buffer_shape[2]])
         set_output(4, [query_shape[0], present_buffer_length, past_buffer_shape[2]])
+
+    def _infer_PackedSparseAttentionIndexer(self, node):  # noqa: N802
+        policy_mode = get_attribute(node, "policy_mode", b"")
+        if isinstance(policy_mode, bytes):
+            policy_mode = policy_mode.decode("utf-8")
+        compress_ratio = get_attribute(node, "compress_ratio", 0)
+        query_shape = self._get_sympy_shape(node, 0)
+        total_tokens = query_shape[0]
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        if policy_mode == "qsa":
+            capacity = get_attribute(node, "token_budget", 0) + compress_ratio - 1
+        else:
+            capacity = get_attribute(node, "index_topk", 0)
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(
+                node.output[0],
+                onnx.TensorProto.INT32,
+                get_shape_from_sympy_shape([total_tokens, capacity]),
+            )
+        )
+        if len(node.output) > 1 and node.output[1]:
+            vi = self.known_vi_[node.output[1]]
+            vi.CopyFrom(
+                helper.make_tensor_value_info(
+                    node.output[1], onnx.TensorProto.INT32, get_shape_from_sympy_shape([total_tokens])
+                )
+            )
+
+        def copy_state_output(output_index, input_index, dtype):
+            # State never grows: present_* always has exactly the same fixed shape as past_*, so
+            # shape inference can simply copy it, unlike the dense op's growing/concatenated state.
+            if output_index >= len(node.output) or not node.output[output_index]:
+                return
+            if input_index >= len(node.input) or not node.input[input_index]:
+                return
+            shape = self._get_sympy_shape(node, input_index)
+            out_vi = self.known_vi_[node.output[output_index]]
+            out_vi.CopyFrom(
+                helper.make_tensor_value_info(node.output[output_index], dtype, get_shape_from_sympy_shape(shape))
+            )
+
+        copy_state_output(2, 11, output_dtype)  # present_key_state <- past_key_state
+        copy_state_output(3, 12, output_dtype)  # present_kv_buffer <- past_kv_buffer
+        if policy_mode != "qsa":
+            copy_state_output(4, 13, output_dtype)  # present_gate_buffer <- past_gate_buffer
+        copy_state_output(5, 14, onnx.TensorProto.INT32)  # present_state_lengths <- past_state_lengths
 
     def _infer_SkipGroupNorm(self, node):  # noqa: N802
         self._propagate_shape_and_type(node, 0, 0)

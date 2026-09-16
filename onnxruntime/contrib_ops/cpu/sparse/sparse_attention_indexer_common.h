@@ -6,6 +6,16 @@
 #include <cstdint>
 #include <string>
 
+// nvcc recognizes __host__/__device__ as built-in qualifiers in any translation unit it compiles
+// (no CUDA header include required), but a plain host compiler does not know these tokens. This
+// header is shared by CPU-only graph/schema code and by CUDA device code, so the annotation is
+// only emitted when nvcc is compiling the translation unit that includes this header.
+#if defined(__CUDACC__)
+#define SAI_HOST_DEVICE __host__ __device__
+#else
+#define SAI_HOST_DEVICE
+#endif
+
 namespace onnxruntime {
 namespace contrib {
 namespace sparse_attention_indexer {
@@ -68,8 +78,8 @@ constexpr int kCsaOutputCount = 5;
 
 // Number of selected entries emitted per query. The capacity only depends on attributes, so it is
 // a compile-time constant of the graph rather than a function of the data.
-inline int64_t SelectedCapacity(Policy policy, int64_t token_budget, int64_t index_topk,
-                                int64_t compress_ratio) {
+SAI_HOST_DEVICE inline int64_t SelectedCapacity(Policy policy, int64_t token_budget, int64_t index_topk,
+                                                int64_t compress_ratio) {
   return policy == Policy::kQsa ? token_budget + compress_ratio - 1 : index_topk;
 }
 
@@ -87,8 +97,8 @@ struct CsaWindowPlan {
   int64_t present_buffer_start = 0;   // offset of that buffer inside [past buffer | new tokens]
 };
 
-inline bool TryComputeCsaWindowPlan(int64_t past_buffer_length, int64_t sequence_length,
-                                    int64_t compress_ratio, CsaWindowPlan& plan) {
+SAI_HOST_DEVICE inline bool TryComputeCsaWindowPlan(int64_t past_buffer_length, int64_t sequence_length,
+                                                    int64_t compress_ratio, CsaWindowPlan& plan) {
   if (compress_ratio <= 0 || sequence_length < 0 || past_buffer_length < 0 ||
       past_buffer_length >= 2 * compress_ratio) {
     return false;
