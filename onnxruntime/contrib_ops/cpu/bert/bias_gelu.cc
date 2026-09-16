@@ -144,22 +144,30 @@ void BiasGelu<T, use_approximation>::AddBiasGelu(
   }
 }
 
-// AddBiasGelu specialization must appear before Compute so the compiler
-// resolves the call inside Compute to this specialization rather than
-// instantiating the generic template (which fails for MLFloat16).
-template <>
-void BiasGelu<MLFloat16, false>::AddBiasGelu(
-    const MLFloat16* input, const MLFloat16* bias, MLFloat16* /*temp*/, MLFloat16* output, int64_t count) const {
-  const float sqrt1_2 = static_cast<float>(M_SQRT1_2);
-  for (int64_t i = 0; i < count; i++) {
-    float value = input[i].ToFloat() + bias[i].ToFloat();
-    output[i] = MLFloat16(0.5f * value * (std::erf(value * sqrt1_2) + 1.0f));
+// temp holds 2 * count elements: input + bias, then scratch space for MlasComputeFP16Gelu.
+static void AddBiasGeluFp16(const MLFloat16* input, const MLFloat16* bias, MLFloat16* temp, MLFloat16* output,
+                            int64_t count, MLAS_GELU_ALGORITHM algo) {
+  const size_t n = narrow<size_t>(count);
+  MLFloat16* sum = temp;
+  MLFloat16* scratch = temp + count;
+  if (MlasFp16AccelerationSupported()) {
+    MlasEltwiseAdd<MLAS_FP16>(input, bias, sum, n);
+  } else {
+    for (size_t i = 0; i < n; i++) {
+      sum[i] = MLFloat16(input[i].ToFloat() + bias[i].ToFloat());
+    }
   }
+  MlasComputeFP16Gelu(sum, output, scratch, n, algo);
 }
 
-// Compute specialization: omits the no-bias FastGelu path whose float
-// arithmetic is incompatible with MLFloat16 (unreachable for
-// use_approximation=false, but the generic template still compiles it).
+// Has to be specialized before Compute, the generic version doesn't build for MLFloat16.
+template <>
+void BiasGelu<MLFloat16, false>::AddBiasGelu(
+    const MLFloat16* input, const MLFloat16* bias, MLFloat16* temp, MLFloat16* output, int64_t count) const {
+  AddBiasGeluFp16(input, bias, temp, output, count, MlasGeluErf);
+}
+
+// The generic Compute has a no-bias FastGelu path that doesn't compile for MLFloat16.
 template <>
 Status BiasGelu<MLFloat16, false>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(bias_gelu_helper::CheckInputs(context));
@@ -177,10 +185,14 @@ Status BiasGelu<MLFloat16, false>::Compute(OpKernelContext* context) const {
   const MLFloat16* bias_data = bias->Data<MLFloat16>();
   int64_t bias_len = bias->Shape().Size();
 
+  if (elem_count == 0) {
+    return Status::OK();
+  }
+
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   BufferUniquePtr buffer = BufferUniquePtr(
-      alloc->Alloc(SafeInt<size_t>(sizeof(MLFloat16)) * elem_count),
+      alloc->Alloc(SafeInt<size_t>(sizeof(MLFloat16)) * elem_count * 2),
       BufferDeleter(alloc));
   MLFloat16* tmp_data = static_cast<MLFloat16*>(buffer.get());
 
@@ -190,13 +202,74 @@ Status BiasGelu<MLFloat16, false>::Compute(OpKernelContext* context) const {
       [&](ptrdiff_t task_idx) {
         const MLFloat16* p_input = input_data + task_idx * bias_len;
         MLFloat16* p_output = output_data + task_idx * bias_len;
-        MLFloat16* p_tmp = tmp_data + task_idx * bias_len;
+        MLFloat16* p_tmp = tmp_data + task_idx * bias_len * 2;
         AddBiasGelu(p_input, bias_data, p_tmp, p_output, bias_len);
       },
       0);
 
   return Status::OK();
 }
+
+template <>
+Status BiasGelu<MLFloat16, true>::Compute(OpKernelContext* context) const {
+  ORT_RETURN_IF_ERROR(bias_gelu_helper::CheckInputs(context));
+
+  const Tensor* input = context->Input<Tensor>(0);
+  const MLFloat16* input_data = input->Data<MLFloat16>();
+  int64_t elem_count = input->Shape().Size();
+
+  Tensor* output = context->Output(0, input->Shape());
+  MLFloat16* output_data = output->MutableData<MLFloat16>();
+
+  if (elem_count == 0) {
+    return Status::OK();
+  }
+
+  const Tensor* bias = context->Input<Tensor>(1);
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  BufferUniquePtr buffer = BufferUniquePtr(
+      alloc->Alloc(SafeInt<size_t>(sizeof(MLFloat16)) * elem_count * 2),
+      BufferDeleter(alloc));
+  MLFloat16* tmp_data = static_cast<MLFloat16*>(buffer.get());
+
+  if (nullptr == bias) {
+    static constexpr int64_t length_per_task = 4096;
+    int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+    concurrency::ThreadPool::TryBatchParallelFor(
+        context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
+        [&](ptrdiff_t task_idx) {
+          const auto start = task_idx * length_per_task;
+          int64_t count = std::min(length_per_task, elem_count - start);
+          MlasComputeFP16Gelu(input_data + start, output_data + start, tmp_data + start,
+                              narrow<size_t>(count), MlasGeluTanh);
+        },
+        0);
+    return Status::OK();
+  }
+
+  const MLFloat16* bias_data = bias->Data<MLFloat16>();
+  int64_t bias_len = bias->Shape().Size();
+  int64_t task_count = elem_count / bias_len;
+  concurrency::ThreadPool::TryBatchParallelFor(
+      context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
+      [&](ptrdiff_t task_idx) {
+        AddBiasGeluFp16(input_data + task_idx * bias_len, bias_data, tmp_data + task_idx * bias_len * 2,
+                        output_data + task_idx * bias_len, bias_len, MlasGeluTanh);
+      },
+      0);
+  return Status::OK();
+}
+
+// Registered here so the Compute specialization above is visible.
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    FastGelu,
+    kMSDomain,
+    1,
+    MLFloat16,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    BiasGelu<MLFloat16, true>);
 
 // Instantiation for BiasGelu
 template class BiasGelu<float, false>;

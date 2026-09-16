@@ -33,5 +33,14 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     MatMul<double>);
 
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    FusedMatMul,
+    kMSDomain,
+    1,
+    MLFloat16,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    MatMul<MLFloat16>);
+
 }  // namespace contrib
 }  // namespace onnxruntime
