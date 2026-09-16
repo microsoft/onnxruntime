@@ -84,6 +84,34 @@
         "^test_castlike_UINT2_to*",  // ORT does not support uint2
         "^test_cast_INT2_to*",  // ORT does not support int2
         "^test_cast_UINT2_to*",  // ORT does not support uint2
+        // TODO(#32361): Remove these exact skips when the opset-28 BitShift kernels land.
+        "^test_bitshift_left_int16(_(cpu|cuda))?$",
+        "^test_bitshift_left_int32_overflow(_(cpu|cuda))?$",
+        "^test_bitshift_left_uint32(_(cpu|cuda))?$",
+        "^test_bitshift_left_uint64(_(cpu|cuda))?$",
+        "^test_bitshift_right_int64(_(cpu|cuda))?$",
+        "^test_bitshift_right_int8_negative_input(_(cpu|cuda))?$",
+        "^test_bitshift_right_int8_shift_ge_width(_(cpu|cuda))?$",
+        // TODO(#32369): Remove these exact skips when the opset-28 Mod kernels land.
+        "^test_mod_float16_mixed_sign_fmod_0(_(cpu|cuda))?$",
+        "^test_mod_float_edge_cases_fmod_0_float32(_(cpu|cuda))?$",
+        "^test_mod_int64_fmod(_(cpu|cuda))?$",
+        "^test_mod_mixed_sign_float16(_(cpu|cuda))?$",
+        "^test_mod_mixed_sign_float64(_(cpu|cuda))?$",
+        "^test_mod_mixed_sign_int32(_(cpu|cuda))?$",
+        "^test_mod_uint16(_(cpu|cuda))?$",
+        "^test_mod_uint64(_(cpu|cuda))?$",
+        // TODO(#32372): Remove these exact skips when the opset-28 Q/DQ kernels land.
+        "^test_dequantizelinear(_(cpu|cuda))?$",
+        "^test_dequantizelinear_axis(_(cpu|cuda))?$",
+        "^test_dequantizelinear_e4m3fn(_(cpu|cuda))?$",
+        "^test_dequantizelinear_e4m3fn_zero_point(_(cpu|cuda))?$",
+        "^test_quantizelinear(_(cpu|cuda))?$",
+        "^test_quantizelinear_e4m3fn(_(cpu|cuda))?$",
+        "^test_quantizelinear_uint16(_(cpu|cuda))?$",
+        // TODO(#32378): Remove these exact skips when opset-28 ReverseSequence support lands.
+        "^test_reversesequence_bfloat16(_(cpu|cuda))?$",
+        "^test_reversesequence_time(_(cpu|cuda))?$",
         "^test_convinteger_with_padding*",  // ORT does not support per-channel quantization for ConvInteger
         "^test_cast_e8m0_*",  // ORT does not support float8e8m0
         "^test_batchnorm_epsilon_training_mode",
