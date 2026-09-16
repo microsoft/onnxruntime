@@ -13,6 +13,7 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "core/mlas/inc/mlas_qnbit.h"
 
 namespace onnxruntime {
 namespace test {
@@ -2145,6 +2146,10 @@ struct QMoEBlockWiseCase {
   int bits{4};
   bool with_zero_points{false};
   int accuracy_level{0};
+  // Expected number of pre-packed expert weights (0 or 2), or -1 to skip the check. The output
+  // check alone cannot tell the QNBit path from the dequantize fallback, so 8-bit cases (where the
+  // fallback never pre-packs) also assert this; the 4-bit fallback pre-packs too, so it cannot.
+  int expected_prepacked{-1};
 };
 
 template <typename T>
@@ -2331,7 +2336,12 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
 
   if (!share_prepacked_weights_across_sessions) {
     auto eps = cpu_ep();
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps);
+    SessionOptions so;
+    size_t prepacked = 0, shared = 0;
+    tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps, {}, &prepacked, &shared);
+    if (c.expected_prepacked >= 0) {
+      ASSERT_EQ(prepacked, static_cast<size_t>(c.expected_prepacked));
+    }
     return;
   }
 
@@ -2383,22 +2393,27 @@ TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Fp16) {
   RunQMoECpuBlockWiseSwiGLU<MLFloat16>({5, 4, 128, 64, 32, 2, true}, 0.02f);
 }
 
+// 8-bit experts pre-pack only on the QNBit path, so the pre-pack count proves which path ran.
+static int ExpectedInt8QNBitPrepacks(int block_size) {
+  return MlasIsQNBitGemmAvailable(8, static_cast<size_t>(block_size), SQNBIT_CompInt8) ? 2 : 0;
+}
+
 TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU) {
   // MLAS has no fp32-activation QNBit kernel for 8 bits, so this runs with int8 activations by
   // default and carries their quantization error; the tolerance matches the other int8 cases.
-  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8}, 0.05f);
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8, false, 0, ExpectedInt8QNBitPrepacks(32)}, 0.05f);
 }
 
 TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU_ForcedFp32FallsBackToDequantize) {
   // Forcing fp32 activations keeps 8-bit experts on the dequantize path, which is exact enough
-  // for the tight tolerance.
+  // for the tight tolerance and never pre-packs.
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_QMOE_CPU_QNBIT_GEMM", "fp32"}}};
-  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8}, 0.01f);
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8, false, 0, 0}, 0.01f);
 }
 
 TEST(MoETest, QMoETest_CPU_Int8_BlockWise_SwiGLU_Int8Activations) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_QMOE_CPU_QNBIT_GEMM", "int8"}}};
-  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8}, 0.05f);
+  RunQMoECpuBlockWiseSwiGLU<float>({5, 4, 128, 64, 32, 2, true, 8, false, 0, ExpectedInt8QNBitPrepacks(32)}, 0.05f);
 }
 
 TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Int8Activations) {

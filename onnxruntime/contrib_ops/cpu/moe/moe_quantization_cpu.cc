@@ -124,9 +124,10 @@ namespace contrib {
 constexpr const char* kUseMlasQ4GemmMoe = "ORT_USE_MLAS_Q4_GEMM_MOE";
 
 // Overrides the node's accuracy_level for the MLAS QNBit GEMM (MatMulNBits kernel) path of
-// block-wise 4/8-bit experts. Unset: the attribute decides. "fp32": fp32 activations only
-// (accuracy_level 0; 8-bit has no fp32 variant and keeps the dequantize path). "int8": int8
-// activations (accuracy_level 4). "0": path disabled. Any other value is an error.
+// block-wise 4/8-bit experts. Unset: the attribute decides for 4-bit; 8-bit has no fp32 kernel
+// and uses int8 activations at every level. "fp32": fp32 activations only, so 8-bit keeps the
+// dequantize path. "int8": int8 activations (accuracy_level 4). "0": path disabled. Any other
+// value is an error.
 constexpr const char* kQMoEQNBitGemmEnv = "ORT_QMOE_CPU_QNBIT_GEMM";
 
 // Tag appended to the prepacked shape buffer to mark the QNBit-packed layout (see PrePackQNBitExperts).
@@ -849,7 +850,7 @@ Status QMoECPU<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepa
         ORT_RETURN_IF_ERROR(InitQNBitPacked(packed, eligibility, num_experts, rows, cols,
                                             Info().GetAllocator(OrtMemType::OrtMemTypeDefault)));
       }
-      ORT_RETURN_IF_NOT(prepacked_buffer_sizes[0] == packed.packed_size_per_expert * static_cast<size_t>(num_experts),
+      ORT_RETURN_IF_NOT(prepacked_buffer_sizes[0] == SafeInt<size_t>(packed.packed_size_per_expert) * static_cast<size_t>(num_experts),
                         "QMoE prepacked QNBit buffer size does not match the expert shape.");
       packed.packed = std::move(prepacked_buffers[0]);
       used_shared_buffers = true;
@@ -940,9 +941,10 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   // QNBit GEMM path policy. The MatMulNBits kernels consume the block-wise QMoE encoding directly
   // (no re-quantization), have NEON/AVX2/AVX512 backends, and thread a single GEMM over N, so they
   // are preferred for block-wise 4/8-bit experts. Int8 activations are lossier than the
-  // dequantize+SGEMM path they replace, so as with MatMulNBits they need accuracy_level=4: the
-  // default is fp32 activations where MLAS has that kernel (4-bit) and int8 where it does not
-  // (8-bit, which has no fp32 variant). The environment variable overrides the attribute.
+  // dequantize+SGEMM path they replace, so for 4-bit they need accuracy_level=4 as in MatMulNBits
+  // and the default is fp32 activations. 8-bit has no fp32 kernel; unlike MatMulNBits (which
+  // dequantizes at level 0) it uses int8 activations at every level, since that is the only way
+  // onto these kernels. The environment variable overrides the attribute.
   accuracy_level_ = op_kernel_info.GetAttrOrDefault<int64_t>("accuracy_level", 0);
   bool allow_int8_compute = (accuracy_level_ == 4);
   bool allow_fp32_compute = true;

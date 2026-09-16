@@ -61,8 +61,8 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
   void ApplyActivationVectorized(float* data, int64_t size) const;
 
   // Expert weights pre-packed for the MLAS QNBit GEMM kernels (the MatMulNBits kernels). Used for
-  // block-wise 4/8-bit experts without zero points; each expert's [rows, cols] matrix is packed
-  // independently and stored back to back.
+  // block-wise 4/8-bit experts with optional constant zero points; each expert's [rows, cols]
+  // matrix is packed independently and stored back to back.
   struct QNBitPackedExperts {
     IAllocatorUniquePtr<void> packed;  // num_experts * packed_size_per_expert bytes
     size_t packed_size_per_expert{0};
