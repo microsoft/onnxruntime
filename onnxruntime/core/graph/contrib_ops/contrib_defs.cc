@@ -1401,13 +1401,12 @@ constexpr const char* MoE_ver1_doc = R"DOC(
       Mixture of experts. Examples: Switch transformer(https://arxiv.org/pdf/2101.03961.pdf) use top 1,
       GLaM(https://arxiv.org/abs/2112.06905) activates top 2 FFN, Vision MOE(https://arxiv.org/pdf/2106.05974.pdf)
       usually uses top 32 experts and Mixtral(https://huggingface.co/blog/mixtral).
-
-  A 2D input is the packed token-major form used by continuous-batching engines: tokens from
-  different requests are concatenated along dimension 0 without padding. MoE is token-local,
-  so request boundaries do not affect the result and no cumulative sequence-length input is
-  required. A 3D input is the dense convenience form and is processed as batch_size *
-  sequence_length independent token rows. router_probs must contain one corresponding row per
-  token in either form.
+      A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+      different requests are concatenated along dimension 0 without padding. MoE is token-local,
+      so request boundaries do not affect the result and no cumulative sequence-length input is
+      required. A 3D input is the dense convenience form and is processed as batch_size *
+      sequence_length independent token rows. router_probs must contain one corresponding row per
+      token in either form.
 
       The SwiGLU (Swish-Gated Linear Unit) activation function is like:
          g = xW + b
@@ -1451,13 +1450,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 
 constexpr const char* qMoE_ver1_doc = R"DOC(
       Quantized mixture of experts (MoE).
-
-  A 2D input is the packed token-major form used by continuous-batching engines: tokens from
-  different requests are concatenated along dimension 0 without padding. QMoE is token-local,
-  so request boundaries do not affect the result and no cumulative sequence-length input is
-  required. A 3D input is the dense convenience form and is processed as batch_size *
-  sequence_length independent token rows. router_probs and optional router_weights must contain
-  one corresponding row per token in either form.
+      A 2D input is the packed token-major form used by continuous-batching engines: tokens from
+      different requests are concatenated along dimension 0 without padding. QMoE is token-local,
+      so request boundaries do not affect the result and no cumulative sequence-length input is
+      required. A 3D input is the dense convenience form and is processed as batch_size *
+      sequence_length independent token rows. router_probs and optional router_weights must contain
+      one corresponding row per token in either form.
 
       The quantized weights are stored in column major order per expert.
       The quantization block size can be specified. If not provided, column wise quantization is used.
