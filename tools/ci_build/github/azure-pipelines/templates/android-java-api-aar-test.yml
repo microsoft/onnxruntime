@@ -30,6 +30,8 @@ jobs:
 - job: Final_AAR_Testing_Android
   pool:
     name: 'onnxruntime-Ubuntu2404-AMD-CPU'
+    demands:
+    - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64-test
     os: linux
   workspace:
     clean: all

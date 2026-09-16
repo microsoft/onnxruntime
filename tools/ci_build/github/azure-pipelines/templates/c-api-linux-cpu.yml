@@ -38,6 +38,9 @@ jobs:
   timeoutInMinutes: 210
   pool:
     name: ${{parameters.PoolName}}
+    ${{ if eq(parameters.PoolName, 'onnxruntime-Ubuntu2404-AMD-CPU') }}:
+      demands:
+      - ImageOverride -equals onnxruntime-ubuntu2404-nvme-x64-test
     os: linux
     ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
       hostArchitecture: Arm64
