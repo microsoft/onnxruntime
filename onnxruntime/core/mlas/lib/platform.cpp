@@ -868,9 +868,6 @@ Return Value:
         // MlasLinearAttentionProcessHeadNeon, so this is never a regression.
         //
         this->LinearAttentionDispatch = &MlasLinearAttentionDispatchSve;
-        // FP16 GEMM on SVE is provided by the sgemm-parallel driver
-        // (hgemm.cpp + sve/halfgemm_kernel_sve.cpp), reached directly via
-        // MlasGemmBatch / MlasHGemmSupported, not through HGemmDispatch.
     }
     else{
         this->ErfKernelRoutine = MlasErfKernel;

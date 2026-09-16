@@ -11,30 +11,9 @@ Module Name:
 
 Abstract:
 
-    This module contains the implementation of SVE-based hgemm operations
-    (half precision / FP16 matrix multiply). It is the FP16 analogue of the
-    SVE sgemm kernel and is driven by hgemm.cpp (the SGEMM-parallel driver
-    layer), NOT by the MLAS_HGEMM_DISPATCH function-pointer table.
-
-    The five entry points used by hgemm.cpp are:
-
-        MlasHgemmKernelZero_sve      - C  = alpha*A*PackedB
-        MlasHgemmKernelAdd_sve       - C += alpha*A*PackedB
-        MlasHgemmCopyPackB_sve       - pack B (NoTrans) into the packed layout
-        MlasHgemmTransposePackB_sve  - pack B (Trans) into the packed layout
-        MlasHgemvFloat16Kernel_sve   - M == 1 fast path (HGEMV)
-
-    Design notes
-    ------------
-    * Lane width: a 256-bit SVE vector holds 16 x FP16 lanes (svcnth()),
-      versus 8 x FP32 lanes (svcntw()) in the SGEMM path. Every "vl" below
-      therefore refers to FP16 lanes.
-
-    * Accumulation precision. The kernels below accumulate natively in FP16
-      with svmla_f16. Graviton3 (Neoverse V1) implements native FP16 FMA, so
-      this is the fastest path and matches a "pure HGEMM" numerical model.
-      An explicit-widen FP32-accumulation reference for the single-row
-      remainder path is provided under MLAS_HGEMM_ACCUMULATE_FP32.
+    SVE implementation of the FP16 GEMM kernels used by hgemm.cpp. This is the
+    source for aarch64/halfgemm_sve_asm.S (see sve/gen_sve_asm.py), so it must
+    not make calls or reference global data.
 
 --*/
 
@@ -55,11 +34,6 @@ Abstract:
 
 #include <algorithm>
 
-// Deliberately self-sufficient (no mlasi.h / mlasi_sve.h): the smaller the
-// translation unit, the simpler the frozen object in
-// aarch64/halfgemm_sve_asm.S is to verify, and sve/gen_sve_asm.py requires
-// that nothing here reaches for global data or emits a call. This TU is only
-// ever compiled by an SVE-capable gcc/clang.
 #include "halfgemm_sve.h"
 
 using _mlas_fp16_ = mlas_sve_fp16_t;
@@ -71,39 +45,23 @@ using _mlas_fp16_ = mlas_sve_fp16_t;
 #define MLASCALL
 #endif
 
-// gen_sve_asm.py rejects any call in a frozen function, so every helper the
-// exported kernels use must actually be inlined, not merely marked inline.
+// Helpers have to be inlined, gen_sve_asm.py rejects calls.
 #if !defined(MLAS_FORCEINLINE)
 #define MLAS_FORCEINLINE __attribute__((always_inline)) inline
 #endif
 
 //
-// Define to compile the FP32-accumulation reference (explicit widen; there is
-// no single-instruction FP16->FP32 MLA). Off by default for the fast native
-// FP16 path on Graviton3.
+// Define to accumulate in fp32 in the single-row remainder kernel.
 //
 // #define MLAS_HGEMM_ACCUMULATE_FP32
 
 //
-// hk_step controls how many K iterations are processed before the inner
-// fp16 column tiles are revisited. Matches the SGEMM blocking constant.
+// Number of K iterations processed per pass over the column tiles.
 //
 const size_t hk_step = 64;
 
 //
-// PACKED_B_BLOCK_WIDTH_FP16: physical width (in fp16 elements) of one packed
-// B block. Kept as its own symbol so the SGEMM constant is not accidentally
-// reused with the wrong element size. Must match the value used by the
-// hgemm.cpp driver when sizing/striding the packed-B panel.
-//
-
-//
-// processrows_8 : compute up to 8 rows of C at once.
-//
-// Template params:
-//   ZeroMode - true  => C is overwritten (C = alpha*A*B)
-//              false => C is accumulated (C += alpha*A*B)
-//   Alpha1   - true  => alpha == 1, skip the per-element scale
+// ZeroMode overwrites C instead of adding to it. Alpha1 skips the alpha scale.
 //
 template <bool ZeroMode, bool Alpha1>
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
@@ -292,9 +250,6 @@ hprocessrows_8(
     }
 }
 
-//
-// processrows_6
-//
 template <bool ZeroMode, bool Alpha1>
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
 hprocessrows_6(
@@ -457,9 +412,6 @@ hprocessrows_6(
     }
 }
 
-//
-// processrows_4
-//
 template <bool ZeroMode, bool Alpha1>
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
 hprocessrows_4(
@@ -597,9 +549,6 @@ hprocessrows_4(
     }
 }
 
-//
-// processrows_2
-//
 template <bool ZeroMode, bool Alpha1>
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
 hprocessrows_2(
@@ -692,9 +641,6 @@ hprocessrows_2(
     }
 }
 
-//
-// processrows_1
-//
 template <bool ZeroMode, bool Alpha1>
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
 hprocessrows_1(
@@ -769,10 +715,7 @@ hprocessrows_1(
 
 #ifdef MLAS_HGEMM_ACCUMULATE_FP32
 //
-// Reference FP32-accumulation single-row remainder kernel. See the design
-// notes at the top of the file. Not on the default path; provided as a
-// correctness reference and as a template for extending FP32 accumulation to
-// the wider row tiles. NOTE: not compile-tested.
+// Not used by default and not compile-tested.
 //
 template <bool ZeroMode, bool Alpha1>
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
@@ -830,10 +773,8 @@ hprocessrows_1_fp32acc(
 #endif // MLAS_HGEMM_ACCUMULATE_FP32
 
 //
-// HProcessRowsTemplate : walk the N dimension in PACKED_B_BLOCK_WIDTH_FP16
-// chunks, dispatching to the selected fp16 row-tile kernel. The packer always
-// zero-pads each N-block to PACKED_B_BLOCK_WIDTH_FP16, so B is advanced by the
-// full block width (not the active column count) between blocks.
+// The packer pads every N block to PACKED_B_BLOCK_WIDTH_FP16, so B advances by the full
+// block width.
 //
 template <auto ProcessFn>
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
@@ -849,7 +790,7 @@ HProcessRowsTemplate(
 )
 {
     size_t n = 0;
-    const size_t vl = svcnth();          // FP16 lanes per vector
+    const size_t vl = svcnth();
     while (n < N) {
         size_t cols = (n + PACKED_B_BLOCK_WIDTH_FP16 <= N)
                           ? (size_t)PACKED_B_BLOCK_WIDTH_FP16
@@ -860,11 +801,6 @@ HProcessRowsTemplate(
         n += cols;
     }
 }
-
-//
-// Public kernels: zero-init and accumulate variants. Return value: number of
-// rows handled (so the caller can advance A/C).
-//
 
 extern "C" size_t MLAS_SVE_TARGET MLASCALL
 MlasHgemmKernelZero_sve(
@@ -966,10 +902,6 @@ MlasHgemmKernelAdd_sve(
     }
 }
 
-//
-// MlasHgemmCopyPackB_sve : NoTrans path. Copies PACKED_B_BLOCK_WIDTH_FP16-wide
-// strips of B contiguously, zero-padding the tail.
-//
 extern "C" void MLAS_SVE_TARGET MLASCALL
 MlasHgemmCopyPackB_sve(
     _mlas_fp16_* D,
@@ -1002,7 +934,6 @@ MlasHgemmCopyPackB_sve(
     if (CountX > 0) {
         size_t y = CountY;
         do {
-            // zero the full block then copy the partial columns
             for (size_t i = 0; i < PACKED_B_BLOCK_WIDTH_FP16; i += vl) {
                 svst1_f16(svptrue_b16(), (__fp16*)D + i, svdup_n_f16((__fp16)0.f));
             }
@@ -1018,13 +949,6 @@ MlasHgemmCopyPackB_sve(
     }
 }
 
-//
-// MlasHgemvFloat16Kernel_sve : M == 1 fast path (HGEMV).
-//
-// B is NOT transposed; ldb strides between B rows. ZeroMode: true => C is
-// overwritten (C = A*B); false => C is accumulated (C += A*B). VLA: strides N
-// by svcnth() and predicates the tail with svwhilelt_b16.
-//
 extern "C" void MLAS_SVE_TARGET MLASCALL
 MlasHgemvFloat16Kernel_sve(
     const _mlas_fp16_* A,    // length-K row vector
@@ -1037,8 +961,39 @@ MlasHgemvFloat16Kernel_sve(
 )
 {
     const size_t vl = svcnth();
+    size_t col = 0;
 
-    for (size_t col = 0; col < CountN; col += vl) {
+    const svbool_t pall = svptrue_b16();
+    for (; col + 4 * vl <= CountN; col += 4 * vl) {
+        svfloat16_t acc0, acc1, acc2, acc3;
+        if (ZeroMode) {
+            acc0 = svdup_n_f16((__fp16)0.f);
+            acc1 = acc0;
+            acc2 = acc0;
+            acc3 = acc0;
+        } else {
+            acc0 = svld1_f16(pall, (const __fp16*)C + col);
+            acc1 = svld1_f16(pall, (const __fp16*)C + col + vl);
+            acc2 = svld1_f16(pall, (const __fp16*)C + col + 2 * vl);
+            acc3 = svld1_f16(pall, (const __fp16*)C + col + 3 * vl);
+        }
+
+        const __fp16* b_row = reinterpret_cast<const __fp16*>(B) + col;
+        for (size_t p = 0; p < CountK; ++p, b_row += ldb) {
+            const svfloat16_t avec = svdup_n_f16(reinterpret_cast<const __fp16*>(A)[p]);
+            acc0 = svmla_f16_x(pall, acc0, svld1_f16(pall, b_row), avec);
+            acc1 = svmla_f16_x(pall, acc1, svld1_f16(pall, b_row + vl), avec);
+            acc2 = svmla_f16_x(pall, acc2, svld1_f16(pall, b_row + 2 * vl), avec);
+            acc3 = svmla_f16_x(pall, acc3, svld1_f16(pall, b_row + 3 * vl), avec);
+        }
+
+        svst1_f16(pall, (__fp16*)C + col, acc0);
+        svst1_f16(pall, (__fp16*)C + col + vl, acc1);
+        svst1_f16(pall, (__fp16*)C + col + 2 * vl, acc2);
+        svst1_f16(pall, (__fp16*)C + col + 3 * vl, acc3);
+    }
+
+    for (; col < CountN; col += vl) {
         svbool_t pg = svwhilelt_b16(col, CountN);
 
         svfloat16_t acc;
@@ -1059,13 +1014,94 @@ MlasHgemvFloat16Kernel_sve(
     }
 }
 
-//
-// MlasSveTranspose8x8Float16 : transpose an 8(N) x 8(K) fp16 tile (128-bit
-// SVE, svcnth() == 8). FP16 analogue of the fp32 Transpose_SVE256_8x8 from the
-// SVE SGEMM path; output row c (the c-th K value) is stored at
-// dst + c * PACKED_B_BLOCK_WIDTH_FP16. Verified (zip-permutation model) to
-// produce the exact transpose.
-//
+extern "C" void MLAS_SVE_TARGET MLASCALL
+MlasHgemv2Float16Kernel_sve(
+    const _mlas_fp16_* A,    // 2 x K, row stride lda
+    size_t lda,
+    const _mlas_fp16_* B,    // K x N, row-major, row stride = ldb
+    _mlas_fp16_* C,          // 2 x N, row stride ldc
+    size_t ldc,
+    size_t CountK,
+    size_t CountN,
+    size_t ldb,
+    bool ZeroMode
+)
+{
+    const size_t vl = svcnth();
+    const svbool_t pall = svptrue_b16();
+    const __fp16* a0 = reinterpret_cast<const __fp16*>(A);
+    const __fp16* a1 = a0 + lda;
+    __fp16* c0 = reinterpret_cast<__fp16*>(C);
+    __fp16* c1 = c0 + ldc;
+    size_t col = 0;
+
+    for (; col + 4 * vl <= CountN; col += 4 * vl) {
+        svfloat16_t r00, r01, r02, r03, r10, r11, r12, r13;
+        if (ZeroMode) {
+            r00 = svdup_n_f16((__fp16)0.f);
+            r01 = r00; r02 = r00; r03 = r00;
+            r10 = r00; r11 = r00; r12 = r00; r13 = r00;
+        } else {
+            r00 = svld1_f16(pall, c0 + col);
+            r01 = svld1_f16(pall, c0 + col + vl);
+            r02 = svld1_f16(pall, c0 + col + 2 * vl);
+            r03 = svld1_f16(pall, c0 + col + 3 * vl);
+            r10 = svld1_f16(pall, c1 + col);
+            r11 = svld1_f16(pall, c1 + col + vl);
+            r12 = svld1_f16(pall, c1 + col + 2 * vl);
+            r13 = svld1_f16(pall, c1 + col + 3 * vl);
+        }
+
+        const __fp16* b_row = reinterpret_cast<const __fp16*>(B) + col;
+        for (size_t p = 0; p < CountK; ++p, b_row += ldb) {
+            const svfloat16_t b0 = svld1_f16(pall, b_row);
+            const svfloat16_t b1 = svld1_f16(pall, b_row + vl);
+            const svfloat16_t b2 = svld1_f16(pall, b_row + 2 * vl);
+            const svfloat16_t b3 = svld1_f16(pall, b_row + 3 * vl);
+            const svfloat16_t x0 = svdup_n_f16(a0[p]);
+            const svfloat16_t x1 = svdup_n_f16(a1[p]);
+            r00 = svmla_f16_x(pall, r00, b0, x0);
+            r01 = svmla_f16_x(pall, r01, b1, x0);
+            r02 = svmla_f16_x(pall, r02, b2, x0);
+            r03 = svmla_f16_x(pall, r03, b3, x0);
+            r10 = svmla_f16_x(pall, r10, b0, x1);
+            r11 = svmla_f16_x(pall, r11, b1, x1);
+            r12 = svmla_f16_x(pall, r12, b2, x1);
+            r13 = svmla_f16_x(pall, r13, b3, x1);
+        }
+
+        svst1_f16(pall, c0 + col, r00);
+        svst1_f16(pall, c0 + col + vl, r01);
+        svst1_f16(pall, c0 + col + 2 * vl, r02);
+        svst1_f16(pall, c0 + col + 3 * vl, r03);
+        svst1_f16(pall, c1 + col, r10);
+        svst1_f16(pall, c1 + col + vl, r11);
+        svst1_f16(pall, c1 + col + 2 * vl, r12);
+        svst1_f16(pall, c1 + col + 3 * vl, r13);
+    }
+
+    for (; col < CountN; col += vl) {
+        const svbool_t pg = svwhilelt_b16(col, CountN);
+        svfloat16_t r0, r1;
+        if (ZeroMode) {
+            r0 = svdup_n_f16((__fp16)0.f);
+            r1 = r0;
+        } else {
+            r0 = svld1_f16(pg, c0 + col);
+            r1 = svld1_f16(pg, c1 + col);
+        }
+        const __fp16* b_row = reinterpret_cast<const __fp16*>(B) + col;
+        for (size_t p = 0; p < CountK; ++p, b_row += ldb) {
+            const svfloat16_t b = svld1_f16(pg, b_row);
+            r0 = svmla_f16_m(pg, r0, b, svdup_n_f16(a0[p]));
+            r1 = svmla_f16_m(pg, r1, b, svdup_n_f16(a1[p]));
+        }
+        svst1_f16(pg, c0 + col, r0);
+        svst1_f16(pg, c1 + col, r1);
+    }
+}
+
+// Requires svcnth() == 8.
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
 MlasSveTranspose8x8Float16(_mlas_fp16_* dst, const _mlas_fp16_* src, size_t ldb)
 {
@@ -1098,15 +1134,7 @@ MlasSveTranspose8x8Float16(_mlas_fp16_* dst, const _mlas_fp16_* src, size_t ldb)
     svst1_f16(p, d + 6*s, v6);  svst1_f16(p, d + 7*s, v1);
 }
 
-// MlasSveTranspose16x16Float16 : transpose a 16(N) x 16(K) fp16 tile.
-//
-// Loads 16 contiguous rows of B (row stride ldb) and writes the transposed
-// rows into the packed-B block: output row c (the c-th K value) is stored at
-// dst + c * PACKED_B_BLOCK_WIDTH_FP16 (16 active fp16 lanes). The svzip
-// cascade is the 16-lane lane-permutation transpose; it is only valid when the
-// vector holds exactly 16 fp16 lanes (svcnth() == 16), which the caller gates.
-// FP16 analogue of the fp32 Transpose_SVE512_16x16 from the SVE SGEMM path.
-//
+// Requires svcnth() == 16.
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
 MlasSveTranspose16x16Float16(_mlas_fp16_* dst, const _mlas_fp16_* src, size_t ldb)
 {
@@ -1166,26 +1194,7 @@ MlasSveTranspose16x16Float16(_mlas_fp16_* dst, const _mlas_fp16_* src, size_t ld
     svst1_f16(p, d + 14*s, v8);  svst1_f16(p, d + 15*s, v16);
 }
 
-// MlasHgemmTransposePackB_sve : TransB packing (transpose-while-pack).
-//
-// B is stored N x K (row-major, row stride ldb): the element at logical
-// position (k, n) of the un-transposed operand is B[n * ldb + k]. The packed
-// layout consumed by the compute kernels is
-//     D[k * PACKED_B_BLOCK_WIDTH_FP16 + (n - n_block)]
-// per PACKED_B_BLOCK_WIDTH_FP16-wide N block, with the tail of each block
-// zero-padded so the compute kernel can always load a full vector.
-//
-// MlasSveTranspose32x32Float16 : transpose a 32(N) x 32(K) fp16 tile
-// (512-bit SVE, svcnth() == 32). In-place svzip cascade: each logical position
-// is kept in its own slot v0..v31 with one short-lived temp per pair, so the
-// source-level working set is ~33 vectors. NOTE: a full 32-wide transpose has
-// >32 simultaneously-live vectors, so a few register spills are inherent; GCC
-// and clang generate equivalent code from this in-place form and from a plain
-// SSA form (measured), and this path is the (memory-bound) B-pack, not the
-// compute hot loop, so the residual spills are immaterial.
-// Machine-generated + verified (svzip permutation model) as the exact
-// transpose; output row c stored at dst + c * PACKED_B_BLOCK_WIDTH_FP16.
-//
+// Requires svcnth() == 32.
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
 MlasSveTranspose32x32Float16(_mlas_fp16_* dst, const _mlas_fp16_* src, size_t ldb)
 {
@@ -1501,13 +1510,6 @@ MlasSveTranspose32x32Float16(_mlas_fp16_* dst, const _mlas_fp16_* src, size_t ld
     svst1_f16(p, d + 31*s, v31);
 }
 
-// Tile-vectorised transpose-pack, parameterised on the SVE fp16 lane count VL
-// (8 -> 128-bit, 16 -> 256-bit). VL is a compile-time constant here, so the
-// inner loop has no vector-length checks: full VL x VL (N x K) tiles use the
-// svzip cascade, partial-N / partial-K remainders and the zero-padded column
-// tail are filled scalar. Verified bit-exact against the scalar reference for
-// all N/K/ldb partial cases.
-//
 template <size_t VL>
 MLAS_SVE_TARGET MLAS_FORCEINLINE static void
 HTransposePackBImpl(
@@ -1553,9 +1555,6 @@ HTransposePackBImpl(
     }
 }
 
-// Scalar transpose-pack: used for SVE vector lengths without a specialised tile
-// kernel (e.g. 512-bit / svcnth() == 32) and as the correctness reference.
-//
 MLAS_SVE_TARGET MLAS_FORCEINLINE static void
 HTransposePackBScalar(
     _mlas_fp16_* D, const _mlas_fp16_* B, size_t ldb, size_t CountN, size_t CountK)
@@ -1576,23 +1575,13 @@ HTransposePackBScalar(
     }
 }
 
-// Full VL x VL (N x K) tiles (8x8 / 16x16 / 32x32 for 128 / 256 / 512-bit SVE)
-// are transposed with the svzip cascades; the partial-N/K remainders are
-// scalar. svcnth() (the SVE vector length, in fp16 lanes) is
-// fixed for the lifetime of the process, so this dispatch is resolved ONCE per
-// pack call — not per tile — and the selected impl is fully specialised for its
-// lane count with no further VL checks inside the loops. To remove even this
-// per-call branch, build this translation unit with -msve-vector-bits=<width>:
-// svcnth() then folds to a compile-time constant and the switch collapses to a
-// single case (at the cost of locking the binary to that SVE width).
-//
 extern "C" void MLAS_SVE_TARGET MLASCALL
 MlasHgemmTransposePackB_sve(
     _mlas_fp16_* D,
     const _mlas_fp16_* B,
     size_t ldb,
-    size_t CountY,   // CountN: number of N columns of the logical operand
-    size_t CountX    // CountK: number of K rows of the logical operand
+    size_t CountY,  // CountN
+    size_t CountX  // CountK
 )
 {
     switch (svcnth()) {
@@ -1602,28 +1591,16 @@ MlasHgemmTransposePackB_sve(
         case 16:
             HTransposePackBImpl<16>(D, B, ldb, CountY, CountX);
             break;
-        case 32:  // 512-bit
+        case 32:
             HTransposePackBImpl<32>(D, B, ldb, CountY, CountX);
             break;
-        default:  // any other (non-128/256/512-bit) width
+        default:
             HTransposePackBScalar(D, B, ldb, CountY, CountX);
             break;
     }
 }
 
-// MlasHgemmTransposeA_sve : TransA packing (transpose A into a NoTrans M x K
-// panel). D[m*CountX + k] = A[k*lda + m], m in [0,CountY), k in [0,CountX);
-// CountY = M rows (<= MLAS_HGEMM_TRANSA_ROWS), CountX = K cols, D row stride =
-// CountX.
-//
-// HTransposeATile{8,16,32} : transpose one VL(K) x rows(M) fp16 tile of A into
-// the panel. A is K-major (input row i = a[i*lda + m]); the svzip cascade emits
-// the tile transpose so output row c (an M index) holds that column's K values,
-// stored at d + c*CountX. These are the same permutation-verified cascades used
-// by the B-pack tile kernels (MlasSveTranspose{8x8,16x16,32x32}Float16), but the
-// M-lane loads are PREDICATED to `rows` so a partial M-block never over-reads
-// past the A row (lda may be < VL), and only the `rows` valid output rows are
-// stored (K-lanes are full: the caller only calls these on full VL-wide K tiles).
+// The M loads are predicated to rows, so lda can be smaller than VL.
 MLAS_SVE_TARGET MLAS_FORCEINLINE void
 HTransposeATile8(__fp16* d, const __fp16* a, size_t lda, size_t CountX, size_t rows)
 {
@@ -2028,14 +2005,6 @@ HTransposeATile32(__fp16* d, const __fp16* a, size_t lda, size_t CountX, size_t 
     if(rows>31) svst1_f16(pK, d+31*CountX, v31);
 }
 
-// Driver: dispatch on the SVE fp16 lane count. Full VL(K) x VL(M) tiles use the
-// svzip cascade above; M is split into VL-wide blocks because CountY may exceed
-// VL when VL == 8 (CountY <= MLAS_HGEMM_TRANSA_ROWS == 12 > 8), and the K tail
-// (< VL columns) is transposed scalar. svcnth() is fixed for the process, so the
-// width dispatch is resolved once per call. Other (non-128/256/512-bit) widths
-// fall back to a full scalar transpose. Verified bit-exact vs the scalar
-// reference at VL = 8/16/32 for all CountY in [1,14], CountX in [1,40], and
-// lda >= CountY (incl. tight lda, checking no over-read/over-write).
 extern "C" void MLAS_SVE_TARGET MLASCALL
 MlasHgemmTransposeA_sve(_mlas_fp16_* D, const _mlas_fp16_* A, size_t lda, size_t CountY, size_t CountX)
 {
@@ -2069,4 +2038,3 @@ MlasHgemmTransposeA_sve(_mlas_fp16_* D, const _mlas_fp16_* A, size_t lda, size_t
 #endif
 
 #endif // MLAS_USE_SVE
-
