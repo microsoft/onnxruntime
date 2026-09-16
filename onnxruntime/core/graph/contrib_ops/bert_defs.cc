@@ -286,11 +286,24 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       int64_t num_heads = getAttribute(ctx, "num_heads", 0);
       int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
-      int64_t hidden_size = query_dims[2].dim_value();
-      int64_t head_size = hidden_size / (num_heads + 2 * kv_num_heads);
+      if (num_heads <= 0 || kv_num_heads <= 0) {
+        fail_shape_inference("num_heads and kv_num_heads must be positive.");
+      }
+      if (kv_num_heads > (std::numeric_limits<int64_t>::max() - num_heads) / 2) {
+        fail_shape_inference("num_heads + 2 * kv_num_heads must not overflow.");
+      }
+
+      const int64_t grouped_heads = num_heads + 2 * kv_num_heads;
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
-      output_shape.add_dim()->set_dim_value(head_size * num_heads);
+      auto* output_hidden_size = output_shape.add_dim();
+      if (query_dims[2].has_dim_value()) {
+        const int64_t hidden_size = query_dims[2].dim_value();
+        if (hidden_size % grouped_heads != 0) {
+          fail_shape_inference("Packed query hidden size must be divisible by the grouped head count.");
+        }
+        output_hidden_size->set_dim_value((hidden_size / grouped_heads) * num_heads);
+      }
       updateOutputShape(ctx, 0, output_shape);
 
       if (query_dims[1].has_dim_value()) {
