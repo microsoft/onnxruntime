@@ -1,19 +1,31 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 //
-// Google Benchmark harness for the contrib PagedAttention op on the WebGPU EP.
+// Google Benchmark harness for the contrib PagedAttention op on the WebGPU and
+// CUDA EPs. Dual-family design (Option C): each shape is registered under two
+// benchmark names -- BM_PagedAttention{Prefill,PrefillVarlen,Decode} for the
+// WebGPU EP (byte-identical to the previous WebGPU-only benchmark), and the
+// same three with a "_Cuda" suffix for the CUDA EP. Which family compiles is
+// gated by USE_WEBGPU / USE_CUDA propagated from ORT_PROVIDER_FLAGS.
 //
-// Sweeps B x {MHA, GQA} x head_size x prefill length. The direct-paged decode
-// and fused paged-prefill programs are selected internally by
-// PagedAttention::ComputeInternal / ApplyFlashAttention based on shape and
-// adapter; there is no runtime toggle to fall back to gather-then-flash on
-// shm-path adapters.
+// On WebGPU, the direct-paged decode and fused paged-prefill programs are
+// selected internally by PagedAttention::ComputeInternal / ApplyFlashAttention
+// based on shape and adapter. On CUDA, the cascade in
+// contrib_ops/cuda/bert/paged_attention.cc picks between LATENT, XQA, cuDNN
+// paged SDPA (auto-on for sm>=90, else opt-in via
+// ORT_ENABLE_CUDNN_FLASH_ATTENTION=1), paged decode, FA2 and MEA; the benchmark
+// supplies an attention_metadata tensor with
+// replay-wide upper bounds so the cascade can pick decode-style backends.
 //
 // Run:
 //   onnxruntime_benchmark.exe --benchmark_filter=PagedAttention.* \
 //                             --benchmark_min_time=0.5s
+//   onnxruntime_benchmark.exe --benchmark_filter=PagedAttention.*_Cuda \
+//                             --benchmark_min_time=0.5s
 
 #include <benchmark/benchmark.h>
+
+#if defined(USE_WEBGPU) || defined(USE_CUDA)
 
 #include <algorithm>
 #include <chrono>
@@ -34,7 +46,9 @@
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#if defined(USE_WEBGPU)
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/session/IOBinding.h"
@@ -61,6 +75,21 @@ using onnxruntime::TensorShape;
 extern OrtEnv* env;
 
 namespace {
+
+// Selects which EP the benchmark case exercises. Compiled-out families are
+// simply never referenced (their REGISTER_* macros live under #if defined).
+enum class EpKind { WebGpu,
+                    Cuda };
+
+const char* EpKindName(EpKind ep) {
+  switch (ep) {
+    case EpKind::WebGpu:
+      return "WebGpu";
+    case EpKind::Cuda:
+      return "Cuda";
+  }
+  return "Unknown";
+}
 
 struct PABenchCase {
   int batch_size;
@@ -107,9 +136,12 @@ struct PABenchContext {
 };
 
 // Builds a single-node PagedAttention model with the given shape, registers the
-// WebGPU EP, uploads dummy fp16 inputs to the device, and returns a context
-// whose Run() is directly measurable.
-std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
+// requested EP, uploads dummy fp16 inputs to the device, and returns a context
+// whose Run() is directly measurable. The CUDA path additionally binds an
+// attention_metadata tensor with replay-wide upper bounds so the CUDA cascade
+// can select decode-style backends (paged decode / cuDNN paged) instead of
+// stalling on a device-to-host readback.
+std::unique_ptr<PABenchContext> Setup(const PABenchCase& c, EpKind ep_kind) {
   const int batch = c.batch_size;
   const int T = c.seq_len;
   const int past = c.past_seqlen;
@@ -118,6 +150,11 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
   const int total_tokens = varlen
                                ? std::accumulate(c.q_lens.begin(), c.q_lens.end(), 0)
                                : batch * T;
+  // Replay-wide upper bound on any one sequence's new-token count. In uniform
+  // mode every batch entry contributes exactly T tokens; in varlen mode this is
+  // max(q_lens). Used only for the CUDA path's attention_metadata tensor.
+  const int max_query_len_bound =
+      varlen ? *std::max_element(c.q_lens.begin(), c.q_lens.end()) : T;
   const int hidden_size = c.num_heads * c.head_size;
   const int kv_hidden_size = c.kv_num_heads * c.head_size;
   const int max_kv_len = past + T;
@@ -172,6 +209,21 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
   std::vector<NodeArg*> input_defs = {&query_arg, &key_arg, &value_arg, &key_cache_arg, &value_cache_arg,
                                       &cum_seqlens_arg, &past_seqlens_arg, &block_table_arg,
                                       &empty_optional_arg, &empty_optional_arg};
+  // CUDA cascade in contrib_ops/cuda/bert/paged_attention.cc reads
+  // attention_metadata (slot 16) to obtain replay-wide bounds without a
+  // device-to-host readback. Fill slots 10-15 with empty optionals so
+  // attention_metadata lands in slot 16 as required by the schema.
+  NodeArg* attention_metadata_arg = nullptr;
+  if (ep_kind == EpKind::Cuda) {
+    attention_metadata_arg = &graph.GetOrCreateNodeArg(
+        "attention_metadata", add_type(ONNX_NAMESPACE::TensorProto_DataType_INT32, {2}));
+    // Slots 10..15 (slot_mapping, head_sink, q_norm_weight, k_norm_weight,
+    // k_scale, v_scale) are unused by this benchmark.
+    for (int i = 0; i < 6; ++i) {
+      input_defs.push_back(&empty_optional_arg);
+    }
+    input_defs.push_back(attention_metadata_arg);
+  }
 
   auto& output_arg = graph.GetOrCreateNodeArg(
       "output", add_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, {total_tokens, hidden_size}));
@@ -191,7 +243,10 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
   };
   auto& node = graph.AddNode("paged_attention", "PagedAttention", "bench", input_defs, output_defs,
                              &attrs, onnxruntime::kMSDomain);
-  node.SetExecutionProviderType(onnxruntime::kWebGpuExecutionProvider);
+  const char* ep_type = (ep_kind == EpKind::Cuda)
+                            ? onnxruntime::kCudaExecutionProvider
+                            : onnxruntime::kWebGpuExecutionProvider;
+  node.SetExecutionProviderType(ep_type);
   if (!graph.Resolve().IsOK()) return nullptr;
 
   std::string model_string;
@@ -199,6 +254,14 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
   std::stringstream model_stream(model_string);
 
   auto ep_owned = [&]() -> std::unique_ptr<IExecutionProvider> {
+    if (ep_kind == EpKind::Cuda) {
+#if defined(USE_CUDA)
+      return onnxruntime::test::DefaultCudaExecutionProvider();
+#else
+      return nullptr;
+#endif
+    }
+#if defined(USE_WEBGPU)
     onnxruntime::ConfigOptions cfg{};
     ORT_THROW_IF_ERROR(cfg.AddConfigEntry(
         onnxruntime::webgpu::options::kStorageBufferCacheMode,
@@ -212,20 +275,25 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
           onnxruntime::webgpu::options::kEnableGraphCapture_ON));
     }
     return onnxruntime::test::WebGpuExecutionProviderWithOptions(cfg);
+#else
+    return nullptr;
+#endif
   }();
   if (ep_owned == nullptr) return nullptr;
   IExecutionProvider* ep = ep_owned.get();
 
   SessionOptions session_options;
   session_options.session_logid = "PagedAttentionBench";
-  if (GraphCaptureEnabled()) {
+  if (ep_kind == EpKind::WebGpu && GraphCaptureEnabled()) {
     // Graph capture requires mem-pattern to be disabled (per graph_capture_test).
     session_options.enable_mem_pattern = false;
     // Mirror the EP-level graph capture flag on the session's config so the
     // WebGPU EP factory picks it up regardless of how it reads the option.
+#if defined(USE_WEBGPU)
     ORT_THROW_IF_ERROR(session_options.config_options.AddConfigEntry(
         onnxruntime::webgpu::options::kEnableGraphCapture,
         onnxruntime::webgpu::options::kEnableGraphCapture_ON));
+#endif
   }
   auto session = std::make_unique<InferenceSession>(session_options, env->GetEnvironment());
   if (!session->RegisterExecutionProvider(std::move(ep_owned)).IsOK()) return nullptr;
@@ -287,7 +355,7 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
   auto ctx = std::make_unique<PABenchContext>();
   ctx->model = std::move(model);
   ctx->session = std::move(session);
-  ctx->bound_values.reserve(11);
+  ctx->bound_values.reserve(12);
 
   auto push = [&](OrtValue v) -> OrtValue& {
     ctx->bound_values.push_back(std::move(v));
@@ -316,6 +384,21 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
   ORT_THROW_IF_ERROR(ctx->io_binding->BindInput("cumulative_sequence_length", cum_v));
   ORT_THROW_IF_ERROR(ctx->io_binding->BindInput("past_seqlens", past_v));
   ORT_THROW_IF_ERROR(ctx->io_binding->BindInput("block_table", block_table_v));
+  if (ep_kind == EpKind::Cuda) {
+    // attention_metadata is declared OrtMemTypeCPUInput on the CUDA kernel
+    // (see contrib_ops/cuda/bert/paged_attention.cc kernel_def), so bind it
+    // as a plain CPU tensor. Two entries: [max_query_len_bound, max_kv_len_bound].
+    // The upper bounds are trusted; over-estimating only costs empty work.
+    Tensor metadata_tensor(DataTypeImpl::GetType<int32_t>(), TensorShape({2}),
+                           cpu_alloc);
+    int32_t* metadata_dst = metadata_tensor.MutableData<int32_t>();
+    metadata_dst[0] = max_query_len_bound;
+    metadata_dst[1] = past + max_query_len_bound;
+    OrtValue metadata_v;
+    Tensor::InitOrtValue(std::move(metadata_tensor), metadata_v);
+    auto& metadata_ref = push(std::move(metadata_v));
+    ORT_THROW_IF_ERROR(ctx->io_binding->BindInput("attention_metadata", metadata_ref));
+  }
   ORT_THROW_IF_ERROR(ctx->io_binding->BindOutput("output", output_v));
   // Alias cache outputs to inputs so the kernel does not copy the whole cache
   // each iteration (matches the production paged-attention hot path).
@@ -325,7 +408,7 @@ std::unique_ptr<PABenchContext> Setup(const PABenchCase& c) {
 }
 
 // Prefill benchmarks (T > 1).
-void BM_PagedAttentionPrefill(benchmark::State& state) {
+void BM_PagedAttentionPrefillImpl(benchmark::State& state, EpKind ep) {
   PABenchCase c{
       static_cast<int>(state.range(0)),
       static_cast<int>(state.range(1)),
@@ -336,9 +419,11 @@ void BM_PagedAttentionPrefill(benchmark::State& state) {
       /*block_size=*/256,
   };
 
-  auto ctx = Setup(c);
+  auto ctx = Setup(c, ep);
   if (ctx == nullptr) {
-    state.SkipWithError("PagedAttention bench setup failed (WebGPU EP unavailable?)");
+    std::string msg = std::string("PagedAttention bench setup failed (") +
+                      EpKindName(ep) + " EP unavailable?)";
+    state.SkipWithError(msg.c_str());
     return;
   }
 
@@ -378,7 +463,7 @@ void BM_PagedAttentionPrefill(benchmark::State& state) {
 // batch_size entries. Exercises the varlen Q shader mode of the fused paged
 // prefill kernel (mode b). Args:
 // {batch, num_heads, kv_num_heads, head_size, max_T}
-void BM_PagedAttentionPrefillVarlen(benchmark::State& state) {
+void BM_PagedAttentionPrefillVarlenImpl(benchmark::State& state, EpKind ep) {
   const int batch = static_cast<int>(state.range(0));
   const int max_T = static_cast<int>(state.range(4));
   std::vector<int> q_lens(batch);
@@ -398,9 +483,11 @@ void BM_PagedAttentionPrefillVarlen(benchmark::State& state) {
       std::move(q_lens),
   };
 
-  auto ctx = Setup(c);
+  auto ctx = Setup(c, ep);
   if (ctx == nullptr) {
-    state.SkipWithError("PagedAttention varlen bench setup failed (WebGPU EP unavailable?)");
+    std::string msg = std::string("PagedAttention varlen bench setup failed (") +
+                      EpKindName(ep) + " EP unavailable?)";
+    state.SkipWithError(msg.c_str());
     return;
   }
 
@@ -435,8 +522,9 @@ void BM_PagedAttentionPrefillVarlen(benchmark::State& state) {
 }
 
 // Decode benchmarks (T == 1). Routed through the direct paged split-K decode
-// kernels (FlashAttentionPagedDecodeQKV + FlashAttentionPagedDecodeVxReduce).
-void BM_PagedAttentionDecode(benchmark::State& state) {
+// kernels (FlashAttentionPagedDecodeQKV + FlashAttentionPagedDecodeVxReduce)
+// on WebGPU, and through XQA / cuDNN paged / paged decode / FA2 on CUDA.
+void BM_PagedAttentionDecodeImpl(benchmark::State& state, EpKind ep) {
   PABenchCase c{
       static_cast<int>(state.range(0)),
       static_cast<int>(state.range(1)),
@@ -447,9 +535,11 @@ void BM_PagedAttentionDecode(benchmark::State& state) {
       /*block_size=*/256,
   };
 
-  auto ctx = Setup(c);
+  auto ctx = Setup(c, ep);
   if (ctx == nullptr) {
-    state.SkipWithError("PagedAttention bench setup failed (WebGPU EP unavailable?)");
+    std::string msg = std::string("PagedAttention bench setup failed (") +
+                      EpKindName(ep) + " EP unavailable?)";
+    state.SkipWithError(msg.c_str());
     return;
   }
 
@@ -483,6 +573,33 @@ void BM_PagedAttentionDecode(benchmark::State& state) {
   }
 }
 
+// Thin per-EP wrappers so Google Benchmark reports the EP in the benchmark
+// name. WebGPU wrappers keep the pre-existing names byte-identical so shells
+// filtering on 'BM_PagedAttentionDecode/' etc. still match.
+#if defined(USE_WEBGPU)
+void BM_PagedAttentionPrefill(benchmark::State& state) {
+  BM_PagedAttentionPrefillImpl(state, EpKind::WebGpu);
+}
+void BM_PagedAttentionPrefillVarlen(benchmark::State& state) {
+  BM_PagedAttentionPrefillVarlenImpl(state, EpKind::WebGpu);
+}
+void BM_PagedAttentionDecode(benchmark::State& state) {
+  BM_PagedAttentionDecodeImpl(state, EpKind::WebGpu);
+}
+#endif  // USE_WEBGPU
+
+#if defined(USE_CUDA)
+void BM_PagedAttentionPrefill_Cuda(benchmark::State& state) {
+  BM_PagedAttentionPrefillImpl(state, EpKind::Cuda);
+}
+void BM_PagedAttentionPrefillVarlen_Cuda(benchmark::State& state) {
+  BM_PagedAttentionPrefillVarlenImpl(state, EpKind::Cuda);
+}
+void BM_PagedAttentionDecode_Cuda(benchmark::State& state) {
+  BM_PagedAttentionDecodeImpl(state, EpKind::Cuda);
+}
+#endif  // USE_CUDA
+
 }  // namespace
 
 // -----------------------------------------------------------------------------
@@ -495,8 +612,13 @@ void BM_PagedAttentionDecode(benchmark::State& state) {
 //   GQA_Llama    : num_heads=32, kv_num_heads=4,  head_size=128  (ratio 8)
 //
 // Prefill Ts:  {128, 512, 1024}
-// Decode past: {512, 2048}
+// Decode past: {512, 2048}    (WebGPU)
+// Decode past: {512, 2048, 8192, 16384}  (CUDA -- cuDNN paged wins most at
+//              longer contexts, per cuDNN 9.5+ release notes; XQA covers the
+//              short end, cuDNN paged the long tail.)
 // -----------------------------------------------------------------------------
+
+#if defined(USE_WEBGPU)
 
 // Args: {batch, num_heads, kv_num_heads, head_size, seq_len}
 #define REGISTER_PREFILL(BATCH, NH, NKV, H)    \
@@ -558,3 +680,75 @@ REGISTER_DECODE(2, 14, 2, 128);
 REGISTER_DECODE(2, 32, 4, 128);
 
 #undef REGISTER_DECODE
+
+#endif  // USE_WEBGPU
+
+#if defined(USE_CUDA)
+
+// CUDA prefill: same head configs and Ts as WebGPU so the two families are
+// directly comparable when both providers are enabled in the same build.
+#define REGISTER_PREFILL_CUDA(BATCH, NH, NKV, H) \
+  BENCHMARK(BM_PagedAttentionPrefill_Cuda)       \
+      ->ArgNames({"B", "nH", "nKV", "H", "T"})   \
+      ->Args({BATCH, NH, NKV, H, 128})           \
+      ->Args({BATCH, NH, NKV, H, 512})           \
+      ->Args({BATCH, NH, NKV, H, 1024})          \
+      ->Unit(benchmark::kMicrosecond)            \
+      ->UseManualTime()
+
+REGISTER_PREFILL_CUDA(1, 16, 16, 64);
+REGISTER_PREFILL_CUDA(1, 16, 16, 128);
+REGISTER_PREFILL_CUDA(1, 14, 2, 128);
+REGISTER_PREFILL_CUDA(1, 32, 4, 128);
+REGISTER_PREFILL_CUDA(2, 16, 16, 64);
+REGISTER_PREFILL_CUDA(2, 16, 16, 128);
+REGISTER_PREFILL_CUDA(2, 14, 2, 128);
+REGISTER_PREFILL_CUDA(2, 32, 4, 128);
+
+#undef REGISTER_PREFILL_CUDA
+
+#define REGISTER_PREFILL_VARLEN_CUDA(BATCH, NH, NKV, H) \
+  BENCHMARK(BM_PagedAttentionPrefillVarlen_Cuda)        \
+      ->ArgNames({"B", "nH", "nKV", "H", "maxT"})       \
+      ->Args({BATCH, NH, NKV, H, 512})                  \
+      ->Args({BATCH, NH, NKV, H, 1024})                 \
+      ->Unit(benchmark::kMicrosecond)                   \
+      ->UseManualTime()
+
+REGISTER_PREFILL_VARLEN_CUDA(2, 16, 16, 128);
+REGISTER_PREFILL_VARLEN_CUDA(2, 14, 2, 128);
+REGISTER_PREFILL_VARLEN_CUDA(2, 32, 4, 128);
+REGISTER_PREFILL_VARLEN_CUDA(4, 16, 16, 128);
+REGISTER_PREFILL_VARLEN_CUDA(4, 14, 2, 128);
+REGISTER_PREFILL_VARLEN_CUDA(4, 32, 4, 128);
+
+#undef REGISTER_PREFILL_VARLEN_CUDA
+
+// CUDA decode: extend the past-seqlen sweep to 8192 and 16384 so the cuDNN
+// paged tier (auto-on for sm>=90, else opt-in via
+// ORT_ENABLE_CUDNN_FLASH_ATTENTION=1) has room to separate from XQA / paged
+// decode. XQA still dominates on short contexts.
+#define REGISTER_DECODE_CUDA(BATCH, NH, NKV, H)   \
+  BENCHMARK(BM_PagedAttentionDecode_Cuda)         \
+      ->ArgNames({"B", "nH", "nKV", "H", "past"}) \
+      ->Args({BATCH, NH, NKV, H, 512})            \
+      ->Args({BATCH, NH, NKV, H, 2048})           \
+      ->Args({BATCH, NH, NKV, H, 8192})           \
+      ->Args({BATCH, NH, NKV, H, 16384})          \
+      ->Unit(benchmark::kMicrosecond)             \
+      ->UseManualTime()
+
+REGISTER_DECODE_CUDA(1, 16, 16, 64);
+REGISTER_DECODE_CUDA(1, 16, 16, 128);
+REGISTER_DECODE_CUDA(1, 14, 2, 128);
+REGISTER_DECODE_CUDA(1, 32, 4, 128);
+REGISTER_DECODE_CUDA(2, 16, 16, 64);
+REGISTER_DECODE_CUDA(2, 16, 16, 128);
+REGISTER_DECODE_CUDA(2, 14, 2, 128);
+REGISTER_DECODE_CUDA(2, 32, 4, 128);
+
+#undef REGISTER_DECODE_CUDA
+
+#endif  // USE_CUDA
+
+#endif  // USE_WEBGPU || USE_CUDA

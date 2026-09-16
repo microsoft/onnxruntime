@@ -43,16 +43,14 @@ class CudaDeviceGuard {
   bool restore_device_{false};
 };
 
-common::Status ReadChunk(const Env& env, const std::filesystem::path& path,
-                         FileOffsetType offset, size_t length, void* buffer,
+common::Status ReadChunk(const RandomAccessFile& file, FileOffsetType offset, size_t length, void* buffer,
                          size_t configured_reader_count,
                          std::unique_ptr<ExternalDataLoaderThreadPool>& reader_pool) {
   const size_t reader_count = length >= kParallelReadThreshold ? configured_reader_count : 1;
   common::Status status = Status::OK();
   ORT_TRY {
     if (reader_count == 1) {
-      return env.ReadFileIntoBuffer(path.native().c_str(), offset, length,
-                                    gsl::span<char>{static_cast<char*>(buffer), length});
+      return file.Read(offset, gsl::span<char>{static_cast<char*>(buffer), length});
     }
     if (!reader_pool) {
       reader_pool = std::make_unique<ExternalDataLoaderThreadPool>(reader_count);
@@ -60,8 +58,8 @@ common::Status ReadChunk(const Env& env, const std::filesystem::path& path,
     return reader_pool->Run([&](size_t reader) {
       const size_t begin = length * reader / reader_count;
       const size_t end = length * (reader + 1) / reader_count;
-      return env.ReadFileIntoBuffer(path.native().c_str(), offset + begin, end - begin,
-                                    gsl::span<char>{static_cast<char*>(buffer) + begin, end - begin});
+      return file.Read(offset + begin,
+                       gsl::span<char>{static_cast<char*>(buffer) + begin, end - begin});
     });
   }
   ORT_CATCH(const std::exception& ex) {
@@ -83,8 +81,8 @@ void SwapByteOrderInplace(void* buffer, size_t length, size_t element_size) {
   }
 }
 
-common::Status LoadWithPageableBuffer(const Env& env, const std::filesystem::path& path,
-                                      FileOffsetType data_offset, size_t length, Tensor& tensor,
+common::Status LoadWithPageableBuffer(const RandomAccessFile& file, FileOffsetType data_offset,
+                                      size_t length, Tensor& tensor,
                                       size_t configured_reader_count,
                                       std::unique_ptr<ExternalDataLoaderThreadPool>& reader_pool) {
   InlinedVector<uint8_t> buffer(std::min(kBufferSize, length));
@@ -93,7 +91,7 @@ common::Status LoadWithPageableBuffer(const Env& env, const std::filesystem::pat
   for (size_t offset = 0; offset < length;) {
     const size_t chunk_size = std::min(buffer.size(), length - offset);
     ORT_RETURN_IF_ERROR(
-        ReadChunk(env, path, data_offset + offset, chunk_size, buffer.data(), configured_reader_count, reader_pool));
+        ReadChunk(file, data_offset + offset, chunk_size, buffer.data(), configured_reader_count, reader_pool));
 
     if (tensor.IsDataType<bool>()) {
       std::transform(buffer.begin(), buffer.begin() + chunk_size, buffer.begin(),
@@ -196,8 +194,10 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   const size_t length = data_length;
   ORT_RETURN_IF_NOT(length == tensor.SizeInBytes(), "External data length does not match tensor size.");
 
+  std::unique_ptr<RandomAccessFile> file;
+  ORT_RETURN_IF_ERROR(env.OpenRandomAccessFile(data_file_path.native().c_str(), file));
   size_t file_length = 0;
-  ORT_RETURN_IF_ERROR(env.GetFileLength(data_file_path.native().c_str(), file_length));
+  ORT_RETURN_IF_ERROR(file->GetLength(file_length));
   const SafeInt<FileOffsetType> end_offset = SafeInt<FileOffsetType>(data_offset) + length;
   ORT_RETURN_IF(data_offset < 0 || end_offset > file_length,
                 "External data range is outside the file.");
@@ -209,7 +209,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
   if (!resource_status.IsOK()) {
     // TODO: Remember setup failures during initialization and report the first CUDA error
     // so later initializers do not repeatedly retry unavailable pinned buffers or streams.
-    return LoadWithPageableBuffer(env, data_file_path, data_offset, length, tensor, reading_thread_count_, reader_pool_);
+    return LoadWithPageableBuffer(*file, data_offset, length, tensor, reading_thread_count_, reader_pool_);
   }
 
   auto* destination = static_cast<uint8_t*>(tensor.MutableDataRaw());
@@ -242,7 +242,7 @@ common::Status ExternalDataLoader::LoadTensor(const Env& env,
     }
 
     const auto read_status =
-        ReadChunk(env, data_file_path, data_offset + offset, chunk_size, buffers_[buffer_index],
+        ReadChunk(*file, data_offset + offset, chunk_size, buffers_[buffer_index],
                   reading_thread_count_, reader_pool_);
     if (!read_status.IsOK()) {
       ORT_IGNORE_RETURN_VALUE(synchronize_streams());

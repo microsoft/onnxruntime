@@ -8,6 +8,7 @@
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -19,7 +20,9 @@
 
 #include <cuda_runtime_api.h>
 #include <gtest/gtest.h>
+#include <gsl/gsl>
 
+#include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/file_util.h"
 
@@ -109,6 +112,70 @@ Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
 }
 
 }  // namespace
+
+TEST(CudaPluginDeviceDiscoveryTest, ReturnsDeviceWhenCudaRuntimeFindsGpu) {
+  int device_count = 0;
+  cudaError_t err = cudaGetDeviceCount(&device_count);
+  if (err != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "No CUDA device available.";
+  }
+
+  Ort::Env env;
+  ScopedCudaPluginRegistration registration(env, "CudaPluginDeviceDiscoveryTest");
+  if (!registration.IsAvailable()) {
+    GTEST_SKIP() << "CUDA plugin EP library not found.";
+  }
+
+  auto cuda_device = FindCudaPluginDevice(env);
+  ASSERT_TRUE(cuda_device) << "CUDA runtime found " << device_count
+                           << " device(s), but GetEpDevices() did not return the CUDA plugin EP.";
+}
+
+TEST(CudaPluginDeviceDiscoveryTest, CreatesRuntimeDevicesWithoutPlatformDevices) {
+  int device_count = 0;
+  cudaError_t err = cudaGetDeviceCount(&device_count);
+  if (err != cudaSuccess || device_count == 0) {
+    GTEST_SKIP() << "No CUDA device available.";
+  }
+
+  Ort::Env env;
+  ScopedCudaPluginRegistration registration(env, "CudaPluginRuntimeDiscoveryTest");
+  if (!registration.IsAvailable()) {
+    GTEST_SKIP() << "CUDA plugin EP library not found.";
+  }
+
+  auto registered_cuda_device = FindCudaPluginDevice(env);
+  ASSERT_TRUE(registered_cuda_device);
+  const auto* registered_ep_device =
+      static_cast<const OrtEpDevice*>(registered_cuda_device);
+  OrtEpFactory* factory = registered_ep_device->GetMutableFactory();
+  ASSERT_NE(factory, nullptr);
+
+  std::array<OrtEpDevice*, 8> runtime_devices{};
+  size_t num_runtime_devices = 0;
+  Ort::Status status{factory->GetSupportedDevices(
+      factory, nullptr, 0, runtime_devices.data(), runtime_devices.size(),
+      &num_runtime_devices)};
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+  auto release_runtime_devices = gsl::finally([&]() {
+    for (size_t i = 0; i < num_runtime_devices; ++i) {
+      Ort::GetApi().GetEpApi()->ReleaseEpDevice(runtime_devices[i]);
+    }
+  });
+
+  ASSERT_EQ(num_runtime_devices,
+            std::min(static_cast<size_t>(device_count), runtime_devices.size()));
+  for (size_t i = 0; i < num_runtime_devices; ++i) {
+    Ort::ConstEpDevice runtime_device{runtime_devices[i]};
+    EXPECT_STREQ(runtime_device.Device().Metadata().GetValue("cuda_runtime_discovered"), "1");
+
+    cudaDeviceProp prop;
+    ASSERT_EQ(cudaGetDeviceProperties(&prop, static_cast<int>(i)), cudaSuccess);
+    EXPECT_STREQ(runtime_device.Device().Metadata().GetValue("Discrete"),
+                 prop.integrated == 0 ? "1" : "0");
+  }
+}
 
 class CudaPluginArenaTest : public ::testing::Test {
  protected:

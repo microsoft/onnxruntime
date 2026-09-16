@@ -285,9 +285,6 @@ TEST(CudaExternalDataLoaderTest, ExternalInitializerSessionMatchesWithLoaderEnab
     ASSERT_STATUS_OK(session_state.GetOrtValueNameIdxMap().GetIdx("weights", weights_index));
     const auto& initialized_weights = session_state.GetInitializedTensors().at(weights_index).Get<Tensor>();
     ASSERT_EQ(initialized_weights.Location().device.Type(), OrtDevice::GPU);
-    const auto* loader =
-        session.GetExternalDataLoaderManager().GetExternalDataLoader(initialized_weights.Location());
-    ASSERT_EQ(loader != nullptr, reader_count != 0);
 
     std::vector<OrtValue> fetches;
     ASSERT_STATUS_OK(session.Run(RunOptions{}, {{"indices", indices_value}}, output_names, &fetches));

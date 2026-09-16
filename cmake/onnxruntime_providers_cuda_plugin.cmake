@@ -292,9 +292,10 @@ endif()
 
 include(cudnn_frontend)
 include(cutlass)
-if(ORT_HAS_SM90_OR_LATER AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+if(ORT_HAS_SM90_OR_LATER AND NOT WIN32 AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
   include(deep_gemm)
   target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE ${deep_gemm_SOURCE_DIR}/deep_gemm/include)
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE USE_DEEP_GEMM)
 endif()
 
 # TMA compile definitions — mirror config_cuda_provider_shared_module in onnxruntime_providers_cuda.cmake
@@ -326,13 +327,12 @@ target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
 )
 
 # SM-specific OBJECT libraries — compiled with restricted CUDA architectures.
-# Flash Attention is also used by the ONNX domain Attention op, so it is always included.
 # SM90/SM120 TMA and LLM contain MoE and MatMulNBits kernels (contrib ops only).
 
 # Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
 # Flash Attention V2 kernels require SM80 and are memory-intensive to compile.
-# Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
-# kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
+# _cuda_plugin_flash_attention_srcs is only populated when onnxruntime_USE_FLASH_ATTENTION
+# is ON; otherwise the .cu sources are excluded from the build entirely (see extraction above).
 if(NOT DEFINED onnxruntime_FLASH_NVCC_THREADS)
   set(onnxruntime_FLASH_NVCC_THREADS "1")
 endif()
