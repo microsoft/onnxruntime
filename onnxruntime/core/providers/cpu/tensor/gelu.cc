@@ -43,6 +43,15 @@ ONNX_OPERATOR_KERNEL_EX(
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Gelu<float>);
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    Gelu,
+    kMSDomain,
+    1,
+    MLFloat16,
+    kCpuExecutionProvider,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    Gelu<MLFloat16>);
 }
 #endif
 

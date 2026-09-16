@@ -623,8 +623,6 @@ TEST(MathOpTest, MatMulZeroBatchCpuDouble) {
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
 TEST(MathOpTest, MatMulZeroKFloat16Type) {
-  // Exercises the K == 0 early-out in MatMul<MLFloat16>::Compute, which fills
-  // the output with zeros without calling into MLAS.
   RunMatMulZeroKTest<MLFloat16>();
 }
 #endif
