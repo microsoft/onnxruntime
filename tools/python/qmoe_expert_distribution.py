@@ -106,23 +106,21 @@ def read_distributions(log_path, num_experts):
     by_qmoe = defaultdict(Counter)
     global_counts = Counter()
     event_count = 0
-    max_expert_id = -1
 
     for prompt_index, event in iter_routing_events(log_path):
         node_name = event["node_name"]
         expert_ids = event["expert_ids"]
+        for expert_id in expert_ids:
+            if not 0 <= expert_id < num_experts:
+                raise ValueError(f"Trace contains expert ID {expert_id}, but the model has {num_experts} experts.")
         counts = Counter(expert_ids)
         by_prompt_qmoe[(prompt_index, node_name)].update(counts)
         by_qmoe[node_name].update(counts)
         global_counts.update(counts)
         event_count += 1
-        if expert_ids:
-            max_expert_id = max(max_expert_id, *expert_ids)
 
     if event_count == 0:
         raise ValueError(f"No '{ROUTING_MARKER.strip()}' records found in {log_path}.")
-    if max_expert_id >= num_experts:
-        raise ValueError(f"Trace contains expert ID {max_expert_id}, but the model has {num_experts} experts.")
 
     return by_prompt_qmoe, by_qmoe, global_counts, event_count
 

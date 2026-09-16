@@ -77,6 +77,27 @@ class TestQMoEExpertDistribution(unittest.TestCase):
 
             self.assertEqual(list(iter_routing_events(log_path)), [(2, event)])
 
+    def test_out_of_range_expert_id_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "routing.log"
+            for expert_id in (-1, 2):
+                with self.subTest(expert_id=expert_id):
+                    event = {
+                        "node_name": "/layers.0/qmoe",
+                        "expert_ids": [expert_id],
+                        "num_rows": 1,
+                        "top_k": 1,
+                    }
+                    log_path.write_text(
+                        f"[qmoe_prompt_runner] 1/1 prompt_start\nmoe_routing {json.dumps(event)}\n",
+                        encoding="utf-8",
+                    )
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        f"Trace contains expert ID {expert_id}, but the model has 2 experts",
+                    ):
+                        read_distributions(log_path, num_experts=2)
+
     def test_initializer_size_without_external_length(self):
         float_weight = onnx.helper.make_tensor("float_weight", onnx.TensorProto.FLOAT16, [2, 4], [0.0] * 8)
         packed_weight = onnx.helper.make_tensor("packed_weight", onnx.TensorProto.UINT4, [2, 4], [0] * 8)
