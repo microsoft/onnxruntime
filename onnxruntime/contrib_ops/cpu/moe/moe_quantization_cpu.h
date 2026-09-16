@@ -60,6 +60,22 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
 
   void ApplyActivationVectorized(float* data, int64_t size) const;
 
+  // Expert weights pre-packed for the MLAS QNBit GEMM kernels (the MatMulNBits kernels). Used for
+  // block-wise 4/8-bit experts without zero points; each expert's [rows, cols] matrix is packed
+  // independently and stored back to back.
+  struct QNBitPackedExperts {
+    IAllocatorUniquePtr<void> packed;        // num_experts * packed_size_per_expert bytes
+    size_t packed_size_per_expert{0};
+    IAllocatorUniquePtr<float> scales_fp32;  // fp32 copy of the [E, rows, cols/block_size] scales (T == MLFloat16 only)
+    bool scales_packed{false};               // scales are folded into `packed`; pass no QuantBScale at compute time
+  };
+  bool QNBitGemmEligible(int input_idx, int64_t num_experts, int64_t rows, int64_t cols,
+                         const Tensor** scales_out) const;
+  Status InitQNBitPacked(QNBitPackedExperts& packed, int64_t num_experts, int64_t rows, int64_t cols,
+                         const Tensor& scales, AllocatorPtr alloc);
+  Status PrePackQNBitExperts(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                             /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights);
+
   int64_t expert_weight_bits_;
   int64_t block_size_;
   bool use_mlas_q4_gemm_{false};
@@ -75,6 +91,11 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
 
   IAllocatorUniquePtr<void> packed_fc1_mlas_cache_;
   IAllocatorUniquePtr<void> packed_fc2_mlas_cache_;
+
+  bool use_qnbit_gemm_{true};
+  MLAS_QNBIT_GEMM_COMPUTE_TYPE qnbit_compute_type_{SQNBIT_CompFp32};
+  QNBitPackedExperts qnbit_fc1_;
+  QNBitPackedExperts qnbit_fc2_;
 };
 
 }  // namespace contrib
