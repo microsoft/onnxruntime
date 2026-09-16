@@ -49,7 +49,7 @@ KVQuantizationType StringToKVQuantizationType(std::string s) {
 }
 }  // namespace
 
-#if USE_FLASH_ATTENTION
+#if defined(USE_FLASH_ATTENTION)
 FlashAttentionSplitPlan GetFlashAttentionSplitPlan(
     int batch_size,
     int sequence_length,
@@ -93,6 +93,8 @@ FlashAttentionSplitPlan GetFlashAttentionSplitPlan(
     capture_num_splits = std::get<0>(capture_plan);
   }
 
+  // Graph warm-up launches should use the live split count for current work, but must still allocate enough
+  // workspace for the later capture/replay plan whose split count is based on static cache capacity.
   const size_t num_splits = is_capturing ? capture_num_splits : live_num_splits;
   const size_t workspace_num_splits =
       needs_capture_workspace ? std::max(live_num_splits, capture_num_splits) : live_num_splits;
