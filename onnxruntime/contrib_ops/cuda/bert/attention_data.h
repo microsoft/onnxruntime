@@ -320,10 +320,11 @@ struct PagedAttentionData {
   bool use_cudnn_paged = false;
 
   // cuDNN paged SDPA path: temp-space allocator, cuDNN handle (stored as void* to avoid pulling the
-  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner) and per-batch KV length
-  // scratch (int32, [batch_size]) filled from past_seqlens on device before dispatch.
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner), resolved attention
+  // scale, and per-batch KV length scratch (int32, [batch_size]) filled on device before dispatch.
   AllocatorPtr cudnn_allocator = nullptr;
   void* cudnn_handle = nullptr;
+  float cudnn_scale = 0.0f;
   int* cudnn_seqlens_kv = nullptr;
 };
 

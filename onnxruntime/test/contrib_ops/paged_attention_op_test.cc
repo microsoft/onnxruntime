@@ -1699,15 +1699,15 @@ TEST(PagedAttention, Cuda_FlashSplitKvSkipsShortReplayRange) {
 // -----------------------------------------------------------------------------
 namespace {
 
-// Common decode-shape case used by the cuDNN paged dispatch tests. head_size=128
-// keeps us clear of the XQA H256/group=6 case that would beat cuDNN paged. The
-// metadata reports max_query_len_bound == 1 and a max_kv_len_bound comfortably
-// above past_seqlen + 1.
+// Common decode-shape case used by the cuDNN paged dispatch tests. head_size=96 exercises
+// default-scale cache-key canonicalization and keeps us clear of the XQA H256/group=6 case that
+// would beat cuDNN paged. The metadata reports max_query_len_bound == 1 and a max_kv_len_bound
+// comfortably above past_seqlen + 1.
 IoBindingCase MakeCudnnPagedDecodeCase() {
   IoBindingCase c;
   c.num_heads = 8;
   c.kv_num_heads = 1;
-  c.head_size = 128;
+  c.head_size = 96;
   c.num_blocks = 4;
   c.max_num_blocks_per_seq = 2;
   c.past_seqlen = 256;

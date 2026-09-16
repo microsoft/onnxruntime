@@ -1856,8 +1856,7 @@ Status CudnnPagedAttention(
     const cudaDeviceProp& device_prop,
     Stream* ort_stream,
     contrib::PagedAttentionParameters& parameters,
-    PagedAttentionData<T, TCACHE>& data,
-    float scale) {
+    PagedAttentionData<T, TCACHE>& data) {
   auto stream = static_cast<cudaStream_t>(ort_stream->GetHandle());
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
 
@@ -1890,7 +1889,7 @@ Status CudnnPagedAttention(
       parameters.num_blocks,
       parameters.block_size,
       parameters.max_num_blocks_per_seq,
-      scale,
+      data.cudnn_scale,
       std::is_same<T, BFloat16>::value,
       cudnn_handle,
       ort_stream,
@@ -2108,7 +2107,7 @@ Status QkvToContext(
   }
 
   if (data.use_cudnn_paged) {
-    return CudnnPagedAttention(device_prop, ort_stream, parameters, data, scale);
+    return CudnnPagedAttention(device_prop, ort_stream, parameters, data);
   }
 
   if (data.use_paged_decode) {

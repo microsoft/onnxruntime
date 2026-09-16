@@ -67,8 +67,7 @@ bool is_supported_paged(const cudaDeviceProp& dprops,
                         int num_heads_kv,
                         int head_size_qk,
                         int head_size_v,
-                        int sequence_length_q,       // must be 1
-                        int max_sequence_length_kv,  // upper bound for graph build
+                        int sequence_length_q,  // must be 1
                         int block_size);
 
 // Pre-dispatch buildability probe. Returns true iff a cuDNN paged graph for these shape/type
