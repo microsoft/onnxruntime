@@ -1053,7 +1053,7 @@ Status QMoECPU<T>::InitQNBitPacked(QNBitPackedExperts& packed, const QNBitEligib
     // The MLAS kernels take fp32 scales; convert the constant fp16 scales once.
     const size_t scales_count = static_cast<size_t>(num_experts * rows * (cols / block_size_));
     packed.scales_fp32 = IAllocator::MakeUniquePtr<float>(alloc, scales_count, true);
-    MlasConvertHalfToFloatBuffer(eligibility.scales->Data<MLFloat16>(), packed.scales_fp32.get(), scales_count);
+    MlasConvertHalfToFloatBuffer(eligibility.scales->template Data<MLFloat16>(), packed.scales_fp32.get(), scales_count);
   } else {
     ORT_UNUSED_PARAMETER(num_experts);
   }
@@ -1088,9 +1088,9 @@ Status QMoECPU<T>::PrePackQNBitExperts(const Tensor& tensor, int input_idx, Allo
   if constexpr (std::is_same_v<T, MLFloat16>) {
     scales_fp32 = packed.scales_fp32.get();
   } else {
-    scales_fp32 = eligibility.scales->Data<float>();
+    scales_fp32 = eligibility.scales->template Data<float>();
   }
-  const uint8_t* zp_data = packed.has_zero_point ? eligibility.zero_points->Data<uint8_t>() : nullptr;
+  const uint8_t* zp_data = packed.has_zero_point ? eligibility.zero_points->template Data<uint8_t>() : nullptr;
   const size_t zp_stride = packed.has_zero_point
                                ? static_cast<size_t>(eligibility.zero_points->Shape()[1] * eligibility.zero_points->Shape()[2])
                                : 0;
