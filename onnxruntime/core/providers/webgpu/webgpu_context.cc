@@ -132,7 +132,7 @@ void WebGpuContext::StartInitialize(const WebGpuContextConfig& config) {
       LOGS_DEFAULT(WARNING)
           << "WebGPU enableRobustness cannot affect an externally supplied WebGPU device. "
           << "The requested value will be ignored.";
-    } else if (device_ != nullptr && enable_robustness_ != config.enable_robustness) {
+    } else if (!device_free_ && enable_robustness_ != config.enable_robustness) {
       LOGS_DEFAULT(WARNING)
           << "WebGPU context is already initialized with enableRobustness=" << enable_robustness_
           << ". Requested value " << config.enable_robustness << " will be ignored.";
