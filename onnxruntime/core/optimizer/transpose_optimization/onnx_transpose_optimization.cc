@@ -2137,8 +2137,8 @@ constexpr HandlerInfo arg_min_max_handler = {&FirstInput, &HandleArgMinMax};
 
 // Creates an int32 or int64 initializer and returns the name (Slice supports int64 or int32 axes)
 static std::optional<std::string_view> AddIntInitializerMatchingDtype(api::GraphRef& graph,
-                                                                     std::vector<int64_t> values,
-                                                                     api::DataType dtype) {
+                                                                      std::vector<int64_t> values,
+                                                                      api::DataType dtype) {
   std::vector<int64_t> shape{gsl::narrow_cast<int64_t>(values.size())};
 
   if (dtype == api::DataType::INT32) {
