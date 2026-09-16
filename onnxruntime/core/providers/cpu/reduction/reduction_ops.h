@@ -552,6 +552,10 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
     } else {
       floating_scaled_sum_ += value / floating_scale_;
     }
+    // Let the next finite term establish its own scale after cancellation.
+    if (floating_scaled_sum_ == 0.0) {
+      floating_scale_ = 0.0;
+    }
   }
 
   inline T get_scaled_mean() const {
