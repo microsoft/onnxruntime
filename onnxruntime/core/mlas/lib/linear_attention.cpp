@@ -115,7 +115,7 @@ MlasLinearAttentionProcessHead(
         if (needs_retrieval) {
             if (use_sgemm) {
                 MlasSgemmOperation(CblasNoTrans, CblasNoTrans, 1, dv, dk,
-                                   1.0f, kt, dk, S, dv, 0.0f, retrieved_buf, dv);
+                                   1.0f, kt, dk, S, dv, 0.0f, retrieved_buf, dv, nullptr);
             } else {
                 for (size_t j = 0; j < dv; ++j) {
                     float acc = 0.0f;
@@ -137,7 +137,7 @@ MlasLinearAttentionProcessHead(
             // S += k_t outer delta
             if (use_sgemm) {
                 MlasSgemmOperation(CblasNoTrans, CblasNoTrans, dk, dv, 1,
-                                   1.0f, kt, 1, retrieved_buf, dv, 1.0f, S, dv);
+                                   1.0f, kt, 1, retrieved_buf, dv, 1.0f, S, dv, nullptr);
             } else {
                 for (size_t i = 0; i < dk; ++i) {
                     float* s_row = S + i * dv;
@@ -151,7 +151,7 @@ MlasLinearAttentionProcessHead(
             // linear/gated: S += k_t outer v_t
             if (use_sgemm) {
                 MlasSgemmOperation(CblasNoTrans, CblasNoTrans, dk, dv, 1,
-                                   1.0f, kt, 1, vt, dv, 1.0f, S, dv);
+                                   1.0f, kt, 1, vt, dv, 1.0f, S, dv, nullptr);
             } else {
                 for (size_t i = 0; i < dk; ++i) {
                     float* s_row = S + i * dv;
@@ -179,7 +179,7 @@ MlasLinearAttentionProcessHead(
             if (use_sgemm) {
                 // Use alpha=1.0 to hit the MLAS M=1 gemv fast path, then scale output.
                 MlasSgemmOperation(CblasNoTrans, CblasNoTrans, 1, dv, dk,
-                                   1.0f, qt, dk, S, dv, 0.0f, ot, dv);
+                                   1.0f, qt, dk, S, dv, 0.0f, ot, dv, nullptr);
                 if (scale != 1.0f) {
                     for (size_t j = 0; j < dv; ++j) {
                         ot[j] *= scale;

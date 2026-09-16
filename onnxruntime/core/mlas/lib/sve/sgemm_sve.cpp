@@ -8,11 +8,64 @@ Module Name:
 
 Abstract:
 
-    This module contains the implementation of SVE-based sgemm operations
+    This module contains the implementation of SVE-based sgemm operations:
+    the packed compute and packing kernels, plus a rank-K kernel for a small
+    K where packing B does not pay for itself.
+
+    Frozen into aarch64/sgemm_sve_asm.S by sve/gen_sve_asm.py, so this file
+    must stay self-contained: no headers beyond sgemm_sve.h, no calls out.
 --*/
 
 #ifdef __ARM_FEATURE_SVE
-#include "mlasi_sve.h"
+
+#include <algorithm>
+#include <cstddef>
+
+#include <arm_sve.h>
+
+// Declarations of the exported kernels, shared with sgemm.cpp.
+#include "sgemm_sve.h"
+
+//
+// SVE types and wrappers. These used to live in mlasi_sve.h, which is now
+// included by TUs built without +sve that cannot parse SVE types.
+//
+typedef svfloat32_t MLAS_SVFLOAT32;
+typedef svbool_t MLAS_SVBOOL;
+
+#if !defined(MLAS_FORCEINLINE)
+#define MLAS_FORCEINLINE __attribute__((always_inline)) inline
+#endif
+
+MLAS_FORCEINLINE MLAS_SVFLOAT32
+MlasSveBroadcastFloat32(float Value)
+{
+    return svdup_n_f32(Value);
+}
+
+MLAS_FORCEINLINE MLAS_SVFLOAT32
+MlasSveLoadFloat32(MLAS_SVBOOL Pred, const float* Buffer)
+{
+    return svld1_f32(Pred, Buffer);
+}
+
+MLAS_FORCEINLINE void
+MlasSveStoreFloat32(MLAS_SVBOOL Pred, float* Buffer, MLAS_SVFLOAT32 Vector)
+{
+    svst1_f32(Pred, Buffer, Vector);
+}
+
+MLAS_FORCEINLINE MLAS_SVFLOAT32
+MlasSveMultiplyAddFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vector2, MLAS_SVFLOAT32 Vector3)
+{
+    return svmla_f32_m(Pred, Vector3, Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE MLAS_SVFLOAT32
+MlasSveAddFloat32(MLAS_SVBOOL Pred, MLAS_SVFLOAT32 Vector1, MLAS_SVFLOAT32 Vector2)
+{
+    return svadd_f32_m(Pred, Vector1, Vector2);
+}
 const size_t k_step = 64;
 
 template <bool ZeroMode, bool Alpha1>
@@ -722,7 +775,7 @@ ProcessRowsTemplate(
     }
 }
 
-size_t MLAS_SVE_TARGET MLASCALL
+extern "C" size_t MLAS_SVE_TARGET MLASCALL
 MlasSgemmKernelZero_sve(
     const float* A,
     const float* B,
@@ -735,47 +788,42 @@ MlasSgemmKernelZero_sve(
     float alpha
 )
 {
-    if (svcntw() == 4u) {
-        size_t rows = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
-        return rows;
+    if (alpha == 1.0f) {
+        if (CountM >= 8) {
+            ProcessRowsTemplate<processrows_8<true, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 8;
+        } else if (CountM >= 6) {
+            ProcessRowsTemplate<processrows_6<true, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 6;
+        } else if (CountM >= 4) {
+            ProcessRowsTemplate<processrows_4<true, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 4;
+        } else if (CountM >= 2) {
+            ProcessRowsTemplate<processrows_2<true, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 2;
+        } else
+            ProcessRowsTemplate<processrows_1<true, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+        return 1;
     } else {
-        if (alpha == 1.0f) {
-            if (CountM >= 8) {
-                ProcessRowsTemplate<processrows_8<true, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 8;
-            } else if (CountM >= 6) {
-                ProcessRowsTemplate<processrows_6<true, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 6;
-            } else if (CountM >= 4) {
-                ProcessRowsTemplate<processrows_4<true, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 4;
-            } else if (CountM >= 2) {
-                ProcessRowsTemplate<processrows_2<true, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 2;
-            } else
-                ProcessRowsTemplate<processrows_1<true, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-            return 1;
-        } else {
-            if (CountM >= 8) {
-                ProcessRowsTemplate<processrows_8<true, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 8;
-            } else if (CountM >= 6) {
-                ProcessRowsTemplate<processrows_6<true, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 6;
-            } else if (CountM >= 4) {
-                ProcessRowsTemplate<processrows_4<true, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 4;
-            } else if (CountM >= 2) {
-                ProcessRowsTemplate<processrows_2<true, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 2;
-            } else
-                ProcessRowsTemplate<processrows_1<true, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-            return 1;
-        }
+        if (CountM >= 8) {
+            ProcessRowsTemplate<processrows_8<true, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 8;
+        } else if (CountM >= 6) {
+            ProcessRowsTemplate<processrows_6<true, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 6;
+        } else if (CountM >= 4) {
+            ProcessRowsTemplate<processrows_4<true, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 4;
+        } else if (CountM >= 2) {
+            ProcessRowsTemplate<processrows_2<true, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 2;
+        } else
+            ProcessRowsTemplate<processrows_1<true, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+        return 1;
     }
 }
 
-size_t MLAS_SVE_TARGET MLASCALL
+extern "C" size_t MLAS_SVE_TARGET MLASCALL
 MlasSgemmKernelAdd_sve(
     const float* A,
     const float* B,
@@ -788,43 +836,38 @@ MlasSgemmKernelAdd_sve(
     float alpha
 )
 {
-    if (svcntw() == 4u) {
-        size_t rows = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
-        return rows;
+    if (alpha == 1.0f) {
+        if (CountM >= 8) {
+            ProcessRowsTemplate<processrows_8<false, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 8;
+        } else if (CountM >= 6) {
+            ProcessRowsTemplate<processrows_6<false, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 6;
+        } else if (CountM >= 4) {
+            ProcessRowsTemplate<processrows_4<false, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 4;
+        } else if (CountM >= 2) {
+            ProcessRowsTemplate<processrows_2<false, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 2;
+        } else
+            ProcessRowsTemplate<processrows_1<false, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+        return 1;
     } else {
-        if (alpha == 1.0f) {
-            if (CountM >= 8) {
-                ProcessRowsTemplate<processrows_8<false, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 8;
-            } else if (CountM >= 6) {
-                ProcessRowsTemplate<processrows_6<false, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 6;
-            } else if (CountM >= 4) {
-                ProcessRowsTemplate<processrows_4<false, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 4;
-            } else if (CountM >= 2) {
-                ProcessRowsTemplate<processrows_2<false, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 2;
-            } else
-                ProcessRowsTemplate<processrows_1<false, true>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-            return 1;
-        } else {
-            if (CountM >= 8) {
-                ProcessRowsTemplate<processrows_8<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 8;
-            } else if (CountM >= 6) {
-                ProcessRowsTemplate<processrows_6<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 6;
-            } else if (CountM >= 4) {
-                ProcessRowsTemplate<processrows_4<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 4;
-            } else if (CountM >= 2) {
-                ProcessRowsTemplate<processrows_2<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-                return 2;
-            } else
-                ProcessRowsTemplate<processrows_1<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
-            return 1;
-        }
+        if (CountM >= 8) {
+            ProcessRowsTemplate<processrows_8<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 8;
+        } else if (CountM >= 6) {
+            ProcessRowsTemplate<processrows_6<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 6;
+        } else if (CountM >= 4) {
+            ProcessRowsTemplate<processrows_4<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 4;
+        } else if (CountM >= 2) {
+            ProcessRowsTemplate<processrows_2<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+            return 2;
+        } else
+            ProcessRowsTemplate<processrows_1<false, false>>(A, lda, B, C, ldc, CountK, CountN, alpha);
+        return 1;
     }
 }
 
@@ -832,14 +875,18 @@ MLAS_SVE_TARGET
 inline size_t
 VL()
 {
-    static size_t fp32Lanes = svcntw();
+    const size_t fp32Lanes = svcntw();
     return fp32Lanes;
 }
 
+//
+// svcntw() is one CNTW, so caching it in a function-local static only bought
+// a guard variable and the adrp to reach it, which cannot be frozen.
+//
 MLAS_SVE_TARGET
 void inline Transpose_SVE512_4x4(float* D, const float* B, size_t ldb)
 {
-    const static size_t VL = svcntw();
+    const size_t VL = svcntw();
     MLAS_SVBOOL p = svwhilelt_b32(0ULL, VL / 4);
     MLAS_SVBOOL p3 = svwhilelt_b32(0ULL, VL / 2);
     MLAS_SVBOOL p1 = svnot_b_z(svwhilelt_b32(0ULL, VL), p);
@@ -865,7 +912,7 @@ void inline Transpose_SVE512_4x4(float* D, const float* B, size_t ldb)
 MLAS_SVE_TARGET
 void static inline Transpose_SVE256_4x4(float* D, const float* B, size_t ldb)
 {
-    const static size_t VL = svcntw();
+    const size_t VL = svcntw();
     MLAS_SVBOOL p = svwhilelt_b32(0ULL, VL / 2);
 
     MLAS_SVFLOAT32 t0 = MlasSveLoadFloat32(p, &B[ldb * 0]);
@@ -888,7 +935,7 @@ void static inline Transpose_SVE256_4x4(float* D, const float* B, size_t ldb)
 MLAS_SVE_TARGET
 void static inline Transpose_SVE128_4x4(float* D, const float* B, size_t ldb)
 {
-    const static size_t VL = svcntw();
+    const size_t VL = svcntw();
     MLAS_SVBOOL p = svwhilelt_b32(0ULL, VL);
 
     MLAS_SVFLOAT32 v1 = MlasSveLoadFloat32(p, &B[ldb * 0]);
@@ -917,7 +964,7 @@ void static inline Transpose_SVE128_4x4(float* D, const float* B, size_t ldb)
 MLAS_SVE_TARGET
 void static inline Transpose_SVE256_8x8(float* D, const float* B, size_t ldb)
 {
-    const static size_t VL = svcntw();
+    const size_t VL = svcntw();
 
     MLAS_SVBOOL p = svwhilelt_b32(0LL, VL);
 
@@ -986,7 +1033,7 @@ void static inline Transpose_SVE256_8x8(float* D, const float* B, size_t ldb)
 MLAS_SVE_TARGET
 void static inline Transpose_SVE512_16x16(float* D, const float* B, size_t ldb)
 {
-    const static size_t VL = svcntw();
+    const size_t VL = svcntw();
     MLAS_SVBOOL p = svwhilelt_b32(0LL, VL);
 
     MLAS_SVFLOAT32 v1 = MlasSveLoadFloat32(p, &B[ldb * 0]);
@@ -1127,7 +1174,7 @@ void static inline Transpose_SVE512_16x16(float* D, const float* B, size_t ldb)
 }
 
 template <unsigned N>
-void
+static MLAS_FORCEINLINE void
 MlasSveTransposePackBNx8(
     float* D,
     const float* B,
@@ -1142,7 +1189,7 @@ MlasSveTransposePackBNx8(
 }
 
 template <unsigned N>
-void
+static MLAS_FORCEINLINE void
 MlasSveTransposePackBNx4(
     float* D,
     const float* B,
@@ -1163,24 +1210,38 @@ MlasSveTransposePackBNx4(
     }
 }
 
-template void
-MlasSveTransposePackBNx4<4>(
-    float* D,
-    const float* B,
-    size_t ldb
-);
+//
+// sgemm.cpp needs N = 4 and N = 8. A template instantiation emits a weak,
+// mangled symbol, which cannot be frozen, so export concrete wrappers.
+//
 
-template void
-MlasSveTransposePackBNx4<8>(
-    float* D,
-    const float* B,
-    size_t ldb
-);
+extern "C" void MLAS_SVE_TARGET MLASCALL
+MlasSveTransposePackB4x4(float* D, const float* B, size_t ldb)
+{
+    MlasSveTransposePackBNx4<4>(D, B, ldb);
+}
 
-void MLAS_SVE_TARGET MLASCALL
+extern "C" void MLAS_SVE_TARGET MLASCALL
+MlasSveTransposePackB8x4(float* D, const float* B, size_t ldb)
+{
+    MlasSveTransposePackBNx4<8>(D, B, ldb);
+}
+
+//
+// The 128-bit-SVE fallback to the NEON kernels used to sit in the kernels
+// themselves; frozen code cannot make that call, so sgemm.cpp decides.
+//
+
+extern "C" size_t MLAS_SVE_TARGET MLASCALL
+MlasSveVectorLengthWords(void)
+{
+    return svcntw();
+}
+
+extern "C" void MLAS_SVE_TARGET MLASCALL
 MlasSveTranspose(float*& D, const float*& b, size_t ldb, size_t& x)
 {
-    const static size_t VL = svcntw();
+    const size_t VL = svcntw();
     if (VL == 16) {
         while (x >= 16) {
             Transpose_SVE512_16x16(&D[0], &b[0], ldb);
@@ -1205,7 +1266,7 @@ MlasSveTranspose(float*& D, const float*& b, size_t ldb, size_t& x)
     }
 }
 
-void MLAS_SVE_TARGET MLASCALL
+extern "C" void MLAS_SVE_TARGET MLASCALL
 MlasSveScatterStore(float* d, const float* b)
 {
     MLAS_SVBOOL pb = svwhilelt_b32((int)0, 4);
@@ -1223,7 +1284,7 @@ MlasSveScatterStore(float* d, const float* b)
     MlasSveStoreFloat32(pb_fourth_half, &d[45], vec0);
 }
 
-void MLAS_SVE_TARGET MLASCALL
+extern "C" void MLAS_SVE_TARGET MLASCALL
 MlasSveLoadStore(float* D, const float* b)
 {
     for (int i = 0; i < MLAS_SGEMM_STRIDEN_THREAD_ALIGN; i += VL()) {
@@ -1232,12 +1293,193 @@ MlasSveLoadStore(float* D, const float* b)
     }
 }
 
-void MLAS_SVE_TARGET MLASCALL
+extern "C" void MLAS_SVE_TARGET MLASCALL
 MlasSveZeroInitialize(float* d)
 {
     svfloat32_t zero = svdup_f32(0.0f);
     for (int i = 0; i < kMlasSvePackedBBlockWidth; i += svcntw()) {
         MlasSveStoreFloat32(svptrue_b32(), d + i, zero);
+    }
+}
+
+//
+// Rank-K update for a small K.
+//
+// The packed kernels above walk N one 16-column block at a time, which pays
+// off only when the block is reused across rows of A. At a small K there is
+// no such reuse, so they lost to NEON below K == 16. This kernel reads B
+// direct with no packing pass, streams N in long runs, and holds four rows of
+// A so one pair of B vectors drives eight stores.
+//
+
+//
+// Budget for the B rows held live across the sweep over M. The column block
+// is derived from it rather than fixed, so a small K does not split N -- and
+// with it every row of C -- into needless passes.
+//
+#define MLAS_SGEMM_SVE_SMALLK_B_BYTES 32768
+
+extern "C" void MLAS_SVE_TARGET MLASCALL
+MlasSgemmSmallKKernel_sve(
+    const float* A,
+    size_t lda,
+    const float* B,
+    size_t ldb,
+    float* C,
+    size_t ldc,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    float alpha,
+    bool ZeroMode
+)
+{
+    const size_t vl = svcntw();
+    const size_t nblock = MLAS_SGEMM_SVE_SMALLK_B_BYTES / (CountK * sizeof(float));
+
+    for (size_t n0 = 0; n0 < CountN; n0 += nblock) {
+
+        const size_t nend = (n0 + nblock < CountN) ? n0 + nblock : CountN;
+
+        size_t m = 0;
+
+        // Four rows per pass, so one pair of B vectors drives eight stores.
+        for (; m + 4 <= CountM; m += 4) {
+
+            const float* a0 = A + (m + 0) * lda;
+            const float* a1 = A + (m + 1) * lda;
+            const float* a2 = A + (m + 2) * lda;
+            const float* a3 = A + (m + 3) * lda;
+
+            float* c0 = C + (m + 0) * ldc;
+            float* c1 = C + (m + 1) * ldc;
+            float* c2 = C + (m + 2) * ldc;
+            float* c3 = C + (m + 3) * ldc;
+
+            // Scale A by alpha once per row block: inside the N loop each
+            // term costs a load/fmul/dup instead of a single ld1rw. k == 0
+            // stays in registers, since round-tripping it through av[] and
+            // reading it straight back stalls on store-to-load forwarding.
+            const svfloat32_t k0v0 = svdup_n_f32(a0[0] * alpha);
+            const svfloat32_t k0v1 = svdup_n_f32(a1[0] * alpha);
+            const svfloat32_t k0v2 = svdup_n_f32(a2[0] * alpha);
+            const svfloat32_t k0v3 = svdup_n_f32(a3[0] * alpha);
+
+            float av[4 * MLAS_SGEMM_SVE_SMALLK_MAX];
+
+            for (size_t k = 1; k < CountK; k++) {
+                av[0 * MLAS_SGEMM_SVE_SMALLK_MAX + k] = a0[k] * alpha;
+                av[1 * MLAS_SGEMM_SVE_SMALLK_MAX + k] = a1[k] * alpha;
+                av[2 * MLAS_SGEMM_SVE_SMALLK_MAX + k] = a2[k] * alpha;
+                av[3 * MLAS_SGEMM_SVE_SMALLK_MAX + k] = a3[k] * alpha;
+            }
+
+            for (size_t n = n0; n < nend; n += 2 * vl) {
+
+                const svbool_t pg0 = svwhilelt_b32(n, nend);
+                const svbool_t pg1 = svwhilelt_b32(n + vl, nend);
+
+                svfloat32_t b0 = svld1_f32(pg0, B + n);
+                svfloat32_t b1 = svld1_f32(pg1, B + n + vl);
+
+                svfloat32_t acc00 = svmul_f32_x(pg0, b0, k0v0);
+                svfloat32_t acc01 = svmul_f32_x(pg1, b1, k0v0);
+                svfloat32_t acc10 = svmul_f32_x(pg0, b0, k0v1);
+                svfloat32_t acc11 = svmul_f32_x(pg1, b1, k0v1);
+                svfloat32_t acc20 = svmul_f32_x(pg0, b0, k0v2);
+                svfloat32_t acc21 = svmul_f32_x(pg1, b1, k0v2);
+                svfloat32_t acc30 = svmul_f32_x(pg0, b0, k0v3);
+                svfloat32_t acc31 = svmul_f32_x(pg1, b1, k0v3);
+
+                for (size_t k = 1; k < CountK; k++) {
+
+                    const float* bk = B + k * ldb;
+
+                    b0 = svld1_f32(pg0, bk + n);
+                    b1 = svld1_f32(pg1, bk + n + vl);
+
+                    const svfloat32_t v0 = svdup_n_f32(av[0 * MLAS_SGEMM_SVE_SMALLK_MAX + k]);
+                    const svfloat32_t v1 = svdup_n_f32(av[1 * MLAS_SGEMM_SVE_SMALLK_MAX + k]);
+                    const svfloat32_t v2 = svdup_n_f32(av[2 * MLAS_SGEMM_SVE_SMALLK_MAX + k]);
+                    const svfloat32_t v3 = svdup_n_f32(av[3 * MLAS_SGEMM_SVE_SMALLK_MAX + k]);
+
+                    acc00 = svmla_f32_x(pg0, acc00, b0, v0);
+                    acc01 = svmla_f32_x(pg1, acc01, b1, v0);
+                    acc10 = svmla_f32_x(pg0, acc10, b0, v1);
+                    acc11 = svmla_f32_x(pg1, acc11, b1, v1);
+                    acc20 = svmla_f32_x(pg0, acc20, b0, v2);
+                    acc21 = svmla_f32_x(pg1, acc21, b1, v2);
+                    acc30 = svmla_f32_x(pg0, acc30, b0, v3);
+                    acc31 = svmla_f32_x(pg1, acc31, b1, v3);
+                }
+
+                if (!ZeroMode) {
+                    acc00 = svadd_f32_x(pg0, acc00, svld1_f32(pg0, c0 + n));
+                    acc01 = svadd_f32_x(pg1, acc01, svld1_f32(pg1, c0 + n + vl));
+                    acc10 = svadd_f32_x(pg0, acc10, svld1_f32(pg0, c1 + n));
+                    acc11 = svadd_f32_x(pg1, acc11, svld1_f32(pg1, c1 + n + vl));
+                    acc20 = svadd_f32_x(pg0, acc20, svld1_f32(pg0, c2 + n));
+                    acc21 = svadd_f32_x(pg1, acc21, svld1_f32(pg1, c2 + n + vl));
+                    acc30 = svadd_f32_x(pg0, acc30, svld1_f32(pg0, c3 + n));
+                    acc31 = svadd_f32_x(pg1, acc31, svld1_f32(pg1, c3 + n + vl));
+                }
+
+                svst1_f32(pg0, c0 + n, acc00);
+                svst1_f32(pg1, c0 + n + vl, acc01);
+                svst1_f32(pg0, c1 + n, acc10);
+                svst1_f32(pg1, c1 + n + vl, acc11);
+                svst1_f32(pg0, c2 + n, acc20);
+                svst1_f32(pg1, c2 + n + vl, acc21);
+                svst1_f32(pg0, c3 + n, acc30);
+                svst1_f32(pg1, c3 + n + vl, acc31);
+            }
+        }
+
+        // Remaining rows, one at a time.
+        for (; m < CountM; m++) {
+
+            const float* a0 = A + m * lda;
+            float* c0 = C + m * ldc;
+
+            const svfloat32_t k0v0 = svdup_n_f32(a0[0] * alpha);
+
+            float av[MLAS_SGEMM_SVE_SMALLK_MAX];
+
+            for (size_t k = 1; k < CountK; k++) {
+                av[k] = a0[k] * alpha;
+            }
+
+            for (size_t n = n0; n < nend; n += 2 * vl) {
+
+                const svbool_t pg0 = svwhilelt_b32(n, nend);
+                const svbool_t pg1 = svwhilelt_b32(n + vl, nend);
+
+                svfloat32_t b0 = svld1_f32(pg0, B + n);
+                svfloat32_t b1 = svld1_f32(pg1, B + n + vl);
+                svfloat32_t acc00 = svmul_f32_x(pg0, b0, k0v0);
+                svfloat32_t acc01 = svmul_f32_x(pg1, b1, k0v0);
+
+                for (size_t k = 1; k < CountK; k++) {
+
+                    const float* bk = B + k * ldb;
+
+                    b0 = svld1_f32(pg0, bk + n);
+                    b1 = svld1_f32(pg1, bk + n + vl);
+                    const svfloat32_t v0 = svdup_n_f32(av[k]);
+
+                    acc00 = svmla_f32_x(pg0, acc00, b0, v0);
+                    acc01 = svmla_f32_x(pg1, acc01, b1, v0);
+                }
+
+                if (!ZeroMode) {
+                    acc00 = svadd_f32_x(pg0, acc00, svld1_f32(pg0, c0 + n));
+                    acc01 = svadd_f32_x(pg1, acc01, svld1_f32(pg1, c0 + n + vl));
+                }
+
+                svst1_f32(pg0, c0 + n, acc00);
+                svst1_f32(pg1, c0 + n + vl, acc01);
+            }
+        }
     }
 }
 

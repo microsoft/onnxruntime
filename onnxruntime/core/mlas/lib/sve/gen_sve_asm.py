@@ -52,6 +52,12 @@ RESERVED_REGS = ("x18",)
 RESERVED_REG_RE = re.compile(r"\b[wx]18\b")
 DEFAULT_CFLAGS = ("-ffixed-x18",)
 
+DEFAULT_COPYRIGHT = (
+    "Copyright (c) Microsoft Corporation. All rights reserved.\n"
+    "\n"
+    "Licensed under the MIT License."
+)
+
 
 def run(cmd):
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -122,9 +128,7 @@ def extract_functions(obj, symbols, allow_missing=False):
 HEADER = """\
 /*++
 
-Copyright (c) Microsoft Corporation. All rights reserved.
-
-Licensed under the MIT License.
+{copyright}
 
 Module Name:
 
@@ -147,6 +151,12 @@ Abstract:
     code is fully position-independent (the generator verifies there are no
     relocations, calls, or literal pools).
 
+    The bytes below are whatever this compiler emitted, so regenerating with a
+    different compiler will legitimately produce a different (equally valid)
+    file. To reproduce these exact bytes:
+
+{provenance}
+
 --*/
 
 #include "kai_asm_macros.h"
@@ -155,8 +165,18 @@ Abstract:
 """
 
 
-def emit(functions, symbols, module, src, out_path):
-    lines = [HEADER.format(module=module, src=src)]
+def compiler_version(cxx):
+    """First line of the compiler's version banner, for the provenance block."""
+    try:
+        out = subprocess.run([cxx, "--version"], capture_output=True, text=True, check=True)
+        return out.stdout.splitlines()[0].strip()
+    except Exception as exc:  # noqa: BLE001 - provenance is best effort
+        return f"{cxx} (version unavailable: {exc})"
+
+
+def emit(functions, symbols, module, src, out_path, copyright, provenance):
+    lines = [HEADER.format(module=module, src=src, copyright=copyright,
+                           provenance=provenance)]
     for sym in symbols:
         lines.append("")
         lines.append("    KAI_ASM_ALIGN")
@@ -193,6 +213,12 @@ def main():
     ap.add_argument("--module", required=True)
     ap.add_argument("--cxx", default="g++")
     ap.add_argument(
+        "--copyright",
+        default=DEFAULT_COPYRIGHT,
+        help="copyright/licence block for the generated file. Should match the "
+        "intrinsics source it is frozen from.",
+    )
+    ap.add_argument(
         "--cflag",
         action="append",
         default=[],
@@ -227,6 +253,14 @@ def main():
                 cmd += list(DEFAULT_CFLAGS)
             cmd += args.cflag
             cmd += ["-c", "-o", obj, src]
+            # The -I of the source's own directory is implied and its absolute
+            # form is specific to whoever ran the generator, so leave it out of
+            # the provenance block.
+            implied_include = f"-I{os.path.dirname(os.path.abspath(src))}"
+            compile_flags = [
+                a for a in cmd[1:]
+                if a not in ("-c", "-o", obj, src, implied_include)
+            ]
             run(cmd)
             wanted = [s for s in symbols if s not in functions]
             check_relocations(obj, wanted)
@@ -234,7 +268,11 @@ def main():
     missing = [s for s in symbols if s not in functions]
     if missing:
         sys.exit(f"symbols not found in any object: {missing}")
-    emit(functions, symbols, args.module, ", ".join(args.src), args.out)
+    provenance = "\n".join(
+        ["      compiler: " + compiler_version(args.cxx),
+         "      flags:    " + " ".join(compile_flags)]
+    )
+    emit(functions, symbols, args.module, ", ".join(args.src), args.out, args.copyright, provenance)
 
     total = sum(len(v) for v in functions.values())
     print(f"wrote {args.out}: {len(symbols)} functions, {total} instructions")

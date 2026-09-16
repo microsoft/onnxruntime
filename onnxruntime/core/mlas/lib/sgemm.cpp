@@ -19,6 +19,14 @@ Abstract:
 
 #ifdef MLAS_USE_SVE
 #include "sve/mlasi_sve.h"
+
+//
+// sve/sgemm_sve.h carries its own fallback definition of this so that
+// sve/sgemm_sve.cpp can be compiled standalone by sve/gen_sve_asm.py, without
+// mlasi.h. Here mlasi.h has already defined it, so the two can be compared.
+//
+static_assert(MLAS_SGEMM_STRIDEN_THREAD_ALIGN == 16,
+              "sve/sgemm_sve.h assumes MLAS_SGEMM_STRIDEN_THREAD_ALIGN == 16");
 #endif
 
 //
@@ -641,7 +649,7 @@ Return Value:
             if ((CountY & 8) != 0) {
 #if defined(MLAS_USE_SVE)
                 if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
-                    MlasSveTransposePackBNx4<8>(&d[0], &b[0], ldb);
+                    MlasSveTransposePackB8x4(&d[0], &b[0], ldb);
                 } else {
                     MlasSgemmTransposePackBNx4<8>(&d[0], &b[0], ldb);
                 }
@@ -667,7 +675,7 @@ Return Value:
             if ((CountY & 4) != 0) {
 #if defined(MLAS_USE_SVE)
                 if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
-                    MlasSveTransposePackBNx4<4>(&d[0], &b[0], ldb);
+                    MlasSveTransposePackB4x4(&d[0], &b[0], ldb);
                 } else {
                     MlasSgemmTransposePackBNx4<4>(&d[0], &b[0], ldb);
                 }
@@ -1104,26 +1112,37 @@ Return Value:
             RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
         }
 #else
+#if defined(MLAS_USE_SVE)
+        //
+        // On 128-bit SVE the NEON kernels are used instead. That check used to live
+        // inside MlasSgemmKernelZero_sve/MlasSgemmKernelAdd_sve; it sits here now so
+        // those kernels contain nothing but SVE code.
+        //
+        const bool UseSveKernel =
+            MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() &&
+            (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm) &&
+            MlasSveVectorLengthWords() != 4;
+#else
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
+#endif
         if (ZeroMode) {
 #if defined(MLAS_USE_SVE)
-            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+            if (UseSveKernel) {
                 RowsHandled = MlasSgemmKernelZero_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
             } else {
                 RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
             }
 #else
-            MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
             RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
 #endif
         } else {
 #if defined(MLAS_USE_SVE)
-            if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() && (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+            if (UseSveKernel) {
                 RowsHandled = MlasSgemmKernelAdd_sve(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
             } else {
                 RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
             }
 #else
-            MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
             RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
 #endif
         }
@@ -1272,6 +1291,47 @@ Return Value:
 #endif
 
     }
+
+#if defined(MLAS_USE_SVE)
+
+    //
+    // Handle a small K with a dedicated SVE kernel. Packing B buys nothing
+    // there -- the block is built once and barely reused -- and the packed
+    // kernels lost to NEON below K == 16.
+    //
+    // The kernel reads B directly, so its rows must be contiguous across N:
+    // true for CblasNoTrans, and for a transposed B when K == 1 and ldb == 1.
+    // Anything else falls through to the packed path.
+    //
+
+    if (K <= MLAS_SGEMM_SVE_SMALLK_MAX && TransA == CblasNoTrans &&
+        ((TransB == CblasNoTrans) || (K == 1 && ldb == 1)) &&
+        MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve() &&
+        (!BackendKernelSelectorConfig || BackendKernelSelectorConfig->enable_sve_sgemm)) {
+
+        const size_t VectorLength = MlasSveVectorLengthWords();
+
+        // Two vectors of N per pass, so below that width most lanes are
+        // predicated off and the packed path wins. 128-bit SVE stays on the
+        // NEON kernels throughout, as it does for the packed path.
+        //
+
+        if (VectorLength != 4 && N >= 2 * VectorLength) {
+
+            // Fold a general beta into C first, as the packed path does,
+            // and let the kernel accumulate on top.
+
+            if (beta != 0.0f && beta != 1.0f) {
+                MlasSgemmMultiplyBeta(C, M, N, ldc, beta);
+            }
+
+            MlasSgemmSmallKKernel_sve(A, lda, B, ldb, C, ldc, M, N, K, alpha,
+                                      beta == 0.0f);
+            return;
+        }
+    }
+
+#endif
 
     //
     // Compute the strides to step through slices of the input matrices.
