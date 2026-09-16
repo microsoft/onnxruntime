@@ -4,6 +4,8 @@
 #include "gtest/gtest.h"
 
 #include "core/providers/cpu/math/matmul_helper.h"
+#include "core/providers/webgpu/math/matmul_algorithm.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
@@ -42,10 +44,25 @@ static void ComputeExpectedResult(const std::vector<float>& a_vals, const std::v
 
 template <typename T, int version = 13>
 void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims,
-                  bool b_is_constant = false) {
+                  bool b_is_constant = false,
+                  std::optional<webgpu::MatMulAlgorithm> forced_algorithm = std::nullopt,
+                  OpTester::ExpectResult expected_result = OpTester::ExpectResult::kExpectSuccess,
+                  const char* expected_error = nullptr) {
   static_assert(std::is_same_v<T, float> || std::is_same_v<T, MLFloat16>, "unexpected type for T");
 
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  std::unique_ptr<IExecutionProvider> webgpu_ep;
+  if (forced_algorithm.has_value()) {
+    ConfigOptions config_options{};
+    const std::string algorithm_name{webgpu::MatMulAlgorithmName(*forced_algorithm)};
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kDawnBackendType,
+                                                   webgpu::options::kDawnBackendType_Vulkan));
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        webgpu::options::kForceMatMulAlgorithm,
+        algorithm_name.c_str()));
+    webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
+  } else {
+    webgpu_ep = DefaultWebGpuExecutionProvider();
+  }
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
@@ -79,7 +96,9 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
     test.SetOutputRelErr("Y", 0.02f);
   }
 
-  test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
+  test.ConfigEp(std::move(webgpu_ep))
+      .Config(expected_result, expected_error == nullptr ? "" : expected_error)
+      .RunWithConfig();
 }
 
 template <int version = 13>
@@ -106,6 +125,40 @@ TEST(MatMulProgramTest, VectorFallbackExecution) {
   RunTestTyped<float>({8}, {2, 8, 3});
   RunTestTyped<float>({2, 2, 8}, {8});
 }
+
+#if defined(_WIN32)
+TEST(WebGpuMatMulAlgorithmTest, RejectsUnknownForcedAlgorithm) {
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kForceMatMulAlgorithm, "unknown"));
+  EXPECT_THROW(WebGpuExecutionProviderWithOptions(config_options), OnnxRuntimeException);
+}
+
+TEST(WebGpuMatMulAlgorithmTest, ForcedNaive) {
+  RunTestTyped<float>({8, 8}, {8, 8}, false, webgpu::MatMulAlgorithm::Naive);
+}
+
+TEST(WebGpuMatMulAlgorithmTest, ForcedPacked) {
+  RunTestTyped<float>({2, 2}, {2, 2}, false, webgpu::MatMulAlgorithm::Packed);
+}
+
+TEST(WebGpuMatMulAlgorithmTest, ForcedIntelSubgroup) {
+  RunTestTyped<float>({64, 32}, {32, 64}, false, webgpu::MatMulAlgorithm::IntelSubgroup);
+}
+
+TEST(WebGpuMatMulAlgorithmTest, ForcedPackedSplitK) {
+  RunTestTyped<float>({1, 1024}, {1024, 16}, false, webgpu::MatMulAlgorithm::PackedSplitK);
+}
+
+TEST(WebGpuMatMulAlgorithmTest, ForcedSubgroupMatrix) {
+  RunTestTyped<MLFloat16>({32, 16}, {16, 32}, false, webgpu::MatMulAlgorithm::SubgroupMatrix);
+}
+
+TEST(WebGpuMatMulAlgorithmTest, ForcedSubgroupMatrixRejectsFloatInputs) {
+  RunTestTyped<float>({32, 16}, {16, 32}, false, webgpu::MatMulAlgorithm::SubgroupMatrix,
+                      OpTester::ExpectResult::kExpectFailure,
+                      "MatMul algorithm subgroup_matrix");
+}
+#endif
 
 // 2D aligned baseline shapes.
 TEST(MatMul_Large, DISABLED_Aligned) {
