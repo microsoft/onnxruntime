@@ -29,7 +29,7 @@ Activation quantization, KV-cache quantization, and floating-point formats such 
 | Python `MatMulNBits` quantizer | Yes | No | Dedicated 2-bit, 4-bit, and 8-bit native packers are exported. |
 | CPU `MatMulNBits` | Yes | No | Includes fallback, AVX512/VNNI, and Arm64 work. |
 | CUDA `MatMulNBits` | No | No | Kernel dispatch, prepacking, and memory estimation accept only 4 and 8 bits. |
-| WebGPU `MatMulNBits` | No | No | Accepts only 4 and 8 bits. |
+| WebGPU `MatMulNBits` | Yes | No | Supports 2-bit unpacking with symmetric and asymmetric test coverage. |
 | CPU `GatherBlockQuantized` | Yes | No | Supports packed 2-bit, 4-bit, and 8-bit integer data. |
 | CUDA `GatherBlockQuantized` | Yes | No | The generic packed-`uint8` path supports 2-bit extraction. |
 | QDQ quantization helper | Limited | No | The dedicated native QDQ packing helper is currently 4-bit-oriented. |
