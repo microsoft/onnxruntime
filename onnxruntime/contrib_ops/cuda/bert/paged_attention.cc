@@ -157,6 +157,8 @@ PagedAttention<T, TCACHE>::PagedAttention(const OpKernelInfo& info)
   // for tables whose channel scales span more than the fold can hold; see paged_attention.md §18.7.
   enable_per_channel_xqa_ =
       enable_xqa_ && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA_PER_CHANNEL_KV", 1) != 0);
+    xqa_shared_memory_limit_for_test_ =
+      ParseEnvironmentVariableWithDefault<int>("ORT_TEST_ONLY_PAGED_ATTENTION_XQA_SHARED_MEMORY_LIMIT", -1);
   // cuDNN paged SDPA follows the same opt-in / auto-on pattern as GroupQueryAttention's cuDNN tier.
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   enable_cudnn_paged_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
@@ -693,9 +695,12 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
                                                device_prop, parameters.head_size, parameters.num_heads,
                                                parameters.kv_num_heads, xqa_kv_quant_type,
                                                std::is_same<T, BFloat16>::value);
+          const size_t shared_memory_limit = xqa_shared_memory_limit_for_test_ >= 0
+                         ? static_cast<size_t>(xqa_shared_memory_limit_for_test_)
+                         : device_prop.sharedMemPerBlockOptin;
         // A zero result means the selected CUDA image has no compatible XQA symbol or the symbol
         // query failed. Either case must use the portable fallback rather than attempting a launch.
-        xqa_smem_ok = (required_smem != 0 && required_smem <= device_prop.sharedMemPerBlockOptin) ? 1 : 0;
+          xqa_smem_ok = (required_smem != 0 && required_smem <= shared_memory_limit) ? 1 : 0;
         xqa_smem_cache.store(xqa_smem_ok, std::memory_order_relaxed);
       } else {
         xqa_smem_ok = 0;
@@ -1006,6 +1011,7 @@ Status PagedAttention<T, TCACHE>::ComputeInternal(OpKernelContext* context) cons
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.cudnn_allocator));
     data.cudnn_handle = static_cast<void*>(GetCudnnHandle(context));
     data.cudnn_scale = cudnn_scale;
+    data.cudnn_debug_info = kernel_options_->AllowDebugInfo();
     data.cudnn_seqlens_kv = reinterpret_cast<int*>(cudnn_seqlens_kv_buffer.get());
   }
 

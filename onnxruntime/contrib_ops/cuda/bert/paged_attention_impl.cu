@@ -1874,6 +1874,7 @@ Status CudnnPagedAttention(
       parameters.batch_size, stream));
 
   cudnnHandle_t cudnn_handle = static_cast<cudnnHandle_t>(data.cudnn_handle);
+  bool cache_hit = false;
   const bool ok = onnxruntime::cudnn_sdpa::run_paged(
       /*output=*/reinterpret_cast<void*>(data.output),
       /*q=*/reinterpret_cast<void*>(query),
@@ -1893,7 +1894,11 @@ Status CudnnPagedAttention(
       std::is_same<T, BFloat16>::value,
       cudnn_handle,
       ort_stream,
-      data.cudnn_allocator);
+      data.cudnn_allocator,
+      &cache_hit);
+  if (data.cudnn_debug_info) {
+    printf("Operator=PagedAttention CudnnPagedGraphCacheHit=%d\n", cache_hit ? 1 : 0);
+  }
   if (!ok) {
     // The cuDNN paged graph was not available at dispatch time. PagedAttention runs a
     // try_build_paged_graph probe before selecting this backend, so a false here means either the

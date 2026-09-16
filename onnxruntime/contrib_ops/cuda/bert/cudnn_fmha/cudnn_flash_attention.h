@@ -123,6 +123,7 @@ bool run_paged(
     bool is_bf16,  // True if bfloat16, otherwise float16
     cudnnHandle_t handle,
     Stream* stream,
-    AllocatorPtr allocator);
+    AllocatorPtr allocator,
+    bool* cache_hit);
 
 }  // namespace onnxruntime::cudnn_sdpa

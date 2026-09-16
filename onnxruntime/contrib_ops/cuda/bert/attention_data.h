@@ -325,6 +325,7 @@ struct PagedAttentionData {
   AllocatorPtr cudnn_allocator = nullptr;
   void* cudnn_handle = nullptr;
   float cudnn_scale = 0.0f;
+  bool cudnn_debug_info = false;
   int* cudnn_seqlens_kv = nullptr;
 };
 
