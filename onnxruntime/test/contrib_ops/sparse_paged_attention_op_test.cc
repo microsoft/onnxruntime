@@ -288,7 +288,7 @@ TEST(SparsePagedAttention, Cuda_RejectsNonDivisiblePackedQkvWidth) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(std::move(cuda_ep));
   tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "Packed input 'query' hidden size must be a multiple of num_heads + 2 * kv_num_heads",
+             "Hidden size must be divisible by (num_heads + 2 * kv_num_heads)",
              {}, nullptr, &execution_providers);
 }
 
