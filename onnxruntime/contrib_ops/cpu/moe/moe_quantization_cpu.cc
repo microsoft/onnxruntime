@@ -941,17 +941,19 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   // (no re-quantization), have NEON/AVX2/AVX512 backends, and thread a single GEMM over N, so they
   // are preferred for block-wise 4/8-bit experts. Int8 activations are lossier than the
   // dequantize+SGEMM path they replace, so as with MatMulNBits they need accuracy_level=4: the
-  // default is fp32 activations where MLAS has that kernel (4-bit) and the existing path otherwise
-  // (8-bit). The environment variable overrides the attribute.
+  // default is fp32 activations where MLAS has that kernel (4-bit) and int8 where it does not
+  // (8-bit, which has no fp32 variant). The environment variable overrides the attribute.
   accuracy_level_ = op_kernel_info.GetAttrOrDefault<int64_t>("accuracy_level", 0);
   bool allow_int8_compute = (accuracy_level_ == 4);
   bool allow_fp32_compute = true;
+  bool fp32_compute_forced = false;
   const auto qnbit_gemm_env = ParseEnvironmentVariable<std::string>(kQMoEQNBitGemmEnv);
   if (qnbit_gemm_env.has_value()) {
     if (*qnbit_gemm_env == "0") {
       use_qnbit_gemm_ = false;
     } else if (*qnbit_gemm_env == "fp32") {
       allow_int8_compute = false;
+      fp32_compute_forced = true;
     } else if (*qnbit_gemm_env == "int8") {
       allow_int8_compute = true;
       allow_fp32_compute = false;
@@ -963,9 +965,12 @@ QMoECPU<T>::QMoECPU(const OpKernelInfo& op_kernel_info)
   if (use_qnbit_gemm_ && (expert_weight_bits_ == 4 || expert_weight_bits_ == 8) && block_size_ > 0) {
     const size_t nbits = static_cast<size_t>(expert_weight_bits_);
     const size_t blk = static_cast<size_t>(block_size_);
+    // MLAS has no fp32-activation kernel for every bit width (8-bit is int8 only). Where fp32 is
+    // unavailable, int8 is the only way onto these kernels, so take it unless fp32 was forced.
+    const bool int8_is_only_option = !MlasIsQNBitGemmAvailable(nbits, blk, SQNBIT_CompFp32) && !fp32_compute_forced;
     if (allow_fp32_compute && MlasIsQNBitGemmAvailable(nbits, blk, SQNBIT_CompFp32)) {
       qnbit_compute_type_ = SQNBIT_CompFp32;
-    } else if (allow_int8_compute && MlasIsQNBitGemmAvailable(nbits, blk, SQNBIT_CompInt8)) {
+    } else if ((allow_int8_compute || int8_is_only_option) && MlasIsQNBitGemmAvailable(nbits, blk, SQNBIT_CompInt8)) {
       qnbit_compute_type_ = SQNBIT_CompInt8;
     } else {
       use_qnbit_gemm_ = false;
@@ -1098,7 +1103,7 @@ Status QMoECPU<T>::PrePackQNBitExperts(const Tensor& tensor, int input_idx, Allo
   const size_t nbits = static_cast<size_t>(expert_weight_bits_);
   const size_t blk = static_cast<size_t>(block_size_);
   const size_t per_expert = packed.packed_size_per_expert;
-  const size_t total_packed_size = per_expert * static_cast<size_t>(num_experts);
+  const size_t total_packed_size = SafeInt<size_t>(per_expert) * static_cast<size_t>(num_experts);
   auto packed_buffer = IAllocator::MakeUniquePtr<void>(alloc, total_packed_size, true);
   // The pack routines need not write every byte; zero so the prepacked-weights hash is deterministic.
   std::memset(packed_buffer.get(), 0, total_packed_size);
@@ -1118,9 +1123,10 @@ Status QMoECPU<T>::PrePackQNBitExperts(const Tensor& tensor, int input_idx, Allo
   // Experts pack independently into disjoint regions, so spread them over a load-time pool
   // (the session pool is not reachable from PrePack; same approach as MatMulNBits::PrePack).
   std::unique_ptr<concurrency::ThreadPool> pack_tp;
-  if (num_experts > 1) {
+  const int pack_threads = narrow<int>(std::min<int64_t>(num_experts, Env::Default().GetNumPhysicalCpuCores()));
+  if (pack_threads > 1) {
     OrtThreadPoolParams pack_tp_params;
-    pack_tp_params.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
+    pack_tp_params.thread_pool_size = pack_threads;
     pack_tp_params.allow_spinning = false;
     pack_tp_params.auto_set_affinity = false;
     pack_tp = concurrency::CreateThreadPool(&Env::Default(), pack_tp_params, concurrency::ThreadPoolType::INTRA_OP);
