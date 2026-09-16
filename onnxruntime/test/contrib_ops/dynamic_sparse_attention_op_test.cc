@@ -266,6 +266,7 @@ DynamicSparseAttentionCase MakeSingleTokenSelectedValueCase(float value = 9.0f) 
   return c;
 }
 
+#ifdef USE_CUDA
 Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_width = 8,
                                           int64_t num_heads = 1) {
   Model model("dynamic_sparse_attention_shape_inference", true, ModelMetaData(), PathString(),
@@ -323,6 +324,7 @@ Status ResolveDynamicSparseAttentionGraph(size_t output_count, int64_t query_wid
   node.AddAttribute("kv_num_heads", int64_t{1});
   return graph.Resolve();
 }
+#endif
 
 }  // namespace
 #endif  // defined(USE_CUDA) || defined(USE_WEBGPU)
