@@ -2150,6 +2150,10 @@ struct QMoEBlockWiseCase {
   // check alone cannot tell the QNBit path from the dequantize fallback, so 8-bit cases (where the
   // fallback never pre-packs) also assert this; the 4-bit fallback pre-packs too, so it cannot.
   int expected_prepacked{-1};
+  // Intra-op threads, or 0 for the default pool. With at least as many active experts as threads
+  // the kernel runs one expert per thread instead of batching them into one MLAS dispatch, so this
+  // selects which of the two QNBit dispatch paths a case exercises.
+  int intra_op_num_threads{0};
 };
 
 // `output_out`, when set, receives the run's output as fp32 so callers can compare the results of
@@ -2340,6 +2344,10 @@ void RunQMoECpuBlockWiseSwiGLU(const QMoEBlockWiseCase& c, float tolerance,
   if (!share_prepacked_weights_across_sessions) {
     auto eps = cpu_ep();
     SessionOptions so;
+    if (c.intra_op_num_threads > 0) {
+      so.intra_op_param.thread_pool_size = c.intra_op_num_threads;
+      so.use_per_session_threads = true;
+    }
     size_t prepacked = 0, shared = 0;
     tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &eps, {}, &prepacked, &shared);
     if (c.expected_prepacked >= 0) {
@@ -2400,6 +2408,23 @@ TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Decode) {
 
 TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Prefill) {
   RunQMoECpuBlockWiseSwiGLU<float>({37, 4, 128, 96, 32, 2, false}, 0.01f);
+}
+
+// The two cases below pin the per-expert dispatch path: capping the pool at two threads leaves at
+// least as many active experts as threads, so the experts run one per thread instead of being
+// batched. Same shapes and reference as the grouped cases above, so the paths must agree.
+TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Decode_PerExpertDispatch) {
+  RunQMoECpuBlockWiseSwiGLU<float>({1, 8, 64, 64, 32, 2, false, 4, false, 0, -1, /*intra_op*/ 2}, 0.01f);
+}
+
+// Uneven token counts per expert: batched into one dispatch per distinct count when grouped.
+TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Prefill_PerExpertDispatch) {
+  RunQMoECpuBlockWiseSwiGLU<float>({37, 4, 128, 96, 32, 2, false, 4, false, 0, -1, /*intra_op*/ 2}, 0.01f);
+}
+
+// A single-threaded session still batches, so the grouped path must also hold with a null pool.
+TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Decode_SingleThread) {
+  RunQMoECpuBlockWiseSwiGLU<float>({1, 8, 64, 64, 32, 2, false, 4, false, 0, -1, /*intra_op*/ 1}, 0.01f);
 }
 
 TEST(MoETest, QMoETest_CPU_Int4_BlockWise_SwiGLU_Bias_Block64) {

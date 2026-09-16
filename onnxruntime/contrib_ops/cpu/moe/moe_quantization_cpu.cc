@@ -10,6 +10,7 @@
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/math/gemm_helper.h"
 #include "core/providers/cpu/activation/activations.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
 #include "core/common/narrow.h"
 #include "core/framework/tensor_type_and_shape.h"
@@ -1426,8 +1427,9 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   //    GEMM is a GEMV that MLAS does not thread internally, so this is the only way to keep the
   //    cores busy.
   //  - QNBit path: the MatMulNBits kernels thread a single GEMM over N (and M), so when fewer experts
-  //    are active than there are threads (decode: top_k experts) the experts run sequentially and
-  //    every GEMM gets the whole pool instead of leaving most of it idle.
+  //    are active than there are threads (decode: top_k experts) the expert loop is serialized and the
+  //    experts are instead batched into one MLAS dispatch (see the grouped path below), which keeps
+  //    the whole pool busy without paying a thread-pool barrier per expert.
   // This must be decided BEFORE the per-thread workspaces below, which are sized by num_expert_threads.
   int num_expert_threads = std::max(1, std::min(num_active_experts, max_expert_threads));
   if (qnbit_fc1_.packed != nullptr && qnbit_fc2_.packed != nullptr && num_active_experts < max_expert_threads) {
@@ -1652,11 +1654,178 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                               gemm_workspace, gemm_tp, &mlas_backend_kernel_selector_config_);
   };
 
+  // Grouped expert GEMMs: batch the active experts into as few MLAS dispatches as possible rather
+  // than one per expert, removing the 2 * num_active_experts thread-pool barriers per layer. MLAS
+  // takes a single M/N/K per batch, so experts are bucketed by token count; decode (one token per
+  // active expert) collapses to a single bucket. This is only reached when the expert loop is
+  // already serial: with at least as many active experts as threads, running one expert per thread
+  // above is faster than batching.
+  InlinedVector<int64_t> grouped_experts;
+  bool use_grouped_qnbit = use_qnbit_fc1 && use_qnbit_fc2 && num_expert_threads == 1 &&
+                           activation_type_ == ActivationType::SwiGLU;
+  if (use_grouped_qnbit) {
+    grouped_experts.reserve(static_cast<size_t>(num_active_experts));
+    for (int64_t i = 0; i < num_experts; ++i) {
+      if (!expert_token_map[static_cast<size_t>(i)].empty()) {
+        grouped_experts.push_back(i);
+      }
+    }
+    use_grouped_qnbit = grouped_experts.size() > 1;
+  }
+
+  if (use_grouped_qnbit) {
+    const size_t num_grouped = grouped_experts.size();
+    const size_t n1 = static_cast<size_t>(fc1_out_features);
+    const size_t k1 = static_cast<size_t>(hidden_size);
+    const size_t n2 = static_cast<size_t>(hidden_size);
+    const size_t k2 = static_cast<size_t>(inter_size);
+
+    // Experts sharing a token count must be contiguous so each bucket is one batched call.
+    std::sort(grouped_experts.begin(), grouped_experts.end(), [&](int64_t a, int64_t b) {
+      return expert_token_map[static_cast<size_t>(a)].size() < expert_token_map[static_cast<size_t>(b)].size();
+    });
+    InlinedVector<size_t> row_offset(num_grouped + 1, 0);
+    for (size_t g = 0; g < num_grouped; ++g) {
+      row_offset[g + 1] = row_offset[g] + expert_token_map[static_cast<size_t>(grouped_experts[g])].size();
+    }
+    const size_t total_rows = row_offset[num_grouped];
+
+    auto a1_all = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(total_rows) * k1);
+    auto c1_all = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(total_rows) * n1);
+    auto a2_all = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(total_rows) * k2);
+    auto c2_all = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(total_rows) * n2);
+
+    // fp16 bias needs one fp32 copy per active expert; fp32 bias is passed straight from the initializer.
+    IAllocatorUniquePtr<float> grouped_bias;
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      if (has_fc1_bias || has_fc2_bias) {
+        grouped_bias = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(num_grouped) * (n1 + n2));
+        for (size_t g = 0; g < num_grouped; ++g) {
+          const int64_t e = grouped_experts[g];
+          float* dst = grouped_bias.get() + g * (n1 + n2);
+          if (has_fc1_bias) {
+            MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(fc1_bias_data + e * fc1_out_features), dst, n1);
+          }
+          if (has_fc2_bias) {
+            MlasConvertHalfToFloatBuffer(reinterpret_cast<const MLFloat16*>(fc2_bias_data + e * hidden_size), dst + n1, n2);
+          }
+        }
+      }
+    }
+
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_grouped), [&](std::ptrdiff_t g_idx) {
+      const size_t g = static_cast<size_t>(g_idx);
+      const auto& routes = expert_token_map[static_cast<size_t>(grouped_experts[g])];
+      float* dst = a1_all.get() + row_offset[g] * k1;
+      for (size_t i = 0; i < routes.size(); ++i) {
+        const int64_t token_idx = routes[i] / k_;
+        std::memcpy(dst + i * k1, input_float + token_idx * hidden_size, k1 * sizeof(float));
+      }
+    });
+
+    // [begin, end) ranges over grouped_experts that share a token count.
+    InlinedVector<std::pair<size_t, size_t>> buckets;
+    for (size_t b0 = 0; b0 < num_grouped;) {
+      const size_t rows = expert_token_map[static_cast<size_t>(grouped_experts[b0])].size();
+      size_t b1 = b0 + 1;
+      while (b1 < num_grouped && expert_token_map[static_cast<size_t>(grouped_experts[b1])].size() == rows) {
+        ++b1;
+      }
+      buckets.emplace_back(b0, b1);
+      b0 = b1;
+    }
+
+    size_t grouped_ws_size = 0;
+    for (const auto& bucket : buckets) {
+      const size_t rows = expert_token_map[static_cast<size_t>(grouped_experts[bucket.first])].size();
+      const size_t count = bucket.second - bucket.first;
+      grouped_ws_size = std::max({grouped_ws_size,
+                                  MlasQNBitGemmBatchWorkspaceSize(rows, n1, k1, count, qnbit_bits, qnbit_blk,
+                                                                  qnbit_fc1_.has_zero_point, qnbit_compute_type_,
+                                                                  &mlas_backend_kernel_selector_config_),
+                                  MlasQNBitGemmBatchWorkspaceSize(rows, n2, k2, count, qnbit_bits, qnbit_blk,
+                                                                  qnbit_fc2_.has_zero_point, qnbit_compute_type_,
+                                                                  &mlas_backend_kernel_selector_config_)});
+    }
+    IAllocatorUniquePtr<std::byte> grouped_ws;
+    if (grouped_ws_size > 0) {
+      grouped_ws = IAllocator::MakeUniquePtr<std::byte>(allocator, grouped_ws_size);
+    }
+
+    InlinedVector<MLAS_QNBIT_GEMM_DATA_PARAMS<float>> gemm_params(num_grouped);
+    auto run_buckets = [&](const QNBitPackedExperts& packed, const float* scales_base, const uint8_t* zp_base,
+                           int64_t zp_expert_stride, size_t n, size_t k, const float* a_all, float* c_all,
+                           bool is_fc1) {
+      for (const auto& bucket : buckets) {
+        const size_t rows = expert_token_map[static_cast<size_t>(grouped_experts[bucket.first])].size();
+        const size_t count = bucket.second - bucket.first;
+        for (size_t g = bucket.first; g < bucket.second; ++g) {
+          const int64_t e = grouped_experts[g];
+          auto& p = gemm_params[g - bucket.first];
+          p = MLAS_QNBIT_GEMM_DATA_PARAMS<float>{};
+          p.A = a_all + row_offset[g] * k;
+          p.lda = k;
+          const std::byte* b = static_cast<const std::byte*>(packed.packed.get()) +
+                               static_cast<size_t>(e) * packed.packed_size_per_expert;
+          p.QuantBDataWorkspace = b;
+          p.PackedQuantBData = b;
+          p.QuantBScale = packed.scales_packed ? nullptr : scales_base + static_cast<size_t>(e) * n * (k / qnbit_blk);
+          p.QuantBZeroPoint = packed.has_zero_point ? zp_base + static_cast<size_t>(e * zp_expert_stride) : nullptr;
+          if (is_fc1 ? has_fc1_bias : has_fc2_bias) {
+            if constexpr (std::is_same_v<T, MLFloat16>) {
+              p.Bias = grouped_bias.get() + g * (n1 + n2) + (is_fc1 ? 0 : n1);
+            } else {
+              const T* bias_base = is_fc1 ? fc1_bias_data : fc2_bias_data;
+              p.Bias = reinterpret_cast<const float*>(bias_base) + static_cast<size_t>(e) * n;
+            }
+          }
+          p.C = c_all + row_offset[g] * n;
+          p.ldc = n;
+        }
+        MlasQNBitGemmBatch<float>(rows, n, k, count, qnbit_bits, qnbit_blk, qnbit_compute_type_,
+                                  gemm_params.data(), grouped_ws.get(), tp,
+                                  &mlas_backend_kernel_selector_config_);
+      }
+    };
+
+    run_buckets(qnbit_fc1_, qnbit_fc1_scales, fc1_zp_data, fc1_zp_expert_stride, n1, k1,
+                a1_all.get(), c1_all.get(), /*is_fc1*/ true);
+
+    concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(total_rows), [&](std::ptrdiff_t idx) {
+      const size_t row = static_cast<size_t>(idx);
+      ApplySwiGLUActivation(c1_all.get() + row * n1, a2_all.get() + row * k2,
+                            inter_size, true, activation_alpha_, activation_beta_, swiglu_limit_);
+    });
+
+    run_buckets(qnbit_fc2_, qnbit_fc2_scales, fc2_zp_data, fc2_zp_expert_stride, n2, k2,
+                a2_all.get(), c2_all.get(), /*is_fc1*/ false);
+
+    for (size_t g = 0; g < num_grouped; ++g) {
+      const auto& routes = expert_token_map[static_cast<size_t>(grouped_experts[g])];
+      const float* src = c2_all.get() + row_offset[g] * n2;
+      for (size_t i = 0; i < routes.size(); ++i) {
+        const int64_t route_idx = routes[i];
+        const int64_t token_idx = route_idx / k_;
+        if (token_idx < 0 || token_idx >= num_tokens) continue;
+        const size_t buffer_offset = static_cast<size_t>(token_idx) * static_cast<size_t>(hidden_size);
+        if (buffer_offset + static_cast<size_t>(hidden_size) > output_buffer_size) continue;
+        const float weight = route_scale[route_idx];
+        float* dest = thread_local_outputs + buffer_offset;
+        for (int64_t j = 0; j < hidden_size; ++j) {
+          dest[j] += weight * src[i * n2 + static_cast<size_t>(j)];
+        }
+      }
+    }
+  }
+
+  // The grouped path above already produced every active expert's contribution.
   std::vector<std::pair<int64_t, size_t>> expert_workload;
-  for (int64_t i = 0; i < num_experts; ++i) {
-    const size_t token_count = expert_token_map[static_cast<size_t>(i)].size();
-    if (token_count > 0) {
-      expert_workload.emplace_back(i, token_count);
+  if (!use_grouped_qnbit) {
+    for (int64_t i = 0; i < num_experts; ++i) {
+      const size_t token_count = expert_token_map[static_cast<size_t>(i)].size();
+      if (token_count > 0) {
+        expert_workload.emplace_back(i, token_count);
+      }
     }
   }
 
