@@ -160,8 +160,12 @@ TEST(GeluFusionDtypeTest, CpuFloat16ContribGeluIsNotFused) {
   RunCpuContribGeluFusionTest<MLFloat16>(false);
 }
 
-TEST(GeluFusionDtypeTest, UnassignedDoubleOnnxGeluIsNotFused) {
-  RunLevel1OnnxGeluFusionTest<double>("", false);
+TEST(GeluFusionDtypeTest, CpuDoubleContribGeluIsNotFused) {
+  RunCpuContribGeluFusionTest<double>(false);
+}
+
+TEST(GeluFusionDtypeTest, UnassignedDoubleOnnxGeluIsFused) {
+  RunLevel1OnnxGeluFusionTest<double>("", true);
 }
 
 TEST(GeluFusionDtypeTest, UnassignedFloat16OnnxGeluIsFused) {
