@@ -43,7 +43,9 @@ struct GQAWorkspaceEstimateConfig {
   bool cache_is_fp8 = false;
   bool enable_xqa = true;
   bool disable_flash_decode = false;
+  // Exact kernel state; true omits per-run conversion scratch.
   bool head_sink_is_prepacked = false;
+  // Level-1 possibility; true charges persistent and initialization lifetimes.
   bool head_sink_may_be_prepacked = false;
 };
 

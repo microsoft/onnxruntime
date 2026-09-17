@@ -305,7 +305,6 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
 
     auto prepacked_config = Config();
     prepacked_config.head_sink_is_prepacked = true;
-    prepacked_config.head_sink_may_be_prepacked = true;
     const auto prepacked = EstimateGroupQueryAttentionWorkspace(
         prepacked_config, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
         *cuda_ep->GetAttentionKernelOptions());
@@ -313,6 +312,8 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
     EXPECT_GT(estimate->total_workspace_bytes, prepacked->total_workspace_bytes);
     EXPECT_EQ(estimate->persistent_prepack_bytes,
               prepacked->persistent_prepack_bytes);
+    EXPECT_EQ(estimate->initialization_scratch_bytes,
+              prepacked->initialization_scratch_bytes);
   }
 
   constexpr size_t kHeadSinkInitializerBytes = 8 * sizeof(MLFloat16);
@@ -323,6 +324,8 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, GetCapabilityBudgetUsesLevel1Esti
   constexpr size_t kFallbackWorkspaceBytes = kAccountedTensorBytes / 2;
   ASSERT_GT(estimate->total_workspace_bytes, kFallbackWorkspaceBytes);
   EXPECT_EQ(estimate->persistent_prepack_bytes, 8 * sizeof(float));
+  EXPECT_EQ(estimate->initialization_scratch_bytes,
+            8 * sizeof(MLFloat16));
   const auto kilobytes_above = [](size_t bytes) {
     return bytes / 1024 + 1;
   };
@@ -756,6 +759,21 @@ TEST(GroupQueryAttentionWorkspaceBoundsTest, AggregatesExclusiveRoutesWithMax) {
                      unfused_only.total_workspace_bytes));
   EXPECT_EQ(aggregate.persistent_prepack_bytes,
             static_cast<size_t>(xqa.num_heads) * sizeof(float));
+  EXPECT_EQ(aggregate.initialization_scratch_bytes,
+            static_cast<size_t>(xqa.num_heads) * xqa.qkv_element_size);
+}
+
+TEST(GroupQueryAttentionWorkspaceBoundsTest,
+     ExactPrepackedStateImpliesPrepackLifetimes) {
+  auto bounds = Bounds();
+  bounds.reachable_backends = GQAReachableBackend::Xqa;
+  bounds.xqa_head_sink_storage = GQAXqaHeadSinkStorage::PrepackedFp32;
+  const auto aggregate = GetGQAWorkspaceAggregateForBounds(bounds);
+  ASSERT_TRUE(aggregate.status.IsOK());
+  EXPECT_EQ(aggregate.persistent_prepack_bytes,
+            static_cast<size_t>(bounds.num_heads) * sizeof(float));
+  EXPECT_EQ(aggregate.initialization_scratch_bytes,
+            static_cast<size_t>(bounds.num_heads) * bounds.qkv_element_size);
 }
 
 TEST(GroupQueryAttentionWorkspaceBoundsTest, CudnnReachabilityIsUnavailable) {
@@ -788,7 +806,7 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, DeclaresOneAlignedSlotAndOnlyWork
   EXPECT_EQ(level1.runtime_workspace_bytes, estimate->total_workspace_bytes);
   EXPECT_EQ(level1.runtime_transient_bytes, 17u);
   EXPECT_EQ(level1.persistent_prepack_bytes, 0u);
-  EXPECT_EQ(level1.initialization_scratch_bytes, 23u);
+  EXPECT_EQ(level1.initialization_scratch_bytes, 0u);
 
   auto unavailable = *estimate;
   unavailable.status.error = contrib::cuda::GQAWorkspaceError::Unavailable;
@@ -835,7 +853,6 @@ TEST(GroupQueryAttentionWorkspaceEstimateTest, KernelDeclaresPrepackedHeadSinkRo
   shapes[11] = Known({8});
   auto expected_config = Config();
   expected_config.head_sink_is_prepacked = true;
-  expected_config.head_sink_may_be_prepacked = true;
   const auto expected = EstimateGroupQueryAttentionWorkspace(
       expected_config, gsl::make_span(shapes), cuda_ep->GetDeviceProp(),
       *cuda_ep->GetAttentionKernelOptions());

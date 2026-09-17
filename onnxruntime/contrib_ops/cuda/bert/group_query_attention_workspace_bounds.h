@@ -64,6 +64,8 @@ struct GQAWorkspaceBounds {
   int64_t multi_processor_count = 0;
   bool is_bf16 = false;
   GQAXqaKvType xqa_kv_type = GQAXqaKvType::None;
+  // Exact state controls per-run XQA conversion scratch and implies prepack
+  // lifetime accounting. Possible state extends that charge to Level 1.
   GQAXqaHeadSinkStorage xqa_head_sink_storage = GQAXqaHeadSinkStorage::None;
   bool head_sink_may_be_prepacked = false;
   int64_t local_window_size = -1;
@@ -73,6 +75,7 @@ struct GQAWorkspaceAggregate {
   GQAWorkspaceStatus status;
   size_t total_workspace_bytes = 0;
   size_t persistent_prepack_bytes = 0;
+  size_t initialization_scratch_bytes = 0;
   GQAReachableBackend sized_backends = GQAReachableBackend::None;
 };
 

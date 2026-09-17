@@ -239,7 +239,6 @@ Status GroupQueryAttention<T, U>::DeclareWorkspaceRequirements(
   config.enable_xqa = enable_xqa_;
   config.disable_flash_decode = disable_flash_decode_;
   config.head_sink_is_prepacked = xqa_head_sink_count_ == num_heads_;
-  config.head_sink_may_be_prepacked = config.head_sink_is_prepacked;
 
   const auto estimate = EstimateGroupQueryAttentionWorkspace(
       config, input_shapes, GetDeviceProp(), *kernel_options_);

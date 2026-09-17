@@ -231,9 +231,12 @@ mutually exclusive and are aggregated with `max`, not sum. The resulting
 nonzero estimate is one operator-owned slot-0 root with 256-byte alignment.
 Level 1 reports it as `runtime_workspace_bytes`; Level 2 declares one root from
 the same estimator. Level 1 conservatively includes dynamic head-sink conversion
-because prepack state is unavailable during capability analysis. Level 2 can
-omit that transient region when the constructed kernel has a prepacked head
-sink, so its root can be smaller. Neither adapter changes runtime
+because prepack state is unavailable during capability analysis. For a constant
+head sink, it separately charges the possible session-lived FP32 copy and the
+initialization-only device staging copy, even when session configuration later
+disables prepacking. Level 2 can omit the transient conversion region when the
+constructed kernel has a prepacked head sink, so its root can be smaller.
+Neither adapter changes runtime
 `GetScratchBuffer()` calls or allocation topology.
 
 The CPU `total_sequence_length` scalar and past/present aliasing are not

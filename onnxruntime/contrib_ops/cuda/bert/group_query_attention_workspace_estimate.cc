@@ -509,6 +509,8 @@ void SetGroupQueryAttentionLevel1MemoryEstimate(
   }
   if (workspace.status.IsOK()) {
     estimate.persistent_prepack_bytes = workspace.persistent_prepack_bytes;
+    estimate.initialization_scratch_bytes =
+        workspace.initialization_scratch_bytes;
   }
 }
 
