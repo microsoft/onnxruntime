@@ -1446,7 +1446,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackCancellat
               IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
               std::vector<ONNX_NAMESPACE::FunctionProto>(),
               DefaultLoggingManager().DefaultLogger());
-  CreateMultiNodePrepackGraph(model.MainGraph(), "BlockingPrePackingTest");
+  CreateMultiNodePrepackGraph(model.MainGraph(), "BlockingPrePackingTest", 2);
   PlaceAllNodesToCPUEP(model.MainGraph());
 
   SessionState session_state(model.MainGraph(),
@@ -1460,9 +1460,9 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, ParallelPrepackCancellat
                              sess_options);
 
   std::thread canceller([&]() {
-    // Wait until at least one worker is blocked inside PrePack() before requesting cancellation,
-    // then release the blocked worker(s) so FinalizeSessionState can join and recheck the flag.
-    blocking_prepack_test_state->WaitForEntered(1);
+    // Wait until both workers are blocked inside PrePack() before requesting cancellation,
+    // then release them so FinalizeSessionState can join and recheck the flag.
+    blocking_prepack_test_state->WaitForEntered(2);
     sess_options.SetLoadCancellationFlag(true);
     blocking_prepack_test_state->Release();
   });
