@@ -268,9 +268,11 @@ void RunTypedCase(const Geometry& g, const Options& o, const Inputs& in_raw, flo
   if (use_webgpu) {
 #ifdef USE_WEBGPU
     if (test_max_storage_buffer_binding_size != 0) {
-      ORT_ENFORCE(webgpu_config != nullptr);
-      webgpu_ep = WebGpuExecutionProviderWithTestStorageBufferBindingSize(
-          *webgpu_config, test_max_storage_buffer_binding_size);
+      webgpu_ep = webgpu_config != nullptr
+                      ? WebGpuExecutionProviderWithTestStorageBufferBindingSize(
+                            *webgpu_config, test_max_storage_buffer_binding_size)
+                      : WebGpuExecutionProviderWithTestStorageBufferBindingSize(
+                            test_max_storage_buffer_binding_size);
     } else {
       webgpu_ep = webgpu_config != nullptr ? WebGpuExecutionProviderWithOptions(*webgpu_config)
                                            : DefaultWebGpuExecutionProvider();
