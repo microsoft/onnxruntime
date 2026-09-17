@@ -1318,6 +1318,17 @@ static size_t CountNodesIncludingSubgraphs(const ONNX_NAMESPACE::FunctionProto& 
   return node_count;
 }
 
+static size_t CountNodesIncludingSubgraphs(const Graph& graph) {
+  SafeInt<size_t> node_count = graph.NumberOfNodes();
+  for (const auto& node : graph.Nodes()) {
+    for (const auto& subgraph : node.GetSubgraphs()) {
+      node_count += CountNodesIncludingSubgraphs(*subgraph);
+    }
+  }
+
+  return node_count;
+}
+
 struct FunctionExpansionCost {
   size_t node_count;
   size_t proto_bytes;
@@ -1340,10 +1351,11 @@ static Status GetFunctionExpansionCost(const Node& node, FunctionExpansionCost& 
   return Status::OK();
 }
 
-static size_t CountModelNodes(const ONNX_NAMESPACE::ModelProto& model) {
-  SafeInt<size_t> node_count = CountNodesIncludingSubgraphs(model.graph());
-  for (const auto& function : model.functions()) {
-    node_count += CountNodesIncludingSubgraphs(function);
+static size_t CountModelNodes(const Model& model) {
+  SafeInt<size_t> node_count = CountNodesIncludingSubgraphs(model.MainGraph());
+  for (const auto& [function_id, function_template] : model.GetModelLocalFunctionTemplates()) {
+    ORT_UNUSED_PARAMETER(function_id);
+    node_count += CountNodesIncludingSubgraphs(*function_template->onnx_func_proto_);
   }
 
   return node_count;
@@ -1435,13 +1447,25 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
     auto* node = graph.GetNode(node_index);
     if (node != nullptr) {
       if (claimed_by_ep.count(node_index) == 0) {
+        auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType(), node->Overload());
+        if (not_inlined.count(function_id) != 0) {
+          continue;
+        }
+
         FunctionExpansionCost expansion_cost{};
         ORT_RETURN_IF_ERROR(GetFunctionExpansionCost(*node, expansion_cost));
-        ORT_RETURN_IF(expansion_cost.node_count > expansion_node_budget - expanded_node_count,
-                      "AOT function inlining exceeds the node expansion limit of ", expansion_node_budget, ".");
-        ORT_RETURN_IF(expansion_cost.proto_bytes > expansion_byte_budget - expanded_proto_bytes,
-                      "AOT function inlining exceeds the protobuf expansion limit of ", expansion_byte_budget,
-                      " bytes.");
+        if (expansion_cost.node_count > expansion_node_budget - expanded_node_count) {
+          LOGS(logger, WARNING) << "AOT function inlining exceeds the node expansion limit of "
+                                << expansion_node_budget << ". Retaining function '" << function_id << "'.";
+          ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
+          continue;
+        }
+        if (expansion_cost.proto_bytes > expansion_byte_budget - expanded_proto_bytes) {
+          LOGS(logger, WARNING) << "AOT function inlining exceeds the protobuf expansion limit of "
+                                << expansion_byte_budget << " bytes. Retaining function '" << function_id << "'.";
+          ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
+          continue;
+        }
         expanded_node_count += expansion_cost.node_count;
         expanded_proto_bytes += expansion_cost.proto_bytes;
         ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
@@ -1831,11 +1855,10 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
   auto check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
 
   auto& graph = model.MainGraph();
-  const auto model_proto = model.ToProto();
   const size_t expansion_node_budget =
-      static_cast<size_t>(SafeInt<size_t>(CountModelNodes(model_proto)) * kAotFunctionExpansionRatio);
+      static_cast<size_t>(SafeInt<size_t>(CountModelNodes(model)) * kAotFunctionExpansionRatio);
   const size_t expansion_byte_budget =
-      static_cast<size_t>(SafeInt<size_t>(model_proto.ByteSizeLong()) * kAotFunctionExpansionRatio);
+      static_cast<size_t>(SafeInt<size_t>(model.ModelProtoByteSize()) * kAotFunctionExpansionRatio);
   size_t expanded_node_count = 0;
   size_t expanded_proto_bytes = 0;
   InlinedHashSet<std::string> not_inlined;

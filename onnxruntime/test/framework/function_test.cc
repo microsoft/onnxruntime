@@ -19,6 +19,7 @@
 #include "core/session/inference_session.h"
 
 #include "test/common/tensor_op_test_utils.h"
+#include "test/capturing_sink.h"
 #include "test/unittest_util/framework_test_utils.h"
 #include "test/internal_testing_ep/internal_testing_execution_provider.h"
 #include "test/test_environment.h"
@@ -173,25 +174,94 @@ static ONNX_NAMESPACE::ModelProto CreateFunctionExpansionModel(size_t body_node_
   return model;
 }
 
-static Status InitializeFunctionExpansionModel(size_t body_node_count, size_t call_count) {
+static ONNX_NAMESPACE::ModelProto CreateRecursiveFunctionExpansionModel(size_t branch_node_count,
+                                                                        size_t call_count) {
+  auto model = CreateFunctionExpansionModel(0, call_count);
+  model.set_doc_string(std::string(1024 * 1024, 'x'));
+
+  auto* function = model.mutable_functions(0);
+  auto* condition = function->add_node();
+  condition->set_op_type("Constant");
+  condition->add_output("condition");
+  auto* condition_value = condition->add_attribute();
+  condition_value->set_name("value");
+  condition_value->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  condition_value->mutable_t()->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  condition_value->mutable_t()->add_int32_data(1);
+
+  auto* if_node = function->add_node();
+  if_node->set_op_type("If");
+  if_node->add_input("condition");
+  if_node->add_output("function_output");
+
+  for (const auto* attribute_name : {"then_branch", "else_branch"}) {
+    auto* attribute = if_node->add_attribute();
+    attribute->set_name(attribute_name);
+    attribute->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+    auto* branch = attribute->mutable_g();
+    branch->set_name(attribute_name);
+
+    std::string previous_value = "function_input";
+    for (size_t i = 0; i < branch_node_count; ++i) {
+      auto* node = branch->add_node();
+      node->set_op_type("Identity");
+      node->add_input(previous_value);
+      previous_value = "branch_" + std::to_string(i);
+      node->add_output(previous_value);
+    }
+
+    auto* output = branch->add_output();
+    output->set_name(previous_value);
+    auto* tensor_type = output->mutable_type()->mutable_tensor_type();
+    tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+  }
+
+  return model;
+}
+
+static Status InitializeFunctionExpansionModel(ONNX_NAMESPACE::ModelProto model,
+                                               std::vector<std::string>& log_messages) {
   std::string serialized_model;
-  ORT_RETURN_IF_NOT(CreateFunctionExpansionModel(body_node_count, call_count).SerializeToString(&serialized_model),
+  ORT_RETURN_IF_NOT(model.SerializeToString(&serialized_model),
                     "Failed to serialize function expansion model.");
 
   SessionOptions session_options;
-  InferenceSession session{session_options, GetEnvironment()};
+  auto capturing_sink = std::make_unique<CapturingSink>();
+  auto* capturing_sink_ptr = capturing_sink.get();
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
+      std::move(capturing_sink), logging::Severity::kWARNING, false,
+      logging::LoggingManager::InstanceType::Temporal);
+  std::unique_ptr<Environment> environment;
+  ORT_RETURN_IF_ERROR(Environment::Create(std::move(logging_manager), environment));
+
+  InferenceSession session{session_options, *environment};
   std::istringstream stream(serialized_model);
   ORT_RETURN_IF_ERROR(session.Load(stream));
-  return session.Initialize();
+  const auto status = session.Initialize();
+  log_messages = capturing_sink_ptr->Messages();
+  return status;
 }
 
-TEST(FunctionTest, AotInliningLimitsFunctionExpansion) {
-  constexpr size_t body_node_count = 21;
-  ASSERT_STATUS_OK(InitializeFunctionExpansionModel(body_node_count, 1));
+TEST(FunctionTest, AotInliningLimitsFunctionExpansionByNodeCount) {
+  auto model = CreateRecursiveFunctionExpansionModel(20, 14);
+  std::vector<std::string> log_messages;
+  ASSERT_STATUS_OK(InitializeFunctionExpansionModel(std::move(model), log_messages));
+  EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("node expansion limit")));
+  EXPECT_THAT(log_messages, testing::Not(testing::Contains(testing::HasSubstr("protobuf expansion limit"))));
+}
 
-  const auto status = InitializeFunctionExpansionModel(body_node_count, 21);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("AOT function inlining exceeds the"));
+TEST(FunctionTest, AotInliningLimitsFunctionExpansionByProtoBytes) {
+  auto model = CreateFunctionExpansionModel(2, 20);
+  const std::string large_value_name(256 * 1024, 'x');
+  auto* function = model.mutable_functions(0);
+  function->mutable_node(0)->set_output(0, large_value_name);
+  function->mutable_node(1)->set_input(0, large_value_name);
+
+  std::vector<std::string> log_messages;
+  ASSERT_STATUS_OK(InitializeFunctionExpansionModel(std::move(model), log_messages));
+  EXPECT_THAT(log_messages, testing::Contains(testing::HasSubstr("protobuf expansion limit")));
+  EXPECT_THAT(log_messages, testing::Not(testing::Contains(testing::HasSubstr("node expansion limit"))));
 }
 
 // A recursive/cyclic chain of model-local functions can be rejected by either layer:
