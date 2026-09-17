@@ -26,11 +26,9 @@
 struct pthreadpool;
 namespace onnxruntime {
 #if defined(ORT_USE_EP_API_ADAPTERS)
-namespace ep {
-namespace adapter {
+namespace ep::adapter {
 struct Logger;
-}  // namespace adapter
-}  // namespace ep
+}
 #endif
 
 namespace webgpu {

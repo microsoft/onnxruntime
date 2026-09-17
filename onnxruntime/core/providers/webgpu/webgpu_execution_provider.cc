@@ -46,6 +46,16 @@
 
 namespace onnxruntime {
 
+#if defined(ORT_USE_EP_API_ADAPTERS)
+onnxruntime::ep::adapter::Logger& WebGpuExecutionProvider::GetEpLogger() const {
+  return *ep_logger_;
+}
+
+void WebGpuExecutionProvider::SetEpLogger(const OrtLogger* logger) {
+  ep_logger_ = std::make_unique<onnxruntime::ep::adapter::Logger>(logger);
+}
+#endif
+
 namespace webgpu {
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
@@ -621,16 +631,6 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
   }
 }
-
-#if defined(ORT_USE_EP_API_ADAPTERS)
-onnxruntime::ep::adapter::Logger& WebGpuExecutionProvider::GetEpLogger() const {
-  return *ep_logger_;
-}
-
-void WebGpuExecutionProvider::SetEpLogger(const OrtLogger* logger) {
-  ep_logger_ = std::make_unique<onnxruntime::ep::adapter::Logger>(logger);
-}
-#endif
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   const bool device_free = !context_.HasDevice();
