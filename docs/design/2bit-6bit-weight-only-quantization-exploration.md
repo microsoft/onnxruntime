@@ -1,4 +1,4 @@
-# 2-Bit and 6-Bit Weight-Only Quantization Exploration
+# 2-, 3-, 5-, and 6-Bit Weight-Only Quantization Exploration
 
 ## Executive Summary
 
@@ -6,7 +6,7 @@ ONNX Runtime already has a substantial 2-bit foundation: the `MatMulNBits` model
 
 The current product priority is mixed-width INT2 QMoE for expert-heavy Qwen models: INT2 expert gate/up projections with INT4 expert down projections. The end-to-end contract, export, runtime, validation, and staffing plan is defined in [INT2 QMoE End-to-End Delivery Plan](int2-qmoe-end-to-end-delivery-plan.md). Dense CUDA `MatMulNBits(bits=2)` remains valuable as a source of reusable packing, validation, and kernel primitives, but complete dense GEMV/GEMM delivery should not block the QMoE path.
 
-This choice prioritizes implementation readiness and maximum memory-bandwidth reduction while accepting material model-quality risk. The first week must establish uniform and mixed-precision INT2 quality baselines against INT4, INT8, and BF16. Mixed INT2/INT4/INT8 quantization may be required for sensitive layers. INT6 remains a follow-up option if INT2 cannot meet coding and tool-calling quality targets or if a less aggressive quality/size tradeoff is needed.
+This choice prioritizes implementation readiness and maximum memory-bandwidth reduction while accepting material model-quality risk. The first week must establish uniform and mixed-precision INT2 quality baselines against INT4, INT8, and BF16. Mixed INT2/INT4/INT8 quantization may be required for sensitive layers. INT3, INT5, and INT6 remain follow-up quality/size options if INT2 cannot meet coding and tool-calling targets or if a less aggressive quantization point is needed.
 
 ## Scope
 
@@ -25,16 +25,16 @@ Activation quantization, KV-cache quantization, floating-point formats such as F
 
 ### Support Matrix
 
-| Component | 2-bit | 6-bit | Notes |
-| --- | --- | --- | --- |
-| `MatMulNBits` contrib schema | Yes | No | The schema attribute lists 2, 4, and 8 as supported values. |
-| Python `MatMulNBits` quantizer | Yes | No | Dedicated 2-bit, 4-bit, and 8-bit native packers are exported. |
-| CPU `MatMulNBits` | Yes | No | Includes fallback, AVX512/VNNI, and Arm64 work. |
-| CUDA `MatMulNBits` | No | No | Kernel dispatch, prepacking, and memory estimation accept only 4 and 8 bits. |
-| WebGPU `MatMulNBits` | Yes | No | Supports 2-bit unpacking with symmetric and asymmetric test coverage. |
-| CPU `GatherBlockQuantized` | Yes | No | Supports packed 2-bit, 4-bit, and 8-bit integer data. |
-| CUDA `GatherBlockQuantized` | Yes | No | The generic packed-`uint8` path supports 2-bit extraction. |
-| QDQ quantization helper | Limited | No | The dedicated native QDQ packing helper is currently 4-bit-oriented. |
+| Component | 2-bit | 3-bit | 5-bit | 6-bit | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `MatMulNBits` contrib schema | Yes | No | No | No | The schema attribute lists 2, 4, and 8 as supported values. |
+| Python `MatMulNBits` quantizer | Yes | No | No | No | Dedicated 2-bit, 4-bit, and 8-bit native packers are exported. |
+| CPU `MatMulNBits` | Yes | No | No | No | Includes fallback, AVX512/VNNI, and Arm64 work for 2-bit. |
+| CUDA `MatMulNBits` | No | No | No | No | Kernel dispatch, prepacking, and memory estimation accept only 4 and 8 bits. |
+| WebGPU `MatMulNBits` | Yes | No | No | No | Supports 2-bit unpacking with symmetric and asymmetric test coverage. |
+| CPU `GatherBlockQuantized` | Yes | No | No | No | Supports packed 2-bit, 4-bit, and 8-bit integer data. |
+| CUDA `GatherBlockQuantized` | Yes | No | No | No | The generic packed-`uint8` path supports 2-bit extraction. |
+| QDQ quantization helper | Limited | No | No | No | The dedicated native QDQ packing helper is currently 4-bit-oriented. |
 
 ### Existing 2-Bit Assets
 
@@ -75,9 +75,9 @@ The existing INT4 and INT8 `MatMulNBits` CUDA implementations already select dif
 
 For eligible prepacked FP16/BF16 configurations, the `fpA_intB` profiler selects between its CUDA GEMV and CUTLASS GEMM tactics using the actual M bucket rather than a single fixed threshold. Consequently, the table describes the current specialized direct-kernel coverage, not a universal three-way dispatcher that applies to every data type and shape.
 
-The proposed INT6 implementation should preserve this M-sensitive architecture: a fused GEMV for M=1 decode, a tiled fused GEMM for representative large-M prefill, and eventually a separate small-M path. It cannot simply reuse the existing INT4/INT8 CUTLASS kernels because NVIDIA hardware and the current CUTLASS integration do not expose a native INT6 weight-only operation. INT6 therefore also requires a new lower-4/upper-2 prepack, extraction logic, and fused compute kernels. Unsupported INT6 configurations should retain a correctness fallback, but that fallback is not a performance milestone.
+Any selected INT3, INT5, or INT6 implementation should preserve this M-sensitive architecture: a fused GEMV for M=1 decode, a tiled fused GEMM for representative large-M prefill, and eventually a separate small-M path. These widths cannot simply reuse the existing INT4/INT8 CUTLASS kernels because NVIDIA hardware and the current CUTLASS integration do not expose corresponding native weight-only operations. They therefore require width-aware runtime prepacking, extraction logic, and fused compute kernels. Unsupported configurations should retain a correctness fallback, but that fallback is not a performance milestone.
 
-### INT2 QMoE Follow-Up Assessment
+### INT2 QMoE Product Assessment
 
 INT2 QMoE is a meaningful follow-up because expert weights dominate the storage and memory traffic of large MoE models, and a fused operator preserves top-k routing instead of expanding every expert into independently scheduled dense operations. CPU QMoE already accepts blockwise INT2 and includes an MLAS LUT GEMM path, so it can provide a semantic reference. However, the current cross-provider implementation is not production-ready:
 
@@ -142,13 +142,13 @@ Backend coverage and maturity vary by bit width. The most broadly optimized CUDA
 
 ### TensorRT-LLM
 
-TensorRT-LLM weight-only CUDA kernels and tests focus on INT4, INT8, and NVFP4. Its kernel type registry does not expose equivalent INT2 or INT6 weight-only paths. This is consistent with current NVIDIA hardware acceleration, which does not provide a native INT6 Tensor Core operation.
+TensorRT-LLM weight-only CUDA kernels and tests focus on INT4, INT8, and NVFP4. Its kernel type registry does not expose equivalent INT2, INT3, INT5, or INT6 weight-only paths. This is consistent with current NVIDIA hardware acceleration, which does not provide native INT3, INT5, or INT6 Tensor Core operations.
 
 ### ONNX Data Types
 
 ONNX standardizes `INT2` and `UINT2`. Four consecutive 2-bit values are packed into one byte from least significant bits to most significant bits. This is compatible with the logical ordering already used by ONNX Runtime's packed 2-bit weights.
 
-ONNX currently has floating-point 6-bit types, but no standard `INT6` or `UINT6` tensor type. `MatMulNBits` can still carry 6-bit codes in an opaque `uint8` blob, but the contrib operator must define the packing contract precisely.
+ONNX does not currently provide standard `INT3`, `UINT3`, `INT5`, `UINT5`, `INT6`, or `UINT6` integer tensor types. `MatMulNBits` can still carry these codes in an opaque `uint8` blob, but the contrib operator must define the packing contract precisely.
 
 ## Design Considerations
 
@@ -165,11 +165,21 @@ packed = (x0 & 0x03)
 
 No value crosses a byte boundary, and block sizes supported by `MatMulNBits` are multiples of four. The primary work is therefore execution-provider implementation and performance tuning rather than format design.
 
-### 6-Bit Packing Options
+### 3-, 5-, and 6-Bit Packing Options
+
+All three widths cross byte boundaries under a compact representation. A common packing quantum of eight logical values gives:
+
+| Width | Values per quantum | Payload bytes | Candidate runtime bit planes |
+| ---: | ---: | ---: | --- |
+| 3 | 8 | 3 | Lower 2 bits plus upper 1 bit |
+| 5 | 8 | 5 | Lower 4 bits plus upper 1 bit |
+| 6 | 8 | 6 | Lower 4 bits plus upper 2 bits |
+
+The portable format should not pad INT3 to four bits or INT5/INT6 to eight bits because that would erase much of the intended model-size benefit.
 
 #### Option A: Canonical Contiguous Bitstream
 
-Pack four values into three bytes, with each value occupying six consecutive bits. This gives exactly six payload bits per weight and a portable representation.
+Pack each value into a little-endian, least-significant-bit-first contiguous bitstream. Logical value `i` begins at bit offset `i * bits`; any unused tail bits in the final byte are zero. This gives exactly three, five, or six payload bits per weight before block metadata and padding.
 
 Advantages:
 
@@ -183,14 +193,14 @@ Disadvantages:
 - Existing `8 / bits` pack and unpack logic cannot be reused.
 - Direct kernel extraction requires additional shifts and merged loads.
 
-#### Option B: Lower-4/Upper-2 Split Planes
+#### Option B: Backend-Specific Split Planes
 
-Store low four bits and high two bits in separate regions, following the basic physical idea used by Q6_K.
+Prepack the portable bitstream into aligned planes selected by the execution provider: lower-2/upper-1 for INT3, lower-4/upper-1 for INT5, and lower-4/upper-2 for INT6. The INT6 layout follows the basic physical idea used by Q6_K without adopting its hierarchical quantization format.
 
 Advantages:
 
 - Efficient aligned loads and extraction.
-- Easier reuse of 4-bit and 2-bit unpacking primitives.
+- Easier reuse of 1-bit, 2-bit, and 4-bit unpacking primitives.
 - Better fit for SIMD, DP4A, and backend-specific prepacking.
 
 Disadvantages:
@@ -201,9 +211,11 @@ Disadvantages:
 
 #### Recommended Contract
 
-Use a canonical contiguous bitstream in the portable model and allow each execution provider to prepack it into an opaque optimized representation, such as lower-4/upper-2 planes. Do not change the interpretation of existing models based only on `bits=6`. The exact canonical ordering, padding, zero-point packing, and versioning behavior must be specified first.
+Use one canonical contiguous-bitstream rule for `bits=3`, `bits=5`, and `bits=6`, and allow each execution provider to prepack it into an opaque optimized representation. Do not change the interpretation of existing models based only on a new `bits` value. The exact ordering, row and block boundaries, tail padding, zero-point packing, and versioning behavior must be specified before enabling any new width.
 
 ## Proposed Roadmap
+
+The dense `MatMulNBits` phases below describe supporting technology and independent projection coverage. The active QMoE product roadmap, milestones, and acceptance criteria are maintained in the separate end-to-end QMoE delivery plan.
 
 ### Phase 0: Define Targets and Baselines
 
@@ -276,9 +288,9 @@ Integrate the selected approach into `MatMulNBits(bits=2)` with:
 
 After the scoped delivery, expand to BF16, additional block sizes, asymmetric zero points, bias, tails, intermediate/small-M execution, offline prepacking, and broader GPU tuning as justified by measured demand.
 
-### Phase 4: Mixed-Width INT2 QMoE Follow-Up
+### Phase 4: Mixed-Width INT2 QMoE Product Track
 
-Start the QMoE work after the MatMulNBits INT2 packing contract, CUDA correctness behavior, and fused M=1 primitives are stable:
+Execute the prioritized QMoE work according to the standalone end-to-end delivery plan. Reuse MatMulNBits INT2 packing, validation, and CUDA extraction primitives as they stabilize, but do not gate the QMoE schema or Olive/Mobius export work on complete dense kernel coverage:
 
 1. Define independent FC1 and FC2 bit-width semantics and preserve compatibility with the existing single-width QMoE contract.
 2. Add CPU correctness and model-level tests for FC1 INT2 with FC2 INT4.
@@ -288,9 +300,11 @@ Start the QMoE work after the MatMulNBits INT2 packing contract, CUDA correctnes
 
 WebGPU QMoE enablement is an independent follow-up and should not block the CUDA model-level milestone. A cross-provider correctness fallback may be useful for conformance, but persistent full expert dequantization does not satisfy the production acceptance criteria.
 
-### Phase 5: 6-Bit Follow-Up Gate
+### Phase 5: 3-, 5-, and 6-Bit MatMulNBits Gate
 
-Evaluate INT6 if INT2 cannot achieve the required quality/size tradeoff or product requirements call for a less aggressive quantization option. Reuse the contiguous portable format and lower-4/upper-2 prepacking analysis in this document, but require a separate format review and measured advantage over mixed INT4/INT8 before implementation.
+Evaluate INT3, INT5, and INT6 if INT2 cannot achieve the required quality/size tradeoff or product requirements call for less aggressive quantization. Use one generic contiguous pack/unpack reference and compare all three widths against INT2, INT4, and INT8 on quality, effective model size, and extraction cost. INT3 is the first candidate for optimized implementation because it directly fills the gap between INT2 and INT4, but measured results must select the width.
+
+Do not build three independent production kernel families in parallel. After the format and quality study, select at most one width for CUDA M=1 and large-M prototypes. A production commitment requires that the selected width materially outperform neighboring supported formats or mixed-precision recipes.
 
 ## Schedule Estimate
 
@@ -308,22 +322,23 @@ These estimates assume one engineer working full time with Copilot assistance, t
 
 Allow **7-9 engineering weeks** for the scoped M=1 decode and large-M prefill vertical slice under the primary configuration. Broader data types, block sizes, asymmetric quantization, small-M kernels, and multi-architecture tuning would extend the work beyond this initial delivery. Copilot reduces coding and test-authoring time, but it does not remove hardware profiling, kernel tuning, model-quality evaluation, or code-review time.
 
-### 6-Bit `MatMulNBits`
+### 3-, 5-, and 6-Bit `MatMulNBits` Study
 
 | Work item | Estimate |
 | --- | ---: |
-| Portable format specification and schema/tooling design | 1-2 weeks |
-| Python pack/unpack, CPU reference, tests, and 4/6/8-bit quality study | 2-3 weeks |
-| CUDA contiguous-versus-split-plane extraction and fused M=1/large-M prototypes | 3-4 weeks |
+| Generic contiguous format specification and schema/tooling design | 1-2 weeks |
+| Python pack/unpack, CPU reference, tests, and 2/3/4/5/6/8-bit quality study | 2-3 weeks |
+| CUDA contiguous-versus-bit-plane extraction for all candidates | 1-2 weeks |
+| Fused M=1 and large-M prototypes for one selected width | 3-4 weeks |
 | Go/no-go analysis and design review | 1 week |
 
-Allow **6-8 engineering weeks** for the complete 6-bit format-and-value study and an evidence-based final go/no-go decision when both decode and prefill prototypes are required. The format, quality experiments, reference implementation, and scoped CUDA work can overlap to target an earlier vertical slice. A production-ready CUDA 6-bit track with broad operator coverage remains approximately **11-17 engineering weeks total**. Adding optimized CPU/MLAS support or another execution provider would require separate estimates.
+Allow **7-10 engineering weeks** for the generic format-and-value study plus decode and prefill prototypes for one selected width. This estimate does not include production kernels for all three widths. A production-ready CUDA track for the selected width with broad operator coverage remains approximately **11-17 engineering weeks total** after selection. Each additional optimized width requires a separate estimate. Optimized CPU/MLAS support or another execution provider also requires separate estimates.
 
-## November 15 Delivery Plan
+## Supporting Dense MatMulNBits Delivery Estimate
 
-There are approximately 8.5 calendar weeks from September 16 to November 15, 2026. With one engineer, the committed delivery should be a scoped INT2 CUDA vertical slice built on the existing portable format, Python tooling, and CPU reference implementation. The target is reviewable native fused CUDA execution for M=1 decode and representative large-M prefill under one primary symmetric FP16 configuration. This is narrower than complete production INT2 support. Upstream merge by November 15 cannot be guaranteed because review and CI timing are outside the implementation owner's control.
+If staffed as a separate supporting track, approximately 8.5 calendar weeks would allow one engineer to target a scoped dense INT2 CUDA vertical slice built on the existing portable format, Python tooling, and CPU reference implementation. The candidate target is reviewable native fused CUDA execution for M=1 decode and representative large-M prefill under one primary symmetric FP16 configuration. This estimate is not the current QMoE product commitment, and upstream merge timing cannot be guaranteed because review and CI are outside the implementation owner's control.
 
-### Committed INT2 Scope
+### Candidate Dense INT2 Scope
 
 - Uniform and mixed INT2/INT4/INT8 quality and effective-size results for representative Qwen3.8 coding-model workloads.
 - A qualified PyTorch/Olive-to-Mobius export path producing dense mixed-bit `MatMulNBits` nodes, with graph, initializer-binding, and numerical-parity tests.
@@ -347,7 +362,7 @@ There are approximately 8.5 calendar weeks from September 16 to November 15, 202
 
 ### Stretch Scope
 
-The following items should not put the November 15 commitment at risk:
+The following items are excluded from the supporting dense estimate:
 
 - Asymmetric zero points.
 - BF16 activation support.
@@ -356,15 +371,13 @@ The following items should not put the November 15 commitment at risk:
 - Optimized intermediate-M execution for M values between the committed decode and prefill ranges.
 - Offline CUDA-specific prepacking.
 - Broad multi-GPU tuning.
-- INT6 format, tooling, or kernel implementation.
+- INT3, INT5, or INT6 format, tooling, or kernel implementation.
 - ONNX-native Olive INT2 RTN and built-in quantized-linear export completion.
-- Fused MoE/QMoE export, packing contracts, and runtime kernels.
+- Fused MoE/QMoE export, packing contracts, and runtime kernels, which are tracked as the separate product-priority plan.
 
-These QMoE items remain outside the November commitment, but the next implementation track should begin with the mixed FC1/FC2 contract and export qualification after the MatMulNBits INT2 foundation is stable.
+### INT3/INT5/INT6 Scheduling Impact
 
-### INT6 Scheduling Impact
-
-With the same engineer, INT6 implementation should not run concurrently if it threatens the INT2 deadline. Before November 15, INT6 work should be limited to preserving the format analysis and collecting quality data that directly informs the INT2 comparison. A second engineer could run the INT6 quality and format gate independently.
+With the same engineer, INT3/INT5/INT6 implementation should not run concurrently if it threatens the prioritized INT2 QMoE delivery. Before November 15, work should be limited to preserving the generic format analysis and collecting quality data that informs width selection. A second engineer could run the generic reference and quality gate independently.
 
 ## Evaluation Plan
 
@@ -382,7 +395,7 @@ At minimum, compare:
 
 - 2-bit RTN, GPTQ, HQQ, and K-quant-inspired quantization.
 - Uniform 2-bit versus mixed 2-bit/4-bit.
-- Uniform 4-bit, 6-bit, and 8-bit.
+- Uniform 2-bit, 3-bit, 4-bit, 5-bit, 6-bit, and 8-bit, plus selected mixed-precision recipes.
 - Perplexity plus representative downstream tasks used by the ONNX Runtime model-validation pipeline.
 
 ### Performance
@@ -408,8 +421,10 @@ Report:
 
 - Two-bit quality may require mixed precision or more expensive calibration algorithms.
 - A 2-bit CUDA kernel can become unpacking-bound and fail to outperform a mature 4-bit kernel.
-- Six-bit saves only 25 percent of weight payload relative to 8-bit while requiring non-native unpacking.
-- A poorly specified 6-bit format could create incompatible models across execution providers.
+- INT3, INT5, and INT6 require non-native unpacking; extraction overhead may erase their bandwidth advantage over neighboring formats.
+- INT5 and INT6 may not save enough effective model size over higher-quality neighboring formats after scales, padding, and metadata.
+- A poorly specified non-byte-aligned format could create incompatible models across execution providers.
+- Supporting every candidate width would multiply kernel, prepacking, test, and maintenance cost without guaranteeing model-level value.
 - Extending CUTLASS prepacked formats too early would increase scope before value is established.
 - Metadata overhead can materially change the effective bits per weight, especially for small blocks.
 
@@ -423,17 +438,18 @@ Report:
 - Qwen-shape decode, prefill, and TTFT correctness/performance report.
 - Go/no-go recommendation for broader production investment.
 
-### 6-Bit Follow-Up Track
+### 3-/5-/6-Bit Follow-Up Track
 
-- Preserve the portable contiguous and lower-4/upper-2 prepacking design analysis.
-- Run a 4-bit/6-bit/8-bit quality and effective-size comparison if INT2 quality is insufficient.
-- Require a separate format and value gate before native CUDA implementation.
+- Freeze one generic contiguous packing rule and width-specific 2+1, 4+1, and 4+2 runtime-prepack candidates.
+- Run a 2/3/4/5/6/8-bit quality and effective-size comparison if INT2 quality is insufficient.
+- Select at most one candidate width for initial CUDA decode and prefill prototypes.
+- Require a separate value gate before production CUDA implementation.
 
 ## Recommendation to Management
 
-Prioritize INT2 because ONNX Runtime already has a portable model format, quantization tooling, CPU kernels, and correctness coverage, and because INT2 offers the largest potential weight-memory and bandwidth reduction. Use the first week to freeze quality thresholds and identify a viable uniform or mixed-precision recipe, then target a scoped CUDA `MatMulNBits(bits=2)` vertical slice by November 15: direct-versus-LUT evidence, fused M=1 decode, and fused representative large-M prefill for the primary symmetric FP16 configuration. Both execution paths are required for a GitHub Copilot-style workload because decode determines generation speed and prefill determines TTFT for long repository context.
+Prioritize the mixed-width INT2 QMoE delivery defined in the standalone plan because expert weights dominate the target model's storage and memory traffic. Develop shared dense MatMulNBits packing, validation, and CUDA extraction primitives where they directly reduce QMoE risk, but do not require complete dense GEMV/GEMM coverage before QMoE schema, export, CPU reference, and packed decode work proceeds.
 
-This November scope is not complete production INT2 support. Broader data types, block sizes, asymmetric quantization, small-M execution, offline prepacking, and multi-architecture tuning remain follow-up work. Keep INT6 as the next quality-oriented option if INT2 cannot meet the agreed coding and tool-calling targets at a meaningful effective-size advantage over INT4.
+Keep INT3, INT5, and INT6 MatMulNBits as a parallel measured quality/size study rather than a near-term production commitment. INT3 should receive the first optimization consideration because it fills the INT2-to-INT4 gap, but only after the common reference implementation and model-quality evidence select a width with a defensible advantage. Do not commit to production kernels for all candidate widths.
 
 ## References
 
