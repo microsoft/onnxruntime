@@ -1059,6 +1059,16 @@ TEST(SparseAttentionIndexerTest, QsaRepeatedScanTopKFallback) {
   RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
 }
 
+TEST(SparseAttentionIndexerTest, QsaLargeContextTopK) {
+  QsaProblem problem;
+  problem.batch_size = 1;
+  problem.sequence_length = 1;
+  problem.past_sequence_length = 65536;
+  problem.compress_ratio = 16;
+  problem.token_budget = 8192;
+  RunQsaTest<float>(1.0e-5f, MakeQsaProblem(std::move(problem)));
+}
+
 TEST(SparseAttentionIndexerTest, QsaExplicitZeroScale) {
   QsaProblem problem = MakeQsaProblem();
   problem.scale = 0.0f;

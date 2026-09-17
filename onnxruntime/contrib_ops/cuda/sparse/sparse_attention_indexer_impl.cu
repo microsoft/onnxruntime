@@ -11,8 +11,10 @@
 #include <cuda_fp16.h>
 #include <cuda_runtime.h>
 #include <math_constants.h>
+#include <cub/device/device_segmented_radix_sort.cuh>
 
 #include <algorithm>
+#include <limits>
 
 #include "contrib_ops/cuda/sparse/sparse_attention_indexer_device_math.cuh"
 #include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
@@ -25,7 +27,9 @@ namespace {
 
 // The block reductions below halve the active thread count, so this must stay a power of two.
 constexpr int kThreads = 128;
+constexpr int kWarpSize = 32;
 constexpr int64_t kMaxGridDimX = kSaiMaxGridDimX;
+constexpr int kRadixSortMinBlockCount = 512;
 
 // Thin, same-signature aliases over the device math shared with the packed indexer implementation
 // (sparse_attention_indexer_device_math.cuh), so the kernels below are unchanged.
@@ -141,7 +145,7 @@ __global__ void AppendQsaKeyKernel(const T* key, T* present_key, SparseAttention
 // One block per query row; compacts the visible key positions of that row into visible_indices.
 __global__ void CompactVisibleKernel(const bool* mask, int32_t* visible_indices, int32_t* visible_count,
                                      SparseAttentionIndexerParams params) {
-  extern __shared__ int32_t shared_scan[];
+  __shared__ int32_t warp_offsets[kThreads / kWarpSize + 1];
   const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
   for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
     const bool* mask_row = mask + row * params.total_sequence_length;
@@ -149,20 +153,30 @@ __global__ void CompactVisibleKernel(const bool* mask, int32_t* visible_indices,
     int32_t offset = 0;
     for (int base = 0; base < params.total_sequence_length; base += blockDim.x) {
       const int position = base + static_cast<int>(threadIdx.x);
-      const int32_t flag = (position < params.total_sequence_length && mask_row[position]) ? 1 : 0;
-      shared_scan[threadIdx.x] = flag;
-      __syncthreads();
-      for (int stride = 1; stride < blockDim.x; stride <<= 1) {
-        const int32_t addend = (threadIdx.x >= static_cast<unsigned>(stride)) ? shared_scan[threadIdx.x - stride] : 0;
-        __syncthreads();
-        shared_scan[threadIdx.x] += addend;
-        __syncthreads();
+      const bool visible = position < params.total_sequence_length && mask_row[position];
+      const unsigned int warp_mask = __ballot_sync(0xffffffffu, visible);
+      const int lane = threadIdx.x % kWarpSize;
+      const int warp = threadIdx.x / kWarpSize;
+      const int lane_rank = __popc(warp_mask & (lane == 0 ? 0u : (1u << lane) - 1u));
+      if (lane == 0) {
+        warp_offsets[warp] = __popc(warp_mask);
       }
-      if (flag != 0) {
-        out_row[offset + shared_scan[threadIdx.x] - 1] = position;
-      }
-      const int32_t tile_total = shared_scan[blockDim.x - 1];
       __syncthreads();
+      if (threadIdx.x == 0) {
+        int32_t tile_total = 0;
+        for (int i = 0; i < kThreads / kWarpSize; ++i) {
+          const int32_t warp_count = warp_offsets[i];
+          warp_offsets[i] = tile_total;
+          tile_total += warp_count;
+        }
+        warp_offsets[kThreads / kWarpSize] = tile_total;
+      }
+      __syncthreads();
+      const int32_t warp_offset = warp_offsets[warp];
+      const int32_t tile_total = warp_offsets[kThreads / kWarpSize];
+      if (visible) {
+        out_row[offset + warp_offset + lane_rank] = position;
+      }
       offset += tile_total;
     }
     if (threadIdx.x == 0) {
@@ -264,7 +278,8 @@ __global__ void QsaBlockScoreKernel(const T* query, const T* present_key, const 
 // One block per query row. Emits the token indices of the highest scoring blocks followed by the
 // visible tokens of the trailing incomplete block.
 __global__ void QsaSelectKernel(const float* block_scores, const int32_t* visible_indices,
-                                const int32_t* visible_count, int32_t* selected_indices,
+                                const int32_t* visible_count, const int32_t* topk_indices,
+                                int32_t* selected_indices,
                                 SparseAttentionIndexerParams params) {
   extern __shared__ float shared[];
   float* shared_value = shared;
@@ -288,7 +303,29 @@ __global__ void QsaSelectKernel(const float* block_scores, const int32_t* visibl
     const int32_t* index_row = visible_indices + row * params.total_sequence_length;
 
     int emitted = selected;
-    if (selected > 0 && use_fast_topk) {
+    if (topk_indices != nullptr) {
+      const int32_t* topk_row = topk_indices + row * params.max_block_count;
+      for (int rank = 0; rank < selected; ++rank) {
+        const int selected_block = static_cast<int>(topk_row[rank]);
+        for (int t = threadIdx.x; t < params.compress_ratio; t += blockDim.x) {
+          out_row[rank * params.compress_ratio + t] =
+              index_row[selected_block * params.compress_ratio + t];
+        }
+
+        __global__ void SetupQsaSortKernel(int32_t* indices, int32_t* offsets, int num_items,
+                                           int rows, int dimension) {
+          for (int index = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+               index < num_items; index += static_cast<int>(gridDim.x) * blockDim.x) {
+            indices[index] = index % dimension;
+          }
+          for (int index = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+               index <= rows; index += static_cast<int>(gridDim.x) * blockDim.x) {
+            offsets[index] = index * dimension;
+          }
+        }
+      }
+      __syncthreads();
+    } else if (selected > 0 && use_fast_topk) {
       SaiBlockTopK(scores_row, block_count, selected, shared_value, shared_index);
       for (int rank = 0; rank < selected; ++rank) {
         const int selected_block = shared_index[rank];
@@ -573,7 +610,8 @@ size_t GetCsaWorkspaceFloatCount(const SparseAttentionIndexerParams& params) {
 }
 
 template <typename T>
-Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentionIndexerParams& params,
+Status LaunchQsaSparseAttentionIndexer(const CudaKernel* kernel, cudaStream_t stream, void* alloc_stream,
+                                       const SparseAttentionIndexerParams& params,
                                        const T* query, const T* key, const T* key_norm_weight,
                                        const T* cos_cache, const T* sin_cache, const bool* mask,
                                        const T* past_key, int32_t* selected_indices, T* present_key,
@@ -605,7 +643,7 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   const size_t value_bytes = static_cast<size_t>(params.head_size) * sizeof(float);
 
   const int row_blocks = static_cast<int>(std::min<int64_t>(rows, kMaxGridDimX));
-  CompactVisibleKernel<<<row_blocks, kThreads, kThreads * sizeof(int32_t), stream>>>(
+  CompactVisibleKernel<<<row_blocks, kThreads, 0, stream>>>(
       mask, visible_indices, visible_count, params);
 
   if (params.max_block_count > 0) {
@@ -616,11 +654,42 @@ Status LaunchQsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
         block_scores, params);
   }
 
-  const int topk_shared_entries =
-      params.block_topk <= kSaiFastTopKMax ? kThreads * params.block_topk : kThreads;
+  const int64_t sort_items_64 = rows * params.max_block_count;
+  const bool use_radix_sort =
+      params.max_block_count >= kRadixSortMinBlockCount &&
+      sort_items_64 <= std::numeric_limits<int>::max();
+  IAllocatorUniquePtr<float> sorted_scores;
+  IAllocatorUniquePtr<int32_t> sort_indices_in;
+  IAllocatorUniquePtr<int32_t> sort_indices_out;
+  IAllocatorUniquePtr<int32_t> sort_offsets;
+  if (use_radix_sort) {
+    const int sort_items = static_cast<int>(sort_items_64);
+    const int sort_rows = static_cast<int>(rows);
+    sorted_scores = kernel->GetScratchBuffer<float>(sort_items, alloc_stream);
+    sort_indices_in = kernel->GetScratchBuffer<int32_t>(sort_items, alloc_stream);
+    sort_indices_out = kernel->GetScratchBuffer<int32_t>(sort_items, alloc_stream);
+    sort_offsets = kernel->GetScratchBuffer<int32_t>(static_cast<size_t>(sort_rows) + 1, alloc_stream);
+    SetupQsaSortKernel<<<GridForElements(std::max(sort_items, sort_rows + 1)), kThreads, 0, stream>>>(
+        sort_indices_in.get(), sort_offsets.get(), sort_items, sort_rows, params.max_block_count);
+
+    size_t temp_storage_bytes = 0;
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cub::DeviceSegmentedRadixSort::SortPairsDescending(
+        nullptr, temp_storage_bytes, block_scores, sorted_scores.get(),
+        sort_indices_in.get(), sort_indices_out.get(), sort_items, sort_rows,
+        sort_offsets.get(), sort_offsets.get() + 1, 0, sizeof(float) * 8, stream)));
+    auto temp_storage = kernel->GetScratchBuffer<void>(temp_storage_bytes, alloc_stream);
+    ORT_RETURN_IF_ERROR(CUDA_CALL(cub::DeviceSegmentedRadixSort::SortPairsDescending(
+        temp_storage.get(), temp_storage_bytes, block_scores, sorted_scores.get(),
+        sort_indices_in.get(), sort_indices_out.get(), sort_items, sort_rows,
+        sort_offsets.get(), sort_offsets.get() + 1, 0, sizeof(float) * 8, stream)));
+  }
+
+  const int topk_shared_entries = !use_radix_sort && params.block_topk <= kSaiFastTopKMax
+                                      ? kThreads * params.block_topk
+                                      : kThreads;
   QsaSelectKernel<<<row_blocks, kThreads,
                     static_cast<size_t>(topk_shared_entries) * (sizeof(float) + sizeof(int)), stream>>>(
-      block_scores, visible_indices, visible_count, selected_indices, params);
+      block_scores, visible_indices, visible_count, sort_indices_out.get(), selected_indices, params);
 
   return CUDA_CALL(cudaGetLastError());
 }
@@ -685,7 +754,8 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
 }
 
 #define INSTANTIATE_SPARSE_ATTENTION_INDEXER(T)                                                              \
-  template Status LaunchQsaSparseAttentionIndexer<T>(cudaStream_t, const SparseAttentionIndexerParams&,      \
+  template Status LaunchQsaSparseAttentionIndexer<T>(const CudaKernel*, cudaStream_t, void*,                 \
+                                                     const SparseAttentionIndexerParams&,                    \
                                                      const T*, const T*, const T*, const T*, const T*,       \
                                                      const bool*, const T*, int32_t*, T*, float*, int32_t*); \
   template Status LaunchCsaSparseAttentionIndexer<T>(                                                        \
