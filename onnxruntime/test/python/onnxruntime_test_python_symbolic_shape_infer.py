@@ -434,6 +434,135 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         self.assertEqual(separate_graph.output[0].type.tensor_type.shape.dim[2].dim_value, 33)
         self.assertFalse(separate_graph.output[1].type.tensor_type.HasField("shape"))
 
+    def _infer_packed_sparse_attention_indexer(self, node, inputs):
+        outputs = [helper.make_tensor_value_info(name, TensorProto.UNDEFINED, None) for name in node.output if name]
+        graph = helper.make_graph([node], "PackedSparseAttentionIndexer_Test", inputs, outputs)
+        model = helper.make_model(
+            graph,
+            opset_imports=[helper.make_opsetid("", 17), helper.make_opsetid("com.microsoft", 1)],
+        )
+        return SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
+    def test_packed_sparse_attention_indexer_qsa(self):
+        node = helper.make_node(
+            "PackedSparseAttentionIndexer",
+            [
+                "query",
+                "key",
+                "key_norm_weight",
+                "cos_cache",
+                "sin_cache",
+                "cumulative_sequence_lengths",
+                "past_sequence_lengths",
+                "",
+                "",
+                "",
+                "",
+                "past_key_state",
+                "past_kv_buffer",
+                "",
+                "past_state_lengths",
+            ],
+            [
+                "selected_indices",
+                "selected_counts",
+                "present_key_state",
+                "present_kv_buffer",
+                "",
+                "present_state_lengths",
+            ],
+            domain="com.microsoft",
+            policy_mode="qsa",
+            compress_ratio=4,
+            state_capacity=5,
+            token_budget=8,
+        )
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT16, ["total_tokens", 2, 8]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT16, ["total_tokens", 8]),
+            helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT16, [8]),
+            helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT16, [64, 8]),
+            helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT16, [64, 8]),
+            helper.make_tensor_value_info("cumulative_sequence_lengths", TensorProto.INT32, [3]),
+            helper.make_tensor_value_info("past_sequence_lengths", TensorProto.INT32, [2]),
+            helper.make_tensor_value_info("past_key_state", TensorProto.FLOAT16, [2, 5, 8]),
+            helper.make_tensor_value_info("past_kv_buffer", TensorProto.FLOAT16, [2, 7, 8]),
+            helper.make_tensor_value_info("past_state_lengths", TensorProto.INT32, [2, 2]),
+        ]
+
+        inferred = self._infer_packed_sparse_attention_indexer(node, inputs)
+        outputs = {output.name: output for output in inferred.graph.output}
+        self.assertEqual(self._tensor_shape(outputs["selected_indices"]), ["total_tokens", 11])
+        self.assertEqual(outputs["selected_indices"].type.tensor_type.elem_type, TensorProto.INT32)
+        self.assertEqual(self._tensor_shape(outputs["selected_counts"]), ["total_tokens"])
+        self.assertEqual(outputs["selected_counts"].type.tensor_type.elem_type, TensorProto.INT32)
+        self.assertEqual(self._tensor_shape(outputs["present_key_state"]), [2, 5, 8])
+        self.assertEqual(outputs["present_key_state"].type.tensor_type.elem_type, TensorProto.FLOAT16)
+        self.assertEqual(self._tensor_shape(outputs["present_kv_buffer"]), [2, 7, 8])
+        self.assertEqual(self._tensor_shape(outputs["present_state_lengths"]), [2, 2])
+        self.assertEqual(outputs["present_state_lengths"].type.tensor_type.elem_type, TensorProto.INT32)
+
+    def test_packed_sparse_attention_indexer_csa(self):
+        node = helper.make_node(
+            "PackedSparseAttentionIndexer",
+            [
+                "query",
+                "key",
+                "key_norm_weight",
+                "cos_cache",
+                "sin_cache",
+                "cumulative_sequence_lengths",
+                "past_sequence_lengths",
+                "gate",
+                "position_bias",
+                "head_weights",
+                "position_ids",
+                "past_key_state",
+                "past_kv_buffer",
+                "past_gate_buffer",
+                "past_state_lengths",
+            ],
+            [
+                "selected_indices",
+                "selected_counts",
+                "present_key_state",
+                "present_kv_buffer",
+                "present_gate_buffer",
+                "present_state_lengths",
+            ],
+            domain="com.microsoft",
+            policy_mode="csa",
+            compress_ratio=4,
+            state_capacity=6,
+            index_topk=3,
+        )
+        inputs = [
+            helper.make_tensor_value_info("query", TensorProto.FLOAT, ["total_tokens", 2, 8]),
+            helper.make_tensor_value_info("key", TensorProto.FLOAT, ["total_tokens", 16]),
+            helper.make_tensor_value_info("key_norm_weight", TensorProto.FLOAT, [8]),
+            helper.make_tensor_value_info("cos_cache", TensorProto.FLOAT, [2, 64, 4]),
+            helper.make_tensor_value_info("sin_cache", TensorProto.FLOAT, [2, 64, 4]),
+            helper.make_tensor_value_info("cumulative_sequence_lengths", TensorProto.INT32, [3]),
+            helper.make_tensor_value_info("past_sequence_lengths", TensorProto.INT32, [2]),
+            helper.make_tensor_value_info("gate", TensorProto.FLOAT, ["total_tokens", 16]),
+            helper.make_tensor_value_info("position_bias", TensorProto.FLOAT, [4, 16]),
+            helper.make_tensor_value_info("head_weights", TensorProto.FLOAT, ["total_tokens", 2]),
+            helper.make_tensor_value_info("position_ids", TensorProto.INT64, ["total_tokens"]),
+            helper.make_tensor_value_info("past_key_state", TensorProto.FLOAT, [2, 6, 8]),
+            helper.make_tensor_value_info("past_kv_buffer", TensorProto.FLOAT, [2, 7, 16]),
+            helper.make_tensor_value_info("past_gate_buffer", TensorProto.FLOAT, [2, 7, 16]),
+            helper.make_tensor_value_info("past_state_lengths", TensorProto.INT32, [2, 2]),
+        ]
+
+        inferred = self._infer_packed_sparse_attention_indexer(node, inputs)
+        outputs = {output.name: output for output in inferred.graph.output}
+        self.assertEqual(self._tensor_shape(outputs["selected_indices"]), ["total_tokens", 3])
+        self.assertEqual(self._tensor_shape(outputs["selected_counts"]), ["total_tokens"])
+        self.assertEqual(self._tensor_shape(outputs["present_key_state"]), [2, 6, 8])
+        self.assertEqual(self._tensor_shape(outputs["present_kv_buffer"]), [2, 7, 16])
+        self.assertEqual(self._tensor_shape(outputs["present_gate_buffer"]), [2, 7, 16])
+        self.assertEqual(self._tensor_shape(outputs["present_state_lengths"]), [2, 2])
+
     def test_unsqueeze_opset_11(self):
         graph = helper.make_graph(
             [
