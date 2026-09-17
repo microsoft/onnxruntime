@@ -664,36 +664,17 @@ struct MLAS_NCHWC_GROUPED_CONV_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
     size_t ChooseFilterSetSize(void) const
     {
-        const size_t Target = MlasNchwcFilterSetTarget();
-
-        if (Target == 0 || WorkBlock->tids <= 1) {
-            return MaximumFilterSetSize;
-        }
-
         //
         // MlasNchwcGetBlockSize() returns one rather than zero on platforms
         // without NCHWc support, precisely so this division is always safe.
         //
 
         assert(BlockSize > 0);
-
-        const size_t Wanted = static_cast<size_t>(WorkBlock->tids) * Target;
         ORT_ENFORCE(BlockSize > 0);
-        const size_t Blocks = OutputChannels / BlockSize;
 
-        size_t Size = MaximumFilterSetSize;
-
-        while (Size > 1) {
-            const size_t Sets = (Blocks + Size - 1) / Size;
-
-            if (BatchCount * GroupCount * Sets * OutputHeight >= Wanted) {
-                break;
-            }
-
-            Size /= 2;
-        }
-
-        return Size;
+        return MlasNchwcChooseFilterSetSize(MaximumFilterSetSize, MlasNchwcFilterSetTarget(),
+                                            WorkBlock->tids, BlockSize, OutputChannels,
+                                            BatchCount, GroupCount, OutputHeight);
     }
 
     MLAS_NCHWC_GROUPED_CONV_ALGORITHM(const MLAS_NCHWC_CONV_WORK_BLOCK* WorkBlock) :
