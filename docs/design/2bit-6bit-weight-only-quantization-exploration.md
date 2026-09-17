@@ -81,6 +81,23 @@ The proposed INT6 implementation should preserve this M-sensitive architecture: 
 
 llama.cpp has broad execution support for Q2_K, IQ2 variants, and Q6_K across CPU, CUDA, Metal, and additional backends. Its formats are not equivalent to the ONNX Runtime `MatMulNBits` format.
 
+#### Qwen3.8-Flash-Next Published 2-Bit Baseline
+
+The published Unsloth `UD-Q2_K_XL` GGUF for Qwen3.8-Flash-Next is approximately 78.9 GB, but it is neither uniformly Q2_K nor a stock llama.cpp quantization preset. Its metadata labels the model `MOSTLY_Q2_K` while assigning formats per tensor using an importance matrix with 926 entries derived from 45 calibration chunks. The inspected assignments include:
+
+- Expert gate/up tensors: `IQ2_XS` in 47 layers and `IQ3_XXS` in layer 2.
+- Expert down tensors: `IQ4_NL`.
+- Attention projections: primarily `Q5_K` and `Q6_K`.
+- Token and output embeddings: `Q5_K` and `Q4_K`.
+- N-gram embedding: `IQ4_NL`.
+- Hyper-connection matrices: `Q8_0`.
+- Sparse-attention indexer Q/K tensors: BF16.
+- Norms and small control tensors: primarily F32.
+
+`IQ2_XS` is a nominal 2-bit importance-quantized format with approximately 2.31 effective bits per weight after its scales and indexing metadata. It is not the same numerical format as blockwise affine `MatMulNBits(bits=2)`. Consequently, "2-bit" describes the lowest and dominant expert tier of this GGUF, not a two-bit average across every parameter.
+
+The first ONNX Runtime model-level experiment should nevertheless target the same tensor placement: use `MatMulNBits(bits=2)` for the 47 expert gate/up tensor groups, retain layer 2 and the remaining sensitive tensor classes at supported higher precision, and then measure quality and effective model size. This tests whether expert gate/up INT2 captures most of the useful compression and bandwidth reduction without claiming bit-exact equivalence to `IQ2_XS`. Comparisons with `UD-Q2_K_XL` must report tensor-type distribution and effective bits per parameter rather than comparing quantization names alone.
+
 Q6_K stores each 6-bit code as two planes:
 
 - Lower four bits: `QK_K / 2` bytes.
@@ -183,7 +200,7 @@ Before implementation, agree on:
 
 1. Freeze representative Qwen shapes, workloads, quality metrics, and performance baselines.
 2. Validate the existing portable INT2 packing and CPU implementation as the CUDA semantic reference.
-3. Measure uniform and mixed INT2/INT4/INT8 coding, tool-calling, KL-divergence, and effective model size.
+3. Measure uniform and mixed INT2/INT4/INT8 coding, tool-calling, KL-divergence, and effective model size, starting with `MatMulNBits(bits=2)` on the 47 expert gate/up tensor groups and higher precision elsewhere.
 4. Prototype direct packed-INT2 and GPU-native LUT extraction for M=1 decode.
 5. Prototype a tiled direct or LUT-based path for representative large-M prefill.
 6. Select the CUDA execution and runtime-prepacking strategy using measured quality and performance data.
@@ -193,6 +210,7 @@ The first week is a quality and workload gate, not a stop condition for all INT2
 #### Required Deliverables
 
 - Uniform and mixed-precision INT2 quality and effective-size results on the agreed Qwen coding-model workload.
+- An expert gate/up INT2 model variant compared with the approximately 78.9 GB Unsloth `UD-Q2_K_XL` baseline, including tensor-type distribution and effective bits per parameter.
 - Direct-unpack versus GPU-native LUT microbenchmarks for representative M=1 decode and large-M prefill shapes.
 - A selected CUDA runtime-prepacking and kernel strategy, including memory overhead and architecture constraints.
 - A written assessment of whether INT2 delivers useful end-to-end decode, TTFT, and memory improvements over INT4.
