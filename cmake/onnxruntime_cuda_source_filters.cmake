@@ -122,6 +122,11 @@ endfunction()
 #   1. Restricting CUDA_ARCHITECTURES to SM80+ (skip dead pre-Ampere passes)
 #   2. Using --threads 1 (memory-intensive) while other targets use higher parallelism
 #
+# When onnxruntime_USE_FLASH_ATTENTION is OFF, the sources are dropped entirely instead
+# of being returned via FLASH_SOURCES: flash_api.cc and the ONNX domain Attention op's
+# flash attention branch are both fully `#if USE_FLASH_ATTENTION` guarded, so the kernels
+# would otherwise be dead code compiled for every requested SM architecture.
+#
 # Usage:
 #   onnxruntime_extract_flash_attention_sources(<cu_src_list_var>
 #       FLASH_SOURCES <output_var>)
@@ -137,6 +142,10 @@ function(onnxruntime_extract_flash_attention_sources CU_SRC_LIST)
   endforeach()
   if(_flash_srcs)
     list(REMOVE_ITEM _list ${_flash_srcs})
+  endif()
+
+  if(NOT onnxruntime_USE_FLASH_ATTENTION)
+    set(_flash_srcs)
   endif()
 
   set("${CU_SRC_LIST}" "${_list}" PARENT_SCOPE)
@@ -166,7 +175,7 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
   set(_llm_fp4_srcs)
   set(_llm_excluded_srcs)
   if(WIN32)
-    list(FILTER _list EXCLUDE REGEX "/moe_gemm/deep_gemm_sm90\\.cu$")
+    list(FILTER _list EXCLUDE REGEX "/(moe_gemm/deep_gemm_sm90|deep_gemm_matmul_sm90)\\.cu$")
   endif()
   foreach(_src IN LISTS _list)
     if(_src MATCHES "/contrib_ops/cuda/llm/.*\\.cu$")
@@ -178,7 +187,7 @@ function(onnxruntime_extract_llm_sources CU_SRC_LIST)
         list(APPEND _llm_excluded_srcs "${_src}")
       # SM90-specific fpA_intB launchers (guarded by #ifndef EXCLUDE_SM_90)
       elseif(_src MATCHES "fpA_intB_gemm_launcher_[0-9]+\\.generated\\.cu$" OR
-         _src MATCHES "/moe_gemm/deep_gemm_sm90\\.cu$")
+         _src MATCHES "/(moe_gemm/deep_gemm_sm90|deep_gemm_matmul_sm90)\\.cu$")
         list(APPEND _llm_sm90_srcs "${_src}")
       elseif(onnxruntime_USE_FP4_QMOE AND
              _src MATCHES "/moe_gemm/(moe_gemm_kernels_(bf16|fp16|fp4)_fp4|moe_kernels)\\.cu$")
