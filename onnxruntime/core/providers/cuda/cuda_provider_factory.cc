@@ -180,6 +180,12 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     return std::make_shared<CUDAProviderFactory>(info);
   }
 
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(
+      const ProviderOptions& provider_options) override {
+    return std::make_shared<CUDAProviderFactory>(
+        CUDAExecutionProviderInfo::FromProviderOptions(provider_options));
+  }
+
   std::shared_ptr<IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) override {
     CUDAExecutionProvider::CUDAAllocatorParams params{};
     params.device_id = device_id;

@@ -5,6 +5,7 @@
 
 #include <memory>
 
+#include "core/framework/provider_options.h"
 #include "core/providers/providers.h"
 
 struct OrtCUDAProviderOptions;
@@ -15,5 +16,6 @@ namespace onnxruntime {
 struct CudaProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const OrtCUDAProviderOptions* provider_options);
   static std::shared_ptr<IExecutionProviderFactory> Create(const OrtCUDAProviderOptionsV2* provider_options);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options);
 };
 }  // namespace onnxruntime

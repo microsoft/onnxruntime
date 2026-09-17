@@ -25,39 +25,18 @@
 #include "test/util/include/default_providers.h"
 
 #ifdef USE_CUDA
-#include "contrib_ops/cuda/quantization/gather_block_quantized.h"
+#include "contrib_ops/cuda/quantization/gather_block_quantized_data_policy.h"
 #include "core/graph/model.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/platform/env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "test/unittest_util/test_dynamic_plugin_ep.h"
 #include "test/util/include/temp_dir.h"
-#ifndef BUILD_CUDA_EP_AS_PLUGIN
-#include "core/providers/cuda/cuda_execution_provider.h"
-#include "core/providers/cuda/cuda_execution_provider_info.h"
-#endif
 #endif
 
 namespace onnxruntime {
 namespace test {
-
-#ifdef USE_CUDA
-std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithStringOptions(
-    const ProviderOptions& provider_options) {
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-  ConfigOptions config_options;
-  for (const auto& [key, value] : provider_options) {
-    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(key.c_str(), value.c_str()));
-  }
-  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
-#else
-  return std::make_unique<CUDAExecutionProvider>(
-      CUDAExecutionProviderInfo::FromProviderOptions(provider_options));
-#endif
-}
-#endif
 
 // When uint8_t data type is used GatherBlockQuantize applies MatMulNBit's conventions for storing the data.
 // That is when no zero points are specified a default zero point of 8 (for 4 bits) or 128 (for 8 bits) is used.
@@ -1453,7 +1432,7 @@ TEST(GatherBlockQuantizedOpTest, FpFallbackWithPrepackingDisabledCuda) {
     GTEST_SKIP() << "CUDA not available";
   }
 
-  auto cuda_ep = CudaExecutionProviderWithStringOptions(
+  auto cuda_ep = CudaExecutionProviderWithOptions(
       ProviderOptions{{"enable_host_pageable_gather", "0"}});
   if (cuda_ep == nullptr) {
     GTEST_SKIP() << "CUDA EP not available";
@@ -1501,7 +1480,7 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCuda) {
     GTEST_SKIP() << "CUDA device does not use host page tables for pageable memory";
   }
 
-  auto cuda_ep = CudaExecutionProviderWithStringOptions(
+  auto cuda_ep = CudaExecutionProviderWithOptions(
       ProviderOptions{{"enable_host_pageable_gather", "1"}});
   if (cuda_ep == nullptr) {
     GTEST_SKIP() << "CUDA EP not available";
@@ -1547,7 +1526,7 @@ TEST(GatherBlockQuantizedOpTest, FpDirectHostPageableCudaGraph) {
     GTEST_SKIP() << "CUDA device does not use host page tables for pageable memory";
   }
 
-  auto cuda_ep = CudaExecutionProviderWithStringOptions(
+  auto cuda_ep = CudaExecutionProviderWithOptions(
       ProviderOptions{{"enable_cuda_graph", "1"},
                       {"enable_host_pageable_gather", "1"}});
   if (cuda_ep == nullptr) {

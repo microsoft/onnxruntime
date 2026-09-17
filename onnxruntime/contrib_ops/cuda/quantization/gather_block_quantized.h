@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/cuda/quantization/gather_block_quantized_data_policy.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 #include <mutex>
@@ -14,20 +15,6 @@ namespace contrib {
 namespace cuda {
 
 using namespace onnxruntime::cuda;
-
-enum class GatherBlockQuantizedDataPolicy {
-  DeviceCopy,
-  DirectHost,
-};
-
-constexpr GatherBlockQuantizedDataPolicy SelectGatherBlockQuantizedDataPolicy(
-    bool option_enabled, bool pageable_memory_access, bool uses_host_page_tables,
-    bool is_fp8, bool is_constant_initializer) {
-  return option_enabled && pageable_memory_access && uses_host_page_tables &&
-                 is_fp8 && is_constant_initializer
-             ? GatherBlockQuantizedDataPolicy::DirectHost
-             : GatherBlockQuantizedDataPolicy::DeviceCopy;
-}
 
 template <typename T1, typename T2, typename Tind>
 class GatherBlockQuantized final : public CudaKernel {
