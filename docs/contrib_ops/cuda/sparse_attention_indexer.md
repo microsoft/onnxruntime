@@ -337,7 +337,9 @@ contains:
   are round-tripped through the tested element type before the reference runs, so the reference
   sees exactly the values the kernel reads. These tests skip when no CUDA EP is available.
 - **Long-context parity tests** at 8K, 32K, 64K, 128K and 256K for
-  `compress_ratio=4, token_budget=2048`, plus fixed-address CUDA graph capture and replay.
+  `compress_ratio=4, token_budget=2048`.
+- **Fixed-address CUDA graph capture and replay** in
+  `onnxruntime/test/contrib_ops/cuda_kernels/sparse_attention_indexer_kernel_test.cc`.
 
 Run them with:
 
@@ -345,11 +347,10 @@ Run them with:
 ./build/Linux/Release/onnxruntime_provider_test --gtest_filter='SparseAttentionIndexer*'
 ```
 
-With benchmarks enabled in a CUDA build, run the decode sweep with:
+Run the CUDA decode sweep against a built Python package with:
 
 ```bash
-./build/Linux/Release/onnxruntime_benchmark \
-  --benchmark_filter=SparseAttentionIndexerQsaDecode
+python onnxruntime/python/tools/microbench/sparse_attention_indexer.py
 ```
 
 ## 11. Known Limitations and Performance Follow-ups

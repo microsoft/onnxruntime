@@ -23,6 +23,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+namespace topk = onnxruntime::cuda::topk;
+
 namespace {
 
 // The block reductions below halve the active thread count, so this must stay a power of two.
@@ -173,7 +175,7 @@ __global__ void AnalyzeVisibleKernel(const bool* mask, int32_t* visible_count,
     }
     if (threadIdx.x == 0) {
       const int32_t visible = counts[0];
-      visible_count[row] = maximum == visible - 1 ? -visible - 1 : visible;
+      visible_count[row] = maxima[0] == visible - 1 ? -visible - 1 : visible;
     }
     __syncthreads();
   }
@@ -423,80 +425,83 @@ __global__ void QsaBoundedTopKKernel(const float* block_scores, const int32_t* v
   __shared__ int remaining;
   __shared__ int gathered;
 
-  const int64_t row = blockIdx.x;
-  const int encoded_visible = visible_count[row];
-  const int visible = encoded_visible < 0 ? -encoded_visible - 1 : encoded_visible;
-  const int block_count = visible / params.compress_ratio;
-  const int selected = min(params.block_topk, block_count);
-  if (selected == 0) {
-    return;
-  }
-  const float* scores = block_scores + row * params.max_block_count;
+  const int64_t rows = static_cast<int64_t>(params.batch_size) * params.sequence_length;
+  for (int64_t row = blockIdx.x; row < rows; row += gridDim.x) {
+    const int encoded_visible = visible_count[row];
+    const int visible = encoded_visible < 0 ? -encoded_visible - 1 : encoded_visible;
+    const int block_count = visible / params.compress_ratio;
+    const int selected = min(params.block_topk, block_count);
+    if (selected == 0) {
+      continue;
+    }
+    const float* scores = block_scores + row * params.max_block_count;
 
-  if (threadIdx.x == 0) {
-    prefix = 0;
-    remaining = selected;
-  }
-  __syncthreads();
-
-  for (int shift = 56; shift >= 0; shift -= 8) {
-    for (int bucket = threadIdx.x; bucket < 256; bucket += blockDim.x) {
-      temp.histogram[bucket] = 0;
+    if (threadIdx.x == 0) {
+      prefix = 0;
+      remaining = selected;
     }
     __syncthreads();
-    const uint64_t current_prefix = prefix;
+
+    for (int shift = 56; shift >= 0; shift -= 8) {
+      for (int bucket = threadIdx.x; bucket < 256; bucket += blockDim.x) {
+        temp.histogram[bucket] = 0;
+      }
+      __syncthreads();
+      const uint64_t current_prefix = prefix;
+      for (int index = threadIdx.x; index < block_count; index += blockDim.x) {
+        const uint64_t key = topk::PackStableSortKey(scores[index], index);
+        if (shift == 56 || (key >> (shift + 8)) == (current_prefix >> (shift + 8))) {
+          atomicAdd(&temp.histogram[(key >> shift) & 0xffu], 1u);
+        }
+      }
+      __syncthreads();
+      if (threadIdx.x == 0) {
+        int rank = remaining;
+        for (int bucket = 255; bucket >= 0; --bucket) {
+          const int count = static_cast<int>(temp.histogram[bucket]);
+          if (rank > count) {
+            rank -= count;
+          } else {
+            prefix |= static_cast<uint64_t>(bucket) << shift;
+            remaining = rank;
+            break;
+          }
+        }
+      }
+      __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+      gathered = 0;
+    }
+    __syncthreads();
+    const uint64_t threshold = prefix;
     for (int index = threadIdx.x; index < block_count; index += blockDim.x) {
       const uint64_t key = topk::PackStableSortKey(scores[index], index);
-      if (shift == 56 || (key >> (shift + 8)) == (current_prefix >> (shift + 8))) {
-        atomicAdd(&temp.histogram[(key >> shift) & 0xffu], 1u);
-      }
-    }
-    __syncthreads();
-    if (threadIdx.x == 0) {
-      int rank = remaining;
-      for (int bucket = 255; bucket >= 0; --bucket) {
-        const int count = static_cast<int>(temp.histogram[bucket]);
-        if (rank > count) {
-          rank -= count;
-        } else {
-          prefix |= static_cast<uint64_t>(bucket) << shift;
-          remaining = rank;
-          break;
+      if (key >= threshold) {
+        const int slot = atomicAdd(&gathered, 1);
+        if (slot < selected) {
+          selected_keys[slot] = key;
         }
       }
     }
     __syncthreads();
-  }
 
-  if (threadIdx.x == 0) {
-    gathered = 0;
-  }
-  __syncthreads();
-  const uint64_t threshold = prefix;
-  for (int index = threadIdx.x; index < block_count; index += blockDim.x) {
-    const uint64_t key = topk::PackStableSortKey(scores[index], index);
-    if (key >= threshold) {
-      const int slot = atomicAdd(&gathered, 1);
-      if (slot < selected) {
-        selected_keys[slot] = key;
+    uint64_t keys[kBoundedTopKItemsPerThread];
+#pragma unroll
+    for (int item = 0; item < kBoundedTopKItemsPerThread; ++item) {
+      const int rank = threadIdx.x * kBoundedTopKItemsPerThread + item;
+      keys[item] = rank < selected ? selected_keys[rank] : topk::kPaddingSortKey;
+    }
+    Sort(temp.sort).SortDescending(keys);
+#pragma unroll
+    for (int item = 0; item < kBoundedTopKItemsPerThread; ++item) {
+      const int rank = threadIdx.x * kBoundedTopKItemsPerThread + item;
+      if (rank < selected) {
+        topk_indices[row * params.block_topk + rank] = topk::UnpackStableSortIndex(keys[item]);
       }
     }
-  }
-  __syncthreads();
-
-  uint64_t keys[kBoundedTopKItemsPerThread];
-#pragma unroll
-  for (int item = 0; item < kBoundedTopKItemsPerThread; ++item) {
-    const int rank = threadIdx.x * kBoundedTopKItemsPerThread + item;
-    keys[item] = rank < selected ? selected_keys[rank] : topk::kPaddingSortKey;
-  }
-  Sort(temp.sort).SortDescending(keys);
-#pragma unroll
-  for (int item = 0; item < kBoundedTopKItemsPerThread; ++item) {
-    const int rank = threadIdx.x * kBoundedTopKItemsPerThread + item;
-    if (rank < selected) {
-      topk_indices[row * params.block_topk + rank] = topk::UnpackStableSortIndex(keys[item]);
-    }
+    __syncthreads();
   }
 }
 
@@ -864,10 +869,10 @@ Status LaunchCsaSparseAttentionIndexer(cudaStream_t stream, const SparseAttentio
   return CUDA_CALL(cudaGetLastError());
 }
 
-#define INSTANTIATE_SPARSE_ATTENTION_INDEXER(T)                                                                \
-  template Status LaunchQsaSparseAttentionIndexer<T>(cudaStream_t, const SparseAttentionIndexerParams&,           \
-                                                     const T*, const T*, const T*, const T*, const T*,         \
-                                                     const bool*, const T*, int32_t*, T*, float*, int32_t*);   \
+#define INSTANTIATE_SPARSE_ATTENTION_INDEXER(T)                                                              \
+  template Status LaunchQsaSparseAttentionIndexer<T>(cudaStream_t, const SparseAttentionIndexerParams&,      \
+                                                     const T*, const T*, const T*, const T*, const T*,       \
+                                                     const bool*, const T*, int32_t*, T*, float*, int32_t*); \
   template Status LaunchCsaSparseAttentionIndexer<T>(                                                        \
       cudaStream_t, const SparseAttentionIndexerParams&, const T*, const T*, const T*, const T*, const T*,   \
       const T*, const T*, const T*, const int64_t*, const T*, const T*, const T*, int32_t*, T*, T*, T*, float*);
