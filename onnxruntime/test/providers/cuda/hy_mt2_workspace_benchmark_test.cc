@@ -473,6 +473,8 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
       GetBinaryEnvironmentValue("ORT_WORKSPACE_BENCHMARK_FPA_INTB_GEMM", "1");
   const std::string detailed_arena_metrics =
       GetBinaryEnvironmentValue("ORT_WORKSPACE_BENCHMARK_DETAILED_ARENA_METRICS", "0");
+  const std::string enable_gqa_workspace =
+      GetBinaryEnvironmentValue("ORT_WORKSPACE_BENCHMARK_GQA_PREALLOCATION", "1");
   const int64_t sequence_length = ParseEnvironmentVariableWithDefault<int64_t>(
       "ORT_WORKSPACE_BENCHMARK_SEQUENCE_LENGTH", kDefaultSequenceLength);
   const int64_t past_sequence_length = ParseEnvironmentVariableWithDefault<int64_t>(
@@ -485,6 +487,8 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
       "ORT_WORKSPACE_BENCHMARK_MEMORY_RUNS", kDefaultMemoryMeasurementRuns);
   const int measured_runs = ParseEnvironmentVariableWithDefault<int>(
       "ORT_WORKSPACE_BENCHMARK_MEASURED_RUNS", kDefaultMeasuredRuns);
+  const int64_t kv_cache_capacity =
+      past_sequence_length + sequence_length + decode_tokens;
 
   ASSERT_FALSE(disable_prepacking == "1" && enable_fpa_intb == "1")
       << "The fpA_intB path requires PrePack. Set ORT_WORKSPACE_BENCHMARK_FPA_INTB_GEMM=0 when "
@@ -516,6 +520,11 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
       kOrtSessionOptionsEnableStaticWorkspacePreallocation,
       enable_workspace_preallocation.c_str()));
+  if (enable_gqa_workspace == "1") {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsCudaGqaWorkspaceMaxTotalSequenceLength,
+        std::to_string(kv_cache_capacity).c_str()));
+  }
 
   using Clock = std::chrono::steady_clock;
   CudaMemorySampler initialization_memory_sampler(0);
@@ -559,13 +568,19 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
 
   size_t matmul_nbits_nodes = 0;
   size_t cuda_matmul_nbits_nodes = 0;
+  size_t group_query_attention_nodes = 0;
+  size_t cuda_group_query_attention_nodes = 0;
   for (const auto& node : session.GetGraph().Nodes()) {
-    if (node.OpType() != "MatMulNBits") {
-      continue;
-    }
-    ++matmul_nbits_nodes;
-    if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
-      ++cuda_matmul_nbits_nodes;
+    if (node.OpType() == "MatMulNBits") {
+      ++matmul_nbits_nodes;
+      if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
+        ++cuda_matmul_nbits_nodes;
+      }
+    } else if (node.OpType() == "GroupQueryAttention") {
+      ++group_query_attention_nodes;
+      if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
+        ++cuda_group_query_attention_nodes;
+      }
     }
   }
   ASSERT_EQ(matmul_nbits_nodes, profile.matmul_nbits_nodes);
@@ -575,12 +590,26 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
   ASSERT_NE(execution_plan, nullptr);
   size_t planned_workspace_nodes = 0;
   size_t largest_workspace_bytes = 0;
+  size_t planned_matmul_nbits_nodes = 0;
+  size_t largest_matmul_nbits_workspace_bytes = 0;
+  size_t planned_group_query_attention_nodes = 0;
+  size_t largest_group_query_attention_workspace_bytes = 0;
   for (const auto& [node_index, workspace_plans] : execution_plan->workspace_allocation_plan) {
-    static_cast<void>(node_index);
     ASSERT_EQ(workspace_plans.size(), static_cast<size_t>(1));
     ++planned_workspace_nodes;
     largest_workspace_bytes =
         std::max(largest_workspace_bytes, workspace_plans.front().allocation_bytes);
+    const Node* node = session.GetGraph().GetNode(node_index);
+    ASSERT_NE(node, nullptr);
+    if (node->OpType() == "MatMulNBits") {
+      ++planned_matmul_nbits_nodes;
+      largest_matmul_nbits_workspace_bytes =
+          std::max(largest_matmul_nbits_workspace_bytes, workspace_plans.front().allocation_bytes);
+    } else if (node->OpType() == "GroupQueryAttention") {
+      ++planned_group_query_attention_nodes;
+      largest_group_query_attention_workspace_bytes =
+          std::max(largest_group_query_attention_workspace_bytes, workspace_plans.front().allocation_bytes);
+    }
   }
   if (enable_workspace_preallocation == "1") {
     ASSERT_GT(planned_workspace_nodes, static_cast<size_t>(0));
@@ -592,8 +621,6 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
 
   std::vector<int64_t> input_ids(static_cast<size_t>(sequence_length), profile.bos_token_id);
   const bool share_kv_cache = decode_tokens > 0;
-  const int64_t kv_cache_capacity =
-      past_sequence_length + sequence_length + decode_tokens;
   const int64_t attention_mask_length =
       share_kv_cache ? kv_cache_capacity : past_sequence_length + sequence_length;
   std::vector<int64_t> attention_mask(
@@ -987,6 +1014,7 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             << " disable_prepacking=" << disable_prepacking
             << " use_device_initializers=" << use_device_initializers
             << " fpa_intb_gemm=" << enable_fpa_intb
+            << " gqa_workspace=" << enable_gqa_workspace
             << " share_kv_cache=" << share_kv_cache
             << " sequence_length=" << sequence_length
             << " past_sequence_length=" << past_sequence_length
@@ -994,8 +1022,15 @@ TEST(MatMulNBitsWorkspace, ModelWorkspacePreallocationBenchmark) {
             << " warmup_runs=" << warmup_runs
             << " memory_measurement_runs=" << memory_measurement_runs
             << " measured_runs=" << measured_runs
+            << " group_query_attention_nodes=" << group_query_attention_nodes
+            << " cuda_group_query_attention_nodes=" << cuda_group_query_attention_nodes
             << " planned_workspace_nodes=" << planned_workspace_nodes
             << " largest_workspace_bytes=" << largest_workspace_bytes
+            << " planned_matmul_nbits_nodes=" << planned_matmul_nbits_nodes
+            << " largest_matmul_nbits_workspace_bytes=" << largest_matmul_nbits_workspace_bytes
+            << " planned_group_query_attention_nodes=" << planned_group_query_attention_nodes
+            << " largest_group_query_attention_workspace_bytes="
+            << largest_group_query_attention_workspace_bytes
             << " serialized_model_bytes=" << serialized_model_bytes
             << " serialized_external_data_bytes=" << serialized_external_data_bytes
             << " initialize_ms=" << initialize_ms

@@ -3,9 +3,9 @@
 ## Purpose
 
 These local benchmarks compare the existing dynamic workspace allocation path with
-run-scoped static workspace preallocation for CUDA `MatMulNBits`. The preallocated
-path declares each kernel's workspace and includes its lifetime in ORT's activation
-memory pattern.
+run-scoped static workspace preallocation for CUDA kernels. The measured Qwen
+results currently exercise `MatMulNBits` preallocation. `GroupQueryAttention` workspace estimation and slot-0 runtime consumption are
+also included and reported separately below.
 
 The current RTX 5090 results approximate ONNX Runtime GenAI generation with a
 1,024-token prefill followed by 128 batch-1 decode steps. Fixed-capacity CUDA
@@ -111,6 +111,55 @@ unrelated processes. WDDM is the primary process-peak measurement; the arena
 reservation isolates the exact effect inside ORT. A lower arena reservation does
 not necessarily lower WDDM peak VRAM if another point in execution remains the
 high-water mark or if the difference is below WDDM accounting granularity.
+
+## GroupQueryAttention preallocation
+
+The benchmark supplies the workload's fixed KV capacity as an explicit upper
+bound for the non-windowed `total_sequence_length` scalar. Since `MayInplace`
+does not guarantee that both cache pairs alias, the declaration conservatively
+includes the valid one-sided-alias case, which requires preserving one complete
+past cache tensor. At runtime, the selected route slices its allocations from
+slot 0 and falls back to the CUDA scratch allocator if the root is absent or too
+small.
+
+All full runs below used two warmups, one memory scenario, and ten timed
+scenarios. They are single-process diagnostic comparisons, not the balanced
+multi-process latency methodology used later in this document.
+
+The three measured modes were:
+
+- **Scratch:** neither `MatMulNBits` nor GQA uses planned workspace.
+- **MatMulNBits planned:** `MatMulNBits` uses planned workspace and GQA uses
+  scratch allocations.
+- **Combined planned:** both `MatMulNBits` and GQA use planned workspace.
+
+There was no separate GQA-planned/`MatMulNBits`-scratch run. The absolute
+process peak and ORT arena measurements were:
+
+| Model and path | Scratch WDDM | MatMulNBits planned WDDM | Combined planned WDDM | Combined vs scratch | Scratch arena | MatMulNBits planned arena | Combined planned arena |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Qwen 2.5 1.5B, legacy | 2,308 MiB | 2,238 MiB | 2,294 MiB | -14 MiB | 521,422,080 B | 449,889,536 B | 506,283,776 B |
+| Qwen 2.5 1.5B, fpA-intB | 2,294 MiB | 2,294 MiB | 2,376 MiB | +82 MiB | 420,758,784 B | 421,053,952 B | 506,283,776 B |
+| Qwen 2.5 7B, legacy | 6,572 MiB | 6,314 MiB | 6,390 MiB | -182 MiB | 943,736,064 B | 676,513,280 B | 754,075,392 B |
+| Qwen 2.5 7B, fpA-intB | 6,258 MiB | 6,256 MiB | 6,430 MiB | +172 MiB | 573,047,040 B | 573,047,040 B | 754,057,984 B |
+
+The incremental GQA effect within the planned configurations was:
+
+| Model and path | GQA nodes planned | Largest GQA root | Incremental GQA WDDM change vs MatMul-only | Incremental GQA arena change | Combined change vs scratch | Allocation calls, MatMul-only -> combined |
+|---|---:|---:|---:|---:|---:|---:|
+| Qwen 2.5 1.5B, legacy | 28 | 123,273,728 B | +56 MiB | +56,394,240 B | -14 MiB / -15,138,304 B | 148,556 -> 7,520 |
+| Qwen 2.5 1.5B, fpA-intB | 28 | 123,273,728 B | +82 MiB | +85,229,824 B | +82 MiB / +85,524,992 B | 149,012 -> 8,004 |
+| Qwen 2.5 7B, legacy | 28 | 287,441,408 B | +76 MiB | +77,562,112 B | -182 MiB / -189,660,672 B | 148,556 -> 7,520 |
+| Qwen 2.5 7B, fpA-intB | 28 | 287,441,408 B | +174 MiB | +181,010,944 B | +172 MiB / +181,010,944 B | 149,041 -> 7,977 |
+
+The GQA root eliminates most per-run allocator requests, but its conservative
+all-route and one-sided-alias envelope is larger than the scratch high-water
+mark for these actual Flash/XQA executions. GQA preallocation therefore raises
+memory relative to MatMul-only preallocation. The legacy configurations still
+finish below scratch because their `MatMulNBits` savings are larger; the
+fpA-intB configurations finish above scratch. Route-specific declarations or a
+planner-visible cache-alias guarantee would be required for GQA preallocation
+to reduce peak memory on these models.
 
 ## NVIDIA GeForce RTX 5090 Laptop GPU
 

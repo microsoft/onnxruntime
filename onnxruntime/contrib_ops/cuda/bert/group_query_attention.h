@@ -21,6 +21,11 @@ class GroupQueryAttention final : public CudaKernel {
  public:
   GroupQueryAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+  bool SupportsPreallocatedWorkspace() const noexcept override {
+    return declared_workspace_bytes_.load(std::memory_order_relaxed) != 0;
+  }
+#endif
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  bool& is_packed, PrePackedWeights* prepacked_weights) override;
@@ -57,6 +62,7 @@ class GroupQueryAttention final : public CudaKernel {
   KVQuantizationType v_quant_type_;
   int kv_cache_bit_width_;
   int64_t max_total_sequence_length_ = 0;
+  mutable std::atomic<size_t> declared_workspace_bytes_{0};
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;
