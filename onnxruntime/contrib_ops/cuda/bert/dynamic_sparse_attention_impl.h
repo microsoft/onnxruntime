@@ -50,7 +50,8 @@ struct DynamicSparseAttentionData {
 };
 
 size_t GetDynamicSparseAttentionValidationWorkspaceSize(
-    const DynamicSparseAttentionParameters& parameters);
+    const DynamicSparseAttentionParameters& parameters,
+    size_t max_shared_memory_per_block);
 
 size_t GetDynamicSparseAttentionWorkspaceSize(
     const DynamicSparseAttentionParameters& parameters,
@@ -66,7 +67,7 @@ Status ValidateDynamicSparseAttentionOnDevice(
     const DynamicSparseAttentionParameters& parameters,
     int32_t* error_flag,
     uint32_t* validation_bitmap,
-    size_t validation_bitmap_words,
+    size_t max_shared_memory_per_block,
     bool copy_result_to_host);
 
 template <typename T>
