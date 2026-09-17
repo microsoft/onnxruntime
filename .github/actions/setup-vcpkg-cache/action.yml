@@ -1,0 +1,48 @@
+name: Setup vcpkg cache
+description: Restores the vcpkg cache and saves it only for manual or main branch runs.
+
+inputs:
+  key:
+    description: Workflow and job-specific cache key component.
+    required: true
+  path:
+    description: Path to the vcpkg cache directory.
+    required: false
+    default: ~/.cache/vcpkg
+
+runs:
+  using: composite
+  steps:
+    - name: Restore and save vcpkg cache
+      if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+      uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        key: >-
+          vcpkg-cache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}-${{
+            hashFiles(
+              'cmake/vcpkg.json',
+              'cmake/vcpkg-configuration.json',
+              'cmake/vcpkg-ports/**',
+              'tools/ci_build/vcpkg_tool_info.json'
+            )
+          }}
+        restore-keys: |
+          vcpkg-cache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}-
+        path: ${{ inputs.path }}
+
+    - name: Restore vcpkg cache
+      if: github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+      with:
+        key: >-
+          vcpkg-cache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}-${{
+            hashFiles(
+              'cmake/vcpkg.json',
+              'cmake/vcpkg-configuration.json',
+              'cmake/vcpkg-ports/**',
+              'tools/ci_build/vcpkg_tool_info.json'
+            )
+          }}
+        restore-keys: |
+          vcpkg-cache-v2-${{ runner.os }}-${{ runner.arch }}-${{ inputs.key }}-
+        path: ${{ inputs.path }}
