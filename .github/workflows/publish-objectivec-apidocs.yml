@@ -45,7 +45,7 @@ jobs:
         add-cmake-to-path: 'true'
         disable-terrapin: 'true'
 
-    - name: Install Jazzy
+    - name: Install documentation gems
       run: |
         bundle install
 
