@@ -4,7 +4,7 @@
 
 ONNX Runtime already has a substantial 2-bit foundation: the `MatMulNBits` model format, Python quantization tooling, CPU kernels, and correctness tests support 2-bit weights. This makes INT2 the shortest path to extending CUDA weight-only execution without introducing a new portable format.
 
-The recommended first implementation target is therefore 2-bit CUDA `MatMulNBits`. The initial CUDA work should compare direct packed-INT2 execution with a GPU-native LUT approach, then integrate the best path for both M=1 decode and representative large-M prefill. This is required for a GitHub Copilot-style workload: M=1 decode affects token-generation speed, while long-context prefill affects time to first token (TTFT).
+The current product priority is mixed-width INT2 QMoE for expert-heavy Qwen models: INT2 expert gate/up projections with INT4 expert down projections. The end-to-end contract, export, runtime, validation, and staffing plan is defined in [INT2 QMoE End-to-End Delivery Plan](int2-qmoe-end-to-end-delivery-plan.md). Dense CUDA `MatMulNBits(bits=2)` remains valuable as a source of reusable packing, validation, and kernel primitives, but complete dense GEMV/GEMM delivery should not block the QMoE path.
 
 This choice prioritizes implementation readiness and maximum memory-bandwidth reduction while accepting material model-quality risk. The first week must establish uniform and mixed-precision INT2 quality baselines against INT4, INT8, and BF16. Mixed INT2/INT4/INT8 quantization may be required for sensitive layers. INT6 remains a follow-up option if INT2 cannot meet coding and tool-calling quality targets or if a less aggressive quality/size tradeoff is needed.
 
@@ -17,7 +17,7 @@ This document focuses on weight-only block quantization for `MatMulNBits` and re
 - Model-format and packing choices.
 - A staged implementation and evaluation plan.
 
-The initial CUDA vertical slice is limited to dense projections represented as individual `MatMulNBits` nodes. Expert gate/up tensors are included only when the model-production path exports them as independent dense nodes. Fused MoE/QMoE operators and their packed expert-weight contracts are a separate workstream.
+The dense CUDA vertical slice described in this exploration remains a supporting implementation option for independently exported projections. The prioritized fused QMoE work and its packed expert-weight contract are scoped separately in the end-to-end QMoE delivery plan.
 
 Activation quantization, KV-cache quantization, floating-point formats such as FP4 and FP6, and fused MoE/QMoE execution are outside the primary scope.
 
@@ -93,7 +93,7 @@ The largest model-contract blocker is that QMoE currently exposes one `expert_we
 
 CUDA dequantization to persistent FP16/BF16 expert weights is useful only as a correctness oracle because it expands INT2 payloads by approximately 8x and removes the deployment memory benefit. The first performance-relevant QMoE target should be packed INT2 fused decode for small expanded-row counts. Long-context prefill ultimately requires a native or equivalently bounded W2A16 grouped GEMM; full expert dequantization is not a production milestone.
 
-MatMulNBits remains the first implementation priority because its portable INT2 contract, CPU reference, quantization tooling, and isolated matrix tests reduce risk. Once its CUDA packing interpretation, correctness path, and fused M=1 load/dequantization primitives are stable, QMoE contract and export work can proceed in parallel rather than waiting for complete MatMulNBits coverage across every data type and block size.
+Shared MatMulNBits INT2 packing, CPU-reference, validation, and CUDA load/dequantization primitives remain early enabling work because they reduce QMoE implementation risk. QMoE contract and export work should proceed in parallel and must not wait for complete dense MatMulNBits coverage across every data type, block size, or M regime.
 
 ## External Landscape
 
