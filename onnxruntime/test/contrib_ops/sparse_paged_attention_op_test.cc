@@ -377,8 +377,8 @@ TEST(SparsePagedAttention, WebGpu_PackedQkvRotaryAndBlockTableScatter) {
 
   constexpr int kNumBlocks = 2;
   constexpr int kRotaryHeadSize = 16;
-  constexpr int kPackedSize = 3 * kRotaryHeadSize;
   constexpr int kRotaryCacheElems = kBlockSize * kRotaryHeadSize;
+  constexpr int kPackedSize = 3 * kRotaryHeadSize;
   std::vector<MLFloat16> packed_qkv(kPackedSize, MLFloat16(0.0f));
   std::fill_n(packed_qkv.begin() + 2 * kRotaryHeadSize, kRotaryHeadSize, MLFloat16(4.0f));
   std::vector<MLFloat16> expected_value_cache(kNumBlocks * kRotaryCacheElems, MLFloat16(0.0f));
@@ -407,7 +407,8 @@ TEST(SparsePagedAttention, WebGpu_PackedQkvRotaryAndBlockTableScatter) {
                              HalfVector(1.0f, kRotaryHeadSize / 2));
   tester.AddInput<MLFloat16>("sin_cache", {1, kRotaryHeadSize / 2},
                              HalfVector(0.0f, kRotaryHeadSize / 2));
-  tester.AddOutput<MLFloat16>("output", {1, kRotaryHeadSize}, HalfVector(4.0f, kRotaryHeadSize));
+  tester.AddOutput<MLFloat16>("output", {1, kRotaryHeadSize},
+                              HalfVector(4.0f, kRotaryHeadSize));
   tester.AddOutput<MLFloat16>("key_cache_out", {kNumBlocks, kBlockSize, 1, kRotaryHeadSize},
                               HalfVector(0.0f, kNumBlocks * kRotaryCacheElems));
   tester.AddOutput<MLFloat16>("value_cache_out", {kNumBlocks, kBlockSize, 1, kRotaryHeadSize},
